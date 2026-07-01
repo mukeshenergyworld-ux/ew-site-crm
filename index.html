@@ -746,7 +746,15 @@ function generateQuotePDF(site, items, quoteNum, quoteDate, validDays, terms, cr
         if(b64&&b64.startsWith("data:")){
           doc.setFillColor(252,252,254); doc.setDrawColor(210,218,224); doc.setLineWidth(0.28);
           doc.roundedRect(ix-1,iy-1,imgS+2,imgS+2,1.5,1.5,"FD");
-          try{ doc.addImage(b64,b64.includes("png")?"PNG":"JPEG",ix,iy,imgS,imgS,undefined,"FAST"); }catch(e){}
+          try{
+            const props=doc.getImageProperties(b64);
+            const ratio=(props.width&&props.height)?props.width/props.height:1;
+            let dw=imgS, dh=imgS;
+            if(ratio>1){ dh=imgS/ratio; } else if(ratio<1){ dw=imgS*ratio; }
+            const dx=data.cell.x+(cellW-dw)/2;
+            const dy=data.cell.y+(cellH-dh)/2;
+            doc.addImage(b64,b64.includes("png")?"PNG":"JPEG",dx,dy,dw,dh,undefined,"FAST");
+          }catch(e){}
         } else {
           doc.setFillColor(242,244,248); doc.setDrawColor(215,221,228); doc.setLineWidth(0.28);
           doc.roundedRect(ix-1,iy-1,imgS+2,imgS+2,1.5,1.5,"FD");
@@ -1275,33 +1283,24 @@ function SmartProductSelector({products, loading, currentBasket, onFinish, onClo
   const isInBasket=(id)=>!!basket.find(b=>b.product.id===id);
 
   // Discount categories = unique brand+family combos in basket
-  const discountCategories = useMemo(()=>{
-    const seen={};
-    basket.forEach(b=>{
-      const k=b.product.brand+(b.product.family?"/"+b.product.family:"");
-      if(!seen[k]) seen[k]={key:k, label:b.product.brand+(b.product.family?" — "+b.product.family:""), count:0, subtotal:0};
-      seen[k].count++;
-      seen[k].subtotal+=b.product.listPrice*b.qty;
-    });
-    return Object.values(seen);
-  },[basket]);
-
   const discountBrands = useMemo(()=>{
     const byBrand={};
-    discountCategories.forEach(cat=>{
-      const brand=cat.key.split("/")[0];
-      if(!byBrand[brand]) byBrand[brand]={brand, families:[], count:0, subtotal:0};
-      byBrand[brand].families.push(cat);
-      byBrand[brand].count+=cat.count;
-      byBrand[brand].subtotal+=cat.subtotal;
+    basket.forEach(b=>{
+      const brand=b.product.brand||"Other";
+      if(!byBrand[brand]) byBrand[brand]={brand, products:[], count:0, subtotal:0};
+      byBrand[brand].products.push(b);
+      byBrand[brand].count++;
+      byBrand[brand].subtotal+=b.product.listPrice*b.qty;
     });
     return Object.values(byBrand);
-  },[discountCategories]);
+  },[basket]);
 
   function finalItems(){
     return basket.map(b=>{
-      const k=b.product.brand+(b.product.family?"/"+b.product.family:"");
-      const disc=Number(discounts[k]||0);
+      const brandKey="brand:"+(b.product.brand||"Other");
+      const itemKey="item:"+b.product.id;
+      const ov=discounts[itemKey];
+      const disc=Number((ov!==undefined&&ov!=="")?ov:(discounts[brandKey]||0));
       const netPrice = disc>0 ? b.product.listPrice*(1-disc/100) : b.product.listPrice;
       return { id:makeId(), specs:b.product.specs, brand:b.product.brand,
         code:b.product.code, family:b.product.family, unit:b.product.unit,
@@ -1330,59 +1329,52 @@ function SmartProductSelector({products, loading, currentBasket, onFinish, onClo
           </div>
           <div style={{flex:1,overflowY:"auto",padding:"24px 24px 0"}}>
             {discountBrands.map(bg=>{
-              const familyKeys=bg.families.map(f=>f.key);
-              const firstVal=discounts[familyKeys[0]]||"";
-              const allSame=familyKeys.every(k=>(discounts[k]||"")===firstVal);
-              const brandDisc=allSame?firstVal:"";
+              const brandKey="brand:"+bg.brand;
+              const brandDisc=discounts[brandKey]||"";
               const brandDiscNum=Number(brandDisc||0);
               const brandSaving=bg.subtotal*brandDiscNum/100;
               const expanded=!!expandedBrands[bg.brand];
-              const hasMultiple=bg.families.length>1;
+              const anyOverride=bg.products.some(p=>{const ov=discounts["item:"+p.product.id]; return ov!==undefined&&ov!=="";});
               return(
                 <div key={bg.brand} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:"16px 18px",marginBottom:12}}>
                   <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-                    {hasMultiple?(
-                      <button onClick={()=>setExpandedBrands(prev=>({...prev,[bg.brand]:!expanded}))}
-                        style={{border:"none",background:"none",cursor:"pointer",fontSize:16,color:"#475569",padding:0,width:20}}>
-                        {expanded?"▾":"▸"}
-                      </button>
-                    ):<span style={{width:20}}/>}
+                    <button onClick={()=>setExpandedBrands(prev=>({...prev,[bg.brand]:!expanded}))}
+                      style={{border:"none",background:"none",cursor:"pointer",fontSize:16,color:"#475569",padding:0,width:20}}>
+                      {expanded?"▾":"▸"}
+                    </button>
                     <div style={{flex:1}}>
                       <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{bg.brand}</div>
-                      <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{bg.count} product{bg.count>1?"s":""}{hasMultiple?(" · "+bg.families.length+" categories"):""} · List subtotal: {fmtINR(bg.subtotal)}</div>
-                      {brandDiscNum>0&&allSame&&<div style={{fontSize:12,color:"#059669",marginTop:2,fontWeight:600}}>Saving: {fmtINR(brandSaving)} ({brandDiscNum}%)</div>}
-                      {!allSame&&<div style={{fontSize:11,color:"#b45309",marginTop:2}}>Mixed discounts — expand to view</div>}
+                      <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{bg.count} product{bg.count>1?"s":""} · List subtotal: {fmtINR(bg.subtotal)}</div>
+                      {brandDiscNum>0&&<div style={{fontSize:12,color:"#059669",marginTop:2,fontWeight:600}}>Saving: {fmtINR(brandSaving)} ({brandDiscNum}%)</div>}
+                      {anyOverride&&<div style={{fontSize:11,color:"#b45309",marginTop:2}}>Some products have a custom discount — expand to view</div>}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
                       <span style={{fontSize:13,color:"#475569"}}>Discount</span>
                       <input type="number" min="0" max="100" value={brandDisc} placeholder="0"
-                        onChange={e=>{
-                          const v=e.target.value;
-                          setDiscounts(prev=>{
-                            const next={...prev};
-                            familyKeys.forEach(k=>{next[k]=v;});
-                            return next;
-                          });
-                        }}
+                        onChange={e=>setDiscounts(prev=>({...prev,[brandKey]:e.target.value}))}
                         style={{...inp,width:72,textAlign:"center",fontSize:14,fontWeight:700}}/>
                       <span style={{fontSize:13,color:"#475569"}}>%</span>
                     </div>
                   </div>
-                  {expanded&&hasMultiple&&(
+                  {expanded&&(
                     <div style={{marginTop:12,paddingTop:12,borderTop:"1px dashed #cbd5e1",display:"flex",flexDirection:"column",gap:8}}>
-                      {bg.families.map(cat=>{
-                        const disc=Number(discounts[cat.key]||0);
-                        const saving=cat.subtotal*disc/100;
+                      {bg.products.map(p=>{
+                        const itemKey="item:"+p.product.id;
+                        const ov=discounts[itemKey];
+                        const hasOv=ov!==undefined&&ov!=="";
+                        const effDisc=Number(hasOv?ov:(brandDisc||0));
+                        const lineSubtotal=p.product.listPrice*p.qty;
+                        const saving=lineSubtotal*effDisc/100;
                         return(
-                          <div key={cat.key} style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap",paddingLeft:28}}>
+                          <div key={p.product.id} style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap",paddingLeft:28}}>
                             <div style={{flex:1}}>
-                              <div style={{fontWeight:600,fontSize:13,color:"#334155"}}>{cat.label}</div>
-                              <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{cat.count} product{cat.count>1?"s":""} · {fmtINR(cat.subtotal)}</div>
-                              {disc>0&&<div style={{fontSize:11,color:"#059669",marginTop:1,fontWeight:600}}>Saving: {fmtINR(saving)} ({disc}%)</div>}
+                              <div style={{fontWeight:600,fontSize:13,color:"#334155"}}>{p.product.specs||p.product.code}</div>
+                              <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>Qty {p.qty} · {fmtINR(lineSubtotal)}{!hasOv?" · using brand rate":""}</div>
+                              {effDisc>0&&<div style={{fontSize:11,color:"#059669",marginTop:1,fontWeight:600}}>Saving: {fmtINR(saving)} ({effDisc}%)</div>}
                             </div>
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
-                              <input type="number" min="0" max="100" value={discounts[cat.key]||""} placeholder="0"
-                                onChange={e=>setDiscounts(prev=>({...prev,[cat.key]:e.target.value}))}
+                              <input type="number" min="0" max="100" value={ov===undefined?"":ov} placeholder={brandDisc||"0"}
+                                onChange={e=>setDiscounts(prev=>({...prev,[itemKey]:e.target.value}))}
                                 style={{...inp,width:64,textAlign:"center",fontSize:13,fontWeight:600}}/>
                               <span style={{fontSize:12,color:"#475569"}}>%</span>
                             </div>
@@ -3894,22 +3886,38 @@ function CRMApp(){
   const userCan=(perm)=>can(perm, currentUser, permissions);
 
   useEffect(()=>{ saveSites(sites); },[sites]);
-  useEffect(()=>{ saveUsers(appUsers); appUsers.forEach(u=>pushUserToServer(u)); },[appUsers]);
+  useEffect(()=>{ saveUsers(appUsers); },[appUsers]);
   useEffect(()=>{ savePermissions(permissions); },[permissions]);
 
   function updateUserPassword(userId, newPwd){
-    setAppUsers(prev=>prev.map(u=>u.id===userId?{...u,password:newPwd}:u));
+    setAppUsers(prev=>{
+      const next=prev.map(u=>u.id===userId?{...u,password:newPwd}:u);
+      const upd=next.find(u=>u.id===userId);
+      if(upd) pushUserToServer(upd);
+      return next;
+    });
   }
   function toggleUserActive(userId){
-    setAppUsers(prev=>prev.map(u=>u.id===userId?{...u,active:!u.active}:u));
+    setAppUsers(prev=>{
+      const next=prev.map(u=>u.id===userId?{...u,active:!u.active}:u);
+      const upd=next.find(u=>u.id===userId);
+      if(upd) pushUserToServer(upd);
+      return next;
+    });
   }
   function updateUserProfile(userId, patch){
-    setAppUsers(prev=>prev.map(u=>u.id===userId?{...u,...patch}:u));
+    setAppUsers(prev=>{
+      const next=prev.map(u=>u.id===userId?{...u,...patch}:u);
+      const upd=next.find(u=>u.id===userId);
+      if(upd) pushUserToServer(upd);
+      return next;
+    });
   }
   function addNewUser(name, phone, role){
     const id = "u"+Date.now();
     const newUser = {id, name, phone, role, password: role==="admin"?"admin123":"ew2024", active:false};
     setAppUsers(prev=>[...prev, newUser]);
+    pushUserToServer(newUser);
   }
   function updatePermission(perm, roles){
     setPermissions(prev=>({...prev,[perm]:roles}));
