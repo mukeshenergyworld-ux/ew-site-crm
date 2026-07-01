@@ -167,6 +167,18 @@ function pushUserToServer(user){
     fetch(WEBAPP_URL,{method:"POST",body:JSON.stringify({action:"userSave",id:user.id,data:user,updatedBy:"admin"})});
   }catch(e){}
 }
+async function requestOtpForUser(userId){
+  try{
+    const res = await fetch(WEBAPP_URL, {method:"POST", body: JSON.stringify({action:"requestOtp", userId})});
+    return await res.json();
+  }catch(e){ return {ok:false, error:"Network error. Try again."}; }
+}
+async function verifyOtpForUser(userId, code){
+  try{
+    const res = await fetch(WEBAPP_URL, {method:"POST", body: JSON.stringify({action:"verifyOtp", userId, code})});
+    return await res.json();
+  }catch(e){ return {ok:false, error:"Network error. Try again."}; }
+}
 
 const USERS = [
   { id:"mukesh", name:"Mukesh Verma",  role:"admin", password:"admin123", active:true },
@@ -3286,6 +3298,7 @@ function AdminPanel({appUsers,permissions,sites,currentUser,onUpdatePassword,onT
                 <div style={{width:110,fontSize:13,fontWeight:600,color:"#334155"}}>{u.name}</div>
                 <input defaultValue={u.name} onBlur={e=>{ const v=e.target.value.trim(); if(v && v!==u.name) onUpdateUser(u.id,{name:v}); }} placeholder="Name" style={{padding:"6px 9px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:12,width:150}}/>
                 <input defaultValue={u.phone||""} onBlur={e=>{ const v=e.target.value.trim(); if(v!==(u.phone||"")) onUpdateUser(u.id,{phone:v}); }} placeholder="Phone" style={{padding:"6px 9px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:12,width:130}}/>
+                <input defaultValue={u.email||""} onBlur={e=>{ const v=e.target.value.trim(); if(v!==(u.email||"")) onUpdateUser(u.id,{email:v}); }} placeholder="Email (enables OTP login)" style={{padding:"6px 9px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:12,width:200}}/>
               </div>
             ))}
           </div>          </div>
@@ -3773,6 +3786,10 @@ function LoginScreen({onLogin}){
   const [pwd,setPwd]=useState("");
   const [err,setErr]=useState("");
   const [showPwd,setShowPwd]=useState(false);
+  const [otpStage,setOtpStage]=useState("idle");
+  const [otpCode,setOtpCode]=useState("");
+  const [otpLoading,setOtpLoading]=useState(false);
+  useEffect(()=>{ setOtpStage("idle"); setOtpCode(""); setErr(""); setPwd(""); },[selUser]);
 
   function attemptLogin(){
     if(!selUser){ setErr("Please select your name"); return; }
@@ -3780,6 +3797,21 @@ function LoginScreen({onLogin}){
     if(selUser.password && pwd !== selUser.password){ setErr("Wrong password. Try again."); setPwd(""); return; }
     setErr("");
     onLogin(selUser);
+  }
+
+  async function sendOtp(){
+    if(!selUser){ setErr("Please select your name"); return; }
+    if(!selUser.active){ setErr("Your account is inactive. Contact admin."); return; }
+    setErr(""); setOtpLoading(true);
+    const r = await requestOtpForUser(selUser.id);
+    setOtpLoading(false);
+    if(r && r.ok){ setOtpStage("sent"); } else { setErr((r&&r.error)||"Could not send code. Try again."); }
+  }
+  async function verifyOtp(){
+    setErr(""); setOtpLoading(true);
+    const r = await verifyOtpForUser(selUser.id, otpCode);
+    setOtpLoading(false);
+    if(r && r.ok){ setOtpCode(""); setOtpStage("idle"); onLogin(selUser); } else { setErr((r&&r.error)||"Invalid or expired code."); }
   }
 
   const activeUsers=users.filter(u=>u.active!==false);
@@ -3819,7 +3851,7 @@ function LoginScreen({onLogin}){
           ))}
         </div>
 
-        {selUser&&(
+        {selUser&&!selUser.email&&(
           <div style={{marginBottom:16}}>
             <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Password</div>
             <div style={{position:"relative"}}>
@@ -3840,10 +3872,38 @@ function LoginScreen({onLogin}){
           </div>
         )}
 
+        {selUser&&selUser.email&&(
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:12,fontWeight:600,color:"#94a3b8",marginBottom:6,letterSpacing:"0.08em"}}>LOGIN CODE</div>
+            {otpStage==="idle"?(
+              <div>
+                <div style={{fontSize:12,color:"#94a3b8",marginBottom:8}}>We'll email a 6-digit code to {selUser.email.replace(/(.{2}).+(@.+)/,"$1***$2")}</div>
+                <button onClick={sendOtp} disabled={otpLoading} style={{width:"100%",background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",opacity:otpLoading?0.7:1}}>{otpLoading?"Sending…":"Send Code"}</button>
+              </div>
+            ):(
+              <div>
+                <input
+                  value={otpCode}
+                  onChange={e=>setOtpCode(e.target.value.replace(/\D/g,"").slice(0,6))}
+                  placeholder="6-digit code"
+                  inputMode="numeric"
+                  style={{width:"100%",boxSizing:"border-box",background:"#0f172a",border:"1px solid #334155",borderRadius:8,padding:"10px 12px",color:"#f1f5f9",fontSize:18,letterSpacing:"0.3em",textAlign:"center"}}/>
+                <button onClick={verifyOtp} disabled={otpLoading||otpCode.length<6} style={{width:"100%",marginTop:10,background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",opacity:(otpLoading||otpCode.length<6)?0.6:1}}>{otpLoading?"Verifying…":"Verify & Login"}</button>
+                <div style={{textAlign:"center",marginTop:8}}>
+                  <button onClick={sendOtp} disabled={otpLoading} style={{background:"none",border:"none",color:"#94a3b8",fontSize:12,cursor:"pointer",textDecoration:"underline"}}>Resend code</button>
+                </div>
+              </div>
+            )}
+            {err&&<div style={{fontSize:12,color:"#f87171",marginTop:6}}>{err}</div>}
+          </div>
+        )}
+
+        {!(selUser&&selUser.email)&&(
         <button onClick={attemptLogin}
           style={{width:"100%",background:selUser?"#0d9488":"#1e3a5f",color:"#fff",border:"none",borderRadius:10,padding:"12px",fontSize:15,fontWeight:700,cursor:selUser?"pointer":"default",transition:"all 0.15s"}}>
           {selUser?`Login as ${selUser.name.split(" ")[0]}`:"Select a name above"}
         </button>
+        )}
 
         <div style={{textAlign:"center",marginTop:14,fontSize:11,color:"#334155"}}>
           Default: Admin = <code style={{color:"#475569"}}>admin123</code> · Sales = <code style={{color:"#475569"}}>ew2024</code>
