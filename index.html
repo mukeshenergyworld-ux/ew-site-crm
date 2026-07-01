@@ -696,8 +696,8 @@ function generateQuotePDF(site, items, quoteNum, quoteDate, validDays, terms, cr
     startY:y,
     head:[[
       {content:"S.",          styles:{halign:"center",cellWidth:8}},
-      {content:"Pic",         styles:{halign:"center",cellWidth:16}},
-      {content:"Item Description", styles:{cellWidth:73}},
+      {content:"Pic",         styles:{halign:"center",cellWidth:10}},
+      {content:"Item Description", styles:{cellWidth:79}},
       {content:"Qty",         styles:{halign:"center",cellWidth:10}},
       {content:"Price",       styles:{halign:"right", cellWidth:22}},
       {content:"Dis.%",       styles:{halign:"center",cellWidth:13}},
@@ -705,10 +705,11 @@ function generateQuotePDF(site, items, quoteNum, quoteDate, validDays, terms, cr
       {content:"Total Amt",   styles:{halign:"right", cellWidth:26}},
     ]],
     body:tableRows,
-    styles:{font:UF,fontSize:8,cellPadding:{top:3,right:2.5,bottom:6,left:2.5},textColor:[30,35,50],lineColor:[210,218,222],lineWidth:0.28,minCellHeight:26},
+    styles:{font:UF,fontSize:8,cellPadding:{top:1.5,right:2,bottom:1.5,left:2},textColor:[30,35,50],lineColor:[210,218,222],lineWidth:0.28,minCellHeight:14},
     headStyles:{fillColor:TEAL,textColor:[255,255,255],fontStyle:"bold",fontSize:8.5,font:UF,cellPadding:{top:4,right:2.5,bottom:4,left:2.5}},
     margin:{left:M,right:M},
     theme:"grid",
+    showHead:"firstPage",
     didDrawCell:(data)=>{
       if(data.section!=="body") return;
       const item=sortedItems[data.row.index];
@@ -717,7 +718,7 @@ function generateQuotePDF(site, items, quoteNum, quoteDate, validDays, terms, cr
       // ── COL 1: Pic — FIXED 13x13mm centered, never stretches with row ──
       if(data.column.index===1){
         const cellW=data.cell.width, cellH=data.cell.height;
-        const imgS=13;
+        const imgS = 8;
         const ix=data.cell.x+(cellW-imgS)/2;
         const iy=data.cell.y+(cellH-imgS)/2;
         const b64=item.photoUrl?imgCache[item.photoUrl]:null;
@@ -767,7 +768,7 @@ function generateQuotePDF(site, items, quoteNum, quoteDate, validDays, terms, cr
   doc.setFillColor(11,123,138);
   doc.roundedRect(bX,y,bW,10,2,2,"F");
   doc.setFontSize(10); doc.setFont(UF,"bold"); doc.setTextColor(255,255,255);
-  doc.text("Sub-Total  { GST Extra as Actual }", bX+5, y+6.5);
+  doc.text("Sub-Total  { GST as Actual }", bX+5, y+6.5);
   doc.text(INR(Math.round(subTotal)), W-M-3, y+6.5, {align:"right"});
   y+=14;
 
@@ -1222,6 +1223,7 @@ function SmartProductSelector({products, loading, currentBasket, onFinish, onClo
   const [basket, setBasket] = useState(currentBasket||[]); // [{product,qty}]
   const [step, setStep]   = useState(1); // 1=select, 2=qty review, 3=discount
   const [discounts, setDiscounts] = useState({}); // {familyKey: pct}
+  const [expandedBrands, setExpandedBrands] = useState({});
 
   const brands  = useMemo(()=>[...new Set(products.map(p=>p.brand))].filter(Boolean).sort(),[products]);
   const families= useMemo(()=>{
@@ -1263,6 +1265,18 @@ function SmartProductSelector({products, loading, currentBasket, onFinish, onClo
     return Object.values(seen);
   },[basket]);
 
+  const discountBrands = useMemo(()=>{
+    const byBrand={};
+    discountCategories.forEach(cat=>{
+      const brand=cat.key.split("/")[0];
+      if(!byBrand[brand]) byBrand[brand]={brand, families:[], count:0, subtotal:0};
+      byBrand[brand].families.push(cat);
+      byBrand[brand].count+=cat.count;
+      byBrand[brand].subtotal+=cat.subtotal;
+    });
+    return Object.values(byBrand);
+  },[discountCategories]);
+
   function finalItems(){
     return basket.map(b=>{
       const k=b.product.brand+(b.product.family?"/"+b.product.family:"");
@@ -1294,23 +1308,68 @@ function SmartProductSelector({products, loading, currentBasket, onFinish, onClo
             </div>
           </div>
           <div style={{flex:1,overflowY:"auto",padding:"24px 24px 0"}}>
-            {discountCategories.map(cat=>{
-              const disc=Number(discounts[cat.key]||0);
-              const saving=cat.subtotal*disc/100;
+            {discountBrands.map(bg=>{
+              const familyKeys=bg.families.map(f=>f.key);
+              const firstVal=discounts[familyKeys[0]]||"";
+              const allSame=familyKeys.every(k=>(discounts[k]||"")===firstVal);
+              const brandDisc=allSame?firstVal:"";
+              const brandDiscNum=Number(brandDisc||0);
+              const brandSaving=bg.subtotal*brandDiscNum/100;
+              const expanded=!!expandedBrands[bg.brand];
+              const hasMultiple=bg.families.length>1;
               return(
-                <div key={cat.key} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:"16px 18px",marginBottom:12,display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{cat.label}</div>
-                    <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{cat.count} product{cat.count>1?"s":""} · List subtotal: {fmtINR(cat.subtotal)}</div>
-                    {disc>0&&<div style={{fontSize:12,color:"#059669",marginTop:2,fontWeight:600}}>Saving: {fmtINR(saving)} ({disc}%)</div>}
+                <div key={bg.brand} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:"16px 18px",marginBottom:12}}>
+                  <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+                    {hasMultiple?(
+                      <button onClick={()=>setExpandedBrands(prev=>({...prev,[bg.brand]:!expanded}))}
+                        style={{border:"none",background:"none",cursor:"pointer",fontSize:16,color:"#475569",padding:0,width:20}}>
+                        {expanded?"▾":"▸"}
+                      </button>
+                    ):<span style={{width:20}}/>}
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:14,color:"#0f172a"}}>{bg.brand}</div>
+                      <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{bg.count} product{bg.count>1?"s":""}{hasMultiple?(" · "+bg.families.length+" categories"):""} · List subtotal: {fmtINR(bg.subtotal)}</div>
+                      {brandDiscNum>0&&allSame&&<div style={{fontSize:12,color:"#059669",marginTop:2,fontWeight:600}}>Saving: {fmtINR(brandSaving)} ({brandDiscNum}%)</div>}
+                      {!allSame&&<div style={{fontSize:11,color:"#b45309",marginTop:2}}>Mixed discounts — expand to view</div>}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:13,color:"#475569"}}>Discount</span>
+                      <input type="number" min="0" max="100" value={brandDisc} placeholder="0"
+                        onChange={e=>{
+                          const v=e.target.value;
+                          setDiscounts(prev=>{
+                            const next={...prev};
+                            familyKeys.forEach(k=>{next[k]=v;});
+                            return next;
+                          });
+                        }}
+                        style={{...inp,width:72,textAlign:"center",fontSize:14,fontWeight:700}}/>
+                      <span style={{fontSize:13,color:"#475569"}}>%</span>
+                    </div>
                   </div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:13,color:"#475569"}}>Discount</span>
-                    <input type="number" min="0" max="100" value={discounts[cat.key]||""} placeholder="0"
-                      onChange={e=>setDiscounts(prev=>({...prev,[cat.key]:e.target.value}))}
-                      style={{...inp,width:72,textAlign:"center",fontSize:14,fontWeight:700}}/>
-                    <span style={{fontSize:13,color:"#475569"}}>%</span>
-                  </div>
+                  {expanded&&hasMultiple&&(
+                    <div style={{marginTop:12,paddingTop:12,borderTop:"1px dashed #cbd5e1",display:"flex",flexDirection:"column",gap:8}}>
+                      {bg.families.map(cat=>{
+                        const disc=Number(discounts[cat.key]||0);
+                        const saving=cat.subtotal*disc/100;
+                        return(
+                          <div key={cat.key} style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap",paddingLeft:28}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontWeight:600,fontSize:13,color:"#334155"}}>{cat.label}</div>
+                              <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{cat.count} product{cat.count>1?"s":""} · {fmtINR(cat.subtotal)}</div>
+                              {disc>0&&<div style={{fontSize:11,color:"#059669",marginTop:1,fontWeight:600}}>Saving: {fmtINR(saving)} ({disc}%)</div>}
+                            </div>
+                            <div style={{display:"flex",alignItems:"center",gap:8}}>
+                              <input type="number" min="0" max="100" value={discounts[cat.key]||""} placeholder="0"
+                                onChange={e=>setDiscounts(prev=>({...prev,[cat.key]:e.target.value}))}
+                                style={{...inp,width:64,textAlign:"center",fontSize:13,fontWeight:600}}/>
+                              <span style={{fontSize:12,color:"#475569"}}>%</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
