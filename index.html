@@ -146,6 +146,27 @@ function loadUsers(){
   return USERS.map(u=>({...u,password:u.role==="admin"?"admin123":"ew2024",active:true}));
 }
 function saveUsers(users){ try{ localStorage.setItem("ew_users_v2",JSON.stringify(users)); }catch(e){} }
+async function pullUsersFromServer(setter){
+  try{
+    const res=await fetch(WEBAPP_URL+"?action=usersList&_="+Date.now());
+    const data=await res.json();
+    if(data&&Array.isArray(data.users)&&data.users.length){
+      const merged=USERS.map(u=>{
+        const su=data.users.find(x=>x.id===u.id);
+        return su?{...u,...su}:u;
+      });
+      const extra=data.users.filter(su=>!USERS.some(u=>u.id===su.id));
+      const all=[...merged,...extra];
+      saveUsers(all);
+      if(setter) setter(all);
+    }
+  }catch(e){}
+}
+function pushUserToServer(user){
+  try{
+    fetch(WEBAPP_URL,{method:"POST",body:JSON.stringify({action:"userSave",id:user.id,data:user,updatedBy:"admin"})});
+  }catch(e){}
+}
 
 const USERS = [
   { id:"mukesh", name:"Mukesh Verma",  role:"admin", password:"admin123", active:true },
@@ -3099,9 +3120,13 @@ const PERM_LABELS = {
   view_contacts:    "View contacts",
 };
 
-function AdminPanel({appUsers,permissions,sites,currentUser,onUpdatePassword,onToggleActive,onUpdatePermission,getPendingProducts,onOpenSite,onUpdateSite}){
+function AdminPanel({appUsers,permissions,sites,currentUser,onUpdatePassword,onToggleActive,onUpdatePermission,getPendingProducts,onOpenSite,onUpdateSite,onUpdateUser,onAddUser}){
   const [tab,setTab]=useState("overview");
   const [editPwdId,setEditPwdId]=useState(null);
+  const [showAddUser,setShowAddUser]=useState(false);
+  const [newUserName,setNewUserName]=useState("");
+  const [newUserPhone,setNewUserPhone]=useState("");
+  const [newUserRole,setNewUserRole]=useState("sales");
   const [newPwd,setNewPwd]=useState("");
   const [pwdMsg,setPwdMsg]=useState("");
 
@@ -3230,7 +3255,48 @@ function AdminPanel({appUsers,permissions,sites,currentUser,onUpdatePassword,onT
                 )}
               </div>
             ))}
-          </div>
+
+          <div style={{marginTop:24,paddingTop:20,borderTop:"2px solid #e2e8f0"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:15,color:"#0f172a"}}>Edit Name & Phone</div>
+                <div style={{fontSize:12,color:"#64748b"}}>Tab out of a field to save. Syncs to all devices automatically.</div>
+              </div>
+              <button onClick={()=>setShowAddUser(v=>!v)} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:13,fontWeight:600,cursor:"pointer"}}>{showAddUser?"Cancel":"+ Add User"}</button>
+            </div>
+            {showAddUser&&(
+              <div style={{background:"#f0fdfa",border:"1px solid #99f6e4",borderRadius:10,padding:14,marginBottom:16,display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+                <div>
+                  <div style={{fontSize:11,color:"#475569",marginBottom:4}}>Name</div>
+                  <input value={newUserName} onChange={e=>setNewUserName(e.target.value)} placeholder="Full name" style={{padding:"7px 10px",border:"1px solid #cbd5e1",borderRadius:6,fontSize:13}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:"#475569",marginBottom:4}}>Phone</div>
+                  <input value={newUserPhone} onChange={e=>setNewUserPhone(e.target.value)} placeholder="10-digit number" style={{padding:"7px 10px",border:"1px solid #cbd5e1",borderRadius:6,fontSize:13}}/>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:"#475569",marginBottom:4}}>Role</div>
+                  <select value={newUserRole} onChange={e=>setNewUserRole(e.target.value)} style={{padding:"7px 10px",border:"1px solid #cbd5e1",borderRadius:6,fontSize:13}}>
+                    <option value="sales">Sales Executive</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <button onClick={()=>{
+                  if(!newUserName.trim())return;
+                  onAddUser(newUserName.trim(), newUserPhone.trim(), newUserRole);
+                  setNewUserName(""); setNewUserPhone(""); setNewUserRole("sales"); setShowAddUser(false);
+                }} style={{background:"#0f172a",color:"#fff",border:"none",borderRadius:6,padding:"8px 16px",fontSize:13,fontWeight:600,cursor:"pointer"}}>Create (inactive)</button>
+                <div style={{fontSize:11,color:"#64748b",width:"100%"}}>New users start inactive — activate them from the list above once ready.</div>
+              </div>
+            )}
+            {appUsers.map(u=>(
+              <div key={"profile-"+u.id} style={{display:"flex",gap:10,alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f1f5f9",flexWrap:"wrap"}}>
+                <div style={{width:110,fontSize:13,fontWeight:600,color:"#334155"}}>{u.name}</div>
+                <input defaultValue={u.name} onBlur={e=>{ const v=e.target.value.trim(); if(v && v!==u.name) onUpdateUser(u.id,{name:v}); }} placeholder="Name" style={{padding:"6px 9px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:12,width:150}}/>
+                <input defaultValue={u.phone||""} onBlur={e=>{ const v=e.target.value.trim(); if(v!==(u.phone||"")) onUpdateUser(u.id,{phone:v}); }} placeholder="Phone" style={{padding:"6px 9px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:12,width:130}}/>
+              </div>
+            ))}
+          </div>          </div>
         </div>
       )}
 
@@ -3709,7 +3775,8 @@ function CSVUploadModal({onLoad,onClose}){
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 function LoginScreen({onLogin}){
-  const [users] = useState(()=>loadUsers());
+  const [users, setUsers] = useState(()=>loadUsers());
+  useEffect(()=>{ pullUsersFromServer(setUsers); },[]);
   const [selUser,setSelUser]=useState(null);
   const [pwd,setPwd]=useState("");
   const [err,setErr]=useState("");
@@ -3805,6 +3872,7 @@ function CRMApp(){
     try{ const s=localStorage.getItem("ew_contacts"); return s?JSON.parse(s):[]; }catch(e){ return []; }
   });
   const [appUsers,setAppUsers]=useState(()=>loadUsers());
+  useEffect(()=>{ pullUsersFromServer(setAppUsers); },[]);
   const [permissions,setPermissions]=useState(()=>loadPermissions());
   const [view,setView]=useState("dashboard");
   const [activeSiteId,setActiveSiteId]=useState(null);
@@ -3826,7 +3894,7 @@ function CRMApp(){
   const userCan=(perm)=>can(perm, currentUser, permissions);
 
   useEffect(()=>{ saveSites(sites); },[sites]);
-  useEffect(()=>{ saveUsers(appUsers); },[appUsers]);
+  useEffect(()=>{ saveUsers(appUsers); appUsers.forEach(u=>pushUserToServer(u)); },[appUsers]);
   useEffect(()=>{ savePermissions(permissions); },[permissions]);
 
   function updateUserPassword(userId, newPwd){
@@ -3834,6 +3902,14 @@ function CRMApp(){
   }
   function toggleUserActive(userId){
     setAppUsers(prev=>prev.map(u=>u.id===userId?{...u,active:!u.active}:u));
+  }
+  function updateUserProfile(userId, patch){
+    setAppUsers(prev=>prev.map(u=>u.id===userId?{...u,...patch}:u));
+  }
+  function addNewUser(name, phone, role){
+    const id = "u"+Date.now();
+    const newUser = {id, name, phone, role, password: role==="admin"?"admin123":"ew2024", active:false};
+    setAppUsers(prev=>[...prev, newUser]);
   }
   function updatePermission(perm, roles){
     setPermissions(prev=>({...prev,[perm]:roles}));
@@ -4092,7 +4168,7 @@ function CRMApp(){
         {view==="dashboard"&&<Dashboard sites={isAdmin?sites:sites.filter(s=>s.assignedTo===currentUser.id)} contacts={contacts} currentUser={currentUser} isAdmin={isAdmin} onGoSites={()=>setView("sites")} onOpenSite={id=>{setActiveSiteId(id);setView("site");}} getPendingProducts={getPendingProducts} products={products} loadingProducts={syncStatus==="loading"} onSaveQuote={(siteId,q)=>{ const updated=(sites.find(s=>s.id===siteId)?.quotations||[]); updateSite(siteId,{quotations:[...updated,q]}); }}/>}
         {view==="sites"&&<SitesList sites={visibleSites} isAdmin={isAdmin} filterStage={filterStage} setFilterStage={setFilterStage} filterAssigned={filterAssigned} setFilterAssigned={setFilterAssigned} filterAlert={filterAlert} setFilterAlert={setFilterAlert} searchQ={searchQ} setSearchQ={setSearchQ} getPendingProducts={getPendingProducts} onOpen={id=>{setActiveSiteId(id);setView("site");}} onAdd={()=>setShowAddSite(true)}/>}
         {view==="site"&&activeSite&&<SiteDetail site={activeSite} isAdmin={isAdmin} currentUser={currentUser} getPendingProducts={getPendingProducts} onBack={()=>setView("sites")} onUpdateSite={patch=>updateSite(activeSite.id,patch)} onUpdatePitch={(pid,status,note)=>updatePitch(activeSite.id,pid,status,note)} onDelete={()=>deleteSite(activeSite.id)} onEdit={()=>{setEditingSite(activeSite);setShowAddSite(true);}} products={products} loadingProducts={syncStatus==="loading"}/>}
-        {view==="admin"&&isAdmin&&<AdminPanel appUsers={appUsers} permissions={permissions} sites={sites} currentUser={currentUser} onUpdatePassword={updateUserPassword} onToggleActive={toggleUserActive} onUpdatePermission={updatePermission} getPendingProducts={getPendingProducts} onOpenSite={id=>{setActiveSiteId(id);setView("site");}} onUpdateSite={updateSite}/>}
+        {view==="admin"&&isAdmin&&<AdminPanel appUsers={appUsers} permissions={permissions} sites={sites} currentUser={currentUser} onUpdateUser={updateUserProfile} onAddUser={addNewUser} onUpdatePassword={updateUserPassword} onToggleActive={toggleUserActive} onUpdatePermission={updatePermission} getPendingProducts={getPendingProducts} onOpenSite={id=>{setActiveSiteId(id);setView("site");}} onUpdateSite={updateSite}/>}
       </div>
       {showAddSite&&<SiteFormModal site={editingSite} isAdmin={isAdmin} currentUser={currentUser} contacts={contacts} saveContact={saveContact} allSites={sites} onSave={site=>{ if(editingSite)updateSite(editingSite.id,site); else addSite(site); setShowAddSite(false);setEditingSite(null);setView("sites"); }} onClose={()=>{setShowAddSite(false);setEditingSite(null);}}/>}
 
