@@ -411,8 +411,8 @@ function StageTimeline({currentStage}){
 
 // ─── PRODUCT SEARCH MODAL ────────────────────────────────────────────────────
 // ─── TELEGRAM + EMAIL CONFIG ─────────────────────────────────────────────────
-const TG_TOKEN     = "CONFIGURE_IN_SETTINGS_NOT_IN_CODE";
-const TG_CHAT      = "-5117963915";
+const TG_TOKEN = (()=>{ try{ return JSON.parse(localStorage.getItem('ew_tg_config')||'{}').token||""; }catch(e){return "";} })();
+const TG_CHAT  = (()=>{ try{ return JSON.parse(localStorage.getItem('ew_tg_config')||'{}').chatId||""; }catch(e){return "";} })();
 const NOTIFY_EMAIL = "mukesh.energyworld@gmail.com";
 
 // ─── PDF GENERATOR (jsPDF) ───────────────────────────────────────────────────
@@ -848,6 +848,13 @@ function generateQuotePDF(site, items, quoteNum, quoteDate, validDays, terms, cr
 
 // ─── SEND PDF TO TELEGRAM ────────────────────────────────────────────────────
 async function sendTelegramPDF(doc, filename, caption){
+  if(!TG_TOKEN || TG_TOKEN.length < 30){
+    const cfg=getTgConfig();
+    if(!cfg.token||cfg.token.length<30){
+      console.warn("Telegram: No bot token configured. Set via the warning above the Send button.");
+      return false;
+    }
+  }
   try{
     const pdfBlob = doc.output("blob");
     const form = new FormData();
@@ -1856,7 +1863,7 @@ By placing an order, the client confirms acceptance of these terms.`);
                         {/* Total Amt */}
                         <td style={{padding:"6px",verticalAlign:"middle",textAlign:"right"}}>
                           <div style={{fontWeight:800,fontSize:13,color:"#0f172a"}}>{fmtINR(lineAmt)}</div>
-                          <div style={{fontSize:10,color:"#94a3b8"}}>+GST {fmtINR(gstAmt)}</div>
+                          {/* +GST line removed */}
                         </td>
                         {/* Remove */}
                         <td style={{padding:"6px",verticalAlign:"middle"}}>
@@ -1911,6 +1918,7 @@ By placing an order, the client confirms acceptance of these terms.`);
           <div style={{display:"flex",gap:8}}>
             <button onClick={onClose} style={sBtn}>Discard</button>
             <button onClick={()=>setShowPrint(true)} disabled={items.length===0} style={{...sBtn,opacity:items.length===0?0.5:1}}>👁 Preview PDF</button>
+            {(()=>{const tgCfg=getTgConfig();return !tgCfg.token?(<div style={{background:"#fff3cd",border:"1px solid #f5c542",borderRadius:6,padding:"6px 10px",fontSize:11,color:"#856404",cursor:"pointer"}} onClick={()=>{const tok=prompt("Enter Telegram Bot Token for Quotation Bot:");const chat=tok?prompt("Enter Telegram Chat ID (e.g. -1001234567890):"):null;if(tok&&chat){setTgConfig(tok.trim(),chat.trim());alert("Telegram configured! ✅ Try sending again.");}}}>⚠️ Telegram not configured — click to set bot token & chat ID</div>):null;})()}
             <button onClick={handleSaveAndSend} disabled={items.length===0||sending}
               style={{...greenBtn,opacity:(items.length===0||sending)?0.6:1,display:"flex",alignItems:"center",gap:6}}>
               {sending?(sendStatus||"⏳ Processing…"):"✅ Save & Send"}
@@ -2082,37 +2090,15 @@ function QuotationPrint({site,items,quoteNum,quoteDate,validDays,terms,notes,tot
             {/* GST summary */}
             <div style={{flex:1}}>
               <div style={{fontSize:11,fontWeight:700,color:Q_GRAY,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:8}}>GST Summary</div>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,border:"1px solid #e5e7eb",borderRadius:6,overflow:"hidden"}}>
-                <thead>
-                  <tr style={{background:"#f3fafb"}}>
-                    {["GST Rate","Taxable Amt","CGST","SGST","Total GST"].map(h=>(
-                      <th key={h} style={{padding:"6px 10px",textAlign:"right",fontWeight:600,color:Q_GRAY,fontSize:10.5}}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(gstGroups).map(([rate,{cgst,sgst}])=>{
-                    const taxable=cgst*2/(Number(rate)/100);
-                    return(
-                      <tr key={rate} style={{borderTop:"1px solid #e5e7eb"}}>
-                        <td style={{padding:"6px 10px",textAlign:"right",fontWeight:600,color:Q_TEAL}}>{rate}%</td>
-                        <td style={{padding:"6px 10px",textAlign:"right"}}>{fmtINR(taxable)}</td>
-                        <td style={{padding:"6px 10px",textAlign:"right",color:Q_GRAY}}>{fmtINR(cgst)}</td>
-                        <td style={{padding:"6px 10px",textAlign:"right",color:Q_GRAY}}>{fmtINR(sgst)}</td>
-                        <td style={{padding:"6px 10px",textAlign:"right",fontWeight:700}}>{fmtINR(cgst+sgst)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              {/* GST breakdown table removed - GST shown as actual in subtotal */}
             </div>
 
             {/* Grand total box */}
             <div style={{minWidth:248}}>
               <div style={{border:"1px solid #e5e7eb",borderRadius:8,overflow:"hidden"}}>
                 {[
-                  {l:"Sub-Total (excl. GST)", v:fmtINR(totals.subTotal), bold:false},
-                  {l:`GST @ 18%`,             v:fmtINR(totals.totalGST),   bold:false},
+                  {l:"Sub-Total", v:fmtINR(totals.subTotal), bold:false},
+                  {l:"GST (as Actual)",             v:fmtINR(totals.totalGST),   bold:false},
                 ].map(r=>(
                   <div key={r.l} style={{display:"flex",justifyContent:"space-between",padding:"8px 14px",borderBottom:"1px solid #e5e7eb",fontSize:12}}>
                     <span style={{color:Q_GRAY}}>{r.l}</span>
@@ -2120,7 +2106,7 @@ function QuotationPrint({site,items,quoteNum,quoteDate,validDays,terms,notes,tot
                   </div>
                 ))}
                 <div style={{background:Q_TEAL,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{color:"#fff",fontWeight:700,fontSize:13,letterSpacing:"0.2px"}}>Total Payable (incl. GST)</span>
+                  <span style={{color:"#fff",fontWeight:700,fontSize:13,letterSpacing:"0.2px"}}>Total Payable</span>
                   <span style={{color:"#fff",fontWeight:800,fontSize:17,letterSpacing:"-0.3px"}}>{fmtINR(totals.totalAmt)}</span>
                 </div>
               </div>
