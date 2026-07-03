@@ -369,7 +369,7 @@ function parseCSV(text){
       category:cat,
       unit,listPrice,
       gst:18,
-      photoUrl:(photoUrl&&photoUrl.startsWith("http"))?photoUrl:"",
+      photoUrl:(photoUrl&&photoUrl.startsWith("http"))?photoUrl.replace(/\/view(\?.*)?\$/,"").replace(/\?usp=.*$/,""):"",
       hsn:get(COL.hsn),
     });
   }
@@ -428,7 +428,7 @@ async function preloadImages(items, onProgress){
   // Canvas approach fails for Google Drive images due to CORS taint
   async function loadViaProxy(url){
     try{
-      const proxyUrl = WEBAPP_URL+"?action=image&url="+encodeURIComponent(url);
+      const cleanUrl = url.replace(/\/view(\?.*)?$/,"").replace(/\?usp=.*$/,""); const proxyUrl = WEBAPP_URL+"?action=image&url="+encodeURIComponent(cleanUrl);
       const res = await fetch(proxyUrl, {signal: AbortSignal.timeout(20000)});
       if(!res.ok) return null;
       const data = await res.json();
@@ -4015,7 +4015,7 @@ function CRMApp(){
         if(!specs&&!code) return null;
         if(!brand&&!specs) return null;
         if(specs.toLowerCase()==="size & description") return null;
-        return {id:code||("p"+i),specs:specs||code,brand:brand||"Other",code,family,category:cat,unit,listPrice,gst:18,photoUrl:(photoUrl&&photoUrl.startsWith("http"))?photoUrl:"",hsn:get(8)};
+        return {id:code||("p"+i),specs:specs||code,brand:brand||"Other",code,family,category:cat,unit,listPrice,gst:18,photoUrl:(photoUrl&&photoUrl.startsWith("http"))?photoUrl.replace(/\/view(\?.*)?\$/,"").replace(/\?usp=.*$/,""):"",hsn:get(8)};
       }).filter(Boolean);
       if(products.length<1) throw new Error("No products in Web App response");
       setProducts(products);
