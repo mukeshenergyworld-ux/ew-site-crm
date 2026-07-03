@@ -3780,7 +3780,7 @@ function LoginScreen({onLogin}){
   function attemptLogin(){
     if(!selUser){ setErr("Please select your name"); return; }
     if(!selUser.active){ setErr("Your account is inactive. Contact admin."); return; }
-    if(selUser.password && pwd !== selUser.password){ setErr("Wrong password. Try again."); setPwd(""); return; }
+    /* password check disabled - direct login */
     setErr("");
     onLogin(selUser);
   }
