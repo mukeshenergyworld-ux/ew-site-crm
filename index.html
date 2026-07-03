@@ -428,7 +428,7 @@ async function preloadImages(items, onProgress){
   // Canvas approach fails for Google Drive images due to CORS taint
   async function loadViaProxy(url){
     try{
-      const cleanUrl = url.replace(/\/view(\?.*)?$/,"").replace(/\?usp=.*$/,""); const proxyUrl = WEBAPP_URL+"?action=image&url="+encodeURIComponent(cleanUrl);
+      const cleanUrl = url.replace(/\/view(\?.*)?$/,"").replace(/\?usp=[^&]*/g,"").replace(/=w\d+$/,""); const proxyUrl = WEBAPP_URL+"?action=image&url="+encodeURIComponent(cleanUrl);
       const res = await fetch(proxyUrl, {signal: AbortSignal.timeout(20000)});
       if(!res.ok) return null;
       const data = await res.json();
