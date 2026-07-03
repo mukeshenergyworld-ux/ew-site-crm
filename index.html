@@ -849,7 +849,7 @@ function generateQuotePDF(site, items, quoteNum, quoteDate, validDays, terms, cr
 // ─── SEND PDF TO TELEGRAM ────────────────────────────────────────────────────
 async function sendTelegramPDF(doc, filename, caption){
   if(!TG_TOKEN || TG_TOKEN.length < 30){
-    const cfg=getTgConfig();
+    const cfg=(()=>{try{return JSON.parse(localStorage.getItem('ew_tg_config')||'{}')}catch(e){return{}}})();
     if(!cfg.token||cfg.token.length<30){
       console.warn("Telegram: No bot token configured. Set via the warning above the Send button.");
       return false;
@@ -1918,7 +1918,7 @@ By placing an order, the client confirms acceptance of these terms.`);
           <div style={{display:"flex",gap:8}}>
             <button onClick={onClose} style={sBtn}>Discard</button>
             <button onClick={()=>setShowPrint(true)} disabled={items.length===0} style={{...sBtn,opacity:items.length===0?0.5:1}}>👁 Preview PDF</button>
-            {(()=>{const tgCfg=getTgConfig();return !tgCfg.token?(<div style={{background:"#fff3cd",border:"1px solid #f5c542",borderRadius:6,padding:"6px 10px",fontSize:11,color:"#856404",cursor:"pointer"}} onClick={()=>{const tok=prompt("Enter Telegram Bot Token for Quotation Bot:");const chat=tok?prompt("Enter Telegram Chat ID (e.g. -1001234567890):"):null;if(tok&&chat){setTgConfig(tok.trim(),chat.trim());alert("Telegram configured! ✅ Try sending again.");}}}>⚠️ Telegram not configured — click to set bot token & chat ID</div>):null;})()}
+            {(()=>{const tgCfg=(()=>{try{return JSON.parse(localStorage.getItem('ew_tg_config')||'{}');}catch(e){return{};}})();return !tgCfg.token?(<div style={{background:"#fff3cd",border:"1px solid #f5c542",borderRadius:6,padding:"6px 10px",fontSize:11,color:"#856404",cursor:"pointer"}} onClick={()=>{const tok=prompt("Enter Telegram Bot Token for Quotation Bot:");const chat=tok?prompt("Enter Telegram Chat ID (e.g. -1001234567890):"):null;if(tok&&chat){setTgConfig(tok.trim(),chat.trim());alert("Telegram configured! ✅ Try sending again.");}}}>⚠️ Telegram not configured — click to set bot token & chat ID</div>):null;})()}
             <button onClick={handleSaveAndSend} disabled={items.length===0||sending}
               style={{...greenBtn,opacity:(items.length===0||sending)?0.6:1,display:"flex",alignItems:"center",gap:6}}>
               {sending?(sendStatus||"⏳ Processing…"):"✅ Save & Send"}
