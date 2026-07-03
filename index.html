@@ -369,7 +369,7 @@ function parseCSV(text){
       category:cat,
       unit,listPrice,
       gst:18,
-      photoUrl:(photoUrl&&photoUrl.startsWith("http"))?photoUrl.replace(/\/view(\?.*)?\$/,"").replace(/\?usp=.*$/,""):"",
+      photoUrl:(photoUrl&&photoUrl.startsWith("http"))?photoUrl.replace(/\/view(\?.*)?\$/,"").replace(/\?usp=[^&]*/g,"").replace(/=w\d+$/,""):"",
       hsn:get(COL.hsn),
     });
   }
