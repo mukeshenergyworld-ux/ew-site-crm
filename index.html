@@ -2277,309 +2277,137 @@ function PitchEditInline({currentStatus,currentNote,onSave,onCancel}){
   );
 }
 
-// ─── PITCH GRID ──────────────────────────────────────────────────────────────
-function PitchGrid({site,canEdit,onUpdatePitch}){
-  const si=STAGE_IDX[site.stage];
-  const [expandedStage,setExpandedStage]=useState(site.stage);
-  const [editPitch,setEditPitch]=useState(null);
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {STAGES.map((st,i)=>{
-        const products=STAGE_PRODUCTS[st.id]||[];
-        if(products.length===0) return null;
-        const isCurrent=st.id===site.stage,isPast=i<si,isFuture=i>si;
-        const isExpanded=expandedStage===st.id;
-        const pitchesHere=products.map(p=>({...p,pitch:site.pitches?.[p.id]}));
-        const wonHere=pitchesHere.filter(p=>p.pitch?.status==="won").length;
-        const pendHere=pitchesHere.filter(p=>!p.pitch||p.pitch.status==="pending").length;
-        return(
-          <div key={st.id} style={{background:"#fff",border:"1px solid "+(isCurrent?"#bfdbfe":"#e2e8f0"),borderRadius:12,overflow:"hidden",opacity:isFuture?0.6:1}}>
-            <div onClick={()=>setExpandedStage(isExpanded?null:st.id)}
-              style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",cursor:"pointer",background:isCurrent?"#eff6ff":isPast?"#f8fafc":"#fff"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:13,fontWeight:700}}>{st.label}</span>
-                {isCurrent&&<span style={{fontSize:10,background:"#3b82f6",color:"#fff",padding:"2px 7px",borderRadius:8,fontWeight:700}}>CURRENT</span>}
-                {isFuture&&<span style={{fontSize:10,color:"#94a3b8"}}>upcoming</span>}
-              </div>
-              <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                {wonHere>0&&<span style={{fontSize:11,color:"#065f46",background:"#d1fae5",padding:"2px 7px",borderRadius:8,fontWeight:600}}>✓ {wonHere}</span>}
-                {pendHere>0&&!isFuture&&<span style={{fontSize:11,color:"#92400e",background:"#fef3c7",padding:"2px 7px",borderRadius:8,fontWeight:600}}>⚠ {pendHere}</span>}
-                <span style={{color:"#94a3b8",fontSize:14}}>{isExpanded?"▲":"▼"}</span>
-              </div>
-            </div>
-            {isExpanded&&(
-              <div style={{padding:"8px 16px 14px"}}>
-                {products.map(p=>{
-                  const pitch=site.pitches?.[p.id];
-                  const status=pitch?.status||"pending";
-                  const isEditing=editPitch?.productId===p.id;
-                  return(
-                    <div key={p.id} style={{display:"flex",alignItems:"flex-start",gap:12,padding:"10px 0",borderBottom:"1px solid #f1f5f9"}}>
-                      <div style={{flex:1}}>
-                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                          <span style={{fontSize:11,fontWeight:700,color:"#fff",background:BRAND_COLORS[p.brand]||"#64748b",padding:"2px 7px",borderRadius:8}}>{p.brand}</span>
-                          <span style={{fontSize:13,fontWeight:500}}>{p.name}</span>
-                        </div>
-                        {pitch?.note&&<div style={{fontSize:12,color:"#64748b",marginTop:2}}>📝 {pitch.note}</div>}
-                        {pitch?.updatedAt&&<div style={{fontSize:11,color:"#94a3b8"}}>Updated {pitch.updatedAt}</div>}
-                      </div>
-                      {isEditing?(
-                        <PitchEditInline currentStatus={status} currentNote={pitch?.note||""} onSave={(s,n)=>{onUpdatePitch(p.id,s,n);onUpdatePitch("brand:"+p.brand,s,n);setEditPitch(null);}} onCancel={()=>setEditPitch(null)}/>
-                      ):(
-                        <div style={{display:"flex",alignItems:"center",gap:6}}>
-                          <StatusBadge status={status}/>
-                          {canEdit&&!isFuture&&<button onClick={()=>setEditPitch({productId:p.id})} style={{...sBtn,fontSize:11,padding:"4px 8px"}}>Update</button>}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+// ─── BRAND PITCH BOARD ───────────────────────────────────────────────────────
+function PitchGrid({site,canEdit,onUpdatePitch,pitchBrands}){
+  const TEAL="#0d9488";
+  const BRAND_STATUS={
+    pending:  {label:"Yet to Pitch",   bg:"#fef2f2", border:"#fca5a5", text:"#ef4444",  badge:"#ef4444",  badgeText:"#fff"},
+    followup: {label:"Follow Up",      bg:"#eff6ff", border:"#93c5fd", text:"#2563eb",  badge:"#3b82f6",  badgeText:"#fff"},
+    won:      {label:"Won ✓",          bg:"#f0fdf4", border:"#86efac", text:"#16a34a",  badge:"#10b981",  badgeText:"#fff"},
+    lost:     {label:"Lost",           bg:"#f8fafc", border:"#e2e8f0", text:"#94a3b8",  badge:"#94a3b8",  badgeText:"#fff"},
+  };
+  const STATUS_ORDER=["pending","followup","won","lost"];
 
-// ─── SITE DETAIL ─────────────────────────────────────────────────────────────
-// ─── VISIT LOG COMPONENT ──────────────────────────────────────────────────────
-const VISIT_TYPES = ["Site Visit","Plumber Meeting","Architect Meeting","PMC Meeting","Builder Meeting","Follow-up Call","WhatsApp","Meeting at Office","Demo / Presentation","Quotation Discussion","Order Follow-up","Other"];
-const STAGE_OUTCOMES = ["No change","Stage advanced","Stage regressed","Order received","Lost to competitor","On hold","Client not available"];
-
-function VisitLog({site,canEdit,currentUser,onUpdateSite}){
-  const visits=(site.visits||[]).slice().sort((a,b)=>b.date.localeCompare(a.date));
-  const [showForm,setShowForm]=useState(false);
-  const [editId,setEditId]=useState(null);
-  const blank={date:today(),type:VISIT_TYPES[0],visitedBy:currentUser.id,stage:site.stage,outcome:STAGE_OUTCOMES[0],notes:"",nextFollowUp:"",
-    personMet:"",personRole:"",personPhone:"",
-    gpsLat:"",gpsLng:"",gpsAddress:"",gpsLoading:false};
-  const [form,setForm]=useState(blank);
-  function setF(k,v){setForm(f=>({...f,[k]:v}));}
-
-  // GPS capture
-  function captureGPS(){
-    if(!navigator.geolocation){ alert("GPS not available on this device"); return; }
-    setF("gpsLoading",true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos)=>{
-        const lat=pos.coords.latitude.toFixed(6);
-        const lng=pos.coords.longitude.toFixed(6);
-        // Reverse geocode using free API
-        let address=`${lat}, ${lng}`;
-        try{
-          const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
-          const d=await r.json();
-          if(d.display_name) address=d.display_name.split(",").slice(0,4).join(", ");
-        }catch(e){}
-        setForm(f=>({...f,gpsLat:lat,gpsLng:lng,gpsAddress:address,gpsLoading:false}));
-      },
-      (err)=>{ setF("gpsLoading",false); alert("GPS error: "+err.message); },
-      {enableHighAccuracy:true,timeout:15000}
-    );
+  // Get status for a brand from site.pitches (key = "brand:BrandName")
+  function getBrandStatus(brand){
+    const key="brand:"+brand;
+    return (site.pitches?.[key]?.status)||"pending";
+  }
+  function getBrandNote(brand){
+    const key="brand:"+brand;
+    return (site.pitches?.[key]?.note)||"";
   }
 
-  function openAdd(){ setForm(blank); setEditId(null); setShowForm(true); }
-  function openEdit(v){ setForm({...v}); setEditId(v.id); setShowForm(true); }
+  const [editing,setEditing]=React.useState(null); // brand name being edited
+  const [editStatus,setEditStatus]=React.useState("pending");
+  const [editNote,setEditNote]=React.useState("");
 
-  function saveVisit(){
-    if(!form.notes.trim()) return alert("Please add visit notes");
-    const newVisits=[...(site.visits||[])];
-    if(editId){
-      const idx=newVisits.findIndex(v=>v.id===editId);
-      if(idx>-1) newVisits[idx]={...form,id:editId};
-    } else {
-      newVisits.push({...form,id:makeId(),createdBy:currentUser.id,createdAt:today()});
-    }
-    // If stage changed in visit, update site stage too
-    if(form.outcome==="Stage advanced"||form.outcome==="Stage regressed"){
-      const i=STAGE_IDX[site.stage];
-      const newStage=form.outcome==="Stage advanced"?STAGES[Math.min(i+1,STAGES.length-1)].id:STAGES[Math.max(i-1,0)].id;
-      onUpdateSite({visits:newVisits,stage:newStage});
-    } else {
-      onUpdateSite({visits:newVisits});
-    }
-    setShowForm(false);
+  function startEdit(brand){
+    setEditing(brand);
+    setEditStatus(getBrandStatus(brand));
+    setEditNote(getBrandNote(brand));
+  }
+  function saveEdit(){
+    if(!editing) return;
+    onUpdatePitch("brand:"+editing, editStatus, editNote);
+    setEditing(null);
   }
 
-  function deleteVisit(id){
-    if(!window.confirm("Delete this visit record?")) return;
-    onUpdateSite({visits:(site.visits||[]).filter(v=>v.id!==id)});
-  }
+  // Group brands by status
+  const grouped={pending:[],followup:[],won:[],lost:[]};
+  pitchBrands.forEach(b=>{ const s=getBrandStatus(b); grouped[s]=(grouped[s]||[]).concat(b); });
 
-  const typeColors={"Site Visit":"#0d9488","Follow-up Call":"#6366f1","WhatsApp":"#16a34a","Meeting at Office":"#0891b2","Demo / Presentation":"#f59e0b","Quotation Discussion":"#8b5cf6","Order Follow-up":"#f97316","Other":"#64748b"};
-  const outcomeColors={"No change":"#64748b","Stage advanced":"#16a34a","Stage regressed":"#dc2626","Order received":"#0d9488","Lost to competitor":"#dc2626","On hold":"#f59e0b","Client not available":"#94a3b8"};
-
-  const inpS={border:"1px solid #e2e8f0",borderRadius:8,padding:"7px 10px",fontSize:13,width:"100%",boxSizing:"border-box"};
+  // Summary chips at top
+  const summary=[
+    {s:"won",    icon:"✅", label:"Won",         count:grouped.won.length},
+    {s:"followup",icon:"🔵",label:"Follow Up",   count:grouped.followup.length},
+    {s:"pending",icon:"🔴", label:"Yet to Pitch",count:grouped.pending.length},
+    {s:"lost",   icon:"❌", label:"Lost",         count:grouped.lost.length},
+  ].filter(x=>x.count>0);
 
   return(
     <div>
-      {/* Summary strip */}
-      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
-        <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"8px 14px",fontSize:12,fontWeight:700,color:"#166534"}}>
-          📋 {visits.length} Visit{visits.length!==1?"s":""}
-        </div>
-        {visits[0]&&<div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"8px 14px",fontSize:12,color:"#475569"}}>
-          🕐 Last visit: <b>{visits[0].date}</b> · {visits[0].type}
-        </div>}
-        {site.nextFollowUp&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"8px 14px",fontSize:12,color:"#92400e",fontWeight:700}}>
-          📅 Follow-up: {site.nextFollowUp}
-        </div>}
-        {canEdit&&<button onClick={openAdd} style={{marginLeft:"auto",background:"#0d9488",color:"#fff",border:"none",borderRadius:10,padding:"8px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-          + Add Visit
-        </button>}
-      </div>
-
-      {/* Add/Edit form */}
-      {showForm&&(
-        <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:16,marginBottom:16}}>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:"#1e293b"}}>{editId?"✏️ Edit Visit":"📝 Log New Visit"}</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-            <div><label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>DATE</label>
-              <input type="date" value={form.date} onChange={e=>setF("date",e.target.value)} style={inpS}/></div>
-            <div><label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>VISIT TYPE</label>
-              <select value={form.type} onChange={e=>setF("type",e.target.value)} style={inpS}>
-                {VISIT_TYPES.map(t=><option key={t}>{t}</option>)}
-              </select></div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-            <div><label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>VISITED BY</label>
-              <select value={form.visitedBy} onChange={e=>setF("visitedBy",e.target.value)} style={inpS}>
-                {USERS.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
-              </select></div>
-            <div><label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>SITE STAGE AT VISIT</label>
-              <select value={form.stage} onChange={e=>setF("stage",e.target.value)} style={inpS}>
-                {STAGES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
-              </select></div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-            <div><label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>OUTCOME</label>
-              <select value={form.outcome} onChange={e=>setF("outcome",e.target.value)} style={inpS}>
-                {STAGE_OUTCOMES.map(o=><option key={o}>{o}</option>)}
-              </select></div>
-            <div><label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>NEXT FOLLOW-UP DATE</label>
-              <input type="date" value={form.nextFollowUp||""} onChange={e=>setF("nextFollowUp",e.target.value)} style={inpS}/></div>
-          </div>
-          <div style={{marginBottom:10}}><label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>VISIT NOTES *</label>
-            <textarea value={form.notes} onChange={e=>setF("notes",e.target.value)} rows={3}
-              placeholder="What was discussed? Any decisions made? Client feedback? Products pitched? Next steps?"
-              style={{...inpS,resize:"vertical"}}/>
-          </div>
-
-          {/* Person Met */}
-          <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:12,marginBottom:10}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#166534",marginBottom:8}}>🤝 Person Met <span style={{color:"#94a3b8",fontWeight:400}}>(optional)</span></div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-              <div><label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>NAME</label>
-                <input value={form.personMet} onChange={e=>setF("personMet",e.target.value)} placeholder="e.g. Manoj Kumar" style={inpS}/></div>
-              <div><label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>ROLE</label>
-                <select value={form.personRole} onChange={e=>setF("personRole",e.target.value)} style={inpS}>
-                  <option value="">Select</option>
-                  {["Plumber","Architect","Builder","PMC","Site Owner","Contractor","Other"].map(r=><option key={r}>{r}</option>)}
-                </select></div>
-              <div><label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>PHONE</label>
-                <input value={form.personPhone} onChange={e=>setF("personPhone",e.target.value)} placeholder="Phone no." style={inpS}/></div>
+      {/* Summary row */}
+      {pitchBrands.length>0&&(
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+          {summary.map(s=>(
+            <div key={s.s} style={{background:BRAND_STATUS[s.s].bg,border:"1px solid "+BRAND_STATUS[s.s].border,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,color:BRAND_STATUS[s.s].text}}>
+              {s.icon} {s.count} {s.label}
             </div>
-          </div>
-
-          {/* GPS Location */}
-          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,padding:12,marginBottom:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#1d4ed8"}}>📍 GPS Location</div>
-              <button onClick={captureGPS} disabled={form.gpsLoading}
-                style={{background:form.gpsLoading?"#94a3b8":"#2563eb",color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:form.gpsLoading?"default":"pointer"}}>
-                {form.gpsLoading?"📡 Getting location…":"📍 Capture GPS"}
-              </button>
-            </div>
-            {form.gpsAddress?(
-              <div style={{fontSize:12,color:"#1e40af",background:"#dbeafe",borderRadius:6,padding:"6px 10px"}}>
-                📍 {form.gpsAddress}
-                <a href={`https://maps.google.com/?q=${form.gpsLat},${form.gpsLng}`} target="_blank" rel="noreferrer"
-                  style={{marginLeft:8,color:"#2563eb",fontSize:11}}>Open in Maps ↗</a>
-              </div>
-            ):(
-              <div style={{fontSize:11,color:"#94a3b8"}}>Tap "Capture GPS" to record your current location</div>
-            )}
-          </div>
-          <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-            <button onClick={()=>setShowForm(false)} style={{padding:"8px 16px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",cursor:"pointer",fontSize:13}}>Cancel</button>
-            <button onClick={saveVisit} style={{padding:"8px 18px",borderRadius:8,border:"none",background:"#0d9488",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700}}>
-              {editId?"Save Changes":"Log Visit"}
-            </button>
-          </div>
+          ))}
         </div>
       )}
 
-      {/* Visit timeline */}
-      {visits.length===0&&!showForm&&(
-        <div style={{textAlign:"center",padding:"32px 16px",color:"#94a3b8",fontSize:13}}>
-          <div style={{fontSize:32,marginBottom:8}}>📋</div>
-          No visits logged yet.<br/>Click "+ Add Visit" to record your first visit.
-        </div>
-      )}
-
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {visits.map((v,i)=>{
-          const user=USERS.find(u=>u.id===v.visitedBy);
-          const stageLabel=STAGES.find(s=>s.id===v.stage)?.label||v.stage;
-          const typeColor=typeColors[v.type]||"#64748b";
-          const outcomeColor=outcomeColors[v.outcome]||"#64748b";
+      {/* Brand cards */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:10}}>
+        {pitchBrands.map(brand=>{
+          const status=getBrandStatus(brand);
+          const note=getBrandNote(brand);
+          const cfg=BRAND_STATUS[status]||BRAND_STATUS.pending;
+          const isEditing=editing===brand;
           return(
-            <div key={v.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px",position:"relative"}}>
-              {/* Left colour bar */}
-              <div style={{position:"absolute",left:0,top:0,bottom:0,width:4,borderRadius:"12px 0 0 12px",background:typeColor}}/>
-              <div style={{paddingLeft:8}}>
-                {/* Header row */}
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                    <span style={{background:typeColor,color:"#fff",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20}}>{v.type}</span>
-                    <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>📅 {v.date}</span>
-                    <span style={{fontSize:12,color:"#475569"}}>👤 {user?.name||v.visitedBy}</span>
+            <div key={brand} style={{background:cfg.bg,border:"2px solid "+cfg.border,borderRadius:10,padding:"12px 14px",transition:"all 0.15s"}}>
+              {isEditing?(
+                <div>
+                  <div style={{fontWeight:700,fontSize:13,marginBottom:8,color:"#1e293b",textDecoration:status==="lost"?"line-through":"none"}}>{brand}</div>
+                  {/* Status selector */}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,marginBottom:8}}>
+                    {STATUS_ORDER.map(s=>(
+                      <button key={s} onClick={()=>setEditStatus(s)}
+                        style={{padding:"5px 4px",borderRadius:6,border:"1px solid "+(editStatus===s?BRAND_STATUS[s].badge:"#e2e8f0"),
+                          background:editStatus===s?BRAND_STATUS[s].badge:"#fff",
+                          color:editStatus===s?BRAND_STATUS[s].badgeText:"#64748b",
+                          fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                        {BRAND_STATUS[s].label}
+                      </button>
+                    ))}
                   </div>
-                  {canEdit&&<div style={{display:"flex",gap:4}}>
-                    <button onClick={()=>openEdit(v)} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 8px",fontSize:11,cursor:"pointer",color:"#475569"}}>✏️</button>
-                    <button onClick={()=>deleteVisit(v.id)} style={{background:"none",border:"1px solid #fecaca",borderRadius:6,padding:"3px 8px",fontSize:11,cursor:"pointer",color:"#ef4444"}}>✕</button>
-                  </div>}
-                </div>
-                {/* Stage + Outcome pills */}
-                <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-                  <span style={{background:"#f1f5f9",color:"#475569",fontSize:11,padding:"2px 8px",borderRadius:20,border:"1px solid #e2e8f0"}}>🏗️ {stageLabel}</span>
-                  <span style={{background:outcomeColor+"15",color:outcomeColor,fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20,border:`1px solid ${outcomeColor}40`}}>
-                    {v.outcome}
-                  </span>
-                  {v.nextFollowUp&&<span style={{background:"#fffbeb",color:"#92400e",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20,border:"1px solid #fde68a"}}>📅 Follow-up: {v.nextFollowUp}</span>}
-                </div>
-                {/* Notes */}
-                <div style={{fontSize:13,color:"#374151",lineHeight:1.5,background:"#f8fafc",borderRadius:8,padding:"8px 10px"}}>
-                  {v.notes}
-                </div>
-                {/* Person met */}
-                {v.personMet&&(
-                  <div style={{marginTop:6,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                    <span style={{fontSize:11,background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#166534",padding:"2px 8px",borderRadius:20,fontWeight:600}}>
-                      🤝 {v.personMet}{v.personRole?" · "+v.personRole:""}{v.personPhone?" · "+v.personPhone:""}
-                    </span>
+                  <input value={editNote} onChange={e=>setEditNote(e.target.value)} placeholder="Note (optional)"
+                    style={{width:"100%",padding:"5px 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:12,marginBottom:8,boxSizing:"border-box"}}/>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={saveEdit} style={{flex:1,background:TEAL,color:"#fff",border:"none",borderRadius:6,padding:"6px",cursor:"pointer",fontSize:12,fontWeight:700}}>Save</button>
+                    <button onClick={()=>setEditing(null)} style={{flex:1,background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:6,padding:"6px",cursor:"pointer",fontSize:12}}>Cancel</button>
                   </div>
-                )}
-                {/* GPS */}
-                {v.gpsAddress&&(
-                  <div style={{marginTop:6,fontSize:11,color:"#2563eb",background:"#eff6ff",borderRadius:6,padding:"4px 8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span>📍 {v.gpsAddress.slice(0,60)}{v.gpsAddress.length>60?"…":""}</span>
-                    {v.gpsLat&&<a href={`https://maps.google.com/?q=${v.gpsLat},${v.gpsLng}`} target="_blank" rel="noreferrer"
-                      style={{color:"#2563eb",fontWeight:700,marginLeft:8,whiteSpace:"nowrap"}}>Maps ↗</a>}
+                </div>
+              ):(
+                <div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                    <span style={{fontWeight:700,fontSize:14,color:"#1e293b",textDecoration:status==="lost"?"line-through":"none",opacity:status==="lost"?0.6:1}}>{brand}</span>
+                    <span style={{background:cfg.badge,color:cfg.badgeText,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",marginLeft:4}}>{cfg.label}</span>
                   </div>
-                )}
-              </div>
+                  {note&&<div style={{fontSize:11,color:"#64748b",marginBottom:6,fontStyle:"italic"}}>{note}</div>}
+                  {canEdit&&(
+                    <button onClick={()=>startEdit(brand)}
+                      style={{width:"100%",background:"transparent",border:"1px solid "+cfg.border,color:cfg.text,borderRadius:6,padding:"4px 0",cursor:"pointer",fontSize:11,fontWeight:600,marginTop:4}}>
+                      ✏ Update
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
+        {pitchBrands.length===0&&(
+          <div style={{gridColumn:"1/-1",textAlign:"center",padding:"32px 0",color:"#94a3b8"}}>
+            <div style={{fontSize:28,marginBottom:8}}>📋</div>
+            <div>Sync the price list to load brand list</div>
+          </div>
+        )}
       </div>
+
+      {/* Won brands */}
+      {grouped.won.length>0&&(
+        <div style={{marginTop:16,padding:"10px 14px",background:"#f0fdf4",borderRadius:8,border:"1px solid #86efac"}}>
+          <span style={{fontSize:12,fontWeight:700,color:"#16a34a"}}>✅ Won: </span>
+          <span style={{fontSize:12,color:"#16a34a"}}>{grouped.won.join(", ")}</span>
+        </div>
+      )}
     </div>
   );
 }
 
-function SiteDetail({site,isAdmin,currentUser,getPendingProducts,onBack,onUpdateSite,onUpdatePitch,onDelete,onEdit,products,loadingProducts}){
+
+function SiteDetail({site,isAdmin,currentUser,getPendingProducts,onBack,onUpdateSite,onUpdatePitch,onDelete,onEdit,products,loadingProducts,pitchBrands}){
   const [activeTab,setActiveTab]=useState("pitches");
   const pending=getPendingProducts(site);
   const assignee=USERS.find(u=>u.id===site.assignedTo);
@@ -2617,24 +2445,17 @@ function SiteDetail({site,isAdmin,currentUser,getPendingProducts,onBack,onUpdate
         )}
       </div>
       <StageTimeline currentStage={site.stage}/>
-      {pending.length>0&&(
-        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:12,padding:"14px 16px",marginBottom:16}}>
-          <div style={{fontWeight:700,color:"#92400e",marginBottom:8}}>⚠ {pending.length} product{pending.length>1?"s":""} not yet pitched</div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {pending.map(p=><span key={p.id} style={{fontSize:12,background:"#fef3c7",color:"#92400e",padding:"4px 10px",borderRadius:20,fontWeight:600,border:"1px solid #fcd34d"}}>{p.brand}: {p.name}</span>)}
-          </div>
-        </div>
-      )}
+      
       {/* Tabs */}
       <div style={{display:"flex",gap:4,marginBottom:16,background:"#fff",borderRadius:10,padding:4,border:"1px solid #e2e8f0"}}>
-        {[["pitches","Product Pitches"],["quotations",`Quotations${qCount?" ("+qCount+")":""}`],["history",`Visits${(site.visits||[]).length?" ("+(site.visits||[]).length+")":""}`]].map(([t,label])=>(
+        {[["pitches","Brand Pitches"],["quotations",`Quotations${qCount?" ("+qCount+")":""}`],["history",`Visits${(site.visits||[]).length?" ("+(site.visits||[]).length+")":""}`]].map(([t,label])=>(
           <button key={t} onClick={()=>setActiveTab(t)}
             style={{flex:1,padding:"8px 0",borderRadius:8,border:"none",cursor:"pointer",background:activeTab===t?"#0f172a":"transparent",color:activeTab===t?"#fff":"#64748b",fontSize:13,fontWeight:600}}>
             {label}
           </button>
         ))}
       </div>
-      {activeTab==="pitches"&&<PitchGrid site={site} canEdit={canEdit} onUpdatePitch={onUpdatePitch}/>}
+      {activeTab==="pitches"&&<PitchGrid site={site} canEdit={canEdit} onUpdatePitch={onUpdatePitch} pitchBrands={pitchBrands||[]}/>}
       {activeTab==="quotations"&&<QuotationsList site={site} products={products} loadingProducts={loadingProducts} onUpdateSite={onUpdateSite}/>}
       {activeTab==="history"&&(
         <VisitLog site={site} canEdit={canEdit} currentUser={currentUser} onUpdateSite={onUpdateSite}/>
@@ -3094,7 +2915,7 @@ function Dashboard({sites,contacts,currentUser,isAdmin,onGoSites,onOpenSite,getP
     </div>
   );
 }
-function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setFilterAssigned,filterAlert,setFilterAlert,searchQ,setSearchQ,getPendingProducts,onOpen,onAdd,contacts,products}){
+function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setFilterAssigned,filterAlert,setFilterAlert,searchQ,setSearchQ,getPendingProducts,onOpen,onAdd,contacts,products,pitchBrands}){
   const [filterPartner,setFilterPartner]=React.useState("all");
   const [filterArea,setFilterArea]=React.useState("all");
   const [filterSubArea,setFilterSubArea]=React.useState("all");
@@ -3159,8 +2980,8 @@ function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setF
     Object.keys(seen).forEach(b=>{ if(!order.includes(b)) result.push(b); });
     return result;
   },[products]);
-  const PITCH_STATUS_COLOR={won:"#10b981",pitched:"#f59e0b",pending:"#ef4444",lost:"#94a3b8"};
-  const PITCH_LABEL={won:"Won ✓",pitched:"Pitched",pending:"To Pitch",lost:"Lost"};
+  const PITCH_STATUS_COLOR={won:"#10b981",followup:"#3b82f6",pending:"#ef4444",lost:"#94a3b8"};
+  const PITCH_LABEL={won:"Won ✓",followup:"Follow Up",pending:"Yet to Pitch",lost:"Lost"};
 
   return(
     <div>
@@ -3212,25 +3033,16 @@ function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setF
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {displaySites.map(site=>{
           const pending=getPendingProducts(site);
-          const wonCount=Object.values(site.pitches||{}).filter(p=>p.status==="won").length;
+          const wonCount=Object.entries(site.pitches||{}).filter(([k,p])=>k.startsWith("brand:")&&p.status==="won").length;
+          const followupCount=Object.entries(site.pitches||{}).filter(([k,p])=>k.startsWith("brand:")&&p.status==="followup").length;
           const qCount=(site.quotations||[]).length;
           const assignee=USERS.find(u=>u.id===site.assignedTo);
-          // Build pitch bar — brand-level status from site.pitches
-          // Key format: "brand:Huliot", "brand:TOTO" etc. OR legacy STAGE_PRODUCTS ids
-          const pitchBar=PITCH_BRANDS.map(brand=>{
+          // Pitch bar using same "brand:X" keys as BrandPitchBoard
+          const pitchBar=(pitchBrands||PITCH_BRANDS).map(brand=>{
             const key="brand:"+brand;
-            // 1. Check brand-level key (new format)
-            const brandEntry=(site.pitches||{})[key];
-            if(brandEntry?.status) return{brand,status:brandEntry.status};
-            // 2. Check legacy STAGE_PRODUCTS product-level keys
-            const legacyProds=Object.values(STAGE_PRODUCTS).flat().filter(p=>p.brand===brand);
-            const legacyStatuses=legacyProds.map(p=>(site.pitches||{})[p.id]?.status).filter(Boolean);
-            if(legacyStatuses.length>0){
-              const priority=["won","pitched","lost","pending"];
-              const best=priority.find(s=>legacyStatuses.includes(s))||"pending";
-              return{brand,status:best};
-            }
-            return{brand,status:"pending"};
+            const entry=(site.pitches||{})[key];
+            const status=entry?.status||"pending";
+            return{brand,status};
           });
           return(
             <div key={site.id} onClick={()=>onOpen(site.id)} style={{background:"#fff",border:"1px solid "+(pending.length>0?"#fde68a":"#e2e8f0"),borderRadius:12,padding:"12px 14px",cursor:"pointer"}}>
@@ -3238,8 +3050,8 @@ function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setF
                 <div>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
                     <span style={{fontWeight:700,fontSize:15}}>{site.ownerName}</span>
-                    {pending.length>0&&<span style={{fontSize:10,background:"#fef3c7",color:"#92400e",padding:"1px 6px",borderRadius:8,fontWeight:600}}>⚠ {pending.length} to pitch</span>}
-                    {wonCount>0&&<span style={{fontSize:10,background:"#d1fae5",color:"#065f46",padding:"1px 6px",borderRadius:8,fontWeight:600}}>✓ {wonCount} won</span>}
+                      {wonCount>0&&<span style={{fontSize:10,background:"#d1fae5",color:"#065f46",padding:"1px 6px",borderRadius:8,fontWeight:600}}>✓ {wonCount} won</span>}
+                    {followupCount>0&&<span style={{fontSize:10,background:"#dbeafe",color:"#1e40af",padding:"1px 6px",borderRadius:8,fontWeight:600}}>🔵 {followupCount} follow up</span>}
                     {qCount>0&&<span style={{fontSize:10,background:"#ede9fe",color:"#5b21b6",padding:"1px 6px",borderRadius:8,fontWeight:600}}>📄 {qCount}Q</span>}
                   </div>
                   <div style={{fontSize:11,color:"#64748b",marginBottom:6}}>{site.city}{site.address?` · ${site.address.split(",")[0]}`:"" } · {site.projectType} · {site.source}</div>
@@ -3255,12 +3067,19 @@ function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setF
                       </div>
                     ))}
                   </div>
-                  {/* Show pending count clearly */}
-                  {(()=>{const pendingBrands=pitchBar.filter(p=>p.status==="pending").map(p=>p.brand);return pendingBrands.length>0&&(
-                    <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>
-                      🔴 Yet to pitch: {pendingBrands.join(", ")}
-                    </div>
-                  );})()}
+                  {/* Brand pitch status summary */}
+                  {(()=>{
+                    const pending=pitchBar.filter(p=>p.status==="pending").map(p=>p.brand.split(" ")[0]);
+                    const followup=pitchBar.filter(p=>p.status==="followup").map(p=>p.brand.split(" ")[0]);
+                    const won=pitchBar.filter(p=>p.status==="won").map(p=>p.brand.split(" ")[0]);
+                    return(
+                      <div style={{fontSize:10,marginTop:3,display:"flex",gap:6,flexWrap:"wrap"}}>
+                        {won.length>0&&<span style={{color:"#10b981"}}>✅ {won.join(", ")}</span>}
+                        {followup.length>0&&<span style={{color:"#3b82f6"}}>🔵 {followup.join(", ")}</span>}
+                        {pending.length>0&&<span style={{color:"#94a3b8"}}>🔴 {pending.length} to pitch</span>}
+                      </div>
+                    );
+                  })()}
                   {/* Legend */}
                 </div>
                 <div style={{textAlign:"right"}}>
@@ -4538,11 +4357,44 @@ function CRMApp(){
     return result;
   }
 
+  // Compute brand pitch list from synced products — used by SitesList + SiteDetail
+  const pitchBrands=useMemo(()=>{
+    function subToMaster(sub){
+      const s=(sub||"").toUpperCase().trim();
+      if(s.startsWith("HULIOT")||s==="AST-CPVC"||s==="AST-IC"||s==="MPS-EW") return "Huliot";
+      if(s==="GRUNDFOS") return "Grundfos";
+      if(s==="TOTO"||s.startsWith("TOTO")) return "TOTO";
+      if(s==="TECE") return "TECE";
+      if(s==="GEBERIT") return "Geberit";
+      if(s==="GROHE") return "Grohe";
+      if(s==="LUNOS") return "Lunos";
+      if(s==="INAIR") return "InAir";
+      if(s==="PENTAIR"||s==="NXGN") return "Pentair";
+      if(s==="MEA"||s==="DRP") return "MEA";
+      if(s.includes("GREEN")) return "Green Heat+";
+      if(s.includes("LEO")) return "LEO";
+      if(s==="SANITAAR"||s==="STELLAR"||s==="DWC-MPS") return "Sunstellar";
+      if(s==="FIMA"||s.includes("FIMA")) return "FIMA Carlo Frattini";
+      return null;
+    }
+    const seen={};
+    if(products&&products.length>0){
+      products.forEach(p=>{
+        const master=subToMaster(p.brand||"")||((p.masterBrand||"").trim())||null;
+        if(master) seen[master]=true;
+      });
+    }
+    const order=["Huliot","Grundfos","TOTO","TECE","Geberit","Grohe","Lunos","InAir","Pentair","MEA","Green Heat+","LEO","Sunstellar","FIMA Carlo Frattini"];
+    const result=order.filter(b=>seen[b]);
+    Object.keys(seen).forEach(b=>{ if(!order.includes(b)) result.push(b); });
+    return result;
+  },[products]);
+
   const visibleSites=useMemo(()=>{
     let list=isAdmin?sites:sites.filter(s=>s.assignedTo===currentUser?.id);
     if(filterStage!=="all") list=list.filter(s=>s.stage===filterStage);
     if(filterAssigned!=="all") list=list.filter(s=>s.assignedTo===filterAssigned);
-    if(filterAlert) list=list.filter(s=>getPendingProducts(s).length>0);
+    if(filterAlert) list=list.filter(s=>Object.values(s.pitches||{}).filter(p=>p.status==="won").length<(pitchBrands||[]).length);
     if(searchQ.trim()){ const q=searchQ.toLowerCase(); list=list.filter(s=>
       (s.ownerName||"").toLowerCase().includes(q)||
       (s.city||"").toLowerCase().includes(q)||
@@ -4632,8 +4484,8 @@ function CRMApp(){
       {/* MAIN CONTENT */}
       <div style={{maxWidth:960,margin:"0 auto",padding:"20px 16px"}}>
         {view==="dashboard"&&<Dashboard sites={isAdmin?sites:sites.filter(s=>s.assignedTo===currentUser.id)} contacts={contacts} currentUser={currentUser} isAdmin={isAdmin} onGoSites={()=>setView("sites")} onOpenSite={id=>{setActiveSiteId(id);setView("site");}} getPendingProducts={getPendingProducts} products={products} loadingProducts={syncStatus==="loading"} onSaveQuote={(siteId,q)=>{ const updated=(sites.find(s=>s.id===siteId)?.quotations||[]); updateSite(siteId,{quotations:[...updated,q]}); }}/>}
-        {view==="sites"&&<SitesList sites={visibleSites} isAdmin={isAdmin} filterStage={filterStage} setFilterStage={setFilterStage} filterAssigned={filterAssigned} setFilterAssigned={setFilterAssigned} filterAlert={filterAlert} setFilterAlert={setFilterAlert} searchQ={searchQ} setSearchQ={setSearchQ} getPendingProducts={getPendingProducts} contacts={contacts} products={products} onOpen={id=>{setActiveSiteId(id);setView("site");}} onAdd={()=>setShowAddSite(true)}/>}
-        {view==="site"&&activeSite&&<SiteDetail site={activeSite} isAdmin={isAdmin} currentUser={currentUser} getPendingProducts={getPendingProducts} onBack={()=>setView("sites")} onUpdateSite={patch=>updateSite(activeSite.id,patch)} onUpdatePitch={(pid,status,note)=>updatePitch(activeSite.id,pid,status,note)} onDelete={()=>deleteSite(activeSite.id)} onEdit={()=>{setEditingSite(activeSite);setShowAddSite(true);}} products={products} loadingProducts={syncStatus==="loading"}/>}
+        {view==="sites"&&<SitesList sites={visibleSites} isAdmin={isAdmin} filterStage={filterStage} setFilterStage={setFilterStage} filterAssigned={filterAssigned} setFilterAssigned={setFilterAssigned} filterAlert={filterAlert} setFilterAlert={setFilterAlert} searchQ={searchQ} setSearchQ={setSearchQ} getPendingProducts={getPendingProducts} contacts={contacts} products={products} pitchBrands={pitchBrands} onOpen={id=>{setActiveSiteId(id);setView("site");}} onAdd={()=>setShowAddSite(true)}/>}
+        {view==="site"&&activeSite&&<SiteDetail site={activeSite} isAdmin={isAdmin} currentUser={currentUser} getPendingProducts={getPendingProducts} onBack={()=>setView("sites")} onUpdateSite={patch=>updateSite(activeSite.id,patch)} onUpdatePitch={(pid,status,note)=>updatePitch(activeSite.id,pid,status,note)} onDelete={()=>deleteSite(activeSite.id)} onEdit={()=>{setEditingSite(activeSite);setShowAddSite(true);}} products={products} loadingProducts={syncStatus==="loading"} pitchBrands={pitchBrands}/>}
         {view==="admin"&&isAdmin&&<AdminPanel appUsers={appUsers} permissions={permissions} sites={sites} currentUser={currentUser} onUpdateUser={updateUserProfile} onAddUser={addNewUser} onUpdatePassword={updateUserPassword} onToggleActive={toggleUserActive} onUpdatePermission={updatePermission} getPendingProducts={getPendingProducts} onOpenSite={id=>{setActiveSiteId(id);setView("site");}} onUpdateSite={updateSite}/>}
         {view==="challan"&&<ChallanModule challans={challans} setChallans={setChallans} products={products} contacts={contacts} sites={sites} currentUser={currentUser} isAdmin={isAdmin} tgSend2={tgSend2} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} stockLedger={stockLedger} setStockLedger={setStockLedger} clientLedger={clientLedger} setClientLedger={setClientLedger} commissionRules={commissionRules} commissionLedger={commissionLedger} setCommissionLedger={setCommissionLedger}/>}
         {view==="stock"&&<StockModule stockLedger={stockLedger} setStockLedger={setStockLedger} products={products} challans={challans} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2}/>}
