@@ -4119,14 +4119,14 @@ function CRMApp(){
   const [commissionLedger,setCommissionLedger]=React.useState(()=>lsLoad("ew_comm_ledger_v2",[]));
 
   // Persist new state
-  React.useEffect(()=>lsSave("ew_challans_v2",challans),[challans]);
-  React.useEffect(()=>lsSave("ew_stock_v2",stockLedger),[stockLedger]);
-  React.useEffect(()=>lsSave("ew_client_ledger_v2",clientLedger),[clientLedger]);
-  React.useEffect(()=>lsSave("ew_payments_v2",payments),[payments]);
-  React.useEffect(()=>lsSave("ew_service_v2",serviceTickets),[serviceTickets]);
-  React.useEffect(()=>lsSave("ew_amc_v2",amcContracts),[amcContracts]);
-  React.useEffect(()=>lsSave("ew_comm_rules_v2",commissionRules),[commissionRules]);
-  React.useEffect(()=>lsSave("ew_comm_ledger_v2",commissionLedger),[commissionLedger]);
+  React.useEffect(()=>{lsSave("ew_challans_v2",challans);if(challans.length>0)gasSync("challans",challans);},[challans]);
+  React.useEffect(()=>{lsSave("ew_stock_v2",stockLedger);if(stockLedger.length>0)gasSync("stockLedger",stockLedger);},[stockLedger]);
+  React.useEffect(()=>{lsSave("ew_client_ledger_v2",clientLedger);if(clientLedger.length>0)gasSync("clientLedger",clientLedger);},[clientLedger]);
+  React.useEffect(()=>{lsSave("ew_payments_v2",payments);if(payments.length>0)gasSync("payments",payments);},[payments]);
+  React.useEffect(()=>{lsSave("ew_service_v2",serviceTickets);if(serviceTickets.length>0)gasSync("serviceTickets",serviceTickets);},[serviceTickets]);
+  React.useEffect(()=>{lsSave("ew_amc_v2",amcContracts);if(amcContracts.length>0)gasSync("amcContracts",amcContracts);},[amcContracts]);
+  React.useEffect(()=>{lsSave("ew_comm_rules_v2",commissionRules);if(commissionRules.length>0)gasSync("commissionRules",commissionRules);},[commissionRules]);
+  React.useEffect(()=>{lsSave("ew_comm_ledger_v2",commissionLedger);if(commissionLedger.length>0)gasSync("commissionLedger",commissionLedger);},[commissionLedger]);
 
   // ── HELPERS ──────────────────────────────────────────────────
   function genId(p=""){ return p+(Date.now().toString(36)+Math.random().toString(36).slice(2,5)).toUpperCase(); }
@@ -4146,6 +4146,68 @@ function CRMApp(){
   }
   function lsLoad(k,d=[]){try{return JSON.parse(localStorage.getItem(k)||"null")||d;}catch(e){return d;}}
   function lsSave(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+
+  // ── GAS Cloud Sync (all modules) ──────────────────────────────────────────
+  // Pull all data from GAS on login; push on every change (debounced 3s)
+  const _syncTimers={};
+  function gasSync(key, data){
+    // Debounce: wait 3s after last change before pushing
+    clearTimeout(_syncTimers[key]);
+    _syncTimers[key]=setTimeout(()=>{
+      try{
+        fetch(WEBAPP_URL,{
+          method:"POST",
+          body:JSON.stringify({action:"dataSync",key,data,updatedAt:new Date().toISOString()})
+        }).catch(()=>{});
+      }catch(e){}
+    },3000);
+  }
+  async function gasPull(key){
+    try{
+      const res=await fetch(WEBAPP_URL+"?action=dataGet&key="+encodeURIComponent(key)+"&_="+Date.now());
+      if(!res.ok) return null;
+      const d=await res.json();
+      return d&&d.data?d.data:null;
+    }catch(e){ return null; }
+  }
+  // Pull all cross-device data on login
+  async function pullAllFromGAS(){
+    try{
+      const res=await fetch(WEBAPP_URL+"?action=dataGetAll&_="+Date.now());
+      if(!res.ok) return;
+      const all=await res.json();
+      if(!all||!all.data) return;
+      const d=all.data;
+      // Merge each dataset — server wins on conflict (last-write-wins by timestamp)
+      if(d.contacts) setContacts(prev=>mergeById(prev,d.contacts));
+      if(d.challans) setChallans(prev=>mergeById(prev,d.challans));
+      if(d.stockLedger) setStockLedger(prev=>mergeById(prev,d.stockLedger));
+      if(d.clientLedger) setClientLedger(prev=>mergeById(prev,d.clientLedger));
+      if(d.commissionLedger) setCommissionLedger(prev=>mergeById(prev,d.commissionLedger));
+      if(d.commissionRules) setCommissionRules(prev=>mergeById(prev,d.commissionRules));
+      if(d.payments) setPayments(prev=>mergeById(prev,d.payments));
+      if(d.serviceTickets) setServiceTickets(prev=>mergeById(prev,d.serviceTickets));
+      if(d.siteVisits){
+        try{ localStorage.setItem("ew_site_visits",JSON.stringify(
+          mergeById(JSON.parse(localStorage.getItem("ew_site_visits")||"[]"),d.siteVisits)
+        )); }catch(e){}
+      }
+    }catch(e){}
+  }
+  function mergeById(local,remote){
+    if(!remote||!Array.isArray(remote)) return local;
+    if(!local||!Array.isArray(local)) return remote;
+    const map={};
+    local.forEach(x=>{ if(x?.id) map[x.id]=x; });
+    remote.forEach(x=>{ if(x?.id){
+      // Remote wins if newer or local doesn't have it
+      const loc=map[x.id];
+      if(!loc||(x.updatedAt&&loc.updatedAt&&x.updatedAt>loc.updatedAt)) map[x.id]=x;
+      else if(!loc) map[x.id]=x;
+    }});
+    return Object.values(map);
+  }
+
   const [activeSiteId,setActiveSiteId]=useState(null);
   const [filterStage,setFilterStage]=useState("all");
   const [filterAssigned,setFilterAssigned]=useState("all");
@@ -4223,6 +4285,8 @@ function CRMApp(){
     }
     // No fresh cache — auto-fetch from Web App
     fetchProducts(true);
+    pullSitesFromServer(true);
+    pullAllFromGAS(); // pull all cross-device data
   },[currentUser]);
 
   // Fetch from Web App (primary) or CSV publish URL (fallback)
@@ -4238,12 +4302,30 @@ function CRMApp(){
       if(!res.ok) throw new Error("Web App HTTP "+res.status);
       const rows = await res.json();
       if(!Array.isArray(rows)) throw new Error("Invalid response from Web App");
-      // Parse rows — format: [sno, code, family, specs, cat, unit, price, brand, hsn, pic]
-      const products = rows.map((row,i)=>{
-        const get = (j) => (row[j]||"").toString().trim();
-        const code=get(1), family=get(2), specs=get(3), cat=get(4);
-        const unit=get(5)||"Per Pc.", brand=get(7), photoUrl=get(9);
-        const priceRaw=get(6).replace(/[^0-9.]/g,"");
+      // Parse rows — detect columns from header row (row[0]) so column order doesn't matter
+      // First row should be headers
+      const headerRow = (rows[0]||[]).map(h=>(h||"").toString().toLowerCase().trim());
+      function gasCol(...keys){ for(const k of keys){ const i=headerRow.findIndex(h=>h.includes(k)); if(i>=0)return i; } return -1; }
+      const GC={
+        code:  gasCol("product code","code","item code","sku"),
+        family:gasCol("product family","family"),
+        specs: gasCol("size & description","size","description","specifications","product spec","product name"),
+        cat:   gasCol("product catagory","product category","category","catagory"),
+        unit:  gasCol("unit"),
+        price: gasCol("list price","price","rate","lp","mrp"),
+        brand: gasCol("brand"),
+        hsn:   gasCol("hsn"),
+        photo: gasCol("pic","photo","image","url"),
+      };
+      // If no header detected, fall back to fixed positions
+      const noHeader = GC.brand < 0 && GC.code < 0;
+      if(noHeader){ GC.code=1;GC.family=2;GC.specs=3;GC.cat=4;GC.unit=5;GC.price=6;GC.brand=7;GC.hsn=8;GC.photo=9; }
+      const dataRows = noHeader ? rows : rows.slice(1); // skip header row if detected
+      const products = dataRows.map((row,i)=>{
+        const get = (j) => j>=0&&j<row.length?(row[j]||"").toString().trim():"";
+        const code=get(GC.code), family=get(GC.family), specs=get(GC.specs), cat=get(GC.cat);
+        const unit=get(GC.unit)||"Per Pc.", brand=get(GC.brand), photoUrl=get(GC.photo);
+        const priceRaw=get(GC.price).replace(/[^0-9.]/g,"");
         const listPrice=parseFloat(priceRaw)||0;
         if(!specs&&!code) return null;
         if(!brand&&!specs) return null;
@@ -4256,7 +4338,7 @@ function CRMApp(){
         if(om) return "https://lh3.googleusercontent.com/d/"+om[1]+"=w200";
         if(photoUrl.includes("lh3.googleusercontent.com")) return photoUrl.replace(/=w\d+$/,"")+"=w200";
         return photoUrl.replace(/\/view(\?.*)?$/,"").replace(/\?usp=.*$/,"");
-      })(),hsn:get(8)};
+      })(),hsn:get(GC.hsn)};
       }).filter(Boolean);
       if(products.length<1) throw new Error("No products in Web App response");
       setProducts(products);
@@ -4359,7 +4441,7 @@ function CRMApp(){
   function updatePitch(siteId,productId,status,note){ setSites(prev=>prev.map(s=>{ if(s.id!==siteId)return s; return{...s,pitches:{...s.pitches,[productId]:{status,note,updatedAt:today()}}}; })); }
 
   // ── Contacts (Plumber / Architect / Builder / PMC registry) ──
-  React.useEffect(()=>{ try{localStorage.setItem("ew_contacts",JSON.stringify(contacts));}catch(e){} },[contacts]);
+  React.useEffect(()=>{ try{localStorage.setItem("ew_contacts",JSON.stringify(contacts));if(contacts.length>0)gasSync("contacts",contacts);}catch(e){} },[contacts]);
   function saveContact(c){
     // Duplicate check by phone
     const exists=contacts.find(x=>x.phone===c.phone);
@@ -4448,6 +4530,8 @@ function CRMApp(){
           </button>
         </div>
 
+        {/* Cloud data sync status */}
+        <span title="All data auto-syncs to cloud every 3s" style={{fontSize:11,color:"#10b981",marginRight:4}}>☁ Synced</span>
         <span style={{fontSize:12,color:"#64748b",marginRight:6}}>{currentUser.name.split(" ")[0]}</span>
         {isAdmin&&<span style={{fontSize:10,background:"#0ea5e9",color:"#fff",padding:"2px 6px",borderRadius:10,fontWeight:600}}>ADMIN</span>}
         <button onClick={()=>setCurrentUser(null)} style={{marginLeft:6,background:"transparent",border:"1px solid #334155",color:"#94a3b8",padding:"4px 8px",borderRadius:6,cursor:"pointer",fontSize:12}}>Switch</button>
@@ -5636,7 +5720,7 @@ function DailyReportModule({currentUser,genId,todayStr,fmtDate2,sites,isAdmin}){
   const [filterDate,setFilterDate]=React.useState(todayStr());
   const TEAL="#0d9488";
 
-  React.useEffect(()=>{try{localStorage.setItem("ew_site_visits",JSON.stringify(visits));}catch(e){};},[visits]);
+  React.useEffect(()=>{try{localStorage.setItem("ew_site_visits",JSON.stringify(visits));if(visits.length>0)gasSync("siteVisits",visits);}catch(e){};},[visits]);
 
   function addVisit(data){
     setVisits(prev=>[{...data,id:genId("VS"),createdAt:new Date().toISOString(),addedBy:currentUser.name},...prev]);
