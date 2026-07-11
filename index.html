@@ -4482,7 +4482,7 @@ function CRMApp(){
         {view==="service"&&<ServiceModule serviceTickets={serviceTickets} setServiceTickets={setServiceTickets} amcContracts={amcContracts} setAmcContracts={setAmcContracts} contacts={contacts} sites={sites} currentUser={currentUser} tgSend2={tgSend2} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} products={products}/>}
         {view==="commission"&&<CommissionModule commissionRules={commissionRules} setCommissionRules={setCommissionRules} commissionLedger={commissionLedger} setCommissionLedger={setCommissionLedger} contacts={contacts} sites={sites} challans={challans} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} isAdmin={isAdmin}/>}
         {view==="partners"&&<PartnersModule contacts={contacts} saveContact={saveContact} sites={sites} commissionLedger={commissionLedger} challans={challans} fmtINR2={fmtINR2} fmtDate2={fmtDate2} genId={genId} todayStr={todayStr}/>}
-        {view==="dailyreport"&&<DailyReportModule currentUser={currentUser} genId={genId} todayStr={todayStr} fmtDate2={fmtDate2} sites={sites} isAdmin={isAdmin}/>
+        {view==="dailyreport"&&<DailyReportModule currentUser={currentUser} genId={genId} todayStr={todayStr} fmtDate2={fmtDate2} sites={sites} isAdmin={isAdmin}/>}
         {view==="search"&&<MasterSearchModule contacts={contacts} sites={sites} challans={challans} fmtINR2={fmtINR2} fmtDate2={fmtDate2}/>}
       </div>
       {showAddSite&&<SiteFormModal site={editingSite} isAdmin={isAdmin} currentUser={currentUser} contacts={contacts} saveContact={saveContact} allSites={sites} onSave={site=>{ if(editingSite)updateSite(editingSite.id,site); else addSite(site); setShowAddSite(false);setEditingSite(null);setView("sites"); }} onClose={()=>{setShowAddSite(false);setEditingSite(null);}}/>}
@@ -5926,7 +5926,10 @@ function SiteVisitForm({onSave,onClose,todayStr,currentUser,sites}){
             ✅ Save Visit
           </button>
         </div>
-      </div
+      </div>
+    </div>
+  );
+}
 
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 // MASTER SEARCH MODULE
