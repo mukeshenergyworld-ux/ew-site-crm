@@ -46,67 +46,63 @@
     <label class="required">Your Name</label>
     <input id="clientName" type="text" placeholder="Full name"/>
   </div>
-
   <div class="field">
-    <label class="required">Mobile Number</label>
-    <input id="phone" type="tel" placeholder="98765-43210" maxlength="15"/>
+    <label class="required">Phone Number</label>
+    <input id="phone" type="tel" placeholder="+91 98765 43210"/>
   </div>
-
   <div class="field">
     <label>Email (optional)</label>
     <input id="email" type="email" placeholder="your@email.com"/>
   </div>
-
   <div class="field">
-    <label class="required">Site / Address</label>
-    <input id="address" type="text" placeholder="Plot no, Sector, City"/>
+    <label class="required">Site / Installation Address</label>
+    <input id="address" type="text" placeholder="Area, City"/>
   </div>
-
   <div class="field">
     <label class="required">Product Type</label>
-    <div class="prod-type" id="prodTypes">
-      <span class="prod-chip" onclick="selectProd(this,'Water Softener')">Water Softener</span>
-      <span class="prod-chip" onclick="selectProd(this,'Pump / Motor')">Pump / Motor</span>
-      <span class="prod-chip" onclick="selectProd(this,'Geberit Cistern')">Geberit Cistern</span>
-      <span class="prod-chip" onclick="selectProd(this,'Pipe Leakage')">Pipe Leakage</span>
-      <span class="prod-chip" onclick="selectProd(this,'ERV / HRV Unit')">ERV / HRV Unit</span>
-      <span class="prod-chip" onclick="selectProd(this,'Other')">Other</span>
+    <div class="prod-type">
+      <div class="prod-chip" onclick="selectProd(this,'Sanitary / Faucet')">🚿 Sanitary / Faucet</div>
+      <div class="prod-chip" onclick="selectProd(this,'Water Pump')">💧 Water Pump</div>
+      <div class="prod-chip" onclick="selectProd(this,'Geberit / Concealed')">🔩 Geberit / Concealed</div>
+      <div class="prod-chip" onclick="selectProd(this,'Water Heater')">🔥 Water Heater</div>
+      <div class="prod-chip" onclick="selectProd(this,'Solar / HVAC')">☀️ Solar / HVAC</div>
+      <div class="prod-chip" onclick="selectProd(this,'Other')">📦 Other</div>
     </div>
-    <input id="productOther" type="text" placeholder="Describe product (if Other)" style="margin-top:10px;display:none"/>
+    <input id="productOther" type="text" placeholder="Specify product..." style="margin-top:8px;display:none"/>
   </div>
-
   <div class="field">
-    <label class="required">Complaint / Issue Description</label>
-    <textarea id="complaint" rows="3" placeholder="Describe the issue in detail..."></textarea>
+    <label class="required">Issue Description</label>
+    <textarea id="complaint" rows="3" placeholder="Describe the problem in detail..."></textarea>
   </div>
-
   <div class="field">
     <label>Urgency</label>
     <select id="urgency">
-      <option value="normal">Normal — Within 2-3 days</option>
-      <option value="urgent">Urgent — Today / Tomorrow</option>
-      <option value="critical">Critical — Immediate (emergency)</option>
+      <option value="normal">Normal (2-3 working days)</option>
+      <option value="urgent">⚡ Urgent (Same/Next day)</option>
+      <option value="critical">🚨 CRITICAL (Immediate)</option>
     </select>
   </div>
-
   <button class="btn" id="submitBtn" onclick="submitComplaint()">📤 Submit Service Request</button>
-  <p class="note">Your request will be sent to our team immediately.<br/>We will call you within 2 hours during business hours (9 AM – 7 PM).</p>
+  <p class="note">Our team will call you within 2 hours on the provided number.<br/>For urgent issues call: <strong>+91-9466600611</strong></p>
 </div>
 
 <div class="card success" id="successCard">
   <div class="icon">✅</div>
-  <h2>Request Registered!</h2>
-  <p>Your service request has been registered successfully.</p>
-  <div class="ticket-no" id="ticketNo">EW-SVC-XXXX</div>
-  <p style="margin-top:8px;color:#64748b">Our team will contact you at <strong id="confirmedPhone"></strong> shortly.</p>
-  <p style="margin-top:16px;font-size:13px;color:#94a3b8">Screenshot this ticket number for reference.</p>
-  <button class="btn" style="margin-top:20px;background:#f0fdf4;color:#0d9488;border:2px solid #0d9488" onclick="location.reload()">Submit Another Request</button>
+  <h2>Request Submitted!</h2>
+  <p>Your ticket number is:</p>
+  <div class="ticket-no" id="ticketNo"></div>
+  <p style="margin-top:12px">We will contact <strong id="confirmedPhone"></strong> shortly.<br/>Save your ticket number for follow-up.</p>
+  <p style="margin-top:16px;font-size:12px;color:#94a3b8">Call us: +91-9466600611 | +91-9466701242</p>
 </div>
 
-<div class="footer">Energy World | Panipat, Haryana | +91-9466600611</div>
+<div class="footer">⚡ Energy World · Panipat · www.energyworld.co.in</div>
 
 <script>
 const BOT_TOKEN = "8210772559:AAGUHDoEAidzXtgJvB8Nni2-vAQ9XHQUwKQ";
+// @ewcomplaint_bot — add this bot to your complaints group and paste the chat ID below
+// To find chat ID: send a message to the group, then visit:
+// https://api.telegram.org/bot8210772559:AAGUHDoEAidzXtgJvB8Nni2-vAQ9XHQUwKQ/getUpdates
+const COMPLAINT_CHAT = "-5117963915"; // Using quotes group for now — change to your complaint group chat ID
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
 
 let selectedProduct = "";
@@ -122,19 +118,6 @@ function selectProd(el, prod) {
 
 function genTicket() {
   return 'EW-' + Date.now().toString(36).toUpperCase().slice(-5);
-}
-
-async function sendTelegram(text) {
-  // Find the EW complaint group chat ID via getUpdates (post to the bot)
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      // Sending via GAS relay
-      text: text,
-      parse_mode: 'Markdown'
-    })
-  });
 }
 
 async function submitComplaint() {
@@ -169,23 +152,16 @@ async function submitComplaint() {
     `🕐 *Time:* ${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}`;
 
   try {
-    // Send to @ewcomplaint_bot — bot must be added to your complaints group
-    // Add @ewcomplaint_bot to a Telegram group, get chat ID, set below
-    const COMPLAINT_CHAT = "-1001234567890"; // REPLACE with your complaints group chat ID
+    // Send Telegram
     await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ chat_id: COMPLAINT_CHAT, text: tgText, parse_mode: 'Markdown' })
     }).catch(() => null);
 
-    // Also POST to GAS to log complaint in Google Sheet + push to CRM dashboard
+    // Log to GAS / Google Sheet
     const gasData = {action:'saveComplaint', ticketId, name, phone, email, address, product, complaint, urgency, createdAt: new Date().toISOString()};
     await fetch(GAS_URL + '?action=saveComplaint&data=' + encodeURIComponent(JSON.stringify(gasData))).catch(() => null);
-
-    // Store in localStorage of complaint page for reference
-    const stored = JSON.parse(localStorage.getItem('ew_complaints') || '[]');
-    stored.push({id:ticketId, name, phone, address, product, complaint, urgency, createdAt: new Date().toISOString(), status:'open'});
-    localStorage.setItem('ew_complaints', JSON.stringify(stored));
 
     // Show success
     document.getElementById('formCard').style.display = 'none';
