@@ -367,7 +367,8 @@ function parseCSV(text){
     cat:    findCol("product catagory","product category","category","catagory"),
     unit:   findCol("unit"),
     price:  findCol("list price","price","rate","lp","mrp"),
-    brand:  findCol("brand"),
+    brand:  findCol("sub brand","sub_brand"),
+    masterBrand: findCol("master brand","master_brand","masterbrand"),
     hsn:    findCol("hsn"),
     photo:  findCol("pic","photo","image","url"),
   };
@@ -395,6 +396,12 @@ function parseCSV(text){
       id:code||("p"+i),
       specs:specs||code,
       brand:(brand||"Other").trim(),
+      masterBrand:(()=>{
+        const mb=(COL.masterBrand>=0?get(COL.masterBrand):"").trim();
+        const sub=(brand||"").trim();
+        function inf(s){const u=s.toUpperCase();if(u.startsWith("HULIOT")||u==="AST-CPVC"||u==="AST-IC"||u==="MPS-EW"||u==="SANITAAR"||u==="STELLAR"||u==="DWC-MPS")return "Huliot";if(u==="GRUNDFOS")return "Grundfos";if(u==="TOTO")return "TOTO";if(u==="TECE")return "TECE";if(u==="GEBERIT")return "Geberit";if(u==="GROHE")return "Grohe";if(u==="LUNOS")return "Lunos";if(u==="INAIR")return "InAir";if(u==="PENTAIR"||u==="NXGN")return "Pentair";if(u==="MEA"||u==="DRP")return "MEA";if(u.includes("GREEN"))return "Green Heat+";if(u.includes("LEO"))return "LEO";return s;}
+        return mb||inf(sub);
+      })(),
       code,family,
       category:cat,
       unit,listPrice,
@@ -3116,27 +3123,22 @@ function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setF
 
   // Pitch bar — unique brands from master price list (column "brand")
   const PITCH_BRANDS=React.useMemo(()=>{
-    // Master brand list — exact names from Energy World Brand Summary sheet
-    const MASTER_BRANDS=[
-      "Huliot","LEO","Grundfos","TOTO","FIMA Carlo Frattini",
-      "TECE","Lunos","Pentair","Geberit","Oyster",
-      "Revita","Green Heat+","Adani Solar","Grohe"
-    ];
-    // Use master list as base; also add any NEW brands from synced products not in list
-    const seen={};
-    MASTER_BRANDS.forEach(b=>{ seen[b.toUpperCase()]=b; });
+    // Auto-sync: derive unique master brand list from synced products on every login
+    // products[].masterBrand = col I (Master Brand) from Google Sheet — set at sync time
+    // Falls back to sub-brand inference if masterBrand not populated
+    const seen={};  // key=uppercase, value=display name
     if(products&&products.length>0){
       products.forEach(p=>{
-        const b=(p.brand||"").toString().trim();
-        if(!b||b==="Other") return;
-        if(!seen[b.toUpperCase()]) seen[b.toUpperCase()]=b; // new brand from sheet
+        // Prefer masterBrand field (col I); fall back to brand field (col H)
+        const b=((p.masterBrand||"").trim()||((p.brand||"").trim()));
+        if(!b||b==="Other"||b.length>40) return;
+        const k=b.toUpperCase();
+        if(!seen[k]) seen[k]=b;
       });
     }
-    // Return in master order first, then alphabetical for any new ones
-    const masterKeys=MASTER_BRANDS.map(b=>b.toUpperCase());
-    const result=MASTER_BRANDS.filter(b=>seen[b.toUpperCase()]);
-    Object.keys(seen).forEach(k=>{ if(!masterKeys.includes(k)) result.push(seen[k]); });
-    return result;
+    // If products not loaded yet, show nothing (they load on login)
+    if(Object.keys(seen).length===0) return [];
+    return Object.values(seen).sort((a,b2)=>a.localeCompare(b2));
   },[products]);
   const PITCH_STATUS_COLOR={won:"#10b981",pitched:"#f59e0b",pending:"#ef4444",lost:"#94a3b8"};
   const PITCH_LABEL={won:"Won ✓",pitched:"Pitched",pending:"To Pitch",lost:"Lost"};
@@ -4288,8 +4290,8 @@ function CRMApp(){
   // Auto-sync on login — Web App is always fresh, no CORS issues
   useEffect(()=>{
     if(!currentUser) return;
-    const cached=localStorage.getItem("ew_products_v3");
-    const cachedTime=localStorage.getItem("ew_products_time_v3");
+    const cached=localStorage.getItem("ew_products_v4");
+    const cachedTime=localStorage.getItem("ew_products_time_v4");
     const CACHE_TTL = 30*60*1000; // 30 min cache
     if(cached&&cachedTime&&(Date.now()-Number(cachedTime)<CACHE_TTL)){
       try{
@@ -4305,7 +4307,7 @@ function CRMApp(){
       }catch{}
     }
     // No fresh cache — auto-fetch from Web App
-    fetchProducts(true);
+    fetchProducts(false); // always sync fresh on login
     pullSitesFromServer(true);
     pullAllFromGAS(); // pull all cross-device data
   },[currentUser]);
@@ -4334,7 +4336,8 @@ function CRMApp(){
         cat:   gasCol("product catagory","product category","category","catagory"),
         unit:  gasCol("unit"),
         price: gasCol("list price","price","rate","lp","mrp"),
-        brand: gasCol("brand"),
+        brand: gasCol("sub brand","sub_brand"),
+        masterBrand: gasCol("master brand","master_brand","masterbrand"),
         hsn:   gasCol("hsn"),
         photo: gasCol("pic","photo","image","url"),
       };
@@ -4351,7 +4354,27 @@ function CRMApp(){
         if(!specs&&!code) return null;
         if(!brand&&!specs) return null;
         if(specs.toLowerCase()==="size & description") return null;
-        return {id:code||("p"+i),specs:specs||code,brand:(brand||"Other").trim(),code,family,category:cat,unit,listPrice,gst:18,photoUrl:(()=>{
+        const rawSubBrand=(brand||"Other").trim();
+        const rawMasterBrand=(rows[0]&&GC.masterBrand>=0?((row[GC.masterBrand]||"").toString().trim()):"");
+        // Derive master brand: use masterBrand col if available, else infer from sub brand
+        function inferMaster(sub){
+          const s=(sub||"").toUpperCase();
+          if(s.startsWith("HULIOT")||s==="AST-CPVC"||s==="AST-IC"||s==="MPS-EW"||s==="SANITAAR"||s==="STELLAR"||s==="DWC-MPS") return "Huliot";
+          if(s==="GRUNDFOS"||s.startsWith("GRUNDFOS")) return "Grundfos";
+          if(s==="TOTO"||s.startsWith("TOTO")) return "TOTO";
+          if(s==="TECE") return "TECE";
+          if(s==="GEBERIT") return "Geberit";
+          if(s==="GROHE") return "Grohe";
+          if(s==="LUNOS") return "Lunos";
+          if(s==="INAIR") return "InAir";
+          if(s==="PENTAIR"||s==="NXGN") return "Pentair";
+          if(s==="MEA"||s==="DRP") return "MEA";
+          if(s.includes("GREEN")) return "Green Heat+";
+          if(s.includes("LEO")) return "LEO";
+          return sub;
+        }
+        const masterBrandVal=rawMasterBrand||inferMaster(rawSubBrand);
+        return {id:code||("p"+i),specs:specs||code,brand:rawSubBrand,masterBrand:masterBrandVal,code,family,category:cat,unit,listPrice,gst:18,photoUrl:(()=>{
         if(!photoUrl||!photoUrl.startsWith("http")) return "";
         const dm=photoUrl.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
         if(dm) return "https://lh3.googleusercontent.com/d/"+dm[1]+"=w200";
@@ -4364,8 +4387,8 @@ function CRMApp(){
       if(products.length<1) throw new Error("No products in Web App response");
       setProducts(products);
       const now=Date.now();
-      localStorage.setItem("ew_products_v3",JSON.stringify(products));
-      localStorage.setItem("ew_products_time_v3",String(now));
+      localStorage.setItem("ew_products_v4",JSON.stringify(products));
+      localStorage.setItem("ew_products_time_v4",String(now));
       setLastSynced(new Date(now));
       setSyncStatus("success");
       setSyncMsg(products.length+" products synced from Google Sheet ✓ (auto-updates when you edit the sheet)");
@@ -4392,8 +4415,8 @@ function CRMApp(){
         if(parsed.length<1) throw new Error("No products");
         setProducts(parsed);
         const now=Date.now();
-        localStorage.setItem("ew_products_v3",JSON.stringify(parsed));
-        localStorage.setItem("ew_products_time_v3",String(now));
+        localStorage.setItem("ew_products_v4",JSON.stringify(parsed));
+        localStorage.setItem("ew_products_time_v4",String(now));
         setLastSynced(new Date(now));
         setSyncStatus("success");
         setSyncMsg(parsed.length+" products loaded from CSV ✓");
@@ -4411,8 +4434,8 @@ function CRMApp(){
       if(parsed.length < 1) throw new Error("No products found — check file format");
       setProducts(parsed);
       const now = Date.now();
-      localStorage.setItem("ew_products_v3", JSON.stringify(parsed));
-      localStorage.setItem("ew_products_time_v3", String(now));
+      localStorage.setItem("ew_products_v4", JSON.stringify(parsed));
+      localStorage.setItem("ew_products_time_v4", String(now));
       setLastSynced(new Date(now));
       setSyncStatus("success");
       setSyncMsg(parsed.length+" products loaded from CSV ✓");
