@@ -198,12 +198,19 @@ async function verifyOtpForUser(userId, code){
 }
 
 const USERS = [
-  { id:"mukesh", name:"Mukesh Verma",  role:"admin", password:"admin123", active:true },
-  { id:"dinesh", name:"Dinesh Verma",  role:"admin", password:"admin123", active:true },
-  { id:"vivek",  name:"Vivek Verma",   role:"sales", password:"ew2024",   active:true },
-  { id:"ashish", name:"Ashish Bhuker", role:"sales", password:"ew2024",   active:true },
-  { id:"imran",  name:"Imran",         role:"sales", password:"ew2024",   active:true },
-  { id:"gautam", name:"Gautam Rohilla", role:"accounts", phone:"8685067888", password:"ew2024",   active:true },
+  { id:"mukesh",  name:"Mukesh Verma",    role:"admin",    phone:"9466600611", phone2:"",email:"",birthday:"",anniversary:"", password:"admin123", active:true },
+  { id:"dinesh",  name:"Dinesh Verma",    role:"admin",    phone:"9466701242", phone2:"",email:"",birthday:"",anniversary:"", password:"admin123", active:true },
+  { id:"vivek",   name:"Vivek Verma",     role:"sales",    phone:"9996031534", phone2:"",email:"",birthday:"",anniversary:"", password:"ew2024",   active:true },
+  { id:"imran",   name:"Imran",           role:"sales",    phone:"9551464000", phone2:"",email:"",birthday:"",anniversary:"", password:"ew2024",   active:true },
+  { id:"ashish",  name:"Ashish Bhukar",   role:"sales",    phone:"8168306759", phone2:"",email:"",birthday:"",anniversary:"", password:"ew2024",   active:true },
+  { id:"gautam",  name:"Gautam Rohilla",  role:"accounts", phone:"8685067888", phone2:"",email:"",birthday:"",anniversary:"", password:"ew2024",   active:true },
+  { id:"ashishjha", name:"Ashish Jha",    role:"store",    phone:"7206709860", phone2:"",email:"",birthday:"",anniversary:"", password:"ew2024",   active:true },
+  { id:"manoj",   name:"Manoj",           role:"service",  phone:"8396000411", phone2:"",email:"",birthday:"",anniversary:"", password:"ew2024",   active:true },
+  { id:"jai",     name:"Jaiparkash",      role:"store",    phone:"6396293005", phone2:"",email:"",birthday:"",anniversary:"", password:"ew2024",   active:true },
+  { id:"satya",   name:"Satya",           role:"sales",    phone:"7631727488", phone2:"",email:"",birthday:"",anniversary:"", password:"ew2024",   active:true },
+  { id:"blank1",  name:"Blank 1",         role:"sales",    phone:"1234567890", phone2:"",email:"",birthday:"",anniversary:"", password:"ew2024",   active:false },
+  { id:"blank2",  name:"Blank 2",         role:"sales",    phone:"2314545654", phone2:"",email:"",birthday:"",anniversary:"", password:"ew2024",   active:false },
+  { id:"blank3",  name:"Blank 3",         role:"sales",    phone:"4567876545", phone2:"",email:"",birthday:"",anniversary:"", password:"ew2024",   active:false },
 ];
 
 // Permission checker
@@ -3075,7 +3082,7 @@ function Dashboard({sites,contacts,currentUser,isAdmin,onGoSites,onOpenSite,getP
     </div>
   );
 }
-function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setFilterAssigned,filterAlert,setFilterAlert,searchQ,setSearchQ,getPendingProducts,onOpen,onAdd,contacts}){
+function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setFilterAssigned,filterAlert,setFilterAlert,searchQ,setSearchQ,getPendingProducts,onOpen,onAdd,contacts,products}){
   const [filterPartner,setFilterPartner]=React.useState("all");
   const [filterArea,setFilterArea]=React.useState("all");
   const [filterSubArea,setFilterSubArea]=React.useState("all");
@@ -3102,8 +3109,14 @@ function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setF
     return true;
   });
 
-  // All STAGE_PRODUCTS brands for pitch bar
-  const ALL_PITCH_PRODUCTS=Object.values(STAGE_PRODUCTS).flat();
+  // Pitch bar — unique brands from master price list (column "brand")
+  const PITCH_BRANDS=React.useMemo(()=>{
+    if(products&&products.length>0){
+      return [...new Set(products.map(p=>p.brand).filter(Boolean))].sort();
+    }
+    // Fallback to STAGE_PRODUCTS brands
+    return [...new Set(Object.values(STAGE_PRODUCTS).flat().map(p=>p.brand))].sort();
+  },[products]);
   const PITCH_STATUS_COLOR={won:"#10b981",pitched:"#f59e0b",pending:"#ef4444",lost:"#94a3b8"};
   const PITCH_LABEL={won:"Won ✓",pitched:"Pitched",pending:"To Pitch",lost:"Lost"};
 
@@ -3160,10 +3173,19 @@ function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setF
           const wonCount=Object.values(site.pitches||{}).filter(p=>p.status==="won").length;
           const qCount=(site.quotations||[]).length;
           const assignee=USERS.find(u=>u.id===site.assignedTo);
-          // Build pitch bar - all brands as color-coded segments
-          const pitchBar=ALL_PITCH_PRODUCTS.map(p=>{
-            const st=(site.pitches||{})[p.id]?.status||"pending";
-            return{...p,status:st};
+          // Build pitch bar — one chip per unique brand from master sheet
+          // Brand-level status: best status across all products of that brand for this site
+          const pitchBar=PITCH_BRANDS.map(brand=>{
+            const allStatuses=Object.entries(site.pitches||{})
+              .filter(([,v])=>v&&v.brand===brand||false)
+              .map(([,v])=>v.status);
+            // Also check STAGE_PRODUCTS for legacy pitch IDs
+            const legacyProds=Object.values(STAGE_PRODUCTS).flat().filter(p=>p.brand===brand);
+            const legacyStatuses=legacyProds.map(p=>(site.pitches||{})[p.id]?.status).filter(Boolean);
+            const combined=[...allStatuses,...legacyStatuses];
+            const priority=["won","pitched","lost","pending"];
+            const best=priority.find(s=>combined.includes(s))||"pending";
+            return{brand,status:best};
           });
           return(
             <div key={site.id} onClick={()=>onOpen(site.id)} style={{background:"#fff",border:"1px solid "+(pending.length>0?"#fde68a":"#e2e8f0"),borderRadius:12,padding:"12px 14px",cursor:"pointer"}}>
@@ -3176,13 +3198,14 @@ function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setF
                     {qCount>0&&<span style={{fontSize:10,background:"#ede9fe",color:"#5b21b6",padding:"1px 6px",borderRadius:8,fontWeight:600}}>📄 {qCount}Q</span>}
                   </div>
                   <div style={{fontSize:11,color:"#64748b",marginBottom:6}}>{site.city}{site.address?` · ${site.address.split(",")[0]}`:"" } · {site.projectType} · {site.source}</div>
-                  {/* Brand Pitch Color Bar */}
-                  <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
+                  {/* Brand Pitch Color Bar — from master sheet brands */}
+                  <div style={{display:"flex",gap:2,flexWrap:"wrap",marginTop:4}}>
                     {pitchBar.map(p=>(
-                      <div key={p.id} title={`${p.brand}: ${p.name} — ${PITCH_LABEL[p.status]||p.status}`}
-                        style={{background:PITCH_STATUS_COLOR[p.status]||"#e2e8f0",borderRadius:3,padding:"2px 5px",fontSize:9,fontWeight:700,color:"#fff",whiteSpace:"nowrap",
-                          textDecoration:p.status==="lost"?"line-through":"none",opacity:p.status==="lost"?0.6:1}}>
-                        {p.brand.split(" ")[0].slice(0,6)}
+                      <div key={p.brand}
+                        title={`${p.brand} — ${PITCH_LABEL[p.status]||p.status}`}
+                        style={{background:PITCH_STATUS_COLOR[p.status]||"#e2e8f0",borderRadius:3,padding:"2px 6px",fontSize:9,fontWeight:700,color:"#fff",whiteSpace:"nowrap",
+                          textDecoration:p.status==="lost"?"line-through":"none",opacity:p.status==="lost"?0.55:1}}>
+                        {p.brand.split(" ")[0].slice(0,7)}
                       </div>
                     ))}
                   </div>
@@ -3325,7 +3348,7 @@ function AdminPanel({appUsers,permissions,sites,currentUser,onUpdatePassword,onT
                     </div>
                     <div>
                       <div style={{fontWeight:700,fontSize:13}}>{u.name}</div>
-                      <div style={{fontSize:11,color:"#64748b"}}>{u.role==="admin"?"Admin — Full Access":"Sales Executive"}</div>
+                      <div style={{fontSize:11,color:"#64748b"}}>{{"admin":"👑 Admin","sales":"📊 Sales","accounts":"💼 Accounts","service":"🔧 Service","store":"🏪 Store"}[u.role]||u.role}</div>
                     </div>
                   </div>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3344,34 +3367,72 @@ function AdminPanel({appUsers,permissions,sites,currentUser,onUpdatePassword,onT
                   </div>
                 </div>
                 {editPwdId===u.id&&(
-                  <div style={{marginTop:12,background:"#f8fafc",borderRadius:8,padding:12}}>
-                    <div style={{fontSize:11,color:"#64748b",marginBottom:8,fontWeight:600}}>Edit Login Details for {u.name}</div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                  <div style={{marginTop:12,background:"#f8fafc",borderRadius:8,padding:14}}>
+                    <div style={{fontSize:12,color:"#1e293b",marginBottom:10,fontWeight:700}}>✏️ Edit Profile — {u.name}</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
                       <div>
-                        <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>LOGIN NAME (shown on login screen)</label>
+                        <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>LOGIN NAME</label>
                         <input defaultValue={u.name} id={"uname_"+u.id} style={{...inpS}} placeholder="Display name"/>
                       </div>
                       <div>
-                        <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>PASSWORD</label>
-                        <input value={newPwd} onChange={e=>setNewPwd(e.target.value)} placeholder="New password (min 4 chars)" style={{...inpS}}/>
+                        <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>ROLE</label>
+                        <select defaultValue={u.role} id={"urole_"+u.id} style={{...inpS}}>
+                          <option value="admin">👑 Admin</option>
+                          <option value="sales">📊 Sales Exec</option>
+                          <option value="accounts">💼 Accounts</option>
+                          <option value="service">🔧 Service</option>
+                          <option value="store">🏪 Store Incharge</option>
+                        </select>
                       </div>
-                    </div>
-                    <div style={{fontSize:11,color:"#64748b",marginBottom:8}}>
-                      Current password: <code style={{background:"#e2e8f0",padding:"1px 5px",borderRadius:4}}>{u.password||"(none)"}</code>
-                      &nbsp;· Role: <code style={{background:"#e2e8f0",padding:"1px 5px",borderRadius:4}}>{u.role}</code>
+                      <div>
+                        <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>PRIMARY PHONE</label>
+                        <input defaultValue={u.phone||""} id={"uphone_"+u.id} style={{...inpS}} placeholder="10-digit mobile"/>
+                      </div>
+                      <div>
+                        <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>SECONDARY PHONE</label>
+                        <input defaultValue={u.phone2||""} id={"uphone2_"+u.id} style={{...inpS}} placeholder="Alt number"/>
+                      </div>
+                      <div style={{gridColumn:"1/-1"}}>
+                        <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>EMAIL</label>
+                        <input defaultValue={u.email||""} id={"uemail_"+u.id} style={{...inpS}} placeholder="email@domain.com" type="email"/>
+                      </div>
+                      <div>
+                        <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>🎂 BIRTHDAY</label>
+                        <input defaultValue={u.birthday||""} id={"ubday_"+u.id} style={{...inpS}} type="date"/>
+                      </div>
+                      <div>
+                        <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>💍 ANNIVERSARY</label>
+                        <input defaultValue={u.anniversary||""} id={"uanniv_"+u.id} style={{...inpS}} type="date"/>
+                      </div>
+                      <div>
+                        <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>NEW PASSWORD</label>
+                        <input value={newPwd} onChange={e=>setNewPwd(e.target.value)} placeholder="Leave blank to keep current" style={{...inpS}}/>
+                      </div>
+                      <div style={{display:"flex",alignItems:"flex-end"}}>
+                        <div style={{fontSize:11,color:"#64748b"}}>Current: <code style={{background:"#e2e8f0",padding:"1px 5px",borderRadius:4}}>{u.password||"(none)"}</code></div>
+                      </div>
                     </div>
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={()=>{
-                        const nameEl=document.getElementById("uname_"+u.id);
-                        const newName=nameEl?nameEl.value.trim():u.name;
+                        const g=id=>document.getElementById(id)?.value?.trim()||"";
+                        const updates={
+                          name:g("uname_"+u.id)||u.name,
+                          role:g("urole_"+u.id)||u.role,
+                          phone:g("uphone_"+u.id),
+                          phone2:g("uphone2_"+u.id),
+                          email:g("uemail_"+u.id),
+                          birthday:g("ubday_"+u.id),
+                          anniversary:g("uanniv_"+u.id),
+                        };
                         if(newPwd&&newPwd.length<4){setPwdMsg("Min 4 characters for password");return;}
-                        if(newName&&newName!==u.name) onUpdateUser&&onUpdateUser(u.id,{name:newName});
-                        if(newPwd) onUpdatePassword(u.id,newPwd);
-                        setPwdMsg("✅ Updated "+u.name);setEditPwdId(null);setNewPwd("");
-                      }} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"7px 16px",cursor:"pointer",fontSize:12,fontWeight:700}}>
-                        Save Changes
+                        if(newPwd) updates.password=newPwd;
+                        onUpdateUser&&onUpdateUser(u.id,updates);
+                        setPwdMsg("✅ Profile saved for "+updates.name);
+                        setEditPwdId(null);setNewPwd("");
+                      }} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"8px 18px",cursor:"pointer",fontSize:13,fontWeight:700}}>
+                        💾 Save All Changes
                       </button>
-                      <button onClick={()=>{setEditPwdId(null);setNewPwd("");setPwdMsg("");}} style={{border:"1px solid #e2e8f0",background:"#fff",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12}}>Cancel</button>
+                      <button onClick={()=>{setEditPwdId(null);setNewPwd("");setPwdMsg("");}} style={{border:"1px solid #e2e8f0",background:"#fff",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:12}}>Cancel</button>
                     </div>
                     {pwdMsg&&<div style={{fontSize:11,marginTop:6,color:pwdMsg.startsWith("✅")?"#16a34a":"#dc2626"}}>{pwdMsg}</div>}
                   </div>
@@ -4325,7 +4386,14 @@ function CRMApp(){
     if(filterStage!=="all") list=list.filter(s=>s.stage===filterStage);
     if(filterAssigned!=="all") list=list.filter(s=>s.assignedTo===filterAssigned);
     if(filterAlert) list=list.filter(s=>getPendingProducts(s).length>0);
-    if(searchQ.trim()){ const q=searchQ.toLowerCase(); list=list.filter(s=>s.ownerName.toLowerCase().includes(q)||s.city.toLowerCase().includes(q)); }
+    if(searchQ.trim()){ const q=searchQ.toLowerCase(); list=list.filter(s=>
+      (s.ownerName||"").toLowerCase().includes(q)||
+      (s.city||"").toLowerCase().includes(q)||
+      (s.address||"").toLowerCase().includes(q)||
+      (s.locality||"").toLowerCase().includes(q)||
+      (s.phone||"").includes(searchQ.trim())||
+      (s.source||"").toLowerCase().includes(q)
+    ); }
     return list;
   },[sites,filterStage,filterAssigned,filterAlert,searchQ,currentUser,isAdmin]);
 
@@ -4342,9 +4410,9 @@ function CRMApp(){
             {v==="admin"?"Admin":v}
           </button>
         ))}
-        {["challan","stock","ledger","service","commission","partners","dailyreport"].map(v=>(
+        {["challan","stock","ledger","service","commission","partners","dailyreport","search"].map(v=>(
           <button key={v} onClick={()=>setView(v)} style={{background:view===v?"#1e293b":"transparent",color:view===v?"#f59e0b":"#94a3b8",border:"none",padding:"6px 10px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:500,textTransform:"capitalize"}}>
-            {{"challan":"📦 Challan","stock":"🗂 Stock","ledger":"💰 Ledger","service":"🔧 Service","commission":"🤝 Commission","partners":"🤝 Partners","dailyreport":"📍 Daily Report"}[v]}
+            {{"challan":"📦 Challan","stock":"🗂 Stock","ledger":"💰 Ledger","service":"🔧 Service","commission":"🤝 Commission","partners":"🤝 Partners","dailyreport":"📍 Daily Report","search":"🔍 Search"}[v]}
           </button>
         ))}
         <div style={{flex:1}}/>
@@ -4405,7 +4473,7 @@ function CRMApp(){
       {/* MAIN CONTENT */}
       <div style={{maxWidth:960,margin:"0 auto",padding:"20px 16px"}}>
         {view==="dashboard"&&<Dashboard sites={isAdmin?sites:sites.filter(s=>s.assignedTo===currentUser.id)} contacts={contacts} currentUser={currentUser} isAdmin={isAdmin} onGoSites={()=>setView("sites")} onOpenSite={id=>{setActiveSiteId(id);setView("site");}} getPendingProducts={getPendingProducts} products={products} loadingProducts={syncStatus==="loading"} onSaveQuote={(siteId,q)=>{ const updated=(sites.find(s=>s.id===siteId)?.quotations||[]); updateSite(siteId,{quotations:[...updated,q]}); }}/>}
-        {view==="sites"&&<SitesList sites={visibleSites} isAdmin={isAdmin} filterStage={filterStage} setFilterStage={setFilterStage} filterAssigned={filterAssigned} setFilterAssigned={setFilterAssigned} filterAlert={filterAlert} setFilterAlert={setFilterAlert} searchQ={searchQ} setSearchQ={setSearchQ} getPendingProducts={getPendingProducts} contacts={contacts} onOpen={id=>{setActiveSiteId(id);setView("site");}} onAdd={()=>setShowAddSite(true)}/>}
+        {view==="sites"&&<SitesList sites={visibleSites} isAdmin={isAdmin} filterStage={filterStage} setFilterStage={setFilterStage} filterAssigned={filterAssigned} setFilterAssigned={setFilterAssigned} filterAlert={filterAlert} setFilterAlert={setFilterAlert} searchQ={searchQ} setSearchQ={setSearchQ} getPendingProducts={getPendingProducts} contacts={contacts} products={products} onOpen={id=>{setActiveSiteId(id);setView("site");}} onAdd={()=>setShowAddSite(true)}/>}
         {view==="site"&&activeSite&&<SiteDetail site={activeSite} isAdmin={isAdmin} currentUser={currentUser} getPendingProducts={getPendingProducts} onBack={()=>setView("sites")} onUpdateSite={patch=>updateSite(activeSite.id,patch)} onUpdatePitch={(pid,status,note)=>updatePitch(activeSite.id,pid,status,note)} onDelete={()=>deleteSite(activeSite.id)} onEdit={()=>{setEditingSite(activeSite);setShowAddSite(true);}} products={products} loadingProducts={syncStatus==="loading"}/>}
         {view==="admin"&&isAdmin&&<AdminPanel appUsers={appUsers} permissions={permissions} sites={sites} currentUser={currentUser} onUpdateUser={updateUserProfile} onAddUser={addNewUser} onUpdatePassword={updateUserPassword} onToggleActive={toggleUserActive} onUpdatePermission={updatePermission} getPendingProducts={getPendingProducts} onOpenSite={id=>{setActiveSiteId(id);setView("site");}} onUpdateSite={updateSite}/>}
         {view==="challan"&&<ChallanModule challans={challans} setChallans={setChallans} products={products} contacts={contacts} sites={sites} currentUser={currentUser} isAdmin={isAdmin} tgSend2={tgSend2} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} stockLedger={stockLedger} setStockLedger={setStockLedger} clientLedger={clientLedger} setClientLedger={setClientLedger} commissionRules={commissionRules} commissionLedger={commissionLedger} setCommissionLedger={setCommissionLedger}/>}
@@ -4414,7 +4482,8 @@ function CRMApp(){
         {view==="service"&&<ServiceModule serviceTickets={serviceTickets} setServiceTickets={setServiceTickets} amcContracts={amcContracts} setAmcContracts={setAmcContracts} contacts={contacts} sites={sites} currentUser={currentUser} tgSend2={tgSend2} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} products={products}/>}
         {view==="commission"&&<CommissionModule commissionRules={commissionRules} setCommissionRules={setCommissionRules} commissionLedger={commissionLedger} setCommissionLedger={setCommissionLedger} contacts={contacts} sites={sites} challans={challans} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} isAdmin={isAdmin}/>}
         {view==="partners"&&<PartnersModule contacts={contacts} saveContact={saveContact} sites={sites} commissionLedger={commissionLedger} challans={challans} fmtINR2={fmtINR2} fmtDate2={fmtDate2} genId={genId} todayStr={todayStr}/>}
-        {view==="dailyreport"&&<DailyReportModule currentUser={currentUser} genId={genId} todayStr={todayStr} fmtDate2={fmtDate2}/>}
+        {view==="dailyreport"&&<DailyReportModule currentUser={currentUser} genId={genId} todayStr={todayStr} fmtDate2={fmtDate2} sites={sites} isAdmin={isAdmin}/>
+        {view==="search"&&<MasterSearchModule contacts={contacts} sites={sites} challans={challans} quotations={[].concat(...sites.map(s=>s.quotations||[]))} fmtINR2={fmtINR2} fmtDate2={fmtDate2} currentUser={currentUser}/>}}
       </div>
       {showAddSite&&<SiteFormModal site={editingSite} isAdmin={isAdmin} currentUser={currentUser} contacts={contacts} saveContact={saveContact} allSites={sites} onSave={site=>{ if(editingSite)updateSite(editingSite.id,site); else addSite(site); setShowAddSite(false);setEditingSite(null);setView("sites"); }} onClose={()=>{setShowAddSite(false);setEditingSite(null);}}/>}
 
@@ -5559,10 +5628,11 @@ function PartnerAddModal({types,onSave,onClose,todayStr}){
 // ════════════════════════════════════════════════════════════════
 // MODULE — DAILY REPORT / SITE VISIT TRACKER
 // ════════════════════════════════════════════════════════════════
-function DailyReportModule({currentUser,genId,todayStr,fmtDate2}){
+function DailyReportModule({currentUser,genId,todayStr,fmtDate2,sites,isAdmin}){
   const [visits,setVisits]=React.useState(()=>{try{return JSON.parse(localStorage.getItem("ew_site_visits")||"[]");}catch{return[];}});
+  const [tab,setTab]=React.useState("today");   // today | upcoming | log
   const [showAdd,setShowAdd]=React.useState(false);
-  const [filterUser,setFilterUser]=React.useState("all");
+  const [filterUser,setFilterUser]=React.useState(isAdmin?"all":currentUser.name);
   const [filterDate,setFilterDate]=React.useState(todayStr());
   const TEAL="#0d9488";
 
@@ -5573,88 +5643,174 @@ function DailyReportModule({currentUser,genId,todayStr,fmtDate2}){
     setShowAdd(false);
   }
 
-  const filtered=visits.filter(v=>{
-    const dateMatch=!filterDate||v.date===filterDate;
-    const userMatch=filterUser==="all"||v.addedBy===filterUser;
-    return dateMatch&&userMatch;
-  });
+  const today=todayStr();
+  const allUsers=[...new Set(visits.map(v=>v.addedBy))].filter(Boolean);
 
-  const allUsers=[...new Set(visits.map(v=>v.addedBy))];
+  // Today visits
+  const todayVisits=visits.filter(v=>v.date===today&&(filterUser==="all"||v.addedBy===filterUser));
 
-  // Calculate km / travel summary per user per day
-  function getTravelSummary(userName,date){
-    const dayVisits=visits.filter(v=>v.addedBy===userName&&v.date===date);
-    return{count:dayVisits.length,locations:dayVisits.map(v=>v.location)};
-  }
+  // Upcoming (next visit dates in future)
+  const upcoming=visits
+    .filter(v=>v.nextVisitDate&&v.nextVisitDate>=today&&(filterUser==="all"||v.addedBy===filterUser))
+    .sort((a,b)=>a.nextVisitDate.localeCompare(b.nextVisitDate));
+  const upcomingToday=upcoming.filter(v=>v.nextVisitDate===today);
+  const upcomingFuture=upcoming.filter(v=>v.nextVisitDate>today);
+
+  // Historical log
+  const logVisits=visits
+    .filter(v=>(!filterDate||v.date===filterDate)&&(filterUser==="all"||v.addedBy===filterUser))
+    .sort((a,b)=>b.date.localeCompare(a.date)||b.time?.localeCompare(a.time||"")||0);
+
+  const tabBtn=(t,lbl,badge)=>(
+    <button onClick={()=>setTab(t)} style={{padding:"7px 14px",border:"none",borderRadius:20,cursor:"pointer",fontSize:13,fontWeight:600,
+      background:tab===t?TEAL:"#f1f5f9",color:tab===t?"#fff":"#64748b",position:"relative"}}>
+      {lbl}{badge>0&&<span style={{position:"absolute",top:-4,right:-4,background:"#ef4444",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:10,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>{badge}</span>}
+    </button>
+  );
+
+  const VisitCard=({v,showDate})=>(
+    <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px",marginBottom:8}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:3}}>
+            {showDate&&<span style={{fontSize:11,fontWeight:700,color:"#1e293b",background:"#e0f2fe",borderRadius:6,padding:"1px 7px"}}>{fmtDate2(v.date)}</span>}
+            <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>📍 {v.location||v.siteName||"—"}</span>
+            {v.siteName&&v.siteName!==v.location&&<span style={{background:"#d1fae5",color:"#065f46",borderRadius:8,padding:"1px 7px",fontSize:11,fontWeight:600}}>{v.siteName}</span>}
+          </div>
+          <div style={{fontSize:12,color:"#64748b",marginBottom:3}}>
+            👤 {v.addedBy} · 🕐 {v.time||"—"}
+            {v.customerName&&v.customerName!==v.siteName&&<span> · {v.customerName}</span>}
+          </div>
+          {v.outcome&&<div style={{fontSize:12,color:"#0d9488",fontWeight:600,marginBottom:2}}>→ {v.outcome}</div>}
+          {v.remarks&&<div style={{fontSize:12,color:"#475569",background:"#f8fafc",borderRadius:6,padding:"5px 8px",marginBottom:4}}>{v.remarks}</div>}
+          {v.nextVisitDate&&(
+            <div style={{fontSize:11,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"4px 8px",display:"inline-flex",gap:6,alignItems:"center"}}>
+              📅 <strong>Next:</strong> {fmtDate2(v.nextVisitDate)}{v.nextVisitTime?" "+v.nextVisitTime:""}{v.nextVisitPurpose?" — "+v.nextVisitPurpose:""}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   return(
-    <div style={{maxWidth:1100,margin:"0 auto",padding:"20px 16px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2 style={{margin:0,fontSize:20,fontWeight:700,color:"#1e293b"}}>📍 Daily Site Visit Report</h2>
-        <button onClick={()=>setShowAdd(true)} style={{background:TEAL,color:"#fff",border:"none",padding:"8px 18px",borderRadius:8,cursor:"pointer",fontWeight:600}}>+ Log Site Visit</button>
+    <div style={{maxWidth:900,margin:"0 auto",padding:"16px 14px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h2 style={{margin:0,fontSize:18,fontWeight:800,color:"#1e293b"}}>📍 Daily Report & Visit Log</h2>
+        <button onClick={()=>setShowAdd(true)} style={{background:TEAL,color:"#fff",border:"none",padding:"10px 18px",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14}}>
+          + Log Visit
+        </button>
       </div>
+
       {/* Filters */}
-      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
-        <div>
-          <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>Date</label>
-          <input type="date" value={filterDate} onChange={e=>setFilterDate(e.target.value)} style={{padding:"7px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13}}/>
-        </div>
-        <div>
-          <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>Executive</label>
-          <select value={filterUser} onChange={e=>setFilterUser(e.target.value)} style={{padding:"7px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
+        {isAdmin&&(
+          <select value={filterUser} onChange={e=>setFilterUser(e.target.value)} style={{padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14}}>
             <option value="all">All Executives</option>
             {allUsers.map(u=><option key={u} value={u}>{u}</option>)}
           </select>
-        </div>
+        )}
+        {tab==="log"&&(
+          <input type="date" value={filterDate} onChange={e=>setFilterDate(e.target.value)}
+            style={{padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14}}/>
+        )}
       </div>
 
-      {/* Travel Summary Cards (per user for selected date) */}
-      {filterDate&&(
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:10,marginBottom:20}}>
-          {(filterUser==="all"?allUsers:[currentUser.name]).map(u=>{
-            const{count,locations}=getTravelSummary(u,filterDate);
-            return count>0?(
-              <div key={u} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 16px"}}>
-                <div style={{fontWeight:700,color:"#1e293b",marginBottom:6}}>👤 {u}</div>
-                <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>📍 {count} visit{count!==1?"s":""} today</div>
-                <div style={{fontSize:11,color:"#64748b"}}>{locations.join(" → ")}</div>
-              </div>
-            ):null;
-          })}
+      {/* Tabs */}
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        {tabBtn("today","📋 Today",todayVisits.length)}
+        {tabBtn("upcoming","📅 Upcoming",upcomingToday.length)}
+        {tabBtn("log","🗂 Full Log",0)}
+      </div>
+
+      {/* TODAY */}
+      {tab==="today"&&(
+        <div>
+          {upcomingToday.length>0&&(
+            <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:16}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#92400e",marginBottom:8}}>🔔 Scheduled Follow-ups for Today ({upcomingToday.length})</div>
+              {upcomingToday.map(v=>(
+                <div key={v.id} style={{fontSize:13,color:"#1e293b",marginBottom:4,display:"flex",gap:8}}>
+                  <span>📍 {v.siteName||v.location}</span>
+                  {v.nextVisitTime&&<span style={{color:"#64748b"}}>🕐 {v.nextVisitTime}</span>}
+                  {v.nextVisitPurpose&&<span style={{color:"#0d9488"}}>— {v.nextVisitPurpose}</span>}
+                  <span style={{color:"#94a3b8",fontSize:11}}>({v.addedBy})</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {todayVisits.length===0&&<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No visits logged today yet.<br/>Tap <strong>+ Log Visit</strong> from site to record.</div>}
+          {todayVisits.map(v=><VisitCard key={v.id} v={v} showDate={false}/>)}
         </div>
       )}
 
-      {/* Visit List */}
-      <div>
-        {filtered.length===0&&<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No site visits logged for this date/user.<br/>Executives can add visits from site using the button above.</div>}
-        {filtered.map(v=>(
-          <div key={v.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"14px 16px",marginBottom:8}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-              <div style={{flex:1}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                  <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>📍 {v.location}</span>
-                  {v.siteName&&<span style={{background:"#d1fae5",color:"#065f46",borderRadius:12,padding:"2px 8px",fontSize:11,fontWeight:600}}>{v.siteName}</span>}
-                </div>
-                <div style={{fontSize:12,color:"#64748b",marginBottom:2}}>👤 {v.addedBy} · 🕐 {v.time||"—"} · {fmtDate2(v.date)}</div>
-                {v.notes&&<div style={{fontSize:12,color:"#475569",marginTop:4,background:"#f8fafc",borderRadius:6,padding:"6px 10px"}}>{v.notes}</div>}
-                {v.nextAction&&<div style={{fontSize:12,color:"#f59e0b",marginTop:4}}>→ Next: {v.nextAction}</div>}
-              </div>
+      {/* UPCOMING */}
+      {tab==="upcoming"&&(
+        <div>
+          {upcomingToday.length>0&&(
+            <div style={{marginBottom:16}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#92400e",background:"#fef3c7",borderRadius:8,padding:"6px 12px",marginBottom:8}}>📌 Due Today</div>
+              {upcomingToday.map(v=><VisitCard key={v.id} v={v} showDate={false}/>)}
             </div>
-          </div>
-        ))}
-      </div>
+          )}
+          {upcomingFuture.length>0&&(
+            <div>
+              <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:8}}>📅 Upcoming Follow-ups</div>
+              {upcomingFuture.map(v=><VisitCard key={v.id} v={v} showDate={true}/>)}
+            </div>
+          )}
+          {upcoming.length===0&&<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No upcoming visits scheduled.<br/>Set a next visit date when logging a site visit.</div>}
+        </div>
+      )}
 
-      {/* Add Visit Modal */}
-      {showAdd&&<SiteVisitForm onSave={addVisit} onClose={()=>setShowAdd(false)} todayStr={todayStr} currentUser={currentUser}/>}
+      {/* FULL LOG */}
+      {tab==="log"&&(
+        <div>
+          {logVisits.length===0&&<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>No visits for this date / executive.</div>}
+          {logVisits.map(v=><VisitCard key={v.id} v={v} showDate={!filterDate}/>)}
+        </div>
+      )}
+
+      {showAdd&&<SiteVisitForm onSave={addVisit} onClose={()=>setShowAdd(false)} todayStr={todayStr} currentUser={currentUser} sites={sites}/>}
     </div>
   );
 }
 
-function SiteVisitForm({onSave,onClose,todayStr,currentUser}){
-  const [form,setForm]=React.useState({date:todayStr(),time:new Date().toTimeString().slice(0,5),location:"",siteName:"",customerName:"",notes:"",nextAction:""});
+function SiteVisitForm({onSave,onClose,todayStr,currentUser,sites}){
+  const [form,setForm]=React.useState({
+    date:todayStr(),
+    time:new Date().toTimeString().slice(0,5),
+    location:"",
+    siteName:"",
+    customerName:"",
+    notes:"",
+    remarks:"",
+    outcome:"",
+    nextVisitDate:"",
+    nextVisitTime:"",
+    nextVisitPurpose:"",
+  });
   const [locating,setLocating]=React.useState(false);
+  const [siteQ,setSiteQ]=React.useState("");
   const TEAL="#0d9488";
   const set=k=>e=>setForm(prev=>({...prev,[k]:e.target.value}));
+
+  // Site autocomplete
+  const siteMatches=React.useMemo(()=>{
+    if(!siteQ||siteQ.length<2) return [];
+    const q=siteQ.toLowerCase();
+    return (sites||[]).filter(s=>
+      (s.ownerName||"").toLowerCase().includes(q)||
+      (s.city||"").toLowerCase().includes(q)||
+      (s.address||"").toLowerCase().includes(q)||
+      (s.phone||"").includes(siteQ)
+    ).slice(0,6);
+  },[siteQ,sites]);
+
+  function selectSite(s){
+    setForm(prev=>({...prev,siteName:s.ownerName,customerName:s.ownerName,location:s.address||s.city||""}));
+    setSiteQ(s.ownerName);
+  }
 
   function getLocation(){
     setLocating(true);
@@ -5662,8 +5818,7 @@ function SiteVisitForm({onSave,onClose,todayStr,currentUser}){
     navigator.geolocation.getCurrentPosition(
       pos=>{
         const lat=pos.coords.latitude.toFixed(5), lon=pos.coords.longitude.toFixed(5);
-        // Try reverse geocoding via Nominatim
-        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en`,{headers:{"Accept-Language":"en"}})
+        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en`)
           .then(r=>r.json())
           .then(data=>{
             const a=data.address||{};
@@ -5671,83 +5826,255 @@ function SiteVisitForm({onSave,onClose,todayStr,currentUser}){
             setForm(prev=>({...prev,location:parts.join(", ")||data.display_name||`${lat},${lon}`}));
             setLocating(false);
           })
-          .catch(()=>{
-            setForm(prev=>({...prev,location:`${lat},${lon}`}));
-            setLocating(false);
-          });
+          .catch(()=>{setForm(prev=>({...prev,location:`${lat},${lon}`}));setLocating(false);});
       },
       err=>{
-        const msgs={1:"Location permission denied. Please allow location in browser settings.",2:"Location unavailable. Try again or type manually.",3:"GPS timed out. Move outside and retry."};
-        alert(msgs[err.code]||"Could not get location.");
-        setLocating(false);
+        const msgs={1:"Location permission denied. Allow location in browser settings.",2:"Location unavailable. Try again.",3:"GPS timed out. Move outside and retry."};
+        alert(msgs[err.code]||"Could not get location.");setLocating(false);
       },
-      {enableHighAccuracy:true, timeout:15000, maximumAge:0}
+      {enableHighAccuracy:true,timeout:15000,maximumAge:0}
     );
   }
 
+  const OUTCOMES=["Interested — Follow up needed","Sample/Demo given","Quotation to send","Order expected","No interest","Already purchased elsewhere","Postponed","Site not ready yet","Not reachable","Other"];
+
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{background:"#fff",borderRadius:12,padding:24,width:"100%",maxWidth:480,maxHeight:"90vh",overflowY:"auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}>
-          <h3 style={{margin:0}}>📍 Log Site Visit</h3>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:18,cursor:"pointer"}}>✕</button>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{background:"#fff",borderRadius:"16px 16px 0 0",width:"100%",maxWidth:520,maxHeight:"92vh",overflowY:"auto",padding:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>📍 Log Site Visit</div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#94a3b8"}}>×</button>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <div>
-            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Date *</label>
-            <input type="date" value={form.date} onChange={set("date")} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/>
+            <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>DATE *</label>
+            <input type="date" value={form.date} onChange={set("date")} style={{width:"100%",padding:"9px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:15,boxSizing:"border-box"}}/>
           </div>
           <div>
-            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Time</label>
-            <input type="time" value={form.time} onChange={set("time")} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/>
+            <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>TIME</label>
+            <input type="time" value={form.time} onChange={set("time")} style={{width:"100%",padding:"9px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:15,boxSizing:"border-box"}}/>
           </div>
+          {/* Site search autocomplete */}
+          <div style={{gridColumn:"1/-1",position:"relative"}}>
+            <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>SITE / PROJECT (type to search)</label>
+            <input value={siteQ} onChange={e=>setSiteQ(e.target.value)} placeholder="Search by client name, city, phone…"
+              style={{width:"100%",padding:"9px",border:"2px solid #0d9488",borderRadius:8,fontSize:15,boxSizing:"border-box"}}/>
+            {siteMatches.length>0&&(
+              <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,boxShadow:"0 8px 20px rgba(0,0,0,0.12)",zIndex:400,maxHeight:180,overflowY:"auto"}}>
+                {siteMatches.map(s=>(
+                  <div key={s.id} onClick={()=>selectSite(s)} style={{padding:"9px 12px",cursor:"pointer",borderBottom:"1px solid #f1f5f9",fontSize:13}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#f0fdf4"} onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                    <div style={{fontWeight:600}}>{s.ownerName}</div>
+                    <div style={{fontSize:11,color:"#64748b"}}>{s.city}{s.address?` · ${s.address.split(",")[0]}`:""} · {s.stage}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* GPS location */}
           <div style={{gridColumn:"1/-1"}}>
-            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Location *</label>
-            <div style={{display:"flex",gap:6,marginTop:4}}>
-              <input value={form.location} onChange={set("location")} placeholder="Site address / area name" style={{flex:1,padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,boxSizing:"border-box"}}/>
-              <button onClick={getLocation} disabled={locating} style={{background:TEAL,color:"#fff",border:"none",borderRadius:6,padding:"8px 12px",cursor:locating?"wait":"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>
-                {locating?"📡...":"📡 GPS"}
+            <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>LOCATION *</label>
+            <div style={{display:"flex",gap:6}}>
+              <input value={form.location} onChange={set("location")} placeholder="Area / address of visit"
+                style={{flex:1,padding:"9px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:15,boxSizing:"border-box"}}/>
+              <button onClick={getLocation} disabled={locating}
+                style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"9px 12px",cursor:locating?"wait":"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap",minWidth:64}}>
+                {locating?"📡…":"📡 GPS"}
               </button>
             </div>
           </div>
-          <div>
-            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Site/Project Name</label>
-            <input value={form.siteName} onChange={set("siteName")} placeholder="e.g. Sharma Bungalow" style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/>
-          </div>
-          <div>
-            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Customer Name</label>
-            <input value={form.customerName} onChange={set("customerName")} placeholder="Customer / client name" style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/>
-          </div>
+          {/* Outcome */}
           <div style={{gridColumn:"1/-1"}}>
-            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Visit Notes</label>
-            <textarea value={form.notes} onChange={set("notes")} rows={2} placeholder="What was discussed / shown..." style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box",resize:"vertical"}}/>
+            <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>OUTCOME</label>
+            <select value={form.outcome} onChange={set("outcome")} style={{width:"100%",padding:"9px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:15,boxSizing:"border-box"}}>
+              <option value="">-- Select outcome --</option>
+              {OUTCOMES.map(o=><option key={o} value={o}>{o}</option>)}
+            </select>
           </div>
+          {/* Remarks */}
           <div style={{gridColumn:"1/-1"}}>
-            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Next Action</label>
-            <input value={form.nextAction} onChange={set("nextAction")} placeholder="Follow-up required..." style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/>
+            <label style={{fontSize:11,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>REMARKS / DISCUSSION</label>
+            <textarea value={form.remarks} onChange={set("remarks")} rows={2} placeholder="What was discussed, what products shown, client feedback…"
+              style={{width:"100%",padding:"9px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:15,boxSizing:"border-box",resize:"vertical"}}/>
+          </div>
+          {/* Next Visit */}
+          <div style={{gridColumn:"1/-1",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"12px 14px"}}>
+            <div style={{fontWeight:700,fontSize:12,color:"#92400e",marginBottom:8}}>📅 Next Visit / Follow-up</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div>
+                <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>DATE</label>
+                <input type="date" value={form.nextVisitDate} onChange={set("nextVisitDate")}
+                  style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:15,boxSizing:"border-box"}}/>
+              </div>
+              <div>
+                <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>TIME</label>
+                <input type="time" value={form.nextVisitTime} onChange={set("nextVisitTime")}
+                  style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:15,boxSizing:"border-box"}}/>
+              </div>
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>PURPOSE OF NEXT VISIT</label>
+                <input value={form.nextVisitPurpose} onChange={set("nextVisitPurpose")} placeholder="What to discuss / bring next time…"
+                  style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:15,boxSizing:"border-box"}}/>
+              </div>
+            </div>
           </div>
         </div>
-        <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:16}}>
-          <button onClick={onClose} style={{padding:"9px 20px",border:"1px solid #e2e8f0",borderRadius:8,cursor:"pointer"}}>Cancel</button>
-          <button onClick={()=>{if(!form.location){alert("Location is required.");return;}onSave(form);}} style={{padding:"9px 22px",background:TEAL,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700}}>Save Visit</button>
+        <div style={{display:"flex",gap:10,marginTop:16}}>
+          <button onClick={onClose} style={{flex:1,padding:"12px",border:"1px solid #e2e8f0",borderRadius:10,cursor:"pointer",fontSize:15,fontWeight:600}}>Cancel</button>
+          <button onClick={()=>{if(!form.location){alert("Location is required.");return;}onSave(form);}}
+            style={{flex:2,padding:"12px",background:"#0d9488",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontSize:15,fontWeight:700}}>
+            ✅ Save Visit
+          </button>
         </div>
+      </div
+
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+// MASTER SEARCH MODULE
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+function MasterSearchModule({contacts,sites,challans,fmtINR2,fmtDate2}){
+  const [q,setQ]=React.useState("");
+  const [results,setResults]=React.useState(null);
+  const [locFilter,setLocFilter]=React.useState("all");
+  const TEAL="#0d9488";
+  const inputRef=React.useRef();
+
+  const cities=React.useMemo(()=>[...new Set([
+    ...sites.map(s=>s.city),
+    ...contacts.map(c=>c.city),
+  ].filter(Boolean))].sort(),[sites,contacts]);
+
+  function search(query){
+    const raw=query.trim();
+    if(raw.length<2){setResults(null);return;}
+    const ql=raw.toLowerCase();
+    const clients=sites.filter(s=>
+      (s.ownerName||"").toLowerCase().includes(ql)||(s.phone||"").includes(raw)||
+      (s.address||"").toLowerCase().includes(ql)||(s.city||"").toLowerCase().includes(ql)
+    );
+    const partners=contacts.filter(c=>
+      (c.name||"").toLowerCase().includes(ql)||(c.phone||"").includes(raw)||
+      (c.phone2||"").includes(raw)||(c.city||"").toLowerCase().includes(ql)||(c.type||"").toLowerCase().includes(ql)
+    );
+    const chs=challans.filter(c=>
+      (c.id||"").toLowerCase().includes(ql)||(c.partyName||"").toLowerCase().includes(ql)||
+      (c.driverName||"").toLowerCase().includes(ql)||(c.vehicleNo||"").toLowerCase().includes(ql)
+    );
+    const quotes=sites.flatMap(s=>(s.quotations||[]).map(qt=>({...qt,siteName:s.ownerName,siteCity:s.city}))).filter(qt=>
+      (qt.id||"").toLowerCase().includes(ql)||(qt.siteName||"").toLowerCase().includes(ql)
+    );
+    setResults({clients,partners,chs,quotes,raw});
+  }
+
+  const filtered=React.useMemo(()=>{
+    if(!results) return null;
+    const loc=locFilter.toLowerCase();
+    const fs=s=>locFilter==="all"||(s.city||"").toLowerCase().includes(loc)||(s.address||"").toLowerCase().includes(loc);
+    const fc=c=>locFilter==="all"||(c.city||"").toLowerCase().includes(loc);
+    return{clients:results.clients.filter(fs),partners:results.partners.filter(fc),
+      chs:results.chs.filter(()=>locFilter==="all"),quotes:results.quotes.filter(qt=>locFilter==="all"||(qt.siteCity||"").toLowerCase().includes(loc))};
+  },[results,locFilter]);
+
+  const total=filtered?(filtered.clients.length+filtered.partners.length+filtered.chs.length+filtered.quotes.length):0;
+  const hi=(text,q)=>{if(!q||!text)return text;const i=text.toLowerCase().indexOf(q.toLowerCase());if(i<0)return text;return React.createElement(React.Fragment,null,text.slice(0,i),React.createElement("mark",{style:{background:"#fef9c3",borderRadius:2}},text.slice(i,i+q.length)),text.slice(i+q.length));};
+  const card={background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px",marginBottom:6};
+  const Section=({title,items,render})=>items.length===0?null:(
+    <div style={{marginBottom:18}}>
+      <div style={{fontWeight:700,fontSize:12,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+        {title} <span style={{background:"#e2e8f0",borderRadius:10,padding:"1px 8px",fontSize:11,fontWeight:600}}>{items.length}</span>
       </div>
+      {items.map(render)}
+    </div>
+  );
+
+  return(
+    <div style={{maxWidth:900,margin:"0 auto",padding:"16px 14px"}}>
+      <h2 style={{margin:"0 0 14px",fontSize:18,fontWeight:800,color:"#1e293b"}}>&#x1F50D; Master Search</h2>
+      <div style={{position:"relative",marginBottom:12}}>
+        <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#94a3b8",fontSize:18,pointerEvents:"none"}}>&#x1F50D;</span>
+        <input ref={inputRef} autoFocus value={q}
+          onChange={e=>{setQ(e.target.value);search(e.target.value);}}
+          placeholder="Search client, phone, plumber, challan no, driver, quotation no\u2026"
+          style={{width:"100%",padding:"13px 40px 13px 42px",border:"2px solid "+TEAL,borderRadius:12,fontSize:15,boxSizing:"border-box",outline:"none"}}/>
+        {q&&<button onClick={()=>{setQ("");setResults(null);inputRef.current?.focus();}}
+          style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#94a3b8"}}>\u00d7</button>}
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
+        <span style={{fontSize:12,color:"#64748b",fontWeight:600}}>&#x1F4CD; Area:</span>
+        {["all",...cities].map(c=>(
+          <button key={c} onClick={()=>setLocFilter(c)}
+            style={{padding:"5px 12px",border:"none",borderRadius:16,cursor:"pointer",fontSize:12,fontWeight:600,
+              background:locFilter===c?TEAL:"#f1f5f9",color:locFilter===c?"#fff":"#64748b"}}>{c==="all"?"All Areas":c}</button>
+        ))}
+      </div>
+      {!results&&q.length<2&&(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:10}}>
+          {[["&#x1F4DE;","Phone number","Any 10-digit mobile"],["&#x1F3D7;","Client / Site","Name or initials"],
+            ["&#x1F527;","Plumber / Partner","Name or city"],["&#x1F4E6;","Challan no","CH-YYMMDD"],
+            ["&#x1F4C4;","Quotation no","Quote ID"],["&#x1F69B;","Driver / Vehicle","Name or vehicle no"]
+          ].map(([ic,lbl,sub])=>(
+            <div key={lbl} style={{background:"#f8fafc",borderRadius:10,padding:"12px 14px"}}>
+              <div style={{fontSize:20,marginBottom:4}} dangerouslySetInnerHTML={{__html:ic}}/>
+              <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{lbl}</div>
+              <div style={{fontSize:11,color:"#94a3b8"}}>{sub}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {results&&total===0&&<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}><div style={{fontSize:32}}>&#x1F50D;</div><div style={{marginTop:8,fontSize:15,fontWeight:600}}>No results for "{q}"</div></div>}
+      {filtered&&(
+        <div>
+          <Section title="&#x1F3D7; Clients / Sites" items={filtered.clients} render={s=>(
+            <div key={s.id} style={card}>
+              <div style={{fontWeight:700,fontSize:14,color:"#1e293b",marginBottom:2}}>{hi(s.ownerName,q)}</div>
+              <div style={{fontSize:12,color:"#64748b"}}>&#x1F4DE; {hi(s.phone,q)} &middot; &#x1F4CD; {hi(s.city,q)}{s.address?" \u00b7 "+s.address.split(",")[0]:""}</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{s.projectType} &middot; {s.stage} &middot; via {s.source}</div>
+            </div>
+          )}/>
+          <Section title="&#x1F91D; Partners & Contacts" items={filtered.partners} render={c=>(
+            <div key={c.id} style={card}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14,color:"#1e293b",marginBottom:2}}>{hi(c.name,q)}</div>
+                  <div style={{fontSize:12,color:"#64748b"}}>&#x1F4DE; {hi(c.phone,q)}{c.phone2?" / "+hi(c.phone2,q):""}{c.city?" \u00b7 "+hi(c.city,q):""}</div>
+                  {(c.birthday||c.anniversary)&&<div style={{fontSize:11,color:"#f59e0b",marginTop:2}}>{c.birthday?"\uD83C\uDF82 "+c.birthday:""}{c.anniversary?" \uD83D\uDC8D "+c.anniversary:""}</div>}
+                </div>
+                <span style={{background:"#ede9fe",color:"#5b21b6",borderRadius:12,padding:"2px 10px",fontSize:11,fontWeight:600}}>{c.type}</span>
+              </div>
+            </div>
+          )}/>
+          <Section title="&#x1F4E6; Challans" items={filtered.chs} render={c=>(
+            <div key={c.id} style={card}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14,color:"#0d9488",marginBottom:2}}>{hi(c.id,q)}</div>
+                  <div style={{fontSize:12,color:"#64748b"}}>{hi(c.partyName,q)} &middot; &#x1F69B; {hi(c.driverName||"\u2014",q)} {hi(c.vehicleNo||"",q)}</div>
+                  <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{fmtDate2(c.createdAt)} &middot; {c.items?.length||0} items</div>
+                  {c.freightAmt>0&&<div style={{fontSize:11,color:"#f59e0b"}}>Freight: \u20b9{(c.freightAmt||0).toLocaleString()}</div>}
+                </div>
+                <span style={{background:{pending:"#fef3c7",approved:"#d1fae5",dispatched:"#dbeafe",received:"#ede9fe"}[c.status]||"#f1f5f9",
+                  color:{pending:"#92400e",approved:"#065f46",dispatched:"#1e40af",received:"#4c1d95"}[c.status]||"#64748b",
+                  borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700}}>{(c.status||"").toUpperCase()}</span>
+              </div>
+            </div>
+          )}/>
+          <Section title="&#x1F4C4; Quotations" items={filtered.quotes} render={qt=>(
+            <div key={qt.id||qt.createdAt} style={card}>
+              <div style={{fontWeight:700,fontSize:14,color:"#5b21b6",marginBottom:2}}>{hi(qt.id||"QT",q)}</div>
+              <div style={{fontSize:12,color:"#64748b"}}>{hi(qt.siteName,q)} &middot; {qt.siteCity}</div>
+              <div style={{fontSize:12,color:"#1e293b",fontWeight:600,marginTop:2}}>\u20b9{(qt.totalAmt||qt.totals?.totalAmt||0).toLocaleString()} &middot; {fmtDate2(qt.createdAt)}</div>
+            </div>
+          )}/>
+        </div>
+      )}
     </div>
   );
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<CRMApp/>);
-</script>
-
-<!-- ═══ PWA INSTALL + SERVICE WORKER ══════════════════════════════════ -->
-<script>
-// ── Install prompt (Android Chrome / Edge) ──────────────────────────────
-let _deferredInstall = null;
-window.addEventListener("beforeinstallprompt", e => {
-  e.preventDefault();
-  _deferredInstall = e;
-  showInstallBanner();
-});
+>
+    </div>
+  );
+}
 
 function showInstallBanner(){
   if(document.getElementById("ew-install-banner")) return;
