@@ -77,6 +77,23 @@ body{font-family:system-ui,-apple-system,sans-serif;-webkit-text-size-adjust:100
   .nav-btn{padding:4px 6px!important;font-size:11px!important}
   .stat-val{font-size:22px!important}
 }
+/* ─── MOBILE/TABLET TOUCH OPTIMIZATIONS ─── */
+button, select, input { -webkit-tap-highlight-color: rgba(0,0,0,0.1); }
+/* Minimum touch target 44px */
+nav button { min-height: 36px; }
+/* Prevent zoom on input focus on iOS */
+input, select, textarea { font-size: 16px!important; }
+@media(max-width:640px){
+  input, select, textarea { font-size: 16px!important; }
+  button { min-height: 40px; }
+  /* Larger touch targets for action buttons */
+  .pBtn { padding: 10px 18px!important; min-height: 44px!important; }
+  select { padding: 10px 12px!important; }
+}
+/* Smooth scrolling */
+* { -webkit-overflow-scrolling: touch; scroll-behavior: smooth; }
+/* Prevent text selection on tap */
+nav, nav button { user-select: none; -webkit-user-select: none; }
 </style>
 </head>
 <body>
@@ -370,7 +387,15 @@ function parseCSV(text){
       category:cat,
       unit,listPrice,
       gst:18,
-      photoUrl:(photoUrl&&photoUrl.startsWith("http"))?photoUrl.replace(/\/view(\?.*)?\$/,"").replace(/\?usp=[^&]*/g,"").replace(/=w\d+$/,""):"",
+      photoUrl:(()=>{
+        if(!photoUrl||!photoUrl.startsWith("http")) return "";
+        const dm=photoUrl.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+        if(dm) return "https://lh3.googleusercontent.com/d/"+dm[1]+"=w200";
+        const om=photoUrl.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
+        if(om) return "https://lh3.googleusercontent.com/d/"+om[1]+"=w200";
+        if(photoUrl.includes("lh3.googleusercontent.com")) return photoUrl.replace(/=w\d+$/,"")+"=w200";
+        return photoUrl.replace(/\/view(\?.*)?$/,"").replace(/\?usp=[^&]*/g,"");
+      })(),
       hsn:get(COL.hsn),
     });
   }
@@ -3050,55 +3075,136 @@ function Dashboard({sites,contacts,currentUser,isAdmin,onGoSites,onOpenSite,getP
     </div>
   );
 }
-function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setFilterAssigned,filterAlert,setFilterAlert,searchQ,setSearchQ,getPendingProducts,onOpen,onAdd}){
+function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setFilterAssigned,filterAlert,setFilterAlert,searchQ,setSearchQ,getPendingProducts,onOpen,onAdd,contacts}){
+  const [filterPartner,setFilterPartner]=React.useState("all");
+  const [filterArea,setFilterArea]=React.useState("all");
+  const [filterSubArea,setFilterSubArea]=React.useState("all");
+  const TEAL="#0d9488";
+
+  // All unique cities/areas from sites
+  const areas=[...new Set(sites.map(s=>s.city).filter(Boolean))].sort();
+  // Sub areas from address field
+  const subAreas=filterArea==="all"?[]:[...new Set(sites.filter(s=>s.city===filterArea).map(s=>(s.address||"").split(",")[0].trim()).filter(Boolean))].sort();
+  // Partners (plumber, architect contacts) from sites
+  const partnerContacts=contacts?contacts.filter(c=>["Plumber","Architect","Builder","PMC","Contractor"].includes(c.type)):[];
+
+  // Apply partner + area + subarea filter
+  const displaySites=sites.filter(s=>{
+    if(filterPartner!=="all"){
+      const sc=s.contacts||[];
+      if(!sc.some(c=>c.id===filterPartner)) return false;
+    }
+    if(filterArea!=="all"&&s.city!==filterArea) return false;
+    if(filterSubArea!=="all"){
+      const addr=(s.address||"").toLowerCase();
+      if(!addr.includes(filterSubArea.toLowerCase())) return false;
+    }
+    return true;
+  });
+
+  // All STAGE_PRODUCTS brands for pitch bar
+  const ALL_PITCH_PRODUCTS=Object.values(STAGE_PRODUCTS).flat();
+  const PITCH_STATUS_COLOR={won:"#10b981",pitched:"#f59e0b",pending:"#ef4444",lost:"#94a3b8"};
+  const PITCH_LABEL={won:"Won ✓",pitched:"Pitched",pending:"To Pitch",lost:"Lost"};
+
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <h2 style={{margin:0,fontSize:20,fontWeight:700}}>Sites <span style={{color:"#94a3b8",fontWeight:400,fontSize:15}}>{sites.length}</span></h2>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <h2 style={{margin:0,fontSize:20,fontWeight:700}}>Sites <span style={{color:"#94a3b8",fontWeight:400,fontSize:15}}>{displaySites.length}</span></h2>
         <button onClick={onAdd} style={pBtn}>+ Add site</button>
       </div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
-        <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search…" style={{...inp,width:160,fontSize:13}}/>
+
+      {/* Filter row 1 */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+        <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search name/city…" style={{...inp,width:150,fontSize:13}}/>
         <select value={filterStage} onChange={e=>setFilterStage(e.target.value)} style={{...inp,fontSize:13}}>
-          <option value="all">All stages</option>
+          <option value="all">All Stages</option>
           {STAGES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
         {isAdmin&&(
           <select value={filterAssigned} onChange={e=>setFilterAssigned(e.target.value)} style={{...inp,fontSize:13}}>
-            <option value="all">All salespeople</option>
-            {USERS.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+            <option value="all">All Execs</option>
+            {USERS.map(u=><option key={u.id} value={u.id}>{u.name.split(" ")[0]}</option>)}
           </select>
         )}
         <button onClick={()=>setFilterAlert(v=>!v)} style={{...inp,background:filterAlert?"#fef3c7":"#fff",cursor:"pointer",fontSize:13,color:filterAlert?"#92400e":"#475569",borderColor:filterAlert?"#fbbf24":"#e2e8f0",fontWeight:filterAlert?600:400}}>
           {filterAlert?"⚠ Alerts only":"Show alerts"}
         </button>
       </div>
-      {sites.length===0&&<div style={{textAlign:"center",padding:"60px 0",color:"#94a3b8"}}><div style={{fontSize:32}}>🏗</div><div style={{marginTop:8,fontSize:14}}>No sites found</div><button onClick={onAdd} style={{...pBtn,marginTop:12}}>Add first site</button></div>}
+
+      {/* Filter row 2 — Partner + Area */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+        <select value={filterPartner} onChange={e=>setFilterPartner(e.target.value)} style={{...inp,fontSize:13}}>
+          <option value="all">All Partners</option>
+          {partnerContacts.map(c=><option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
+        </select>
+        <select value={filterArea} onChange={e=>{setFilterArea(e.target.value);setFilterSubArea("all");}} style={{...inp,fontSize:13}}>
+          <option value="all">All Areas</option>
+          {areas.map(a=><option key={a} value={a}>{a}</option>)}
+        </select>
+        {filterArea!=="all"&&subAreas.length>0&&(
+          <select value={filterSubArea} onChange={e=>setFilterSubArea(e.target.value)} style={{...inp,fontSize:13}}>
+            <option value="all">All Sub-areas</option>
+            {subAreas.map(a=><option key={a} value={a}>{a}</option>)}
+          </select>
+        )}
+        {(filterPartner!=="all"||filterArea!=="all"||filterSubArea!=="all")&&(
+          <button onClick={()=>{setFilterPartner("all");setFilterArea("all");setFilterSubArea("all");}} style={{...inp,cursor:"pointer",fontSize:12,color:"#ef4444",borderColor:"#fecaca",background:"#fef2f2"}}>✕ Clear</button>
+        )}
+      </div>
+
+      {displaySites.length===0&&<div style={{textAlign:"center",padding:"60px 0",color:"#94a3b8"}}><div style={{fontSize:32}}>🏗</div><div style={{marginTop:8,fontSize:14}}>No sites found</div><button onClick={onAdd} style={{...pBtn,marginTop:12}}>Add first site</button></div>}
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {sites.map(site=>{
+        {displaySites.map(site=>{
           const pending=getPendingProducts(site);
           const wonCount=Object.values(site.pitches||{}).filter(p=>p.status==="won").length;
           const qCount=(site.quotations||[]).length;
           const assignee=USERS.find(u=>u.id===site.assignedTo);
+          // Build pitch bar - all brands as color-coded segments
+          const pitchBar=ALL_PITCH_PRODUCTS.map(p=>{
+            const st=(site.pitches||{})[p.id]?.status||"pending";
+            return{...p,status:st};
+          });
           return(
-            <div key={site.id} onClick={()=>onOpen(site.id)} style={{background:"#fff",border:"1px solid "+(pending.length>0?"#fde68a":"#e2e8f0"),borderRadius:12,padding:"14px 16px",cursor:"pointer",display:"grid",gridTemplateColumns:"1fr auto",gap:"8px 16px",alignItems:"start"}}>
-              <div>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
-                  <span style={{fontWeight:700,fontSize:15}}>{site.ownerName}</span>
-                  {pending.length>0&&<span style={{fontSize:11,background:"#fef3c7",color:"#92400e",padding:"2px 7px",borderRadius:10,fontWeight:600}}>⚠ {pending.length} to pitch</span>}
-                  {wonCount>0&&<span style={{fontSize:11,background:"#d1fae5",color:"#065f46",padding:"2px 7px",borderRadius:10,fontWeight:600}}>✓ {wonCount} won</span>}
-                  {qCount>0&&<span style={{fontSize:11,background:"#ede9fe",color:"#5b21b6",padding:"2px 7px",borderRadius:10,fontWeight:600}}>📄 {qCount} quote{qCount>1?"s":""}</span>}
+            <div key={site.id} onClick={()=>onOpen(site.id)} style={{background:"#fff",border:"1px solid "+(pending.length>0?"#fde68a":"#e2e8f0"),borderRadius:12,padding:"12px 14px",cursor:"pointer"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"6px 16px",alignItems:"start"}}>
+                <div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3,flexWrap:"wrap"}}>
+                    <span style={{fontWeight:700,fontSize:15}}>{site.ownerName}</span>
+                    {pending.length>0&&<span style={{fontSize:10,background:"#fef3c7",color:"#92400e",padding:"1px 6px",borderRadius:8,fontWeight:600}}>⚠ {pending.length} to pitch</span>}
+                    {wonCount>0&&<span style={{fontSize:10,background:"#d1fae5",color:"#065f46",padding:"1px 6px",borderRadius:8,fontWeight:600}}>✓ {wonCount} won</span>}
+                    {qCount>0&&<span style={{fontSize:10,background:"#ede9fe",color:"#5b21b6",padding:"1px 6px",borderRadius:8,fontWeight:600}}>📄 {qCount}Q</span>}
+                  </div>
+                  <div style={{fontSize:11,color:"#64748b",marginBottom:6}}>{site.city}{site.address?` · ${site.address.split(",")[0]}`:"" } · {site.projectType} · {site.source}</div>
+                  {/* Brand Pitch Color Bar */}
+                  <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
+                    {pitchBar.map(p=>(
+                      <div key={p.id} title={`${p.brand}: ${p.name} — ${PITCH_LABEL[p.status]||p.status}`}
+                        style={{background:PITCH_STATUS_COLOR[p.status]||"#e2e8f0",borderRadius:3,padding:"2px 5px",fontSize:9,fontWeight:700,color:"#fff",whiteSpace:"nowrap",
+                          textDecoration:p.status==="lost"?"line-through":"none",opacity:p.status==="lost"?0.6:1}}>
+                        {p.brand.split(" ")[0].slice(0,6)}
+                      </div>
+                    ))}
+                  </div>
+                  {/* Legend */}
                 </div>
-                <div style={{fontSize:12,color:"#64748b"}}>{site.city} · {site.projectType} · {site.source}</div>
-              </div>
-              <div style={{textAlign:"right"}}>
-                <StagePill stage={site.stage}/>
-                {isAdmin&&assignee&&<div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>{assignee.name.split(" ")[0]}</div>}
+                <div style={{textAlign:"right"}}>
+                  <StagePill stage={site.stage}/>
+                  {isAdmin&&assignee&&<div style={{fontSize:10,color:"#94a3b8",marginTop:3}}>{assignee.name.split(" ")[0]}</div>}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
+      {/* Color legend */}
+      {displaySites.length>0&&(
+        <div style={{display:"flex",gap:12,marginTop:14,flexWrap:"wrap",fontSize:11,color:"#64748b",padding:"8px 0"}}>
+          {[["#10b981","Won ✓"],["#f59e0b","Pitched"],["#ef4444","Yet to Pitch"],["#94a3b8","Lost (struck)"]].map(([c,l])=>(
+            <span key={l} style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:12,height:12,borderRadius:2,background:c,display:"inline-block"}}></span>{l}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -3208,7 +3314,7 @@ function AdminPanel({appUsers,permissions,sites,currentUser,onUpdatePassword,onT
       {tab==="users"&&(
         <div>
           <h3 style={{margin:"0 0 6px",fontSize:15,fontWeight:700}}>Users & Access Control</h3>
-          <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>Set passwords for each staff member. Share their password privately.</div>
+          <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>Set login name and password for each team member. They use their name to log in.</div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {appUsers.map(u=>(
               <div key={u.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:14,opacity:u.active===false?0.5:1}}>
@@ -3239,14 +3345,33 @@ function AdminPanel({appUsers,permissions,sites,currentUser,onUpdatePassword,onT
                 </div>
                 {editPwdId===u.id&&(
                   <div style={{marginTop:12,background:"#f8fafc",borderRadius:8,padding:12}}>
-                    <div style={{fontSize:11,color:"#64748b",marginBottom:6}}>Current password: <code style={{background:"#e2e8f0",padding:"1px 5px",borderRadius:4}}>{u.password||"(none)"}</code></div>
+                    <div style={{fontSize:11,color:"#64748b",marginBottom:8,fontWeight:600}}>Edit Login Details for {u.name}</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                      <div>
+                        <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>LOGIN NAME (shown on login screen)</label>
+                        <input defaultValue={u.name} id={"uname_"+u.id} style={{...inpS}} placeholder="Display name"/>
+                      </div>
+                      <div>
+                        <label style={{fontSize:10,color:"#64748b",fontWeight:600,display:"block",marginBottom:3}}>PASSWORD</label>
+                        <input value={newPwd} onChange={e=>setNewPwd(e.target.value)} placeholder="New password (min 4 chars)" style={{...inpS}}/>
+                      </div>
+                    </div>
+                    <div style={{fontSize:11,color:"#64748b",marginBottom:8}}>
+                      Current password: <code style={{background:"#e2e8f0",padding:"1px 5px",borderRadius:4}}>{u.password||"(none)"}</code>
+                      &nbsp;· Role: <code style={{background:"#e2e8f0",padding:"1px 5px",borderRadius:4}}>{u.role}</code>
+                    </div>
                     <div style={{display:"flex",gap:8}}>
-                      <input value={newPwd} onChange={e=>setNewPwd(e.target.value)} placeholder="New password (min 4 chars)"
-                        style={{...inpS,flex:1}} onKeyDown={e=>{ if(e.key==="Enter"&&newPwd.length>=4){ onUpdatePassword(u.id,newPwd); setPwdMsg("✅ Password updated for "+u.name); setEditPwdId(null); setNewPwd(""); } }}/>
-                      <button onClick={()=>{ if(newPwd.length<4){ setPwdMsg("Min 4 characters"); return; } onUpdatePassword(u.id,newPwd); setPwdMsg("✅ Password updated for "+u.name); setEditPwdId(null); setNewPwd(""); }}
-                        style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700,whiteSpace:"nowrap"}}>
-                        Save
+                      <button onClick={()=>{
+                        const nameEl=document.getElementById("uname_"+u.id);
+                        const newName=nameEl?nameEl.value.trim():u.name;
+                        if(newPwd&&newPwd.length<4){setPwdMsg("Min 4 characters for password");return;}
+                        if(newName&&newName!==u.name) onUpdateUser&&onUpdateUser(u.id,{name:newName});
+                        if(newPwd) onUpdatePassword(u.id,newPwd);
+                        setPwdMsg("✅ Updated "+u.name);setEditPwdId(null);setNewPwd("");
+                      }} style={{background:"#0d9488",color:"#fff",border:"none",borderRadius:8,padding:"7px 16px",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                        Save Changes
                       </button>
+                      <button onClick={()=>{setEditPwdId(null);setNewPwd("");setPwdMsg("");}} style={{border:"1px solid #e2e8f0",background:"#fff",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12}}>Cancel</button>
                     </div>
                     {pwdMsg&&<div style={{fontSize:11,marginTop:6,color:pwdMsg.startsWith("✅")?"#16a34a":"#dc2626"}}>{pwdMsg}</div>}
                   </div>
@@ -4062,7 +4187,15 @@ function CRMApp(){
         if(!specs&&!code) return null;
         if(!brand&&!specs) return null;
         if(specs.toLowerCase()==="size & description") return null;
-        return {id:code||("p"+i),specs:specs||code,brand:brand||"Other",code,family,category:cat,unit,listPrice,gst:18,photoUrl:(photoUrl&&photoUrl.startsWith("http"))?photoUrl.replace(/\/view(\?.*)?\$/,"").replace(/\?usp=.*$/,""):"",hsn:get(8)};
+        return {id:code||("p"+i),specs:specs||code,brand:brand||"Other",code,family,category:cat,unit,listPrice,gst:18,photoUrl:(()=>{
+        if(!photoUrl||!photoUrl.startsWith("http")) return "";
+        const dm=photoUrl.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+        if(dm) return "https://lh3.googleusercontent.com/d/"+dm[1]+"=w200";
+        const om=photoUrl.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
+        if(om) return "https://lh3.googleusercontent.com/d/"+om[1]+"=w200";
+        if(photoUrl.includes("lh3.googleusercontent.com")) return photoUrl.replace(/=w\d+$/,"")+"=w200";
+        return photoUrl.replace(/\/view(\?.*)?$/,"").replace(/\?usp=.*$/,"");
+      })(),hsn:get(8)};
       }).filter(Boolean);
       if(products.length<1) throw new Error("No products in Web App response");
       setProducts(products);
@@ -4272,7 +4405,7 @@ function CRMApp(){
       {/* MAIN CONTENT */}
       <div style={{maxWidth:960,margin:"0 auto",padding:"20px 16px"}}>
         {view==="dashboard"&&<Dashboard sites={isAdmin?sites:sites.filter(s=>s.assignedTo===currentUser.id)} contacts={contacts} currentUser={currentUser} isAdmin={isAdmin} onGoSites={()=>setView("sites")} onOpenSite={id=>{setActiveSiteId(id);setView("site");}} getPendingProducts={getPendingProducts} products={products} loadingProducts={syncStatus==="loading"} onSaveQuote={(siteId,q)=>{ const updated=(sites.find(s=>s.id===siteId)?.quotations||[]); updateSite(siteId,{quotations:[...updated,q]}); }}/>}
-        {view==="sites"&&<SitesList sites={visibleSites} isAdmin={isAdmin} filterStage={filterStage} setFilterStage={setFilterStage} filterAssigned={filterAssigned} setFilterAssigned={setFilterAssigned} filterAlert={filterAlert} setFilterAlert={setFilterAlert} searchQ={searchQ} setSearchQ={setSearchQ} getPendingProducts={getPendingProducts} onOpen={id=>{setActiveSiteId(id);setView("site");}} onAdd={()=>setShowAddSite(true)}/>}
+        {view==="sites"&&<SitesList sites={visibleSites} isAdmin={isAdmin} filterStage={filterStage} setFilterStage={setFilterStage} filterAssigned={filterAssigned} setFilterAssigned={setFilterAssigned} filterAlert={filterAlert} setFilterAlert={setFilterAlert} searchQ={searchQ} setSearchQ={setSearchQ} getPendingProducts={getPendingProducts} contacts={contacts} onOpen={id=>{setActiveSiteId(id);setView("site");}} onAdd={()=>setShowAddSite(true)}/>}
         {view==="site"&&activeSite&&<SiteDetail site={activeSite} isAdmin={isAdmin} currentUser={currentUser} getPendingProducts={getPendingProducts} onBack={()=>setView("sites")} onUpdateSite={patch=>updateSite(activeSite.id,patch)} onUpdatePitch={(pid,status,note)=>updatePitch(activeSite.id,pid,status,note)} onDelete={()=>deleteSite(activeSite.id)} onEdit={()=>{setEditingSite(activeSite);setShowAddSite(true);}} products={products} loadingProducts={syncStatus==="loading"}/>}
         {view==="admin"&&isAdmin&&<AdminPanel appUsers={appUsers} permissions={permissions} sites={sites} currentUser={currentUser} onUpdateUser={updateUserProfile} onAddUser={addNewUser} onUpdatePassword={updateUserPassword} onToggleActive={toggleUserActive} onUpdatePermission={updatePermission} getPendingProducts={getPendingProducts} onOpenSite={id=>{setActiveSiteId(id);setView("site");}} onUpdateSite={updateSite}/>}
         {view==="challan"&&<ChallanModule challans={challans} setChallans={setChallans} products={products} contacts={contacts} sites={sites} currentUser={currentUser} isAdmin={isAdmin} tgSend2={tgSend2} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} stockLedger={stockLedger} setStockLedger={setStockLedger} clientLedger={clientLedger} setClientLedger={setClientLedger} commissionRules={commissionRules} commissionLedger={commissionLedger} setCommissionLedger={setCommissionLedger}/>}
@@ -5525,18 +5658,31 @@ function SiteVisitForm({onSave,onClose,todayStr,currentUser}){
 
   function getLocation(){
     setLocating(true);
-    if(!navigator.geolocation){alert("Geolocation not supported.");setLocating(false);return;}
-    navigator.geolocation.getCurrentPosition(pos=>{
-      const url=`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`;
-      fetch(url).then(r=>r.json()).then(data=>{
-        const addr=data.display_name||(pos.coords.latitude.toFixed(4)+","+pos.coords.longitude.toFixed(4));
-        setForm(prev=>({...prev,location:addr.split(",").slice(0,3).join(",")}));
+    if(!navigator.geolocation){alert("GPS not available on this device/browser.");setLocating(false);return;}
+    navigator.geolocation.getCurrentPosition(
+      pos=>{
+        const lat=pos.coords.latitude.toFixed(5), lon=pos.coords.longitude.toFixed(5);
+        // Try reverse geocoding via Nominatim
+        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en`,{headers:{"Accept-Language":"en"}})
+          .then(r=>r.json())
+          .then(data=>{
+            const a=data.address||{};
+            const parts=[a.road||a.suburb||"",a.city_district||a.county||a.city||a.town||a.village||"",a.city||a.town||a.state_district||""].filter(Boolean);
+            setForm(prev=>({...prev,location:parts.join(", ")||data.display_name||`${lat},${lon}`}));
+            setLocating(false);
+          })
+          .catch(()=>{
+            setForm(prev=>({...prev,location:`${lat},${lon}`}));
+            setLocating(false);
+          });
+      },
+      err=>{
+        const msgs={1:"Location permission denied. Please allow location in browser settings.",2:"Location unavailable. Try again or type manually.",3:"GPS timed out. Move outside and retry."};
+        alert(msgs[err.code]||"Could not get location.");
         setLocating(false);
-      }).catch(()=>{
-        setForm(prev=>({...prev,location:pos.coords.latitude.toFixed(4)+","+pos.coords.longitude.toFixed(4)}));
-        setLocating(false);
-      });
-    },()=>{alert("Could not get location. Please type manually.");setLocating(false);});
+      },
+      {enableHighAccuracy:true, timeout:15000, maximumAge:0}
+    );
   }
 
   return(
