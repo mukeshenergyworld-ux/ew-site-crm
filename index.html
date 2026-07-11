@@ -3920,6 +3920,45 @@ function CRMApp(){
   useEffect(()=>{ pullUsersFromServer(setAppUsers); },[]);
   const [permissions,setPermissions]=useState(()=>loadPermissions());
   const [view,setView]=useState("dashboard");
+
+  // ── NEW MODULE STATE ─────────────────────────────────────────
+  const [challans,setChallans]=React.useState(()=>lsLoad("ew_challans_v2",[]));
+  const [stockLedger,setStockLedger]=React.useState(()=>lsLoad("ew_stock_v2",[]));
+  const [clientLedger,setClientLedger]=React.useState(()=>lsLoad("ew_client_ledger_v2",[]));
+  const [payments,setPayments]=React.useState(()=>lsLoad("ew_payments_v2",[]));
+  const [serviceTickets,setServiceTickets]=React.useState(()=>lsLoad("ew_service_v2",[]));
+  const [amcContracts,setAmcContracts]=React.useState(()=>lsLoad("ew_amc_v2",[]));
+  const [commissionRules,setCommissionRules]=React.useState(()=>lsLoad("ew_comm_rules_v2",[]));
+  const [commissionLedger,setCommissionLedger]=React.useState(()=>lsLoad("ew_comm_ledger_v2",[]));
+
+  // Persist new state
+  React.useEffect(()=>lsSave("ew_challans_v2",challans),[challans]);
+  React.useEffect(()=>lsSave("ew_stock_v2",stockLedger),[stockLedger]);
+  React.useEffect(()=>lsSave("ew_client_ledger_v2",clientLedger),[clientLedger]);
+  React.useEffect(()=>lsSave("ew_payments_v2",payments),[payments]);
+  React.useEffect(()=>lsSave("ew_service_v2",serviceTickets),[serviceTickets]);
+  React.useEffect(()=>lsSave("ew_amc_v2",amcContracts),[amcContracts]);
+  React.useEffect(()=>lsSave("ew_comm_rules_v2",commissionRules),[commissionRules]);
+  React.useEffect(()=>lsSave("ew_comm_ledger_v2",commissionLedger),[commissionLedger]);
+
+  // ── HELPERS ──────────────────────────────────────────────────
+  function genId(p=""){ return p+(Date.now().toString(36)+Math.random().toString(36).slice(2,5)).toUpperCase(); }
+  function fmtINR2(n){ return "₹"+Number(n||0).toLocaleString("en-IN"); }
+  function todayStr(){ return new Date().toISOString().slice(0,10); }
+  function fmtDate2(d){ return d?new Date(d).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}):"—"; }
+  const BOTS2={
+    loginCode:{token:"8256970880:AAG0sEOALRKdCEjZ4j6050g8YxFMAInVpZU"},
+    challanGen:{token:"8932618814:AAESnDKk7VqDsTUpF0WZWXB-Q_F-ykAykeQ",chatId:"-1003934546338"},
+    dispatch:{token:"8891062190:AAH7wOrEeh5moDrrCCcMA78ckRf1Gqvo-nA",chatId:"-5347849815"},
+    complaint:{token:"8210772559:AAGUHDoEAidzXtgJvB8Nni2-vAQ9XHQUwKQ"},
+  };
+  async function tgSend2(key,text,chatId){
+    const b=BOTS2[key]; if(!b)return;
+    const cid=chatId||b.chatId; if(!cid)return;
+    try{ await fetch(`https://api.telegram.org/bot${b.token}/sendMessage`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:cid,text,parse_mode:"Markdown"})}); }catch(e){}
+  }
+  function lsLoad(k,d=[]){try{return JSON.parse(localStorage.getItem(k)||"null")||d;}catch(e){return d;}}
+  function lsSave(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
   const [activeSiteId,setActiveSiteId]=useState(null);
   const [filterStage,setFilterStage]=useState("all");
   const [filterAssigned,setFilterAssigned]=useState("all");
@@ -4169,6 +4208,11 @@ function CRMApp(){
             {v==="admin"?"Admin":v}
           </button>
         ))}
+        {["challan","stock","ledger","service","commission"].map(v=>(
+          <button key={v} onClick={()=>setView(v)} style={{background:view===v?"#1e293b":"transparent",color:view===v?"#f59e0b":"#94a3b8",border:"none",padding:"6px 10px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:500,textTransform:"capitalize"}}>
+            {{"challan":"📦 Challan","stock":"🗂 Stock","ledger":"💰 Ledger","service":"🔧 Service","commission":"🤝 Commission"}[v]}
+          </button>
+        ))}
         <div style={{flex:1}}/>
 
         {/* ── PRICE LIST SYNC ── */}
@@ -4230,6 +4274,11 @@ function CRMApp(){
         {view==="sites"&&<SitesList sites={visibleSites} isAdmin={isAdmin} filterStage={filterStage} setFilterStage={setFilterStage} filterAssigned={filterAssigned} setFilterAssigned={setFilterAssigned} filterAlert={filterAlert} setFilterAlert={setFilterAlert} searchQ={searchQ} setSearchQ={setSearchQ} getPendingProducts={getPendingProducts} onOpen={id=>{setActiveSiteId(id);setView("site");}} onAdd={()=>setShowAddSite(true)}/>}
         {view==="site"&&activeSite&&<SiteDetail site={activeSite} isAdmin={isAdmin} currentUser={currentUser} getPendingProducts={getPendingProducts} onBack={()=>setView("sites")} onUpdateSite={patch=>updateSite(activeSite.id,patch)} onUpdatePitch={(pid,status,note)=>updatePitch(activeSite.id,pid,status,note)} onDelete={()=>deleteSite(activeSite.id)} onEdit={()=>{setEditingSite(activeSite);setShowAddSite(true);}} products={products} loadingProducts={syncStatus==="loading"}/>}
         {view==="admin"&&isAdmin&&<AdminPanel appUsers={appUsers} permissions={permissions} sites={sites} currentUser={currentUser} onUpdateUser={updateUserProfile} onAddUser={addNewUser} onUpdatePassword={updateUserPassword} onToggleActive={toggleUserActive} onUpdatePermission={updatePermission} getPendingProducts={getPendingProducts} onOpenSite={id=>{setActiveSiteId(id);setView("site");}} onUpdateSite={updateSite}/>}
+        {view==="challan"&&<ChallanModule challans={challans} setChallans={setChallans} products={products} contacts={contacts} sites={sites} currentUser={currentUser} isAdmin={isAdmin} tgSend2={tgSend2} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} stockLedger={stockLedger} setStockLedger={setStockLedger} clientLedger={clientLedger} setClientLedger={setClientLedger} commissionRules={commissionRules} commissionLedger={commissionLedger} setCommissionLedger={setCommissionLedger}/>}
+        {view==="stock"&&<StockModule stockLedger={stockLedger} setStockLedger={setStockLedger} products={products} challans={challans} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2}/>}
+        {view==="ledger"&&<LedgerModule clientLedger={clientLedger} setClientLedger={setClientLedger} payments={payments} setPayments={setPayments} contacts={contacts} sites={sites} challans={challans} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} currentUser={currentUser}/>}
+        {view==="service"&&<ServiceModule serviceTickets={serviceTickets} setServiceTickets={setServiceTickets} amcContracts={amcContracts} setAmcContracts={setAmcContracts} contacts={contacts} sites={sites} currentUser={currentUser} tgSend2={tgSend2} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} products={products}/>}
+        {view==="commission"&&<CommissionModule commissionRules={commissionRules} setCommissionRules={setCommissionRules} commissionLedger={commissionLedger} setCommissionLedger={setCommissionLedger} contacts={contacts} sites={sites} challans={challans} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} isAdmin={isAdmin}/>}
       </div>
       {showAddSite&&<SiteFormModal site={editingSite} isAdmin={isAdmin} currentUser={currentUser} contacts={contacts} saveContact={saveContact} allSites={sites} onSave={site=>{ if(editingSite)updateSite(editingSite.id,site); else addSite(site); setShowAddSite(false);setEditingSite(null);setView("sites"); }} onClose={()=>{setShowAddSite(false);setEditingSite(null);}}/>}
 
@@ -4237,6 +4286,893 @@ function CRMApp(){
     </div>
   );
 }
+
+// ════════════════════════════════════════════════════════════════
+// MODULE 1 — CHALLAN SYSTEM
+// ════════════════════════════════════════════════════════════════
+function ChallanModule({challans,setChallans,products,contacts,sites,currentUser,isAdmin,tgSend2,genId,fmtINR2,todayStr,fmtDate2,stockLedger,setStockLedger,clientLedger,setClientLedger,commissionRules,commissionLedger,setCommissionLedger}){
+  const [tab,setTab]=React.useState("pending");
+  const [showForm,setShowForm]=React.useState(false);
+  const [editCh,setEditCh]=React.useState(null);
+  const [searchCode,setSearchCode]=React.useState("");
+
+  const challansByTab={
+    pending: challans.filter(c=>c.status==="pending"),
+    approved: challans.filter(c=>c.status==="approved"),
+    dispatched: challans.filter(c=>c.status==="dispatched"),
+    received: challans.filter(c=>c.status==="received"),
+    all: challans,
+  };
+
+  async function createChallan(data){
+    const ch={...data, id:genId("CH"), createdAt:new Date().toISOString(), createdBy:currentUser.name, status:"pending"};
+    setChallans(prev=>[ch,...prev]);
+    // Stock OUT
+    ch.items.forEach(it=>{
+      setStockLedger(prev=>[...prev,{id:genId("SL"),date:todayStr(),type:"out",productCode:it.code,productName:it.name,qty:it.qty,unit:it.unit,challanId:ch.id,party:ch.partyName,note:"Challan "+ch.id}]);
+    });
+    // Telegram
+    const itemLines=ch.items.map((it,i)=>`${i+1}. ${it.code} — ${it.name} | Qty: ${it.qty} ${it.unit}`).join("\n");
+    await tgSend2("challanGen",`🆕 *NEW CHALLAN: ${ch.id}*\n📦 Party: ${ch.partyName}\n🏢 Site: ${ch.siteAddress||"-"}\n🚛 Vehicle: ${ch.vehicleNo||"-"}\n👤 By: ${ch.createdBy}\n\n*Items:*\n${itemLines}\n\n⏳ *Pending Approval*`);
+    setShowForm(false);
+  }
+
+  async function approveChallan(id){
+    setChallans(prev=>prev.map(c=>c.id===id?{...c,status:"approved",approvedBy:currentUser.name,approvedAt:new Date().toISOString()}:c));
+    const ch=challans.find(c=>c.id===id);
+    const itemLines=(ch.items||[]).map((it,i)=>`${i+1}. ${it.code} — ${it.name} | Qty: ${it.qty} ${it.unit}`).join("\n");
+    await tgSend2("dispatch",`✅ *CHALLAN APPROVED: ${ch.id}*\n📦 Party: ${ch.partyName}\n🚛 Vehicle: ${ch.vehicleNo||"-"}\n👤 Approved by: *${currentUser.name}*\n\n*Items:*\n${itemLines}\n\n🚚 Ready for Dispatch`);
+  }
+
+  function markReceived(id, charges){
+    const ch=challans.find(c=>c.id===id);
+    if(!ch)return;
+    // Calculate challan amount with brand-wise discount per client
+    const siteId=ch.siteId;
+    const partyContacts=ch.partyId?[ch.partyId]:[];
+    const updatedItems=ch.items.map(it=>{
+      const prod=products.find(p=>p.code===it.code)||{};
+      const mrp=prod.listPrice||prod.mrp||0;
+      // Find applicable commission rule discount for this party
+      const rule=commissionRules.find(r=>r.brand===prod.brand&&r.partyId===ch.partyId);
+      const disc=rule?rule.discount:0;
+      const netPrice=mrp*(1-disc/100);
+      return{...it,mrp,discount:disc,netPrice,lineAmt:netPrice*it.qty};
+    });
+    const totalAmt=updatedItems.reduce((s,i)=>s+(i.lineAmt||0),0);
+    const updated={...ch,status:"received",receivedAt:new Date().toISOString(),items:updatedItems,totalAmt,transportCharges:Number(charges||0)};
+    setChallans(prev=>prev.map(c=>c.id===id?updated:c));
+    // Post to client ledger
+    setClientLedger(prev=>[...prev,{id:genId("CL"),date:todayStr(),partyId:ch.partyId,partyName:ch.partyName,type:"debit",amount:totalAmt+(Number(charges||0)),desc:"Challan "+id,challanId:id,balance:0}]);
+  }
+
+  const TEAL="#0d9488"; const DK="#1e293b"; const GR="#64748b";
+  const tabBtn=(t,lbl)=><button onClick={()=>setTab(t)} style={{background:tab===t?TEAL:"#f1f5f9",color:tab===t?"#fff":GR,border:"none",padding:"6px 14px",borderRadius:20,cursor:"pointer",fontSize:13,fontWeight:600,marginRight:6}}>{lbl} {challansByTab[t]?.length>0&&<span style={{background:tab===t?"rgba(255,255,255,0.25)":"#e2e8f0",borderRadius:10,padding:"1px 6px",fontSize:11,marginLeft:4}}>{challansByTab[t].length}</span>}</button>;
+
+  return(
+    <div style={{maxWidth:1100,margin:"0 auto",padding:"20px 16px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{margin:0,fontSize:20,fontWeight:700,color:DK}}>📦 Challan System</h2>
+        <button onClick={()=>{setEditCh(null);setShowForm(true);}} style={{background:TEAL,color:"#fff",border:"none",padding:"8px 18px",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:14}}>+ New Challan</button>
+      </div>
+      <div style={{marginBottom:16}}>
+        {tabBtn("pending","⏳ Pending")}{tabBtn("approved","✅ Approved")}{tabBtn("dispatched","🚚 Dispatched")}{tabBtn("received","📥 Received")}{tabBtn("all","All")}
+      </div>
+      <div>
+        {(challansByTab[tab]||[]).length===0&&<div style={{textAlign:"center",padding:40,color:GR}}>No challans in this category</div>}
+        {(challansByTab[tab]||[]).map(ch=>(
+          <div key={ch.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"14px 16px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                <span style={{fontWeight:700,fontSize:15,color:DK}}>{ch.id}</span>
+                <span style={{background:{pending:"#fef3c7",approved:"#d1fae5",dispatched:"#dbeafe",received:"#ede9fe"}[ch.status]||"#f1f5f9",color:{pending:"#92400e",approved:"#065f46",dispatched:"#1e40af",received:"#4c1d95"}[ch.status]||GR,borderRadius:12,padding:"2px 10px",fontSize:11,fontWeight:600}}>{ch.status?.toUpperCase()}</span>
+                {ch.approvedBy&&<span style={{fontSize:11,color:GR}}>✅ {ch.approvedBy}</span>}
+              </div>
+              <div style={{fontSize:13,color:GR,marginBottom:4}}>
+                <strong style={{color:DK}}>{ch.partyName}</strong> · {ch.siteAddress||"-"} · {fmtDate2(ch.createdAt)} · By: {ch.createdBy}
+              </div>
+              {ch.vehicleNo&&<div style={{fontSize:12,color:GR}}>🚛 {ch.vehicleNo} {ch.driverName&&`· ${ch.driverName}`}</div>}
+              <div style={{marginTop:8,fontSize:12,color:GR}}>
+                {(ch.items||[]).map((it,i)=>(
+                  <span key={i} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:4,padding:"2px 7px",marginRight:5,marginBottom:4,display:"inline-block"}}>
+                    {it.code} — {it.qty} {it.unit}
+                  </span>
+                ))}
+              </div>
+              {ch.totalAmt>0&&<div style={{marginTop:6,fontWeight:600,color:TEAL}}>Amount: {fmtINR2(ch.totalAmt)} {ch.transportCharges>0&&<span style={{color:GR,fontWeight:400,fontSize:12}}>+ Transport: {fmtINR2(ch.transportCharges)}</span>}</div>}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {ch.status==="pending"&&<button onClick={()=>approveChallan(ch.id)} style={{background:"#10b981",color:"#fff",border:"none",padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600}}>✅ Approve</button>}
+              {ch.status==="approved"&&<button onClick={()=>setChallans(prev=>prev.map(c=>c.id===ch.id?{...c,status:"dispatched",dispatchedAt:new Date().toISOString()}:c))} style={{background:"#3b82f6",color:"#fff",border:"none",padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600}}>🚚 Mark Dispatched</button>}
+              {ch.status==="dispatched"&&<button onClick={()=>{const tc=prompt("Transport charges (Rs.)?","0");if(tc!==null)markReceived(ch.id,tc);}} style={{background:"#8b5cf6",color:"#fff",border:"none",padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600}}>📥 Mark Received</button>}
+            </div>
+          </div>
+        ))}
+      </div>
+      {showForm&&<ChallanForm products={products} contacts={contacts} sites={sites} currentUser={currentUser} onSave={createChallan} onClose={()=>setShowForm(false)} genId={genId} todayStr={todayStr}/>}
+    </div>
+  );
+}
+
+function ChallanForm({products,contacts,sites,currentUser,onSave,onClose,genId,todayStr}){
+  const [partyId,setPartyId]=React.useState("");
+  const [siteId,setSiteId]=React.useState("");
+  const [vehicleNo,setVehicleNo]=React.useState("");
+  const [driverName,setDriverName]=React.useState("");
+  const [items,setItems]=React.useState([]);
+  const [codeInput,setCodeInput]=React.useState("");
+  const [codeSearch,setCodeSearch]=React.useState([]);
+  const [remarks,setRemarks]=React.useState("");
+
+  const party=contacts.find(c=>c.id===partyId)||null;
+  const site=sites.find(s=>s.id===siteId)||null;
+
+  function searchByCode(q){
+    setCodeInput(q);
+    if(q.length<2){setCodeSearch([]);return;}
+    const r=products.filter(p=>(p.code||"").toLowerCase().includes(q.toLowerCase())||(p.name||"").toLowerCase().includes(q.toLowerCase())).slice(0,8);
+    setCodeSearch(r);
+  }
+
+  function addItem(prod){
+    const qty=1;
+    setItems(prev=>[...prev,{code:prod.code,name:prod.name,brand:prod.brand,unit:prod.unit||"Pc.",qty}]);
+    setCodeInput(""); setCodeSearch([]);
+  }
+
+  function updateQty(i,q){setItems(prev=>prev.map((it,idx)=>idx===i?{...it,qty:Number(q)}:it));}
+  function removeItem(i){setItems(prev=>prev.filter((_,idx)=>idx!==i));}
+
+  const TEAL="#0d9488";
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{background:"#fff",borderRadius:12,padding:24,width:"100%",maxWidth:640,maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h3 style={{margin:0,fontSize:18,fontWeight:700}}>📦 New Challan</h3>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <div>
+            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Party / Client *</label>
+            <select value={partyId} onChange={e=>setPartyId(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4}}>
+              <option value="">-- Select Party --</option>
+              {contacts.map(c=><option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Site</label>
+            <select value={siteId} onChange={e=>setSiteId(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4}}>
+              <option value="">-- Select Site --</option>
+              {sites.map(s=><option key={s.id} value={s.id}>{s.ownerName} — {s.city}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Vehicle No</label>
+            <input value={vehicleNo} onChange={e=>setVehicleNo(e.target.value)} placeholder="HR55-AB-1234" style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/>
+          </div>
+          <div>
+            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Driver Name</label>
+            <input value={driverName} onChange={e=>setDriverName(e.target.value)} placeholder="Driver name" style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/>
+          </div>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Search Product by Code or Name *</label>
+          <div style={{position:"relative",marginTop:4}}>
+            <input value={codeInput} onChange={e=>searchByCode(e.target.value)} placeholder="Type code or name..." style={{width:"100%",padding:"9px 12px",border:"2px solid #0d9488",borderRadius:8,fontSize:14,boxSizing:"border-box"}}/>
+            {codeSearch.length>0&&(
+              <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,boxShadow:"0 8px 20px rgba(0,0,0,0.12)",zIndex:300,maxHeight:220,overflowY:"auto"}}>
+                {codeSearch.map(p=>(
+                  <div key={p.code} onClick={()=>addItem(p)} style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",alignItems:"center"}} onMouseEnter={e=>e.currentTarget.style.background="#f0fdf4"} onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                    <div>
+                      <span style={{fontWeight:700,color:"#0d9488",fontSize:12}}>{p.code}</span>
+                      <span style={{marginLeft:8,fontSize:13,color:"#1e293b"}}>{p.name}</span>
+                    </div>
+                    <span style={{fontSize:11,color:"#94a3b8",background:"#f1f5f9",padding:"2px 7px",borderRadius:10}}>{p.brand}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        {items.length>0&&(
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Items ({items.length})</label>
+            <div style={{border:"1px solid #e2e8f0",borderRadius:8,overflow:"hidden",marginTop:4}}>
+              {items.map((it,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderBottom:i<items.length-1?"1px solid #f1f5f9":"none",background:i%2===0?"#fff":"#fafffe"}}>
+                  <span style={{flex:1,fontSize:13}}><strong style={{color:"#0d9488"}}>{it.code}</strong> — {it.name}</span>
+                  <input type="number" min="0.01" step="0.01" value={it.qty} onChange={e=>updateQty(i,e.target.value)} style={{width:65,padding:"5px 8px",border:"1px solid #e2e8f0",borderRadius:6,textAlign:"center"}}/>
+                  <span style={{fontSize:12,color:"#64748b",minWidth:28}}>{it.unit}</span>
+                  <button onClick={()=>removeItem(i)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:12}}>✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div style={{marginBottom:14}}>
+          <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Remarks</label>
+          <textarea value={remarks} onChange={e=>setRemarks(e.target.value)} rows={2} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box",resize:"vertical"}}/>
+        </div>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{padding:"9px 20px",border:"1px solid #e2e8f0",borderRadius:8,cursor:"pointer",background:"#f8fafc"}}>Cancel</button>
+          <button onClick={()=>{
+            if(!partyId||items.length===0){alert("Select party and add items");return;}
+            const pt=contacts.find(c=>c.id===partyId);
+            const st=sites.find(s=>s.id===siteId);
+            onSave({partyId,partyName:pt?.name||"Unknown",siteId,siteAddress:st?`${st.ownerName}, ${st.city}`:"-",vehicleNo,driverName,items,remarks});
+          }} style={{padding:"9px 24px",background:TEAL,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700}}>
+            📦 Generate Challan
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// MODULE 2 — STOCK MODULE
+// ════════════════════════════════════════════════════════════════
+function StockModule({stockLedger,setStockLedger,products,challans,genId,fmtINR2,todayStr,fmtDate2}){
+  const [tab,setTab]=React.useState("inhand");
+  const [showAdd,setShowAdd]=React.useState(false);
+  const [searchQ,setSearchQ]=React.useState("");
+  const TEAL="#0d9488";
+
+  // Calculate stock in hand per product code
+  const stockMap={};
+  stockLedger.forEach(entry=>{
+    const k=entry.productCode;
+    if(!stockMap[k]) stockMap[k]={code:k,name:entry.productName||k,brand:entry.brand||"",unit:entry.unit||"Pc.",in:0,out:0};
+    if(entry.type==="in") stockMap[k].in+=Number(entry.qty||0);
+    if(entry.type==="out") stockMap[k].out+=Number(entry.qty||0);
+  });
+  const stockList=Object.values(stockMap).map(s=>({...s,inHand:s.in-s.out})).filter(s=>s.inHand!==0||tab!=="inhand");
+  const filtered=stockList.filter(s=>!searchQ||s.code.toLowerCase().includes(searchQ.toLowerCase())||s.name.toLowerCase().includes(searchQ.toLowerCase()));
+
+  function addStockEntry(data){
+    setStockLedger(prev=>[...prev,{id:genId("SL"),date:todayStr(),...data}]);
+    setShowAdd(false);
+  }
+
+  const tabBtn=(t,lbl)=><button onClick={()=>setTab(t)} style={{background:tab===t?TEAL:"#f1f5f9",color:tab===t?"#fff":"#64748b",border:"none",padding:"6px 14px",borderRadius:20,cursor:"pointer",fontSize:13,fontWeight:600,marginRight:6}}>{lbl}</button>;
+
+  return(
+    <div style={{maxWidth:1100,margin:"0 auto",padding:"20px 16px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{margin:0,fontSize:20,fontWeight:700,color:"#1e293b"}}>🗂 Stock Ledger</h2>
+        <div style={{display:"flex",gap:10}}>
+          <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search product code..." style={{padding:"8px 14px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,width:220}}/>
+          <button onClick={()=>setShowAdd(true)} style={{background:TEAL,color:"#fff",border:"none",padding:"8px 18px",borderRadius:8,cursor:"pointer",fontWeight:600}}>+ Add Stock</button>
+        </div>
+      </div>
+      <div style={{marginBottom:16}}>
+        {tabBtn("inhand","📊 Stock In Hand")}{tabBtn("ledger","📋 All Entries")}
+      </div>
+      {tab==="inhand"&&(
+        <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+            <thead><tr style={{background:"#0d9488",color:"#fff"}}>
+              <th style={{padding:"10px 12px",textAlign:"left"}}>Product Code</th>
+              <th style={{padding:"10px 12px",textAlign:"left"}}>Product Name</th>
+              <th style={{padding:"10px 12px",textAlign:"left"}}>Brand</th>
+              <th style={{padding:"10px 12px",textAlign:"center"}}>IN</th>
+              <th style={{padding:"10px 12px",textAlign:"center"}}>OUT</th>
+              <th style={{padding:"10px 12px",textAlign:"center",fontWeight:800}}>IN HAND</th>
+              <th style={{padding:"10px 12px",textAlign:"center"}}>Unit</th>
+            </tr></thead>
+            <tbody>
+              {filtered.length===0&&<tr><td colSpan={7} style={{textAlign:"center",padding:30,color:"#64748b"}}>No stock entries yet. Add opening stock to start.</td></tr>}
+              {filtered.map((s,i)=>(
+                <tr key={s.code} style={{background:i%2===0?"#fff":"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+                  <td style={{padding:"9px 12px",fontWeight:700,color:TEAL}}>{s.code}</td>
+                  <td style={{padding:"9px 12px",color:"#1e293b"}}>{s.name}</td>
+                  <td style={{padding:"9px 12px",color:"#64748b"}}>{s.brand}</td>
+                  <td style={{padding:"9px 12px",textAlign:"center",color:"#10b981",fontWeight:600}}>{s.in}</td>
+                  <td style={{padding:"9px 12px",textAlign:"center",color:"#ef4444",fontWeight:600}}>{s.out}</td>
+                  <td style={{padding:"9px 12px",textAlign:"center",fontWeight:800,fontSize:15,color:s.inHand>0?"#0d9488":s.inHand<0?"#ef4444":"#64748b"}}>{s.inHand}</td>
+                  <td style={{padding:"9px 12px",textAlign:"center",color:"#64748b"}}>{s.unit}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {tab==="ledger"&&(
+        <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+            <thead><tr style={{background:"#0d9488",color:"#fff"}}>
+              <th style={{padding:"10px 12px",textAlign:"left"}}>Date</th>
+              <th style={{padding:"10px 12px",textAlign:"left"}}>Type</th>
+              <th style={{padding:"10px 12px",textAlign:"left"}}>Product</th>
+              <th style={{padding:"10px 12px",textAlign:"center"}}>Qty</th>
+              <th style={{padding:"10px 12px",textAlign:"left"}}>Party/Note</th>
+              <th style={{padding:"10px 12px",textAlign:"left"}}>Ref</th>
+            </tr></thead>
+            <tbody>
+              {stockLedger.slice().reverse().map((e,i)=>(
+                <tr key={e.id} style={{background:i%2===0?"#fff":"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+                  <td style={{padding:"9px 12px",color:"#64748b"}}>{fmtDate2(e.date)}</td>
+                  <td style={{padding:"9px 12px"}}><span style={{background:e.type==="in"?"#d1fae5":"#fee2e2",color:e.type==="in"?"#065f46":"#dc2626",borderRadius:10,padding:"2px 10px",fontWeight:600,fontSize:11}}>{e.type?.toUpperCase()}</span></td>
+                  <td style={{padding:"9px 12px"}}><strong style={{color:TEAL}}>{e.productCode}</strong> {e.productName&&<span style={{color:"#64748b"}}>— {e.productName}</span>}</td>
+                  <td style={{padding:"9px 12px",textAlign:"center",fontWeight:700}}>{e.qty} {e.unit}</td>
+                  <td style={{padding:"9px 12px",color:"#64748b"}}>{e.party||e.note||"-"}</td>
+                  <td style={{padding:"9px 12px",color:"#94a3b8",fontSize:11}}>{e.challanId||"-"}</td>
+                </tr>
+              ))}
+              {stockLedger.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:30,color:"#64748b"}}>No stock entries yet</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {showAdd&&<StockAddForm products={products} onSave={addStockEntry} onClose={()=>setShowAdd(false)} todayStr={todayStr}/>}
+    </div>
+  );
+}
+
+function StockAddForm({products,onSave,onClose,todayStr}){
+  const [type,setType]=React.useState("in");
+  const [productCode,setProductCode]=React.useState("");
+  const [productName,setProductName]=React.useState("");
+  const [brand,setBrand]=React.useState("");
+  const [unit,setUnit]=React.useState("Pc.");
+  const [qty,setQty]=React.useState(1);
+  const [date,setDate]=React.useState(todayStr());
+  const [note,setNote]=React.useState("");
+  const [codeSearch,setCodeSearch]=React.useState([]);
+
+  function searchProd(q){
+    setProductCode(q);
+    if(q.length<2){setCodeSearch([]);return;}
+    setCodeSearch(products.filter(p=>(p.code||"").toLowerCase().includes(q.toLowerCase())||(p.name||"").toLowerCase().includes(q.toLowerCase())).slice(0,6));
+  }
+  function selectProd(p){setProductCode(p.code);setProductName(p.name);setBrand(p.brand||"");setUnit(p.unit||"Pc.");setCodeSearch([]);}
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:250,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{background:"#fff",borderRadius:12,padding:24,width:"100%",maxWidth:480}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}>
+          <h3 style={{margin:0}}>Add Stock Entry</h3>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:18,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>
+            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Type</label>
+            <select value={type} onChange={e=>setType(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4}}>
+              <option value="in">Stock IN (Purchase / Opening)</option>
+              <option value="out">Stock OUT (Manual)</option>
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Date</label>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/>
+          </div>
+          <div style={{gridColumn:"1/-1",position:"relative"}}>
+            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Product Code / Name *</label>
+            <input value={productCode} onChange={e=>searchProd(e.target.value)} placeholder="Search by code or name..." style={{width:"100%",padding:"9px",border:"2px solid #0d9488",borderRadius:8,marginTop:4,boxSizing:"border-box"}}/>
+            {productName&&<div style={{fontSize:12,color:"#0d9488",marginTop:4}}>✓ {productName} ({brand})</div>}
+            {codeSearch.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,0.1)",zIndex:400}}>
+              {codeSearch.map(p=><div key={p.code} onClick={()=>selectProd(p)} style={{padding:"9px 12px",cursor:"pointer",borderBottom:"1px solid #f1f5f9"}}><strong style={{color:"#0d9488"}}>{p.code}</strong> — {p.name}</div>)}
+            </div>}
+          </div>
+          <div>
+            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Quantity *</label>
+            <input type="number" min="0.01" step="0.01" value={qty} onChange={e=>setQty(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/>
+          </div>
+          <div>
+            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Unit</label>
+            <input value={unit} onChange={e=>setUnit(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/>
+          </div>
+          <div style={{gridColumn:"1/-1"}}>
+            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Note / Source</label>
+            <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Purchase order no / source..." style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:16}}>
+          <button onClick={onClose} style={{padding:"9px 20px",border:"1px solid #e2e8f0",borderRadius:8,cursor:"pointer"}}>Cancel</button>
+          <button onClick={()=>{if(!productCode||!qty){alert("Fill product and quantity");return;}onSave({type,productCode,productName,brand,unit,qty:Number(qty),date,note});}} style={{padding:"9px 24px",background:"#0d9488",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700}}>Save Entry</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// MODULE 3 — CUSTOMER LEDGER + PAYMENTS
+// ════════════════════════════════════════════════════════════════
+function LedgerModule({clientLedger,setClientLedger,payments,setPayments,contacts,sites,challans,genId,fmtINR2,todayStr,fmtDate2,currentUser}){
+  const [selectedParty,setSelectedParty]=React.useState("");
+  const [showPayment,setShowPayment]=React.useState(false);
+  const [tallyNote,setTallyNote]=React.useState(false);
+  const TEAL="#0d9488";
+
+  const partyIds=[...new Set(clientLedger.map(e=>e.partyId).filter(Boolean))];
+
+  function getPartyBalance(partyId){
+    const entries=clientLedger.filter(e=>e.partyId===partyId);
+    const debits=entries.filter(e=>e.type==="debit").reduce((s,e)=>s+Number(e.amount||0),0);
+    const credits=entries.filter(e=>e.type==="credit").reduce((s,e)=>s+Number(e.amount||0),0);
+    return{debits,credits,outstanding:debits-credits};
+  }
+
+  function addPayment(data){
+    const pay={id:genId("PAY"),date:todayStr(),receivedBy:currentUser.name,...data};
+    setPayments(prev=>[pay,...prev]);
+    setClientLedger(prev=>[...prev,{id:genId("CL"),date:todayStr(),partyId:data.partyId,partyName:contacts.find(c=>c.id===data.partyId)?.name||data.partyId,type:"credit",amount:data.amount,desc:"Payment received — "+data.mode,paymentId:pay.id}]);
+    setShowPayment(false);
+  }
+
+  const allParties=contacts.filter(c=>partyIds.includes(c.id)||clientLedger.some(e=>e.partyId===c.id));
+  const displayParties=allParties.length>0?allParties:contacts.filter(c=>challans.some(ch=>ch.partyId===c.id));
+
+  return(
+    <div style={{maxWidth:1100,margin:"0 auto",padding:"20px 16px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{margin:0,fontSize:20,fontWeight:700,color:"#1e293b"}}>💰 Customer Ledger</h2>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={()=>setTallyNote(true)} style={{background:"#f59e0b",color:"#fff",border:"none",padding:"8px 16px",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>🔗 Tally Import</button>
+          <button onClick={()=>setShowPayment(true)} style={{background:TEAL,color:"#fff",border:"none",padding:"8px 18px",borderRadius:8,cursor:"pointer",fontWeight:600}}>+ Add Payment</button>
+        </div>
+      </div>
+
+      {/* Party summary cards */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12,marginBottom:20}}>
+        {displayParties.map(p=>{
+          const {debits,credits,outstanding}=getPartyBalance(p.id);
+          return(
+            <div key={p.id} onClick={()=>setSelectedParty(selectedParty===p.id?"":p.id)} style={{background:"#fff",border:`2px solid ${selectedParty===p.id?TEAL:"#e2e8f0"}`,borderRadius:10,padding:"14px 16px",cursor:"pointer"}}>
+              <div style={{fontWeight:700,color:"#1e293b",marginBottom:4}}>{p.name}</div>
+              <div style={{fontSize:12,color:"#64748b",marginBottom:8}}>{p.type} · {p.city||p.phone||""}</div>
+              <div style={{display:"flex",gap:12,fontSize:13}}>
+                <div><span style={{color:"#10b981",fontWeight:600}}>Rcvd: {fmtINR2(credits)}</span></div>
+                <div><span style={{color:"#ef4444",fontWeight:600}}>Due: {fmtINR2(outstanding)}</span></div>
+              </div>
+            </div>
+          );
+        })}
+        {displayParties.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",padding:40,color:"#64748b"}}>No ledger entries yet. Challan amounts will appear here after marking as received.</div>}
+      </div>
+
+      {/* Selected party detail */}
+      {selectedParty&&(()=>{
+        const party=contacts.find(c=>c.id===selectedParty);
+        const entries=clientLedger.filter(e=>e.partyId===selectedParty).sort((a,b)=>new Date(b.date)-new Date(a.date));
+        const {debits,credits,outstanding}=getPartyBalance(selectedParty);
+        return(
+          <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <h3 style={{margin:0,color:"#1e293b"}}>{party?.name} — Account Statement</h3>
+              <div style={{display:"flex",gap:16}}>
+                <div style={{textAlign:"center"}}><div style={{fontSize:11,color:"#64748b"}}>Total Billed</div><div style={{fontWeight:700,color:"#ef4444"}}>{fmtINR2(debits)}</div></div>
+                <div style={{textAlign:"center"}}><div style={{fontSize:11,color:"#64748b"}}>Received</div><div style={{fontWeight:700,color:"#10b981"}}>{fmtINR2(credits)}</div></div>
+                <div style={{textAlign:"center",background:outstanding>0?"#fef2f2":"#f0fdf4",padding:"6px 14px",borderRadius:8}}><div style={{fontSize:11,color:"#64748b"}}>Outstanding</div><div style={{fontWeight:800,fontSize:16,color:outstanding>0?"#ef4444":"#10b981"}}>{fmtINR2(outstanding)}</div></div>
+              </div>
+            </div>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead><tr style={{background:"#f8fafc"}}><th style={{padding:"8px 12px",textAlign:"left",color:"#64748b"}}>Date</th><th style={{padding:"8px 12px",textAlign:"left",color:"#64748b"}}>Description</th><th style={{padding:"8px 12px",textAlign:"right",color:"#ef4444"}}>Debit (Dr)</th><th style={{padding:"8px 12px",textAlign:"right",color:"#10b981"}}>Credit (Cr)</th></tr></thead>
+              <tbody>
+                {entries.map(e=>(
+                  <tr key={e.id} style={{borderBottom:"1px solid #f1f5f9"}}>
+                    <td style={{padding:"8px 12px",color:"#64748b"}}>{fmtDate2(e.date)}</td>
+                    <td style={{padding:"8px 12px",color:"#1e293b"}}>{e.desc}</td>
+                    <td style={{padding:"8px 12px",textAlign:"right",color:"#ef4444",fontWeight:e.type==="debit"?700:400}}>{e.type==="debit"?fmtINR2(e.amount):"—"}</td>
+                    <td style={{padding:"8px 12px",textAlign:"right",color:"#10b981",fontWeight:e.type==="credit"?700:400}}>{e.type==="credit"?fmtINR2(e.amount):"—"}</td>
+                  </tr>
+                ))}
+                {entries.length===0&&<tr><td colSpan={4} style={{textAlign:"center",padding:20,color:"#64748b"}}>No transactions yet</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
+      {/* Tally info modal */}
+      {tallyNote&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:"#fff",borderRadius:12,padding:24,maxWidth:520,width:"100%"}}>
+            <h3 style={{marginTop:0,color:"#f59e0b"}}>🔗 Tally Prime Integration</h3>
+            <p style={{color:"#475569",lineHeight:1.6}}>To sync billing data from Tally Prime:</p>
+            <ol style={{color:"#475569",lineHeight:2}}>
+              <li>Open Tally Prime → Gateway of Tally</li>
+              <li>Go to <strong>F12: Configure → Advanced Configuration</strong></li>
+              <li>Enable <strong>"Enable ODBC Server"</strong> — port 9000</li>
+              <li>Tally must be open while syncing</li>
+              <li>Click <strong>"Sync from Tally"</strong> below (reads sales vouchers only)</li>
+            </ol>
+            <div style={{background:"#fef3c7",border:"1px solid #f59e0b",borderRadius:8,padding:12,marginBottom:16,fontSize:13}}>
+              ⚠️ Tally must be running on the same network. This imports billing/invoice data only — does not modify Tally.
+            </div>
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button onClick={()=>setTallyNote(false)} style={{padding:"9px 20px",border:"1px solid #e2e8f0",borderRadius:8,cursor:"pointer"}}>Close</button>
+              <button onClick={async()=>{
+                try{
+                  const r=await fetch("http://localhost:9000",{method:"POST",body:'<ENVELOPE><HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER><BODY><EXPORTDATA><REQUESTDESC><REPORTNAME>Ledger</REPORTNAME></REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>',headers:{"Content-Type":"text/xml"}});
+                  alert("Tally connected! Full XML import coming in next update.");
+                }catch(e){alert("Cannot connect to Tally. Make sure Tally Prime is open and ODBC is enabled on port 9000.");}
+                setTallyNote(false);
+              }} style={{padding:"9px 20px",background:"#f59e0b",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700}}>🔌 Sync from Tally</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPayment&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <PaymentForm contacts={contacts} onSave={addPayment} onClose={()=>setShowPayment(false)} fmtINR2={fmtINR2} defaultParty={selectedParty}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PaymentForm({contacts,onSave,onClose,fmtINR2,defaultParty}){
+  const [partyId,setPartyId]=React.useState(defaultParty||"");
+  const [amount,setAmount]=React.useState("");
+  const [mode,setMode]=React.useState("Cash");
+  const [chequeNo,setChequeNo]=React.useState("");
+  const [note,setNote]=React.useState("");
+  return(
+    <div style={{background:"#fff",borderRadius:12,padding:24,maxWidth:420,width:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}>
+        <h3 style={{margin:0}}>💳 Add Payment</h3>
+        <button onClick={onClose} style={{background:"none",border:"none",fontSize:18,cursor:"pointer"}}>✕</button>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Party *</label>
+          <select value={partyId} onChange={e=>setPartyId(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4}}>
+            <option value="">-- Select Party --</option>
+            {contacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></div>
+        <div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Amount (Rs.) *</label>
+          <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/></div>
+        <div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Mode</label>
+          <select value={mode} onChange={e=>setMode(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4}}>
+            {["Cash","Cheque","NEFT/RTGS","UPI","Bank Transfer"].map(m=><option key={m}>{m}</option>)}
+          </select></div>
+        {(mode==="Cheque")&&<div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Cheque No</label><input value={chequeNo} onChange={e=>setChequeNo(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/></div>}
+        <div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Note</label><input value={note} onChange={e=>setNote(e.target.value)} placeholder="Against invoice / advance..." style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/></div>
+      </div>
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:16}}>
+        <button onClick={onClose} style={{padding:"9px 20px",border:"1px solid #e2e8f0",borderRadius:8,cursor:"pointer"}}>Cancel</button>
+        <button onClick={()=>{if(!partyId||!amount){alert("Fill party and amount");return;}onSave({partyId,amount:Number(amount),mode,chequeNo,note});}} style={{padding:"9px 24px",background:"#0d9488",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700}}>✅ Save Payment</button>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// MODULE 4 — SERVICE TICKETS + AMC
+// ════════════════════════════════════════════════════════════════
+function ServiceModule({serviceTickets,setServiceTickets,amcContracts,setAmcContracts,contacts,sites,currentUser,tgSend2,genId,fmtINR2,todayStr,fmtDate2,products}){
+  const [tab,setTab]=React.useState("tickets");
+  const [showAMCForm,setShowAMCForm]=React.useState(false);
+  const TEAL="#0d9488";
+
+  // Reminder popup for AMC/service due
+  const today=new Date();
+  const upcomingAMC=amcContracts.filter(a=>{
+    if(!a.nextServiceDate)return false;
+    const d=new Date(a.nextServiceDate);
+    const diff=(d-today)/(1000*60*60*24);
+    return diff>=0&&diff<=15;
+  });
+
+  function resolveTicket(id,note){
+    setServiceTickets(prev=>prev.map(t=>t.id===id?{...t,status:"resolved",resolvedAt:new Date().toISOString(),resolvedBy:currentUser.name,resolution:note}:t));
+  }
+
+  const complaintUrl=`${window.location.origin.replace(/\/ew-site-crm.*$/,"")}/ew-complaint/?eid=EW`;
+
+  const tabBtn=(t,lbl)=><button onClick={()=>setTab(t)} style={{background:tab===t?TEAL:"#f1f5f9",color:tab===t?"#fff":"#64748b",border:"none",padding:"6px 14px",borderRadius:20,cursor:"pointer",fontSize:13,fontWeight:600,marginRight:6}}>{lbl}</button>;
+
+  return(
+    <div style={{maxWidth:1100,margin:"0 auto",padding:"20px 16px"}}>
+      {upcomingAMC.length>0&&(
+        <div style={{background:"#fef3c7",border:"1px solid #f59e0b",borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>🔔</span>
+          <div><strong style={{color:"#92400e"}}>AMC/Service Due Soon:</strong> {upcomingAMC.map(a=><span key={a.id} style={{marginLeft:8,background:"#fff",border:"1px solid #f59e0b",borderRadius:6,padding:"2px 8px",fontSize:12}}>{a.clientName} — Due: {fmtDate2(a.nextServiceDate)}</span>)}</div>
+        </div>
+      )}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{margin:0,fontSize:20,fontWeight:700,color:"#1e293b"}}>🔧 Service & AMC</h2>
+        <div style={{display:"flex",gap:10}}>
+          <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,padding:"8px 14px",fontSize:13}}>
+            📎 Complaint URL: <a href={complaintUrl} target="_blank" style={{color:TEAL,fontWeight:600}}>{complaintUrl}</a>
+          </div>
+          {tab==="amc"&&<button onClick={()=>setShowAMCForm(true)} style={{background:TEAL,color:"#fff",border:"none",padding:"8px 18px",borderRadius:8,cursor:"pointer",fontWeight:600}}>+ New AMC</button>}
+        </div>
+      </div>
+      <div style={{marginBottom:16}}>
+        {tabBtn("tickets",`🎫 Tickets (${serviceTickets.filter(t=>t.status!=="resolved").length})`)}
+        {tabBtn("amc",`📋 AMC Contracts (${amcContracts.length})`)}
+      </div>
+
+      {tab==="tickets"&&(
+        <div>
+          {serviceTickets.length===0&&<div style={{textAlign:"center",padding:40,color:"#64748b"}}>No service tickets yet. Share the complaint URL with clients.</div>}
+          {serviceTickets.map(t=>(
+            <div key={t.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"14px 16px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                    <span style={{fontWeight:700,color:"#1e293b"}}>{t.id}</span>
+                    <span style={{background:{open:"#fee2e2",inprogress:"#fef3c7",resolved:"#d1fae5"}[t.status]||"#f1f5f9",color:{open:"#dc2626",inprogress:"#92400e",resolved:"#065f46"}[t.status]||"#64748b",borderRadius:10,padding:"2px 10px",fontSize:11,fontWeight:600}}>{t.status?.toUpperCase()}</span>
+                    <span style={{fontSize:11,color:"#64748b"}}>{fmtDate2(t.createdAt)}</span>
+                  </div>
+                  <div style={{fontWeight:600,color:"#1e293b",marginBottom:4}}>{t.clientName} — {t.phone}</div>
+                  <div style={{color:"#64748b",fontSize:13,marginBottom:4}}><strong>Product:</strong> {t.product} | <strong>Issue:</strong> {t.complaint}</div>
+                  {t.siteAddress&&<div style={{fontSize:12,color:"#94a3b8"}}>📍 {t.siteAddress}</div>}
+                  {t.resolution&&<div style={{marginTop:8,background:"#f0fdf4",border:"1px solid #86efac",borderRadius:6,padding:"8px 12px",fontSize:13,color:"#065f46"}}>✅ {t.resolution} — by {t.resolvedBy}</div>}
+                </div>
+                {t.status!=="resolved"&&<button onClick={()=>{const note=prompt("Resolution note:");if(note)resolveTicket(t.id,note);}} style={{background:"#10b981",color:"#fff",border:"none",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:12,whiteSpace:"nowrap"}}>✅ Resolve</button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab==="amc"&&(
+        <div>
+          {amcContracts.length===0&&<div style={{textAlign:"center",padding:40,color:"#64748b"}}>No AMC contracts yet. Click "+ New AMC" to add.</div>}
+          {amcContracts.map(a=>(
+            <div key={a.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"14px 16px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontWeight:700,color:"#1e293b",marginBottom:4}}>{a.clientName} — {a.product}</div>
+                  <div style={{fontSize:13,color:"#64748b"}}>
+                    AMC Period: {fmtDate2(a.startDate)} → {fmtDate2(a.endDate)} | Amount: {fmtINR2(a.amount)} | Visits/yr: {a.visits}
+                  </div>
+                  <div style={{fontSize:13,color:"#64748b",marginTop:4}}>
+                    Next Service: <strong style={{color:new Date(a.nextServiceDate)<new Date()??"#ef4444":"#0d9488"}}>{fmtDate2(a.nextServiceDate)}</strong>
+                  </div>
+                </div>
+                <button onClick={()=>{
+                  const next=prompt("Enter next service date (YYYY-MM-DD):");
+                  if(next) setAmcContracts(prev=>prev.map(c=>c.id===a.id?{...c,nextServiceDate:next}:c));
+                }} style={{background:"#e0f2fe",color:"#0284c7",border:"none",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:12}}>📅 Update Next Service</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showAMCForm&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <AMCForm contacts={contacts} onSave={data=>{setAmcContracts(prev=>[{id:genId("AMC"),...data},...prev]);setShowAMCForm(false);}} onClose={()=>setShowAMCForm(false)} todayStr={todayStr}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AMCForm({contacts,onSave,onClose,todayStr}){
+  const [clientId,setClientId]=React.useState("");
+  const [clientName,setClientName]=React.useState("");
+  const [product,setProduct]=React.useState("");
+  const [startDate,setStartDate]=React.useState(todayStr());
+  const [endDate,setEndDate]=React.useState("");
+  const [amount,setAmount]=React.useState("");
+  const [visits,setVisits]=React.useState(2);
+  const [nextServiceDate,setNextServiceDate]=React.useState("");
+  const [notes,setNotes]=React.useState("");
+  return(
+    <div style={{background:"#fff",borderRadius:12,padding:24,maxWidth:480,width:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><h3 style={{margin:0}}>📋 New AMC Contract</h3><button onClick={onClose} style={{background:"none",border:"none",fontSize:18,cursor:"pointer"}}>✕</button></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div style={{gridColumn:"1/-1"}}><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Client *</label>
+          <select value={clientId} onChange={e=>{setClientId(e.target.value);setClientName(contacts.find(c=>c.id===e.target.value)?.name||"");}} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4}}>
+            <option value="">-- Select Client --</option>
+            {contacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {!clientId&&<input value={clientName} onChange={e=>setClientName(e.target.value)} placeholder="Or type client name" style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:6,boxSizing:"border-box"}}/>}
+        </div>
+        <div style={{gridColumn:"1/-1"}}><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Product/Equipment *</label><input value={product} onChange={e=>setProduct(e.target.value)} placeholder="e.g. Water Softener, Pump..." style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/></div>
+        <div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Start Date</label><input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/></div>
+        <div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>End Date</label><input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/></div>
+        <div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>AMC Amount (Rs.)</label><input type="number" value={amount} onChange={e=>setAmount(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/></div>
+        <div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Visits/Year</label><input type="number" value={visits} onChange={e=>setVisits(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Next Service Date</label><input type="date" value={nextServiceDate} onChange={e=>setNextServiceDate(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/></div>
+        <div style={{gridColumn:"1/-1"}}><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Notes</label><textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={2} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box",resize:"vertical"}}/></div>
+      </div>
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:16}}>
+        <button onClick={onClose} style={{padding:"9px 20px",border:"1px solid #e2e8f0",borderRadius:8,cursor:"pointer"}}>Cancel</button>
+        <button onClick={()=>{if(!product){alert("Enter product");return;}onSave({clientId,clientName:clientName||contacts.find(c=>c.id===clientId)?.name||"Unknown",product,startDate,endDate,amount:Number(amount),visits:Number(visits),nextServiceDate,notes,status:"active"});}} style={{padding:"9px 24px",background:"#0d9488",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700}}>Save AMC</button>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// MODULE 5 — COMMISSION MANAGEMENT
+// ════════════════════════════════════════════════════════════════
+function CommissionModule({commissionRules,setCommissionRules,commissionLedger,setCommissionLedger,contacts,sites,challans,genId,fmtINR2,todayStr,fmtDate2,isAdmin}){
+  const [tab,setTab]=React.useState("contacts");
+  const [selectedContact,setSelectedContact]=React.useState(null);
+  const [showRuleForm,setShowRuleForm]=React.useState(false);
+  const TEAL="#0d9488";
+
+  // Get all unique contact types from contacts
+  const plumbers=contacts.filter(c=>c.type==="Plumber"||c.type==="Contractor");
+  const architects=contacts.filter(c=>c.type==="Architect");
+  const builders=contacts.filter(c=>c.type==="Builder");
+  const pmcs=contacts.filter(c=>c.type==="PMC");
+  const allContacts=[...plumbers,...architects,...builders,...pmcs];
+
+  function getContactSummary(contactId){
+    const relatedSites=sites.filter(s=>(s.contacts||[]).some(c=>c.id===contactId));
+    const totalComm=commissionLedger.filter(e=>e.contactId===contactId).reduce((s,e)=>s+Number(e.amount||0),0);
+    const paidComm=commissionLedger.filter(e=>e.contactId===contactId&&e.paid).reduce((s,e)=>s+Number(e.amount||0),0);
+    return{sites:relatedSites.length,totalComm,paidComm,pending:totalComm-paidComm};
+  }
+
+  function markPaid(id){
+    setCommissionLedger(prev=>prev.map(e=>e.id===id?{...e,paid:true,paidAt:new Date().toISOString()}:e));
+  }
+
+  const tabBtn=(t,lbl)=><button onClick={()=>setTab(t)} style={{background:tab===t?TEAL:"#f1f5f9",color:tab===t?"#fff":"#64748b",border:"none",padding:"6px 14px",borderRadius:20,cursor:"pointer",fontSize:13,fontWeight:600,marginRight:6}}>{lbl}</button>;
+
+  return(
+    <div style={{maxWidth:1100,margin:"0 auto",padding:"20px 16px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{margin:0,fontSize:20,fontWeight:700,color:"#1e293b"}}>🤝 Commission Management</h2>
+        <button onClick={()=>setShowRuleForm(true)} style={{background:TEAL,color:"#fff",border:"none",padding:"8px 18px",borderRadius:8,cursor:"pointer",fontWeight:600}}>+ Set Commission Rule</button>
+      </div>
+      <div style={{marginBottom:16}}>
+        {tabBtn("contacts","👥 By Contact")}
+        {tabBtn("ledger","📋 Ledger")}
+        {tabBtn("rules","⚙️ Rules")}
+      </div>
+
+      {tab==="contacts"&&(
+        <div>
+          {[{label:"🔧 Plumbers / Contractors",list:plumbers},{label:"📐 Architects",list:architects},{label:"🏗 Builders",list:builders},{label:"📋 PMC",list:pmcs}].map(({label,list})=>(
+            list.length>0&&<div key={label} style={{marginBottom:20}}>
+              <h3 style={{fontSize:14,color:"#64748b",fontWeight:600,marginBottom:10}}>{label}</h3>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:10}}>
+                {list.map(c=>{
+                  const{sites:sc,totalComm,paidComm,pending}=getContactSummary(c.id);
+                  return(
+                    <div key={c.id} onClick={()=>setSelectedContact(selectedContact?.id===c.id?null:c)} style={{background:"#fff",border:`2px solid ${selectedContact?.id===c.id?TEAL:"#e2e8f0"}`,borderRadius:10,padding:"12px 14px",cursor:"pointer"}}>
+                      <div style={{fontWeight:700,color:"#1e293b",marginBottom:2}}>{c.name}</div>
+                      <div style={{fontSize:11,color:"#94a3b8",marginBottom:8}}>{c.phone} · {sc} site{sc!==1?"s":""}</div>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                        <span style={{color:"#64748b"}}>Earned: <strong style={{color:"#0d9488"}}>{fmtINR2(totalComm)}</strong></span>
+                        <span style={{color:"#64748b"}}>Pending: <strong style={{color:pending>0?"#ef4444":"#10b981"}}>{fmtINR2(pending)}</strong></span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {selectedContact&&list.find(c=>c.id===selectedContact.id)&&(()=>{
+                const entries=commissionLedger.filter(e=>e.contactId===selectedContact.id);
+                const relSites=sites.filter(s=>(s.contacts||[]).some(c=>c.id===selectedContact.id));
+                return(
+                  <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:20,marginTop:12}}>
+                    <h3 style={{margin:"0 0 12px 0",color:"#1e293b"}}>{selectedContact.name} — Sites & Commission</h3>
+                    {relSites.length===0&&<p style={{color:"#94a3b8"}}>No sites linked. Go to site and add this contact.</p>}
+                    {relSites.map(s=>(
+                      <div key={s.id} style={{background:"#f8fafc",borderRadius:8,padding:"10px 14px",marginBottom:8}}>
+                        <div style={{fontWeight:600,color:"#1e293b"}}>{s.ownerName} — {s.city} <span style={{fontSize:11,color:"#64748b",marginLeft:8}}>{s.stage}</span></div>
+                      </div>
+                    ))}
+                    {entries.length>0&&(
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,marginTop:12}}>
+                        <thead><tr style={{background:"#f1f5f9"}}><th style={{padding:"8px 12px",textAlign:"left"}}>Date</th><th style={{padding:"8px 12px",textAlign:"left"}}>Challan</th><th style={{padding:"8px 12px",textAlign:"left"}}>Brand</th><th style={{padding:"8px 12px",textAlign:"right"}}>Amount</th><th style={{padding:"8px 12px",textAlign:"center"}}>Status</th></tr></thead>
+                        <tbody>
+                          {entries.map(e=>(
+                            <tr key={e.id} style={{borderBottom:"1px solid #f1f5f9"}}>
+                              <td style={{padding:"8px 12px",color:"#64748b"}}>{fmtDate2(e.date)}</td>
+                              <td style={{padding:"8px 12px",color:"#0d9488"}}>{e.challanId||"-"}</td>
+                              <td style={{padding:"8px 12px"}}>{e.brand||"-"}</td>
+                              <td style={{padding:"8px 12px",textAlign:"right",fontWeight:700}}>{fmtINR2(e.amount)}</td>
+                              <td style={{padding:"8px 12px",textAlign:"center"}}>
+                                {e.paid?<span style={{color:"#10b981",fontWeight:600}}>✅ Paid</span>:<button onClick={()=>markPaid(e.id)} style={{background:"#dcfce7",color:"#15803d",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:12,fontWeight:600}}>Mark Paid</button>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          ))}
+          {allContacts.length===0&&<div style={{textAlign:"center",padding:40,color:"#64748b"}}>No contacts found. Add contacts (Plumber/Architect/Builder/PMC) in the Sites section.</div>}
+        </div>
+      )}
+
+      {tab==="ledger"&&(
+        <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+            <thead><tr style={{background:"#0d9488",color:"#fff"}}><th style={{padding:"10px 12px",textAlign:"left"}}>Date</th><th style={{padding:"10px 12px",textAlign:"left"}}>Contact</th><th style={{padding:"10px 12px",textAlign:"left"}}>Brand</th><th style={{padding:"10px 12px",textAlign:"left"}}>Challan</th><th style={{padding:"10px 12px",textAlign:"right"}}>Commission</th><th style={{padding:"10px 12px",textAlign:"center"}}>Status</th></tr></thead>
+            <tbody>
+              {commissionLedger.slice().reverse().map((e,i)=>(
+                <tr key={e.id} style={{background:i%2===0?"#fff":"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+                  <td style={{padding:"9px 12px",color:"#64748b"}}>{fmtDate2(e.date)}</td>
+                  <td style={{padding:"9px 12px",fontWeight:600}}>{e.contactName||"-"}</td>
+                  <td style={{padding:"9px 12px",color:"#64748b"}}>{e.brand||"-"}</td>
+                  <td style={{padding:"9px 12px",color:"#0d9488"}}>{e.challanId||"-"}</td>
+                  <td style={{padding:"9px 12px",textAlign:"right",fontWeight:700}}>{fmtINR2(e.amount)}</td>
+                  <td style={{padding:"9px 12px",textAlign:"center"}}>{e.paid?<span style={{color:"#10b981",fontSize:12}}>✅ Paid</span>:<span style={{color:"#f59e0b",fontSize:12}}>⏳ Pending</span>}</td>
+                </tr>
+              ))}
+              {commissionLedger.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:30,color:"#64748b"}}>No commission entries yet</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab==="rules"&&(
+        <div>
+          <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead><tr style={{background:"#0d9488",color:"#fff"}}><th style={{padding:"10px 12px",textAlign:"left"}}>Brand</th><th style={{padding:"10px 12px",textAlign:"left"}}>Contact Type</th><th style={{padding:"10px 12px",textAlign:"right"}}>Commission %</th><th style={{padding:"10px 12px",textAlign:"right"}}>Discount %</th><th style={{padding:"10px 12px",textAlign:"left"}}>Note</th><th style={{padding:"10px 12px"}}></th></tr></thead>
+              <tbody>
+                {commissionRules.map((r,i)=>(
+                  <tr key={r.id} style={{background:i%2===0?"#fff":"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+                    <td style={{padding:"9px 12px",fontWeight:700,color:"#0d9488"}}>{r.brand}</td>
+                    <td style={{padding:"9px 12px"}}>{r.contactType||r.partyId||"All"}</td>
+                    <td style={{padding:"9px 12px",textAlign:"right",fontWeight:700}}>{r.commissionPct}%</td>
+                    <td style={{padding:"9px 12px",textAlign:"right"}}>{r.discount||0}%</td>
+                    <td style={{padding:"9px 12px",color:"#64748b",fontSize:12}}>{r.note||"-"}</td>
+                    <td style={{padding:"9px 12px"}}><button onClick={()=>setCommissionRules(prev=>prev.filter(x=>x.id!==r.id))} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11}}>Delete</button></td>
+                  </tr>
+                ))}
+                {commissionRules.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:30,color:"#64748b"}}>No rules set. Add brand-wise commission rules.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {showRuleForm&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <CommissionRuleForm contacts={contacts} onSave={data=>{setCommissionRules(prev=>[{id:genId("CR"),...data},...prev]);setShowRuleForm(false);}} onClose={()=>setShowRuleForm(false)}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CommissionRuleForm({contacts,onSave,onClose}){
+  const [brand,setBrand]=React.useState("");
+  const [contactType,setContactType]=React.useState("Plumber");
+  const [partyId,setPartyId]=React.useState("");
+  const [commissionPct,setCommissionPct]=React.useState("");
+  const [discount,setDiscount]=React.useState("");
+  const [note,setNote]=React.useState("");
+  return(
+    <div style={{background:"#fff",borderRadius:12,padding:24,maxWidth:440,width:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><h3 style={{margin:0}}>⚙️ Commission Rule</h3><button onClick={onClose} style={{background:"none",border:"none",fontSize:18,cursor:"pointer"}}>✕</button></div>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Brand *</label><input value={brand} onChange={e=>setBrand(e.target.value)} placeholder="e.g. GRUNDFOS, HULIOT..." style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/></div>
+        <div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Apply To</label>
+          <select value={contactType} onChange={e=>setContactType(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4}}>
+            <option value="Plumber">All Plumbers</option>
+            <option value="Architect">All Architects</option>
+            <option value="Builder">All Builders</option>
+            <option value="PMC">All PMC</option>
+            <option value="specific">Specific Contact</option>
+          </select>
+          {contactType==="specific"&&<select value={partyId} onChange={e=>setPartyId(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:6}}>
+            <option value="">-- Select Contact --</option>
+            {contacts.map(c=><option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
+          </select>}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Commission % *</label><input type="number" value={commissionPct} onChange={e=>setCommissionPct(e.target.value)} placeholder="e.g. 5" style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/></div>
+          <div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Client Discount %</label><input type="number" value={discount} onChange={e=>setDiscount(e.target.value)} placeholder="e.g. 10" style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/></div>
+        </div>
+        <div><label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Note</label><input value={note} onChange={e=>setNote(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/></div>
+      </div>
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:16}}>
+        <button onClick={onClose} style={{padding:"9px 20px",border:"1px solid #e2e8f0",borderRadius:8,cursor:"pointer"}}>Cancel</button>
+        <button onClick={()=>{if(!brand||!commissionPct){alert("Fill brand and commission %");return;}onSave({brand,contactType,partyId,commissionPct:Number(commissionPct),discount:Number(discount||0),note});}} style={{padding:"9px 24px",background:"#0d9488",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700}}>Save Rule</button>
+      </div>
+    </div>
+  );
+}
+
 
 ReactDOM.createRoot(document.getElementById("root")).render(<CRMApp/>);
 </script>
