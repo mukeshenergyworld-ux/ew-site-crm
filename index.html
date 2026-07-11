@@ -4181,7 +4181,7 @@ function CRMApp(){
   }
 
   function getPendingProducts(site){
-    const si=STAGE_IDX[site.stage]??0,result=[];
+    const si=(STAGE_IDX[site.stage]!==undefined?STAGE_IDX[site.stage]:0),result=[];
     STAGES.forEach((st,i)=>{ if(i>si)return; (STAGE_PRODUCTS[st.id]||[]).forEach(p=>{ const pitch=site.pitches?.[p.id]; if(!pitch||pitch.status==="pending") result.push({...p,stage:st}); }); });
     return result;
   }
