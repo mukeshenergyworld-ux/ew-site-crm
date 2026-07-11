@@ -3116,22 +3116,27 @@ function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setF
 
   // Pitch bar — unique brands from master price list (column "brand")
   const PITCH_BRANDS=React.useMemo(()=>{
-    // Step 1: Start with known EW brands from STAGE_PRODUCTS (always correct)
+    // Master brand list — exact names from Energy World Brand Summary sheet
+    const MASTER_BRANDS=[
+      "Huliot","LEO","Grundfos","TOTO","FIMA Carlo Frattini",
+      "TECE","Lunos","Pentair","Geberit","Oyster",
+      "Revita","Green Heat+","Adani Solar","Grohe"
+    ];
+    // Use master list as base; also add any NEW brands from synced products not in list
     const seen={};
-    Object.values(STAGE_PRODUCTS).flat().forEach(p=>{
-      const b=(p.brand||"").trim();
-      if(b) seen[b.toUpperCase()]=b;
-    });
-    // Step 2: Add any NEW brands from master sheet not already in the list
+    MASTER_BRANDS.forEach(b=>{ seen[b.toUpperCase()]=b; });
     if(products&&products.length>0){
       products.forEach(p=>{
         const b=(p.brand||"").toString().trim();
         if(!b||b==="Other") return;
-        const key=b.toUpperCase();
-        if(!seen[key]) seen[key]=b;
+        if(!seen[b.toUpperCase()]) seen[b.toUpperCase()]=b; // new brand from sheet
       });
     }
-    return Object.values(seen).sort((a,b2)=>a.localeCompare(b2));
+    // Return in master order first, then alphabetical for any new ones
+    const masterKeys=MASTER_BRANDS.map(b=>b.toUpperCase());
+    const result=MASTER_BRANDS.filter(b=>seen[b.toUpperCase()]);
+    Object.keys(seen).forEach(k=>{ if(!masterKeys.includes(k)) result.push(seen[k]); });
+    return result;
   },[products]);
   const PITCH_STATUS_COLOR={won:"#10b981",pitched:"#f59e0b",pending:"#ef4444",lost:"#94a3b8"};
   const PITCH_LABEL={won:"Won ✓",pitched:"Pitched",pending:"To Pitch",lost:"Lost"};
