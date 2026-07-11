@@ -3147,7 +3147,7 @@ function AdminPanel({appUsers,permissions,sites,currentUser,onUpdatePassword,onT
     <div>
       {/* Tab bar */}
       <div style={{display:"flex",gap:4,marginBottom:16,background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:4}}>
-        {[["overview","📊 Overview"],["users","👥 Users & Passwords"],["permissions","🔐 Permissions"]].map(([t,l])=>(
+        {[["overview","📊 Overview"],["users","👥 Users & Passwords"],["permissions","🔐 Permissions"],["export","📥 Backup & Export"]].map(([t,l])=>(
           <button key={t} onClick={()=>setTab(t)} style={tabStyle(t)}>{l}</button>
         ))}
       </div>
@@ -3402,6 +3402,185 @@ function AdminPanel({appUsers,permissions,sites,currentUser,onUpdatePassword,onT
           </div>
         </div>
       )}
+
+      {/* ── BACKUP & EXPORT TAB ── */}
+      {tab==="export"&&(
+        <ExportBackupPanel sites={sites} onUpdateSite={onUpdateSite}/>
+      )}
+    </div>
+  );
+}
+
+function ExportBackupPanel({sites,onUpdateSite}){
+  const [status,setStatus]=React.useState("");
+  const [backupStatus,setBackupStatus]=React.useState("");
+  const WEBAPP_URL_LOCAL="https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
+
+  function getAllData(){
+    const get=(k,d=[])=>{try{return JSON.parse(localStorage.getItem(k)||"null")||d;}catch(e){return d;}};
+    return {
+      sites:    get("ew_sites2",[]),
+      contacts: get("ew_contacts",[]),
+      challans: get("ew_challans_v2",[]),
+      stockLedger: get("ew_stock_v2",[]),
+      clientLedger: get("ew_client_ledger_v2",[]),
+      payments: get("ew_payments_v2",[]),
+      commissionRules: get("ew_comm_rules_v2",[]),
+      commissionLedger: get("ew_comm_ledger_v2",[]),
+      serviceTickets: get("ew_service_v2",[]),
+      siteVisits: get("ew_site_visits",[]),
+    };
+  }
+
+  // ─── Layer 3: Download Excel (CSV-per-sheet zipped into one XLSX-like multi-sheet) ───
+  // We'll use a clean multi-sheet approach with SheetJS loaded via CDN
+  async function downloadExcel(){
+    setStatus("⏳ Preparing download...");
+    try{
+      // Dynamically load XLSX if not present
+      if(!window.XLSX){
+        await new Promise((res,rej)=>{
+          const s=document.createElement("script");
+          s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+          s.onload=res; s.onerror=rej;
+          document.head.appendChild(s);
+        });
+      }
+      const XLSX=window.XLSX;
+      const wb=XLSX.utils.book_new();
+      const data=getAllData();
+      const now=new Date();
+      const dateStr=now.toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"});
+
+      // Helper: flatten object array to sheet
+      function addSheet(name,arr){
+        if(!arr||!arr.length){ XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([["No data"]]),"  "+name); return; }
+        // Flatten nested fields
+        const flat=arr.map(row=>{
+          const r={...row};
+          // Flatten pitches/quotations out of sites
+          if(r.pitches) r.pitches=JSON.stringify(r.pitches);
+          if(r.quotations) r.quotations=JSON.stringify(r.quotations);
+          if(r.contacts) r.contacts=JSON.stringify(r.contacts);
+          if(r.items) r.items=JSON.stringify(r.items);
+          return r;
+        });
+        const ws=XLSX.utils.json_to_sheet(flat);
+        XLSX.utils.book_append_sheet(wb,ws,name.substring(0,31));
+      }
+
+      // Summary sheet
+      const summary=[
+        ["EW CRM — Full Data Export"],
+        ["Generated:",dateStr],
+        [""],
+        ["Sheet","Records"],
+        ["Sites",data.sites.length],
+        ["Contacts",data.contacts.length],
+        ["Challans",data.challans.length],
+        ["Stock Ledger",data.stockLedger.length],
+        ["Client Ledger",data.clientLedger.length],
+        ["Payments",data.payments.length],
+        ["Commission Rules",data.commissionRules.length],
+        ["Commission Ledger",data.commissionLedger.length],
+        ["Service Tickets",data.serviceTickets.length],
+        ["Site Visits",data.siteVisits.length],
+      ];
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(summary),"Summary");
+
+      addSheet("Sites",data.sites);
+      addSheet("Contacts",data.contacts);
+      addSheet("Challans",data.challans);
+      addSheet("Stock Ledger",data.stockLedger);
+      addSheet("Client Ledger",data.clientLedger);
+      addSheet("Payments",data.payments);
+      addSheet("Commission Rules",data.commissionRules);
+      addSheet("Commission Ledger",data.commissionLedger);
+      addSheet("Service Tickets",data.serviceTickets);
+      addSheet("Site Visits",data.siteVisits);
+
+      const fname=`EW_CRM_Backup_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,"0")}${String(now.getDate()).padStart(2,"0")}.xlsx`;
+      XLSX.writeFile(wb,fname);
+      setStatus("✅ Downloaded: "+fname);
+    }catch(e){
+      setStatus("❌ Error: "+e.message);
+    }
+  }
+
+  // ─── Layer 2: Trigger GAS nightly backup now ───
+  async function triggerBackupNow(){
+    setBackupStatus("⏳ Sending all data to Drive backup...");
+    try{
+      const data=getAllData();
+      const res=await fetch(WEBAPP_URL_LOCAL,{
+        method:"POST",
+        body:JSON.stringify({action:"manualBackup",data,triggeredBy:"Mukesh",triggeredAt:new Date().toISOString()})
+      });
+      const json=await res.json().catch(()=>({}));
+      if(json.ok) setBackupStatus("✅ Backup saved to Google Drive — "+json.folder);
+      else setBackupStatus("✅ Backup request sent to GAS. Check Drive > EW CRM Backups.");
+    }catch(e){
+      setBackupStatus("❌ "+e.message);
+    }
+  }
+
+  const cardS={background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:20,marginBottom:14};
+  const btnS=(color)=>({background:color,color:"#fff",border:"none",borderRadius:10,padding:"12px 22px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:8});
+
+  return(
+    <div>
+      <h3 style={{margin:"0 0 14px",fontSize:15,fontWeight:700}}>Backup & Export</h3>
+
+      {/* Layer 1 status */}
+      <div style={cardS}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+          <span style={{fontSize:22}}>🔄</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:14}}>Layer 1 — Live Sync to Google Sheets</div>
+            <div style={{fontSize:12,color:"#64748b"}}>All data auto-syncs to your Sheet every time you make a change (3-second debounce)</div>
+          </div>
+          <span style={{marginLeft:"auto",background:"#dcfce7",color:"#16a34a",borderRadius:20,padding:"4px 12px",fontSize:12,fontWeight:700}}>✓ Active</span>
+        </div>
+        <div style={{fontSize:11,color:"#94a3b8",background:"#f8fafc",borderRadius:8,padding:"8px 12px"}}>
+          Syncing: Sites · Contacts · Challans · Stock · Client Ledger · Payments · Commissions · Tickets · Site Visits
+        </div>
+      </div>
+
+      {/* Layer 2 */}
+      <div style={cardS}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <span style={{fontSize:22}}>🌙</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:14}}>Layer 2 — Nightly Drive Backup</div>
+            <div style={{fontSize:12,color:"#64748b"}}>GAS runs at midnight daily — saves a full snapshot to <strong>Drive → EW CRM Backups</strong> folder</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+          <button onClick={triggerBackupNow} style={btnS("#7c3aed")}>
+            ☁️ Run Backup Now
+          </button>
+          <div style={{fontSize:12,color:"#64748b"}}>Automatic nightly backup runs via GAS time trigger (set up in GAS)</div>
+        </div>
+        {backupStatus&&<div style={{marginTop:10,fontSize:13,color:backupStatus.startsWith("✅")?"#16a34a":"#dc2626",fontWeight:600}}>{backupStatus}</div>}
+      </div>
+
+      {/* Layer 3 */}
+      <div style={cardS}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+          <span style={{fontSize:22}}>📥</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:14}}>Layer 3 — Download Full Excel Export</div>
+            <div style={{fontSize:12,color:"#64748b"}}>All 10 modules in one .xlsx file — open in Excel or Google Sheets</div>
+          </div>
+        </div>
+        <button onClick={downloadExcel} style={btnS("#0d9488")}>
+          📊 Download All Data as Excel
+        </button>
+        {status&&<div style={{marginTop:10,fontSize:13,color:status.startsWith("✅")?"#16a34a":"#dc2626",fontWeight:600}}>{status}</div>}
+        <div style={{marginTop:10,fontSize:11,color:"#94a3b8"}}>
+          Includes: Sites, Contacts, Challans, Stock, Client Ledger, Payments, Commissions, Service Tickets, Site Visits
+        </div>
+      </div>
     </div>
   );
 }
@@ -4051,6 +4230,7 @@ function CRMApp(){
       const d=all.data;
       // Merge each dataset — server wins on conflict (last-write-wins by timestamp)
       if(d.contacts) setContacts(prev=>mergeById(prev,d.contacts));
+      if(d.sites){ const merged=mergeById(loadSites(),d.sites); saveSites(merged); setSites(merged); }
       if(d.challans) setChallans(prev=>mergeById(prev,d.challans));
       if(d.stockLedger) setStockLedger(prev=>mergeById(prev,d.stockLedger));
       if(d.clientLedger) setClientLedger(prev=>mergeById(prev,d.clientLedger));
@@ -4097,7 +4277,7 @@ function CRMApp(){
   const isAdmin=currentUser?.role==="admin";
   const userCan=(perm)=>can(perm, currentUser, permissions);
 
-  useEffect(()=>{ saveSites(sites); },[sites]);
+  useEffect(()=>{ saveSites(sites); if(sites.length>0) gasSync("sites",sites); },[sites]);
   useEffect(()=>{ saveUsers(appUsers); },[appUsers]);
   useEffect(()=>{ savePermissions(permissions); },[permissions]);
 
