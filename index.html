@@ -4922,7 +4922,7 @@ function ServiceModule({serviceTickets,setServiceTickets,amcContracts,setAmcCont
                     AMC Period: {fmtDate2(a.startDate)} → {fmtDate2(a.endDate)} | Amount: {fmtINR2(a.amount)} | Visits/yr: {a.visits}
                   </div>
                   <div style={{fontSize:13,color:"#64748b",marginTop:4}}>
-                    Next Service: <strong style={{color:new Date(a.nextServiceDate)<new Date()??"#ef4444":"#0d9488"}}>{fmtDate2(a.nextServiceDate)}</strong>
+                    Next Service: <strong style={{color:new Date(a.nextServiceDate)<new Date()?"#ef4444":"#0d9488"}}>{fmtDate2(a.nextServiceDate)}</strong>
                   </div>
                 </div>
                 <button onClick={()=>{
