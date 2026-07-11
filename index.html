@@ -4410,13 +4410,13 @@ function ChallanForm({products,contacts,sites,currentUser,onSave,onClose,genId,t
   function searchByCode(q){
     setCodeInput(q);
     if(q.length<2){setCodeSearch([]);return;}
-    const r=products.filter(p=>(p.code||"").toLowerCase().includes(q.toLowerCase())||(p.name||"").toLowerCase().includes(q.toLowerCase())).slice(0,8);
+    const pName=p=>p.name||p.specs||p.family||"";const r=products.filter(p=>(p.code||"").toLowerCase().includes(q.toLowerCase())||pName(p).toLowerCase().includes(q.toLowerCase())||(p.brand||"").toLowerCase().includes(q.toLowerCase())).slice(0,8);
     setCodeSearch(r);
   }
 
   function addItem(prod){
     const qty=1;
-    setItems(prev=>[...prev,{code:prod.code,name:prod.name,brand:prod.brand,unit:prod.unit||"Pc.",qty}]);
+    const getProdName=p=>p.name||p.specs||p.family||p.code;setItems(prev=>[...prev,{code:prod.code,name:getProdName(prod),brand:prod.brand,unit:prod.unit||"Pc.",qty}]);
     setCodeInput(""); setCodeSearch([]);
   }
 
@@ -4465,7 +4465,7 @@ function ChallanForm({products,contacts,sites,currentUser,onSave,onClose,genId,t
                   <div key={p.code} onClick={()=>addItem(p)} style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",alignItems:"center"}} onMouseEnter={e=>e.currentTarget.style.background="#f0fdf4"} onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
                     <div>
                       <span style={{fontWeight:700,color:"#0d9488",fontSize:12}}>{p.code}</span>
-                      <span style={{marginLeft:8,fontSize:13,color:"#1e293b"}}>{p.name}</span>
+                      <span style={{marginLeft:8,fontSize:13,color:"#1e293b"}}>{p.name||p.specs||p.family}</span>
                     </div>
                     <span style={{fontSize:11,color:"#94a3b8",background:"#f1f5f9",padding:"2px 7px",borderRadius:10}}>{p.brand}</span>
                   </div>
@@ -4623,9 +4623,9 @@ function StockAddForm({products,onSave,onClose,todayStr}){
   function searchProd(q){
     setProductCode(q);
     if(q.length<2){setCodeSearch([]);return;}
-    setCodeSearch(products.filter(p=>(p.code||"").toLowerCase().includes(q.toLowerCase())||(p.name||"").toLowerCase().includes(q.toLowerCase())).slice(0,6));
+    setCodeSearch(products.filter(p=>(p.code||"").toLowerCase().includes(q.toLowerCase())||(p.name||p.specs||p.family||"").toLowerCase().includes(q.toLowerCase())||(p.brand||"").toLowerCase().includes(q.toLowerCase())).slice(0,6));
   }
-  function selectProd(p){setProductCode(p.code);setProductName(p.name);setBrand(p.brand||"");setUnit(p.unit||"Pc.");setCodeSearch([]);}
+  function selectProd(p){setProductCode(p.code);setProductName(p.name||p.specs||p.family||p.code);setBrand(p.brand||"");setUnit(p.unit||"Pc.");setCodeSearch([]);}
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:250,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -4651,7 +4651,7 @@ function StockAddForm({products,onSave,onClose,todayStr}){
             <input value={productCode} onChange={e=>searchProd(e.target.value)} placeholder="Search by code or name..." style={{width:"100%",padding:"9px",border:"2px solid #0d9488",borderRadius:8,marginTop:4,boxSizing:"border-box"}}/>
             {productName&&<div style={{fontSize:12,color:"#0d9488",marginTop:4}}>✓ {productName} ({brand})</div>}
             {codeSearch.length>0&&<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,0.1)",zIndex:400}}>
-              {codeSearch.map(p=><div key={p.code} onClick={()=>selectProd(p)} style={{padding:"9px 12px",cursor:"pointer",borderBottom:"1px solid #f1f5f9"}}><strong style={{color:"#0d9488"}}>{p.code}</strong> — {p.name}</div>)}
+              {codeSearch.map(p=><div key={p.code} onClick={()=>selectProd(p)} style={{padding:"9px 12px",cursor:"pointer",borderBottom:"1px solid #f1f5f9"}}><strong style={{color:"#0d9488"}}>{p.code}</strong> — {p.name||p.specs||p.family}</div>)}
             </div>}
           </div>
           <div>
