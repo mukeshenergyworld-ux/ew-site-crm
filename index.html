@@ -4483,7 +4483,7 @@ function CRMApp(){
         {view==="commission"&&<CommissionModule commissionRules={commissionRules} setCommissionRules={setCommissionRules} commissionLedger={commissionLedger} setCommissionLedger={setCommissionLedger} contacts={contacts} sites={sites} challans={challans} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} isAdmin={isAdmin}/>}
         {view==="partners"&&<PartnersModule contacts={contacts} saveContact={saveContact} sites={sites} commissionLedger={commissionLedger} challans={challans} fmtINR2={fmtINR2} fmtDate2={fmtDate2} genId={genId} todayStr={todayStr}/>}
         {view==="dailyreport"&&<DailyReportModule currentUser={currentUser} genId={genId} todayStr={todayStr} fmtDate2={fmtDate2} sites={sites} isAdmin={isAdmin}/>
-        {view==="search"&&<MasterSearchModule contacts={contacts} sites={sites} challans={challans} quotations={[].concat(...sites.map(s=>s.quotations||[]))} fmtINR2={fmtINR2} fmtDate2={fmtDate2} currentUser={currentUser}/>}}
+        {view==="search"&&<MasterSearchModule contacts={contacts} sites={sites} challans={challans} fmtINR2={fmtINR2} fmtDate2={fmtDate2}/>}
       </div>
       {showAddSite&&<SiteFormModal site={editingSite} isAdmin={isAdmin} currentUser={currentUser} contacts={contacts} saveContact={saveContact} allSites={sites} onSave={site=>{ if(editingSite)updateSite(editingSite.id,site); else addSite(site); setShowAddSite(false);setEditingSite(null);setView("sites"); }} onClose={()=>{setShowAddSite(false);setEditingSite(null);}}/>}
 
@@ -5939,131 +5939,163 @@ function MasterSearchModule({contacts,sites,challans,fmtINR2,fmtDate2}){
   const inputRef=React.useRef();
 
   const cities=React.useMemo(()=>[...new Set([
-    ...sites.map(s=>s.city),
-    ...contacts.map(c=>c.city),
+    ...sites.map(s=>s.city),...contacts.map(c=>c.city)
   ].filter(Boolean))].sort(),[sites,contacts]);
 
-  function search(query){
-    const raw=query.trim();
-    if(raw.length<2){setResults(null);return;}
-    const ql=raw.toLowerCase();
-    const clients=sites.filter(s=>
-      (s.ownerName||"").toLowerCase().includes(ql)||(s.phone||"").includes(raw)||
-      (s.address||"").toLowerCase().includes(ql)||(s.city||"").toLowerCase().includes(ql)
-    );
-    const partners=contacts.filter(c=>
-      (c.name||"").toLowerCase().includes(ql)||(c.phone||"").includes(raw)||
-      (c.phone2||"").includes(raw)||(c.city||"").toLowerCase().includes(ql)||(c.type||"").toLowerCase().includes(ql)
-    );
-    const chs=challans.filter(c=>
-      (c.id||"").toLowerCase().includes(ql)||(c.partyName||"").toLowerCase().includes(ql)||
-      (c.driverName||"").toLowerCase().includes(ql)||(c.vehicleNo||"").toLowerCase().includes(ql)
-    );
-    const quotes=sites.flatMap(s=>(s.quotations||[]).map(qt=>({...qt,siteName:s.ownerName,siteCity:s.city}))).filter(qt=>
-      (qt.id||"").toLowerCase().includes(ql)||(qt.siteName||"").toLowerCase().includes(ql)
-    );
-    setResults({clients,partners,chs,quotes,raw});
+  function doSearch(raw){
+    if(raw.trim().length<2){setResults(null);return;}
+    const ql=raw.trim().toLowerCase();
+    setResults({
+      raw:raw.trim(),
+      clients:sites.filter(s=>(s.ownerName||"").toLowerCase().includes(ql)||(s.phone||"").includes(raw.trim())||(s.address||"").toLowerCase().includes(ql)||(s.city||"").toLowerCase().includes(ql)),
+      partners:contacts.filter(c=>(c.name||"").toLowerCase().includes(ql)||(c.phone||"").includes(raw.trim())||(c.phone2||"").includes(raw.trim())||(c.city||"").toLowerCase().includes(ql)||(c.type||"").toLowerCase().includes(ql)),
+      challans:challans.filter(c=>(c.id||"").toLowerCase().includes(ql)||(c.partyName||"").toLowerCase().includes(ql)||(c.driverName||"").toLowerCase().includes(ql)||(c.vehicleNo||"").toLowerCase().includes(ql)),
+      quotes:sites.flatMap(s=>(s.quotations||[]).map(qt=>({...qt,siteName:s.ownerName,siteCity:s.city}))).filter(qt=>(qt.id||"").toLowerCase().includes(ql)||(qt.siteName||"").toLowerCase().includes(ql)),
+    });
   }
 
-  const filtered=React.useMemo(()=>{
+  const fr=React.useMemo(()=>{
     if(!results) return null;
     const loc=locFilter.toLowerCase();
-    const fs=s=>locFilter==="all"||(s.city||"").toLowerCase().includes(loc)||(s.address||"").toLowerCase().includes(loc);
-    const fc=c=>locFilter==="all"||(c.city||"").toLowerCase().includes(loc);
-    return{clients:results.clients.filter(fs),partners:results.partners.filter(fc),
-      chs:results.chs.filter(()=>locFilter==="all"),quotes:results.quotes.filter(qt=>locFilter==="all"||(qt.siteCity||"").toLowerCase().includes(loc))};
+    const fa=locFilter==="all";
+    return{
+      clients:results.clients.filter(s=>fa||(s.city||"").toLowerCase().includes(loc)||(s.address||"").toLowerCase().includes(loc)),
+      partners:results.partners.filter(c=>fa||(c.city||"").toLowerCase().includes(loc)),
+      challans:results.challans,
+      quotes:results.quotes.filter(qt=>fa||(qt.siteCity||"").toLowerCase().includes(loc)),
+    };
   },[results,locFilter]);
 
-  const total=filtered?(filtered.clients.length+filtered.partners.length+filtered.chs.length+filtered.quotes.length):0;
-  const hi=(text,q)=>{if(!q||!text)return text;const i=text.toLowerCase().indexOf(q.toLowerCase());if(i<0)return text;return React.createElement(React.Fragment,null,text.slice(0,i),React.createElement("mark",{style:{background:"#fef9c3",borderRadius:2}},text.slice(i,i+q.length)),text.slice(i+q.length));};
-  const card={background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px",marginBottom:6};
-  const Section=({title,items,render})=>items.length===0?null:(
-    <div style={{marginBottom:18}}>
-      <div style={{fontWeight:700,fontSize:12,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>
-        {title} <span style={{background:"#e2e8f0",borderRadius:10,padding:"1px 8px",fontSize:11,fontWeight:600}}>{items.length}</span>
-      </div>
-      {items.map(render)}
-    </div>
-  );
+  function hi(text,q){
+    if(!q||!text) return text||"";
+    const i=text.toLowerCase().indexOf(q.toLowerCase());
+    if(i<0) return text;
+    return <span>{text.slice(0,i)}<mark style={{background:"#fef9c3",padding:"0 1px",borderRadius:2}}>{text.slice(i,i+q.length)}</mark>{text.slice(i+q.length)}</span>;
+  }
+
+  const total=fr?(fr.clients.length+fr.partners.length+fr.challans.length+fr.quotes.length):0;
+  const C={background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px",marginBottom:6};
+  const SH=({label,n})=><div style={{fontWeight:700,fontSize:11,color:"#64748b",marginBottom:6,marginTop:16,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label} <span style={{background:"#e2e8f0",borderRadius:10,padding:"1px 8px",fontSize:11}}>{n}</span></div>;
 
   return(
     <div style={{maxWidth:900,margin:"0 auto",padding:"16px 14px"}}>
-      <h2 style={{margin:"0 0 14px",fontSize:18,fontWeight:800,color:"#1e293b"}}>&#x1F50D; Master Search</h2>
-      <div style={{position:"relative",marginBottom:12}}>
-        <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#94a3b8",fontSize:18,pointerEvents:"none"}}>&#x1F50D;</span>
+      <h2 style={{margin:"0 0 14px",fontSize:18,fontWeight:800,color:"#1e293b"}}>🔍 Master Search</h2>
+
+      {/* Search box */}
+      <div style={{position:"relative",marginBottom:10}}>
+        <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:18,color:"#94a3b8",pointerEvents:"none"}}>🔍</span>
         <input ref={inputRef} autoFocus value={q}
-          onChange={e=>{setQ(e.target.value);search(e.target.value);}}
-          placeholder="Search client, phone, plumber, challan no, driver, quotation no\u2026"
-          style={{width:"100%",padding:"13px 40px 13px 42px",border:"2px solid "+TEAL,borderRadius:12,fontSize:15,boxSizing:"border-box",outline:"none"}}/>
+          onChange={e=>{setQ(e.target.value);doSearch(e.target.value);}}
+          placeholder="Phone no, client name, plumber, challan no, driver, vehicle no…"
+          style={{width:"100%",padding:"13px 44px 13px 44px",border:"2px solid "+TEAL,borderRadius:12,fontSize:15,boxSizing:"border-box",outline:"none"}}/>
         {q&&<button onClick={()=>{setQ("");setResults(null);inputRef.current?.focus();}}
-          style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#94a3b8"}}>\u00d7</button>}
+          style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#94a3b8",lineHeight:1}}>×</button>}
       </div>
+
+      {/* Area filter */}
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
-        <span style={{fontSize:12,color:"#64748b",fontWeight:600}}>&#x1F4CD; Area:</span>
+        <span style={{fontSize:12,color:"#64748b",fontWeight:600}}>📍</span>
         {["all",...cities].map(c=>(
           <button key={c} onClick={()=>setLocFilter(c)}
             style={{padding:"5px 12px",border:"none",borderRadius:16,cursor:"pointer",fontSize:12,fontWeight:600,
               background:locFilter===c?TEAL:"#f1f5f9",color:locFilter===c?"#fff":"#64748b"}}>{c==="all"?"All Areas":c}</button>
         ))}
       </div>
-      {!results&&q.length<2&&(
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:10}}>
-          {[["&#x1F4DE;","Phone number","Any 10-digit mobile"],["&#x1F3D7;","Client / Site","Name or initials"],
-            ["&#x1F527;","Plumber / Partner","Name or city"],["&#x1F4E6;","Challan no","CH-YYMMDD"],
-            ["&#x1F4C4;","Quotation no","Quote ID"],["&#x1F69B;","Driver / Vehicle","Name or vehicle no"]
-          ].map(([ic,lbl,sub])=>(
-            <div key={lbl} style={{background:"#f8fafc",borderRadius:10,padding:"12px 14px"}}>
-              <div style={{fontSize:20,marginBottom:4}} dangerouslySetInnerHTML={{__html:ic}}/>
-              <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{lbl}</div>
+
+      {/* Hint grid before search */}
+      {!results&&(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:10}}>
+          {[["📞","Phone","Any 10-digit mobile"],["🏗","Client / Site","Name or initials"],["🔧","Plumber / Partner","Name or city"],
+            ["📦","Challan no","CH-YYMMDD format"],["📄","Quotation","Quote ID"],["🚛","Driver / Vehicle","Name or vehicle no"]
+          ].map(([ic,lb,sub])=>(
+            <div key={lb} style={{background:"#f8fafc",borderRadius:10,padding:"12px 14px"}}>
+              <div style={{fontSize:22,marginBottom:4}}>{ic}</div>
+              <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{lb}</div>
               <div style={{fontSize:11,color:"#94a3b8"}}>{sub}</div>
             </div>
           ))}
         </div>
       )}
-      {results&&total===0&&<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}><div style={{fontSize:32}}>&#x1F50D;</div><div style={{marginTop:8,fontSize:15,fontWeight:600}}>No results for "{q}"</div></div>}
-      {filtered&&(
+
+      {/* No results */}
+      {results&&total===0&&(
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <div style={{fontSize:36,marginBottom:8}}>🔍</div>
+          <div style={{fontSize:15,fontWeight:600}}>No results for "{q}"</div>
+          <div style={{fontSize:12,marginTop:4}}>Try phone number, challan ID, or partial name</div>
+        </div>
+      )}
+
+      {/* Results */}
+      {fr&&total>0&&(
         <div>
-          <Section title="&#x1F3D7; Clients / Sites" items={filtered.clients} render={s=>(
-            <div key={s.id} style={card}>
-              <div style={{fontWeight:700,fontSize:14,color:"#1e293b",marginBottom:2}}>{hi(s.ownerName,q)}</div>
-              <div style={{fontSize:12,color:"#64748b"}}>&#x1F4DE; {hi(s.phone,q)} &middot; &#x1F4CD; {hi(s.city,q)}{s.address?" \u00b7 "+s.address.split(",")[0]:""}</div>
-              <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{s.projectType} &middot; {s.stage} &middot; via {s.source}</div>
-            </div>
-          )}/>
-          <Section title="&#x1F91D; Partners & Contacts" items={filtered.partners} render={c=>(
-            <div key={c.id} style={card}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                <div>
-                  <div style={{fontWeight:700,fontSize:14,color:"#1e293b",marginBottom:2}}>{hi(c.name,q)}</div>
-                  <div style={{fontSize:12,color:"#64748b"}}>&#x1F4DE; {hi(c.phone,q)}{c.phone2?" / "+hi(c.phone2,q):""}{c.city?" \u00b7 "+hi(c.city,q):""}</div>
-                  {(c.birthday||c.anniversary)&&<div style={{fontSize:11,color:"#f59e0b",marginTop:2}}>{c.birthday?"\uD83C\uDF82 "+c.birthday:""}{c.anniversary?" \uD83D\uDC8D "+c.anniversary:""}</div>}
+          {fr.clients.length>0&&(
+            <div>
+              <SH label="🏗 Clients / Sites" n={fr.clients.length}/>
+              {fr.clients.map(s=>(
+                <div key={s.id} style={C}>
+                  <div style={{fontWeight:700,fontSize:14,color:"#1e293b",marginBottom:2}}>{hi(s.ownerName,q)}</div>
+                  <div style={{fontSize:12,color:"#64748b"}}>📞 {hi(s.phone,q)} · 📍 {hi(s.city,q)}{s.address?" · "+s.address.split(",")[0]:""}</div>
+                  <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{s.projectType} · {s.stage} · {s.source}</div>
+                  {(s.quotations||[]).length>0&&<div style={{fontSize:11,color:"#5b21b6",marginTop:2}}>📄 {s.quotations.length} quote{s.quotations.length>1?"s":""}</div>}
                 </div>
-                <span style={{background:"#ede9fe",color:"#5b21b6",borderRadius:12,padding:"2px 10px",fontSize:11,fontWeight:600}}>{c.type}</span>
-              </div>
+              ))}
             </div>
-          )}/>
-          <Section title="&#x1F4E6; Challans" items={filtered.chs} render={c=>(
-            <div key={c.id} style={card}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
-                  <div style={{fontWeight:700,fontSize:14,color:"#0d9488",marginBottom:2}}>{hi(c.id,q)}</div>
-                  <div style={{fontSize:12,color:"#64748b"}}>{hi(c.partyName,q)} &middot; &#x1F69B; {hi(c.driverName||"\u2014",q)} {hi(c.vehicleNo||"",q)}</div>
-                  <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{fmtDate2(c.createdAt)} &middot; {c.items?.length||0} items</div>
-                  {c.freightAmt>0&&<div style={{fontSize:11,color:"#f59e0b"}}>Freight: \u20b9{(c.freightAmt||0).toLocaleString()}</div>}
+          )}
+          {fr.partners.length>0&&(
+            <div>
+              <SH label="🤝 Partners & Contacts" n={fr.partners.length}/>
+              {fr.partners.map(c=>(
+                <div key={c.id} style={C}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:14,color:"#1e293b",marginBottom:2}}>{hi(c.name,q)}</div>
+                      <div style={{fontSize:12,color:"#64748b"}}>📞 {hi(c.phone,q)}{c.phone2?" / "+hi(c.phone2,q):""}{c.city?" · "+hi(c.city,q):""}</div>
+                      {(c.birthday||c.anniversary)&&<div style={{fontSize:11,color:"#f59e0b",marginTop:2}}>{c.birthday?"🎂 "+c.birthday:""}{c.anniversary?" 💍 "+c.anniversary:""}</div>}
+                    </div>
+                    <span style={{background:"#ede9fe",color:"#5b21b6",borderRadius:12,padding:"2px 10px",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>{c.type}</span>
+                  </div>
                 </div>
-                <span style={{background:{pending:"#fef3c7",approved:"#d1fae5",dispatched:"#dbeafe",received:"#ede9fe"}[c.status]||"#f1f5f9",
-                  color:{pending:"#92400e",approved:"#065f46",dispatched:"#1e40af",received:"#4c1d95"}[c.status]||"#64748b",
-                  borderRadius:12,padding:"3px 10px",fontSize:11,fontWeight:700}}>{(c.status||"").toUpperCase()}</span>
-              </div>
+              ))}
             </div>
-          )}/>
-          <Section title="&#x1F4C4; Quotations" items={filtered.quotes} render={qt=>(
-            <div key={qt.id||qt.createdAt} style={card}>
-              <div style={{fontWeight:700,fontSize:14,color:"#5b21b6",marginBottom:2}}>{hi(qt.id||"QT",q)}</div>
-              <div style={{fontSize:12,color:"#64748b"}}>{hi(qt.siteName,q)} &middot; {qt.siteCity}</div>
-              <div style={{fontSize:12,color:"#1e293b",fontWeight:600,marginTop:2}}>\u20b9{(qt.totalAmt||qt.totals?.totalAmt||0).toLocaleString()} &middot; {fmtDate2(qt.createdAt)}</div>
+          )}
+          {fr.challans.length>0&&(
+            <div>
+              <SH label="📦 Challans" n={fr.challans.length}/>
+              {fr.challans.map(c=>(
+                <div key={c.id} style={C}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:14,color:TEAL,marginBottom:2}}>{hi(c.id,q)}</div>
+                      <div style={{fontSize:12,color:"#64748b"}}>👤 {hi(c.partyName,q)} · 🚛 {hi(c.driverName||"—",q)} {hi(c.vehicleNo||"",q)}</div>
+                      <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{fmtDate2(c.createdAt)} · {c.items?.length||0} items · By {c.createdBy}</div>
+                      {c.freightAmt>0&&<div style={{fontSize:11,color:"#f59e0b"}}>🚚 Freight: ₹{(c.freightAmt||0).toLocaleString()}</div>}
+                    </div>
+                    <span style={{background:{pending:"#fef3c7",approved:"#d1fae5",dispatched:"#dbeafe",received:"#ede9fe"}[c.status]||"#f1f5f9",
+                      color:{pending:"#92400e",approved:"#065f46",dispatched:"#1e40af",received:"#4c1d95"}[c.status]||"#64748b",
+                      borderRadius:12,padding:"4px 12px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{(c.status||"").toUpperCase()}</span>
+                  </div>
+                </div>
+              ))}
             </div>
-          )}/>
+          )}
+          {fr.quotes.length>0&&(
+            <div>
+              <SH label="📄 Quotations" n={fr.quotes.length}/>
+              {fr.quotes.map((qt,i)=>(
+                <div key={qt.id||i} style={C}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:14,color:"#5b21b6",marginBottom:2}}>{hi(qt.id||"QT",q)}</div>
+                      <div style={{fontSize:12,color:"#64748b"}}>🏗 {hi(qt.siteName,q)} · 📍 {qt.siteCity}</div>
+                      <div style={{fontSize:12,color:"#1e293b",fontWeight:600,marginTop:2}}>₹{(qt.totalAmt||qt.totals?.totalAmt||0).toLocaleString()} · {fmtDate2(qt.createdAt)}</div>
+                    </div>
+                    <span style={{background:"#ede9fe",color:"#5b21b6",borderRadius:12,padding:"4px 12px",fontSize:11,fontWeight:700}}>QUOTE</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -6071,92 +6103,116 @@ function MasterSearchModule({contacts,sites,challans,fmtINR2,fmtDate2}){
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<CRMApp/>);
->
-    </div>
-  );
-}
 
 function showInstallBanner(){
   if(document.getElementById("ew-install-banner")) return;
   const banner = document.createElement("div");
   banner.id = "ew-install-banner";
-  banner.style.cssText = "position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:9999;background:#0d9488;color:#fff;border-radius:14px;padding:12px 20px;display:flex;align-items:center;gap:14px;box-shadow:0 4px 24px rgba(0,0,0,0.25);font-family:system-ui,sans-serif;font-size:14px;max-width:340px;width:calc(100%-32px)";
   banner.innerHTML = `
-    <div style="font-size:28px;line-height:1">📲</div>
-    <div style="flex:1">
-      <div style="font-weight:700;font-size:14px">Install Energy World CRM</div>
-      <div style="font-size:12px;opacity:0.85;margin-top:2px">Add to home screen for app experience</div>
-    </div>
-    <button id="ew-install-btn" style="background:#fff;color:#0d9488;border:none;border-radius:8px;padding:7px 14px;font-weight:700;font-size:13px;cursor:pointer">Install</button>
-    <button id="ew-install-close" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;opacity:0.7;padding:0 4px">×</button>
-  `;
-  document.body.appendChild(banner);
-  document.getElementById("ew-install-btn").onclick = async () => {
-    if(!_deferredInstall) return;
-    _deferredInstall.prompt();
-    const r = await _deferredInstall.userChoice;
-    _deferredInstall = null;
-    banner.remove();
-  };
-  document.getElementById("ew-install-close").onclick = () => banner.remove();
-  // Auto-hide after 12 seconds
-  setTimeout(() => { if(banner.parentNode) banner.remove(); }, 12000);
-}
-
-// ── iOS "Add to Home Screen" hint ──────────────────────────────────────
-const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-const isInStandaloneMode = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
-if(isIOS && !isInStandaloneMode && !sessionStorage.getItem("ew-ios-hint-shown")){
-  sessionStorage.setItem("ew-ios-hint-shown", "1");
-  setTimeout(() => {
-    const hint = document.createElement("div");
-    hint.style.cssText = "position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#1e293b;color:#fff;padding:16px 20px 28px;font-family:system-ui,sans-serif;border-radius:20px 20px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,0.3)";
-    hint.innerHTML = `
-      <div style="text-align:center;margin-bottom:12px">
-        <div style="font-size:22px;margin-bottom:6px">📲 Install EW CRM as App</div>
-        <div style="font-size:13px;opacity:0.8;line-height:1.5">Tap <span style="background:#334155;padding:2px 8px;border-radius:6px;font-weight:700">Share</span> → then <span style="background:#334155;padding:2px 8px;border-radius:6px;font-weight:700">Add to Home Screen</span></div>
+    <div style="background:linear-gradient(135deg,#0d9488,#065f46);border-radius:16px 16px 0 0;padding:16px 18px 20px;color:#fff;text-align:center;box-shadow:0 -4px 24px rgba(0,0,0,0.18)">
+      <div style="font-size:32px;margin-bottom:6px">⚡</div>
+      <div style="font-weight:800;font-size:17px;margin-bottom:4px">Install EW Site CRM</div>
+      <div style="font-size:13px;opacity:0.85;margin-bottom:16px">Works offline · Fast · No app store needed</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <button id="ew-install-btn" style="background:#fff;color:#0d9488;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:800;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px">
+          <span style="font-size:22px">📱</span><span>Save to Phone</span><span style="font-size:11px;font-weight:500;opacity:0.7">Android / Chrome</span>
+        </button>
+        <button id="ew-ios-btn" style="background:rgba(255,255,255,0.15);color:#fff;border:2px solid rgba(255,255,255,0.4);border-radius:10px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px">
+          <span style="font-size:22px">🍎</span><span>iPhone / iPad</span><span style="font-size:11px;font-weight:500;opacity:0.7">Safari → Share → Add</span>
+        </button>
       </div>
-      <div style="text-align:center;font-size:28px;margin-bottom:8px">⬆️</div>
-      <button onclick="this.parentNode.remove()" style="display:block;width:100%;background:#0d9488;color:#fff;border:none;border-radius:10px;padding:12px;font-size:15px;font-weight:700;cursor:pointer">Got it</button>
-    `;
-    document.body.appendChild(hint);
-  }, 3000);
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button id="ew-desktop-btn" style="background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer">🖥 Save to Desktop</button>
+        <button id="ew-install-close" style="background:none;color:rgba(255,255,255,0.6);border:none;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer">Maybe later</button>
+      </div>
+      <div id="ew-ios-hint" style="display:none;background:rgba(255,255,255,0.12);border-radius:10px;padding:12px;margin-top:12px;font-size:13px;line-height:1.6">
+        1. Tap the <strong style="background:#fff;color:#0d9488;padding:1px 6px;border-radius:4px">Share</strong> button at the bottom of Safari<br>
+        2. Scroll down and tap <strong style="background:#fff;color:#0d9488;padding:1px 6px;border-radius:4px">Add to Home Screen</strong><br>
+        3. Tap <strong>Add</strong> — done! ✅
+      </div>
+    </div>
+  `;
+  banner.style.cssText = "position:fixed;bottom:0;left:0;right:0;z-index:9999;max-width:480px;margin:0 auto";
+  document.body.appendChild(banner);
+
+  // Android / Chrome install
+  document.getElementById("ew-install-btn").onclick = async() => {
+    if(window._deferredInstall){
+      window._deferredInstall.prompt();
+      const r = await window._deferredInstall.userChoice;
+      window._deferredInstall = null;
+      banner.remove();
+    } else {
+      alert("Open this page in Chrome browser and tap the menu (⋮) → 'Add to Home Screen'");
+    }
+  };
+
+  // Desktop install
+  document.getElementById("ew-desktop-btn").onclick = async() => {
+    if(window._deferredInstall){
+      window._deferredInstall.prompt();
+      const r = await window._deferredInstall.userChoice;
+      window._deferredInstall = null;
+      banner.remove();
+    } else {
+      alert("In Chrome: click the install icon (⊕) in the address bar, or menu → 'Install EW Site CRM'");
+    }
+  };
+
+  // iOS hint toggle
+  document.getElementById("ew-ios-btn").onclick = () => {
+    const hint = document.getElementById("ew-ios-hint");
+    hint.style.display = hint.style.display === "none" ? "block" : "none";
+  };
+
+  document.getElementById("ew-install-close").onclick = () => {
+    banner.remove();
+    localStorage.setItem("ew_install_dismissed", Date.now());
+  };
+
+  // Auto-hide after 30s
+  setTimeout(() => { if(banner.parentNode) banner.remove(); }, 30000);
 }
 
-// ── Service Worker — only registers when served over http/https (not file://) ─
-if("serviceWorker" in navigator && location.protocol !== "blob:" && location.protocol !== "about:"){
-  try{
-    // SW works only on http/https, not file:// or blob://
-    // When hosted on a server, this caches the app for offline use
-    const swCode = `
-const CACHE="ew-crm-v2";
-self.addEventListener("install",e=>{ e.waitUntil(self.skipWaiting()); });
-self.addEventListener("activate",e=>{ e.waitUntil(self.clients.claim()); });
-self.addEventListener("fetch",e=>{
-  if(e.request.method!=="GET") return;
-  const u=new URL(e.request.url);
-  if(u.hostname.includes("google")||u.hostname.includes("telegram")||u.hostname.includes("cdnjs")) return;
-  e.respondWith(
-    caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{
-      if(res.ok){ const c=res.clone(); caches.open(CACHE).then(cache=>cache.put(e.request,c)); }
-      return res;
-    }).catch(()=>caches.match(e.request)))
-  );
-});`;
-    const blob=new Blob([swCode],{type:"text/javascript"});
-    const url=URL.createObjectURL(blob);
-    navigator.serviceWorker.register(url).then(()=>{
-      console.log("EW CRM: SW registered ✅");
-    }).catch(e=>{
-      // SW registration failure is non-fatal — app still works
-      console.info("EW CRM: SW not available ("+e.message+") — app works without it");
-    });
-  }catch(e){
-    console.info("EW CRM: SW setup skipped");
-  }
-}
+
+// iOS install handled by showInstallBanner()
 </script>
 <!-- ════════════════════════════════════════════════════════════════════ -->
-<script>document.addEventListener('focusin',function(e){try{if(e.target&&e.target.tagName==='INPUT'&&e.target.type==='number'){e.target.select();}}catch(err){}});</script><script>document.addEventListener('focusin',function(e){try{if(e.target&&e.target.tagName==='INPUT'&&e.target.type==='number'){e.target.select();}}catch(err){}});</script>
+<script>document.addEventListener('focusin',function(e){try{if(e.target&&e.target.tagName==='INPUT'&&e.target.type==='number'){e.target.select();}}catch(err){}});</script><script>
+// ─── PWA Install prompt ───────────────────────────────────────────────────
+window._deferredInstall = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  window._deferredInstall = e;
+  // Show install banner after 2 seconds if not dismissed recently
+  const dismissed = localStorage.getItem("ew_install_dismissed");
+  const oneDayAgo = Date.now() - 24*60*60*1000;
+  if (!dismissed || Number(dismissed) < oneDayAgo) {
+    setTimeout(() => {
+      if (typeof showInstallBanner === "function") showInstallBanner();
+    }, 2000);
+  }
+});
+window.addEventListener("appinstalled", () => {
+  window._deferredInstall = null;
+  const b = document.getElementById("ew-install-banner");
+  if (b) b.remove();
+});
+// Show on page load for iOS (no beforeinstallprompt on Safari)
+document.addEventListener("DOMContentLoaded", () => {
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+  if (isIOS && !isStandalone) {
+    const dismissed = localStorage.getItem("ew_install_dismissed");
+    const oneDayAgo = Date.now() - 24*60*60*1000;
+    if (!dismissed || Number(dismissed) < oneDayAgo) {
+      setTimeout(() => {
+        if (typeof showInstallBanner === "function") showInstallBanner();
+      }, 3000);
+    }
+  }
+});
+</script>
+<script>document.addEventListener('focusin',function(e){try{if(e.target&&e.target.tagName==='INPUT'&&e.target.type==='number'){e.target.select();}}catch(err){}});</script>
 </body>
 </html>
