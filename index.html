@@ -231,24 +231,27 @@ const STAGES = [
 const STAGE_PRODUCTS = {
   land:[],
   foundation:[
-    {id:"huliot_pipes",  brand:"Huliot", name:"CPVC / UPVC Pipes & Fittings"},
-    {id:"huliot_sewage", brand:"Huliot", name:"Sewage / Drainage System"},
-    {id:"grohe_pipes",   brand:"Grohe",  name:"Pipes & Fittings"},
+    {id:"huliot_pipes",    brand:"Huliot",     name:"CPVC / UPVC Pipes & Fittings"},
+    {id:"huliot_sewage",   brand:"Huliot",     name:"Sewage / Drainage System"},
+    {id:"mea_drain",       brand:"MEA",        name:"MEA Drain System"},
   ],
   structure:[
     {id:"grundfos_pump",    brand:"Grundfos",    name:"Pressure Booster Pump"},
     {id:"grundfos_solar",   brand:"Grundfos",    name:"Solar Pump System"},
-    {id:"adani_solar",      brand:"Adani Solar", name:"Solar Panels / System"},
     {id:"pentair_softener", brand:"Pentair",     name:"Water Softener / Treatment"},
     {id:"geberit_plumbing", brand:"Geberit",     name:"Plumbing System"},
+    {id:"leo_pump",         brand:"LEO",         name:"Booster Pump"},
+    {id:"sunstellar_tank",  brand:"Sunstellar",  name:"SS Water Tank"},
   ],
   roughin:[
     {id:"tece_cistern",    brand:"TECE",   name:"Concealed Cistern & Frame"},
     {id:"tece_drain",      brand:"TECE",   name:"Linear / Point Drain"},
+    {id:"geberit_cistern", brand:"Geberit",name:"Geberit Concealed Cistern"},
     {id:"lunos_erv",       brand:"Lunos",  name:"Lunos e² ERV Unit"},
-    {id:"revita_erv",      brand:"Revita", name:"Revita ERV / HRV System"},
-    {id:"ina_sensor",      brand:"INA",    name:"INA-SENSOR Air Quality"},
+    {id:"inair_sensor",    brand:"InAir",  name:"InAir Ventilation Unit"},
+    {id:"grohe_rough",     brand:"Grohe",  name:"Grohe Rough-in"},
     {id:"huliot_manifold", brand:"Huliot", name:"Underfloor Heating Manifold"},
+    {id:"green_heat",      brand:"Green Heat+", name:"Heat Pump / Heater"},
   ],
   brickwork:[
     {id:"lunos_ducts", brand:"Lunos", name:"Duct / Ventilation Routing"},
@@ -257,10 +260,7 @@ const STAGE_PRODUCTS = {
     {id:"toto_wc",      brand:"TOTO",               name:"Wall-hung / Floor WC"},
     {id:"toto_washlet", brand:"TOTO",               name:"Washlet / Electronic Seat"},
     {id:"toto_basin",   brand:"TOTO",               name:"Counter / Under-counter Basin"},
-    {id:"fima_faucets", brand:"FIMA Carlo Frattini", name:"Basin / Bath Faucets"},
-    {id:"fima_shower",  brand:"FIMA Carlo Frattini", name:"Shower System / Overhead"},
     {id:"tece_flush",   brand:"TECE",               name:"Flush Plate (Glass/Metal)"},
-    {id:"oyster_faucet",brand:"Oyster",             name:"Faucet / Shower"},
     {id:"grohe_faucet", brand:"Grohe",              name:"Faucet / Mixer"},
     {id:"geberit_flush",brand:"Geberit",            name:"Flush System / Actuator"},
   ],
@@ -399,7 +399,7 @@ function parseCSV(text){
       masterBrand:(()=>{
         const mb=(COL.masterBrand>=0?get(COL.masterBrand):"").trim();
         const sub=(brand||"").trim();
-        function inf(s){const u=s.toUpperCase();if(u.startsWith("HULIOT")||u==="AST-CPVC"||u==="AST-IC"||u==="MPS-EW"||u==="SANITAAR"||u==="STELLAR"||u==="DWC-MPS")return "Huliot";if(u==="GRUNDFOS")return "Grundfos";if(u==="TOTO")return "TOTO";if(u==="TECE")return "TECE";if(u==="GEBERIT")return "Geberit";if(u==="GROHE")return "Grohe";if(u==="LUNOS")return "Lunos";if(u==="INAIR")return "InAir";if(u==="PENTAIR"||u==="NXGN")return "Pentair";if(u==="MEA"||u==="DRP")return "MEA";if(u.includes("GREEN"))return "Green Heat+";if(u.includes("LEO"))return "LEO";return s;}
+        function inf(s){const u=(s||"").toUpperCase().trim();if(u.startsWith("HULIOT")||u==="AST-CPVC"||u==="AST-IC"||u==="MPS-EW")return "Huliot";if(u==="GRUNDFOS")return "Grundfos";if(u==="TOTO"||u.startsWith("TOTO"))return "TOTO";if(u==="TECE")return "TECE";if(u==="GEBERIT")return "Geberit";if(u==="GROHE")return "Grohe";if(u==="LUNOS")return "Lunos";if(u==="INAIR")return "InAir";if(u==="PENTAIR"||u==="NXGN")return "Pentair";if(u==="MEA"||u==="DRP")return "MEA";if(u.includes("GREEN"))return "Green Heat+";if(u.includes("LEO"))return "LEO";if(u==="SANITAAR"||u==="STELLAR"||u==="DWC-MPS")return "Sunstellar";if(u==="FIMA"||u.includes("FIMA"))return "FIMA Carlo Frattini";return s;}
         return mb||inf(sub);
       })(),
       code,family,
@@ -2324,7 +2324,7 @@ function PitchGrid({site,canEdit,onUpdatePitch}){
                         {pitch?.updatedAt&&<div style={{fontSize:11,color:"#94a3b8"}}>Updated {pitch.updatedAt}</div>}
                       </div>
                       {isEditing?(
-                        <PitchEditInline currentStatus={status} currentNote={pitch?.note||""} onSave={(s,n)=>{onUpdatePitch(p.id,s,n);setEditPitch(null);}} onCancel={()=>setEditPitch(null)}/>
+                        <PitchEditInline currentStatus={status} currentNote={pitch?.note||""} onSave={(s,n)=>{onUpdatePitch(p.id,s,n);onUpdatePitch("brand:"+p.brand,s,n);setEditPitch(null);}} onCancel={()=>setEditPitch(null)}/>
                       ):(
                         <div style={{display:"flex",alignItems:"center",gap:6}}>
                           <StatusBadge status={status}/>
@@ -3123,22 +3123,41 @@ function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setF
 
   // Pitch bar — unique brands from master price list (column "brand")
   const PITCH_BRANDS=React.useMemo(()=>{
-    // Auto-sync: derive unique master brand list from synced products on every login
-    // products[].masterBrand = col I (Master Brand) from Google Sheet — set at sync time
-    // Falls back to sub-brand inference if masterBrand not populated
-    const seen={};  // key=uppercase, value=display name
+    // Build brand list STRICTLY from synced products — col H (SUB Brand) mapped to display name
+    // Map SUB brand code → display name (exact mapping from Google Sheet)
+    function subToMaster(sub){
+      const s=(sub||"").toUpperCase().trim();
+      if(s.startsWith("HULIOT")||s==="AST-CPVC"||s==="AST-IC"||s==="MPS-EW") return "Huliot";
+      if(s==="GRUNDFOS") return "Grundfos";
+      if(s==="TOTO"||s.startsWith("TOTO")) return "TOTO";
+      if(s==="TECE") return "TECE";
+      if(s==="GEBERIT") return "Geberit";
+      if(s==="GROHE") return "Grohe";
+      if(s==="LUNOS") return "Lunos";
+      if(s==="INAIR") return "InAir";
+      if(s==="PENTAIR"||s==="NXGN") return "Pentair";
+      if(s==="MEA"||s==="DRP") return "MEA";
+      if(s.includes("GREEN")) return "Green Heat+";
+      if(s.includes("LEO")) return "LEO";
+      if(s==="SANITAAR"||s==="STELLAR"||s==="DWC-MPS") return "Sunstellar";
+      if(s==="FIMA"||s.includes("FIMA")) return "FIMA Carlo Frattini";
+      return null; // unknown sub brand — exclude
+    }
+    const seen={}; // masterName → true
     if(products&&products.length>0){
       products.forEach(p=>{
-        // Prefer masterBrand field (col I); fall back to brand field (col H)
-        const b=((p.masterBrand||"").trim()||((p.brand||"").trim()));
-        if(!b||b==="Other"||b.length>40) return;
-        const k=b.toUpperCase();
-        if(!seen[k]) seen[k]=b;
+        const sub=(p.brand||"").toString().trim();
+        const master=subToMaster(sub)||((p.masterBrand||"").trim())||null;
+        if(master) seen[master]=true;
       });
     }
-    // If products not loaded yet, show nothing (they load on login)
-    if(Object.keys(seen).length===0) return [];
-    return Object.values(seen).sort((a,b2)=>a.localeCompare(b2));
+    // Strict: only show brands that actually exist in products
+    // Ordered: Huliot first (largest), then rest alphabetically
+    const order=["Huliot","Grundfos","TOTO","TECE","Geberit","Grohe","Lunos","InAir","Pentair","MEA","Green Heat+","LEO","Sunstellar","FIMA Carlo Frattini"];
+    const result=order.filter(b=>seen[b]);
+    // Add any new brand from products not in known order
+    Object.keys(seen).forEach(b=>{ if(!order.includes(b)) result.push(b); });
+    return result;
   },[products]);
   const PITCH_STATUS_COLOR={won:"#10b981",pitched:"#f59e0b",pending:"#ef4444",lost:"#94a3b8"};
   const PITCH_LABEL={won:"Won ✓",pitched:"Pitched",pending:"To Pitch",lost:"Lost"};
@@ -3196,19 +3215,22 @@ function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setF
           const wonCount=Object.values(site.pitches||{}).filter(p=>p.status==="won").length;
           const qCount=(site.quotations||[]).length;
           const assignee=USERS.find(u=>u.id===site.assignedTo);
-          // Build pitch bar — one chip per unique brand from master sheet
-          // Brand-level status: best status across all products of that brand for this site
+          // Build pitch bar — brand-level status from site.pitches
+          // Key format: "brand:Huliot", "brand:TOTO" etc. OR legacy STAGE_PRODUCTS ids
           const pitchBar=PITCH_BRANDS.map(brand=>{
-            const allStatuses=Object.entries(site.pitches||{})
-              .filter(([,v])=>v&&v.brand===brand||false)
-              .map(([,v])=>v.status);
-            // Also check STAGE_PRODUCTS for legacy pitch IDs
+            const key="brand:"+brand;
+            // 1. Check brand-level key (new format)
+            const brandEntry=(site.pitches||{})[key];
+            if(brandEntry?.status) return{brand,status:brandEntry.status};
+            // 2. Check legacy STAGE_PRODUCTS product-level keys
             const legacyProds=Object.values(STAGE_PRODUCTS).flat().filter(p=>p.brand===brand);
             const legacyStatuses=legacyProds.map(p=>(site.pitches||{})[p.id]?.status).filter(Boolean);
-            const combined=[...allStatuses,...legacyStatuses];
-            const priority=["won","pitched","lost","pending"];
-            const best=priority.find(s=>combined.includes(s))||"pending";
-            return{brand,status:best};
+            if(legacyStatuses.length>0){
+              const priority=["won","pitched","lost","pending"];
+              const best=priority.find(s=>legacyStatuses.includes(s))||"pending";
+              return{brand,status:best};
+            }
+            return{brand,status:"pending"};
           });
           return(
             <div key={site.id} onClick={()=>onOpen(site.id)} style={{background:"#fff",border:"1px solid "+(pending.length>0?"#fde68a":"#e2e8f0"),borderRadius:12,padding:"12px 14px",cursor:"pointer"}}>
@@ -3221,17 +3243,24 @@ function SitesList({sites,isAdmin,filterStage,setFilterStage,filterAssigned,setF
                     {qCount>0&&<span style={{fontSize:10,background:"#ede9fe",color:"#5b21b6",padding:"1px 6px",borderRadius:8,fontWeight:600}}>📄 {qCount}Q</span>}
                   </div>
                   <div style={{fontSize:11,color:"#64748b",marginBottom:6}}>{site.city}{site.address?` · ${site.address.split(",")[0]}`:"" } · {site.projectType} · {site.source}</div>
-                  {/* Brand Pitch Color Bar — from master sheet brands */}
+                  {/* Brand Pitch Bar — from Google Sheet brands, color coded */}
                   <div style={{display:"flex",gap:2,flexWrap:"wrap",marginTop:4}}>
                     {pitchBar.map(p=>(
                       <div key={p.brand}
                         title={`${p.brand} — ${PITCH_LABEL[p.status]||p.status}`}
-                        style={{background:PITCH_STATUS_COLOR[p.status]||"#e2e8f0",borderRadius:3,padding:"2px 6px",fontSize:9,fontWeight:700,color:"#fff",whiteSpace:"nowrap",
-                          textDecoration:p.status==="lost"?"line-through":"none",opacity:p.status==="lost"?0.55:1}}>
+                        style={{background:PITCH_STATUS_COLOR[p.status]||"#e2e8f0",borderRadius:3,padding:"2px 6px",fontSize:9,fontWeight:700,color:p.status==="pending"?"#fff":"#fff",whiteSpace:"nowrap",
+                          textDecoration:p.status==="lost"?"line-through":"none",opacity:p.status==="lost"?0.5:1,
+                          border:p.status==="pending"?"1px solid rgba(0,0,0,0.15)":"none"}}>
                         {p.brand.split(" ")[0].slice(0,7)}
                       </div>
                     ))}
                   </div>
+                  {/* Show pending count clearly */}
+                  {(()=>{const pendingBrands=pitchBar.filter(p=>p.status==="pending").map(p=>p.brand);return pendingBrands.length>0&&(
+                    <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>
+                      🔴 Yet to pitch: {pendingBrands.join(", ")}
+                    </div>
+                  );})()}
                   {/* Legend */}
                 </div>
                 <div style={{textAlign:"right"}}>
@@ -4358,9 +4387,9 @@ function CRMApp(){
         const rawMasterBrand=(rows[0]&&GC.masterBrand>=0?((row[GC.masterBrand]||"").toString().trim()):"");
         // Derive master brand: use masterBrand col if available, else infer from sub brand
         function inferMaster(sub){
-          const s=(sub||"").toUpperCase();
-          if(s.startsWith("HULIOT")||s==="AST-CPVC"||s==="AST-IC"||s==="MPS-EW"||s==="SANITAAR"||s==="STELLAR"||s==="DWC-MPS") return "Huliot";
-          if(s==="GRUNDFOS"||s.startsWith("GRUNDFOS")) return "Grundfos";
+          const s=(sub||"").toUpperCase().trim();
+          if(s.startsWith("HULIOT")||s==="AST-CPVC"||s==="AST-IC"||s==="MPS-EW") return "Huliot";
+          if(s==="GRUNDFOS") return "Grundfos";
           if(s==="TOTO"||s.startsWith("TOTO")) return "TOTO";
           if(s==="TECE") return "TECE";
           if(s==="GEBERIT") return "Geberit";
@@ -4371,7 +4400,9 @@ function CRMApp(){
           if(s==="MEA"||s==="DRP") return "MEA";
           if(s.includes("GREEN")) return "Green Heat+";
           if(s.includes("LEO")) return "LEO";
-          return sub;
+          if(s==="SANITAAR"||s==="STELLAR"||s==="DWC-MPS") return "Sunstellar";
+          if(s==="FIMA"||s.includes("FIMA")) return "FIMA Carlo Frattini";
+          return sub; // pass through unknown
         }
         const masterBrandVal=rawMasterBrand||inferMaster(rawSubBrand);
         return {id:code||("p"+i),specs:specs||code,brand:rawSubBrand,masterBrand:masterBrandVal,code,family,category:cat,unit,listPrice,gst:18,photoUrl:(()=>{
