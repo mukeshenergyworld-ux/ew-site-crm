@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Energy World — Service Request</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0fdf4;min-height:100vh;display:flex;flex-direction:column}
+  .header{background:linear-gradient(135deg,#0d9488,#065f46);color:#fff;padding:24px 20px;text-align:center}
+  .header h1{font-size:22px;font-weight:800;letter-spacing:-0.3px}
+  .header p{font-size:13px;opacity:0.85;margin-top:6px}
+  .card{background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);margin:24px auto;padding:28px;width:100%;max-width:480px}
+  label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.05em}
+  input,select,textarea{width:100%;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;color:#1e293b;outline:none;transition:border 0.2s}
+  input:focus,select:focus,textarea:focus{border-color:#0d9488;box-shadow:0 0 0 3px rgba(13,148,136,0.12)}
+  .field{margin-bottom:16px}
+  .required::after{content:" *";color:#ef4444}
+  .btn{width:100%;background:#0d9488;color:#fff;border:none;padding:14px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;transition:all 0.2s;margin-top:8px}
+  .btn:hover{background:#0f766e;transform:translateY(-1px);box-shadow:0 4px 12px rgba(13,148,136,0.35)}
+  .btn:disabled{background:#94a3b8;cursor:not-allowed;transform:none;box-shadow:none}
+  .success{display:none;text-align:center;padding:32px 20px}
+  .success .icon{font-size:56px;margin-bottom:16px}
+  .success h2{color:#065f46;font-size:22px;margin-bottom:8px}
+  .success p{color:#64748b;font-size:14px;line-height:1.6}
+  .ticket-no{display:inline-block;background:#d1fae5;color:#065f46;border-radius:8px;padding:8px 18px;font-weight:800;font-size:18px;margin:12px 0;letter-spacing:1px}
+  .note{font-size:11px;color:#94a3b8;text-align:center;margin-top:16px;line-height:1.5}
+  .prod-type{display:flex;gap:8px;flex-wrap:wrap}
+  .prod-chip{padding:7px 14px;border:1.5px solid #e2e8f0;border-radius:20px;cursor:pointer;font-size:13px;font-weight:500;color:#475569;transition:all 0.15s;user-select:none}
+  .prod-chip.active{background:#d1fae5;border-color:#0d9488;color:#065f46;font-weight:700}
+  .footer{margin-top:auto;padding:16px;text-align:center;font-size:12px;color:#94a3b8}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⚡ Energy World</h1>
+  <p>Service Request / Complaint Registration</p>
+</div>
+
+<div class="card" id="formCard">
+  <h2 style="font-size:18px;font-weight:700;color:#1e293b;margin-bottom:4px">🔧 Register Service Request</h2>
+  <p style="font-size:13px;color:#64748b;margin-bottom:20px">Fill the form below and our team will contact you shortly.</p>
+
+  <div class="field">
+    <label class="required">Your Name</label>
+    <input id="clientName" type="text" placeholder="Full name"/>
+  </div>
+
+  <div class="field">
+    <label class="required">Mobile Number</label>
+    <input id="phone" type="tel" placeholder="98765-43210" maxlength="15"/>
+  </div>
+
+  <div class="field">
+    <label>Email (optional)</label>
+    <input id="email" type="email" placeholder="your@email.com"/>
+  </div>
+
+  <div class="field">
+    <label class="required">Site / Address</label>
+    <input id="address" type="text" placeholder="Plot no, Sector, City"/>
+  </div>
+
+  <div class="field">
+    <label class="required">Product Type</label>
+    <div class="prod-type" id="prodTypes">
+      <span class="prod-chip" onclick="selectProd(this,'Water Softener')">Water Softener</span>
+      <span class="prod-chip" onclick="selectProd(this,'Pump / Motor')">Pump / Motor</span>
+      <span class="prod-chip" onclick="selectProd(this,'Geberit Cistern')">Geberit Cistern</span>
+      <span class="prod-chip" onclick="selectProd(this,'Pipe Leakage')">Pipe Leakage</span>
+      <span class="prod-chip" onclick="selectProd(this,'ERV / HRV Unit')">ERV / HRV Unit</span>
+      <span class="prod-chip" onclick="selectProd(this,'Other')">Other</span>
+    </div>
+    <input id="productOther" type="text" placeholder="Describe product (if Other)" style="margin-top:10px;display:none"/>
+  </div>
+
+  <div class="field">
+    <label class="required">Complaint / Issue Description</label>
+    <textarea id="complaint" rows="3" placeholder="Describe the issue in detail..."></textarea>
+  </div>
+
+  <div class="field">
+    <label>Urgency</label>
+    <select id="urgency">
+      <option value="normal">Normal — Within 2-3 days</option>
+      <option value="urgent">Urgent — Today / Tomorrow</option>
+      <option value="critical">Critical — Immediate (emergency)</option>
+    </select>
+  </div>
+
+  <button class="btn" id="submitBtn" onclick="submitComplaint()">📤 Submit Service Request</button>
+  <p class="note">Your request will be sent to our team immediately.<br/>We will call you within 2 hours during business hours (9 AM – 7 PM).</p>
+</div>
+
+<div class="card success" id="successCard">
+  <div class="icon">✅</div>
+  <h2>Request Registered!</h2>
+  <p>Your service request has been registered successfully.</p>
+  <div class="ticket-no" id="ticketNo">EW-SVC-XXXX</div>
+  <p style="margin-top:8px;color:#64748b">Our team will contact you at <strong id="confirmedPhone"></strong> shortly.</p>
+  <p style="margin-top:16px;font-size:13px;color:#94a3b8">Screenshot this ticket number for reference.</p>
+  <button class="btn" style="margin-top:20px;background:#f0fdf4;color:#0d9488;border:2px solid #0d9488" onclick="location.reload()">Submit Another Request</button>
+</div>
+
+<div class="footer">Energy World | Panipat, Haryana | +91-9466600611</div>
+
+<script>
+const BOT_TOKEN = "8210772559:AAGUHDoEAidzXtgJvB8Nni2-vAQ9XHQUwKQ";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
+
+let selectedProduct = "";
+
+function selectProd(el, prod) {
+  document.querySelectorAll('.prod-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  selectedProduct = prod;
+  const otherInput = document.getElementById('productOther');
+  otherInput.style.display = prod === 'Other' ? 'block' : 'none';
+  if (prod !== 'Other') otherInput.value = '';
+}
+
+function genTicket() {
+  return 'EW-' + Date.now().toString(36).toUpperCase().slice(-5);
+}
+
+async function sendTelegram(text) {
+  // Find the EW complaint group chat ID via getUpdates (post to the bot)
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      // Sending via GAS relay
+      text: text,
+      parse_mode: 'Markdown'
+    })
+  });
+}
+
+async function submitComplaint() {
+  const name = document.getElementById('clientName').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+  const address = document.getElementById('address').value.trim();
+  const complaint = document.getElementById('complaint').value.trim();
+  const urgency = document.getElementById('urgency').value;
+  const email = document.getElementById('email').value.trim();
+  const productCustom = document.getElementById('productOther').value.trim();
+  const product = selectedProduct === 'Other' ? (productCustom || 'Other') : selectedProduct;
+
+  if (!name || !phone || !address || !complaint || !product) {
+    alert('Please fill all required fields and select a product type.');
+    return;
+  }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Submitting...';
+
+  const ticketId = genTicket();
+  const urgencyLabel = {normal:'Normal (2-3 days)', urgent:'⚡ Urgent', critical:'🚨 CRITICAL'}[urgency];
+
+  const tgText = `🔧 *NEW SERVICE REQUEST: ${ticketId}*\n\n` +
+    `👤 *Client:* ${name}\n` +
+    `📞 *Phone:* ${phone}${email ? `\n📧 Email: ${email}` : ''}\n` +
+    `📍 *Address:* ${address}\n\n` +
+    `⚙️ *Product:* ${product}\n` +
+    `❗ *Issue:* ${complaint}\n\n` +
+    `🔴 *Urgency:* ${urgencyLabel}\n` +
+    `🕐 *Time:* ${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}`;
+
+  try {
+    // Send to @ewcomplaint_bot — bot must be added to your complaints group
+    // Add @ewcomplaint_bot to a Telegram group, get chat ID, set below
+    const COMPLAINT_CHAT = "-1001234567890"; // REPLACE with your complaints group chat ID
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ chat_id: COMPLAINT_CHAT, text: tgText, parse_mode: 'Markdown' })
+    }).catch(() => null);
+
+    // Also POST to GAS to log complaint in Google Sheet + push to CRM dashboard
+    const gasData = {action:'saveComplaint', ticketId, name, phone, email, address, product, complaint, urgency, createdAt: new Date().toISOString()};
+    await fetch(GAS_URL + '?action=saveComplaint&data=' + encodeURIComponent(JSON.stringify(gasData))).catch(() => null);
+
+    // Store in localStorage of complaint page for reference
+    const stored = JSON.parse(localStorage.getItem('ew_complaints') || '[]');
+    stored.push({id:ticketId, name, phone, address, product, complaint, urgency, createdAt: new Date().toISOString(), status:'open'});
+    localStorage.setItem('ew_complaints', JSON.stringify(stored));
+
+    // Show success
+    document.getElementById('formCard').style.display = 'none';
+    document.getElementById('successCard').style.display = 'block';
+    document.getElementById('ticketNo').textContent = ticketId;
+    document.getElementById('confirmedPhone').textContent = phone;
+
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '📤 Submit Service Request';
+    alert('Error submitting. Please call us directly at +91-9466600611');
+  }
+}
+
+// Pre-fill from URL params if any
+const params = new URLSearchParams(location.search);
+if(params.get('name')) document.getElementById('clientName').value = params.get('name');
+if(params.get('phone')) document.getElementById('phone').value = params.get('phone');
+</script>
+</body>
+</html>
