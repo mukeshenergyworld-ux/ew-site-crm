@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Energy World CRM v26</title>
+<title>Energy World CRM v27</title>
 <script>
 // Force clear any cached old version
 (function(){
@@ -121,7 +121,7 @@ nav, nav button { user-select: none; -webkit-user-select: none; }
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel" data-v="27">
+<script type="text/babel" data-v="28">
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
 // ─── COMPANY CONFIG (update these) ───────────────────────────────────────────
@@ -4757,175 +4757,342 @@ function CRMApp(){
 // ════════════════════════════════════════════════════════════════
 // MODULE 1 — CHALLAN SYSTEM
 // ════════════════════════════════════════════════════════════════
+
 function ChallanModule({challans,setChallans,products,contacts,sites,currentUser,isAdmin,tgSend2,genId,fmtINR2,todayStr,fmtDate2,stockLedger,setStockLedger,clientLedger,setClientLedger,commissionRules,commissionLedger,setCommissionLedger}){
   const [tab,setTab]=React.useState("pending");
   const [showForm,setShowForm]=React.useState(false);
   const [editCh,setEditCh]=React.useState(null);
-  const [searchCode,setSearchCode]=React.useState("");
+  const [viewCh,setViewCh]=React.useState(null);
+  const [searchQ,setSearchQ]=React.useState("");
+  const [filterLoc,setFilterLoc]=React.useState("all");
+  const TEAL="#0d9488"; const DK="#1e293b"; const GR="#64748b";
 
-  const challansByTab={
-    pending: challans.filter(c=>c.status==="pending"),
-    approved: challans.filter(c=>c.status==="approved"),
-    dispatched: challans.filter(c=>c.status==="dispatched"),
-    received: challans.filter(c=>c.status==="received"),
-    all: challans,
-    freight: challans.filter(c=>c.driverName||c.freightAmt>0),
-  };
+  // Unique locations from contacts
+  const allLocations=React.useMemo(()=>[...new Set(contacts.map(c=>c.city).filter(Boolean))].sort(),[contacts]);
+
+  // Unique challan ID: CLI-NAME_YYYYMMDD-HHMM
+  function makeChallanId(partyName){
+    const now=new Date();
+    const initials=(partyName||"XX").replace(/[^A-Za-z]/g," ").trim().split(/\s+/).map(w=>w[0]||"").join("").toUpperCase().substring(0,3);
+    const d=now.getFullYear().toString().slice(2)+String(now.getMonth()+1).padStart(2,"0")+String(now.getDate()).padStart(2,"0");
+    const t=String(now.getHours()).padStart(2,"0")+String(now.getMinutes()).padStart(2,"0");
+    return `CH-${initials}-${d}-${t}`;
+  }
 
   async function createChallan(data){
-    const ch={...data, id:genId("CH"), createdAt:new Date().toISOString(), createdBy:currentUser.name, status:"pending"};
+    const id=makeChallanId(data.partyName);
+    const ch={...data,id,createdAt:new Date().toISOString(),createdBy:currentUser.name,status:"pending"};
     setChallans(prev=>[ch,...prev]);
-    // Stock OUT
     ch.items.forEach(it=>{
-      setStockLedger(prev=>[...prev,{id:genId("SL"),date:todayStr(),type:"out",productCode:it.code,productName:it.name,qty:it.qty,unit:it.unit,challanId:ch.id,party:ch.partyName,note:"Challan "+ch.id}]);
+      setStockLedger(prev=>[...prev,{id:genId("SL"),date:todayStr(),type:"out",productCode:it.code,productName:it.name,qty:it.qty,unit:it.unit,challanId:ch.id,party:ch.partyName}]);
     });
-    // Telegram
     const itemLines=ch.items.map((it,i)=>`${i+1}. ${it.code} — ${it.name} | Qty: ${it.qty} ${it.unit}`).join("\n");
-    await tgSend2("challanGen",`🆕 *NEW CHALLAN: ${ch.id}*\n📦 Party: ${ch.partyName}\n🏢 Site: ${ch.siteAddress||"-"}\n🚛 Vehicle: ${ch.vehicleNo||"-"}\n👤 By: ${ch.createdBy}\n\n*Items:*\n${itemLines}\n\n⏳ *Pending Approval*`);
+    await tgSend2("challanGen",`🆕 *NEW CHALLAN: ${ch.id}*\n📦 Party: ${ch.partyName}\n📍 ${ch.partyCity||""} ${ch.partyArea?`· ${ch.partyArea}`:""}\n🏢 Site: ${ch.siteAddress||"-"}\n🚛 Vehicle: ${ch.vehicleNo||"-"}\n👤 By: ${ch.createdBy}\n\n*Items:*\n${itemLines}\n\n⏳ *Pending Approval*`);
+    setShowForm(false);
+    setTab("pending");
+  }
+
+  async function saveChallanEdit(data){
+    setChallans(prev=>prev.map(c=>c.id===editCh.id?{...editCh,...data,updatedAt:new Date().toISOString(),updatedBy:currentUser.name}:c));
+    setEditCh(null);
     setShowForm(false);
   }
 
   async function approveChallan(id){
+    if(!isAdmin){alert("Only admin can approve.");return;}
     setChallans(prev=>prev.map(c=>c.id===id?{...c,status:"approved",approvedBy:currentUser.name,approvedAt:new Date().toISOString()}:c));
     const ch=challans.find(c=>c.id===id);
     const itemLines=(ch.items||[]).map((it,i)=>`${i+1}. ${it.code} — ${it.name} | Qty: ${it.qty} ${it.unit}`).join("\n");
-    await tgSend2("dispatch",`✅ *CHALLAN APPROVED: ${ch.id}*\n📦 Party: ${ch.partyName}\n🚛 Vehicle: ${ch.vehicleNo||"-"}\n👤 Approved by: *${currentUser.name}*\n\n*Items:*\n${itemLines}\n\n🚚 Ready for Dispatch`);
+    await tgSend2("dispatch",`✅ *CHALLAN APPROVED: ${ch.id}*\n📦 Party: ${ch.partyName}\n📍 ${ch.partyCity||""}${ch.partyArea?` · ${ch.partyArea}`:""}\n🚛 Vehicle: ${ch.vehicleNo||"-"}\n👤 Approved by: *${currentUser.name}*\n\n*Items:*\n${itemLines}\n\n🚚 Ready for Dispatch`);
   }
 
-  function markReceived(id, charges){
+  function rejectChallan(id){
+    const reason=window.prompt("Rejection reason (optional):");
+    if(reason===null)return;
+    setChallans(prev=>prev.map(c=>c.id===id?{...c,status:"rejected",rejectedBy:currentUser.name,rejectedAt:new Date().toISOString(),rejectionReason:reason}:c));
+  }
+
+  function deleteChallan(id){
+    if(!window.confirm("Delete this challan permanently?"))return;
+    setChallans(prev=>prev.filter(c=>c.id!==id));
+  }
+
+  function markDispatched(id){
+    setChallans(prev=>prev.map(c=>c.id===id?{...c,status:"dispatched",dispatchedAt:new Date().toISOString(),dispatchedBy:currentUser.name}:c));
+  }
+
+  function markReceived(id){
+    const tc=window.prompt("Transport charges (₹)?","0");
+    if(tc===null)return;
     const ch=challans.find(c=>c.id===id);
     if(!ch)return;
-    // Calculate challan amount with brand-wise discount per client
-    const siteId=ch.siteId;
-    const partyContacts=ch.partyId?[ch.partyId]:[];
     const updatedItems=ch.items.map(it=>{
       const prod=products.find(p=>p.code===it.code)||{};
       const mrp=prod.listPrice||prod.mrp||0;
-      // Find applicable commission rule discount for this party
       const rule=commissionRules.find(r=>r.brand===prod.brand&&r.partyId===ch.partyId);
       const disc=rule?rule.discount:0;
       const netPrice=mrp*(1-disc/100);
       return{...it,mrp,discount:disc,netPrice,lineAmt:netPrice*it.qty};
     });
     const totalAmt=updatedItems.reduce((s,i)=>s+(i.lineAmt||0),0);
-    const updated={...ch,status:"received",receivedAt:new Date().toISOString(),items:updatedItems,totalAmt,transportCharges:Number(charges||0)};
+    const updated={...ch,status:"received",receivedAt:new Date().toISOString(),items:updatedItems,totalAmt,transportCharges:Number(tc)||0};
     setChallans(prev=>prev.map(c=>c.id===id?updated:c));
-    // Post to client ledger
-    setClientLedger(prev=>[...prev,{id:genId("CL"),date:todayStr(),partyId:ch.partyId,partyName:ch.partyName,type:"debit",amount:totalAmt+(Number(charges||0)),desc:"Challan "+id,challanId:id,balance:0}]);
+    setClientLedger(prev=>[...prev,{id:genId("CL"),date:todayStr(),partyId:ch.partyId,partyName:ch.partyName,type:"debit",amount:totalAmt+(Number(tc)||0),desc:"Challan "+id,challanId:id,balance:0}]);
   }
 
-  const TEAL="#0d9488"; const DK="#1e293b"; const GR="#64748b";
-  const tabBtn=(t,lbl)=><button onClick={()=>setTab(t)} style={{background:tab===t?TEAL:"#f1f5f9",color:tab===t?"#fff":GR,border:"none",padding:"6px 14px",borderRadius:20,cursor:"pointer",fontSize:13,fontWeight:600,marginRight:6}}>{lbl} {challansByTab[t]?.length>0&&<span style={{background:tab===t?"rgba(255,255,255,0.25)":"#e2e8f0",borderRadius:10,padding:"1px 6px",fontSize:11,marginLeft:4}}>{challansByTab[t].length}</span>}</button>;
+  const STATUS_COLOR={pending:{bg:"#fef3c7",cl:"#92400e"},approved:{bg:"#d1fae5",cl:"#065f46"},dispatched:{bg:"#dbeafe",cl:"#1e40af"},received:{bg:"#ede9fe",cl:"#4c1d95"},rejected:{bg:"#fee2e2",cl:"#991b1b"}};
+
+  const filtered=React.useMemo(()=>{
+    let list=[...challans];
+    if(tab!=="all"&&tab!=="freight") list=list.filter(c=>c.status===tab);
+    if(tab==="freight") list=list.filter(c=>c.driverName||c.freightAmt>0);
+    if(filterLoc!=="all") list=list.filter(c=>(c.partyCity||"")=== filterLoc);
+    if(searchQ.trim()){
+      const q=searchQ.toLowerCase();
+      list=list.filter(c=>(c.id||"").toLowerCase().includes(q)||(c.partyName||"").toLowerCase().includes(q)||(c.partyCity||"").toLowerCase().includes(q)||(c.partyArea||"").toLowerCase().includes(q)||(c.vehicleNo||"").toLowerCase().includes(q));
+    }
+    return list.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
+  },[challans,tab,filterLoc,searchQ]);
+
+  const counts={pending:challans.filter(c=>c.status==="pending").length,approved:challans.filter(c=>c.status==="approved").length,dispatched:challans.filter(c=>c.status==="dispatched").length,received:challans.filter(c=>c.status==="received").length,rejected:challans.filter(c=>c.status==="rejected").length,all:challans.length,freight:challans.filter(c=>c.driverName||c.freightAmt>0).length};
+
+  const tabBtn=(t,lbl)=>(
+    <button onClick={()=>setTab(t)} style={{display:"flex",alignItems:"center",gap:5,background:tab===t?TEAL:"#fff",color:tab===t?"#fff":GR,border:"1px solid "+(tab===t?TEAL:"#e2e8f0"),padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>
+      {lbl}
+      {counts[t]>0&&<span style={{background:tab===t?"rgba(255,255,255,0.25)":"#f1f5f9",borderRadius:10,padding:"1px 6px",fontSize:11,minWidth:18,textAlign:"center"}}>{counts[t]}</span>}
+    </button>
+  );
 
   return(
-    <div style={{maxWidth:1100,margin:"0 auto",padding:"20px 16px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2 style={{margin:0,fontSize:20,fontWeight:700,color:DK}}>📦 Challan System</h2>
-        <button onClick={()=>{setEditCh(null);setShowForm(true);}} style={{background:TEAL,color:"#fff",border:"none",padding:"8px 18px",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:14}}>+ New Challan</button>
+    <div style={{padding:"0 0 40px"}}>
+      {/* Header */}
+      <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:"16px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:0}}>
+        <div>
+          <h2 style={{margin:0,fontSize:20,fontWeight:800,color:DK}}>📦 Challan System</h2>
+          <div style={{fontSize:12,color:GR,marginTop:2}}>{challans.length} total · {counts.pending} pending · {counts.approved} approved</div>
+        </div>
+        <button onClick={()=>{setEditCh(null);setShowForm(true);}}
+          style={{background:TEAL,color:"#fff",border:"none",padding:"10px 20px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:14,display:"flex",alignItems:"center",gap:6}}>
+          + New Challan
+        </button>
       </div>
-      <div style={{marginBottom:16}}>
-        {tabBtn("pending","⏳ Pending")}{tabBtn("approved","✅ Approved")}{tabBtn("dispatched","🚚 Dispatched")}{tabBtn("received","📥 Received")}{tabBtn("all","All")}{tabBtn("freight","🚛 Freight")}
+
+      {/* Filters row */}
+      <div style={{background:"#f8fafc",borderBottom:"1px solid #e2e8f0",padding:"10px 24px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",flex:1}}>
+          {tabBtn("pending","⏳ Pending")}{tabBtn("approved","✅ Approved")}{tabBtn("dispatched","🚚 Dispatched")}{tabBtn("received","📥 Received")}{tabBtn("rejected","❌ Rejected")}{tabBtn("all","All")}{tabBtn("freight","🚛 Freight")}
+        </div>
+        <select value={filterLoc} onChange={e=>setFilterLoc(e.target.value)}
+          style={{padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,color:DK,background:"#fff"}}>
+          <option value="all">All Locations</option>
+          {allLocations.map(l=><option key={l} value={l}>{l}</option>)}
+        </select>
+        <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search by name, city, vehicle..."
+          style={{padding:"6px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,width:200}}/>
       </div>
-      <div>
-        {tab==="freight"?(()=>{
-          // Freight summary by driver
-          const withFreight=challans.filter(c=>c.driverName||c.freightAmt>0);
-          const driverMap={};
-          withFreight.forEach(c=>{
-            const d=c.driverName||"Unknown";
-            if(!driverMap[d]) driverMap[d]={name:d,total:0,received:0,pending:0,challans:[]};
-            const amt=Number(c.freightAmt)||0;
-            driverMap[d].total+=amt;
-            if(c.receiptReceived) driverMap[d].received+=amt;
-            else driverMap[d].pending+=amt;
-            driverMap[d].challans.push(c);
-          });
-          const drivers=Object.values(driverMap);
+
+      {/* Challan List */}
+      <div style={{padding:"16px 24px"}}>
+        {filtered.length===0&&<div style={{textAlign:"center",padding:"60px 20px",color:GR}}>
+          <div style={{fontSize:40,marginBottom:12}}>📭</div>
+          <div style={{fontSize:15,fontWeight:600}}>No challans found</div>
+          <div style={{fontSize:13,marginTop:4}}>Create your first challan using the button above</div>
+        </div>}
+        {filtered.map(ch=>{
+          const sc=STATUS_COLOR[ch.status]||{bg:"#f1f5f9",cl:GR};
           return(
-            <div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:12,marginBottom:20}}>
-                {drivers.map(d=>(
-                  <div key={d.name} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"14px 16px"}}>
-                    <div style={{fontWeight:700,fontSize:15,color:DK,marginBottom:6}}>🚛 {d.name}</div>
-                    <div style={{display:"flex",gap:16,fontSize:13,marginBottom:8}}>
-                      <div><span style={{color:"#64748b"}}>Total: </span><span style={{fontWeight:700}}>₹{d.total.toLocaleString()}</span></div>
-                      <div><span style={{color:"#10b981"}}>Rcvd: </span><span style={{fontWeight:700,color:"#10b981"}}>₹{d.received.toLocaleString()}</span></div>
-                      <div><span style={{color:"#ef4444"}}>Pending: </span><span style={{fontWeight:700,color:"#ef4444"}}>₹{d.pending.toLocaleString()}</span></div>
-                    </div>
-                    {d.challans.map(c=>(
-                      <div key={c.id} style={{background:"#f8fafc",borderRadius:6,padding:"6px 10px",marginBottom:4,fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <div>
-                          <span style={{fontWeight:600,color:DK}}>{c.id}</span>
-                          <span style={{color:"#64748b",marginLeft:8}}>{c.partyName}</span>
-                          <span style={{marginLeft:8,color:"#64748b"}}>{c.vehicleNo||""}</span>
-                        </div>
-                        <div style={{display:"flex",alignItems:"center",gap:6}}>
-                          <span style={{fontWeight:700}}>₹{(c.freightAmt||0).toLocaleString()}</span>
-                          <button onClick={()=>setChallans(prev=>prev.map(x=>x.id===c.id?{...x,receiptReceived:!x.receiptReceived}:x))}
-                            style={{background:c.receiptReceived?"#d1fae5":"#fef2f2",color:c.receiptReceived?"#065f46":"#ef4444",border:"none",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,fontWeight:600}}>
-                            {c.receiptReceived?"✓ Rcpt":"⚠ No Rcpt"}
-                          </button>
-                        </div>
-                      </div>
+            <div key={ch.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,marginBottom:10,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+              {/* Challan header row */}
+              <div style={{padding:"12px 16px",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid #f1f5f9",background:"#fafafa"}}>
+                <div style={{fontWeight:800,fontSize:14,color:DK,fontFamily:"monospace",letterSpacing:"0.3px"}}>{ch.id}</div>
+                <span style={{background:sc.bg,color:sc.cl,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{(ch.status||"pending").toUpperCase()}</span>
+                <div style={{fontSize:12,color:GR,marginLeft:"auto"}}>🗓 {fmtDate2(ch.createdAt)} · 👤 {ch.createdBy}</div>
+                {ch.updatedBy&&<div style={{fontSize:11,color:"#a78bfa"}}>✏ Edited by {ch.updatedBy}</div>}
+              </div>
+              {/* Party + location */}
+              <div style={{padding:"10px 16px",display:"flex",gap:20,alignItems:"flex-start",flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:200}}>
+                  <div style={{fontWeight:700,fontSize:15,color:DK}}>{ch.partyName}</div>
+                  <div style={{fontSize:12,color:GR,marginTop:3,display:"flex",gap:8,flexWrap:"wrap"}}>
+                    {ch.partyCity&&<span>📍 {ch.partyCity}</span>}
+                    {ch.partyArea&&<span>· {ch.partyArea}</span>}
+                    {ch.partyPhone&&<span>📞 {ch.partyPhone}</span>}
+                    {ch.partyType&&<span style={{background:"#f0fdf4",color:"#16a34a",borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:600}}>{ch.partyType}</span>}
+                  </div>
+                  {ch.vehicleNo&&<div style={{fontSize:12,color:GR,marginTop:4}}>🚛 {ch.vehicleNo}{ch.driverName&&` · ${ch.driverName}`}{ch.freightAmt>0&&` · ₹${ch.freightAmt}`}</div>}
+                  {ch.remarks&&<div style={{fontSize:12,color:"#8b5cf6",marginTop:4,fontStyle:"italic"}}>💬 {ch.remarks}</div>}
+                </div>
+                {/* Items */}
+                <div style={{flex:2,minWidth:280}}>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                    {(ch.items||[]).map((it,i)=>(
+                      <span key={i} style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6,padding:"3px 9px",fontSize:12,color:"#065f46",fontWeight:500}}>
+                        {it.name.substring(0,25)} · <strong>{it.qty}</strong> {it.unit}
+                      </span>
                     ))}
                   </div>
-                ))}
-                {drivers.length===0&&<div style={{textAlign:"center",padding:40,color:GR,gridColumn:"1/-1"}}>No challans with freight details yet. Add driver name and freight amount when creating a challan.</div>}
+                  {ch.totalAmt>0&&<div style={{marginTop:8,fontWeight:700,color:TEAL,fontSize:14}}>
+                    Total: {fmtINR2(ch.totalAmt)}
+                    {ch.transportCharges>0&&<span style={{color:GR,fontWeight:400,fontSize:12,marginLeft:8}}>+ Transport: {fmtINR2(ch.transportCharges)}</span>}
+                  </div>}
+                </div>
+              </div>
+              {/* Action bar */}
+              <div style={{padding:"8px 16px",background:"#f8fafc",borderTop:"1px solid #f1f5f9",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                <button onClick={()=>setViewCh(ch)}
+                  style={{background:"#fff",color:DK,border:"1px solid #e2e8f0",padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600}}>
+                  👁 View
+                </button>
+                {(ch.status==="pending"||(isAdmin&&ch.status!=="received"))&&(
+                  <button onClick={()=>{setEditCh(ch);setShowForm(true);}}
+                    style={{background:"#fff",color:"#2563eb",border:"1px solid #bfdbfe",padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600}}>
+                    ✏ Edit
+                  </button>
+                )}
+                {ch.status==="pending"&&isAdmin&&(
+                  <button onClick={()=>approveChallan(ch.id)}
+                    style={{background:"#d1fae5",color:"#065f46",border:"1px solid #6ee7b7",padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700}}>
+                    ✅ Approve for Dispatch
+                  </button>
+                )}
+                {ch.status==="pending"&&isAdmin&&(
+                  <button onClick={()=>rejectChallan(ch.id)}
+                    style={{background:"#fee2e2",color:"#991b1b",border:"1px solid #fca5a5",padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700}}>
+                    ❌ Reject
+                  </button>
+                )}
+                {ch.status==="approved"&&(
+                  <button onClick={()=>markDispatched(ch.id)}
+                    style={{background:"#dbeafe",color:"#1e40af",border:"1px solid #93c5fd",padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700}}>
+                    🚚 Mark Dispatched
+                  </button>
+                )}
+                {ch.status==="dispatched"&&(
+                  <button onClick={()=>markReceived(ch.id)}
+                    style={{background:"#ede9fe",color:"#4c1d95",border:"1px solid #c4b5fd",padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700}}>
+                    📥 Mark Received
+                  </button>
+                )}
+                {(isAdmin||ch.status==="pending")&&(
+                  <button onClick={()=>deleteChallan(ch.id)}
+                    style={{background:"#fff",color:"#ef4444",border:"1px solid #fca5a5",padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600,marginLeft:"auto"}}>
+                    🗑 Delete
+                  </button>
+                )}
               </div>
             </div>
           );
-        })():(
-        <>
-        {(challansByTab[tab]||[]).length===0&&<div style={{textAlign:"center",padding:40,color:GR}}>No challans in this category</div>}
-        {(challansByTab[tab]||[]).map(ch=>(
-          <div key={ch.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"14px 16px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
-            <div style={{flex:1}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                <span style={{fontWeight:700,fontSize:15,color:DK}}>{ch.id}</span>
-                <span style={{background:{pending:"#fef3c7",approved:"#d1fae5",dispatched:"#dbeafe",received:"#ede9fe"}[ch.status]||"#f1f5f9",color:{pending:"#92400e",approved:"#065f46",dispatched:"#1e40af",received:"#4c1d95"}[ch.status]||GR,borderRadius:12,padding:"2px 10px",fontSize:11,fontWeight:600}}>{ch.status?.toUpperCase()}</span>
-                {ch.approvedBy&&<span style={{fontSize:11,color:GR}}>✅ {ch.approvedBy}</span>}
+        })}
+      </div>
+
+      {/* Challan Detail Modal */}
+      {viewCh&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:640,maxHeight:"90vh",overflowY:"auto"}}>
+            <div style={{padding:"16px 20px",borderBottom:"1px solid #e2e8f0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontWeight:800,fontSize:16,color:DK,fontFamily:"monospace"}}>{viewCh.id}</div>
+                <div style={{fontSize:12,color:GR}}>Created {fmtDate2(viewCh.createdAt)} by {viewCh.createdBy}</div>
               </div>
-              <div style={{fontSize:13,color:GR,marginBottom:4}}>
-                <strong style={{color:DK}}>{ch.partyName}</strong> · {ch.siteAddress||"-"} · {fmtDate2(ch.createdAt)} · By: {ch.createdBy}
-              </div>
-              {ch.vehicleNo&&<div style={{fontSize:12,color:GR}}>🚛 {ch.vehicleNo} {ch.driverName&&`· ${ch.driverName}`}</div>}
-              <div style={{marginTop:8,fontSize:12,color:GR}}>
-                {(ch.items||[]).map((it,i)=>(
-                  <span key={i} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:4,padding:"2px 7px",marginRight:5,marginBottom:4,display:"inline-block"}}>
-                    {it.code} — {it.qty} {it.unit}
-                  </span>
-                ))}
-              </div>
-              {ch.totalAmt>0&&<div style={{marginTop:6,fontWeight:600,color:TEAL}}>Amount: {fmtINR2(ch.totalAmt)} {ch.transportCharges>0&&<span style={{color:GR,fontWeight:400,fontSize:12}}>+ Transport: {fmtINR2(ch.transportCharges)}</span>}</div>}
+              <button onClick={()=>setViewCh(null)} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:GR}}>✕</button>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {ch.status==="pending"&&<button onClick={()=>approveChallan(ch.id)} style={{background:"#10b981",color:"#fff",border:"none",padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600}}>✅ Approve</button>}
-              {ch.status==="approved"&&<button onClick={()=>setChallans(prev=>prev.map(c=>c.id===ch.id?{...c,status:"dispatched",dispatchedAt:new Date().toISOString()}:c))} style={{background:"#3b82f6",color:"#fff",border:"none",padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600}}>🚚 Mark Dispatched</button>}
-              {ch.status==="dispatched"&&<button onClick={()=>{const tc=prompt("Transport charges (Rs.)?","0");if(tc!==null)markReceived(ch.id,tc);}} style={{background:"#8b5cf6",color:"#fff",border:"none",padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600}}>📥 Mark Received</button>}
+            <div style={{padding:"16px 20px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+                <div style={{background:"#f8fafc",borderRadius:10,padding:"12px 14px"}}>
+                  <div style={{fontSize:11,color:GR,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Client Details</div>
+                  <div style={{fontWeight:700,fontSize:15,color:DK}}>{viewCh.partyName}</div>
+                  <div style={{fontSize:13,color:GR,marginTop:4}}>{viewCh.partyType}</div>
+                  {viewCh.partyCity&&<div style={{fontSize:13,color:GR}}>📍 {viewCh.partyCity}{viewCh.partyArea&&` · ${viewCh.partyArea}`}</div>}
+                  {viewCh.partyPhone&&<div style={{fontSize:13,color:GR}}>📞 {viewCh.partyPhone}</div>}
+                </div>
+                <div style={{background:"#f8fafc",borderRadius:10,padding:"12px 14px"}}>
+                  <div style={{fontSize:11,color:GR,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Transport</div>
+                  <div style={{fontSize:13,color:DK}}>{viewCh.vehicleNo||"—"}</div>
+                  <div style={{fontSize:13,color:GR}}>{viewCh.driverName||"No driver"}</div>
+                  {viewCh.freightAmt>0&&<div style={{fontSize:13,fontWeight:600,color:TEAL}}>₹{viewCh.freightAmt} freight</div>}
+                </div>
+              </div>
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:11,color:GR,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Items ({viewCh.items?.length||0})</div>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                  <thead><tr style={{background:"#f1f5f9"}}><th style={{padding:"8px 10px",textAlign:"left",borderRadius:"6px 0 0 6px"}}>Product</th><th style={{padding:"8px 10px",textAlign:"center"}}>Qty</th><th style={{padding:"8px 10px",textAlign:"right"}}>Unit</th>{viewCh.totalAmt>0&&<th style={{padding:"8px 10px",textAlign:"right"}}>Amount</th>}</tr></thead>
+                  <tbody>
+                    {(viewCh.items||[]).map((it,i)=>(
+                      <tr key={i} style={{borderBottom:"1px solid #f1f5f9"}}>
+                        <td style={{padding:"8px 10px"}}>
+                          <div style={{fontWeight:600}}>{it.name}</div>
+                          <div style={{fontSize:11,color:GR}}>{it.code} · {it.brand}</div>
+                        </td>
+                        <td style={{padding:"8px 10px",textAlign:"center",fontWeight:700}}>{it.qty}</td>
+                        <td style={{padding:"8px 10px",textAlign:"right",color:GR}}>{it.unit}</td>
+                        {viewCh.totalAmt>0&&<td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:TEAL}}>{it.lineAmt?fmtINR2(it.lineAmt):"—"}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                  {viewCh.totalAmt>0&&<tfoot><tr style={{background:"#f0fdf4"}}><td colSpan={3} style={{padding:"8px 10px",fontWeight:700}}>Total</td><td style={{padding:"8px 10px",textAlign:"right",fontWeight:800,color:TEAL,fontSize:15}}>{fmtINR2(viewCh.totalAmt)}</td></tr></tfoot>}
+                </table>
+              </div>
+              {viewCh.remarks&&<div style={{background:"#f5f3ff",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#4c1d95"}}>💬 {viewCh.remarks}</div>}
             </div>
           </div>
-        ))}
-        </>
-        )}
-      </div>
-      {showForm&&<ChallanForm products={products} contacts={contacts} sites={sites} currentUser={currentUser} onSave={createChallan} onClose={()=>setShowForm(false)} genId={genId} todayStr={todayStr}/>}
+        </div>
+      )}
+
+      {showForm&&(
+        <ChallanForm
+          products={products} contacts={contacts} sites={sites}
+          currentUser={currentUser} editData={editCh}
+          onSave={editCh?saveChallanEdit:createChallan}
+          onClose={()=>{setShowForm(false);setEditCh(null);}}
+          genId={genId} todayStr={todayStr}
+        />
+      )}
     </div>
   );
 }
 
-function ChallanForm({products,contacts,sites,currentUser,onSave,onClose,genId,todayStr}){
-  const [partyId,setPartyId]=React.useState("");
-  const [siteId,setSiteId]=React.useState("");
-  const [vehicleNo,setVehicleNo]=React.useState("");
-  const [driverName,setDriverName]=React.useState("");
-  const [freightAmt,setFreightAmt]=React.useState("");
-  const [items,setItems]=React.useState([]);
-  const [remarks,setRemarks]=React.useState("");
-  const [showSPS,setShowSPS]=React.useState(false);
-  const TEAL="#0d9488";
+function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClose,genId,todayStr}){
+  const isEdit=!!editData;
 
-  const party=contacts.find(c=>c.id===partyId)||null;
-  const site=sites.find(s=>s.id===siteId)||null;
+  // Step-based flow: 1=location, 2=area+client, 3=items+details
+  const [step,setStep]=React.useState(isEdit?3:1);
+  const [selLocation,setSelLocation]=React.useState(editData?.partyCity||"");
+  const [selArea,setSelArea]=React.useState(editData?.partyArea||"");
+  const [clientSearch,setClientSearch]=React.useState("");
+  const [selClient,setSelClient]=React.useState(editData?.partyId?contacts.find(c=>c.id===editData.partyId)||null:null);
+  const [showNewClient,setShowNewClient]=React.useState(false);
+  const [newClientForm,setNewClientForm]=React.useState({name:"",phone:"",type:"Builder",city:selLocation,locality:selArea});
+
+  const [siteId,setSiteId]=React.useState(editData?.siteId||"");
+  const [vehicleNo,setVehicleNo]=React.useState(editData?.vehicleNo||"");
+  const [driverName,setDriverName]=React.useState(editData?.driverName||"");
+  const [freightAmt,setFreightAmt]=React.useState(editData?.freightAmt||"");
+  const [items,setItems]=React.useState(editData?.items||[]);
+  const [remarks,setRemarks]=React.useState(editData?.remarks||"");
+  const [showSPS,setShowSPS]=React.useState(false);
+
+  const TEAL="#0d9488"; const GR="#64748b"; const DK="#1e293b";
+
+  // All unique locations from contacts
+  const allLocations=React.useMemo(()=>[...new Set(contacts.map(c=>c.city).filter(Boolean))].sort(),[contacts]);
+  
+  // Areas in selected location
+  const areasInLoc=React.useMemo(()=>{
+    if(!selLocation) return [];
+    return [...new Set(contacts.filter(c=>c.city===selLocation).map(c=>c.locality||c.area||"").filter(Boolean))].sort();
+  },[contacts,selLocation]);
+
+  // Clients filtered by location + area + search
+  const filteredClients=React.useMemo(()=>{
+    let list=contacts;
+    if(selLocation) list=list.filter(c=>c.city===selLocation);
+    if(selArea) list=list.filter(c=>(c.locality||c.area||"")===selArea);
+    if(clientSearch.trim()){
+      const q=clientSearch.toLowerCase();
+      list=list.filter(c=>(c.name||"").toLowerCase().includes(q)||(c.phone||"").includes(clientSearch.trim()));
+    }
+    return list.slice(0,20);
+  },[contacts,selLocation,selArea,clientSearch]);
 
   function handleFinish(newItems){
     setItems(prev=>{
@@ -4939,91 +5106,260 @@ function ChallanForm({products,contacts,sites,currentUser,onSave,onClose,genId,t
     });
     setShowSPS(false);
   }
-
   function updateQty(i,q){setItems(prev=>prev.map((it,idx)=>idx===i?{...it,qty:Number(q)||1}:it));}
   function removeItem(i){setItems(prev=>prev.filter((_,idx)=>idx!==i));}
 
-  function submit(){
-    if(!partyId){alert("Select a party.");return;}
-    if(!items.length){alert("Add at least one product.");return;}
-    onSave({partyId,partyName:party?.name||partyId,siteId,siteName:site?(site.ownerName+" — "+site.city):"",vehicleNo,driverName,freightAmt:Number(freightAmt)||0,items,remarks});
+  function saveNewClient(){
+    if(!newClientForm.name.trim()){alert("Enter client name.");return;}
+    // Add to contacts via saveContact prop - but we don't have it here
+    // We'll pass enough data to create inline
+    const nc={id:"c_"+Date.now(),name:newClientForm.name.trim(),phone:newClientForm.phone,type:newClientForm.type,city:selLocation,locality:selArea,active:true};
+    setSelClient(nc);
+    setShowNewClient(false);
+    setStep(3);
   }
 
+  function submit(){
+    if(!selClient){alert("Select a client.");return;}
+    if(!items.length){alert("Add at least one product.");return;}
+    const site=sites.find(s=>s.id===siteId)||null;
+    onSave({
+      partyId:selClient.id,partyName:selClient.name,partyType:selClient.type,
+      partyCity:selLocation||selClient.city||"",partyArea:selArea||selClient.locality||"",
+      partyPhone:selClient.phone||"",
+      siteId,siteAddress:site?(site.ownerName+" — "+site.city):"",
+      vehicleNo,driverName,freightAmt:Number(freightAmt)||0,
+      items,remarks
+    });
+  }
+
+  const stepLabel=["","📍 Location","🏘 Area & Client","📦 Items & Details"];
+  const inp={width:"100%",padding:"9px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,boxSizing:"border-box",outline:"none"};
+
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{background:"#fff",borderRadius:12,padding:24,width:"100%",maxWidth:660,maxHeight:"92vh",overflowY:"auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <h3 style={{margin:0,fontSize:18,fontWeight:700}}>📦 New Challan</h3>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer"}}>✕</button>
+    <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.7)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:580,maxHeight:"94vh",overflowY:"auto",boxShadow:"0 25px 60px rgba(0,0,0,0.3)"}}>
+        {/* Header */}
+        <div style={{padding:"18px 20px",borderBottom:"1px solid #e2e8f0",background:"#0d9488",borderRadius:"16px 16px 0 0"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontWeight:800,fontSize:17,color:"#fff"}}>{isEdit?"✏ Edit Challan":"📦 New Challan"}</div>
+              {!isEdit&&<div style={{fontSize:12,color:"rgba(255,255,255,0.8)",marginTop:2}}>Step {step} of 3 — {stepLabel[step]}</div>}
+            </div>
+            <button onClick={onClose} style={{background:"rgba(255,255,255,0.2)",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:16,color:"#fff"}}>✕</button>
+          </div>
+          {/* Progress bar */}
+          {!isEdit&&<div style={{marginTop:12,background:"rgba(255,255,255,0.2)",borderRadius:4,height:4}}>
+            <div style={{width:`${(step/3)*100}%`,background:"#fff",borderRadius:4,height:4,transition:"width 0.3s"}}/>
+          </div>}
         </div>
-        {/* Party + Site */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+
+        <div style={{padding:"20px"}}>
+
+        {/* ── STEP 1: LOCATION ── */}
+        {(step===1||isEdit)&&!isEdit&&(
           <div>
-            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Party / Client *</label>
-            <select value={partyId} onChange={e=>setPartyId(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4}}>
-              <option value="">-- Select Party --</option>
-              {contacts.map(c=><option key={c.id} value={c.id}>{c.name} ({c.type})</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Site (optional)</label>
-            <select value={siteId} onChange={e=>setSiteId(e.target.value)} style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4}}>
-              <option value="">-- Select Site --</option>
-              {sites.map(s=><option key={s.id} value={s.id}>{s.ownerName} — {s.city}</option>)}
-            </select>
-          </div>
-        </div>
-        {/* Driver + Vehicle + Freight */}
-        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:8}}>🚛 Freight Details (for Gautam — Accounts)</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-            <div>
-              <label style={{fontSize:11,color:"#64748b",fontWeight:600}}>Driver Name</label>
-              <input value={driverName} onChange={e=>setDriverName(e.target.value)} placeholder="Driver name" style={{width:"100%",padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:3,boxSizing:"border-box",fontSize:13}}/>
+            <div style={{fontSize:13,fontWeight:700,color:DK,marginBottom:12}}>Select city / location</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:8,marginBottom:16}}>
+              {allLocations.map(loc=>(
+                <button key={loc} onClick={()=>{setSelLocation(loc);setSelArea("");}}
+                  style={{padding:"10px 14px",borderRadius:10,border:`2px solid ${selLocation===loc?TEAL:"#e2e8f0"}`,background:selLocation===loc?"#f0fdfa":"#fff",color:selLocation===loc?TEAL:DK,cursor:"pointer",fontWeight:selLocation===loc?700:400,fontSize:13,textAlign:"left"}}>
+                  📍 {loc}
+                </button>
+              ))}
+              <button onClick={()=>{setSelLocation("");setSelArea("");}}
+                style={{padding:"10px 14px",borderRadius:10,border:`2px solid ${!selLocation?"#8b5cf6":"#e2e8f0"}`,background:!selLocation?"#f5f3ff":"#fff",color:!selLocation?"#8b5cf6":DK,cursor:"pointer",fontWeight:!selLocation?700:400,fontSize:13}}>
+                🌐 All
+              </button>
             </div>
-            <div>
-              <label style={{fontSize:11,color:"#64748b",fontWeight:600}}>Vehicle No</label>
-              <input value={vehicleNo} onChange={e=>setVehicleNo(e.target.value)} placeholder="HR55-AB-1234" style={{width:"100%",padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:3,boxSizing:"border-box",fontSize:13}}/>
-            </div>
-            <div>
-              <label style={{fontSize:11,color:"#64748b",fontWeight:600}}>Freight Amt (₹)</label>
-              <input type="number" value={freightAmt} onChange={e=>setFreightAmt(e.target.value)} placeholder="0" style={{width:"100%",padding:"7px 8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:3,boxSizing:"border-box",fontSize:13}}/>
-            </div>
-          </div>
-        </div>
-        {/* Product picker */}
-        <button onClick={()=>setShowSPS(true)} style={{width:"100%",background:TEAL,color:"#fff",border:"none",padding:"11px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:14,marginBottom:12}}>
-          🛒 Add Products (Brand → Family → Item)
-        </button>
-        {items.length>0&&(
-          <div style={{marginBottom:14}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#64748b",marginBottom:6}}>Items ({items.length})</div>
-            {items.map((it,i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"8px 10px",marginBottom:5}}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:600}}>{it.name}</div>
-                  <div style={{fontSize:11,color:"#64748b"}}>{it.code} · {it.brand}</div>
-                </div>
-                <input type="number" min="0.01" step="0.01" value={it.qty} onChange={e=>updateQty(i,e.target.value)} style={{width:70,padding:"5px 8px",border:"1px solid #e2e8f0",borderRadius:6,textAlign:"center",fontSize:13}}/>
-                <span style={{fontSize:11,color:"#94a3b8",width:28}}>{it.unit}</span>
-                <button onClick={()=>removeItem(i)} style={{background:"#fef2f2",color:"#ef4444",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:12}}>✕</button>
-              </div>
-            ))}
+            <input value={selLocation} onChange={e=>setSelLocation(e.target.value)} placeholder="Or type a city name..."
+              style={{...inp,marginBottom:16}}/>
+            <button onClick={()=>setStep(2)} style={{width:"100%",background:TEAL,color:"#fff",border:"none",padding:"11px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:14}}>
+              Next → Select Area & Client
+            </button>
           </div>
         )}
-        <div style={{marginBottom:14}}>
-          <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>Remarks</label>
-          <input value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Any special instructions..." style={{width:"100%",padding:"8px",border:"1px solid #e2e8f0",borderRadius:6,marginTop:4,boxSizing:"border-box"}}/>
-        </div>
-        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-          <button onClick={onClose} style={{padding:"9px 20px",border:"1px solid #e2e8f0",borderRadius:8,cursor:"pointer"}}>Cancel</button>
-          <button onClick={submit} style={{padding:"9px 24px",background:TEAL,color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:700}}>Create Challan ({items.length} items)</button>
+
+        {/* ── STEP 2: AREA + CLIENT ── */}
+        {(step===2)&&!isEdit&&(
+          <div>
+            {/* Back */}
+            <button onClick={()=>setStep(1)} style={{background:"none",border:"none",cursor:"pointer",color:GR,fontSize:13,marginBottom:14,padding:0}}>← Back to Location</button>
+            <div style={{background:"#f0fdfa",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:13,color:TEAL,fontWeight:600}}>📍 {selLocation||"All locations"}</div>
+            
+            {/* Area filter */}
+            {areasInLoc.length>0&&(
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:12,fontWeight:700,color:GR,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.05em"}}>Filter by Area</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  <button onClick={()=>setSelArea("")} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${!selArea?TEAL:"#e2e8f0"}`,background:!selArea?"#f0fdfa":"#fff",color:!selArea?TEAL:GR,cursor:"pointer",fontSize:12,fontWeight:!selArea?700:400}}>All areas</button>
+                  {areasInLoc.map(a=>(
+                    <button key={a} onClick={()=>setSelArea(a)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${selArea===a?TEAL:"#e2e8f0"}`,background:selArea===a?"#f0fdfa":"#fff",color:selArea===a?TEAL:GR,cursor:"pointer",fontSize:12,fontWeight:selArea===a?700:400}}>{a}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Client search */}
+            <div style={{fontSize:12,fontWeight:700,color:GR,marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Search Client</div>
+            <input value={clientSearch} onChange={e=>setClientSearch(e.target.value)} placeholder="Type first letters of client name..."
+              autoFocus style={{...inp,marginBottom:10}}/>
+            
+            {/* Client results */}
+            <div style={{maxHeight:240,overflowY:"auto",border:"1px solid #e2e8f0",borderRadius:10,marginBottom:12}}>
+              {filteredClients.length===0&&(
+                <div style={{padding:"20px",textAlign:"center",color:GR,fontSize:13}}>
+                  No client found
+                  <button onClick={()=>setShowNewClient(true)} style={{display:"block",margin:"10px auto 0",background:TEAL,color:"#fff",border:"none",padding:"7px 16px",borderRadius:6,cursor:"pointer",fontSize:13,fontWeight:600}}>+ Register New Client</button>
+                </div>
+              )}
+              {filteredClients.map(c=>(
+                <div key={c.id} onClick={()=>{setSelClient(c);setStep(3);}}
+                  style={{padding:"11px 14px",cursor:"pointer",borderBottom:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",alignItems:"center",background:selClient?.id===c.id?"#f0fdfa":"#fff"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                  onMouseLeave={e=>e.currentTarget.style.background=selClient?.id===c.id?"#f0fdfa":"#fff"}>
+                  <div>
+                    <div style={{fontWeight:600,fontSize:14,color:DK}}>{c.name}</div>
+                    <div style={{fontSize:12,color:GR,marginTop:2}}>
+                      {c.type&&<span style={{background:"#f0f9ff",color:"#0369a1",borderRadius:4,padding:"1px 6px",fontSize:11,marginRight:6}}>{c.type}</span>}
+                      {c.city}{c.locality&&` · ${c.locality}`}
+                      {c.phone&&` · 📞 ${c.phone}`}
+                    </div>
+                  </div>
+                  {selClient?.id===c.id&&<span style={{color:TEAL,fontSize:18,fontWeight:700}}>✓</span>}
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setShowNewClient(true)}
+                style={{flex:1,background:"#fff",color:TEAL,border:"1px solid "+TEAL,padding:"9px",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:13}}>
+                + New Client
+              </button>
+              {selClient&&<button onClick={()=>setStep(3)} style={{flex:2,background:TEAL,color:"#fff",border:"none",padding:"9px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:14}}>
+                Next → Add Items
+              </button>}
+            </div>
+          </div>
+        )}
+
+        {/* ── NEW CLIENT FORM ── */}
+        {showNewClient&&(
+          <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10,display:"flex",alignItems:"center",justifyContent:"center",padding:16,borderRadius:16}}>
+            <div style={{background:"#fff",borderRadius:12,padding:20,width:"100%",maxWidth:380}}>
+              <div style={{fontWeight:700,fontSize:16,marginBottom:14}}>📋 Register New Client</div>
+              {[["Name *","name","text"],["Phone","phone","tel"],["Type","type","select"]].map(([lbl,key,type])=>(
+                <div key={key} style={{marginBottom:10}}>
+                  <label style={{fontSize:12,color:GR,fontWeight:600}}>{lbl}</label>
+                  {type==="select"
+                    ?<select value={newClientForm[key]} onChange={e=>setNewClientForm(p=>({...p,[key]:e.target.value}))} style={{...inp,marginTop:4}}>
+                      {["Builder","Plumber","Architect","Contractor","PMC","Direct Client","Associate","Dealer"].map(t=><option key={t}>{t}</option>)}
+                    </select>
+                    :<input value={newClientForm[key]} onChange={e=>setNewClientForm(p=>({...p,[key]:e.target.value}))} placeholder={lbl} style={{...inp,marginTop:4}}/>
+                  }
+                </div>
+              ))}
+              <div style={{display:"flex",gap:8,marginTop:14}}>
+                <button onClick={()=>setShowNewClient(false)} style={{flex:1,padding:"9px",border:"1px solid #e2e8f0",borderRadius:8,cursor:"pointer",background:"#fff"}}>Cancel</button>
+                <button onClick={saveNewClient} style={{flex:2,background:TEAL,color:"#fff",border:"none",padding:"9px",borderRadius:8,cursor:"pointer",fontWeight:700}}>Save & Select</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 3: ITEMS + DETAILS ── */}
+        {(step===3||isEdit)&&(
+          <div>
+            {!isEdit&&<button onClick={()=>setStep(2)} style={{background:"none",border:"none",cursor:"pointer",color:GR,fontSize:13,marginBottom:12,padding:0}}>← Back</button>}
+            
+            {/* Selected client info card */}
+            {selClient&&(
+              <div style={{background:"#f0fdfa",border:"1px solid #99f6e4",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14,color:DK}}>{selClient.name}</div>
+                  <div style={{fontSize:12,color:GR}}>
+                    {selClient.type&&<span style={{marginRight:8}}>{selClient.type}</span>}
+                    {(selLocation||selClient.city)&&`📍 ${selLocation||selClient.city}`}
+                    {(selArea||selClient.locality)&&` · ${selArea||selClient.locality}`}
+                    {selClient.phone&&` · 📞 ${selClient.phone}`}
+                  </div>
+                </div>
+                {!isEdit&&<button onClick={()=>setStep(2)} style={{background:"#fff",color:TEAL,border:"1px solid "+TEAL,borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:12}}>Change</button>}
+              </div>
+            )}
+
+            {/* Site (optional) */}
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:12,color:GR,fontWeight:600}}>Site (optional)</label>
+              <select value={siteId} onChange={e=>setSiteId(e.target.value)} style={{...inp,marginTop:4}}>
+                <option value="">— No specific site —</option>
+                {sites.filter(s=>!selClient||s.ownerName===selClient.name||s.assignedTo===selClient.id).concat(sites.filter(s=>selClient&&s.ownerName!==selClient.name&&s.assignedTo!==selClient.id)).map(s=>(
+                  <option key={s.id} value={s.id}>{s.ownerName} — {s.city}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Products */}
+            <button onClick={()=>setShowSPS(true)}
+              style={{width:"100%",background:"#1e293b",color:"#fff",border:"none",padding:"11px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:14,marginBottom:12,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              🛒 Add Products ({items.length} selected)
+            </button>
+            {items.length>0&&(
+              <div style={{border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden",marginBottom:12}}>
+                <div style={{background:"#f8fafc",padding:"8px 12px",fontSize:11,fontWeight:700,color:GR,textTransform:"uppercase",letterSpacing:"0.05em"}}>Items</div>
+                {items.map((it,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",borderTop:"1px solid #f1f5f9"}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:600,color:DK}}>{it.name}</div>
+                      <div style={{fontSize:11,color:GR}}>{it.code} · {it.brand}</div>
+                    </div>
+                    <input type="number" min="0.01" step="0.01" value={it.qty} onChange={e=>updateQty(i,e.target.value)}
+                      style={{width:65,padding:"5px 8px",border:"1px solid #e2e8f0",borderRadius:6,textAlign:"center",fontSize:13}}/>
+                    <span style={{fontSize:11,color:GR,width:26}}>{it.unit}</span>
+                    <button onClick={()=>removeItem(i)} style={{background:"#fef2f2",color:"#ef4444",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:12}}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Freight */}
+            <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:8}}>🚛 Transport Details</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                <div><label style={{fontSize:11,color:GR,fontWeight:600}}>Driver Name</label>
+                  <input value={driverName} onChange={e=>setDriverName(e.target.value)} placeholder="Driver" style={{...inp,marginTop:3}}/></div>
+                <div><label style={{fontSize:11,color:GR,fontWeight:600}}>Vehicle No</label>
+                  <input value={vehicleNo} onChange={e=>setVehicleNo(e.target.value)} placeholder="HR55-AB-1234" style={{...inp,marginTop:3}}/></div>
+                <div><label style={{fontSize:11,color:GR,fontWeight:600}}>Freight (₹)</label>
+                  <input type="number" value={freightAmt} onChange={e=>setFreightAmt(e.target.value)} placeholder="0" style={{...inp,marginTop:3}}/></div>
+              </div>
+            </div>
+
+            {/* Remarks */}
+            <div style={{marginBottom:16}}>
+              <label style={{fontSize:12,color:GR,fontWeight:600}}>Remarks</label>
+              <input value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Special instructions, delivery notes..."
+                style={{...inp,marginTop:4}}/>
+            </div>
+
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={onClose} style={{flex:1,padding:"11px",border:"1px solid #e2e8f0",borderRadius:8,cursor:"pointer",background:"#fff",fontWeight:600}}>Cancel</button>
+              <button onClick={submit}
+                style={{flex:2,background:TEAL,color:"#fff",border:"none",padding:"11px",borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:14}}>
+                {isEdit?"💾 Save Changes":"📦 Create Challan"}
+                {items.length>0&&` (${items.length} items)`}
+              </button>
+            </div>
+          </div>
+        )}
+
         </div>
       </div>
       {showSPS&&<SmartProductSelector products={products} loading={false} currentBasket={items} onFinish={handleFinish} onClose={()=>setShowSPS(false)}/>}
     </div>
   );
 }
+
+
 
 function StockModule({stockLedger,setStockLedger,products,challans,genId,fmtINR2,todayStr,fmtDate2}){
   const [tab,setTab]=React.useState("inhand");
