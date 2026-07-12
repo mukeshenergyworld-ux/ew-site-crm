@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Energy World CRM v28</title>
+<title>Energy World CRM v29</title>
 <script>
 // Force clear any cached old version
 (function(){
@@ -121,7 +121,7 @@ nav, nav button { user-select: none; -webkit-user-select: none; }
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel" data-v="29">
+<script type="text/babel" data-v="30">
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
 // ─── COMPANY CONFIG (update these) ───────────────────────────────────────────
@@ -4068,12 +4068,71 @@ function LoginScreen({onLogin}){
   const [otpStage,setOtpStage]=useState("idle");
   const [otpCode,setOtpCode]=useState("");
   const [otpLoading,setOtpLoading]=useState(false);
-  useEffect(()=>{ setOtpStage("idle"); setOtpCode(""); setErr(""); setPwd(""); },[selUser]);
+  const [bioStatus,setBioStatus]=useState("idle"); // idle|checking|success|error
+  useEffect(()=>{
+    setOtpStage("idle"); setOtpCode(""); setErr(""); setPwd(""); setBioStatus("idle");
+    // Auto-trigger biometric if this user has it registered on this device
+    if(selUser && hasBiometric(selUser.id) && window.PublicKeyCredential){
+      setTimeout(()=>loginWithBiometric(selUser), 400);
+    }
+  },[selUser]);
+
+  // ── BIOMETRIC: check if this device has a saved credential for a user ──────
+  const BIOMETRIC_KEY="ew_biometric_creds"; // {userId: credentialId(base64)}
+
+  function getBioCreds(){ try{return JSON.parse(localStorage.getItem(BIOMETRIC_KEY)||"{}");}catch(e){return{};} }
+  function saveBioCred(userId,credId){ const m=getBioCreds(); m[userId]=credId; localStorage.setItem(BIOMETRIC_KEY,JSON.stringify(m)); }
+  function hasBiometric(userId){ return !!getBioCreds()[userId]; }
+
+  function b64url(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=/g,""); }
+  function b64urlToArr(s){ const p=s.replace(/-/g,"+").replace(/_/g,"/"); const b=atob(p); return Uint8Array.from(b,c=>c.charCodeAt(0)); }
+
+  async function registerBiometric(user){
+    if(!window.PublicKeyCredential){setErr("Biometric not supported on this browser.");return;}
+    try{
+      setBioStatus("checking");
+      const cred = await navigator.credentials.create({publicKey:{
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rp:{name:"EW CRM",id:location.hostname},
+        user:{id:new TextEncoder().encode(user.id),name:user.name,displayName:user.name},
+        pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],
+        authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required"},
+        timeout:60000,
+      }});
+      saveBioCred(user.id, b64url(cred.rawId));
+      setBioStatus("success");
+      setErr("");
+      setTimeout(()=>{ onLogin(user); },500);
+    }catch(e){
+      setBioStatus("error");
+      setErr("Biometric setup cancelled or failed. Use password instead.");
+    }
+  }
+
+  async function loginWithBiometric(user){
+    const creds=getBioCreds();
+    const credId=creds[user.id];
+    if(!credId){setErr("No biometric saved. Register first.");return;}
+    try{
+      setBioStatus("checking");
+      await navigator.credentials.get({publicKey:{
+        challenge:crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials:[{type:"public-key",id:b64urlToArr(credId)}],
+        userVerification:"required",
+        timeout:60000,
+      }});
+      setBioStatus("success");
+      setErr("");
+      setTimeout(()=>{ onLogin(user); },300);
+    }catch(e){
+      setBioStatus("idle");
+      setErr("Biometric failed. Use password instead.");
+    }
+  }
 
   function attemptLogin(){
     if(!selUser){ setErr("Please select your name"); return; }
     if(!selUser.active){ setErr("Your account is inactive. Contact admin."); return; }
-    /* password check disabled - direct login */
     setErr("");
     onLogin(selUser);
   }
@@ -4104,7 +4163,7 @@ function LoginScreen({onLogin}){
         </div>
         <div style={{color:"#0f172a",fontSize:24,fontWeight:800,letterSpacing:"-0.5px"}}>Energy World</div>
         <div style={{color:"#475569",fontSize:13,marginTop:4}}>Site CRM · Panipat</div>
-        <div style={{background:"#0d9488",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,marginTop:6,display:"inline-block"}}>v26 — NEW DESIGN</div>
+        <div style={{background:"#0d9488",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,marginTop:6,display:"inline-block"}}>v29</div>
       </div>
 
       {/* Login card */}
@@ -4133,22 +4192,60 @@ function LoginScreen({onLogin}){
 
         {selUser&&(
           <div style={{marginBottom:16}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Password</div>
-            <div style={{position:"relative"}}>
-              <input
-                type={showPwd?"text":"password"}
-                value={pwd}
-                onChange={e=>{setPwd(e.target.value);setErr("");}}
-                onKeyDown={e=>{ if(e.key==="Enter") attemptLogin(); }}
-                placeholder="Enter password"
-                autoFocus
-                style={{width:"100%",boxSizing:"border-box",background:"#0f172a",border:"1px solid #334155",borderRadius:8,padding:"10px 40px 10px 12px",color:"#f1f5f9",fontSize:14,outline:"none"}}
-              />
-              <button onClick={()=>setShowPwd(v=>!v)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#475569",cursor:"pointer",fontSize:16}}>
-                {showPwd?"🙈":"👁"}
-              </button>
-            </div>
-            {err&&<div style={{fontSize:12,color:"#f87171",marginTop:6}}>{err}</div>}
+            {/* BIOMETRIC LOGIN */}
+            {(()=>{
+              const hasBio=hasBiometric(selUser.id);
+              const bioSupported=!!window.PublicKeyCredential;
+              return(
+                <div>
+                  {bioStatus==="checking"&&(
+                    <div style={{textAlign:"center",padding:"16px 0",color:"#93c5fd",fontSize:14}}>
+                      <div style={{fontSize:32,marginBottom:8}}>🔐</div>
+                      Verifying biometric…
+                    </div>
+                  )}
+                  {bioStatus==="success"&&(
+                    <div style={{textAlign:"center",padding:"16px 0",color:"#34d399",fontSize:14}}>
+                      <div style={{fontSize:32,marginBottom:8}}>✅</div>
+                      Verified! Logging in…
+                    </div>
+                  )}
+                  {bioStatus!=="checking"&&bioStatus!=="success"&&(
+                    <div>
+                      {hasBio&&bioSupported&&(
+                        <button onClick={()=>loginWithBiometric(selUser)}
+                          style={{width:"100%",background:"linear-gradient(135deg,#0d9488,#0891b2)",color:"#fff",border:"none",borderRadius:10,padding:"13px",fontSize:15,fontWeight:700,cursor:"pointer",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                          <span style={{fontSize:20}}>🔐</span> Login with Biometric / Face ID
+                        </button>
+                      )}
+                      {!hasBio&&bioSupported&&(
+                        <button onClick={()=>registerBiometric(selUser)}
+                          style={{width:"100%",background:"#253650",color:"#93c5fd",border:"1px solid #334155",borderRadius:10,padding:"11px",fontSize:13,fontWeight:600,cursor:"pointer",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                          <span style={{fontSize:16}}>🔐</span> Set up Biometric for this device
+                        </button>
+                      )}
+                      {/* Password fallback */}
+                      <div style={{fontSize:11,color:"#64748b",textAlign:"center",marginBottom:8}}>{hasBio?"Or use password:":"Password:"}</div>
+                      <div style={{position:"relative"}}>
+                        <input
+                          type={showPwd?"text":"password"}
+                          value={pwd}
+                          onChange={e=>{setPwd(e.target.value);setErr("");}}
+                          onKeyDown={e=>{ if(e.key==="Enter") attemptLogin(); }}
+                          placeholder="Enter password"
+                          autoFocus={!hasBio}
+                          style={{width:"100%",boxSizing:"border-box",background:"#0f172a",border:"1px solid #334155",borderRadius:8,padding:"10px 40px 10px 12px",color:"#f1f5f9",fontSize:14,outline:"none"}}
+                        />
+                        <button onClick={()=>setShowPwd(v=>!v)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#475569",cursor:"pointer",fontSize:16}}>
+                          {showPwd?"🙈":"👁"}
+                        </button>
+                      </div>
+                      {err&&<div style={{fontSize:12,color:"#f87171",marginTop:6}}>{err}</div>}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -5104,23 +5201,49 @@ function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClos
   },[contacts,sites,selLocation]);
 
   // Clients filtered by location + area + search
-  // Client types = people who RECEIVE goods (not service partners)
-  const CLIENT_TYPES=["Builder","Direct Client","Dealer","Associate","Contractor","PMC"];
-  // Exclude Plumbers and Architects from challan clients — they are service partners
+  // Build combined client list from SITES (owners) + contacts (non-partners)
   const isPartner=c=>["Plumber","Architect"].includes(c.type)||["Plumbing Contractor","Architect"].includes(c.role);
-  const isClient=c=>!isPartner(c);
+
+  // Convert site owners into client-like objects for selection
+  const siteClients=React.useMemo(()=>
+    sites.map(s=>({
+      id:"site_"+s.id,
+      _siteId:s.id,
+      name:s.ownerName,
+      phone:s.phone||"",
+      city:s.city||"",
+      locality:s.locality||"",
+      area:s.locality||"",
+      type:"Builder",
+      _isSiteOwner:true,
+      stage:s.stage,
+    }))
+  ,[sites]);
+
+  // Non-partner contacts
+  const clientContacts=React.useMemo(()=>contacts.filter(c=>!isPartner(c)),[contacts]);
+
+  // Merge: site owners first, then extra contacts, dedupe by phone
+  const allClients=React.useMemo(()=>{
+    const seen=new Set();
+    const merged=[];
+    [...siteClients,...clientContacts].forEach(c=>{
+      const key=c.phone||c.id;
+      if(!seen.has(key)){seen.add(key);merged.push(c);}
+    });
+    return merged;
+  },[siteClients,clientContacts]);
 
   const filteredClients=React.useMemo(()=>{
-    // Exclude pure partners — they don't receive challans
-    let list=contacts.filter(isClient);
-    if(selLocation) list=list.filter(c=>c.city===selLocation);
-    if(selArea) list=list.filter(c=>(c.locality||c.area||"")===selArea);
+    let list=allClients;
+    if(selLocation) list=list.filter(c=>!c.city||c.city===selLocation);
+    if(selArea) list=list.filter(c=>!(c.locality||c.area)||((c.locality||c.area||"")=== selArea));
     if(clientSearch.trim()){
       const q=clientSearch.toLowerCase();
       list=list.filter(c=>(c.name||"").toLowerCase().includes(q)||(c.phone||"").includes(clientSearch.trim()));
     }
     return list.slice(0,30);
-  },[contacts,selLocation,selArea,clientSearch]);
+  },[allClients,selLocation,selArea,clientSearch]);
 
   function handleFinish(newItems){
     setItems(prev=>{
@@ -5151,11 +5274,14 @@ function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClos
     if(!selClient){alert("Select a client.");return;}
     if(!items.length){alert("Add at least one product.");return;}
     const site=sites.find(s=>s.id===siteId)||null;
+    // If client is a site owner, auto-link the site
+    const autoSiteId = selClient._isSiteOwner ? selClient._siteId : siteId;
+    const autoSite = sites.find(s=>s.id===autoSiteId)||null;
     onSave({
-      partyId:selClient.id,partyName:selClient.name,partyType:selClient.type,
+      partyId:selClient.id,partyName:selClient.name,partyType:selClient._isSiteOwner?"Site Owner":selClient.type,
       partyCity:selLocation||selClient.city||"",partyArea:selArea||selClient.locality||"",
       partyPhone:selClient.phone||"",
-      siteId,siteAddress:site?(site.ownerName+" — "+site.city):"",
+      siteId:autoSiteId,siteAddress:autoSite?(autoSite.ownerName+" — "+autoSite.city):"",
       vehicleNo,driverName,freightAmt:Number(freightAmt)||0,
       items,remarks
     });
@@ -5248,10 +5374,12 @@ function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClos
                   onMouseLeave={e=>e.currentTarget.style.background=selClient?.id===c.id?"#f0fdfa":"#fff"}>
                   <div>
                     <div style={{fontWeight:600,fontSize:14,color:DK}}>{c.name}</div>
-                    <div style={{fontSize:12,color:GR,marginTop:2}}>
-                      {c.type&&<span style={{background:"#f0f9ff",color:"#0369a1",borderRadius:4,padding:"1px 6px",fontSize:11,marginRight:6}}>{c.type}</span>}
-                      {c.city}{c.locality&&` · ${c.locality}`}
-                      {c.phone&&` · 📞 ${c.phone}`}
+                    <div style={{fontSize:12,color:GR,marginTop:3,display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+                      {c._isSiteOwner&&<span style={{background:"#f0fdf4",color:"#16a34a",borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:700}}>🏗 Site Owner</span>}
+                      {!c._isSiteOwner&&c.type&&<span style={{background:"#f0f9ff",color:"#0369a1",borderRadius:4,padding:"1px 6px",fontSize:11}}>{c.type}</span>}
+                      {c.city&&<span>📍 {c.city}{c.locality&&` · ${c.locality}`}</span>}
+                      {c.phone&&<span>📞 {c.phone}</span>}
+                      {c._isSiteOwner&&c.stage&&<span style={{background:"#fef3c7",color:"#92400e",borderRadius:4,padding:"1px 6px",fontSize:10}}>{c.stage}</span>}
                     </div>
                   </div>
                   {selClient?.id===c.id&&<span style={{color:TEAL,fontSize:18,fontWeight:700}}>✓</span>}
