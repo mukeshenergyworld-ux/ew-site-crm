@@ -5969,7 +5969,7 @@ function LedgerModule({clientLedger,setClientLedger,payments,setPayments,contact
                   </div>
                   {drv.totalPaid>0&&<span style={{background:"#f0fdf4",color:"#166534",border:"1px solid #bbf7d0",borderRadius:16,padding:"3px 8px",fontSize:11,fontWeight:700}}>✓ ₹{drv.totalPaid.toLocaleString("en-IN")} paid</span>}
                   {pending>0&&<span style={{background:"#fffbeb",color:"#92400e",border:"1px solid #fde68a",borderRadius:16,padding:"3px 8px",fontSize:11,fontWeight:700}}>⏳ ₹{pending.toLocaleString("en-IN")} pending</span>}
-                  <button onClick={e=>{e.stopPropagation();openPayModal({type:"driver",partyId:"drv_"+drv.name,partyName:drv.name,maxAmt:pending,refId:""});}}
+                  <button onClick={e=>{try{e.stopPropagation();}catch(x){}openPayModal({type:"driver",partyId:"drv_"+drv.name,partyName:drv.name,maxAmt:pending,refId:""});}}
                     style={{background:TEAL,color:"#fff",border:"none",padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700,flexShrink:0}}>
                     + Pay
                   </button>
@@ -6076,7 +6076,7 @@ function LedgerModule({clientLedger,setClientLedger,payments,setPayments,contact
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                 {p.paid>0&&<span style={{background:"#f0fdf4",color:"#166534",border:"1px solid #bbf7d0",borderRadius:16,padding:"3px 8px",fontSize:11,fontWeight:700}}>✓ {fmt(p.paid)} paid</span>}
                 {p.pending>0&&<span style={{background:"#fef2f2",color:"#991b1b",border:"1px solid #fca5a5",borderRadius:16,padding:"3px 8px",fontSize:11,fontWeight:700}}>⏳ {fmt(p.pending)} pending</span>}
-                {p.pending>0&&<button onClick={e=>{e.stopPropagation();openPayModal({type:"partner",partyId:p.id,partyName:p.name,maxAmt:p.pending,entries:p.entries.filter(e=>!e.paid)});}}
+                {p.pending>0&&<button onClick={e=>{try{e.stopPropagation();}catch(x){}openPayModal({type:"partner",partyId:p.id,partyName:p.name,maxAmt:p.pending,entries:p.entries.filter(x=>!x.paid)});}}
                   style={{background:"#8b5cf6",color:"#fff",border:"none",padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700}}>
                   + Pay Commission
                 </button>}
