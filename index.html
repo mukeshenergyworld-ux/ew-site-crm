@@ -9,7 +9,7 @@
 <title>Energy World CRM v30</title>
 <script>
 // Self-heal: if React fails to render, fetch fresh JS from GitHub raw and retry
-window.__EW_TARGET_VER = 38;
+window.__EW_TARGET_VER = 39;
 window.addEventListener('load', function() {
   setTimeout(function() {
     var root = document.getElementById('root');
@@ -20,7 +20,7 @@ window.addEventListener('load', function() {
       fetch('https://raw.githubusercontent.com/mukeshenergyworld-ux/ew-site-crm/main/index.html?t='+Date.now(), {cache:'no-store'})
         .then(function(r){return r.text();})
         .then(function(html){
-          var start = html.indexOf('<script type="text/babel" data-v="38">
+          var start = html.indexOf('<script type="text/babel" data-v="39">
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
@@ -1522,7 +1522,7 @@ function SmartProductSelector({products, loading, currentBasket, onFinish, onClo
                     <img src={codeResult.photoUrl} alt="" style={{width:80,height:80,objectFit:"contain",borderRadius:10,background:"#f8fafc",border:"1px solid #e2e8f0",flexShrink:0}}
                       onError={e=>e.target.style.display="none"}/>
                   ):(
-                    <div style={{width:80,height:80,background:"#f1f5f9",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,flexShrink:0}}>📦</div>
+                    <div style={{width:80,height:80,background:"linear-gradient(135deg,#0d9488,#0891b2)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:800,color:"#fff",flexShrink:0}}>{(codeResult?.brand||"?").substring(0,3).toUpperCase()}</div>
                   )}
                   <div style={{flex:1}}>
                     <div style={{fontSize:11,fontWeight:700,color:BRAND_COLORS[codeResult.brand]||"#64748b",fontFamily:"monospace",letterSpacing:"0.5px",marginBottom:4}}>{codeResult.code}</div>
@@ -1954,7 +1954,7 @@ function QuotationPrint({site,items,quoteNum,quoteDate,validDays,terms,notes,tot
   const customTermLines = (terms||"").split("\n").map(l=>l.trim()).filter(Boolean);
 
   return(
-    <div style={{position:"fixed",inset:0,background:"#d1d5db",zIndex:300,overflowY:"auto",fontFamily:"system-ui,-apple-system,sans-serif"}}>
+    <div style={{position:"fixed",inset:0,background:"#d1d5db",zIndex:300,overflowY:"auto",fontFamily:"Cambria,Georgia,serif"}}>
       {/* Toolbar */}
       <div className="no-print" style={{background:"#0f172a",padding:"10px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10}}>
         <div style={{color:"#fff",fontWeight:600,fontSize:14}}>Preview — {quoteNum}</div>
@@ -1966,7 +1966,7 @@ function QuotationPrint({site,items,quoteNum,quoteDate,validDays,terms,notes,tot
       </div>
 
       {/* ── A4 PAPER ── */}
-      <div id="quotation-print" style={{background:"#fff",maxWidth:800,margin:"16px auto",boxShadow:"0 8px 32px rgba(0,0,0,0.18)",fontFamily:"system-ui,-apple-system,sans-serif"}}>
+      <div id="quotation-print" style={{background:"#fff",maxWidth:800,margin:"16px auto",boxShadow:"0 8px 32px rgba(0,0,0,0.18)",fontFamily:"Cambria,Georgia,serif"}}>
 
         {/* ── COVER HEADER (dark teal) ── */}
         <div style={{background:`linear-gradient(135deg, ${Q_DARK} 0%, #0d3d47 60%, ${Q_TEAL} 100%)`,padding:"36px 40px 28px",color:"#fff"}}>
@@ -2772,7 +2772,7 @@ function Dashboard({sites,contacts,currentUser,isAdmin,onGoSites,onOpenSite,getP
                 if(isToday) brd="2px solid #0d9488";
                 return(
                   <div key={d} onClick={()=>{if(!isSun&&!isFuture) setShowDailyReport(true);}}
-                    style={{aspectRatio:"1",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,background:bg,border:brd,color:col,fontWeight:isToday?900:600,fontSize:11,cursor:(!isSun&&!isFuture)?"pointer":"default",position:"relative"}}>
+                    style={{height:24,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:4,background:bg,border:brd,color:col,fontWeight:isToday?700:500,fontSize:10,cursor:(!isSun&&!isFuture)?"pointer":"default",position:"relative"}}>
                     {d}{hasDR&&!isSun&&<span style={{position:"absolute",bottom:0,right:1,fontSize:7}}>✓</span>}
                   </div>
                 );
@@ -3995,7 +3995,7 @@ function LoginScreen({onLogin}){
       setBioStatus("checking");
       const cred = await navigator.credentials.create({publicKey:{
         challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rp:{name:"EW CRM",id:location.hostname},
+        rp:{name:"EW CRM"},
         user:{id:new TextEncoder().encode(user.id),name:user.name,displayName:user.name},
         pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],
         authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required"},
@@ -4193,80 +4193,8 @@ function LoginScreen({onLogin}){
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
-function CRMApp(){
-  const [currentUser,setCurrentUser]=useState(null);
-  const [sites,setSites]=useState(loadSites);
-  const [sitesSynced,setSitesSynced]=useState(null);
-  const [sitesSyncStatus,setSitesSyncStatus]=useState("idle");
-  useEffect(()=>{ pullSitesFromServer(true); },[]);
-  const [contacts,setContacts]=useState(()=>{
-    try{ const s=localStorage.getItem("ew_contacts"); return s?JSON.parse(s):[]; }catch(e){ return []; }
-  });
-  const [appUsers,setAppUsers]=useState(()=>loadUsers());
-  useEffect(()=>{ pullUsersFromServer(setAppUsers); },[]);
-  const [permissions,setPermissions]=useState(()=>loadPermissions());
-  const [view,setView]=useState("dashboard");
 
-  // ── NEW MODULE STATE ─────────────────────────────────────────
-  const [challans,setChallans]=React.useState(()=>lsLoad("ew_challans_v2",[]));
-  const [stockLedger,setStockLedger]=React.useState(()=>lsLoad("ew_stock_v2",[]));
-  const [clientLedger,setClientLedger]=React.useState(()=>lsLoad("ew_client_ledger_v2",[]));
-  const [payments,setPayments]=React.useState(()=>lsLoad("ew_payments_v2",[]));
-  const [serviceTickets,setServiceTickets]=React.useState(()=>lsLoad("ew_service_v2",[]));
-  const [amcContracts,setAmcContracts]=React.useState(()=>lsLoad("ew_amc_v2",[]));
-  const [commissionRules,setCommissionRules]=React.useState(()=>lsLoad("ew_comm_rules_v2",[]));
-  const [commissionLedger,setCommissionLedger]=React.useState(()=>lsLoad("ew_comm_ledger_v2",[]));
-  const [freightLedger,setFreightLedger]=React.useState(()=>lsLoad("ew_freight_ledger",[]));  const [universalPayments,setUniversalPayments]=React.useState(()=>lsLoad("ew_universal_payments",[]));
-
-  // Persist new state
-  React.useEffect(()=>{lsSave("ew_challans_v2",challans);if(challans.length>0)gasSync("challans",challans);},[challans]);
-  React.useEffect(()=>{lsSave("ew_stock_v2",stockLedger);if(stockLedger.length>0)gasSync("stockLedger",stockLedger);},[stockLedger]);
-  React.useEffect(()=>{lsSave("ew_client_ledger_v2",clientLedger);if(clientLedger.length>0)gasSync("clientLedger",clientLedger);},[clientLedger]);
-  React.useEffect(()=>{lsSave("ew_payments_v2",payments);if(payments.length>0)gasSync("payments",payments);},[payments]);
-  React.useEffect(()=>{lsSave("ew_service_v2",serviceTickets);if(serviceTickets.length>0)gasSync("serviceTickets",serviceTickets);},[serviceTickets]);
-  React.useEffect(()=>{lsSave("ew_amc_v2",amcContracts);if(amcContracts.length>0)gasSync("amcContracts",amcContracts);},[amcContracts]);
-  React.useEffect(()=>{lsSave("ew_comm_rules_v2",commissionRules);if(commissionRules.length>0)gasSync("commissionRules",commissionRules);},[commissionRules]);
-  React.useEffect(()=>{lsSave("ew_comm_ledger_v2",commissionLedger);if(commissionLedger.length>0)gasSync("commissionLedger",commissionLedger);},[commissionLedger]);
-  React.useEffect(()=>{lsSave("ew_freight_ledger",freightLedger);},[freightLedger]);
-  React.useEffect(()=>{lsSave("ew_universal_payments",universalPayments);},[universalPayments]);
-
-  // ── HELPERS ──────────────────────────────────────────────────
-  function genId(p=""){ return p+(Date.now().toString(36)+Math.random().toString(36).slice(2,5)).toUpperCase(); }
-  function fmtINR2(n){ return "₹"+Number(n||0).toLocaleString("en-IN"); }
-  function todayStr(){ return new Date().toISOString().slice(0,10); }
-  function fmtDate2(d){ return d?new Date(d).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}):"—"; }
-  const BOTS2={
-    loginCode:{token:"8256970880:AAG0sEOALRKdCEjZ4j6050g8YxFMAInVpZU"},
-    challanGen:{token:"8932618814:AAESnDKk7VqDsTUpF0WZWXB-Q_F-ykAykeQ",chatId:"-1003934546338"},
-    dispatch:{token:"8891062190:AAH7wOrEeh5moDrrCCcMA78ckRf1Gqvo-nA",chatId:"-5347849815"},
-    complaint:{token:"8210772559:AAGUHDoEAidzXtgJvB8Nni2-vAQ9XHQUwKQ"},
-  };
-  async function tgSend2(key,text,chatId){
-    const b=BOTS2[key]; if(!b)return;
-    const cid=chatId||b.chatId; if(!cid)return;
-    try{ await fetch(`https://api.telegram.org/bot${b.token}/sendMessage`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:cid,text,parse_mode:"Markdown"})}); }catch(e){}
-  }
-
-  // Send a PDF (base64) to Telegram bot via sendDocument
-  async function tgSendDoc(key,pdfBase64,filename,caption,chatId){
-    const b=BOTS2[key]; if(!b)return;
-    const cid=chatId||b.chatId; if(!cid)return;
-    try{
-      const byteChars=atob(pdfBase64);
-      const byteArr=new Uint8Array(byteChars.length);
-      for(let i=0;i<byteChars.length;i++) byteArr[i]=byteChars.charCodeAt(i);
-      const blob=new Blob([byteArr],{type:"application/pdf"});
-      const fd=new FormData();
-      fd.append("chat_id",cid);
-      fd.append("document",blob,filename||"challan.pdf");
-      if(caption) fd.append("caption",caption.substring(0,1024));
-      fd.append("parse_mode","Markdown");
-      await fetch(`https://api.telegram.org/bot${b.token}/sendDocument`,{method:"POST",body:fd});
-    }catch(e){ console.error("tgSendDoc error:",e); }
-  }
-
-  // Generate Challan PDF using jsPDF and return base64
-  function generateChallanPDF(ch){
+function generateChallanPDF(ch){
     if(!window.jspdf?.jsPDF && !window.jsPDF) return null;
     const jsPDF=window.jspdf?.jsPDF||window.jsPDF;
     const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
@@ -4372,6 +4300,80 @@ function CRMApp(){
 
     return doc.output("datauristring").split(",")[1]; // return base64
   }
+
+async function tgSendDoc(key,pdfBase64,filename,caption,chatId){
+    const b=BOTS2[key]; if(!b)return;
+    const cid=chatId||b.chatId; if(!cid)return;
+    try{
+      const byteChars=atob(pdfBase64);
+      const byteArr=new Uint8Array(byteChars.length);
+      for(let i=0;i<byteChars.length;i++) byteArr[i]=byteChars.charCodeAt(i);
+      const blob=new Blob([byteArr],{type:"application/pdf"});
+      const fd=new FormData();
+      fd.append("chat_id",cid);
+      fd.append("document",blob,filename||"challan.pdf");
+      if(caption) fd.append("caption",caption.substring(0,1024));
+      fd.append("parse_mode","Markdown");
+      await fetch(`https://api.telegram.org/bot${b.token}/sendDocument`,{method:"POST",body:fd});
+    }catch(e){ console.error("tgSendDoc error:",e); }
+  }
+function CRMApp(){
+  const [currentUser,setCurrentUser]=useState(null);
+  const [sites,setSites]=useState(loadSites);
+  const [sitesSynced,setSitesSynced]=useState(null);
+  const [sitesSyncStatus,setSitesSyncStatus]=useState("idle");
+  useEffect(()=>{ pullSitesFromServer(true); },[]);
+  const [contacts,setContacts]=useState(()=>{
+    try{ const s=localStorage.getItem("ew_contacts"); return s?JSON.parse(s):[]; }catch(e){ return []; }
+  });
+  const [appUsers,setAppUsers]=useState(()=>loadUsers());
+  useEffect(()=>{ pullUsersFromServer(setAppUsers); },[]);
+  const [permissions,setPermissions]=useState(()=>loadPermissions());
+  const [view,setView]=useState("dashboard");
+
+  // ── NEW MODULE STATE ─────────────────────────────────────────
+  const [challans,setChallans]=React.useState(()=>lsLoad("ew_challans_v2",[]));
+  const [stockLedger,setStockLedger]=React.useState(()=>lsLoad("ew_stock_v2",[]));
+  const [clientLedger,setClientLedger]=React.useState(()=>lsLoad("ew_client_ledger_v2",[]));
+  const [payments,setPayments]=React.useState(()=>lsLoad("ew_payments_v2",[]));
+  const [serviceTickets,setServiceTickets]=React.useState(()=>lsLoad("ew_service_v2",[]));
+  const [amcContracts,setAmcContracts]=React.useState(()=>lsLoad("ew_amc_v2",[]));
+  const [commissionRules,setCommissionRules]=React.useState(()=>lsLoad("ew_comm_rules_v2",[]));
+  const [commissionLedger,setCommissionLedger]=React.useState(()=>lsLoad("ew_comm_ledger_v2",[]));
+  const [freightLedger,setFreightLedger]=React.useState(()=>lsLoad("ew_freight_ledger",[]));  const [universalPayments,setUniversalPayments]=React.useState(()=>lsLoad("ew_universal_payments",[]));
+
+  // Persist new state
+  React.useEffect(()=>{lsSave("ew_challans_v2",challans);if(challans.length>0)gasSync("challans",challans);},[challans]);
+  React.useEffect(()=>{lsSave("ew_stock_v2",stockLedger);if(stockLedger.length>0)gasSync("stockLedger",stockLedger);},[stockLedger]);
+  React.useEffect(()=>{lsSave("ew_client_ledger_v2",clientLedger);if(clientLedger.length>0)gasSync("clientLedger",clientLedger);},[clientLedger]);
+  React.useEffect(()=>{lsSave("ew_payments_v2",payments);if(payments.length>0)gasSync("payments",payments);},[payments]);
+  React.useEffect(()=>{lsSave("ew_service_v2",serviceTickets);if(serviceTickets.length>0)gasSync("serviceTickets",serviceTickets);},[serviceTickets]);
+  React.useEffect(()=>{lsSave("ew_amc_v2",amcContracts);if(amcContracts.length>0)gasSync("amcContracts",amcContracts);},[amcContracts]);
+  React.useEffect(()=>{lsSave("ew_comm_rules_v2",commissionRules);if(commissionRules.length>0)gasSync("commissionRules",commissionRules);},[commissionRules]);
+  React.useEffect(()=>{lsSave("ew_comm_ledger_v2",commissionLedger);if(commissionLedger.length>0)gasSync("commissionLedger",commissionLedger);},[commissionLedger]);
+  React.useEffect(()=>{lsSave("ew_freight_ledger",freightLedger);},[freightLedger]);
+  React.useEffect(()=>{lsSave("ew_universal_payments",universalPayments);},[universalPayments]);
+
+  // ── HELPERS ──────────────────────────────────────────────────
+  function genId(p=""){ return p+(Date.now().toString(36)+Math.random().toString(36).slice(2,5)).toUpperCase(); }
+  function fmtINR2(n){ return "₹"+Number(n||0).toLocaleString("en-IN"); }
+  function todayStr(){ return new Date().toISOString().slice(0,10); }
+  function fmtDate2(d){ return d?new Date(d).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}):"—"; }
+  const BOTS2={
+    loginCode:{token:"8256970880:AAG0sEOALRKdCEjZ4j6050g8YxFMAInVpZU"},
+    challanGen:{token:"8932618814:AAESnDKk7VqDsTUpF0WZWXB-Q_F-ykAykeQ",chatId:"-1003934546338"},
+    dispatch:{token:"8891062190:AAH7wOrEeh5moDrrCCcMA78ckRf1Gqvo-nA",chatId:"-5347849815"},
+    complaint:{token:"8210772559:AAGUHDoEAidzXtgJvB8Nni2-vAQ9XHQUwKQ"},
+  };
+  async function tgSend2(key,text,chatId){
+    const b=BOTS2[key]; if(!b)return;
+    const cid=chatId||b.chatId; if(!cid)return;
+    try{ await fetch(`https://api.telegram.org/bot${b.token}/sendMessage`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:cid,text,parse_mode:"Markdown"})}); }catch(e){}
+  }
+
+
+  // Generate Challan PDF using jsPDF and return base64
+
   function lsLoad(k,d=[]){try{return JSON.parse(localStorage.getItem(k)||"null")||d;}catch(e){return d;}}
   function lsSave(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 
@@ -4783,7 +4785,7 @@ function CRMApp(){
   ];
 
   return(
-    <div style={{minHeight:"100vh",display:"flex",fontFamily:"system-ui,sans-serif",color:"#1e293b",background:"#f0f2f5"}}>
+    <div style={{minHeight:"100vh",display:"flex",fontFamily:"Cambria,Georgia,serif",color:"#1e293b",background:"#f0f2f5"}}>
 
       {/* ── SIDEBAR ─────────────────────────────────────────────── */}
       <aside className="no-print" style={{
@@ -4819,7 +4821,7 @@ function CRMApp(){
                 transition:"all 0.15s",
               }}>
                 <span style={{fontSize:16,width:20,textAlign:"center",flexShrink:0}}>{icon}</span>
-                <span>{label}</span>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>
               </button>
             );
           })}
@@ -4885,7 +4887,7 @@ function CRMApp(){
         {view==="sites"&&<SitesList sites={visibleSites} isAdmin={isAdmin} filterStage={filterStage} setFilterStage={setFilterStage} filterAssigned={filterAssigned} setFilterAssigned={setFilterAssigned} filterAlert={filterAlert} setFilterAlert={setFilterAlert} searchQ={searchQ} setSearchQ={setSearchQ} getPendingProducts={getPendingProducts} contacts={contacts} products={products} pitchBrands={pitchBrands} onOpen={id=>{setActiveSiteId(id);setView("site");}} onAdd={()=>setShowAddSite(true)}/>}
         {view==="site"&&activeSite&&<SiteDetail site={activeSite} isAdmin={isAdmin} currentUser={currentUser} getPendingProducts={getPendingProducts} onBack={()=>setView("sites")} onUpdateSite={patch=>updateSite(activeSite.id,patch)} onUpdatePitch={(pid,status,note)=>updatePitch(activeSite.id,pid,status,note)} onDelete={()=>deleteSite(activeSite.id)} onEdit={()=>{setEditingSite(activeSite);setShowAddSite(true);}} products={products} loadingProducts={syncStatus==="loading"} pitchBrands={pitchBrands}/>}
         {view==="admin"&&isAdmin&&<AdminPanel appUsers={appUsers} permissions={permissions} sites={sites} currentUser={currentUser} onUpdateUser={updateUserProfile} onAddUser={addNewUser} onUpdatePassword={updateUserPassword} onToggleActive={toggleUserActive} onUpdatePermission={updatePermission} getPendingProducts={getPendingProducts} onOpenSite={id=>{setActiveSiteId(id);setView("site");}} onUpdateSite={updateSite}/>}
-        {view==="challan"&&<ChallanModule challans={challans} setChallans={setChallans} products={products} contacts={contacts} sites={sites} currentUser={currentUser} isAdmin={isAdmin} tgSend2={tgSend2} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} stockLedger={stockLedger} setStockLedger={setStockLedger} clientLedger={clientLedger} setClientLedger={setClientLedger} commissionRules={commissionRules} commissionLedger={commissionLedger} setCommissionLedger={setCommissionLedger}/>}
+        {view==="challan"&&<ChallanModule challans={challans} setChallans={setChallans} products={products} contacts={contacts} sites={sites} currentUser={currentUser} isAdmin={isAdmin} tgSend2={tgSend2} tgSendDoc={tgSendDoc} generateChallanPDF={generateChallanPDF} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} stockLedger={stockLedger} setStockLedger={setStockLedger} clientLedger={clientLedger} setClientLedger={setClientLedger} commissionRules={commissionRules} commissionLedger={commissionLedger} setCommissionLedger={setCommissionLedger}/>}
         {view==="stock"&&<StockModule stockLedger={stockLedger} setStockLedger={setStockLedger} products={products} challans={challans} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2}/>}
         {view==="ledger"&&<LedgerModule clientLedger={clientLedger} setClientLedger={setClientLedger} payments={payments} setPayments={setPayments} contacts={contacts} sites={sites} challans={challans} commissionLedger={commissionLedger} setCommissionLedger={setCommissionLedger} freightLedger={freightLedger} setFreightLedger={setFreightLedger} universalPayments={universalPayments} setUniversalPayments={setUniversalPayments} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} currentUser={currentUser} isAdmin={isAdmin}/>}
         {view==="service"&&<ServiceModule serviceTickets={serviceTickets} setServiceTickets={setServiceTickets} amcContracts={amcContracts} setAmcContracts={setAmcContracts} contacts={contacts} sites={sites} currentUser={currentUser} tgSend2={tgSend2} genId={genId} fmtINR2={fmtINR2} todayStr={todayStr} fmtDate2={fmtDate2} products={products}/>}
@@ -4905,7 +4907,107 @@ function CRMApp(){
 // MODULE 1 — CHALLAN SYSTEM
 // ════════════════════════════════════════════════════════════════
 
-function ChallanModule({challans,setChallans,products,contacts,sites,currentUser,isAdmin,tgSend2,genId,fmtINR2,todayStr,fmtDate2,stockLedger,setStockLedger,clientLedger,setClientLedger,commissionRules,commissionLedger,setCommissionLedger}){
+function DriverSelector({driverName,vehicleNo,onSelect,style}){
+  const DRIVERS_KEY="ew_drivers_v2";
+  const [drivers,setDrivers]=React.useState(()=>{try{return JSON.parse(localStorage.getItem(DRIVERS_KEY)||"[]");}catch(e){return[];}});
+  const [search,setSearch]=React.useState(driverName||"");
+  const [showList,setShowList]=React.useState(false);
+  const [showAdd,setShowAdd]=React.useState(false);
+  const [newName,setNewName]=React.useState("");
+  const [newVehicle,setNewVehicle]=React.useState("");
+  const inp={padding:"8px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,width:"100%",boxSizing:"border-box"};
+  const TEAL="#0d9488";
+
+  function saveDriver(name,vehicle){
+    const existing=drivers.find(d=>d.name===name);
+    if(!existing){
+      const updated=[...drivers,{name,vehicle:vehicle||"",id:"drv_"+Date.now()}];
+      setDrivers(updated);
+      localStorage.setItem(DRIVERS_KEY,JSON.stringify(updated));
+    } else if(vehicle && existing.vehicle!==vehicle){
+      const updated=drivers.map(d=>d.name===name?{...d,vehicle}:d);
+      setDrivers(updated);
+      localStorage.setItem(DRIVERS_KEY,JSON.stringify(updated));
+    }
+  }
+
+  function selectDriver(drv){
+    setSearch(drv.name);
+    onSelect(drv.name, drv.vehicle||"");
+    setShowList(false);
+  }
+
+  const filtered=drivers.filter(d=>d.name.toLowerCase().includes(search.toLowerCase())||!search);
+
+  return(
+    <div style={{position:"relative",...(style||{})}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:3}}>
+        <div style={{position:"relative"}}>
+          <input value={search} onChange={e=>{setSearch(e.target.value);onSelect(e.target.value,vehicleNo);setShowList(true);}}
+            onFocus={()=>setShowList(true)} onBlur={()=>setTimeout(()=>setShowList(false),200)}
+            placeholder="Type driver name..." style={inp}/>
+          {showList&&(
+            <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:50,maxHeight:180,overflowY:"auto"}}>
+              {filtered.map(d=>(
+                <div key={d.id} onMouseDown={()=>selectDriver(d)}
+                  style={{padding:"8px 12px",cursor:"pointer",fontSize:12,borderBottom:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",alignItems:"center"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="#f0fdfa"}
+                  onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                  <span style={{fontWeight:600}}>{d.name}</span>
+                  {d.vehicle&&<span style={{color:"#64748b",fontSize:11}}>{d.vehicle}</span>}
+                </div>
+              ))}
+              {search&&!drivers.find(d=>d.name.toLowerCase()===search.toLowerCase())&&(
+                <div onMouseDown={()=>{setShowAdd(true);setNewName(search);setShowList(false);}}
+                  style={{padding:"8px 12px",cursor:"pointer",fontSize:12,color:TEAL,fontWeight:600,borderTop:"1px solid #e2e8f0"}}>
+                  + Add "{search}" as new driver
+                </div>
+              )}
+              {!drivers.length&&!search&&(
+                <div onMouseDown={()=>setShowAdd(true)}
+                  style={{padding:"8px 12px",cursor:"pointer",fontSize:12,color:TEAL,fontWeight:600}}>
+                  + Add first driver
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <input value={vehicleNo} onChange={e=>onSelect(driverName,e.target.value)}
+          onBlur={e=>{if(driverName&&e.target.value) saveDriver(driverName,e.target.value);}}
+          placeholder="Vehicle No (HR55-AB-1234)" style={inp}/>
+      </div>
+      {showAdd&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:"#fff",borderRadius:12,padding:20,width:320,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:14,color:"#1e293b"}}>🚛 Add New Driver</div>
+            <div style={{marginBottom:10}}>
+              <label style={{fontSize:11,color:"#64748b",fontWeight:600}}>Driver Name</label>
+              <input value={newName} onChange={e=>setNewName(e.target.value)} style={{...inp,marginTop:3}}/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:11,color:"#64748b",fontWeight:600}}>Vehicle Number</label>
+              <input value={newVehicle} onChange={e=>setNewVehicle(e.target.value)} placeholder="HR55-AB-1234" style={{...inp,marginTop:3}}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setShowAdd(false)} style={{flex:1,padding:"9px",border:"1px solid #e2e8f0",borderRadius:8,cursor:"pointer"}}>Cancel</button>
+              <button onClick={()=>{
+                if(!newName.trim()){alert("Enter driver name");return;}
+                saveDriver(newName.trim(),newVehicle.trim());
+                onSelect(newName.trim(),newVehicle.trim());
+                setSearch(newName.trim());
+                setShowAdd(false);
+              }} style={{flex:2,background:TEAL,color:"#fff",border:"none",padding:"9px",borderRadius:8,cursor:"pointer",fontWeight:700}}>
+                Save Driver
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChallanModule({challans,setChallans,products,contacts,sites,currentUser,isAdmin,tgSend2,tgSendDoc,generateChallanPDF,genId,fmtINR2,todayStr,fmtDate2,stockLedger,setStockLedger,clientLedger,setClientLedger,commissionRules,commissionLedger,setCommissionLedger}){
   const [tab,setTab]=React.useState("pending");
   const [showForm,setShowForm]=React.useState(false);
   const [editCh,setEditCh]=React.useState(null);
@@ -5634,11 +5736,13 @@ function ChallanForm({products,contacts,sites,challans=[],currentUser,editData,o
             {/* Freight */}
             <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
               <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:8}}>🚛 Transport Details</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-                <div><label style={{fontSize:11,color:GR,fontWeight:600}}>Driver Name</label>
-                  <input value={driverName} onChange={e=>setDriverName(e.target.value)} placeholder="Driver" style={{...inp,marginTop:3}}/></div>
-                <div><label style={{fontSize:11,color:GR,fontWeight:600}}>Vehicle No</label>
-                  <input value={vehicleNo} onChange={e=>setVehicleNo(e.target.value)} placeholder="HR55-AB-1234" style={{...inp,marginTop:3}}/></div>
+              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:8}}>
+                <div>
+                  <label style={{fontSize:11,color:GR,fontWeight:600}}>Driver & Vehicle</label>
+                  <DriverSelector driverName={driverName} vehicleNo={vehicleNo}
+                    onSelect={(n,v)=>{setDriverName(n);setVehicleNo(v);}}
+                    style={{marginTop:3}}/>
+                </div>
                 <div><label style={{fontSize:11,color:GR,fontWeight:600}}>Freight (₹)</label>
                   <input type="number" value={freightAmt} onChange={e=>setFreightAmt(e.target.value)} placeholder="0" style={{...inp,marginTop:3}}/>
                   {(()=>{
