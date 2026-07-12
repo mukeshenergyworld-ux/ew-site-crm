@@ -8,6 +8,36 @@
 <meta http-equiv="Expires" content="0">
 <title>Energy World CRM v30</title>
 <script>
+// Self-heal: if React fails to render, fetch fresh JS from GitHub raw and retry
+window.__EW_TARGET_VER = 36;
+window.addEventListener('load', function() {
+  setTimeout(function() {
+    var root = document.getElementById('root');
+    var script = document.querySelector('script[type="text/babel"]');
+    var curVer = parseInt(script ? script.getAttribute('data-v') : '0');
+    if (!root || root.innerHTML.length < 100 || curVer < window.__EW_TARGET_VER) {
+      // App failed or wrong version - fetch correct JS
+      fetch('https://raw.githubusercontent.com/mukeshenergyworld-ux/ew-site-crm/main/index.html?t='+Date.now(), {cache:'no-store'})
+        .then(function(r){return r.text();})
+        .then(function(html){
+          var start = html.indexOf('<script type="text/babel"');
+          var srcStart = html.indexOf('>',start)+1;
+          var srcEnd = html.indexOf('<'+'/script>',srcStart);
+          var js = html.substring(srcStart,srcEnd);
+          var newVer = parseInt(html.match(/data-v="(\d+)"/)?.[1]||'0');
+          if(newVer >= window.__EW_TARGET_VER && window.Babel) {
+            try {
+              var compiled = window.Babel.transform(js,{presets:['react']}).code;
+              root.innerHTML = '';
+              eval(compiled);
+            } catch(e) { console.error('Self-heal failed:',e); }
+          }
+        }).catch(function(){});
+    }
+  }, 3000);
+});
+</script>
+<script>
 // Force clear any cached old version
 (function(){
   var VER = '26';
