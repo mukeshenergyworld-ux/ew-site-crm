@@ -9,7 +9,7 @@
 <title>Energy World CRM v30</title>
 <script>
 // Self-heal: if React fails to render, fetch fresh JS from GitHub raw and retry
-window.__EW_TARGET_VER = 37;
+window.__EW_TARGET_VER = 38;
 window.addEventListener('load', function() {
   setTimeout(function() {
     var root = document.getElementById('root');
@@ -20,7 +20,7 @@ window.addEventListener('load', function() {
       fetch('https://raw.githubusercontent.com/mukeshenergyworld-ux/ew-site-crm/main/index.html?t='+Date.now(), {cache:'no-store'})
         .then(function(r){return r.text();})
         .then(function(html){
-          var start = html.indexOf('<script type="text/babel" data-v="37">
+          var start = html.indexOf('<script type="text/babel" data-v="38">
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
@@ -4246,6 +4246,132 @@ function CRMApp(){
     const cid=chatId||b.chatId; if(!cid)return;
     try{ await fetch(`https://api.telegram.org/bot${b.token}/sendMessage`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:cid,text,parse_mode:"Markdown"})}); }catch(e){}
   }
+
+  // Send a PDF (base64) to Telegram bot via sendDocument
+  async function tgSendDoc(key,pdfBase64,filename,caption,chatId){
+    const b=BOTS2[key]; if(!b)return;
+    const cid=chatId||b.chatId; if(!cid)return;
+    try{
+      const byteChars=atob(pdfBase64);
+      const byteArr=new Uint8Array(byteChars.length);
+      for(let i=0;i<byteChars.length;i++) byteArr[i]=byteChars.charCodeAt(i);
+      const blob=new Blob([byteArr],{type:"application/pdf"});
+      const fd=new FormData();
+      fd.append("chat_id",cid);
+      fd.append("document",blob,filename||"challan.pdf");
+      if(caption) fd.append("caption",caption.substring(0,1024));
+      fd.append("parse_mode","Markdown");
+      await fetch(`https://api.telegram.org/bot${b.token}/sendDocument`,{method:"POST",body:fd});
+    }catch(e){ console.error("tgSendDoc error:",e); }
+  }
+
+  // Generate Challan PDF using jsPDF and return base64
+  function generateChallanPDF(ch){
+    if(!window.jspdf?.jsPDF && !window.jsPDF) return null;
+    const jsPDF=window.jspdf?.jsPDF||window.jsPDF;
+    const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+    const PW=210, PH=297;
+    const TEAL=[13,148,136], DK=[30,41,59], GR=[100,116,139];
+
+    // ── Header band ──
+    doc.setFillColor(...TEAL);
+    doc.rect(0,0,PW,28,"F");
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(16); doc.setFont("helvetica","bold");
+    doc.text("ENERGY WORLD",10,11);
+    doc.setFontSize(8); doc.setFont("helvetica","normal");
+    doc.text("Modern Plumbing Solution Provider",10,17);
+    doc.text("PANIPAT | SONIPAT | KARNAL",10,22);
+
+    // Challan ID + Date (right side)
+    doc.setFontSize(18); doc.setFont("helvetica","bold");
+    doc.text("DELIVERY CHALLAN",PW/2,11,{align:"center"});
+    doc.setFontSize(9); doc.setFont("helvetica","normal");
+    doc.text(ch.id,PW-10,11,{align:"right"});
+    doc.text(new Date(ch.createdAt||Date.now()).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}),PW-10,17,{align:"right"});
+    doc.text("Status: "+((ch.status||"pending").toUpperCase()),PW-10,22,{align:"right"});
+
+    // ── Client + Transport info ──
+    let y=34;
+    doc.setFillColor(248,250,252);
+    doc.rect(0,y,PW,26,"F");
+    doc.setTextColor(...DK);
+    // Client
+    doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(...GR);
+    doc.text("BILL TO",10,y+6);
+    doc.setFontSize(11); doc.setFont("helvetica","bold"); doc.setTextColor(...DK);
+    doc.text(ch.partyName||"",10,y+13);
+    doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(...GR);
+    const loc=[ch.partyCity,ch.partyArea].filter(Boolean).join(" · ");
+    if(loc) doc.text(loc,10,y+19);
+    if(ch.partyPhone) doc.text("📞 "+ch.partyPhone,10,y+24);
+    // Transport
+    doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(...GR);
+    doc.text("TRANSPORT",PW/2+5,y+6);
+    doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(...DK);
+    if(ch.vehicleNo) doc.text("Vehicle: "+ch.vehicleNo,PW/2+5,y+13);
+    if(ch.driverName) doc.text("Driver: "+ch.driverName,PW/2+5,y+19);
+    if(ch.freightAmt>0) doc.text("Freight: ₹"+ch.freightAmt.toLocaleString("en-IN"),PW/2+5,y+24);
+    y+=30;
+
+    // ── Items table ──
+    doc.setFillColor(...TEAL);
+    doc.rect(0,y,PW,8,"F");
+    doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
+    doc.text("#",10,y+5.5); doc.text("Product Code",18,y+5.5); doc.text("Description",55,y+5.5);
+    doc.text("Qty",155,y+5.5,{align:"right"}); doc.text("Unit",170,y+5.5); doc.text("Amount",PW-10,y+5.5,{align:"right"});
+    y+=8;
+
+    (ch.items||[]).forEach((it,i)=>{
+      const bg=i%2===0?[255,255,255]:[248,250,252];
+      doc.setFillColor(...bg); doc.rect(0,y,PW,9,"F");
+      doc.setTextColor(...DK); doc.setFont("helvetica","normal"); doc.setFontSize(8);
+      doc.text(String(i+1),10,y+6);
+      doc.text((it.code||"").substring(0,14),18,y+6);
+      const desc=(it.name||it.specs||it.code||"").substring(0,45);
+      doc.text(desc,55,y+6);
+      doc.text(String(it.qty||0),155,y+6,{align:"right"});
+      doc.text(it.unit||"Pc.",170,y+6);
+      const amt=it.netPrice?it.netPrice*it.qty:it.lineAmt||0;
+      doc.text(amt>0?"₹"+amt.toLocaleString("en-IN"):"—",PW-10,y+6,{align:"right"});
+      y+=9;
+    });
+
+    // Total line
+    doc.setFillColor(...TEAL);
+    doc.rect(0,y,PW,8,"F");
+    doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+    if(ch.totalAmt>0){
+      doc.text("TOTAL",PW-55,y+5.5);
+      doc.text("₹"+ch.totalAmt.toLocaleString("en-IN"),PW-10,y+5.5,{align:"right"});
+    } else {
+      doc.text("As per invoice",PW-55,y+5.5);
+    }
+    y+=12;
+
+    // Remarks
+    if(ch.remarks){
+      doc.setTextColor(...GR); doc.setFont("helvetica","italic"); doc.setFontSize(8);
+      doc.text("Note: "+ch.remarks,10,y);
+      y+=8;
+    }
+
+    // Signature lines
+    y=Math.max(y+10, 240);
+    doc.setDrawColor(...GR); doc.setLineWidth(0.3);
+    doc.line(10,y,70,y); doc.line(PW-70,y,PW-10,y);
+    doc.setTextColor(...GR); doc.setFontSize(8); doc.setFont("helvetica","normal");
+    doc.text("Authorised Signatory",10,y+5);
+    doc.text("Received By",PW-70,y+5);
+
+    // Footer
+    doc.setFillColor(...TEAL);
+    doc.rect(0,PH-12,PW,12,"F");
+    doc.setTextColor(255,255,255); doc.setFontSize(7);
+    doc.text("Energy World · Panipat, Haryana · Generated "+new Date().toLocaleString("en-IN"),PW/2,PH-5,{align:"center"});
+
+    return doc.output("datauristring").split(",")[1]; // return base64
+  }
   function lsLoad(k,d=[]){try{return JSON.parse(localStorage.getItem(k)||"null")||d;}catch(e){return d;}}
   function lsSave(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 
@@ -4809,7 +4935,10 @@ function ChallanModule({challans,setChallans,products,contacts,sites,currentUser
       setStockLedger(prev=>[...prev,{id:genId("SL"),date:todayStr(),type:"out",productCode:it.code,productName:it.name||it.specs||it.code,qty:it.qty,unit:it.unit,challanId:ch.id,party:ch.partyName}]);
     });
     const itemLines=ch.items.map((it,i)=>`${i+1}. ${it.code} — ${it.name||it.specs||it.code} | Qty: ${it.qty} ${it.unit}`).join("\n");
-    await tgSend2("challanGen",`🆕 *NEW CHALLAN: ${ch.id}*\n📦 Party: ${ch.partyName}\n📍 ${ch.partyCity||""} ${ch.partyArea?`· ${ch.partyArea}`:""}\n🏢 Site: ${ch.siteAddress||"-"}\n🚛 Vehicle: ${ch.vehicleNo||"-"}\n👤 By: ${ch.createdBy}\n\n*Items:*\n${itemLines}\n\n⏳ *Pending Approval*`);
+    const caption=`🆕 *NEW CHALLAN: ${ch.id}*\n📦 ${ch.partyName}\n📍 ${ch.partyCity||""}${ch.partyArea?` · ${ch.partyArea}`:""}\n🚛 ${ch.vehicleNo||"-"}\n👤 ${ch.createdBy}\n⏳ Pending Approval`;
+    const pdfB64=generateChallanPDF(ch);
+    if(pdfB64) await tgSendDoc("challanGen",pdfB64,`Challan_${ch.id}.pdf`,caption);
+    else await tgSend2("challanGen",caption+`\n\n*Items:*\n${itemLines}`);
     setShowForm(false);
     setTab("pending");
   }
@@ -4825,7 +4954,10 @@ function ChallanModule({challans,setChallans,products,contacts,sites,currentUser
     setChallans(prev=>prev.map(c=>c.id===id?{...c,status:"approved",approvedBy:currentUser.name,approvedAt:new Date().toISOString()}:c));
     const ch=challans.find(c=>c.id===id);
     const itemLines=(ch.items||[]).map((it,i)=>`${i+1}. ${it.code} — ${it.name||it.specs||it.code} | Qty: ${it.qty} ${it.unit}`).join("\n");
-    await tgSend2("dispatch",`✅ *CHALLAN APPROVED: ${ch.id}*\n📦 Party: ${ch.partyName}\n📍 ${ch.partyCity||""}${ch.partyArea?` · ${ch.partyArea}`:""}\n🚛 Vehicle: ${ch.vehicleNo||"-"}\n👤 Approved by: *${currentUser.name}*\n\n*Items:*\n${itemLines}\n\n🚚 Ready for Dispatch`);
+    const dispCaption=`✅ *APPROVED: ${ch.id}*\n📦 ${ch.partyName}\n📍 ${ch.partyCity||""}${ch.partyArea?` · ${ch.partyArea}`:""}\n🚛 ${ch.vehicleNo||"-"}\n👤 Approved: *${currentUser.name}*\n🚚 Ready for Dispatch`;
+    const pdfB64=generateChallanPDF({...ch,status:"approved"});
+    if(pdfB64) await tgSendDoc("dispatch",pdfB64,`Challan_${ch.id}_Approved.pdf`,dispCaption);
+    else await tgSend2("dispatch",dispCaption+`\n\n*Items:*\n${itemLines}`);
   }
 
   function rejectChallan(id){
