@@ -121,7 +121,7 @@ nav, nav button { user-select: none; -webkit-user-select: none; }
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel" data-v="31">
+<script type="text/babel" data-v="32">
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
 // ─── COMPANY CONFIG (update these) ───────────────────────────────────────────
@@ -5259,7 +5259,7 @@ function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClos
       newItems.forEach(it=>{
         const ex=merged.findIndex(x=>x.code===it.code);
         if(ex>=0) merged[ex]={...merged[ex],qty:merged[ex].qty+it.qty};
-        else merged.push({code:it.code,name:it.name||it.specs||it.code,brand:it.brand,unit:it.unit||"Pc.",qty:it.qty,photoUrl:it.photoUrl||"",listPrice:it.listPrice||0});
+        else merged.push({code:it.code,name:it.name||it.specs||it.code||it.id||"Unknown",brand:it.brand,unit:it.unit||"Pc.",qty:it.qty,photoUrl:it.photoUrl||"",listPrice:it.listPrice||0});
       });
       return merged;
     });
@@ -5376,7 +5376,7 @@ function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClos
                 </div>
               )}
               {filteredClients.map(c=>(
-                <div key={c.id} onClick={()=>{setSelClient(c);setStep(3);}}
+                <div key={c.id} onClick={()=>{setSelClient(c);setStep(3);setShowNewClient(false);}}
                   style={{padding:"11px 14px",cursor:"pointer",borderBottom:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",alignItems:"center",background:selClient?.id===c.id?"#f0fdfa":"#fff"}}
                   onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
                   onMouseLeave={e=>e.currentTarget.style.background=selClient?.id===c.id?"#f0fdfa":"#fff"}>
@@ -5473,7 +5473,7 @@ function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClos
                 {items.map((it,i)=>(
                   <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",borderTop:"1px solid #f1f5f9"}}>
                     <div style={{flex:1}}>
-                      <div style={{fontSize:13,fontWeight:600,color:DK}}>{it.name}</div>
+                      <div style={{fontSize:13,fontWeight:600,color:DK}}>{(it.name||it.specs||it.code||"")}</div>
                       <div style={{fontSize:11,color:GR}}>{it.code} · {it.brand}</div>
                     </div>
                     <input type="number" min="0.01" step="0.01" value={it.qty} onChange={e=>updateQty(i,e.target.value)}
@@ -5499,11 +5499,7 @@ function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClos
             </div>
 
             {/* Remarks */}
-            <div style={{marginBottom:16}}>
-              <label style={{fontSize:12,color:GR,fontWeight:600}}>Remarks</label>
-              <input value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Special instructions, delivery notes..."
-                style={{...inp,marginTop:4}}/>
-            </div>
+
 
             {/* Client view options */}
             <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
