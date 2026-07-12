@@ -4622,106 +4622,103 @@ function CRMApp(){
 
   // ── NAV CONFIG ────────────────────────────────────────────────
   const NAV_ITEMS = [
-    {v:"dashboard", icon:"🏠",  label:"Dashboard"},
-    {v:"sites",     icon:"🏗",  label:"Sites"},
-    {v:"challan",   icon:"📦",  label:"Challan"},
-    {v:"stock",     icon:"🗂",  label:"Stock"},
-    {v:"ledger",    icon:"💰",  label:"Ledger"},
-    {v:"service",   icon:"🔧",  label:"Service"},
-    {v:"commission",icon:"🤝",  label:"Commission"},
-    {v:"partners",  icon:"👥",  label:"Partners"},
-    {v:"dailyreport",icon:"📍", label:"Daily"},
-    {v:"search",    icon:"🔍",  label:"Search"},
+    {v:"dashboard",    icon:"🏠", label:"Dashboard"},
+    {v:"sites",        icon:"🏗", label:"Sites"},
+    {v:"challan",      icon:"📦", label:"Challan"},
+    {v:"stock",        icon:"🗂", label:"Stock"},
+    {v:"ledger",       icon:"💰", label:"Ledger"},
+    {v:"service",      icon:"🔧", label:"Service"},
+    {v:"commission",   icon:"🤝", label:"Commission"},
+    {v:"partners",     icon:"👥", label:"Partners"},
+    {v:"dailyreport",  icon:"📍", label:"Daily"},
+    {v:"search",       icon:"🔍", label:"Search"},
     ...(isAdmin?[{v:"admin",icon:"⚙",label:"Admin"}]:[]),
   ];
 
   return(
-    <div style={{minHeight:"100vh",background:"#f0f2f5",fontFamily:"system-ui,sans-serif",color:"#1e293b"}}>
+    <div style={{minHeight:"100vh",display:"flex",fontFamily:"system-ui,sans-serif",color:"#1e293b",background:"#f0f2f5"}}>
 
-      {/* ── TOP HEADER BAR ───────────────────────────────────── */}
-      <header className="no-print" style={{background:"#1a2332",borderBottom:"1px solid #243044",display:"flex",alignItems:"center",padding:"0 16px",height:48,gap:10,position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 8px rgba(0,0,0,0.25)"}}>
+      {/* ── SIDEBAR ─────────────────────────────────────────────── */}
+      <aside className="no-print" style={{
+        width:200,flexShrink:0,background:"#1a2332",
+        display:"flex",flexDirection:"column",
+        minHeight:"100vh",position:"sticky",top:0,height:"100vh",
+        boxShadow:"2px 0 12px rgba(0,0,0,0.18)",zIndex:100,
+        overflowY:"auto",overflowX:"hidden"
+      }}>
         {/* Brand */}
-        <div style={{display:"flex",alignItems:"center",gap:7,marginRight:16,flexShrink:0}}>
-          <span style={{fontSize:18,lineHeight:1}}>⚡</span>
-          <span style={{fontWeight:700,fontSize:14,color:"#e2e8f0",letterSpacing:"-0.2px"}}>EW CRM</span>
+        <div style={{padding:"18px 16px 14px",borderBottom:"1px solid #243044",flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:20}}>⚡</span>
+            <div>
+              <div style={{fontWeight:800,fontSize:13,color:"#e2e8f0",letterSpacing:"-0.2px",lineHeight:1.2}}>EW CRM</div>
+              <div style={{fontSize:10,color:"#475569",marginTop:2}}>Energy World</div>
+            </div>
+          </div>
         </div>
 
-        {/* ── TAB STRIP — left aligned ─────────────────────── */}
-        <nav style={{display:"flex",alignItems:"center",gap:2,overflowX:"auto",flex:1,scrollbarWidth:"none"}}>
+        {/* Nav Items */}
+        <nav style={{flex:1,padding:"8px 0"}}>
           {NAV_ITEMS.map(({v,icon,label})=>{
-            const active = view===v;
+            const active=view===v;
             return(
-              <button key={v} onClick={()=>setView(v)}
-                style={{
-                  display:"flex",alignItems:"center",gap:5,
-                  background: active?"#253650":"transparent",
-                  color: active?"#93c5fd":"#94a3b8",
-                  border:"none",
-                  borderBottom: active?"2px solid #60a5fa":"2px solid transparent",
-                  padding:"0 10px",
-                  height:48,
-                  cursor:"pointer",
-                  fontSize:12,
-                  fontWeight: active?600:400,
-                  whiteSpace:"nowrap",
-                  borderRadius:0,
-                  flexShrink:0,
-                  transition:"color 0.15s,background 0.15s",
-                }}>
-                <span style={{fontSize:14}}>{icon}</span>
+              <button key={v} onClick={()=>setView(v)} style={{
+                width:"100%",display:"flex",alignItems:"center",gap:10,
+                padding:"10px 16px",border:"none",borderRadius:0,
+                background:active?"#253650":"transparent",
+                color:active?"#e2e8f0":"#94a3b8",
+                cursor:"pointer",fontSize:13,fontWeight:active?600:400,
+                textAlign:"left",borderLeft:active?"3px solid #60a5fa":"3px solid transparent",
+                transition:"all 0.15s",
+              }}>
+                <span style={{fontSize:16,width:20,textAlign:"center",flexShrink:0}}>{icon}</span>
                 <span>{label}</span>
               </button>
             );
           })}
         </nav>
 
-        {/* ── RIGHT SIDE: sync status + user ──────────────── */}
-        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,marginLeft:8}}>
-          {/* Product sync */}
-          {products.length>0&&syncStatus!=="loading"&&(
-            <span style={{fontSize:10,color:"#34d399",fontWeight:500,whiteSpace:"nowrap"}}>✓ {products.length}p</span>
-          )}
-          {syncStatus==="loading"&&<span style={{fontSize:10,color:"#fbbf24"}}>⏳</span>}
-
-          <button onClick={()=>fetchProducts(false)} disabled={syncStatus==="loading"}
-            title="Sync product catalog"
-            style={{display:"flex",alignItems:"center",gap:3,background:"#253650",color:syncStatus==="loading"?"#64748b":"#93c5fd",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",cursor:syncStatus==="loading"?"not-allowed":"pointer",fontSize:11,fontWeight:500}}>
-            <span style={{display:"inline-block",animation:syncStatus==="loading"?"spin 1s linear infinite":"none",fontSize:12}}>↻</span>
-            {syncStatus==="loading"?"…":"Sheet"}
-          </button>
-
-          <button onClick={()=>pullSitesFromServer(false)} disabled={sitesSyncStatus==="loading"}
-            title="Sync sites across devices"
-            style={{display:"flex",alignItems:"center",gap:3,background:"#253650",color:sitesSyncStatus==="loading"?"#64748b":"#93c5fd",border:"1px solid #334155",borderRadius:6,padding:"4px 8px",cursor:sitesSyncStatus==="loading"?"not-allowed":"pointer",fontSize:11,fontWeight:500}}>
-            <span style={{display:"inline-block",animation:sitesSyncStatus==="loading"?"spin 1s linear infinite":"none",fontSize:12}}>↻</span>
-            {sitesSyncStatus==="loading"?"…":"Sites"}
-          </button>
-
-          <button onClick={()=>setShowUploadModal(true)}
-            title="Upload CSV"
-            style={{background:"#253650",color:"#64748b",border:"1px solid #334155",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:11}}>
-            ⬆
-          </button>
-
-          {/* Cloud sync dot */}
-          <span title="Data auto-syncing" style={{fontSize:10,color:"#34d399"}}>☁</span>
-
-          {/* User */}
-          <div style={{display:"flex",alignItems:"center",gap:5}}>
-            <div style={{width:26,height:26,borderRadius:"50%",background:"#253650",border:"1px solid #334155",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#93c5fd",flexShrink:0}}>
+        {/* User + sync at bottom */}
+        <div style={{padding:"12px 14px",borderTop:"1px solid #243044",flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+            <div style={{width:28,height:28,borderRadius:"50%",background:"#253650",border:"1px solid #334155",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"#93c5fd",flexShrink:0}}>
               {currentUser.name[0].toUpperCase()}
             </div>
-            <span style={{fontSize:11,color:"#94a3b8",maxWidth:60,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentUser.name.split(" ")[0]}</span>
-            {isAdmin&&<span style={{fontSize:9,background:"#1e40af",color:"#bfdbfe",padding:"1px 5px",borderRadius:8,fontWeight:700,letterSpacing:"0.3px"}}>ADM</span>}
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,color:"#e2e8f0",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentUser.name.split(" ")[0]}</div>
+              {isAdmin&&<div style={{fontSize:9,color:"#60a5fa",fontWeight:700}}>ADMIN</div>}
+            </div>
+            <button onClick={()=>setCurrentUser(null)} title="Switch user"
+              style={{background:"transparent",border:"1px solid #334155",color:"#64748b",padding:"3px 6px",borderRadius:5,cursor:"pointer",fontSize:11,flexShrink:0}}>⏏</button>
           </div>
-          <button onClick={()=>setCurrentUser(null)}
-            style={{background:"transparent",border:"1px solid #334155",color:"#64748b",padding:"3px 7px",borderRadius:6,cursor:"pointer",fontSize:11}}>
-            ⏏
-          </button>
+          <div style={{display:"flex",gap:5}}>
+            <button onClick={()=>fetchProducts(false)} disabled={syncStatus==="loading"}
+              title="Sync product prices"
+              style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:3,background:"#253650",color:syncStatus==="loading"?"#64748b":"#93c5fd",border:"1px solid #334155",borderRadius:5,padding:"4px 0",cursor:syncStatus==="loading"?"not-allowed":"pointer",fontSize:10}}>
+              <span style={{display:"inline-block",animation:syncStatus==="loading"?"spin 1s linear infinite":"none"}}>↻</span>
+              {syncStatus==="loading"?"…":"Sheet"}
+            </button>
+            <button onClick={()=>pullSitesFromServer(false)} disabled={sitesSyncStatus==="loading"}
+              title="Sync sites"
+              style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:3,background:"#253650",color:sitesSyncStatus==="loading"?"#64748b":"#93c5fd",border:"1px solid #334155",borderRadius:5,padding:"4px 0",cursor:sitesSyncStatus==="loading"?"not-allowed":"pointer",fontSize:10}}>
+              <span style={{display:"inline-block",animation:sitesSyncStatus==="loading"?"spin 1s linear infinite":"none"}}>↻</span>
+              {sitesSyncStatus==="loading"?"…":"Sites"}
+            </button>
+            <button onClick={()=>setShowUploadModal(true)} title="Upload CSV"
+              style={{background:"#253650",color:"#64748b",border:"1px solid #334155",borderRadius:5,padding:"4px 6px",cursor:"pointer",fontSize:10}}>⬆</button>
+          </div>
+          <div style={{marginTop:6,display:"flex",alignItems:"center",gap:4}}>
+            <span style={{fontSize:10,color:"#34d399"}}>☁</span>
+            <span style={{fontSize:9,color:"#475569"}}>
+              {products.length>0&&syncStatus!=="loading"?`✓ ${products.length} products`:""}
+            </span>
+          </div>
         </div>
-      </header>
+      </aside>
 
-      {/* SYNC TOAST */}
+      {/* MAIN CONTENT */}
+      <div style={{flex:1,minWidth:0,overflowY:"auto",padding:"20px 24px",maxWidth:"100%"}}>
+        {/* SYNC TOAST */}
       {syncMsg&&(
         <div style={{background:syncStatus==="error"?"#fee2e2":syncStatus==="loading"?"#fef3c7":"#d1fae5",borderBottom:"1px solid "+(syncStatus==="error"?"#fca5a5":syncStatus==="loading"?"#fcd34d":"#6ee7b7"),padding:"8px 20px",fontSize:12,color:syncStatus==="error"?"#991b1b":syncStatus==="loading"?"#92400e":"#065f46",fontWeight:500,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
           <span style={{flex:1}}>{syncMsg}</span>
@@ -4737,9 +4734,6 @@ function CRMApp(){
 
       {/* CSV UPLOAD MODAL */}
       {showUploadModal&&<CSVUploadModal onLoad={handleCSVUpload} onClose={()=>setShowUploadModal(false)}/>}
-
-      {/* MAIN CONTENT */}
-      <div style={{maxWidth:980,margin:"0 auto",padding:"18px 16px"}}>
         {view==="dashboard"&&<Dashboard sites={isAdmin?sites:sites.filter(s=>s.assignedTo===currentUser.id)} contacts={contacts} currentUser={currentUser} isAdmin={isAdmin} onGoSites={()=>setView("sites")} onOpenSite={id=>{setActiveSiteId(id);setView("site");}} getPendingProducts={getPendingProducts} products={products} loadingProducts={syncStatus==="loading"} onSaveQuote={(siteId,q)=>{ const updated=(sites.find(s=>s.id===siteId)?.quotations||[]); updateSite(siteId,{quotations:[...updated,q]}); }}/>}
         {view==="sites"&&<SitesList sites={visibleSites} isAdmin={isAdmin} filterStage={filterStage} setFilterStage={setFilterStage} filterAssigned={filterAssigned} setFilterAssigned={setFilterAssigned} filterAlert={filterAlert} setFilterAlert={setFilterAlert} searchQ={searchQ} setSearchQ={setSearchQ} getPendingProducts={getPendingProducts} contacts={contacts} products={products} pitchBrands={pitchBrands} onOpen={id=>{setActiveSiteId(id);setView("site");}} onAdd={()=>setShowAddSite(true)}/>}
         {view==="site"&&activeSite&&<SiteDetail site={activeSite} isAdmin={isAdmin} currentUser={currentUser} getPendingProducts={getPendingProducts} onBack={()=>setView("sites")} onUpdateSite={patch=>updateSite(activeSite.id,patch)} onUpdatePitch={(pid,status,note)=>updatePitch(activeSite.id,pid,status,note)} onDelete={()=>deleteSite(activeSite.id)} onEdit={()=>{setEditingSite(activeSite);setShowAddSite(true);}} products={products} loadingProducts={syncStatus==="loading"} pitchBrands={pitchBrands}/>}
