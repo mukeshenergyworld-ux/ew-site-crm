@@ -4760,6 +4760,7 @@ function ChallanModule({challans,setChallans,products,contacts,sites,currentUser
   const [viewCh,setViewCh]=React.useState(null);
   const [searchQ,setSearchQ]=React.useState("");
   const [filterLoc,setFilterLoc]=React.useState("all");
+  const [expandedDrivers,setExpandedDrivers]=React.useState({});
   const TEAL="#0d9488"; const DK="#1e293b"; const GR="#64748b";
 
   // Unique locations from contacts
@@ -4888,7 +4889,6 @@ function ChallanModule({challans,setChallans,products,contacts,sites,currentUser
 
       {/* ── FREIGHT DASHBOARD TAB ── */}
       {tab==="freight"&&(()=>{
-        const [expandedDrivers,setExpandedDrivers]=React.useState({});
         const freightChallans=challans.filter(c=>c.driverName||c.freightAmt>0);
         // Group by driver
         const driverMap={};
