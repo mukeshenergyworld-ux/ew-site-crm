@@ -121,7 +121,7 @@ nav, nav button { user-select: none; -webkit-user-select: none; }
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel" data-v="32">
+<script type="text/babel" data-v="33">
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
 // ─── COMPANY CONFIG (update these) ───────────────────────────────────────────
@@ -1330,7 +1330,7 @@ function buildTelegramCaption(site, quoteNum, items, totals, createdBy){
 // Step 1: Brand → Family → Product (with image) OR direct code search
 // Step 2: Basket review + qty
 // Step 3: Discount per brand/family category
-function SmartProductSelector({products, loading, currentBasket, onFinish, onClose}){
+function SmartProductSelector({products, loading, currentBasket, onFinish, onClose, mode="quotation"}){
   const [mode, setMode]   = useState("browse"); // browse | code
   const [codeQ, setCodeQ] = useState("");
   const [codeResult, setCodeResult] = useState(null);
@@ -1487,7 +1487,7 @@ function SmartProductSelector({products, loading, currentBasket, onFinish, onClo
             <button onClick={()=>setStep(2)} style={sBtn}>← Back</button>
             <button onClick={()=>onFinish(finalItems())}
               style={{...greenBtn,fontSize:14,padding:"10px 24px",display:"flex",alignItems:"center",gap:8}}>
-              ✅ Confirm &amp; Generate Quotation
+              ✅ {mode==="challan"?"Add to Challan":"Confirm & Generate Quotation"}
             </button>
           </div>
         </div>
@@ -5538,7 +5538,7 @@ function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClos
 
         </div>
       </div>
-      {showSPS&&<SmartProductSelector products={products} loading={false} currentBasket={items} onFinish={handleFinish} onClose={()=>setShowSPS(false)}/>}
+      {showSPS&&<SmartProductSelector products={products} loading={false} currentBasket={[]} onFinish={handleFinish} onClose={()=>setShowSPS(false)} mode="challan"/>}
     </div>
   );
 }
