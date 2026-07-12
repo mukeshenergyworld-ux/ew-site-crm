@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Energy World CRM v29</title>
+<title>Energy World CRM v30</title>
 <script>
 // Force clear any cached old version
 (function(){
@@ -121,7 +121,7 @@ nav, nav button { user-select: none; -webkit-user-select: none; }
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel" data-v="30">
+<script type="text/babel" data-v="31">
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
 // ─── COMPANY CONFIG (update these) ───────────────────────────────────────────
@@ -1694,7 +1694,9 @@ function SmartProductSelector({products, loading, currentBasket, onFinish, onClo
                         <img src={p.photoUrl} alt="" style={{width:44,height:44,objectFit:"contain",borderRadius:8,background:"#f8fafc",border:"1px solid #e2e8f0",flexShrink:0}}
                           onError={e=>e.target.style.display="none"}/>
                       ):(
-                        <div style={{width:44,height:44,background:"#f1f5f9",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>📦</div>
+                        <div style={{width:44,height:44,background:"linear-gradient(135deg,#0d9488,#0891b2)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",flexShrink:0,letterSpacing:"-0.5px"}}>
+                          {(p.brand||"?").substring(0,3).toUpperCase()}
+                        </div>
                       )}
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:10,color:Q_TEAL,fontFamily:"monospace",fontWeight:700}}>{p.code}</div>
@@ -4163,7 +4165,7 @@ function LoginScreen({onLogin}){
         </div>
         <div style={{color:"#0f172a",fontSize:24,fontWeight:800,letterSpacing:"-0.5px"}}>Energy World</div>
         <div style={{color:"#475569",fontSize:13,marginTop:4}}>Site CRM · Panipat</div>
-        <div style={{background:"#0d9488",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,marginTop:6,display:"inline-block"}}>v29</div>
+        <div style={{background:"#0d9488",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,marginTop:6,display:"inline-block"}}>v30</div>
       </div>
 
       {/* Login card */}
@@ -4900,9 +4902,9 @@ function ChallanModule({challans,setChallans,products,contacts,sites,currentUser
     const ch={...data,id,createdAt:new Date().toISOString(),createdBy:currentUser.name,status:"pending"};
     setChallans(prev=>[ch,...prev]);
     ch.items.forEach(it=>{
-      setStockLedger(prev=>[...prev,{id:genId("SL"),date:todayStr(),type:"out",productCode:it.code,productName:it.name,qty:it.qty,unit:it.unit,challanId:ch.id,party:ch.partyName}]);
+      setStockLedger(prev=>[...prev,{id:genId("SL"),date:todayStr(),type:"out",productCode:it.code,productName:it.name||it.specs||it.code,qty:it.qty,unit:it.unit,challanId:ch.id,party:ch.partyName}]);
     });
-    const itemLines=ch.items.map((it,i)=>`${i+1}. ${it.code} — ${it.name} | Qty: ${it.qty} ${it.unit}`).join("\n");
+    const itemLines=ch.items.map((it,i)=>`${i+1}. ${it.code} — ${it.name||it.specs||it.code} | Qty: ${it.qty} ${it.unit}`).join("\n");
     await tgSend2("challanGen",`🆕 *NEW CHALLAN: ${ch.id}*\n📦 Party: ${ch.partyName}\n📍 ${ch.partyCity||""} ${ch.partyArea?`· ${ch.partyArea}`:""}\n🏢 Site: ${ch.siteAddress||"-"}\n🚛 Vehicle: ${ch.vehicleNo||"-"}\n👤 By: ${ch.createdBy}\n\n*Items:*\n${itemLines}\n\n⏳ *Pending Approval*`);
     setShowForm(false);
     setTab("pending");
@@ -4918,7 +4920,7 @@ function ChallanModule({challans,setChallans,products,contacts,sites,currentUser
     if(!isAdmin){alert("Only admin can approve.");return;}
     setChallans(prev=>prev.map(c=>c.id===id?{...c,status:"approved",approvedBy:currentUser.name,approvedAt:new Date().toISOString()}:c));
     const ch=challans.find(c=>c.id===id);
-    const itemLines=(ch.items||[]).map((it,i)=>`${i+1}. ${it.code} — ${it.name} | Qty: ${it.qty} ${it.unit}`).join("\n");
+    const itemLines=(ch.items||[]).map((it,i)=>`${i+1}. ${it.code} — ${it.name||it.specs||it.code} | Qty: ${it.qty} ${it.unit}`).join("\n");
     await tgSend2("dispatch",`✅ *CHALLAN APPROVED: ${ch.id}*\n📦 Party: ${ch.partyName}\n📍 ${ch.partyCity||""}${ch.partyArea?` · ${ch.partyArea}`:""}\n🚛 Vehicle: ${ch.vehicleNo||"-"}\n👤 Approved by: *${currentUser.name}*\n\n*Items:*\n${itemLines}\n\n🚚 Ready for Dispatch`);
   }
 
@@ -5036,14 +5038,18 @@ function ChallanModule({challans,setChallans,products,contacts,sites,currentUser
                     {ch.partyType&&<span style={{background:"#f0fdf4",color:"#16a34a",borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:600}}>{ch.partyType}</span>}
                   </div>
                   {ch.vehicleNo&&<div style={{fontSize:12,color:GR,marginTop:4}}>🚛 {ch.vehicleNo}{ch.driverName&&` · ${ch.driverName}`}{ch.freightAmt>0&&` · ₹${ch.freightAmt}`}</div>}
-                  {ch.remarks&&<div style={{fontSize:12,color:"#8b5cf6",marginTop:4,fontStyle:"italic"}}>💬 {ch.remarks}</div>}
+                  <div style={{display:"flex",gap:8,marginTop:4,flexWrap:"wrap"}}>
+                {ch.remarks&&<div style={{fontSize:12,color:"#8b5cf6",fontStyle:"italic"}}>💬 {ch.remarks}</div>}
+                {ch.showPriceToClient===false&&<span style={{fontSize:10,background:"#fef3c7",color:"#92400e",borderRadius:4,padding:"1px 6px",fontWeight:600}}>No Price on Copy</span>}
+                {ch.showPhotoToClient===false&&<span style={{fontSize:10,background:"#fef3c7",color:"#92400e",borderRadius:4,padding:"1px 6px",fontWeight:600}}>No Photos on Copy</span>}
+              </div>
                 </div>
                 {/* Items */}
                 <div style={{flex:2,minWidth:280}}>
                   <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
                     {(ch.items||[]).map((it,i)=>(
                       <span key={i} style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6,padding:"3px 9px",fontSize:12,color:"#065f46",fontWeight:500}}>
-                        {it.name.substring(0,25)} · <strong>{it.qty}</strong> {it.unit}
+                        {(it.name||it.specs||it.code||"").substring(0,25)} · <strong>{it.qty}</strong> {it.unit}
                       </span>
                     ))}
                   </div>
@@ -5136,7 +5142,7 @@ function ChallanModule({challans,setChallans,products,contacts,sites,currentUser
                     {(viewCh.items||[]).map((it,i)=>(
                       <tr key={i} style={{borderBottom:"1px solid #f1f5f9"}}>
                         <td style={{padding:"8px 10px"}}>
-                          <div style={{fontWeight:600}}>{it.name}</div>
+                          <div style={{fontWeight:600}}>{it.name||it.specs||it.code}</div>
                           <div style={{fontSize:11,color:GR}}>{it.code} · {it.brand}</div>
                         </td>
                         <td style={{padding:"8px 10px",textAlign:"center",fontWeight:700}}>{it.qty}</td>
@@ -5185,6 +5191,8 @@ function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClos
   const [freightAmt,setFreightAmt]=React.useState(editData?.freightAmt||"");
   const [items,setItems]=React.useState(editData?.items||[]);
   const [remarks,setRemarks]=React.useState(editData?.remarks||"");
+  const [showPriceToClient,setShowPriceToClient]=React.useState(editData?.showPriceToClient!==false);
+  const [showPhotoToClient,setShowPhotoToClient]=React.useState(editData?.showPhotoToClient!==false);
   const [showSPS,setShowSPS]=React.useState(false);
 
   const TEAL="#0d9488"; const GR="#64748b"; const DK="#1e293b";
@@ -5251,7 +5259,7 @@ function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClos
       newItems.forEach(it=>{
         const ex=merged.findIndex(x=>x.code===it.code);
         if(ex>=0) merged[ex]={...merged[ex],qty:merged[ex].qty+it.qty};
-        else merged.push({code:it.code,name:it.name,brand:it.brand,unit:it.unit||"Pc.",qty:it.qty});
+        else merged.push({code:it.code,name:it.name||it.specs||it.code,brand:it.brand,unit:it.unit||"Pc.",qty:it.qty,photoUrl:it.photoUrl||"",listPrice:it.listPrice||0});
       });
       return merged;
     });
@@ -5283,7 +5291,7 @@ function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClos
       partyPhone:selClient.phone||"",
       siteId:autoSiteId,siteAddress:autoSite?(autoSite.ownerName+" — "+autoSite.city):"",
       vehicleNo,driverName,freightAmt:Number(freightAmt)||0,
-      items,remarks
+      items,remarks,showPriceToClient,showPhotoToClient
     });
   }
 
@@ -5497,6 +5505,30 @@ function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClos
                 style={{...inp,marginTop:4}}/>
             </div>
 
+            {/* Client view options */}
+            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#065f46",marginBottom:8}}>📋 Client Copy Options</div>
+              <div style={{display:"flex",gap:16}}>
+                <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:13,color:"#1e293b"}}>
+                  <input type="checkbox" checked={showPriceToClient} onChange={e=>setShowPriceToClient(e.target.checked)}
+                    style={{width:16,height:16,accentColor:TEAL}}/>
+                  Show product prices to client
+                </label>
+                <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:13,color:"#1e293b"}}>
+                  <input type="checkbox" checked={showPhotoToClient} onChange={e=>setShowPhotoToClient(e.target.checked)}
+                    style={{width:16,height:16,accentColor:TEAL}}/>
+                  Show product photos to client
+                </label>
+              </div>
+            </div>
+            {/* Remarks */}
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:12,color:"#64748b",fontWeight:600}}>📝 Remarks / Special Instructions</label>
+              <textarea value={remarks} onChange={e=>setRemarks(e.target.value)}
+                placeholder="Delivery instructions, special notes for client..."
+                rows={2}
+                style={{width:"100%",padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,marginTop:4,boxSizing:"border-box",fontSize:13,resize:"vertical",fontFamily:"inherit"}}/>
+            </div>
             <div style={{display:"flex",gap:10}}>
               <button onClick={onClose} style={{flex:1,padding:"11px",border:"1px solid #e2e8f0",borderRadius:8,cursor:"pointer",background:"#fff",fontWeight:600}}>Cancel</button>
               <button onClick={submit}
