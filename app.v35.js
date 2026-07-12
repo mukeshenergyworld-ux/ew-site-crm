@@ -4888,6 +4888,7 @@ function ChallanModule({challans,setChallans,products,contacts,sites,currentUser
 
       {/* ── FREIGHT DASHBOARD TAB ── */}
       {tab==="freight"&&(()=>{
+        const [expandedDrivers,setExpandedDrivers]=React.useState({});
         const freightChallans=challans.filter(c=>c.driverName||c.freightAmt>0);
         // Group by driver
         const driverMap={};
@@ -4925,7 +4926,8 @@ function ChallanModule({challans,setChallans,products,contacts,sites,currentUser
 
             {/* Driver-wise breakdown */}
             {drivers.map(drv=>{
-              const [expanded,setExpanded]=React.useState(false);
+              const expanded=expandedDrivers[drv.name]||false;
+              const setExpanded=(v)=>setExpandedDrivers(p=>({...p,[drv.name]:typeof v==='function'?v(p[drv.name]):v}));
               return(
                 <div key={drv.name} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,marginBottom:12,overflow:"hidden"}}>
                   {/* Driver header */}
