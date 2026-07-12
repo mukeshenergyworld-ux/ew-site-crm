@@ -4077,14 +4077,15 @@ function LoginScreen({onLogin}){
   const activeUsers=users.filter(u=>u.active!==false);
 
   return(
-    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#0f172a 0%,#1e293b 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:0,padding:20}}>
+    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#e0f2fe 0%,#f0fdf4 100%)",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:0,padding:20}}>
       {/* Logo */}
       <div style={{textAlign:"center",marginBottom:28}}>
         <div style={{width:72,height:72,background:"#0d9488",borderRadius:20,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",boxShadow:"0 8px 32px rgba(13,148,136,0.4)"}}>
           <span style={{fontSize:34}}>⚡</span>
         </div>
-        <div style={{color:"#f1f5f9",fontSize:24,fontWeight:800,letterSpacing:"-0.5px"}}>Energy World</div>
+        <div style={{color:"#0f172a",fontSize:24,fontWeight:800,letterSpacing:"-0.5px"}}>Energy World</div>
         <div style={{color:"#475569",fontSize:13,marginTop:4}}>Site CRM · Panipat</div>
+        <div style={{background:"#0d9488",color:"#fff",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,marginTop:6,display:"inline-block"}}>v26 — NEW DESIGN</div>
       </div>
 
       {/* Login card */}
