@@ -1954,7 +1954,7 @@ function QuotationPrint({site,items,quoteNum,quoteDate,validDays,terms,notes,tot
   const customTermLines = (terms||"").split("\n").map(l=>l.trim()).filter(Boolean);
 
   return(
-    <div style={{position:"fixed",inset:0,background:"#d1d5db",zIndex:300,overflowY:"auto",fontFamily:"Cambria,Georgia,serif"}}>
+    <div style={{position:"fixed",inset:0,background:"#d1d5db",zIndex:300,overflowY:"auto",fontFamily:"Cambria,Georgia,'Segoe UI Emoji','Apple Color Emoji',serif"}}>
       {/* Toolbar */}
       <div className="no-print" style={{background:"#0f172a",padding:"10px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10}}>
         <div style={{color:"#fff",fontWeight:600,fontSize:14}}>Preview — {quoteNum}</div>
@@ -1966,7 +1966,7 @@ function QuotationPrint({site,items,quoteNum,quoteDate,validDays,terms,notes,tot
       </div>
 
       {/* ── A4 PAPER ── */}
-      <div id="quotation-print" style={{background:"#fff",maxWidth:800,margin:"16px auto",boxShadow:"0 8px 32px rgba(0,0,0,0.18)",fontFamily:"Cambria,Georgia,serif"}}>
+      <div id="quotation-print" style={{background:"#fff",maxWidth:800,margin:"16px auto",boxShadow:"0 8px 32px rgba(0,0,0,0.18)",fontFamily:"Cambria,Georgia,'Segoe UI Emoji','Apple Color Emoji',serif"}}>
 
         {/* ── COVER HEADER (dark teal) ── */}
         <div style={{background:`linear-gradient(135deg, ${Q_DARK} 0%, #0d3d47 60%, ${Q_TEAL} 100%)`,padding:"36px 40px 28px",color:"#fff"}}>
@@ -4785,7 +4785,7 @@ function CRMApp(){
   ];
 
   return(
-    <div style={{minHeight:"100vh",display:"flex",fontFamily:"Cambria,Georgia,serif",color:"#1e293b",background:"#f0f2f5"}}>
+    <div style={{minHeight:"100vh",display:"flex",fontFamily:"Cambria,Georgia,'Segoe UI Emoji','Apple Color Emoji',serif",color:"#1e293b",background:"#f0f2f5"}}>
 
       {/* ── SIDEBAR ─────────────────────────────────────────────── */}
       <aside className="no-print" style={{
@@ -4820,7 +4820,7 @@ function CRMApp(){
                 textAlign:"left",borderLeft:active?"3px solid #60a5fa":"3px solid transparent",
                 transition:"all 0.15s",
               }}>
-                <span style={{fontSize:16,width:20,textAlign:"center",flexShrink:0}}>{icon}</span>
+                <span style={{fontSize:16,width:20,textAlign:"center",flexShrink:0,fontFamily:"'Apple Color Emoji','Segoe UI Emoji',sans-serif"}}>{icon}</span>
                 <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>
               </button>
             );
