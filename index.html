@@ -7,11 +7,31 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Energy World CRM v26</title>
+<script>
+// Force clear any cached old version
+(function(){
+  var VER = '26';
+  if(localStorage.getItem('ew_crm_ver') !== VER){
+    localStorage.setItem('ew_crm_ver', VER);
+    // Clear all caches
+    if('caches' in window){
+      caches.keys().then(function(names){
+        names.forEach(function(name){ caches.delete(name); });
+      });
+    }
+    // Force hard reload bypassing cache
+    if(!window.location.search.includes('cleared=1')){
+      var sep = window.location.search ? '&' : '?';
+      window.location.replace(window.location.pathname + window.location.search + sep + 'cleared=1&v=' + VER + '&t=' + Date.now());
+    }
+  }
+})();
+</script>
 
 <!-- ═══ PWA META TAGS ═══════════════════════════════════════════════════ -->
 <meta name="application-name" content="EW CRM">
 <meta name="description" content="Energy World Site CRM — Panipat">
-<meta name="theme-color" content="#0d9488">
+<meta name="theme-color" content="#1a2332">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
