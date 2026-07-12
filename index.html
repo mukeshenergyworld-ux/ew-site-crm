@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Energy World CRM v27</title>
+<title>Energy World CRM v28</title>
 <script>
 // Force clear any cached old version
 (function(){
@@ -121,7 +121,7 @@ nav, nav button { user-select: none; -webkit-user-select: none; }
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel" data-v="28">
+<script type="text/babel" data-v="29">
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
 // ─── COMPANY CONFIG (update these) ───────────────────────────────────────────
@@ -3634,11 +3634,12 @@ function ContactField({roleKey,label,icon,initialData,contacts,allSites,onCommit
   const nameTimer=React.useRef(null);
 
   function roleMatch(c){
-    if(!c.role) return true;
-    return (roleKey==="plumber"&&c.role==="Plumbing Contractor")||
-           (roleKey==="architect"&&c.role==="Architect")||
-           (roleKey==="builder"&&c.role==="Builder")||
-           (roleKey==="pmc"&&c.role==="PMC");
+    // Match by type field (Partners tab contacts) OR role field (site-linked contacts)
+    if(roleKey==="plumber") return c.type==="Plumber"||c.type==="Contractor"||c.role==="Plumbing Contractor"||c.role==="Contractor";
+    if(roleKey==="architect") return c.type==="Architect"||c.role==="Architect";
+    if(roleKey==="builder") return c.type==="Builder"||c.role==="Builder";
+    if(roleKey==="pmc") return c.type==="PMC"||c.role==="PMC";
+    return true;
   }
   function getFiltered(nameQ,city){
     return contacts.filter(c=>{
@@ -3887,18 +3888,36 @@ function SiteFormModal({site,isAdmin,currentUser,contacts,saveContact,allSites,o
           {/* Location */}
           <div style={{...secS,borderColor:"#d1fae5"}}>
             <div style={{fontSize:12,fontWeight:700,color:"#065f46",marginBottom:10}}>📍 Site Location</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-              <div>
-                <label style={labelS}>City *</label>
-                <select value={form.city} onChange={e=>set("city",e.target.value)} style={inpS}>
-                  <option value="">Select city</option>
-                  {["Panipat","Sonipat","Karnal","Kurukshetra","Ambala","Rohtak","Hisar","Faridabad","Gurugram","Delhi NCR","Other"].map(c=><option key={c}>{c}</option>)}
-                </select>
+            {/* City — click buttons for quick select */}
+            <div style={{marginBottom:10}}>
+              <label style={labelS}>City *</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
+                {["Panipat","Sonipat","Karnal","Kurukshetra","Ambala","Rohtak","Delhi NCR","Other"].map(c=>(
+                  <button key={c} type="button" onClick={()=>set("city",c)}
+                    style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${form.city===c?"#0d9488":"#e2e8f0"}`,background:form.city===c?"#f0fdfa":"#fff",color:form.city===c?"#0d9488":"#64748b",cursor:"pointer",fontSize:12,fontWeight:form.city===c?700:400}}>
+                    {c}
+                  </button>
+                ))}
               </div>
-              <div>
-                <label style={labelS}>Locality / Sector</label>
-                <input value={form.locality} onChange={e=>set("locality",e.target.value)} placeholder="Sector 14, Model Town…" style={inpS}/>
-              </div>
+              <input value={form.city} onChange={e=>set("city",e.target.value)} placeholder="Or type city name..." style={{...inpS,fontSize:12}}/>
+            </div>
+            {/* Locality — suggest from existing sites in same city */}
+            <div style={{marginBottom:10}}>
+              <label style={labelS}>Area / Locality / Sector</label>
+              {form.city&&(()=>{
+                const existingAreas=[...new Set(allSites.filter(s=>s.city===form.city).map(s=>s.locality).filter(Boolean))].sort();
+                return existingAreas.length>0?(
+                  <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>
+                    {existingAreas.map(a=>(
+                      <button key={a} type="button" onClick={()=>set("locality",a)}
+                        style={{padding:"4px 10px",borderRadius:16,border:`1px solid ${form.locality===a?"#0d9488":"#e2e8f0"}`,background:form.locality===a?"#f0fdfa":"#fff",color:form.locality===a?"#0d9488":"#64748b",cursor:"pointer",fontSize:11,fontWeight:form.locality===a?700:400}}>
+                        {a}
+                      </button>
+                    ))}
+                  </div>
+                ):null;
+              })()}
+              <input value={form.locality} onChange={e=>set("locality",e.target.value)} placeholder="Model Town, Sector 14, Ansal Colony…" style={inpS}/>
             </div>
             <div>
               <label style={labelS}>Full Address</label>
@@ -5076,22 +5095,31 @@ function ChallanForm({products,contacts,sites,currentUser,editData,onSave,onClos
   // All unique locations from contacts
   const allLocations=React.useMemo(()=>[...new Set(contacts.map(c=>c.city).filter(Boolean))].sort(),[contacts]);
   
-  // Areas in selected location
+  // Areas in selected location — from both contacts AND sites
   const areasInLoc=React.useMemo(()=>{
     if(!selLocation) return [];
-    return [...new Set(contacts.filter(c=>c.city===selLocation).map(c=>c.locality||c.area||"").filter(Boolean))].sort();
-  },[contacts,selLocation]);
+    const fromContacts=contacts.filter(c=>c.city===selLocation).map(c=>c.locality||c.area||"");
+    const fromSites=sites.filter(s=>s.city===selLocation).map(s=>s.locality||"");
+    return [...new Set([...fromContacts,...fromSites].filter(Boolean))].sort();
+  },[contacts,sites,selLocation]);
 
   // Clients filtered by location + area + search
+  // Client types = people who RECEIVE goods (not service partners)
+  const CLIENT_TYPES=["Builder","Direct Client","Dealer","Associate","Contractor","PMC"];
+  // Exclude Plumbers and Architects from challan clients — they are service partners
+  const isPartner=c=>["Plumber","Architect"].includes(c.type)||["Plumbing Contractor","Architect"].includes(c.role);
+  const isClient=c=>!isPartner(c);
+
   const filteredClients=React.useMemo(()=>{
-    let list=contacts;
+    // Exclude pure partners — they don't receive challans
+    let list=contacts.filter(isClient);
     if(selLocation) list=list.filter(c=>c.city===selLocation);
     if(selArea) list=list.filter(c=>(c.locality||c.area||"")===selArea);
     if(clientSearch.trim()){
       const q=clientSearch.toLowerCase();
       list=list.filter(c=>(c.name||"").toLowerCase().includes(q)||(c.phone||"").includes(clientSearch.trim()));
     }
-    return list.slice(0,20);
+    return list.slice(0,30);
   },[contacts,selLocation,selArea,clientSearch]);
 
   function handleFinish(newItems){
