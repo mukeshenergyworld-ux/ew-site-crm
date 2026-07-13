@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "1.1";
+  var APP_VERSION = "1.2";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -32,12 +32,18 @@
     "Completed": ["AMC offer", "Solar / inverter upgrade", "Ask for a referral"]
   };
 
+  var STAGES2 = ["Design / Drawing","Excavation / Foundation","Structure / Slab","Brickwork / Masonry",
+    "Concealed Plumbing (rough-in)","Concealed Electrical","Plastering","Waterproofing",
+    "Flooring / Tiling","Sanitary & CP Fitting","False Ceiling / Painting","Final Fitout / Handover","Post-Handover / AMC"];
+  var PSTATUS = ["Not pitched","Pitched","Quoted","Negotiating","Won","Lost","Not applicable"];
+
   var TYPES = ["Builder", "Architect", "Plumber", "Contractor", "Home owner", "Dealer"];
   var STATUSES = ["Hot", "Warm", "Cold", "Won", "Lost"];
 
   var S = {
     pass: "", user: "", tab: "dash", q: "", busy: false, modal: null,
-    data: { customers: [], followups: [], challans: [], associates: [], team: [] }
+    siteId: "",
+    data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [] }
   };
 
   function esc(v) {
@@ -171,6 +177,146 @@
         (p.unit ? ' &middot; ' + esc(p.unit) : "") + (p.cat ? '<br>' + esc(p.cat) : "") + '</div></div>';
     });
     return h;
+  }
+
+  /* ---------------- pitch matrix ---------------- */
+  function stageNo(site) { var i = STAGES2.indexOf((site || {}).stage); return i < 0 ? 0 : i + 1; }
+  function siteById(id) { return S.data.sites.filter(function (x) { return x.id === id; })[0] || null; }
+  function pitchRow(siteId, brand) {
+    return S.data.pitch.filter(function (p) { return p.siteId === siteId && p.brand === brand; })[0] || null;
+  }
+
+  /* the whole point of the app: what closes when */
+  function action(site, rule, p) {
+    var st = (p && p.status) || "Not pitched";
+    var sn = stageNo(site);
+    var by = Number(rule.pitchBy) || 0;
+    if (st === "Won") return { t: "WON", k: "won" };
+    if (st === "Lost") return { t: "LOST" + (p && p.lostTo ? " to " + p.lostTo : ""), k: "lost" };
+    if (st === "Not applicable") return { t: "n/a", k: "" };
+    if (!sn) return { t: "set the site stage", k: "" };
+    if (sn > by) return { t: "WINDOW CLOSED (was stage " + by + ")", k: "closed" };
+    if (sn === by) return { t: "PITCH TODAY - last chance", k: "now" };
+    if (by - sn <= 1) return { t: "PITCH NOW - closes next stage", k: "now" };
+    if (st === "Not pitched") return { t: "upcoming - pitch by stage " + by, k: "soon" };
+    return { t: st + " - follow up", k: "" };
+  }
+
+  function siteAlerts(site) {
+    var open = 0, closed = 0;
+    S.data.rules.forEach(function (r) {
+      var a = action(site, r, pitchRow(site.id, r.brand));
+      if (a.k === "now") open++;
+      if (a.k === "closed") closed++;
+    });
+    return { open: open, closed: closed };
+  }
+
+  function viewSites() {
+    var q = S.q.toLowerCase();
+    var list = S.data.sites.filter(function (x) {
+      return !q || (x.name + " " + x.client + " " + x.city + " " + x.owner).toLowerCase().indexOf(q) >= 0;
+    });
+    var h = '<div class="row"><input class="grow" id="q" placeholder="Search sites..." value="' + esc(S.q) + '"/>' +
+      '<button class="btn" data-act="site-new">+ New site</button></div>';
+    if (!list.length) h += '<div class="empty">No sites yet. A site is a project - the 14 brands get tracked against it.</div>';
+    list.forEach(function (x) {
+      var a = siteAlerts(x);
+      h += '<div class="card"><h3>' + esc(x.name) + ' <span class="pill teal">stage ' + stageNo(x) + '</span>' +
+        (a.open ? ' <span class="pill due">' + a.open + ' to pitch NOW</span>' : "") +
+        (a.closed ? ' <span class="pill">' + a.closed + ' window(s) closed</span>' : "") + '</h3>' +
+        '<div class="meta">' + esc(x.client || "") + (x.city ? ' &middot; ' + esc(x.city) : "") +
+        '<br>Stage: <b>' + esc(x.stage || "-") + '</b>' +
+        (x.owner ? '<br>Owner: ' + esc(x.owner) : "") +
+        (x.architect || x.plumber ? '<br>' + esc([x.architect, x.plumber, x.builder].filter(Boolean).join(" / ")) : "") + '</div>' +
+        '<div class="acts"><button class="btn sm" data-act="matrix" data-id="' + esc(x.id) + '">Open pitch matrix</button>' +
+        '<button class="btn sm ghost" data-act="site-open" data-id="' + esc(x.id) + '">Edit</button></div></div>';
+    });
+    return h;
+  }
+
+  function viewMatrix() {
+    var site = siteById(S.siteId);
+    if (!site) return '<div class="empty">Pick a site.</div>';
+    var h = '<div class="row"><button class="btn sm ghost" data-act="tab" data-tab="sites">&larr; Sites</button></div>' +
+      '<div class="card"><h3>' + esc(site.name) + '</h3><div class="meta">' + esc(site.client || "") +
+      '<br>Current stage: <b>' + esc(site.stage || "-") + '</b> (stage ' + stageNo(site) + ' of 13)</div>' +
+      '<div class="acts"><button class="btn sm ghost" data-act="site-open" data-id="' + esc(site.id) + '">Change stage</button></div></div>';
+    var rules = S.data.rules.slice().sort(function (a, b) { return (Number(a.pitchBy) || 0) - (Number(b.pitchBy) || 0); });
+    rules.forEach(function (r) {
+      var p = pitchRow(site.id, r.brand) || {};
+      var a = action(site, r, p);
+      var cls = a.k === "closed" ? "due" : (a.k === "now" ? "due" : (a.k === "won" ? "Won" : (a.k === "lost" ? "Lost" : (a.k === "soon" ? "soon" : "teal"))));
+      h += '<div class="card"><h3>' + esc(r.brand) + ' <span class="pill ' + cls + '">' + esc(a.t) + '</span></h3>' +
+        '<div class="meta">' + esc(r.line) + '<br>Pitch by stage ' + esc(r.pitchBy) + ' &middot; supply at stage ' + esc(r.supplyAt) +
+        (r.why ? '<br><i>' + esc(r.why) + '</i>' : "") + '</div>' +
+        '<div class="acts" style="align-items:center">' +
+        '<select class="pm-status" data-brand="' + esc(r.brand) + '" style="width:auto;padding:7px 10px;font-size:13px">' +
+        opts(PSTATUS, p.status || "Not pitched") + '</select>' +
+        '<input class="pm-amt" data-brand="' + esc(r.brand) + '" data-f="quoted" inputmode="numeric" placeholder="Quoted Rs" value="' + esc(p.quoted || "") + '" style="width:110px;padding:7px 10px;font-size:13px"/>' +
+        '<input class="pm-amt" data-brand="' + esc(r.brand) + '" data-f="won" inputmode="numeric" placeholder="Won Rs" value="' + esc(p.won || "") + '" style="width:100px;padding:7px 10px;font-size:13px"/>' +
+        '<input class="pm-amt" data-brand="' + esc(r.brand) + '" data-f="lostTo" placeholder="Lost to" value="' + esc(p.lostTo || "") + '" style="width:110px;padding:7px 10px;font-size:13px"/>' +
+        '</div></div>';
+    });
+    return h;
+  }
+
+  function viewWinLoss() {
+    var h = '<div class="empty" style="text-align:left;padding:0 0 12px">Win rate per product line across every site.</div>';
+    var rows = S.data.rules.map(function (r) {
+      var ps = S.data.pitch.filter(function (p) { return p.brand === r.brand; });
+      var cnt = function (st) { return ps.filter(function (p) { return p.status === st; }).length; };
+      var won = cnt("Won"), lost = cnt("Lost");
+      var missed = S.data.sites.filter(function (site) {
+        return action(site, r, pitchRow(site.id, r.brand)).k === "closed";
+      }).length;
+      var wonVal = ps.reduce(function (a, p) { return a + (Number(p.won) || 0); }, 0);
+      return { brand: r.brand, line: r.line, won: won, lost: lost, missed: missed,
+        rate: (won + lost) ? Math.round(won * 100 / (won + lost)) : null, val: wonVal };
+    }).sort(function (a, b) { return b.missed - a.missed; });
+    rows.forEach(function (x) {
+      h += '<div class="card"><h3>' + esc(x.brand) +
+        (x.rate === null ? ' <span class="pill">no result yet</span>' : ' <span class="pill ' + (x.rate >= 50 ? "Won" : "Lost") + '">' + x.rate + '% win</span>') +
+        (x.missed ? ' <span class="pill due">' + x.missed + ' missed window(s)</span>' : "") + '</h3>' +
+        '<div class="meta">' + esc(x.line) + '<br>Won ' + x.won + ' &middot; Lost ' + x.lost + ' &middot; Value won ' + money(x.val) + '</div></div>';
+    });
+    return h;
+  }
+
+  function viewRules() {
+    var h = '<div class="empty" style="text-align:left;padding:0 0 12px"><b>This is the rulebook.</b> PITCH BY is the last stage at which the sale can still be made - after it, the wall is closed. SUPPLY AT is when material goes to site. Correct these and the whole app follows.</div>';
+    S.data.rules.forEach(function (r) {
+      h += '<div class="card"><h3>' + esc(r.brand) + '</h3><div class="meta">' + esc(r.line) +
+        (r.why ? '<br><i>' + esc(r.why) + '</i>' : "") + '</div>' +
+        '<div class="acts" style="align-items:center">' +
+        '<span class="pill">PITCH BY</span>' +
+        '<select class="rl" data-id="' + esc(r.id) + '" data-f="pitchBy" style="width:auto;padding:7px 10px;font-size:13px">' +
+        STAGES2.map(function (st, i) { return '<option value="' + (i + 1) + '"' + (Number(r.pitchBy) === i + 1 ? " selected" : "") + '>' + (i + 1) + '. ' + esc(st) + '</option>'; }).join("") + '</select>' +
+        '<span class="pill">SUPPLY AT</span>' +
+        '<select class="rl" data-id="' + esc(r.id) + '" data-f="supplyAt" style="width:auto;padding:7px 10px;font-size:13px">' +
+        STAGES2.map(function (st, i) { return '<option value="' + (i + 1) + '"' + (Number(r.supplyAt) === i + 1 ? " selected" : "") + '>' + (i + 1) + '. ' + esc(st) + '</option>'; }).join("") + '</select>' +
+        '</div></div>';
+    });
+    return h;
+  }
+
+  function modalSite(x) {
+    x = x || {};
+    return '<h2>' + (x.id ? "Edit site" : "New site") + '</h2>' +
+      '<p class="sub">The stage drives everything. Keep it current.</p>' +
+      '<label>Site / project name</label><input id="s_name" value="' + esc(x.name) + '"/>' +
+      '<div class="grid2"><div><label>Client</label><input id="s_client" value="' + esc(x.client) + '"/></div>' +
+      '<div><label>Mobile</label><input id="s_mobile" inputmode="numeric" value="' + esc(x.mobile) + '"/></div></div>' +
+      '<label>Current construction stage</label><select id="s_stage">' + opts(STAGES2, x.stage || STAGES2[0]) + '</select>' +
+      '<div class="grid2"><div><label>City</label><input id="s_city" value="' + esc(x.city) + '"/></div>' +
+      '<div><label>Type</label><select id="s_type">' + opts(["Bungalow","Apartment","Villa Project","Commercial","Hotel","Hospital","Other"], x.type || "Bungalow") + '</select></div></div>' +
+      '<div class="grid2"><div><label>Architect</label><input id="s_arch" value="' + esc(x.architect) + '"/></div>' +
+      '<div><label>Plumber</label><input id="s_plumb" value="' + esc(x.plumber) + '"/></div></div>' +
+      '<div class="grid2"><div><label>Builder / PMC</label><input id="s_build" value="' + esc(x.builder) + '"/></div>' +
+      '<div><label>Owner (sales exec)</label><select id="s_owner">' + opts(["","Vivek Verma","Ashish Bhuker","Imran","Mukesh Verma","Dinesh Verma"], x.owner) + '</select></div></div>' +
+      '<label>Notes</label><textarea id="s_notes">' + esc(x.notes) + '</textarea>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="site-save" data-id="' + esc(x.id || "") + '">Save</button></div>';
   }
 
   function renderLogin(err) {
@@ -497,8 +643,8 @@
 
   function render() {
     if (!S.pass) { renderLogin(); return; }
-    var views = { dash: viewDash, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
-    var tabs = [["dash", "Today"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["commission", "Commission"], ["products", "Products"], ["pitch", "Pitch guide"]];
+    var views = { dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
+    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["commission", "Commission"], ["products", "Products"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<img src="' + LOGO + '" alt="EW" onerror="this.style.display=\'none\'"/>' +
@@ -549,6 +695,21 @@
     if (act === "close") { S.modal = null; render(); return; }
     if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; render(); return; }
     if (act === "cat-reload") { toast("Reloading catalogue..."); loadCatalog().then(function () { toast(PRODUCTS.length + " products loaded."); render(); }); return; }
+
+    if (act === "site-new") { S.modal = modalSite(null); render(); return; }
+    if (act === "site-open") { S.modal = modalSite(siteById(id)); render(); return; }
+    if (act === "site-save") {
+      var sn = val("s_name");
+      if (!sn) { toast("Site name is required."); return; }
+      save("sites", {
+        id: id || "", createdBy: S.user, name: sn, client: val("s_client"), mobile: val("s_mobile"),
+        city: val("s_city"), stage: val("s_stage"), type: val("s_type"), architect: val("s_arch"),
+        plumber: val("s_plumb"), builder: val("s_build"), owner: val("s_owner"),
+        status: "Active", notes: val("s_notes")
+      }).then(function (r) { if (r) { S.modal = null; toast("Site saved."); render(); } });
+      return;
+    }
+    if (act === "matrix") { S.siteId = id; S.tab = "matrix"; render(); return; }
 
     if (act === "cust-new") { S.modal = modalCustomer(null); render(); return; }
     if (act === "cust-open") { S.modal = modalCustomer(custById(id)); render(); return; }
@@ -639,6 +800,35 @@
           });
         } catch (err) { toast("Saved, but PDF failed: " + err.message); }
       });
+      return;
+    }
+  });
+
+  function savePitch(brand, patch) {
+    var site = siteById(S.siteId);
+    if (!site) return;
+    var p = pitchRow(site.id, brand) || {};
+    var row = {
+      id: p.id || "", createdBy: p.createdBy || S.user, siteId: site.id, siteName: site.name, brand: brand,
+      status: p.status || "Not pitched", quoted: p.quoted || "", won: p.won || "", lostTo: p.lostTo || "", note: p.note || ""
+    };
+    Object.keys(patch).forEach(function (k) { row[k] = patch[k]; });
+    save("pitch", row).then(function (r) { if (r) toast(brand + ": " + row.status); });
+  }
+
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t.classList && t.classList.contains("pm-status")) { savePitch(t.getAttribute("data-brand"), { status: t.value }); return; }
+    if (t.classList && t.classList.contains("pm-amt")) {
+      var patch = {}; patch[t.getAttribute("data-f")] = t.value;
+      savePitch(t.getAttribute("data-brand"), patch); return;
+    }
+    if (t.classList && t.classList.contains("rl")) {
+      var rid = t.getAttribute("data-id");
+      var rule = S.data.rules.filter(function (x) { return x.id === rid; })[0];
+      if (!rule) return;
+      rule[t.getAttribute("data-f")] = t.value;
+      save("rules", rule).then(function (r) { if (r) toast("Rule updated."); });
       return;
     }
   });
