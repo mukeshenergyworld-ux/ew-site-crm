@@ -9,7 +9,9 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "1.0";
+  var APP_VERSION = "1.1";
+  var PRODUCTS = [];
+  var CAT_KEY = "ew_team_catalog";
 
   var STAGES = ["Enquiry / Not started", "Foundation", "Structure / Slab", "Brickwork",
     "Concealed Plumbing", "Concealed Electrical", "Plastering", "Flooring / Tiling",
@@ -93,6 +95,84 @@
     return S.data.followups.filter(function (f) { return f.status !== "Done"; });
   }
 
+  /* ---------------- product catalog (853 items, live from the Sheet) ---------------- */
+  function parseCatalog(rows) {
+    var head = -1, i, r;
+    for (i = 0; i < rows.length && i < 10; i++) {
+      r = (rows[i] || []).map(function (x) { return String(x || "").toLowerCase().trim(); });
+      if (r.indexOf("product code") >= 0) { head = i; break; }
+    }
+    if (head < 0) return [];
+    var out = [];
+    for (i = head + 1; i < rows.length; i++) {
+      var row = rows[i] || [];
+      var code = String(row[1] || "").trim();
+      var desc = String(row[3] || row[2] || "").trim();
+      if (!code && !desc) continue;
+      out.push({
+        code: code,
+        family: String(row[2] || "").trim(),
+        desc: desc,
+        cat: String(row[4] || "").trim(),
+        unit: String(row[5] || "").trim(),
+        price: Number(String(row[6] || "0").replace(/[^0-9.]/g, "")) || 0,
+        brand: String(row[8] || "").trim(),
+        label: (code ? code + " - " : "") + desc
+      });
+    }
+    return out;
+  }
+
+  function loadCatalog() {
+    try {
+      var c = JSON.parse(localStorage.getItem(CAT_KEY) || "null");
+      if (c && c.at && (Date.now() - c.at < 86400000) && c.items && c.items.length) PRODUCTS = c.items;
+    } catch (e) {}
+    return fetch(GAS + "?action=catalog", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (rows) {
+        var items = parseCatalog(rows);
+        if (items.length) {
+          PRODUCTS = items;
+          try { localStorage.setItem(CAT_KEY, JSON.stringify({ at: Date.now(), items: items })); } catch (e) {}
+        }
+      })
+      .catch(function () {});
+  }
+
+  function findProduct(text) {
+    var t = String(text || "").trim().toLowerCase(), i;
+    if (!t) return null;
+    for (i = 0; i < PRODUCTS.length; i++) if (PRODUCTS[i].label.toLowerCase() === t) return PRODUCTS[i];
+    for (i = 0; i < PRODUCTS.length; i++) if (PRODUCTS[i].code.toLowerCase() === t) return PRODUCTS[i];
+    return null;
+  }
+
+  function prodDatalist() {
+    return '<datalist id="prodlist">' + PRODUCTS.map(function (p) {
+      return '<option value="' + esc(p.label) + '"></option>';
+    }).join("") + '</datalist>';
+  }
+
+  function viewProducts() {
+    var q = S.q.toLowerCase();
+    var h = '<div class="row"><input class="grow" id="q" placeholder="Search ' + PRODUCTS.length + ' products by code, name or brand..." value="' + esc(S.q) + '"/>' +
+      '<button class="btn ghost" data-act="cat-reload">Reload</button></div>';
+    if (!q) return h + '<div class="empty">' + PRODUCTS.length + ' products loaded. Type to search.</div>';
+    var list = PRODUCTS.filter(function (p) {
+      return (p.code + " " + p.desc + " " + p.family + " " + p.brand + " " + p.cat).toLowerCase().indexOf(q) >= 0;
+    });
+    var shown = list.slice(0, 60);
+    if (!shown.length) return h + '<div class="empty">Nothing matches that.</div>';
+    h += '<div class="empty" style="padding:0 0 10px">' + list.length + ' match(es)' + (list.length > 60 ? ' - showing first 60' : '') + '</div>';
+    shown.forEach(function (p) {
+      h += '<div class="card"><h3>' + esc(p.desc || p.family) + ' <span class="pill teal">' + money(p.price) + '</span></h3>' +
+        '<div class="meta">' + esc(p.code) + (p.brand ? ' &middot; ' + esc(p.brand) : "") +
+        (p.unit ? ' &middot; ' + esc(p.unit) : "") + (p.cat ? '<br>' + esc(p.cat) : "") + '</div></div>';
+    });
+    return h;
+  }
+
   function renderLogin(err) {
     document.getElementById("root").innerHTML =
       '<div class="login-wrap"><div class="login">' +
@@ -123,6 +203,7 @@
       if (!r || !r.ok) { S.pass = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
       S.user = name;
       try { localStorage.setItem(STORE, JSON.stringify({ pass: pass, user: name })); } catch (e) {}
+      loadCatalog();
       refresh();
     }).catch(function () { S.pass = ""; renderLogin("Network error. Try again."); });
   }
@@ -336,7 +417,7 @@
 
   function lineRow(i, d, q, r) {
     return '<div class="lineitem" data-row="' + i + '">' +
-      '<input class="li-d" placeholder="Item" value="' + esc(d || "") + '"/>' +
+      '<input class="li-d" list="prodlist" placeholder="Product code or name" value="' + esc(d || "") + '"/>' +
       '<input class="li-q" inputmode="numeric" placeholder="Qty" value="' + esc(q || "") + '"/>' +
       '<input class="li-r" inputmode="decimal" placeholder="Rate" value="' + esc(r || "") + '"/>' +
       '<button class="x" data-act="li-del" data-row="' + i + '">&times;</button></div>';
@@ -355,6 +436,7 @@
       '</div>' +
       '<label>Items</label><div id="m_lines">' + lineRow(0, "", "", "") + '</div>' +
       '<button class="btn sm ghost" data-act="li-add" style="margin-top:4px">+ Add item</button>' +
+      prodDatalist() +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="ch-save">Save &amp; send</button></div>';
   }
@@ -415,8 +497,8 @@
 
   function render() {
     if (!S.pass) { renderLogin(); return; }
-    var views = { dash: viewDash, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, pitch: viewPitch };
-    var tabs = [["dash", "Today"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["commission", "Commission"], ["pitch", "Pitch guide"]];
+    var views = { dash: viewDash, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
+    var tabs = [["dash", "Today"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["commission", "Commission"], ["products", "Products"], ["pitch", "Pitch guide"]];
 
     var h = '<div class="top">' +
       '<img src="' + LOGO + '" alt="EW" onerror="this.style.display=\'none\'"/>' +
@@ -465,7 +547,8 @@
     if (act === "logout") { logout(); return; }
     if (act === "mask" && e.target === t) { S.modal = null; render(); return; }
     if (act === "close") { S.modal = null; render(); return; }
-    if (act === "tab") { S.tab = t.getAttribute("data-tab"); render(); return; }
+    if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; render(); return; }
+    if (act === "cat-reload") { toast("Reloading catalogue..."); loadCatalog().then(function () { toast(PRODUCTS.length + " products loaded."); render(); }); return; }
 
     if (act === "cust-new") { S.modal = modalCustomer(null); render(); return; }
     if (act === "cust-open") { S.modal = modalCustomer(custById(id)); render(); return; }
@@ -560,13 +643,25 @@
     }
   });
 
+  document.addEventListener("input", function (e) {
+    var t = e.target;
+    if (!t.classList || !t.classList.contains("li-d")) return;
+    var p = findProduct(t.value);
+    if (!p) return;
+    var row = t.closest(".lineitem");
+    var rate = row.querySelector(".li-r");
+    var qty = row.querySelector(".li-q");
+    if (p.price) rate.value = p.price;
+    if (!qty.value) qty.value = 1;
+  });
+
   (function boot() {
     var sess = null;
     try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) {}
     if (sess && sess.pass && sess.user) {
       S.pass = sess.pass; S.user = sess.user;
       api("teamAuth").then(function (r) {
-        if (r && r.ok) refresh();
+        if (r && r.ok) { loadCatalog(); refresh(); }
         else { S.pass = ""; renderLogin(); }
       }).catch(function () { S.pass = ""; renderLogin("Network error."); });
     } else {
