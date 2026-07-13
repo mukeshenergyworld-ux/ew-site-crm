@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "1.9";
+  var APP_VERSION = "2.0";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -57,6 +57,7 @@
     installId: "",
     qz: null,
     navOpen: false,
+    rmPreview: null,
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [] }
   };
 
@@ -764,6 +765,18 @@
         opts([""].concat(brandOpts), m.brand) + '</select></div></div>';
     });
 
+    h += '<h3 style="margin:24px 0 10px;font-size:15px">Move products to another brand</h3>' +
+      '<div class="card"><div class="meta">Shift a whole set of products under a different brand. This rewrites the <b>Master Brand</b> column in your Google Sheet, so the catalogue itself is corrected - not just the app.<br>Match by <b>product code prefix</b> or <b>product family prefix</b> (e.g. family <b>HR</b> = the Heliroma composite range).</div>' +
+      '<div class="grid2" style="margin-top:8px">' +
+      '<div><label>Code starts with</label><input id="rm_code" placeholder="e.g. MW1"/></div>' +
+      '<div><label>Family starts with</label><input id="rm_fam" placeholder="e.g. HR"/></div></div>' +
+      '<label>Move them to</label><select id="rm_to">' + opts([""].concat(S.data.brands.map(function (b) { return b.brand; })), "") + '</select>' +
+      '<div class="acts"><button class="btn ghost" data-act="rm-preview">Preview</button>' +
+      '<button class="btn" data-act="rm-apply">Move products</button></div>' +
+      (S.rmPreview ? '<div class="meta" style="margin-top:8px"><b>' + esc(S.rmPreview.matched) + ' product(s) match:</b><br>' +
+        (S.rmPreview.sample || []).map(function (x) { return esc(x); }).join("<br>") + '</div>' : "") +
+      '</div>';
+
     h += '<h3 style="margin:24px 0 10px;font-size:15px">Brands</h3>' +
       '<div class="row"><div class="grow"></div><button class="btn sm" data-act="br-new">+ Add brand</button></div>';
     S.data.brands.forEach(function (b) {
@@ -941,21 +954,32 @@
       doc.text("Valid until  " + new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10), Rt, 33, { align: "right" });
 
       /* ---- authorised distributor strip: brands highlighted as chips ---- */
-      var y = 54;
+      /* label hard-left, chips packed right and right-aligned as a block */
+      var y = 55;
       col(GREY); F("bold"); doc.setFontSize(6.2);
-      doc.text("AUTHORISED DISTRIBUTOR FOR", L, y);
-      y += 4;
-      var cx = L;
-      F("bold"); doc.setFontSize(6.4);
+      doc.text("AUTH. DISTRIBUTOR FOR", L, y + 1);
+
+      var CHIP_L = L + 46;
+      F("bold"); doc.setFontSize(6.2);
+      var lines2 = [[]], cur = 0, wsum = 0, avail = Rt - CHIP_L;
       DIST_BRANDS.forEach(function (b) {
-        var w = doc.getTextWidth(b) + 5;
-        if (cx + w > Rt) { cx = L; y += 7; }
-        fill([236, 253, 245]); doc.roundedRect(cx, y - 3.6, w, 5.6, 1.2, 1.2, "F");
-        doc.setDrawColor(167, 243, 208); doc.roundedRect(cx, y - 3.6, w, 5.6, 1.2, 1.2, "S");
-        col([13, 118, 108]); doc.text(b, cx + 2.5, y);
-        cx += w + 2.4;
+        var w = doc.getTextWidth(b) + 5.4;
+        if (wsum + w > avail && lines2[cur].length) { cur++; lines2[cur] = []; wsum = 0; }
+        lines2[cur].push({ b: b, w: w });
+        wsum += w + 2.2;
       });
-      y += 9;
+      lines2.forEach(function (ln, li) {
+        var total = ln.reduce(function (a, x) { return a + x.w + 2.2; }, 0) - 2.2;
+        var cx = Rt - total;
+        var ly = y + li * 7.4;
+        ln.forEach(function (x) {
+          fill([236, 253, 245]); doc.roundedRect(cx, ly - 3.6, x.w, 5.8, 1.4, 1.4, "F");
+          doc.setDrawColor(153, 246, 228); doc.roundedRect(cx, ly - 3.6, x.w, 5.8, 1.4, 1.4, "S");
+          col([13, 118, 108]); doc.text(x.b, cx + 2.7, ly);
+          cx += x.w + 2.2;
+        });
+      });
+      y += (lines2.length - 1) * 7.4 + 9;
 
       /* ---- client block ---- */
       fill(SOFT); doc.roundedRect(L, y, Rt - L, 24, 2, 2, "F");
@@ -976,8 +1000,6 @@
       if (c.type) det.push(String(c.type));
       doc.text(det.join("  |  "), c1, y + 16.5);
       if (c.address) doc.text(doc.splitTextToSize(String(c.address), 78)[0], c1, y + 21);
-      var partners = [c.architect && "Arch: " + c.architect, c.plumber && "Plumber: " + c.plumber].filter(Boolean);
-      if (partners.length) doc.text(partners.join("   "), c2, y + 16.5);
       doc.text("Energy World | Authorised Distributor", c3, y + 16.5);
       y += 32;
 
@@ -1511,6 +1533,30 @@
     if (act === "nav-toggle") { S.navOpen = !S.navOpen; render(); return; }
     if (act === "nav-close") { S.navOpen = false; render(); return; }
 
+    if (act === "rm-preview") {
+      var cp = val("rm_code"), fp = val("rm_fam");
+      if (!cp && !fp) { toast("Give a code or family prefix."); return; }
+      t.disabled = true; t.textContent = "Checking...";
+      api("catalogRemap", { codePrefix: cp, familyPrefix: fp, preview: true }).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Preview failed."); render(); return; }
+        S.rmPreview = r; render();
+      });
+      return;
+    }
+    if (act === "rm-apply") {
+      var cp2 = val("rm_code"), fp2 = val("rm_fam"), to = val("rm_to");
+      if (!cp2 && !fp2) { toast("Give a code or family prefix."); return; }
+      if (!to) { toast("Pick the brand to move them to."); return; }
+      if (!window.confirm("Move matching products to " + to + "? This edits the master catalogue sheet.")) return;
+      t.disabled = true; t.textContent = "Moving...";
+      api("catalogRemap", { codePrefix: cp2, familyPrefix: fp2, toBrand: to }).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Move failed."); render(); return; }
+        S.rmPreview = null;
+        toast(r.moved + " product(s) moved to " + to + ".");
+        loadCatalog().then(function () { refresh(); });
+      });
+      return;
+    }
     if (act === "br-new") { S.modal = modalBrand(null); render(); return; }
     if (act === "br-open") { S.modal = modalBrand(S.data.brands.filter(function (b) { return b.id === id; })[0]); render(); return; }
     if (act === "br-save") {
