@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "1.7";
+  var APP_VERSION = "1.8";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -823,93 +823,206 @@
       '<button class="btn" data-act="pr-save">Save product</button></div>';
   }
 
-  /* Quotation PDF.
-     Discounted items first, deepest discount at the top. Items with no discount go
-     into their own section at the bottom showing ONLY the net price - no list price,
-     no discount column, because there is nothing to compare against. */
-  function quotePdf(q) {
-    var items = [];
-    try { items = JSON.parse(q.items || "[]"); } catch (e) {}
-    var bd = Number(q.discountPct) || 0;
-    var rows = items.map(function (i) {
-      var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? bd : Number(i.disc);
-      d = Number(d) || 0;
-      var gross = i.qty * i.price;
-      var net = Math.round(gross * (1 - d / 100));
-      return { desc: i.desc, code: i.code, qty: i.qty, price: i.price, disc: d, net: net };
-    });
-    var disc = rows.filter(function (r) { return r.disc > 0; }).sort(function (a, b) { return b.disc - a.disc; });
-    var flat = rows.filter(function (r) { return r.disc <= 0; });
-
-    var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
-    var W = 210, y = 0;
-    doc.setFillColor(15, 118, 110); doc.rect(0, 0, W, 26, "F");
-    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
-    doc.text("ENERGY WORLD", 14, 12);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-    doc.text("Save Energy, Money and Earth", 14, 18);
-    doc.setFont("helvetica", "bold"); doc.setFontSize(12);
-    doc.text("QUOTATION", W - 14, 14, { align: "right" });
-
-    doc.setTextColor(15, 23, 42); y = 38;
-    doc.setFont("helvetica", "bold"); doc.setFontSize(10);
-    doc.text("Quote No: " + q.quoteNo + (Number(q.version) > 1 ? "  (rev " + q.version + ")" : ""), 14, y);
-    doc.text("Date: " + today(), W - 14, y, { align: "right" });
-    y += 7;
-    doc.setFont("helvetica", "normal");
-    doc.text("Client: " + (q.client || "-"), 14, y);
-    doc.text("Brand: " + (q.brand || "-"), W - 14, y, { align: "right" });
-    y += 10;
-
-    var line = function (r, showList) {
-      if (y > 258) { doc.addPage(); y = 22; }
-      doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-      doc.text(String(r.desc).slice(0, 46), 15, y);
-      doc.text(String(r.qty), 118, y, { align: "right" });
-      if (showList) {
-        doc.text(String(r.price), 140, y, { align: "right" });
-        doc.text(r.disc + "%", 160, y, { align: "right" });
-      }
-      doc.text(String(r.net), W - 15, y, { align: "right" });
-      y += 6;
+  /* ---------------- Quotation PDF (Energy World format) ----------------
+     jsPDF core fonts are Latin-1 and physically cannot draw the rupee glyph, so a
+     Unicode TTF is embedded once and cached. Falls back to "Rs." if the font fails. */
+  var FONTS = null;
+  function loadFonts() {
+    if (FONTS) return Promise.resolve(FONTS);
+    var base = "https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/";
+    var grab = function (f) {
+      return fetch(base + f).then(function (r) { return r.arrayBuffer(); }).then(function (b) {
+        var u = new Uint8Array(b), bin = "";
+        for (var i = 0; i < u.length; i++) bin += String.fromCharCode(u[i]);
+        return btoa(bin);
+      });
     };
+    return Promise.all([grab("DejaVuSans.ttf"), grab("DejaVuSans-Bold.ttf")])
+      .then(function (r) { FONTS = { reg: r[0], bold: r[1] }; return FONTS; })
+      .catch(function () { FONTS = false; return false; });
+  }
 
-    if (disc.length) {
-      doc.setFillColor(241, 245, 249); doc.rect(14, y - 5, W - 28, 8, "F");
-      doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-      doc.text("Item", 15, y); doc.text("Qty", 118, y, { align: "right" });
-      doc.text("List", 140, y, { align: "right" }); doc.text("Disc", 160, y, { align: "right" });
-      doc.text("Net (Rs.)", W - 15, y, { align: "right" });
+  var BRAND_LINE = "Auth. Distributor - HULIOT | FIMA | TOTO | OYSTER | GRUNDFOS | PENTAIR | GREEN HEAT+ | GEBERIT | INAIR | ADANI SOLAR | MEA";
+  var TERMS = [
+    "Prices are Ex Works Panipat warehouse.",
+    "VALIDITY - This quotation is valid for 15 days from the date of issue. Prices are subject to revision after expiry and re-quotation may be required for orders placed thereafter.",
+    "PRODUCT IMAGES - Product images shown in this quotation are for reference and viewing purposes only. Actual product supplied may differ in appearance, colour, finish or packaging. The product description and model number shall be the basis of supply.",
+    "PRICES & GST - Applicable GST at prevailing rates will be charged additionally. Prices are subject to change without prior notice based on supplier or MRP revisions.",
+    "PAYMENT TERMS - 50% advance payment is required along with a signed Purchase Order to confirm the booking. The balance is payable against the Proforma Invoice before dispatch. Cheques and demand drafts are accepted in favour of Energy World and are subject to realization before order processing.",
+    "DELIVERY - Delivery timelines are indicative and subject to stock availability and supplier lead times. Delivery charges, if applicable, will be communicated separately and are not included unless explicitly stated.",
+    "RETURNS & CANCELLATIONS - Goods once delivered and accepted cannot be returned unless found defective or incorrectly supplied. Any discrepancy must be reported within 48 hours of delivery. Custom-ordered or imported items are non-returnable and non-cancellable once placed with the supplier.",
+    "WARRANTY - All products are covered under the respective manufacturer warranty. Energy World will assist in connecting the customer with the brand service team but does not assume warranty obligation on behalf of the manufacturer.",
+    "INSTALLATION - Unless explicitly included, installation is not part of the scope of supply. Energy World recommends installation by certified plumbers or brand-authorized technicians."
+  ];
+
+  function quotePdf(q) {
+    return loadFonts().then(function (f) {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var uni = false;
+      if (f) {
+        doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
+        doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold");
+        uni = true;
+      }
+      var F = function (w) { doc.setFont(uni ? "DJ" : "helvetica", w || "normal"); };
+      var R = function (n) { return (uni ? "\u20B9" : "Rs.") + Number(n || 0).toLocaleString("en-IN"); };
+      var TEAL = [12, 74, 68], MINT = [45, 212, 191], INK = [15, 23, 42], GREY = [113, 128, 150];
+      var W = 210, L = 12, Rt = W - 12;
+
+      var items = [];
+      try { items = JSON.parse(q.items || "[]"); } catch (e) {}
+      var bd = Number(q.discountPct) || 0;
+      var rows = items.map(function (i) {
+        var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? bd : Number(i.disc);
+        d = Number(d) || 0;
+        var unit = Math.round(i.price * (1 - d / 100));
+        return { desc: i.desc, code: i.code, pic: i.pic || "", unitLbl: i.unit || "No's", qty: i.qty,
+          price: i.price, disc: d, net: unit, total: unit * i.qty };
+      });
+      var ordered = rows.filter(function (r) { return r.disc > 0; }).sort(function (a, b) { return b.disc - a.disc; })
+        .concat(rows.filter(function (r) { return r.disc <= 0; }));
+      var subTotal = rows.reduce(function (a, r) { return a + r.total; }, 0);
+      var cObj = clientByName(q.client) || {};
+
+      /* ================= HERO ================= */
+      doc.setFillColor(TEAL[0], TEAL[1], TEAL[2]); doc.rect(0, 0, W, 74, "F");
+      doc.setFillColor(15, 94, 87); doc.rect(W * 0.55, 0, W * 0.45, 74, "F");
+      doc.setFillColor(20, 184, 166); doc.rect(0, 74, W, 1.4, "F");
+
+      doc.setFillColor(255, 255, 255); doc.roundedRect(L, 9, 40, 15, 2.5, 2.5, "F");
+      if (window.EW_PDF_LOGO) { try { doc.addImage(window.EW_PDF_LOGO, "JPEG", L + 2, 10.5, 36, 12); } catch (e) {} }
+      else { doc.setTextColor(TEAL[0], TEAL[1], TEAL[2]); F("bold"); doc.setFontSize(11); doc.text("Energy World", L + 4, 18.5); }
+
+      doc.setTextColor(160, 231, 224); F("normal"); doc.setFontSize(7.4);
+      doc.text("QUOTE  " + String(q.quoteNo || ""), Rt, 14, { align: "right" });
+      doc.text(new Date().toDateString().slice(4), Rt, 19.5, { align: "right" });
+
+      doc.setFillColor(45, 212, 191); doc.rect(L, 34, 6, 0.9, "F");
+      doc.setTextColor(153, 246, 228); F("bold"); doc.setFontSize(6.8);
+      doc.text("M O D E R N   P L U M B I N G   S O L U T I O N S", L + 9, 35.4);
+
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(23);
+      doc.text("Quotation", L, 47);
+      doc.setTextColor(94, 234, 212); doc.setFontSize(23);
+      doc.text(String(q.brand || "Proposal"), L, 57);
+
+      doc.setFillColor(19, 106, 98); doc.roundedRect(L, 61, Rt - L, 0.1 + 11, 2, 2, "F");
+      var cols = [L + 4, L + 70, L + 132];
+      var labels = ["PREPARED FOR", "LOCATION", "PREPARED BY"];
+      var vals = [String(q.client || "-"), String(cObj.location || "Panipat"), String(q.createdBy || "-")];
+      doc.setTextColor(125, 211, 202); F("normal"); doc.setFontSize(5.6);
+      labels.forEach(function (lb, i) { doc.text(lb, cols[i], 65.4); });
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(9);
+      vals.forEach(function (v, i) { doc.text(v, cols[i], 70.4); });
+      doc.setDrawColor(35, 130, 121);
+      doc.line(L + 66, 62.5, L + 66, 71.5); doc.line(L + 128, 62.5, L + 128, 71.5);
+
+      /* ================= ITEMS ================= */
+      var y = 88;
+      doc.setFillColor(45, 212, 191); doc.rect(L, y - 5, 1.6, 5.4, "F");
+      doc.setTextColor(TEAL[0], TEAL[1], TEAL[2]); F("bold"); doc.setFontSize(11);
+      doc.text("Scope of Supply", L + 5, y - 0.6);
       y += 8;
-      disc.forEach(function (r) { line(r, true); });
-      y += 3;
-    }
 
-    if (flat.length) {
-      if (y > 240) { doc.addPage(); y = 22; }
-      y += 3;
-      doc.setFillColor(241, 245, 249); doc.rect(14, y - 5, W - 28, 8, "F");
-      doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-      doc.text("Net price items", 15, y);
-      doc.text("Qty", 118, y, { align: "right" });
-      doc.text("Net (Rs.)", W - 15, y, { align: "right" });
-      y += 8;
-      flat.forEach(function (r) { line(r, false); });
-      y += 3;
-    }
+      var X = { n: L + 3, pic: L + 8, item: L + 26, unit: 116, qty: 132, price: 152, dis: 168, amt: Rt - 2 };
+      var head = function () {
+        doc.setFillColor(23, 118, 110); doc.rect(L, y - 5.5, Rt - L, 9, "F");
+        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.4);
+        doc.text("#", X.n, y);
+        doc.text("ITEM", X.item, y);
+        doc.text("UNITS", X.unit, y, { align: "right" });
+        doc.text("QTY", X.qty, y, { align: "right" });
+        doc.text("PRICE", X.price, y, { align: "right" });
+        doc.text("DIS.", X.dis, y, { align: "right" });
+        doc.text("AMOUNT", X.amt, y, { align: "right" });
+        y += 8;
+      };
+      head();
 
-    doc.setDrawColor(226, 232, 240); doc.line(14, y, W - 14, y); y += 7;
-    doc.setFont("helvetica", "normal"); doc.setFontSize(10);
-    doc.text("Sub total", 150, y, { align: "right" }); doc.text(moneyAscii(q.net).replace("Rs. ", ""), W - 15, y, { align: "right" }); y += 6;
-    doc.text("GST 18%", 150, y, { align: "right" }); doc.text(String(q.gstAmt), W - 15, y, { align: "right" }); y += 7;
-    doc.setFont("helvetica", "bold"); doc.setFontSize(11);
-    doc.text("TOTAL (Rs.)", 150, y, { align: "right" }); doc.text(String(q.total), W - 15, y, { align: "right" });
+      ordered.forEach(function (r, i) {
+        F("normal"); doc.setFontSize(6.6);
+        var lines = doc.splitTextToSize(String(r.desc || ""), 84);
+        var hgt = Math.max(15, 9 + lines.length * 3.1);
+        if (y + hgt > 272) { doc.addPage(); y = 22; head(); }
+        if (i % 2 === 1) { doc.setFillColor(247, 250, 252); doc.rect(L, y - 4.5, Rt - L, hgt, "F"); }
 
-    y += 16;
-    doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(100, 116, 139);
-    doc.text("Prices in INR. GST extra as shown. Subject to stock at time of order.", 14, y);
-    doc.text("Prepared by: " + (q.createdBy || ""), 14, y + 5);
-    return doc;
+        doc.setTextColor(GREY[0], GREY[1], GREY[2]); F("normal"); doc.setFontSize(7);
+        doc.text(String(i + 1), X.n, y + 1);
+        if (r.pic) { try { doc.addImage(r.pic, "JPEG", X.pic, y - 2.5, 13.5, 11.5); } catch (e) {} }
+
+        doc.setTextColor(13, 148, 136); F("bold"); doc.setFontSize(6.6);
+        doc.text(String(r.code || ""), X.item, y - 0.4);
+        doc.setTextColor(INK[0], INK[1], INK[2]); F("bold"); doc.setFontSize(8);
+        var nm = doc.splitTextToSize(String(r.desc || "").split(":")[0], 84);
+        doc.text(nm[0], X.item, y + 4.2);
+        doc.setTextColor(GREY[0], GREY[1], GREY[2]); F("normal"); doc.setFontSize(6.4);
+        doc.text(lines.slice(0, 4), X.item, y + 8.6);
+
+        doc.setTextColor(INK[0], INK[1], INK[2]); F("normal"); doc.setFontSize(7.4);
+        doc.text(String(r.unitLbl), X.unit, y + 1, { align: "right" });
+        doc.text(String(r.qty), X.qty, y + 1, { align: "right" });
+        if (r.disc > 0) {
+          doc.setTextColor(GREY[0], GREY[1], GREY[2]); doc.setFontSize(6.6);
+          doc.text(R(r.price), X.price, y - 1.4, { align: "right" });
+          doc.setTextColor(13, 148, 136); F("bold"); doc.setFontSize(6.6);
+          doc.text(r.disc.toFixed(1) + "%", X.dis, y - 1.4, { align: "right" });
+          doc.setTextColor(INK[0], INK[1], INK[2]); F("normal"); doc.setFontSize(7.4);
+          doc.text(R(r.net), X.price, y + 3.4, { align: "right" });
+        } else {
+          doc.setTextColor(INK[0], INK[1], INK[2]); F("normal"); doc.setFontSize(7.4);
+          doc.text(R(r.net), X.price, y + 1, { align: "right" });
+        }
+        F("bold"); doc.setFontSize(8); doc.setTextColor(INK[0], INK[1], INK[2]);
+        doc.text(R(r.total), X.amt, y + 1, { align: "right" });
+
+        y += hgt;
+        doc.setDrawColor(233, 238, 244); doc.line(L, y - 3.5, Rt, y - 3.5);
+      });
+
+      /* --------- Sub-total. No GST amount anywhere, by design. --------- */
+      y += 5;
+      if (y > 262) { doc.addPage(); y = 26; }
+      doc.setTextColor(GREY[0], GREY[1], GREY[2]); F("normal"); doc.setFontSize(8.6);
+      doc.text("Sub-Total  { GST as Actual }", X.amt - 42, y, { align: "right" });
+      doc.setTextColor(TEAL[0], TEAL[1], TEAL[2]); F("bold"); doc.setFontSize(12.5);
+      doc.text(R(subTotal), X.amt, y + 0.6, { align: "right" });
+      doc.setDrawColor(20, 184, 166); doc.setLineWidth(0.5);
+      doc.line(X.amt - 46, y + 4.5, X.amt, y + 4.5); doc.setLineWidth(0.2);
+
+      /* ================= TERMS ================= */
+      doc.addPage(); y = 24;
+      doc.setFillColor(45, 212, 191); doc.rect(L, y - 5, 1.6, 5.4, "F");
+      doc.setTextColor(TEAL[0], TEAL[1], TEAL[2]); F("bold"); doc.setFontSize(11);
+      doc.text("Terms & Conditions", L + 5, y - 0.6);
+      y += 9;
+      TERMS.forEach(function (tx) {
+        var parts = tx.split(" - ");
+        var head2 = parts.length > 1 ? parts.shift() : "";
+        var body = parts.join(" - ");
+        F("normal"); doc.setFontSize(7.4);
+        var ls = doc.splitTextToSize(body || tx, Rt - L - 8);
+        var blk = (head2 ? 4 : 0) + ls.length * 3.5 + 4;
+        if (y + blk > 276) { doc.addPage(); y = 22; }
+        doc.setFillColor(240, 253, 250); doc.roundedRect(L, y - 4, Rt - L, blk, 1.5, 1.5, "F");
+        if (head2) {
+          doc.setTextColor(13, 148, 136); F("bold"); doc.setFontSize(6.8);
+          doc.text(head2.toUpperCase(), L + 4, y);
+          y += 4;
+        }
+        doc.setTextColor(51, 65, 85); F("normal"); doc.setFontSize(7.4);
+        doc.text(ls, L + 4, y);
+        y += ls.length * 3.5 + 6;
+      });
+
+      var pages = doc.internal.getNumberOfPages();
+      for (var p = 1; p <= pages; p++) {
+        doc.setPage(p);
+        F("normal"); doc.setFontSize(6.4); doc.setTextColor(148, 163, 184);
+        doc.text("Energy World  |  Panipat  \u00b7  Sonipat  \u00b7  Karnal  |  Authorised Distributor", L, 290);
+        doc.text(p + " / " + pages, Rt, 290, { align: "right" });
+      }
+      return doc;
+    });
   }
 
   function renderLogin(err) {
@@ -982,7 +1095,7 @@
       '<div class="stat"><div class="n">' + due.length + '</div><div class="l">Due today</div></div>' +
       '<div class="stat"><div class="n">' + hot.length + '</div><div class="l">Hot leads</div></div>' +
       '<div class="stat"><div class="n">' + money(sales) + '</div><div class="l">Challan value</div></div>' +
-      '<div class="stat"><div class="n">' + money(comm) + '</div><div class="l">Commission owed</div></div>' +
+      '<div class="stat"><div class="n">' + money(comm) + '</div><div class="l">Incentive owed</div></div>' +
       '</div>';
 
     var todo = overdue.concat(due);
@@ -1070,7 +1183,7 @@
       h += '<div class="card"><h3>' + esc(c.challanNo) + ' <span class="pill teal">' + money(c.amount) + '</span></h3>' +
         '<div class="meta">' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : '') +
         '<br>' + esc(c.items || "") +
-        (c.associate ? '<br>Associate: ' + esc(c.associate) + ' &middot; commission ' + money(c.commissionAmt) : '') +
+        (c.associate ? '<br>Partner: ' + esc(c.associate) + ' &middot; incentive ' + money(c.commissionAmt) : '') +
         '<br>' + esc(dstr(c.createdAt)) + ' by ' + esc(c.createdBy || "") + '</div></div>';
     });
     return h;
@@ -1085,14 +1198,14 @@
       byAssoc[c.associate].comm += Number(c.commissionAmt) || 0;
       byAssoc[c.associate].n += 1;
     });
-    var h = '<div class="row"><div class="grow"></div><button class="btn" data-act="as-new">+ New associate</button></div>';
-    if (!S.data.associates.length) h += '<div class="empty">No associates yet. Add the plumbers and architects who refer work.</div>';
+    var h = '<div class="row"><div class="grow"></div><button class="btn" data-act="as-new">+ New partner</button></div>';
+    if (!S.data.associates.length) h += '<div class="empty">No partners yet. Add the plumbers, architects, builders and PMCs who bring you work.</div>';
     S.data.associates.forEach(function (a) {
       var t = byAssoc[a.name] || { sales: 0, comm: 0, n: 0 };
       h += '<div class="card"><h3>' + esc(a.name) + ' <span class="pill">' + esc(a.role || "") + '</span>' +
-        ' <span class="pill teal">' + esc(a.rate || 0) + '%</span></h3>' +
+        ' <span class="pill teal">' + esc(a.rate || 0) + '% incentive</span></h3>' +
         '<div class="meta">' + (a.mobile ? esc(a.mobile) + '<br>' : '') +
-        t.n + ' challan(s) &middot; sales ' + money(t.sales) + '<br><b>Commission: ' + money(t.comm) + '</b>' +
+        t.n + ' challan(s) &middot; sales ' + money(t.sales) + '<br><b>Incentive: ' + money(t.comm) + '</b>' +
         (a.notes ? '<br>' + esc(a.notes) : '') + '</div>' +
         '<div class="acts"><button class="btn sm ghost" data-act="as-open" data-id="' + esc(a.id) + '">Edit</button></div></div>';
     });
@@ -1134,7 +1247,7 @@
       '<div><label>Status</label><select id="m_status">' + opts(STATUSES, c.status || "Warm") + '</select></div>' +
       '</div>' +
       '<label>Construction stage</label><select id="m_stage">' + opts(STAGES, c.stage || STAGES[0]) + '</select>' +
-      '<label>Referred by (associate)</label><select id="m_assoc">' + opts([""].concat(S.data.associates.map(function (a) { return a.name; })), c.associate) + '</select>' +
+      '<label>Referred by (partner)</label><select id="m_assoc">' + opts([""].concat(S.data.associates.map(function (a) { return a.name; })), c.associate) + '</select>' +
       '<label>Notes</label><textarea id="m_notes">' + esc(c.notes) + '</textarea>' +
       '<div class="foot">' +
       '<button class="btn ghost" data-act="close">Cancel</button>' +
@@ -1156,12 +1269,12 @@
 
   function modalAssociate(a) {
     a = a || {};
-    return '<h2>' + (a.id ? "Edit associate" : "New associate") + '</h2>' +
-      '<p class="sub">Plumbers, architects and contractors who bring you work.</p>' +
+    return '<h2>' + (a.id ? "Edit partner" : "New partner") + '</h2>' +
+      '<p class="sub">Plumbers, architects, builders and PMCs. Incentive % is set here.</p>' +
       '<label>Name</label><input id="m_aname" value="' + esc(a.name) + '"/>' +
       '<div class="grid2">' +
       '<div><label>Role</label><select id="m_arole">' + opts(["Plumber", "Architect", "Contractor", "Dealer", "Other"], a.role || "Plumber") + '</select></div>' +
-      '<div><label>Commission %</label><input id="m_arate" inputmode="decimal" value="' + esc(a.rate || "5") + '"/></div>' +
+      '<div><label>Incentive %</label><input id="m_arate" inputmode="decimal" value="' + esc(a.rate || "5") + '"/></div>' +
       '</div>' +
       '<label>Mobile</label><input id="m_amobile" inputmode="numeric" value="' + esc(a.mobile) + '"/>' +
       '<label>Notes</label><textarea id="m_anotes">' + esc(a.notes) + '</textarea>' +
@@ -1418,17 +1531,20 @@
     if (act === "q-pdf") {
       var qd = S.data.quotes.filter(function (x) { return x.id === id; })[0];
       if (!qd) return;
-      quotePdf(qd).save(String(qd.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf");
+      toast("Building PDF...");
+      quotePdf(qd).then(function (d) { d.save(String(qd.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf"); });
       return;
     }
     if (act === "q-tg") {
       var qt = S.data.quotes.filter(function (x) { return x.id === id; })[0];
       if (!qt) return;
       t.disabled = true; t.textContent = "Sending...";
-      var b64 = quotePdf(qt).output("datauristring").split(",")[1];
-      api("tgSend", { bot: "TG_QUOTES", pdfBase64: b64,
-        filename: String(qt.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf",
-        caption: "<b>Quotation " + qt.quoteNo + "</b>\n" + qt.client + "\n" + qt.brand + "\nRs. " + qt.total + "\nBy " + qt.createdBy
+      quotePdf(qt).then(function (d) {
+        var b64 = d.output("datauristring").split(",")[1];
+        return api("tgSend", { bot: "TG_QUOTES", pdfBase64: b64,
+          filename: String(qt.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf",
+          caption: "<b>Quotation " + qt.quoteNo + "</b>\n" + qt.client + "\n" + qt.brand + "\nSub-total Rs. " + qt.net + " (GST as actual)\nBy " + qt.createdBy
+        });
       }).then(function (r) { toast(r && r.ok ? "Quote sent to Telegram." : "Send failed."); render(); });
       return;
     }
@@ -1461,7 +1577,7 @@
       var it = S.qz.items.filter(function (x) { return x.code === code; })[0];
       if (!it) {
         if (delta < 0) return;
-        S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: 1 });
+        S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: 1, pic: p.pic, unit: p.unit });
       } else {
         it.qty += delta;
         if (it.qty <= 0) S.qz.items = S.qz.items.filter(function (x) { return x.code !== code; });
@@ -1708,7 +1824,7 @@
       var q = Number(t.value) || 0;
       var p = PRODUCTS.filter(function (x) { return x.code === code; })[0];
       S.qz.items = S.qz.items.filter(function (x) { return x.code !== code; });
-      if (q > 0 && p) S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: q });
+      if (q > 0 && p) S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: q, pic: p.pic, unit: p.unit });
       render(); return;
     }
     if (t.classList && t.classList.contains("qz-d") && S.qz) {
