@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#0f766e"/>
+<title>Energy World — Team</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --teal:#14b8a6; --teal-d:#0f766e; --ink:#0f172a; --muted:#64748b;
+    --line:#e2e8f0; --bg:#f1f5f9; --card:#ffffff; --danger:#e11d48; --warn:#f59e0b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:Inter,system-ui,-apple-system,sans-serif;
+    background:var(--bg); color:var(--ink);
+    font-variant-numeric:tabular-nums lining-nums;
+    -webkit-font-smoothing:antialiased;
+  }
+  .boot{display:flex;align-items:center;justify-content:center;height:100vh;color:var(--muted);font-size:14px}
+  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+    background:linear-gradient(160deg,#0f766e 0%,#134e4a 100%)}
+  .login{background:#fff;border-radius:18px;padding:28px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(0,0,0,.28)}
+  .login .logo{width:84px;height:84px;object-fit:contain;border:3px solid var(--teal);border-radius:16px;padding:6px;display:block;margin:0 auto 14px}
+  .login h1{font-size:19px;margin:0 0 4px;text-align:center}
+  .login p{margin:0 0 20px;text-align:center;color:var(--muted);font-size:13px}
+  label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:12px 0 5px;text-transform:uppercase;letter-spacing:.04em}
+  input,select,textarea{
+    width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;
+    font-family:inherit;font-size:15px;background:#fff;color:var(--ink);
+  }
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(20,184,166,.15)}
+  textarea{min-height:74px;resize:vertical}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    background:var(--teal-d);color:#fff;border:0;border-radius:10px;
+    padding:11px 16px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;
+    text-decoration:none;
+  }
+  .btn:hover{background:#115e59}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .btn.full{width:100%}
+  .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .btn.ghost:hover{background:#f8fafc}
+  .btn.sm{padding:7px 11px;font-size:13px;border-radius:8px}
+  .btn.danger{background:var(--danger)}
+  .top{
+    position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:12px;padding:10px 16px;
+  }
+  .top img{height:34px;border:2px solid var(--teal);border-radius:8px;padding:2px}
+  .top .who{margin-left:auto;font-size:13px;color:var(--muted);text-align:right;line-height:1.3}
+  .top .who b{display:block;color:var(--ink);font-size:13px}
+  nav{display:flex;gap:4px;overflow-x:auto;background:#fff;border-bottom:1px solid var(--line);padding:0 8px;
+    position:sticky;top:55px;z-index:19;-webkit-overflow-scrolling:touch}
+  nav button{
+    background:none;border:0;padding:12px 12px;font-family:inherit;font-size:14px;font-weight:600;
+    color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;
+  }
+  nav button.on{color:var(--teal-d);border-bottom-color:var(--teal)}
+  main{padding:16px;max-width:1100px;margin:0 auto}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .row .grow{flex:1;min-width:180px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .stat .n{font-size:26px;font-weight:700;line-height:1.1}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:3px}
+  .stat.alert .n{color:var(--danger)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+  .card h3{margin:0 0 3px;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .card .meta{font-size:13px;color:var(--muted);line-height:1.55}
+  .card .acts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+  .pill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#f1f5f9;color:var(--muted)}
+  .pill.Hot{background:#fee2e2;color:#b91c1c}
+  .pill.Warm{background:#fef3c7;color:#b45309}
+  .pill.Cold{background:#e0f2fe;color:#0369a1}
+  .pill.Won{background:#dcfce7;color:#15803d}
+  .pill.Lost{background:#f1f5f9;color:#64748b}
+  .pill.due{background:#fee2e2;color:#b91c1c}
+  .pill.soon{background:#fef3c7;color:#b45309}
+  .pill.teal{background:#ccfbf1;color:#0f766e}
+  .empty{text-align:center;color:var(--muted);padding:36px 12px;font-size:14px}
+  .mask{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-end;justify-content:center;z-index:40;padding:0}
+  .modal{background:#fff;border-radius:18px 18px 0 0;width:100%;max-width:560px;max-height:92vh;overflow:auto;padding:18px 18px 28px}
+  .modal h2{margin:0 0 2px;font-size:17px}
+  .modal .sub{color:var(--muted);font-size:13px;margin:0 0 8px}
+  .modal .foot{display:flex;gap:8px;margin-top:18px}
+  .modal .foot .btn{flex:1}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(min-width:640px){
+    .mask{align-items:center;padding:20px}
+    .modal{border-radius:18px}
+  }
+  .lineitem{display:grid;grid-template-columns:2fr 70px 90px 34px;gap:6px;margin-bottom:6px;align-items:center}
+  .lineitem input{padding:9px 10px;font-size:14px}
+  .x{background:#fff;border:1px solid var(--line);border-radius:8px;height:38px;cursor:pointer;color:var(--danger);font-weight:700}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;background:var(--ink);color:#fff;
+    padding:11px 16px;border-radius:10px;font-size:14px;z-index:60;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+  .foot-note{text-align:center;color:var(--muted);font-size:11px;padding:22px 0 8px}
+</style>
+</head>
+<body>
+<div id="root"><div class="boot">Loading Energy World Team…</div></div>
+<script>
+/* Thin shell. The app lives in app.js and is fetched fresh on EVERY load
+   (no-store + cache-busting query), so any update pushed to the repo reaches
+   the whole team the next time anyone opens or logs into this page. */
+(function () {
+  var root = document.getElementById("root");
+  fetch("app.js?cb=" + Date.now(), { cache: "no-store" })
+    .then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.text();
+    })
+    .then(function (src) { (0, eval)(src); })
+    .catch(function (e) {
+      root.innerHTML = '<div class="boot">Could not load the app (' + e.message + ').<br>Check your connection and refresh.</div>';
+    });
+})();
+</script>
+</body>
+</html>
