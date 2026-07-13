@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "1.8";
+  var APP_VERSION = "1.9";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -826,9 +826,16 @@
   /* ---------------- Quotation PDF (Energy World format) ----------------
      jsPDF core fonts are Latin-1 and physically cannot draw the rupee glyph, so a
      Unicode TTF is embedded once and cached. Falls back to "Rs." if the font fails. */
-  var FONTS = null;
+  /* ---------------- Quotation PDF ----------------
+     Three things the browser cannot do alone, so they are solved here:
+     1) jsPDF core fonts are Latin-1 - they cannot draw the rupee glyph. Embed a Unicode TTF.
+     2) Product pictures are on lh3.googleusercontent.com with no CORS header, so a canvas
+        conversion taints and throws. Fetch them through the server instead.
+     3) The logo is same-origin, so FileReader is enough for that one. */
+  var FONTS = null, LOGO_B64 = null, PIC_CACHE = {};
+
   function loadFonts() {
-    if (FONTS) return Promise.resolve(FONTS);
+    if (FONTS !== null) return Promise.resolve(FONTS);
     var base = "https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/";
     var grab = function (f) {
       return fetch(base + f).then(function (r) { return r.arrayBuffer(); }).then(function (b) {
@@ -842,21 +849,51 @@
       .catch(function () { FONTS = false; return false; });
   }
 
-  var BRAND_LINE = "Auth. Distributor - HULIOT | FIMA | TOTO | OYSTER | GRUNDFOS | PENTAIR | GREEN HEAT+ | GEBERIT | INAIR | ADANI SOLAR | MEA";
+  function loadLogo() {
+    if (LOGO_B64 !== null) return Promise.resolve(LOGO_B64);
+    return fetch("../assets/logo.jpg").then(function (r) { return r.blob(); }).then(function (b) {
+      return new Promise(function (res) {
+        var fr = new FileReader();
+        fr.onload = function () { LOGO_B64 = String(fr.result); res(LOGO_B64); };
+        fr.onerror = function () { LOGO_B64 = false; res(false); };
+        fr.readAsDataURL(b);
+      });
+    }).catch(function () { LOGO_B64 = false; return false; });
+  }
+
+  function loadPic(url) {
+    if (!url) return Promise.resolve(null);
+    if (PIC_CACHE[url] !== undefined) return Promise.resolve(PIC_CACHE[url]);
+    return api("imgB64", { url: url }).then(function (r) {
+      PIC_CACHE[url] = (r && r.ok) ? ("data:" + r.mime + ";base64," + r.b64) : null;
+      return PIC_CACHE[url];
+    }).catch(function () { PIC_CACHE[url] = null; return null; });
+  }
+
+  var DIST_BRANDS = ["HULIOT", "FIMA", "TOTO", "GRUNDFOS", "PENTAIR", "GREEN HEAT+", "GEBERIT",
+    "INAIR", "LUNOS", "STELLAR", "MEA", "NEXGEN", "ADANI SOLAR", "HELIROMA"];
+
   var TERMS = [
     "Prices are Ex Works Panipat warehouse.",
     "VALIDITY - This quotation is valid for 15 days from the date of issue. Prices are subject to revision after expiry and re-quotation may be required for orders placed thereafter.",
-    "PRODUCT IMAGES - Product images shown in this quotation are for reference and viewing purposes only. Actual product supplied may differ in appearance, colour, finish or packaging. The product description and model number shall be the basis of supply.",
+    "PRODUCT IMAGES - Product images shown are for reference only. Actual product supplied may differ in appearance, colour, finish or packaging. The product description and model number shall be the basis of supply.",
     "PRICES & GST - Applicable GST at prevailing rates will be charged additionally. Prices are subject to change without prior notice based on supplier or MRP revisions.",
-    "PAYMENT TERMS - 50% advance payment is required along with a signed Purchase Order to confirm the booking. The balance is payable against the Proforma Invoice before dispatch. Cheques and demand drafts are accepted in favour of Energy World and are subject to realization before order processing.",
-    "DELIVERY - Delivery timelines are indicative and subject to stock availability and supplier lead times. Delivery charges, if applicable, will be communicated separately and are not included unless explicitly stated.",
-    "RETURNS & CANCELLATIONS - Goods once delivered and accepted cannot be returned unless found defective or incorrectly supplied. Any discrepancy must be reported within 48 hours of delivery. Custom-ordered or imported items are non-returnable and non-cancellable once placed with the supplier.",
-    "WARRANTY - All products are covered under the respective manufacturer warranty. Energy World will assist in connecting the customer with the brand service team but does not assume warranty obligation on behalf of the manufacturer.",
-    "INSTALLATION - Unless explicitly included, installation is not part of the scope of supply. Energy World recommends installation by certified plumbers or brand-authorized technicians."
+    "PAYMENT TERMS - 50% advance along with a signed Purchase Order confirms the booking. Balance is payable against the Proforma Invoice before dispatch. Cheques and demand drafts in favour of Energy World are subject to realization before order processing.",
+    "DELIVERY - Delivery timelines are indicative and subject to stock availability and supplier lead times. Delivery charges, if applicable, are communicated separately and are not included unless explicitly stated.",
+    "RETURNS & CANCELLATIONS - Goods once delivered and accepted cannot be returned unless defective or incorrectly supplied. Any discrepancy must be reported within 48 hours of delivery. Custom-ordered or imported items are non-returnable once placed with the supplier.",
+    "WARRANTY - Products carry the respective manufacturer warranty. Energy World will assist in connecting the customer with the brand service team but does not assume warranty obligation on behalf of the manufacturer.",
+    "INSTALLATION - Unless explicitly included, installation is not in the scope of supply. Energy World recommends installation by certified plumbers or brand-authorized technicians."
   ];
 
   function quotePdf(q) {
-    return loadFonts().then(function (f) {
+    var items = [];
+    try { items = JSON.parse(q.items || "[]"); } catch (e) {}
+    return Promise.all([
+      loadFonts(),
+      loadLogo(),
+      Promise.all(items.map(function (i) { return loadPic(i.pic); }))
+    ]).then(function (res) {
+      var f = res[0], logo = res[1], pics = res[2];
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
       var uni = false;
       if (f) {
@@ -866,159 +903,177 @@
       }
       var F = function (w) { doc.setFont(uni ? "DJ" : "helvetica", w || "normal"); };
       var R = function (n) { return (uni ? "\u20B9" : "Rs.") + Number(n || 0).toLocaleString("en-IN"); };
-      var TEAL = [12, 74, 68], MINT = [45, 212, 191], INK = [15, 23, 42], GREY = [113, 128, 150];
-      var W = 210, L = 12, Rt = W - 12;
+      var col = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
+      var fill = function (c) { doc.setFillColor(c[0], c[1], c[2]); };
 
-      var items = [];
-      try { items = JSON.parse(q.items || "[]"); } catch (e) {}
+      var INK = [17, 34, 45], DEEP = [11, 59, 54], MINT = [94, 234, 212],
+          SLATE = [30, 41, 59], GREY = [110, 125, 140], LINE = [226, 232, 240], SOFT = [248, 250, 252];
+      var W = 210, L = 14, Rt = W - 14;
+
       var bd = Number(q.discountPct) || 0;
-      var rows = items.map(function (i) {
+      var rows = items.map(function (i, idx) {
         var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? bd : Number(i.disc);
         d = Number(d) || 0;
-        var unit = Math.round(i.price * (1 - d / 100));
-        return { desc: i.desc, code: i.code, pic: i.pic || "", unitLbl: i.unit || "No's", qty: i.qty,
-          price: i.price, disc: d, net: unit, total: unit * i.qty };
+        var net = Math.round(i.price * (1 - d / 100));
+        return { desc: i.desc, code: i.code, pic: pics[idx], unit: i.unit || "No's",
+          qty: i.qty, price: i.price, disc: d, net: net, total: net * i.qty };
       });
       var ordered = rows.filter(function (r) { return r.disc > 0; }).sort(function (a, b) { return b.disc - a.disc; })
         .concat(rows.filter(function (r) { return r.disc <= 0; }));
       var subTotal = rows.reduce(function (a, r) { return a + r.total; }, 0);
-      var cObj = clientByName(q.client) || {};
+      var c = clientByName(q.client) || {};
 
-      /* ================= HERO ================= */
-      doc.setFillColor(TEAL[0], TEAL[1], TEAL[2]); doc.rect(0, 0, W, 74, "F");
-      doc.setFillColor(15, 94, 87); doc.rect(W * 0.55, 0, W * 0.45, 74, "F");
-      doc.setFillColor(20, 184, 166); doc.rect(0, 74, W, 1.4, "F");
+      /* ================= HEADER ================= */
+      fill(DEEP); doc.rect(0, 0, W, 46, "F");
+      fill(MINT); doc.rect(0, 46, W, 1.2, "F");
 
-      doc.setFillColor(255, 255, 255); doc.roundedRect(L, 9, 40, 15, 2.5, 2.5, "F");
-      if (window.EW_PDF_LOGO) { try { doc.addImage(window.EW_PDF_LOGO, "JPEG", L + 2, 10.5, 36, 12); } catch (e) {} }
-      else { doc.setTextColor(TEAL[0], TEAL[1], TEAL[2]); F("bold"); doc.setFontSize(11); doc.text("Energy World", L + 4, 18.5); }
+      if (logo) { try { doc.addImage(logo, "JPEG", L, 9, 32, 17); } catch (e) {} }
+      col(MINT); F("bold"); doc.setFontSize(6.4);
+      doc.text("M O D E R N   P L U M B I N G   S O L U T I O N", L, 31.5);
+      col([148, 190, 184]); F("normal"); doc.setFontSize(6);
+      doc.text("PANIPAT   |   SONIPAT   |   KARNAL", L, 36.5);
 
-      doc.setTextColor(160, 231, 224); F("normal"); doc.setFontSize(7.4);
-      doc.text("QUOTE  " + String(q.quoteNo || ""), Rt, 14, { align: "right" });
-      doc.text(new Date().toDateString().slice(4), Rt, 19.5, { align: "right" });
+      col([255, 255, 255]); F("bold"); doc.setFontSize(17);
+      doc.text("QUOTATION", Rt, 16, { align: "right" });
+      F("normal"); doc.setFontSize(7.6); col([160, 205, 199]);
+      doc.text("Quote No.  " + String(q.quoteNo || ""), Rt, 23, { align: "right" });
+      doc.text("Date  " + today(), Rt, 28, { align: "right" });
+      doc.text("Valid until  " + new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10), Rt, 33, { align: "right" });
 
-      doc.setFillColor(45, 212, 191); doc.rect(L, 34, 6, 0.9, "F");
-      doc.setTextColor(153, 246, 228); F("bold"); doc.setFontSize(6.8);
-      doc.text("M O D E R N   P L U M B I N G   S O L U T I O N S", L + 9, 35.4);
+      /* ---- authorised distributor strip: brands highlighted as chips ---- */
+      var y = 54;
+      col(GREY); F("bold"); doc.setFontSize(6.2);
+      doc.text("AUTHORISED DISTRIBUTOR FOR", L, y);
+      y += 4;
+      var cx = L;
+      F("bold"); doc.setFontSize(6.4);
+      DIST_BRANDS.forEach(function (b) {
+        var w = doc.getTextWidth(b) + 5;
+        if (cx + w > Rt) { cx = L; y += 7; }
+        fill([236, 253, 245]); doc.roundedRect(cx, y - 3.6, w, 5.6, 1.2, 1.2, "F");
+        doc.setDrawColor(167, 243, 208); doc.roundedRect(cx, y - 3.6, w, 5.6, 1.2, 1.2, "S");
+        col([13, 118, 108]); doc.text(b, cx + 2.5, y);
+        cx += w + 2.4;
+      });
+      y += 9;
 
-      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(23);
-      doc.text("Quotation", L, 47);
-      doc.setTextColor(94, 234, 212); doc.setFontSize(23);
-      doc.text(String(q.brand || "Proposal"), L, 57);
+      /* ---- client block ---- */
+      fill(SOFT); doc.roundedRect(L, y, Rt - L, 24, 2, 2, "F");
+      doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.roundedRect(L, y, Rt - L, 24, 2, 2, "S");
+      fill(MINT); doc.rect(L, y, 1.4, 24, "F");
+      var c1 = L + 6, c2 = L + 96, c3 = L + 140;
+      col(GREY); F("bold"); doc.setFontSize(5.8);
+      doc.text("PREPARED FOR", c1, y + 5.5);
+      doc.text("LOCATION", c2, y + 5.5);
+      doc.text("PREPARED BY", c3, y + 5.5);
+      col(INK); F("bold"); doc.setFontSize(10);
+      doc.text(String(q.client || "-"), c1, y + 11.5);
+      doc.text(String(c.location || "Panipat"), c2, y + 11.5);
+      doc.text(String(q.createdBy || "-"), c3, y + 11.5);
+      col(GREY); F("normal"); doc.setFontSize(7);
+      var det = [];
+      if (c.mobile) det.push(String(c.mobile));
+      if (c.type) det.push(String(c.type));
+      doc.text(det.join("  |  "), c1, y + 16.5);
+      if (c.address) doc.text(doc.splitTextToSize(String(c.address), 78)[0], c1, y + 21);
+      var partners = [c.architect && "Arch: " + c.architect, c.plumber && "Plumber: " + c.plumber].filter(Boolean);
+      if (partners.length) doc.text(partners.join("   "), c2, y + 16.5);
+      doc.text("Energy World | Authorised Distributor", c3, y + 16.5);
+      y += 32;
 
-      doc.setFillColor(19, 106, 98); doc.roundedRect(L, 61, Rt - L, 0.1 + 11, 2, 2, "F");
-      var cols = [L + 4, L + 70, L + 132];
-      var labels = ["PREPARED FOR", "LOCATION", "PREPARED BY"];
-      var vals = [String(q.client || "-"), String(cObj.location || "Panipat"), String(q.createdBy || "-")];
-      doc.setTextColor(125, 211, 202); F("normal"); doc.setFontSize(5.6);
-      labels.forEach(function (lb, i) { doc.text(lb, cols[i], 65.4); });
-      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(9);
-      vals.forEach(function (v, i) { doc.text(v, cols[i], 70.4); });
-      doc.setDrawColor(35, 130, 121);
-      doc.line(L + 66, 62.5, L + 66, 71.5); doc.line(L + 128, 62.5, L + 128, 71.5);
-
-      /* ================= ITEMS ================= */
-      var y = 88;
-      doc.setFillColor(45, 212, 191); doc.rect(L, y - 5, 1.6, 5.4, "F");
-      doc.setTextColor(TEAL[0], TEAL[1], TEAL[2]); F("bold"); doc.setFontSize(11);
-      doc.text("Scope of Supply", L + 5, y - 0.6);
-      y += 8;
-
-      var X = { n: L + 3, pic: L + 8, item: L + 26, unit: 116, qty: 132, price: 152, dis: 168, amt: Rt - 2 };
+      /* ================= TABLE ================= */
+      var X = { n: L + 3, pic: L + 8, item: L + 26, unit: 112, qty: 126, price: 145, dis: 160, dprice: 180, amt: Rt - 1 };
       var head = function () {
-        doc.setFillColor(23, 118, 110); doc.rect(L, y - 5.5, Rt - L, 9, "F");
-        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.4);
+        fill(SLATE); doc.rect(L, y - 5.5, Rt - L, 9, "F");
+        col([255, 255, 255]); F("bold"); doc.setFontSize(5.9);
         doc.text("#", X.n, y);
-        doc.text("ITEM", X.item, y);
-        doc.text("UNITS", X.unit, y, { align: "right" });
+        doc.text("ITEM DESCRIPTION", X.item, y);
+        doc.text("UNIT", X.unit, y, { align: "right" });
         doc.text("QTY", X.qty, y, { align: "right" });
         doc.text("PRICE", X.price, y, { align: "right" });
-        doc.text("DIS.", X.dis, y, { align: "right" });
-        doc.text("AMOUNT", X.amt, y, { align: "right" });
-        y += 8;
+        doc.text("DIS.%", X.dis, y, { align: "right" });
+        doc.text("DISCOUNTED PRICE", X.dprice, y, { align: "right" });
+        doc.text("TOTAL AMT", X.amt, y, { align: "right" });
+        y += 8.5;
       };
       head();
 
       ordered.forEach(function (r, i) {
-        F("normal"); doc.setFontSize(6.6);
-        var lines = doc.splitTextToSize(String(r.desc || ""), 84);
-        var hgt = Math.max(15, 9 + lines.length * 3.1);
-        if (y + hgt > 272) { doc.addPage(); y = 22; head(); }
-        if (i % 2 === 1) { doc.setFillColor(247, 250, 252); doc.rect(L, y - 4.5, Rt - L, hgt, "F"); }
+        F("normal"); doc.setFontSize(6.3);
+        var lines = doc.splitTextToSize(String(r.desc || ""), 78);
+        var hgt = Math.max(16, 9.5 + lines.length * 3);
+        if (y + hgt > 268) { doc.addPage(); y = 22; head(); }
+        if (i % 2 === 1) { fill(SOFT); doc.rect(L, y - 4.5, Rt - L, hgt, "F"); }
 
-        doc.setTextColor(GREY[0], GREY[1], GREY[2]); F("normal"); doc.setFontSize(7);
+        col(GREY); F("normal"); doc.setFontSize(6.8);
         doc.text(String(i + 1), X.n, y + 1);
-        if (r.pic) { try { doc.addImage(r.pic, "JPEG", X.pic, y - 2.5, 13.5, 11.5); } catch (e) {} }
+        if (r.pic) { try { doc.addImage(r.pic, X.pic, y - 2.6, 14, 12); } catch (e) {} }
 
-        doc.setTextColor(13, 148, 136); F("bold"); doc.setFontSize(6.6);
-        doc.text(String(r.code || ""), X.item, y - 0.4);
-        doc.setTextColor(INK[0], INK[1], INK[2]); F("bold"); doc.setFontSize(8);
-        var nm = doc.splitTextToSize(String(r.desc || "").split(":")[0], 84);
-        doc.text(nm[0], X.item, y + 4.2);
-        doc.setTextColor(GREY[0], GREY[1], GREY[2]); F("normal"); doc.setFontSize(6.4);
-        doc.text(lines.slice(0, 4), X.item, y + 8.6);
+        col([13, 148, 136]); F("bold"); doc.setFontSize(6.3);
+        doc.text(String(r.code || ""), X.item, y - 0.6);
+        col(INK); F("bold"); doc.setFontSize(7.8);
+        doc.text(doc.splitTextToSize(String(r.desc || "").split(":")[0], 78)[0], X.item, y + 3.8);
+        col(GREY); F("normal"); doc.setFontSize(6.3);
+        doc.text(lines.slice(0, 4), X.item, y + 8);
 
-        doc.setTextColor(INK[0], INK[1], INK[2]); F("normal"); doc.setFontSize(7.4);
-        doc.text(String(r.unitLbl), X.unit, y + 1, { align: "right" });
-        doc.text(String(r.qty), X.qty, y + 1, { align: "right" });
+        col(INK); F("normal"); doc.setFontSize(7.2);
+        doc.text(String(r.unit), X.unit, y + 1, { align: "right" });
+        F("bold"); doc.text(String(r.qty), X.qty, y + 1, { align: "right" });
+        F("normal");
         if (r.disc > 0) {
-          doc.setTextColor(GREY[0], GREY[1], GREY[2]); doc.setFontSize(6.6);
-          doc.text(R(r.price), X.price, y - 1.4, { align: "right" });
-          doc.setTextColor(13, 148, 136); F("bold"); doc.setFontSize(6.6);
-          doc.text(r.disc.toFixed(1) + "%", X.dis, y - 1.4, { align: "right" });
-          doc.setTextColor(INK[0], INK[1], INK[2]); F("normal"); doc.setFontSize(7.4);
-          doc.text(R(r.net), X.price, y + 3.4, { align: "right" });
+          col(GREY);
+          doc.text(R(r.price), X.price, y + 1, { align: "right" });
+          col([13, 148, 136]); F("bold");
+          doc.text(r.disc.toFixed(1) + "%", X.dis, y + 1, { align: "right" });
+          col(INK); F("normal");
+          doc.text(R(r.net), X.dprice, y + 1, { align: "right" });
         } else {
-          doc.setTextColor(INK[0], INK[1], INK[2]); F("normal"); doc.setFontSize(7.4);
-          doc.text(R(r.net), X.price, y + 1, { align: "right" });
+          col(INK);
+          doc.text(R(r.net), X.dprice, y + 1, { align: "right" });
         }
-        F("bold"); doc.setFontSize(8); doc.setTextColor(INK[0], INK[1], INK[2]);
+        F("bold"); doc.setFontSize(8); col(INK);
         doc.text(R(r.total), X.amt, y + 1, { align: "right" });
 
         y += hgt;
-        doc.setDrawColor(233, 238, 244); doc.line(L, y - 3.5, Rt, y - 3.5);
+        doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.line(L, y - 3.5, Rt, y - 3.5);
       });
 
-      /* --------- Sub-total. No GST amount anywhere, by design. --------- */
-      y += 5;
-      if (y > 262) { doc.addPage(); y = 26; }
-      doc.setTextColor(GREY[0], GREY[1], GREY[2]); F("normal"); doc.setFontSize(8.6);
-      doc.text("Sub-Total  { GST as Actual }", X.amt - 42, y, { align: "right" });
-      doc.setTextColor(TEAL[0], TEAL[1], TEAL[2]); F("bold"); doc.setFontSize(12.5);
-      doc.text(R(subTotal), X.amt, y + 0.6, { align: "right" });
-      doc.setDrawColor(20, 184, 166); doc.setLineWidth(0.5);
-      doc.line(X.amt - 46, y + 4.5, X.amt, y + 4.5); doc.setLineWidth(0.2);
+      /* ---- sub-total. GST amount never appears. ---- */
+      y += 4;
+      if (y > 258) { doc.addPage(); y = 26; }
+      fill([236, 253, 245]); doc.roundedRect(112, y - 5, Rt - 112, 12, 1.5, 1.5, "F");
+      col([13, 118, 108]); F("bold"); doc.setFontSize(7.6);
+      doc.text("Sub-Total { GST as Actual }", 116, y + 1.4);
+      doc.setFontSize(11.5);
+      doc.text(R(subTotal), X.amt, y + 1.6, { align: "right" });
 
       /* ================= TERMS ================= */
       doc.addPage(); y = 24;
-      doc.setFillColor(45, 212, 191); doc.rect(L, y - 5, 1.6, 5.4, "F");
-      doc.setTextColor(TEAL[0], TEAL[1], TEAL[2]); F("bold"); doc.setFontSize(11);
-      doc.text("Terms & Conditions", L + 5, y - 0.6);
+      fill(MINT); doc.rect(L, y - 5, 1.8, 5.6, "F");
+      col(DEEP); F("bold"); doc.setFontSize(11);
+      doc.text("Terms & Conditions", L + 5, y - 0.5);
       y += 9;
       TERMS.forEach(function (tx) {
         var parts = tx.split(" - ");
-        var head2 = parts.length > 1 ? parts.shift() : "";
+        var hd = parts.length > 1 ? parts.shift() : "";
         var body = parts.join(" - ");
-        F("normal"); doc.setFontSize(7.4);
-        var ls = doc.splitTextToSize(body || tx, Rt - L - 8);
-        var blk = (head2 ? 4 : 0) + ls.length * 3.5 + 4;
-        if (y + blk > 276) { doc.addPage(); y = 22; }
-        doc.setFillColor(240, 253, 250); doc.roundedRect(L, y - 4, Rt - L, blk, 1.5, 1.5, "F");
-        if (head2) {
-          doc.setTextColor(13, 148, 136); F("bold"); doc.setFontSize(6.8);
-          doc.text(head2.toUpperCase(), L + 4, y);
-          y += 4;
-        }
-        doc.setTextColor(51, 65, 85); F("normal"); doc.setFontSize(7.4);
-        doc.text(ls, L + 4, y);
-        y += ls.length * 3.5 + 6;
+        F("normal"); doc.setFontSize(7.3);
+        var ls = doc.splitTextToSize(body || tx, Rt - L - 10);
+        var blk = (hd ? 4.5 : 0) + ls.length * 3.4 + 5;
+        if (y + blk > 274) { doc.addPage(); y = 22; }
+        fill([249, 251, 252]); doc.roundedRect(L, y - 4.5, Rt - L, blk, 1.5, 1.5, "F");
+        fill(MINT); doc.rect(L, y - 4.5, 1.2, blk, "F");
+        if (hd) { col([13, 118, 108]); F("bold"); doc.setFontSize(6.6); doc.text(hd.toUpperCase(), L + 5, y); y += 4.5; }
+        col([55, 65, 81]); F("normal"); doc.setFontSize(7.3);
+        doc.text(ls, L + 5, y);
+        y += ls.length * 3.4 + 6.5;
       });
 
       var pages = doc.internal.getNumberOfPages();
       for (var p = 1; p <= pages; p++) {
         doc.setPage(p);
-        F("normal"); doc.setFontSize(6.4); doc.setTextColor(148, 163, 184);
-        doc.text("Energy World  |  Panipat  \u00b7  Sonipat  \u00b7  Karnal  |  Authorised Distributor", L, 290);
+        F("normal"); doc.setFontSize(6.2); col([150, 163, 175]);
+        doc.text("Energy World  |  Panipat \u00b7 Sonipat \u00b7 Karnal  |  Authorised Distributor", L, 290);
         doc.text(p + " / " + pages, Rt, 290, { align: "right" });
       }
       return doc;
