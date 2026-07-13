@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "1.3";
+  var APP_VERSION = "1.4";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -37,13 +37,20 @@
     "Flooring / Tiling","Sanitary & CP Fitting","False Ceiling / Painting","Final Fitout / Handover","Post-Handover / AMC"];
   var PSTATUS = ["Not pitched","Pitched","Quoted","Negotiating","Won","Lost","Not applicable"];
 
+  var SVC_PRODUCTS = ["Water Softener","Sand Filter","Carbon Filter","RO / Purifier","Heat Pump","Pressure Pump","Other"];
+  var SVC_ENGINEERS = ["Manoj","Jaiprakash"];
+  var VISIT_TYPES = ["Periodic service","Complaint","Salt delivery","AMC visit","Installation","Repair"];
+  var WATER = ["Normal","Hard","Very hard"];
+  var MIN_VISIT = 500;
+
   var TYPES = ["Builder", "Architect", "Plumber", "Contractor", "Home owner", "Dealer"];
   var STATUSES = ["Hot", "Warm", "Cold", "Won", "Lost"];
 
   var S = {
     pin: "", user: "", role: "", pinSet: "", tab: "dash", q: "", busy: false, modal: null,
     siteId: "",
-    data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [] }
+    installId: "",
+    data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [] }
   };
 
   function esc(v) {
@@ -64,11 +71,11 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","sites","winloss","customers","followups","challans","commission","products","rules"],
-    accounts: ["dash","customers","followups","challans","commission","products"],
+    admin:    ["dash","sites","winloss","customers","followups","challans","commission","service","spares","dues","payroll","products","rules"],
+    accounts: ["dash","customers","followups","challans","commission","service","spares","dues","payroll","products"],
     godown:   ["dash","sites","challans","products"],
     sales:    ["dash","sites","winloss","customers","followups","challans","products"],
-    service:  ["dash","sites","followups","products"]
+    service:  ["dash","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
     var t = ROLE_TABS[S.role] || ["dash"];
@@ -329,6 +336,182 @@
       '<label>Notes</label><textarea id="s_notes">' + esc(x.notes) + '</textarea>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="site-save" data-id="' + esc(x.id || "") + '">Save</button></div>';
+  }
+
+  /* ---------------- service / AMC ---------------- */
+  function addDays(d, n) {
+    var x = new Date(String(d).slice(0, 10) + "T00:00:00");
+    if (isNaN(x.getTime())) x = new Date();
+    x.setDate(x.getDate() + Number(n || 0));
+    return x.toISOString().slice(0, 10);
+  }
+  function installById(id) { return S.data.installs.filter(function (x) { return x.id === id; })[0] || null; }
+  function spareByName(n) {
+    var t = String(n || "").trim().toLowerCase();
+    return S.data.spares.filter(function (x) { return String(x.name).toLowerCase() === t; })[0] || null;
+  }
+  function visitTotal(v) { return (Number(v.visitCharge) || 0) + (Number(v.saltAmt) || 0) + (Number(v.partsAmt) || 0); }
+
+  function dueLabel(x) {
+    if (!x.nextService) return { t: "no date set", k: "" };
+    var d = daysTo(x.nextService);
+    if (d < 0) return { t: Math.abs(d) + "d OVERDUE", k: "due" };
+    if (d === 0) return { t: "DUE TODAY", k: "due" };
+    if (d <= 7) return { t: "due in " + d + "d", k: "soon" };
+    return { t: "due " + dstr(x.nextService), k: "" };
+  }
+
+  function viewService() {
+    var q = S.q.toLowerCase();
+    var list = S.data.installs.filter(function (x) {
+      return !q || (x.client + " " + x.area + " " + x.product + " " + x.engineer + " " + x.mobile).toLowerCase().indexOf(q) >= 0;
+    }).sort(function (a, b) { return daysTo(a.nextService) - daysTo(b.nextService); });
+    var due = list.filter(function (x) { return daysTo(x.nextService) <= 0; }).length;
+    var h = '<div class="cards">' +
+      '<div class="stat"><div class="n">' + S.data.installs.length + '</div><div class="l">Installations</div></div>' +
+      '<div class="stat ' + (due ? "alert" : "") + '"><div class="n">' + due + '</div><div class="l">Service due / overdue</div></div>' +
+      '<div class="stat"><div class="n">' + S.data.installs.filter(function (x) { return x.amcType && x.amcType !== "None"; }).length + '</div><div class="l">Under AMC</div></div>' +
+      '</div>';
+    h += '<div class="row"><input class="grow" id="q" placeholder="Search client, area, engineer..." value="' + esc(S.q) + '"/>' +
+      '<button class="btn" data-act="inst-new">+ New installation</button></div>';
+    if (!list.length) h += '<div class="empty">No installations yet.</div>';
+    list.forEach(function (x) {
+      var d = dueLabel(x);
+      var bal = S.data.visits.filter(function (v) { return v.installId === x.id; })
+        .reduce(function (a, v) { return a + (Number(v.balance) || 0); }, 0);
+      h += '<div class="card"><h3>' + esc(x.client) + ' <span class="pill ' + d.k + '">' + d.t + '</span>' +
+        (x.amcType && x.amcType !== "None" ? ' <span class="pill teal">AMC' + (x.amcEnd ? " to " + esc(dstr(x.amcEnd)) : "") + '</span>' : "") +
+        (bal > 0 ? ' <span class="pill due">' + money(bal) + ' pending</span>' : "") + '</h3>' +
+        '<div class="meta">' + esc(x.product || "") + (x.model ? " " + esc(x.model) : "") +
+        '<br>' + esc(x.area || "") + (x.mobile ? ' &middot; ' + esc(x.mobile) : "") +
+        '<br>Every ' + esc(x.cycleDays || "?") + ' days &middot; water: ' + esc(x.waterQuality || "-") +
+        '<br>Engineer: ' + esc(x.engineer || "unassigned") +
+        (x.lastService ? '<br>Last service: ' + esc(dstr(x.lastService)) : "") + '</div>' +
+        '<div class="acts">' +
+        (x.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.mobile) + '">Call</a>' : "") +
+        '<button class="btn sm" data-act="visit-new" data-id="' + esc(x.id) + '">Log visit</button>' +
+        '<button class="btn sm ghost" data-act="inst-open" data-id="' + esc(x.id) + '">Edit</button></div></div>';
+    });
+    return h;
+  }
+
+  function viewSpares() {
+    var q = S.q.toLowerCase();
+    var list = S.data.spares.filter(function (x) {
+      return !q || (x.code + " " + x.name + " " + x.category).toLowerCase().indexOf(q) >= 0;
+    });
+    var missing = S.data.spares.filter(function (x) { return !Number(x.price); }).length;
+    var h = '<div class="row"><input class="grow" id="q" placeholder="Search spares..." value="' + esc(S.q) + '"/></div>';
+    if (missing) h += '<div class="empty" style="text-align:left;padding:0 0 12px"><b>' + missing + ' spare(s) have no price yet.</b> Set them - the app will not guess a price for you.</div>';
+    list.forEach(function (x) {
+      h += '<div class="card"><h3>' + esc(x.name) + ' <span class="pill">' + esc(x.category) + '</span></h3>' +
+        '<div class="meta">' + esc(x.code) + ' &middot; per ' + esc(x.unit) + '</div>' +
+        '<div class="acts" style="align-items:center"><span class="pill teal">Rs</span>' +
+        '<input class="sp-price" data-id="' + esc(x.id) + '" inputmode="decimal" value="' + esc(x.price || "") + '" placeholder="set price" style="width:120px;padding:7px 10px;font-size:13px"/>' +
+        '</div></div>';
+    });
+    return h;
+  }
+
+  function viewDues() {
+    var by = {};
+    S.data.visits.forEach(function (v) {
+      var b = Number(v.balance) || 0;
+      if (!by[v.client]) by[v.client] = { bal: 0, n: 0, last: "" };
+      by[v.client].bal += b;
+      by[v.client].n += 1;
+      if (!by[v.client].last || v.date > by[v.client].last) by[v.client].last = v.date;
+    });
+    var names = Object.keys(by).filter(function (k) { return by[k].bal > 0; })
+      .sort(function (a, b) { return by[b].bal - by[a].bal; });
+    var total = names.reduce(function (a, k) { return a + by[k].bal; }, 0);
+    var h = '<div class="cards"><div class="stat ' + (total ? "alert" : "") + '"><div class="n">' + money(total) + '</div><div class="l">Total pending from clients</div></div>' +
+      '<div class="stat"><div class="n">' + names.length + '</div><div class="l">Clients owing</div></div></div>';
+    if (!names.length) return h + '<div class="empty">Nothing pending. Everything collected.</div>';
+    names.forEach(function (k) {
+      var vs = S.data.visits.filter(function (v) { return v.client === k && (Number(v.balance) || 0) > 0; });
+      h += '<div class="card"><h3>' + esc(k) + ' <span class="pill due">' + money(by[k].bal) + '</span></h3><div class="meta">';
+      vs.forEach(function (v) {
+        h += esc(dstr(v.date)) + ' &middot; ' + esc(v.type) + ' &middot; billed ' + money(v.total) +
+          ', paid ' + money(v.collected) + ', <b>due ' + money(v.balance) + '</b><br>';
+      });
+      h += '</div></div>';
+    });
+    return h;
+  }
+
+  function viewPayroll() {
+    var month = S.q || new Date().toISOString().slice(0, 7);
+    var h = '<div class="row"><input class="grow" id="q" type="month" value="' + esc(month) + '"/></div>';
+    h += '<div class="empty" style="text-align:left;padding:0 0 12px">Salary vs what each engineer actually collected in ' + esc(month) + '.</div>';
+    SVC_ENGINEERS.forEach(function (eng) {
+      var vs = S.data.visits.filter(function (v) {
+        return v.engineer === eng && String(v.date).slice(0, 7) === month;
+      });
+      var billed = vs.reduce(function (a, v) { return a + (Number(v.total) || 0); }, 0);
+      var collected = vs.reduce(function (a, v) { return a + (Number(v.collected) || 0); }, 0);
+      var pr = S.data.payroll.filter(function (p) { return p.engineer === eng && p.month === month; })[0] || {};
+      var sal = Number(pr.salary) || 0;
+      var net = collected - sal;
+      h += '<div class="card"><h3>' + esc(eng) + ' <span class="pill ' + (net >= 0 ? "Won" : "Lost") + '">' + (net >= 0 ? "+" : "") + money(net) + '</span></h3>' +
+        '<div class="meta">' + vs.length + ' visit(s) &middot; billed ' + money(billed) + ' &middot; <b>collected ' + money(collected) + '</b>' +
+        (billed - collected > 0 ? ' &middot; uncollected ' + money(billed - collected) : "") + '</div>' +
+        '<div class="acts" style="align-items:center"><span class="pill">Salary</span>' +
+        '<input class="pay-sal" data-eng="' + esc(eng) + '" data-month="' + esc(month) + '" data-id="' + esc(pr.id || "") + '" inputmode="numeric" value="' + esc(pr.salary || "") + '" placeholder="monthly salary" style="width:140px;padding:7px 10px;font-size:13px"/>' +
+        '</div></div>';
+    });
+    return h;
+  }
+
+  function modalInstall(x) {
+    x = x || {};
+    return '<h2>' + (x.id ? "Edit installation" : "New installation") + '</h2>' +
+      '<p class="sub">Service cycle drives the reminders. Hard water = shorter cycle.</p>' +
+      '<label>Client</label><input id="i_client" value="' + esc(x.client) + '"/>' +
+      '<div class="grid2"><div><label>Mobile</label><input id="i_mobile" inputmode="numeric" value="' + esc(x.mobile) + '"/></div>' +
+      '<div><label>Area / route</label><input id="i_area" value="' + esc(x.area) + '"/></div></div>' +
+      '<label>Address</label><input id="i_addr" value="' + esc(x.address) + '"/>' +
+      '<div class="grid2"><div><label>Product</label><select id="i_prod">' + opts(SVC_PRODUCTS, x.product || SVC_PRODUCTS[0]) + '</select></div>' +
+      '<div><label>Model / capacity</label><input id="i_model" value="' + esc(x.model) + '"/></div></div>' +
+      '<div class="grid2"><div><label>Serial no.</label><input id="i_serial" value="' + esc(x.serial) + '"/></div>' +
+      '<div><label>Install date</label><input id="i_idate" type="date" value="' + esc(dstr(x.installDate) || today()) + '"/></div></div>' +
+      '<div class="grid2"><div><label>Water quality</label><select id="i_water">' + opts(WATER, x.waterQuality || "Hard") + '</select></div>' +
+      '<div><label>Service every (days)</label><input id="i_cycle" inputmode="numeric" value="' + esc(x.cycleDays || "60") + '"/></div></div>' +
+      '<div class="grid2"><div><label>Last service</label><input id="i_last" type="date" value="' + esc(dstr(x.lastService)) + '"/></div>' +
+      '<div><label>Next service</label><input id="i_next" type="date" value="' + esc(dstr(x.nextService)) + '"/></div></div>' +
+      '<div class="grid2"><div><label>AMC</label><select id="i_amc">' + opts(["None","Yearly","Visit-based"], x.amcType || "None") + '</select></div>' +
+      '<div><label>AMC amount (Rs)</label><input id="i_amcamt" inputmode="numeric" value="' + esc(x.amcAmount || "") + '"/></div></div>' +
+      '<div class="grid2"><div><label>AMC ends</label><input id="i_amcend" type="date" value="' + esc(dstr(x.amcEnd)) + '"/></div>' +
+      '<div><label>Engineer</label><select id="i_eng">' + opts([""].concat(SVC_ENGINEERS), x.engineer) + '</select></div></div>' +
+      '<label>Notes</label><textarea id="i_notes">' + esc(x.notes) + '</textarea>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="inst-save" data-id="' + esc(x.id || "") + '">Save</button></div>';
+  }
+
+  function spareRow(i) {
+    return '<div class="lineitem" data-row="' + i + '">' +
+      '<input class="sv-d" list="sparelist" placeholder="Spare part" value=""/>' +
+      '<input class="sv-q" inputmode="numeric" placeholder="Qty" value=""/>' +
+      '<input class="sv-r" inputmode="decimal" placeholder="Rate" value=""/>' +
+      '<button class="x" data-act="sv-del">&times;</button></div>';
+  }
+
+  function modalVisit(inst) {
+    var saltPrice = spareByName("Salt tablet bag (25 kg)");
+    return '<h2>Log a visit</h2><p class="sub">' + esc(inst.client) + ' &middot; ' + esc(inst.product || "") + ' &middot; ' + esc(inst.area || "") + '</p>' +
+      '<div class="grid2"><div><label>Date</label><input id="v_date" type="date" value="' + today() + '"/></div>' +
+      '<div><label>Engineer</label><select id="v_eng">' + opts(SVC_ENGINEERS, inst.engineer || SVC_ENGINEERS[0]) + '</select></div></div>' +
+      '<label>Type of visit</label><select id="v_type">' + opts(VISIT_TYPES, "Periodic service") + '</select>' +
+      '<div class="grid2"><div><label>Visit charge (Rs)</label><input id="v_charge" inputmode="numeric" value="' + MIN_VISIT + '"/></div>' +
+      '<div><label>Salt bags</label><input id="v_salt" inputmode="numeric" value="0"/></div></div>' +
+      '<label>Salt rate per bag (Rs)</label><input id="v_saltrate" inputmode="numeric" value="' + esc(saltPrice && saltPrice.price ? saltPrice.price : "") + '" placeholder="set the salt bag price in Spares"/>' +
+      '<label>Spare parts used</label><div id="v_lines">' + spareRow(0) + '</div>' +
+      '<button class="btn sm ghost" data-act="sv-add" style="margin-top:4px">+ Add spare</button>' +
+      '<label>Collected now (Rs)</label><input id="v_coll" inputmode="numeric" value="0"/>' +
+      '<label>Notes</label><textarea id="v_notes"></textarea>' +
+      '<datalist id="sparelist">' + S.data.spares.map(function (p) { return '<option value="' + esc(p.name) + '"></option>'; }).join("") + '</datalist>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="visit-save" data-id="' + esc(inst.id) + '">Save visit</button></div>';
   }
 
   function renderLogin(err) {
@@ -670,8 +853,8 @@
 
   function render() {
     if (!S.pin) { renderLogin(); return; }
-    var views = { dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
-    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["commission", "Commission"], ["products", "Products"], ["rules", "Pitch rules"]];
+    var views = { service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
+    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["commission", "Commission"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<img src="' + LOGO + '" alt="EW" onerror="this.style.display=\'none\'"/>' +
@@ -739,6 +922,77 @@
     if (act === "close") { S.modal = null; render(); return; }
     if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; render(); return; }
     if (act === "cat-reload") { toast("Reloading catalogue..."); loadCatalog().then(function () { toast(PRODUCTS.length + " products loaded."); render(); }); return; }
+
+    if (act === "inst-new") { S.modal = modalInstall(null); render(); return; }
+    if (act === "inst-open") { S.modal = modalInstall(installById(id)); render(); return; }
+    if (act === "inst-save") {
+      var ic = val("i_client");
+      if (!ic) { toast("Client name is required."); return; }
+      var cyc = Number(val("i_cycle")) || 60;
+      var last = val("i_last");
+      var next = val("i_next") || (last ? addDays(last, cyc) : addDays(val("i_idate") || today(), cyc));
+      save("installs", {
+        id: id || "", createdBy: S.user, client: ic, mobile: val("i_mobile"), address: val("i_addr"),
+        area: val("i_area"), product: val("i_prod"), model: val("i_model"), serial: val("i_serial"),
+        installDate: val("i_idate"), waterQuality: val("i_water"), cycleDays: cyc,
+        lastService: last, nextService: next, amcType: val("i_amc"), amcAmount: val("i_amcamt"),
+        amcEnd: val("i_amcend"), engineer: val("i_eng"), status: "Active", notes: val("i_notes")
+      }).then(function (r) { if (r) { S.modal = null; toast("Installation saved."); render(); } });
+      return;
+    }
+    if (act === "visit-new") {
+      var inst = installById(id);
+      if (!inst) return;
+      S.installId = id; S.modal = modalVisit(inst); render(); return;
+    }
+    if (act === "sv-add") {
+      var box = el("v_lines");
+      box.insertAdjacentHTML("beforeend", spareRow(box.children.length));
+      return;
+    }
+    if (act === "sv-del") {
+      var rr = t.closest(".lineitem");
+      if (rr && el("v_lines").children.length > 1) rr.remove();
+      return;
+    }
+    if (act === "visit-save") {
+      var ins = installById(id);
+      if (!ins) return;
+      var parts = [], partsAmt = 0;
+      [].forEach.call(document.querySelectorAll("#v_lines .lineitem"), function (row) {
+        var d = row.querySelector(".sv-d").value.trim();
+        var q = Number(row.querySelector(".sv-q").value) || 0;
+        var rt = Number(row.querySelector(".sv-r").value) || 0;
+        if (d) { parts.push(d + " x" + q); partsAmt += q * rt; }
+      });
+      var bags = Number(val("v_salt")) || 0;
+      var saltRate = Number(val("v_saltrate")) || 0;
+      var saltAmt = bags * saltRate;
+      var charge = Number(val("v_charge")) || 0;
+      if (charge < MIN_VISIT) { toast("Minimum visit charge is Rs " + MIN_VISIT + "."); return; }
+      var total = charge + saltAmt + partsAmt;
+      var coll = Number(val("v_coll")) || 0;
+      var vdate = val("v_date");
+      var veng = val("v_eng");
+      t.disabled = true; t.textContent = "Saving...";
+      save("visits", {
+        id: "", createdBy: S.user, installId: ins.id, client: ins.client, area: ins.area || "",
+        date: vdate, engineer: veng, type: val("v_type"), visitCharge: charge,
+        saltBags: bags, saltAmt: saltAmt, partsUsed: parts.join(", "), partsAmt: partsAmt,
+        total: total, collected: coll, balance: total - coll, notes: val("v_notes")
+      }).then(function (r) {
+        if (!r) return;
+        ins.lastService = vdate;
+        ins.nextService = addDays(vdate, Number(ins.cycleDays) || 60);
+        ins.engineer = veng;
+        save("installs", ins).then(function () {
+          S.modal = null;
+          toast("Visit logged. Next service " + ins.nextService + ".");
+          render();
+        });
+      });
+      return;
+    }
 
     if (act === "site-new") { S.modal = modalSite(null); render(); return; }
     if (act === "site-open") { S.modal = modalSite(siteById(id)); render(); return; }
@@ -862,6 +1116,20 @@
 
   document.addEventListener("change", function (e) {
     var t = e.target;
+    if (t.classList && t.classList.contains("sp-price")) {
+      var sp = S.data.spares.filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
+      if (!sp) return;
+      sp.price = t.value;
+      save("spares", sp).then(function (r) { if (r) toast("Price saved."); });
+      return;
+    }
+    if (t.classList && t.classList.contains("pay-sal")) {
+      save("payroll", {
+        id: t.getAttribute("data-id") || "", month: t.getAttribute("data-month"),
+        engineer: t.getAttribute("data-eng"), salary: t.value, notes: ""
+      }).then(function (r) { if (r) toast("Salary saved."); });
+      return;
+    }
     if (t.classList && t.classList.contains("pm-status")) { savePitch(t.getAttribute("data-brand"), { status: t.value }); return; }
     if (t.classList && t.classList.contains("pm-amt")) {
       var patch = {}; patch[t.getAttribute("data-f")] = t.value;
@@ -879,6 +1147,14 @@
 
   document.addEventListener("input", function (e) {
     var t = e.target;
+    if (t.classList && t.classList.contains("sv-d")) {
+      var sp = spareByName(t.value);
+      if (!sp) return;
+      var row = t.closest(".lineitem");
+      if (sp.price) row.querySelector(".sv-r").value = sp.price;
+      if (!row.querySelector(".sv-q").value) row.querySelector(".sv-q").value = 1;
+      return;
+    }
     if (!t.classList || !t.classList.contains("li-d")) return;
     var p = findProduct(t.value);
     if (!p) return;
