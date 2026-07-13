@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "1.5";
+  var APP_VERSION = "1.6";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -56,6 +56,7 @@
     siteId: "",
     installId: "",
     qz: null,
+    navOpen: false,
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [] }
   };
 
@@ -77,7 +78,7 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","clients","quotes","sites","winloss","followups","challans","commission","service","spares","dues","payroll","products","rules"],
+    admin:    ["dash","clients","quotes","sites","winloss","followups","challans","commission","service","spares","dues","payroll","products","catalogue","rules"],
     accounts: ["dash","clients","followups","challans","commission","service","spares","dues","payroll","products"],
     godown:   ["dash","challans","products"],
     sales:    ["dash","clients","quotes","sites","winloss","followups","challans","products"],
@@ -532,15 +533,25 @@
     })[0];
     return d ? Number(d.pct) || 0 : 0;
   }
+  /* The catalogue Master Brand column mixes real brands with categories. Map it. */
+  function realBrand(p) {
+    var m = S.data.brandmap.filter(function (x) { return String(x.catalogValue) === String(p.brand); })[0];
+    return (m && m.brand) ? m.brand : "";
+  }
   function brandList() {
-    var seen = {}, out = [];
-    PRODUCTS.forEach(function (p) { if (p.brand && !seen[p.brand]) { seen[p.brand] = 1; out.push(p.brand); } });
-    return out.sort();
+    var live = {};
+    PRODUCTS.forEach(function (p) { var b = realBrand(p); if (b) live[b] = (live[b] || 0) + 1; });
+    return S.data.brands
+      .filter(function (b) { return String(b.active).toUpperCase() !== "N" && live[b.brand]; })
+      .map(function (b) { return b.brand; });
+  }
+  function brandProducts(brand) {
+    return PRODUCTS.filter(function (p) { return realBrand(p) === brand; });
   }
   function familyList(brand) {
     var seen = {}, out = [];
-    PRODUCTS.forEach(function (p) {
-      if (p.brand === brand && p.family && !seen[p.family]) { seen[p.family] = 1; out.push(p.family); }
+    brandProducts(brand).forEach(function (p) {
+      if (p.family && !seen[p.family]) { seen[p.family] = 1; out.push(p.family); }
     });
     return out.sort();
   }
@@ -660,8 +671,10 @@
 
     if (z.step === 2) {
       h += '<div class="empty" style="text-align:left;padding:0 0 12px">Quoting for <b>' + esc(z.client) + '</b>. Pick a brand.</div>';
+      var unmapped = S.data.brandmap.filter(function (m) { return !m.brand; }).length;
+      if (unmapped) h += '<div class="empty" style="text-align:left;padding:0 0 12px"><b>' + unmapped + ' catalogue value(s) are not mapped to a brand yet</b> - those products cannot be quoted. A partner can fix this under Catalogue.</div>';
       brandList().forEach(function (b) {
-        var n = PRODUCTS.filter(function (p) { return p.brand === b; }).length;
+        var n = brandProducts(b).length;
         var d = clientDiscount(z.client, b);
         h += '<div class="card"><h3>' + esc(b) + ' <span class="pill">' + n + ' products</span>' +
           (d ? ' <span class="pill teal">' + d + '% preset</span>' : "") + '</h3>' +
@@ -677,7 +690,7 @@
       if (!z.family) {
         h += '<div class="empty" style="text-align:left;padding:0 0 12px">Pick a product family.</div>';
         familyList(z.brand).forEach(function (f) {
-          var n = PRODUCTS.filter(function (p) { return p.brand === z.brand && p.family === f; }).length;
+          var n = brandProducts(z.brand).filter(function (p) { return p.family === f; }).length;
           h += '<div class="card"><h3>' + esc(f) + ' <span class="pill">' + n + '</span></h3>' +
             '<div class="acts"><button class="btn sm" data-act="qz-fam" data-fam="' + esc(f) + '">Open</button></div></div>';
         });
@@ -685,7 +698,7 @@
       }
       h += '<div class="row"><button class="btn sm ghost" data-act="qz-fam" data-fam="">Back to families</button>' +
         '<span class="pill">' + esc(z.family) + '</span></div>';
-      PRODUCTS.filter(function (p) { return p.brand === z.brand && p.family === z.family; }).forEach(function (p) {
+      brandProducts(z.brand).filter(function (p) { return p.family === z.family; }).forEach(function (p) {
         var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
         h += '<div class="card" style="display:flex;gap:12px;align-items:center">' +
           (p.pic ? '<img src="' + esc(p.pic) + '" alt="" style="width:56px;height:56px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff"/>' : "") +
@@ -732,6 +745,79 @@
       '<br><b>Total ' + money(tt.total) + '</b></div>' +
       '<div class="acts"><button class="btn" data-act="qz-save">Save quote</button></div></div>';
     return h;
+  }
+
+  function viewCatalogue() {
+    var q = S.q.toLowerCase();
+    var unmapped = S.data.brandmap.filter(function (m) { return !m.brand; });
+    var h = '<div class="empty" style="text-align:left;padding:0 0 14px"><b>Brand mapping.</b> The catalogue\'s Master Brand column mixes real brands with categories. Map each value to one of your brands - quotes, pitch matrix and incentives all key off this.</div>';
+    if (unmapped.length) h += '<div class="card" style="border-color:#fecdd3"><h3><span class="pill due">' + unmapped.length + ' unmapped</span></h3><div class="meta">Products under these values cannot be quoted until mapped.</div></div>';
+    var brandOpts = S.data.brands.map(function (b) { return b.brand; });
+    S.data.brandmap.forEach(function (m) {
+      h += '<div class="card"><h3>' + esc(m.catalogValue) + ' <span class="pill">' + esc(m.count) + ' products</span>' +
+        (m.brand ? ' <span class="pill Won">' + esc(m.brand) + '</span>' : ' <span class="pill due">unmapped</span>') + '</h3>' +
+        '<div class="acts" style="align-items:center"><span class="pill">maps to</span>' +
+        '<select class="bm" data-id="' + esc(m.id) + '" style="width:auto;padding:7px 10px;font-size:13px">' +
+        opts([""].concat(brandOpts), m.brand) + '</select></div></div>';
+    });
+
+    h += '<h3 style="margin:24px 0 10px;font-size:15px">Brands</h3>' +
+      '<div class="row"><div class="grow"></div><button class="btn sm" data-act="br-new">+ Add brand</button></div>';
+    S.data.brands.forEach(function (b) {
+      var n = brandProducts(b.brand).length;
+      h += '<div class="card"><h3>' + esc(b.brand) + ' <span class="pill' + (n ? " teal" : " due") + '">' + n + ' products</span>' +
+        (String(b.active).toUpperCase() === "N" ? ' <span class="pill">inactive</span>' : "") + '</h3>' +
+        '<div class="meta">' + esc(b.notes || "") + '</div>' +
+        '<div class="acts"><button class="btn sm ghost" data-act="br-open" data-id="' + esc(b.id) + '">Edit</button>' +
+        '<button class="btn sm ghost" data-act="br-del" data-id="' + esc(b.id) + '">Remove</button></div></div>';
+    });
+
+    h += '<h3 style="margin:24px 0 10px;font-size:15px">Products (' + PRODUCTS.length + ')</h3>' +
+      '<div class="row"><input class="grow" id="q" placeholder="Search code, name, family..." value="' + esc(S.q) + '"/>' +
+      '<button class="btn" data-act="pr-new">+ Add product</button></div>';
+    if (!q) return h + '<div class="empty">Type to search the catalogue.</div>';
+    var list = PRODUCTS.filter(function (p) {
+      return (p.code + " " + p.desc + " " + p.family + " " + p.brand).toLowerCase().indexOf(q) >= 0;
+    }).slice(0, 40);
+    if (!list.length) return h + '<div class="empty">Nothing matches.</div>';
+    list.forEach(function (p) {
+      h += '<div class="card" style="display:flex;gap:12px;align-items:center">' +
+        (p.pic ? '<img src="' + esc(p.pic) + '" style="width:48px;height:48px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff"/>' : "") +
+        '<div style="flex:1"><h3 style="margin:0 0 2px">' + esc(p.desc) + '</h3>' +
+        '<div class="meta">' + esc(p.code) + ' - ' + money(p.price) + ' / ' + esc(p.unit) +
+        '<br>' + esc(p.family) + ' - ' + esc(p.brand) + (realBrand(p) ? ' -> ' + esc(realBrand(p)) : ' (unmapped)') + '</div></div>' +
+        '<div style="display:flex;gap:4px"><button class="btn sm ghost" data-act="pr-open" data-code="' + esc(p.code) + '">Edit</button>' +
+        '<button class="btn sm ghost" data-act="pr-del" data-code="' + esc(p.code) + '">Del</button></div></div>';
+    });
+    return h;
+  }
+
+  function modalBrand(b) {
+    b = b || {};
+    return '<h2>' + (b.id ? "Edit brand" : "Add brand") + '</h2>' +
+      '<label>Brand name</label><input id="b_name" value="' + esc(b.brand) + '"/>' +
+      '<label>What it is</label><input id="b_notes" value="' + esc(b.notes) + '"/>' +
+      '<label>Active</label><select id="b_active">' + opts(["Y", "N"], b.active || "Y") + '</select>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="br-save" data-id="' + esc(b.id || "") + '">Save</button></div>';
+  }
+
+  function modalProduct(p) {
+    p = p || {};
+    var mapVals = S.data.brandmap.map(function (m) { return m.catalogValue; });
+    return '<h2>' + (p.code ? "Edit product" : "Add product") + '</h2>' +
+      '<p class="sub">This writes to the master price list the whole firm quotes from.</p>' +
+      '<div class="grid2"><div><label>Product code</label><input id="p_code" value="' + esc(p.code) + '"' + (p.code ? " readonly" : "") + '/></div>' +
+      '<div><label>List price (Rs)</label><input id="p_price" inputmode="decimal" value="' + esc(p.price || "") + '"/></div></div>' +
+      '<label>Description</label><input id="p_desc" value="' + esc(p.desc) + '"/>' +
+      '<div class="grid2"><div><label>Product family</label><input id="p_fam" value="' + esc(p.family) + '"/></div>' +
+      '<div><label>Unit</label><input id="p_unit" value="' + esc(p.unit || "Per Pc.") + '"/></div></div>' +
+      '<div class="grid2"><div><label>Master Brand (catalogue value)</label><input id="p_mb" list="mblist" value="' + esc(p.brand) + '"/></div>' +
+      '<div><label>Category</label><input id="p_cat" value="' + esc(p.cat) + '"/></div></div>' +
+      '<datalist id="mblist">' + mapVals.map(function (m) { return '<option value="' + esc(m) + '"></option>'; }).join("") + '</datalist>' +
+      '<label>Picture URL</label><input id="p_pic" value="' + esc(p.pic) + '"/>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="pr-save">Save product</button></div>';
   }
 
   function renderLogin(err) {
@@ -1073,10 +1159,11 @@
 
   function render() {
     if (!S.pin) { renderLogin(); return; }
-    var views = { clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
+    var views = { catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
     var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
+      '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
       '<img src="' + LOGO + '" alt="EW" onerror="this.style.display=\'none\'"/>' +
       '<div><b style="font-size:15px">Energy World</b><div style="font-size:12px;color:#64748b">Team workspace</div></div>' +
       '<div class="who"><b>' + esc(S.user) + '</b><span class="pill teal">' + esc(S.role) + '</span>' +
@@ -1084,16 +1171,35 @@
       '<button class="btn sm ghost" data-act="pin-change">PIN</button>' +
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
-    h += '<nav>' + tabs.filter(function (t) { return canSee(t[0]); }).map(function (t) {
-      return '<button data-act="tab" data-tab="' + t[0] + '" class="' + (S.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>';
-    }).join("") + '</nav>';
+    var GROUPS = [
+      ["Sell", ["dash", "clients", "quotes", "sites", "winloss", "followups"]],
+      ["Deliver", ["challans", "products"]],
+      ["Money", ["commission", "dues", "payroll"]],
+      ["Service", ["service", "spares"]],
+      ["Admin", ["catalogue", "rules"]]
+    ];
+    var label = {};
+    tabs.forEach(function (t) { label[t[0]] = t[1]; });
+
+    var navHtml = '';
+    GROUPS.forEach(function (grp) {
+      var items = grp[1].filter(function (k) { return canSee(k) && label[k]; });
+      if (!items.length) return;
+      navHtml += '<div class="grp">' + grp[0] + '</div>' + items.map(function (k) {
+        return '<button data-act="tab" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + label[k] + '</button>';
+      }).join("");
+    });
+
+    h += '<div class="scrim" data-act="nav-close"></div><div class="shell"><nav>' + navHtml + '</nav>';
 
     h += '<main>' + (S.busy ? '<div class="empty">Saving...</div>' : (views[S.tab] || viewDash)()) +
       '<div class="foot-note">Energy World Team v' + APP_VERSION + ' &middot; data lives in your Google Sheet</div></main>';
 
+    h += '</div>';
     if (S.modal) h += '<div class="mask" data-act="mask"><div class="modal">' + S.modal + '</div></div>';
 
     document.getElementById("root").innerHTML = h;
+    document.body.classList.toggle("navopen", !!S.navOpen);
 
     var q = el("q");
     if (q) {
@@ -1142,6 +1248,60 @@
     if (act === "close") { S.modal = null; render(); return; }
     if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; render(); return; }
     if (act === "cat-reload") { toast("Reloading catalogue..."); loadCatalog().then(function () { toast(PRODUCTS.length + " products loaded."); render(); }); return; }
+
+    if (act === "nav-toggle") { S.navOpen = !S.navOpen; render(); return; }
+    if (act === "nav-close") { S.navOpen = false; render(); return; }
+
+    if (act === "br-new") { S.modal = modalBrand(null); render(); return; }
+    if (act === "br-open") { S.modal = modalBrand(S.data.brands.filter(function (b) { return b.id === id; })[0]); render(); return; }
+    if (act === "br-save") {
+      var bn = val("b_name");
+      if (!bn) { toast("Brand name is required."); return; }
+      save("brands", { id: id || "", brand: bn, active: val("b_active"), notes: val("b_notes") })
+        .then(function (r) { if (r) { S.modal = null; toast("Brand saved."); render(); } });
+      return;
+    }
+    if (act === "br-del") {
+      var bb = S.data.brands.filter(function (b) { return b.id === id; })[0];
+      if (!bb) return;
+      if (brandProducts(bb.brand).length) { toast("That brand still has products mapped to it."); return; }
+      api("teamDelete", { tab: "brands", id: id }).then(function (r) {
+        if (r && r.ok) { toast("Brand removed."); refresh(); } else { toast((r && r.error) || "Could not remove."); }
+      });
+      return;
+    }
+
+    if (act === "pr-new") { S.modal = modalProduct(null); render(); return; }
+    if (act === "pr-open") {
+      var pp = PRODUCTS.filter(function (x) { return x.code === t.getAttribute("data-code"); })[0];
+      S.modal = modalProduct(pp); render(); return;
+    }
+    if (act === "pr-save") {
+      var pc = val("p_code");
+      if (!pc) { toast("Product code is required."); return; }
+      t.disabled = true; t.textContent = "Saving...";
+      api("catalogSave", { product: {
+        code: pc, desc: val("p_desc"), family: val("p_fam"), category: val("p_cat"),
+        unit: val("p_unit"), price: val("p_price"), masterBrand: val("p_mb"),
+        subBrand: "", hsn: "", pic: val("p_pic")
+      } }).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Save failed."); return; }
+        S.modal = null;
+        toast(r.created ? "Product added." : "Product updated.");
+        loadCatalog().then(function () { render(); });
+      });
+      return;
+    }
+    if (act === "pr-del") {
+      var code = t.getAttribute("data-code");
+      if (!window.confirm("Remove " + code + " from the master price list?")) return;
+      api("catalogDelete", { code: code }).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Delete failed."); return; }
+        toast("Removed from catalogue.");
+        loadCatalog().then(function () { render(); });
+      });
+      return;
+    }
 
     if (act === "cl-loc") { S.q = t.getAttribute("data-loc"); render(); return; }
     if (act === "cl-new") { S.modal = modalClient(null); render(); return; }
@@ -1428,6 +1588,13 @@
 
   document.addEventListener("change", function (e) {
     var t = e.target;
+    if (t.classList && t.classList.contains("bm")) {
+      var m = S.data.brandmap.filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
+      if (!m) return;
+      m.brand = t.value;
+      save("brandmap", m).then(function (r) { if (r) toast(m.catalogValue + " -> " + (m.brand || "unmapped")); });
+      return;
+    }
     if (t.classList && t.classList.contains("qz-q") && S.qz) {
       var code = t.getAttribute("data-code");
       var q = Number(t.value) || 0;
