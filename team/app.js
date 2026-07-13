@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "1.6";
+  var APP_VERSION = "1.7";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -68,7 +68,8 @@
   function val(id) { var e = el(id); return e ? String(e.value || "").trim() : ""; }
   function today() { return new Date().toISOString().slice(0, 10); }
   function dstr(d) { return d ? String(d).slice(0, 10) : ""; }
-  function money(n) { return "Rs " + (Number(n) || 0).toLocaleString("en-IN"); }
+  function money(n) { return "\u20B9" + (Number(n) || 0).toLocaleString("en-IN"); }
+  function moneyAscii(n) { return "Rs. " + (Number(n) || 0).toLocaleString("en-IN"); }
 
   function toast(msg) {
     var t = document.createElement("div");
@@ -79,7 +80,7 @@
 
   var ROLE_TABS = {
     admin:    ["dash","clients","quotes","sites","winloss","followups","challans","commission","service","spares","dues","payroll","products","catalogue","rules"],
-    accounts: ["dash","clients","followups","challans","commission","service","spares","dues","payroll","products"],
+    accounts: ["dash","clients","followups","challans","service","spares","dues","products"],
     godown:   ["dash","challans","products"],
     sales:    ["dash","clients","quotes","sites","winloss","followups","challans","products"],
     service:  ["dash","service","spares","dues","followups","products"]
@@ -633,6 +634,8 @@
         '<br>' + esc(dstr(q.createdAt)) + ' by ' + esc(q.createdBy) + '</div>' +
         '<div class="acts">' +
         '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:7px 10px;font-size:13px">' + opts(QSTATUS, q.status) + '</select>' +
+        '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '">PDF</button>' +
+        '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Send</button>' +
         '<button class="btn sm ghost" data-act="qz-revise" data-id="' + esc(q.id) + '">Revise</button></div></div>';
     });
     return h;
@@ -818,6 +821,95 @@
       '<label>Picture URL</label><input id="p_pic" value="' + esc(p.pic) + '"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="pr-save">Save product</button></div>';
+  }
+
+  /* Quotation PDF.
+     Discounted items first, deepest discount at the top. Items with no discount go
+     into their own section at the bottom showing ONLY the net price - no list price,
+     no discount column, because there is nothing to compare against. */
+  function quotePdf(q) {
+    var items = [];
+    try { items = JSON.parse(q.items || "[]"); } catch (e) {}
+    var bd = Number(q.discountPct) || 0;
+    var rows = items.map(function (i) {
+      var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? bd : Number(i.disc);
+      d = Number(d) || 0;
+      var gross = i.qty * i.price;
+      var net = Math.round(gross * (1 - d / 100));
+      return { desc: i.desc, code: i.code, qty: i.qty, price: i.price, disc: d, net: net };
+    });
+    var disc = rows.filter(function (r) { return r.disc > 0; }).sort(function (a, b) { return b.disc - a.disc; });
+    var flat = rows.filter(function (r) { return r.disc <= 0; });
+
+    var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+    var W = 210, y = 0;
+    doc.setFillColor(15, 118, 110); doc.rect(0, 0, W, 26, "F");
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+    doc.text("ENERGY WORLD", 14, 12);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+    doc.text("Save Energy, Money and Earth", 14, 18);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+    doc.text("QUOTATION", W - 14, 14, { align: "right" });
+
+    doc.setTextColor(15, 23, 42); y = 38;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+    doc.text("Quote No: " + q.quoteNo + (Number(q.version) > 1 ? "  (rev " + q.version + ")" : ""), 14, y);
+    doc.text("Date: " + today(), W - 14, y, { align: "right" });
+    y += 7;
+    doc.setFont("helvetica", "normal");
+    doc.text("Client: " + (q.client || "-"), 14, y);
+    doc.text("Brand: " + (q.brand || "-"), W - 14, y, { align: "right" });
+    y += 10;
+
+    var line = function (r, showList) {
+      if (y > 258) { doc.addPage(); y = 22; }
+      doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+      doc.text(String(r.desc).slice(0, 46), 15, y);
+      doc.text(String(r.qty), 118, y, { align: "right" });
+      if (showList) {
+        doc.text(String(r.price), 140, y, { align: "right" });
+        doc.text(r.disc + "%", 160, y, { align: "right" });
+      }
+      doc.text(String(r.net), W - 15, y, { align: "right" });
+      y += 6;
+    };
+
+    if (disc.length) {
+      doc.setFillColor(241, 245, 249); doc.rect(14, y - 5, W - 28, 8, "F");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+      doc.text("Item", 15, y); doc.text("Qty", 118, y, { align: "right" });
+      doc.text("List", 140, y, { align: "right" }); doc.text("Disc", 160, y, { align: "right" });
+      doc.text("Net (Rs.)", W - 15, y, { align: "right" });
+      y += 8;
+      disc.forEach(function (r) { line(r, true); });
+      y += 3;
+    }
+
+    if (flat.length) {
+      if (y > 240) { doc.addPage(); y = 22; }
+      y += 3;
+      doc.setFillColor(241, 245, 249); doc.rect(14, y - 5, W - 28, 8, "F");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+      doc.text("Net price items", 15, y);
+      doc.text("Qty", 118, y, { align: "right" });
+      doc.text("Net (Rs.)", W - 15, y, { align: "right" });
+      y += 8;
+      flat.forEach(function (r) { line(r, false); });
+      y += 3;
+    }
+
+    doc.setDrawColor(226, 232, 240); doc.line(14, y, W - 14, y); y += 7;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+    doc.text("Sub total", 150, y, { align: "right" }); doc.text(moneyAscii(q.net).replace("Rs. ", ""), W - 15, y, { align: "right" }); y += 6;
+    doc.text("GST 18%", 150, y, { align: "right" }); doc.text(String(q.gstAmt), W - 15, y, { align: "right" }); y += 7;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11);
+    doc.text("TOTAL (Rs.)", 150, y, { align: "right" }); doc.text(String(q.total), W - 15, y, { align: "right" });
+
+    y += 16;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(100, 116, 139);
+    doc.text("Prices in INR. GST extra as shown. Subject to stock at time of order.", 14, y);
+    doc.text("Prepared by: " + (q.createdBy || ""), 14, y + 5);
+    return doc;
   }
 
   function renderLogin(err) {
@@ -1173,10 +1265,9 @@
 
     var GROUPS = [
       ["Sell", ["dash", "clients", "quotes", "sites", "winloss", "followups"]],
-      ["Deliver", ["challans", "products"]],
-      ["Money", ["commission", "dues", "payroll"]],
+      ["Deliver", ["challans", "products", "dues"]],
       ["Service", ["service", "spares"]],
-      ["Admin", ["catalogue", "rules"]]
+      ["Admin", ["commission", "payroll", "catalogue", "rules"]]
     ];
     var label = {};
     tabs.forEach(function (t) { label[t[0]] = t[1]; });
@@ -1185,9 +1276,9 @@
     GROUPS.forEach(function (grp) {
       var items = grp[1].filter(function (k) { return canSee(k) && label[k]; });
       if (!items.length) return;
-      navHtml += '<div class="grp">' + grp[0] + '</div>' + items.map(function (k) {
+      navHtml += '<div class="navgrp"><span class="grp">' + grp[0] + '</span>' + items.map(function (k) {
         return '<button data-act="tab" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + label[k] + '</button>';
-      }).join("");
+      }).join("") + '</div>';
     });
 
     h += '<div class="scrim" data-act="nav-close"></div><div class="shell"><nav>' + navHtml + '</nav>';
@@ -1322,6 +1413,23 @@
         if (S.qz && S.qz.step === 1) { S.qz.client = r.name; S.qz.clientObj = r; }
         render();
       });
+      return;
+    }
+    if (act === "q-pdf") {
+      var qd = S.data.quotes.filter(function (x) { return x.id === id; })[0];
+      if (!qd) return;
+      quotePdf(qd).save(String(qd.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf");
+      return;
+    }
+    if (act === "q-tg") {
+      var qt = S.data.quotes.filter(function (x) { return x.id === id; })[0];
+      if (!qt) return;
+      t.disabled = true; t.textContent = "Sending...";
+      var b64 = quotePdf(qt).output("datauristring").split(",")[1];
+      api("tgSend", { bot: "TG_QUOTES", pdfBase64: b64,
+        filename: String(qt.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf",
+        caption: "<b>Quotation " + qt.quoteNo + "</b>\n" + qt.client + "\n" + qt.brand + "\nRs. " + qt.total + "\nBy " + qt.createdBy
+      }).then(function (r) { toast(r && r.ok ? "Quote sent to Telegram." : "Send failed."); render(); });
       return;
     }
     if (act === "qz-new") { S.qz = { step: 1, location: "", client: "", items: [], brandDisc: 0 }; S.tab = "quotes"; render(); return; }
