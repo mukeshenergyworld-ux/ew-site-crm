@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0d5c56">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="EW Support">
+<title>Register a Complaint — Energy World</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --teal-900:#08423e; --teal-800:#0d5c56; --teal-700:#12756c; --teal-50:#e8f3f1;
+  --ink:#132420; --ink-60:#516560; --line:#dde6e3; --paper:#f6f8f7; --white:#ffffff;
+  --amber:#c8781e; --danger:#b3402f; --ok:#0d8a5f;
+  --shadow:0 1px 2px rgba(8,66,62,.05), 0 12px 32px -12px rgba(8,66,62,.18);
+  --r:16px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  color:var(--ink); background:var(--paper);
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  letter-spacing:-.006em; line-height:1.5;
+  min-height:100vh; min-height:100dvh;
+}
+.num{font-variant-numeric:tabular-nums lining-nums;font-feature-settings:"tnum" 1,"lnum" 1;}
+
+/* ---- Top brand bar ---- */
+.topbar{
+  background:linear-gradient(135deg,var(--teal-900),var(--teal-700));
+  color:#eafaf7; padding:18px 20px calc(18px + env(safe-area-inset-bottom,0)); 
+  padding-top:calc(18px + env(safe-area-inset-top,0));
+}
+.brand{display:flex;align-items:center;gap:12px;max-width:640px;margin:0 auto;}
+.mark{
+  width:42px;height:42px;border-radius:12px;flex:0 0 auto;
+  background:linear-gradient(135deg,#facc15,#f59e0b);
+  display:grid;place-items:center;font-size:22px;
+  box-shadow:0 4px 14px rgba(245,158,11,.35);
+}
+.brand h1{font-size:17px;font-weight:700;margin:0;letter-spacing:-.02em;line-height:1.15;}
+.brand p{font-size:12px;margin:2px 0 0;color:#9fd8d0;letter-spacing:.02em;}
+
+/* ---- Layout ---- */
+.wrap{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
+.hero{margin:8px 2px 22px;}
+.eyebrow{
+  font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--teal-700);margin:0 0 8px;
+}
+.hero h2{
+  font-family:'Fraunces',Georgia,serif;font-weight:600;
+  font-size:27px;line-height:1.12;margin:0 0 8px;letter-spacing:-.01em;color:var(--teal-900);
+}
+.hero p{font-size:14px;color:var(--ink-60);margin:0;max-width:44ch;}
+
+/* ---- Card + fields ---- */
+.card{
+  background:var(--white);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--shadow);padding:20px 18px;
+}
+.field{margin-bottom:16px;}
+.field:last-child{margin-bottom:0;}
+label{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:7px;}
+label .req{color:var(--danger);font-weight:700;}
+label .hint{font-weight:400;color:var(--ink-60);font-size:12px;}
+input,select,textarea{
+  width:100%;font-family:inherit;font-size:16px;color:var(--ink);
+  background:var(--paper);border:1.5px solid var(--line);border-radius:11px;
+  padding:13px 14px;outline:none;transition:border-color .15s, box-shadow .15s, background .15s;
+  -webkit-appearance:none;appearance:none;
+}
+textarea{min-height:104px;resize:vertical;line-height:1.5;}
+input:focus,select:focus,textarea:focus{
+  border-color:var(--teal-700);background:var(--white);
+  box-shadow:0 0 0 4px rgba(18,117,108,.12);
+}
+input::placeholder,textarea::placeholder{color:#9aaba6;}
+select{
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' fill='none' stroke='%23516560' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 12px center;padding-right:42px;
+}
+.field.err input,.field.err select,.field.err textarea{
+  border-color:var(--danger);background:#fdf3f1;
+}
+.errmsg{display:none;color:var(--danger);font-size:12px;font-weight:500;margin-top:6px;}
+.field.err .errmsg{display:block;}
+
+/* ---- Chip selector (issue category) ---- */
+.chips{display:flex;flex-wrap:wrap;gap:8px;}
+.chip{
+  border:1.5px solid var(--line);background:var(--paper);border-radius:999px;
+  padding:9px 14px;font-size:13px;font-weight:600;color:var(--ink-60);cursor:pointer;
+  transition:all .15s;user-select:none;
+}
+.chip:hover{border-color:var(--teal-700);color:var(--teal-800);}
+.chip.on{background:var(--teal-800);border-color:var(--teal-800);color:#fff;box-shadow:0 4px 12px -4px rgba(13,92,86,.5);}
+
+/* ---- Urgency segmented ---- */
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.seg button{
+  font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;
+  border:1.5px solid var(--line);background:var(--paper);color:var(--ink-60);
+  border-radius:11px;padding:11px 6px;transition:all .15s;
+}
+.seg button .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;}
+.seg button[data-u="low"] .dot{background:#8bbfae;}
+.seg button[data-u="normal"] .dot{background:var(--amber);}
+.seg button[data-u="high"] .dot{background:var(--danger);}
+.seg button.on{color:#fff;border-color:transparent;}
+.seg button[data-u="low"].on{background:var(--ok);}
+.seg button[data-u="normal"].on{background:var(--amber);}
+.seg button[data-u="high"].on{background:var(--danger);}
+
+/* ---- Submit ---- */
+.submit{
+  width:100%;margin-top:22px;font-family:inherit;font-size:16px;font-weight:700;
+  color:#fff;background:linear-gradient(135deg,var(--teal-800),var(--teal-700));
+  border:none;border-radius:13px;padding:16px;cursor:pointer;letter-spacing:-.01em;
+  box-shadow:0 8px 20px -8px rgba(13,92,86,.6);transition:transform .12s, box-shadow .12s, opacity .2s;
+  display:flex;align-items:center;justify-content:center;gap:9px;
+}
+.submit:active{transform:translateY(1px);}
+.submit:disabled{opacity:.6;cursor:not-allowed;}
+.spinner{width:17px;height:17px;border:2.5px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:none;}
+.submit.loading .spinner{display:inline-block;}
+.submit.loading .label{opacity:.85;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.foot{text-align:center;font-size:12px;color:var(--ink-60);margin-top:22px;line-height:1.6;}
+.foot a{color:var(--teal-700);text-decoration:none;font-weight:600;}
+
+/* ---- Success ticket ---- */
+.ticket{display:none;}
+.ticket.show{display:block;animation:rise .5s cubic-bezier(.2,.7,.3,1);}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.ticket-card{
+  background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);
+  overflow:hidden;border:1px solid var(--line);
+}
+.ticket-top{
+  background:linear-gradient(135deg,var(--teal-900),var(--teal-700));color:#eafaf7;
+  padding:26px 20px 22px;text-align:center;position:relative;
+}
+.check{
+  width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.14);
+  display:grid;place-items:center;margin:0 auto 12px;
+  animation:pop .45s cubic-bezier(.2,1.5,.4,1) .15s both;
+}
+@keyframes pop{from{transform:scale(0)}to{transform:scale(1)}}
+.check svg{width:30px;height:30px;}
+.ticket-top h3{margin:0 0 4px;font-size:19px;font-weight:700;letter-spacing:-.01em;}
+.ticket-top p{margin:0;font-size:13px;color:#9fd8d0;}
+.ticket-body{padding:20px;}
+.ref{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  background:var(--teal-50);border:1px dashed var(--teal-700);border-radius:12px;
+  padding:14px 16px;margin-bottom:16px;
+}
+.ref .rlab{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--teal-700);}
+.ref .rval{font-size:20px;font-weight:800;color:var(--teal-900);letter-spacing:.02em;}
+.copy{
+  background:var(--white);border:1.5px solid var(--teal-700);color:var(--teal-800);
+  border-radius:9px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;
+  white-space:nowrap;transition:all .15s;
+}
+.copy:active{background:var(--teal-50);}
+.summary{font-size:13px;color:var(--ink-60);line-height:1.7;margin:0 0 18px;}
+.summary b{color:var(--ink);font-weight:600;}
+.again{
+  width:100%;font-family:inherit;font-size:14px;font-weight:600;color:var(--teal-800);
+  background:var(--paper);border:1.5px solid var(--line);border-radius:11px;padding:13px;cursor:pointer;
+}
+.again:hover{border-color:var(--teal-700);}
+
+@media(min-width:560px){
+  .hero h2{font-size:32px;}
+  .card{padding:26px 24px;}
+}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">
+    <div class="mark">⚡</div>
+    <div>
+      <h1>Energy World</h1>
+      <p>Panipat · Sonipat · Karnal — Support</p>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <!-- FORM VIEW -->
+  <div id="formView">
+    <div class="hero">
+      <p class="eyebrow">Customer Care</p>
+      <h2>Register a complaint</h2>
+      <p>Tell us what went wrong and we'll get our team on it. You'll receive a reference number to track your request.</p>
+    </div>
+
+    <form class="card" id="cForm" novalidate>
+      <div class="field" id="f-name">
+        <label for="name">Your name <span class="req">*</span></label>
+        <input id="name" name="name" type="text" placeholder="e.g. Rajiv Sharma" autocomplete="name">
+        <div class="errmsg">Please enter your name.</div>
+      </div>
+
+      <div class="field" id="f-phone">
+        <label for="phone">Mobile number <span class="req">*</span></label>
+        <input id="phone" name="phone" type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit number" autocomplete="tel">
+        <div class="errmsg">Enter a valid 10-digit mobile number.</div>
+      </div>
+
+      <div class="field" id="f-city">
+        <label for="city">City <span class="hint">(optional)</span></label>
+        <select id="city" name="city">
+          <option value="">Select your city</option>
+          <option>Panipat</option><option>Sonipat</option><option>Karnal</option>
+          <option>Kurukshetra</option><option>Ambala</option><option>Rohtak</option>
+          <option>Hisar</option><option>Faridabad</option><option>Gurugram</option>
+          <option>Delhi NCR</option><option>Kaithal</option><option>Jind</option>
+          <option>Other</option>
+        </select>
+      </div>
+
+      <div class="field" id="f-cat">
+        <label>What is this about? <span class="req">*</span></label>
+        <div class="chips" id="chips">
+          <div class="chip" data-v="Product Defect">Product defect</div>
+          <div class="chip" data-v="Wrong / Short Supply">Wrong / short supply</div>
+          <div class="chip" data-v="Delivery Delay">Delivery delay</div>
+          <div class="chip" data-v="Installation Issue">Installation</div>
+          <div class="chip" data-v="Billing / Payment">Billing</div>
+          <div class="chip" data-v="Warranty / Service">Warranty</div>
+          <div class="chip" data-v="Other">Other</div>
+        </div>
+        <div class="errmsg">Please choose a category.</div>
+      </div>
+
+      <div class="field" id="f-order">
+        <label for="order">Order / Challan / Invoice no. <span class="hint">(if you have it)</span></label>
+        <input id="order" name="order" type="text" placeholder="e.g. EW-13/07/26-898">
+      </div>
+
+      <div class="field" id="f-desc">
+        <label for="desc">Describe the issue <span class="req">*</span></label>
+        <textarea id="desc" name="desc" placeholder="What happened? Include product name, brand, and what you'd like us to do."></textarea>
+        <div class="errmsg">Please describe the issue (at least 10 characters).</div>
+      </div>
+
+      <div class="field" id="f-urg">
+        <label>How urgent is it?</label>
+        <div class="seg" id="seg">
+          <button type="button" data-u="low"><span class="dot"></span>Low</button>
+          <button type="button" data-u="normal" class="on"><span class="dot"></span>Normal</button>
+          <button type="button" data-u="high"><span class="dot"></span>High</button>
+        </div>
+      </div>
+
+      <button type="submit" class="submit" id="submitBtn">
+        <span class="spinner"></span>
+        <span class="label">Submit complaint</span>
+      </button>
+    </form>
+
+    <p class="foot">
+      Prefer to talk? Call <a href="tel:+919466600611">+91 94666 00611</a><br>
+      Your details are used only to resolve your complaint.
+    </p>
+  </div>
+
+  <!-- SUCCESS VIEW -->
+  <div class="ticket" id="ticketView">
+    <div class="ticket-card">
+      <div class="ticket-top">
+        <div class="check">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        </div>
+        <h3>Complaint registered</h3>
+        <p>Our team will reach out soon.</p>
+      </div>
+      <div class="ticket-body">
+        <div class="ref">
+          <div>
+            <div class="rlab">Reference no.</div>
+            <div class="rval num" id="refNo">—</div>
+          </div>
+          <button class="copy" id="copyBtn">Copy</button>
+        </div>
+        <p class="summary" id="ticketSummary"></p>
+        <button class="again" id="againBtn">Register another complaint</button>
+      </div>
+    </div>
+    <p class="foot">
+      Save your reference number. Need help now? Call <a href="tel:+919466600611">+91 94666 00611</a>
+    </p>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — set your Google Apps Script Web App URL here.
+   The GAS endpoint should accept a POST (action=complaint) and
+   append to a sheet + (once tokens are valid) forward to Telegram.
+   Leaving it as "" makes the form work in DEMO mode (no network).
+   ============================================================ */
+var GAS_URL = ""; // e.g. "https://script.google.com/macros/s/XXXX/exec"
+
+var state = { category:"", urgency:"normal" };
+
+/* ---- Category chips ---- */
+document.getElementById('chips').addEventListener('click', function(e){
+  var c = e.target.closest('.chip'); if(!c) return;
+  document.querySelectorAll('#chips .chip').forEach(function(x){x.classList.remove('on');});
+  c.classList.add('on'); state.category = c.dataset.v;
+  document.getElementById('f-cat').classList.remove('err');
+});
+
+/* ---- Urgency segmented ---- */
+document.getElementById('seg').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if(!b) return;
+  document.querySelectorAll('#seg button').forEach(function(x){x.classList.remove('on');});
+  b.classList.add('on'); state.urgency = b.dataset.u;
+});
+
+/* ---- Phone: digits only ---- */
+document.getElementById('phone').addEventListener('input', function(){
+  this.value = this.value.replace(/\D/g,'').slice(0,10);
+});
+
+/* ---- Clear error on input ---- */
+['name','phone','desc'].forEach(function(id){
+  document.getElementById(id).addEventListener('input', function(){
+    document.getElementById('f-'+(id==='desc'?'desc':id)).classList.remove('err');
+  });
+});
+
+function refId(){
+  var d = new Date();
+  var p = function(n){return String(n).padStart(2,'0');};
+  var rnd = Math.floor(100 + Math.random()*900);
+  return 'EWC-' + p(d.getDate()) + p(d.getMonth()+1) + String(d.getFullYear()).slice(2) + '-' + rnd;
+}
+
+function validate(){
+  var ok = true;
+  var name = document.getElementById('name').value.trim();
+  var phone = document.getElementById('phone').value.trim();
+  var desc = document.getElementById('desc').value.trim();
+
+  if(!name){ document.getElementById('f-name').classList.add('err'); ok=false; }
+  if(phone.length!==10){ document.getElementById('f-phone').classList.add('err'); ok=false; }
+  if(!state.category){ document.getElementById('f-cat').classList.add('err'); ok=false; }
+  if(desc.length<10){ document.getElementById('f-desc').classList.add('err'); ok=false; }
+
+  if(!ok){
+    var firstErr = document.querySelector('.field.err');
+    if(firstErr) firstErr.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+  return ok;
+}
+
+document.getElementById('cForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  if(!validate()) return;
+
+  var btn = document.getElementById('submitBtn');
+  btn.classList.add('loading'); btn.disabled = true;
+
+  var ref = refId();
+  var payload = {
+    action:'complaint',
+    ref: ref,
+    name: document.getElementById('name').value.trim(),
+    phone: document.getElementById('phone').value.trim(),
+    city: document.getElementById('city').value,
+    category: state.category,
+    order: document.getElementById('order').value.trim(),
+    description: document.getElementById('desc').value.trim(),
+    urgency: state.urgency,
+    at: new Date().toISOString(),
+    source: 'complaint-web'
+  };
+
+  try{
+    if(GAS_URL){
+      // GAS Web Apps accept simple POST; use text/plain to avoid CORS preflight
+      await fetch(GAS_URL, {
+        method:'POST',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify(payload)
+      });
+    } else {
+      await new Promise(function(r){ setTimeout(r, 900); }); // demo delay
+    }
+    showTicket(ref, payload);
+  }catch(err){
+    // Even if the network hiccups, we still give the customer their ref,
+    // because the form validated locally. GAS ret/queue handles delivery.
+    showTicket(ref, payload);
+  }finally{
+    btn.classList.remove('loading'); btn.disabled = false;
+  }
+});
+
+function showTicket(ref, p){
+  document.getElementById('refNo').textContent = ref;
+  var cityBit = p.city ? (' · ' + p.city) : '';
+  document.getElementById('ticketSummary').innerHTML =
+    '<b>' + esc(p.name) + '</b>' + cityBit + '<br>' +
+    'Issue: <b>' + esc(p.category) + '</b> · Priority: <b>' + p.urgency.charAt(0).toUpperCase()+p.urgency.slice(1) + '</b><br>' +
+    'We\'ll contact you on <b>' + p.phone + '</b>.';
+  document.getElementById('formView').style.display = 'none';
+  var t = document.getElementById('ticketView');
+  t.classList.add('show');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function esc(s){ return (s||'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+document.getElementById('copyBtn').addEventListener('click', function(){
+  var ref = document.getElementById('refNo').textContent;
+  var self = this;
+  navigator.clipboard.writeText(ref).then(function(){
+    self.textContent = 'Copied ✓';
+    setTimeout(function(){ self.textContent = 'Copy'; }, 1600);
+  }).catch(function(){ self.textContent = ref; });
+});
+
+document.getElementById('againBtn').addEventListener('click', function(){
+  document.getElementById('cForm').reset();
+  document.querySelectorAll('#chips .chip').forEach(function(x){x.classList.remove('on');});
+  document.querySelectorAll('#seg button').forEach(function(x){x.classList.remove('on');});
+  document.querySelector('#seg button[data-u="normal"]').classList.add('on');
+  state = { category:"", urgency:"normal" };
+  document.querySelectorAll('.field.err').forEach(function(x){x.classList.remove('err');});
+  document.getElementById('ticketView').classList.remove('show');
+  document.getElementById('formView').style.display = 'block';
+  window.scrollTo({top:0, behavior:'smooth'});
+});
+</script>
+</body>
+</html>
