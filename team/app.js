@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "1.2";
+  var APP_VERSION = "1.3";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -41,7 +41,7 @@
   var STATUSES = ["Hot", "Warm", "Cold", "Won", "Lost"];
 
   var S = {
-    pass: "", user: "", tab: "dash", q: "", busy: false, modal: null,
+    pin: "", user: "", role: "", pinSet: "", tab: "dash", q: "", busy: false, modal: null,
     siteId: "",
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [] }
   };
@@ -63,8 +63,20 @@
     setTimeout(function () { t.remove(); }, 2600);
   }
 
+  var ROLE_TABS = {
+    admin:    ["dash","sites","winloss","customers","followups","challans","commission","products","rules"],
+    accounts: ["dash","customers","followups","challans","commission","products"],
+    godown:   ["dash","sites","challans","products"],
+    sales:    ["dash","sites","winloss","customers","followups","challans","products"],
+    service:  ["dash","sites","followups","products"]
+  };
+  function canSee(tab) {
+    var t = ROLE_TABS[S.role] || ["dash"];
+    return t.indexOf(tab) >= 0 || tab === "matrix";
+  }
+
   function api(action, extra) {
-    var body = Object.assign({ action: action, pass: S.pass }, extra || {});
+    var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
     return fetch(GAS, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -324,12 +336,12 @@
       '<div class="login-wrap"><div class="login">' +
       '<img class="logo" src="' + LOGO + '" alt="Energy World" onerror="this.style.display=\'none\'"/>' +
       '<h1>Energy World - Team</h1>' +
-      '<p>Sign in to add customers, log follow-ups and raise challans.</p>' +
+      '<p>Your own name and your own PIN. Never share them.</p>' +
       (err ? '<div class="pill due" style="display:block;text-align:center;padding:8px">' + esc(err) + '</div>' : '') +
-      '<label for="lp">Team passcode</label>' +
-      '<input id="lp" type="password" autocomplete="current-password" placeholder="Enter passcode"/>' +
       '<label for="ln">Your name</label>' +
-      '<input id="ln" placeholder="e.g. Mukesh" autocomplete="name"/>' +
+      '<input id="ln" placeholder="e.g. Vivek Verma" autocomplete="username"/>' +
+      '<label for="lp">Your PIN</label>' +
+      '<input id="lp" type="password" inputmode="numeric" autocomplete="current-password" placeholder="4-digit PIN"/>' +
       '<div style="height:18px"></div>' +
       '<button class="btn full" data-act="login">Sign in</button>' +
       '<div class="foot-note">v' + APP_VERSION + ' - updates apply automatically on each login.</div>' +
@@ -341,22 +353,37 @@
   }
 
   function doLogin() {
-    var pass = val("lp"), name = val("ln");
-    if (!pass) { renderLogin("Enter the passcode."); return; }
+    var pin = val("lp"), name = val("ln");
     if (!name) { renderLogin("Enter your name."); return; }
-    S.pass = pass;
+    if (!pin) { renderLogin("Enter your PIN."); return; }
+    S.user = name; S.pin = pin;
     api("teamAuth").then(function (r) {
-      if (!r || !r.ok) { S.pass = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
-      S.user = name;
-      try { localStorage.setItem(STORE, JSON.stringify({ pass: pass, user: name })); } catch (e) {}
+      if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
+      S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
+      try { localStorage.setItem(STORE, JSON.stringify({ pin: pin, user: S.user })); } catch (e) {}
+      if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return; }
+      S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
       loadCatalog();
       refresh();
-    }).catch(function () { S.pass = ""; renderLogin("Network error. Try again."); });
+    }).catch(function () { S.pin = ""; renderLogin("Network error. Try again."); });
+  }
+
+  function renderPinChange(err) {
+    document.getElementById("root").innerHTML =
+      '<div class="login-wrap"><div class="login">' +
+      '<h1>Set your own PIN</h1>' +
+      '<p>You are signed in with a temporary PIN. Choose a private one before you continue - nobody else should know it.</p>' +
+      (err ? '<div class="pill due" style="display:block;text-align:center;padding:8px">' + esc(err) + '</div>' : '') +
+      '<label>New PIN (4-8 digits)</label><input id="np1" type="password" inputmode="numeric"/>' +
+      '<label>Repeat new PIN</label><input id="np2" type="password" inputmode="numeric"/>' +
+      '<div style="height:18px"></div>' +
+      '<button class="btn full" data-act="pin-save">Save PIN</button>' +
+      '<div class="foot-note">Signed in as ' + esc(S.user) + '</div></div></div>';
   }
 
   function logout() {
     try { localStorage.removeItem(STORE); } catch (e) {}
-    S.pass = ""; S.user = "";
+    S.pin = ""; S.user = ""; S.role = "";
     renderLogin();
   }
 
@@ -642,17 +669,19 @@
   }
 
   function render() {
-    if (!S.pass) { renderLogin(); return; }
+    if (!S.pin) { renderLogin(); return; }
     var views = { dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
     var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["commission", "Commission"], ["products", "Products"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<img src="' + LOGO + '" alt="EW" onerror="this.style.display=\'none\'"/>' +
       '<div><b style="font-size:15px">Energy World</b><div style="font-size:12px;color:#64748b">Team workspace</div></div>' +
-      '<div class="who"><b>' + esc(S.user) + '</b>' +
-      '<button class="btn sm ghost" data-act="logout" style="margin-top:4px">Sign out</button></div></div>';
+      '<div class="who"><b>' + esc(S.user) + '</b><span class="pill teal">' + esc(S.role) + '</span>' +
+      '<div style="margin-top:4px;display:flex;gap:4px;justify-content:flex-end">' +
+      '<button class="btn sm ghost" data-act="pin-change">PIN</button>' +
+      '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
-    h += '<nav>' + tabs.map(function (t) {
+    h += '<nav>' + tabs.filter(function (t) { return canSee(t[0]); }).map(function (t) {
       return '<button data-act="tab" data-tab="' + t[0] + '" class="' + (S.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>';
     }).join("") + '</nav>';
 
@@ -690,6 +719,21 @@
     var id = t.getAttribute("data-id");
 
     if (act === "login") { doLogin(); return; }
+    if (act === "pin-change") { renderPinChange(); return; }
+    if (act === "pin-save") {
+      var p1 = val("np1"), p2 = val("np2");
+      if (!/^[0-9]{4,8}$/.test(p1)) { renderPinChange("PIN must be 4-8 digits."); return; }
+      if (p1 !== p2) { renderPinChange("The two PINs do not match."); return; }
+      api("teamSetPin", { newPin: p1 }).then(function (r) {
+        if (!r || !r.ok) { renderPinChange((r && r.error) || "Could not set PIN."); return; }
+        S.pin = p1; S.pinSet = "Y";
+        try { localStorage.setItem(STORE, JSON.stringify({ pin: p1, user: S.user })); } catch (e) {}
+        toast("PIN updated.");
+        S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
+        loadCatalog(); refresh();
+      });
+      return;
+    }
     if (act === "logout") { logout(); return; }
     if (act === "mask" && e.target === t) { S.modal = null; render(); return; }
     if (act === "close") { S.modal = null; render(); return; }
@@ -848,12 +892,16 @@
   (function boot() {
     var sess = null;
     try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) {}
-    if (sess && sess.pass && sess.user) {
-      S.pass = sess.pass; S.user = sess.user;
+    if (sess && sess.pin && sess.user) {
+      S.pin = sess.pin; S.user = sess.user;
       api("teamAuth").then(function (r) {
-        if (r && r.ok) { loadCatalog(); refresh(); }
-        else { S.pass = ""; renderLogin(); }
-      }).catch(function () { S.pass = ""; renderLogin("Network error."); });
+        if (r && r.ok) {
+          S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
+          if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return; }
+          S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
+          loadCatalog(); refresh();
+        } else { S.pin = ""; renderLogin(); }
+      }).catch(function () { S.pin = ""; renderLogin("Network error."); });
     } else {
       renderLogin();
     }
