@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "1.4";
+  var APP_VERSION = "1.5";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -37,6 +37,11 @@
     "Flooring / Tiling","Sanitary & CP Fitting","False Ceiling / Painting","Final Fitout / Handover","Post-Handover / AMC"];
   var PSTATUS = ["Not pitched","Pitched","Quoted","Negotiating","Won","Lost","Not applicable"];
 
+  var LOCATIONS = ["Panipat", "Sonipat"];
+  var CLIENT_TYPES = ["Builder", "Architect", "Plumber", "Contractor", "Home owner", "Dealer", "PMC"];
+  var QSTATUS = ["Draft", "Sent", "Negotiating", "Won", "Lost", "Revised"];
+  var GST = 0.18;
+
   var SVC_PRODUCTS = ["Water Softener","Sand Filter","Carbon Filter","RO / Purifier","Heat Pump","Pressure Pump","Other"];
   var SVC_ENGINEERS = ["Manoj","Jaiprakash"];
   var VISIT_TYPES = ["Periodic service","Complaint","Salt delivery","AMC visit","Installation","Repair"];
@@ -50,7 +55,8 @@
     pin: "", user: "", role: "", pinSet: "", tab: "dash", q: "", busy: false, modal: null,
     siteId: "",
     installId: "",
-    data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [] }
+    qz: null,
+    data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [] }
   };
 
   function esc(v) {
@@ -71,10 +77,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","sites","winloss","customers","followups","challans","commission","service","spares","dues","payroll","products","rules"],
-    accounts: ["dash","customers","followups","challans","commission","service","spares","dues","payroll","products"],
-    godown:   ["dash","sites","challans","products"],
-    sales:    ["dash","sites","winloss","customers","followups","challans","products"],
+    admin:    ["dash","clients","quotes","sites","winloss","followups","challans","commission","service","spares","dues","payroll","products","rules"],
+    accounts: ["dash","clients","followups","challans","commission","service","spares","dues","payroll","products"],
+    godown:   ["dash","challans","products"],
+    sales:    ["dash","clients","quotes","sites","winloss","followups","challans","products"],
     service:  ["dash","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -142,6 +148,7 @@
         unit: String(row[5] || "").trim(),
         price: Number(String(row[6] || "0").replace(/[^0-9.]/g, "")) || 0,
         brand: String(row[8] || "").trim(),
+        pic: String(row[10] || "").trim(),
         label: (code ? code + " - " : "") + desc
       });
     }
@@ -514,6 +521,219 @@
       '<button class="btn" data-act="visit-save" data-id="' + esc(inst.id) + '">Save visit</button></div>';
   }
 
+  function clientById(id) { return S.data.clients.filter(function (c) { return c.id === id; })[0] || null; }
+  function clientByName(n) {
+    var t = String(n || "").trim().toLowerCase();
+    return S.data.clients.filter(function (c) { return String(c.name).trim().toLowerCase() === t; })[0] || null;
+  }
+  function clientDiscount(client, brand) {
+    var d = S.data.discounts.filter(function (x) {
+      return String(x.client).toLowerCase() === String(client).toLowerCase() && String(x.brand) === String(brand);
+    })[0];
+    return d ? Number(d.pct) || 0 : 0;
+  }
+  function brandList() {
+    var seen = {}, out = [];
+    PRODUCTS.forEach(function (p) { if (p.brand && !seen[p.brand]) { seen[p.brand] = 1; out.push(p.brand); } });
+    return out.sort();
+  }
+  function familyList(brand) {
+    var seen = {}, out = [];
+    PRODUCTS.forEach(function (p) {
+      if (p.brand === brand && p.family && !seen[p.family]) { seen[p.family] = 1; out.push(p.family); }
+    });
+    return out.sort();
+  }
+
+  function viewClients() {
+    var loc = S.q;
+    var list = S.data.clients.filter(function (c) { return !loc || c.location === loc; });
+    var h = '<div class="row">' + LOCATIONS.map(function (l) {
+      return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
+    }).join("") + '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' +
+      '<div class="grow"></div><button class="btn" data-act="cl-new">+ New client</button></div>';
+    if (!list.length) h += '<div class="empty">No clients here yet.</div>';
+    list.forEach(function (c) {
+      var partners = [c.architect && "Arch: " + c.architect, c.plumber && "Plumber: " + c.plumber,
+        c.builder && "Builder: " + c.builder, c.pmc && "PMC: " + c.pmc].filter(Boolean);
+      h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
+        (c.type ? ' <span class="pill">' + esc(c.type) + '</span>' : "") + '</h3>' +
+        '<div class="meta">' + (c.mobile ? esc(c.mobile) + '<br>' : "") + esc(c.address || "") +
+        (partners.length ? '<br>' + esc(partners.join(" - ")) : "") + '</div>' +
+        '<div class="acts">' + (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
+        '<button class="btn sm" data-act="qz-for" data-id="' + esc(c.id) + '">Quote</button>' +
+        '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>';
+    });
+    return h;
+  }
+
+  function modalClient(c) {
+    c = c || {};
+    var names = function (role) {
+      var seen = {}, out = [];
+      S.data.clients.forEach(function (x) { if (x[role] && !seen[x[role]]) { seen[x[role]] = 1; out.push(x[role]); } });
+      S.data.associates.forEach(function (a) { if (a.name && !seen[a.name]) { seen[a.name] = 1; out.push(a.name); } });
+      return out;
+    };
+    var dl = function (id, role) {
+      return '<datalist id="' + id + '">' + names(role).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>';
+    };
+    return '<h2>' + (c.id ? "Edit client" : "Register new client") + '</h2>' +
+      '<p class="sub">Partners preset here flow into every quote, challan and incentive.</p>' +
+      '<label>Client name</label><input id="c_name" value="' + esc(c.name) + '"/>' +
+      '<div class="grid2"><div><label>Location</label><select id="c_loc">' + opts(LOCATIONS, c.location || LOCATIONS[0]) + '</select></div>' +
+      '<div><label>Type</label><select id="c_type">' + opts(CLIENT_TYPES, c.type || "Home owner") + '</select></div></div>' +
+      '<div class="grid2"><div><label>Mobile</label><input id="c_mob" inputmode="numeric" value="' + esc(c.mobile) + '"/></div>' +
+      '<div><label>Short name (challan no.)</label><input id="c_short" value="' + esc(c.shortName) + '" placeholder="SHARMA"/></div></div>' +
+      '<label>Address</label><input id="c_addr" value="' + esc(c.address) + '"/>' +
+      '<div class="grid2"><div><label>Architect</label><input id="c_arch" list="dl_arch" value="' + esc(c.architect) + '"/></div>' +
+      '<div><label>Plumber</label><input id="c_plumb" list="dl_plumb" value="' + esc(c.plumber) + '"/></div></div>' +
+      '<div class="grid2"><div><label>Builder</label><input id="c_build" list="dl_build" value="' + esc(c.builder) + '"/></div>' +
+      '<div><label>PMC</label><input id="c_pmc" list="dl_pmc" value="' + esc(c.pmc) + '"/></div></div>' +
+      dl("dl_arch", "architect") + dl("dl_plumb", "plumber") + dl("dl_build", "builder") + dl("dl_pmc", "pmc") +
+      '<label>Notes</label><textarea id="c_notes">' + esc(c.notes) + '</textarea>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="cl-save" data-id="' + esc(c.id || "") + '">Save client</button></div>';
+  }
+
+  function qzTotals() {
+    var gross = 0, net = 0;
+    (S.qz.items || []).forEach(function (i) {
+      var line = i.qty * i.price;
+      var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? S.qz.brandDisc : Number(i.disc);
+      gross += line;
+      net += line * (1 - (Number(d) || 0) / 100);
+    });
+    var gst = net * GST;
+    return { gross: Math.round(gross), net: Math.round(net), gst: Math.round(gst), total: Math.round(net + gst) };
+  }
+
+  function viewQuotes() {
+    if (S.qz) return viewQzWizard();
+    var h = '<div class="row"><div class="grow"></div><button class="btn" data-act="qz-new">+ New quote</button></div>';
+    var list = S.data.quotes.slice().reverse();
+    if (!list.length) h += '<div class="empty">No quotes yet. Every quote is versioned - revising keeps the old one.</div>';
+    list.forEach(function (q) {
+      h += '<div class="card"><h3>' + esc(q.quoteNo) + ' <span class="pill ' + (q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "teal")) + '">' + esc(q.status) + '</span>' +
+        (Number(q.version) > 1 ? ' <span class="pill">v' + esc(q.version) + '</span>' : "") + '</h3>' +
+        '<div class="meta">' + esc(q.client) + ' - ' + esc(q.brand) +
+        '<br>Gross ' + money(q.gross) + ' - disc ' + esc(q.discountPct) + '% - net ' + money(q.net) +
+        '<br><b>Total incl GST: ' + money(q.total) + '</b>' +
+        '<br>' + esc(dstr(q.createdAt)) + ' by ' + esc(q.createdBy) + '</div>' +
+        '<div class="acts">' +
+        '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:7px 10px;font-size:13px">' + opts(QSTATUS, q.status) + '</select>' +
+        '<button class="btn sm ghost" data-act="qz-revise" data-id="' + esc(q.id) + '">Revise</button></div></div>';
+    });
+    return h;
+  }
+
+  function viewQzWizard() {
+    var z = S.qz;
+    var steps = ["Client", "Brand", "Products", "Discount", "Review"];
+    var h = '<div class="row">' + steps.map(function (nm, i) {
+      return '<span class="pill ' + (z.step === i + 1 ? "teal" : "") + '">' + (i + 1) + '. ' + nm + '</span>';
+    }).join("") + '<div class="grow"></div><button class="btn sm ghost" data-act="qz-cancel">Cancel</button></div>';
+
+    if (z.step === 1) {
+      var inLoc = S.data.clients.filter(function (c) { return !z.location || c.location === z.location; });
+      h += '<div class="card"><h3>Where is the client?</h3><div class="acts">' +
+        LOCATIONS.map(function (l) {
+          return '<button class="btn sm ' + (z.location === l ? "" : "ghost") + '" data-act="qz-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
+        }).join("") + '</div></div>';
+      if (z.location) {
+        h += '<div class="card"><h3>Which client?</h3>' +
+          '<div class="meta">' + inLoc.length + ' client(s) in ' + esc(z.location) + '. Start typing.</div>' +
+          '<input id="qz_client" list="clientlist" placeholder="Type client name..." value="' + esc(z.client || "") + '" style="margin-top:8px"/>' +
+          '<datalist id="clientlist">' + inLoc.map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>' +
+          '<div class="acts"><button class="btn" data-act="qz-client-go">Continue</button>' +
+          '<button class="btn ghost" data-act="cl-new">Not listed - register</button></div></div>';
+        if (z.clientObj) {
+          var c = z.clientObj;
+          h += '<div class="card"><h3>' + esc(c.name) + '</h3><div class="meta">' +
+            esc(c.mobile || "") + '<br>' + esc(c.address || "") +
+            '<br>Arch: ' + esc(c.architect || "-") + ' - Plumber: ' + esc(c.plumber || "-") +
+            '<br>Builder: ' + esc(c.builder || "-") + ' - PMC: ' + esc(c.pmc || "-") + '</div></div>';
+        }
+      }
+      return h;
+    }
+
+    if (z.step === 2) {
+      h += '<div class="empty" style="text-align:left;padding:0 0 12px">Quoting for <b>' + esc(z.client) + '</b>. Pick a brand.</div>';
+      brandList().forEach(function (b) {
+        var n = PRODUCTS.filter(function (p) { return p.brand === b; }).length;
+        var d = clientDiscount(z.client, b);
+        h += '<div class="card"><h3>' + esc(b) + ' <span class="pill">' + n + ' products</span>' +
+          (d ? ' <span class="pill teal">' + d + '% preset</span>' : "") + '</h3>' +
+          '<div class="acts"><button class="btn sm" data-act="qz-brand" data-brand="' + esc(b) + '">Choose</button></div></div>';
+      });
+      return h;
+    }
+
+    if (z.step === 3) {
+      h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="2">Back to brands</button>' +
+        '<span class="pill teal">' + esc(z.brand) + '</span><div class="grow"></div>' +
+        '<button class="btn" data-act="qz-step" data-step="4">Discount (' + (z.items || []).length + ' item)</button></div>';
+      if (!z.family) {
+        h += '<div class="empty" style="text-align:left;padding:0 0 12px">Pick a product family.</div>';
+        familyList(z.brand).forEach(function (f) {
+          var n = PRODUCTS.filter(function (p) { return p.brand === z.brand && p.family === f; }).length;
+          h += '<div class="card"><h3>' + esc(f) + ' <span class="pill">' + n + '</span></h3>' +
+            '<div class="acts"><button class="btn sm" data-act="qz-fam" data-fam="' + esc(f) + '">Open</button></div></div>';
+        });
+        return h;
+      }
+      h += '<div class="row"><button class="btn sm ghost" data-act="qz-fam" data-fam="">Back to families</button>' +
+        '<span class="pill">' + esc(z.family) + '</span></div>';
+      PRODUCTS.filter(function (p) { return p.brand === z.brand && p.family === z.family; }).forEach(function (p) {
+        var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
+        h += '<div class="card" style="display:flex;gap:12px;align-items:center">' +
+          (p.pic ? '<img src="' + esc(p.pic) + '" alt="" style="width:56px;height:56px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff"/>' : "") +
+          '<div style="flex:1"><h3 style="margin:0 0 2px">' + esc(p.desc) + '</h3>' +
+          '<div class="meta">' + esc(p.code) + ' - ' + money(p.price) + ' / ' + esc(p.unit) + '</div></div>' +
+          '<div style="display:flex;align-items:center;gap:4px">' +
+          '<button class="btn sm ghost" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="-1">-</button>' +
+          '<input class="qz-q" data-code="' + esc(p.code) + '" inputmode="numeric" value="' + esc(ex ? ex.qty : "") + '" placeholder="0" style="width:56px;text-align:center;padding:7px 4px"/>' +
+          '<button class="btn sm ghost" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
+          '</div></div>';
+      });
+      return h;
+    }
+
+    if (z.step === 4) {
+      var t = qzTotals();
+      h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="3">Back to products</button>' +
+        '<div class="grow"></div><button class="btn" data-act="qz-step" data-step="5">Review</button></div>';
+      h += '<div class="card"><h3>Discount for ' + esc(z.brand) + '</h3>' +
+        '<div class="meta">Applies to every line unless a product is overridden below.</div>' +
+        '<div class="acts" style="align-items:center"><input id="qz_bd" inputmode="decimal" value="' + esc(z.brandDisc) + '" style="width:90px;padding:7px 10px"/><span class="pill teal">%</span>' +
+        '<button class="btn sm" data-act="qz-bd">Apply</button></div></div>';
+      (z.items || []).forEach(function (i) {
+        var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? z.brandDisc : i.disc;
+        var lineNet = Math.round(i.qty * i.price * (1 - (Number(d) || 0) / 100));
+        h += '<div class="card"><h3>' + esc(i.desc) + ' <span class="pill teal">' + money(lineNet) + '</span></h3>' +
+          '<div class="meta">' + esc(i.code) + ' - ' + i.qty + ' x ' + money(i.price) + '</div>' +
+          '<div class="acts" style="align-items:center"><span class="pill">Override %</span>' +
+          '<input class="qz-d" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(i.disc === undefined ? "" : i.disc) + '" placeholder="brand ' + esc(z.brandDisc) + '%" style="width:110px;padding:7px 10px"/></div></div>';
+      });
+      h += '<div class="card"><div class="meta">Gross ' + money(t.gross) + '<br>Net after discount ' + money(t.net) +
+        '<br>GST 18% ' + money(t.gst) + '<br><b>Total ' + money(t.total) + '</b></div></div>';
+      return h;
+    }
+
+    var tt = qzTotals();
+    h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="4">Back to discount</button></div>';
+    h += '<div class="card"><h3>' + esc(z.client) + ' - ' + esc(z.brand) + '</h3><div class="meta">';
+    (z.items || []).forEach(function (i) {
+      var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? z.brandDisc : i.disc;
+      h += esc(i.desc) + ' - ' + i.qty + ' x ' + money(i.price) + ' @ ' + (Number(d) || 0) + '% off<br>';
+    });
+    h += '<br>Gross ' + money(tt.gross) + '<br>Net ' + money(tt.net) + '<br>GST 18% ' + money(tt.gst) +
+      '<br><b>Total ' + money(tt.total) + '</b></div>' +
+      '<div class="acts"><button class="btn" data-act="qz-save">Save quote</button></div></div>';
+    return h;
+  }
+
   function renderLogin(err) {
     document.getElementById("root").innerHTML =
       '<div class="login-wrap"><div class="login">' +
@@ -853,8 +1073,8 @@
 
   function render() {
     if (!S.pin) { renderLogin(); return; }
-    var views = { service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
-    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["commission", "Commission"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["rules", "Pitch rules"]];
+    var views = { clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
+    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<img src="' + LOGO + '" alt="EW" onerror="this.style.display=\'none\'"/>' +
@@ -923,6 +1143,98 @@
     if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; render(); return; }
     if (act === "cat-reload") { toast("Reloading catalogue..."); loadCatalog().then(function () { toast(PRODUCTS.length + " products loaded."); render(); }); return; }
 
+    if (act === "cl-loc") { S.q = t.getAttribute("data-loc"); render(); return; }
+    if (act === "cl-new") { S.modal = modalClient(null); render(); return; }
+    if (act === "cl-open") { S.modal = modalClient(clientById(id)); render(); return; }
+    if (act === "cl-save") {
+      var cn = val("c_name");
+      if (!cn) { toast("Client name is required."); return; }
+      save("clients", {
+        id: id || "", createdBy: S.user, name: cn,
+        shortName: val("c_short") || cn.toUpperCase().replace(/[^A-Z0-9 ]/g, "").split(" ")[0].slice(0, 10),
+        location: val("c_loc"), mobile: val("c_mob"), address: val("c_addr"), type: val("c_type"),
+        architect: val("c_arch"), plumber: val("c_plumb"), builder: val("c_build"), pmc: val("c_pmc"),
+        notes: val("c_notes")
+      }).then(function (r) {
+        if (!r) return;
+        S.modal = null;
+        toast("Client saved.");
+        if (S.qz && S.qz.step === 1) { S.qz.client = r.name; S.qz.clientObj = r; }
+        render();
+      });
+      return;
+    }
+    if (act === "qz-new") { S.qz = { step: 1, location: "", client: "", items: [], brandDisc: 0 }; S.tab = "quotes"; render(); return; }
+    if (act === "qz-for") {
+      var c0 = clientById(id);
+      S.qz = { step: 2, location: c0.location, client: c0.name, clientObj: c0, items: [], brandDisc: 0 };
+      S.tab = "quotes"; render(); return;
+    }
+    if (act === "qz-cancel") { S.qz = null; render(); return; }
+    if (act === "qz-loc") { S.qz.location = t.getAttribute("data-loc"); render(); return; }
+    if (act === "qz-client-go") {
+      var nm = val("qz_client");
+      var c1 = clientByName(nm);
+      if (!c1) { toast("Not found - register the client."); S.qz.client = nm; render(); return; }
+      S.qz.client = c1.name; S.qz.clientObj = c1; S.qz.step = 2; render(); return;
+    }
+    if (act === "qz-brand") {
+      S.qz.brand = t.getAttribute("data-brand");
+      S.qz.brandDisc = clientDiscount(S.qz.client, S.qz.brand);
+      S.qz.family = ""; S.qz.step = 3; render(); return;
+    }
+    if (act === "qz-fam") { S.qz.family = t.getAttribute("data-fam"); render(); return; }
+    if (act === "qz-step") { S.qz.step = Number(t.getAttribute("data-step")); render(); return; }
+    if (act === "qz-qty") {
+      var code = t.getAttribute("data-code");
+      var delta = Number(t.getAttribute("data-d"));
+      var p = PRODUCTS.filter(function (x) { return x.code === code; })[0];
+      if (!p) return;
+      var it = S.qz.items.filter(function (x) { return x.code === code; })[0];
+      if (!it) {
+        if (delta < 0) return;
+        S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: 1 });
+      } else {
+        it.qty += delta;
+        if (it.qty <= 0) S.qz.items = S.qz.items.filter(function (x) { return x.code !== code; });
+      }
+      render(); return;
+    }
+    if (act === "qz-bd") { S.qz.brandDisc = Number(val("qz_bd")) || 0; render(); return; }
+    if (act === "qz-revise") {
+      var old = S.data.quotes.filter(function (q) { return q.id === id; })[0];
+      if (!old) return;
+      var its = [];
+      try { its = JSON.parse(old.items || "[]"); } catch (e) {}
+      S.qz = { step: 4, location: "", client: old.client, brand: old.brand, items: its,
+        brandDisc: Number(old.discountPct) || 0, parentId: old.id,
+        version: (Number(old.version) || 1) + 1, quoteNo: old.quoteNo };
+      S.tab = "quotes"; render(); return;
+    }
+    if (act === "qz-save") {
+      var z = S.qz;
+      if (!z.items.length) { toast("Add at least one product."); return; }
+      var tot = qzTotals();
+      var cObj = clientByName(z.client) || {};
+      var short = cObj.shortName || String(z.client).toUpperCase().replace(/[^A-Z0-9 ]/g, "").split(" ")[0].slice(0, 10);
+      var dt = new Date();
+      var ds = String(dt.getDate()).padStart(2, "0") + String(dt.getMonth() + 1).padStart(2, "0") + String(dt.getFullYear()).slice(2);
+      var seq = S.data.quotes.filter(function (q) { return String(q.quoteNo || "").indexOf("Q/" + short + "/") === 0; }).length + 1;
+      var qno = z.quoteNo || ("Q/" + short + "/" + ds + "/" + String(seq).padStart(3, "0"));
+      t.disabled = true; t.textContent = "Saving...";
+      save("quotes", {
+        id: "", createdBy: S.user, quoteNo: qno, version: z.version || 1, parentId: z.parentId || "",
+        siteId: "", siteName: "", client: z.client, brand: z.brand,
+        items: JSON.stringify(z.items), gross: tot.gross, discountPct: z.brandDisc,
+        net: tot.net, gstAmt: tot.gst, total: tot.total, status: "Draft", validTill: "", notes: ""
+      }).then(function (r) {
+        if (!r) return;
+        S.qz = null;
+        toast("Quote " + qno + " saved.");
+        render();
+      });
+      return;
+    }
     if (act === "inst-new") { S.modal = modalInstall(null); render(); return; }
     if (act === "inst-open") { S.modal = modalInstall(installById(id)); render(); return; }
     if (act === "inst-save") {
@@ -1116,6 +1428,27 @@
 
   document.addEventListener("change", function (e) {
     var t = e.target;
+    if (t.classList && t.classList.contains("qz-q") && S.qz) {
+      var code = t.getAttribute("data-code");
+      var q = Number(t.value) || 0;
+      var p = PRODUCTS.filter(function (x) { return x.code === code; })[0];
+      S.qz.items = S.qz.items.filter(function (x) { return x.code !== code; });
+      if (q > 0 && p) S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: q });
+      render(); return;
+    }
+    if (t.classList && t.classList.contains("qz-d") && S.qz) {
+      var c2 = t.getAttribute("data-code");
+      var it2 = S.qz.items.filter(function (x) { return x.code === c2; })[0];
+      if (it2) it2.disc = t.value === "" ? undefined : Number(t.value);
+      render(); return;
+    }
+    if (t.classList && t.classList.contains("qs")) {
+      var qq = S.data.quotes.filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
+      if (!qq) return;
+      qq.status = t.value;
+      save("quotes", qq).then(function (r) { if (r) toast("Quote " + qq.status + "."); });
+      return;
+    }
     if (t.classList && t.classList.contains("sp-price")) {
       var sp = S.data.spares.filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
       if (!sp) return;
