@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.4";
+  var APP_VERSION = "3.5";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -66,6 +66,7 @@
     gps: null,
     calMonth: "",
     calDay: "",
+    brandClient: "",
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [], areas: [] }
   };
 
@@ -626,13 +627,20 @@
     list.forEach(function (c) {
       var partners = [c.architect && "Arch: " + c.architect, c.plumber && "Plumber: " + c.plumber,
         c.builder && "Builder: " + c.builder, c.pmc && "PMC: " + c.pmc].filter(Boolean);
+      var bp = S.data.pitch.filter(function (p) { return p.clientName === c.name; });
+      var bw = bp.filter(function (p) { return p.status === "Won"; }).length;
+      var bq = bp.filter(function (p) { return p.status === "Quoted" || p.status === "Negotiating"; }).length;
+      var bl = bp.filter(function (p) { return p.status === "Lost"; }).length;
       h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
-        (c.type ? ' <span class="pill">' + esc(c.type) + '</span>' : "") + '</h3>' +
+        (bw ? ' <span class="bs win">' + bw + ' WON</span>' : "") +
+        (bq ? ' <span class="bs quoted">' + bq + ' QUOTED</span>' : "") +
+        (bl ? ' <span class="bs lose">' + bl + ' LOST</span>' : "") + '</h3>' +
         '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  &middot;  ")) +
         (c.area ? '<br>' + esc(c.area) : "") + (c.address ? '<br>' + esc(c.address) : "") +
         (partners.length ? '<br>' + esc(partners.join(" - ")) : "") + '</div>' +
         '<div class="acts">' + (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
         '<button class="btn sm" data-act="qz-for" data-id="' + esc(c.id) + '">Quote</button>' +
+        '<button class="btn sm ghost" data-act="bb-open" data-n="' + esc(c.name) + '">Brands</button>' +
         '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>';
     });
     return h;
@@ -666,6 +674,8 @@
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="cl-save" data-id="' + esc(c.id || "") + '">Save client</button></div>';
   }
+
+  function uniRupee() { return true; }
 
   function qzTotals() {
     var gross = 0, net = 0;
@@ -2210,6 +2220,68 @@
       '<button class="btn" data-act="as-save" data-id="' + esc(a.id || "") + '">Save partner</button></div>';
   }
 
+  /* ---------------- client brand board ----------------
+     Quoted = amber. Won = green. Lost = red, struck through, with the brand that beat us.
+     Set by hand by the executive or a partner - the app does not guess a win. */
+  function clientPitch(clientName, brand) {
+    return S.data.pitch.filter(function (p) {
+      return String(p.clientName || "") === clientName && p.brand === brand;
+    })[0] || null;
+  }
+
+  function brandChip(p) {
+    var st = (p && p.status) || "Not pitched";
+    if (st === "Won") return '<span class="bs win">WON</span>';
+    if (st === "Lost") return '<span class="bs lose">LOST' + (p.lostTo ? ' to ' + esc(p.lostTo) : "") + '</span>';
+    if (st === "Quoted" || st === "Negotiating") return '<span class="bs quoted">' + esc(st.toUpperCase()) + '</span>';
+    if (st === "Pitched") return '<span class="bs pitched">PITCHED</span>';
+    return '<span class="bs none">-</span>';
+  }
+
+  function viewBrandBoard() {
+    var cn = S.brandClient;
+    var c = clientByName(cn) || {};
+    var h = '<div class="row"><button class="btn sm ghost" data-act="bb-back">Back to clients</button></div>';
+    h += '<div class="card"><h3>' + esc(cn) + '</h3><div class="meta">' +
+      esc([c.area, c.location].filter(Boolean).join(", ")) + '<br>' + esc(c.mobile || "") + '</div></div>';
+    h += '<div class="empty" style="text-align:left;padding:0 0 10px">Mark every brand as you go. <b>Quoted</b> is amber, <b>Won</b> green, <b>Lost</b> red with the brand that beat us. This is what the Brand leads screen reads.</div>';
+    var won = 0, lost = 0, quoted = 0;
+    brandList().forEach(function (b) {
+      var p = clientPitch(cn, b);
+      var st = (p && p.status) || "Not pitched";
+      if (st === "Won") won++; else if (st === "Lost") lost++; else if (st === "Quoted" || st === "Negotiating") quoted++;
+      h += '<div class="card bcard ' + (st === "Lost" ? "is-lost" : (st === "Won" ? "is-won" : (st === "Quoted" || st === "Negotiating" ? "is-quoted" : ""))) + '">' +
+        '<h3><span class="bname">' + esc(b) + '</span> ' + brandChip(p) + '</h3>' +
+        '<div class="acts" style="align-items:center;flex-wrap:wrap">' +
+        '<select class="bb-st" data-c="' + esc(cn) + '" data-b="' + esc(b) + '" data-id="' + esc(p ? p.id : "") + '" style="width:auto;padding:7px 10px;font-size:13px">' +
+        opts(["Not pitched", "Pitched", "Quoted", "Negotiating", "Won", "Lost", "Not applicable"], st) + '</select>' +
+        '<input class="bb-amt" data-c="' + esc(cn) + '" data-b="' + esc(b) + '" data-id="' + esc(p ? p.id : "") + '" data-f="quoted" inputmode="numeric" placeholder="Quoted \u20B9" value="' + esc(p ? p.quoted : "") + '" style="width:110px;padding:7px 10px;font-size:13px"/>' +
+        (st === "Lost"
+          ? '<input class="bb-amt" data-c="' + esc(cn) + '" data-b="' + esc(b) + '" data-id="' + esc(p ? p.id : "") + '" data-f="lostTo" placeholder="Lost to which brand?" value="' + esc(p ? p.lostTo : "") + '" style="width:170px;padding:7px 10px;font-size:13px"/>'
+          : "") +
+        '</div></div>';
+    });
+    h = '<div class="cards">' +
+      '<div class="stat"><div class="n">' + won + '</div><div class="l">Won</div></div>' +
+      '<div class="stat"><div class="n">' + quoted + '</div><div class="l">Quoted</div></div>' +
+      '<div class="stat ' + (lost ? "alert" : "") + '"><div class="n">' + lost + '</div><div class="l">Lost</div></div>' +
+      '</div>' + h;
+    return h;
+  }
+
+  function saveBrandStatus(cn, brand, id, patch) {
+    var c = clientByName(cn) || {};
+    var p = clientPitch(cn, brand) || {};
+    var row = {
+      id: id || p.id || "", createdBy: p.createdBy || S.user,
+      siteId: "", siteName: "", clientId: c.id || "", clientName: cn, brand: brand,
+      status: p.status || "Not pitched", quoted: p.quoted || "", won: p.won || "",
+      lostTo: p.lostTo || "", note: p.note || ""
+    };
+    Object.keys(patch).forEach(function (k) { row[k] = patch[k]; });
+    return save("pitch", row);
+  }
+
   function renderLogin(err) {
     document.getElementById("root").innerHTML =
       '<div class="login-wrap"><div class="login">' +
@@ -2562,7 +2634,7 @@
 
   function render() {
     if (!S.pin) { renderLogin(); return; }
-    var views = { partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
+    var views = { brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
     var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
@@ -2847,6 +2919,25 @@
     if (act === "qz-save") {
       var z = S.qz;
       if (!z.items.length) { toast("Add at least one product."); return; }
+
+      if (!z.dupChecked) {
+        t.disabled = true; t.textContent = "Checking...";
+        api("quoteDup", { client: z.client, codes: z.items.map(function (i) { return i.code; }) })
+          .then(function (r) {
+            var others = ((r && r.clashes) || []).filter(function (x) { return !x.mine; });
+            z.dupChecked = true;
+            if (!others.length) { render(); document.querySelector('[data-act="qz-save"]').click(); return; }
+            var msg = "WARNING - this client has already been quoted these products by someone else:\n\n";
+            others.slice(0, 6).forEach(function (x) {
+              msg += "- " + x.desc + "\n  " + (uniRupee() ? "\u20B9" : "Rs.") + x.price + " at " + x.disc + "% off, on " + x.date +
+                "\n  by " + x.by + " (" + x.quoteNo + ", " + x.status + ")\n\n";
+            });
+            msg += "A client must never get two different prices from Energy World.\n\nContinue anyway?";
+            if (window.confirm(msg)) { render(); document.querySelector('[data-act="qz-save"]').click(); }
+            else { z.dupChecked = false; render(); }
+          });
+        return;
+      }
       var tot = qzTotals();
       var cObj = clientByName(z.client) || {};
       var short = cObj.shortName || String(z.client).toUpperCase().replace(/[^A-Z0-9 ]/g, "").split(" ")[0].slice(0, 10);
@@ -2974,6 +3065,8 @@
       }).then(function (r3) { toast(r3 && r3.ok ? "Sent to " + exec + "." : "Send failed."); render(); });
       return;
     }
+    if (act === "bb-open") { S.brandClient = t.getAttribute("data-n"); S.tab = "brandboard"; render(); return; }
+    if (act === "bb-back") { S.brandClient = ""; S.tab = "clients"; render(); return; }
     if (act === "p-role") { S.pRole = t.getAttribute("data-r"); render(); return; }
     if (act === "p-open") { S.partner = t.getAttribute("data-n"); render(); return; }
     if (act === "p-back") { S.partner = ""; render(); return; }
@@ -3295,6 +3388,16 @@
       return;
     }
 
+    if (t.classList && t.classList.contains("bb-st")) {
+      saveBrandStatus(t.getAttribute("data-c"), t.getAttribute("data-b"), t.getAttribute("data-id"), { status: t.value })
+        .then(function (r) { if (r) toast(t.getAttribute("data-b") + ": " + t.value); });
+      return;
+    }
+    if (t.classList && t.classList.contains("bb-amt")) {
+      var pa = {}; pa[t.getAttribute("data-f")] = t.value;
+      saveBrandStatus(t.getAttribute("data-c"), t.getAttribute("data-b"), t.getAttribute("data-id"), pa);
+      return;
+    }
     if (t.classList && t.classList.contains("dsc")) {
       var cli = t.getAttribute("data-client");
       var br = t.getAttribute("data-brand");
