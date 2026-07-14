@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.73";
+  var APP_VERSION = "3.8";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1024,6 +1024,13 @@
     }).catch(function () { PIC_CACHE[url] = null; return null; });
   }
 
+  /* the 12 logos that print on a quote, in the order Mukesh grouped them.
+     INAIR, LUNOS and NEXGEN are distributed but have no logo, so they no longer
+     appear as text chips - a name beside a logo looked like a missing image. */
+  var PDF_LOGO_ORDER = ["Huliot", "Heliroma", "FIMA", "TOTO",
+    "Grundfos", "Pentair", "Green Heat", "Adani",
+    "Geberit", "Stellar", "MEA", "Oyster"];
+
   var DIST_BRANDS = ["HULIOT", "FIMA", "TOTO", "GRUNDFOS", "PENTAIR", "GREEN HEAT+", "GEBERIT",
     "INAIR", "LUNOS", "STELLAR", "MEA", "NEXGEN", "ADANI SOLAR", "HELIROMA"];
 
@@ -1102,62 +1109,30 @@
 
       /* real brand logos, right-aligned, each in a white highlighted chip.
          Brands with no logo on file fall back to the old text chip. */
+      /* AUTH. DISTRIBUTOR FOR - a 6 x 2 grid of identical boxes, logos in Mukesh’s grouping:
+         1) Huliot / Heliroma / FIMA / TOTO   2) Grundfos / Pentair / Green Heat / Adani
+         3) Geberit / Stellar / MEA / Oyster. Boxes are a fixed size and the logo is scaled to
+         fit inside, so a wide logo and a tall one still occupy the same box. Any slot with no
+         logo on file is drawn as an empty box to keep the grid square. */
       var CHIP_L = L + 40, avail = Rt - CHIP_L;
-      var chips = [];
-      DIST_BRANDS.forEach(function (b) {
-        var lg = logoFor(b);
-        if (lg && lg.src) {
-          var hh = 7.2, ww = Math.max(9, Math.min(21, hh * (lg.w / lg.h)));
-          chips.push({ img: lg, w: ww + 3.4, iw: ww, ih: hh });
-        } else {
-          F("bold"); doc.setFontSize(6.2);
-          chips.push({ b: b, w: doc.getTextWidth(b) + 5.4 });
-        }
-      });
-      /* greedy wrap leaves an orphan on the last line (13 fit, the 14th sits alone).
-         Find the minimum number of rows, then spread the logos evenly across them. */
-      function fits(list) {
-        return list.reduce(function (a, x) { return a + x.w + 2.2; }, 0) - 2.2 <= avail;
-      }
-      function pack(nRows) {
-        var per = Math.ceil(chips.length / nRows), out = [];
-        for (var i = 0; i < chips.length; i += per) out.push(chips.slice(i, i + per));
-        return out.every(fits) ? out : null;
-      }
-      var crows = null;
-      for (var nr = 1; nr <= 6 && !crows; nr++) crows = pack(nr);
-      if (!crows) {
-        crows = [[]]; var cur = 0, wsum = 0;
-        chips.forEach(function (it) {
-          if (wsum + it.w > avail && crows[cur].length) { cur++; crows[cur] = []; wsum = 0; }
-          crows[cur].push(it); wsum += it.w + 2.2;
-        });
-      }
-      var RH = 11.2;
-      crows.forEach(function (ln, li) {
-        var total = ln.reduce(function (a, x) { return a + x.w + 2.2; }, 0) - 2.2;
-        var cx = Rt - total, ly = y + li * RH;
-        ln.forEach(function (x) {
-          if (x.img) {
-            var ch = 10;
-            fill([255, 255, 255]); doc.roundedRect(cx, ly - 5.6, x.w, ch, 1.6, 1.6, "F");
-            doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25);
-            doc.roundedRect(cx, ly - 5.6, x.w, ch, 1.6, 1.6, "S");
-            try {
-              doc.addImage(x.img.src, "JPEG",
-                cx + (x.w - x.iw) / 2, ly - 5.6 + (ch - x.ih) / 2, x.iw, x.ih);
-            } catch (e) { }
-          } else {
-            fill([236, 253, 245]); doc.roundedRect(cx, ly - 3.6, x.w, 5.8, 1.4, 1.4, "F");
-            doc.setDrawColor(153, 246, 228); doc.roundedRect(cx, ly - 3.6, x.w, 5.8, 1.4, 1.4, "S");
-            col([13, 118, 108]); F("bold"); doc.setFontSize(6.2);
-            doc.text(x.b, cx + 2.7, ly);
-          }
-          cx += x.w + 2.2;
-        });
+      var PER_ROW = 6, GAP = 2.4;
+      var BW = (avail - GAP * (PER_ROW - 1)) / PER_ROW, BH = 11;
+      var slots = PDF_LOGO_ORDER.map(function (n) { return logoFor(n); });
+      slots.forEach(function (lg, i) {
+        var r = Math.floor(i / PER_ROW), cIdx = i % PER_ROW;
+        var bx = CHIP_L + cIdx * (BW + GAP), by = y - 5.6 + r * (BH + 2.6);
+        fill([255, 255, 255]); doc.roundedRect(bx, by, BW, BH, 1.6, 1.6, "F");
+        doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25);
+        doc.roundedRect(bx, by, BW, BH, 1.6, 1.6, "S");
+        if (!lg || !lg.src) return;
+        var mw = BW - 3.2, mh = BH - 3.2;
+        var sc = Math.min(mw / lg.w, mh / lg.h);
+        var iw = lg.w * sc, ih = lg.h * sc;
+        try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, by + (BH - ih) / 2, iw, ih); } catch (e) { }
       });
       doc.setLineWidth(0.2);
-      y += (crows.length - 1) * RH + 11;
+      var LROWS = Math.ceil(slots.length / PER_ROW);
+      y += (LROWS - 1) * (BH + 2.6) + 11;
 
       /* ---- client block ---- */
       fill(SOFT); doc.roundedRect(L, y, Rt - L, 24, 2, 2, "F");
