@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.2";
+  var APP_VERSION = "3.3";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -2627,9 +2627,15 @@
     if (act === "cl-save") {
       var cn = val("c_name");
       if (!cn) { toast("Client name is required."); return; }
-      var mob = val("c_mob");
-      var loc = val("c_loc"), ar = val("c_area");
-      var arch = val("c_arch"), plumb = val("c_plumb"), build = val("c_build"), pmc = val("c_pmc");
+      /* READ EVERY FIELD FIRST. Creating a partner re-renders the app, which rebuilds
+         this modal - anything read afterwards comes back empty. That bug ate mobile2. */
+      var f = {
+        mob: val("c_mob"), mob2: val("c_mob2"), loc: val("c_loc"), ar: val("c_area"),
+        addr: val("c_addr"), type: val("c_type"), notes: val("c_notes"),
+        arch: val("c_arch"), plumb: val("c_plumb"), build: val("c_build"), pmc: val("c_pmc")
+      };
+      var mob = f.mob, loc = f.loc, ar = f.ar;
+      var arch = f.arch, plumb = f.plumb, build = f.build, pmc = f.pmc;
       t.disabled = true; t.textContent = "Saving...";
       /* anyone named here who is not yet a Partner gets created - no double entry */
       Promise.all([
@@ -2640,11 +2646,11 @@
       ]).then(function () {
         return save("clients", {
           id: id || "", createdBy: S.user, name: cn,
-          shortName: shortNameOf(cn, mob),
-          location: loc, area: ar, mobile: mob, mobile2: val("c_mob2"),
-          address: val("c_addr"), type: val("c_type"),
-          architect: arch, plumber: plumb, builder: build, pmc: pmc,
-          notes: val("c_notes")
+          shortName: shortNameOf(cn, f.mob),
+          location: f.loc, area: f.ar, mobile: f.mob, mobile2: f.mob2,
+          address: f.addr, type: f.type,
+          architect: f.arch, plumber: f.plumb, builder: f.build, pmc: f.pmc,
+          notes: f.notes
         });
       }).then(function (r) {
         if (!r) return;
