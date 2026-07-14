@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.91";
+  var APP_VERSION = "3.92";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1091,7 +1091,7 @@
 
   var TERMS = [
     "Prices are Ex Works Panipat warehouse.",
-    "VALIDITY - This quotation is valid for 15 days from the date of issue. Prices are subject to revision after expiry and re-quotation may be required for orders placed thereafter.",
+    "VALIDITY - This quotation is valid for 30 days from the date of issue. Prices are subject to revision after expiry and re-quotation may be required for orders placed thereafter.",
     "PRODUCT IMAGES - Product images shown are for reference only. Actual product supplied may differ in appearance, colour, finish or packaging. The product description and model number shall be the basis of supply.",
     "PRICES & GST - Applicable GST at prevailing rates will be charged additionally. Prices are subject to change without prior notice based on supplier or MRP revisions.",
     "PAYMENT TERMS - 50% advance along with a signed Purchase Order confirms the booking. Balance is payable against the Proforma Invoice before dispatch. Cheques and demand drafts in favour of Energy World are subject to realization before order processing.",
@@ -1140,43 +1140,63 @@
       var subTotal = rows.reduce(function (a, r) { return a + r.total; }, 0);
       var c = clientByName(q.client) || {};
 
-      /* ================= HEADER ================= */
-      fill(DEEP); doc.rect(0, 0, W, 46, "F");
-      fill(MINT); doc.rect(0, 46, W, 1.2, "F");
+      /* ================= HEADER =================
+         Everything the reader needs to identify the quote sits in the dark band: who it is for,
+         what it is, and how long it holds. The old "PREPARED FOR / PREPARED BY" strip below it
+         was repeating the same names in a second box - dropped. Who wrote it now signs off at
+         the foot of the document, which is where a signature belongs. */
+      var HH = 58;
+      fill(DEEP); doc.rect(0, 0, W, HH, "F");
+      fill(MINT); doc.rect(0, HH, W, 1.2, "F");
 
-      if (logo) { try { doc.addImage(logo, "JPEG", L, 9, 32, 17); } catch (e) {} }
+      if (logo) { try { doc.addImage(logo, "JPEG", L, 10, 32, 17); } catch (e) {} }
       col(MINT); F("bold"); doc.setFontSize(6.4);
-      doc.text("M O D E R N   P L U M B I N G   S O L U T I O N", L, 31.5);
+      doc.text("M O D E R N   P L U M B I N G   S O L U T I O N", L, 33.5);
       col([148, 190, 184]); F("normal"); doc.setFontSize(6);
-      doc.text("PANIPAT   |   SONIPAT   |   KARNAL", L, 36.5);
+      doc.text("PANIPAT   |   SONIPAT   |   KARNAL", L, 38.5);
 
-      col([255, 255, 255]); F("bold"); doc.setFontSize(17);
-      doc.text("QUOTATION", Rt, 16, { align: "right" });
-      F("normal"); doc.setFontSize(7.6); col([160, 205, 199]);
-      doc.text("Quote No.  " + String(q.quoteNo || ""), Rt, 23, { align: "right" });
-      doc.text("Date  " + today(), Rt, 28, { align: "right" });
-      doc.text("Valid until  " + new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10), Rt, 33, { align: "right" });
+      col([255, 255, 255]); F("bold"); doc.setFontSize(16);
+      doc.text("QUOTATION", Rt, 14.5, { align: "right" });
 
-      /* ---- authorised distributor strip: brands highlighted as chips ---- */
-      /* label hard-left, chips packed right and right-aligned as a block */
-      var y = 55;
-      col(GREY); F("bold"); doc.setFontSize(6.2);
-      doc.text("AUTH. DISTRIBUTOR FOR", L, y + 1);
+      /* QUOTE FOR - name and address only. The client knows their own phone number. */
+      col(MINT); F("bold"); doc.setFontSize(5.6);
+      doc.text("Q U O T E   F O R", Rt, 21.5, { align: "right" });
+      col([255, 255, 255]); F("bold"); doc.setFontSize(11);
+      doc.text(fitCell(doc, F, q.client || "-", 92, 1, "bold", 11)[0], Rt, 27.5, { align: "right" });
+      var addr = [c.address, c.area, c.location].filter(Boolean).join(", ");
+      col([176, 214, 209]); F("normal"); doc.setFontSize(7);
+      var aLines = fitCell(doc, F, addr, 92, 2, "normal", 7);
+      aLines.forEach(function (ln, i) { doc.text(ln, Rt, 32.4 + i * 3.6, { align: "right" }); });
 
-      /* real brand logos, right-aligned, each in a white highlighted chip.
-         Brands with no logo on file fall back to the old text chip. */
-      /* AUTH. DISTRIBUTOR FOR - a 6 x 2 grid of identical boxes, logos in Mukesh’s grouping:
-         1) Huliot / Heliroma / FIMA / TOTO   2) Grundfos / Pentair / Green Heat / Adani
-         3) Geberit / Stellar / MEA / Oyster. Boxes are a fixed size and the logo is scaled to
-         fit inside, so a wide logo and a tall one still occupy the same box. Any slot with no
-         logo on file is drawn as an empty box to keep the grid square. */
+      doc.setDrawColor(38, 94, 88); doc.setLineWidth(0.3);
+      doc.line(Rt - 66, 41.5, Rt, 41.5); doc.setLineWidth(0.2);
+
+      col([160, 205, 199]); F("normal"); doc.setFontSize(7.4);
+      var VALID_DAYS = 30;
+      var vUntil = new Date(Date.now() + VALID_DAYS * 86400000).toISOString().slice(0, 10);
+      doc.text("Quote No.   " + String(q.quoteNo || ""), Rt, 46.5, { align: "right" });
+      doc.text("Date   " + today(), Rt, 50.7, { align: "right" });
+      col(MINT);
+      doc.text("Valid for " + VALID_DAYS + " days  \u00b7  until " + vUntil, Rt, 54.9, { align: "right" });
+
+      /* ---- AUTH. DISTRIBUTOR FOR: the whole strip sits in one soft panel ---- */
+      var y = HH + 10;
       var PER_ROW = 6, GAP = 2.2, BW = 17.5, BH = 9;
       var GRID_W = PER_ROW * BW + (PER_ROW - 1) * GAP;
-      var CHIP_L = Rt - GRID_W;
+      var LROWS = Math.ceil(PDF_LOGO_ORDER.length / PER_ROW);
+      var PAN_H = LROWS * BH + (LROWS - 1) * 2.2 + 8;
+      fill([246, 250, 249]); doc.roundedRect(L, y - 4, Rt - L, PAN_H, 2, 2, "F");
+      doc.setDrawColor(214, 232, 228); doc.roundedRect(L, y - 4, Rt - L, PAN_H, 2, 2, "S");
+      fill(MINT); doc.rect(L, y - 4, 1.4, PAN_H, "F");
+
+      col([13, 118, 108]); F("bold"); doc.setFontSize(6.2);
+      doc.text("AUTH. DISTRIBUTOR FOR", L + 6, y - 4 + PAN_H / 2 + 0.8);
+
+      var CHIP_L = Rt - GRID_W - 4;
       var slots = PDF_LOGO_ORDER.map(function (n) { return logoFor(n); });
       slots.forEach(function (lg, i) {
         var r = Math.floor(i / PER_ROW), cIdx = i % PER_ROW;
-        var bx = CHIP_L + cIdx * (BW + GAP), by = y - 5.6 + r * (BH + 2.2);
+        var bx = CHIP_L + cIdx * (BW + GAP), by = y + r * (BH + 2.2);
         fill([255, 255, 255]); doc.roundedRect(bx, by, BW, BH, 1.6, 1.6, "F");
         doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25);
         doc.roundedRect(bx, by, BW, BH, 1.6, 1.6, "S");
@@ -1187,33 +1207,7 @@
         try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, by + (BH - ih) / 2, iw, ih); } catch (e) { }
       });
       doc.setLineWidth(0.2);
-      var LROWS = Math.ceil(slots.length / PER_ROW);
-      y += (LROWS - 1) * (BH + 2.2) + 10;
-
-      /* ---- client block ---- */
-      fill(SOFT); doc.roundedRect(L, y, Rt - L, 24, 2, 2, "F");
-      doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.roundedRect(L, y, Rt - L, 24, 2, 2, "S");
-      fill(MINT); doc.rect(L, y, 1.4, 24, "F");
-      var c1 = L + 6, c2 = L + 96, c3 = L + 140;
-      col(GREY); F("bold"); doc.setFontSize(5.8);
-      doc.text("PREPARED FOR", c1, y + 5.5);
-      doc.text("LOCATION", c2, y + 5.5);
-      doc.text("PREPARED BY", c3, y + 5.5);
-      col(INK); F("bold"); doc.setFontSize(10);
-      doc.text(String(q.client || "-"), c1, y + 11.5);
-      doc.text(String(c.location || "Panipat"), c2, y + 11.5);
-      doc.text(String(q.createdBy || "-"), c3, y + 11.5);
-      col(GREY); F("normal"); doc.setFontSize(6.6);
-      var det = [];
-      if (c.mobile) det.push(String(c.mobile));
-      if (c.mobile2) det.push(String(c.mobile2));
-      if (c.type) det.push(String(c.type));
-      doc.text(det.join("  |  "), c1, y + 16);
-      if (c.address) doc.text(fitCell(doc, F, c.address, 78, 1, "normal", 6.2)[0], c1, y + 20);
-      /* prepared by: just the person and their number */
-      var me = (S.data.team || []).filter(function (t2) { return t2.name === q.createdBy; })[0] || {};
-      if (me.mobile) doc.text(String(me.mobile), c3, y + 16);
-      y += 32;
+      y += PAN_H + 4;
 
       /* ================= TABLE ================= */
       /* money columns widened: a lakh figure like Rs 4,51,869 needs real room, and it
@@ -1307,6 +1301,22 @@
         doc.text(ls, L + 5, y);
         y += ls.length * 3.4 + 6.5;
       });
+
+      /* ---- sign-off, bottom right of the last page. A quotation is a document a person
+           stands behind, so the name goes where a signature goes - not in a header box. ---- */
+      var me = (S.data.team || []).filter(function (t2) { return t2.name === q.createdBy; })[0] || {};
+      if (y > 236) { doc.addPage(); y = 30; }
+      var sy = 250;
+      doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.3);
+      doc.line(Rt - 62, sy, Rt, sy); doc.setLineWidth(0.2);
+      col(GREY); F("bold"); doc.setFontSize(5.8);
+      doc.text("PREPARED BY", Rt, sy + 5, { align: "right" });
+      col(INK); F("bold"); doc.setFontSize(10);
+      doc.text(String(q.createdBy || "-"), Rt, sy + 11.5, { align: "right" });
+      if (me.mobile) {
+        col(GREY); F("normal"); doc.setFontSize(7.4);
+        doc.text(String(me.mobile), Rt, sy + 16.2, { align: "right" });
+      }
 
       var pages = doc.internal.getNumberOfPages();
       for (var p = 1; p <= pages; p++) {
@@ -2255,31 +2265,9 @@
     }).join("");
   }
 
-  function modalClient(c) {
-    c = c || {};
-    var loc = c.location || S.clLoc || locations()[0];
-    return '<h2>' + (c.id ? "Edit client" : "New client") + '</h2>' +
-      '<p class="sub">Location and area drive every filter you will want later.</p>' +
-      '<label>Client name</label><input id="c_name" value="' + esc(c.name) + '"/>' +
-      '<div class="grid2">' +
-      '<div><label>Location</label><select id="c_loc" class="loc-sel">' + opts(locations().concat(["+ Add new location"]), loc) + '</select></div>' +
-      '<div><label>Area</label><select id="c_area">' + opts([""].concat(areasIn(loc), ["+ Add new area"]), c.area || "") + '</select></div>' +
-      '</div>' +
-      '<div class="grid2">' +
-      '<div><label>Mobile</label><input id="c_mob" inputmode="numeric" value="' + esc(c.mobile) + '"/></div>' +
-      '<div><label>Alternate mobile</label><input id="c_mob2" inputmode="numeric" value="' + esc(c.mobile2) + '"/></div>' +
-      '</div>' +
-      '<label>Address</label><input id="c_addr" value="' + esc(c.address) + '"/>' +
-      '<label>Type</label><select id="c_type">' + opts(CLIENT_TYPES, c.type || "Home owner") + '</select>' +
-      partnerField("c_arch", "Architect", "Architect", c.architect || "") +
-      partnerField("c_plumb", "Plumber", "Plumber", c.plumber || "") +
-      partnerField("c_build", "Builder", "Builder", c.builder || "") +
-      partnerField("c_pmc", "PMC", "PMC", c.pmc || "") +
-      partnerLists() +
-      '<label>Notes</label><textarea id="c_notes">' + esc(c.notes) + '</textarea>' +
-      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      '<button class="btn" data-act="cl-save" data-id="' + esc(c.id || "") + '">Save client</button></div>';
-  }
+  /* legacy modalClient removed: a second, older definition sat further down the file and,
+     because function declarations hoist, it silently overrode the current one. That is why the
+     rebuilt form never appeared. Do not reintroduce a duplicate name in this file. */
 
   /* any partner named on a client that we do not know yet is created automatically -
      that is how the Partners master fills itself without anyone doing double entry */
@@ -2626,19 +2614,9 @@
     return h;
   }
 
-  function viewChallans() {
-    var h = '<div class="row"><div class="grow"></div><button class="btn" data-act="ch-new">+ New challan</button></div>';
-    var list = S.data.challans.slice().reverse();
-    if (!list.length) h += '<div class="empty">No challans yet.</div>';
-    list.forEach(function (c) {
-      h += '<div class="card"><h3>' + esc(c.challanNo) + ' <span class="pill teal">' + money(c.amount) + '</span></h3>' +
-        '<div class="meta">' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : '') +
-        '<br>' + esc(c.items || "") +
-        (c.associate ? '<br>Partner: ' + esc(c.associate) + ' &middot; incentive ' + money(c.commissionAmt) : '') +
-        '<br>' + esc(dstr(c.createdAt)) + ' by ' + esc(c.createdBy || "") + '</div></div>';
-    });
-    return h;
-  }
+  /* legacy viewChallans removed: a second, older definition sat further down the file and,
+     because function declarations hoist, it silently overrode the current one. That is why the
+     rebuilt form never appeared. Do not reintroduce a duplicate name in this file. */
 
   function viewCommission() {
     var byAssoc = {};
@@ -2718,20 +2696,9 @@
       '<button class="btn" data-act="fu-save">Save</button></div>';
   }
 
-  function modalAssociate(a) {
-    a = a || {};
-    return '<h2>' + (a.id ? "Edit partner" : "New partner") + '</h2>' +
-      '<p class="sub">Plumbers, architects, builders and PMCs. Incentive % is set here.</p>' +
-      '<label>Name</label><input id="m_aname" value="' + esc(a.name) + '"/>' +
-      '<div class="grid2">' +
-      '<div><label>Role</label><select id="m_arole">' + opts(["Plumber", "Architect", "Contractor", "Dealer", "Other"], a.role || "Plumber") + '</select></div>' +
-      '<div><label>Incentive %</label><input id="m_arate" inputmode="decimal" value="' + esc(a.rate || "5") + '"/></div>' +
-      '</div>' +
-      '<label>Mobile</label><input id="m_amobile" inputmode="numeric" value="' + esc(a.mobile) + '"/>' +
-      '<label>Notes</label><textarea id="m_anotes">' + esc(a.notes) + '</textarea>' +
-      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      '<button class="btn" data-act="as-save" data-id="' + esc(a.id || "") + '">Save</button></div>';
-  }
+  /* legacy modalAssociate removed: a second, older definition sat further down the file and,
+     because function declarations hoist, it silently overrode the current one. That is why the
+     rebuilt form never appeared. Do not reintroduce a duplicate name in this file. */
 
   function lineRow(i, d, q, r) {
     return '<div class="lineitem" data-row="' + i + '">' +
