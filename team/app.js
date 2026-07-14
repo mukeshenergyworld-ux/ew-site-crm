@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "2.3";
+  var APP_VERSION = "2.4";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1158,13 +1158,12 @@
     return siteVisits(site.id).some(function (v) { return v.verified === "Verified"; });
   }
 
-  function checkIn(siteId, setLocation) {
-    if (setLocation && !window.confirm("Are you standing AT this site right now?\n\nThis fixes the site's location permanently. Do NOT do this from the office.")) return;
+  function checkIn(siteId, setLocation, purpose, photoB64) {
     if (!navigator.geolocation) { toast("This phone cannot give a location."); return; }
     toast(setLocation ? "Fixing site location..." : "Getting your location...");
     navigator.geolocation.getCurrentPosition(function (pos) {
       api("siteVisit", {
-        siteId: siteId, setLocation: !!setLocation,
+        siteId: siteId, setLocation: !!setLocation, purpose: purpose || "", photoB64: photoB64 || "",
         lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy
       }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Check-in failed."); return; }
@@ -1175,13 +1174,49 @@
         refresh();
       });
     }, function () {
-      api("siteVisit", { siteId: siteId }).then(function () {
+      api("siteVisit", { siteId: siteId, purpose: purpose || "", photoB64: photoB64 || "" }).then(function () {
         toast("Location blocked - visit logged as UNVERIFIED.");
         refresh();
       });
     }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
   }
   function geoPending(site) { return !site.lat || !site.lng; }
+
+  /* A photo is the only thing that actually defeats a spoofed GPS, so it is offered
+     on every check-in. Resized on the phone before upload - nobody wants a 4MB JPEG
+     going up on 4G. */
+  function shrinkPhoto(file) {
+    return new Promise(function (res) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var max = 1100;
+          var sc = Math.min(1, max / Math.max(img.width, img.height));
+          var c = document.createElement("canvas");
+          c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+          c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+          res(c.toDataURL("image/jpeg", 0.72).split(",")[1]);
+        };
+        img.onerror = function () { res(null); };
+        img.src = String(fr.result);
+      };
+      fr.onerror = function () { res(null); };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  function modalCheckIn(site, setLoc) {
+    return '<h2>' + (setLoc ? "Set site location" : "Check in") + '</h2>' +
+      '<p class="sub">' + esc(site.name) + '</p>' +
+      (setLoc ? '<div class="card" style="border-color:#fde68a;background:#fffbeb"><div class="meta"><b>Only do this while standing at the site.</b> It fixes the location permanently, and every future visit is measured from it. Never from the office.</div></div>' : "") +
+      '<label>What was this visit for?</label><input id="ck_purpose" placeholder="e.g. measurement, follow-up, delivery check"/>' +
+      '<label>Site photo (optional, but it is your proof)</label>' +
+      '<input id="ck_photo" type="file" accept="image/*" capture="environment"/>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="ck-go" data-id="' + esc(site.id) + '" data-set="' + (setLoc ? "1" : "") + '">' +
+      (setLoc ? "Fix location & log visit" : "Log visit") + '</button></div>';
+  }
 
   function viewVisits() {
     var today = todayStr();
@@ -1205,13 +1240,150 @@
         (v.distanceM ? '<br>' + esc(v.distanceM) + 'm from site' : "") +
         (v.accuracy ? ' &middot; GPS ' + esc(v.accuracy) + 'm' : "") +
         (v.note ? '<br><i>' + esc(v.note) + '</i>' : "") + '</div>' +
-        (v.lat ? '<div class="acts"><a class="btn sm ghost" target="_blank" href="https://maps.google.com/?q=' + esc(v.lat) + ',' + esc(v.lng) + '">Map</a></div>' : "") +
+        '<div class="acts">' +
+        (v.lat ? '<a class="btn sm ghost" target="_blank" href="https://maps.google.com/?q=' + esc(v.lat) + ',' + esc(v.lng) + '">Map</a>' : "") +
+        (v.photoUrl ? '<a class="btn sm" target="_blank" href="' + esc(v.photoUrl) + '">Photo</a>' : '<span class="pill">no photo</span>') +
+        '</div>' +
         '</div>';
     });
     return h;
   }
 
   function todayStr() { return new Date().toISOString().slice(0, 10); }
+
+  /* ---------------- CHALLAN LIFECYCLE ----------------
+     Draft -> Approved -> Dispatched -> Received.
+     The challan PDF deliberately carries NO prices and NO pictures - it is a delivery
+     document, not a quotation. Prices live in the ledger, not in the driver's hand. */
+  var CH_FLOW = ["Draft", "Approved", "Dispatched", "Received"];
+  function canApprove() { return S.role === "admin" || S.role === "sales"; }
+
+  function challanPdf(c, approver) {
+    return loadFonts().then(function (f) {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var uni = false;
+      if (f) {
+        doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
+        doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold");
+        uni = true;
+      }
+      var F = function (w) { doc.setFont(uni ? "DJ" : "helvetica", w || "normal"); };
+      var W = 210, L = 14, Rt = W - 14;
+      var items = [];
+      try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 40, "F");
+      doc.setFillColor(94, 234, 212); doc.rect(0, 40, W, 1.2, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 8, 32, 17); } catch (e) {} }
+      doc.setTextColor(153, 246, 228); F("bold"); doc.setFontSize(6.2);
+      doc.text("M O D E R N   P L U M B I N G   S O L U T I O N", L, 30);
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(16);
+      doc.text("DELIVERY CHALLAN", Rt, 15, { align: "right" });
+      F("normal"); doc.setFontSize(8); doc.setTextColor(160, 205, 199);
+      doc.text(String(c.challanNo || ""), Rt, 22, { align: "right" });
+      doc.text(today(), Rt, 27, { align: "right" });
+      doc.text("Status: " + String(c.status || "Draft"), Rt, 32, { align: "right" });
+
+      var y = 52;
+      doc.setTextColor(110, 125, 140); F("bold"); doc.setFontSize(5.8);
+      doc.text("DELIVER TO", L, y);
+      doc.text("SITE", L + 90, y);
+      doc.setTextColor(17, 34, 45); F("bold"); doc.setFontSize(10);
+      doc.text(String(c.customerName || "-"), L, y + 6);
+      doc.text(String(c.site || "-"), L + 90, y + 6);
+      F("normal"); doc.setFontSize(7.6); doc.setTextColor(110, 125, 140);
+      doc.text(String(c.location || ""), L, y + 11);
+      if (c.driver) doc.text("Driver: " + c.driver, L + 90, y + 11);
+      y += 20;
+
+      doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, Rt - L, 9, "F");
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.4);
+      doc.text("#", L + 3, y);
+      doc.text("PRODUCT CODE", L + 10, y);
+      doc.text("DESCRIPTION", L + 52, y);
+      doc.text("UNIT", Rt - 26, y, { align: "right" });
+      doc.text("QTY", Rt - 2, y, { align: "right" });
+      y += 9;
+
+      items.forEach(function (i, n) {
+        if (y > 258) { doc.addPage(); y = 24; }
+        if (n % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, Rt - L, 8, "F"); }
+        doc.setTextColor(110, 125, 140); F("normal"); doc.setFontSize(7);
+        doc.text(String(n + 1), L + 3, y);
+        doc.setTextColor(13, 148, 136); F("bold"); doc.setFontSize(7);
+        doc.text(String(i.code || ""), L + 10, y);
+        doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(7.4);
+        doc.text(doc.splitTextToSize(String(i.desc || ""), 68)[0], L + 52, y);
+        doc.text(String(i.unit || "No's"), Rt - 26, y, { align: "right" });
+        F("bold"); doc.text(String(i.qty), Rt - 2, y, { align: "right" });
+        y += 8;
+      });
+
+      y += 6;
+      doc.setDrawColor(226, 232, 240); doc.line(L, y, Rt, y);
+      y += 8;
+      doc.setTextColor(110, 125, 140); F("normal"); doc.setFontSize(7.4);
+      doc.text("Received the above goods in good condition and correct quantity.", L, y);
+      doc.text("Receiver signature", Rt, y + 18, { align: "right" });
+      doc.setDrawColor(180, 190, 200); doc.line(Rt - 50, y + 15, Rt, y + 15);
+      doc.text("Prepared by: " + String(c.createdBy || ""), L, y + 10);
+      if (c.freight) doc.text("Freight: Rs. " + c.freight + " (" + (c.freightTo || "Client") + ")", L, y + 15);
+
+      /* the approver signs the last page, small, bottom-right - exactly as asked */
+      var pages = doc.internal.getNumberOfPages();
+      doc.setPage(pages);
+      if (approver) {
+        doc.setTextColor(13, 148, 136); F("bold"); doc.setFontSize(6.4);
+        doc.text("Approved by " + approver, Rt, 282, { align: "right" });
+      }
+      for (var p = 1; p <= pages; p++) {
+        doc.setPage(p);
+        F("normal"); doc.setFontSize(6.2); doc.setTextColor(150, 163, 175);
+        doc.text("Energy World  |  Panipat \u00b7 Sonipat \u00b7 Karnal", L, 290);
+        doc.text(p + " / " + pages, Rt, 290, { align: "right" });
+      }
+      return doc;
+    });
+  }
+
+  function sendChallanPdf(c, bot, caption, approver) {
+    return loadLogo().then(function () { return challanPdf(c, approver); }).then(function (d) {
+      return api("tgSend", { bot: bot, pdfBase64: d.output("datauristring").split(",")[1],
+        filename: String(c.challanNo).replace(/[^\w.-]/g, "_") + ".pdf", caption: caption });
+    });
+  }
+
+  function viewChallans() {
+    var list = S.data.challans.slice().reverse();
+    var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
+    var h = '<div class="cards">' +
+      '<div class="stat ' + (by("Draft") ? "alert" : "") + '"><div class="n">' + by("Draft") + '</div><div class="l">Awaiting approval</div></div>' +
+      '<div class="stat"><div class="n">' + by("Approved") + '</div><div class="l">Approved, to dispatch</div></div>' +
+      '<div class="stat"><div class="n">' + by("Dispatched") + '</div><div class="l">Awaiting receipt</div></div>' +
+      '<div class="stat"><div class="n">' + by("Received") + '</div><div class="l">Receipt in</div></div>' +
+      '</div>';
+    h += '<div class="row"><div class="grow"></div><button class="btn" data-act="ch-new">+ New challan</button></div>';
+    if (!list.length) h += '<div class="empty">No challans yet.</div>';
+    list.forEach(function (c) {
+      var st = c.status || "Draft";
+      var cls = st === "Received" ? "Won" : (st === "Draft" ? "due" : "teal");
+      h += '<div class="card"><h3>' + esc(c.challanNo) + ' <span class="pill ' + cls + '">' + esc(st) + '</span>' +
+        (String(c.receiptReceived).toUpperCase() === "Y" ? ' <span class="pill Won">receipt in</span>' : "") + '</h3>' +
+        '<div class="meta">' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
+        (c.brand ? '<br>Brand: ' + esc(c.brand) : "") +
+        '<br>' + esc(c.items || "") +
+        (c.freight ? '<br>Freight ' + money(c.freight) + ' (' + esc(c.freightTo || "Client") + ') &middot; ' + esc(c.driver || "no driver") : "") +
+        '<br>Created by ' + esc(c.createdBy || "") +
+        (c.approvedBy ? ' &middot; approved by <b>' + esc(c.approvedBy) + '</b>' : "") + '</div>' +
+        '<div class="acts">' +
+        (st === "Draft" && canApprove() ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Approved">Approve</button>' : "") +
+        (st === "Approved" && canApprove() ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : "") +
+        (st === "Dispatched" ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Receipt received</button>' : "") +
+        '<button class="btn sm ghost" data-act="ch-pdf" data-id="' + esc(c.id) + '">PDF</button>' +
+        '</div></div>';
+    });
+    return h;
+  }
 
   function renderLogin(err) {
     document.getElementById("root").innerHTML =
@@ -1478,22 +1650,32 @@
       '<button class="x" data-act="li-del" data-row="' + i + '">&times;</button></div>';
   }
 
-  function modalChallan(c) {
-    c = c || {};
-    var cs = S.data.customers.map(function (x) { return x.name; });
-    var pre = c.customerId ? (custById(c.customerId) || {}).name : "";
-    var no = "EW/CH/" + new Date().getFullYear() + "/" + String(S.data.challans.length + 1).padStart(3, "0");
-    return '<h2>New delivery challan</h2><p class="sub">Saved to the sheet and pushed to the Telegram group as a PDF.</p>' +
-      '<label>Customer</label><select id="m_cust">' + opts(cs, pre) + '</select>' +
+  function modalChallan() {
+    var clients = S.data.clients.map(function (x) { return x.name; });
+    var sites = S.data.sites.map(function (x) { return x.name; });
+    var drivers = S.data.drivers.map(function (x) { return x.name + (x.vehicle ? " (" + x.vehicle + ")" : ""); });
+    return '<h2>New delivery challan</h2>' +
+      '<p class="sub">The challan PDF carries no prices and no pictures - it is a delivery note, not a quote.</p>' +
+      '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, LOCATIONS[0]) + '</select>' +
+      '<label>Client</label><input id="m_client" list="clientlist2" placeholder="Type client name"/>' +
+      '<datalist id="clientlist2">' + clients.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      '<label>Site (optional)</label><input id="m_site" list="sitelist" placeholder="Site / project"/>' +
+      '<datalist id="sitelist">' + sites.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
       '<div class="grid2">' +
-      '<div><label>Challan no.</label><input id="m_no" value="' + esc(no) + '"/></div>' +
-      '<div><label>Associate</label><select id="m_assoc">' + opts([""].concat(S.data.associates.map(function (a) { return a.name; })), "") + '</select></div>' +
+      '<div><label>Brand</label><select id="m_brand">' + opts([""].concat(brandList()), "") + '</select></div>' +
+      '<div><label>Partner (for incentive)</label><select id="m_assoc">' + opts([""].concat(S.data.associates.map(function (a) { return a.name; })), "") + '</select></div>' +
       '</div>' +
       '<label>Items</label><div id="m_lines">' + lineRow(0, "", "", "") + '</div>' +
       '<button class="btn sm ghost" data-act="li-add" style="margin-top:4px">+ Add item</button>' +
       prodDatalist() +
+      '<div class="grid2" style="margin-top:10px">' +
+      '<div><label>Freight / tempo fare</label><input id="m_freight" inputmode="numeric" value="0"/></div>' +
+      '<div><label>Freight borne by</label><select id="m_fto">' + opts(["Client", "Energy World"], "Client") + '</select></div>' +
+      '</div>' +
+      '<label>Driver</label><input id="m_driver" list="driverlist" placeholder="Driver name (vehicle)"/>' +
+      '<datalist id="driverlist">' + drivers.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      '<button class="btn" data-act="ch-save">Save &amp; send</button></div>';
+      '<button class="btn" data-act="ch-save">Create challan</button></div>';
   }
 
   function buildPdf(ch, cust, lines) {
@@ -1916,8 +2098,21 @@
       }).then(function (r) { if (r) { S.modal = null; toast("Site saved."); render(); } });
       return;
     }
-    if (act === "checkin") { checkIn(id, false); return; }
-    if (act === "setgeo") { checkIn(id, true); return; }
+    if (act === "checkin") { S.modal = modalCheckIn(siteById(id), false); render(); return; }
+    if (act === "setgeo") { S.modal = modalCheckIn(siteById(id), true); render(); return; }
+    if (act === "ck-go") {
+      var setLoc = t.getAttribute("data-set") === "1";
+      if (setLoc && !window.confirm("Confirm you are standing AT this site.\n\nThis fixes its location permanently.")) return;
+      var purpose = val("ck_purpose");
+      var f = el("ck_photo");
+      var file = f && f.files && f.files[0];
+      t.disabled = true; t.textContent = "Logging...";
+      S.modal = null; render();
+      (file ? shrinkPhoto(file) : Promise.resolve(null)).then(function (b64) {
+        checkIn(id, setLoc, purpose, b64);
+      });
+      return;
+    }
     if (act === "matrix") { S.siteId = id; S.tab = "matrix"; render(); return; }
 
     if (act === "cust-new") { S.modal = modalCustomer(null); render(); return; }
@@ -1966,7 +2161,7 @@
       return;
     }
 
-    if (act === "ch-new") { S.modal = modalChallan(id ? { customerId: id } : null); render(); return; }
+    if (act === "ch-new") { S.modal = modalChallan(); render(); return; }
     if (act === "li-add") {
       var box = el("m_lines");
       box.insertAdjacentHTML("beforeend", lineRow(box.children.length, "", "", ""));
@@ -1978,37 +2173,82 @@
       return;
     }
     if (act === "ch-save") {
-      var cn = val("m_cust");
-      var cust = S.data.customers.filter(function (x) { return x.name === cn; })[0];
-      if (!cust) { toast("Pick a customer."); return; }
+      var cn = val("m_client");
+      if (!cn) { toast("Enter the client."); return; }
       var lines = readLines();
       if (!lines.length) { toast("Add at least one item."); return; }
+      var cObj = clientByName(cn) || {};
+      var siteName = val("m_site");
+      var siteObj = S.data.sites.filter(function (x) { return x.name === siteName; })[0] || {};
       var amount = lines.reduce(function (a, l) { return a + l.q * l.r; }, 0);
       var assocName = val("m_assoc");
-      var assoc = S.data.associates.filter(function (a) { return a.name === assocName; })[0];
-      var rate = assoc ? Number(assoc.rate) || 0 : 0;
-      var ch = {
-        id: "", createdBy: S.user, challanNo: val("m_no"), customerId: cust.id, customerName: cust.name,
-        site: cust.site || "", items: lines.map(function (l) { return l.d + " x" + l.q; }).join(", "),
-        amount: amount, associate: assocName, commissionRate: rate,
-        commissionAmt: Math.round(amount * rate) / 100, status: "Delivered"
-      };
-      t.disabled = true; t.textContent = "Sending...";
-      save("challans", ch).then(function (r) {
-        if (!r) return;
-        S.modal = null; toast("Challan saved.");
-        render();
-        try {
-          var b64 = buildPdf(ch, cust, lines);
-          api("tgSend", {
-            bot: "TG_CHALLAN", pdfBase64: b64,
-            filename: ch.challanNo.replace(/[^\w.-]/g, "_") + ".pdf",
-            caption: "<b>Challan " + ch.challanNo + "</b>\n" + cust.name + "\nRs " + amount + "\nBy " + S.user
-          }).then(function (tg) {
-            toast(tg && tg.ok ? "PDF sent to Telegram." : "Saved, but Telegram send failed.");
-          });
-        } catch (err) { toast("Saved, but PDF failed: " + err.message); }
+      var itemsJson = JSON.stringify(lines.map(function (l) {
+        var p = PRODUCTS.filter(function (x) { return x.label === l.d || x.code === l.d; })[0] || {};
+        return { code: p.code || "", desc: p.desc || l.d, unit: p.unit || "No's", qty: l.q, rate: l.r };
+      }));
+      t.disabled = true; t.textContent = "Creating...";
+
+      api("challanNo", { client: cObj.shortName || cn }).then(function (n) {
+        var no = (n && n.challanNo) || (cn.toUpperCase().slice(0, 6) + "/" + today().slice(8) + "/001");
+        var ch = {
+          id: "", createdBy: S.user, challanNo: no,
+          customerId: cObj.id || "", customerName: cn,
+          siteId: siteObj.id || "", site: siteName || "",
+          brand: val("m_brand"), location: val("m_loc"),
+          items: lines.map(function (l) { return l.d + " x" + l.q; }).join(", "),
+          itemsJson: itemsJson, amount: amount,
+          freight: val("m_freight") || 0, freightTo: val("m_fto"), driver: val("m_driver"),
+          associate: assocName, commissionSet: "N", status: "Draft", receiptReceived: "N"
+        };
+        return save("challans", ch).then(function (r) {
+          if (!r) return;
+          S.modal = null;
+          toast("Challan " + no + " created - pending approval.");
+          render();
+          sendChallanPdf(r, "TG_CHALLAN",
+            "<b>Challan " + no + "</b>\n" + cn + (siteName ? " - " + siteName : "") +
+            "\nCreated by <b>" + S.user + "</b>\n\n<i>PENDING APPROVAL</i>", null)
+            .then(function (tg) { toast(tg && tg.ok ? "Sent to challan bot." : "Saved, but Telegram send failed."); });
+        });
       });
+      return;
+    }
+
+    if (act === "ch-move") {
+      var to = t.getAttribute("data-to");
+      var ch2 = S.data.challans.filter(function (x) { return x.id === id; })[0];
+      if (!ch2) return;
+      if (to === "Received" && !window.confirm("Confirm the signed material receipt is in hand for " + ch2.challanNo + "?")) return;
+      t.disabled = true; t.textContent = "...";
+      api("challanMove", { id: id, to: to }).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Could not update."); render(); return; }
+        ch2.status = to;
+        if (to === "Approved") {
+          ch2.approvedBy = r.by;
+          toast("Approved by " + r.by + ".");
+        } else if (to === "Dispatched") {
+          toast("Dispatched.");
+          sendChallanPdf(ch2, "TG_DISPATCH",
+            "<b>DISPATCH: " + ch2.challanNo + "</b>\n" + ch2.customerName +
+            (ch2.driver ? "\nDriver: " + ch2.driver : "") +
+            "\nApproved by <b>" + (ch2.approvedBy || "-") + "</b>", ch2.approvedBy || "")
+            .then(function (tg) { toast(tg && tg.ok ? "Sent to dispatch bot." : "Dispatch send failed."); });
+        } else if (to === "Received") {
+          ch2.receiptReceived = "Y";
+          toast("Receipt in. Ledger and freight unlocked; incentive decision requested.");
+        }
+        render();
+        refresh();
+      });
+      return;
+    }
+
+    if (act === "ch-pdf") {
+      var ch3 = S.data.challans.filter(function (x) { return x.id === id; })[0];
+      if (!ch3) return;
+      toast("Building PDF...");
+      loadLogo().then(function () { return challanPdf(ch3, ch3.approvedBy || ""); })
+        .then(function (d) { d.save(String(ch3.challanNo).replace(/[^\w.-]/g, "_") + ".pdf"); });
       return;
     }
   });
