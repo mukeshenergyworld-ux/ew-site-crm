@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "2.7";
+  var APP_VERSION = "2.8";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -61,6 +61,7 @@
     geoOnly: false,
     partner: "",
     pRole: "",
+    leadBrand: "",
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [] }
   };
 
@@ -83,10 +84,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","clients","quotes","sites","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
+    admin:    ["dash","clients","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
     accounts: ["dash","clients","followups","challans","payments","discounts","service","spares","dues","products"],
     godown:   ["dash","challans","products"],
-    sales:    ["dash","clients","quotes","sites","winloss","visits","followups","challans","discounts","products"],
+    sales:    ["dash","clients","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
     service:  ["dash","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -1673,6 +1674,117 @@
     });
   }
 
+  /* ---------------- brand-wise pending leads ----------------
+     "Which leads are still pending for Stellar?" - one tap, then hand the list to the
+     executive who covers that brand. */
+  function brandLeads(brand) {
+    var rule = S.data.rules.filter(function (r) { return r.brand === brand; })[0] || {};
+    var by = Number(rule.pitchBy) || 0;
+    var out = [];
+    S.data.sites.forEach(function (st) {
+      var p = S.data.pitch.filter(function (x) { return x.siteId === st.id && x.brand === brand; })[0];
+      var status = (p && p.status) || "Not pitched";
+      if (status === "Won" || status === "Lost" || status === "Not applicable") return;
+      var sn = stageNo(st);
+      var win = sn === 0 ? "stage not set" : (sn > by ? "CLOSED" : (sn === by ? "CLOSES NOW" : "open till stage " + by));
+      out.push({ site: st, status: status, window: win, urgent: (sn === by || by - sn === 1) && sn > 0 });
+    });
+    out.sort(function (a, b) { return (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0); });
+    return { rule: rule, list: out };
+  }
+
+  function viewLeads() {
+    var h = '<div class="empty" style="text-align:left;padding:0 0 12px">Pick a brand to see every site where it is still open - and whether the window is about to shut. Send the list straight to the executive who covers it.</div>';
+    h += '<div class="row">' + brandList().map(function (b) {
+      var n = brandLeads(b).list.length;
+      return '<button class="btn sm ' + (S.leadBrand === b ? "" : "ghost") + '" data-act="lead-brand" data-b="' + esc(b) + '">' + esc(b) + ' (' + n + ')</button>';
+    }).join("") + '</div>';
+    if (!S.leadBrand) return h;
+    var r = brandLeads(S.leadBrand);
+    var urgent = r.list.filter(function (x) { return x.urgent; }).length;
+    var closed = r.list.filter(function (x) { return x.window === "CLOSED"; }).length;
+    h += '<div class="cards">' +
+      '<div class="stat"><div class="n">' + r.list.length + '</div><div class="l">Open leads</div></div>' +
+      '<div class="stat ' + (urgent ? "alert" : "") + '"><div class="n">' + urgent + '</div><div class="l">Window closing</div></div>' +
+      '<div class="stat"><div class="n">' + closed + '</div><div class="l">Already missed</div></div>' +
+      '</div>';
+    h += '<div class="row"><span class="pill teal">' + esc(S.leadBrand) + '</span><div class="grow"></div>' +
+      '<button class="btn ghost" data-act="lead-pdf">PDF</button>' +
+      '<select id="lead_exec" style="width:auto;padding:9px 10px">' +
+      opts(["Vivek Verma", "Ashish Bhuker", "Imran", "Mukesh Verma", "Dinesh Verma"], "Vivek Verma") + '</select>' +
+      '<button class="btn" data-act="lead-send">Send to executive</button></div>';
+    if (!r.list.length) return h + '<div class="empty">Nothing pending for ' + esc(S.leadBrand) + '.</div>';
+    r.list.forEach(function (x) {
+      var cls = x.window === "CLOSED" ? "due" : (x.urgent ? "due" : "teal");
+      h += '<div class="card"><h3>' + esc(x.site.name) + ' <span class="pill ' + cls + '">' + esc(x.window) + '</span></h3>' +
+        '<div class="meta">' + esc(x.site.client || "") + (x.site.city ? ' &middot; ' + esc(x.site.city) : "") +
+        '<br>Stage: <b>' + esc(x.site.stage || "-") + '</b> &middot; status: ' + esc(x.status) +
+        (x.site.owner ? '<br>Owner: ' + esc(x.site.owner) : "") +
+        (x.site.mobile ? '<br>' + esc(x.site.mobile) : "") + '</div>' +
+        '<div class="acts">' + (x.site.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.site.mobile) + '">Call</a>' : "") +
+        '<button class="btn sm ghost" data-act="matrix" data-id="' + esc(x.site.id) + '">Matrix</button></div></div>';
+    });
+    return h;
+  }
+
+  function leadsPdf(brand) {
+    var r = brandLeads(brand);
+    return loadFonts().then(function (f) {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var uni = false;
+      if (f) {
+        doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
+        doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold");
+        uni = true;
+      }
+      var F = function (w) { doc.setFont(uni ? "DJ" : "helvetica", w || "normal"); };
+      var W = 210, L = 14, Rt = W - 14, y = 0;
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 34, "F");
+      doc.setFillColor(94, 234, 212); doc.rect(0, 34, W, 1.2, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 8, 30, 16); } catch (e) {} }
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(14);
+      doc.text("PENDING LEADS", Rt, 15, { align: "right" });
+      F("normal"); doc.setFontSize(9); doc.setTextColor(160, 205, 199);
+      doc.text(brand + "  \u00b7  " + (r.rule.line || ""), Rt, 22, { align: "right" });
+      doc.text(today(), Rt, 27, { align: "right" });
+
+      y = 48;
+      doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, Rt - L, 9, "F");
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.4);
+      doc.text("SITE", L + 3, y);
+      doc.text("CLIENT", L + 62, y);
+      doc.text("STAGE", L + 105, y);
+      doc.text("STATUS", Rt - 34, y, { align: "right" });
+      doc.text("WINDOW", Rt - 2, y, { align: "right" });
+      y += 9;
+
+      r.list.forEach(function (x, i) {
+        if (y > 268) { doc.addPage(); y = 24; }
+        if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, Rt - L, 8, "F"); }
+        doc.setTextColor(17, 34, 45); F("bold"); doc.setFontSize(7.4);
+        doc.text(doc.splitTextToSize(String(x.site.name), 46)[0], L + 3, y);
+        F("normal"); doc.setTextColor(90, 105, 120);
+        doc.text(doc.splitTextToSize(String(x.site.client || "-"), 40)[0], L + 62, y);
+        doc.setFontSize(6.6);
+        doc.text(doc.splitTextToSize(String(x.site.stage || "-"), 40)[0], L + 105, y);
+        doc.setFontSize(7);
+        doc.text(String(x.status), Rt - 34, y, { align: "right" });
+        if (x.window === "CLOSED" || x.urgent) { doc.setTextColor(190, 30, 60); F("bold"); }
+        else { doc.setTextColor(13, 148, 136); F("normal"); }
+        doc.text(String(x.window), Rt - 2, y, { align: "right" });
+        y += 8;
+      });
+
+      y += 6;
+      doc.setTextColor(110, 125, 140); F("normal"); doc.setFontSize(7);
+      doc.text("Window = the last construction stage at which " + brand + " can still be sold at that site.", L, y);
+      doc.text("Once it is CLOSED the wall is shut and the sale is gone.", L, y + 4.5);
+      doc.setFontSize(6.4); doc.setTextColor(150, 163, 175);
+      doc.text("Energy World  |  Panipat \u00b7 Sonipat \u00b7 Karnal", L, 290);
+      return doc;
+    });
+  }
+
   function renderLogin(err) {
     document.getElementById("root").innerHTML =
       '<div class="login-wrap"><div class="login">' +
@@ -2022,8 +2134,8 @@
 
   function render() {
     if (!S.pin) { renderLogin(); return; }
-    var views = { visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
-    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var views = { leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
+    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -2035,7 +2147,7 @@
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
     var GROUPS = [
-      ["Sell", ["dash", "clients", "quotes", "sites", "visits", "winloss", "followups"]],
+      ["Sell", ["dash", "clients", "quotes", "sites", "leads", "visits", "winloss", "followups"]],
       ["Deliver", ["challans", "payments", "discounts", "products", "dues"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["commission", "payroll", "catalogue", "rules"]]
@@ -2384,6 +2496,28 @@
         plumber: val("s_plumb"), builder: val("s_build"), owner: val("s_owner"),
         status: "Active", notes: val("s_notes")
       }).then(function (r) { if (r) { S.modal = null; toast("Site saved."); render(); } });
+      return;
+    }
+    if (act === "lead-brand") { S.leadBrand = t.getAttribute("data-b"); render(); return; }
+    if (act === "lead-pdf") {
+      toast("Building list...");
+      loadLogo().then(function () { return leadsPdf(S.leadBrand); })
+        .then(function (d) { d.save("Leads_" + S.leadBrand.replace(/[^\w.-]/g, "_") + ".pdf"); });
+      return;
+    }
+    if (act === "lead-send") {
+      var exec = val("lead_exec");
+      var r2 = brandLeads(S.leadBrand);
+      if (!r2.list.length) { toast("Nothing pending."); return; }
+      t.disabled = true; t.textContent = "Sending...";
+      loadLogo().then(function () { return leadsPdf(S.leadBrand); }).then(function (d) {
+        var urg = r2.list.filter(function (x) { return x.urgent; }).length;
+        return api("tgSend", { bot: "TG_QUOTES",
+          pdfBase64: d.output("datauristring").split(",")[1],
+          filename: "Leads_" + S.leadBrand.replace(/[^\w.-]/g, "_") + ".pdf",
+          caption: "<b>" + S.leadBrand + " - pending leads</b>\nFor: <b>" + exec + "</b>\n" +
+            r2.list.length + " open" + (urg ? ", <b>" + urg + " closing now</b>" : "") + "\nSent by " + S.user });
+      }).then(function (r3) { toast(r3 && r3.ok ? "Sent to " + exec + "." : "Send failed."); render(); });
       return;
     }
     if (act === "p-role") { S.pRole = t.getAttribute("data-r"); render(); return; }
