@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "2.9";
+  var APP_VERSION = "3.0";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1865,6 +1865,80 @@
     return h;
   }
 
+  /* ---------------- biometric unlock ----------------
+     Honest about what this is: the phone\u2019s own Face ID / fingerprint unlocks a PIN that
+     is already stored on THAT device. The biometric never leaves the phone and is never
+     sent anywhere - that is how WebAuthn works. The server still authenticates with the
+     PIN, exactly as before. It is convenience with a real lock on it, not a new identity
+     system, and I am not going to pretend otherwise. */
+  var BIO_KEY = "ew_team_bio";
+
+  function bioAvailable() {
+    return !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
+  }
+  function bioSaved() {
+    try { return JSON.parse(localStorage.getItem(BIO_KEY) || "null"); } catch (e) { return null; }
+  }
+  function randBytes(n) {
+    var a = new Uint8Array(n); crypto.getRandomValues(a); return a;
+  }
+  function b64u(buf) {
+    var b = new Uint8Array(buf), s2 = "";
+    for (var i = 0; i < b.length; i++) s2 += String.fromCharCode(b[i]);
+    return btoa(s2).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function fromB64u(str) {
+    var s2 = String(str).replace(/-/g, "+").replace(/_/g, "/");
+    var bin = atob(s2);
+    var a = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+    return a;
+  }
+
+  function bioEnrol() {
+    if (!bioAvailable()) { toast("This device has no biometric support."); return; }
+    navigator.credentials.create({
+      publicKey: {
+        challenge: randBytes(32),
+        rp: { name: "Energy World Team" },
+        user: { id: randBytes(16), name: S.user, displayName: S.user },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+        timeout: 60000, attestation: "none"
+      }
+    }).then(function (cred) {
+      localStorage.setItem(BIO_KEY, JSON.stringify({ id: b64u(cred.rawId), user: S.user, pin: S.pin }));
+      toast("Face ID / fingerprint enabled on this device.");
+      render();
+    }).catch(function () { toast("Could not enable biometric unlock."); });
+  }
+
+  function bioUnlock() {
+    var saved = bioSaved();
+    if (!saved) return;
+    navigator.credentials.get({
+      publicKey: {
+        challenge: randBytes(32),
+        allowCredentials: [{ type: "public-key", id: fromB64u(saved.id) }],
+        userVerification: "required", timeout: 60000
+      }
+    }).then(function () {
+      S.user = saved.user; S.pin = saved.pin;
+      api("teamAuth").then(function (r) {
+        if (!r || !r.ok) { localStorage.removeItem(BIO_KEY); S.pin = ""; renderLogin("Saved sign-in no longer valid."); return; }
+        S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
+        S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
+        loadCatalog(); refresh();
+      });
+    }).catch(function () { toast("Biometric check failed - use your PIN."); });
+  }
+
+  function bioForget() {
+    localStorage.removeItem(BIO_KEY);
+    toast("Biometric unlock removed from this device.");
+    render();
+  }
+
   function renderLogin(err) {
     document.getElementById("root").innerHTML =
       '<div class="login-wrap"><div class="login">' +
@@ -1878,6 +1952,9 @@
       '<input id="lp" type="password" inputmode="numeric" autocomplete="current-password" placeholder="4-digit PIN"/>' +
       '<div style="height:18px"></div>' +
       '<button class="btn full" data-act="login">Sign in</button>' +
+      (bioSaved() && bioAvailable()
+        ? '<div style="height:10px"></div><button class="btn full ghost" data-act="bio-unlock">Unlock with Face ID / fingerprint</button>'
+        : '') +
       '<div class="foot-note">v' + APP_VERSION + ' - updates apply automatically on each login.</div>' +
       '</div></div>';
     var p = el("lp");
@@ -2223,6 +2300,9 @@
       '<div><b style="font-size:15px">Energy World</b><div style="font-size:12px;color:#64748b">Team workspace</div></div>' +
       '<div class="who"><b>' + esc(S.user) + '</b><span class="pill teal">' + esc(S.role) + '</span>' +
       '<div style="margin-top:4px;display:flex;gap:4px;justify-content:flex-end">' +
+      (bioAvailable() ? (bioSaved()
+        ? '<button class="btn sm ghost" data-act="bio-off">Face ID on</button>'
+        : '<button class="btn sm ghost" data-act="bio-on">Enable Face ID</button>') : '') +
       '<button class="btn sm ghost" data-act="pin-change">PIN</button>' +
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
@@ -2284,6 +2364,9 @@
 
     if (act === "login") { doLogin(); return; }
     if (act === "pin-change") { renderPinChange(); return; }
+    if (act === "bio-on") { bioEnrol(); return; }
+    if (act === "bio-off") { bioForget(); return; }
+    if (act === "bio-unlock") { bioUnlock(); return; }
     if (act === "pin-save") {
       var p1 = val("np1"), p2 = val("np2");
       if (!/^[0-9]{4,8}$/.test(p1)) { renderPinChange("PIN must be 4-8 digits."); return; }
@@ -2918,6 +3001,7 @@
       }).catch(function () { S.pin = ""; renderLogin("Network error."); });
     } else {
       renderLogin();
+      if (bioSaved() && bioAvailable()) setTimeout(bioUnlock, 400);
     }
   })();
 })();
