@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "2.4";
+  var APP_VERSION = "2.5";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1211,7 +1211,8 @@
       '<p class="sub">' + esc(site.name) + '</p>' +
       (setLoc ? '<div class="card" style="border-color:#fde68a;background:#fffbeb"><div class="meta"><b>Only do this while standing at the site.</b> It fixes the location permanently, and every future visit is measured from it. Never from the office.</div></div>' : "") +
       '<label>What was this visit for?</label><input id="ck_purpose" placeholder="e.g. measurement, follow-up, delivery check"/>' +
-      '<label>Site photo (optional, but it is your proof)</label>' +
+      '<label>Site photo (optional - this is your proof)</label>' +
+      '<div class="meta" style="margin-bottom:6px">Goes to the EW Daily Report bot with the GPS pin, client and time. Kept in Telegram, not on this phone.</div>' +
       '<input id="ck_photo" type="file" accept="image/*" capture="environment"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="ck-go" data-id="' + esc(site.id) + '" data-set="' + (setLoc ? "1" : "") + '">' +
@@ -1242,7 +1243,7 @@
         (v.note ? '<br><i>' + esc(v.note) + '</i>' : "") + '</div>' +
         '<div class="acts">' +
         (v.lat ? '<a class="btn sm ghost" target="_blank" href="https://maps.google.com/?q=' + esc(v.lat) + ',' + esc(v.lng) + '">Map</a>' : "") +
-        (v.photoUrl ? '<a class="btn sm" target="_blank" href="' + esc(v.photoUrl) + '">Photo</a>' : '<span class="pill">no photo</span>') +
+        (v.tgFileId ? '<button class="btn sm" data-act="v-photo" data-file="' + esc(v.tgFileId) + '">Photo</button>' : '<span class="pill">no photo</span>') +
         '</div>' +
         '</div>';
     });
@@ -2096,6 +2097,18 @@
         plumber: val("s_plumb"), builder: val("s_build"), owner: val("s_owner"),
         status: "Active", notes: val("s_notes")
       }).then(function (r) { if (r) { S.modal = null; toast("Site saved."); render(); } });
+      return;
+    }
+    if (act === "v-photo") {
+      var fid = t.getAttribute("data-file");
+      t.disabled = true; t.textContent = "Loading...";
+      api("visitPhoto", { fileId: fid }).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Photo not available."); render(); return; }
+        S.modal = '<h2>Site photo</h2><img src="data:' + r.mime + ';base64,' + r.b64 +
+          '" style="width:100%;border-radius:12px;margin-top:8px"/>' +
+          '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
+        render();
+      });
       return;
     }
     if (act === "checkin") { S.modal = modalCheckIn(siteById(id), false); render(); return; }
