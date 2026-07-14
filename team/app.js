@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.95";
+  var APP_VERSION = "4.0";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -133,15 +133,31 @@
     syncing = true;
     api("teamGet").then(function (r) {
       syncing = false; syncAt = Date.now();
-      if (r && r.ok) { S.data = r; render(); }
+      if (r && r.ok) { S.data = r; snapSave(); render(); }
     }).catch(function () { syncing = false; });
   }
 
+  /* The server round-trip is ~2s on a good connection and worse on 4G at a site. Rather
+     than stare at a spinner, paint the last known data straight away and let the fresh
+     copy land underneath. The snapshot is per user, so nobody sees another role's data. */
+  function snapKey() { return "ew_snap_" + (S.user || "x"); }
+  function snapSave() {
+    try { localStorage.setItem(snapKey(), JSON.stringify({ at: Date.now(), d: S.data })); } catch (e) { }
+  }
+  function snapLoad() {
+    try {
+      var t = JSON.parse(localStorage.getItem(snapKey()) || "null");
+      return (t && t.d) ? t.d : null;
+    } catch (e) { return null; }
+  }
+
   function refresh() {
+    var snap = snapLoad();
+    if (snap && snap.ok) { S.data = snap; S.busy = false; render(); }
     return api("teamGet").then(function (r) {
       S.busy = false;
       syncAt = Date.now();
-      if (r && r.ok) S.data = r;
+      if (r && r.ok) { S.data = r; snapSave(); }
       render();
     });
   }
@@ -1132,7 +1148,8 @@
         var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? bd : Number(i.disc);
         d = Number(d) || 0;
         var net = Math.round(i.price * (1 - d / 100));
-        return { desc: i.desc, code: i.code, pic: pics[idx], unit: i.unit || "No's",
+        return { desc: i.desc, code: i.code, pic: pics[idx], dim: PIC_DIM[i.pic] || null,
+          unit: i.unit || "No's",
           qty: i.qty, price: i.price, disc: d, net: net, total: net * i.qty };
       });
       var ordered = rows.filter(function (r) { return r.disc > 0; }).sort(function (a, b) { return b.disc - a.disc; })
@@ -1247,7 +1264,18 @@
 
         col(GREY); F("normal"); doc.setFontSize(5.6);
         doc.text(String(i + 1), X.n, y);
-        if (r.pic) { try { doc.addImage(r.pic, X.pic, y - 2.8, 10, 9); } catch (e) {} }
+        /* A photo was forced into a fixed 10 x 9 box, so a tall product (the sand filter)
+           came out visibly squashed. Fit it inside the box on its own aspect ratio and centre
+           it. Products with no photo in the catalogue simply leave the cell blank. */
+        if (r.pic) {
+          try {
+            var BOXW = 10, BOXH = 9;
+            var dm = (r.dim && r.dim.w && r.dim.h) ? r.dim : { w: BOXW, h: BOXH };
+            var psc = Math.min(BOXW / dm.w, BOXH / dm.h);
+            var pw = dm.w * psc, ph = dm.h * psc;
+            doc.addImage(r.pic, "JPEG", X.pic + (BOXW - pw) / 2, y - 2.8 + (BOXH - ph) / 2, pw, ph);
+          } catch (e) { }
+        }
 
         col([13, 148, 136]); F("bold"); doc.setFontSize(5.4);
         doc.text(String(r.code || ""), X.item, y - 0.6);
@@ -2217,7 +2245,8 @@
     }).then(function () {
       S.user = saved.user; S.pin = saved.pin;
       api("teamAuth").then(function (r) {
-        if (!r || !r.ok) { localStorage.removeItem(BIO_KEY); S.pin = ""; renderLogin("Saved sign-in no longer valid."); return; }
+        if (!r || !r.ok) { localStorage.removeItem(BIO_KEY);
+      try { localStorage.removeItem(snapKey()); } catch (e) { } S.pin = ""; renderLogin("Saved sign-in no longer valid."); return; }
         S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
         S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
         loadCatalog(); refresh();
@@ -2227,6 +2256,7 @@
 
   function bioForget() {
     localStorage.removeItem(BIO_KEY);
+      try { localStorage.removeItem(snapKey()); } catch (e) { }
     toast("Biometric unlock removed from this device.");
     render();
   }
