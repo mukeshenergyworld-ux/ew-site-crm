@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.93";
+  var APP_VERSION = "3.94";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1145,24 +1145,21 @@
          what it is, and how long it holds. The old "PREPARED FOR / PREPARED BY" strip below it
          was repeating the same names in a second box - dropped. Who wrote it now signs off at
          the foot of the document, which is where a signature belongs. */
-      var HH = 58;
+      var HH = 46;   /* the word QUOTATION was doing no work - the document is obviously a quote */
       fill(DEEP); doc.rect(0, 0, W, HH, "F");
       fill(MINT); doc.rect(0, HH, W, 1.2, "F");
 
-      if (logo) { try { doc.addImage(logo, "JPEG", L, 10, 32, 17); } catch (e) {} }
+      if (logo) { try { doc.addImage(logo, "JPEG", L, 8, 31, 16.5); } catch (e) {} }
       col(MINT); F("bold"); doc.setFontSize(6.4);
-      doc.text("M O D E R N   P L U M B I N G   S O L U T I O N", L, 33.5);
+      doc.text("M O D E R N   P L U M B I N G   S O L U T I O N", L, 30.5);
       col([148, 190, 184]); F("normal"); doc.setFontSize(6);
-      doc.text("PANIPAT   |   SONIPAT   |   KARNAL", L, 38.5);
-
-      col([255, 255, 255]); F("bold"); doc.setFontSize(16);
-      doc.text("QUOTATION", Rt, 14.5, { align: "right" });
+      doc.text("PANIPAT   |   SONIPAT   |   KARNAL", L, 35.5);
 
       /* QUOTE FOR - name and address only. The client knows their own phone number. */
       col(MINT); F("bold"); doc.setFontSize(5.6);
-      doc.text("Q U O T E   F O R", Rt, 21.5, { align: "right" });
-      col([255, 255, 255]); F("bold"); doc.setFontSize(11);
-      doc.text(fitCell(doc, F, q.client || "-", 92, 1, "bold", 11)[0], Rt, 27.5, { align: "right" });
+      doc.text("Q U O T E   F O R", Rt, 12.5, { align: "right" });
+      col([255, 255, 255]); F("bold"); doc.setFontSize(11.5);
+      doc.text(fitCell(doc, F, q.client || "-", 92, 1, "bold", 11.5)[0], Rt, 18.6, { align: "right" });
       /* address parts repeat in practice (area "Panipat", location "Panipat"), which printed
          "Sector 57, Panipat, Panipat". De-duplicate case-insensitively before joining. */
       var addr = [c.address, c.area, c.location].filter(Boolean).map(String)
@@ -1171,18 +1168,18 @@
         }).join(", ");
       col([176, 214, 209]); F("normal"); doc.setFontSize(7);
       var aLines = fitCell(doc, F, addr, 92, 2, "normal", 7);
-      aLines.forEach(function (ln, i) { doc.text(ln, Rt, 32.4 + i * 3.6, { align: "right" }); });
+      aLines.forEach(function (ln, i) { doc.text(ln, Rt, 23.4 + i * 3.6, { align: "right" }); });
 
       doc.setDrawColor(38, 94, 88); doc.setLineWidth(0.3);
-      doc.line(Rt - 66, 41.5, Rt, 41.5); doc.setLineWidth(0.2);
+      doc.line(Rt - 62, 32.4, Rt, 32.4); doc.setLineWidth(0.2);
 
       col([160, 205, 199]); F("normal"); doc.setFontSize(7.4);
       var VALID_DAYS = 30;
       var vUntil = new Date(Date.now() + VALID_DAYS * 86400000).toISOString().slice(0, 10);
-      doc.text("Quote No.   " + String(q.quoteNo || ""), Rt, 46.5, { align: "right" });
-      doc.text("Date   " + today(), Rt, 50.7, { align: "right" });
+      doc.text("Quote No.   " + String(q.quoteNo || ""), Rt, 36.8, { align: "right" });
+      doc.text("Date   " + today(), Rt, 40.6, { align: "right" });
       col(MINT);
-      doc.text("Valid for " + VALID_DAYS + " days  \u00b7  until " + vUntil, Rt, 54.9, { align: "right" });
+      doc.text("Valid for " + VALID_DAYS + " days  \u00b7  until " + vUntil, Rt, 44.4, { align: "right" });
 
       /* ---- AUTH. DISTRIBUTOR FOR: the whole strip sits in one soft panel ---- */
       var y = HH + 10;
