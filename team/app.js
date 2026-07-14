@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.5";
+  var APP_VERSION = "3.6";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -789,23 +789,42 @@
     }
 
     if (z.step === 4) {
-      var t = qzTotals();
-      h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="3">Back to products</button>' +
+      var t4 = qzTotals();
+      h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="3">Products</button>' +
         '<div class="grow"></div><button class="btn" data-act="qz-step" data-step="5">Review</button></div>';
-      h += '<div class="card"><h3>Discount for ' + esc(z.brand) + '</h3>' +
-        '<div class="meta">Applies to every line unless a product is overridden below.</div>' +
-        '<div class="acts" style="align-items:center"><input id="qz_bd" inputmode="decimal" value="' + esc(z.brandDisc) + '" style="width:90px;padding:7px 10px"/><span class="pill teal">%</span>' +
+
+      /* brand discount first - that is the decision 95% of the time */
+      h += '<div class="card"><h3>Discount on ' + esc(z.brand) + '</h3>' +
+        '<div class="meta">Applied to every line in this quote.</div>' +
+        '<div class="acts" style="align-items:center">' +
+        '<input id="qz_bd" inputmode="decimal" value="' + esc(z.brandDisc) + '" style="width:90px;padding:9px 10px;font-size:16px;font-weight:700"/>' +
+        '<span class="pill teal">% off list</span>' +
         '<button class="btn sm" data-act="qz-bd">Apply</button></div></div>';
-      (z.items || []).forEach(function (i) {
-        var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? z.brandDisc : i.disc;
-        var lineNet = Math.round(i.qty * i.price * (1 - (Number(d) || 0) / 100));
-        h += '<div class="card"><h3>' + esc(i.desc) + ' <span class="pill teal">' + money(lineNet) + '</span></h3>' +
-          '<div class="meta">' + esc(i.code) + ' - ' + i.qty + ' x ' + money(i.price) + '</div>' +
-          '<div class="acts" style="align-items:center"><span class="pill">Override %</span>' +
-          '<input class="qz-d" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(i.disc === undefined ? "" : i.disc) + '" placeholder="brand ' + esc(z.brandDisc) + '%" style="width:110px;padding:7px 10px"/></div></div>';
-      });
-      h += '<div class="card"><div class="meta">Gross ' + money(t.gross) + '<br>Net after discount ' + money(t.net) +
-        '<br>GST 18% ' + money(t.gst) + '<br><b>Total ' + money(t.total) + '</b></div></div>';
+
+      /* product-wise override hidden behind a disclosure - most people never need it */
+      var overrides = (z.items || []).filter(function (i) { return i.disc !== undefined && i.disc !== ""; }).length;
+      h += '<button class="btn ghost" data-act="qz-adv" style="width:100%;margin-bottom:10px">' +
+        (z.adv ? "\u25B2 Hide product-wise discount" : "\u25BC Change discount product-wise") +
+        (overrides ? "  (" + overrides + " overridden)" : "") + '</button>';
+
+      if (z.adv) {
+        h += '<div class="plist">';
+        (z.items || []).forEach(function (i) {
+          var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? z.brandDisc : i.disc;
+          var lineNet = Math.round(i.qty * i.price * (1 - (Number(d) || 0) / 100));
+          h += '<div class="prow">' +
+            '<div class="pinfo"><div class="pname">' + esc(i.desc) + '</div>' +
+            '<div class="pmeta">' + i.qty + ' \u00d7 ' + money(i.price) + '  \u2192  <b>' + money(lineNet) + '</b></div></div>' +
+            '<div class="pqty">' +
+            '<input class="qz-d" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(i.disc === undefined ? "" : i.disc) + '" placeholder="' + esc(z.brandDisc) + '" style="width:52px"/>' +
+            '<span class="pill">%</span></div></div>';
+        });
+        h += '</div>';
+      }
+
+      h += '<div class="card"><div class="meta">Gross ' + money(t4.gross) +
+        '<br>After discount <b>' + money(t4.net) + '</b>' +
+        '<br><span style="color:#94a3b8">GST as actual - never printed on the quote</span></div></div>';
       return h;
     }
 
@@ -1065,79 +1084,85 @@
       doc.text(String(q.client || "-"), c1, y + 11.5);
       doc.text(String(c.location || "Panipat"), c2, y + 11.5);
       doc.text(String(q.createdBy || "-"), c3, y + 11.5);
-      col(GREY); F("normal"); doc.setFontSize(7);
+      col(GREY); F("normal"); doc.setFontSize(6.6);
       var det = [];
       if (c.mobile) det.push(String(c.mobile));
+      if (c.mobile2) det.push(String(c.mobile2));
       if (c.type) det.push(String(c.type));
-      doc.text(det.join("  |  "), c1, y + 16.5);
-      if (c.address) doc.text(doc.splitTextToSize(String(c.address), 78)[0], c1, y + 21);
-      doc.text("Energy World | Authorised Distributor", c3, y + 16.5);
+      doc.text(det.join("  |  "), c1, y + 16);
+      if (c.address) doc.text(doc.splitTextToSize(String(c.address), 78)[0], c1, y + 20);
+      /* prepared by: just the person and their number */
+      var me = (S.data.team || []).filter(function (t2) { return t2.name === q.createdBy; })[0] || {};
+      if (me.mobile) doc.text(String(me.mobile), c3, y + 16);
       y += 32;
 
       /* ================= TABLE ================= */
-      var X = { n: L + 3, pic: L + 8, item: L + 26, unit: 112, qty: 126, price: 145, dis: 160, dprice: 180, amt: Rt - 1 };
+      /* money columns widened: a lakh figure like Rs 4,51,869 needs real room, and it
+         was running into the next column. Everything shrunk a notch so 100+ lines fit. */
+      var X = { n: L + 2, pic: L + 6, item: L + 21, unit: 106, qty: 118, price: 137, dis: 149, dprice: 172, amt: Rt - 1 };
       var head = function () {
-        fill(SLATE); doc.rect(L, y - 5.5, Rt - L, 9, "F");
-        col([255, 255, 255]); F("bold"); doc.setFontSize(5.9);
+        fill(SLATE); doc.rect(L, y - 4.6, Rt - L, 7.6, "F");
+        col([255, 255, 255]); F("bold"); doc.setFontSize(5.2);
         doc.text("#", X.n, y);
         doc.text("ITEM DESCRIPTION", X.item, y);
         doc.text("UNIT", X.unit, y, { align: "right" });
         doc.text("QTY", X.qty, y, { align: "right" });
         doc.text("PRICE", X.price, y, { align: "right" });
         doc.text("DIS.%", X.dis, y, { align: "right" });
-        doc.text("DISCOUNTED PRICE", X.dprice, y, { align: "right" });
+        doc.text("DISC. PRICE", X.dprice, y, { align: "right" });
         doc.text("TOTAL AMT", X.amt, y, { align: "right" });
-        y += 8.5;
+        y += 7;
       };
       head();
 
       ordered.forEach(function (r, i) {
-        F("normal"); doc.setFontSize(6.3);
-        var lines = doc.splitTextToSize(String(r.desc || ""), 78);
-        var hgt = Math.max(16, 9.5 + lines.length * 3);
-        if (y + hgt > 268) { doc.addPage(); y = 22; head(); }
-        if (i % 2 === 1) { fill(SOFT); doc.rect(L, y - 4.5, Rt - L, hgt, "F"); }
+        /* ONE description. The catalogue repeats the spec inside the description, and
+           printing both made every row a wall of duplicated text. */
+        F("normal"); doc.setFontSize(5.8);
+        var full = String(r.desc || "");
+        var lines = doc.splitTextToSize(full, 80).slice(0, 2);
+        var hgt = Math.max(11, 5 + lines.length * 2.9);
+        if (y + hgt > 272) { doc.addPage(); y = 20; head(); }
+        if (i % 2 === 1) { fill(SOFT); doc.rect(L, y - 3.6, Rt - L, hgt, "F"); }
 
-        col(GREY); F("normal"); doc.setFontSize(6.8);
-        doc.text(String(i + 1), X.n, y + 1);
-        if (r.pic) { try { doc.addImage(r.pic, X.pic, y - 2.6, 14, 12); } catch (e) {} }
+        col(GREY); F("normal"); doc.setFontSize(5.6);
+        doc.text(String(i + 1), X.n, y);
+        if (r.pic) { try { doc.addImage(r.pic, X.pic, y - 2.8, 10, 9); } catch (e) {} }
 
-        col([13, 148, 136]); F("bold"); doc.setFontSize(6.3);
+        col([13, 148, 136]); F("bold"); doc.setFontSize(5.4);
         doc.text(String(r.code || ""), X.item, y - 0.6);
-        col(INK); F("bold"); doc.setFontSize(7.8);
-        doc.text(doc.splitTextToSize(String(r.desc || "").split(":")[0], 78)[0], X.item, y + 3.8);
-        col(GREY); F("normal"); doc.setFontSize(6.3);
-        doc.text(lines.slice(0, 4), X.item, y + 8);
+        col(INK); F("normal"); doc.setFontSize(6.4);
+        doc.text(lines, X.item, y + 3);
 
-        col(INK); F("normal"); doc.setFontSize(7.2);
-        doc.text(String(r.unit), X.unit, y + 1, { align: "right" });
-        F("bold"); doc.text(String(r.qty), X.qty, y + 1, { align: "right" });
+        col(INK); F("normal"); doc.setFontSize(6.2);
+        doc.text(String(r.unit), X.unit, y + 0.6, { align: "right" });
+        F("bold"); doc.text(String(r.qty), X.qty, y + 0.6, { align: "right" });
         F("normal");
         if (r.disc > 0) {
           col(GREY);
-          doc.text(R(r.price), X.price, y + 1, { align: "right" });
+          doc.text(R(r.price), X.price, y + 0.6, { align: "right" });
           col([13, 148, 136]); F("bold");
-          doc.text(r.disc.toFixed(1) + "%", X.dis, y + 1, { align: "right" });
+          doc.text(r.disc.toFixed(1) + "%", X.dis, y + 0.6, { align: "right" });
           col(INK); F("normal");
-          doc.text(R(r.net), X.dprice, y + 1, { align: "right" });
+          doc.text(R(r.net), X.dprice, y + 0.6, { align: "right" });
         } else {
           col(INK);
-          doc.text(R(r.net), X.dprice, y + 1, { align: "right" });
+          doc.text(R(r.net), X.dprice, y + 0.6, { align: "right" });
         }
-        F("bold"); doc.setFontSize(8); col(INK);
-        doc.text(R(r.total), X.amt, y + 1, { align: "right" });
+        F("bold"); doc.setFontSize(6.6); col(INK);
+        doc.text(R(r.total), X.amt, y + 0.6, { align: "right" });
 
         y += hgt;
-        doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.line(L, y - 3.5, Rt, y - 3.5);
+        doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.line(L, y - 2.8, Rt, y - 2.8);
       });
 
       /* ---- sub-total. GST amount never appears. ---- */
       y += 4;
       if (y > 258) { doc.addPage(); y = 26; }
-      fill([236, 253, 245]); doc.roundedRect(112, y - 5, Rt - 112, 12, 1.5, 1.5, "F");
-      col([13, 118, 108]); F("bold"); doc.setFontSize(7.6);
-      doc.text("Sub-Total { GST as Actual }", 116, y + 1.4);
-      doc.setFontSize(11.5);
+      fill([236, 253, 245]); doc.roundedRect(106, y - 4.5, Rt - 106, 11, 1.5, 1.5, "F");
+      col([13, 118, 108]); F("bold"); doc.setFontSize(6.8);
+      doc.text("Sub-Total { GST as Actual }", 110, y + 1.4);
+      doc.setFontSize(10);
       doc.text(R(subTotal), X.amt, y + 1.6, { align: "right" });
 
       /* ================= TERMS ================= */
@@ -2906,6 +2931,7 @@
       render(); return;
     }
     if (act === "qz-bd") { S.qz.brandDisc = Number(val("qz_bd")) || 0; render(); return; }
+    if (act === "qz-adv") { S.qz.adv = !S.qz.adv; render(); return; }
     if (act === "qz-revise") {
       var old = S.data.quotes.filter(function (q) { return q.id === id; })[0];
       if (!old) return;
