@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "4.3";
+  var APP_VERSION = "4.31";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -3660,7 +3660,17 @@
 
     if (act === "alt-q") { return; }
     if (act === "alt-cancel") { S.alt = null; S.modal = null; render(); return; }
+    /* read what is on screen back into state before ANY re-render, or the quantities the
+       storeman just typed are wiped by the redraw. */
+    function altReadBack() {
+      (S.alt.rows || []).forEach(function (r, i) {
+        var q = el("alt_q" + i), n2 = el("alt_n" + i);
+        if (q) r.now = Number(q.value) || 0;
+        if (n2) r.note = String(n2.value || "").trim();
+      });
+    }
     if (act === "alt-add") {
+      altReadBack();
       var pd = val("alt_add"), pq = Number(val("alt_addq")) || 0;
       if (!pd || !pq) { toast("Pick a product and a quantity."); return; }
       var pp = PRODUCTS.filter(function (x) { return x.label === pd || x.code === pd; })[0] || {};
@@ -3669,11 +3679,7 @@
       S.modal = modalAlter(); render(); return;
     }
     if (act === "alt-save") {
-      S.alt.rows.forEach(function (r, i) {
-        var q = el("alt_q" + i), n2 = el("alt_n" + i);
-        if (q) r.now = Number(q.value) || 0;
-        if (n2) r.note = String(n2.value || "").trim();
-      });
+      altReadBack();
       /* only the lines that actually differ are worth recording */
       var changed = S.alt.rows.filter(function (r) { return Number(r.now) !== Number(r.was); });
       var missingWhy = changed.filter(function (r) { return !r.note; });
