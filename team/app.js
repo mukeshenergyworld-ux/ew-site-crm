@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "2.0";
+  var APP_VERSION = "2.1";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -101,16 +101,35 @@
   }
 
   function save(tab, row) {
-    S.busy = true; render();
+    /* optimistic: merge the saved row straight into local state and repaint immediately.
+       The server is still the source of truth - we re-sync quietly in the background. */
     return api("teamSave", { tab: tab, row: row }).then(function (r) {
-      if (!r || !r.ok) { toast("Save failed: " + ((r && r.error) || "unknown")); S.busy = false; render(); return null; }
-      return refresh().then(function () { return r.row; });
+      if (!r || !r.ok) { toast("Save failed: " + ((r && r.error) || "unknown")); return null; }
+      var list = S.data[tab] || (S.data[tab] = []);
+      var i = -1;
+      for (var k = 0; k < list.length; k++) { if (list[k].id === r.row.id) { i = k; break; } }
+      if (i >= 0) list[i] = Object.assign({}, list[i], r.row); else list.push(r.row);
+      render();
+      quietSync();
+      return r.row;
     });
+  }
+
+  /* background re-sync, at most once every 20s, never blocks the screen */
+  var syncAt = 0, syncing = false;
+  function quietSync() {
+    if (syncing || Date.now() - syncAt < 20000) return;
+    syncing = true;
+    api("teamGet").then(function (r) {
+      syncing = false; syncAt = Date.now();
+      if (r && r.ok) { S.data = r; render(); }
+    }).catch(function () { syncing = false; });
   }
 
   function refresh() {
     return api("teamGet").then(function (r) {
       S.busy = false;
+      syncAt = Date.now();
       if (r && r.ok) S.data = r;
       render();
     });
@@ -169,6 +188,7 @@
         var items = parseCatalog(rows);
         if (items.length) {
           PRODUCTS = items;
+          PRODLIST_HTML = null;
           try { localStorage.setItem(CAT_KEY, JSON.stringify({ at: Date.now(), items: items })); } catch (e) {}
         }
       })
@@ -183,10 +203,16 @@
     return null;
   }
 
+  var PRODLIST_HTML = null;
   function prodDatalist() {
-    return '<datalist id="prodlist">' + PRODUCTS.map(function (p) {
-      return '<option value="' + esc(p.label) + '"></option>';
-    }).join("") + '</datalist>';
+    /* 853 option nodes rebuilt on every keystroke was a big part of the lag on a phone.
+       Build it once, reuse the string. */
+    if (PRODLIST_HTML === null) {
+      PRODLIST_HTML = '<datalist id="prodlist">' + PRODUCTS.map(function (p) {
+        return '<option value="' + esc(p.label) + '"></option>';
+      }).join("") + '</datalist>';
+    }
+    return PRODLIST_HTML;
   }
 
   function viewProducts() {
