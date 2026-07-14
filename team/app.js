@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "4.4";
+  var APP_VERSION = "4.5";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -2903,30 +2903,69 @@
       '<button class="x" data-act="li-del" data-row="' + i + '">&times;</button></div>';
   }
 
+  /* Picking products on a challan now works exactly like the quote: brand chips, family chips,
+     then product rows with the photo and a +/- stepper. The photo is there to stop the storeman
+     picking the wrong 110mm fitting - it never reaches the printed challan. */
+  function chPicker() {
+    var z = S.ch;
+    var h = '<div class="row" style="margin-top:6px">' +
+      (S.data.brands || []).map(function (br) {
+        return '<button class="chip ' + (z.brand === br.name ? "on" : "") + '" data-act="ch-brand" data-brand="' + esc(br.name) + '">' + esc(br.name) + '</button>';
+      }).join("") + '</div>';
+    if (!z.brand) return h + '<div class="empty">Pick a brand to see its products.</div>';
+    var fams = familyList(z.brand);
+    h += '<div class="chips">' + fams.map(function (f) {
+      var n = brandProducts(z.brand).filter(function (p) { return p.family === f; }).length;
+      return '<button class="chip ' + (z.family === f ? "on" : "") + '" data-act="ch-fam" data-fam="' + esc(f) + '">' + esc(f) + ' <b>' + n + '</b></button>';
+    }).join("") + '</div>';
+    if (!z.family) return h + '<div class="empty">Pick a family above.</div>';
+    h += '<div class="plist">';
+    brandProducts(z.brand).filter(function (p) { return p.family === z.family; }).forEach(function (p) {
+      var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
+      h += '<div class="prow ' + (ex ? "picked" : "") + '">' +
+        (p.pic ? '<img src="' + esc(p.pic) + '" loading="lazy"/>' : '<div class="noimg"></div>') +
+        '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
+        '<div class="pmeta">' + esc(p.code) + ' &middot; ' + esc(p.unit) + '</div></div>' +
+        '<div class="pqty">' +
+        '<button class="stp" data-act="ch-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
+        '<b>' + (ex ? ex.qty : 0) + '</b>' +
+        '<button class="stp" data-act="ch-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
+        '</div></div>';
+    });
+    return h + '</div>';
+  }
+
   function modalChallan() {
+    if (!S.ch) S.ch = { brand: "", family: "", items: [] };
+    var z = S.ch;
     var clients = S.data.clients.map(function (x) { return x.name; });
     var sites = S.data.sites.map(function (x) { return x.name; });
-    var drivers = S.data.drivers.map(function (x) { return x.name + (x.vehicle ? " (" + x.vehicle + ")" : ""); });
+    var picked = (z.items || []);
     return '<h2>New delivery challan</h2>' +
-      '<p class="sub">The challan PDF carries no prices and no pictures - it is a delivery note, not a quote.</p>' +
+      '<p class="sub">The printed challan carries no prices and no pictures - it is a delivery note, not a quote.</p>' +
       '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, LOCATIONS[0]) + '</select>' +
       '<label>Client</label><input id="m_client" list="clientlist2" placeholder="Type client name"/>' +
       '<datalist id="clientlist2">' + clients.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
       '<label>Site (optional)</label><input id="m_site" list="sitelist" placeholder="Site / project"/>' +
       '<datalist id="sitelist">' + sites.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
-      '<div class="grid2">' +
-      '<div><label>Brand</label><select id="m_brand">' + opts([""].concat(brandList()), "") + '</select></div>' +
-      '<div><label>Partner (for incentive)</label><select id="m_assoc">' + opts([""].concat(S.data.associates.map(function (a) { return a.name; })), "") + '</select></div>' +
-      '</div>' +
-      '<label>Items</label><div id="m_lines">' + lineRow(0, "", "", "") + '</div>' +
-      '<button class="btn sm ghost" data-act="li-add" style="margin-top:4px">+ Add item</button>' +
-      prodDatalist() +
+      '<label>Referring partner (optional)</label><select id="m_assoc">' +
+      opts([""].concat((S.data.associates || []).map(function (p) { return p.name; })), "") + '</select>' +
+
+      '<h3 style="margin:14px 0 4px;font-size:14px">Products ' +
+      '<span class="pill teal">' + picked.length + ' picked</span></h3>' +
+      chPicker() +
+      (picked.length
+        ? '<div class="picked-list">' + picked.map(function (i) {
+            return '<div class="prow"><div class="pinfo"><div class="pname">' + esc(i.desc) + '</div>' +
+              '<div class="pmeta">' + esc(i.code) + '</div></div><div class="pqty"><b>' + i.qty + '</b>' +
+              '<button class="stp" data-act="ch-qty" data-code="' + esc(i.code) + '" data-d="-1">&minus;</button></div></div>';
+          }).join("") + '</div>'
+        : "") +
+
       '<div class="grid2" style="margin-top:10px">' +
       '<div><label>Freight / tempo fare</label><input id="m_freight" inputmode="numeric" value="0"/></div>' +
       '<div><label>Freight borne by</label><select id="m_fto">' + opts(["Client", "Energy World"], "Client") + '</select></div>' +
       '</div>' +
-      /* Driver is picked from the Drivers master so his freight can be totalled later.
-         Typing a name that is not on the list creates the driver record on save. */
       '<div class="grid2" style="margin-top:6px">' +
       '<div><label>Driver</label><input id="m_driver" list="driverlist" placeholder="Driver name"/>' +
       '<datalist id="driverlist">' + (S.data.drivers || []).map(function (d) {
@@ -3610,7 +3649,8 @@
       return;
     }
 
-    if (act === "ch-new") { S.modal = modalChallan(); render(); return; }
+    if (act === "ch-new") {
+      S.ch = { brand: "", family: "", items: [] }; S.modal = modalChallan(); render(); return; }
     if (act === "li-add") {
       var box = el("m_lines");
       box.insertAdjacentHTML("beforeend", lineRow(box.children.length, "", "", ""));
@@ -3621,20 +3661,52 @@
       if (row && el("m_lines").children.length > 1) row.remove();
       return;
     }
+    if (act === "ch-brand") {
+      S.ch.brand = t.getAttribute("data-brand"); S.ch.family = "";
+      S.modal = modalChallan(); render(); return;
+    }
+    if (act === "ch-fam") {
+      S.ch.family = t.getAttribute("data-fam");
+      S.modal = modalChallan(); render(); return;
+    }
+    if (act === "ch-qty") {
+      var pcode = t.getAttribute("data-code");
+      var dd2 = Number(t.getAttribute("data-d")) || 0;
+      var prod = PRODUCTS.filter(function (p) { return p.code === pcode; })[0] || {};
+      var row = (S.ch.items || []).filter(function (i) { return i.code === pcode; })[0];
+      if (!row) {
+        if (dd2 < 0) return;
+        S.ch.items.push({ code: pcode, desc: prod.desc || pcode, unit: prod.unit || "No's", qty: 1, rate: prod.price || 0 });
+      } else {
+        row.qty += dd2;
+        if (row.qty <= 0) S.ch.items = S.ch.items.filter(function (i) { return i.code !== pcode; });
+      }
+      /* keep the form fields the user already typed - a redraw would wipe them */
+      var keep = { c: val("m_client"), s: val("m_site"), a: val("m_assoc"), f: val("m_freight"),
+        ft: val("m_fto"), d: val("m_driver"), dm: val("m_dmob"), v: val("m_veh"), lo: val("m_loc") };
+      S.modal = modalChallan(); render();
+      if (el("m_client")) el("m_client").value = keep.c;
+      if (el("m_site")) el("m_site").value = keep.s;
+      if (el("m_assoc")) el("m_assoc").value = keep.a;
+      if (el("m_freight")) el("m_freight").value = keep.f;
+      if (el("m_fto")) el("m_fto").value = keep.ft;
+      if (el("m_driver")) el("m_driver").value = keep.d;
+      if (el("m_dmob")) el("m_dmob").value = keep.dm;
+      if (el("m_veh")) el("m_veh").value = keep.v;
+      if (el("m_loc")) el("m_loc").value = keep.lo;
+      return;
+    }
     if (act === "ch-save") {
       var cn = val("m_client");
       if (!cn) { toast("Enter the client."); return; }
-      var lines = readLines();
-      if (!lines.length) { toast("Add at least one item."); return; }
+      var lines = (S.ch && S.ch.items) || [];
+      if (!lines.length) { toast("Pick at least one product."); return; }
       var cObj = clientByName(cn) || {};
       var siteName = val("m_site");
       var siteObj = S.data.sites.filter(function (x) { return x.name === siteName; })[0] || {};
-      var amount = lines.reduce(function (a, l) { return a + l.q * l.r; }, 0);
+      var amount = lines.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0);
       var assocName = val("m_assoc");
-      var itemsJson = JSON.stringify(lines.map(function (l) {
-        var p = PRODUCTS.filter(function (x) { return x.label === l.d || x.code === l.d; })[0] || {};
-        return { code: p.code || "", desc: p.desc || l.d, unit: p.unit || "No's", qty: l.q, rate: l.r };
-      }));
+      var itemsJson = JSON.stringify(lines);
       t.disabled = true; t.textContent = "Creating...";
 
       /* Make sure the driver exists in the master before the challan points at him. A driver
@@ -3660,7 +3732,7 @@
           customerId: cObj.id || "", customerName: cn,
           siteId: siteObj.id || "", site: siteName || "",
           brand: val("m_brand"), location: val("m_loc"),
-          items: lines.map(function (l) { return l.d + " x" + l.q; }).join(", "),
+          items: lines.map(function (l) { return l.desc + " x" + l.qty; }).join(", "),
           itemsJson: itemsJson, amount: amount,
           freight: val("m_freight") || 0, freightTo: val("m_fto"),
           driver: dName, driverId: (dRec && dRec.id) || "",
