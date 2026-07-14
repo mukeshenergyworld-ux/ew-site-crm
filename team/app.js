@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "4.5";
+  var APP_VERSION = "4.6";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -70,7 +70,9 @@
     sq: "",
     sres: null,
     alt: null,
-    data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [], areas: [] }
+    rt: null,
+    recon: null,
+    data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [], areas: [], logos: [], returns: [] }
   };
 
   function esc(v) {
@@ -94,10 +96,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["search","dash","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
-    accounts: ["search","dash","clients","partners","followups","challans","payments","discounts","service","spares","dues","products"],
-    godown:   ["search","dash","challans","products"],
-    sales:    ["search","dash","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
+    admin:    ["search","dash","returns","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
+    accounts: ["search","dash","returns","clients","partners","followups","challans","payments","discounts","service","spares","dues","products"],
+    godown:   ["search","dash","returns","challans","products"],
+    sales:    ["search","dash","returns","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
     service:  ["search","dash","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -1856,6 +1858,120 @@
     });
   }
 
+  /* ---------------- MATERIAL RETURNS ----------------
+     A return is its own record, never a negative challan. Raised -> Picked up -> Received at the
+     godown, each step stamped. The cross-check is the point of the whole thing: it names returns
+     that are stuck - raised but never collected, or collected but never booked in - because
+     those are the two ways material quietly goes missing between a client and the godown. */
+  function viewReturns() {
+    var list = (S.data.returns || []).slice().reverse();
+    var by = function (st) { return list.filter(function (r) { return (r.status || "Raised") === st; }).length; };
+    var h = '<div class="cards">' +
+      '<div class="stat ' + (by("Raised") ? "alert" : "") + '"><div class="n">' + by("Raised") + '</div><div class="l">Raised, to collect</div></div>' +
+      '<div class="stat"><div class="n">' + by("Picked up") + '</div><div class="l">In transit</div></div>' +
+      '<div class="stat"><div class="n">' + by("Received") + '</div><div class="l">Back in godown</div></div>' +
+      '</div>';
+    h += '<div class="row"><button class="btn sm ghost" data-act="rt-recon">Cross-check dispatch vs return</button>' +
+      '<div class="grow"></div><button class="btn" data-act="rt-new">+ Register return</button></div>';
+    if (S.recon) {
+      var st = S.recon.stale || [];
+      h += '<h3 style="margin:14px 0 6px;font-size:14px">Cross-check</h3>';
+      if (st.length) {
+        st.forEach(function (x) {
+          h += '<div class="card" style="border-color:#fecaca;background:#fef2f2">' +
+            '<h3>' + esc(x.returnNo) + ' <span class="pill Lost">stuck ' + x.days + 'd</span></h3>' +
+            '<div class="meta">' + esc(x.client) + ' &middot; ' + x.qty + ' pcs<br>' + esc(x.why) + '</div></div>';
+        });
+      } else {
+        h += '<div class="card"><div class="meta">Nothing stuck. Every return raised has been collected and booked in.</div></div>';
+      }
+      (S.recon.rows || []).forEach(function (r) {
+        h += '<div class="card"><h3>' + esc(r.client) + '</h3><div class="meta">' +
+          'Dispatched <b>' + r.dispatched + '</b> pcs &middot; returned <b>' + r.returned + '</b>' +
+          (r.pending ? ' &middot; <span style="color:#dc2626">' + r.pending + ' still out on a return</span>' : "") +
+          '</div></div>';
+      });
+    }
+    if (!list.length) h += '<div class="empty">No returns registered yet.</div>';
+    list.forEach(function (r) {
+      var stt = r.status || "Raised";
+      var cls = stt === "Received" ? "Won" : (stt === "Raised" ? "due" : "teal");
+      var its = [];
+      try { its = JSON.parse(r.itemsJson || "[]"); } catch (e) { }
+      h += '<div class="card"><h3>' + esc(r.returnNo) + ' <span class="pill ' + cls + '">' + esc(stt) + '</span></h3>' +
+        '<div class="meta">' + esc(r.customerName || "") + (r.site ? ' &middot; ' + esc(r.site) : "") +
+        (r.challanNo ? '<br>Against challan ' + esc(r.challanNo) : "") +
+        '<br>' + its.map(function (i) { return esc(i.desc) + " x" + i.qty; }).join(", ") +
+        (r.reason ? '<br>Reason: ' + esc(r.reason) : "") +
+        (r.driver ? '<br>Pickup: ' + esc(r.driver) + (r.vehicle ? " (" + esc(r.vehicle) + ")" : "") : "") +
+        '<br>' + esc(String(r.createdAt).slice(0, 10)) + ' by ' + esc(r.createdBy) +
+        (r.receivedBy ? '<br>Booked in by ' + esc(r.receivedBy) : "") + '</div>' +
+        '<div class="acts">' +
+        (stt === "Raised" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Picked up">Picked up</button>' : "") +
+        (stt === "Picked up" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received">Received at godown</button>' : "") +
+        '</div></div>';
+    });
+    return h;
+  }
+
+  /* the return form reuses the challan picker, so nobody has to learn a second screen */
+  function modalReturn() {
+    if (!S.rt) S.rt = { brand: "", family: "", items: [] };
+    var z = S.rt;
+    var clients = S.data.clients.map(function (x) { return x.name; });
+    var chs = (S.data.challans || []).filter(function (c) {
+      return ["Dispatched", "Received"].indexOf(String(c.status)) >= 0;
+    }).map(function (c) { return c.challanNo; });
+    return '<h2>Register material return</h2>' +
+      '<p class="sub">Material coming back from a client. The original challan is not changed.</p>' +
+      '<label>Client</label><input id="r_client" list="clientlist3" placeholder="Type client name"/>' +
+      '<datalist id="clientlist3">' + clients.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      '<label>Site (optional)</label><input id="r_site" placeholder="Site / project"/>' +
+      '<label>Against challan (optional)</label><input id="r_ch" list="chlist" placeholder="Challan number"/>' +
+      '<datalist id="chlist">' + chs.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      '<label>Reason</label><select id="r_reason">' +
+      opts(["Excess at site", "Damaged", "Wrong item supplied", "Client cancelled", "Other"], "Excess at site") + '</select>' +
+      '<h3 style="margin:14px 0 4px;font-size:14px">Material coming back ' +
+      '<span class="pill teal">' + (z.items || []).length + ' picked</span></h3>' +
+      rtPicker() +
+      '<div class="grid2" style="margin-top:10px">' +
+      '<div><label>Pickup driver</label><input id="r_driver" list="driverlist2" placeholder="Driver name"/>' +
+      '<datalist id="driverlist2">' + (S.data.drivers || []).map(function (d) {
+        return '<option value="' + esc(d.name) + '"></option>';
+      }).join("") + '</datalist></div>' +
+      '<div><label>Freight on the return</label><input id="r_freight" inputmode="numeric" value="0"/></div>' +
+      '</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="rt-save">Register return</button></div>';
+  }
+
+  function rtPicker() {
+    var z = S.rt;
+    var h = '<div class="row" style="margin-top:6px">' + (S.data.brands || []).map(function (br) {
+      return '<button class="chip ' + (z.brand === br.name ? "on" : "") + '" data-act="rt-brand" data-brand="' + esc(br.name) + '">' + esc(br.name) + '</button>';
+    }).join("") + '</div>';
+    if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
+    h += '<div class="chips">' + familyList(z.brand).map(function (f) {
+      var n = brandProducts(z.brand).filter(function (p) { return p.family === f; }).length;
+      return '<button class="chip ' + (z.family === f ? "on" : "") + '" data-act="rt-fam" data-fam="' + esc(f) + '">' + esc(f) + ' <b>' + n + '</b></button>';
+    }).join("") + '</div>';
+    if (!z.family) return h + '<div class="empty">Pick a family above.</div>';
+    h += '<div class="plist">';
+    brandProducts(z.brand).filter(function (p) { return p.family === z.family; }).forEach(function (p) {
+      var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
+      h += '<div class="prow ' + (ex ? "picked" : "") + '">' +
+        (p.pic ? '<img src="' + esc(p.pic) + '" loading="lazy"/>' : '<div class="noimg"></div>') +
+        '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
+        '<div class="pmeta">' + esc(p.code) + ' &middot; ' + esc(p.unit) + '</div></div>' +
+        '<div class="pqty">' +
+        '<button class="stp" data-act="rt-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
+        '<b>' + (ex ? ex.qty : 0) + '</b>' +
+        '<button class="stp" data-act="rt-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
+        '</div></div>';
+    });
+    return h + '</div>';
+  }
+
   function viewChallans() {
     var list = S.data.challans.slice().reverse();
     var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
@@ -3035,8 +3151,8 @@
   function render() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, products: viewProducts, pitch: viewPitch };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, products: viewProducts, pitch: viewPitch };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -3052,7 +3168,7 @@
 
     var GROUPS = [
       ["Sell", ["search", "dash", "clients", "partners", "quotes", "sites", "leads", "visits", "winloss", "followups"]],
-      ["Deliver", ["challans", "payments", "discounts", "products", "dues"]],
+      ["Deliver", ["challans", "returns", "payments", "discounts", "products", "dues"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["commission", "payroll", "catalogue", "rules"]]
     ];
@@ -3659,6 +3775,76 @@
     if (act === "li-del") {
       var row = t.closest(".lineitem");
       if (row && el("m_lines").children.length > 1) row.remove();
+      return;
+    }
+    if (act === "rt-new") { S.rt = { brand: "", family: "", items: [] }; S.modal = modalReturn(); render(); return; }
+    if (act === "rt-brand") { S.rt.brand = t.getAttribute("data-brand"); S.rt.family = ""; S.modal = modalReturn(); render(); return; }
+    if (act === "rt-fam") { S.rt.family = t.getAttribute("data-fam"); S.modal = modalReturn(); render(); return; }
+    if (act === "rt-qty") {
+      var rc = t.getAttribute("data-code"), rd = Number(t.getAttribute("data-d")) || 0;
+      var rp = PRODUCTS.filter(function (p) { return p.code === rc; })[0] || {};
+      var rr = (S.rt.items || []).filter(function (i) { return i.code === rc; })[0];
+      if (!rr) { if (rd < 0) return; S.rt.items.push({ code: rc, desc: rp.desc || rc, unit: rp.unit || "No's", qty: 1 }); }
+      else { rr.qty += rd; if (rr.qty <= 0) S.rt.items = S.rt.items.filter(function (i) { return i.code !== rc; }); }
+      var kp = { c: val("r_client"), s: val("r_site"), ch: val("r_ch"), re: val("r_reason"), d: val("r_driver"), f: val("r_freight") };
+      S.modal = modalReturn(); render();
+      if (el("r_client")) el("r_client").value = kp.c;
+      if (el("r_site")) el("r_site").value = kp.s;
+      if (el("r_ch")) el("r_ch").value = kp.ch;
+      if (el("r_reason")) el("r_reason").value = kp.re;
+      if (el("r_driver")) el("r_driver").value = kp.d;
+      if (el("r_freight")) el("r_freight").value = kp.f;
+      return;
+    }
+    if (act === "rt-recon") {
+      t.disabled = true; t.textContent = "Checking...";
+      api("reconcile").then(function (r) {
+        S.recon = (r && r.ok) ? r : { rows: [], stale: [] };
+        render();
+      });
+      return;
+    }
+    if (act === "rt-move") {
+      var rto = t.getAttribute("data-to");
+      t.disabled = true; t.textContent = "...";
+      api("returnMove", { id: id, to: rto }).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Could not update."); render(); return; }
+        var rec = S.data.returns.filter(function (x) { return x.id === id; })[0];
+        if (rec) { rec.status = rto; if (rto === "Received") rec.receivedBy = r.by; }
+        toast(rto === "Received" ? "Booked in at the godown." : "Marked picked up.");
+        S.recon = null;
+        render();
+      });
+      return;
+    }
+    if (act === "rt-save") {
+      var rcl = val("r_client");
+      if (!rcl) { toast("Enter the client."); return; }
+      if (!(S.rt.items || []).length) { toast("Pick at least one product."); return; }
+      var rcObj = clientByName(rcl) || {};
+      t.disabled = true; t.textContent = "Registering...";
+      var rdrv = val("r_driver");
+      var drec = (S.data.drivers || []).filter(function (x) {
+        return String(x.name).trim().toLowerCase() === rdrv.trim().toLowerCase();
+      })[0] || {};
+      api("returnNo", { client: rcObj.shortName || rcl }).then(function (n) {
+        var rowR = {
+          id: "", createdBy: S.user,
+          returnNo: (n && n.returnNo) || (rcl.toUpperCase().slice(0, 6) + "/" + today().slice(8) + "/R01"),
+          customerId: rcObj.id || "", customerName: rcl,
+          site: val("r_site"), challanNo: val("r_ch"),
+          itemsJson: JSON.stringify(S.rt.items),
+          reason: val("r_reason"), status: "Raised",
+          driver: rdrv, driverMobile: drec.mobile || "", vehicle: drec.vehicle || "",
+          freight: val("r_freight") || 0, freightTo: "Energy World"
+        };
+        return save("returns", rowR).then(function (r) {
+          if (!r) return;
+          S.rt = null; S.modal = null; S.recon = null;
+          toast("Return " + rowR.returnNo + " registered.");
+          render();
+        });
+      });
       return;
     }
     if (act === "ch-brand") {
