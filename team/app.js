@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "4.7";
+  var APP_VERSION = "5.0";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -72,7 +72,10 @@
     alt: null,
     rt: null,
     recon: null,
-    data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [], areas: [], logos: [], returns: [] }
+    tool: null,
+    scan: null,
+    pr: null,
+    data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [], areas: [], logos: [], returns: [], tools: [], toolmoves: [], pricerev: [] }
   };
 
   function esc(v) {
@@ -96,10 +99,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["search","dash","returns","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
-    accounts: ["search","dash","returns","clients","partners","followups","challans","payments","discounts","service","spares","dues","products"],
-    godown:   ["search","dash","returns","challans","products"],
-    sales:    ["search","dash","returns","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
+    admin:    ["search","dash","returns","tools","rates","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
+    accounts: ["search","dash","returns","tools","clients","partners","followups","challans","payments","discounts","service","spares","dues","products"],
+    godown:   ["search","dash","returns","tools","challans","products"],
+    sales:    ["search","dash","returns","tools","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
     service:  ["search","dash","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -1876,6 +1879,241 @@
      godown, each step stamped. The cross-check is the point of the whole thing: it names returns
      that are stuck - raised but never collected, or collected but never booked in - because
      those are the two ways material quietly goes missing between a client and the godown. */
+  /* ---------------- TOOLS ----------------
+     A punching machine is a liability with ONE holder at a time, not stock. So the question is
+     never "where is it on a map" - it is "who accepted it, and when". Every movement is a named
+     handover appended to a chain that is never edited, so a tool that goes missing always has a
+     last named holder to ask. Holders come from people already in the app: clients, partners
+     and staff - nobody has to be registered twice. */
+  function toolHolders() {
+    var out = [];
+    (S.data.clients || []).forEach(function (c) { out.push({ type: "Client", name: c.name, mobile: c.mobile || "" }); });
+    (S.data.associates || []).forEach(function (p) { out.push({ type: p.role || "Partner", name: p.name, mobile: p.mobile || "" }); });
+    (S.data.team || []).forEach(function (t) { out.push({ type: "Staff", name: t.name, mobile: t.mobile || "" }); });
+    return out;
+  }
+
+  function toolDays(t) {
+    if (!t.issuedAt) return 0;
+    return Math.floor((Date.now() - new Date(t.issuedAt).getTime()) / 86400000);
+  }
+  function toolOverdue(t) {
+    var due = Number(t.dueDays) || 0;
+    return String(t.status) === "Issued" && due > 0 && toolDays(t) > due;
+  }
+
+  /* The scanner uses the phone camera. Where the browser cannot decode a QR (older iOS), the
+     code can always be typed - the sticker prints the code in plain text underneath for exactly
+     that reason. A tool must never be un-trackable because a camera API was missing. */
+  function modalToolScan() {
+    return '<h2>Scan a tool sticker</h2>' +
+      '<div id="scanbox" style="position:relative;background:#000;border-radius:12px;overflow:hidden;height:230px">' +
+      '<video id="scanvid" playsinline autoplay muted style="width:100%;height:100%;object-fit:cover"></video>' +
+      '<div style="position:absolute;inset:18% 22%;border:2px solid #5eead4;border-radius:10px"></div></div>' +
+      '<div class="meta" id="scanmsg" style="margin-top:8px">Point the camera at the sticker.</div>' +
+      '<label style="margin-top:10px">Or type the code from the sticker</label>' +
+      '<div class="row"><input class="grow" id="tl_code" placeholder="EW-T001"/>' +
+      '<button class="btn" data-act="tl-code">Open</button></div>' +
+      '<div class="foot"><button class="btn ghost" data-act="tl-close">Cancel</button></div>';
+  }
+
+  function startScanner() {
+    var vid = el("scanvid"), msg = el("scanmsg");
+    if (!vid) return;
+    if (!navigator.mediaDevices || !window.BarcodeDetector) {
+      if (msg) msg.textContent = "This phone cannot scan from the browser - type the code printed under the QR.";
+      return;
+    }
+    var det = new BarcodeDetector({ formats: ["qr_code"] });
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(function (stream) {
+      S.scan = stream;
+      vid.srcObject = stream;
+      var tick = function () {
+        if (!S.scan || !el("scanvid")) return;
+        det.detect(vid).then(function (codes) {
+          if (codes && codes.length) {
+            var code = String(codes[0].rawValue || "").trim();
+            stopScanner();
+            openToolByCode(code);
+            return;
+          }
+          setTimeout(tick, 350);
+        }).catch(function () { setTimeout(tick, 500); });
+      };
+      setTimeout(tick, 600);
+    }).catch(function () {
+      if (msg) msg.textContent = "Camera not allowed - type the code printed under the QR.";
+    });
+  }
+  function stopScanner() {
+    if (S.scan) { try { S.scan.getTracks().forEach(function (t) { t.stop(); }); } catch (e) { } S.scan = null; }
+  }
+  function openToolByCode(code) {
+    api("toolScan", { code: code }).then(function (r) {
+      if (!r || !r.ok) { toast((r && r.error) || "Tool not found."); return; }
+      S.tool = { t: r.tool, chain: r.chain || [], days: r.heldDays || 0 };
+      S.modal = modalTool(); render();
+    });
+  }
+
+  function modalTool() {
+    var t = S.tool.t;
+    var iss = String(t.status) === "Issued";
+    var holders = toolHolders();
+    var h = '<h2>' + esc(t.code) + (t.name ? ' &middot; ' + esc(t.name) : "") + '</h2>';
+
+    if (!t.name) {
+      /* first scan of a fresh sticker: register the machine against it */
+      h += '<p class="sub">This sticker is not registered to a tool yet. Name the machine once - after that, every scan just moves it.</p>' +
+        '<label>Tool name</label><input id="tl_name" placeholder="Pipe punching machine"/>' +
+        '<div class="grid2"><div><label>Make</label><input id="tl_brand" placeholder="Huliot"/></div>' +
+        '<div><label>Model</label><input id="tl_model"/></div></div>' +
+        '<div class="grid2"><div><label>Serial no.</label><input id="tl_serial"/></div>' +
+        '<div><label>Value</label><input id="tl_value" inputmode="numeric" placeholder="80000"/></div></div>' +
+        '<label>Return expected within (days)</label><input id="tl_due" inputmode="numeric" value="30"/>' +
+        '<div class="foot"><button class="btn ghost" data-act="tl-close">Cancel</button>' +
+        '<button class="btn" data-act="tl-register">Register this tool</button></div>';
+      return h;
+    }
+
+    h += '<div class="meta">' + esc([t.brand, t.model, t.serial].filter(Boolean).join(" &middot; ")) +
+      (t.value ? ' &middot; ' + money(t.value) : "") + '</div>';
+    h += iss
+      ? '<div class="card" style="margin-top:8px"><h3>With ' + esc(t.holder) + '</h3><div class="meta">' +
+        esc(t.holderType || "") + (t.holderMobile ? ' &middot; ' + esc(t.holderMobile) : "") +
+        (t.site ? '<br>' + esc(t.site) : "") +
+        '<br>Out ' + S.tool.days + ' days' + (toolOverdue(t) ? ' - agreed ' + esc(t.dueDays) + ' days' : "") + '</div></div>'
+      : '<div class="card" style="margin-top:8px"><h3>In the godown</h3></div>';
+
+    h += '<h3 style="margin:14px 0 4px;font-size:14px">' + (iss ? "Hand over to" : "Issue to") + '</h3>' +
+      '<input id="tl_holder" list="holderlist" placeholder="Client, plumber, architect or staff"/>' +
+      '<datalist id="holderlist">' + holders.map(function (x) {
+        return '<option value="' + esc(x.name) + '">' + esc(x.type) + '</option>';
+      }).join("") + '</datalist>' +
+      '<label>Site (optional)</label><input id="tl_site" list="sitelist2" placeholder="Where is it going"/>' +
+      '<datalist id="sitelist2">' + (S.data.sites || []).map(function (x) {
+        return '<option value="' + esc(x.name) + '"></option>';
+      }).join("") + '</datalist>' +
+      '<div class="acts" style="margin-top:10px">' +
+      '<button class="btn" data-act="tl-give">' + (iss ? "Transfer custody" : "Issue tool") + '</button>' +
+      (iss ? '<button class="btn sm ghost" data-act="tl-back">Take back into godown</button>' : "") +
+      '</div>';
+
+    if ((S.tool.chain || []).length) {
+      h += '<h3 style="margin:14px 0 4px;font-size:14px">Chain of custody</h3><div class="meta">';
+      S.tool.chain.forEach(function (m) {
+        h += esc(String(m.createdAt).slice(0, 10)) + ' &middot; ' + esc(m.action) + ' &middot; ' +
+          esc(m.fromHolder || "Godown") + ' &rarr; ' + esc(m.toHolder || "Godown") +
+          (m.site ? ' (' + esc(m.site) + ')' : "") + ' &middot; by ' + esc(m.by) + '<br>';
+      });
+      h += '</div>';
+    }
+    h += '<div class="foot"><button class="btn ghost" data-act="tl-close">Close</button></div>';
+    return h;
+  }
+
+  /* ---------------- RATE REVISION ----------------
+     A revision is a DATED event, not an edit. The catalogue keeps its base rate; a challan
+     raised on or after the effective date is billed at the revised rate, and every challan
+     raised before it keeps the rate it was billed at, for good. That is what lets a return be
+     valued honestly a year later: 10 pcs come back at this year's rate, the next 5 at last
+     year's, because the challans still remember what each one cost. */
+  function viewRates() {
+    var revs = (S.data.pricerev || []).slice().sort(function (a, b) {
+      return String(b.effectiveFrom).localeCompare(String(a.effectiveFrom));
+    });
+    var h = '<div class="row"><div class="grow"></div>' +
+      '<button class="btn" data-act="pr-new">+ New price revision</button></div>';
+    if (!revs.length) h += '<div class="empty">No revisions yet. Today every product bills at its catalogue rate.</div>';
+    revs.forEach(function (r) {
+      var ov = [];
+      try { ov = JSON.parse(r.overridesJson || "[]"); } catch (e) { }
+      var live = String(r.effectiveFrom).slice(0, 10) <= today();
+      h += '<div class="card"><h3>' + esc(r.brand) + ' ' +
+        '<span class="pill ' + (live ? "Won" : "soon") + '">' + (Number(r.pct) >= 0 ? "+" : "") + esc(r.pct) + '%' +
+        (live ? "" : " from " + esc(r.effectiveFrom)) + '</span></h3>' +
+        '<div class="meta">Effective ' + esc(r.effectiveFrom) + ' &middot; ' + (live ? "in force" : "not yet in force") +
+        (ov.length ? '<br>' + ov.length + ' item(s) overridden: ' + esc(ov.slice(0, 4).map(function (o) { return o.code; }).join(", ")) : "") +
+        '<br>By ' + esc(r.createdBy) + (r.notes ? ' &middot; ' + esc(r.notes) : "") +
+        '<br><span style="color:#94a3b8">Challans raised before this date keep their old rates.</span></div></div>';
+    });
+    return h;
+  }
+
+  function modalPrice() {
+    if (!S.pr) S.pr = { brand: "", overrides: [] };
+    var z = S.pr;
+    return '<h2>New price revision</h2>' +
+      '<p class="sub">This applies to challans raised on or after the date. Nothing already billed changes.</p>' +
+      '<label>Brand</label><select id="pr_brand">' +
+      opts([""].concat((S.data.brands || []).filter(function (b) {
+        return String(b.active || "Y").toUpperCase() !== "N";
+      }).map(function (b) { return b.brand; })), z.brand) + '</select>' +
+      '<div class="grid2">' +
+      '<div><label>Increase across the brand (%)</label><input id="pr_pct" inputmode="decimal" placeholder="6"/></div>' +
+      '<div><label>Effective from</label><input id="pr_from" type="date" value="' + today() + '"/></div>' +
+      '</div>' +
+      '<h3 style="margin:14px 0 4px;font-size:14px">Items that rise differently ' +
+      '<span class="pill teal">' + (z.overrides || []).length + '</span></h3>' +
+      '<div class="row"><input class="grow" id="pr_code" list="prodlist" placeholder="Product code or name"/>' +
+      '<input id="pr_rate" inputmode="numeric" placeholder="New rate" style="width:100px"/>' +
+      '<button class="btn sm ghost" data-act="pr-add">Add</button></div>' + prodDatalist() +
+      ((z.overrides || []).length
+        ? '<div class="meta" style="margin-top:6px">' + z.overrides.map(function (o) {
+            return esc(o.code) + ' &rarr; ' + money(o.rate);
+          }).join("<br>") + '</div>'
+        : "") +
+      '<label style="margin-top:10px">Note (optional)</label><input id="pr_note" placeholder="Annual revision"/>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="pr-save">Save revision</button></div>';
+  }
+
+  function viewTools() {
+    var list = (S.data.tools || []).slice().sort(function (a, b) { return String(a.code).localeCompare(String(b.code)); });
+    var out = list.filter(function (t) { return String(t.status) === "Issued"; });
+    var late = out.filter(toolOverdue);
+    var idle = list.filter(function (t) { return String(t.status) !== "Issued" && t.name; });
+    var blank = list.filter(function (t) { return !t.name; });
+    var worth = list.reduce(function (a, t) { return a + (Number(t.value) || 0); }, 0);
+
+    var h = '<div class="cards">' +
+      '<div class="stat"><div class="n">' + out.length + '</div><div class="l">Out with someone</div></div>' +
+      '<div class="stat ' + (late.length ? "alert" : "") + '"><div class="n">' + late.length + '</div><div class="l">Held too long</div></div>' +
+      '<div class="stat"><div class="n">' + idle.length + '</div><div class="l">In godown</div></div>' +
+      '<div class="stat"><div class="n">' + money(worth) + '</div><div class="l">Value tracked</div></div>' +
+      '</div>';
+    h += '<div class="row"><button class="btn" data-act="tl-scan">Scan a tool</button>' +
+      '<div class="grow"></div><button class="btn sm ghost" data-act="tl-blank">Unregistered (' + blank.length + ')</button></div>';
+
+    if (late.length) {
+      h += '<h3 style="margin:14px 0 6px;font-size:14px">Held beyond the agreed days</h3>';
+      late.forEach(function (t) {
+        h += '<div class="card" style="border-color:#fecaca;background:#fef2f2">' +
+          '<h3>' + esc(t.code) + ' &middot; ' + esc(t.name || "unnamed") + ' <span class="pill Lost">' + toolDays(t) + 'd</span></h3>' +
+          '<div class="meta">With <b>' + esc(t.holder) + '</b> (' + esc(t.holderType || "") + ')' +
+          (t.site ? ' at ' + esc(t.site) : "") + '<br>Agreed ' + esc(t.dueDays) + ' days &middot; out since ' + esc(String(t.issuedAt).slice(0, 10)) + '</div>' +
+          '<div class="acts"><button class="btn sm" data-act="tl-open" data-id="' + esc(t.id) + '">Open</button></div></div>';
+      });
+    }
+
+    h += '<h3 style="margin:14px 0 6px;font-size:14px">Where every tool is</h3>';
+    var named = list.filter(function (t) { return t.name; });
+    if (!named.length) h += '<div class="empty">No tools registered yet. Scan a sticker to register the first one.</div>';
+    named.forEach(function (t) {
+      var iss = String(t.status) === "Issued";
+      h += '<div class="card"><h3>' + esc(t.code) + ' &middot; ' + esc(t.name) +
+        ' <span class="pill ' + (iss ? (toolOverdue(t) ? "Lost" : "teal") : "Won") + '">' +
+        (iss ? "with " + esc(t.holder) : "in godown") + '</span></h3>' +
+        '<div class="meta">' + esc([t.brand, t.model, t.serial].filter(Boolean).join(" &middot; ")) +
+        (t.value ? '<br>Value ' + money(t.value) : "") +
+        (iss ? '<br>' + esc(t.holderType || "") + (t.holderMobile ? ' &middot; ' + esc(t.holderMobile) : "") +
+          (t.site ? '<br>Site: ' + esc(t.site) : "") + '<br>Out ' + toolDays(t) + ' days' : "") + '</div>' +
+        '<div class="acts"><button class="btn sm ghost" data-act="tl-open" data-id="' + esc(t.id) + '">' +
+        (iss ? "Transfer / take back" : "Issue") + '</button></div></div>';
+    });
+    return h;
+  }
+
   function viewReturns() {
     var list = (S.data.returns || []).slice().reverse();
     var by = function (st) { return list.filter(function (r) { return (r.status || "Raised") === st; }).length; };
@@ -3178,8 +3416,8 @@
   function render() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, products: viewProducts, pitch: viewPitch };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, tools: viewTools, rates: viewRates, products: viewProducts, pitch: viewPitch };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["rates", "Rate revision"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -3195,9 +3433,9 @@
 
     var GROUPS = [
       ["Sell", ["search", "dash", "clients", "partners", "quotes", "sites", "leads", "visits", "winloss", "followups"]],
-      ["Deliver", ["challans", "returns", "payments", "discounts", "products", "dues"]],
+      ["Deliver", ["challans", "returns", "tools", "payments", "discounts", "products", "dues"]],
       ["Service", ["service", "spares"]],
-      ["Admin", ["commission", "payroll", "catalogue", "rules"]]
+      ["Admin", ["commission", "rates", "payroll", "catalogue", "rules"]]
     ];
     var label = {};
     tabs.forEach(function (t) { label[t[0]] = t[1]; });
@@ -3802,6 +4040,102 @@
     if (act === "li-del") {
       var row = t.closest(".lineitem");
       if (row && el("m_lines").children.length > 1) row.remove();
+      return;
+    }
+    if (act === "pr-new") { S.pr = { brand: "", overrides: [] }; S.modal = modalPrice(); render(); return; }
+    if (act === "pr-add") {
+      var pc = val("pr_code"), pr2 = val("pr_rate");
+      if (!pc || !pr2) { toast("Pick a product and its new rate."); return; }
+      var pp2 = PRODUCTS.filter(function (p) { return p.label === pc || p.code === pc; })[0] || {};
+      S.pr.brand = val("pr_brand"); S.pr.pct = val("pr_pct"); S.pr.from = val("pr_from"); S.pr.note = val("pr_note");
+      S.pr.overrides.push({ code: pp2.code || pc, rate: pr2 });
+      S.modal = modalPrice(); render();
+      if (el("pr_brand")) el("pr_brand").value = S.pr.brand;
+      if (el("pr_pct")) el("pr_pct").value = S.pr.pct || "";
+      if (el("pr_from")) el("pr_from").value = S.pr.from || today();
+      if (el("pr_note")) el("pr_note").value = S.pr.note || "";
+      return;
+    }
+    if (act === "pr-save") {
+      var pb = val("pr_brand"), pf = val("pr_from");
+      if (!pb) { toast("Pick the brand."); return; }
+      if (!pf) { toast("Set the effective-from date."); return; }
+      t.disabled = true; t.textContent = "Saving...";
+      api("priceSave", {
+        brand: pb, pct: val("pr_pct") || 0, effectiveFrom: pf,
+        overrides: S.pr.overrides || [], notes: val("pr_note")
+      }).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Could not save."); render(); return; }
+        S.pr = null; S.modal = null;
+        toast("Revision saved. It applies from " + pf + ".");
+        refresh();
+      });
+      return;
+    }
+    if (act === "tl-scan") { S.modal = modalToolScan(); render(); setTimeout(startScanner, 300); return; }
+    if (act === "tl-close") { stopScanner(); S.tool = null; S.modal = null; render(); return; }
+    if (act === "tl-code") {
+      var tc = val("tl_code");
+      if (!tc) { toast("Type the code from the sticker."); return; }
+      stopScanner();
+      openToolByCode(tc);
+      return;
+    }
+    if (act === "tl-open") {
+      var tt = (S.data.tools || []).filter(function (x) { return x.id === id; })[0];
+      if (!tt) return;
+      openToolByCode(tt.code);
+      return;
+    }
+    if (act === "tl-blank") {
+      var free = (S.data.tools || []).filter(function (x) { return !x.name; }).map(function (x) { return x.code; });
+      toast(free.length ? free.length + " stickers not yet registered: " + free.slice(0, 6).join(", ") + (free.length > 6 ? "..." : "") : "Every sticker is registered.");
+      return;
+    }
+    if (act === "tl-register") {
+      var nm = val("tl_name");
+      if (!nm) { toast("Name the tool."); return; }
+      t.disabled = true; t.textContent = "Saving...";
+      var tr = S.tool.t;
+      save("tools", {
+        id: tr.id, code: tr.code, name: nm, brand: val("tl_brand"), model: val("tl_model"),
+        serial: val("tl_serial"), value: val("tl_value"), dueDays: val("tl_due") || "30",
+        status: "In godown", holder: "", holderType: "", holderMobile: "", site: "", issuedAt: ""
+      }).then(function () {
+        toast(tr.code + " registered.");
+        openToolByCode(tr.code);
+      });
+      return;
+    }
+    if (act === "tl-give" || act === "tl-back") {
+      var give = act === "tl-give";
+      var tw = S.tool.t;
+      var hn = give ? val("tl_holder") : "";
+      if (give && !hn) { toast("Name the person taking the tool."); return; }
+      var hrec = toolHolders().filter(function (x) {
+        return String(x.name).trim().toLowerCase() === hn.trim().toLowerCase();
+      })[0];
+      if (give && !hrec) { toast("Pick a client, partner or staff member already in the app."); return; }
+      t.disabled = true; t.textContent = "...";
+      /* stamp where the handover happened - a custody record with no place is half a record */
+      var withGeo = function (pos) {
+        var body = {
+          id: tw.id, action: give ? "give" : "return",
+          holder: hn, holderType: hrec ? hrec.type : "", holderMobile: hrec ? hrec.mobile : "",
+          site: give ? val("tl_site") : ""
+        };
+        if (pos) { body.lat = pos.coords.latitude; body.lng = pos.coords.longitude; body.accuracy = Math.round(pos.coords.accuracy); }
+        api("toolMove", body).then(function (r) {
+          if (!r || !r.ok) { toast((r && r.error) || "Could not record the handover."); render(); return; }
+          toast(give ? tw.code + " is now with " + hn + "." : tw.code + " is back in the godown.");
+          S.tool = null; S.modal = null;
+          refresh();
+        });
+      };
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(withGeo, function () { withGeo(null); },
+          { enableHighAccuracy: true, timeout: 8000 });
+      } else { withGeo(null); }
       return;
     }
     if (act === "rt-new") { S.rt = { brand: "", family: "", items: [] }; S.modal = modalReturn(); render(); return; }
