@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "4.2";
+  var APP_VERSION = "4.21";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -80,8 +80,10 @@
   function val(id) { var e = el(id); return e ? String(e.value || "").trim() : ""; }
   function today() { return new Date().toISOString().slice(0, 10); }
   function dstr(d) { return d ? String(d).slice(0, 10) : ""; }
-  function money(n) { return "\u20B9" + (Number(n) || 0).toLocaleString("en-IN"); }
-  function moneyAscii(n) { return "Rs. " + (Number(n) || 0).toLocaleString("en-IN"); }
+  /* Incentive is a division (amount / 1.18 * rate), so it lands on fractions of a paisa.
+     Nobody pays a plumber 84.7 paise - round to the rupee everywhere money is shown. */
+  function money(n) { return "\u20B9" + Math.round(Number(n) || 0).toLocaleString("en-IN"); }
+  function moneyAscii(n) { return "Rs. " + Math.round(Number(n) || 0).toLocaleString("en-IN"); }
 
   function toast(msg) {
     var t = document.createElement("div");
