@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "4.31";
+  var APP_VERSION = "4.4";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1664,7 +1664,7 @@
       var dg = function (v) { doc.setDrawColor(v, v, v); };
       var W = 297, H = 210, L = 10, R = W - 10;
       var COLGAP = 8, COLW = (R - L - COLGAP) / 2, RH = 4.7;
-      var LOGO_H = 13, FOOT_H = 24;
+      var LOGO_H = 19, FOOT_H = 24;   /* two rows of logos */
       var cols = function (x) {
         return { n: x + 1.5, code: x + 7, desc: x + 30, unit: x + COLW - 26, qty: x + COLW - 2 };
       };
@@ -1709,6 +1709,18 @@
         }
         dg(190); doc.setLineWidth(0.2); doc.line(L, 36, R, 36);
       }
+      /* From page 2 on, only a slim identifying strip - the full header repeated on every
+         sheet just eats rows we need for products. */
+      function slimHead() {
+        dg(120); doc.setLineWidth(0.4); doc.line(L, 12, R, 12);
+        g(0); F("bold"); doc.setFontSize(8);
+        doc.text("DELIVERY CHALLAN", L, 10);
+        doc.text(String(c.challanNo || ""), R, 10, { align: "right" });
+        g(90); F("normal"); doc.setFontSize(6.4);
+        doc.text(String(c.customerName || ""), L + 42, 10);
+        dg(200); doc.setLineWidth(0.2); doc.line(L, 15, R, 15);
+      }
+
       function colHead(x, y) {
         doc.setFillColor(238, 238, 238); doc.rect(x, y - 3.6, COLW, 5.4, "F");
         dg(160); doc.setLineWidth(0.2); doc.rect(x, y - 3.6, COLW, 5.4, "S");
@@ -1719,43 +1731,56 @@
         doc.text("UNIT", C.unit, y, { align: "right" });
         doc.text("QTY", C.qty, y, { align: "right" });
       }
+      /* two rows of six, same grouping as the quote, just smaller boxes */
       function logoStrip() {
-        var BW = 13.5, BH = 6.6, GP = 1.4;
-        var bx = L, by = H - FOOT_H - LOGO_H + 3;
+        var PER = 6, BW = 13.5, BH = 6.4, GP = 1.4, RGAP = 1.6;
+        var x0 = L, y0 = H - FOOT_H - LOGO_H + 1;
         g(115); F("bold"); doc.setFontSize(5);
-        doc.text("AUTH. DISTRIBUTOR FOR", L, by - 2.2);
-        LOGOS.forEach(function (lg) {
+        doc.text("AUTH. DISTRIBUTOR FOR", L, y0 - 2);
+        LOGOS.forEach(function (lg, i) {
+          var rr = Math.floor(i / PER), cc = i % PER;
+          var bx = x0 + cc * (BW + GP), by = y0 + rr * (BH + RGAP);
           dg(215); doc.setLineWidth(0.2); doc.rect(bx, by, BW, BH, "S");
           if (lg && lg.src) {
             var sc = Math.min((BW - 1.6) / lg.w, (BH - 1.6) / lg.h);
             var iw = lg.w * sc, ih = lg.h * sc;
             try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, by + (BH - ih) / 2, iw, ih); } catch (e) { }
           }
-          bx += BW + GP;
         });
       }
+      /* Every sheet carries the sign-off. A 3-sheet challan where only the last page is signed
+         proves nothing about the first two, and that is exactly what gets disputed later. */
       function footer(p, pages) {
         dg(190); doc.setLineWidth(0.2); doc.line(L, H - 20, R, H - 20);
         g(90); F("bold"); doc.setFontSize(5.6);
-        doc.text("RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, H - 15.5);
+        doc.text("RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, H - 15.8);
         dg(150); doc.setLineWidth(0.3);
-        doc.line(L, H - 7, L + 70, H - 7); doc.line(L + 85, H - 7, L + 150, H - 7);
+        doc.line(L, H - 7, L + 62, H - 7);
+        doc.line(L + 72, H - 7, L + 124, H - 7);
+        doc.line(L + 134, H - 7, L + 180, H - 7);
         g(95); F("normal"); doc.setFontSize(5.6);
-        doc.text("Receiver name & signature", L, H - 4);
-        doc.text("Date", L + 85, H - 4);
+        doc.text("Client name & signature", L, H - 4);
+        doc.text("Contact number", L + 72, H - 4);
+        doc.text("Date", L + 134, H - 4);
         g(140); doc.setFontSize(6);
         doc.text("Page " + p + " / " + pages, R, H - 4, { align: "right" });
       }
 
-      var top = 40, bottomLimit = H - FOOT_H - LOGO_H - 2;
-      var perCol = Math.floor((bottomLimit - top - 7) / RH), perPage = perCol * 2;
-      var itemPages = Math.max(1, Math.ceil(items.length / perPage));
+      /* page 1 carries the full header; later pages only a slim strip, so they hold more rows */
+      var TOP1 = 40, TOPN = 19;
+      var bottomLimit = H - FOOT_H - LOGO_H - 2;
+      var perCol1 = Math.floor((bottomLimit - TOP1 - 7) / RH);
+      var perColN = Math.floor((bottomLimit - TOPN - 7) / RH);
+      var itemPages = 1, left = items.length - perCol1 * 2;
+      while (left > 0) { itemPages++; left -= perColN * 2; }
       var totalPages = itemPages + (alt.length ? 1 : 0);
       var idx = 0, page = 1;
 
       do {
         if (page > 1) doc.addPage();
-        header();
+        if (page === 1) header(); else slimHead();
+        var top = (page === 1) ? TOP1 : TOPN;
+        var perCol = (page === 1) ? perCol1 : perColN;
         for (var ci = 0; ci < 2 && idx < items.length; ci++) {
           var x = L + ci * (COLW + COLGAP), y = top + 4;
           colHead(x, y); y += 6.6;
