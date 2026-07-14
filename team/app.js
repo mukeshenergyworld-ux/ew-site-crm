@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.8";
+  var APP_VERSION = "3.9";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -982,7 +982,7 @@
   function preloadLogos() {
     (S.data.logos || []).forEach(function (l) {
       if (!l.url) return;
-      loadPic(l.url).then(function (src) {
+      loadPic(l.url, true).then(function (src) {
         if (!src) return;
         var d = PIC_DIM[l.url] || { w: 100, h: 40 };
         LOGO_PICS[normB(l.brand)] = { src: src, w: d.w, h: d.h };
@@ -993,7 +993,54 @@
   /* Catalogue photos and brand logos come back at full resolution. Embedded raw, a 100-line
      quote became a 45MB PDF - unsendable. Every picture is downscaled on a canvas first and
      flattened onto white (the PDF page is white anyway, so alpha buys nothing). */
-  function shrinkPic(src, maxDim, q) {
+  /* Every PDF overflow so far came from one mistake: text measured at one font size, then
+     drawn at another - or wrapped to a width wider than the column it lives in. fitCell
+     measures with the exact font it will be drawn with, clips to maxLines and ellipsises the
+     rest. Use it for EVERY free-text cell. Never call splitTextToSize with a guessed width. */
+  function fitCell(doc, F, txt, width, maxLines, style, size) {
+    F(style || "normal");
+    doc.setFontSize(size);
+    var all = doc.splitTextToSize(String(txt == null ? "" : txt), width);
+    var mx = maxLines || 1;
+    if (all.length <= mx) return all;
+    var keep = all.slice(0, mx);
+    var last = keep[mx - 1];
+    while (last.length > 1 && doc.getTextWidth(last + "\u2026") > width) last = last.slice(0, -1);
+    keep[mx - 1] = last.replace(/[\s,;:.-]+$/, "") + "\u2026";
+    return keep;
+  }
+
+  /* Several brand logos ship with a wide white margin baked into the file. Fitted to a box,
+     the mark itself ends up tiny while another brand fills the box edge to edge. trimWhite
+     crops the blank border away first, so every logo is measured on its actual artwork. */
+  function trimWhite(cv) {
+    var cx = cv.getContext("2d"), w = cv.width, h = cv.height;
+    var d;
+    try { d = cx.getImageData(0, 0, w, h).data; } catch (e) { return cv; }
+    var TH = 244, x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (var yy = 0; yy < h; yy++) {
+      for (var xx = 0; xx < w; xx++) {
+        var p = (yy * w + xx) * 4;
+        if (d[p] < TH || d[p + 1] < TH || d[p + 2] < TH) {
+          if (xx < x0) x0 = xx; if (xx > x1) x1 = xx;
+          if (yy < y0) y0 = yy; if (yy > y1) y1 = yy;
+        }
+      }
+    }
+    if (x1 < 0) return cv;
+    var pad = 1;
+    x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad);
+    x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+    var nw = x1 - x0 + 1, nh = y1 - y0 + 1;
+    if (nw === w && nh === h) return cv;
+    var o = document.createElement("canvas"); o.width = nw; o.height = nh;
+    var ox = o.getContext("2d");
+    ox.fillStyle = "#ffffff"; ox.fillRect(0, 0, nw, nh);
+    ox.drawImage(cv, x0, y0, nw, nh, 0, 0, nw, nh);
+    return o;
+  }
+
+  function shrinkPic(src, maxDim, q, trim) {
     return new Promise(function (res) {
       var im = new Image();
       im.onload = function () {
@@ -1003,7 +1050,8 @@
         var cx = cv.getContext("2d");
         cx.fillStyle = "#ffffff"; cx.fillRect(0, 0, w, h);
         cx.drawImage(im, 0, 0, w, h);
-        try { res({ src: cv.toDataURL("image/jpeg", q || 0.75), w: w, h: h }); }
+        if (trim) cv = trimWhite(cv);
+        try { res({ src: cv.toDataURL("image/jpeg", q || 0.8), w: cv.width, h: cv.height }); }
         catch (e) { res({ src: src, w: im.width, h: im.height }); }
       };
       im.onerror = function () { res(null); };
@@ -1011,12 +1059,12 @@
     });
   }
 
-  function loadPic(url) {
+  function loadPic(url, trim) {
     if (!url) return Promise.resolve(null);
     if (PIC_CACHE[url] !== undefined) return Promise.resolve(PIC_CACHE[url]);
     return api("imgB64", { url: url }).then(function (r) {
       if (!r || !r.ok) { PIC_CACHE[url] = null; return null; }
-      return shrinkPic("data:" + r.mime + ";base64," + r.b64, 260, 0.75).then(function (p) {
+      return shrinkPic("data:" + r.mime + ";base64," + r.b64, 300, trim ? 0.85 : 0.75, trim).then(function (p) {
         PIC_CACHE[url] = p ? p.src : null;
         PIC_DIM[url] = p ? { w: p.w, h: p.h } : null;
         return PIC_CACHE[url];
@@ -1114,25 +1162,25 @@
          3) Geberit / Stellar / MEA / Oyster. Boxes are a fixed size and the logo is scaled to
          fit inside, so a wide logo and a tall one still occupy the same box. Any slot with no
          logo on file is drawn as an empty box to keep the grid square. */
-      var CHIP_L = L + 40, avail = Rt - CHIP_L;
-      var PER_ROW = 6, GAP = 2.4;
-      var BW = (avail - GAP * (PER_ROW - 1)) / PER_ROW, BH = 11;
+      var PER_ROW = 6, GAP = 2.2, BW = 17.5, BH = 9;
+      var GRID_W = PER_ROW * BW + (PER_ROW - 1) * GAP;
+      var CHIP_L = Rt - GRID_W;
       var slots = PDF_LOGO_ORDER.map(function (n) { return logoFor(n); });
       slots.forEach(function (lg, i) {
         var r = Math.floor(i / PER_ROW), cIdx = i % PER_ROW;
-        var bx = CHIP_L + cIdx * (BW + GAP), by = y - 5.6 + r * (BH + 2.6);
+        var bx = CHIP_L + cIdx * (BW + GAP), by = y - 5.6 + r * (BH + 2.2);
         fill([255, 255, 255]); doc.roundedRect(bx, by, BW, BH, 1.6, 1.6, "F");
         doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25);
         doc.roundedRect(bx, by, BW, BH, 1.6, 1.6, "S");
         if (!lg || !lg.src) return;
-        var mw = BW - 3.2, mh = BH - 3.2;
+        var mw = BW - 2.4, mh = BH - 2.4;
         var sc = Math.min(mw / lg.w, mh / lg.h);
         var iw = lg.w * sc, ih = lg.h * sc;
         try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, by + (BH - ih) / 2, iw, ih); } catch (e) { }
       });
       doc.setLineWidth(0.2);
       var LROWS = Math.ceil(slots.length / PER_ROW);
-      y += (LROWS - 1) * (BH + 2.6) + 11;
+      y += (LROWS - 1) * (BH + 2.2) + 10;
 
       /* ---- client block ---- */
       fill(SOFT); doc.roundedRect(L, y, Rt - L, 24, 2, 2, "F");
@@ -1153,7 +1201,7 @@
       if (c.mobile2) det.push(String(c.mobile2));
       if (c.type) det.push(String(c.type));
       doc.text(det.join("  |  "), c1, y + 16);
-      if (c.address) doc.text(doc.splitTextToSize(String(c.address), 78)[0], c1, y + 20);
+      if (c.address) doc.text(fitCell(doc, F, c.address, 78, 1, "normal", 6.2)[0], c1, y + 20);
       /* prepared by: just the person and their number */
       var me = (S.data.team || []).filter(function (t2) { return t2.name === q.createdBy; })[0] || {};
       if (me.mobile) doc.text(String(me.mobile), c3, y + 16);
@@ -1163,6 +1211,8 @@
       /* money columns widened: a lakh figure like Rs 4,51,869 needs real room, and it
          was running into the next column. Everything shrunk a notch so 100+ lines fit. */
       var X = { n: L + 2, pic: L + 6, item: L + 21, unit: 106, qty: 118, price: 137, dis: 149, dprice: 172, amt: Rt - 1 };
+      var UNIT_W = 13;                       /* "Per Set", "Per Pc." at 6.2pt, with air */
+      var DESC_W = X.unit - UNIT_W - X.item - 2;
       var head = function () {
         fill(SLATE); doc.rect(L, y - 4.6, Rt - L, 7.6, "F");
         col([255, 255, 255]); F("bold"); doc.setFontSize(5.2);
@@ -1181,10 +1231,10 @@
       ordered.forEach(function (r, i) {
         /* ONE description. The catalogue repeats the spec inside the description, and
            printing both made every row a wall of duplicated text. */
-        F("normal"); doc.setFontSize(5.8);
-        var full = String(r.desc || "");
-        var lines = doc.splitTextToSize(full, 80).slice(0, 2);
-        var hgt = Math.max(11, 5 + lines.length * 2.9);
+        /* DESC_W is derived from the column positions, not guessed. The unit column is
+           right-aligned at X.unit, so its text grows leftwards - reserve room for it. */
+        var lines = fitCell(doc, F, r.desc, DESC_W, 3, "normal", 6.4);
+        var hgt = Math.max(11, 5 + lines.length * 3.1);
         if (y + hgt > 272) { doc.addPage(); y = 20; head(); }
         if (i % 2 === 1) { fill(SOFT); doc.rect(L, y - 3.6, Rt - L, hgt, "F"); }
 
@@ -1195,10 +1245,10 @@
         col([13, 148, 136]); F("bold"); doc.setFontSize(5.4);
         doc.text(String(r.code || ""), X.item, y - 0.6);
         col(INK); F("normal"); doc.setFontSize(6.4);
-        doc.text(lines, X.item, y + 3);
+        doc.text(lines, X.item, y + 3, { lineHeightFactor: 1.15 });
 
         col(INK); F("normal"); doc.setFontSize(6.2);
-        doc.text(String(r.unit), X.unit, y + 0.6, { align: "right" });
+        doc.text(fitCell(doc, F, r.unit, UNIT_W, 1, "normal", 6.2)[0], X.unit, y + 0.6, { align: "right" });
         F("bold"); doc.text(String(r.qty), X.qty, y + 0.6, { align: "right" });
         F("normal");
         if (r.disc > 0) {
