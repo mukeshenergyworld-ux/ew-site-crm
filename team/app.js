@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "2.6";
+  var APP_VERSION = "2.7";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -59,6 +59,8 @@
     navOpen: false,
     rmPreview: null,
     geoOnly: false,
+    partner: "",
+    pRole: "",
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [] }
   };
 
@@ -81,10 +83,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","clients","quotes","sites","winloss","visits","followups","challans","commission","service","spares","dues","payroll","products","catalogue","rules"],
-    accounts: ["dash","clients","followups","challans","service","spares","dues","products"],
+    admin:    ["dash","clients","quotes","sites","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
+    accounts: ["dash","clients","followups","challans","payments","discounts","service","spares","dues","products"],
     godown:   ["dash","challans","products"],
-    sales:    ["dash","clients","quotes","sites","winloss","visits","followups","challans","products"],
+    sales:    ["dash","clients","quotes","sites","winloss","visits","followups","challans","discounts","products"],
     service:  ["dash","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -1386,6 +1388,291 @@
     return h;
   }
 
+  /* ---------------- INCENTIVE ENGINE ----------------
+     Settled rules, applied literally:
+       - GST is a flat 18%, so the base is always amount / 1.18
+       - Incentive is on NET BILLED, ex-GST (after the client discount)
+       - It becomes PAYABLE only as the client actually pays
+       - Sales incentive is a flat % of their own sales
+     Nothing here is visible to anyone but a partner. The server never sends it. */
+  var GST_DIV = 1.18;
+
+  function exGst(n) { return (Number(n) || 0) / GST_DIV; }
+
+  function rateFor(partner, brand) {
+    var r = S.data.commrates.filter(function (x) {
+      return String(x.associate).toLowerCase() === String(partner).toLowerCase() &&
+             String(x.brand) === String(brand);
+    })[0];
+    if (r) return Number(r.pct) || 0;
+    var a = S.data.associates.filter(function (x) { return String(x.name).toLowerCase() === String(partner).toLowerCase(); })[0];
+    return a ? Number(a.rate) || 0 : 0;
+  }
+
+  function partnerBook(name) {
+    var nm = String(name).toLowerCase();
+    /* only challans whose material receipt is in count as real business */
+    var chs = S.data.challans.filter(function (c) {
+      return String(c.associate || "").toLowerCase() === nm && String(c.receiptReceived).toUpperCase() === "Y";
+    });
+    var billed = 0, earned = 0;
+    var rows = chs.map(function (c) {
+      var base = exGst(c.amount);
+      var pct = rateFor(name, c.brand);
+      var inc = base * pct / 100;
+      billed += Number(c.amount) || 0;
+      earned += inc;
+      return { no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
+        amount: Number(c.amount) || 0, base: base, pct: pct, inc: inc };
+    });
+    /* payable follows the money in, not the invoice out */
+    var clients = {};
+    chs.forEach(function (c) { clients[c.customerName] = 1; });
+    var collected = S.data.payments.filter(function (p) { return clients[p.client]; })
+      .reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
+    var ratio = billed > 0 ? Math.min(1, collected / billed) : 0;
+    var payable = earned * ratio;
+    var paid = S.data.commpay.filter(function (p) { return String(p.associate).toLowerCase() === nm; })
+      .reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
+    var sites = S.data.sites.filter(function (st) {
+      return [st.architect, st.plumber, st.builder].some(function (x) { return String(x || "").toLowerCase() === nm; });
+    });
+    return { rows: rows, billed: billed, earned: earned, collected: collected, ratio: ratio,
+      payable: payable, paid: paid, pending: payable - paid, sites: sites };
+  }
+
+  function viewIncentives() {
+    if (S.partner) return viewPartnerCard(S.partner);
+    var partners = S.data.associates.slice();
+    var tot = { earned: 0, payable: 0, paid: 0, pending: 0 };
+    var books = {};
+    partners.forEach(function (a) {
+      var b = partnerBook(a.name); books[a.name] = b;
+      tot.earned += b.earned; tot.payable += b.payable; tot.paid += b.paid; tot.pending += b.pending;
+    });
+    var h = '<div class="cards">' +
+      '<div class="stat"><div class="n">' + money(tot.earned) + '</div><div class="l">Incentive earned (ex-GST)</div></div>' +
+      '<div class="stat"><div class="n">' + money(tot.payable) + '</div><div class="l">Payable (money collected)</div></div>' +
+      '<div class="stat"><div class="n">' + money(tot.paid) + '</div><div class="l">Paid out</div></div>' +
+      '<div class="stat ' + (tot.pending > 0 ? "alert" : "") + '"><div class="n">' + money(tot.pending) + '</div><div class="l">Still to pay</div></div>' +
+      '</div>';
+    h += '<div class="empty" style="text-align:left;padding:0 0 12px">Incentive = net billed \u00f7 1.18 (ex-GST) \u00d7 the partner rate, and it only becomes <b>payable as the client pays</b>. A challan counts only once its material receipt is in.</div>';
+    var roles = ["Plumber", "Architect", "Builder", "PMC", "Contractor", "Dealer", "Other"];
+    h += '<div class="row">' + roles.map(function (r) {
+      return '<button class="btn sm ' + (S.pRole === r ? "" : "ghost") + '" data-act="p-role" data-r="' + esc(r) + '">' + esc(r) + '</button>';
+    }).join("") + '<button class="btn sm ' + (S.pRole ? "ghost" : "") + '" data-act="p-role" data-r="">All</button>' +
+      '<div class="grow"></div><button class="btn" data-act="as-new">+ New partner</button></div>';
+    var list = partners.filter(function (a) { return !S.pRole || a.role === S.pRole; });
+    if (!list.length) h += '<div class="empty">No partners here yet.</div>';
+    list.forEach(function (a) {
+      var b = books[a.name];
+      h += '<div class="card"><h3>' + esc(a.name) + ' <span class="pill">' + esc(a.role || "") + '</span>' +
+        (b.pending > 0 ? ' <span class="pill due">' + money(b.pending) + ' pending</span>' : ' <span class="pill Won">settled</span>') + '</h3>' +
+        '<div class="meta">' + b.sites.length + ' ongoing site(s) &middot; ' + b.rows.length + ' challan(s)' +
+        '<br>Earned ' + money(b.earned) + ' &middot; payable ' + money(b.payable) + ' &middot; paid ' + money(b.paid) + '</div>' +
+        '<div class="acts"><button class="btn sm" data-act="p-open" data-n="' + esc(a.name) + '">Open</button>' +
+        '<button class="btn sm ghost" data-act="as-open" data-id="' + esc(a.id) + '">Edit</button></div></div>';
+    });
+    return h;
+  }
+
+  function viewPartnerCard(name) {
+    var b = partnerBook(name);
+    var a = S.data.associates.filter(function (x) { return x.name === name; })[0] || {};
+    var h = '<div class="row"><button class="btn sm ghost" data-act="p-back">Back to partners</button></div>';
+    h += '<div class="cards">' +
+      '<div class="stat"><div class="n">' + b.sites.length + '</div><div class="l">Ongoing sites</div></div>' +
+      '<div class="stat"><div class="n">' + money(b.earned) + '</div><div class="l">Incentive earned</div></div>' +
+      '<div class="stat"><div class="n">' + money(b.paid) + '</div><div class="l">Paid</div></div>' +
+      '<div class="stat ' + (b.pending > 0 ? "alert" : "") + '"><div class="n">' + money(b.pending) + '</div><div class="l">Pending</div></div>' +
+      '</div>';
+    h += '<div class="card"><h3>' + esc(name) + ' <span class="pill">' + esc(a.role || "") + '</span></h3>' +
+      '<div class="meta">' + (a.mobile ? esc(a.mobile) + '<br>' : "") +
+      'Billed ' + money(b.billed) + ' &middot; collected ' + money(b.collected) +
+      ' (' + Math.round(b.ratio * 100) + '% in)' +
+      '<br><i>Incentive becomes payable only in proportion to what the client has actually paid.</i></div>' +
+      '<div class="acts"><button class="btn sm" data-act="pay-out" data-n="' + esc(name) + '">Record payout</button></div></div>';
+
+    h += '<h3 style="margin:20px 0 10px;font-size:15px">Ongoing sites</h3>';
+    if (!b.sites.length) h += '<div class="empty">No sites linked to this partner.</div>';
+    b.sites.forEach(function (st) {
+      h += '<div class="card"><h3>' + esc(st.name) + ' <span class="pill teal">' + esc(st.stage || "-") + '</span></h3>' +
+        '<div class="meta">' + esc(st.client || "") + '</div></div>';
+    });
+
+    h += '<h3 style="margin:20px 0 10px;font-size:15px">Challans &amp; incentive</h3>';
+    if (!b.rows.length) h += '<div class="empty">No delivered challans yet for this partner.</div>';
+    b.rows.forEach(function (r) {
+      h += '<div class="card"><h3>' + esc(r.no) + ' <span class="pill teal">' + money(r.inc) + '</span></h3>' +
+        '<div class="meta">' + esc(r.client) + (r.site ? ' &middot; ' + esc(r.site) : "") +
+        '<br>' + esc(r.brand || "-") + ' &middot; billed ' + money(r.amount) +
+        '<br>ex-GST ' + money(r.base) + ' \u00d7 ' + r.pct + '% = <b>' + money(r.inc) + '</b></div></div>';
+    });
+
+    h += '<h3 style="margin:20px 0 10px;font-size:15px">Payouts</h3>';
+    var outs = S.data.commpay.filter(function (p) { return p.associate === name; });
+    if (!outs.length) h += '<div class="empty">Nothing paid out yet.</div>';
+    outs.forEach(function (p) {
+      h += '<div class="card"><div class="meta">' + esc(dstr(p.date)) + ' &middot; ' + money(p.amount) +
+        (p.mode ? ' &middot; ' + esc(p.mode) : "") + ' &middot; by ' + esc(p.createdBy || "") + '</div></div>';
+    });
+    return h;
+  }
+
+  function modalPayout(name) {
+    var b = partnerBook(name);
+    return '<h2>Record incentive payout</h2><p class="sub">' + esc(name) + '</p>' +
+      '<div class="card"><div class="meta">Pending: <b>' + money(b.pending) + '</b><br>Earned ' + money(b.earned) +
+      ', payable ' + money(b.payable) + ', already paid ' + money(b.paid) + '</div></div>' +
+      '<label>Amount</label><input id="po_amt" inputmode="numeric" value="' + Math.round(b.pending > 0 ? b.pending : 0) + '"/>' +
+      '<div class="grid2"><div><label>Date</label><input id="po_date" type="date" value="' + today() + '"/></div>' +
+      '<div><label>Mode</label><select id="po_mode">' + opts(["Cash", "Bank transfer", "Cheque", "UPI", "Adjustment"], "Bank transfer") + '</select></div></div>' +
+      '<label>Notes</label><input id="po_note"/>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="po-save" data-n="' + esc(name) + '">Save payout</button></div>';
+  }
+
+  /* ---------------- client discounts (sales may set these) ---------------- */
+  function viewDiscounts() {
+    var cl = S.q;
+    var h = '<div class="row"><input class="grow" id="q" placeholder="Type a client to set their brand discounts..." list="dclients" value="' + esc(S.q) + '"/></div>' +
+      '<datalist id="dclients">' + S.data.clients.map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>';
+    if (!cl) return h + '<div class="empty">Pick a client. Each client can have a different discount per brand - that is what the quote builder pulls in automatically.</div>';
+    var brands = brandList();
+    h += '<div class="empty" style="text-align:left;padding:0 0 10px">Brand-wise discount for <b>' + esc(cl) + '</b>. Used by the quote builder and by the incentive base.</div>';
+    brands.forEach(function (b) {
+      var d = S.data.discounts.filter(function (x) {
+        return String(x.client).toLowerCase() === cl.toLowerCase() && x.brand === b;
+      })[0];
+      h += '<div class="card"><h3>' + esc(b) + (d && Number(d.pct) ? ' <span class="pill teal">' + esc(d.pct) + '%</span>' : ' <span class="pill">not set</span>') + '</h3>' +
+        '<div class="acts" style="align-items:center">' +
+        '<input class="dsc" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-id="' + esc(d ? d.id : "") + '" inputmode="decimal" value="' + esc(d ? d.pct : "") + '" placeholder="0" style="width:90px;padding:7px 10px"/>' +
+        '<span class="pill">% off list</span></div></div>';
+    });
+    return h;
+  }
+
+  /* ---------------- client payments + ledger ---------------- */
+  function clientLedger(client) {
+    var chs = S.data.challans.filter(function (c) {
+      return c.customerName === client && String(c.receiptReceived).toUpperCase() === "Y";
+    });
+    var pays = S.data.payments.filter(function (p) { return p.client === client; });
+    var billed = chs.reduce(function (a, c) { return a + (Number(c.amount) || 0); }, 0);
+    var freight = chs.reduce(function (a, c) {
+      return a + (String(c.freightTo) === "Client" ? (Number(c.freight) || 0) : 0);
+    }, 0);
+    var paid = pays.reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
+    return { chs: chs, pays: pays, billed: billed, freight: freight, paid: paid, due: billed + freight - paid };
+  }
+
+  function viewPayments() {
+    var names = {};
+    S.data.challans.forEach(function (c) { if (String(c.receiptReceived).toUpperCase() === "Y") names[c.customerName] = 1; });
+    var list = Object.keys(names).map(function (n) { return { name: n, l: clientLedger(n) }; })
+      .sort(function (a, b) { return b.l.due - a.l.due; });
+    var totDue = list.reduce(function (a, x) { return a + x.l.due; }, 0);
+    var h = '<div class="cards">' +
+      '<div class="stat ' + (totDue > 0 ? "alert" : "") + '"><div class="n">' + money(totDue) + '</div><div class="l">Outstanding from clients</div></div>' +
+      '<div class="stat"><div class="n">' + list.length + '</div><div class="l">Client ledgers</div></div>' +
+      '</div>';
+    h += '<div class="empty" style="text-align:left;padding:0 0 12px">Only challans with a <b>signed material receipt</b> enter the ledger. Freight appears here when the client bears it.</div>';
+    if (!list.length) return h + '<div class="empty">Nothing delivered yet.</div>';
+    list.forEach(function (x) {
+      h += '<div class="card"><h3>' + esc(x.name) +
+        (x.l.due > 0 ? ' <span class="pill due">' + money(x.l.due) + ' due</span>' : ' <span class="pill Won">clear</span>') + '</h3>' +
+        '<div class="meta">' + x.l.chs.length + ' challan(s) &middot; billed ' + money(x.l.billed) +
+        (x.l.freight ? ' + freight ' + money(x.l.freight) : "") +
+        '<br>Received ' + money(x.l.paid) + '</div>' +
+        '<div class="acts"><button class="btn sm" data-act="pay-in" data-n="' + esc(x.name) + '">Payment received</button>' +
+        '<button class="btn sm ghost" data-act="ledger-pdf" data-n="' + esc(x.name) + '">Ledger PDF</button></div></div>';
+    });
+    return h;
+  }
+
+  function modalPayIn(client) {
+    var l = clientLedger(client);
+    return '<h2>Payment received</h2><p class="sub">' + esc(client) + '</p>' +
+      '<div class="card"><div class="meta">Billed ' + money(l.billed) + (l.freight ? ' + freight ' + money(l.freight) : "") +
+      '<br>Received so far ' + money(l.paid) + '<br><b>Due ' + money(l.due) + '</b></div></div>' +
+      '<label>Amount received</label><input id="pi_amt" inputmode="numeric" value="' + Math.round(l.due > 0 ? l.due : 0) + '"/>' +
+      '<div class="grid2"><div><label>Date</label><input id="pi_date" type="date" value="' + today() + '"/></div>' +
+      '<div><label>Mode</label><select id="pi_mode">' + opts(["Cash", "Bank transfer", "Cheque", "UPI"], "Bank transfer") + '</select></div></div>' +
+      '<label>Reference (cheque / UTR)</label><input id="pi_ref"/>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="pi-save" data-n="' + esc(client) + '">Save payment</button></div>';
+  }
+
+  function ledgerPdf(client) {
+    var l = clientLedger(client);
+    return loadFonts().then(function (f) {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var uni = false;
+      if (f) {
+        doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
+        doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold");
+        uni = true;
+      }
+      var F = function (w) { doc.setFont(uni ? "DJ" : "helvetica", w || "normal"); };
+      var R2 = function (n) { return (uni ? "\u20B9" : "Rs.") + Number(n || 0).toLocaleString("en-IN"); };
+      var W = 210, L = 14, Rt = W - 14, y = 0;
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 34, "F");
+      doc.setFillColor(94, 234, 212); doc.rect(0, 34, W, 1.2, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 8, 30, 16); } catch (e) {} }
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(14);
+      doc.text("CLIENT LEDGER", Rt, 15, { align: "right" });
+      F("normal"); doc.setFontSize(8); doc.setTextColor(160, 205, 199);
+      doc.text(client, Rt, 22, { align: "right" });
+      doc.text("As on " + today(), Rt, 27, { align: "right" });
+
+      y = 48;
+      doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, Rt - L, 9, "F");
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.4);
+      doc.text("DATE", L + 3, y);
+      doc.text("PARTICULARS", L + 26, y);
+      doc.text("DEBIT", Rt - 46, y, { align: "right" });
+      doc.text("CREDIT", Rt - 24, y, { align: "right" });
+      doc.text("BALANCE", Rt - 2, y, { align: "right" });
+      y += 9;
+
+      var bal = 0;
+      var lines = [];
+      l.chs.forEach(function (c) {
+        lines.push({ d: dstr(c.createdAt), p: "Challan " + c.challanNo + (c.brand ? " (" + c.brand + ")" : ""), dr: Number(c.amount) || 0, cr: 0 });
+        if (String(c.freightTo) === "Client" && Number(c.freight)) {
+          lines.push({ d: dstr(c.createdAt), p: "Freight - " + c.challanNo + (c.driver ? " (" + c.driver + ")" : ""), dr: Number(c.freight), cr: 0 });
+        }
+      });
+      l.pays.forEach(function (p) {
+        lines.push({ d: dstr(p.date), p: "Payment received" + (p.mode ? " - " + p.mode : "") + (p.ref ? " [" + p.ref + "]" : ""), dr: 0, cr: Number(p.amount) || 0 });
+      });
+      lines.sort(function (a, b) { return String(a.d).localeCompare(String(b.d)); });
+
+      lines.forEach(function (ln, i) {
+        if (y > 262) { doc.addPage(); y = 24; }
+        if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, Rt - L, 7, "F"); }
+        bal += ln.dr - ln.cr;
+        doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(7.2);
+        doc.text(String(ln.d), L + 3, y);
+        doc.text(doc.splitTextToSize(ln.p, 78)[0], L + 26, y);
+        if (ln.dr) doc.text(R2(ln.dr), Rt - 46, y, { align: "right" });
+        if (ln.cr) doc.text(R2(ln.cr), Rt - 24, y, { align: "right" });
+        F("bold"); doc.text(R2(bal), Rt - 2, y, { align: "right" });
+        y += 7;
+      });
+
+      y += 4;
+      doc.setFillColor(236, 253, 245); doc.roundedRect(112, y - 5, Rt - 112, 12, 1.5, 1.5, "F");
+      doc.setTextColor(13, 118, 108); F("bold"); doc.setFontSize(8);
+      doc.text("Balance due", 116, y + 1.4);
+      doc.setFontSize(11);
+      doc.text(R2(l.due), Rt - 2, y + 1.6, { align: "right" });
+      F("normal"); doc.setFontSize(6.4); doc.setTextColor(150, 163, 175);
+      doc.text("Energy World  |  Panipat \u00b7 Sonipat \u00b7 Karnal", L, 290);
+      return doc;
+    });
+  }
+
   function renderLogin(err) {
     document.getElementById("root").innerHTML =
       '<div class="login-wrap"><div class="login">' +
@@ -1735,8 +2022,8 @@
 
   function render() {
     if (!S.pin) { renderLogin(); return; }
-    var views = { visits: viewVisits, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
-    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var views = { visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
+    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -1749,7 +2036,7 @@
 
     var GROUPS = [
       ["Sell", ["dash", "clients", "quotes", "sites", "visits", "winloss", "followups"]],
-      ["Deliver", ["challans", "products", "dues"]],
+      ["Deliver", ["challans", "payments", "discounts", "products", "dues"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["commission", "payroll", "catalogue", "rules"]]
     ];
@@ -2099,6 +2386,41 @@
       }).then(function (r) { if (r) { S.modal = null; toast("Site saved."); render(); } });
       return;
     }
+    if (act === "p-role") { S.pRole = t.getAttribute("data-r"); render(); return; }
+    if (act === "p-open") { S.partner = t.getAttribute("data-n"); render(); return; }
+    if (act === "p-back") { S.partner = ""; render(); return; }
+
+    if (act === "pay-out") { S.modal = modalPayout(t.getAttribute("data-n")); render(); return; }
+    if (act === "po-save") {
+      var pn = t.getAttribute("data-n");
+      var amt = Number(val("po_amt")) || 0;
+      if (amt <= 0) { toast("Enter an amount."); return; }
+      save("commpay", { id: "", createdBy: S.user, associate: pn, siteId: "", siteName: "",
+        date: val("po_date"), amount: amt, mode: val("po_mode"), notes: val("po_note") })
+        .then(function (r) { if (r) { S.modal = null; toast("Payout recorded."); render(); } });
+      return;
+    }
+
+    if (act === "pay-in") { S.modal = modalPayIn(t.getAttribute("data-n")); render(); return; }
+    if (act === "pi-save") {
+      var cln = t.getAttribute("data-n");
+      var amt2 = Number(val("pi_amt")) || 0;
+      if (amt2 <= 0) { toast("Enter an amount."); return; }
+      var site = S.data.challans.filter(function (c) { return c.customerName === cln && c.siteId; })[0] || {};
+      save("payments", { id: "", createdBy: S.user, siteId: site.siteId || "", siteName: site.site || "",
+        client: cln, date: val("pi_date"), amount: amt2, mode: val("pi_mode"), ref: val("pi_ref"), notes: "" })
+        .then(function (r) { if (r) { S.modal = null; toast("Payment recorded. Incentive payable updated."); render(); } });
+      return;
+    }
+
+    if (act === "ledger-pdf") {
+      var lc = t.getAttribute("data-n");
+      toast("Building ledger...");
+      loadLogo().then(function () { return ledgerPdf(lc); })
+        .then(function (d) { d.save("Ledger_" + lc.replace(/[^\w.-]/g, "_") + ".pdf"); });
+      return;
+    }
+
     if (act === "v-photo") {
       var fid = t.getAttribute("data-file");
       t.disabled = true; t.textContent = "Loading...";
@@ -2282,6 +2604,13 @@
 
   document.addEventListener("change", function (e) {
     var t = e.target;
+    if (t.classList && t.classList.contains("dsc")) {
+      var cli = t.getAttribute("data-client");
+      var br = t.getAttribute("data-brand");
+      save("discounts", { id: t.getAttribute("data-id") || "", client: cli, brand: br, pct: t.value, notes: "" })
+        .then(function (r) { if (r) toast(br + " for " + cli + ": " + (t.value || 0) + "%"); });
+      return;
+    }
     if (t.classList && t.classList.contains("bm")) {
       var m = S.data.brandmap.filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
       if (!m) return;
