@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.0";
+  var APP_VERSION = "3.1";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -739,32 +739,35 @@
     }
 
     if (z.step === 3) {
-      h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="2">Back to brands</button>' +
+      h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="2">Brands</button>' +
         '<span class="pill teal">' + esc(z.brand) + '</span><div class="grow"></div>' +
-        '<button class="btn" data-act="qz-step" data-step="4">Discount (' + (z.items || []).length + ' item)</button></div>';
-      if (!z.family) {
-        h += '<div class="empty" style="text-align:left;padding:0 0 12px">Pick a product family.</div>';
-        familyList(z.brand).forEach(function (f) {
-          var n = brandProducts(z.brand).filter(function (p) { return p.family === f; }).length;
-          h += '<div class="card"><h3>' + esc(f) + ' <span class="pill">' + n + '</span></h3>' +
-            '<div class="acts"><button class="btn sm" data-act="qz-fam" data-fam="' + esc(f) + '">Open</button></div></div>';
-        });
-        return h;
-      }
-      h += '<div class="row"><button class="btn sm ghost" data-act="qz-fam" data-fam="">Back to families</button>' +
-        '<span class="pill">' + esc(z.family) + '</span></div>';
+        '<button class="btn" data-act="qz-step" data-step="4">Discount (' + (z.items || []).length + ')</button></div>';
+
+      /* families as small horizontal chips, not a vertical wall of cards */
+      var fams = familyList(z.brand);
+      h += '<div class="chips">' + fams.map(function (f) {
+        var n = brandProducts(z.brand).filter(function (p) { return p.family === f; }).length;
+        return '<button class="chip ' + (z.family === f ? "on" : "") + '" data-act="qz-fam" data-fam="' + esc(f) + '">' +
+          esc(f) + ' <b>' + n + '</b></button>';
+      }).join("") + '</div>';
+
+      if (!z.family) return h + '<div class="empty">Pick a family above.</div>';
+
+      /* compact product rows: pic, name, price, stepper - all on one line */
+      h += '<div class="plist">';
       brandProducts(z.brand).filter(function (p) { return p.family === z.family; }).forEach(function (p) {
         var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
-        h += '<div class="card" style="display:flex;gap:12px;align-items:center">' +
-          (p.pic ? '<img src="' + esc(p.pic) + '" alt="" style="width:56px;height:56px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff"/>' : "") +
-          '<div style="flex:1"><h3 style="margin:0 0 2px">' + esc(p.desc) + '</h3>' +
-          '<div class="meta">' + esc(p.code) + ' - ' + money(p.price) + ' / ' + esc(p.unit) + '</div></div>' +
-          '<div style="display:flex;align-items:center;gap:4px">' +
-          '<button class="btn sm ghost" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="-1">-</button>' +
-          '<input class="qz-q" data-code="' + esc(p.code) + '" inputmode="numeric" value="' + esc(ex ? ex.qty : "") + '" placeholder="0" style="width:56px;text-align:center;padding:7px 4px"/>' +
-          '<button class="btn sm ghost" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
+        h += '<div class="prow ' + (ex ? "picked" : "") + '">' +
+          (p.pic ? '<img src="' + esc(p.pic) + '" loading="lazy"/>' : '<div class="noimg"></div>') +
+          '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
+          '<div class="pmeta">' + esc(p.code) + ' &middot; ' + money(p.price) + ' / ' + esc(p.unit) + '</div></div>' +
+          '<div class="pqty">' +
+          '<button class="stp" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
+          '<input class="qz-q" data-code="' + esc(p.code) + '" inputmode="numeric" value="' + esc(ex ? ex.qty : "") + '" placeholder="0"/>' +
+          '<button class="stp" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
           '</div></div>';
       });
+      h += '</div>';
       return h;
     }
 
