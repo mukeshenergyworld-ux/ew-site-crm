@@ -122,6 +122,19 @@
   .chip.on b{color:#99f6e4}
 
   /* compact month calendar for site visits */
+  /* brand status marks: quoted amber, won green, lost red and struck through */
+  .bs{font-size:10px;font-weight:800;letter-spacing:.04em;padding:2px 7px;border-radius:5px;white-space:nowrap}
+  .bs.win{background:#dcfce7;color:#15803d}
+  .bs.quoted{background:#fef3c7;color:#a16207}
+  .bs.pitched{background:#e0f2fe;color:#0369a1}
+  .bs.lose{background:#fee2e2;color:#b91c1c;text-decoration:line-through;text-decoration-thickness:1.5px}
+  .bs.none{background:#f1f5f9;color:#94a3b8}
+  .bcard .bname{font-weight:700}
+  .bcard.is-lost .bname{text-decoration:line-through;color:#b91c1c}
+  .bcard.is-lost{border-color:#fecaca;background:#fff5f5}
+  .bcard.is-won{border-color:#bbf7d0;background:#f0fdf4}
+  .bcard.is-quoted{border-color:#fde68a;background:#fffbeb}
+
   .calhead{display:flex;align-items:center;justify-content:space-between;
     background:#fff;border:1px solid var(--line);border-radius:12px 12px 0 0;
     padding:8px 10px;font-size:14px}
