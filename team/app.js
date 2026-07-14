@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "4.61";
+  var APP_VERSION = "4.62";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1915,6 +1915,16 @@
   }
 
   /* the return form reuses the challan picker, so nobody has to learn a second screen */
+  function keepFields(ids) {
+    var keep = {};
+    ids.forEach(function (i) { var e = el(i); if (e) keep[i] = e.value; });
+    return function () {
+      ids.forEach(function (i) { var e = el(i); if (e && keep[i] !== undefined) e.value = keep[i]; });
+    };
+  }
+  var CH_FIELDS = ["m_loc", "m_client", "m_site", "m_assoc", "m_freight", "m_fto", "m_driver", "m_dmob", "m_veh"];
+  var RT_FIELDS = ["r_client", "r_site", "r_ch", "r_reason", "r_driver", "r_freight"];
+
   function modalReturn() {
     if (!S.rt) S.rt = { brand: "", family: "", items: [] };
     var z = S.rt;
@@ -3782,22 +3792,20 @@
       return;
     }
     if (act === "rt-new") { S.rt = { brand: "", family: "", items: [] }; S.modal = modalReturn(); render(); return; }
-    if (act === "rt-brand") { S.rt.brand = t.getAttribute("data-brand"); S.rt.family = ""; S.modal = modalReturn(); render(); return; }
-    if (act === "rt-fam") { S.rt.family = t.getAttribute("data-fam"); S.modal = modalReturn(); render(); return; }
+    if (act === "rt-brand" || act === "rt-fam") {
+      var restoreR = keepFields(RT_FIELDS);
+      if (act === "rt-brand") { S.rt.brand = t.getAttribute("data-brand"); S.rt.family = ""; }
+      else { S.rt.family = t.getAttribute("data-fam"); }
+      S.modal = modalReturn(); render(); restoreR(); return;
+    }
     if (act === "rt-qty") {
       var rc = t.getAttribute("data-code"), rd = Number(t.getAttribute("data-d")) || 0;
       var rp = PRODUCTS.filter(function (p) { return p.code === rc; })[0] || {};
       var rr = (S.rt.items || []).filter(function (i) { return i.code === rc; })[0];
       if (!rr) { if (rd < 0) return; S.rt.items.push({ code: rc, desc: rp.desc || rc, unit: rp.unit || "No's", qty: 1 }); }
       else { rr.qty += rd; if (rr.qty <= 0) S.rt.items = S.rt.items.filter(function (i) { return i.code !== rc; }); }
-      var kp = { c: val("r_client"), s: val("r_site"), ch: val("r_ch"), re: val("r_reason"), d: val("r_driver"), f: val("r_freight") };
-      S.modal = modalReturn(); render();
-      if (el("r_client")) el("r_client").value = kp.c;
-      if (el("r_site")) el("r_site").value = kp.s;
-      if (el("r_ch")) el("r_ch").value = kp.ch;
-      if (el("r_reason")) el("r_reason").value = kp.re;
-      if (el("r_driver")) el("r_driver").value = kp.d;
-      if (el("r_freight")) el("r_freight").value = kp.f;
+      var restoreQ = keepFields(RT_FIELDS);
+      S.modal = modalReturn(); render(); restoreQ();
       return;
     }
     if (act === "rt-recon") {
@@ -3851,13 +3859,11 @@
       });
       return;
     }
-    if (act === "ch-brand") {
-      S.ch.brand = t.getAttribute("data-brand"); S.ch.family = "";
-      S.modal = modalChallan(); render(); return;
-    }
-    if (act === "ch-fam") {
-      S.ch.family = t.getAttribute("data-fam");
-      S.modal = modalChallan(); render(); return;
+    if (act === "ch-brand" || act === "ch-fam") {
+      var restoreC = keepFields(CH_FIELDS);
+      if (act === "ch-brand") { S.ch.brand = t.getAttribute("data-brand"); S.ch.family = ""; }
+      else { S.ch.family = t.getAttribute("data-fam"); }
+      S.modal = modalChallan(); render(); restoreC(); return;
     }
     if (act === "ch-qty") {
       var pcode = t.getAttribute("data-code");
@@ -3872,18 +3878,8 @@
         if (row.qty <= 0) S.ch.items = S.ch.items.filter(function (i) { return i.code !== pcode; });
       }
       /* keep the form fields the user already typed - a redraw would wipe them */
-      var keep = { c: val("m_client"), s: val("m_site"), a: val("m_assoc"), f: val("m_freight"),
-        ft: val("m_fto"), d: val("m_driver"), dm: val("m_dmob"), v: val("m_veh"), lo: val("m_loc") };
-      S.modal = modalChallan(); render();
-      if (el("m_client")) el("m_client").value = keep.c;
-      if (el("m_site")) el("m_site").value = keep.s;
-      if (el("m_assoc")) el("m_assoc").value = keep.a;
-      if (el("m_freight")) el("m_freight").value = keep.f;
-      if (el("m_fto")) el("m_fto").value = keep.ft;
-      if (el("m_driver")) el("m_driver").value = keep.d;
-      if (el("m_dmob")) el("m_dmob").value = keep.dm;
-      if (el("m_veh")) el("m_veh").value = keep.v;
-      if (el("m_loc")) el("m_loc").value = keep.lo;
+      var restoreCh = keepFields(CH_FIELDS);
+      S.modal = modalChallan(); render(); restoreCh();
       return;
     }
     if (act === "ch-save") {
