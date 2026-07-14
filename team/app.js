@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "4.62";
+  var APP_VERSION = "4.7";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1666,7 +1666,7 @@
       var dg = function (v) { doc.setDrawColor(v, v, v); };
       var W = 297, H = 210, L = 10, R = W - 10;
       var COLGAP = 8, COLW = (R - L - COLGAP) / 2, RH = 4.7;
-      var LOGO_H = 19, FOOT_H = 24;   /* two rows of logos */
+      var LOGO_H = 12, FOOT_H = 24;   /* one line of logos */
       var cols = function (x) {
         return { n: x + 1.5, code: x + 7, desc: x + 30, unit: x + COLW - 26, qty: x + COLW - 2 };
       };
@@ -1699,17 +1699,10 @@
         doc.text(String(c.createdAt || "").slice(0, 10), R, y + 4.5, { align: "right" });
         doc.text(String(c.createdBy || "-"), R - 52, y + 4.5, { align: "right" });
         doc.text(String(approver || c.approvedBy || "-"), R - 105, y + 4.5, { align: "right" });
-        g(90); F("bold"); doc.setFontSize(5.6);
-        doc.text("TRANSPORT", R, y + 10, { align: "right" });
-        if (c.freight) doc.text("FREIGHT", R - 105, y + 10, { align: "right" });
-        g(0); F("normal"); doc.setFontSize(7.6);
-        if (drv) doc.text(drv, R, y + 14.5, { align: "right" });
-        if (drv2) { g(90); doc.setFontSize(6.6); doc.text(drv2, R, y + 18.4, { align: "right" }); }
-        if (c.freight) {
-          g(0); F("bold"); doc.setFontSize(7.6);
-          doc.text(RS(c.freight) + "  (" + String(c.freightTo || "Client") + ")", R - 105, y + 14.5, { align: "right" });
-        }
-        dg(190); doc.setLineWidth(0.2); doc.line(L, 36, R, 36);
+        /* Freight and the driver used to sit up here. They belong at the FOOT of the item
+           list - the storeman reads top to bottom and the transport line is the last thing
+           he checks off, not the first. */
+        dg(190); doc.setLineWidth(0.2); doc.line(L, 30, R, 30);
       }
       /* From page 2 on, only a slim identifying strip - the full header repeated on every
          sheet just eats rows we need for products. */
@@ -1733,20 +1726,21 @@
         doc.text("UNIT", C.unit, y, { align: "right" });
         doc.text("QTY", C.qty, y, { align: "right" });
       }
-      /* two rows of six, same grouping as the quote, just smaller boxes */
+      /* One line of small boxes, spanning exactly the width of an item column (# to QTY),
+         so the strip lines up with the table above it instead of floating loose. */
       function logoStrip() {
-        var PER = 6, BW = 13.5, BH = 6.4, GP = 1.4, RGAP = 1.6;
-        var x0 = L, y0 = H - FOOT_H - LOGO_H + 1;
-        g(115); F("bold"); doc.setFontSize(5);
-        doc.text("AUTH. DISTRIBUTOR FOR", L, y0 - 2);
+        var n = LOGOS.length, GP = 1.2;
+        var BW = (COLW - GP * (n - 1)) / n, BH = 5.4;
+        var x0 = L, y0 = H - FOOT_H - LOGO_H + 4;
+        g(115); F("bold"); doc.setFontSize(4.8);
+        doc.text("AUTH. DISTRIBUTOR FOR", L, y0 - 1.8);
         LOGOS.forEach(function (lg, i) {
-          var rr = Math.floor(i / PER), cc = i % PER;
-          var bx = x0 + cc * (BW + GP), by = y0 + rr * (BH + RGAP);
-          dg(215); doc.setLineWidth(0.2); doc.rect(bx, by, BW, BH, "S");
+          var bx = x0 + i * (BW + GP);
+          dg(218); doc.setLineWidth(0.18); doc.rect(bx, y0, BW, BH, "S");
           if (lg && lg.src) {
-            var sc = Math.min((BW - 1.6) / lg.w, (BH - 1.6) / lg.h);
+            var sc = Math.min((BW - 1.2) / lg.w, (BH - 1.2) / lg.h);
             var iw = lg.w * sc, ih = lg.h * sc;
-            try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, by + (BH - ih) / 2, iw, ih); } catch (e) { }
+            try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, y0 + (BH - ih) / 2, iw, ih); } catch (e) { }
           }
         });
       }
@@ -1769,14 +1763,14 @@
       }
 
       /* page 1 carries the full header; later pages only a slim strip, so they hold more rows */
-      var TOP1 = 40, TOPN = 19;
+      var TOP1 = 34, TOPN = 19;
       var bottomLimit = H - FOOT_H - LOGO_H - 2;
       var perCol1 = Math.floor((bottomLimit - TOP1 - 7) / RH);
       var perColN = Math.floor((bottomLimit - TOPN - 7) / RH);
       var itemPages = 1, left = items.length - perCol1 * 2;
       while (left > 0) { itemPages++; left -= perColN * 2; }
       var totalPages = itemPages + (alt.length ? 1 : 0);
-      var idx = 0, page = 1;
+      var idx = 0, page = 1, lastY = 0, lastX = L;
 
       do {
         if (page > 1) doc.addPage();
@@ -1803,45 +1797,64 @@
             y += RH;
           }
           dg(220); doc.setLineWidth(0.2); doc.line(x, y - 3.3, x + COLW, y - 3.3);
+          lastY = y; lastX = x;
+        }
+        /* the transport line closes the list, like a final serial - not a header banner */
+        if (idx >= items.length && (drv || c.freight)) {
+          var ty = lastY + 1.6;
+          if (ty > bottomLimit - 6) { ty = bottomLimit - 6; }
+          g(125); F("normal"); doc.setFontSize(5.6);
+          doc.text(String(items.length + 1), lastX + 1.5, ty);
+          g(90); F("bold"); doc.setFontSize(5.6);
+          doc.text("TRANSPORT", lastX + 7, ty);
+          g(0); F("normal"); doc.setFontSize(6.4);
+          var tline = [drv, drv2].filter(Boolean).join("  \u00b7  ");
+          if (c.freight) tline += (tline ? "   \u00b7   " : "") + "Freight " + RS(c.freight) + " (" + String(c.freightTo || "Client") + ")";
+          doc.text(fitCell(doc, F, tline, COLW - 34, 1, "normal", 6.4)[0], lastX + 30, ty);
+          dg(220); doc.setLineWidth(0.2); doc.line(lastX, ty + 1.8, lastX + COLW, ty + 1.8);
         }
         logoStrip(); footer(page, totalPages);
         page++;
       } while (idx < items.length);
 
       if (alt.length) {
+        /* Half width - one item column - so it reads as a short note against the challan,
+           not as a second document twice the size of the thing it is correcting. */
         doc.addPage(); header();
-        var ay = 46;
-        doc.setFillColor(55, 55, 55); doc.rect(L, ay - 4, R - L, 6, "F");
-        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.4);
-        doc.text("ALTERATION AT RECEIPT   -   short / excess / added at site", L + 2, ay);
-        ay += 9;
-        g(90); F("bold"); doc.setFontSize(5.4);
-        doc.text("CODE", L + 1.5, ay); doc.text("ITEM DESCRIPTION", L + 30, ay);
-        doc.text("SENT", L + 150, ay, { align: "right" });
-        doc.text("RECEIVED", L + 175, ay, { align: "right" });
-        doc.text("DIFFERENCE", L + 205, ay, { align: "right" });
-        doc.text("REASON", R - 1.5, ay, { align: "right" });
-        dg(200); doc.setLineWidth(0.2); doc.line(L, ay + 1.6, R, ay + 1.6);
-        ay += 6.5;
-        alt.forEach(function (a, i) {
-          if (i % 2 === 1) { doc.setFillColor(248, 248, 248); doc.rect(L, ay - 3.4, R - L, 5.6, "F"); }
-          var was = Number(a.was) || 0, now = Number(a.now) || 0, diff = now - was;
-          g(45); F("bold"); doc.setFontSize(5.8);
-          doc.text(String(a.code || ""), L + 1.5, ay);
-          g(0); F("normal"); doc.setFontSize(6.6);
-          doc.text(fitCell(doc, F, a.desc, 110, 1, "normal", 6.6)[0], L + 30, ay);
-          g(120); F("normal"); doc.setFontSize(6.6);
-          doc.text(was ? String(was) : "-", L + 150, ay, { align: "right" });
-          g(0); F("bold"); doc.setFontSize(7.4);
-          doc.text(String(now), L + 175, ay, { align: "right" });
-          F("bold"); doc.setFontSize(6.8);
-          doc.text((diff > 0 ? "+" : "") + diff, L + 205, ay, { align: "right" });
-          g(80); F("normal"); doc.setFontSize(6);
-          doc.text(fitCell(doc, F, a.note || "", 45, 1, "normal", 6)[0], R - 1.5, ay, { align: "right" });
-          ay += 5.6;
-        });
-        dg(200); doc.line(L, ay - 3.4, R, ay - 3.4);
+        var AW = COLW;
+        var ay = 40;
+        doc.setFillColor(55, 55, 55); doc.rect(L, ay - 4, AW, 5.6, "F");
+        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(5.8);
+        doc.text("ALTERATION AT RECEIPT  -  short / excess / added at site", L + 2, ay);
         ay += 8;
+        g(90); F("bold"); doc.setFontSize(5.2);
+        doc.text("CODE", L + 1.5, ay);
+        doc.text("ITEM DESCRIPTION", L + 26, ay);
+        doc.text("SENT", L + AW - 44, ay, { align: "right" });
+        doc.text("RECD", L + AW - 30, ay, { align: "right" });
+        doc.text("DIFF", L + AW - 16, ay, { align: "right" });
+        doc.text("REASON", L + AW - 1.5, ay, { align: "right" });
+        dg(200); doc.setLineWidth(0.2); doc.line(L, ay + 1.4, L + AW, ay + 1.4);
+        ay += 5.8;
+        alt.forEach(function (a, i) {
+          if (i % 2 === 1) { doc.setFillColor(248, 248, 248); doc.rect(L, ay - 3.2, AW, 5, "F"); }
+          var was = Number(a.was) || 0, now = Number(a.now) || 0, diff = now - was;
+          g(45); F("bold"); doc.setFontSize(5.4);
+          doc.text(String(a.code || "").slice(0, 14), L + 1.5, ay);
+          g(0); F("normal"); doc.setFontSize(6.2);
+          doc.text(fitCell(doc, F, a.desc, AW - 78, 1, "normal", 6.2)[0], L + 26, ay);
+          g(120); F("normal"); doc.setFontSize(6.2);
+          doc.text(was ? String(was) : "-", L + AW - 44, ay, { align: "right" });
+          g(0); F("bold"); doc.setFontSize(6.8);
+          doc.text(String(now), L + AW - 30, ay, { align: "right" });
+          F("bold"); doc.setFontSize(6.2);
+          doc.text((diff > 0 ? "+" : "") + diff, L + AW - 16, ay, { align: "right" });
+          g(80); F("normal"); doc.setFontSize(5.4);
+          doc.text(fitCell(doc, F, a.note || "", 26, 1, "normal", 5.4)[0], L + AW - 1.5, ay, { align: "right" });
+          ay += 5;
+        });
+        dg(200); doc.line(L, ay - 3.2, L + AW, ay - 3.2);
+        ay += 7;
         g(95); F("normal"); doc.setFontSize(6);
         doc.text("The dispatched challan is unchanged. This sheet records only what actually arrived at site" +
           (c.alteredBy ? "  \u00b7  recorded by " + c.alteredBy : "") + ".", L, ay);
