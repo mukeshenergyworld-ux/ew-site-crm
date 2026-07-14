@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "2.8";
+  var APP_VERSION = "2.9";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1785,6 +1785,86 @@
     });
   }
 
+  /* ---------------- owner dashboard ----------------
+     For a partner: money, then what is about to be lost, then what needs a decision.
+     Deliberately opinionated - it names ONE thing to do today rather than 12 numbers. */
+  function viewOwner() {
+    var clients = {};
+    S.data.challans.forEach(function (c) { if (String(c.receiptReceived).toUpperCase() === "Y") clients[c.customerName] = 1; });
+    var due = Object.keys(clients).reduce(function (a, n) { return a + clientLedger(n).due; }, 0);
+
+    var incPend = 0;
+    S.data.associates.forEach(function (a) { incPend += partnerBook(a.name).pending; });
+
+    var awaitApp = S.data.challans.filter(function (c) { return (c.status || "Draft") === "Draft"; });
+    var awaitRcpt = S.data.challans.filter(function (c) { return c.status === "Dispatched"; });
+    var incToSet = S.data.challans.filter(function (c) {
+      return String(c.receiptReceived).toUpperCase() === "Y" && String(c.commissionSet).toUpperCase() !== "Y" && c.associate;
+    });
+
+    var closing = [];
+    S.data.sites.forEach(function (st) {
+      S.data.rules.forEach(function (r) {
+        var a = action(st, r, pitchRow(st.id, r.brand));
+        if (a.k === "now") closing.push({ site: st, brand: r.brand });
+      });
+    });
+
+    var svcDue = S.data.installs.filter(function (x) { return x.nextService && daysTo(x.nextService) <= 0; });
+    var visitsToday = S.data.sitevisits.filter(function (v) { return dstr(v.date) === today(); });
+    var quotesOpen = S.data.quotes.filter(function (q) { return q.status === "Sent" || q.status === "Negotiating"; });
+
+    /* the one thing */
+    var one = null;
+    if (closing.length) one = { t: closing.length + " pitch window(s) close TODAY", s: closing.slice(0, 3).map(function (c) { return c.brand + " at " + c.site.name; }).join(", "), a: "leads", b: "Open brand leads" };
+    else if (awaitApp.length) one = { t: awaitApp.length + " challan(s) waiting on your approval", s: "The godown cannot dispatch until you approve.", a: "challans", b: "Approve now" };
+    else if (incToSet.length) one = { t: incToSet.length + " incentive decision(s) pending", s: "Material receipt is in - set the incentive or mark it as none.", a: "commission", b: "Set incentive" };
+    else if (due > 0) one = { t: money(due) + " outstanding from clients", s: "Incentive only becomes payable as this comes in.", a: "payments", b: "Open payments" };
+    else if (svcDue.length) one = { t: svcDue.length + " service visit(s) overdue", s: "Softeners and filters past their cycle.", a: "service", b: "Open service" };
+
+    var h = "";
+    if (one) {
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+        '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#0f766e"><b>Today</b></div>' +
+        '<h3 style="font-size:17px;margin:4px 0 2px">' + esc(one.t) + '</h3>' +
+        '<div class="meta">' + esc(one.s) + '</div>' +
+        '<div class="acts"><button class="btn sm" data-act="tab" data-tab="' + one.a + '">' + esc(one.b) + '</button></div></div>';
+    }
+
+    h += '<div class="cards">' +
+      '<div class="stat ' + (due > 0 ? "alert" : "") + '"><div class="n">' + money(due) + '</div><div class="l">Client outstanding</div></div>' +
+      '<div class="stat"><div class="n">' + money(incPend) + '</div><div class="l">Incentive to pay</div></div>' +
+      '<div class="stat ' + (closing.length ? "alert" : "") + '"><div class="n">' + closing.length + '</div><div class="l">Windows closing</div></div>' +
+      '<div class="stat ' + (awaitApp.length ? "alert" : "") + '"><div class="n">' + awaitApp.length + '</div><div class="l">Challans to approve</div></div>' +
+      '<div class="stat"><div class="n">' + awaitRcpt.length + '</div><div class="l">Awaiting receipt</div></div>' +
+      '<div class="stat"><div class="n">' + quotesOpen.length + '</div><div class="l">Quotes live</div></div>' +
+      '<div class="stat ' + (svcDue.length ? "alert" : "") + '"><div class="n">' + svcDue.length + '</div><div class="l">Service overdue</div></div>' +
+      '<div class="stat"><div class="n">' + visitsToday.length + '</div><div class="l">Site visits today</div></div>' +
+      '</div>';
+
+    if (closing.length) {
+      h += '<h3 style="margin:18px 0 10px;font-size:15px">Closing today - pitch or lose</h3>';
+      closing.slice(0, 8).forEach(function (c) {
+        h += '<div class="card"><h3>' + esc(c.brand) + ' <span class="pill due">closes now</span></h3>' +
+          '<div class="meta">' + esc(c.site.name) + ' &middot; ' + esc(c.site.stage || "") +
+          (c.site.owner ? '<br>Owner: ' + esc(c.site.owner) : "") + '</div>' +
+          '<div class="acts"><button class="btn sm ghost" data-act="matrix" data-id="' + esc(c.site.id) + '">Matrix</button></div></div>';
+      });
+    }
+
+    if (incToSet.length) {
+      h += '<h3 style="margin:18px 0 10px;font-size:15px">Incentive decisions waiting</h3>';
+      incToSet.slice(0, 6).forEach(function (c) {
+        h += '<div class="card"><h3>' + esc(c.challanNo) + ' <span class="pill due">decide</span></h3>' +
+          '<div class="meta">' + esc(c.customerName) + ' &middot; ' + esc(c.brand || "-") +
+          '<br>Partner: ' + esc(c.associate) + ' &middot; billed ' + money(c.amount) + '</div></div>';
+      });
+    }
+
+    h += '<div class="foot-note">Figures are ex-GST where incentive is concerned. Only delivered challans (receipt in) count.</div>';
+    return h;
+  }
+
   function renderLogin(err) {
     document.getElementById("root").innerHTML =
       '<div class="login-wrap"><div class="login">' +
@@ -2166,7 +2246,8 @@
 
     h += '<div class="scrim" data-act="nav-close"></div><div class="shell"><nav>' + navHtml + '</nav>';
 
-    h += '<main>' + (S.busy ? '<div class="empty">Saving...</div>' : (views[S.tab] || viewDash)()) +
+    var pick = (S.tab === 'dash' && S.role === 'admin') ? viewOwner : (views[S.tab] || viewDash);
+    h += '<main>' + pick() +
       '<div class="foot-note">Energy World Team v' + APP_VERSION + ' &middot; data lives in your Google Sheet</div></main>';
 
     h += '</div>';
