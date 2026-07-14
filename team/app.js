@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.72";
+  var APP_VERSION = "3.73";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1102,23 +1102,37 @@
 
       /* real brand logos, right-aligned, each in a white highlighted chip.
          Brands with no logo on file fall back to the old text chip. */
-      var CHIP_L = L + 46, avail = Rt - CHIP_L;
+      var CHIP_L = L + 40, avail = Rt - CHIP_L;
       var chips = [];
       DIST_BRANDS.forEach(function (b) {
         var lg = logoFor(b);
         if (lg && lg.src) {
-          var hh = 7.2, ww = Math.max(9, Math.min(24, hh * (lg.w / lg.h)));
+          var hh = 7.2, ww = Math.max(9, Math.min(21, hh * (lg.w / lg.h)));
           chips.push({ img: lg, w: ww + 3.4, iw: ww, ih: hh });
         } else {
           F("bold"); doc.setFontSize(6.2);
           chips.push({ b: b, w: doc.getTextWidth(b) + 5.4 });
         }
       });
-      var crows = [[]], cur = 0, wsum = 0;
-      chips.forEach(function (it) {
-        if (wsum + it.w > avail && crows[cur].length) { cur++; crows[cur] = []; wsum = 0; }
-        crows[cur].push(it); wsum += it.w + 2.2;
-      });
+      /* greedy wrap leaves an orphan on the last line (13 fit, the 14th sits alone).
+         Find the minimum number of rows, then spread the logos evenly across them. */
+      function fits(list) {
+        return list.reduce(function (a, x) { return a + x.w + 2.2; }, 0) - 2.2 <= avail;
+      }
+      function pack(nRows) {
+        var per = Math.ceil(chips.length / nRows), out = [];
+        for (var i = 0; i < chips.length; i += per) out.push(chips.slice(i, i + per));
+        return out.every(fits) ? out : null;
+      }
+      var crows = null;
+      for (var nr = 1; nr <= 6 && !crows; nr++) crows = pack(nr);
+      if (!crows) {
+        crows = [[]]; var cur = 0, wsum = 0;
+        chips.forEach(function (it) {
+          if (wsum + it.w > avail && crows[cur].length) { cur++; crows[cur] = []; wsum = 0; }
+          crows[cur].push(it); wsum += it.w + 2.2;
+        });
+      }
       var RH = 11.2;
       crows.forEach(function (ln, li) {
         var total = ln.reduce(function (a, x) { return a + x.w + 2.2; }, 0) - 2.2;
