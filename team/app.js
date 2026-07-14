@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "2.1";
+  var APP_VERSION = "2.2";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -58,7 +58,7 @@
     qz: null,
     navOpen: false,
     rmPreview: null,
-    data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [] }
+    data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [] }
   };
 
   function esc(v) {
@@ -80,10 +80,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","clients","quotes","sites","winloss","followups","challans","commission","service","spares","dues","payroll","products","catalogue","rules"],
+    admin:    ["dash","clients","quotes","sites","winloss","visits","followups","challans","commission","service","spares","dues","payroll","products","catalogue","rules"],
     accounts: ["dash","clients","followups","challans","service","spares","dues","products"],
     godown:   ["dash","challans","products"],
-    sales:    ["dash","clients","quotes","sites","winloss","followups","challans","products"],
+    sales:    ["dash","clients","quotes","sites","winloss","visits","followups","challans","products"],
     service:  ["dash","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -277,14 +277,20 @@
     if (!list.length) h += '<div class="empty">No sites yet. A site is a project - the 14 brands get tracked against it.</div>';
     list.forEach(function (x) {
       var a = siteAlerts(x);
+      var vs = siteVisits(x.id);
+      var lastV = vs.length ? vs[vs.length - 1] : null;
       h += '<div class="card"><h3>' + esc(x.name) + ' <span class="pill teal">stage ' + stageNo(x) + '</span>' +
+        (vs.length ? ' <span class="pill">' + vs.length + ' visit(s)</span>' : ' <span class="pill due">never visited</span>') +
+        (!siteVerified(x) && vs.length ? ' <span class="pill due">unverified lead</span>' : '') +
         (a.open ? ' <span class="pill due">' + a.open + ' to pitch NOW</span>' : "") +
         (a.closed ? ' <span class="pill">' + a.closed + ' window(s) closed</span>' : "") + '</h3>' +
         '<div class="meta">' + esc(x.client || "") + (x.city ? ' &middot; ' + esc(x.city) : "") +
         '<br>Stage: <b>' + esc(x.stage || "-") + '</b>' +
+        (lastV ? '<br>Last visit: ' + esc(dstr(lastV.date)) + ' by ' + esc(lastV.createdBy) : '') +
         (x.owner ? '<br>Owner: ' + esc(x.owner) : "") +
         (x.architect || x.plumber ? '<br>' + esc([x.architect, x.plumber, x.builder].filter(Boolean).join(" / ")) : "") + '</div>' +
-        '<div class="acts"><button class="btn sm" data-act="matrix" data-id="' + esc(x.id) + '">Open pitch matrix</button>' +
+        '<div class="acts"><button class="btn sm" data-act="checkin" data-id="' + esc(x.id) + '">Check in</button>' +
+        '<button class="btn sm ghost" data-act="matrix" data-id="' + esc(x.id) + '">Pitch matrix</button>' +
         '<button class="btn sm ghost" data-act="site-open" data-id="' + esc(x.id) + '">Edit</button></div></div>';
     });
     return h;
@@ -1128,6 +1134,66 @@
     });
   }
 
+  /* ---------------- site visits (check-in, not tracking) ---------------- */
+  function siteVisits(siteId) {
+    return S.data.sitevisits.filter(function (v) { return v.siteId === siteId; });
+  }
+  function siteVerified(site) {
+    return siteVisits(site.id).some(function (v) { return v.verified === "Verified"; });
+  }
+
+  function checkIn(siteId, purpose) {
+    if (!navigator.geolocation) { toast("This phone cannot give a location."); return; }
+    toast("Getting your location...");
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      api("siteVisit", {
+        siteId: siteId, purpose: purpose || "",
+        lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy
+      }).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Check-in failed."); return; }
+        toast(r.verified === "Verified" ? "Visit logged and verified."
+          : (r.verified === "Far" ? "Logged, but " + r.distanceM + "m from the site." : "Logged as unverified (weak GPS)."));
+        refresh();
+      });
+    }, function () {
+      /* denied or unavailable: still log it, but honestly marked */
+      api("siteVisit", { siteId: siteId, purpose: purpose || "" }).then(function () {
+        toast("Location was blocked - visit logged as UNVERIFIED.");
+        refresh();
+      });
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+  }
+
+  function viewVisits() {
+    var today = todayStr();
+    var mine = S.role === "admin" ? S.data.sitevisits : S.data.sitevisits.filter(function (v) { return v.createdBy === S.user; });
+    var list = mine.slice().reverse();
+    var todays = list.filter(function (v) { return dstr(v.date) === today; });
+    var flagged = list.filter(function (v) { return v.verified !== "Verified"; });
+
+    var h = '<div class="cards">' +
+      '<div class="stat"><div class="n">' + todays.length + '</div><div class="l">Visits today</div></div>' +
+      '<div class="stat"><div class="n">' + list.length + '</div><div class="l">Visits logged</div></div>' +
+      '<div class="stat ' + (flagged.length ? "alert" : "") + '"><div class="n">' + flagged.length + '</div><div class="l">Unverified / far</div></div>' +
+      '</div>';
+    h += '<div class="empty" style="text-align:left;padding:0 0 12px">A visit is logged only when someone presses <b>Check in</b>. Nobody is tracked in the background. The first verified visit fixes the site location; later visits are measured against it.</div>';
+    if (!list.length) return h + '<div class="empty">No visits logged yet.</div>';
+    list.slice(0, 60).forEach(function (v) {
+      var cls = v.verified === "Verified" ? "Won" : (v.verified === "Far" ? "due" : "soon");
+      h += '<div class="card"><h3>' + esc(v.siteName || "(site)") + ' <span class="pill ' + cls + '">' + esc(v.verified) + '</span></h3>' +
+        '<div class="meta">' + esc(v.client || "") + '<br>' + esc(dstr(v.date)) + ' &middot; ' + esc(v.createdBy) +
+        (v.purpose ? '<br>' + esc(v.purpose) : "") +
+        (v.distanceM ? '<br>' + esc(v.distanceM) + 'm from site' : "") +
+        (v.accuracy ? ' &middot; GPS ' + esc(v.accuracy) + 'm' : "") +
+        (v.note ? '<br><i>' + esc(v.note) + '</i>' : "") + '</div>' +
+        (v.lat ? '<div class="acts"><a class="btn sm ghost" target="_blank" href="https://maps.google.com/?q=' + esc(v.lat) + ',' + esc(v.lng) + '">Map</a></div>' : "") +
+        '</div>';
+    });
+    return h;
+  }
+
+  function todayStr() { return new Date().toISOString().slice(0, 10); }
+
   function renderLogin(err) {
     document.getElementById("root").innerHTML =
       '<div class="login-wrap"><div class="login">' +
@@ -1467,8 +1533,8 @@
 
   function render() {
     if (!S.pin) { renderLogin(); return; }
-    var views = { catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
-    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var views = { visits: viewVisits, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
+    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -1480,7 +1546,7 @@
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
     var GROUPS = [
-      ["Sell", ["dash", "clients", "quotes", "sites", "winloss", "followups"]],
+      ["Sell", ["dash", "clients", "quotes", "sites", "visits", "winloss", "followups"]],
       ["Deliver", ["challans", "products", "dues"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["commission", "payroll", "catalogue", "rules"]]
@@ -1830,6 +1896,7 @@
       }).then(function (r) { if (r) { S.modal = null; toast("Site saved."); render(); } });
       return;
     }
+    if (act === "checkin") { checkIn(id, ""); return; }
     if (act === "matrix") { S.siteId = id; S.tab = "matrix"; render(); return; }
 
     if (act === "cust-new") { S.modal = modalCustomer(null); render(); return; }
