@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="theme-color" content="#0f766e"/>
 <title>Energy World — Team</title>
+<link rel="manifest" href="manifest.webmanifest"/>
+<link rel="apple-touch-icon" href="icon-192.png"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="EW Team"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -128,6 +133,21 @@
 /* Thin shell. The app lives in app.js and is fetched fresh on EVERY load
    (no-store + cache-busting query), so any update pushed to the repo reaches
    the whole team the next time anyone opens or logs into this page. */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  });
+}
+
+/* Android shows a native install prompt; capture it so we can offer it in-app. */
+window.__ewInstall = null;
+window.addEventListener("beforeinstallprompt", function (e) {
+  e.preventDefault();
+  window.__ewInstall = e;
+  var b = document.getElementById("ew-install");
+  if (b) b.style.display = "inline-flex";
+});
+
 (function () {
   var root = document.getElementById("root");
   fetch("app.js?cb=" + Date.now(), { cache: "no-store" })
