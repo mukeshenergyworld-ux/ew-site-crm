@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.1";
+  var APP_VERSION = "3.2";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -62,7 +62,8 @@
     partner: "",
     pRole: "",
     leadBrand: "",
-    data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [] }
+    clLoc: "",
+    data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [], areas: [] }
   };
 
   function esc(v) {
@@ -84,10 +85,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","clients","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
-    accounts: ["dash","clients","followups","challans","payments","discounts","service","spares","dues","products"],
+    admin:    ["dash","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
+    accounts: ["dash","clients","partners","followups","challans","payments","discounts","service","spares","dues","products"],
     godown:   ["dash","challans","products"],
-    sales:    ["dash","clients","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
+    sales:    ["dash","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
     service:  ["dash","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -622,7 +623,8 @@
         c.builder && "Builder: " + c.builder, c.pmc && "PMC: " + c.pmc].filter(Boolean);
       h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
         (c.type ? ' <span class="pill">' + esc(c.type) + '</span>' : "") + '</h3>' +
-        '<div class="meta">' + (c.mobile ? esc(c.mobile) + '<br>' : "") + esc(c.address || "") +
+        '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  &middot;  ")) +
+        (c.area ? '<br>' + esc(c.area) : "") + (c.address ? '<br>' + esc(c.address) : "") +
         (partners.length ? '<br>' + esc(partners.join(" - ")) : "") + '</div>' +
         '<div class="acts">' + (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
         '<button class="btn sm" data-act="qz-for" data-id="' + esc(c.id) + '">Quote</button>' +
@@ -1942,6 +1944,156 @@
     render();
   }
 
+  /* ---------------- locations, areas, partners ---------------- */
+  function locations() {
+    var seen = {}, out = [];
+    S.data.areas.forEach(function (a) { if (a.location && !seen[a.location]) { seen[a.location] = 1; out.push(a.location); } });
+    LOCATIONS.forEach(function (l) { if (!seen[l]) { seen[l] = 1; out.push(l); } });
+    return out;
+  }
+  function areasIn(loc) {
+    return S.data.areas.filter(function (a) { return a.location === loc; })
+      .map(function (a) { return a.area; }).filter(Boolean);
+  }
+  function partnerByName(n) {
+    var t = String(n || "").trim().toLowerCase();
+    return S.data.associates.filter(function (a) { return String(a.name).trim().toLowerCase() === t; })[0] || null;
+  }
+  /* short name is derived, never typed: first name + last 4 of the mobile */
+  function shortNameOf(name, mobile) {
+    var first = String(name || "").trim().split(/\s+/)[0] || "CLIENT";
+    var last4 = String(mobile || "").replace(/[^0-9]/g, "").slice(-4);
+    return (first.toUpperCase().replace(/[^A-Z0-9]/g, "") + last4).slice(0, 14);
+  }
+
+  function partnerField(id, label, role, value) {
+    var p = partnerByName(value);
+    return '<label>' + label + '</label>' +
+      '<input id="' + id + '" class="pf" data-role="' + esc(role) + '" list="pl_' + esc(role) + '" value="' + esc(value) + '" placeholder="Type a name, or add new"/>' +
+      '<div class="meta" id="' + id + '_info" style="margin:-4px 0 4px">' +
+        (p ? esc([p.mobile, p.mobile2, p.area].filter(Boolean).join("  \u00b7  ")) : '<span style="color:#94a3b8">not in Partners yet - it will be added</span>') +
+      '</div>';
+  }
+
+  function partnerLists() {
+    var roles = ["Architect", "Plumber", "Builder", "PMC"];
+    return roles.map(function (r) {
+      var names = S.data.associates.filter(function (a) { return a.role === r; }).map(function (a) { return a.name; });
+      return '<datalist id="pl_' + esc(r) + '">' + names.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>';
+    }).join("");
+  }
+
+  function modalClient(c) {
+    c = c || {};
+    var loc = c.location || S.clLoc || locations()[0];
+    return '<h2>' + (c.id ? "Edit client" : "New client") + '</h2>' +
+      '<p class="sub">Location and area drive every filter you will want later.</p>' +
+      '<label>Client name</label><input id="c_name" value="' + esc(c.name) + '"/>' +
+      '<div class="grid2">' +
+      '<div><label>Location</label><select id="c_loc" class="loc-sel">' + opts(locations().concat(["+ Add new location"]), loc) + '</select></div>' +
+      '<div><label>Area</label><select id="c_area">' + opts([""].concat(areasIn(loc), ["+ Add new area"]), c.area || "") + '</select></div>' +
+      '</div>' +
+      '<div class="grid2">' +
+      '<div><label>Mobile</label><input id="c_mob" inputmode="numeric" value="' + esc(c.mobile) + '"/></div>' +
+      '<div><label>Alternate mobile</label><input id="c_mob2" inputmode="numeric" value="' + esc(c.mobile2) + '"/></div>' +
+      '</div>' +
+      '<label>Address</label><input id="c_addr" value="' + esc(c.address) + '"/>' +
+      '<label>Type</label><select id="c_type">' + opts(CLIENT_TYPES, c.type || "Home owner") + '</select>' +
+      partnerField("c_arch", "Architect", "Architect", c.architect || "") +
+      partnerField("c_plumb", "Plumber", "Plumber", c.plumber || "") +
+      partnerField("c_build", "Builder", "Builder", c.builder || "") +
+      partnerField("c_pmc", "PMC", "PMC", c.pmc || "") +
+      partnerLists() +
+      '<label>Notes</label><textarea id="c_notes">' + esc(c.notes) + '</textarea>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="cl-save" data-id="' + esc(c.id || "") + '">Save client</button></div>';
+  }
+
+  /* any partner named on a client that we do not know yet is created automatically -
+     that is how the Partners master fills itself without anyone doing double entry */
+  function ensurePartner(name, role, loc, area) {
+    if (!name) return Promise.resolve(null);
+    if (partnerByName(name)) return Promise.resolve(partnerByName(name));
+    return save("associates", { id: "", name: name, role: role, mobile: "", mobile2: "",
+      location: loc || "", area: area || "", address: "", birthday: "", anniversary: "",
+      rate: "", notes: "auto-added from a client" });
+  }
+
+  function viewPartners() {
+    var q = S.q.toLowerCase();
+    var roles = ["Architect", "Plumber", "Builder", "PMC", "Contractor", "Dealer", "Other"];
+    var list = S.data.associates.filter(function (a) {
+      if (S.pRole && a.role !== S.pRole) return false;
+      return !q || (a.name + " " + a.area + " " + a.location + " " + a.mobile).toLowerCase().indexOf(q) >= 0;
+    });
+    var greet = greetToday();
+    var h = "";
+    if (greet.length) {
+      h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>Greet today</h3><div class="meta">';
+      greet.forEach(function (x) {
+        h += '<b>' + esc(x.name) + '</b> - ' + esc(x.what) + (x.mobile ? ' &middot; ' + esc(x.mobile) : "") + '<br>';
+      });
+      h += '</div></div>';
+    }
+    h += '<div class="row">' + roles.map(function (r) {
+      return '<button class="btn sm ' + (S.pRole === r ? "" : "ghost") + '" data-act="p-role" data-r="' + esc(r) + '">' + esc(r) + '</button>';
+    }).join("") + '<button class="btn sm ' + (S.pRole ? "ghost" : "") + '" data-act="p-role" data-r="">All</button></div>';
+    h += '<div class="row"><input class="grow" id="q" placeholder="Search partners by name, area, mobile..." value="' + esc(S.q) + '"/>' +
+      '<button class="btn" data-act="as-new">+ New partner</button></div>';
+    if (!list.length) h += '<div class="empty">No partners here yet.</div>';
+    list.forEach(function (a) {
+      h += '<div class="card"><h3>' + esc(a.name) + ' <span class="pill">' + esc(a.role || "") + '</span>' +
+        (a.area ? ' <span class="pill teal">' + esc(a.area) + '</span>' : "") + '</h3>' +
+        '<div class="meta">' + esc([a.mobile, a.mobile2].filter(Boolean).join("  \u00b7  ")) +
+        (a.location ? '<br>' + esc(a.location) + (a.area ? ' - ' + esc(a.area) : "") : "") +
+        (a.birthday ? '<br>Birthday: ' + esc(dstr(a.birthday)) : "") +
+        (a.anniversary ? ' &middot; Anniversary: ' + esc(dstr(a.anniversary)) : "") +
+        (Number(a.rate) ? '<br>Incentive ' + esc(a.rate) + '%' : "") + '</div>' +
+        '<div class="acts">' + (a.mobile ? '<a class="btn sm ghost" href="tel:' + esc(a.mobile) + '">Call</a>' : "") +
+        (S.role === "admin" ? '<button class="btn sm" data-act="p-open" data-n="' + esc(a.name) + '">Incentive</button>' : "") +
+        '<button class="btn sm ghost" data-act="as-open" data-id="' + esc(a.id) + '">Edit</button></div></div>';
+    });
+    return h;
+  }
+
+  function greetToday() {
+    var md = today().slice(5);
+    var out = [];
+    S.data.associates.forEach(function (a) {
+      if (a.birthday && String(a.birthday).slice(5, 10) === md) out.push({ name: a.name, what: "Birthday", mobile: a.mobile });
+      if (a.anniversary && String(a.anniversary).slice(5, 10) === md) out.push({ name: a.name, what: "Anniversary", mobile: a.mobile });
+    });
+    return out;
+  }
+
+  function modalAssociate(a) {
+    a = a || {};
+    var loc = a.location || locations()[0];
+    return '<h2>' + (a.id ? "Edit partner" : "New partner") + '</h2>' +
+      '<p class="sub">Plumbers, architects, builders and PMCs. Incentive % is set here.</p>' +
+      '<label>Name</label><input id="m_aname" value="' + esc(a.name) + '"/>' +
+      '<div class="grid2">' +
+      '<div><label>Role</label><select id="m_arole">' + opts(["Architect", "Plumber", "Builder", "PMC", "Contractor", "Dealer", "Other"], a.role || "Plumber") + '</select></div>' +
+      '<div><label>Incentive %</label><input id="m_arate" inputmode="decimal" value="' + esc(a.rate || "") + '"/></div>' +
+      '</div>' +
+      '<div class="grid2">' +
+      '<div><label>Mobile</label><input id="m_amobile" inputmode="numeric" value="' + esc(a.mobile) + '"/></div>' +
+      '<div><label>Alternate mobile</label><input id="m_amobile2" inputmode="numeric" value="' + esc(a.mobile2) + '"/></div>' +
+      '</div>' +
+      '<div class="grid2">' +
+      '<div><label>Location</label><select id="m_aloc" class="loc-sel2">' + opts(locations().concat(["+ Add new location"]), loc) + '</select></div>' +
+      '<div><label>Area</label><select id="m_aarea">' + opts([""].concat(areasIn(loc), ["+ Add new area"]), a.area || "") + '</select></div>' +
+      '</div>' +
+      '<label>Address</label><input id="m_aaddr" value="' + esc(a.address) + '"/>' +
+      '<div class="grid2">' +
+      '<div><label>Birthday</label><input id="m_abday" type="date" value="' + esc(dstr(a.birthday)) + '"/></div>' +
+      '<div><label>Anniversary</label><input id="m_aanniv" type="date" value="' + esc(dstr(a.anniversary)) + '"/></div>' +
+      '</div>' +
+      '<label>Notes</label><textarea id="m_anotes">' + esc(a.notes) + '</textarea>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="as-save" data-id="' + esc(a.id || "") + '">Save partner</button></div>';
+  }
+
   function renderLogin(err) {
     document.getElementById("root").innerHTML =
       '<div class="login-wrap"><div class="login">' +
@@ -2294,8 +2446,8 @@
 
   function render() {
     if (!S.pin) { renderLogin(); return; }
-    var views = { leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
-    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var views = { partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
+    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -2310,7 +2462,7 @@
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
     var GROUPS = [
-      ["Sell", ["dash", "clients", "quotes", "sites", "leads", "visits", "winloss", "followups"]],
+      ["Sell", ["dash", "clients", "partners", "quotes", "sites", "leads", "visits", "winloss", "followups"]],
       ["Deliver", ["challans", "payments", "discounts", "products", "dues"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["commission", "payroll", "catalogue", "rules"]]
@@ -2475,16 +2627,29 @@
     if (act === "cl-save") {
       var cn = val("c_name");
       if (!cn) { toast("Client name is required."); return; }
-      save("clients", {
-        id: id || "", createdBy: S.user, name: cn,
-        shortName: val("c_short") || cn.toUpperCase().replace(/[^A-Z0-9 ]/g, "").split(" ")[0].slice(0, 10),
-        location: val("c_loc"), mobile: val("c_mob"), address: val("c_addr"), type: val("c_type"),
-        architect: val("c_arch"), plumber: val("c_plumb"), builder: val("c_build"), pmc: val("c_pmc"),
-        notes: val("c_notes")
+      var mob = val("c_mob");
+      var loc = val("c_loc"), ar = val("c_area");
+      var arch = val("c_arch"), plumb = val("c_plumb"), build = val("c_build"), pmc = val("c_pmc");
+      t.disabled = true; t.textContent = "Saving...";
+      /* anyone named here who is not yet a Partner gets created - no double entry */
+      Promise.all([
+        ensurePartner(arch, "Architect", loc, ar),
+        ensurePartner(plumb, "Plumber", loc, ar),
+        ensurePartner(build, "Builder", loc, ar),
+        ensurePartner(pmc, "PMC", loc, ar)
+      ]).then(function () {
+        return save("clients", {
+          id: id || "", createdBy: S.user, name: cn,
+          shortName: shortNameOf(cn, mob),
+          location: loc, area: ar, mobile: mob, mobile2: val("c_mob2"),
+          address: val("c_addr"), type: val("c_type"),
+          architect: arch, plumber: plumb, builder: build, pmc: pmc,
+          notes: val("c_notes")
+        });
       }).then(function (r) {
         if (!r) return;
         S.modal = null;
-        toast("Client saved.");
+        toast("Client saved as " + r.shortName + ".");
         if (S.qz && S.qz.step === 1) { S.qz.client = r.name; S.qz.clientObj = r; }
         render();
       });
@@ -2793,9 +2958,12 @@
       var an = val("m_aname");
       if (!an) { toast("Name is required."); return; }
       save("associates", {
-        id: id || "", name: an, role: val("m_arole"), mobile: val("m_amobile"),
+        id: id || "", name: an, role: val("m_arole"),
+        mobile: val("m_amobile"), mobile2: val("m_amobile2"),
+        location: val("m_aloc"), area: val("m_aarea"), address: val("m_aaddr"),
+        birthday: val("m_abday"), anniversary: val("m_aanniv"),
         rate: val("m_arate"), notes: val("m_anotes")
-      }).then(function (r) { if (r) { S.modal = null; toast("Associate saved."); render(); } });
+      }).then(function (r) { if (r) { S.modal = null; toast("Partner saved."); render(); } });
       return;
     }
 
@@ -2905,6 +3073,51 @@
 
   document.addEventListener("change", function (e) {
     var t = e.target;
+
+    /* + Add new location / area, right inside the dropdown */
+    if (t.id === "c_loc" || t.id === "m_aloc") {
+      if (t.value === "+ Add new location") {
+        var nl = window.prompt("New location name");
+        if (!nl) { t.value = locations()[0]; return; }
+        save("areas", { id: "", location: nl, area: "" }).then(function () {
+          if (t.id === "c_loc") S.clLoc = nl;
+          toast("Location added: " + nl);
+        });
+        return;
+      }
+      var areaSel = document.getElementById(t.id === "c_loc" ? "c_area" : "m_aarea");
+      if (areaSel) {
+        areaSel.innerHTML = opts([""].concat(areasIn(t.value), ["+ Add new area"]), "");
+      }
+      return;
+    }
+    if (t.id === "c_area" || t.id === "m_aarea") {
+      if (t.value === "+ Add new area") {
+        var locSel = document.getElementById(t.id === "c_area" ? "c_loc" : "m_aloc");
+        var lv = locSel ? locSel.value : locations()[0];
+        var na = window.prompt("New area under " + lv);
+        if (!na) { t.value = ""; return; }
+        save("areas", { id: "", location: lv, area: na }).then(function () {
+          t.innerHTML = opts([""].concat(areasIn(lv), ["+ Add new area"]), na);
+          toast("Area added: " + na);
+        });
+        return;
+      }
+      return;
+    }
+
+    /* picking a known partner pulls their details in */
+    if (t.classList && t.classList.contains("pf")) {
+      var p = partnerByName(t.value);
+      var info = document.getElementById(t.id + "_info");
+      if (info) {
+        info.innerHTML = p
+          ? esc([p.mobile, p.mobile2, p.area].filter(Boolean).join("  \u00b7  ")) || "no contact saved yet"
+          : '<span style="color:#94a3b8">not in Partners yet - it will be added</span>';
+      }
+      return;
+    }
+
     if (t.classList && t.classList.contains("dsc")) {
       var cli = t.getAttribute("data-client");
       var br = t.getAttribute("data-brand");
