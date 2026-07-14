@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "2.5";
+  var APP_VERSION = "2.6";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -2104,7 +2104,9 @@
       t.disabled = true; t.textContent = "Loading...";
       api("visitPhoto", { fileId: fid }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Photo not available."); render(); return; }
-        S.modal = '<h2>Site photo</h2><img src="data:' + r.mime + ';base64,' + r.b64 +
+        /* Telegram hands the file back as application/octet-stream; it is a JPEG. */
+        var mime = (r.mime && r.mime.indexOf("image/") === 0) ? r.mime : "image/jpeg";
+        S.modal = '<h2>Site photo</h2><img src="data:' + mime + ';base64,' + r.b64 +
           '" style="width:100%;border-radius:12px;margin-top:8px"/>' +
           '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
         render();
