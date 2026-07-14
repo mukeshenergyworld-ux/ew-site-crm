@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "4.6";
+  var APP_VERSION = "4.61";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1947,8 +1947,10 @@
 
   function rtPicker() {
     var z = S.rt;
-    var h = '<div class="row" style="margin-top:6px">' + (S.data.brands || []).map(function (br) {
-      return '<button class="chip ' + (z.brand === br.name ? "on" : "") + '" data-act="rt-brand" data-brand="' + esc(br.name) + '">' + esc(br.name) + '</button>';
+    var h = '<div class="row" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
+      return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
+    }).map(function (br) {
+      return '<button class="chip ' + (z.brand === br.brand ? "on" : "") + '" data-act="rt-brand" data-brand="' + esc(br.brand) + '">' + esc(br.brand) + '</button>';
     }).join("") + '</div>';
     if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
     h += '<div class="chips">' + familyList(z.brand).map(function (f) {
@@ -3025,8 +3027,10 @@
   function chPicker() {
     var z = S.ch;
     var h = '<div class="row" style="margin-top:6px">' +
-      (S.data.brands || []).map(function (br) {
-        return '<button class="chip ' + (z.brand === br.name ? "on" : "") + '" data-act="ch-brand" data-brand="' + esc(br.name) + '">' + esc(br.name) + '</button>';
+      (S.data.brands || []).filter(function (br) {
+        return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
+      }).map(function (br) {
+        return '<button class="chip ' + (z.brand === br.brand ? "on" : "") + '" data-act="ch-brand" data-brand="' + esc(br.brand) + '">' + esc(br.brand) + '</button>';
       }).join("") + '</div>';
     if (!z.brand) return h + '<div class="empty">Pick a brand to see its products.</div>';
     var fams = familyList(z.brand);
