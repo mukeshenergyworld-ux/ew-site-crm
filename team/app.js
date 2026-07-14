@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "4.1";
+  var APP_VERSION = "4.2";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -2653,28 +2653,9 @@
      because function declarations hoist, it silently overrode the current one. That is why the
      rebuilt form never appeared. Do not reintroduce a duplicate name in this file. */
 
-  function viewCommission() {
-    var byAssoc = {};
-    S.data.challans.forEach(function (c) {
-      if (!c.associate) return;
-      if (!byAssoc[c.associate]) byAssoc[c.associate] = { sales: 0, comm: 0, n: 0 };
-      byAssoc[c.associate].sales += Number(c.amount) || 0;
-      byAssoc[c.associate].comm += Number(c.commissionAmt) || 0;
-      byAssoc[c.associate].n += 1;
-    });
-    var h = '<div class="row"><div class="grow"></div><button class="btn" data-act="as-new">+ New partner</button></div>';
-    if (!S.data.associates.length) h += '<div class="empty">No partners yet. Add the plumbers, architects, builders and PMCs who bring you work.</div>';
-    S.data.associates.forEach(function (a) {
-      var t = byAssoc[a.name] || { sales: 0, comm: 0, n: 0 };
-      h += '<div class="card"><h3>' + esc(a.name) + ' <span class="pill">' + esc(a.role || "") + '</span>' +
-        ' <span class="pill teal">' + esc(a.rate || 0) + '% incentive</span></h3>' +
-        '<div class="meta">' + (a.mobile ? esc(a.mobile) + '<br>' : '') +
-        t.n + ' challan(s) &middot; sales ' + money(t.sales) + '<br><b>Incentive: ' + money(t.comm) + '</b>' +
-        (a.notes ? '<br>' + esc(a.notes) : '') + '</div>' +
-        '<div class="acts"><button class="btn sm ghost" data-act="as-open" data-id="' + esc(a.id) + '">Edit</button></div></div>';
-    });
-    return h;
-  }
+  /* legacy viewCommission removed. It was mapped over the incentive engine by a duplicate
+     key in the views object, so the Incentives tab was showing a raw sum of stored figures
+     with no GST strip and no collection gate. Do not reintroduce it. */
 
   function viewPitch() {
     var h = '<div class="empty" style="padding:6px 0 16px;text-align:left">Pick the stage the site is at and pitch what fits. Customers are grouped by their current stage.</div>';
@@ -2828,7 +2809,7 @@
   function render() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, products: viewProducts, pitch: viewPitch };
     var tabs = [["search", "Search"], ["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
