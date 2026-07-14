@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "4.0";
+  var APP_VERSION = "4.1";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -3686,6 +3686,69 @@
     if (p.price) rate.value = p.price;
     if (!qty.value) qty.value = 1;
   });
+
+  /* ---------------- install prompt ----------------
+     Most of the team will open this from a WhatsApp link and then keep opening the link.
+     Running it from the home screen matters: it gets a real app icon, no browser chrome, and
+     - the part that actually bites - the camera and GPS permissions stick, so a site visit
+     does not re-ask every single time. Chrome/Android gives us a real install prompt; iOS
+     never will, so there we show the two-step Share > Add to Home Screen instruction. */
+  var deferredPrompt = null;
+  var INSTALL_DISMISS = "ew_install_dismissed";
+
+  function isInstalled() {
+    return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  }
+  function isIOS() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  }
+  function installDismissed() {
+    try { return localStorage.getItem(INSTALL_DISMISS) === "1"; } catch (e) { return false; }
+  }
+  function dismissInstall() {
+    try { localStorage.setItem(INSTALL_DISMISS, "1"); } catch (e) { }
+    var b = document.getElementById("ewInstall");
+    if (b) b.parentNode.removeChild(b);
+  }
+
+  function showInstallBar() {
+    if (isInstalled() || installDismissed() || document.getElementById("ewInstall")) return;
+    if (!deferredPrompt && !isIOS()) return;          /* nothing we can offer on this browser */
+    var bar = document.createElement("div");
+    bar.id = "ewInstall";
+    bar.setAttribute("style",
+      "position:fixed;left:10px;right:10px;bottom:10px;z-index:9999;background:#0b3b36;color:#fff;" +
+      "border-radius:14px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.28);" +
+      "display:flex;gap:10px;align-items:center;font-size:13px;line-height:1.35");
+    var msg = isIOS()
+      ? "<b>Install Energy World</b><br><span style='color:#9fd8d0'>Tap Share, then <b>Add to Home Screen</b>. Keeps you signed in and stops the camera asking every time.</span>"
+      : "<b>Install Energy World</b><br><span style='color:#9fd8d0'>Add it to your home screen - opens like an app, works on a weak signal.</span>";
+    bar.innerHTML =
+      '<div style="flex:1">' + msg + '</div>' +
+      (isIOS() ? "" : '<button id="ewInstallGo" style="background:#5eead4;color:#06302c;border:0;border-radius:9px;padding:9px 14px;font-weight:700;font-size:13px">Install</button>') +
+      '<button id="ewInstallNo" style="background:transparent;color:#7fb8b0;border:0;font-size:20px;padding:0 4px">&times;</button>';
+    document.body.appendChild(bar);
+    var no = document.getElementById("ewInstallNo");
+    if (no) no.onclick = dismissInstall;
+    var go = document.getElementById("ewInstallGo");
+    if (go) go.onclick = function () {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(function (c) {
+        if (c && c.outcome === "accepted") dismissInstall();
+        deferredPrompt = null;
+      });
+    };
+  }
+
+  window.addEventListener("beforeinstallprompt", function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    showInstallBar();
+  });
+  window.addEventListener("appinstalled", function () { dismissInstall(); });
+  /* iOS never fires beforeinstallprompt, so offer the manual route after the app settles */
+  setTimeout(showInstallBar, 2500);
 
   (function boot() {
     var sess = null;
