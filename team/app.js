@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.9";
+  var APP_VERSION = "3.91";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -979,16 +979,23 @@
   }
   /* logos are fetched once, server-side (Drive share links are HTML pages, not images),
      then held as data URLs so the PDF can draw them without tainting a canvas. */
-  function preloadLogos() {
-    (S.data.logos || []).forEach(function (l) {
-      if (!l.url) return;
-      loadPic(l.url, true).then(function (src) {
-        if (!src) return;
+  /* The PDF used to draw whatever logos happened to have arrived, so a slow one printed as an
+     empty box. Now the fetch is a single memoised promise and quotePdf waits on it. */
+  var LOGO_READY = null;
+  function logosReady() {
+    if (LOGO_READY) return LOGO_READY;
+    var list = (S.data.logos || []).filter(function (l) { return l.url; });
+    LOGO_READY = Promise.all(list.map(function (l) {
+      return loadPic(l.url, true).then(function (src) {
+        if (!src) return null;
         var d = PIC_DIM[l.url] || { w: 100, h: 40 };
         LOGO_PICS[normB(l.brand)] = { src: src, w: d.w, h: d.h };
-      });
-    });
+        return true;
+      }).catch(function () { return null; });
+    }));
+    return LOGO_READY;
   }
+  function preloadLogos() { logosReady(); }
 
   /* Catalogue photos and brand logos come back at full resolution. Embedded raw, a 100-line
      quote became a 45MB PDF - unsendable. Every picture is downscaled on a canvas first and
@@ -1100,7 +1107,8 @@
     return Promise.all([
       loadFonts(),
       loadLogo(),
-      Promise.all(items.map(function (i) { return loadPic(i.pic); }))
+      Promise.all(items.map(function (i) { return loadPic(i.pic); })),
+      logosReady()
     ]).then(function (res) {
       var f = res[0], logo = res[1], pics = res[2];
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
