@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.6";
+  var APP_VERSION = "3.7";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -67,6 +67,8 @@
     calMonth: "",
     calDay: "",
     brandClient: "",
+    sq: "",
+    sres: null,
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [], areas: [] }
   };
 
@@ -89,11 +91,11 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
-    accounts: ["dash","clients","partners","followups","challans","payments","discounts","service","spares","dues","products"],
-    godown:   ["dash","challans","products"],
-    sales:    ["dash","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
-    service:  ["dash","service","spares","dues","followups","products"]
+    admin:    ["search","dash","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
+    accounts: ["search","dash","clients","partners","followups","challans","payments","discounts","service","spares","dues","products"],
+    godown:   ["search","dash","challans","products"],
+    sales:    ["search","dash","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
+    service:  ["search","dash","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
     var t = ROLE_TABS[S.role] || ["dash"];
@@ -964,6 +966,31 @@
     }).catch(function () { LOGO_B64 = false; return false; });
   }
 
+  var LOGO_PICS = {}, LOGO_PRE = 0;
+  function normB(x) { return String(x || "").toUpperCase().replace(/[^A-Z]/g, ""); }
+  function logoFor(brand) {
+    var k = normB(brand);
+    var keys = Object.keys(LOGO_PICS);
+    for (var i = 0; i < keys.length; i++) {
+      var lk = keys[i];
+      if (lk === k || lk.indexOf(k.slice(0, 5)) === 0 || k.indexOf(lk.slice(0, 5)) === 0) return LOGO_PICS[lk];
+    }
+    return null;
+  }
+  /* logos are fetched once, server-side (Drive share links are HTML pages, not images),
+     then held as data URLs so the PDF can draw them without tainting a canvas. */
+  function preloadLogos() {
+    (S.data.logos || []).forEach(function (l) {
+      if (!l.url) return;
+      loadPic(l.url).then(function (src) {
+        if (!src) return;
+        var im = new Image();
+        im.onload = function () { LOGO_PICS[normB(l.brand)] = { src: src, w: im.width, h: im.height }; };
+        im.src = src;
+      });
+    });
+  }
+
   function loadPic(url) {
     if (!url) return Promise.resolve(null);
     if (PIC_CACHE[url] !== undefined) return Promise.resolve(PIC_CACHE[url]);
@@ -1049,27 +1076,50 @@
       col(GREY); F("bold"); doc.setFontSize(6.2);
       doc.text("AUTH. DISTRIBUTOR FOR", L, y + 1);
 
-      var CHIP_L = L + 46;
-      F("bold"); doc.setFontSize(6.2);
-      var lines2 = [[]], cur = 0, wsum = 0, avail = Rt - CHIP_L;
+      /* real brand logos, right-aligned, each in a white highlighted chip.
+         Brands with no logo on file fall back to the old text chip. */
+      var CHIP_L = L + 46, avail = Rt - CHIP_L;
+      var items = [];
       DIST_BRANDS.forEach(function (b) {
-        var w = doc.getTextWidth(b) + 5.4;
-        if (wsum + w > avail && lines2[cur].length) { cur++; lines2[cur] = []; wsum = 0; }
-        lines2[cur].push({ b: b, w: w });
-        wsum += w + 2.2;
+        var lg = logoFor(b);
+        if (lg && lg.src) {
+          var hh = 7.2, ww = Math.max(9, Math.min(24, hh * (lg.w / lg.h)));
+          items.push({ img: lg, w: ww + 3.4, iw: ww, ih: hh });
+        } else {
+          F("bold"); doc.setFontSize(6.2);
+          items.push({ b: b, w: doc.getTextWidth(b) + 5.4 });
+        }
       });
-      lines2.forEach(function (ln, li) {
+      var rows = [[]], cur = 0, wsum = 0;
+      items.forEach(function (it) {
+        if (wsum + it.w > avail && rows[cur].length) { cur++; rows[cur] = []; wsum = 0; }
+        rows[cur].push(it); wsum += it.w + 2.2;
+      });
+      var RH = 11.2;
+      rows.forEach(function (ln, li) {
         var total = ln.reduce(function (a, x) { return a + x.w + 2.2; }, 0) - 2.2;
-        var cx = Rt - total;
-        var ly = y + li * 7.4;
+        var cx = Rt - total, ly = y + li * RH;
         ln.forEach(function (x) {
-          fill([236, 253, 245]); doc.roundedRect(cx, ly - 3.6, x.w, 5.8, 1.4, 1.4, "F");
-          doc.setDrawColor(153, 246, 228); doc.roundedRect(cx, ly - 3.6, x.w, 5.8, 1.4, 1.4, "S");
-          col([13, 118, 108]); doc.text(x.b, cx + 2.7, ly);
+          if (x.img) {
+            var ch = 10;
+            fill([255, 255, 255]); doc.roundedRect(cx, ly - 5.6, x.w, ch, 1.6, 1.6, "F");
+            doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25);
+            doc.roundedRect(cx, ly - 5.6, x.w, ch, 1.6, 1.6, "S");
+            try {
+              doc.addImage(x.img.src, x.img.src.indexOf("image/png") > 0 ? "PNG" : "JPEG",
+                cx + (x.w - x.iw) / 2, ly - 5.6 + (ch - x.ih) / 2, x.iw, x.ih);
+            } catch (e) { }
+          } else {
+            fill([236, 253, 245]); doc.roundedRect(cx, ly - 3.6, x.w, 5.8, 1.4, 1.4, "F");
+            doc.setDrawColor(153, 246, 228); doc.roundedRect(cx, ly - 3.6, x.w, 5.8, 1.4, 1.4, "S");
+            col([13, 118, 108]); F("bold"); doc.setFontSize(6.2);
+            doc.text(x.b, cx + 2.7, ly);
+          }
           cx += x.w + 2.2;
         });
       });
-      y += (lines2.length - 1) * 7.4 + 9;
+      doc.setLineWidth(0.2);
+      y += (rows.length - 1) * RH + 11;
 
       /* ---- client block ---- */
       fill(SOFT); doc.roundedRect(L, y, Rt - L, 24, 2, 2, "F");
@@ -2307,6 +2357,51 @@
     return save("pitch", row);
   }
 
+  /* ---------------- master search ----------------
+     Everyone can search everything. But a salesman searching a number that belongs to a
+     colleague\u2019s client gets ONLY the name and the date it was registered - enough to stop a
+     duplicate entry, not enough to poach. Partners and accounts see the full record. */
+  function viewSearch() {
+    var h = '<div class="row"><input class="grow" id="sq" placeholder="Client name, phone, quote no., challan no..." value="' + esc(S.sq) + '"/>' +
+      '<button class="btn" data-act="s-go">Search</button></div>';
+    var r = S.sres;
+    if (!r) return h + '<div class="empty">Type at least 3 characters. Searches clients, phone numbers, quotes, challans and sites across the whole firm.</div>';
+    var total = (r.clients || []).length + (r.quotes || []).length + (r.challans || []).length + (r.sites || []).length;
+    if (!total) return h + '<div class="empty">Nothing found for "' + esc(S.sq) + '".</div>';
+    (r.clients || []).length && (h += '<h3 style="margin:14px 0 8px;font-size:14px">Clients</h3>');
+    (r.clients || []).forEach(function (c) {
+      if (!c.own) {
+        h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>' + esc(c.name) +
+          ' <span class="pill soon">already registered</span></h3><div class="meta">Registered on <b>' + esc(c.on) +
+          '</b> by another executive.<br><span style="color:#94a3b8">Do not enter this client again. Ask a partner if you need the details.</span></div></div>';
+        return;
+      }
+      h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "") + '</span></h3>' +
+        '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  \u00b7  ")) +
+        (c.area ? '<br>' + esc(c.area) : "") + '<br>Added ' + esc(c.on) + ' by ' + esc(c.by) + '</div>' +
+        '<div class="acts"><button class="btn sm ghost" data-act="bb-open" data-n="' + esc(c.name) + '">Brands</button></div></div>';
+    });
+    (r.quotes || []).length && (h += '<h3 style="margin:14px 0 8px;font-size:14px">Quotations</h3>');
+    (r.quotes || []).forEach(function (q) {
+      h += '<div class="card"><h3>' + esc(q.no) + ' <span class="pill teal">' + esc(q.status || "") + '</span></h3>' +
+        '<div class="meta">' + esc(q.client || "") + (q.own && q.brand ? ' &middot; ' + esc(q.brand) : "") +
+        (q.own && q.total ? '<br>' + money(q.total) : "") + '<br>' + esc(q.on) + ' by ' + esc(q.by) +
+        (q.own ? "" : '<br><span style="color:#94a3b8">Another executive\u2019s quote - amounts hidden.</span>') + '</div></div>';
+    });
+    (r.challans || []).length && (h += '<h3 style="margin:14px 0 8px;font-size:14px">Challans</h3>');
+    (r.challans || []).forEach(function (c) {
+      h += '<div class="card"><h3>' + esc(c.no) + ' <span class="pill teal">' + esc(c.status || "Draft") + '</span></h3>' +
+        '<div class="meta">' + esc(c.client || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
+        (c.own && c.amount ? '<br>' + money(c.amount) : "") + '<br>' + esc(c.on) + ' by ' + esc(c.by) + '</div></div>';
+    });
+    (r.sites || []).length && (h += '<h3 style="margin:14px 0 8px;font-size:14px">Sites</h3>');
+    (r.sites || []).forEach(function (x) {
+      h += '<div class="card"><h3>' + esc(x.name) + ' <span class="pill teal">' + esc(x.stage || "") + '</span></h3>' +
+        '<div class="meta">' + esc(x.client || "") + '</div></div>';
+    });
+    return h;
+  }
+
   function renderLogin(err) {
     document.getElementById("root").innerHTML =
       '<div class="login-wrap"><div class="login">' +
@@ -2658,9 +2753,10 @@
   }
 
   function render() {
+    if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
-    var tabs = [["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, commission: viewCommission, products: viewProducts, pitch: viewPitch };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -2675,7 +2771,7 @@
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
     var GROUPS = [
-      ["Sell", ["dash", "clients", "partners", "quotes", "sites", "leads", "visits", "winloss", "followups"]],
+      ["Sell", ["search", "dash", "clients", "partners", "quotes", "sites", "leads", "visits", "winloss", "followups"]],
       ["Deliver", ["challans", "payments", "discounts", "products", "dues"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["commission", "payroll", "catalogue", "rules"]]
@@ -3089,6 +3185,16 @@
           caption: "<b>" + S.leadBrand + " - pending leads</b>\nFor: <b>" + exec + "</b>\n" +
             r2.list.length + " open" + (urg ? ", <b>" + urg + " closing now</b>" : "") + "\nSent by " + S.user });
       }).then(function (r3) { toast(r3 && r3.ok ? "Sent to " + exec + "." : "Send failed."); render(); });
+      return;
+    }
+    if (act === "s-go") {
+      var qv = val("sq");
+      if (qv.length < 3) { toast("Type at least 3 characters."); return; }
+      S.sq = qv; t.disabled = true; t.textContent = "Searching...";
+      api("search", { q: qv }).then(function (r) {
+        S.sres = (r && r.ok) ? r : { clients: [], quotes: [], challans: [], sites: [] };
+        render();
+      });
       return;
     }
     if (act === "bb-open") { S.brandClient = t.getAttribute("data-n"); S.tab = "brandboard"; render(); return; }
