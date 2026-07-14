@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.94";
+  var APP_VERSION = "3.95";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1160,12 +1160,15 @@
       doc.text("Q U O T E   F O R", Rt, 12.5, { align: "right" });
       col([255, 255, 255]); F("bold"); doc.setFontSize(11.5);
       doc.text(fitCell(doc, F, q.client || "-", 92, 1, "bold", 11.5)[0], Rt, 18.6, { align: "right" });
-      /* address parts repeat in practice (area "Panipat", location "Panipat"), which printed
-         "Sector 57, Panipat, Panipat". De-duplicate case-insensitively before joining. */
+      /* Address parts repeat in practice: the address line often already ends in the city,
+         and area == location for a Panipat client, which printed "Sector 57, Panipat, Panipat".
+         Drop any part already contained in what we have built so far. */
       var addr = [c.address, c.area, c.location].filter(Boolean).map(String)
-        .filter(function (p, i, arr) {
-          return arr.findIndex(function (o) { return o.trim().toLowerCase() === p.trim().toLowerCase(); }) === i;
-        }).join(", ");
+        .reduce(function (acc, p) {
+          var seen = acc.join(", ").toLowerCase();
+          if (seen.indexOf(p.trim().toLowerCase()) < 0) acc.push(p.trim());
+          return acc;
+        }, []).join(", ");
       col([176, 214, 209]); F("normal"); doc.setFontSize(7);
       var aLines = fitCell(doc, F, addr, 92, 2, "normal", 7);
       aLines.forEach(function (ln, i) { doc.text(ln, Rt, 23.4 + i * 3.6, { align: "right" }); });
