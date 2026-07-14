@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "5.0";
+  var APP_VERSION = "5.1";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -103,7 +103,7 @@
     accounts: ["search","dash","returns","tools","clients","partners","followups","challans","payments","discounts","service","spares","dues","products"],
     godown:   ["search","dash","returns","tools","challans","products"],
     sales:    ["search","dash","returns","tools","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
-    service:  ["search","dash","service","spares","dues","followups","products"]
+    service:  ["search","dash","tools","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
     var t = ROLE_TABS[S.role] || ["dash"];
@@ -2002,9 +2002,15 @@
     if ((S.tool.chain || []).length) {
       h += '<h3 style="margin:14px 0 4px;font-size:14px">Chain of custody</h3><div class="meta">';
       S.tool.chain.forEach(function (m) {
-        h += esc(String(m.createdAt).slice(0, 10)) + ' &middot; ' + esc(m.action) + ' &middot; ' +
+        h += '<div style="padding:5px 0;border-bottom:1px solid #f1f5f9">' +
+          '<b>' + esc(m.action) + '</b> &middot; ' + esc(String(m.createdAt).slice(0, 10)) + '<br>' +
           esc(m.fromHolder || "Godown") + ' &rarr; ' + esc(m.toHolder || "Godown") +
-          (m.site ? ' (' + esc(m.site) + ')' : "") + ' &middot; by ' + esc(m.by) + '<br>';
+          (m.site ? ' &middot; ' + esc(m.site) : "") + '<br>' +
+          '<span style="color:#0d9488">Transferred by ' + esc(m.by) +
+          (m.byMobile ? ' &middot; ' + esc(m.byMobile) : "") +
+          (m.byRole ? ' (' + esc(m.byRole) + ')' : "") + '</span>' +
+          (m.lat ? '<br><span style="color:#94a3b8">GPS ' + esc(String(m.lat).slice(0, 8)) + ', ' + esc(String(m.lng).slice(0, 8)) + '</span>' : "") +
+          '</div>';
       });
       h += '</div>';
     }
