@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.71";
+  var APP_VERSION = "3.72";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -966,7 +966,7 @@
     }).catch(function () { LOGO_B64 = false; return false; });
   }
 
-  var LOGO_PICS = {}, LOGO_PRE = 0;
+  var LOGO_PICS = {}, LOGO_PRE = 0, PIC_DIM = {};
   function normB(x) { return String(x || "").toUpperCase().replace(/[^A-Z]/g, ""); }
   function logoFor(brand) {
     var k = normB(brand);
@@ -984,10 +984,30 @@
       if (!l.url) return;
       loadPic(l.url).then(function (src) {
         if (!src) return;
-        var im = new Image();
-        im.onload = function () { LOGO_PICS[normB(l.brand)] = { src: src, w: im.width, h: im.height }; };
-        im.src = src;
+        var d = PIC_DIM[l.url] || { w: 100, h: 40 };
+        LOGO_PICS[normB(l.brand)] = { src: src, w: d.w, h: d.h };
       });
+    });
+  }
+
+  /* Catalogue photos and brand logos come back at full resolution. Embedded raw, a 100-line
+     quote became a 45MB PDF - unsendable. Every picture is downscaled on a canvas first and
+     flattened onto white (the PDF page is white anyway, so alpha buys nothing). */
+  function shrinkPic(src, maxDim, q) {
+    return new Promise(function (res) {
+      var im = new Image();
+      im.onload = function () {
+        var sc = Math.min(1, maxDim / Math.max(im.width, im.height));
+        var w = Math.max(1, Math.round(im.width * sc)), h = Math.max(1, Math.round(im.height * sc));
+        var cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+        var cx = cv.getContext("2d");
+        cx.fillStyle = "#ffffff"; cx.fillRect(0, 0, w, h);
+        cx.drawImage(im, 0, 0, w, h);
+        try { res({ src: cv.toDataURL("image/jpeg", q || 0.75), w: w, h: h }); }
+        catch (e) { res({ src: src, w: im.width, h: im.height }); }
+      };
+      im.onerror = function () { res(null); };
+      im.src = src;
     });
   }
 
@@ -995,8 +1015,12 @@
     if (!url) return Promise.resolve(null);
     if (PIC_CACHE[url] !== undefined) return Promise.resolve(PIC_CACHE[url]);
     return api("imgB64", { url: url }).then(function (r) {
-      PIC_CACHE[url] = (r && r.ok) ? ("data:" + r.mime + ";base64," + r.b64) : null;
-      return PIC_CACHE[url];
+      if (!r || !r.ok) { PIC_CACHE[url] = null; return null; }
+      return shrinkPic("data:" + r.mime + ";base64," + r.b64, 260, 0.75).then(function (p) {
+        PIC_CACHE[url] = p ? p.src : null;
+        PIC_DIM[url] = p ? { w: p.w, h: p.h } : null;
+        return PIC_CACHE[url];
+      });
     }).catch(function () { PIC_CACHE[url] = null; return null; });
   }
 
@@ -1106,7 +1130,7 @@
             doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25);
             doc.roundedRect(cx, ly - 5.6, x.w, ch, 1.6, 1.6, "S");
             try {
-              doc.addImage(x.img.src, x.img.src.indexOf("image/png") > 0 ? "PNG" : "JPEG",
+              doc.addImage(x.img.src, "JPEG",
                 cx + (x.w - x.iw) / 2, ly - 5.6 + (ch - x.ih) / 2, x.iw, x.ih);
             } catch (e) { }
           } else {
