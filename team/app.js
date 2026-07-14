@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.92";
+  var APP_VERSION = "3.93";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1163,7 +1163,12 @@
       doc.text("Q U O T E   F O R", Rt, 21.5, { align: "right" });
       col([255, 255, 255]); F("bold"); doc.setFontSize(11);
       doc.text(fitCell(doc, F, q.client || "-", 92, 1, "bold", 11)[0], Rt, 27.5, { align: "right" });
-      var addr = [c.address, c.area, c.location].filter(Boolean).join(", ");
+      /* address parts repeat in practice (area "Panipat", location "Panipat"), which printed
+         "Sector 57, Panipat, Panipat". De-duplicate case-insensitively before joining. */
+      var addr = [c.address, c.area, c.location].filter(Boolean).map(String)
+        .filter(function (p, i, arr) {
+          return arr.findIndex(function (o) { return o.trim().toLowerCase() === p.trim().toLowerCase(); }) === i;
+        }).join(", ");
       col([176, 214, 209]); F("normal"); doc.setFontSize(7);
       var aLines = fitCell(doc, F, addr, 92, 2, "normal", 7);
       aLines.forEach(function (ln, i) { doc.text(ln, Rt, 32.4 + i * 3.6, { align: "right" }); });
