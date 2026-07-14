@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "3.7";
+  var APP_VERSION = "3.71";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1079,24 +1079,24 @@
       /* real brand logos, right-aligned, each in a white highlighted chip.
          Brands with no logo on file fall back to the old text chip. */
       var CHIP_L = L + 46, avail = Rt - CHIP_L;
-      var items = [];
+      var chips = [];
       DIST_BRANDS.forEach(function (b) {
         var lg = logoFor(b);
         if (lg && lg.src) {
           var hh = 7.2, ww = Math.max(9, Math.min(24, hh * (lg.w / lg.h)));
-          items.push({ img: lg, w: ww + 3.4, iw: ww, ih: hh });
+          chips.push({ img: lg, w: ww + 3.4, iw: ww, ih: hh });
         } else {
           F("bold"); doc.setFontSize(6.2);
-          items.push({ b: b, w: doc.getTextWidth(b) + 5.4 });
+          chips.push({ b: b, w: doc.getTextWidth(b) + 5.4 });
         }
       });
-      var rows = [[]], cur = 0, wsum = 0;
-      items.forEach(function (it) {
-        if (wsum + it.w > avail && rows[cur].length) { cur++; rows[cur] = []; wsum = 0; }
-        rows[cur].push(it); wsum += it.w + 2.2;
+      var crows = [[]], cur = 0, wsum = 0;
+      chips.forEach(function (it) {
+        if (wsum + it.w > avail && crows[cur].length) { cur++; crows[cur] = []; wsum = 0; }
+        crows[cur].push(it); wsum += it.w + 2.2;
       });
       var RH = 11.2;
-      rows.forEach(function (ln, li) {
+      crows.forEach(function (ln, li) {
         var total = ln.reduce(function (a, x) { return a + x.w + 2.2; }, 0) - 2.2;
         var cx = Rt - total, ly = y + li * RH;
         ln.forEach(function (x) {
@@ -1119,7 +1119,7 @@
         });
       });
       doc.setLineWidth(0.2);
-      y += (rows.length - 1) * RH + 11;
+      y += (crows.length - 1) * RH + 11;
 
       /* ---- client block ---- */
       fill(SOFT); doc.roundedRect(L, y, Rt - L, 24, 2, 2, "F");
