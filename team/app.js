@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "2.2";
+  var APP_VERSION = "2.3";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -58,6 +58,7 @@
     qz: null,
     navOpen: false,
     rmPreview: null,
+    geoOnly: false,
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [] }
   };
 
@@ -269,19 +270,31 @@
 
   function viewSites() {
     var q = S.q.toLowerCase();
+    var pendAll = S.data.sites.filter(geoPending);
     var list = S.data.sites.filter(function (x) {
+      if (S.geoOnly && !geoPending(x)) return false;
       return !q || (x.name + " " + x.client + " " + x.city + " " + x.owner).toLowerCase().indexOf(q) >= 0;
     });
-    var h = '<div class="row"><input class="grow" id="q" placeholder="Search sites..." value="' + esc(S.q) + '"/>' +
+    var h = '';
+    if (pendAll.length) {
+      h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>' +
+        '<span class="pill soon">' + pendAll.length + ' site(s) awaiting location</span></h3>' +
+        '<div class="meta">Sites entered from the office have no location yet. The next time someone is <b>standing at the site</b>, they press <b>Set location</b> once. From then on every visit is checked against it.</div>' +
+        '<div class="acts"><button class="btn sm ' + (S.geoOnly ? '' : 'ghost') + '" data-act="geo-filter">' +
+        (S.geoOnly ? 'Showing pending only' : 'Show only these') + '</button></div></div>';
+    }
+    h += '<div class="row"><input class="grow" id="q" placeholder="Search sites..." value="' + esc(S.q) + '"/>' +
       '<button class="btn" data-act="site-new">+ New site</button></div>';
     if (!list.length) h += '<div class="empty">No sites yet. A site is a project - the 14 brands get tracked against it.</div>';
     list.forEach(function (x) {
       var a = siteAlerts(x);
       var vs = siteVisits(x.id);
       var lastV = vs.length ? vs[vs.length - 1] : null;
+      var pend = geoPending(x);
       h += '<div class="card"><h3>' + esc(x.name) + ' <span class="pill teal">stage ' + stageNo(x) + '</span>' +
-        (vs.length ? ' <span class="pill">' + vs.length + ' visit(s)</span>' : ' <span class="pill due">never visited</span>') +
-        (!siteVerified(x) && vs.length ? ' <span class="pill due">unverified lead</span>' : '') +
+        (vs.length ? ' <span class="pill">' + vs.length + ' visit(s)</span>' : '') +
+        (pend ? ' <span class="pill soon">location pending</span>' : '') +
+        (!pend && vs.length && !siteVerified(x) ? ' <span class="pill due">unverified lead</span>' : '') +
         (a.open ? ' <span class="pill due">' + a.open + ' to pitch NOW</span>' : "") +
         (a.closed ? ' <span class="pill">' + a.closed + ' window(s) closed</span>' : "") + '</h3>' +
         '<div class="meta">' + esc(x.client || "") + (x.city ? ' &middot; ' + esc(x.city) : "") +
@@ -289,7 +302,10 @@
         (lastV ? '<br>Last visit: ' + esc(dstr(lastV.date)) + ' by ' + esc(lastV.createdBy) : '') +
         (x.owner ? '<br>Owner: ' + esc(x.owner) : "") +
         (x.architect || x.plumber ? '<br>' + esc([x.architect, x.plumber, x.builder].filter(Boolean).join(" / ")) : "") + '</div>' +
-        '<div class="acts"><button class="btn sm" data-act="checkin" data-id="' + esc(x.id) + '">Check in</button>' +
+        '<div class="acts">' +
+        (pend
+          ? '<button class="btn sm" data-act="setgeo" data-id="' + esc(x.id) + '">Set location (I am at site)</button>'
+          : '<button class="btn sm" data-act="checkin" data-id="' + esc(x.id) + '">Check in</button>') +
         '<button class="btn sm ghost" data-act="matrix" data-id="' + esc(x.id) + '">Pitch matrix</button>' +
         '<button class="btn sm ghost" data-act="site-open" data-id="' + esc(x.id) + '">Edit</button></div></div>';
     });
@@ -1142,27 +1158,30 @@
     return siteVisits(site.id).some(function (v) { return v.verified === "Verified"; });
   }
 
-  function checkIn(siteId, purpose) {
+  function checkIn(siteId, setLocation) {
+    if (setLocation && !window.confirm("Are you standing AT this site right now?\n\nThis fixes the site's location permanently. Do NOT do this from the office.")) return;
     if (!navigator.geolocation) { toast("This phone cannot give a location."); return; }
-    toast("Getting your location...");
+    toast(setLocation ? "Fixing site location..." : "Getting your location...");
     navigator.geolocation.getCurrentPosition(function (pos) {
       api("siteVisit", {
-        siteId: siteId, purpose: purpose || "",
+        siteId: siteId, setLocation: !!setLocation,
         lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy
       }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Check-in failed."); return; }
-        toast(r.verified === "Verified" ? "Visit logged and verified."
-          : (r.verified === "Far" ? "Logged, but " + r.distanceM + "m from the site." : "Logged as unverified (weak GPS)."));
+        if (r.note === "site location set from this visit") toast("Site location fixed. Future visits are measured from here.");
+        else if (r.verified === "Verified") toast("Visit logged and verified.");
+        else if (r.verified === "Far") toast("Logged, but " + r.distanceM + "m from the site.");
+        else toast("Logged - " + (r.note || "unverified") + ".");
         refresh();
       });
     }, function () {
-      /* denied or unavailable: still log it, but honestly marked */
-      api("siteVisit", { siteId: siteId, purpose: purpose || "" }).then(function () {
-        toast("Location was blocked - visit logged as UNVERIFIED.");
+      api("siteVisit", { siteId: siteId }).then(function () {
+        toast("Location blocked - visit logged as UNVERIFIED.");
         refresh();
       });
     }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
   }
+  function geoPending(site) { return !site.lat || !site.lng; }
 
   function viewVisits() {
     var today = todayStr();
@@ -1700,6 +1719,7 @@
       return;
     }
 
+    if (act === "geo-filter") { S.geoOnly = !S.geoOnly; render(); return; }
     if (act === "cl-loc") { S.q = t.getAttribute("data-loc"); render(); return; }
     if (act === "cl-new") { S.modal = modalClient(null); render(); return; }
     if (act === "cl-open") { S.modal = modalClient(clientById(id)); render(); return; }
@@ -1896,7 +1916,8 @@
       }).then(function (r) { if (r) { S.modal = null; toast("Site saved."); render(); } });
       return;
     }
-    if (act === "checkin") { checkIn(id, ""); return; }
+    if (act === "checkin") { checkIn(id, false); return; }
+    if (act === "setgeo") { checkIn(id, true); return; }
     if (act === "matrix") { S.siteId = id; S.tab = "matrix"; render(); return; }
 
     if (act === "cust-new") { S.modal = modalCustomer(null); render(); return; }
