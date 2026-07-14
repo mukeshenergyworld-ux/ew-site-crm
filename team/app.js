@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "4.21";
+  var APP_VERSION = "4.3";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -69,6 +69,7 @@
     brandClient: "",
     sq: "",
     sres: null,
+    alt: null,
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [], areas: [] }
   };
 
@@ -663,6 +664,46 @@
         '<button class="btn sm ghost" data-act="bb-open" data-n="' + esc(c.name) + '">Brands</button>' +
         '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>';
     });
+    return h;
+  }
+
+  /* ALTERATION AT RECEIPT.
+     Short, excess, or something added at site. The dispatched list is never rewritten - what
+     went out stays exactly as it went out, and this records what actually landed. Otherwise a
+     shortage silently disappears and there is nothing to put to the transporter. */
+  function modalAlter() {
+    var c = (S.data.challans || []).filter(function (x) { return x.id === S.alt.id; })[0] || {};
+    var dispatched = [];
+    try { dispatched = JSON.parse(c.itemsJson || "[]"); } catch (e) { }
+    if (!S.alt.rows) {
+      S.alt.rows = dispatched.map(function (i) {
+        return { code: i.code || "", desc: i.desc || "", unit: i.unit || "", was: Number(i.qty) || 0, now: Number(i.qty) || 0, note: "" };
+      });
+    }
+    var h = '<h2>Receipt - ' + esc(c.challanNo || "") + '</h2>' +
+      '<div class="meta" style="margin-bottom:8px">Enter what actually arrived. Leave a line alone if it came in full.</div>' +
+      '<div style="max-height:46vh;overflow:auto">' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+      '<tr style="text-align:left;color:#64748b;font-size:10px">' +
+      '<th style="padding:4px">ITEM</th><th style="width:52px">SENT</th><th style="width:64px">RECEIVED</th><th style="width:110px">REASON</th></tr>';
+    S.alt.rows.forEach(function (r, i) {
+      var diff = Number(r.now) - Number(r.was);
+      var col = diff === 0 ? "#94a3b8" : (diff < 0 ? "#dc2626" : "#0d9488");
+      h += '<tr style="border-top:1px solid #e2e8f0">' +
+        '<td style="padding:5px 4px">' + esc(r.desc) + '<br><span style="color:#94a3b8;font-size:10px">' + esc(r.code) + '</span></td>' +
+        '<td style="color:#94a3b8">' + r.was + '</td>' +
+        '<td><input id="alt_q' + i + '" inputmode="numeric" value="' + r.now + '" style="width:56px;padding:4px" data-act="alt-q" data-i="' + i + '"/>' +
+        '<div style="font-size:10px;color:' + col + '">' + (diff === 0 ? "full" : (diff > 0 ? "+" + diff + " excess" : diff + " short")) + '</div></td>' +
+        '<td><input id="alt_n' + i + '" value="' + esc(r.note) + '" placeholder="reason" style="width:100%;padding:4px"/></td>' +
+        '</tr>';
+    });
+    h += '</table></div>' +
+      '<label style="margin-top:10px">Add a product that was NOT on the challan</label>' +
+      '<div class="row"><input class="grow" id="alt_add" list="prodlist" placeholder="Product code or name"/>' +
+      '<input id="alt_addq" inputmode="numeric" placeholder="Qty" style="width:70px"/>' +
+      '<button class="btn sm ghost" data-act="alt-add">Add</button></div>' + prodDatalist() +
+      '<div class="foot"><button class="btn ghost" data-act="alt-cancel">Cancel</button>' +
+      '<button class="btn" data-act="alt-save">Confirm receipt</button></div>';
     return h;
   }
 
@@ -1584,9 +1625,33 @@
   var CH_FLOW = ["Draft", "Approved", "Dispatched", "Received"];
   function canApprove() { return S.role === "admin" || S.role === "sales"; }
 
+  /* ---------------- DELIVERY CHALLAN (landscape) ----------------
+     This is a picking and receiving sheet, not a sales document. So: no company logo or name,
+     no price, no discount, no amount, no photos. Two columns on a landscape A4 fit ~52 lines a
+     sheet, and the printer's 2-up setting halves the paper again. Greyscale throughout because
+     it is printed in black and white. Freight and the driver DO appear - the driver is a record
+     in the Drivers master, not free text, so freight can be totalled per driver later. */
+  function challanLogos() {
+    return logosReady().then(function () {
+      return PDF_LOGO_ORDER.map(function (n) { return logoFor(n); });
+    });
+  }
+
   function challanPdf(c, approver) {
-    return loadFonts().then(function (f) {
-      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+    var items = [];
+    try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+    if (!items.length && c.items) {
+      items = String(c.items).split(",").map(function (t) {
+        var m = String(t).match(/^(.*)x(\d+)\s*$/);
+        return { code: "", desc: m ? m[1].trim() : String(t).trim(), unit: "", qty: m ? m[2] : "" };
+      });
+    }
+    var alt = [];
+    try { alt = JSON.parse(c.altJson || "[]"); } catch (e) { alt = []; }
+
+    return Promise.all([loadFonts(), challanLogos()]).then(function (res) {
+      var f = res[0], LOGOS = res[1];
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
       var uni = false;
       if (f) {
         doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
@@ -1594,79 +1659,166 @@
         uni = true;
       }
       var F = function (w) { doc.setFont(uni ? "DJ" : "helvetica", w || "normal"); };
-      var W = 210, L = 14, Rt = W - 14;
-      var items = [];
-      try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+      var RS = function (n) { return (uni ? "\u20B9" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      var g = function (v) { doc.setTextColor(v, v, v); };
+      var dg = function (v) { doc.setDrawColor(v, v, v); };
+      var W = 297, H = 210, L = 10, R = W - 10;
+      var COLGAP = 8, COLW = (R - L - COLGAP) / 2, RH = 4.7;
+      var LOGO_H = 13, FOOT_H = 24;
+      var cols = function (x) {
+        return { n: x + 1.5, code: x + 7, desc: x + 30, unit: x + COLW - 26, qty: x + COLW - 2 };
+      };
+      var client = clientByName(c.customerName) || {};
+      var addr = [client.address, client.area, client.location].filter(Boolean).map(String)
+        .reduce(function (acc, p) {
+          if (acc.join(", ").toLowerCase().indexOf(p.trim().toLowerCase()) < 0) acc.push(p.trim());
+          return acc;
+        }, []).join(", ");
+      var drv = [c.driver, c.vehicle].filter(Boolean).join("  \u00b7  ");
+      var drv2 = c.driverMobile ? String(c.driverMobile) : "";
 
-      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 40, "F");
-      doc.setFillColor(94, 234, 212); doc.rect(0, 40, W, 1.2, "F");
-      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 8, 32, 17); } catch (e) {} }
-      doc.setTextColor(153, 246, 228); F("bold"); doc.setFontSize(6.2);
-      doc.text("M O D E R N   P L U M B I N G   S O L U T I O N", L, 30);
-      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(16);
-      doc.text("DELIVERY CHALLAN", Rt, 15, { align: "right" });
-      F("normal"); doc.setFontSize(8); doc.setTextColor(160, 205, 199);
-      doc.text(String(c.challanNo || ""), Rt, 22, { align: "right" });
-      doc.text(today(), Rt, 27, { align: "right" });
-      doc.text("Status: " + String(c.status || "Draft"), Rt, 32, { align: "right" });
-
-      var y = 52;
-      doc.setTextColor(110, 125, 140); F("bold"); doc.setFontSize(5.8);
-      doc.text("DELIVER TO", L, y);
-      doc.text("SITE", L + 90, y);
-      doc.setTextColor(17, 34, 45); F("bold"); doc.setFontSize(10);
-      doc.text(String(c.customerName || "-"), L, y + 6);
-      doc.text(String(c.site || "-"), L + 90, y + 6);
-      F("normal"); doc.setFontSize(7.6); doc.setTextColor(110, 125, 140);
-      doc.text(String(c.location || ""), L, y + 11);
-      if (c.driver) doc.text("Driver: " + c.driver, L + 90, y + 11);
-      y += 20;
-
-      doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, Rt - L, 9, "F");
-      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.4);
-      doc.text("#", L + 3, y);
-      doc.text("PRODUCT CODE", L + 10, y);
-      doc.text("DESCRIPTION", L + 52, y);
-      doc.text("UNIT", Rt - 26, y, { align: "right" });
-      doc.text("QTY", Rt - 2, y, { align: "right" });
-      y += 9;
-
-      items.forEach(function (i, n) {
-        if (y > 258) { doc.addPage(); y = 24; }
-        if (n % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, Rt - L, 8, "F"); }
-        doc.setTextColor(110, 125, 140); F("normal"); doc.setFontSize(7);
-        doc.text(String(n + 1), L + 3, y);
-        doc.setTextColor(13, 148, 136); F("bold"); doc.setFontSize(7);
-        doc.text(String(i.code || ""), L + 10, y);
-        doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(7.4);
-        doc.text(doc.splitTextToSize(String(i.desc || ""), 68)[0], L + 52, y);
-        doc.text(String(i.unit || "No's"), Rt - 26, y, { align: "right" });
-        F("bold"); doc.text(String(i.qty), Rt - 2, y, { align: "right" });
-        y += 8;
-      });
-
-      y += 6;
-      doc.setDrawColor(226, 232, 240); doc.line(L, y, Rt, y);
-      y += 8;
-      doc.setTextColor(110, 125, 140); F("normal"); doc.setFontSize(7.4);
-      doc.text("Received the above goods in good condition and correct quantity.", L, y);
-      doc.text("Receiver signature", Rt, y + 18, { align: "right" });
-      doc.setDrawColor(180, 190, 200); doc.line(Rt - 50, y + 15, Rt, y + 15);
-      doc.text("Prepared by: " + String(c.createdBy || ""), L, y + 10);
-      if (c.freight) doc.text("Freight: Rs. " + c.freight + " (" + (c.freightTo || "Client") + ")", L, y + 15);
-
-      /* the approver signs the last page, small, bottom-right - exactly as asked */
-      var pages = doc.internal.getNumberOfPages();
-      doc.setPage(pages);
-      if (approver) {
-        doc.setTextColor(13, 148, 136); F("bold"); doc.setFontSize(6.4);
-        doc.text("Approved by " + approver, Rt, 282, { align: "right" });
+      function header() {
+        dg(120); doc.setLineWidth(0.4); doc.line(L, 12, R, 12);
+        g(0); F("bold"); doc.setFontSize(11);
+        doc.text("DELIVERY CHALLAN", L, 10);
+        doc.text(String(c.challanNo || ""), R, 10, { align: "right" });
+        var y = 18;
+        g(90); F("bold"); doc.setFontSize(5.6); doc.text("DELIVER TO", L, y);
+        g(0); F("bold"); doc.setFontSize(10);
+        doc.text(String(c.customerName || "-"), L, y + 5.5);
+        g(60); F("normal"); doc.setFontSize(7);
+        if (addr) doc.text(fitCell(doc, F, addr, 110, 1, "normal", 7)[0], L, y + 10);
+        if (c.site) doc.text(fitCell(doc, F, "Site: " + c.site, 110, 1, "normal", 7)[0], L, y + 14);
+        g(90); F("bold"); doc.setFontSize(5.6);
+        doc.text("DATE", R, y, { align: "right" });
+        doc.text("PREPARED BY", R - 52, y, { align: "right" });
+        doc.text("APPROVED BY", R - 105, y, { align: "right" });
+        g(0); F("normal"); doc.setFontSize(7.6);
+        doc.text(String(c.createdAt || "").slice(0, 10), R, y + 4.5, { align: "right" });
+        doc.text(String(c.createdBy || "-"), R - 52, y + 4.5, { align: "right" });
+        doc.text(String(approver || c.approvedBy || "-"), R - 105, y + 4.5, { align: "right" });
+        g(90); F("bold"); doc.setFontSize(5.6);
+        doc.text("TRANSPORT", R, y + 10, { align: "right" });
+        if (c.freight) doc.text("FREIGHT", R - 105, y + 10, { align: "right" });
+        g(0); F("normal"); doc.setFontSize(7.6);
+        if (drv) doc.text(drv, R, y + 14.5, { align: "right" });
+        if (drv2) { g(90); doc.setFontSize(6.6); doc.text(drv2, R, y + 18.4, { align: "right" }); }
+        if (c.freight) {
+          g(0); F("bold"); doc.setFontSize(7.6);
+          doc.text(RS(c.freight) + "  (" + String(c.freightTo || "Client") + ")", R - 105, y + 14.5, { align: "right" });
+        }
+        dg(190); doc.setLineWidth(0.2); doc.line(L, 36, R, 36);
       }
-      for (var p = 1; p <= pages; p++) {
-        doc.setPage(p);
-        F("normal"); doc.setFontSize(6.2); doc.setTextColor(150, 163, 175);
-        doc.text("Energy World  |  Panipat \u00b7 Sonipat \u00b7 Karnal", L, 290);
-        doc.text(p + " / " + pages, Rt, 290, { align: "right" });
+      function colHead(x, y) {
+        doc.setFillColor(238, 238, 238); doc.rect(x, y - 3.6, COLW, 5.4, "F");
+        dg(160); doc.setLineWidth(0.2); doc.rect(x, y - 3.6, COLW, 5.4, "S");
+        g(0); F("bold"); doc.setFontSize(5.4);
+        var C = cols(x);
+        doc.text("#", C.n, y); doc.text("CODE", C.code, y);
+        doc.text("ITEM DESCRIPTION", C.desc, y);
+        doc.text("UNIT", C.unit, y, { align: "right" });
+        doc.text("QTY", C.qty, y, { align: "right" });
+      }
+      function logoStrip() {
+        var BW = 13.5, BH = 6.6, GP = 1.4;
+        var bx = L, by = H - FOOT_H - LOGO_H + 3;
+        g(115); F("bold"); doc.setFontSize(5);
+        doc.text("AUTH. DISTRIBUTOR FOR", L, by - 2.2);
+        LOGOS.forEach(function (lg) {
+          dg(215); doc.setLineWidth(0.2); doc.rect(bx, by, BW, BH, "S");
+          if (lg && lg.src) {
+            var sc = Math.min((BW - 1.6) / lg.w, (BH - 1.6) / lg.h);
+            var iw = lg.w * sc, ih = lg.h * sc;
+            try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, by + (BH - ih) / 2, iw, ih); } catch (e) { }
+          }
+          bx += BW + GP;
+        });
+      }
+      function footer(p, pages) {
+        dg(190); doc.setLineWidth(0.2); doc.line(L, H - 20, R, H - 20);
+        g(90); F("bold"); doc.setFontSize(5.6);
+        doc.text("RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, H - 15.5);
+        dg(150); doc.setLineWidth(0.3);
+        doc.line(L, H - 7, L + 70, H - 7); doc.line(L + 85, H - 7, L + 150, H - 7);
+        g(95); F("normal"); doc.setFontSize(5.6);
+        doc.text("Receiver name & signature", L, H - 4);
+        doc.text("Date", L + 85, H - 4);
+        g(140); doc.setFontSize(6);
+        doc.text("Page " + p + " / " + pages, R, H - 4, { align: "right" });
+      }
+
+      var top = 40, bottomLimit = H - FOOT_H - LOGO_H - 2;
+      var perCol = Math.floor((bottomLimit - top - 7) / RH), perPage = perCol * 2;
+      var itemPages = Math.max(1, Math.ceil(items.length / perPage));
+      var totalPages = itemPages + (alt.length ? 1 : 0);
+      var idx = 0, page = 1;
+
+      do {
+        if (page > 1) doc.addPage();
+        header();
+        for (var ci = 0; ci < 2 && idx < items.length; ci++) {
+          var x = L + ci * (COLW + COLGAP), y = top + 4;
+          colHead(x, y); y += 6.6;
+          var C = cols(x);
+          for (var k = 0; k < perCol && idx < items.length; k++, idx++) {
+            var it = items[idx];
+            if (idx % 2 === 1) { doc.setFillColor(248, 248, 248); doc.rect(x, y - 3.3, COLW, RH, "F"); }
+            g(125); F("normal"); doc.setFontSize(5.6);
+            doc.text(String(idx + 1), C.n, y);
+            g(45); F("bold"); doc.setFontSize(5.6);
+            doc.text(String(it.code || "").slice(0, 14), C.code, y);
+            g(0); F("normal"); doc.setFontSize(6.4);
+            doc.text(fitCell(doc, F, it.desc, C.unit - C.desc - 4, 1, "normal", 6.4)[0], C.desc, y);
+            g(95); F("normal"); doc.setFontSize(6);
+            doc.text(String(it.unit || ""), C.unit, y, { align: "right" });
+            g(0); F("bold"); doc.setFontSize(7);
+            doc.text(String(it.qty || ""), C.qty, y, { align: "right" });
+            y += RH;
+          }
+          dg(220); doc.setLineWidth(0.2); doc.line(x, y - 3.3, x + COLW, y - 3.3);
+        }
+        logoStrip(); footer(page, totalPages);
+        page++;
+      } while (idx < items.length);
+
+      if (alt.length) {
+        doc.addPage(); header();
+        var ay = 46;
+        doc.setFillColor(55, 55, 55); doc.rect(L, ay - 4, R - L, 6, "F");
+        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.4);
+        doc.text("ALTERATION AT RECEIPT   -   short / excess / added at site", L + 2, ay);
+        ay += 9;
+        g(90); F("bold"); doc.setFontSize(5.4);
+        doc.text("CODE", L + 1.5, ay); doc.text("ITEM DESCRIPTION", L + 30, ay);
+        doc.text("SENT", L + 150, ay, { align: "right" });
+        doc.text("RECEIVED", L + 175, ay, { align: "right" });
+        doc.text("DIFFERENCE", L + 205, ay, { align: "right" });
+        doc.text("REASON", R - 1.5, ay, { align: "right" });
+        dg(200); doc.setLineWidth(0.2); doc.line(L, ay + 1.6, R, ay + 1.6);
+        ay += 6.5;
+        alt.forEach(function (a, i) {
+          if (i % 2 === 1) { doc.setFillColor(248, 248, 248); doc.rect(L, ay - 3.4, R - L, 5.6, "F"); }
+          var was = Number(a.was) || 0, now = Number(a.now) || 0, diff = now - was;
+          g(45); F("bold"); doc.setFontSize(5.8);
+          doc.text(String(a.code || ""), L + 1.5, ay);
+          g(0); F("normal"); doc.setFontSize(6.6);
+          doc.text(fitCell(doc, F, a.desc, 110, 1, "normal", 6.6)[0], L + 30, ay);
+          g(120); F("normal"); doc.setFontSize(6.6);
+          doc.text(was ? String(was) : "-", L + 150, ay, { align: "right" });
+          g(0); F("bold"); doc.setFontSize(7.4);
+          doc.text(String(now), L + 175, ay, { align: "right" });
+          F("bold"); doc.setFontSize(6.8);
+          doc.text((diff > 0 ? "+" : "") + diff, L + 205, ay, { align: "right" });
+          g(80); F("normal"); doc.setFontSize(6);
+          doc.text(fitCell(doc, F, a.note || "", 45, 1, "normal", 6)[0], R - 1.5, ay, { align: "right" });
+          ay += 5.6;
+        });
+        dg(200); doc.line(L, ay - 3.4, R, ay - 3.4);
+        ay += 8;
+        g(95); F("normal"); doc.setFontSize(6);
+        doc.text("The dispatched challan is unchanged. This sheet records only what actually arrived at site" +
+          (c.alteredBy ? "  \u00b7  recorded by " + c.alteredBy : "") + ".", L, ay);
+        logoStrip(); footer(totalPages, totalPages);
       }
       return doc;
     });
@@ -2748,8 +2900,16 @@
       '<div><label>Freight / tempo fare</label><input id="m_freight" inputmode="numeric" value="0"/></div>' +
       '<div><label>Freight borne by</label><select id="m_fto">' + opts(["Client", "Energy World"], "Client") + '</select></div>' +
       '</div>' +
-      '<label>Driver</label><input id="m_driver" list="driverlist" placeholder="Driver name (vehicle)"/>' +
-      '<datalist id="driverlist">' + drivers.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      /* Driver is picked from the Drivers master so his freight can be totalled later.
+         Typing a name that is not on the list creates the driver record on save. */
+      '<div class="grid2" style="margin-top:6px">' +
+      '<div><label>Driver</label><input id="m_driver" list="driverlist" placeholder="Driver name"/>' +
+      '<datalist id="driverlist">' + (S.data.drivers || []).map(function (d) {
+        return '<option value="' + esc(d.name) + '"></option>';
+      }).join("") + '</datalist></div>' +
+      '<div><label>Driver mobile</label><input id="m_dmob" inputmode="numeric" placeholder="10 digits"/></div>' +
+      '</div>' +
+      '<label>Vehicle number</label><input id="m_veh" placeholder="HR-06-AB-1234"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="ch-save">Create challan</button></div>';
   }
@@ -3452,6 +3612,22 @@
       }));
       t.disabled = true; t.textContent = "Creating...";
 
+      /* Make sure the driver exists in the master before the challan points at him. A driver
+         typed as free text can never be totalled, so freight per driver would be guesswork. */
+      var dName = val("m_driver"), dMob = val("m_dmob"), dVeh = val("m_veh");
+      var known = (S.data.drivers || []).filter(function (x) {
+        return String(x.name).trim().toLowerCase() === dName.trim().toLowerCase();
+      })[0];
+      var driverReady = (!dName || known)
+        ? Promise.resolve(known || null)
+        : save("drivers", { id: "", name: dName, mobile: dMob, vehicle: dVeh, defaultFare: val("m_freight") || "" })
+            .then(function () {
+              return (S.data.drivers || []).filter(function (x) {
+                return String(x.name).trim().toLowerCase() === dName.trim().toLowerCase();
+              })[0] || null;
+            });
+
+      driverReady.then(function (dRec) {
       api("challanNo", { client: cObj.shortName || cn }).then(function (n) {
         var no = (n && n.challanNo) || (cn.toUpperCase().slice(0, 6) + "/" + today().slice(8) + "/001");
         var ch = {
@@ -3461,7 +3637,10 @@
           brand: val("m_brand"), location: val("m_loc"),
           items: lines.map(function (l) { return l.d + " x" + l.q; }).join(", "),
           itemsJson: itemsJson, amount: amount,
-          freight: val("m_freight") || 0, freightTo: val("m_fto"), driver: val("m_driver"),
+          freight: val("m_freight") || 0, freightTo: val("m_fto"),
+          driver: dName, driverId: (dRec && dRec.id) || "",
+          driverMobile: dMob || (dRec && dRec.mobile) || "",
+          vehicle: dVeh || (dRec && dRec.vehicle) || "",
           associate: assocName, commissionSet: "N", status: "Draft", receiptReceived: "N"
         };
         return save("challans", ch).then(function (r) {
@@ -3475,14 +3654,57 @@
             .then(function (tg) { toast(tg && tg.ok ? "Sent to challan bot." : "Saved, but Telegram send failed."); });
         });
       });
+      });   /* driverReady */
       return;
     }
 
+    if (act === "alt-q") { return; }
+    if (act === "alt-cancel") { S.alt = null; S.modal = null; render(); return; }
+    if (act === "alt-add") {
+      var pd = val("alt_add"), pq = Number(val("alt_addq")) || 0;
+      if (!pd || !pq) { toast("Pick a product and a quantity."); return; }
+      var pp = PRODUCTS.filter(function (x) { return x.label === pd || x.code === pd; })[0] || {};
+      S.alt.rows.push({ code: pp.code || "", desc: pp.desc || pd, unit: pp.unit || "No's",
+        was: 0, now: pq, note: "Added at site" });
+      S.modal = modalAlter(); render(); return;
+    }
+    if (act === "alt-save") {
+      S.alt.rows.forEach(function (r, i) {
+        var q = el("alt_q" + i), n2 = el("alt_n" + i);
+        if (q) r.now = Number(q.value) || 0;
+        if (n2) r.note = String(n2.value || "").trim();
+      });
+      /* only the lines that actually differ are worth recording */
+      var changed = S.alt.rows.filter(function (r) { return Number(r.now) !== Number(r.was); });
+      var missingWhy = changed.filter(function (r) { return !r.note; });
+      if (missingWhy.length) { toast("Give a reason for each changed line."); return; }
+      var cid = S.alt.id;
+      t.disabled = true; t.textContent = "Saving...";
+      var step = changed.length
+        ? api("challanAlter", { id: cid, alterations: changed })
+        : Promise.resolve({ ok: true });
+      step.then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Could not save the alteration."); render(); return; }
+        return api("challanMove", { id: cid, to: "Received" }).then(function (r2) {
+          if (!r2 || !r2.ok) { toast((r2 && r2.error) || "Could not mark received."); render(); return; }
+          var ch4 = S.data.challans.filter(function (x) { return x.id === cid; })[0];
+          if (ch4) {
+            ch4.status = "Received"; ch4.receiptReceived = "Y";
+            if (changed.length) { ch4.altJson = JSON.stringify(changed); ch4.alteredBy = S.user; }
+          }
+          S.alt = null; S.modal = null;
+          toast(changed.length ? "Receipt in, with " + changed.length + " alteration(s)." : "Receipt in - full quantity.");
+          render();
+          quietSync();
+        });
+      });
+      return;
+    }
     if (act === "ch-move") {
       var to = t.getAttribute("data-to");
       var ch2 = S.data.challans.filter(function (x) { return x.id === id; })[0];
       if (!ch2) return;
-      if (to === "Received" && !window.confirm("Confirm the signed material receipt is in hand for " + ch2.challanNo + "?")) return;
+      if (to === "Received") { S.alt = { id: id, rows: null }; S.modal = modalAlter(); render(); return; }
       t.disabled = true; t.textContent = "...";
       api("challanMove", { id: id, to: to }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Could not update."); render(); return; }
@@ -3531,6 +3753,19 @@
 
   document.addEventListener("change", function (e) {
     var t = e.target;
+
+    /* pick a known driver and his number, vehicle and usual fare fill themselves in */
+    if (t.id === "m_driver") {
+      var dd = (S.data.drivers || []).filter(function (x) {
+        return String(x.name).trim().toLowerCase() === String(t.value).trim().toLowerCase();
+      })[0];
+      if (dd) {
+        if (el("m_dmob")) el("m_dmob").value = dd.mobile || "";
+        if (el("m_veh")) el("m_veh").value = dd.vehicle || "";
+        if (el("m_freight") && !Number(val("m_freight"))) el("m_freight").value = dd.defaultFare || "";
+      }
+      return;
+    }
 
     /* + Add new location / area, right inside the dropdown */
     if (t.id === "c_loc" || t.id === "m_aloc") {
