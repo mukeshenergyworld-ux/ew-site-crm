@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "5.6";
+  var APP_VERSION = "5.7";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -79,6 +79,9 @@
     clBack: null,
     billDraft: null,
     clEditing: null,
+    rpt: null,
+    vType: "Site",
+    vdSite: null,
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [], areas: [], logos: [], returns: [], tools: [], toolmoves: [], pricerev: [] }
   };
 
@@ -103,10 +106,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["search","dash","returns","tools","rates","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
+    admin:    ["search","dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
     accounts: ["search","dash","returns","tools","clients","partners","followups","challans","payments","discounts","service","spares","dues","products"],
     godown:   ["search","dash","returns","tools","challans","products"],
-    sales:    ["search","dash","returns","tools","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
+    sales:    ["search","dash","report","returns","tools","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
     service:  ["search","dash","tools","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -1627,12 +1630,18 @@
   }
 
   function modalVisitDetail(site) {
+    S.vdSite = site.id;
     var vs = siteVisits(site.id);
     var d = (site.lat && site.lng) ? metresBetween(Number(site.lat), Number(site.lng), S.gps.lat, S.gps.lng) : null;
     return '<h2>' + (vs.length ? "Revisit" : "First visit") + '</h2>' +
       '<p class="sub">' + esc(site.name) + (d !== null ? '  \u00b7  ' + d + 'm from the site' : "") + '</p>' +
       (vs.length ? '<div class="card"><div class="meta"><b>' + vs.length + ' previous visit(s)</b><br>Last: ' +
         esc(dstr(vs[vs.length - 1].date)) + ' by ' + esc(vs[vs.length - 1].createdBy) + '</div></div>' : "") +
+      '<label>Who did you see?</label>' +
+      '<div class="row" id="vd_types">' +
+      ["Site", "Plumber", "Architect", "PMC", "Builder"].map(function (t2) {
+        return '<button class="chip ' + ((S.vType || "Site") === t2 ? "on" : "") + '" data-act="vd-type" data-t="' + t2 + '">' + t2 + '</button>';
+      }).join("") + '</div>' +
       '<label>Remarks</label><textarea id="vd_note" placeholder="What happened on this visit?"></textarea>' +
       '<label>Site photo</label><input id="vd_photo" type="file" accept="image/*" capture="environment"/>' +
       '<div class="meta">Goes to the EW Daily Report bot with the GPS pin, client and time. Stored in Telegram only.</div>' +
@@ -2166,6 +2175,74 @@
       '<label style="margin-top:10px">Note (optional)</label><input id="pr_note" placeholder="Annual revision"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="pr-save">Save revision</button></div>';
+  }
+
+  /* ---------------- MONTHLY SALES CARD ----------------
+     Sundays are dropped from the working-day average, because counting a day nobody works
+     drags the average down and makes a good month read as a poor one. But a visit actually
+     LOGGED on a Sunday is still shown, flagged - the man did the work, and hiding it would be
+     the opposite of the point. */
+  function viewReport() {
+    var execs = (S.data.team || []).filter(function (t2) {
+      return String(t2.role).toLowerCase() === "sales" && String(t2.active).toUpperCase() !== "N";
+    }).map(function (t2) { return t2.name; });
+    if (S.role !== "admin") execs = [S.user];
+    var months = [];
+    for (var i = 0; i < 12; i++) {
+      var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+      months.push(d.toISOString().slice(0, 7));
+    }
+    var h = '<div class="row">' +
+      '<div><label>Executive</label><select id="rp_exec">' + opts(execs, (S.rpt && S.rpt.exec) || execs[0] || "") + '</select></div>' +
+      '<div><label>Month</label><select id="rp_month">' + opts(months, (S.rpt && S.rpt.month) || months[1]) + '</select></div>' +
+      '<div style="align-self:end"><button class="btn" data-act="rp-go">Show</button></div>' +
+      '</div>';
+    var r = S.rpt && S.rpt.data;
+    if (!r) return h + '<div class="empty">Pick an executive and a month.</div>';
+
+    h += '<div class="cards" style="margin-top:12px">' +
+      '<div class="stat"><div class="n">' + r.newLeads + '</div><div class="l">New leads opened</div></div>' +
+      '<div class="stat"><div class="n">' + r.totalVisits + '</div><div class="l">Visits logged</div></div>' +
+      '<div class="stat"><div class="n">' + r.daysOut + '/' + r.workingDays + '</div><div class="l">Days out (Sun excl.)</div></div>' +
+      '<div class="stat"><div class="n">' + r.perDayAvg + '</div><div class="l">Visits per working day</div></div>' +
+      '</div>';
+
+    var TYPES = ["Site", "Plumber", "Architect", "PMC", "Builder"];
+    var COL = { Site: "#0d9488", Plumber: "#2563eb", Architect: "#9333ea", PMC: "#ea580c", Builder: "#64748b" };
+    h += '<h3 style="margin:14px 0 6px;font-size:14px">Who he saw</h3><div class="row">' +
+      TYPES.map(function (t2) {
+        return '<span class="pill" style="background:' + COL[t2] + '22;color:' + COL[t2] + '">' +
+          t2 + ' <b>' + (r.byType[t2] || 0) + '</b></span>';
+      }).join("") + '</div>';
+
+    h += '<div class="meta" style="margin-top:8px">' +
+      '<b>' + r.newLeadVisits + '</b> visits to new leads &middot; <b>' + r.existingLeadVisits + '</b> to existing clients' +
+      (r.sundayVisits ? '<br><span style="color:#b45309"><b>' + r.sundayVisits + '</b> logged on a Sunday - shown below, not counted in the working-day average.</span>' : "") +
+      '</div>';
+
+    /* the graph: one bar a day, stacked by who was seen */
+    var max = Math.max.apply(null, r.perDay.map(function (p) { return p.total; }).concat([1]));
+    h += '<h3 style="margin:16px 0 6px;font-size:14px">Visits per day</h3>' +
+      '<div style="display:flex;align-items:flex-end;gap:2px;height:120px;padding:6px 0;border-bottom:1px solid #e2e8f0;overflow-x:auto">';
+    r.perDay.forEach(function (p) {
+      var hp = Math.round((p.total / max) * 100);
+      var stack = TYPES.filter(function (t2) { return p.byType[t2]; }).map(function (t2) {
+        return '<div style="height:' + Math.round((p.byType[t2] / p.total) * hp) + '%;background:' + COL[t2] + '"></div>';
+      }).join("");
+      h += '<div title="' + p.iso + ' - ' + p.total + ' visit(s)" style="flex:1;min-width:9px;display:flex;flex-direction:column;justify-content:flex-end;height:100%;' +
+        (p.sunday ? "background:#fef2f2;" : "") + '">' + stack + '</div>';
+    });
+    h += '</div><div style="display:flex;gap:2px;font-size:8px;color:#94a3b8">' +
+      r.perDay.map(function (p) {
+        return '<div style="flex:1;min-width:9px;text-align:center;' + (p.sunday ? "color:#dc2626;font-weight:700" : "") + '">' + p.day + '</div>';
+      }).join("") + '</div>' +
+      '<div class="meta" style="margin-top:4px;color:#94a3b8">Red columns are Sundays.</div>';
+
+    if (r.newLeadNames && r.newLeadNames.length) {
+      h += '<h3 style="margin:16px 0 6px;font-size:14px">New leads he opened</h3><div class="meta">' +
+        r.newLeadNames.map(function (n) { return "&bull; " + esc(n); }).join("<br>") + '</div>';
+    }
+    return h;
   }
 
   function viewTools() {
@@ -3598,8 +3675,8 @@
   function render() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, tools: viewTools, rates: viewRates, products: viewProducts, pitch: viewPitch };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["rates", "Rate revision"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, tools: viewTools, rates: viewRates, report: viewReport, products: viewProducts, pitch: viewPitch };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -3617,7 +3694,7 @@
       ["Sell", ["search", "dash", "clients", "partners", "quotes", "sites", "leads", "visits", "winloss", "followups"]],
       ["Deliver", ["challans", "returns", "tools", "payments", "discounts", "products", "dues"]],
       ["Service", ["service", "spares"]],
-      ["Admin", ["commission", "rates", "payroll", "catalogue", "rules"]]
+      ["Admin", ["commission", "report", "rates", "payroll", "catalogue", "rules"]]
     ];
     var label = {};
     tabs.forEach(function (t) { label[t[0]] = t[1]; });
@@ -4129,6 +4206,13 @@
       if (!as2) { toast("Pick a site."); return; }
       S.modal = modalVisitDetail(as2); render(); return;
     }
+    if (act === "vd-type") {
+      S.vType = t.getAttribute("data-t");
+      var keepN = el("vd_note") ? el("vd_note").value : "";
+      S.modal = modalVisitDetail(siteById(S.vdSite)); render();
+      if (el("vd_note")) el("vd_note").value = keepN;
+      return;
+    }
     if (act === "vd-save") {
       var st2 = siteById(id);
       var setLoc = t.getAttribute("data-set") === "1";
@@ -4139,6 +4223,7 @@
       (file2 ? shrinkPhoto(file2) : Promise.resolve(null)).then(function (b64) {
         return api("siteVisit", {
           siteId: id, setLocation: setLoc, purpose: note, photoB64: b64 || "",
+          visitType: S.vType || "Site",
           lat: S.gps.lat, lng: S.gps.lng, accuracy: S.gps.acc
         });
       }).then(function (r) {
@@ -4280,6 +4365,16 @@
         S.pr = null; S.modal = null;
         toast("Revision saved. It applies from " + pf + ".");
         refresh();
+      });
+      return;
+    }
+    if (act === "rp-go") {
+      var ex = val("rp_exec"), mo = val("rp_month");
+      t.disabled = true; t.textContent = "...";
+      api("execReport", { exec: ex, month: mo }).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Could not build the report."); render(); return; }
+        S.rpt = { exec: ex, month: mo, data: r };
+        render();
       });
       return;
     }
