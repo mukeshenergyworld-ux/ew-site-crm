@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "5.5";
+  var APP_VERSION = "5.6";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -729,6 +729,32 @@
       return '&bull; <b>' + esc(b.name) + '</b>' + (b.gstin ? ' &middot; ' + esc(b.gstin) : "") +
         ' <button class="btn sm ghost" data-act="bill-del" data-i="' + i + '" style="padding:0 6px">&times;</button>';
     }).join("<br>") + '</div>';
+  }
+
+  /* ONE number, ONE person. Two names on a number means incentive lands on the wrong man and
+     a client gets rung twice by two executives. This warns and lets you carry on - a father
+     and son really do share a phone, and blocking that would just teach people to type 0000.
+     Checks clients, partners and drivers together, because the same plumber is often two of
+     the three. */
+  function dupWarn(fields) {
+    return api("dupCheck", fields).then(function (r) {
+      var hits = (r && r.hits) || [];
+      if (!hits.length) return true;
+      var phone = hits.filter(function (h) { return h.why === "same phone number"; });
+      var name = hits.filter(function (h) { return h.why === "same name"; });
+      var msg = "";
+      if (phone.length) {
+        msg += "This NUMBER is already saved against:\n\n" +
+          phone.map(function (h) { return "  \u2022 " + h.name + " (" + h.kind + (h.role ? " - " + h.role : "") + ")"; }).join("\n") +
+          "\n\nIf that is the same person, cancel and edit him instead of adding him twice.\n";
+      }
+      if (name.length) {
+        msg += (msg ? "\n" : "") + "This NAME already exists:\n\n" +
+          name.slice(0, 6).map(function (h) { return "  \u2022 " + h.name + " - " + (h.mobile || "no number") + " (" + h.kind + ")"; }).join("\n") +
+          "\n\nDifferent person in a different town? Carry on.\n";
+      }
+      return window.confirm(msg + "\nSave anyway?");
+    }).catch(function () { return true; });   /* never block a save because the check failed */
   }
 
   function clientField(id, value, label) {
@@ -3772,9 +3798,12 @@
       if (Number(f.opAmt) > 0) f.leadType = "Old";
       var mob = f.mob, loc = f.loc, ar = f.ar;
       var arch = f.arch, plumb = f.plumb, build = f.build, pmc = f.pmc;
-      t.disabled = true; t.textContent = "Saving...";
+      t.disabled = true; t.textContent = "Checking...";
+      dupWarn({ id: id || "", name: cn, mobile: mob }).then(function (go) {
+        if (!go) { t.disabled = false; t.textContent = "Save client"; return; }
+        t.textContent = "Saving...";
       /* anyone named here who is not yet a Partner gets created - no double entry */
-      Promise.all([
+      return Promise.all([
         ensurePartner(arch, "Architect", loc, ar),
         ensurePartner(plumb, "Plumber", loc, ar),
         ensurePartner(build, "Builder", loc, ar),
@@ -3810,6 +3839,7 @@
         }
         render();
       });
+      });   /* dupWarn */
       return;
     }
     if (act === "q-pdf") {
