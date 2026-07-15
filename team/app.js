@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "5.3";
+  var APP_VERSION = "5.4";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -76,6 +76,7 @@
     scan: null,
     pr: null,
     oc: null,
+    clBack: null,
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [], areas: [], logos: [], returns: [], tools: [], toolmoves: [], pricerev: [] }
   };
 
@@ -711,6 +712,24 @@
       '<div class="foot"><button class="btn ghost" data-act="alt-cancel">Cancel</button>' +
       '<button class="btn" data-act="alt-save">Confirm receipt</button></div>';
     return h;
+  }
+
+  /* ONE client field for the whole app. A challan, a return, an old delivery and a quote all
+     need the same thing: pick an existing client, or register a new one properly - with his
+     architect, plumber, area, second number, the lot. Four half-copies of that meant a client
+     typed on a challan arrived with no partners and no area, and the same man ended up in the
+     book twice under two spellings. One field, one form, everywhere. */
+  function clientField(id, value, label) {
+    var list = (S.data.clients || []).map(function (c) { return c.name; });
+    return '<label>' + (label || "Client") + '</label>' +
+      '<div class="row">' +
+      '<input class="grow" id="' + id + '" list="ew_clientlist" autocomplete="off" ' +
+      'placeholder="Type client name" value="' + esc(value || "") + '"/>' +
+      '<button class="btn sm ghost" data-act="cl-inline" data-for="' + id + '">+ New</button>' +
+      '</div>' +
+      '<datalist id="ew_clientlist">' + list.map(function (n) {
+        return '<option value="' + esc(n) + '"></option>';
+      }).join("") + '</datalist>';
   }
 
   function modalClient(c) {
@@ -2193,6 +2212,18 @@
   }
 
   /* the return form reuses the challan picker, so nobody has to learn a second screen */
+  /* read the form into a plain object so it survives a modal swap */
+  function keepSnapshot(ids) {
+    var o = {};
+    ids.forEach(function (i) { var e = el(i); if (e) o[i] = e.value; });
+    return o;
+  }
+  function restoreSnapshot(o) {
+    if (!o) return;
+    Object.keys(o).forEach(function (i) { var e = el(i); if (e) e.value = o[i]; });
+  }
+  var OC_FIELDS = ["o_client", "o_date", "o_no", "o_site", "o_bill"];
+
   function keepFields(ids) {
     var keep = {};
     ids.forEach(function (i) { var e = el(i); if (e) keep[i] = e.value; });
@@ -2200,7 +2231,7 @@
       ids.forEach(function (i) { var e = el(i); if (e && keep[i] !== undefined) e.value = keep[i]; });
     };
   }
-  var CH_FIELDS = ["m_loc", "m_client", "m_site", "m_assoc", "m_freight", "m_fto", "m_driver", "m_dmob", "m_veh"];
+  var CH_FIELDS = ["m_loc", "m_client", "m_site", "m_assoc", "m_freight", "m_fto", "m_driver", "m_dmob", "m_veh", "m_disc", "m_discnote"];
   var RT_FIELDS = ["r_client", "r_site", "r_ch", "r_reason", "r_driver", "r_freight"];
 
   function modalReturn() {
@@ -2212,8 +2243,7 @@
     }).map(function (c) { return c.challanNo; });
     return '<h2>Register material return</h2>' +
       '<p class="sub">Material coming back from a client. The original challan is not changed.</p>' +
-      '<label>Client</label><input id="r_client" list="clientlist3" placeholder="Type client name"/>' +
-      '<datalist id="clientlist3">' + clients.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      clientField("r_client", (S.rt && S.rt.client) || "") +
       '<label>Site (optional)</label><input id="r_site" placeholder="Site / project"/>' +
       '<label>Against challan (optional)</label><input id="r_ch" list="chlist" placeholder="Challan number"/>' +
       '<datalist id="chlist">' + chs.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
@@ -3357,8 +3387,7 @@
       '<div class="meta">For material already delivered before this app. It is saved straight as ' +
       '<b>Received</b> with the date you give, and <b>no Telegram message is sent to anyone</b>.' +
       '<br>For material going out today, use <b>+ New challan</b> instead.</div></div>' +
-      '<label>Client</label><input id="o_client" list="clientlist4" placeholder="Type client name"/>' +
-      '<datalist id="clientlist4">' + clients.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      clientField("o_client", (S.oc && S.oc.client) || "") +
       '<div class="grid2">' +
       '<div><label>Date it was delivered</label><input id="o_date" type="date" value="' + today() + '"/></div>' +
       '<div><label>Old challan no. (optional)</label><input id="o_no" placeholder="leave blank to auto-number"/></div>' +
@@ -3411,8 +3440,7 @@
     return '<h2>New delivery challan</h2>' +
       '<p class="sub">The printed challan carries no prices and no pictures - it is a delivery note, not a quote.</p>' +
       '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, LOCATIONS[0]) + '</select>' +
-      '<label>Client</label><input id="m_client" list="clientlist2" placeholder="Type client name"/>' +
-      '<datalist id="clientlist2">' + clients.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      clientField("m_client", (S.ch && S.ch.client) || "") +
       '<label>Site (optional)</label><input id="m_site" list="sitelist" placeholder="Site / project"/>' +
       '<datalist id="sitelist">' + sites.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
       '<label>Referring partner (optional)</label><select id="m_assoc">' +
@@ -3432,6 +3460,14 @@
       '<div class="grid2" style="margin-top:10px">' +
       '<div><label>Freight / tempo fare</label><input id="m_freight" inputmode="numeric" value="0"/></div>' +
       '<div><label>Freight borne by</label><select id="m_fto">' + opts(["Client", "Energy World"], "Client") + '</select></div>' +
+      '</div>' +
+      /* The bargain. Enter it once, here, and every line quietly remembers what the client
+         ACTUALLY paid - so if 5 of 20 come back later, he is credited what he paid, not the
+         list price. Without this the credit is always slightly too generous and the leak is
+         invisible, because each one looks fair on its own. */
+      '<div class="grid2">' +
+      '<div><label>Discount given on the whole challan</label><input id="m_disc" inputmode="numeric" placeholder="0" value="0"/></div>' +
+      '<div><label>Why (optional)</label><input id="m_discnote" placeholder="bargained on site"/></div>' +
       '</div>' +
       '<div class="grid2" style="margin-top:6px">' +
       '<div><label>Driver</label><input id="m_driver" list="driverlist" placeholder="Driver name"/>' +
@@ -3721,6 +3757,18 @@
         S.modal = null;
         toast("Client saved as " + r.shortName + ".");
         if (S.qz && S.qz.step === 1) { S.qz.client = r.name; S.qz.clientObj = r; }
+        /* came here from another form? go back to it, with the new client filled in */
+        var back = S.clBack;
+        if (back) {
+          S.clBack = null;
+          if (back.keep) back.keep[back.forId] = r.name;
+          if (back.modal === "challan") S.modal = modalChallan();
+          else if (back.modal === "return") S.modal = modalReturn();
+          else if (back.modal === "old") S.modal = modalOldChallan();
+          render();
+          restoreSnapshot(back.keep);
+          return;
+        }
         render();
       });
       return;
@@ -4300,6 +4348,20 @@
       });
       return;
     }
+    /* "+ New" from inside a challan / return / old-delivery. Remember what the man had already
+       typed, open the FULL client form, and when he saves, come straight back to where he was
+       with the client filled in. Registering a client must never cost him the form he was on. */
+    if (act === "cl-inline") {
+      var forId = t.getAttribute("data-for");
+      var back = { forId: forId };
+      if (forId === "m_client") { back.modal = "challan"; back.keep = keepSnapshot(CH_FIELDS); }
+      else if (forId === "r_client") { back.modal = "return"; back.keep = keepSnapshot(RT_FIELDS); }
+      else if (forId === "o_client") { back.modal = "old"; back.keep = keepSnapshot(OC_FIELDS); }
+      S.clBack = back;
+      S.modal = modalClient(null);
+      render();
+      return;
+    }
     if (act === "oc-new") { S.oc = { brand: "", family: "", items: [] }; S.modal = modalOldChallan(); render(); return; }
     if (act === "oc-close") { S.oc = null; S.modal = null; render(); return; }
     if (act === "oc-brand" || act === "oc-fam") {
@@ -4396,6 +4458,7 @@
           items: lines.map(function (l) { return l.desc + " x" + l.qty; }).join(", "),
           itemsJson: itemsJson, amount: amount,
           freight: val("m_freight") || 0, freightTo: val("m_fto"),
+          discAmt: val("m_disc") || 0, discNote: val("m_discnote"),
           driver: dName, driverId: (dRec && dRec.id) || "",
           driverMobile: dMob || (dRec && dRec.mobile) || "",
           vehicle: dVeh || (dRec && dRec.vehicle) || "",
