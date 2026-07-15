@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "5.7";
+  var APP_VERSION = "5.8";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -80,6 +80,7 @@
     billDraft: null,
     clEditing: null,
     rpt: null,
+    pLoc: "",
     vType: "Site",
     vdSite: null,
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [], areas: [], logos: [], returns: [], tools: [], toolmoves: [], pricerev: [] }
@@ -3068,39 +3069,122 @@
       rate: "", notes: "auto-added from a client" });
   }
 
+  /* ---------------- PARTNERS ----------------
+     296 plumbers and architects in a flat list is a list nobody opens. So: role, then town,
+     then the men - and against each one the only numbers that actually decide whether you
+     ring him today. Incentive is ADMIN ONLY and never rendered for anyone else. */
+  function partnerStats(name) {
+    var n = String(name || "").trim().toLowerCase();
+    var isMine = function (v) { return String(v || "").trim().toLowerCase() === n; };
+    /* his clients: he is named as the plumber / architect / builder / PMC on the client */
+    var mine = (S.data.clients || []).filter(function (c) {
+      return isMine(c.plumber) || isMine(c.architect) || isMine(c.builder) || isMine(c.pmc);
+    });
+    var names = {};
+    mine.forEach(function (c) { names[String(c.name).trim().toLowerCase()] = 1; });
+    /* live = we are actually delivering there. open = quoted or pitched, not yet closed. */
+    var live = {}, quoted = {};
+    (S.data.challans || []).forEach(function (c) {
+      if (names[String(c.customerName || "").trim().toLowerCase()]) live[c.customerName] = 1;
+    });
+    (S.data.quotes || []).forEach(function (q) {
+      if (!names[String(q.client || "").trim().toLowerCase()]) return;
+      if (["Won", "Lost"].indexOf(String(q.status)) < 0 && !live[q.client]) quoted[q.client] = 1;
+    });
+    var owed = 0;
+    if (S.role === "admin") {
+      (S.data.incentives || []).forEach(function (i) {
+        if (isMine(i.person)) owed += (Number(i.earned) || 0) - (Number(i.paid) || 0);
+      });
+    }
+    return {
+      clients: mine.length,
+      live: Object.keys(live).length,
+      open: Object.keys(quoted).length,
+      owed: owed
+    };
+  }
+
+  function dmy(v) {
+    var s2 = String(v || "").trim();
+    if (!s2) return "";
+    var d = new Date(s2);
+    if (isNaN(d.getTime())) return s2;
+    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  }
+
   function viewPartners() {
     var q = S.q.toLowerCase();
-    var roles = ["Architect", "Plumber", "Builder", "PMC", "Contractor", "Dealer", "Other"];
-    var list = S.data.associates.filter(function (a) {
-      if (S.pRole && a.role !== S.pRole) return false;
-      return !q || (a.name + " " + a.area + " " + a.location + " " + a.mobile).toLowerCase().indexOf(q) >= 0;
-    });
+    var all = S.data.associates || [];
+    /* only roles that actually exist, with counts - no empty buttons to click on */
+    var roleCount = {};
+    all.forEach(function (a2) { var r = a2.role || "Other"; roleCount[r] = (roleCount[r] || 0) + 1; });
+    var roles = Object.keys(roleCount).sort(function (x, y) { return roleCount[y] - roleCount[x]; });
+
     var greet = greetToday();
     var h = "";
     if (greet.length) {
       h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>Greet today</h3><div class="meta">';
       greet.forEach(function (x) {
-        h += '<b>' + esc(x.name) + '</b> - ' + esc(x.what) + (x.mobile ? ' &middot; ' + esc(x.mobile) : "") + '<br>';
+        h += '<b>' + esc(x.name) + '</b> - ' + esc(x.what) + (x.mobile ? ' &middot; <a href="tel:' + esc(x.mobile) + '">' + esc(x.mobile) + '</a>' : "") + '<br>';
       });
       h += '</div></div>';
     }
-    h += '<div class="row">' + roles.map(function (r) {
-      return '<button class="btn sm ' + (S.pRole === r ? "" : "ghost") + '" data-act="p-role" data-r="' + esc(r) + '">' + esc(r) + '</button>';
-    }).join("") + '<button class="btn sm ' + (S.pRole ? "ghost" : "") + '" data-act="p-role" data-r="">All</button></div>';
-    h += '<div class="row"><input class="grow" id="q" placeholder="Search partners by name, area, mobile..." value="' + esc(S.q) + '"/>' +
-      '<button class="btn" data-act="as-new">+ New partner</button></div>';
-    if (!list.length) h += '<div class="empty">No partners here yet.</div>';
-    list.forEach(function (a) {
-      h += '<div class="card"><h3>' + esc(a.name) + ' <span class="pill">' + esc(a.role || "") + '</span>' +
-        (a.area ? ' <span class="pill teal">' + esc(a.area) + '</span>' : "") + '</h3>' +
-        '<div class="meta">' + esc([a.mobile, a.mobile2].filter(Boolean).join("  \u00b7  ")) +
-        (a.location ? '<br>' + esc(a.location) + (a.area ? ' - ' + esc(a.area) : "") : "") +
-        (a.birthday ? '<br>Birthday: ' + esc(dstr(a.birthday)) : "") +
-        (a.anniversary ? ' &middot; Anniversary: ' + esc(dstr(a.anniversary)) : "") +
-        (Number(a.rate) ? '<br>Incentive ' + esc(a.rate) + '%' : "") + '</div>' +
-        '<div class="acts">' + (a.mobile ? '<a class="btn sm ghost" href="tel:' + esc(a.mobile) + '">Call</a>' : "") +
-        (S.role === "admin" ? '<button class="btn sm" data-act="p-open" data-n="' + esc(a.name) + '">Incentive</button>' : "") +
-        '<button class="btn sm ghost" data-act="as-open" data-id="' + esc(a.id) + '">Edit</button></div></div>';
+
+    /* step 1 - the trade */
+    h += '<div class="row" style="margin-top:6px">' + roles.map(function (r) {
+      return '<button class="chip ' + (S.pRole === r ? "on" : "") + '" data-act="p-role" data-r="' + esc(r) + '">' +
+        esc(r) + ' <b>' + roleCount[r] + '</b></button>';
+    }).join("") + '</div>';
+    if (!S.pRole && !q) return h + '<div class="empty">Pick a trade above.</div>';
+
+    /* step 2 - the town */
+    var inRole = all.filter(function (a2) { return !S.pRole || a2.role === S.pRole; });
+    if (S.pRole) {
+      var locCount = {};
+      inRole.forEach(function (a2) { var l = a2.location || "-"; locCount[l] = (locCount[l] || 0) + 1; });
+      var locs = Object.keys(locCount).sort(function (x, y) { return locCount[y] - locCount[x]; });
+      h += '<div class="chips">' + locs.map(function (l) {
+        return '<button class="chip ' + (S.pLoc === l ? "on" : "") + '" data-act="p-loc" data-l="' + esc(l) + '">' +
+          esc(l) + ' <b>' + locCount[l] + '</b></button>';
+      }).join("") + '</div>';
+      if (!S.pLoc && !q) return h + '<div class="empty">Pick a town.</div>';
+    }
+
+    /* step 3 - the men */
+    var list = inRole.filter(function (a2) {
+      if (S.pLoc && (a2.location || "-") !== S.pLoc) return false;
+      return !q || (a2.name + " " + a2.area + " " + a2.location + " " + a2.mobile).toLowerCase().indexOf(q) >= 0;
+    }).sort(function (x, y) { return String(x.name).localeCompare(String(y.name)); });
+
+    h += '<div class="row" style="margin:10px 0 4px"><div class="meta"><b>' + list.length + '</b> ' +
+      esc(S.pRole || "partner") + (list.length === 1 ? "" : "s") + (S.pLoc ? ' in ' + esc(S.pLoc) : "") + '</div>' +
+      '<div class="grow"></div><button class="btn sm" data-act="as-new">+ Add</button></div>';
+    if (!list.length) return h + '<div class="empty">Nobody here yet.</div>';
+
+    list.forEach(function (p) {
+      var st = partnerStats(p.name);
+      h += '<div class="card"><h3>' + esc(p.name) +
+        (p.flag ? ' <span class="pill Lost">needs number</span>' : "") +
+        (st.live ? ' <span class="pill Won">' + st.live + ' live</span>' : "") +
+        (st.open ? ' <span class="pill soon">' + st.open + ' open</span>' : "") + '</h3>' +
+        '<div class="meta">' +
+        (p.mobile ? '<a href="tel:' + esc(p.mobile) + '">' + esc(p.mobile) + '</a>' : '<span style="color:#dc2626">no number</span>') +
+        (p.mobile2 ? ' &middot; ' + esc(p.mobile2) : "") +
+        (p.area ? ' &middot; ' + esc(p.area) : "") +
+        '<br>' + st.clients + ' client(s) &middot; ' + st.live + ' site(s) taking material &middot; ' + st.open + ' quoted, not closed' +
+        ((p.birthday || p.anniversary)
+          ? '<br>' + (p.birthday ? 'Birthday ' + esc(dmy(p.birthday)) : "") +
+            (p.birthday && p.anniversary ? ' &middot; ' : "") +
+            (p.anniversary ? 'Anniversary ' + esc(dmy(p.anniversary)) : "")
+          : "") +
+        /* incentive: partners only. Never rendered for sales, accounts or service. */
+        (S.role === "admin"
+          ? '<br>Rate ' + (p.rate ? esc(p.rate) + "%" : '<span style="color:#94a3b8">not set</span>') +
+            (st.owed > 0 ? ' &middot; <b style="color:#0d9488">' + money(st.owed) + ' owed</b>' : "")
+          : "") +
+        '</div>' +
+        '<div class="acts"><button class="btn sm ghost" data-act="as-open" data-id="' + esc(p.id) + '">Open</button></div></div>';
     });
     return h;
   }
@@ -4148,7 +4232,17 @@
     }
     if (act === "bb-open") { S.brandClient = t.getAttribute("data-n"); S.tab = "brandboard"; render(); return; }
     if (act === "bb-back") { S.brandClient = ""; S.tab = "clients"; render(); return; }
-    if (act === "p-role") { S.pRole = t.getAttribute("data-r"); render(); return; }
+    if (act === "p-loc") {
+      var nl = t.getAttribute("data-l");
+      S.pLoc = (S.pLoc === nl) ? "" : nl;      /* tap again to go back up */
+      render(); return;
+    }
+    if (act === "p-role") {
+      var nr = t.getAttribute("data-r");
+      S.pRole = (S.pRole === nr) ? "" : nr;
+      S.pLoc = "";
+      render(); return;
+    }
     if (act === "p-open") { S.partner = t.getAttribute("data-n"); render(); return; }
     if (act === "p-back") { S.partner = ""; render(); return; }
 
