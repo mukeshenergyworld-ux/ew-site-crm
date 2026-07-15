@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "5.9";
+  var APP_VERSION = "6.0";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1250,7 +1250,7 @@
     "PRICES & GST - Applicable GST at prevailing rates will be charged additionally. Prices are subject to change without prior notice based on supplier or MRP revisions.",
     "PAYMENT TERMS - 50% advance along with a signed Purchase Order confirms the booking. Balance is payable against the Proforma Invoice before dispatch. Cheques and demand drafts in favour of Energy World are subject to realization before order processing.",
     "DELIVERY - Delivery timelines are indicative and subject to stock availability and supplier lead times. Delivery charges, if applicable, are communicated separately and are not included unless explicitly stated.",
-    "RETURNS & CANCELLATIONS - Goods once delivered and accepted cannot be returned unless defective or incorrectly supplied. Any discrepancy must be reported within 48 hours of delivery. Custom-ordered or imported items are non-returnable once placed with the supplier.",
+    "RETURNS & CANCELLATIONS - Goods once delivered and accepted cannot be returned unless defective or incorrectly supplied. Any discrepancy must be reported within 48 hours of delivery. Custom-ordered or imported items are non-returnable once placed with the supplier. Orders once confirmed and subsequently cancelled shall attract a cancellation fee of 40% of the advance received; the balance of the advance shall be refunded.",
     "WARRANTY - Products carry the respective manufacturer warranty. Energy World will assist in connecting the customer with the brand service team but does not assume warranty obligation on behalf of the manufacturer.",
     "INSTALLATION - Unless explicitly included, installation is not in the scope of supply. Energy World recommends installation by certified plumbers or brand-authorized technicians."
   ];
@@ -1452,26 +1452,40 @@
       doc.text(R(subTotal), X.amt, y + 1.6, { align: "right" });
 
       /* ================= TERMS ================= */
-      doc.addPage(); y = 24;
-      fill(MINT); doc.rect(L, y - 5, 1.8, 5.6, "F");
-      col(DEEP); F("bold"); doc.setFontSize(11);
-      doc.text("Terms & Conditions", L + 5, y - 0.5);
-      y += 9;
-      TERMS.forEach(function (tx) {
-        var parts = tx.split(" - ");
-        var hd = parts.length > 1 ? parts.shift() : "";
-        var body = parts.join(" - ");
-        F("normal"); doc.setFontSize(7.3);
-        var ls = doc.splitTextToSize(body || tx, Rt - L - 10);
-        var blk = (hd ? 4.5 : 0) + ls.length * 3.4 + 5;
-        if (y + blk > 274) { doc.addPage(); y = 22; }
-        fill([249, 251, 252]); doc.roundedRect(L, y - 4.5, Rt - L, blk, 1.5, 1.5, "F");
-        fill(MINT); doc.rect(L, y - 4.5, 1.2, blk, "F");
-        if (hd) { col([13, 118, 108]); F("bold"); doc.setFontSize(6.6); doc.text(hd.toUpperCase(), L + 5, y); y += 4.5; }
-        col([55, 65, 81]); F("normal"); doc.setFontSize(7.3);
-        doc.text(ls, L + 5, y);
-        y += ls.length * 3.4 + 6.5;
-      });
+      var TC_FS = 5.4, TC_LEAD = 2.2, TC_GAP = 2.3;
+    var COLW = (Rt - L - 6) / 2;
+    F("normal"); doc.setFontSize(TC_FS);
+    var tcBlocks = TERMS.map(function (tx, n) {
+      var parts = tx.split(" - ");
+      var hd = parts.length > 1 ? parts.shift() : "";
+      var body = parts.join(" - ") || tx;
+      var ls = doc.splitTextToSize(body, COLW - 3);
+      return { hd: hd, ls: ls, n: n + 1, h: (hd ? 2.5 : 0) + ls.length * TC_LEAD + TC_GAP };
+    });
+    var tcTotal = tcBlocks.reduce(function (a, b) { return a + b.h; }, 0);
+    var tcNeed = 9 + (tcTotal / 2) + 3;
+    if (y + tcNeed > 274) { doc.addPage(); y = 22; } else { y += 4; }
+    fill(MINT); doc.rect(L, y, 1.8, 5.2, "F");
+    col(DEEP); F("bold"); doc.setFontSize(9);
+    doc.text("Terms & Conditions", L + 4, y + 3.9);
+    y += 7.5;
+    var tcHalf = tcTotal / 2, tcAcc = 0, tcCol = 0, tcY = [y, y];
+    tcBlocks.forEach(function (b) {
+      if (tcCol === 0 && tcAcc + b.h > tcHalf && tcAcc > 0) { tcCol = 1; }
+      var x = L + tcCol * (COLW + 6);
+      var yy = tcY[tcCol];
+      if (b.hd) {
+        col(13, 118, 108); F("bold"); doc.setFontSize(TC_FS - 0.3);
+        doc.text(b.n + ". " + b.hd.toUpperCase(), x, yy);
+        yy += 2.5;
+      }
+      col(75, 85, 99); F("normal"); doc.setFontSize(TC_FS);
+      doc.text(b.ls, x + (b.hd ? 1.8 : 0), yy);
+      yy += b.ls.length * TC_LEAD + TC_GAP;
+      tcY[tcCol] = yy;
+      if (tcCol === 0) tcAcc += b.h;
+    });
+    y = Math.max(tcY[0], tcY[1]) + 2;
 
       /* ---- sign-off, bottom right of the last page. A quotation is a document a person
            stands behind, so the name goes where a signature goes - not in a header box. ---- */
