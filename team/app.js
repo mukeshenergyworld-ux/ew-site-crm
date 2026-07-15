@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "5.4";
+  var APP_VERSION = "5.5";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -77,6 +77,8 @@
     pr: null,
     oc: null,
     clBack: null,
+    billDraft: null,
+    clEditing: null,
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [], areas: [], logos: [], returns: [], tools: [], toolmoves: [], pricerev: [] }
   };
 
@@ -719,6 +721,16 @@
      architect, plumber, area, second number, the lot. Four half-copies of that meant a client
      typed on a challan arrived with no partners and no area, and the same man ended up in the
      book twice under two spellings. One field, one form, everywhere. */
+  function billRows(c) {
+    var list = [];
+    try { list = JSON.parse((S.billDraft !== null && S.billDraft !== undefined) ? JSON.stringify(S.billDraft) : (c && c.billingJson) || "[]"); } catch (e) { list = []; }
+    if (!list.length) return '<div class="meta" style="color:#94a3b8">None yet - the first challan will ask.</div>';
+    return '<div class="meta">' + list.map(function (b, i) {
+      return '&bull; <b>' + esc(b.name) + '</b>' + (b.gstin ? ' &middot; ' + esc(b.gstin) : "") +
+        ' <button class="btn sm ghost" data-act="bill-del" data-i="' + i + '" style="padding:0 6px">&times;</button>';
+    }).join("<br>") + '</div>';
+  }
+
   function clientField(id, value, label) {
     var list = (S.data.clients || []).map(function (c) { return c.name; });
     return '<label>' + (label || "Client") + '</label>' +
@@ -777,6 +789,14 @@
           '<div class="meta" style="margin-top:6px">A pending amount marks him <b>Old</b> automatically. It is money owed, not this month\u2019s sale, and it earns nobody an incentive.</div>' +
           '</div>'
         : "") +
+      /* Billing names. A man bills his house in his own name and his shop through his firm -
+         same client, two bills. Asked once, reused on every challan after that. */
+      '<h3 style="margin:14px 0 4px;font-size:13px">Bills under</h3>' +
+      '<div class="meta" style="margin-bottom:6px">Add every name this client is billed under. You can add more later.</div>' +
+      (billRows(c) || "") +
+      '<div class="row"><input class="grow" id="c_billname" placeholder="Name on the bill"/>' +
+      '<input id="c_billgst" placeholder="GSTIN (optional)" style="width:150px"/>' +
+      '<button class="btn sm ghost" data-act="bill-add">Add</button></div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="cl-save" data-id="' + esc(c.id || "") + '">Save client</button></div>';
   }
@@ -1790,6 +1810,14 @@
       /* Every sheet carries the sign-off. A 3-sheet challan where only the last page is signed
          proves nothing about the first two, and that is exactly what gets disputed later. */
       function footer(p, pages) {
+        /* Who approved it, and when - bottom of the LAST page only, in small grey type.
+           It is a fact for an argument later, not a headline. */
+        if (p === pages && (approver || c.approvedBy)) {
+          g(165); F("normal"); doc.setFontSize(4.6);
+          doc.text("Dispatch approved by " + String(approver || c.approvedBy) +
+            (c.approvedAt ? " on " + String(c.approvedAt).slice(0, 10) + " at " + String(c.approvedAt).slice(11, 16) : "") +
+            ", verified by PIN.", R, H - 23.5, { align: "right" });
+        }
         dg(190); doc.setLineWidth(0.2); doc.line(L, H - 20, R, H - 20);
         g(90); F("bold"); doc.setFontSize(5.6);
         doc.text("RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, H - 15.8);
@@ -2313,6 +2341,8 @@
         '<div class="meta">' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
         (c.brand ? '<br>Brand: ' + esc(c.brand) : "") +
         '<br>' + esc(c.items || "") +
+        (c.billNo ? '<br>Bill <b>' + esc(c.billNo) + '</b>' + (c.billTo ? ' to ' + esc(c.billTo) : "") :
+          (String(c.billStatus) === "Sent for billing" ? '<br><span style="color:#b45309">With accounts for billing' + (c.billTo ? ' - ' + esc(c.billTo) : "") + '</span>' : "")) +
         (c.freight ? '<br>Freight ' + money(c.freight) + ' (' + esc(c.freightTo || "Client") + ') &middot; ' + esc(c.driver || "no driver") : "") +
         '<br>Created by ' + esc(c.createdBy || "") +
         (c.approvedBy ? ' &middot; approved by <b>' + esc(c.approvedBy) + '</b>' : "") + '</div>' +
@@ -2320,6 +2350,10 @@
         (st === "Draft" && canApprove() ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Approved">Approve</button>' : "") +
         (st === "Approved" && canApprove() ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : "") +
         (st === "Dispatched" ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Receipt received</button>' : "") +
+        /* the billing hand-off: godown/sales send it, accounts closes it */
+        (st === "Received" && !c.billStatus ? '<button class="btn sm" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : "") +
+        (String(c.billStatus) === "Sent for billing" && (S.role === "accounts" || S.role === "admin")
+          ? '<button class="btn sm" data-act="bill-no" data-id="' + esc(c.id) + '">Enter bill no.</button>' : "") +
         '<button class="btn sm ghost" data-act="ch-pdf" data-id="' + esc(c.id) + '">PDF</button>' +
         '</div></div>';
     });
@@ -3714,8 +3748,12 @@
 
     if (act === "geo-filter") { S.geoOnly = !S.geoOnly; render(); return; }
     if (act === "cl-loc") { S.q = t.getAttribute("data-loc"); render(); return; }
-    if (act === "cl-new") { S.modal = modalClient(null); render(); return; }
-    if (act === "cl-open") { S.modal = modalClient(clientById(id)); render(); return; }
+    if (act === "cl-new") {
+      S.billDraft = []; S.clEditing = null; S.modal = modalClient(null); render(); return; }
+    if (act === "cl-open") {
+      var ce = S.data.clients.filter(function (x) { return x.id === id; })[0];
+      S.clEditing = ce || null;
+      try { S.billDraft = JSON.parse((ce && ce.billingJson) || "[]"); } catch (e) { S.billDraft = []; } S.modal = modalClient(clientById(id)); render(); return; }
     if (act === "cl-save") {
       var cn = val("c_name");
       if (!cn) { toast("Client name is required."); return; }
@@ -3749,6 +3787,7 @@
           address: f.addr, type: f.type,
           architect: f.arch, plumber: f.plumb, builder: f.build, pmc: f.pmc,
           notes: f.notes,
+          billingJson: JSON.stringify(S.billDraft || []),
           openingAmt: f.opAmt || "", openingAsOn: f.opDate || "",
           leadType: f.leadType || "New", ownedBy: f.owner || ""
         });
@@ -4351,7 +4390,79 @@
     /* "+ New" from inside a challan / return / old-delivery. Remember what the man had already
        typed, open the FULL client form, and when he saves, come straight back to where he was
        with the client filled in. Registering a client must never cost him the form he was on. */
+    if (act === "bill-send") {
+      var bc = S.data.challans.filter(function (x) { return x.id === id; })[0];
+      if (!bc) return;
+      var cl2 = clientByName(bc.customerName) || {};
+      var profiles = [];
+      try { profiles = JSON.parse(cl2.billingJson || "[]"); } catch (e) { }
+      var chosen;
+      if (!profiles.length) {
+        /* first challan for this client - ask now and remember it for next time */
+        var nm = window.prompt("Which name is " + bc.customerName + " billed under?\n\n" +
+          "Nothing is saved against this client yet, so this will be remembered for next time.");
+        if (!nm) return;
+        var gst = window.prompt("GSTIN for " + nm + "?\n(leave blank if none)") || "";
+        chosen = gst ? nm + " - " + gst : nm;
+        profiles.push({ name: nm, gstin: gst });
+        save("clients", { id: cl2.id, name: cl2.name, billingJson: JSON.stringify(profiles) });
+      } else if (profiles.length === 1) {
+        chosen = profiles[0].gstin ? profiles[0].name + " - " + profiles[0].gstin : profiles[0].name;
+        if (!window.confirm("Bill " + bc.challanNo + " to " + chosen + "?")) return;
+      } else {
+        var menu = profiles.map(function (p, i) { return (i + 1) + ". " + p.name + (p.gstin ? " (" + p.gstin + ")" : ""); }).join("\n");
+        var pick = window.prompt("Which name is this billed under?\n\n" + menu + "\n\nType the number.");
+        var pi = Number(pick) - 1;
+        if (!(pi >= 0 && pi < profiles.length)) return;
+        chosen = profiles[pi].gstin ? profiles[pi].name + " - " + profiles[pi].gstin : profiles[pi].name;
+      }
+      t.disabled = true; t.textContent = "...";
+      api("billSend", { id: id, billTo: chosen }).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Could not send."); render(); return; }
+        bc.billStatus = "Sent for billing"; bc.billTo = chosen;
+        toast("Sent to accounts for billing.");
+        render(); quietSync();
+      });
+      return;
+    }
+    if (act === "bill-no") {
+      var bn2 = S.data.challans.filter(function (x) { return x.id === id; })[0];
+      var no = window.prompt("Bill number for " + bn2.challanNo + "\nBilled to: " + (bn2.billTo || "-"));
+      if (!no) return;
+      t.disabled = true; t.textContent = "...";
+      api("billNo", { id: id, billNo: no }).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Could not save."); render(); return; }
+        bn2.billNo = no; bn2.billStatus = "Billed";
+        if (r.alsoOn && r.alsoOn.length) {
+          window.alert("Careful - bill " + no + " is already on:\n\n" + r.alsoOn.join("\n") +
+            "\n\nSaved anyway. If that is a consolidated bill, fine. If it is a typo, fix it.");
+        }
+        toast("Bill " + no + " recorded.");
+        render(); quietSync();
+      });
+      return;
+    }
+    if (act === "bill-add") {
+      var bn = val("c_billname");
+      if (!bn) { toast("Type the name on the bill."); return; }
+      var cur = S.billDraft || [];
+      cur.push({ name: bn, gstin: val("c_billgst") });
+      S.billDraft = cur;
+      var keepC = keepSnapshot(["c_name", "c_mob", "c_loc", "c_type", "c_addr", "c_arch", "c_plumb", "c_build", "c_pmc", "c_opamt", "c_opdate", "c_leadtype", "c_owner"]);
+      S.modal = modalClient(S.clEditing || null); render(); restoreSnapshot(keepC);
+      return;
+    }
+    if (act === "bill-del") {
+      var bi = Number(t.getAttribute("data-i"));
+      var cur2 = S.billDraft || [];
+      cur2.splice(bi, 1);
+      S.billDraft = cur2;
+      var keepD = keepSnapshot(["c_name", "c_mob", "c_loc", "c_type", "c_addr", "c_arch", "c_plumb", "c_build", "c_pmc", "c_opamt", "c_opdate", "c_leadtype", "c_owner"]);
+      S.modal = modalClient(S.clEditing || null); render(); restoreSnapshot(keepD);
+      return;
+    }
     if (act === "cl-inline") {
+      S.billDraft = []; S.clEditing = null;
       var forId = t.getAttribute("data-for");
       var back = { forId: forId };
       if (forId === "m_client") { back.modal = "challan"; back.keep = keepSnapshot(CH_FIELDS); }
@@ -4532,6 +4643,28 @@
       var ch2 = S.data.challans.filter(function (x) { return x.id === id; })[0];
       if (!ch2) return;
       if (to === "Received") { S.alt = { id: id, rows: null }; S.modal = modalAlter(); render(); return; }
+      /* Approving a dispatch releases real material. A pocket tap must not do that, so the PIN
+         is asked again here - the same one used to sign in, nothing new to remember. */
+      if (to === "Approved" || to === "Dispatched") {
+        var pin = window.prompt("Enter your PIN to " + (to === "Approved" ? "APPROVE" : "DISPATCH") +
+          "\n\n" + ch2.challanNo + " - " + ch2.customerName +
+          "\n\nThis releases material. It is not a formality.");
+        if (!pin) return;
+        t.disabled = true; t.textContent = "...";
+        api("challanMove", { id: id, to: to, approvePin: pin }).then(function (r) {
+          if (!r || !r.ok) { toast((r && r.error) || "Could not update."); render(); return; }
+          ch2.status = to;
+          if (to === "Approved") { ch2.approvedBy = r.by; toast("Approved by " + r.by + "."); render(); quietSync(); return; }
+          toast("Dispatched.");
+          sendChallanPdf(ch2, "TG_DISPATCH",
+            "<b>DISPATCH: " + ch2.challanNo + "</b>\n" + ch2.customerName +
+            (ch2.driver ? "\nDriver: " + ch2.driver : "") +
+            "\nApproved by <b>" + (ch2.approvedBy || r.by) + "</b>", ch2.approvedBy || r.by)
+            .then(function (tg) { toast(tg && tg.ok ? "Sent to dispatch bot." : "Saved, Telegram send failed."); });
+          render(); quietSync();
+        });
+        return;
+      }
       t.disabled = true; t.textContent = "...";
       api("challanMove", { id: id, to: to }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Could not update."); render(); return; }
