@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "5.8";
+  var APP_VERSION = "5.9";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1395,7 +1395,7 @@
            printing both made every row a wall of duplicated text. */
         /* DESC_W is derived from the column positions, not guessed. The unit column is
            right-aligned at X.unit, so its text grows leftwards - reserve room for it. */
-        var lines = fitCell(doc, F, r.desc, DESC_W, 3, "normal", 6.4);
+        var lines = fitCell(doc, F, r.desc, DESC_W, 40, "normal", 6.4);
         var hgt = Math.max(11, 5 + lines.length * 3.1);
         if (y + hgt > 272) { doc.addPage(); y = 20; head(); }
         if (i % 2 === 1) { fill(SOFT); doc.rect(L, y - 3.6, Rt - L, hgt, "F"); }
