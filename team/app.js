@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "5.1";
+  var APP_VERSION = "5.3";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -75,6 +75,7 @@
     tool: null,
     scan: null,
     pr: null,
+    oc: null,
     data: { customers: [], followups: [], challans: [], associates: [], team: [], sites: [], pitch: [], rules: [], installs: [], visits: [], spares: [], payroll: [], clients: [], drivers: [], quotes: [], discounts: [], commrates: [], payments: [], commpay: [], incentives: [], sitevisits: [], brands: [], brandmap: [], areas: [], logos: [], returns: [], tools: [], toolmoves: [], pricerev: [] }
   };
 
@@ -737,6 +738,26 @@
       '<div><label>PMC</label><input id="c_pmc" list="dl_pmc" value="' + esc(c.pmc) + '"/></div></div>' +
       dl("dl_arch", "architect") + dl("dl_plumb", "plumber") + dl("dl_build", "builder") + dl("dl_pmc", "pmc") +
       '<label>Notes</label><textarea id="c_notes">' + esc(c.notes) + '</textarea>' +
+      /* Migration block - partners only. The server refuses these fields from anyone else, and
+         a field that is visible but always errors is just a trap, so sales never sees it. */
+      (S.role === "admin"
+        ? '<div style="margin-top:14px;padding:10px;border:1px solid #fde68a;background:#fffbeb;border-radius:10px">' +
+          '<h3 style="margin:0 0 2px;font-size:13px">Migrating from the old books</h3>' +
+          '<div class="meta" style="margin-bottom:8px">Only for a client who already existed before this app.</div>' +
+          '<div class="grid2">' +
+          '<div><label>Pending amount</label><input id="c_opamt" inputmode="numeric" placeholder="148000" value="' + esc(c.openingAmt || "") + '"/></div>' +
+          '<div><label>As on date</label><input id="c_opdate" type="date" value="' + esc(c.openingAsOn || "") + '"/></div>' +
+          '</div>' +
+          '<div class="grid2">' +
+          '<div><label>Lead type</label><select id="c_leadtype">' + opts(["New", "Old"], c.leadType || "New") + '</select></div>' +
+          '<div><label>Assign to</label><select id="c_owner">' +
+          opts([""].concat((S.data.team || []).filter(function (t2) {
+            return String(t2.role).toLowerCase() === "sales" && String(t2.active).toUpperCase() !== "N";
+          }).map(function (t2) { return t2.name; })), c.ownedBy || "") + '</select></div>' +
+          '</div>' +
+          '<div class="meta" style="margin-top:6px">A pending amount marks him <b>Old</b> automatically. It is money owed, not this month\u2019s sale, and it earns nobody an incentive.</div>' +
+          '</div>'
+        : "") +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="cl-save" data-id="' + esc(c.id || "") + '">Save client</button></div>';
   }
@@ -2250,7 +2271,9 @@
       '<div class="stat"><div class="n">' + by("Dispatched") + '</div><div class="l">Awaiting receipt</div></div>' +
       '<div class="stat"><div class="n">' + by("Received") + '</div><div class="l">Receipt in</div></div>' +
       '</div>';
-    h += '<div class="row"><div class="grow"></div><button class="btn" data-act="ch-new">+ New challan</button></div>';
+    h += '<div class="row">' +
+      (S.role === "admin" ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
+      '<div class="grow"></div><button class="btn" data-act="ch-new">+ New challan</button></div>';
     if (!list.length) h += '<div class="empty">No challans yet.</div>';
     list.forEach(function (c) {
       var st = c.status || "Draft";
@@ -3322,6 +3345,63 @@
     return h + '</div>';
   }
 
+  /* Old material, typed in from the books. Deliberately its own form and not a tick-box on the
+     live challan screen: a "do not notify" checkbox sitting next to a real challan is a mis-tap
+     waiting to happen, and the cost of that mistake is a client who never gets his delivery. */
+  function modalOldChallan() {
+    if (!S.oc) S.oc = { brand: "", family: "", items: [] };
+    var z = S.oc;
+    var clients = S.data.clients.map(function (x) { return x.name; });
+    return '<h2>Enter an old delivery</h2>' +
+      '<div class="card" style="border-color:#fde68a;background:#fffbeb;margin-bottom:10px">' +
+      '<div class="meta">For material already delivered before this app. It is saved straight as ' +
+      '<b>Received</b> with the date you give, and <b>no Telegram message is sent to anyone</b>.' +
+      '<br>For material going out today, use <b>+ New challan</b> instead.</div></div>' +
+      '<label>Client</label><input id="o_client" list="clientlist4" placeholder="Type client name"/>' +
+      '<datalist id="clientlist4">' + clients.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      '<div class="grid2">' +
+      '<div><label>Date it was delivered</label><input id="o_date" type="date" value="' + today() + '"/></div>' +
+      '<div><label>Old challan no. (optional)</label><input id="o_no" placeholder="leave blank to auto-number"/></div>' +
+      '</div>' +
+      '<div class="grid2">' +
+      '<div><label>Site (optional)</label><input id="o_site"/></div>' +
+      '<div><label>Bill no. (if already billed)</label><input id="o_bill"/></div>' +
+      '</div>' +
+      '<h3 style="margin:14px 0 4px;font-size:14px">Products ' +
+      '<span class="pill teal">' + (z.items || []).length + ' picked</span></h3>' +
+      ocPicker() +
+      '<div class="foot"><button class="btn ghost" data-act="oc-close">Cancel</button>' +
+      '<button class="btn" data-act="oc-save">Save old delivery (sends nothing)</button></div>';
+  }
+
+  function ocPicker() {
+    var z = S.oc;
+    var h = '<div class="row" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
+      return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
+    }).map(function (br) {
+      return '<button class="chip ' + (z.brand === br.brand ? "on" : "") + '" data-act="oc-brand" data-brand="' + esc(br.brand) + '">' + esc(br.brand) + '</button>';
+    }).join("") + '</div>';
+    if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
+    h += '<div class="chips">' + familyList(z.brand).map(function (f) {
+      return '<button class="chip ' + (z.family === f ? "on" : "") + '" data-act="oc-fam" data-fam="' + esc(f) + '">' + esc(f) + '</button>';
+    }).join("") + '</div>';
+    if (!z.family) return h + '<div class="empty">Pick a family above.</div>';
+    h += '<div class="plist">';
+    brandProducts(z.brand).filter(function (p) { return p.family === z.family; }).forEach(function (p) {
+      var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
+      h += '<div class="prow ' + (ex ? "picked" : "") + '">' +
+        (p.pic ? '<img src="' + esc(p.pic) + '" loading="lazy"/>' : '<div class="noimg"></div>') +
+        '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
+        '<div class="pmeta">' + esc(p.code) + ' &middot; ' + money(p.price) + '</div></div>' +
+        '<div class="pqty">' +
+        '<button class="stp" data-act="oc-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
+        '<b>' + (ex ? ex.qty : 0) + '</b>' +
+        '<button class="stp" data-act="oc-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
+        '</div></div>';
+    });
+    return h + '</div>';
+  }
+
   function modalChallan() {
     if (!S.ch) S.ch = { brand: "", family: "", items: [] };
     var z = S.ch;
@@ -3608,8 +3688,14 @@
       var f = {
         mob: val("c_mob"), mob2: val("c_mob2"), loc: val("c_loc"), ar: val("c_area"),
         addr: val("c_addr"), type: val("c_type"), notes: val("c_notes"),
-        arch: val("c_arch"), plumb: val("c_plumb"), build: val("c_build"), pmc: val("c_pmc")
+        arch: val("c_arch"), plumb: val("c_plumb"), build: val("c_build"), pmc: val("c_pmc"),
+        /* migration fields - only rendered for a partner, so blank for everyone else */
+        opAmt: val("c_opamt"), opDate: val("c_opdate"),
+        leadType: val("c_leadtype"), owner: val("c_owner")
       };
+      /* Money owed from before the app means he is an OLD lead, whatever the dropdown says.
+         Otherwise a migrated client quietly inflates next month's "new leads" figure. */
+      if (Number(f.opAmt) > 0) f.leadType = "Old";
       var mob = f.mob, loc = f.loc, ar = f.ar;
       var arch = f.arch, plumb = f.plumb, build = f.build, pmc = f.pmc;
       t.disabled = true; t.textContent = "Saving...";
@@ -3626,7 +3712,9 @@
           location: f.loc, area: f.ar, mobile: f.mob, mobile2: f.mob2,
           address: f.addr, type: f.type,
           architect: f.arch, plumber: f.plumb, builder: f.build, pmc: f.pmc,
-          notes: f.notes
+          notes: f.notes,
+          openingAmt: f.opAmt || "", openingAsOn: f.opDate || "",
+          leadType: f.leadType || "New", ownedBy: f.owner || ""
         });
       }).then(function (r) {
         if (!r) return;
@@ -4209,6 +4297,40 @@
           toast("Return " + rowR.returnNo + " registered.");
           render();
         });
+      });
+      return;
+    }
+    if (act === "oc-new") { S.oc = { brand: "", family: "", items: [] }; S.modal = modalOldChallan(); render(); return; }
+    if (act === "oc-close") { S.oc = null; S.modal = null; render(); return; }
+    if (act === "oc-brand" || act === "oc-fam") {
+      var keepOc = keepFields(["o_client", "o_date", "o_no", "o_site", "o_bill"]);
+      if (act === "oc-brand") { S.oc.brand = t.getAttribute("data-brand"); S.oc.family = ""; }
+      else { S.oc.family = t.getAttribute("data-fam"); }
+      S.modal = modalOldChallan(); render(); keepOc(); return;
+    }
+    if (act === "oc-qty") {
+      var oc2 = keepFields(["o_client", "o_date", "o_no", "o_site", "o_bill"]);
+      var ocode = t.getAttribute("data-code"), od = Number(t.getAttribute("data-d")) || 0;
+      var op = PRODUCTS.filter(function (p) { return p.code === ocode; })[0] || {};
+      var orow = (S.oc.items || []).filter(function (i) { return i.code === ocode; })[0];
+      if (!orow) { if (od < 0) return; S.oc.items.push({ code: ocode, desc: op.desc || ocode, unit: op.unit || "No's", qty: 1, rate: op.price || 0 }); }
+      else { orow.qty += od; if (orow.qty <= 0) S.oc.items = S.oc.items.filter(function (i) { return i.code !== ocode; }); }
+      S.modal = modalOldChallan(); render(); oc2(); return;
+    }
+    if (act === "oc-save") {
+      var ocl = val("o_client"), odate = val("o_date");
+      if (!ocl) { toast("Enter the client."); return; }
+      if (!odate) { toast("Give the date it was actually delivered."); return; }
+      if (!(S.oc.items || []).length) { toast("Pick at least one product."); return; }
+      t.disabled = true; t.textContent = "Saving...";
+      api("historicChallan", {
+        client: ocl, date: odate, challanNo: val("o_no"), site: val("o_site"),
+        billNo: val("o_bill"), brand: S.oc.brand, items: S.oc.items
+      }).then(function (r) {
+        if (!r || !r.ok) { toast((r && r.error) || "Could not save."); render(); return; }
+        S.oc = null; S.modal = null;
+        toast("Saved " + r.challanNo + ". Nothing was sent to Telegram.");
+        refresh();
       });
       return;
     }
