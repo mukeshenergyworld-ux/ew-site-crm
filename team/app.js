@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.0";
+  var APP_VERSION = "6.1";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -108,7 +108,7 @@
 
   var ROLE_TABS = {
     admin:    ["search","dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
-    accounts: ["search","dash","returns","tools","clients","partners","followups","challans","payments","discounts","service","spares","dues","products"],
+    accounts: ["search","dash","returns","tools","clients","partners","followups","challans","payments","discounts","service","spares","dues","products","rates"],
     godown:   ["search","dash","returns","tools","challans","products"],
     sales:    ["search","dash","report","returns","tools","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
     service:  ["search","dash","tools","service","spares","dues","followups","products"]
@@ -1036,7 +1036,7 @@
 
     h += '<h3 style="margin:24px 0 10px;font-size:15px">Products (' + PRODUCTS.length + ')</h3>' +
       '<div class="row"><input class="grow" id="q" placeholder="Search code, name, family..." value="' + esc(S.q) + '"/>' +
-      '<button class="btn" data-act="pr-new">+ Add product</button></div>';
+      '<button class="btn" data-act="cat-new">+ Add product</button></div>';
     if (!q) return h + '<div class="empty">Type to search the catalogue.</div>';
     var list = PRODUCTS.filter(function (p) {
       return (p.code + " " + p.desc + " " + p.family + " " + p.brand).toLowerCase().indexOf(q) >= 0;
@@ -2158,7 +2158,7 @@
         (live ? "" : " from " + esc(r.effectiveFrom)) + '</span></h3>' +
         '<div class="meta">Effective ' + esc(r.effectiveFrom) + ' &middot; ' + (live ? "in force" : "not yet in force") +
         (ov.length ? '<br>' + ov.length + ' item(s) overridden: ' + esc(ov.slice(0, 4).map(function (o) { return o.code; }).join(", ")) : "") +
-        '<br>By ' + esc(r.createdBy) + (r.notes ? ' &middot; ' + esc(r.notes) : "") +
+        '<br>By ' + esc(r.createdBy) + (r.createdAt ? ' on ' + dmy(String(r.createdAt).slice(0,10)) + ' ' + String(r.createdAt).slice(11,16) : '') + (r.notes ? ' &middot; ' + esc(r.notes) : "") +
         '<br><span style="color:#94a3b8">Challans raised before this date keep their old rates.</span></div></div>';
     });
     return h;
@@ -3915,7 +3915,7 @@
       return;
     }
 
-    if (act === "pr-new") { S.modal = modalProduct(null); render(); return; }
+    if (act === "cat-new") { S.modal = modalProduct(null); render(); return; }
     if (act === "pr-open") {
       var pp = PRODUCTS.filter(function (x) { return x.code === t.getAttribute("data-code"); })[0];
       S.modal = modalProduct(pp); render(); return;
