@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9";
+  var APP_VERSION = "6.9.1";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -214,6 +214,17 @@ window.addEventListener("beforeunload", function (ev) {
   }
 
   /* ---------------- product catalog (853 items, live from the Sheet) ---------------- */
+  /* Normalise any Google-Drive image link to the one lh3 form that renders in an <img>:
+     .../d/{ID}=w200 works; .../d/{ID}/view?usp=w200 is a viewer path and shows a broken ?.
+     Repairs every Drive link so thumbnails, catalogue, price-list PDF and quote PDF all load. */
+  function driveImg(u) {
+    u = String(u || "").trim();
+    if (!u) return "";
+    var m = u.match(/\/d\/([A-Za-z0-9_\-]{20,})/) || u.match(/[?&]id=([A-Za-z0-9_\-]{20,})/);
+    if (!m) return u;
+    return "https://lh3.googleusercontent.com/d/" + m[1] + "=w200";
+  }
+
   function parseCatalog(rows) {
     var head = -1, i, r;
     for (i = 0; i < rows.length && i < 10; i++) {
@@ -235,7 +246,7 @@ window.addEventListener("beforeunload", function (ev) {
         unit: String(row[5] || "").trim(),
         price: Number(String(row[6] || "0").replace(/[^0-9.]/g, "")) || 0,
         brand: String(row[8] || "").trim(),
-        pic: String(row[10] || "").trim(),
+        pic: driveImg(row[10]),
         label: (code ? code + " - " : "") + desc
       });
     }
@@ -1396,6 +1407,7 @@ function viewCatalogue() {
   }
 
   function loadPic(url, trim) {
+    url = driveImg(url);
     if (!url) return Promise.resolve(null);
     if (PIC_CACHE[url] !== undefined) return Promise.resolve(PIC_CACHE[url]);
     return api("imgB64", { url: url }).then(function (r) {
