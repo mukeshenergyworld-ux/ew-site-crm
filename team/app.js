@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.5";
+  var APP_VERSION = "6.6";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1039,6 +1039,13 @@ function viewPriceList() {
 }
 
 
+// Pipe families lead every price list - that is what a plumber looks for first.
+function plRank(fam) {
+  var f = String(fam || "").toUpperCase();
+  if (/\bPIPE\b|\bPIPES\b/.test(f)) return 0;
+  return 1;
+}
+
 async function priceListPdf(brands) {
   if (["admin", "accounts"].indexOf(S.role) < 0) { toast("Not allowed."); return; }
   var rows = PRODUCTS.filter(function (p) { return brands.indexOf(String(p.brand || "").trim()) >= 0; });
@@ -1076,7 +1083,7 @@ async function priceListPdf(brands) {
 
   brands.forEach(function (brand) {
     var list = rows.filter(function (p) { return String(p.brand || "").trim() === brand; })
-                   .sort(function (a, b) { return String(a.family).localeCompare(String(b.family)) || (a.price - b.price); });
+                   .sort(function (a, b) { return plRank(a.family) - plRank(b.family) || String(a.family).localeCompare(String(b.family)) || (a.price - b.price); });
     if (!list.length) return;
     if (!first) doc.addPage();
     first = false;
