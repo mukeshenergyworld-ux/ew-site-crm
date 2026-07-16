@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.7";
+  var APP_VERSION = "6.8";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -128,19 +128,41 @@
   }
 
   function save(tab, row) {
-    /* optimistic: merge the saved row straight into local state and repaint immediately.
-       The server is still the source of truth - we re-sync quietly in the background. */
-    return api("teamSave", { tab: tab, row: row }).then(function (r) {
-      if (!r || !r.ok) { toast("Save failed: " + ((r && r.error) || "unknown")); return null; }
-      var list = S.data[tab] || (S.data[tab] = []);
-      var i = -1;
-      for (var k = 0; k < list.length; k++) { if (list[k].id === r.row.id) { i = k; break; } }
-      if (i >= 0) list[i] = Object.assign({}, list[i], r.row); else list.push(r.row);
-      render();
-      quietSync();
-      return r.row;
-    });
+  var list = (S.data[tab] = S.data[tab] || []);
+  var idx = -1;
+  for (var k = 0; k < list.length; k++) {
+    if (list[k] && row.id && list[k].id === row.id) { idx = k; break; }
   }
+  var prev = idx >= 0 ? Object.assign({}, list[idx]) : null;
+  if (idx >= 0) Object.assign(list[idx], row);
+  else { list.push(row); idx = list.length - 1; }
+  S.pending = (S.pending || 0) + 1;
+  render();
+  var undo = function (why) {
+    S.pending = Math.max(0, (S.pending || 1) - 1);
+    if (prev) Object.assign(list[idx], prev);
+    else list.splice(idx, 1);
+    toast("NOT saved - " + why + ". Your change has been undone.");
+    render();
+    return null;
+  };
+  return api("teamSave", { tab: tab, row: row }).then(function (r) {
+    if (!r || !r.ok) return undo((r && r.error) || "server refused it");
+    S.pending = Math.max(0, (S.pending || 1) - 1);
+    Object.assign(list[idx], r.row);
+    render();
+    quietSync();
+    return r.row;
+  }).catch(function (e) {
+    return undo(e && e.message ? e.message : "network error");
+  });
+}
+
+/* A save now repaints instantly and syncs behind. If someone closes the app while
+   a save is still in flight, warn them rather than lose it silently. */
+window.addEventListener("beforeunload", function (ev) {
+  if (typeof S !== "undefined" && S && S.pending > 0) { ev.preventDefault(); ev.returnValue = ""; }
+});
 
   /* background re-sync, at most once every 20s, never blocks the screen */
   var syncAt = 0, syncing = false;
