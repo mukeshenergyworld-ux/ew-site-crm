@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.8";
+  var APP_VERSION = "6.9";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -4270,16 +4270,22 @@ function viewCatalogue() {
           .then(function (r) {
             var others = ((r && r.clashes) || []).filter(function (x) { return !x.mine; });
             z.dupChecked = true;
-            if (!others.length) { render(); document.querySelector('[data-act="qz-save"]').click(); return; }
+            if (!others.length) { render(); (function () { var b = document.querySelector('[data-act="qz-save"]'); if (b) { b.click(); } else { toast("Could not continue the save - please press Save again."); render(); } })(); return; }
             var msg = "WARNING - this client has already been quoted these products by someone else:\n\n";
             others.slice(0, 6).forEach(function (x) {
               msg += "- " + x.desc + "\n  " + (uniRupee() ? "\u20B9" : "Rs.") + x.price + " at " + x.disc + "% off, on " + x.date +
                 "\n  by " + x.by + " (" + x.quoteNo + ", " + x.status + ")\n\n";
             });
             msg += "A client must never get two different prices from Energy World.\n\nContinue anyway?";
-            if (window.confirm(msg)) { render(); document.querySelector('[data-act="qz-save"]').click(); }
+            if (window.confirm(msg)) { render(); (function () { var b = document.querySelector('[data-act="qz-save"]'); if (b) { b.click(); } else { toast("Could not continue the save - please press Save again."); render(); } })(); }
             else { z.dupChecked = false; render(); }
-          });
+          }).catch(function (e) {
+      /* Never let the duplicate check kill the save silently. Let the user through,
+         and tell them the check did not run rather than pretending it passed. */
+      S.qz.dupChecked = true;
+      toast("Duplicate check did not run (" + ((e && e.message) || "network") + "). Press Save again to go ahead without it.");
+      render();
+    });
         return;
       }
       var tot = qzTotals();
