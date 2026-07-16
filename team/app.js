@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.1";
+  var APP_VERSION = "6.3";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -108,7 +108,7 @@
 
   var ROLE_TABS = {
     admin:    ["search","dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
-    accounts: ["search","dash","returns","tools","clients","partners","followups","challans","payments","discounts","service","spares","dues","products","rates"],
+    accounts: ["search","dash","returns","tools","clients","partners","followups","challans","payments","discounts","service","spares","dues","products","rates","pricelist"],
     godown:   ["search","dash","returns","tools","challans","products"],
     sales:    ["search","dash","report","returns","tools","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
     service:  ["search","dash","tools","service","spares","dues","followups","products"]
@@ -997,7 +997,145 @@
     return h;
   }
 
-  function viewCatalogue() {
+  
+/* ============ BRAND PRICE LIST PDF (admin + accounts) ============
+   A brand-format list to send outside: brand logo and name only in the header,
+   product pictures, no Energy World identity anywhere on the page. ============ */
+function plBrands() {
+  var live = {};
+  PRODUCTS.forEach(function (p) {
+    var b = String(p.brand || "").trim();
+    if (b) live[b] = (live[b] || 0) + 1;
+  });
+  return Object.keys(live).sort().map(function (b) { return { brand: b, n: live[b] }; });
+}
+
+function viewPriceList() {
+  if (["admin", "accounts"].indexOf(S.role) < 0)
+    return '<div class="empty">Price lists are for partners and accounts only.</div>';
+  S.pl = S.pl || {};
+  var bs = plBrands();
+  if (!bs.length) return '<div class="empty">No products loaded yet.</div>';
+  var picked = Object.keys(S.pl).filter(function (k) { return S.pl[k]; });
+  var h = '<div class="card"><h3>Brand price list</h3>' +
+    '<p class="sub">Pick one or more brands. The PDF carries the brand name and logo only ' +
+    '- no Energy World details - so it can go straight to a customer or architect.</p><div class="chips">';
+  bs.forEach(function (b) {
+    var on = !!S.pl[b.brand];
+    h += '<button class="chip' + (on ? ' on' : '') + '" data-act="pl-tog" data-b="' + esc(b.brand) + '">' +
+         (on ? "&#10003; " : "") + esc(b.brand) + ' <span class="mut">' + b.n + '</span></button>';
+  });
+  h += '</div>';
+  var tot = bs.filter(function (b) { return S.pl[b.brand]; }).reduce(function (a, b) { return a + b.n; }, 0);
+  h += '<div class="row" style="margin-top:10px">' +
+       '<button class="btn" data-act="pl-pdf"' + (picked.length ? "" : " disabled") + '>' +
+       (picked.length ? "Download PDF - " + picked.length + " brand" + (picked.length > 1 ? "s" : "") + ", " + tot + " products" : "Pick a brand first") +
+       '</button>';
+  if (picked.length) h += '<button class="btn ghost" data-act="pl-clear">Clear</button>';
+  h += '</div>';
+  if (tot > 400) h += '<p class="sub" style="color:#b45309">That is ' + tot + ' products - the PDF will take a while and be a large file. Consider fewer brands.</p>';
+  h += '</div>';
+  return h;
+}
+
+
+async function priceListPdf(brands) {
+  if (["admin", "accounts"].indexOf(S.role) < 0) { toast("Not allowed."); return; }
+  var rows = PRODUCTS.filter(function (p) { return brands.indexOf(String(p.brand || "").trim()) >= 0; });
+  if (!rows.length) { toast("No products for that brand."); return; }
+  toast("Building price list - fetching pictures...");
+  var pics = {};
+  var uniq = [];
+  rows.forEach(function (p) { var u = String(p.pic || "").trim(); if (u && uniq.indexOf(u) < 0) uniq.push(u); });
+  var f = await loadFonts();
+  var got = await Promise.all(uniq.map(function (u) { return loadPic(u); }));
+  uniq.forEach(function (u, i) { pics[u] = got[i]; });
+  var logos = {};
+  var lg = await Promise.all(brands.map(function (b) {
+    var row = (S.data.logos || []).filter(function (l) { return String(l.brand || "").trim().toLowerCase() === b.toLowerCase(); })[0];
+    return row ? loadPic(row.url) : Promise.resolve(null);
+  }));
+  brands.forEach(function (b, i) { logos[b] = lg[i]; });
+
+  var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+  var uni = false;
+  if (f) {
+    doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
+    doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold");
+    uni = true;
+  }
+  var F = function (w) { doc.setFont(uni ? "DJ" : "helvetica", w || "normal"); };
+  var money = function (n) { return (uni ? "\u20B9 " : "Rs ") + Number(n || 0).toLocaleString("en-IN"); };
+  var L = 12, Rt = 198, first = true;
+
+  brands.forEach(function (brand) {
+    var list = rows.filter(function (p) { return String(p.brand || "").trim() === brand; })
+                   .sort(function (a, b) { return String(a.family).localeCompare(String(b.family)) || (a.price - b.price); });
+    if (!list.length) return;
+    if (!first) doc.addPage();
+    first = false;
+    var y = 14;
+    // ---- brand header: the brand only, never Energy World ----
+    if (logos[brand]) { try { doc.addImage(logos[brand], "PNG", L, y, 34, 14, undefined, "FAST"); } catch (e) {} }
+    F("bold"); doc.setFontSize(17); doc.setTextColor(17, 24, 39);
+    doc.text(String(brand).toUpperCase(), L + (logos[brand] ? 38 : 0), y + 8);
+    F("normal"); doc.setFontSize(8); doc.setTextColor(100, 116, 139);
+    doc.text("PRICE LIST", L + (logos[brand] ? 38 : 0), y + 13);
+    doc.text(dmy(new Date().toISOString().slice(0, 10)), Rt, y + 13, { align: "right" });
+    y += 18;
+    doc.setDrawColor(15, 118, 110); doc.setLineWidth(0.6); doc.line(L, y, Rt, y);
+    y += 5;
+    var C = { pic: L, code: L + 16, desc: L + 46, unit: 150, mrp: Rt };
+    var head = function () {
+      doc.setFillColor(241, 245, 249); doc.rect(L, y, Rt - L, 6, "F");
+      F("bold"); doc.setFontSize(6.6); doc.setTextColor(51, 65, 85);
+      doc.text("PICTURE", C.pic + 1, y + 4);
+      doc.text("CODE", C.code, y + 4);
+      doc.text("DESCRIPTION", C.desc, y + 4);
+      doc.text("UNIT", C.unit, y + 4);
+      doc.text("MRP", C.mrp, y + 4, { align: "right" });
+      y += 8;
+    };
+    head();
+    var fam = "";
+    list.forEach(function (p) {
+      if (String(p.family || "") !== fam) {
+        fam = String(p.family || "");
+        if (y + 8 > 280) { doc.addPage(); y = 14; head(); }
+        F("bold"); doc.setFontSize(7.2); doc.setTextColor(15, 118, 110);
+        doc.text(fam.toUpperCase(), L, y + 3);
+        y += 5;
+      }
+      F("normal"); doc.setFontSize(6.4); doc.setTextColor(55, 65, 81);
+      var ls = fitCell(doc, F, p.desc, C.unit - C.desc - 3, 3, "normal", 6.4);
+      var hgt = Math.max(13, 4 + ls.length * 3.1);
+      if (y + hgt > 282) { doc.addPage(); y = 14; head(); }
+      var img = pics[String(p.pic || "").trim()];
+      if (img) { try { doc.addImage(img, "PNG", C.pic + 1, y, 12, hgt - 2, undefined, "FAST"); } catch (e) {} }
+      F("bold"); doc.setFontSize(6.2); doc.setTextColor(17, 24, 39);
+      doc.text(String(p.code || ""), C.code, y + 4);
+      F("normal"); doc.setFontSize(6.4); doc.setTextColor(55, 65, 81);
+      doc.text(ls, C.desc, y + 4);
+      doc.setFontSize(6.2); doc.setTextColor(100, 116, 139);
+      doc.text(String(p.unit || ""), C.unit, y + 4);
+      F("bold"); doc.setFontSize(7.4); doc.setTextColor(17, 24, 39);
+      doc.text(money(p.price), C.mrp, y + 4, { align: "right" });
+      y += hgt;
+      doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.15); doc.line(L, y - 1, Rt, y - 1);
+    });
+  });
+  var n = doc.getNumberOfPages();
+  for (var i = 1; i <= n; i++) {
+    doc.setPage(i);
+    F("normal"); doc.setFontSize(6); doc.setTextColor(148, 163, 184);
+    doc.text("Prices are MRP in INR, exclusive of GST. Subject to revision without notice.", L, 290);
+    doc.text(i + " / " + n, Rt, 290, { align: "right" });
+  }
+  doc.save(brands.join("_").replace(/[^A-Za-z0-9_]+/g, "") + "_Price_List.pdf");
+  toast("Price list ready.");
+}
+
+function viewCatalogue() {
     var q = S.q.toLowerCase();
     var unmapped = S.data.brandmap.filter(function (m) { return !m.brand; });
     var h = '<div class="empty" style="text-align:left;padding:0 0 14px"><b>Brand mapping.</b> The catalogue\'s Master Brand column mixes real brands with categories. Map each value to one of your brands - quotes, pitch matrix and incentives all key off this.</div>';
@@ -1079,7 +1217,7 @@
       '<datalist id="mblist">' + mapVals.map(function (m) { return '<option value="' + esc(m) + '"></option>'; }).join("") + '</datalist>' +
       '<label>Picture URL</label><input id="p_pic" value="' + esc(p.pic) + '"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      '<button class="btn" data-act="pr-save">Save product</button></div>';
+      '<button class="btn" data-act="cat-save">Save product</button></div>';
   }
 
   /* ---------------- Quotation PDF (Energy World format) ----------------
@@ -3773,8 +3911,8 @@
   function render() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, tools: viewTools, rates: viewRates, report: viewReport, products: viewProducts, pitch: viewPitch };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -3792,7 +3930,7 @@
       ["Sell", ["search", "dash", "clients", "partners", "quotes", "sites", "leads", "visits", "winloss", "followups"]],
       ["Deliver", ["challans", "returns", "tools", "payments", "discounts", "products", "dues"]],
       ["Service", ["service", "spares"]],
-      ["Admin", ["commission", "report", "rates", "payroll", "catalogue", "rules"]]
+      ["Admin", ["commission", "report", "rates", "pricelist", "payroll", "catalogue", "rules"]]
     ];
     var label = {};
     tabs.forEach(function (t) { label[t[0]] = t[1]; });
@@ -3920,7 +4058,7 @@
       var pp = PRODUCTS.filter(function (x) { return x.code === t.getAttribute("data-code"); })[0];
       S.modal = modalProduct(pp); render(); return;
     }
-    if (act === "pr-save") {
+    if (act === "cat-save") {
       var pc = val("p_code");
       if (!pc) { toast("Product code is required."); return; }
       t.disabled = true; t.textContent = "Saving...";
@@ -4446,7 +4584,23 @@
       if (row && el("m_lines").children.length > 1) row.remove();
       return;
     }
-    if (act === "pr-new") { S.pr = { brand: "", overrides: [] }; S.modal = modalPrice(); render(); return; }
+    if (act === "pl-tog") {
+    var b = t.getAttribute("data-b");
+    S.pl = S.pl || {};
+    S.pl[b] = !S.pl[b];
+    render();
+    return;
+  }
+  if (act === "pl-clear") { S.pl = {}; render(); return; }
+  if (act === "pl-pdf") {
+    var bs = Object.keys(S.pl || {}).filter(function (k) { return S.pl[k]; });
+    if (!bs.length) { toast("Pick a brand first."); return; }
+    t.disabled = true; t.textContent = "Building...";
+    priceListPdf(bs).catch(function (e) { toast("PDF failed: " + e.message); })
+      .then(function () { render(); });
+    return;
+  }
+  if (act === "pr-new") { S.pr = { brand: "", overrides: [] }; S.modal = modalPrice(); render(); return; }
     if (act === "pr-add") {
       var pc = val("pr_code"), pr2 = val("pr_rate");
       if (!pc || !pr2) { toast("Pick a product and its new rate."); return; }
