@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.6";
+  var APP_VERSION = "6.7";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -3533,7 +3533,7 @@ function viewCatalogue() {
     api("teamAuth").then(function (r) {
       if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
       S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
-      try { localStorage.setItem(STORE, JSON.stringify({ pin: pin, user: S.user })); } catch (e) {}
+      try { localStorage.setItem(STORE, JSON.stringify({ pin: pin, user: S.user, role: S.role, pinSet: S.pinSet })); } catch (e) {}
       if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return; }
       S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
       loadCatalog();
@@ -5335,6 +5335,22 @@ function viewCatalogue() {
     try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) {}
     if (sess && sess.pin && sess.user) {
       S.pin = sess.pin; S.user = sess.user;
+    // Warm start: the data is already on this device and was role-filtered by the
+    // server when it was cached. Paint it now; verify the PIN in the background.
+    // If the check fails we wipe and show the login screen.
+    var warm = null;
+    try { warm = snapLoad(); } catch (e) {}
+    if (warm && warm.ok && sess.role) {
+      S.role = sess.role;
+      S.pinSet = sess.pinSet;
+      if (String(S.pinSet || "").toUpperCase() === "Y") {   // "Y" = PIN is set; anything else must reset it first
+        S.tab = (ROLE_TABS[S.role] || ["dash"])[0] || "dash";
+        S.data = warm;
+        S.warmStart = true;
+        loadCatalog();
+        render();
+      }
+    }
       api("teamAuth").then(function (r) {
         if (r && r.ok) {
           S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
