@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.4";
+  var APP_VERSION = "6.5";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1043,9 +1043,8 @@ async function priceListPdf(brands) {
   if (["admin", "accounts"].indexOf(S.role) < 0) { toast("Not allowed."); return; }
   var rows = PRODUCTS.filter(function (p) { return brands.indexOf(String(p.brand || "").trim()) >= 0; });
   if (!rows.length) { toast("No products for that brand."); return; }
-  toast("Building price list - fetching pictures...");
-  var pics = {};
-  var uniq = [];
+  toast("Building price list...");
+  var pics = {}, uniq = [];
   rows.forEach(function (p) { var u = String(p.pic || "").trim(); if (u && uniq.indexOf(u) < 0) uniq.push(u); });
   var f = await loadFonts();
   var got = await Promise.all(uniq.map(function (u) { return loadPic(u); }));
@@ -1064,9 +1063,16 @@ async function priceListPdf(brands) {
     doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold");
     uni = true;
   }
-  var F = function (w) { doc.setFont(uni ? "DJ" : "helvetica", w || "normal"); };
-  var money = function (n) { return (uni ? "\u20B9 " : "Rs ") + Number(n || 0).toLocaleString("en-IN"); };
-  var L = 12, Rt = 198, first = true;
+  // no bold anywhere - weight is carried by colour and size
+  var F = function () { doc.setFont(uni ? "DJ" : "helvetica", "normal"); };
+  var GSTX = 1.18;
+  var money = function (n) {
+    var v = Math.round(Number(n || 0) * GSTX);
+    return (uni ? "\u20B9" : "Rs ") + v.toLocaleString("en-IN");
+  };
+  var L = 10, Rt = 200, first = true;
+  var C = { pic: L, code: L + 7, desc: L + 34, unit: 158, mrp: Rt };
+  var ROW = 5.6, PIC = 4.6;
 
   brands.forEach(function (brand) {
     var list = rows.filter(function (p) { return String(p.brand || "").trim() === brand; })
@@ -1074,65 +1080,67 @@ async function priceListPdf(brands) {
     if (!list.length) return;
     if (!first) doc.addPage();
     first = false;
-    var y = 14;
-    // ---- brand header: the brand only, never Energy World ----
-    if (logos[brand]) { try { doc.addImage(logos[brand], "PNG", L, y, 34, 14, undefined, "FAST"); } catch (e) {} }
-    F("bold"); doc.setFontSize(17); doc.setTextColor(17, 24, 39);
-    doc.text(String(brand).toUpperCase(), L + (logos[brand] ? 38 : 0), y + 8);
-    F("normal"); doc.setFontSize(8); doc.setTextColor(100, 116, 139);
-    doc.text("PRICE LIST", L + (logos[brand] ? 38 : 0), y + 13);
-    doc.text(dmy(new Date().toISOString().slice(0, 10)), Rt, y + 13, { align: "right" });
-    y += 18;
-    doc.setDrawColor(15, 118, 110); doc.setLineWidth(0.6); doc.line(L, y, Rt, y);
-    y += 5;
-    var C = { pic: L, code: L + 16, desc: L + 46, unit: 150, mrp: Rt };
+    var y = 10;
+    // ---- brand band: the logo is the hero ----
+    doc.setFillColor(240, 253, 250); doc.rect(0, 0, 210, 26, "F");
+    doc.setFillColor(15, 118, 110); doc.rect(0, 26, 210, 1.2, "F");
+    if (logos[brand]) { try { doc.addImage(logos[brand], "PNG", L, 4, 48, 18, undefined, "FAST"); } catch (e) {} }
+    var bx = L + (logos[brand] ? 53 : 0);
+    F(); doc.setFontSize(13); doc.setTextColor(15, 118, 110);
+    doc.text(String(brand).toUpperCase(), bx, 12);
+    doc.setFontSize(6.4); doc.setTextColor(100, 116, 139);
+    doc.text("PRICE LIST  \u00b7  " + dmy(new Date().toISOString().slice(0, 10)), bx, 17);
+    doc.setFontSize(6); doc.setTextColor(120, 113, 108);
+    doc.text("All prices inclusive of 18% GST", Rt, 17, { align: "right" });
+    y = 31;
     var head = function () {
-      doc.setFillColor(241, 245, 249); doc.rect(L, y, Rt - L, 6, "F");
-      F("bold"); doc.setFontSize(6.6); doc.setTextColor(51, 65, 85);
-      doc.text("PICTURE", C.pic + 1, y + 4);
-      doc.text("CODE", C.code, y + 4);
-      doc.text("DESCRIPTION", C.desc, y + 4);
-      doc.text("UNIT", C.unit, y + 4);
-      doc.text("MRP", C.mrp, y + 4, { align: "right" });
-      y += 8;
+      F(); doc.setFontSize(5.4); doc.setTextColor(148, 163, 184);
+      doc.text("CODE", C.code, y);
+      doc.text("DESCRIPTION", C.desc, y);
+      doc.text("UNIT", C.unit, y);
+      doc.text("PRICE INCL. GST", C.mrp, y, { align: "right" });
+      y += 2.2;
+      doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.2); doc.line(L, y, Rt, y);
+      y += 2.6;
     };
     head();
     var fam = "";
     list.forEach(function (p) {
       if (String(p.family || "") !== fam) {
         fam = String(p.family || "");
-        if (y + 8 > 280) { doc.addPage(); y = 14; head(); }
-        F("bold"); doc.setFontSize(7.2); doc.setTextColor(15, 118, 110);
-        doc.text(fam.toUpperCase(), L, y + 3);
-        y += 5;
+        if (y + 12 > 286) { doc.addPage(); y = 10; head(); }
+        // ---- category bar: highlighted ----
+        doc.setFillColor(15, 118, 110); doc.rect(L, y, Rt - L, 4.6, "F");
+        F(); doc.setFontSize(6); doc.setTextColor(255, 255, 255);
+        doc.text(fam.toUpperCase(), L + 2, y + 3.2);
+        var cnt = list.filter(function (q) { return String(q.family || "") === fam; }).length;
+        doc.text(cnt + " items", Rt - 2, y + 3.2, { align: "right" });
+        y += 6.2;
       }
-      F("normal"); doc.setFontSize(6.4); doc.setTextColor(55, 65, 81);
-      var ls = fitCell(doc, F, p.desc, C.unit - C.desc - 3, 3, "normal", 6.4);
-      var hgt = Math.max(13, 4 + ls.length * 3.1);
-      if (y + hgt > 282) { doc.addPage(); y = 14; head(); }
+      if (y + ROW > 288) { doc.addPage(); y = 10; head(); }
       var img = pics[String(p.pic || "").trim()];
-      if (img) { try { doc.addImage(img, "PNG", C.pic + 1, y, 12, hgt - 2, undefined, "FAST"); } catch (e) {} }
-      F("bold"); doc.setFontSize(6.2); doc.setTextColor(17, 24, 39);
-      doc.text(String(p.code || ""), C.code, y + 4);
-      F("normal"); doc.setFontSize(6.4); doc.setTextColor(55, 65, 81);
-      doc.text(ls, C.desc, y + 4);
-      doc.setFontSize(6.2); doc.setTextColor(100, 116, 139);
-      doc.text(String(p.unit || ""), C.unit, y + 4);
-      F("bold"); doc.setFontSize(7.4); doc.setTextColor(17, 24, 39);
-      doc.text(money(p.price), C.mrp, y + 4, { align: "right" });
-      y += hgt;
-      doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.15); doc.line(L, y - 1, Rt, y - 1);
+      if (img) { try { doc.addImage(img, "PNG", C.pic, y - 0.4, PIC, PIC, undefined, "FAST"); } catch (e) {} }
+      F(); doc.setFontSize(5.2); doc.setTextColor(71, 85, 105);
+      doc.text(String(p.code || "").slice(0, 16), C.code, y + 3);
+      doc.setFontSize(5.4); doc.setTextColor(30, 41, 59);
+      doc.text(fitCell(doc, F, p.desc, C.unit - C.desc - 3, 1, "normal", 5.4)[0], C.desc, y + 3);
+      doc.setFontSize(5); doc.setTextColor(148, 163, 184);
+      doc.text(String(p.unit || "").replace("Per ", ""), C.unit, y + 3);
+      doc.setFontSize(6.4); doc.setTextColor(15, 118, 110);
+      doc.text(money(p.price), C.mrp, y + 3, { align: "right" });
+      y += ROW;
+      doc.setDrawColor(241, 245, 249); doc.setLineWidth(0.1); doc.line(C.code, y - 1.2, Rt, y - 1.2);
     });
   });
   var n = doc.getNumberOfPages();
   for (var i = 1; i <= n; i++) {
     doc.setPage(i);
-    F("normal"); doc.setFontSize(6); doc.setTextColor(148, 163, 184);
-    doc.text("Prices are MRP in INR, exclusive of GST. Subject to revision without notice.", L, 290);
-    doc.text(i + " / " + n, Rt, 290, { align: "right" });
+    F(); doc.setFontSize(5); doc.setTextColor(148, 163, 184);
+    doc.text("Prices are MRP inclusive of 18% GST. Subject to revision without notice.", L, 293);
+    doc.text(i + " / " + n, Rt, 293, { align: "right" });
   }
   doc.save(brands.join("_").replace(/[^A-Za-z0-9_]+/g, "") + "_Price_List.pdf");
-  toast("Price list ready.");
+  toast("Price list ready - " + n + " page" + (n > 1 ? "s" : ""));
 }
 
 function viewCatalogue() {
