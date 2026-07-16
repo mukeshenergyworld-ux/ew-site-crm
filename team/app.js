@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.3";
+  var APP_VERSION = "6.4";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -107,7 +107,7 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["search","dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","catalogue","rules"],
+    admin:    ["search","dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules"],
     accounts: ["search","dash","returns","tools","clients","partners","followups","challans","payments","discounts","service","spares","dues","products","rates","pricelist"],
     godown:   ["search","dash","returns","tools","challans","products"],
     sales:    ["search","dash","report","returns","tools","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
