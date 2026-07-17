@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.2";
+  var APP_VERSION = "6.9.3";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -875,7 +875,8 @@ window.addEventListener("beforeunload", function (ev) {
     return '<h2>' + (c.id ? "Edit client" : "Register new client") + '</h2>' +
       '<p class="sub">Partners preset here flow into every quote, challan and incentive.</p>' +
       '<label>Client name</label><input id="c_name" value="' + esc(c.name) + '"/>' +
-      '<div class="grid2"><div><label>Location</label><select id="c_loc">' + opts(LOCATIONS, c.location || LOCATIONS[0]) + '</select></div>' +
+      '<div class="grid2"><div><label>Location</label><input id="c_loc" list="cloclist" value="' + esc(c.location || "") + '" placeholder="City e.g. Karnal" autocomplete="off"/>' +
+      '<datalist id="cloclist">' + locations().map(function (l) { return '<option value="' + esc(l) + '"></option>'; }).join("") + '</datalist></div>' +
       '<div><label>Type</label><select id="c_type">' + opts(CLIENT_TYPES, c.type || "Home owner") + '</select></div></div>' +
       '<div class="grid2"><div><label>Mobile</label><input id="c_mob" inputmode="numeric" value="' + esc(c.mobile) + '"/></div>' +
       '<div><label>Short name (challan no.)</label><input id="c_short" value="' + esc(c.shortName) + '" placeholder="SHARMA"/></div></div>' +
