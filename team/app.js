@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.1";
+  var APP_VERSION = "6.9.2";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -213,10 +213,17 @@ window.addEventListener("beforeunload", function (ev) {
     return S.data.followups.filter(function (f) { return f.status !== "Done"; });
   }
 
-  /* ---------------- product catalog (853 items, live from the Sheet) ---------------- */
-  /* Normalise any Google-Drive image link to the one lh3 form that renders in an <img>:
-     .../d/{ID}=w200 works; .../d/{ID}/view?usp=w200 is a viewer path and shows a broken ?.
-     Repairs every Drive link so thumbnails, catalogue, price-list PDF and quote PDF all load. */
+  /* ---------------- product catalog (live from the Sheet) ---------------- */
+  /* Normalise any Google-Drive image link to the one lh3 form that actually
+     renders inside an <img>: https://lh3.googleusercontent.com/d/{ID}=w200
+     The catalogue's "Pic" column mixes two shapes -
+       .../d/{ID}=w200            -> works (thumbnail)
+       .../d/{ID}/view?usp=w200   -> a Drive *viewer* path, NOT an image -> broken ?
+     Grundfos, CPVC, CISTERN, LEO and many Accessory rows were all in the broken
+     /view form (verified by load-testing: /view => ERROR, =w200 => loads).
+     We repair every Drive link to =w200 here, so on-screen thumbnails, the
+     catalogue, the price-list PDF and the quotation PDF all get a loadable URL,
+     and any future /view paste self-heals. Non-Drive URLs pass through unchanged. */
   function driveImg(u) {
     u = String(u || "").trim();
     if (!u) return "";
@@ -683,6 +690,53 @@ window.addEventListener("beforeunload", function (ev) {
     return out.sort();
   }
 
+  /* ---- per-brand quote helpers ----
+     A quote can carry products from several brands (Lunos + Pentair + Oyster + ...).
+     Each brand keeps its OWN discount in z.brandDiscs[brand]; a per-line override in
+     i.disc still wins. Every item is tagged with i.brand so it can be grouped. */
+  function brandByCode(code) {
+    var p = PRODUCTS.filter(function (x) { return x.code === code; })[0];
+    return p ? realBrand(p) : "";
+  }
+  /* distinct brands present in the quote, in the order they were first added */
+  function qzBrands(z) {
+    var seen = {}, out = [];
+    (z.items || []).forEach(function (i) {
+      var b = i.brand || brandByCode(i.code) || "";
+      if (b && !seen[b]) { seen[b] = 1; out.push(b); }
+    });
+    return out;
+  }
+  /* effective discount for one line given the quote state */
+  function lineDisc(i, z) {
+    if (i.disc !== "" && i.disc !== undefined && i.disc !== null) return Number(i.disc) || 0;
+    var b = i.brand || brandByCode(i.code) || "";
+    var bd = z.brandDiscs && z.brandDiscs[b];
+    return Number(bd) || 0;
+  }
+  /* gross/net for one brand's lines */
+  function brandTotals(z, brand) {
+    var gross = 0, net = 0, n = 0;
+    (z.items || []).forEach(function (i) {
+      var b = i.brand || brandByCode(i.code) || "";
+      if (b !== brand) return;
+      var line = i.qty * i.price;
+      gross += line; net += line * (1 - (lineDisc(i, z)) / 100); n++;
+    });
+    return { gross: Math.round(gross), net: Math.round(net), count: n };
+  }
+  /* the quote's location list is derived from the clients themselves, so a client in
+     Karnal (or any city) shows up without hard-coding every town into the app. */
+  function qLocations() {
+    var seen = {}, out = [];
+    (S.data.clients || []).forEach(function (c) {
+      var l = String(c.location || "").trim();
+      if (l && !seen[l.toLowerCase()]) { seen[l.toLowerCase()] = 1; out.push(l); }
+    });
+    LOCATIONS.forEach(function (l) { if (!seen[l.toLowerCase()]) { seen[l.toLowerCase()] = 1; out.push(l); } });
+    return out.sort();
+  }
+
   function viewClients() {
     var loc = S.q;
     var list = S.data.clients.filter(function (c) { return !loc || c.location === loc; });
@@ -870,7 +924,7 @@ window.addEventListener("beforeunload", function (ev) {
     var gross = 0, net = 0;
     (S.qz.items || []).forEach(function (i) {
       var line = i.qty * i.price;
-      var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? S.qz.brandDisc : Number(i.disc);
+      var d = lineDisc(i, S.qz);
       gross += line;
       net += line * (1 - (Number(d) || 0) / 100);
     });
@@ -907,14 +961,17 @@ window.addEventListener("beforeunload", function (ev) {
     }).join("") + '<div class="grow"></div><button class="btn sm ghost" data-act="qz-cancel">Cancel</button></div>';
 
     if (z.step === 1) {
-      var inLoc = S.data.clients.filter(function (c) { return !z.location || c.location === z.location; });
+      var all = z.location === "*";
+      var inLoc = S.data.clients.filter(function (c) { return !z.location || all || c.location === z.location; });
       h += '<div class="card"><h3>Where is the client?</h3><div class="acts">' +
-        LOCATIONS.map(function (l) {
+        qLocations().map(function (l) {
           return '<button class="btn sm ' + (z.location === l ? "" : "ghost") + '" data-act="qz-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
-        }).join("") + '</div></div>';
+        }).join("") +
+        '<button class="btn sm ' + (all ? "" : "ghost") + '" data-act="qz-loc" data-loc="*">All clients</button>' +
+        '</div></div>';
       if (z.location) {
         h += '<div class="card"><h3>Which client?</h3>' +
-          '<div class="meta">' + inLoc.length + ' client(s) in ' + esc(z.location) + '. Start typing.</div>' +
+          '<div class="meta">' + inLoc.length + ' client(s) ' + (all ? 'in all areas' : 'in ' + esc(z.location)) + '. Start typing.</div>' +
           '<input id="qz_client" list="clientlist" placeholder="Type client name..." value="' + esc(z.client || "") + '" style="margin-top:8px"/>' +
           '<datalist id="clientlist">' + inLoc.map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>' +
           '<div class="acts"><button class="btn" data-act="qz-client-go">Continue</button>' +
@@ -945,8 +1002,11 @@ window.addEventListener("beforeunload", function (ev) {
     }
 
     if (z.step === 3) {
-      h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="2">Brands</button>' +
-        '<span class="pill teal">' + esc(z.brand) + '</span><div class="grow"></div>' +
+      var chosen = qzBrands(z);
+      h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="2">+ Add brand</button>' +
+        '<span class="pill teal">' + esc(z.brand) + '</span>' +
+        (chosen.length ? '<span class="pmeta" style="font-size:12px;color:#64748b">in quote: ' + esc(chosen.join(", ")) + '</span>' : '') +
+        '<div class="grow"></div>' +
         '<button class="btn" data-act="qz-step" data-step="4">Discount (' + (z.items || []).length + ')</button></div>';
 
       /* families as small horizontal chips, not a vertical wall of cards */
@@ -979,16 +1039,22 @@ window.addEventListener("beforeunload", function (ev) {
 
     if (z.step === 4) {
       var t4 = qzTotals();
+      var dBrands = qzBrands(z);
       h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="3">Products</button>' +
         '<div class="grow"></div><button class="btn" data-act="qz-step" data-step="5">Review</button></div>';
 
-      /* brand discount first - that is the decision 95% of the time */
-      h += '<div class="card"><h3>Discount on ' + esc(z.brand) + '</h3>' +
-        '<div class="meta">Applied to every line in this quote.</div>' +
-        '<div class="acts" style="align-items:center">' +
-        '<input id="qz_bd" inputmode="decimal" value="' + esc(z.brandDisc) + '" style="width:90px;padding:9px 10px;font-size:16px;font-weight:700"/>' +
-        '<span class="pill teal">% off list</span>' +
-        '<button class="btn sm" data-act="qz-bd">Apply</button></div></div>';
+      /* one discount per brand - each brand is a separate negotiation */
+      h += '<div class="card"><h3>Discount by brand</h3>' +
+        '<div class="meta">Each brand gets its own discount, applied to every line of that brand. Type all of them, then Apply.</div>';
+      dBrands.forEach(function (b) {
+        var bt = brandTotals(z, b);
+        h += '<div class="row" style="margin:8px 0 0;align-items:center;gap:10px">' +
+          '<div style="min-width:150px"><b>' + esc(b) + '</b>' +
+          '<div class="pmeta">' + bt.count + ' item(s) \u00B7 ' + money(bt.gross) + ' \u2192 <b>' + money(bt.net) + '</b></div></div>' +
+          '<input class="qz-bd" data-brand="' + esc(b) + '" inputmode="decimal" value="' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '" style="width:80px;padding:9px 10px;font-size:16px;font-weight:700"/>' +
+          '<span class="pill teal">% off list</span></div>';
+      });
+      h += '<div class="acts" style="margin-top:12px"><button class="btn sm" data-act="qz-bd">Apply brand discounts</button></div></div>';
 
       /* product-wise override hidden behind a disclosure - most people never need it */
       var overrides = (z.items || []).filter(function (i) { return i.disc !== undefined && i.disc !== ""; }).length;
@@ -998,15 +1064,18 @@ window.addEventListener("beforeunload", function (ev) {
 
       if (z.adv) {
         h += '<div class="plist">';
-        (z.items || []).forEach(function (i) {
-          var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? z.brandDisc : i.disc;
-          var lineNet = Math.round(i.qty * i.price * (1 - (Number(d) || 0) / 100));
-          h += '<div class="prow">' +
-            '<div class="pinfo"><div class="pname">' + esc(i.desc) + '</div>' +
-            '<div class="pmeta">' + i.qty + ' \u00d7 ' + money(i.price) + '  \u2192  <b>' + money(lineNet) + '</b></div></div>' +
-            '<div class="pqty">' +
-            '<input class="qz-d" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(i.disc === undefined ? "" : i.disc) + '" placeholder="' + esc(z.brandDisc) + '" style="width:52px"/>' +
-            '<span class="pill">%</span></div></div>';
+        dBrands.forEach(function (b) {
+          h += '<div class="prow" style="background:#f8fafc"><div class="pinfo"><b>' + esc(b) + '</b> <span class="pmeta">(brand ' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '%)</span></div></div>';
+          (z.items || []).filter(function (i) { return (i.brand || brandByCode(i.code)) === b; }).forEach(function (i) {
+            var d = lineDisc(i, z);
+            var lineNet = Math.round(i.qty * i.price * (1 - (Number(d) || 0) / 100));
+            h += '<div class="prow">' +
+              '<div class="pinfo"><div class="pname">' + esc(i.desc) + '</div>' +
+              '<div class="pmeta">' + i.qty + ' \u00d7 ' + money(i.price) + '  \u2192  <b>' + money(lineNet) + '</b></div></div>' +
+              '<div class="pqty">' +
+              '<input class="qz-d" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(i.disc === undefined ? "" : i.disc) + '" placeholder="' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '" style="width:52px"/>' +
+              '<span class="pill">%</span></div></div>';
+          });
         });
         h += '</div>';
       }
@@ -1018,15 +1087,60 @@ window.addEventListener("beforeunload", function (ev) {
     }
 
     var tt = qzTotals();
-    h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="4">Back to discount</button></div>';
-    h += '<div class="card"><h3>' + esc(z.client) + ' - ' + esc(z.brand) + '</h3><div class="meta">';
-    (z.items || []).forEach(function (i) {
-      var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? z.brandDisc : i.disc;
-      h += esc(i.desc) + ' - ' + i.qty + ' x ' + money(i.price) + ' @ ' + (Number(d) || 0) + '% off<br>';
+    var revBrands = qzBrands(z);
+    h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="4">Back to discount</button>' +
+      '<div class="grow"></div><button class="btn" data-act="qz-save">Save quote</button></div>';
+    h += '<div class="card"><h3>' + esc(z.client) + ' — ' + esc(revBrands.join(", ") || "-") + '</h3>' +
+      '<div class="meta" style="margin-bottom:10px">' + (z.items || []).length + ' line(s) across ' + revBrands.length + ' brand(s)</div>';
+
+    /* Excel-like review: one table, grouped by brand, each brand with its own subtotal. */
+    var TB = 'border:1px solid #e2e8f0;';
+    var thBase = TB + 'padding:6px 8px;font-size:11px;font-weight:700;color:#475569;background:#f1f5f9;';
+    var thL = 'style="' + thBase + 'text-align:left"', thR = 'style="' + thBase + 'text-align:right"';
+    h += '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:560px;font-variant-numeric:tabular-nums lining-nums">' +
+      '<thead><tr>' +
+      '<th ' + thL + '>Item</th>' +
+      '<th ' + thR + '>Qty</th>' +
+      '<th ' + thR + '>Rate</th>' +
+      '<th ' + thR + '>Disc%</th>' +
+      '<th ' + thR + '>Disc. Rate</th>' +
+      '<th ' + thR + '>Amount</th>' +
+      '</tr></thead><tbody>';
+
+    var tdL = 'style="' + TB + 'padding:6px 8px;font-size:12px;text-align:left"';
+    var tdR = 'style="' + TB + 'padding:6px 8px;font-size:12px;text-align:right"';
+    revBrands.forEach(function (b) {
+      var bt = brandTotals(z, b);
+      var bdPct = (z.brandDiscs && z.brandDiscs[b] != null) ? z.brandDiscs[b] : 0;
+      h += '<tr><td colspan="6" style="' + TB + 'padding:6px 8px;background:#ccfbf1;color:#0f766e;font-weight:700;font-size:12px">' +
+        esc(b) + ' &middot; brand ' + esc(bdPct) + '% off</td></tr>';
+      (z.items || []).filter(function (i) { return (i.brand || brandByCode(i.code)) === b; }).forEach(function (i) {
+        var d = lineDisc(i, z);
+        var dr = Math.round(i.price * (1 - d / 100));
+        var amt = dr * i.qty;
+        var ov = (i.disc !== "" && i.disc !== undefined && i.disc !== null);
+        h += '<tr>' +
+          '<td ' + tdL + '><div style="font-weight:600">' + esc(i.desc) + '</div>' +
+            '<div style="font-size:10px;color:#94a3b8">' + esc(i.code) + '</div></td>' +
+          '<td ' + tdR + '>' + i.qty + '</td>' +
+          '<td ' + tdR + '>' + money(i.price) + '</td>' +
+          '<td ' + tdR + '>' + (Number(d) || 0) + (ov ? '<span style="color:#0f766e">*</span>' : '') + '</td>' +
+          '<td ' + tdR + '>' + money(dr) + '</td>' +
+          '<td ' + tdR + '><b>' + money(amt) + '</b></td>' +
+          '</tr>';
+      });
+      h += '<tr><td colspan="5" style="' + TB + 'padding:6px 8px;text-align:right;font-size:12px;background:#f8fafc">' +
+        esc(b) + ' subtotal (gross ' + money(bt.gross) + ')</td>' +
+        '<td style="' + TB + 'padding:6px 8px;text-align:right;background:#f8fafc"><b>' + money(bt.net) + '</b></td></tr>';
     });
-    h += '<br>Gross ' + money(tt.gross) + '<br>Net ' + money(tt.net) + '<br>GST 18% ' + money(tt.gst) +
-      '<br><b>Total ' + money(tt.total) + '</b></div>' +
-      '<div class="acts"><button class="btn" data-act="qz-save">Save quote</button></div></div>';
+    h += '</tbody><tfoot>' +
+      '<tr><td colspan="5" style="' + TB + 'padding:8px;text-align:right;font-weight:700;font-size:13px">Grand total (before GST)</td>' +
+      '<td style="' + TB + 'padding:8px;text-align:right;font-weight:800;font-size:13px;color:#0f766e">' + money(tt.net) + '</td></tr>' +
+      '</tfoot></table></div>';
+    h += '<div class="meta" style="margin-top:8px">Gross ' + money(tt.gross) + ' &middot; after discount <b>' + money(tt.net) + '</b> &middot; GST 18% ' + money(tt.gst) +
+      ' &middot; <b>Total incl GST ' + money(tt.total) + '</b>' +
+      '<br><span style="color:#94a3b8">* = product-wise override. GST is charged as actual and never printed on the quote.</span></div>';
+    h += '<div class="acts" style="margin-top:12px"><button class="btn" data-act="qz-save">Save quote</button></div></div>';
     return h;
   }
 
@@ -1470,7 +1584,11 @@ function viewCatalogue() {
 
       var bd = Number(q.discountPct) || 0;
       var rows = items.map(function (i, idx) {
-        var d = (i.disc === "" || i.disc === undefined || i.disc === null) ? bd : Number(i.disc);
+        /* per-line discount: explicit override wins, else the line's own brand
+           discount snapshot (i.bd), else the quote's blended figure for old quotes. */
+        var d = (i.disc === "" || i.disc === undefined || i.disc === null)
+          ? ((i.bd !== undefined && i.bd !== null) ? Number(i.bd) : bd)
+          : Number(i.disc);
         d = Number(d) || 0;
         var net = Math.round(i.price * (1 - d / 100));
         return { desc: i.desc, code: i.code, pic: pics[idx], dim: PIC_DIM[i.pic] || null,
@@ -4224,10 +4342,10 @@ function viewCatalogue() {
       }).then(function (r) { toast(r && r.ok ? "Quote sent to Telegram." : "Send failed."); render(); });
       return;
     }
-    if (act === "qz-new") { S.qz = { step: 1, location: "", client: "", items: [], brandDisc: 0 }; S.tab = "quotes"; render(); return; }
+    if (act === "qz-new") { S.qz = { step: 1, location: "", client: "", items: [], brandDisc: 0, brandDiscs: {} }; S.tab = "quotes"; render(); return; }
     if (act === "qz-for") {
       var c0 = clientById(id);
-      S.qz = { step: 2, location: c0.location, client: c0.name, clientObj: c0, items: [], brandDisc: 0 };
+      S.qz = { step: 2, location: c0.location, client: c0.name, clientObj: c0, items: [], brandDisc: 0, brandDiscs: {} };
       S.tab = "quotes"; render(); return;
     }
     if (act === "qz-cancel") { S.qz = null; render(); return; }
@@ -4239,8 +4357,10 @@ function viewCatalogue() {
       S.qz.client = c1.name; S.qz.clientObj = c1; S.qz.step = 2; render(); return;
     }
     if (act === "qz-brand") {
-      S.qz.brand = t.getAttribute("data-brand");
-      S.qz.brandDisc = clientDiscount(S.qz.client, S.qz.brand);
+      var bch = t.getAttribute("data-brand");
+      S.qz.brand = bch;
+      S.qz.brandDiscs = S.qz.brandDiscs || {};
+      if (S.qz.brandDiscs[bch] === undefined) S.qz.brandDiscs[bch] = clientDiscount(S.qz.client, bch);
       S.qz.family = ""; S.qz.step = 3; render(); return;
     }
     if (act === "qz-fam") { S.qz.family = t.getAttribute("data-fam"); render(); return; }
@@ -4253,22 +4373,42 @@ function viewCatalogue() {
       var it = S.qz.items.filter(function (x) { return x.code === code; })[0];
       if (!it) {
         if (delta < 0) return;
-        S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: 1, pic: p.pic, unit: p.unit });
+        var qb2 = realBrand(p);
+        S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: 1, pic: p.pic, unit: p.unit, brand: qb2 });
+        S.qz.brandDiscs = S.qz.brandDiscs || {};
+        if (qb2 && S.qz.brandDiscs[qb2] === undefined) S.qz.brandDiscs[qb2] = clientDiscount(S.qz.client, qb2);
       } else {
         it.qty += delta;
         if (it.qty <= 0) S.qz.items = S.qz.items.filter(function (x) { return x.code !== code; });
       }
       render(); return;
     }
-    if (act === "qz-bd") { S.qz.brandDisc = Number(val("qz_bd")) || 0; render(); return; }
+    if (act === "qz-bd") {
+      S.qz.brandDiscs = S.qz.brandDiscs || {};
+      document.querySelectorAll(".qz-bd").forEach(function (el2) {
+        var b = el2.getAttribute("data-brand");
+        if (b) S.qz.brandDiscs[b] = Number(el2.value) || 0;
+      });
+      render(); return;
+    }
     if (act === "qz-adv") { S.qz.adv = !S.qz.adv; render(); return; }
     if (act === "qz-revise") {
       var old = S.data.quotes.filter(function (q) { return q.id === id; })[0];
       if (!old) return;
       var its = [];
       try { its = JSON.parse(old.items || "[]"); } catch (e) {}
-      S.qz = { step: 4, location: "", client: old.client, brand: old.brand, items: its,
-        brandDisc: Number(old.discountPct) || 0, parentId: old.id,
+      /* Rebuild the per-brand discount map from the saved items. Older quotes were
+         saved as a single brand + one discountPct and their items carry no brand tag,
+         so backfill both from the product catalogue and the old flat discount. */
+      var revBd = {};
+      its.forEach(function (i) {
+        if (!i.brand) i.brand = brandByCode(i.code) || old.brand || "";
+        var bd = (i.bd !== undefined && i.bd !== null) ? Number(i.bd) || 0 : (Number(old.discountPct) || 0);
+        if (i.brand && revBd[i.brand] === undefined) revBd[i.brand] = bd;
+      });
+      S.qz = { step: 4, location: "", client: old.client,
+        brand: (its[0] && its[0].brand) || old.brand, items: its,
+        brandDisc: Number(old.discountPct) || 0, brandDiscs: revBd, parentId: old.id,
         version: (Number(old.version) || 1) + 1, quoteNo: old.quoteNo };
       S.tab = "quotes"; render(); return;
     }
@@ -4308,10 +4448,24 @@ function viewCatalogue() {
       var seq = S.data.quotes.filter(function (q) { return String(q.quoteNo || "").indexOf("Q/" + short + "/") === 0; }).length + 1;
       var qno = z.quoteNo || ("Q/" + short + "/" + ds + "/" + String(seq).padStart(3, "0"));
       t.disabled = true; t.textContent = "Saving...";
+      /* Snapshot each line's brand and the brand's discount (i.bd) into the saved item,
+         so the PDF, the list and a future revision reprice exactly without needing a
+         separate column. i.disc stays the per-line override. brand column = all brands;
+         discountPct = the blended effective discount, for the one-line list summary. */
+      var savedBrands = qzBrands(z);
+      var savedItems = (z.items || []).map(function (i) {
+        var b = i.brand || brandByCode(i.code) || "";
+        var bd = (z.brandDiscs && z.brandDiscs[b] != null) ? Number(z.brandDiscs[b]) || 0 : 0;
+        var o = { code: i.code, desc: i.desc, family: i.family, price: i.price, qty: i.qty,
+          pic: i.pic, unit: i.unit, brand: b, bd: bd };
+        if (i.disc !== "" && i.disc !== undefined && i.disc !== null) o.disc = Number(i.disc) || 0;
+        return o;
+      });
+      var blended = tot.gross > 0 ? Math.round((tot.gross - tot.net) / tot.gross * 100) : 0;
       save("quotes", {
         id: "", createdBy: S.user, quoteNo: qno, version: z.version || 1, parentId: z.parentId || "",
-        siteId: "", siteName: "", client: z.client, brand: z.brand,
-        items: JSON.stringify(z.items), gross: tot.gross, discountPct: z.brandDisc,
+        siteId: "", siteName: "", client: z.client, brand: savedBrands.join(", "),
+        items: JSON.stringify(savedItems), gross: tot.gross, discountPct: blended,
         net: tot.net, gstAmt: tot.gst, total: tot.total, status: "Draft", validTill: "", notes: ""
       }).then(function (r) {
         if (!r) return;
@@ -5242,7 +5396,12 @@ function viewCatalogue() {
       var q = Number(t.value) || 0;
       var p = PRODUCTS.filter(function (x) { return x.code === code; })[0];
       S.qz.items = S.qz.items.filter(function (x) { return x.code !== code; });
-      if (q > 0 && p) S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: q, pic: p.pic, unit: p.unit });
+      if (q > 0 && p) {
+        var qb = realBrand(p);
+        S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: q, pic: p.pic, unit: p.unit, brand: qb });
+        S.qz.brandDiscs = S.qz.brandDiscs || {};
+        if (qb && S.qz.brandDiscs[qb] === undefined) S.qz.brandDiscs[qb] = clientDiscount(S.qz.client, qb);
+      }
       render(); return;
     }
     if (t.classList && t.classList.contains("qz-d") && S.qz) {
