@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.12";
+  var APP_VERSION = "6.9.13";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1817,19 +1817,23 @@ function viewCatalogue() {
         var GST_RATE = 18;
         var gstAmt = Math.round(subTotal * GST_RATE / 100);
         var grand = subTotal + gstAmt;
-        var GBH = 20;
+        var GBH = 18;
         fill([236, 253, 245]); doc.roundedRect(106, y - 4.5, Rt - 106, GBH, 1.5, 1.5, "F");
         col([13, 118, 108]); F("normal"); doc.setFontSize(6.8);
-        doc.text("Sub-Total", 110, y + 0.6);
-        F("bold"); doc.text(R(subTotal), X.amt, y + 0.6, { align: "right" });
+        doc.text("Sub-Total", 110, y + 1);
+        F("bold"); doc.text(R(subTotal), X.amt, y + 1, { align: "right" });
         col([75, 85, 99]); F("normal"); doc.setFontSize(6.8);
-        doc.text("GST @ 18%", 110, y + 5.8);
-        doc.text(R(gstAmt), X.amt, y + 5.8, { align: "right" });
-        doc.setDrawColor(178, 217, 210); doc.setLineWidth(0.25); doc.line(110, y + 8.6, Rt - 4, y + 8.6); doc.setLineWidth(0.2);
-        col([13, 118, 108]); F("bold"); doc.setFontSize(9.5);
-        doc.text("Grand Total (incl. GST)", 110, y + 13.4);
-        doc.text(R(grand), X.amt, y + 13.4, { align: "right" });
-        y += (GBH - 11);   /* the taller box pushes the terms panel down accordingly */
+        doc.text("GST @ 18%", 110, y + 6.4);
+        doc.text(R(gstAmt), X.amt, y + 6.4, { align: "right" });
+        doc.setDrawColor(178, 217, 210); doc.setLineWidth(0.25); doc.line(110, y + 9, Rt - 4, y + 9); doc.setLineWidth(0.2);
+        /* Grand total kept at the SAME weight/size as the Sub-Total line (normal label, bold
+           figure, 6.8pt) - not the oversized bold it had, per Mukesh. */
+        col([13, 118, 108]); F("normal"); doc.setFontSize(6.8);
+        doc.text("Grand Total (incl. GST)", 110, y + 12.2);
+        F("bold"); doc.text(R(grand), X.amt, y + 12.2, { align: "right" });
+        /* Advance clear of the FULL box (bottom = y-4.5+GBH). The Terms panel adds its own +4
+           below this, so the panel can never ride over the total again. */
+        y += (GBH - 5);
       } else {
         fill([236, 253, 245]); doc.roundedRect(106, y - 4.5, Rt - 106, 11, 1.5, 1.5, "F");
         col([13, 118, 108]); F("bold"); doc.setFontSize(6.8);
