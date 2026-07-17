@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.4";
+  var APP_VERSION = "6.9.6";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -4283,7 +4283,14 @@ function viewCatalogue() {
       t.disabled = true; t.textContent = "Checking...";
       dupWarn({ id: id || "", name: cn, mobile: mob }).then(function (go) {
         if (!go) { t.disabled = false; t.textContent = "Save client"; return; }
-        t.textContent = "Saving...";
+        var back = S.clBack;
+        /* Close the form the instant the duplicate check passes. The write itself is
+           optimistic and repaints the client behind it, so there is no reason to keep a
+           "Saving..." modal up through the network round-trip - that lag was the whole
+           "modal won't close" complaint. The one case we keep it up for is registering a
+           client from inside another form (challan/return), which needs the new name back. */
+        if (!back) { S.modal = null; render(); }
+        else { t.textContent = "Saving..."; }
       /* anyone named here who is not yet a Partner gets created - no double entry */
       return Promise.all([
         ensurePartner(arch, "Architect", loc, ar),
@@ -4304,11 +4311,9 @@ function viewCatalogue() {
         });
       }).then(function (r) {
         if (!r) return;
-        S.modal = null;
         toast("Client saved as " + r.shortName + ".");
         if (S.qz && S.qz.step === 1) { S.qz.client = r.name; S.qz.clientObj = r; }
         /* came here from another form? go back to it, with the new client filled in */
-        var back = S.clBack;
         if (back) {
           S.clBack = null;
           if (back.keep) back.keep[back.forId] = r.name;
@@ -4418,62 +4423,73 @@ function viewCatalogue() {
       var z = S.qz;
       if (!z.items.length) { toast("Add at least one product."); return; }
 
-      if (!z.dupChecked) {
-        t.disabled = true; t.textContent = "Checking...";
-        api("quoteDup", { client: z.client, codes: z.items.map(function (i) { return i.code; }) })
-          .then(function (r) {
-            var others = ((r && r.clashes) || []).filter(function (x) { return !x.mine; });
-            z.dupChecked = true;
-            if (!others.length) { render(); (function () { var b = document.querySelector('[data-act="qz-save"]'); if (b) { b.click(); } else { toast("Could not continue the save - please press Save again."); render(); } })(); return; }
-            var msg = "WARNING - this client has already been quoted these products by someone else:\n\n";
-            others.slice(0, 6).forEach(function (x) {
-              msg += "- " + x.desc + "\n  " + (uniRupee() ? "\u20B9" : "Rs.") + x.price + " at " + x.disc + "% off, on " + x.date +
-                "\n  by " + x.by + " (" + x.quoteNo + ", " + x.status + ")\n\n";
-            });
-            msg += "A client must never get two different prices from Energy World.\n\nContinue anyway?";
-            if (window.confirm(msg)) { render(); (function () { var b = document.querySelector('[data-act="qz-save"]'); if (b) { b.click(); } else { toast("Could not continue the save - please press Save again."); render(); } })(); }
-            else { z.dupChecked = false; render(); }
-          }).catch(function (e) {
-      /* Never let the duplicate check kill the save silently. Let the user through,
-         and tell them the check did not run rather than pretending it passed. */
-      S.qz.dupChecked = true;
-      toast("Duplicate check did not run (" + ((e && e.message) || "network") + "). Press Save again to go ahead without it.");
-      render();
-    });
-        return;
+      /* Save is optimistic and instant. The only thing that ever made "Save quote" feel
+         unresponsive was the duplicate check hitting the server first (~2-3s). So: give it
+         a hard 3.5s timeout, disable BOTH Save buttons with live progress, and NEVER make
+         the user press Save twice - on a real clash they confirm once; on a timeout or a
+         network error we save anyway (a quote is a reversible Draft) and just note the
+         check was skipped. The actual save is a direct call, not a re-dispatched click. */
+      var saveBtns = document.querySelectorAll('[data-act="qz-save"]');
+      function qzBtns(txt, dis) { saveBtns.forEach(function (b) { b.disabled = !!dis; b.textContent = txt; }); }
+
+      function qzDoSave() {
+        var tot = qzTotals();
+        var cObj = clientByName(z.client) || {};
+        var short = cObj.shortName || String(z.client).toUpperCase().replace(/[^A-Z0-9 ]/g, "").split(" ")[0].slice(0, 10);
+        var dt = new Date();
+        var ds = String(dt.getDate()).padStart(2, "0") + String(dt.getMonth() + 1).padStart(2, "0") + String(dt.getFullYear()).slice(2);
+        var seq = S.data.quotes.filter(function (q) { return String(q.quoteNo || "").indexOf("Q/" + short + "/") === 0; }).length + 1;
+        var qno = z.quoteNo || ("Q/" + short + "/" + ds + "/" + String(seq).padStart(3, "0"));
+        qzBtns("Saving...", true);
+        /* Snapshot each line's brand and the brand's discount (i.bd) into the saved item,
+           so the PDF, the list and a future revision reprice exactly without a separate
+           column. i.disc stays the per-line override; discountPct = blended effective. */
+        var savedBrands = qzBrands(z);
+        var savedItems = (z.items || []).map(function (i) {
+          var b = i.brand || brandByCode(i.code) || "";
+          var bd = (z.brandDiscs && z.brandDiscs[b] != null) ? Number(z.brandDiscs[b]) || 0 : 0;
+          var o = { code: i.code, desc: i.desc, family: i.family, price: i.price, qty: i.qty,
+            pic: i.pic, unit: i.unit, brand: b, bd: bd };
+          if (i.disc !== "" && i.disc !== undefined && i.disc !== null) o.disc = Number(i.disc) || 0;
+          return o;
+        });
+        var blended = tot.gross > 0 ? Math.round((tot.gross - tot.net) / tot.gross * 100) : 0;
+        save("quotes", {
+          id: "", createdBy: S.user, quoteNo: qno, version: z.version || 1, parentId: z.parentId || "",
+          siteId: "", siteName: "", client: z.client, brand: savedBrands.join(", "),
+          items: JSON.stringify(savedItems), gross: tot.gross, discountPct: blended,
+          net: tot.net, gstAmt: tot.gst, total: tot.total, status: "Draft", validTill: "", notes: ""
+        }).then(function (r) {
+          if (!r) return;   /* save() already undid the change and toasted why */
+          S.qz = null;
+          toast("Quote " + qno + " saved.");
+          render();
+        });
       }
-      var tot = qzTotals();
-      var cObj = clientByName(z.client) || {};
-      var short = cObj.shortName || String(z.client).toUpperCase().replace(/[^A-Z0-9 ]/g, "").split(" ")[0].slice(0, 10);
-      var dt = new Date();
-      var ds = String(dt.getDate()).padStart(2, "0") + String(dt.getMonth() + 1).padStart(2, "0") + String(dt.getFullYear()).slice(2);
-      var seq = S.data.quotes.filter(function (q) { return String(q.quoteNo || "").indexOf("Q/" + short + "/") === 0; }).length + 1;
-      var qno = z.quoteNo || ("Q/" + short + "/" + ds + "/" + String(seq).padStart(3, "0"));
-      t.disabled = true; t.textContent = "Saving...";
-      /* Snapshot each line's brand and the brand's discount (i.bd) into the saved item,
-         so the PDF, the list and a future revision reprice exactly without needing a
-         separate column. i.disc stays the per-line override. brand column = all brands;
-         discountPct = the blended effective discount, for the one-line list summary. */
-      var savedBrands = qzBrands(z);
-      var savedItems = (z.items || []).map(function (i) {
-        var b = i.brand || brandByCode(i.code) || "";
-        var bd = (z.brandDiscs && z.brandDiscs[b] != null) ? Number(z.brandDiscs[b]) || 0 : 0;
-        var o = { code: i.code, desc: i.desc, family: i.family, price: i.price, qty: i.qty,
-          pic: i.pic, unit: i.unit, brand: b, bd: bd };
-        if (i.disc !== "" && i.disc !== undefined && i.disc !== null) o.disc = Number(i.disc) || 0;
-        return o;
-      });
-      var blended = tot.gross > 0 ? Math.round((tot.gross - tot.net) / tot.gross * 100) : 0;
-      save("quotes", {
-        id: "", createdBy: S.user, quoteNo: qno, version: z.version || 1, parentId: z.parentId || "",
-        siteId: "", siteName: "", client: z.client, brand: savedBrands.join(", "),
-        items: JSON.stringify(savedItems), gross: tot.gross, discountPct: blended,
-        net: tot.net, gstAmt: tot.gst, total: tot.total, status: "Draft", validTill: "", notes: ""
-      }).then(function (r) {
-        if (!r) return;
-        S.qz = null;
-        toast("Quote " + qno + " saved.");
-        render();
+
+      if (z.dupChecked) { qzDoSave(); return; }
+      qzBtns("Checking...", true);
+      var qzTimeout = new Promise(function (res) { setTimeout(function () { res({ __timeout: true }); }, 3500); });
+      Promise.race([
+        api("quoteDup", { client: z.client, codes: z.items.map(function (i) { return i.code; }) }),
+        qzTimeout
+      ]).then(function (r) {
+        z.dupChecked = true;
+        if (r && r.__timeout) { toast("Duplicate check timed out - saving anyway."); qzDoSave(); return; }
+        var others = ((r && r.clashes) || []).filter(function (x) { return !x.mine; });
+        if (!others.length) { qzDoSave(); return; }
+        var msg = "WARNING - this client has already been quoted these products by someone else:\n\n";
+        others.slice(0, 6).forEach(function (x) {
+          msg += "- " + x.desc + "\n  " + (uniRupee() ? "\u20B9" : "Rs.") + x.price + " at " + x.disc + "% off, on " + x.date +
+            "\n  by " + x.by + " (" + x.quoteNo + ", " + x.status + ")\n\n";
+        });
+        msg += "A client must never get two different prices from Energy World.\n\nContinue anyway?";
+        if (window.confirm(msg)) { qzDoSave(); }
+        else { z.dupChecked = false; render(); }
+      }).catch(function (e) {
+        z.dupChecked = true;
+        toast("Duplicate check skipped (" + ((e && e.message) || "network") + ") - saving.");
+        qzDoSave();
       });
       return;
     }
