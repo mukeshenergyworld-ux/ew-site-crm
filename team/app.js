@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.6";
+  var APP_VERSION = "6.9.8";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1782,11 +1782,11 @@ function viewCatalogue() {
       var x = L + tcCol * (COLW + 6);
       var yy = tcY[tcCol];
       if (b.hd) {
-        col(13, 118, 108); F("bold"); doc.setFontSize(TC_FS - 0.3);
+        col([13, 118, 108]); F("bold"); doc.setFontSize(TC_FS - 0.3);
         doc.text(b.n + ". " + b.hd.toUpperCase(), x, yy);
         yy += 2.5;
       }
-      col(75, 85, 99); F("normal"); doc.setFontSize(TC_FS);
+      col([75, 85, 99]); F("normal"); doc.setFontSize(TC_FS);
       doc.text(b.ls, x + (b.hd ? 1.8 : 0), yy);
       yy += b.ls.length * TC_LEAD + TC_GAP;
       tcY[tcCol] = yy;
@@ -4086,7 +4086,7 @@ function viewCatalogue() {
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
       '<img src="' + LOGO + '" alt="EW" onerror="this.style.display=\'none\'"/>' +
-      '<div><b style="font-size:15px">Energy World</b><div style="font-size:12px;color:#64748b">Team workspace</div></div>' +
+      '<div><b style="font-size:15px">Energy World</b><div style="font-size:12px;color:#64748b">Team workspace <span style="color:#94a3b8">&middot; v' + APP_VERSION + '</span></div></div>' +
       '<div class="who"><b>' + esc(S.user) + '</b><span class="pill teal">' + esc(S.role) + '</span>' +
       '<div style="margin-top:4px;display:flex;gap:4px;justify-content:flex-end">' +
       (bioAvailable() ? (bioSaved()
@@ -4280,53 +4280,66 @@ function viewCatalogue() {
       if (Number(f.opAmt) > 0) f.leadType = "Old";
       var mob = f.mob, loc = f.loc, ar = f.ar;
       var arch = f.arch, plumb = f.plumb, build = f.build, pmc = f.pmc;
+      var back = S.clBack;
+      /* The actual write. Optimistic: save() repaints the client instantly and syncs
+         behind, undoing itself on failure. anyone named here who is not yet a Partner
+         gets created first - no double entry. */
+      var doSave = function () {
+        return Promise.all([
+          ensurePartner(arch, "Architect", loc, ar),
+          ensurePartner(plumb, "Plumber", loc, ar),
+          ensurePartner(build, "Builder", loc, ar),
+          ensurePartner(pmc, "PMC", loc, ar)
+        ]).then(function () {
+          return save("clients", {
+            id: id || "", createdBy: S.user, name: cn,
+            shortName: shortNameOf(cn, f.mob),
+            location: f.loc, area: f.ar, mobile: f.mob, mobile2: f.mob2,
+            address: f.addr, type: f.type,
+            architect: f.arch, plumber: f.plumb, builder: f.build, pmc: f.pmc,
+            notes: f.notes,
+            billingJson: JSON.stringify(S.billDraft || []),
+            openingAmt: f.opAmt || "", openingAsOn: f.opDate || "",
+            leadType: f.leadType || "New", ownedBy: f.owner || ""
+          });
+        }).then(function (r) {
+          if (!r) return;
+          toast("Client saved as " + r.shortName + ".");
+          if (S.qz && S.qz.step === 1) { S.qz.client = r.name; S.qz.clientObj = r; }
+          /* came here from another form? go back to it, with the new client filled in */
+          if (back) {
+            S.clBack = null;
+            if (back.keep) back.keep[back.forId] = r.name;
+            if (back.modal === "challan") S.modal = modalChallan();
+            else if (back.modal === "return") S.modal = modalReturn();
+            else if (back.modal === "old") S.modal = modalOldChallan();
+            render();
+            restoreSnapshot(back.keep);
+            return;
+          }
+          render();
+        });
+      };
+      if (!back) {
+        /* Close the form the INSTANT the button is pressed. The duplicate check is a
+           network round-trip; keeping a "Checking..." modal up through it was the whole
+           "modal won't close / not responsive" complaint. Run the check behind the closed
+           form - the confirm only ever pops in the rare duplicate case. */
+        S.modal = null; render();
+        dupWarn({ id: id || "", name: cn, mobile: mob }).then(function (go) {
+          if (!go) { toast("Client not saved - looks like a duplicate."); return; }
+          doSave();
+        });
+        return;
+      }
+      /* registering a client from inside another form (challan/return) - we need the new
+         name handed back into that form, so keep the modal up with live button feedback. */
       t.disabled = true; t.textContent = "Checking...";
       dupWarn({ id: id || "", name: cn, mobile: mob }).then(function (go) {
         if (!go) { t.disabled = false; t.textContent = "Save client"; return; }
-        var back = S.clBack;
-        /* Close the form the instant the duplicate check passes. The write itself is
-           optimistic and repaints the client behind it, so there is no reason to keep a
-           "Saving..." modal up through the network round-trip - that lag was the whole
-           "modal won't close" complaint. The one case we keep it up for is registering a
-           client from inside another form (challan/return), which needs the new name back. */
-        if (!back) { S.modal = null; render(); }
-        else { t.textContent = "Saving..."; }
-      /* anyone named here who is not yet a Partner gets created - no double entry */
-      return Promise.all([
-        ensurePartner(arch, "Architect", loc, ar),
-        ensurePartner(plumb, "Plumber", loc, ar),
-        ensurePartner(build, "Builder", loc, ar),
-        ensurePartner(pmc, "PMC", loc, ar)
-      ]).then(function () {
-        return save("clients", {
-          id: id || "", createdBy: S.user, name: cn,
-          shortName: shortNameOf(cn, f.mob),
-          location: f.loc, area: f.ar, mobile: f.mob, mobile2: f.mob2,
-          address: f.addr, type: f.type,
-          architect: f.arch, plumber: f.plumb, builder: f.build, pmc: f.pmc,
-          notes: f.notes,
-          billingJson: JSON.stringify(S.billDraft || []),
-          openingAmt: f.opAmt || "", openingAsOn: f.opDate || "",
-          leadType: f.leadType || "New", ownedBy: f.owner || ""
-        });
-      }).then(function (r) {
-        if (!r) return;
-        toast("Client saved as " + r.shortName + ".");
-        if (S.qz && S.qz.step === 1) { S.qz.client = r.name; S.qz.clientObj = r; }
-        /* came here from another form? go back to it, with the new client filled in */
-        if (back) {
-          S.clBack = null;
-          if (back.keep) back.keep[back.forId] = r.name;
-          if (back.modal === "challan") S.modal = modalChallan();
-          else if (back.modal === "return") S.modal = modalReturn();
-          else if (back.modal === "old") S.modal = modalOldChallan();
-          render();
-          restoreSnapshot(back.keep);
-          return;
-        }
-        render();
+        t.textContent = "Saving...";
+        return doSave();
       });
-      });   /* dupWarn */
       return;
     }
     if (act === "q-pdf") {
@@ -4464,6 +4477,20 @@ function viewCatalogue() {
           S.qz = null;
           toast("Quote " + qno + " saved.");
           render();
+          /* Auto-send the freshly saved quote to the Telegram group (setting: send on save).
+             Strictly fire-and-forget - the quote is already saved and on screen, so a
+             Telegram hiccup must never block the UI or undo the save. If it fails, the user
+             can still press Send on the quote by hand. */
+          toast("Sending to Telegram...");
+          quotePdf(r).then(function (d) {
+            return api("tgSend", { bot: "TG_QUOTES", pdfBase64: d.output("datauristring").split(",")[1],
+              filename: String(r.quoteNo || qno).replace(/[^\w.-]/g, "_") + ".pdf",
+              caption: "<b>Quotation " + (r.quoteNo || qno) + "</b>\n" + (r.client || z.client) + "\n" + (r.brand || savedBrands.join(", ")) + "\nSub-total Rs. " + (r.net != null ? r.net : tot.net) + " (GST as actual)\nBy " + (r.createdBy || S.user) });
+          }).then(function (tr) {
+            toast(tr && tr.ok ? "Quote sent to Telegram." : "Saved - Telegram send failed, use Send on the quote.");
+          }).catch(function () {
+            toast("Saved - Telegram send failed, use Send on the quote.");
+          });
         });
       }
 
