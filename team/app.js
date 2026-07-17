@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.8";
+  var APP_VERSION = "6.9.9";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -224,12 +224,12 @@ window.addEventListener("beforeunload", function (ev) {
      We repair every Drive link to =w200 here, so on-screen thumbnails, the
      catalogue, the price-list PDF and the quotation PDF all get a loadable URL,
      and any future /view paste self-heals. Non-Drive URLs pass through unchanged. */
-  function driveImg(u) {
+  function driveImg(u, size) {
     u = String(u || "").trim();
     if (!u) return "";
     var m = u.match(/\/d\/([A-Za-z0-9_\-]{20,})/) || u.match(/[?&]id=([A-Za-z0-9_\-]{20,})/);
     if (!m) return u;
-    return "https://lh3.googleusercontent.com/d/" + m[1] + "=w200";
+    return "https://lh3.googleusercontent.com/d/" + m[1] + "=w" + (size || 200);
   }
 
   function parseCatalog(rows) {
@@ -740,7 +740,13 @@ window.addEventListener("beforeunload", function (ev) {
   function viewClients() {
     var loc = S.q;
     var list = S.data.clients.filter(function (c) { return !loc || c.location === loc; });
-    var h = '<div class="row">' + LOCATIONS.map(function (l) {
+    /* Area chips are built from the locations clients actually live in - not a fixed
+       Panipat/Sonipat list. A town appears only once a client there exists (so Karnal shows
+       the moment Amrik is on the book) and drops off if the last client there is removed. */
+    var clocs = [];
+    S.data.clients.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
+    clocs.sort();
+    var h = '<div class="row">' + clocs.map(function (l) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' +
       '<div class="grow"></div><button class="btn" data-act="cl-new">+ New client</button></div>';
@@ -1523,12 +1529,16 @@ function viewCatalogue() {
   }
 
   function loadPic(url, trim) {
-    url = driveImg(url);
+    /* Logos (trim=true) print into ~17mm boxes and were fetched at only =w200, so they came
+       out soft/blurry. Pull them at =w700 and keep the downscale ceiling at 600 so the mark
+       is crisp. Catalogue photos stay at =w200 / 300 - they sit in a 10mm box and the smaller
+       fetch keeps on-screen data light on 4G. */
+    url = driveImg(url, trim ? 700 : 200);
     if (!url) return Promise.resolve(null);
     if (PIC_CACHE[url] !== undefined) return Promise.resolve(PIC_CACHE[url]);
     return api("imgB64", { url: url }).then(function (r) {
       if (!r || !r.ok) { PIC_CACHE[url] = null; return null; }
-      return shrinkPic("data:" + r.mime + ";base64," + r.b64, 300, trim ? 0.85 : 0.75, trim).then(function (p) {
+      return shrinkPic("data:" + r.mime + ";base64," + r.b64, trim ? 600 : 300, trim ? 0.85 : 0.75, trim).then(function (p) {
         PIC_CACHE[url] = p ? p.src : null;
         PIC_DIM[url] = p ? { w: p.w, h: p.h } : null;
         return PIC_CACHE[url];
@@ -1547,13 +1557,14 @@ function viewCatalogue() {
     "INAIR", "LUNOS", "STELLAR", "MEA", "NEXGEN", "ADANI SOLAR", "HELIROMA"];
 
   var TERMS = [
-    "Prices are Ex Works Panipat warehouse.",
+    "EX WORKS - Prices are Ex Works Panipat warehouse.",
     "VALIDITY - This quotation is valid for 30 days from the date of issue. Prices are subject to revision after expiry and re-quotation may be required for orders placed thereafter.",
     "PRODUCT IMAGES - Product images shown are for reference only. Actual product supplied may differ in appearance, colour, finish or packaging. The product description and model number shall be the basis of supply.",
     "PRICES & GST - Applicable GST at prevailing rates will be charged additionally. Prices are subject to change without prior notice based on supplier or MRP revisions.",
     "PAYMENT TERMS - 50% advance along with a signed Purchase Order confirms the booking. Balance is payable against the Proforma Invoice before dispatch. Cheques and demand drafts in favour of Energy World are subject to realization before order processing.",
     "DELIVERY - Delivery timelines are indicative and subject to stock availability and supplier lead times. Delivery charges, if applicable, are communicated separately and are not included unless explicitly stated.",
-    "RETURNS & CANCELLATIONS - Goods once delivered and accepted cannot be returned unless defective or incorrectly supplied. Any discrepancy must be reported within 48 hours of delivery. Custom-ordered or imported items are non-returnable once placed with the supplier. Orders once confirmed and subsequently cancelled shall attract a cancellation fee of 40% of the advance received; the balance of the advance shall be refunded.",
+    "RETURNS - Goods once delivered and accepted cannot be returned unless defective or incorrectly supplied. Any discrepancy must be reported within 48 hours of delivery. Custom-ordered or imported items are non-returnable once placed with the supplier.",
+    "CANCELLATION - Orders once confirmed and subsequently cancelled shall attract a cancellation fee of 40% of the advance received; the balance of the advance shall be refunded.",
     "WARRANTY - Products carry the respective manufacturer warranty. Energy World will assist in connecting the customer with the brand service team but does not assume warranty obligation on behalf of the manufacturer.",
     "INSTALLATION - Unless explicitly included, installation is not in the scope of supply. Energy World recommends installation by certified plumbers or brand-authorized technicians."
   ];
@@ -1593,7 +1604,7 @@ function viewCatalogue() {
           : Number(i.disc);
         d = Number(d) || 0;
         var net = Math.round(i.price * (1 - d / 100));
-        return { desc: i.desc, code: i.code, pic: pics[idx], dim: PIC_DIM[i.pic] || null,
+        return { desc: String(i.desc == null ? "" : i.desc).replace(/\s+/g, " ").trim(), code: i.code, pic: pics[idx], dim: PIC_DIM[i.pic] || null,
           unit: i.unit || "No's",
           qty: i.qty, price: i.price, disc: d, net: net, total: net * i.qty };
       });
@@ -1718,7 +1729,11 @@ function viewCatalogue() {
             var dm = (r.dim && r.dim.w && r.dim.h) ? r.dim : { w: BOXW, h: BOXH };
             var psc = Math.min(BOXW / dm.w, BOXH / dm.h);
             var pw = dm.w * psc, ph = dm.h * psc;
-            doc.addImage(r.pic, "JPEG", X.pic + (BOXW - pw) / 2, y - 2.8 + (BOXH - ph) / 2, pw, ph);
+            /* Centre the photo in the FULL row height, not just the top 9mm box. A tall row
+               (long, wrapped description) used to leave the picture stuck at the top while the
+               text ran down beside it - the tank looked top-aligned. Centre it on the row band
+               (which starts at y-3.6 and is `hgt` tall) so every photo sits mid-row. */
+            doc.addImage(r.pic, "JPEG", X.pic + (BOXW - pw) / 2, (y - 3.6) + (hgt - ph) / 2, pw, ph);
           } catch (e) { }
         }
 
@@ -1731,17 +1746,20 @@ function viewCatalogue() {
         doc.text(fitCell(doc, F, r.unit, UNIT_W, 1, "normal", 6.2)[0], X.unit, y + 0.6, { align: "right" });
         F("bold"); doc.text(String(r.qty), X.qty, y + 0.6, { align: "right" });
         F("normal");
+        /* Always print the list price and the discounted price. Only the DIS.% cell is
+           conditional - a line with no discount shows an en-dash there instead of a blank,
+           so a zero-discount quote never looks like the columns failed to render. */
+        col(GREY);
+        doc.text(R(r.price), X.price, y + 0.6, { align: "right" });
         if (r.disc > 0) {
-          col(GREY);
-          doc.text(R(r.price), X.price, y + 0.6, { align: "right" });
           col([13, 148, 136]); F("bold");
           doc.text(r.disc.toFixed(1) + "%", X.dis, y + 0.6, { align: "right" });
-          col(INK); F("normal");
-          doc.text(R(r.net), X.dprice, y + 0.6, { align: "right" });
         } else {
-          col(INK);
-          doc.text(R(r.net), X.dprice, y + 0.6, { align: "right" });
+          col([160, 174, 192]); F("normal");
+          doc.text("–", X.dis, y + 0.6, { align: "right" });
         }
+        col(INK); F("normal");
+        doc.text(R(r.net), X.dprice, y + 0.6, { align: "right" });
         F("bold"); doc.setFontSize(6.6); col(INK);
         doc.text(R(r.total), X.amt, y + 0.6, { align: "right" });
 
@@ -1759,46 +1777,65 @@ function viewCatalogue() {
       doc.text(R(subTotal), X.amt, y + 1.6, { align: "right" });
 
       /* ================= TERMS ================= */
+      /* T&C now sits inside the same soft, mint-barred panel as the distributor strip, so it
+         reads as one framed block instead of loose text under a bar. The panel is sized to the
+         taller of the two text columns, computed deterministically before it is drawn. */
       var TC_FS = 5.4, TC_LEAD = 2.2, TC_GAP = 2.3;
-    var COLW = (Rt - L - 6) / 2;
-    F("normal"); doc.setFontSize(TC_FS);
-    var tcBlocks = TERMS.map(function (tx, n) {
-      var parts = tx.split(" - ");
-      var hd = parts.length > 1 ? parts.shift() : "";
-      var body = parts.join(" - ") || tx;
-      var ls = doc.splitTextToSize(body, COLW - 3);
-      return { hd: hd, ls: ls, n: n + 1, h: (hd ? 2.5 : 0) + ls.length * TC_LEAD + TC_GAP };
-    });
-    var tcTotal = tcBlocks.reduce(function (a, b) { return a + b.h; }, 0);
-    var tcNeed = 9 + (tcTotal / 2) + 3;
-    if (y + tcNeed > 274) { doc.addPage(); y = 22; } else { y += 4; }
-    fill(MINT); doc.rect(L, y, 1.8, 5.2, "F");
-    col(DEEP); F("bold"); doc.setFontSize(9);
-    doc.text("Terms & Conditions", L + 4, y + 3.9);
-    y += 7.5;
-    var tcHalf = tcTotal / 2, tcAcc = 0, tcCol = 0, tcY = [y, y];
-    tcBlocks.forEach(function (b) {
-      if (tcCol === 0 && tcAcc + b.h > tcHalf && tcAcc > 0) { tcCol = 1; }
-      var x = L + tcCol * (COLW + 6);
-      var yy = tcY[tcCol];
-      if (b.hd) {
-        col([13, 118, 108]); F("bold"); doc.setFontSize(TC_FS - 0.3);
-        doc.text(b.n + ". " + b.hd.toUpperCase(), x, yy);
-        yy += 2.5;
-      }
-      col([75, 85, 99]); F("normal"); doc.setFontSize(TC_FS);
-      doc.text(b.ls, x + (b.hd ? 1.8 : 0), yy);
-      yy += b.ls.length * TC_LEAD + TC_GAP;
-      tcY[tcCol] = yy;
-      if (tcCol === 0) tcAcc += b.h;
-    });
-    y = Math.max(tcY[0], tcY[1]) + 2;
+      var TC_PADL = 6, TC_PADR = 5, TC_HEADH = 8.5, TC_PADB = 4, TC_COLGAP = 6;
+      var COLW = (Rt - L - TC_PADL - TC_PADR - TC_COLGAP) / 2;
+      F("normal"); doc.setFontSize(TC_FS);
+      var tcBlocks = TERMS.map(function (tx, n) {
+        var parts = tx.split(" - ");
+        var hd = parts.length > 1 ? parts.shift() : "";
+        var body = parts.join(" - ") || tx;
+        var ls = doc.splitTextToSize(body, COLW - 3);
+        return { hd: hd, ls: ls, n: n + 1, h: (hd ? 2.5 : 0) + ls.length * TC_LEAD + TC_GAP };
+      });
+      var tcTotal = tcBlocks.reduce(function (a, b) { return a + b.h; }, 0);
+      var tcHalf = tcTotal / 2;
+      var tcAccP = 0, tcColP = 0, tcColH = [0, 0];
+      var tcPlaced = tcBlocks.map(function (b) {
+        if (tcColP === 0 && tcAccP + b.h > tcHalf && tcAccP > 0) { tcColP = 1; }
+        tcColH[tcColP] += b.h;
+        if (tcColP === 0) tcAccP += b.h;
+        return tcColP;
+      });
+      var TC_PANH = TC_HEADH + Math.max(tcColH[0], tcColH[1]) + TC_PADB;
+      if (y + TC_PANH + 3 > 276) { doc.addPage(); y = 22; } else { y += 4; }
+      var tcPy = y;
+      fill([246, 250, 249]); doc.roundedRect(L, tcPy, Rt - L, TC_PANH, 2, 2, "F");
+      doc.setDrawColor(214, 232, 228); doc.setLineWidth(0.3);
+      doc.roundedRect(L, tcPy, Rt - L, TC_PANH, 2, 2, "S"); doc.setLineWidth(0.2);
+      fill(MINT); doc.rect(L, tcPy, 1.4, TC_PANH, "F");
+      col(DEEP); F("bold"); doc.setFontSize(9);
+      doc.text("Terms & Conditions", L + TC_PADL, tcPy + 5.4);
+      var tcTop = tcPy + TC_HEADH + 1.5;
+      var tcY = [tcTop, tcTop];
+      tcBlocks.forEach(function (b, bi) {
+        var tcCol = tcPlaced[bi];
+        var x = L + TC_PADL + tcCol * (COLW + TC_COLGAP);
+        var yy = tcY[tcCol];
+        if (b.hd) {
+          col([13, 118, 108]); F("bold"); doc.setFontSize(TC_FS - 0.3);
+          doc.text(b.n + ". " + b.hd.toUpperCase(), x, yy);
+          yy += 2.5;
+        }
+        col([75, 85, 99]); F("normal"); doc.setFontSize(TC_FS);
+        doc.text(b.ls, x + (b.hd ? 1.8 : 0), yy);
+        yy += b.ls.length * TC_LEAD + TC_GAP;
+        tcY[tcCol] = yy;
+      });
+      y = tcPy + TC_PANH + 2;
 
       /* ---- sign-off, bottom right of the last page. A quotation is a document a person
            stands behind, so the name goes where a signature goes - not in a header box. ---- */
       var me = (S.data.team || []).filter(function (t2) { return t2.name === q.createdBy; })[0] || {};
-      if (y > 236) { doc.addPage(); y = 30; }
-      var sy = 250;
+      /* Keep the sign-off on THIS page whenever it fits. It used to jump to a fresh page far
+         too early (y>236) even with half the page still empty. Only break if the ~25mm block
+         would collide with the footer; otherwise anchor it at the usual 250, or just below the
+         terms when those run long. */
+      if (y + 27 > 288) { doc.addPage(); y = 30; }
+      var sy = Math.max(250, y + 6);
       doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.3);
       doc.line(Rt - 62, sy, Rt, sy); doc.setLineWidth(0.2);
       col(GREY); F("bold"); doc.setFontSize(5.8);
