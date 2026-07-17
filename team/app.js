@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.9";
+  var APP_VERSION = "6.9.11";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1017,6 +1017,42 @@ window.addEventListener("beforeunload", function (ev) {
         '<div class="grow"></div>' +
         '<button class="btn" data-act="qz-step" data-step="4">Discount (' + (z.items || []).length + ')</button></div>';
 
+      /* One compact product row - reused by the family list and the code search below. */
+      var qzProw = function (p) {
+        var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
+        return '<div class="prow ' + (ex ? "picked" : "") + '">' +
+          (p.pic ? '<img src="' + esc(p.pic) + '" loading="lazy"/>' : '<div class="noimg"></div>') +
+          '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
+          '<div class="pmeta">' + esc(p.code) + ' &middot; ' + money(p.price) + ' / ' + esc(p.unit) +
+          (p.brand && p.brand !== z.brand ? ' &middot; ' + esc(p.brand) : '') + '</div></div>' +
+          '<div class="pqty">' +
+          '<button class="stp" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
+          '<input class="qz-q" data-code="' + esc(p.code) + '" inputmode="numeric" value="' + esc(ex ? ex.qty : "") + '" placeholder="0"/>' +
+          '<button class="stp" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
+          '</div></div>';
+      };
+
+      /* Search straight to a product by its code (or a word in its name) without hunting
+         through the family chips. A code is unique across the catalogue, so this looks at
+         every product - adding a hit from another brand just starts that brand in the quote. */
+      h += '<div class="row" style="margin:8px 0 2px">' +
+        '<input id="qz_code" class="grow" autocomplete="off" placeholder="Search by product code" value="' + esc(z.codeq || "") + '"/>' +
+        '<button class="btn sm" data-act="qz-code-go">Find</button>' +
+        (z.codeq ? ' <button class="btn sm ghost" data-act="qz-code-clear">Clear</button>' : '') + '</div>';
+
+      if (z.codeq && String(z.codeq).trim()) {
+        var qc = String(z.codeq).trim().toLowerCase();
+        var hits = PRODUCTS.filter(function (p) {
+          return String(p.code || "").toLowerCase().indexOf(qc) > -1 ||
+            String(p.desc || "").toLowerCase().indexOf(qc) > -1;
+        }).slice(0, 40);
+        h += '<div class="plist">';
+        if (!hits.length) h += '<div class="empty">No product matches "' + esc(z.codeq) + '".</div>';
+        hits.forEach(function (p) { h += qzProw(p); });
+        h += '</div>';
+        return h;
+      }
+
       /* families as small horizontal chips, not a vertical wall of cards */
       var fams = familyList(z.brand);
       h += '<div class="chips">' + fams.map(function (f) {
@@ -1025,21 +1061,12 @@ window.addEventListener("beforeunload", function (ev) {
           esc(f) + ' <b>' + n + '</b></button>';
       }).join("") + '</div>';
 
-      if (!z.family) return h + '<div class="empty">Pick a family above.</div>';
+      if (!z.family) return h + '<div class="empty">Pick a family above, or search by code.</div>';
 
       /* compact product rows: pic, name, price, stepper - all on one line */
       h += '<div class="plist">';
       brandProducts(z.brand).filter(function (p) { return p.family === z.family; }).forEach(function (p) {
-        var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
-        h += '<div class="prow ' + (ex ? "picked" : "") + '">' +
-          (p.pic ? '<img src="' + esc(p.pic) + '" loading="lazy"/>' : '<div class="noimg"></div>') +
-          '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
-          '<div class="pmeta">' + esc(p.code) + ' &middot; ' + money(p.price) + ' / ' + esc(p.unit) + '</div></div>' +
-          '<div class="pqty">' +
-          '<button class="stp" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
-          '<input class="qz-q" data-code="' + esc(p.code) + '" inputmode="numeric" value="' + esc(ex ? ex.qty : "") + '" placeholder="0"/>' +
-          '<button class="stp" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
-          '</div></div>';
+        h += qzProw(p);
       });
       h += '</div>';
       return h;
@@ -1533,6 +1560,7 @@ function viewCatalogue() {
        out soft/blurry. Pull them at =w700 and keep the downscale ceiling at 600 so the mark
        is crisp. Catalogue photos stay at =w200 / 300 - they sit in a 10mm box and the smaller
        fetch keeps on-screen data light on 4G. */
+    var raw = url;
     url = driveImg(url, trim ? 700 : 200);
     if (!url) return Promise.resolve(null);
     if (PIC_CACHE[url] !== undefined) return Promise.resolve(PIC_CACHE[url]);
@@ -1540,7 +1568,13 @@ function viewCatalogue() {
       if (!r || !r.ok) { PIC_CACHE[url] = null; return null; }
       return shrinkPic("data:" + r.mime + ";base64," + r.b64, trim ? 600 : 300, trim ? 0.85 : 0.75, trim).then(function (p) {
         PIC_CACHE[url] = p ? p.src : null;
-        PIC_DIM[url] = p ? { w: p.w, h: p.h } : null;
+        var dim = p ? { w: p.w, h: p.h } : null;
+        /* Store the real pixel dimensions under BOTH the fetched (=w700) key and the ORIGINAL
+           url. logosReady() and the quote table look dims up by the original url; keying only
+           by the transformed url made every lookup miss and fall back to a fixed {100,40},
+           which squashed every logo to the box aspect and stretched the wide ones tall. */
+        PIC_DIM[url] = dim;
+        PIC_DIM[raw] = dim;
         return PIC_CACHE[url];
       });
     }).catch(function () { PIC_CACHE[url] = null; return null; });
@@ -1834,17 +1868,17 @@ function viewCatalogue() {
          too early (y>236) even with half the page still empty. Only break if the ~25mm block
          would collide with the footer; otherwise anchor it at the usual 250, or just below the
          terms when those run long. */
-      if (y + 27 > 288) { doc.addPage(); y = 30; }
-      var sy = Math.max(250, y + 6);
+      if (y + 21 > 290) { doc.addPage(); y = 30; }
+      var sy = Math.max(250, y + 3);
       doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.3);
       doc.line(Rt - 62, sy, Rt, sy); doc.setLineWidth(0.2);
       col(GREY); F("bold"); doc.setFontSize(5.8);
-      doc.text("PREPARED BY", Rt, sy + 5, { align: "right" });
+      doc.text("PREPARED BY", Rt, sy + 4, { align: "right" });
       col(INK); F("bold"); doc.setFontSize(10);
-      doc.text(String(q.createdBy || "-"), Rt, sy + 11.5, { align: "right" });
+      doc.text(String(q.createdBy || "-"), Rt, sy + 10, { align: "right" });
       if (me.mobile) {
         col(GREY); F("normal"); doc.setFontSize(7.4);
-        doc.text(String(me.mobile), Rt, sy + 16.2, { align: "right" });
+        doc.text(String(me.mobile), Rt, sy + 14.5, { align: "right" });
       }
 
       var pages = doc.internal.getNumberOfPages();
@@ -4169,6 +4203,13 @@ function viewCatalogue() {
       q.focus();
       q.setSelectionRange(q.value.length, q.value.length);
     }
+    /* quote builder code search: hold the text as it is typed (no re-render, so focus stays),
+       and run the search on Enter. Not auto-focused - that would steal focus off the +/- taps. */
+    var qzc = el("qz_code");
+    if (qzc) {
+      qzc.addEventListener("input", function (e) { if (S.qz) S.qz.codeq = e.target.value; });
+      qzc.addEventListener("keyup", function (e) { if (e.key === "Enter") render(); });
+    }
   }
 
   function readLines() {
@@ -4418,9 +4459,11 @@ function viewCatalogue() {
       S.qz.brand = bch;
       S.qz.brandDiscs = S.qz.brandDiscs || {};
       if (S.qz.brandDiscs[bch] === undefined) S.qz.brandDiscs[bch] = clientDiscount(S.qz.client, bch);
-      S.qz.family = ""; S.qz.step = 3; render(); return;
+      S.qz.family = ""; S.qz.codeq = ""; S.qz.step = 3; render(); return;
     }
-    if (act === "qz-fam") { S.qz.family = t.getAttribute("data-fam"); render(); return; }
+    if (act === "qz-fam") { S.qz.family = t.getAttribute("data-fam"); S.qz.codeq = ""; render(); return; }
+    if (act === "qz-code-go") { var qcb = el("qz_code"); if (qcb && S.qz) S.qz.codeq = qcb.value; render(); return; }
+    if (act === "qz-code-clear") { if (S.qz) S.qz.codeq = ""; render(); return; }
     if (act === "qz-step") { S.qz.step = Number(t.getAttribute("data-step")); render(); return; }
     if (act === "qz-qty") {
       var code = t.getAttribute("data-code");
