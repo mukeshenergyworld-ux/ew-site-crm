@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.3";
+  var APP_VERSION = "6.9.4";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -720,8 +720,8 @@ window.addEventListener("beforeunload", function (ev) {
     (z.items || []).forEach(function (i) {
       var b = i.brand || brandByCode(i.code) || "";
       if (b !== brand) return;
-      var line = i.qty * i.price;
-      gross += line; net += line * (1 - (lineDisc(i, z)) / 100); n++;
+      gross += i.qty * i.price;
+      net += Math.round(i.price * (1 - (lineDisc(i, z)) / 100)) * i.qty; n++;
     });
     return { gross: Math.round(gross), net: Math.round(net), count: n };
   }
@@ -924,10 +924,11 @@ window.addEventListener("beforeunload", function (ev) {
   function qzTotals() {
     var gross = 0, net = 0;
     (S.qz.items || []).forEach(function (i) {
-      var line = i.qty * i.price;
       var d = lineDisc(i, S.qz);
-      gross += line;
-      net += line * (1 - (Number(d) || 0) / 100);
+      gross += i.qty * i.price;
+      /* round per line (discounted unit rate x qty) so the on-screen total, the
+         per-brand subtotals and the printed PDF all reconcile to the same figure. */
+      net += Math.round(i.price * (1 - (Number(d) || 0) / 100)) * i.qty;
     });
     var gst = net * GST;
     return { gross: Math.round(gross), net: Math.round(net), gst: Math.round(gst), total: Math.round(net + gst) };
