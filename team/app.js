@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.11";
+  var APP_VERSION = "6.9.12";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1174,7 +1174,13 @@ window.addEventListener("beforeunload", function (ev) {
       '</tfoot></table></div>';
     h += '<div class="meta" style="margin-top:8px">Gross ' + money(tt.gross) + ' &middot; after discount <b>' + money(tt.net) + '</b> &middot; GST 18% ' + money(tt.gst) +
       ' &middot; <b>Total incl GST ' + money(tt.total) + '</b>' +
-      '<br><span style="color:#94a3b8">* = product-wise override. GST is charged as actual and never printed on the quote.</span></div>';
+      '<br><span style="color:#94a3b8">* = product-wise override.</span></div>';
+    /* GST-on-the-PDF toggle. Ticked -> the PDF prints Sub-Total, GST @ 18% and Grand Total.
+       Unticked -> the PDF keeps "Sub-Total { GST as Actual }" with no GST amount. */
+    h += '<label class="card" data-act="qz-gst" style="margin-top:10px;border-color:#99f6e4;background:#f0fdfa;display:flex;align-items:center;gap:12px;cursor:pointer">' +
+      '<span style="flex:0 0 auto;width:22px;height:22px;border-radius:6px;border:2px solid #0d9488;background:' + (z.gst ? '#0d9488' : '#fff') + ';color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:15px">' + (z.gst ? '✓' : '') + '</span>' +
+      '<span><b style="font-size:14px">Show 18% GST on the quote PDF</b>' +
+      '<div class="pmeta" style="font-size:12px;color:#64748b">Ticked: the PDF prints Sub-Total, GST @ 18% and Grand Total (incl. GST). Unticked: it shows &ldquo;Sub-Total { GST as Actual }&rdquo; with no GST amount.</div></span></label>';
     h += '<div class="acts" style="margin-top:12px"><button class="btn" data-act="qz-save">Save quote</button></div></div>';
     return h;
   }
@@ -1645,6 +1651,9 @@ function viewCatalogue() {
       var ordered = rows.filter(function (r) { return r.disc > 0; }).sort(function (a, b) { return b.disc - a.disc; })
         .concat(rows.filter(function (r) { return r.disc <= 0; }));
       var subTotal = rows.reduce(function (a, r) { return a + r.total; }, 0);
+      /* Some projects must show 18% GST spelled out on the quote. The flag rides along inside
+         the saved items (no sheet column), so it round-trips. Off = the old "{ GST as Actual }". */
+      var showGst = items.some(function (i) { return Number(i.gst) === 1; });
       var c = clientByName(q.client) || {};
 
       /* ================= HEADER =================
@@ -1801,14 +1810,33 @@ function viewCatalogue() {
         doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.line(L, y - 2.8, Rt, y - 2.8);
       });
 
-      /* ---- sub-total. GST amount never appears. ---- */
+      /* ---- sub-total. Either "{ GST as Actual }" (default) or a spelled-out 18% GST block. ---- */
       y += 4;
-      if (y > 258) { doc.addPage(); y = 26; }
-      fill([236, 253, 245]); doc.roundedRect(106, y - 4.5, Rt - 106, 11, 1.5, 1.5, "F");
-      col([13, 118, 108]); F("bold"); doc.setFontSize(6.8);
-      doc.text("Sub-Total { GST as Actual }", 110, y + 1.4);
-      doc.setFontSize(10);
-      doc.text(R(subTotal), X.amt, y + 1.6, { align: "right" });
+      if (y > (showGst ? 250 : 258)) { doc.addPage(); y = 26; }
+      if (showGst) {
+        var GST_RATE = 18;
+        var gstAmt = Math.round(subTotal * GST_RATE / 100);
+        var grand = subTotal + gstAmt;
+        var GBH = 20;
+        fill([236, 253, 245]); doc.roundedRect(106, y - 4.5, Rt - 106, GBH, 1.5, 1.5, "F");
+        col([13, 118, 108]); F("normal"); doc.setFontSize(6.8);
+        doc.text("Sub-Total", 110, y + 0.6);
+        F("bold"); doc.text(R(subTotal), X.amt, y + 0.6, { align: "right" });
+        col([75, 85, 99]); F("normal"); doc.setFontSize(6.8);
+        doc.text("GST @ 18%", 110, y + 5.8);
+        doc.text(R(gstAmt), X.amt, y + 5.8, { align: "right" });
+        doc.setDrawColor(178, 217, 210); doc.setLineWidth(0.25); doc.line(110, y + 8.6, Rt - 4, y + 8.6); doc.setLineWidth(0.2);
+        col([13, 118, 108]); F("bold"); doc.setFontSize(9.5);
+        doc.text("Grand Total (incl. GST)", 110, y + 13.4);
+        doc.text(R(grand), X.amt, y + 13.4, { align: "right" });
+        y += (GBH - 11);   /* the taller box pushes the terms panel down accordingly */
+      } else {
+        fill([236, 253, 245]); doc.roundedRect(106, y - 4.5, Rt - 106, 11, 1.5, 1.5, "F");
+        col([13, 118, 108]); F("bold"); doc.setFontSize(6.8);
+        doc.text("Sub-Total { GST as Actual }", 110, y + 1.4);
+        doc.setFontSize(10);
+        doc.text(R(subTotal), X.amt, y + 1.6, { align: "right" });
+      }
 
       /* ================= TERMS ================= */
       /* T&C now sits inside the same soft, mint-barred panel as the distributor strip, so it
@@ -4464,6 +4492,7 @@ function viewCatalogue() {
     if (act === "qz-fam") { S.qz.family = t.getAttribute("data-fam"); S.qz.codeq = ""; render(); return; }
     if (act === "qz-code-go") { var qcb = el("qz_code"); if (qcb && S.qz) S.qz.codeq = qcb.value; render(); return; }
     if (act === "qz-code-clear") { if (S.qz) S.qz.codeq = ""; render(); return; }
+    if (act === "qz-gst") { if (S.qz) S.qz.gst = !S.qz.gst; render(); return; }
     if (act === "qz-step") { S.qz.step = Number(t.getAttribute("data-step")); render(); return; }
     if (act === "qz-qty") {
       var code = t.getAttribute("data-code");
@@ -4509,7 +4538,8 @@ function viewCatalogue() {
       S.qz = { step: 4, location: "", client: old.client,
         brand: (its[0] && its[0].brand) || old.brand, items: its,
         brandDisc: Number(old.discountPct) || 0, brandDiscs: revBd, parentId: old.id,
-        version: (Number(old.version) || 1) + 1, quoteNo: old.quoteNo };
+        version: (Number(old.version) || 1) + 1, quoteNo: old.quoteNo,
+        gst: its.some(function (i) { return Number(i.gst) === 1; }) };
       S.tab = "quotes"; render(); return;
     }
     if (act === "qz-save") {
@@ -4544,6 +4574,8 @@ function viewCatalogue() {
           var o = { code: i.code, desc: i.desc, family: i.family, price: i.price, qty: i.qty,
             pic: i.pic, unit: i.unit, brand: b, bd: bd };
           if (i.disc !== "" && i.disc !== undefined && i.disc !== null) o.disc = Number(i.disc) || 0;
+          /* GST-on-PDF flag rides inside each item so it persists without a new sheet column */
+          if (z.gst) o.gst = 1;
           return o;
         });
         var blended = tot.gross > 0 ? Math.round((tot.gross - tot.net) / tot.gross * 100) : 0;
