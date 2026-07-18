@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.27";
+  var APP_VERSION = "6.9.28";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -568,6 +568,202 @@ window.addEventListener("beforeunload", function (ev) {
     return { t: "due " + dstr(x.nextService), k: "" };
   }
 
+  /* ---------- PRODUCT COMMISSIONING ----------
+     Some products need on-site commissioning (softener, filters, pumps, heat pump). Once a
+     challan carrying them is DELIVERED (signed receipt), it lands in the Service "To commission"
+     queue. The engineer enters the commissioning date + a warranty period per product (seeded by
+     type, editable); that stamps the challan's itemsJson (no new sheet column) and prints a
+     Commissioning Certificate + a Warranty Card. */
+  var COMM_CATS = [
+    { kw: ["softener"], label: "Water Softener", months: 12 },
+    { kw: ["sand filter"], label: "Sand Filter", months: 12 },
+    { kw: ["carbon filter"], label: "Carbon Filter", months: 12 },
+    { kw: ["pressure pump"], label: "Pressure Pump", months: 12 },
+    { kw: ["heat pump"], label: "Heat Pump", months: 24 },
+    { kw: ["recirculation"], label: "Recirculation Pump", months: 12 },
+    { kw: ["purifier", "reverse osmosis"], label: "RO / Purifier", months: 12 }
+  ];
+  function commCat(desc) {
+    var d = " " + String(desc || "").toLowerCase() + " ";
+    for (var i = 0; i < COMM_CATS.length; i++) {
+      if (COMM_CATS[i].kw.some(function (k) { return d.indexOf(k) >= 0; })) return COMM_CATS[i];
+    }
+    return null;
+  }
+  function chItems(ch) { try { return JSON.parse(ch.itemsJson || "[]"); } catch (e) { return []; } }
+  function commItemsOf(ch) {
+    return chItems(ch).map(function (i, idx) { var c = commCat(i.desc); return c ? { i: i, idx: idx, cat: c } : null; }).filter(Boolean);
+  }
+  function commDateOf(ch) { var ci = commItemsOf(ch); return (ci[0] && ci[0].i.comm && ci[0].i.comm.date) || ""; }
+  function commPending() {
+    return (S.data.challans || []).filter(function (c) {
+      if (String(c.receiptReceived).toUpperCase() !== "Y") return false;
+      return commItemsOf(c).some(function (x) { return !(x.i.comm && x.i.comm.date); });
+    });
+  }
+  function commDone() {
+    return (S.data.challans || []).filter(function (c) {
+      var ci = commItemsOf(c);
+      return ci.length && ci.every(function (x) { return x.i.comm && x.i.comm.date; });
+    }).sort(function (a, b) { return String(commDateOf(b)).localeCompare(String(commDateOf(a))); });
+  }
+  function addMonths(dateStr, m) {
+    var d = new Date(dstr(dateStr) + "T00:00:00");
+    if (isNaN(d.getTime())) return "";
+    d.setMonth(d.getMonth() + (Number(m) || 0));
+    return d.toISOString().slice(0, 10);
+  }
+  function fullDate(v) {
+    var s = String(v || "").trim(); if (!s) return "";
+    var d = new Date(s); if (isNaN(d.getTime())) return s;
+    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  }
+
+  function modalCommission(chId) {
+    var ch = (S.data.challans || []).filter(function (x) { return x.id === chId; })[0];
+    if (!ch) return "";
+    var rows = commItemsOf(ch).filter(function (x) { return !(x.i.comm && x.i.comm.date); }).map(function (x) {
+      var wm = x.cat.months;
+      return '<div class="acts" style="align-items:center;margin:6px 0"><div class="grow"><b>' + esc(x.i.desc) + '</b>' +
+        '<br><span style="font-size:11px;color:#94a3b8">' + esc(x.cat.label) + ' &middot; qty ' + esc(x.i.qty || 1) + '</span></div>' +
+        '<input class="cm-wm" data-idx="' + x.idx + '" inputmode="numeric" value="' + esc(wm) + '" style="width:60px;padding:6px 8px;font-size:13px"/>' +
+        '<span style="font-size:12px;color:#64748b">months</span></div>';
+    }).join("");
+    return '<h2>Commission products</h2>' +
+      '<p class="sub">' + esc(ch.customerName || "") + (ch.site ? ' &middot; ' + esc(ch.site) : "") + ' &middot; ' + esc(ch.challanNo || "") + '</p>' +
+      '<div class="grid2"><div><label>Commissioning date</label><input id="cm_date" type="date" value="' + today() + '"/></div>' +
+      '<div><label>Engineer</label><select id="cm_eng">' + opts(SVC_ENGINEERS, SVC_ENGINEERS[0]) + '</select></div></div>' +
+      '<label style="margin-top:8px">Warranty per product</label>' + rows +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="comm-save" data-ch="' + esc(ch.id) + '">Commission &amp; generate</button></div>';
+  }
+
+  function commPdfBase(title, ch, dateStr) {
+    return loadFonts().then(function (f) {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var uni = false;
+      if (f) {
+        doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
+        doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold"); uni = true;
+      }
+      var F = function (w) { doc.setFont(uni ? "DJ" : "helvetica", w || "normal"); };
+      var W = 210, L = 16, R = W - 16;
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 34, "F");
+      doc.setFillColor(94, 234, 212); doc.rect(0, 34, W, 1.2, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 8, 30, 16); } catch (e) {} }
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(15);
+      doc.text(title, R, 15, { align: "right" });
+      F("normal"); doc.setFontSize(8); doc.setTextColor(160, 205, 199);
+      doc.text("Energy World · Save Energy, Money & Earth", R, 22, { align: "right" });
+      doc.text("Date: " + fullDate(dateStr), R, 27, { align: "right" });
+      doc.setTextColor(17, 34, 45);
+      return { doc: doc, F: F, uni: uni, L: L, R: R, y: 46 };
+    });
+  }
+  function commCustomerBlock(b, ch) {
+    var doc = b.doc, F = b.F, L = b.L, y = b.y;
+    F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108); doc.text("CUSTOMER", L, y);
+    F("normal"); doc.setTextColor(17, 34, 45); doc.setFontSize(10.5); y += 6;
+    doc.text(String(ch.customerName || "-"), L, y);
+    if (ch.site) { y += 5.5; doc.setFontSize(9); doc.setTextColor(100, 116, 139); doc.text("Site: " + ch.site, L, y); }
+    return y + 11;
+  }
+
+  function commCertPdf(ch, dateStr, engineer) {
+    var ci = commItemsOf(ch);
+    return commPdfBase("COMMISSIONING CERTIFICATE", ch, dateStr).then(function (b) {
+      var doc = b.doc, F = b.F, L = b.L, R = b.R, y;
+      doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(10.5); y = 46;
+      doc.splitTextToSize("This is to certify that the following product(s) supplied by Energy World have been successfully installed and commissioned at the customer's premises and found to be functioning to satisfaction.", R - L).forEach(function (ln) { doc.text(ln, L, y); y += 6; });
+      b.y = y + 4; y = commCustomerBlock(b, ch);
+      doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, R - L, 9, "F");
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(7.6);
+      doc.text("PRODUCT", L + 3, y); doc.text("QTY", R - 40, y, { align: "right" }); doc.text("WARRANTY", R - 3, y, { align: "right" });
+      y += 9;
+      ci.forEach(function (x, idx) {
+        if (idx % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, R - L, 7, "F"); }
+        doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(9);
+        doc.text(doc.splitTextToSize(String(x.i.desc || ""), 120)[0], L + 3, y);
+        doc.text(String(x.i.qty || 1), R - 40, y, { align: "right" });
+        doc.text(((x.i.comm && x.i.comm.wm) || x.cat.months) + " months", R - 3, y, { align: "right" });
+        y += 7;
+      });
+      y += 8; doc.setFontSize(9.5); doc.setTextColor(17, 34, 45); F("normal");
+      doc.text("Challan No: " + String(ch.challanNo || "-"), L, y);
+      doc.text("Commissioned on: " + fullDate(dateStr), L, y + 6);
+      doc.text("Commissioning engineer: " + String(engineer || "-"), L, y + 12);
+      var sy = 252; doc.setDrawColor(180, 190, 200); doc.line(R - 62, sy, R, sy);
+      doc.setFontSize(8); doc.setTextColor(100, 116, 139);
+      doc.text("For Energy World — Authorised Signatory", R, sy + 5, { align: "right" });
+      doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
+      doc.text("Energy World  |  Panipat · Sonipat · Karnal", L, 290);
+      return doc;
+    });
+  }
+
+  function warrantyCardPdf(ch, dateStr) {
+    var ci = commItemsOf(ch);
+    return commPdfBase("WARRANTY CARD", ch, dateStr).then(function (b) {
+      var doc = b.doc, F = b.F, L = b.L, R = b.R, y = commCustomerBlock(b, ch);
+      doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, R - L, 9, "F");
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(7.4);
+      doc.text("PRODUCT", L + 3, y); doc.text("COMMISSIONED", R - 46, y, { align: "right" }); doc.text("WARRANTY VALID TILL", R - 3, y, { align: "right" });
+      y += 9;
+      ci.forEach(function (x, idx) {
+        if (idx % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, R - L, 7, "F"); }
+        doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(9);
+        doc.text(doc.splitTextToSize(String(x.i.desc || ""), 92)[0], L + 3, y);
+        var cd = (x.i.comm && x.i.comm.date) || dateStr;
+        var wm = (x.i.comm && x.i.comm.wm) || x.cat.months;
+        doc.text(fullDate(cd), R - 46, y, { align: "right" });
+        F("bold"); doc.text(fullDate((x.i.comm && x.i.comm.till) || addMonths(cd, wm)), R - 3, y, { align: "right" }); F("normal");
+        y += 7;
+      });
+      y += 10; F("bold"); doc.setFontSize(9); doc.setTextColor(13, 118, 108); doc.text("WARRANTY TERMS", L, y); F("normal");
+      y += 6; doc.setFontSize(8.2); doc.setTextColor(80, 92, 108);
+      [
+        "1. Warranty covers manufacturing defects in materials and workmanship for the period stated above, from the commissioning date.",
+        "2. Consumables — filter media, resin, salt, membranes, cartridges and gaskets — are not covered.",
+        "3. Damage from misuse, tampering, incorrect voltage, poor water quality, or servicing by unauthorised persons voids this warranty.",
+        "4. This card must be produced for any warranty claim. Warranty is non-transferable.",
+        "5. Free service visits during warranty do not extend the warranty period."
+      ].forEach(function (t2) {
+        doc.splitTextToSize(t2, R - L).forEach(function (ln) { doc.text(ln, L, y); y += 5; }); y += 1;
+      });
+      doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
+      doc.text("Energy World  |  Panipat · Sonipat · Karnal", L, 290);
+      return doc;
+    });
+  }
+
+  function commissioningSection() {
+    var pend = commPending(), done = commDone(), cs = "";
+    if (pend.length) {
+      cs += '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><h3>To commission <span class="pill due">' + pend.length + '</span></h3>' +
+        '<div class="meta">Delivered products that need on-site commissioning. Enter the date to issue the certificate + warranty card.</div>';
+      pend.forEach(function (c) {
+        var names = commItemsOf(c).filter(function (x) { return !(x.i.comm && x.i.comm.date); }).map(function (x) { return x.cat.label; });
+        cs += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(c.customerName || "") + '</b>' +
+          (c.site ? ' <span style="color:#94a3b8;font-size:11px">' + esc(c.site) + '</span>' : "") +
+          '<br><span style="font-size:11px;color:#64748b">' + esc(c.challanNo || "") + ' &middot; ' + esc(names.join(", ")) + '</span></div>' +
+          '<button class="btn sm" data-act="comm-open" data-ch="' + esc(c.id) + '">Commission</button></div>';
+      });
+      cs += '</div>';
+    }
+    if (done.length) {
+      cs += '<div class="card"><h3>Commissioned <span class="pill Won">' + done.length + '</span></h3><div class="meta">Re-print or send the documents any time.</div>';
+      done.slice(0, 12).forEach(function (c) {
+        cs += '<div class="acts" style="align-items:center;margin-top:8px;flex-wrap:wrap"><div class="grow"><b>' + esc(c.customerName || "") + '</b>' +
+          '<br><span style="font-size:11px;color:#64748b">' + esc(c.challanNo || "") + ' &middot; ' + esc(fullDate(commDateOf(c))) + '</span></div>' +
+          '<button class="btn sm ghost" data-act="comm-cert" data-ch="' + esc(c.id) + '">Certificate</button>' +
+          '<button class="btn sm ghost" data-act="comm-warr" data-ch="' + esc(c.id) + '">Warranty</button>' +
+          '<button class="btn sm" data-act="comm-warr-wa" data-ch="' + esc(c.id) + '">Send</button></div>';
+      });
+      cs += '</div>';
+    }
+    return cs;
+  }
+
   function viewService() {
     var q = S.q.toLowerCase();
     var list = S.data.installs.filter(function (x) {
@@ -579,6 +775,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="stat ' + (due ? "alert" : "") + '"><div class="n">' + due + '</div><div class="l">Service due / overdue</div></div>' +
       '<div class="stat"><div class="n">' + S.data.installs.filter(function (x) { return x.amcType && x.amcType !== "None"; }).length + '</div><div class="l">Under AMC</div></div>' +
       '</div>';
+    h += commissioningSection();
     h += '<div class="row"><input class="grow" id="q" placeholder="Search client, area, engineer..." value="' + esc(S.q) + '"/>' +
       '<button class="btn" data-act="inst-new">+ New installation</button></div>';
     if (!list.length) h += '<div class="empty">No installations yet.</div>';
@@ -5232,6 +5429,46 @@ function viewCatalogue() {
         toast("Duplicate check skipped (" + ((e && e.message) || "network") + ") - saving.");
         qzDoSave();
       });
+      return;
+    }
+    if (act === "comm-open") { S.modal = modalCommission(t.getAttribute("data-ch")); render(); return; }
+    if (act === "comm-save") {
+      var commCh = (S.data.challans || []).filter(function (x) { return x.id === t.getAttribute("data-ch"); })[0];
+      if (!commCh) return;
+      var cDate = val("cm_date") || today(), cEng = val("cm_eng");
+      var cItems = chItems(commCh);
+      [].slice.call(document.querySelectorAll(".cm-wm")).forEach(function (inp) {
+        var idx = Number(inp.getAttribute("data-idx")), wm = Number(inp.value) || 0;
+        if (cItems[idx]) cItems[idx].comm = { date: cDate, eng: cEng, wm: wm, till: addMonths(cDate, wm) };
+      });
+      commCh.itemsJson = JSON.stringify(cItems);
+      t.disabled = true; t.textContent = "Generating...";
+      save("challans", commCh).then(function (r) {
+        S.modal = null; toast("Commissioned. Generating documents..."); render();
+        loadLogo().then(function () { return commCertPdf(commCh, cDate, cEng); })
+          .then(function (d) { d.save("Commissioning_" + String(commCh.challanNo || "").replace(/[^\w.-]/g, "_") + ".pdf"); return warrantyCardPdf(commCh, cDate); })
+          .then(function (d) { d.save("Warranty_" + String(commCh.challanNo || "").replace(/[^\w.-]/g, "_") + ".pdf"); toast("Certificate + warranty card downloaded."); })
+          .catch(function () { toast("Saved, but PDF generation failed."); });
+      });
+      return;
+    }
+    if (act === "comm-cert" || act === "comm-warr" || act === "comm-warr-wa") {
+      var cch = (S.data.challans || []).filter(function (x) { return x.id === t.getAttribute("data-ch"); })[0];
+      if (!cch) return;
+      var cd = commDateOf(cch), ci0 = commItemsOf(cch)[0], ceng = (ci0 && ci0.i.comm && ci0.i.comm.eng) || "";
+      var fn = String(cch.challanNo || "").replace(/[^\w.-]/g, "_");
+      if (act === "comm-cert") {
+        toast("Building certificate...");
+        loadLogo().then(function () { return commCertPdf(cch, cd, ceng); }).then(function (d) { d.save("Commissioning_" + fn + ".pdf"); });
+      } else if (act === "comm-warr") {
+        toast("Building warranty card...");
+        loadLogo().then(function () { return warrantyCardPdf(cch, cd); }).then(function (d) { d.save("Warranty_" + fn + ".pdf"); });
+      } else {
+        var wcl = clientByName(cch.customerName) || {};
+        var wnum = String(wcl.mobile || "").replace(/\D/g, ""); if (wnum.length === 10) wnum = "91" + wnum;
+        var wmsg = "Dear " + cch.customerName + ",\n\nYour Energy World warranty card is attached. Please keep it safe for any future service or warranty claim.\n\nThank you,\nEnergy World";
+        waShareDoc(loadLogo().then(function () { return warrantyCardPdf(cch, cd); }), "Warranty_" + fn + ".pdf", wnum, wmsg);
+      }
       return;
     }
     if (act === "inst-new") { S.modal = modalInstall(null); render(); return; }
