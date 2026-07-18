@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.24";
+  var APP_VERSION = "6.9.25";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1026,18 +1026,46 @@ window.addEventListener("beforeunload", function (ev) {
         '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '">PDF</button>' +
         '<button class="btn sm" data-act="q-wa" data-id="' + esc(q.id) + '">WhatsApp</button>' +
         '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
+        (q.status === "Won" ? '<button class="btn sm" data-act="q-challan" data-id="' + esc(q.id) + '">Make challan</button>' : "") +
         '<button class="btn sm ghost" data-act="qz-revise" data-id="' + esc(q.id) + '">Revise</button></div></div>';
     });
     return h;
   }
 
-  /* Share a quote on WhatsApp - used by the quote card (q-wa) and the follow-up radar
-     (rad-wa). WhatsApp cannot accept a file from a plain link, so behaviour differs by
-     device: on a PHONE we use the native share sheet (the PDF rides along as the
-     attachment); on a LAPTOP we open the chat immediately (while the click is still
-     "fresh", so the browser doesn't block the pop-up) and download the PDF to attach.
-     The old build-then-share order lost the click permission during the async PDF build
-     and failed silently on desktop - fixed by opening WhatsApp up-front on desktop. */
+  /* Device-aware WhatsApp share of a jsPDF document (a Promise that resolves to a jsPDF
+     doc). WhatsApp cannot accept a file from a plain link, so behaviour differs by device:
+     on a PHONE we use the native share sheet (the PDF rides along as the attachment); on a
+     LAPTOP we open the chat immediately (while the click is still "fresh", so the browser
+     doesn't block the pop-up) and download the PDF to drag in. Shared by quote share (q-wa /
+     rad-wa) and the payment reminder (pay-wa). */
+  function waShareDoc(docPromise, fname, wnum, wmsg) {
+    var waUrl = "https://wa.me/" + (wnum || "") + "?text=" + encodeURIComponent(wmsg);
+    var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    if (isMobile) {
+      toast("Preparing to share...");
+      docPromise.then(function (d) {
+        try {
+          var file = new File([d.output("blob")], fname, { type: "application/pdf" });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            navigator.share({ files: [file], text: wmsg })
+              .catch(function () { d.save(fname); window.open(waUrl, "_blank"); });
+            return;
+          }
+        } catch (e) { }
+        d.save(fname); window.open(waUrl, "_blank");
+      }).catch(function () { toast("Could not build the PDF."); });
+      return;
+    }
+    /* Desktop: open WhatsApp NOW (keeps the click permission so it isn't blocked),
+       then download the PDF so it can be dragged into the chat. */
+    window.open(waUrl, "_blank");
+    toast("Opening WhatsApp - building the PDF to attach...");
+    docPromise.then(function (d) {
+      d.save(fname);
+      toast("PDF downloaded - drag it into the WhatsApp chat.");
+    }).catch(function () { toast("Could not build the PDF."); });
+  }
+
   function waShareQuote(id) {
     var wq = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
     if (!wq) return;
@@ -1047,34 +1075,8 @@ window.addEventListener("beforeunload", function (ev) {
     var wmsg = "Hello " + wq.client + ",\n\nSharing your quotation " + wq.quoteNo + " from Energy World.\n" +
       "Amount: " + moneyAscii(wq.net) + " (GST as applicable). Valid for 30 days.\n" +
       "Please let us know if we may proceed.\n\nThank you,\nEnergy World";
-    var waUrl = "https://wa.me/" + wnum + "?text=" + encodeURIComponent(wmsg);
     var fname = String(wq.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf";
-    var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-
-    if (isMobile) {
-      toast("Preparing quote to share...");
-      quotePdf(wq).then(function (d) {
-        try {
-          var file = new File([d.output("blob")], fname, { type: "application/pdf" });
-          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            navigator.share({ files: [file], text: wmsg, title: "Quotation " + wq.quoteNo })
-              .catch(function () { d.save(fname); window.open(waUrl, "_blank"); });
-            return;
-          }
-        } catch (e) { }
-        d.save(fname); window.open(waUrl, "_blank");
-      }).catch(function () { toast("Could not build the quote PDF."); });
-      return;
-    }
-
-    /* Desktop: open WhatsApp NOW (keeps the click permission so it isn't blocked),
-       then download the PDF so it can be dragged into the chat. */
-    window.open(waUrl, "_blank");
-    toast("Opening WhatsApp - building the PDF to attach...");
-    quotePdf(wq).then(function (d) {
-      d.save(fname);
-      toast("PDF downloaded - drag it into the WhatsApp chat.");
-    }).catch(function () { toast("Could not build the quote PDF."); });
+    waShareDoc(quotePdf(wq), fname, wnum, wmsg);
   }
 
   function viewQzWizard() {
@@ -3089,13 +3091,25 @@ function viewCatalogue() {
       return '<button class="btn sm ' + (S.pRole === r ? "" : "ghost") + '" data-act="p-role" data-r="' + esc(r) + '">' + esc(r) + '</button>';
     }).join("") + '<button class="btn sm ' + (S.pRole ? "ghost" : "") + '" data-act="p-role" data-r="">All</button>' +
       '<div class="grow"></div><button class="btn" data-act="as-new">+ New partner</button></div>';
-    var list = partners.filter(function (a) { return !S.pRole || a.role === S.pRole; });
+
+    /* Leaderboard: rank partners by whichever metric matters right now. */
+    var metric = S.pSort || "billed";
+    var mLabel = { billed: "Business driven", earned: "Incentive earned", pending: "Still to pay" };
+    h += '<div class="row"><span style="font-size:12px;color:#64748b;align-self:center;margin-right:2px">Rank by:</span>' +
+      ["billed", "earned", "pending"].map(function (k) {
+        return '<button class="btn sm ' + (metric === k ? "" : "ghost") + '" data-act="p-sort" data-k="' + k + '">' + mLabel[k] + '</button>';
+      }).join("") + '</div>';
+
+    var list = partners.filter(function (a) { return !S.pRole || a.role === S.pRole; })
+      .sort(function (a, b) { return (Number(books[b.name][metric]) || 0) - (Number(books[a.name][metric]) || 0); });
     if (!list.length) h += '<div class="empty">No partners here yet.</div>';
-    list.forEach(function (a) {
+    list.forEach(function (a, idx) {
       var b = books[a.name];
-      h += '<div class="card"><h3>' + esc(a.name) + ' <span class="pill">' + esc(a.role || "") + '</span>' +
+      var medal = idx === 0 ? "#1" : (idx === 1 ? "#2" : (idx === 2 ? "#3" : "#" + (idx + 1)));
+      h += '<div class="card"><h3><span class="pill ' + (idx < 3 ? "teal" : "") + '">' + medal + '</span> ' + esc(a.name) +
+        ' <span class="pill">' + esc(a.role || "") + '</span>' +
         (b.pending > 0 ? ' <span class="pill due">' + money(b.pending) + ' pending</span>' : ' <span class="pill Won">settled</span>') + '</h3>' +
-        '<div class="meta">' + b.sites.length + ' ongoing site(s) &middot; ' + b.rows.length + ' challan(s)' +
+        '<div class="meta"><b>Drove ' + money(b.billed) + '</b> &middot; ' + b.sites.length + ' site(s) &middot; ' + b.rows.length + ' challan(s)' +
         '<br>Earned ' + money(b.earned) + ' &middot; payable ' + money(b.payable) + ' &middot; paid ' + money(b.paid) + '</div>' +
         '<div class="acts"><button class="btn sm" data-act="p-open" data-n="' + esc(a.name) + '">Open</button>' +
         '<button class="btn sm ghost" data-act="as-open" data-id="' + esc(a.id) + '">Edit</button></div></div>';
@@ -3193,25 +3207,78 @@ function viewCatalogue() {
     return { chs: chs, pays: pays, billed: billed, freight: freight, paid: paid, due: billed + freight - paid };
   }
 
+  /* ---------- COLLECTION RADAR ----------
+     Money already earned but not yet in the bank. Aged from the LATEST delivered challan
+     (when the collection clock started). Buckets 15 / 30 days; a grace of PAY_MIN days keeps
+     brand-new deliveries off the chase list. One tap sends a polite WhatsApp reminder with
+     the client's ledger PDF attached. */
+  var PAY_MIN = 7;
+  function payAge(name) {
+    var latest = "";
+    S.data.challans.forEach(function (c) {
+      if (c.customerName === name && String(c.receiptReceived).toUpperCase() === "Y") {
+        var d = String(c.createdAt || "").slice(0, 10);
+        if (d > latest) latest = d;
+      }
+    });
+    return latest ? -daysTo(latest) : 0;
+  }
+  function payBucket(days) {
+    if (days >= 30) return { label: "Chase now", cls: "due" };
+    if (days >= 15) return { label: "Getting old", cls: "soon" };
+    return { label: "Watch", cls: "teal" };
+  }
+  function payReminder(name) {
+    var l = clientLedger(name);
+    var pcl = clientByName(name) || {};
+    var pnum = String(pcl.mobile || "").replace(/\D/g, "");
+    if (pnum.length === 10) pnum = "91" + pnum;
+    var pmsg = "Dear " + name + ",\n\nGentle reminder from Energy World - an amount of " +
+      moneyAscii(l.due) + " is currently outstanding on your account. Your ledger is attached.\n" +
+      "Kindly arrange the payment at your convenience. Thank you.\n\nEnergy World";
+    waShareDoc(loadLogo().then(function () { return ledgerPdf(name); }),
+      name.replace(/[^\w.-]/g, "_") + "_ledger.pdf", pnum, pmsg);
+  }
+
   function viewPayments() {
     var names = {};
     S.data.challans.forEach(function (c) { if (String(c.receiptReceived).toUpperCase() === "Y") names[c.customerName] = 1; });
-    var list = Object.keys(names).map(function (n) { return { name: n, l: clientLedger(n) }; })
+    var list = Object.keys(names).map(function (n) { return { name: n, l: clientLedger(n), age: payAge(n) }; })
       .sort(function (a, b) { return b.l.due - a.l.due; });
     var totDue = list.reduce(function (a, x) { return a + x.l.due; }, 0);
     var h = '<div class="cards">' +
       '<div class="stat ' + (totDue > 0 ? "alert" : "") + '"><div class="n">' + money(totDue) + '</div><div class="l">Outstanding from clients</div></div>' +
       '<div class="stat"><div class="n">' + list.length + '</div><div class="l">Client ledgers</div></div>' +
       '</div>';
+
+    /* Collection radar: overdue clients bubble to the top, oldest first. */
+    var overdue = list.filter(function (x) { return x.l.due > 0 && x.age >= PAY_MIN; })
+      .sort(function (a, b) { return b.age - a.age; });
+    if (overdue.length) {
+      h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><h3>Collection radar ' +
+        '<span class="pill due">' + overdue.length + ' to chase</span></h3>' +
+        '<div class="meta">Billed a while ago, still unpaid. One tap sends a polite WhatsApp reminder with the ledger attached.</div>';
+      overdue.forEach(function (x) {
+        var bk = payBucket(x.age);
+        h += '<div class="acts" style="align-items:center;margin-top:8px"><b>' + esc(x.name) + '</b>' +
+          '<span class="pill ' + bk.cls + '">' + money(x.l.due) + ' &middot; ' + x.age + 'd</span>' +
+          '<button class="btn sm" data-act="pay-wa" data-n="' + esc(x.name) + '">Remind</button>' +
+          '<button class="btn sm ghost" data-act="pay-in" data-n="' + esc(x.name) + '">Payment received</button></div>';
+      });
+      h += '</div>';
+    }
+
     h += '<div class="empty" style="text-align:left;padding:0 0 12px">Only challans with a <b>signed material receipt</b> enter the ledger. Freight appears here when the client bears it.</div>';
     if (!list.length) return h + '<div class="empty">Nothing delivered yet.</div>';
     list.forEach(function (x) {
       h += '<div class="card"><h3>' + esc(x.name) +
-        (x.l.due > 0 ? ' <span class="pill due">' + money(x.l.due) + ' due</span>' : ' <span class="pill Won">clear</span>') + '</h3>' +
+        (x.l.due > 0 ? ' <span class="pill due">' + money(x.l.due) + ' due</span>' : ' <span class="pill Won">clear</span>') +
+        (x.l.due > 0 && x.age ? ' <span class="pill ' + payBucket(x.age).cls + '">' + x.age + 'd old</span>' : "") + '</h3>' +
         '<div class="meta">' + x.l.chs.length + ' challan(s) &middot; billed ' + money(x.l.billed) +
         (x.l.freight ? ' + freight ' + money(x.l.freight) : "") +
         '<br>Received ' + money(x.l.paid) + '</div>' +
         '<div class="acts"><button class="btn sm" data-act="pay-in" data-n="' + esc(x.name) + '">Payment received</button>' +
+        (x.l.due > 0 ? '<button class="btn sm ghost" data-act="pay-wa" data-n="' + esc(x.name) + '">Remind on WhatsApp</button>' : "") +
         '<button class="btn sm ghost" data-act="ledger-pdf" data-n="' + esc(x.name) + '">Ledger PDF</button></div></div>';
     });
     return h;
@@ -4403,6 +4470,7 @@ function viewCatalogue() {
     var picked = (z.items || []);
     return '<h2>New delivery challan</h2>' +
       '<p class="sub">The printed challan carries no prices and no pictures - it is a delivery note, not a quote.</p>' +
+      ((z && z.fromQuote) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#0d9488">Pre-filled from quote <b>' + esc(z.fromQuote) + '</b> - review the products and discount, then create.</div>' : "") +
       '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, LOCATIONS[0]) + '</select>' +
       clientField("m_client", (S.ch && S.ch.client) || "") +
       '<label>Site (optional)</label><input id="m_site" list="sitelist" placeholder="Site / project"/>' +
@@ -4430,7 +4498,7 @@ function viewCatalogue() {
          list price. Without this the credit is always slightly too generous and the leak is
          invisible, because each one looks fair on its own. */
       '<div class="grid2">' +
-      '<div><label>Discount given on the whole challan</label><input id="m_disc" inputmode="numeric" placeholder="0" value="0"/></div>' +
+      '<div><label>Discount given on the whole challan</label><input id="m_disc" inputmode="numeric" placeholder="0" value="' + esc((z && z.disc != null) ? z.disc : 0) + '"/></div>' +
       '<div><label>Why (optional)</label><input id="m_discnote" placeholder="bargained on site"/></div>' +
       '</div>' +
       '<div class="grid2" style="margin-top:6px">' +
@@ -4932,6 +5000,29 @@ function viewCatalogue() {
       render(); return;
     }
     if (act === "qz-adv") { S.qz.adv = !S.qz.adv; render(); return; }
+    /* One-tap: turn a Won quote into a pre-filled delivery challan (client, brand, items,
+       and the quote's total discount carried over). User reviews driver/freight and creates. */
+    if (act === "q-challan") {
+      var wqc = S.data.quotes.filter(function (q) { return q.id === id; })[0];
+      if (!wqc) return;
+      var qcits = [];
+      try { qcits = JSON.parse(wqc.items || "[]"); } catch (e) { }
+      /* Bill the NET the client agreed to: bake each line's discount into its unit rate
+         (challan.amount = sum(qty x rate) is what the ledger bills; the separate discAmt
+         field isn't subtracted anywhere). This also makes any future return credit the
+         actual per-unit price paid. Effective disc = per-line override, else brand disc. */
+      S.ch = {
+        brand: String(wqc.brand || "").split(",")[0].trim(),
+        family: "", client: wqc.client, fromQuote: wqc.quoteNo, disc: 0,
+        items: qcits.map(function (i) {
+          var d = (i.disc !== "" && i.disc != null) ? Number(i.disc) : (Number(i.bd) || 0);
+          var netRate = Math.round(Number(i.price || 0) * (1 - (Number(d) || 0) / 100));
+          return { code: i.code, desc: i.desc, unit: i.unit || "No's",
+            qty: Number(i.qty) || 1, rate: netRate };
+        })
+      };
+      S.modal = modalChallan(); render(); return;
+    }
     if (act === "qz-revise") {
       var old = S.data.quotes.filter(function (q) { return q.id === id; })[0];
       if (!old) return;
@@ -5172,6 +5263,7 @@ function viewCatalogue() {
       S.pLoc = "";
       render(); return;
     }
+    if (act === "p-sort") { S.pSort = t.getAttribute("data-k"); render(); return; }
     if (act === "p-open") { S.partner = t.getAttribute("data-n"); render(); return; }
     if (act === "p-back") { S.partner = ""; render(); return; }
 
@@ -5205,6 +5297,7 @@ function viewCatalogue() {
         .then(function (d) { d.save("Ledger_" + lc.replace(/[^\w.-]/g, "_") + ".pdf"); });
       return;
     }
+    if (act === "pay-wa") { payReminder(t.getAttribute("data-n")); return; }
 
     if (act === "visit-start") { startVisit(); return; }
     if (act === "cal-prev" || act === "cal-next") {
@@ -5756,7 +5849,7 @@ function viewCatalogue() {
           id: "", createdBy: S.user, challanNo: no,
           customerId: cObj.id || "", customerName: cn,
           siteId: siteObj.id || "", site: siteName || "",
-          brand: val("m_brand"), location: val("m_loc"),
+          brand: val("m_brand") || (S.ch && S.ch.brand) || "", location: val("m_loc"),
           items: lines.map(function (l) { return l.desc + " x" + l.qty; }).join(", "),
           itemsJson: itemsJson, amount: amount,
           freight: val("m_freight") || 0, freightTo: val("m_fto"),
