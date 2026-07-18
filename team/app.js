@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.16";
+  var APP_VERSION = "6.9.17";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -247,6 +247,15 @@ window.addEventListener("beforeunload", function (ev) {
     var n = radarQuotes().length;
     return n ? ' <span style="background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:700;margin-left:4px">' + n + '</span>' : '';
   }
+  /* Residential vs Project. Explicit c.segment wins; otherwise auto-classified from the client
+     Type you already set (Home owner = Residential, any partner/trade type = Project). */
+  function clientSegment(c) {
+    if (c && c.segment) return c.segment;
+    var t = (c && c.type) || "";
+    if (!t) return "";
+    return t === "Home owner" ? "Residential" : "Project";
+  }
+  function segOf(clientName) { return clientSegment(clientByName(clientName) || {}); }
 
   /* ---------------- product catalog (live from the Sheet) ---------------- */
   /* Normalise any Google-Drive image link to the one lh3 form that actually
@@ -793,7 +802,9 @@ window.addEventListener("beforeunload", function (ev) {
       var bw = bp.filter(function (p) { return p.status === "Won"; }).length;
       var bq = bp.filter(function (p) { return p.status === "Quoted" || p.status === "Negotiating"; }).length;
       var bl = bp.filter(function (p) { return p.status === "Lost"; }).length;
+      var cSeg = clientSegment(c);
       h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
+        (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
         (bw ? ' <span class="bs win">' + bw + ' WON</span>' : "") +
         (bq ? ' <span class="bs quoted">' + bq + ' QUOTED</span>' : "") +
         (bl ? ' <span class="bs lose">' + bl + ' LOST</span>' : "") + '</h3>' +
@@ -919,6 +930,8 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="grid2"><div><label>Location</label><input id="c_loc" list="cloclist" value="' + esc(c.location || "") + '" placeholder="City e.g. Karnal" autocomplete="off"/>' +
       '<datalist id="cloclist">' + locations().map(function (l) { return '<option value="' + esc(l) + '"></option>'; }).join("") + '</datalist></div>' +
       '<div><label>Type</label><select id="c_type">' + opts(CLIENT_TYPES, c.type || "Home owner") + '</select></div></div>' +
+      '<div class="grid2"><div><label>Segment</label><select id="c_segment">' + opts(["", "Residential", "Project"], c.segment || "") + '</select>' +
+      '<div class="pmeta" style="font-size:11px;color:#94a3b8">Leave blank to auto-classify from Type.</div></div><div></div></div>' +
       '<div class="grid2"><div><label>Mobile</label><input id="c_mob" inputmode="numeric" value="' + esc(c.mobile) + '"/></div>' +
       '<div><label>Short name (challan no.)</label><input id="c_short" value="' + esc(c.shortName) + '" placeholder="SHARMA"/></div></div>' +
       '<label>Address</label><input id="c_addr" value="' + esc(c.address) + '"/>' +
@@ -3227,8 +3240,24 @@ function viewCatalogue() {
     return { rule: rule, list: out };
   }
 
+  /* Has this client already been quoted this brand (in any live quote)? Drives the
+     Quoted-vs-Pending split on the Brand desk. */
+  function brandQuoted(clientName, brand) {
+    if (!clientName) return false;
+    var bl = String(brand || "").toLowerCase();
+    return (S.data.quotes || []).some(function (q) {
+      return String(q.client) === String(clientName) && String(q.status) !== "Lost" &&
+        String(q.brand || "").toLowerCase().indexOf(bl) > -1;
+    });
+  }
+  function partnersFor(clientName) {
+    var c = clientByName(clientName) || {};
+    return [c.architect && "Arch: " + c.architect, c.plumber && "Plumber: " + c.plumber,
+      c.builder && "Builder: " + c.builder, c.pmc && "PMC: " + c.pmc].filter(Boolean).join("  ·  ");
+  }
+
   function viewLeads() {
-    var h = '<div class="empty" style="text-align:left;padding:0 0 12px">Pick a brand to see every site where it is still open - and whether the window is about to shut. Send the list straight to the executive who covers it.</div>';
+    var h = '<div class="empty" style="text-align:left;padding:0 0 12px">Pick a brand to see, in one place, how many of its sites are already quoted and how many are still pending — with the construction stage, the plumber and the architect on each. Hand it straight to the brand executive who visits.</div>';
     h += '<div class="row">' + brandList().map(function (b) {
       var n = brandLeads(b).list.length;
       return '<button class="btn sm ' + (S.leadBrand === b ? "" : "ghost") + '" data-act="lead-brand" data-b="' + esc(b) + '">' + esc(b) + ' (' + n + ')</button>';
@@ -3237,8 +3266,11 @@ function viewCatalogue() {
     var r = brandLeads(S.leadBrand);
     var urgent = r.list.filter(function (x) { return x.urgent; }).length;
     var closed = r.list.filter(function (x) { return x.window === "CLOSED"; }).length;
+    var quotedN = r.list.filter(function (x) { return brandQuoted(x.site.client, S.leadBrand); }).length;
+    var pendingN = r.list.length - quotedN;
     h += '<div class="cards">' +
-      '<div class="stat"><div class="n">' + r.list.length + '</div><div class="l">Open leads</div></div>' +
+      '<div class="stat"><div class="n">' + quotedN + '</div><div class="l">Quoted</div></div>' +
+      '<div class="stat ' + (pendingN ? "alert" : "") + '"><div class="n">' + pendingN + '</div><div class="l">Pending to quote</div></div>' +
       '<div class="stat ' + (urgent ? "alert" : "") + '"><div class="n">' + urgent + '</div><div class="l">Window closing</div></div>' +
       '<div class="stat"><div class="n">' + closed + '</div><div class="l">Already missed</div></div>' +
       '</div>';
@@ -3250,9 +3282,14 @@ function viewCatalogue() {
     if (!r.list.length) return h + '<div class="empty">Nothing pending for ' + esc(S.leadBrand) + '.</div>';
     r.list.forEach(function (x) {
       var cls = x.window === "CLOSED" ? "due" : (x.urgent ? "due" : "teal");
-      h += '<div class="card"><h3>' + esc(x.site.name) + ' <span class="pill ' + cls + '">' + esc(x.window) + '</span></h3>' +
+      var quoted = brandQuoted(x.site.client, S.leadBrand);
+      var partners = partnersFor(x.site.client);
+      h += '<div class="card"><h3>' + esc(x.site.name) +
+        ' <span class="pill ' + (quoted ? "Won" : "soon") + '">' + (quoted ? "QUOTED" : "not quoted yet") + '</span>' +
+        ' <span class="pill ' + cls + '">' + esc(x.window) + '</span></h3>' +
         '<div class="meta">' + esc(x.site.client || "") + (x.site.city ? ' &middot; ' + esc(x.site.city) : "") +
         '<br>Stage: <b>' + esc(x.site.stage || "-") + '</b> &middot; status: ' + esc(x.status) +
+        (partners ? '<br>' + esc(partners) : "") +
         (x.site.owner ? '<br>Owner: ' + esc(x.site.owner) : "") +
         (x.site.mobile ? '<br>' + esc(x.site.mobile) : "") + '</div>' +
         '<div class="acts">' + (x.site.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.site.mobile) + '">Call</a>' : "") +
@@ -4015,16 +4052,26 @@ function viewCatalogue() {
     var h = '';
 
     /* ---- Follow-up radar: quotes that need chasing ---- */
-    var radar = radarQuotes();
+    var radarAll = radarQuotes();
+    var seg = S.radarSeg || "";
+    var radar = seg ? radarAll.filter(function (q) { return segOf(q.client) === seg; }) : radarAll;
+    var segCount = function (s) { return radarAll.filter(function (q) { return segOf(q.client) === s; }).length; };
     h += '<div class="card" style="border-color:' + (radar.length ? '#fecaca' : '#bbf7d0') + ';background:' + (radar.length ? '#fff5f5' : '#f0fdf4') + '">' +
       '<h3 style="margin:0">Follow-up radar ' +
       (radar.length ? '<span class="pill due">' + radar.length + ' to chase</span>' : '<span class="pill Won">all clear</span>') +
-      '</h3><div class="meta" style="margin-top:2px">Open quotes (Sent / Negotiating) with no update for ' + RADAR_MIN + '+ days.</div></div>';
+      '</h3><div class="meta" style="margin-top:2px">Open quotes (Sent / Negotiating) with no update for ' + RADAR_MIN + '+ days.</div>' +
+      '<div class="row" style="margin-top:8px">' +
+      '<button class="btn sm ' + (seg ? "ghost" : "") + '" data-act="rad-seg" data-s="">All (' + radarAll.length + ')</button>' +
+      '<button class="btn sm ' + (seg === "Residential" ? "" : "ghost") + '" data-act="rad-seg" data-s="Residential">Residential (' + segCount("Residential") + ')</button>' +
+      '<button class="btn sm ' + (seg === "Project" ? "" : "ghost") + '" data-act="rad-seg" data-s="Project">Projects (' + segCount("Project") + ')</button>' +
+      '</div></div>';
     radar.forEach(function (q) {
       var days = qSilentDays(q);
       var b = radarBucket(days);
+      var qseg = segOf(q.client);
       h += '<div class="card"><h3>' + esc(q.client) +
-        ' <span class="pill ' + b.cls + '">' + b.label + ' &middot; ' + days + 'd</span></h3>' +
+        ' <span class="pill ' + b.cls + '">' + b.label + ' &middot; ' + days + 'd</span>' +
+        (qseg ? ' <span class="pill" style="background:' + (qseg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(qseg) + '</span>' : "") + '</h3>' +
         '<div class="meta">' + esc(q.quoteNo) + (q.brand ? ' &middot; ' + esc(q.brand) : '') + '<br>' +
         esc(moneyAscii(q.net)) + ' (GST as applicable) &middot; ' + esc(q.status) +
         (S.role === "admin" && q.createdBy ? ' &middot; ' + esc(q.createdBy) : '') + '</div>' +
@@ -4546,7 +4593,7 @@ function viewCatalogue() {
          this modal - anything read afterwards comes back empty. That bug ate mobile2. */
       var f = {
         mob: val("c_mob"), mob2: val("c_mob2"), loc: val("c_loc"), ar: val("c_area"),
-        addr: val("c_addr"), type: val("c_type"), notes: val("c_notes"),
+        addr: val("c_addr"), type: val("c_type"), notes: val("c_notes"), seg: val("c_segment"),
         arch: val("c_arch"), plumb: val("c_plumb"), build: val("c_build"), pmc: val("c_pmc"),
         /* migration fields - only rendered for a partner, so blank for everyone else */
         opAmt: val("c_opamt"), opDate: val("c_opdate"),
@@ -4572,7 +4619,7 @@ function viewCatalogue() {
             id: id || "", createdBy: S.user, name: cn,
             shortName: shortNameOf(cn, f.mob),
             location: f.loc, area: f.ar, mobile: f.mob, mobile2: f.mob2,
-            address: f.addr, type: f.type,
+            address: f.addr, type: f.type, segment: f.seg,
             architect: f.arch, plumber: f.plumb, builder: f.build, pmc: f.pmc,
             notes: f.notes,
             billingJson: JSON.stringify(S.billDraft || []),
@@ -5092,6 +5139,7 @@ function viewCatalogue() {
       return;
     }
     /* ---- follow-up radar actions ---- */
+    if (act === "rad-seg") { S.radarSeg = t.getAttribute("data-s") || ""; render(); return; }
     if (act === "rad-status") {
       var rq = S.data.quotes.filter(function (x) { return x.id === id; })[0];
       if (!rq) return;
