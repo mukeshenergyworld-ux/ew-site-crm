@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.21";
+  var APP_VERSION = "6.9.22";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -4524,6 +4524,11 @@ function viewCatalogue() {
 
     h += '<div class="scrim" data-act="nav-close"></div><div class="shell"><nav>' + navHtml + '</nav>';
 
+    /* Defence-in-depth: never render a role-gated view the current role can't see, even if
+       S.tab was somehow set to one. Derived/utility views (opened by handlers, not in ROLE_TABS)
+       are whitelisted so legitimate flows aren't bounced. */
+    var FREE_TAB = { dash: 1, brandboard: 1, matrix: 1, customers: 1, pitch: 1 };
+    if (!FREE_TAB[S.tab] && !canSee(S.tab)) S.tab = (ROLE_TABS[S.role] || ["dash"])[0] || "dash";
     var pick = (S.tab === 'dash' && S.role === 'admin') ? viewOwner : (views[S.tab] || viewDash);
     h += '<main>' + pick() +
       '<div class="foot-note">Energy World Team v' + APP_VERSION + ' &middot; data lives in your Google Sheet</div></main>';
