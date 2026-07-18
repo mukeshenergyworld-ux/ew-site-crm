@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.14";
+  var APP_VERSION = "6.9.15";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -107,11 +107,11 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["search","dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules"],
-    accounts: ["search","dash","returns","tools","clients","partners","followups","challans","payments","discounts","service","spares","dues","products","rates","pricelist"],
-    godown:   ["search","dash","returns","tools","challans","products"],
-    sales:    ["search","dash","report","returns","tools","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
-    service:  ["search","dash","tools","service","spares","dues","followups","products"]
+    admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules"],
+    accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","discounts","service","spares","dues","products","rates","pricelist"],
+    godown:   ["dash","returns","tools","challans","products"],
+    sales:    ["dash","report","returns","tools","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
+    service:  ["dash","tools","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
     var t = ROLE_TABS[S.role] || ["dash"];
@@ -3752,6 +3752,91 @@ function viewCatalogue() {
      Everyone can search everything. But a salesman searching a number that belongs to a
      colleague\u2019s client gets ONLY the name and the date it was registered - enough to stop a
      duplicate entry, not enough to poach. Partners and accounts see the full record. */
+  /* ---------- GLOBAL SEARCH (top-bar "Search anything") ----------
+     Products and partners are searched locally (already loaded); clients/quotes/challans/sites
+     come from the server search (which enforces per-executive scoping). Results open in a modal
+     so the search works from any tab without leaving the current screen. */
+  function runGlobalSearch() {
+    var qv = String(S.gq || "").trim();
+    if (qv.length < 2) { toast("Type at least 2 characters."); return; }
+    var lq = qv.toLowerCase();
+    var products = PRODUCTS.filter(function (p) {
+      return (p.code + " " + p.desc + " " + p.family + " " + p.brand + " " + p.cat).toLowerCase().indexOf(lq) > -1;
+    }).slice(0, 25);
+    var partners = (S.data.associates || []).filter(function (a) {
+      return Object.keys(a).map(function (k) { return a[k]; }).join(" ").toLowerCase().indexOf(lq) > -1;
+    }).slice(0, 25);
+    S.sres = { clients: [], quotes: [], challans: [], sites: [], products: products, partners: partners, loading: true, q: qv };
+    S.modal = modalSearchResults(); render();
+    api("search", { q: qv }).then(function (r) {
+      if (r && r.ok) { S.sres.clients = r.clients || []; S.sres.quotes = r.quotes || []; S.sres.challans = r.challans || []; S.sres.sites = r.sites || []; }
+      S.sres.loading = false;
+      if (S.modal) { S.modal = modalSearchResults(); render(); }
+    }).catch(function () { S.sres.loading = false; if (S.modal) { S.modal = modalSearchResults(); render(); } });
+  }
+
+  function modalSearchResults() {
+    var r = S.sres || {};
+    var HH = 'style="margin:14px 0 8px;font-size:14px"';
+    var h = '<h2>Search &mdash; &ldquo;' + esc(r.q || S.gq || "") + '&rdquo;</h2>';
+    var counts = (r.clients || []).length + (r.quotes || []).length + (r.challans || []).length +
+      (r.sites || []).length + (r.products || []).length + (r.partners || []).length;
+    h += '<div class="meta" style="margin-bottom:4px">' + counts + ' result(s)' + (r.loading ? ' &middot; searching your records…' : '') + '</div>';
+    h += '<div style="max-height:60vh;overflow:auto;margin:0 -4px;padding:0 4px">';
+
+    if ((r.clients || []).length) h += '<h3 ' + HH + '>Clients</h3>';
+    (r.clients || []).forEach(function (c) {
+      if (!c.own) {
+        h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>' + esc(c.name) +
+          ' <span class="pill soon">already registered</span></h3><div class="meta">Registered on <b>' + esc(c.on) +
+          '</b> by another executive.</div></div>';
+        return;
+      }
+      h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "") + '</span></h3>' +
+        '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  ·  ")) +
+        (c.area ? '<br>' + esc(c.area) : "") + '<br>Added ' + esc(c.on) + ' by ' + esc(c.by) + '</div>' +
+        '<div class="acts"><button class="btn sm ghost" data-act="bb-open" data-n="' + esc(c.name) + '">Brands</button></div></div>';
+    });
+
+    if ((r.quotes || []).length) h += '<h3 ' + HH + '>Quotations</h3>';
+    (r.quotes || []).forEach(function (q) {
+      h += '<div class="card"><h3>' + esc(q.no) + ' <span class="pill teal">' + esc(q.status || "") + '</span></h3>' +
+        '<div class="meta">' + esc(q.client || "") + (q.own && q.brand ? ' &middot; ' + esc(q.brand) : "") +
+        (q.own && q.total ? '<br>' + money(q.total) : "") + '<br>' + esc(q.on) + ' by ' + esc(q.by) +
+        (q.own ? "" : '<br><span style="color:#94a3b8">Another executive’s quote - amounts hidden.</span>') + '</div></div>';
+    });
+
+    if ((r.challans || []).length) h += '<h3 ' + HH + '>Challans</h3>';
+    (r.challans || []).forEach(function (c) {
+      h += '<div class="card"><h3>' + esc(c.no) + ' <span class="pill teal">' + esc(c.status || "Draft") + '</span></h3>' +
+        '<div class="meta">' + esc(c.client || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
+        (c.own && c.amount ? '<br>' + money(c.amount) : "") + '<br>' + esc(c.on) + ' by ' + esc(c.by) + '</div></div>';
+    });
+
+    if ((r.products || []).length) h += '<h3 ' + HH + '>Products</h3>';
+    (r.products || []).forEach(function (p) {
+      h += '<div class="card"><h3>' + esc(p.desc || p.family) + ' <span class="pill teal">' + money(p.price) + '</span></h3>' +
+        '<div class="meta">' + esc(p.code) + (p.brand ? ' &middot; ' + esc(p.brand) : "") + (p.unit ? ' &middot; ' + esc(p.unit) : "") + '</div></div>';
+    });
+
+    if ((r.partners || []).length) h += '<h3 ' + HH + '>Partners</h3>';
+    (r.partners || []).forEach(function (a) {
+      h += '<div class="card"><h3>' + esc(a.name || "-") + (a.role || a.type ? ' <span class="pill teal">' + esc(a.role || a.type) + '</span>' : "") + '</h3>' +
+        '<div class="meta">' + esc([a.mobile, a.location || a.area].filter(Boolean).join("  ·  ")) +
+        '</div>' + (a.mobile ? '<div class="acts"><a class="btn sm ghost" href="tel:' + esc(a.mobile) + '">Call</a></div>' : "") + '</div>';
+    });
+
+    if ((r.sites || []).length) h += '<h3 ' + HH + '>Sites</h3>';
+    (r.sites || []).forEach(function (x) {
+      h += '<div class="card"><h3>' + esc(x.name) + ' <span class="pill teal">' + esc(x.stage || "") + '</span></h3>' +
+        '<div class="meta">' + esc(x.client || "") + '</div></div>';
+    });
+
+    if (!counts && !r.loading) h += '<div class="empty">Nothing found.</div>';
+    h += '</div><div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+    return h;
+  }
+
   function viewSearch() {
     var h = '<div class="row"><input class="grow" id="sq" placeholder="Client name, phone, quote no., challan no..." value="' + esc(S.sq) + '"/>' +
       '<button class="btn" data-act="s-go">Search</button></div>';
@@ -4262,6 +4347,8 @@ function viewCatalogue() {
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
       '<img src="' + LOGO + '" alt="EW" onerror="this.style.display=\'none\'"/>' +
       '<div><b style="font-size:15px">Energy World</b><div style="font-size:12px;color:#64748b">Team workspace <span style="color:#94a3b8">&middot; v' + APP_VERSION + '</span></div></div>' +
+      '<input id="gq" placeholder="Search anything — quote, challan, product, client, partner…" value="' + esc(S.gq || "") + '" autocomplete="off" ' +
+      'style="flex:1;min-width:110px;max-width:380px;margin:0 14px;padding:9px 14px;border:1px solid #cbd5e1;border-radius:20px;font-size:14px;outline:none;background:#fff"/>' +
       '<div class="who"><b>' + esc(S.user) + '</b><span class="pill teal">' + esc(S.role) + '</span>' +
       '<div style="margin-top:4px;display:flex;gap:4px;justify-content:flex-end">' +
       (bioAvailable() ? (bioSaved()
@@ -4271,7 +4358,7 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
     var GROUPS = [
-      ["Sell", ["search", "dash", "clients", "partners", "quotes", "sites", "leads", "visits", "winloss", "followups"]],
+      ["Sell", ["dash", "clients", "partners", "quotes", "sites", "leads", "visits", "winloss", "followups"]],
       ["Deliver", ["challans", "returns", "tools", "payments", "discounts", "products", "dues"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["commission", "report", "rates", "pricelist", "payroll", "catalogue", "rules"]]
@@ -4313,6 +4400,12 @@ function viewCatalogue() {
     if (qzc) {
       qzc.addEventListener("input", function (e) { if (S.qz) S.qz.codeq = e.target.value; });
       qzc.addEventListener("keyup", function (e) { if (e.key === "Enter") render(); });
+    }
+    /* top-bar global search: hold the text, run on Enter, results open in a modal */
+    var gqi = el("gq");
+    if (gqi) {
+      gqi.addEventListener("input", function (e) { S.gq = e.target.value; });
+      gqi.addEventListener("keyup", function (e) { if (e.key === "Enter") runGlobalSearch(); });
     }
   }
 
