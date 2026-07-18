@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.15";
+  var APP_VERSION = "6.9.16";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -3787,9 +3787,9 @@ function viewCatalogue() {
     if ((r.clients || []).length) h += '<h3 ' + HH + '>Clients</h3>';
     (r.clients || []).forEach(function (c) {
       if (!c.own) {
-        h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>' + esc(c.name) +
-          ' <span class="pill soon">already registered</span></h3><div class="meta">Registered on <b>' + esc(c.on) +
-          '</b> by another executive.</div></div>';
+        h += '<div class="card" style="border:1.5px solid #f87171;background:#fef2f2"><h3>' + esc(c.name) +
+          ' <span class="pill due">another executive</span></h3><div class="meta">Registered on <b>' + esc(c.on) +
+          '</b> by another executive.<br><b style="color:#dc2626">Already on another executive’s book — coordinate, do not double-quote.</b></div></div>';
         return;
       }
       h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "") + '</span></h3>' +
@@ -3800,10 +3800,12 @@ function viewCatalogue() {
 
     if ((r.quotes || []).length) h += '<h3 ' + HH + '>Quotations</h3>';
     (r.quotes || []).forEach(function (q) {
-      h += '<div class="card"><h3>' + esc(q.no) + ' <span class="pill teal">' + esc(q.status || "") + '</span></h3>' +
-        '<div class="meta">' + esc(q.client || "") + (q.own && q.brand ? ' &middot; ' + esc(q.brand) : "") +
-        (q.own && q.total ? '<br>' + money(q.total) : "") + '<br>' + esc(q.on) + ' by ' + esc(q.by) +
-        (q.own ? "" : '<br><span style="color:#94a3b8">Another executive’s quote - amounts hidden.</span>') + '</div></div>';
+      var mine = q.own;
+      h += '<div class="card"' + (mine ? '' : ' style="border:1.5px solid #f87171;background:#fef2f2"') + '>' +
+        '<h3>' + esc(q.no) + ' <span class="pill ' + (mine ? 'teal' : 'due') + '">' + (mine ? esc(q.status || "") : 'another executive') + '</span></h3>' +
+        '<div class="meta">' + esc(q.client || "") + (mine && q.brand ? ' &middot; ' + esc(q.brand) : "") +
+        (mine && q.total ? '<br>' + money(q.total) : "") + '<br>' + esc(q.on) + ' by ' + esc(q.by) +
+        (mine ? "" : '<br><b style="color:#dc2626">Already quoted by ' + esc(q.by || 'another executive') + ' — do not double-quote.</b>') + '</div></div>';
     });
 
     if ((r.challans || []).length) h += '<h3 ' + HH + '>Challans</h3>';
