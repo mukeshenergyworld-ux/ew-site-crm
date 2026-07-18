@@ -219,7 +219,7 @@ window.addEventListener("beforeunload", function (ev) {
      Buckets at 5 / 10 / 20 days. A "snooze" is just a followups record whose note carries the
      quote number and a future due date - it hides the quote from the radar until that date and
      also shows up in the manual reminders list. No new sheet column needed. */
-  var RADAR_MIN = 0;
+  var RADAR_MIN = 5;
   function qSilentDays(q) {
     var d = q.updatedAt || q.createdAt;
     return d ? -daysTo(d) : 0;
