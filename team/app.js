@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.13";
+  var APP_VERSION = "6.9.14";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -211,6 +211,41 @@ window.addEventListener("beforeunload", function (ev) {
   }
   function openFollowups() {
     return S.data.followups.filter(function (f) { return f.status !== "Done"; });
+  }
+
+  /* ---------- FOLLOW-UP RADAR ----------
+     Auto-surface open quotes (Sent / Negotiating) that have gone quiet, so nothing goes cold
+     because someone forgot to chase it. Aged from the quote's last activity (updatedAt).
+     Buckets at 5 / 10 / 20 days. A "snooze" is just a followups record whose note carries the
+     quote number and a future due date - it hides the quote from the radar until that date and
+     also shows up in the manual reminders list. No new sheet column needed. */
+  var RADAR_MIN = 0;
+  function qSilentDays(q) {
+    var d = q.updatedAt || q.createdAt;
+    return d ? -daysTo(d) : 0;
+  }
+  function quoteSnoozed(q) {
+    if (!q.quoteNo) return false;
+    return (S.data.followups || []).some(function (f) {
+      return f.status !== "Done" && String(f.note || "").indexOf(q.quoteNo) > -1 && daysTo(f.dueDate) >= 0;
+    });
+  }
+  function radarBucket(days) {
+    if (days >= 20) return { label: "Going cold", cls: "due" };
+    if (days >= 10) return { label: "Getting cold", cls: "soon" };
+    return { label: "Follow up", cls: "teal" };
+  }
+  function radarQuotes() {
+    var list = (S.data.quotes || []).filter(function (q) {
+      if (["Sent", "Negotiating"].indexOf(q.status) < 0) return false;
+      if (S.role !== "admin" && q.createdBy !== S.user) return false;
+      return qSilentDays(q) >= RADAR_MIN && !quoteSnoozed(q);
+    });
+    return list.sort(function (a, b) { return qSilentDays(b) - qSilentDays(a); });
+  }
+  function radarBadge() {
+    var n = radarQuotes().length;
+    return n ? ' <span style="background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:700;margin-left:4px">' + n + '</span>' : '';
   }
 
   /* ---------------- product catalog (live from the Sheet) ---------------- */
@@ -3890,10 +3925,37 @@ function viewCatalogue() {
   }
 
   function viewFollowups() {
+    var h = '';
+
+    /* ---- Follow-up radar: quotes that need chasing ---- */
+    var radar = radarQuotes();
+    h += '<div class="card" style="border-color:' + (radar.length ? '#fecaca' : '#bbf7d0') + ';background:' + (radar.length ? '#fff5f5' : '#f0fdf4') + '">' +
+      '<h3 style="margin:0">Follow-up radar ' +
+      (radar.length ? '<span class="pill due">' + radar.length + ' to chase</span>' : '<span class="pill Won">all clear</span>') +
+      '</h3><div class="meta" style="margin-top:2px">Open quotes (Sent / Negotiating) with no update for ' + RADAR_MIN + '+ days.</div></div>';
+    radar.forEach(function (q) {
+      var days = qSilentDays(q);
+      var b = radarBucket(days);
+      h += '<div class="card"><h3>' + esc(q.client) +
+        ' <span class="pill ' + b.cls + '">' + b.label + ' &middot; ' + days + 'd</span></h3>' +
+        '<div class="meta">' + esc(q.quoteNo) + (q.brand ? ' &middot; ' + esc(q.brand) : '') + '<br>' +
+        esc(moneyAscii(q.net)) + ' (GST as applicable) &middot; ' + esc(q.status) +
+        (S.role === "admin" && q.createdBy ? ' &middot; ' + esc(q.createdBy) : '') + '</div>' +
+        '<div class="acts">' +
+        '<button class="btn sm" data-act="rad-wa" data-id="' + esc(q.id) + '">WhatsApp</button>' +
+        '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
+        '<button class="btn sm ghost" data-act="rad-status" data-id="' + esc(q.id) + '" data-s="Won">Won</button>' +
+        '<button class="btn sm ghost" data-act="rad-status" data-id="' + esc(q.id) + '" data-s="Lost">Lost</button>' +
+        '<button class="btn sm ghost" data-act="rad-snooze" data-id="' + esc(q.id) + '">Snooze</button>' +
+        '</div></div>';
+    });
+
+    /* ---- manual reminders (unchanged) ---- */
     var open = openFollowups().sort(function (a, b) { return daysTo(a.dueDate) - daysTo(b.dueDate); });
     var done = S.data.followups.filter(function (f) { return f.status === "Done"; }).slice(-10).reverse();
-    var h = '<div class="row"><div class="grow"></div><button class="btn" data-act="fu-new">+ New follow-up</button></div>';
-    if (!open.length) h += '<div class="empty">No open follow-ups.</div>';
+    h += '<div class="row" style="margin-top:18px"><h3 style="margin:0;font-size:15px">Your reminders</h3>' +
+      '<div class="grow"></div><button class="btn" data-act="fu-new">+ New follow-up</button></div>';
+    if (!open.length) h += '<div class="empty">No open reminders.</div>';
     open.forEach(function (f) {
       var d = daysTo(f.dueDate);
       var lbl = d < 0 ? Math.abs(d) + 'd overdue' : (d === 0 ? 'due today' : 'in ' + d + 'd');
@@ -3972,6 +4034,16 @@ function viewCatalogue() {
       '<label>What to do / discuss</label><textarea id="m_note">' + esc(f.note) + '</textarea>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="fu-save">Save</button></div>';
+  }
+
+  function modalSnooze(q) {
+    var due5 = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+    return '<h2>Snooze ' + esc(q.quoteNo) + '</h2>' +
+      '<p class="sub">Hides it from the radar until this date. It also appears in your reminders below.</p>' +
+      '<label>Follow up on</label><input id="sn_due" type="date" value="' + due5 + '"/>' +
+      '<label>Note</label><textarea id="sn_note">Chase ' + esc(q.quoteNo) + ' — ' + esc(q.client) + '</textarea>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="sn-save" data-id="' + esc(q.id) + '">Snooze</button></div>';
   }
 
   /* legacy modalAssociate removed: a second, older definition sat further down the file and,
@@ -4212,7 +4284,7 @@ function viewCatalogue() {
       var items = grp[1].filter(function (k) { return canSee(k) && label[k]; });
       if (!items.length) return;
       navHtml += '<div class="navgrp"><span class="grp">' + grp[0] + '</span>' + items.map(function (k) {
-        return '<button data-act="tab" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + label[k] + '</button>';
+        return '<button data-act="tab" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + label[k] + (k === "followups" ? radarBadge() : "") + '</button>';
       }).join("") + '</div>';
     });
 
@@ -4922,6 +4994,56 @@ function viewCatalogue() {
       if (!f) return;
       f.status = "Done"; f.doneAt = new Date().toISOString();
       save("followups", f).then(function () { toast("Done."); });
+      return;
+    }
+    /* ---- follow-up radar actions ---- */
+    if (act === "rad-status") {
+      var rq = S.data.quotes.filter(function (x) { return x.id === id; })[0];
+      if (!rq) return;
+      rq.status = t.getAttribute("data-s");
+      save("quotes", rq).then(function (r) { if (r) toast("Quote marked " + rq.status + "."); });
+      return;
+    }
+    if (act === "rad-snooze") {
+      var sq = S.data.quotes.filter(function (x) { return x.id === id; })[0];
+      if (!sq) return;
+      S.modal = modalSnooze(sq); render(); return;
+    }
+    if (act === "sn-save") {
+      var snq = S.data.quotes.filter(function (x) { return x.id === id; })[0];
+      if (!snq) return;
+      var due = val("sn_due") || today();
+      var note = val("sn_note") || ("Chase " + snq.quoteNo);
+      /* the radar detects a snooze by finding the quote number in an open follow-up's note */
+      if (note.indexOf(snq.quoteNo) < 0) note = "[" + snq.quoteNo + "] " + note;
+      save("followups", { id: "", createdBy: S.user, customerId: "", customerName: snq.client, dueDate: due, note: note, status: "Open" })
+        .then(function (r) { if (r) { S.modal = null; toast("Snoozed to " + dstr(due) + "."); render(); } });
+      return;
+    }
+    if (act === "rad-wa") {
+      var wq = S.data.quotes.filter(function (x) { return x.id === id; })[0];
+      if (!wq) return;
+      var wmsg = "Hello " + wq.client + ",\n\nSharing your quotation " + wq.quoteNo + " from Energy World.\n" +
+        "Amount: " + moneyAscii(wq.net) + " (GST as applicable). Valid for 30 days.\n" +
+        "Please let us know if we may proceed.\n\nThank you,\nEnergy World";
+      toast("Preparing quote to share...");
+      quotePdf(wq).then(function (d) {
+        var wcl = clientByName(wq.client) || {};
+        var wnum = String(wcl.mobile || "").replace(/\D/g, "");
+        if (wnum.length === 10) wnum = "91" + wnum;
+        var fname = String(wq.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf";
+        try {
+          var blob = d.output("blob");
+          var file = new File([blob], fname, { type: "application/pdf" });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            navigator.share({ files: [file], text: wmsg, title: "Quotation " + wq.quoteNo }).catch(function () { });
+            return;
+          }
+        } catch (e) { }
+        /* desktop / share-unsupported: download the PDF to attach, and open WhatsApp with the text */
+        d.save(fname);
+        window.open("https://wa.me/" + wnum + "?text=" + encodeURIComponent(wmsg), "_blank");
+      }).catch(function () { toast("Could not build the quote PDF."); });
       return;
     }
 
