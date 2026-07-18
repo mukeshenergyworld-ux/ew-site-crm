@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.18";
+  var APP_VERSION = "6.9.19";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -115,6 +115,9 @@
   };
   function canSee(tab) {
     var t = ROLE_TABS[S.role] || ["dash"];
+    /* the Deliveries hub bundles Challans + Material returns; grant it to anyone who could
+       see either of them, so no role list needs rewriting. */
+    if (tab === "deliveries") return t.indexOf("challans") >= 0 || t.indexOf("returns") >= 0;
     return t.indexOf(tab) >= 0 || tab === "matrix";
   }
 
@@ -2896,6 +2899,17 @@ function viewCatalogue() {
     return h + '</div>';
   }
 
+  /* Deliveries hub: Challans + Material returns are one lifecycle, so they share a screen with
+     a small sub-tab switch instead of two top-level tabs. Each sub-view is unchanged. */
+  function viewDeliveries() {
+    var sub = S.delSub === "returns" ? "returns" : "challans";
+    var h = '<div class="row" style="margin-bottom:10px">' +
+      '<button class="btn sm ' + (sub === "challans" ? "" : "ghost") + '" data-act="del-sub" data-s="challans">Challans</button>' +
+      '<button class="btn sm ' + (sub === "returns" ? "" : "ghost") + '" data-act="del-sub" data-s="returns">Material returns</button>' +
+      '</div>';
+    return h + (sub === "returns" ? viewReturns() : viewChallans());
+  }
+
   function viewChallans() {
     var list = S.data.challans.slice().reverse();
     var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
@@ -4423,8 +4437,8 @@ function viewCatalogue() {
   function render() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeads, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotes, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Brand leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -4442,7 +4456,7 @@ function viewCatalogue() {
 
     var GROUPS = [
       ["Sell", ["dash", "clients", "partners", "quotes", "sites", "leads", "visits", "winloss", "followups"]],
-      ["Deliver", ["challans", "returns", "tools", "payments", "discounts", "products", "dues"]],
+      ["Deliver", ["deliveries", "tools", "payments", "discounts", "products", "dues"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["commission", "report", "rates", "pricelist", "payroll", "catalogue", "rules"]]
     ];
@@ -4532,6 +4546,7 @@ function viewCatalogue() {
     if (act === "mask" && e.target === t) { S.modal = null; render(); return; }
     if (act === "close") { S.modal = null; render(); return; }
     if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; render(); return; }
+    if (act === "del-sub") { S.delSub = t.getAttribute("data-s"); render(); return; }
     if (act === "cat-reload") { toast("Reloading catalogue..."); loadCatalog().then(function () { toast(PRODUCTS.length + " products loaded."); render(); }); return; }
 
     if (act === "nav-toggle") { S.navOpen = !S.navOpen; render(); return; }
