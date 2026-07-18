@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.26";
+  var APP_VERSION = "6.9.27";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -818,13 +818,39 @@ window.addEventListener("beforeunload", function (ev) {
   function quoteBrands(q) {
     return String(q.brand || "").split(/,\s*/).map(function (s) { return s.trim(); }).filter(Boolean);
   }
-  function clientWonCount(name) {
-    return clientQuotes(name).filter(function (q) { return q.status === "Won"; }).length;
+  /* A brand counts as WON if it has a Won quote OR a delivered challan (signed material
+     receipt). And ANY delivered challan makes the customer a Client - so Clients seeds from
+     real sales already made, even on challans that never recorded a brand. */
+  function challanWonBrands(name) {
+    var set = {}, t = String(name || "").trim().toLowerCase();
+    (S.data.challans || []).forEach(function (c) {
+      if (String(c.customerName || "").trim().toLowerCase() === t &&
+        String(c.receiptReceived).toUpperCase() === "Y" && c.brand) {
+        String(c.brand).split(/,\s*/).forEach(function (b) { b = b.trim(); if (b) set[b] = 1; });
+      }
+    });
+    return set;
   }
+  function clientDelivered(name) {
+    var t = String(name || "").trim().toLowerCase();
+    return (S.data.challans || []).some(function (c) {
+      return String(c.customerName || "").trim().toLowerCase() === t &&
+        String(c.receiptReceived).toUpperCase() === "Y";
+    });
+  }
+  function clientWonBrands(name) {
+    var set = challanWonBrands(name);
+    clientQuotes(name).forEach(function (q) {
+      if (q.status === "Won") quoteBrands(q).forEach(function (b) { set[b] = 1; });
+    });
+    return Object.keys(set);
+  }
+  function clientWonCount(name) { return clientWonBrands(name).length; }
+  function isClient(name) { return clientWonBrands(name).length > 0 || clientDelivered(name); }
   function clientBrandState(name, brand) {
+    if (clientWonBrands(name).indexOf(brand) >= 0) return "won";
     var qs = clientQuotes(name).filter(function (q) { return quoteBrands(q).indexOf(brand) >= 0; });
     if (!qs.length) return "none";
-    if (qs.some(function (q) { return q.status === "Won"; })) return "won";
     if (qs.some(function (q) { return ["Draft", "Sent", "Negotiating", "Revised"].indexOf(q.status) >= 0; })) return "live";
     return "lost";
   }
@@ -850,7 +876,7 @@ window.addEventListener("beforeunload", function (ev) {
   /* Leads = customers with zero Won brands. Enter leads here; a brand tap starts its quote. */
   function viewLeadBoard() {
     var loc = S.q;
-    var leads = S.data.clients.filter(function (c) { return clientWonCount(c.name) === 0; });
+    var leads = S.data.clients.filter(function (c) { return !isClient(c.name); });
     var shown = leads.filter(function (c) { return !loc || c.location === loc; });
     var clocs = [];
     leads.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
@@ -878,7 +904,7 @@ window.addEventListener("beforeunload", function (ev) {
 
   function viewClients() {
     var loc = S.q;
-    var all = S.data.clients.filter(function (c) { return clientWonCount(c.name) > 0; });
+    var all = S.data.clients.filter(function (c) { return isClient(c.name); });
     var list = all.filter(function (c) { return !loc || c.location === loc; });
     var clocs = [];
     all.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
@@ -895,7 +921,7 @@ window.addEventListener("beforeunload", function (ev) {
       var cSeg = clientSegment(c);
       h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
         (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
-        ' <span class="bs win">' + won + ' WON</span></h3>' +
+        ' <span class="bs win">' + (won ? won + ' WON' : 'CLIENT') + '</span></h3>' +
         '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  &middot;  ")) +
         (c.area ? '<br>' + esc(c.area) : "") + (c.address ? '<br>' + esc(c.address) : "") +
         (partners.length ? '<br>' + esc(partners.join(" - ")) : "") + '</div>' +
