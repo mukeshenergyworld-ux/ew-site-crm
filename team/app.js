@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.23";
+  var APP_VERSION = "6.9.24";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1031,32 +1031,49 @@ window.addEventListener("beforeunload", function (ev) {
     return h;
   }
 
-  /* Shared WhatsApp share for a quote - used by the quote card (q-wa) and the follow-up
-     radar (rad-wa). On a phone it shares the actual PDF via the native share sheet; on
-     desktop it downloads the PDF and opens WhatsApp with a ready-to-send message. */
+  /* Share a quote on WhatsApp - used by the quote card (q-wa) and the follow-up radar
+     (rad-wa). WhatsApp cannot accept a file from a plain link, so behaviour differs by
+     device: on a PHONE we use the native share sheet (the PDF rides along as the
+     attachment); on a LAPTOP we open the chat immediately (while the click is still
+     "fresh", so the browser doesn't block the pop-up) and download the PDF to attach.
+     The old build-then-share order lost the click permission during the async PDF build
+     and failed silently on desktop - fixed by opening WhatsApp up-front on desktop. */
   function waShareQuote(id) {
     var wq = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
     if (!wq) return;
+    var wcl = clientByName(wq.client) || {};
+    var wnum = String(wcl.mobile || "").replace(/\D/g, "");
+    if (wnum.length === 10) wnum = "91" + wnum;
     var wmsg = "Hello " + wq.client + ",\n\nSharing your quotation " + wq.quoteNo + " from Energy World.\n" +
       "Amount: " + moneyAscii(wq.net) + " (GST as applicable). Valid for 30 days.\n" +
       "Please let us know if we may proceed.\n\nThank you,\nEnergy World";
-    toast("Preparing quote to share...");
+    var waUrl = "https://wa.me/" + wnum + "?text=" + encodeURIComponent(wmsg);
+    var fname = String(wq.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf";
+    var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      toast("Preparing quote to share...");
+      quotePdf(wq).then(function (d) {
+        try {
+          var file = new File([d.output("blob")], fname, { type: "application/pdf" });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            navigator.share({ files: [file], text: wmsg, title: "Quotation " + wq.quoteNo })
+              .catch(function () { d.save(fname); window.open(waUrl, "_blank"); });
+            return;
+          }
+        } catch (e) { }
+        d.save(fname); window.open(waUrl, "_blank");
+      }).catch(function () { toast("Could not build the quote PDF."); });
+      return;
+    }
+
+    /* Desktop: open WhatsApp NOW (keeps the click permission so it isn't blocked),
+       then download the PDF so it can be dragged into the chat. */
+    window.open(waUrl, "_blank");
+    toast("Opening WhatsApp - building the PDF to attach...");
     quotePdf(wq).then(function (d) {
-      var wcl = clientByName(wq.client) || {};
-      var wnum = String(wcl.mobile || "").replace(/\D/g, "");
-      if (wnum.length === 10) wnum = "91" + wnum;
-      var fname = String(wq.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf";
-      try {
-        var blob = d.output("blob");
-        var file = new File([blob], fname, { type: "application/pdf" });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          navigator.share({ files: [file], text: wmsg, title: "Quotation " + wq.quoteNo }).catch(function () { });
-          return;
-        }
-      } catch (e) { }
-      /* desktop / share-unsupported: download the PDF to attach, and open WhatsApp with the text */
       d.save(fname);
-      window.open("https://wa.me/" + wnum + "?text=" + encodeURIComponent(wmsg), "_blank");
+      toast("PDF downloaded - drag it into the WhatsApp chat.");
     }).catch(function () { toast("Could not build the quote PDF."); });
   }
 
