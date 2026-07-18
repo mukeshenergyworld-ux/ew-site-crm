@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.22";
+  var APP_VERSION = "6.9.23";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -452,15 +452,31 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="card"><h3>' + esc(site.name) + '</h3><div class="meta">' + esc(site.client || "") +
       '<br>Current stage: <b>' + esc(site.stage || "-") + '</b> (stage ' + stageNo(site) + ' of 13)</div>' +
       '<div class="acts"><button class="btn sm ghost" data-act="site-open" data-id="' + esc(site.id) + '">Change stage</button></div></div>';
-    var rules = S.data.rules.slice().sort(function (a, b) { return (Number(a.pitchBy) || 0) - (Number(b.pitchBy) || 0); });
-    rules.forEach(function (r) {
-      var p = pitchRow(site.id, r.brand) || {};
-      var a = action(site, r, p);
+    var ra = S.data.rules.slice()
+      .sort(function (a, b) { return (Number(a.pitchBy) || 0) - (Number(b.pitchBy) || 0); })
+      .map(function (r) { var p = pitchRow(site.id, r.brand) || {}; return { r: r, p: p, a: action(site, r, p) }; });
+
+    /* Instant suggestion: the brands whose window is open at THIS stage - quote them now. */
+    var nowList = ra.filter(function (x) { return x.a.k === "now"; });
+    if (nowList.length) {
+      h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><h3>Pitch now at this stage ' +
+        '<span class="pill due">' + nowList.length + '</span></h3>' +
+        '<div class="meta">These product lines close soon for this site. One tap starts a quote with the brand ready.</div>' +
+        '<div class="acts" style="flex-wrap:wrap">' +
+        nowList.map(function (x) {
+          return '<button class="btn sm" data-act="pm-quote" data-brand="' + esc(x.r.brand) + '">Quote ' + esc(x.r.brand) + '</button>';
+        }).join("") + '</div></div>';
+    }
+
+    ra.forEach(function (x) {
+      var r = x.r, p = x.p, a = x.a;
       var cls = a.k === "closed" ? "due" : (a.k === "now" ? "due" : (a.k === "won" ? "Won" : (a.k === "lost" ? "Lost" : (a.k === "soon" ? "soon" : "teal"))));
+      var quotable = ["Won", "Lost", "Not applicable"].indexOf(p.status || "Not pitched") < 0;
       h += '<div class="card"><h3>' + esc(r.brand) + ' <span class="pill ' + cls + '">' + esc(a.t) + '</span></h3>' +
         '<div class="meta">' + esc(r.line) + '<br>Pitch by stage ' + esc(r.pitchBy) + ' &middot; supply at stage ' + esc(r.supplyAt) +
         (r.why ? '<br><i>' + esc(r.why) + '</i>' : "") + '</div>' +
         '<div class="acts" style="align-items:center">' +
+        (quotable ? '<button class="btn sm ' + (a.k === "now" ? "" : "ghost") + '" data-act="pm-quote" data-brand="' + esc(r.brand) + '">Quote</button>' : "") +
         '<select class="pm-status" data-brand="' + esc(r.brand) + '" style="width:auto;padding:7px 10px;font-size:13px">' +
         opts(PSTATUS, p.status || "Not pitched") + '</select>' +
         '<input class="pm-amt" data-brand="' + esc(r.brand) + '" data-f="quoted" inputmode="numeric" placeholder="Quoted Rs" value="' + esc(p.quoted || "") + '" style="width:110px;padding:7px 10px;font-size:13px"/>' +
@@ -1008,10 +1024,40 @@ window.addEventListener("beforeunload", function (ev) {
         '<div class="acts">' +
         '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:7px 10px;font-size:13px">' + opts(QSTATUS, q.status) + '</select>' +
         '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '">PDF</button>' +
-        '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Send</button>' +
+        '<button class="btn sm" data-act="q-wa" data-id="' + esc(q.id) + '">WhatsApp</button>' +
+        '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
         '<button class="btn sm ghost" data-act="qz-revise" data-id="' + esc(q.id) + '">Revise</button></div></div>';
     });
     return h;
+  }
+
+  /* Shared WhatsApp share for a quote - used by the quote card (q-wa) and the follow-up
+     radar (rad-wa). On a phone it shares the actual PDF via the native share sheet; on
+     desktop it downloads the PDF and opens WhatsApp with a ready-to-send message. */
+  function waShareQuote(id) {
+    var wq = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
+    if (!wq) return;
+    var wmsg = "Hello " + wq.client + ",\n\nSharing your quotation " + wq.quoteNo + " from Energy World.\n" +
+      "Amount: " + moneyAscii(wq.net) + " (GST as applicable). Valid for 30 days.\n" +
+      "Please let us know if we may proceed.\n\nThank you,\nEnergy World";
+    toast("Preparing quote to share...");
+    quotePdf(wq).then(function (d) {
+      var wcl = clientByName(wq.client) || {};
+      var wnum = String(wcl.mobile || "").replace(/\D/g, "");
+      if (wnum.length === 10) wnum = "91" + wnum;
+      var fname = String(wq.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf";
+      try {
+        var blob = d.output("blob");
+        var file = new File([blob], fname, { type: "application/pdf" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          navigator.share({ files: [file], text: wmsg, title: "Quotation " + wq.quoteNo }).catch(function () { });
+          return;
+        }
+      } catch (e) { }
+      /* desktop / share-unsupported: download the PDF to attach, and open WhatsApp with the text */
+      d.save(fname);
+      window.open("https://wa.me/" + wnum + "?text=" + encodeURIComponent(wmsg), "_blank");
+    }).catch(function () { toast("Could not build the quote PDF."); });
   }
 
   function viewQzWizard() {
@@ -4810,6 +4856,18 @@ function viewCatalogue() {
       S.qz.brandDiscs[lbr] = clientDiscount(lc.name, lbr);
       S.tab = "quotes"; render(); return;
     }
+    /* Stage-based pitch: one-click quote from a site's Pitch matrix, brand pre-picked. */
+    if (act === "pm-quote") {
+      var mSite = siteById(S.siteId);
+      if (!mSite) return;
+      if (!mSite.client) { toast("Set the site's client first (Edit site)."); return; }
+      var mbr = t.getAttribute("data-brand");
+      var mcl = clientByName(mSite.client) || null;
+      S.qz = { step: 3, location: (mcl && mcl.location) || "", client: mSite.client,
+        clientObj: mcl, items: [], brandDisc: 0, brandDiscs: {}, brand: mbr, family: "", codeq: "" };
+      S.qz.brandDiscs[mbr] = clientDiscount(mSite.client, mbr);
+      S.tab = "quotes"; render(); return;
+    }
     if (act === "qz-cancel") { S.qz = null; render(); return; }
     if (act === "qz-loc") { S.qz.location = t.getAttribute("data-loc"); render(); return; }
     if (act === "qz-client-go") {
@@ -5281,32 +5339,8 @@ function viewCatalogue() {
         .then(function (r) { if (r) { S.modal = null; toast("Snoozed to " + dstr(due) + "."); render(); } });
       return;
     }
-    if (act === "rad-wa") {
-      var wq = S.data.quotes.filter(function (x) { return x.id === id; })[0];
-      if (!wq) return;
-      var wmsg = "Hello " + wq.client + ",\n\nSharing your quotation " + wq.quoteNo + " from Energy World.\n" +
-        "Amount: " + moneyAscii(wq.net) + " (GST as applicable). Valid for 30 days.\n" +
-        "Please let us know if we may proceed.\n\nThank you,\nEnergy World";
-      toast("Preparing quote to share...");
-      quotePdf(wq).then(function (d) {
-        var wcl = clientByName(wq.client) || {};
-        var wnum = String(wcl.mobile || "").replace(/\D/g, "");
-        if (wnum.length === 10) wnum = "91" + wnum;
-        var fname = String(wq.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf";
-        try {
-          var blob = d.output("blob");
-          var file = new File([blob], fname, { type: "application/pdf" });
-          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            navigator.share({ files: [file], text: wmsg, title: "Quotation " + wq.quoteNo }).catch(function () { });
-            return;
-          }
-        } catch (e) { }
-        /* desktop / share-unsupported: download the PDF to attach, and open WhatsApp with the text */
-        d.save(fname);
-        window.open("https://wa.me/" + wnum + "?text=" + encodeURIComponent(wmsg), "_blank");
-      }).catch(function () { toast("Could not build the quote PDF."); });
-      return;
-    }
+    if (act === "rad-wa") { waShareQuote(id); return; }
+    if (act === "q-wa") { waShareQuote(id); return; }
 
     if (act === "as-new") { S.modal = modalAssociate(null); render(); return; }
     if (act === "as-open") {
