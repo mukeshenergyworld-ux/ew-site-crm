@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.17";
+  var APP_VERSION = "6.9.18";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -3240,61 +3240,95 @@ function viewCatalogue() {
     return { rule: rule, list: out };
   }
 
-  /* Has this client already been quoted this brand (in any live quote)? Drives the
-     Quoted-vs-Pending split on the Brand desk. */
-  function brandQuoted(clientName, brand) {
-    if (!clientName) return false;
-    var bl = String(brand || "").toLowerCase();
-    return (S.data.quotes || []).some(function (q) {
-      return String(q.client) === String(clientName) && String(q.status) !== "Lost" &&
-        String(q.brand || "").toLowerCase().indexOf(bl) > -1;
-    });
-  }
   function partnersFor(clientName) {
     var c = clientByName(clientName) || {};
     return [c.architect && "Arch: " + c.architect, c.plumber && "Plumber: " + c.plumber,
       c.builder && "Builder: " + c.builder, c.pmc && "PMC: " + c.pmc].filter(Boolean).join("  ·  ");
   }
+  /* Every brand this client has already been quoted (any live quote). */
+  function clientQuotedBrands(clientName) {
+    var set = {};
+    (S.data.quotes || []).forEach(function (q) {
+      if (String(q.client) !== String(clientName) || String(q.status) === "Lost") return;
+      String(q.brand || "").split(",").forEach(function (b) { b = b.trim(); if (b) set[b] = 1; });
+    });
+    return Object.keys(set);
+  }
+  /* A client's construction stage, DERIVED from a matching site/customer record (clients don't
+     carry their own stage). Blank when there is no stage source for them. */
+  function clientStage(clientName) {
+    var s = (S.data.sites || []).filter(function (x) { return x.client === clientName || x.name === clientName; })[0];
+    if (s && s.stage) return s.stage;
+    var cu = (S.data.customers || []).filter(function (x) { return x.name === clientName; })[0];
+    return (cu && cu.stage) || "";
+  }
+  /* Cross-sell list for a brand: clients who buy at least one OTHER brand from us but have not
+     been quoted THIS brand yet — the visiting brand executive's gold list. */
+  function crossSellClients(brand) {
+    var bl = String(brand || "").toLowerCase();
+    return (S.data.clients || []).filter(function (c) {
+      var brands = clientQuotedBrands(c.name);
+      if (!brands.length) return false;   /* not a buyer yet -> a lead, not a cross-sell */
+      return !brands.some(function (b) { return b.toLowerCase() === bl || b.toLowerCase().indexOf(bl) > -1; });
+    });
+  }
 
   function viewLeads() {
-    var h = '<div class="empty" style="text-align:left;padding:0 0 12px">Pick a brand to see, in one place, how many of its sites are already quoted and how many are still pending — with the construction stage, the plumber and the architect on each. Hand it straight to the brand executive who visits.</div>';
+    var h = '<div class="empty" style="text-align:left;padding:0 0 12px">Pick a brand. <b>Cross-sell</b> = your clients who already buy other brands but not this one yet (with plumber, architect and stage) — the list to hand a visiting brand executive. <b>New leads</b> = prospect sites that are not yet your clients.</div>';
     h += '<div class="row">' + brandList().map(function (b) {
-      var n = brandLeads(b).list.length;
+      var n = crossSellClients(b).length;
       return '<button class="btn sm ' + (S.leadBrand === b ? "" : "ghost") + '" data-act="lead-brand" data-b="' + esc(b) + '">' + esc(b) + ' (' + n + ')</button>';
     }).join("") + '</div>';
     if (!S.leadBrand) return h;
-    var r = brandLeads(S.leadBrand);
-    var urgent = r.list.filter(function (x) { return x.urgent; }).length;
-    var closed = r.list.filter(function (x) { return x.window === "CLOSED"; }).length;
-    var quotedN = r.list.filter(function (x) { return brandQuoted(x.site.client, S.leadBrand); }).length;
-    var pendingN = r.list.length - quotedN;
+    var brand = S.leadBrand;
+    var cross = crossSellClients(brand);
+    var leads = brandLeads(brand).list;
+    var urgent = leads.filter(function (x) { return x.urgent; }).length;
+
     h += '<div class="cards">' +
-      '<div class="stat"><div class="n">' + quotedN + '</div><div class="l">Quoted</div></div>' +
-      '<div class="stat ' + (pendingN ? "alert" : "") + '"><div class="n">' + pendingN + '</div><div class="l">Pending to quote</div></div>' +
+      '<div class="stat ' + (cross.length ? "alert" : "") + '"><div class="n">' + cross.length + '</div><div class="l">Cross-sell clients</div></div>' +
+      '<div class="stat"><div class="n">' + leads.length + '</div><div class="l">New leads (sites)</div></div>' +
       '<div class="stat ' + (urgent ? "alert" : "") + '"><div class="n">' + urgent + '</div><div class="l">Window closing</div></div>' +
-      '<div class="stat"><div class="n">' + closed + '</div><div class="l">Already missed</div></div>' +
       '</div>';
-    h += '<div class="row"><span class="pill teal">' + esc(S.leadBrand) + '</span><div class="grow"></div>' +
+    h += '<div class="row"><span class="pill teal">' + esc(brand) + '</span><div class="grow"></div>' +
       '<button class="btn ghost" data-act="lead-pdf">PDF</button>' +
       '<select id="lead_exec" style="width:auto;padding:9px 10px">' +
       opts(["Vivek Verma", "Ashish Bhuker", "Imran", "Mukesh Verma", "Dinesh Verma"], "Vivek Verma") + '</select>' +
       '<button class="btn" data-act="lead-send">Send to executive</button></div>';
-    if (!r.list.length) return h + '<div class="empty">Nothing pending for ' + esc(S.leadBrand) + '.</div>';
-    r.list.forEach(function (x) {
-      var cls = x.window === "CLOSED" ? "due" : (x.urgent ? "due" : "teal");
-      var quoted = brandQuoted(x.site.client, S.leadBrand);
-      var partners = partnersFor(x.site.client);
-      h += '<div class="card"><h3>' + esc(x.site.name) +
-        ' <span class="pill ' + (quoted ? "Won" : "soon") + '">' + (quoted ? "QUOTED" : "not quoted yet") + '</span>' +
-        ' <span class="pill ' + cls + '">' + esc(x.window) + '</span></h3>' +
-        '<div class="meta">' + esc(x.site.client || "") + (x.site.city ? ' &middot; ' + esc(x.site.city) : "") +
-        '<br>Stage: <b>' + esc(x.site.stage || "-") + '</b> &middot; status: ' + esc(x.status) +
+
+    /* ---- Cross-sell: existing clients missing this brand ---- */
+    h += '<h3 style="margin:16px 0 8px;font-size:15px">Cross-sell &mdash; clients buying from you, not ' + esc(brand) + ' yet</h3>';
+    if (!cross.length) h += '<div class="empty">No cross-sell clients for ' + esc(brand) + ' — everyone who buys from you already has it, or you have no clients on the book yet.</div>';
+    cross.forEach(function (c) {
+      var brands = clientQuotedBrands(c.name);
+      var stg = clientStage(c.name);
+      var partners = partnersFor(c.name);
+      var seg = clientSegment(c);
+      h += '<div class="card"><h3>' + esc(c.name) +
+        ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
+        (seg ? ' <span class="pill" style="background:' + (seg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(seg) + '</span>' : "") +
+        (stg ? ' <span class="pill soon">' + esc(stg) + '</span>' : "") + '</h3>' +
+        '<div class="meta">Already buys: <b>' + esc(brands.join(", ")) + '</b>' +
         (partners ? '<br>' + esc(partners) : "") +
-        (x.site.owner ? '<br>Owner: ' + esc(x.site.owner) : "") +
-        (x.site.mobile ? '<br>' + esc(x.site.mobile) : "") + '</div>' +
-        '<div class="acts">' + (x.site.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.site.mobile) + '">Call</a>' : "") +
-        '<button class="btn sm ghost" data-act="matrix" data-id="' + esc(x.site.id) + '">Matrix</button></div></div>';
+        (c.mobile ? '<br>' + esc(c.mobile) : "") + '</div>' +
+        '<div class="acts">' + (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
+        '<button class="btn sm" data-act="lead-quote" data-id="' + esc(c.id) + '" data-brand="' + esc(brand) + '">Quote ' + esc(brand) + '</button></div></div>';
     });
+
+    /* ---- New leads: prospect sites (not yet clients) ---- */
+    if (leads.length) {
+      h += '<h3 style="margin:18px 0 8px;font-size:15px">New leads &mdash; prospect sites</h3>';
+      leads.forEach(function (x) {
+        var cls = x.window === "CLOSED" ? "due" : (x.urgent ? "due" : "teal");
+        h += '<div class="card"><h3>' + esc(x.site.name) + ' <span class="pill ' + cls + '">' + esc(x.window) + '</span></h3>' +
+          '<div class="meta">' + esc(x.site.client || "") + (x.site.city ? ' &middot; ' + esc(x.site.city) : "") +
+          '<br>Stage: <b>' + esc(x.site.stage || "-") + '</b> &middot; status: ' + esc(x.status) +
+          (x.site.owner ? '<br>Owner: ' + esc(x.site.owner) : "") +
+          (x.site.mobile ? '<br>' + esc(x.site.mobile) : "") + '</div>' +
+          '<div class="acts">' + (x.site.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.site.mobile) + '">Call</a>' : "") +
+          '<button class="btn sm ghost" data-act="matrix" data-id="' + esc(x.site.id) + '">Matrix</button></div></div>';
+      });
+    }
     return h;
   }
 
@@ -4690,6 +4724,15 @@ function viewCatalogue() {
     if (act === "qz-for") {
       var c0 = clientById(id);
       S.qz = { step: 2, location: c0.location, client: c0.name, clientObj: c0, items: [], brandDisc: 0, brandDiscs: {} };
+      S.tab = "quotes"; render(); return;
+    }
+    /* Cross-sell one-click: start a quote for this client with the brand already picked. */
+    if (act === "lead-quote") {
+      var lc = clientById(id);
+      if (!lc) return;
+      var lbr = t.getAttribute("data-brand");
+      S.qz = { step: 3, location: lc.location, client: lc.name, clientObj: lc, items: [], brandDisc: 0, brandDiscs: {}, brand: lbr, family: "", codeq: "" };
+      S.qz.brandDiscs[lbr] = clientDiscount(lc.name, lbr);
       S.tab = "quotes"; render(); return;
     }
     if (act === "qz-cancel") { S.qz = null; render(); return; }
