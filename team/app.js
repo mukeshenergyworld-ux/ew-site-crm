@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.25";
+  var APP_VERSION = "6.9.26";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -802,39 +802,105 @@ window.addEventListener("beforeunload", function (ev) {
     return out.sort();
   }
 
+  /* ---------- CUSTOMER BRAND BOARD ----------
+     One board per customer, coloured straight from that customer's quotes (the single source
+     of truth). A customer is a LEAD until his first brand is Won; then he graduates to CLIENT
+     and the same board keeps running for the rest. State per brand:
+       won  -> a Won quote exists   : greyed/parked, small reopen to wake it
+       live -> an open quote exists : green, tap to continue/quote
+       lost -> only lost quotes     : red strikethrough, wake-able
+       none -> no quote yet         : neutral, tap to start
+     "Waking" a parked brand just starts a fresh quote, which turns it green again. */
+  function clientQuotes(name) {
+    var t = String(name || "").trim().toLowerCase();
+    return (S.data.quotes || []).filter(function (q) { return String(q.client || "").trim().toLowerCase() === t; });
+  }
+  function quoteBrands(q) {
+    return String(q.brand || "").split(/,\s*/).map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+  function clientWonCount(name) {
+    return clientQuotes(name).filter(function (q) { return q.status === "Won"; }).length;
+  }
+  function clientBrandState(name, brand) {
+    var qs = clientQuotes(name).filter(function (q) { return quoteBrands(q).indexOf(brand) >= 0; });
+    if (!qs.length) return "none";
+    if (qs.some(function (q) { return q.status === "Won"; })) return "won";
+    if (qs.some(function (q) { return ["Draft", "Sent", "Negotiating", "Revised"].indexOf(q.status) >= 0; })) return "live";
+    return "lost";
+  }
+  function brandBoard(name) {
+    var brands = brandList();
+    if (!brands.length) return "";
+    var base = "display:inline-flex;align-items:center;gap:3px;padding:5px 9px;border-radius:14px;font-size:12px;margin:0 6px 6px 0;border:1px solid ";
+    var wake = function (b, col) {
+      return '<button data-act="board-quote" data-n="' + esc(name) + '" data-brand="' + esc(b) + '" title="reopen - start a fresh quote" style="border:none;background:none;color:' + col + ';cursor:pointer;padding:0 1px;font-size:13px;text-decoration:none">↺</button>';
+    };
+    return '<div style="margin-top:8px;display:flex;flex-wrap:wrap">' + brands.map(function (b) {
+      var st = clientBrandState(name, b);
+      if (st === "won")
+        return '<span style="' + base + '#cbd5e1;background:#f1f5f9;color:#94a3b8">✓ ' + esc(b) + wake(b, "#64748b") + '</span>';
+      if (st === "lost")
+        return '<span style="' + base + '#fecaca;background:#fef2f2;color:#dc2626"><span style="text-decoration:line-through">' + esc(b) + '</span>' + wake(b, "#dc2626") + '</span>';
+      if (st === "live")
+        return '<button data-act="board-quote" data-n="' + esc(name) + '" data-brand="' + esc(b) + '" style="' + base + '#0d9488;background:#0d9488;color:#fff;cursor:pointer">' + esc(b) + '</button>';
+      return '<button data-act="board-quote" data-n="' + esc(name) + '" data-brand="' + esc(b) + '" style="' + base + '#e2e8f0;background:#fff;color:#334155;cursor:pointer">' + esc(b) + '</button>';
+    }).join("") + '</div>';
+  }
+
+  /* Leads = customers with zero Won brands. Enter leads here; a brand tap starts its quote. */
+  function viewLeadBoard() {
+    var loc = S.q;
+    var leads = S.data.clients.filter(function (c) { return clientWonCount(c.name) === 0; });
+    var shown = leads.filter(function (c) { return !loc || c.location === loc; });
+    var clocs = [];
+    leads.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
+    clocs.sort();
+    var h = '<div class="empty" style="text-align:left;padding:0 0 10px">A <b>lead</b> is a customer who hasn’t won a single brand yet. Tap a brand to quote it; the moment one brand’s quote is marked <b>Won</b>, he moves to <b>Clients</b> automatically.</div>';
+    h += '<div class="row">' + clocs.map(function (l) {
+      return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
+    }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") +
+      '<div class="grow"></div><button class="btn" data-act="cl-new">+ New lead</button></div>';
+    if (!shown.length) return h + '<div class="empty">No leads here. Add one, then tap a brand to start quoting.</div>';
+    shown.forEach(function (c) {
+      var cSeg = clientSegment(c);
+      var openQ = clientQuotes(c.name).filter(function (q) { return ["Draft", "Sent", "Negotiating", "Revised"].indexOf(q.status) >= 0; }).length;
+      h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
+        (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
+        (openQ ? ' <span class="pill soon">' + openQ + ' in play</span>' : "") + '</h3>' +
+        '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  &middot;  ")) +
+        (c.area ? '<br>' + esc(c.area) : "") + '</div>' +
+        brandBoard(c.name) +
+        '<div class="acts" style="margin-top:8px">' + (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
+        '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>';
+    });
+    return h;
+  }
+
   function viewClients() {
     var loc = S.q;
-    var list = S.data.clients.filter(function (c) { return !loc || c.location === loc; });
-    /* Area chips are built from the locations clients actually live in - not a fixed
-       Panipat/Sonipat list. A town appears only once a client there exists (so Karnal shows
-       the moment Amrik is on the book) and drops off if the last client there is removed. */
+    var all = S.data.clients.filter(function (c) { return clientWonCount(c.name) > 0; });
+    var list = all.filter(function (c) { return !loc || c.location === loc; });
     var clocs = [];
-    S.data.clients.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
+    all.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
     clocs.sort();
-    var h = '<div class="row">' + clocs.map(function (l) {
+    var h = '<div class="empty" style="text-align:left;padding:0 0 10px">A <b>client</b> has won at least one brand. Keep cross-selling the rest — tap any brand on his board to quote it.</div>';
+    h += '<div class="row">' + clocs.map(function (l) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
-    }).join("") + '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' +
-      '<div class="grow"></div><button class="btn" data-act="cl-new">+ New client</button></div>';
-    if (!list.length) h += '<div class="empty">No clients here yet.</div>';
+    }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") + '</div>';
+    if (!list.length) return h + '<div class="empty">No clients yet. A lead becomes a client here the moment one of his quotes is marked Won.</div>';
     list.forEach(function (c) {
       var partners = [c.architect && "Arch: " + c.architect, c.plumber && "Plumber: " + c.plumber,
         c.builder && "Builder: " + c.builder, c.pmc && "PMC: " + c.pmc].filter(Boolean);
-      var bp = S.data.pitch.filter(function (p) { return p.clientName === c.name; });
-      var bw = bp.filter(function (p) { return p.status === "Won"; }).length;
-      var bq = bp.filter(function (p) { return p.status === "Quoted" || p.status === "Negotiating"; }).length;
-      var bl = bp.filter(function (p) { return p.status === "Lost"; }).length;
+      var won = clientWonCount(c.name);
       var cSeg = clientSegment(c);
       h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
         (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
-        (bw ? ' <span class="bs win">' + bw + ' WON</span>' : "") +
-        (bq ? ' <span class="bs quoted">' + bq + ' QUOTED</span>' : "") +
-        (bl ? ' <span class="bs lose">' + bl + ' LOST</span>' : "") + '</h3>' +
+        ' <span class="bs win">' + won + ' WON</span></h3>' +
         '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  &middot;  ")) +
         (c.area ? '<br>' + esc(c.area) : "") + (c.address ? '<br>' + esc(c.address) : "") +
         (partners.length ? '<br>' + esc(partners.join(" - ")) : "") + '</div>' +
-        '<div class="acts">' + (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
-        '<button class="btn sm" data-act="qz-for" data-id="' + esc(c.id) + '">Quote</button>' +
-        '<button class="btn sm ghost" data-act="bb-open" data-n="' + esc(c.name) + '">Brands</button>' +
+        brandBoard(c.name) +
+        '<div class="acts" style="margin-top:8px">' + (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
         '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>';
     });
     return h;
@@ -4570,16 +4636,15 @@ function viewCatalogue() {
   /* Leads hub: prospect Sites + Site visits + the Brand desk in one tab. Sub-tabs are shown
      only for the pieces this role may see; the Brand desk (viewLeads) is the tab itself. */
   function viewLeadsHub() {
-    var tabs = [];
+    var tabs = [["board", "Leads"]];
     if (canSee("sites")) tabs.push(["sites", "Sites"]);
     if (canSee("visits")) tabs.push(["visits", "Site visits"]);
-    tabs.push(["brand", "Brand desk"]);
     var sub = S.leadsSub || tabs[0][0];
     if (!tabs.some(function (t) { return t[0] === sub; })) sub = tabs[0][0];
     var h = '<div class="row" style="margin-bottom:10px">' + tabs.map(function (t) {
       return '<button class="btn sm ' + (sub === t[0] ? "" : "ghost") + '" data-act="leads-sub" data-s="' + t[0] + '">' + t[1] + '</button>';
     }).join("") + '</div>';
-    return h + (sub === "visits" ? viewVisits() : (sub === "brand" ? viewLeads() : viewSites()));
+    return h + (sub === "sites" ? viewSites() : (sub === "visits" ? viewVisits() : viewLeadBoard()));
   }
 
   /* Quotes hub: quotations + Win/Loss (quote outcomes) as sub-tabs instead of two tabs. */
@@ -4636,7 +4701,7 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
     var GROUPS = [
-      ["Sell", ["dash", "leads", "clients", "quotes", "followups", "partners"]],
+      ["Sell", ["dash", "leads", "quotes", "followups", "clients", "partners"]],
       ["Deliver", ["deliveries", "tools", "collections", "discounts", "products"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["payrollhub", "report", "pricing", "rules"]]
@@ -4930,6 +4995,15 @@ function viewCatalogue() {
     if (act === "qz-for") {
       var c0 = clientById(id);
       S.qz = { step: 2, location: c0.location, client: c0.name, clientObj: c0, items: [], brandDisc: 0, brandDiscs: {} };
+      S.tab = "quotes"; render(); return;
+    }
+    /* Brand board: tap any brand on a lead/client to start (or wake) its quote. */
+    if (act === "board-quote") {
+      var bn = t.getAttribute("data-n"), bb = t.getAttribute("data-brand");
+      var bcl = clientByName(bn);
+      S.qz = { step: 3, location: (bcl && bcl.location) || "", client: bn, clientObj: bcl || null,
+        items: [], brandDisc: 0, brandDiscs: {}, brand: bb, family: "", codeq: "" };
+      S.qz.brandDiscs[bb] = clientDiscount(bn, bb);
       S.tab = "quotes"; render(); return;
     }
     /* Cross-sell one-click: start a quote for this client with the brand already picked. */
