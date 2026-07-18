@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.28";
+  var APP_VERSION = "6.9.29";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -575,13 +575,13 @@ window.addEventListener("beforeunload", function (ev) {
      type, editable); that stamps the challan's itemsJson (no new sheet column) and prints a
      Commissioning Certificate + a Warranty Card. */
   var COMM_CATS = [
-    { kw: ["softener"], label: "Water Softener", months: 12 },
-    { kw: ["sand filter"], label: "Sand Filter", months: 12 },
-    { kw: ["carbon filter"], label: "Carbon Filter", months: 12 },
-    { kw: ["pressure pump"], label: "Pressure Pump", months: 12 },
-    { kw: ["heat pump"], label: "Heat Pump", months: 24 },
-    { kw: ["recirculation"], label: "Recirculation Pump", months: 12 },
-    { kw: ["purifier", "reverse osmosis"], label: "RO / Purifier", months: 12 }
+    { kw: ["softener"], label: "Water Softener", months: 12, cycle: 90 },
+    { kw: ["sand filter"], label: "Sand Filter", months: 12, cycle: 180 },
+    { kw: ["carbon filter"], label: "Carbon Filter", months: 12, cycle: 180 },
+    { kw: ["pressure pump"], label: "Pressure Pump", months: 12, cycle: 365 },
+    { kw: ["heat pump"], label: "Heat Pump", months: 24, cycle: 180 },
+    { kw: ["recirculation"], label: "Recirculation Pump", months: 12, cycle: 365 },
+    { kw: ["purifier", "reverse osmosis"], label: "RO / Purifier", months: 12, cycle: 180 }
   ];
   function commCat(desc) {
     var d = " " + String(desc || "").toLowerCase() + " ";
@@ -606,6 +606,20 @@ window.addEventListener("beforeunload", function (ev) {
       var ci = commItemsOf(c);
       return ci.length && ci.every(function (x) { return x.i.comm && x.i.comm.date; });
     }).sort(function (a, b) { return String(commDateOf(b)).localeCompare(String(commDateOf(a))); });
+  }
+  /* Commissioned units whose EW installation warranty is near/at its end - the moment to sell
+     an AMC or extended warranty. Reads warranty-till straight from the challan's comm data. */
+  function warrantyExpiring(windowDays) {
+    var win = windowDays || 60, out = [];
+    (S.data.challans || []).forEach(function (c) {
+      commItemsOf(c).forEach(function (x) {
+        if (x.i.comm && x.i.comm.till) {
+          var days = daysTo(x.i.comm.till);
+          if (days <= win) out.push({ client: c.customerName, product: x.cat.label, till: x.i.comm.till, days: days });
+        }
+      });
+    });
+    return out.sort(function (a, b) { return a.days - b.days; });
   }
   function addMonths(dateStr, m) {
     var d = new Date(dstr(dateStr) + "T00:00:00");
@@ -705,6 +719,8 @@ window.addEventListener("beforeunload", function (ev) {
     var ci = commItemsOf(ch);
     return commPdfBase("WARRANTY CARD", ch, dateStr).then(function (b) {
       var doc = b.doc, F = b.F, L = b.L, R = b.R, y = commCustomerBlock(b, ch);
+      F("bold"); doc.setFontSize(9.5); doc.setTextColor(13, 118, 108);
+      doc.text("Energy World Installation Warranty", L, y); y += 7;
       doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, R - L, 9, "F");
       doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(7.4);
       doc.text("PRODUCT", L + 3, y); doc.text("COMMISSIONED", R - 46, y, { align: "right" }); doc.text("WARRANTY VALID TILL", R - 3, y, { align: "right" });
@@ -722,7 +738,7 @@ window.addEventListener("beforeunload", function (ev) {
       y += 10; F("bold"); doc.setFontSize(9); doc.setTextColor(13, 118, 108); doc.text("WARRANTY TERMS", L, y); F("normal");
       y += 6; doc.setFontSize(8.2); doc.setTextColor(80, 92, 108);
       [
-        "1. Warranty covers manufacturing defects in materials and workmanship for the period stated above, from the commissioning date.",
+        "1. This is the Energy World Installation Warranty — it covers installation workmanship, commissioning and functioning for the period stated above, from the commissioning date. The product's manufacturing warranty, if any, is provided separately by the manufacturer as per their terms.",
         "2. Consumables — filter media, resin, salt, membranes, cartridges and gaskets — are not covered.",
         "3. Damage from misuse, tampering, incorrect voltage, poor water quality, or servicing by unauthorised persons voids this warranty.",
         "4. This card must be produced for any warranty claim. Warranty is non-transferable.",
@@ -738,6 +754,18 @@ window.addEventListener("beforeunload", function (ev) {
 
   function commissioningSection() {
     var pend = commPending(), done = commDone(), cs = "";
+    var exp = warrantyExpiring(60);
+    if (exp.length) {
+      cs += '<div class="card" style="border-color:#fdba74;background:#fff7ed"><h3>Warranty ending — AMC opportunity <span class="pill soon">' + exp.length + '</span></h3>' +
+        '<div class="meta">These commissioned units are near or past warranty end — the best moment to pitch an AMC or extended warranty.</div>';
+      exp.slice(0, 15).forEach(function (x) {
+        var lbl = x.days < 0 ? Math.abs(x.days) + 'd ago' : (x.days === 0 ? 'today' : x.days + 'd left');
+        cs += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(x.client) + '</b> &middot; ' + esc(x.product) +
+          '<br><span style="font-size:11px;color:#64748b">warranty till ' + esc(fullDate(x.till)) + ' &middot; ' + lbl + '</span></div>' +
+          '<button class="btn sm" data-act="amc-wa" data-n="' + esc(x.client) + '" data-p="' + esc(x.product) + '" data-till="' + esc(x.till) + '">Offer AMC</button></div>';
+      });
+      cs += '</div>';
+    }
     if (pend.length) {
       cs += '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><h3>To commission <span class="pill due">' + pend.length + '</span></h3>' +
         '<div class="meta">Delivered products that need on-site commissioning. Enter the date to issue the certificate + warranty card.</div>';
@@ -5436,15 +5464,30 @@ function viewCatalogue() {
       var commCh = (S.data.challans || []).filter(function (x) { return x.id === t.getAttribute("data-ch"); })[0];
       if (!commCh) return;
       var cDate = val("cm_date") || today(), cEng = val("cm_eng");
-      var cItems = chItems(commCh);
+      var cItems = chItems(commCh), justDone = [];
       [].slice.call(document.querySelectorAll(".cm-wm")).forEach(function (inp) {
         var idx = Number(inp.getAttribute("data-idx")), wm = Number(inp.value) || 0;
-        if (cItems[idx]) cItems[idx].comm = { date: cDate, eng: cEng, wm: wm, till: addMonths(cDate, wm) };
+        if (cItems[idx]) { cItems[idx].comm = { date: cDate, eng: cEng, wm: wm, till: addMonths(cDate, wm) }; justDone.push(cItems[idx]); }
       });
       commCh.itemsJson = JSON.stringify(cItems);
       t.disabled = true; t.textContent = "Generating...";
       save("challans", commCh).then(function (r) {
         S.modal = null; toast("Commissioned. Generating documents..."); render();
+        /* Close the loop: every commissioned unit becomes a tracked installation, so it flows
+           into the Service-due reminders and AMC pipeline automatically. */
+        var cl = clientByName(commCh.customerName) || {};
+        justDone.forEach(function (it) {
+          var cat = commCat(it.desc) || {}, cyc = cat.cycle || 180;
+          save("installs", {
+            id: "", createdBy: S.user, client: commCh.customerName, mobile: cl.mobile || "",
+            address: cl.address || "", area: cl.area || cl.location || "",
+            product: cat.label || it.desc, model: it.desc, serial: "",
+            installDate: cDate, waterQuality: "", cycleDays: cyc,
+            lastService: "", nextService: addDays(cDate, cyc),
+            amcType: "None", amcAmount: "", amcEnd: "", engineer: cEng, status: "Active",
+            notes: "Auto-created on commissioning · Challan " + (commCh.challanNo || "") + " · EW warranty till " + fullDate(it.comm.till)
+          });
+        });
         loadLogo().then(function () { return commCertPdf(commCh, cDate, cEng); })
           .then(function (d) { d.save("Commissioning_" + String(commCh.challanNo || "").replace(/[^\w.-]/g, "_") + ".pdf"); return warrantyCardPdf(commCh, cDate); })
           .then(function (d) { d.save("Warranty_" + String(commCh.challanNo || "").replace(/[^\w.-]/g, "_") + ".pdf"); toast("Certificate + warranty card downloaded."); })
@@ -5469,6 +5512,14 @@ function viewCatalogue() {
         var wmsg = "Dear " + cch.customerName + ",\n\nYour Energy World warranty card is attached. Please keep it safe for any future service or warranty claim.\n\nThank you,\nEnergy World";
         waShareDoc(loadLogo().then(function () { return warrantyCardPdf(cch, cd); }), "Warranty_" + fn + ".pdf", wnum, wmsg);
       }
+      return;
+    }
+    if (act === "amc-wa") {
+      var an = t.getAttribute("data-n"), ap = t.getAttribute("data-p"), atill = t.getAttribute("data-till");
+      var acl = clientByName(an) || {};
+      var anum = String(acl.mobile || "").replace(/\D/g, ""); if (anum.length === 10) anum = "91" + anum;
+      var amsg = "Dear " + an + ",\n\nYour " + ap + " from Energy World is nearing the end of its installation warranty (" + fullDate(atill) + "). To keep it running trouble-free, we would be glad to offer an Annual Maintenance Contract (AMC) with priority service and periodic checks.\n\nMay we share the details?\n\nThank you,\nEnergy World";
+      window.open("https://wa.me/" + anum + "?text=" + encodeURIComponent(amsg), "_blank");
       return;
     }
     if (act === "inst-new") { S.modal = modalInstall(null); render(); return; }
