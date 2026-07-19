@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.29";
+  var APP_VERSION = "6.9.30";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -1068,34 +1068,54 @@ window.addEventListener("beforeunload", function (ev) {
     clientQuotes(name).forEach(function (q) {
       if (q.status === "Won") quoteBrands(q).forEach(function (b) { set[b] = 1; });
     });
+    /* manual per-brand wins (for old clients entered without a quote) */
+    (S.data.pitch || []).forEach(function (p) {
+      if (String(p.clientName || "") === name && p.status === "Won" && p.brand) set[p.brand] = 1;
+    });
     return Object.keys(set);
   }
   function clientWonCount(name) { return clientWonBrands(name).length; }
   function isClient(name) { return clientWonBrands(name).length > 0 || clientDelivered(name); }
+  /* Board state blends quotes + delivered challans + a manual per-brand status (clientPitch), so
+     old clients with pre-app history can be recorded directly. Priority: won > live > lost > none. */
   function clientBrandState(name, brand) {
     if (clientWonBrands(name).indexOf(brand) >= 0) return "won";
+    var ps = (clientPitch(name, brand) || {}).status || "";
     var qs = clientQuotes(name).filter(function (q) { return quoteBrands(q).indexOf(brand) >= 0; });
-    if (!qs.length) return "none";
-    if (qs.some(function (q) { return ["Draft", "Sent", "Negotiating", "Revised"].indexOf(q.status) >= 0; })) return "live";
-    return "lost";
+    var hasOpen = qs.some(function (q) { return ["Draft", "Sent", "Negotiating", "Revised"].indexOf(q.status) >= 0; });
+    if (hasOpen || ["Pitched", "Quoted", "Negotiating", "Ongoing"].indexOf(ps) >= 0) return "live";
+    if (ps === "Lost" || qs.length) return "lost";
+    return "none";
   }
   function brandBoard(name) {
     var brands = brandList();
     if (!brands.length) return "";
-    var base = "display:inline-flex;align-items:center;gap:3px;padding:5px 9px;border-radius:14px;font-size:12px;margin:0 6px 6px 0;border:1px solid ";
-    var wake = function (b, col) {
-      return '<button data-act="board-quote" data-n="' + esc(name) + '" data-brand="' + esc(b) + '" title="reopen - start a fresh quote" style="border:none;background:none;color:' + col + ';cursor:pointer;padding:0 1px;font-size:13px;text-decoration:none">↺</button>';
-    };
+    var base = "display:inline-flex;align-items:center;gap:4px;padding:6px 11px;border-radius:14px;font-size:12px;margin:0 6px 6px 0;border:1px solid;cursor:pointer;";
     return '<div style="margin-top:8px;display:flex;flex-wrap:wrap">' + brands.map(function (b) {
-      var st = clientBrandState(name, b);
-      if (st === "won")
-        return '<span style="' + base + '#cbd5e1;background:#f1f5f9;color:#94a3b8">✓ ' + esc(b) + wake(b, "#64748b") + '</span>';
-      if (st === "lost")
-        return '<span style="' + base + '#fecaca;background:#fef2f2;color:#dc2626"><span style="text-decoration:line-through">' + esc(b) + '</span>' + wake(b, "#dc2626") + '</span>';
-      if (st === "live")
-        return '<button data-act="board-quote" data-n="' + esc(name) + '" data-brand="' + esc(b) + '" style="' + base + '#0d9488;background:#0d9488;color:#fff;cursor:pointer">' + esc(b) + '</button>';
-      return '<button data-act="board-quote" data-n="' + esc(name) + '" data-brand="' + esc(b) + '" style="' + base + '#e2e8f0;background:#fff;color:#334155;cursor:pointer">' + esc(b) + '</button>';
+      var st = clientBrandState(name, b), sty, inner;
+      if (st === "won") { sty = base + "background:#f1f5f9;color:#94a3b8;border-color:#cbd5e1"; inner = "✓ " + esc(b); }
+      else if (st === "lost") { sty = base + "background:#fef2f2;color:#dc2626;border-color:#fecaca"; inner = '<span style="text-decoration:line-through">' + esc(b) + '</span>'; }
+      else if (st === "live") { sty = base + "background:#0d9488;color:#fff;border-color:#0d9488"; inner = esc(b); }
+      else { sty = base + "background:#fff;color:#334155;border-color:#e2e8f0"; inner = esc(b); }
+      return '<button data-act="board-menu" data-n="' + esc(name) + '" data-brand="' + esc(b) + '" style="' + sty + '">' + inner + '</button>';
     }).join("") + '</div>';
+  }
+  /* Tapping a brand opens this menu: quote it (the main path) OR just record the outcome. */
+  function modalBrandAction(name, brand) {
+    var st = clientBrandState(name, brand);
+    var pstat = (clientPitch(name, brand) || {}).status || "";
+    var label = { won: "Won ✓", lost: "Lost", live: "In play", none: "Not started" }[st] || "";
+    return '<h2>' + esc(brand) + '</h2>' +
+      '<p class="sub">' + esc(name) + ' &middot; currently: <b>' + esc(label) + '</b></p>' +
+      '<button class="btn" style="width:100%;justify-content:center;margin-bottom:12px" data-act="board-quote" data-n="' + esc(name) + '" data-brand="' + esc(brand) + '">Quote this brand</button>' +
+      '<div class="empty" style="text-align:left;padding:0 0 8px;font-size:12.5px">Or just record the outcome — for an old client or a verbal deal (no quote made):</div>' +
+      '<div class="acts" style="flex-wrap:wrap">' +
+      '<button class="btn sm" data-act="board-status" data-n="' + esc(name) + '" data-brand="' + esc(brand) + '" data-s="Won">Mark Won</button>' +
+      '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(name) + '" data-brand="' + esc(brand) + '" data-s="Ongoing">Ongoing</button>' +
+      '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(name) + '" data-brand="' + esc(brand) + '" data-s="Lost">Lost</button>' +
+      (pstat && pstat !== "Not pitched" ? '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(name) + '" data-brand="' + esc(brand) + '" data-s="">Clear</button>' : "") +
+      '</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button></div>';
   }
 
   /* Leads = customers with zero Won brands. Enter leads here; a brand tap starts its quote. */
@@ -1262,8 +1282,8 @@ window.addEventListener("beforeunload", function (ev) {
     var dl = function (id, role) {
       return '<datalist id="' + id + '">' + names(role).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>';
     };
-    return '<h2>' + (c.id ? "Edit client" : "Register new client") + '</h2>' +
-      '<p class="sub">Partners preset here flow into every quote, challan and incentive.</p>' +
+    return '<h2>' + (c.id ? "Edit customer" : "New lead") + '</h2>' +
+      '<p class="sub">Enter a new lead — or an old client. Partners named here flow into every quote, challan and incentive. Mark his brands on the board afterwards.</p>' +
       '<label>Client name</label><input id="c_name" value="' + esc(c.name) + '"/>' +
       '<div class="grid2"><div><label>Location</label><input id="c_loc" list="cloclist" value="' + esc(c.location || "") + '" placeholder="City e.g. Karnal" autocomplete="off"/>' +
       '<datalist id="cloclist">' + locations().map(function (l) { return '<option value="' + esc(l) + '"></option>'; }).join("") + '</datalist></div>' +
@@ -5248,14 +5268,22 @@ function viewCatalogue() {
       S.qz = { step: 2, location: c0.location, client: c0.name, clientObj: c0, items: [], brandDisc: 0, brandDiscs: {} };
       S.tab = "quotes"; render(); return;
     }
-    /* Brand board: tap any brand on a lead/client to start (or wake) its quote. */
+    /* Brand board: tapping a brand opens a small menu (quote it, or just record the outcome). */
+    if (act === "board-menu") { S.modal = modalBrandAction(t.getAttribute("data-n"), t.getAttribute("data-brand")); render(); return; }
+    if (act === "board-status") {
+      var stn = t.getAttribute("data-n"), stb = t.getAttribute("data-brand"), stv = t.getAttribute("data-s") || "Not pitched";
+      saveBrandStatus(stn, stb, "", { status: stv });
+      S.modal = null;
+      toast(stb + (stv === "Not pitched" ? " status cleared" : " marked " + stv) + (stv === "Won" ? " — moved to Clients" : ""));
+      render(); return;
+    }
     if (act === "board-quote") {
       var bn = t.getAttribute("data-n"), bb = t.getAttribute("data-brand");
       var bcl = clientByName(bn);
       S.qz = { step: 3, location: (bcl && bcl.location) || "", client: bn, clientObj: bcl || null,
         items: [], brandDisc: 0, brandDiscs: {}, brand: bb, family: "", codeq: "" };
       S.qz.brandDiscs[bb] = clientDiscount(bn, bb);
-      S.tab = "quotes"; render(); return;
+      S.modal = null; S.tab = "quotes"; render(); return;
     }
     /* Cross-sell one-click: start a quote for this client with the brand already picked. */
     if (act === "lead-quote") {
