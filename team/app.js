@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.31";
+  var APP_VERSION = "6.9.32";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -3031,7 +3031,14 @@ function viewCatalogue() {
   function stopScanner() {
     if (S.scan) { try { S.scan.getTracks().forEach(function (t) { t.stop(); }); } catch (e) { } S.scan = null; }
   }
+  /* Tool codes are case- and space-insensitive: the sticker prints EW-T001 but a person may
+     type "ew-t001" or "ew - t001". Canonicalise to UPPERCASE with all whitespace stripped
+     (hyphens kept) at the one point every scan / typed code / list-open passes through, so the
+     same tool is found no matter how the code was entered. */
+  function normToolCode(code) { return String(code == null ? "" : code).toUpperCase().replace(/\s+/g, ""); }
   function openToolByCode(code) {
+    code = normToolCode(code);
+    if (!code) { toast("Type the code from the sticker."); return; }
     api("toolScan", { code: code }).then(function (r) {
       if (!r || !r.ok) { toast((r && r.error) || "Tool not found."); return; }
       S.tool = { t: r.tool, chain: r.chain || [], days: r.heldDays || 0 };
@@ -6148,7 +6155,7 @@ function viewCatalogue() {
       t.disabled = true; t.textContent = "Saving...";
       var tr = S.tool.t;
       save("tools", {
-        id: tr.id, code: tr.code, name: nm, brand: val("tl_brand"), model: val("tl_model"),
+        id: tr.id, code: normToolCode(tr.code), name: nm, brand: val("tl_brand"), model: val("tl_model"),
         serial: val("tl_serial"), value: val("tl_value"), dueDays: val("tl_due") || "30",
         status: "In godown", holder: "", holderType: "", holderMobile: "", site: "", issuedAt: ""
       }).then(function () {
