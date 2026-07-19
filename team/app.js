@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.30";
+  var APP_VERSION = "6.9.31";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -414,6 +414,18 @@ window.addEventListener("beforeunload", function (ev) {
         '<div class="acts"><button class="btn sm ' + (S.geoOnly ? '' : 'ghost') + '" data-act="geo-filter">' +
         (S.geoOnly ? 'Showing pending only' : 'Show only these') + '</button></div></div>';
     }
+    var stale = staleSites();
+    if (stale.length) {
+      h += '<div class="card" style="border-color:#fdba74;background:#fff7ed"><h3>Stale sites <span class="pill soon">' + stale.length + '</span></h3>' +
+        '<div class="meta">No visit logged in ' + STALE_SITE + '+ days. Check in, or update the stage — the pitch windows depend on it.</div>';
+      stale.slice(0, 12).forEach(function (s) {
+        h += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(s.st.name) + '</b>' +
+          ' <span style="color:#94a3b8;font-size:11px">stage ' + stageNo(s.st) + '</span>' +
+          '<br><span style="font-size:11px;color:#64748b">quiet ' + s.days + 'd</span></div>' +
+          '<button class="btn sm ghost" data-act="matrix" data-id="' + esc(s.st.id) + '">Open</button></div>';
+      });
+      h += '</div>';
+    }
     h += '<div class="row"><input class="grow" id="q" placeholder="Search sites..." value="' + esc(S.q) + '"/>' +
       '<button class="btn" data-act="site-new">+ New site</button></div>';
     if (!list.length) h += '<div class="empty">No sites yet. A site is a project - the 14 brands get tracked against it.</div>';
@@ -487,18 +499,94 @@ window.addEventListener("beforeunload", function (ev) {
     return h;
   }
 
+  /* ---------- ACTIVITY RADARS: lead ageing, site staleness, cold partners ---------- */
+  var STALE_LEAD = 14, STALE_SITE = 21, COLD_PARTNER = 30;
+  function clientAgeDays(c) {
+    var latest = "";
+    clientQuotes(c.name).forEach(function (q) { var d = q.updatedAt || q.createdAt; if (d && String(d) > latest) latest = String(d); });
+    if (!latest && c.createdAt) latest = String(c.createdAt);
+    return latest ? -daysTo(latest) : null;
+  }
+  function agingLeads() {
+    return (S.data.clients || []).filter(function (c) { return !isClient(c.name); })
+      .map(function (c) { return { c: c, days: clientAgeDays(c) }; })
+      .filter(function (x) { return x.days !== null && x.days >= STALE_LEAD; })
+      .sort(function (a, b) { return b.days - a.days; });
+  }
+  function siteActivityDays(st) {
+    var latest = "";
+    siteVisits(st.id).forEach(function (v) { var d = dstr(v.date); if (d && d > latest) latest = d; });
+    if (!latest && st.createdAt) latest = String(st.createdAt).slice(0, 10);
+    return latest ? -daysTo(latest) : null;
+  }
+  function staleSites() {
+    return (S.data.sites || []).filter(function (st) {
+      var s = String(st.stage || "").toLowerCase();
+      if (s.indexOf("complete") >= 0 || s.indexOf("handover") >= 0 || s.indexOf("amc") >= 0) return false;
+      var d = siteActivityDays(st);
+      return d !== null && d >= STALE_SITE;
+    }).map(function (st) { return { st: st, days: siteActivityDays(st) }; })
+      .sort(function (a, b) { return b.days - a.days; });
+  }
+  function partnerLastContactDays(name) {
+    var nm = String(name).toLowerCase(), latest = "";
+    (S.data.challans || []).forEach(function (c) { if (String(c.associate || "").toLowerCase() === nm) { var d = String(c.createdAt || "").slice(0, 10); if (d > latest) latest = d; } });
+    (S.data.sitevisits || []).forEach(function (v) {
+      var st = (S.data.sites || []).filter(function (s) { return s.id === v.siteId; })[0];
+      if (st && [st.architect, st.plumber, st.builder].some(function (x) { return String(x || "").toLowerCase() === nm; })) { var d = dstr(v.date); if (d > latest) latest = d; }
+    });
+    (S.data.commpay || []).forEach(function (p) { if (String(p.associate || "").toLowerCase() === nm) { var d = dstr(p.date); if (d > latest) latest = d; } });
+    return latest ? -daysTo(latest) : null;
+  }
+  function coldPartners() {
+    return (S.data.associates || []).map(function (a) { return { a: a, days: partnerLastContactDays(a.name) }; })
+      .filter(function (x) { return x.days !== null && x.days >= COLD_PARTNER; })
+      .sort(function (a, b) { return b.days - a.days; });
+  }
+
   function viewWinLoss() {
-    var h = '<div class="empty" style="text-align:left;padding:0 0 12px">Win rate per product line across every site.</div>';
+    var by = S.wlBy || "brand";
+    var h = '<div class="row" style="margin-bottom:10px">' +
+      [["brand", "By brand"], ["exec", "By executive"], ["partner", "By partner"]].map(function (o) {
+        return '<button class="btn sm ' + (by === o[0] ? "" : "ghost") + '" data-act="wl-by" data-k="' + o[0] + '">' + o[1] + '</button>';
+      }).join("") + '</div>';
+
+    if (by === "exec") {
+      var ex = {};
+      (S.data.quotes || []).forEach(function (q) {
+        var e = q.createdBy || "?"; ex[e] = ex[e] || { won: 0, lost: 0, val: 0 };
+        if (q.status === "Won") { ex[e].won++; ex[e].val += Number(q.net) || 0; } else if (q.status === "Lost") ex[e].lost++;
+      });
+      var er = Object.keys(ex).map(function (e) { var d = ex[e]; return { name: e, won: d.won, lost: d.lost, val: d.val, rate: (d.won + d.lost) ? Math.round(d.won * 100 / (d.won + d.lost)) : null }; })
+        .filter(function (x) { return x.won + x.lost > 0; }).sort(function (a, b) { return b.val - a.val; });
+      if (!er.length) return h + '<div class="empty">No Won/Lost quotes yet — win rates appear here as quotes are marked Won or Lost.</div>';
+      er.forEach(function (x) {
+        h += '<div class="card"><h3>' + esc(x.name) + (x.rate === null ? '' : ' <span class="pill ' + (x.rate >= 50 ? "Won" : "Lost") + '">' + x.rate + '% win</span>') + '</h3>' +
+          '<div class="meta">Won ' + x.won + ' &middot; Lost ' + x.lost + ' &middot; Won value ' + money(x.val) + '</div></div>';
+      });
+      return h;
+    }
+
+    if (by === "partner") {
+      h += '<div class="empty" style="text-align:left;padding:0 0 10px">Business actually delivered through each partner (challans with a signed receipt).</div>';
+      var pr = (S.data.associates || []).map(function (a) { var b = partnerBook(a.name); return { name: a.name, role: a.role, billed: b.billed, ch: b.rows.length }; })
+        .filter(function (x) { return x.billed > 0 || x.ch > 0; }).sort(function (a, b) { return b.billed - a.billed; });
+      if (!pr.length) return h + '<div class="empty">No delivered business linked to partners yet.</div>';
+      pr.forEach(function (x, i) {
+        h += '<div class="card"><h3><span class="pill ' + (i < 3 ? "teal" : "") + '">#' + (i + 1) + '</span> ' + esc(x.name) + ' <span class="pill">' + esc(x.role || "") + '</span></h3>' +
+          '<div class="meta"><b>Drove ' + money(x.billed) + '</b> &middot; ' + x.ch + ' challan(s)</div></div>';
+      });
+      return h;
+    }
+
+    h += '<div class="empty" style="text-align:left;padding:0 0 12px">Win rate per product line across every site.</div>';
     var rows = S.data.rules.map(function (r) {
       var ps = S.data.pitch.filter(function (p) { return p.brand === r.brand; });
       var cnt = function (st) { return ps.filter(function (p) { return p.status === st; }).length; };
       var won = cnt("Won"), lost = cnt("Lost");
-      var missed = S.data.sites.filter(function (site) {
-        return action(site, r, pitchRow(site.id, r.brand)).k === "closed";
-      }).length;
+      var missed = S.data.sites.filter(function (site) { return action(site, r, pitchRow(site.id, r.brand)).k === "closed"; }).length;
       var wonVal = ps.reduce(function (a, p) { return a + (Number(p.won) || 0); }, 0);
-      return { brand: r.brand, line: r.line, won: won, lost: lost, missed: missed,
-        rate: (won + lost) ? Math.round(won * 100 / (won + lost)) : null, val: wonVal };
+      return { brand: r.brand, line: r.line, won: won, lost: lost, missed: missed, rate: (won + lost) ? Math.round(won * 100 / (won + lost)) : null, val: wonVal };
     }).sort(function (a, b) { return b.missed - a.missed; });
     rows.forEach(function (x) {
       h += '<div class="card"><h3>' + esc(x.brand) +
@@ -1131,6 +1219,18 @@ window.addEventListener("beforeunload", function (ev) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") +
       '<div class="grow"></div><button class="btn" data-act="cl-new">+ New lead</button></div>';
+    var aging = agingLeads();
+    if (aging.length) {
+      h += '<div class="card" style="border-color:#fdba74;background:#fff7ed"><h3>Going quiet <span class="pill soon">' + aging.length + '</span></h3>' +
+        '<div class="meta">No quote activity for ' + STALE_LEAD + '+ days — give them a nudge before they go cold.</div>';
+      aging.slice(0, 12).forEach(function (x) {
+        h += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(x.c.name) + '</b>' +
+          (x.c.location ? ' <span style="color:#94a3b8;font-size:11px">' + esc(x.c.location) + '</span>' : "") +
+          '<br><span style="font-size:11px;color:#64748b">quiet ' + x.days + 'd</span></div>' +
+          (x.c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.c.mobile) + '">Call</a>' : "") + '</div>';
+      });
+      h += '</div>';
+    }
     if (!shown.length) return h + '<div class="empty">No leads here. Add one, then tap a brand to start quoting.</div>';
     shown.forEach(function (c) {
       var cSeg = clientSegment(c);
@@ -3423,6 +3523,17 @@ function viewCatalogue() {
       '<div class="stat ' + (tot.pending > 0 ? "alert" : "") + '"><div class="n">' + money(tot.pending) + '</div><div class="l">Still to pay</div></div>' +
       '</div>';
     h += '<div class="empty" style="text-align:left;padding:0 0 12px">Incentive = net billed \u00f7 1.18 (ex-GST) \u00d7 the partner rate, and it only becomes <b>payable as the client pays</b>. A challan counts only once its material receipt is in.</div>';
+    var cold = coldPartners();
+    if (cold.length) {
+      h += '<div class="card" style="border-color:#fdba74;background:#fff7ed"><h3>Stay in touch <span class="pill soon">' + cold.length + '</span></h3>' +
+        '<div class="meta">No challan, visit or payout logged with these partners for ' + COLD_PARTNER + '+ days. A quick call keeps the pipeline warm.</div>';
+      cold.slice(0, 12).forEach(function (x) {
+        h += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(x.a.name) + '</b> <span style="color:#94a3b8;font-size:11px">' + esc(x.a.role || "") + '</span>' +
+          '<br><span style="font-size:11px;color:#64748b">quiet ' + x.days + 'd</span></div>' +
+          (x.a.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.a.mobile) + '">Call</a>' : "") + '</div>';
+      });
+      h += '</div>';
+    }
     var roles = ["Plumber", "Architect", "Builder", "PMC", "Contractor", "Dealer", "Other"];
     h += '<div class="row">' + roles.map(function (r) {
       return '<button class="btn sm ' + (S.pRole === r ? "" : "ghost") + '" data-act="p-role" data-r="' + esc(r) + '">' + esc(r) + '</button>';
@@ -3876,6 +3987,45 @@ function viewCatalogue() {
   /* ---------------- owner dashboard ----------------
      For a partner: money, then what is about to be lost, then what needs a decision.
      Deliberately opinionated - it names ONE thing to do today rather than 12 numbers. */
+  /* ---------- DAILY TEAM DIGEST ---------- */
+  function digestLines() {
+    var lines = [];
+    var dueRem = openFollowups().filter(function (f) { return f.dueDate && daysTo(f.dueDate) <= 0; }).length;
+    var radar = 0; try { radar = radarQuotes().length; } catch (e) {}
+    if (radar + dueRem) lines.push("Follow-ups to chase: " + (radar + dueRem));
+    var names = {}; S.data.challans.forEach(function (c) { if (String(c.receiptReceived).toUpperCase() === "Y") names[c.customerName] = 1; });
+    var overdue = Object.keys(names).map(function (n) { return { due: clientLedger(n).due, age: payAge(n) }; }).filter(function (x) { return x.due > 0 && x.age >= PAY_MIN; });
+    var overTot = overdue.reduce(function (a, x) { return a + x.due; }, 0);
+    if (overdue.length) lines.push("Payments to collect: " + overdue.length + " client(s), " + moneyAscii(overTot));
+    var closing = [];
+    S.data.sites.forEach(function (st) { S.data.rules.forEach(function (r) { if (action(st, r, pitchRow(st.id, r.brand)).k === "now") closing.push(r.brand + " @ " + st.name); }); });
+    if (closing.length) lines.push("Pitch windows closing: " + closing.length + " (" + closing.slice(0, 3).join(", ") + (closing.length > 3 ? "…" : "") + ")");
+    var awaitApp = S.data.challans.filter(function (c) { return (c.status || "Draft") === "Draft"; }).length;
+    if (awaitApp) lines.push("Challans awaiting approval: " + awaitApp);
+    var toComm = 0; try { toComm = commPending().length; } catch (e) {}
+    if (toComm) lines.push("Products to commission: " + toComm);
+    var quiet = agingLeads().length; if (quiet) lines.push("Leads going quiet: " + quiet);
+    return lines;
+  }
+  function digestText() {
+    var l = digestLines();
+    return "Energy World — Today (" + fullDate(today()) + ")\n\n" + (l.length ? l.map(function (x) { return "• " + x; }).join("\n") : "All clear — nothing pending today.") + "\n\n(from the CRM)";
+  }
+  function digestPdf() {
+    return commPdfBase("TODAY'S BOARD", {}, today()).then(function (b) {
+      var doc = b.doc, F = b.F, L = b.L, R = b.R, y = 48;
+      var l = digestLines();
+      doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(11.5);
+      if (!l.length) doc.text("All clear — nothing pending today.", L, y);
+      l.forEach(function (ln) {
+        doc.splitTextToSize(ln, R - L - 8).forEach(function (t2, i) { doc.text((i === 0 ? "•  " : "    ") + t2, L, y); y += 8; });
+        y += 1;
+      });
+      doc.setFontSize(6.6); doc.setTextColor(150, 163, 175); doc.text("Energy World  |  Panipat · Sonipat · Karnal", L, 290);
+      return doc;
+    });
+  }
+
   function viewOwner() {
     var clients = {};
     S.data.challans.forEach(function (c) { if (String(c.receiptReceived).toUpperCase() === "Y") clients[c.customerName] = 1; });
@@ -3918,6 +4068,13 @@ function viewCatalogue() {
         '<div class="meta">' + esc(one.s) + '</div>' +
         '<div class="acts"><button class="btn sm" data-act="tab" data-tab="' + one.a + '">' + esc(one.b) + '</button></div></div>';
     }
+
+    var dg = digestLines();
+    h += '<div class="card"><h3>Team digest — today</h3>' +
+      '<div class="meta">' + (dg.length ? dg.map(function (l) { return "&bull; " + esc(l); }).join("<br>") : "All clear — nothing pending. 🎉") + '</div>' +
+      '<div class="acts"><button class="btn sm" data-act="dg-tg">Send to team (Telegram)</button>' +
+      '<button class="btn sm ghost" data-act="dg-wa">WhatsApp</button></div>' +
+      '<div class="meta" style="font-size:11px;color:#94a3b8;margin-top:4px">Tap each morning to push the team their to-dos. (Ask me to set up automatic 8 AM posting.)</div></div>';
 
     h += '<div class="cards">' +
       '<div class="stat ' + (due > 0 ? "alert" : "") + '"><div class="n">' + money(due) + '</div><div class="l">Client outstanding</div></div>' +
@@ -5550,6 +5707,17 @@ function viewCatalogue() {
       window.open("https://wa.me/" + anum + "?text=" + encodeURIComponent(amsg), "_blank");
       return;
     }
+    if (act === "dg-tg") {
+      toast("Building digest...");
+      loadLogo().then(function () { return digestPdf(); }).then(function (d) {
+        return api("tgSend", { bot: "TG_QUOTES", pdfBase64: d.output("datauristring").split(",")[1], filename: "EW_digest_" + today() + ".pdf", caption: digestText() });
+      }).then(function (r) { toast(r && r.ok ? "Digest sent to the team." : "Send failed."); }).catch(function () { toast("Could not send the digest."); });
+      return;
+    }
+    if (act === "dg-wa") {
+      waShareDoc(loadLogo().then(function () { return digestPdf(); }), "EW_digest_" + today() + ".pdf", "", digestText());
+      return;
+    }
     if (act === "inst-new") { S.modal = modalInstall(null); render(); return; }
     if (act === "inst-open") { S.modal = modalInstall(installById(id)); render(); return; }
     if (act === "inst-save") {
@@ -5680,6 +5848,7 @@ function viewCatalogue() {
       render(); return;
     }
     if (act === "p-sort") { S.pSort = t.getAttribute("data-k"); render(); return; }
+    if (act === "wl-by") { S.wlBy = t.getAttribute("data-k"); render(); return; }
     if (act === "p-open") { S.partner = t.getAttribute("data-n"); render(); return; }
     if (act === "p-back") { S.partner = ""; render(); return; }
 
