@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.63";
+  var APP_VERSION = "6.9.64";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4554,9 +4554,6 @@ function viewCatalogue() {
 
     var awaitApp = S.data.challans.filter(function (c) { return (c.status || "Draft") === "Draft"; });
     var awaitRcpt = S.data.challans.filter(function (c) { return c.status === "Dispatched"; });
-    var incToSet = S.data.challans.filter(function (c) {
-      return String(c.receiptReceived).toUpperCase() === "Y" && String(c.commissionSet).toUpperCase() !== "Y" && c.associate;
-    });
 
     var closing = [];
     S.data.sites.forEach(function (st) {
@@ -4574,7 +4571,6 @@ function viewCatalogue() {
     var one = null;
     if (closing.length) one = { t: closing.length + " pitch window(s) close TODAY", s: closing.slice(0, 3).map(function (c) { return c.brand + " at " + c.site.name; }).join(", "), a: "leads", b: "Open brand leads" };
     else if (awaitApp.length) one = { t: awaitApp.length + " challan(s) waiting on your approval", s: "The godown cannot dispatch until you approve.", a: "challans", b: "Approve now" };
-    else if (incToSet.length) one = { t: incToSet.length + " incentive decision(s) pending", s: "Material receipt is in - set the incentive or mark it as none.", a: "commission", b: "Set incentive" };
     else if (due > 0) one = { t: money(due) + " outstanding from clients", s: "Incentive only becomes payable as this comes in.", a: "payments", b: "Open payments" };
     else if (svcDue.length) one = { t: svcDue.length + " service visit(s) overdue", s: "Softeners and filters past their cycle.", a: "service", b: "Open service" };
 
@@ -4612,15 +4608,6 @@ function viewCatalogue() {
           '<div class="meta">' + esc(c.site.name) + ' &middot; ' + esc(c.site.stage || "") +
           (c.site.owner ? '<br>Owner: ' + esc(c.site.owner) : "") + '</div>' +
           '<div class="acts"><button class="btn sm ghost" data-act="matrix" data-id="' + esc(c.site.id) + '">Matrix</button></div></div>';
-      });
-    }
-
-    if (incToSet.length) {
-      h += '<h3 style="margin:18px 0 10px;font-size:15px">Incentive decisions waiting</h3>';
-      incToSet.slice(0, 6).forEach(function (c) {
-        h += '<div class="card"><h3>' + esc(c.challanNo) + ' <span class="pill due">decide</span></h3>' +
-          '<div class="meta">' + esc(c.customerName) + ' &middot; ' + esc(c.brand || "-") +
-          '<br>Partner: ' + esc(c.associate) + ' &middot; billed ' + money(challanNet(c)) + '</div></div>';
       });
     }
 
@@ -7229,7 +7216,7 @@ function viewCatalogue() {
             .then(function (tg) { toast(tg && tg.ok ? "Sent to dispatch bot." : "Dispatch send failed."); });
         } else if (to === "Received") {
           ch2.receiptReceived = "Y";
-          toast("Receipt in. Ledger and freight unlocked; incentive decision requested.");
+          toast("Receipt in. Ledger, freight and partner incentive now count for this challan.");
         }
         render();
         refresh();
