@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.52";
+  var APP_VERSION = "6.9.53";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1606,9 +1606,15 @@ window.addEventListener("beforeunload", function (ev) {
   function viewQzWizard() {
     var z = S.qz;
     var steps = ["Client", "Brand", "Products", "Discount", "Review"];
+    /* Back keeps the in-progress quote. From Brand it returns to Products when a brand is already
+       in the quote (adding another brand, then changing your mind) - otherwise to Client. Cancel
+       still discards the whole draft. */
+    var backStep = z.step === 2 ? ((z.items || []).length ? 3 : 1) : (z.step - 1);
     var h = '<div class="row">' + steps.map(function (nm, i) {
       return '<span class="pill ' + (z.step === i + 1 ? "teal" : "") + '">' + (i + 1) + '. ' + nm + '</span>';
-    }).join("") + '<div class="grow"></div><button class="btn sm ghost" data-act="qz-cancel">Cancel</button></div>';
+    }).join("") + '<div class="grow"></div>' +
+      (z.step > 1 ? '<button class="btn sm ghost" data-act="qz-step" data-step="' + backStep + '">&larr; Back</button>' : '') +
+      '<button class="btn sm ghost" data-act="qz-cancel">Cancel</button></div>';
 
     if (z.step === 1) {
       var all = z.location === "*";
