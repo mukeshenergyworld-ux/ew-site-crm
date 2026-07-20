@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.61";
+  var APP_VERSION = "6.9.62";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -5582,7 +5582,64 @@ function viewCatalogue() {
     return subHub([["commission", "Incentives", viewIncentives], ["payroll", "Payroll", viewPayroll]], "payHubSub", "pay-sub");
   }
 
+  /* ---------------- crash log ----------------
+     Everything the app throws - an uncaught error, a rejected promise, or a screen that fails to
+     render - is caught, the app is kept alive, and the error (time, app version, which tab, the
+     message and stack) is written to a small rolling log in THIS browser (last 25). Tap the "vX"
+     version in the footer to read it, or run ewCrashLog() in the browser console. This is what
+     turns "it just crashed" into an actual reason. */
+  var CRASH_KEY = "ew_crash_log";
+  function logCrash(where, err) {
+    try {
+      var reason = err && err.reason;
+      var msg = (err && err.message) || (reason && reason.message) || (err && String(err)) || "unknown error";
+      var stack = (err && err.stack) || (reason && reason.stack) || "";
+      var rec = { t: new Date().toISOString(), v: APP_VERSION,
+        tab: (typeof S !== "undefined" && S && S.tab) || "",
+        user: (typeof S !== "undefined" && S && S.user) || "",
+        where: where || "", msg: String(msg).slice(0, 300), stack: String(stack).slice(0, 1400) };
+      var log = [];
+      try { log = JSON.parse(localStorage.getItem(CRASH_KEY) || "[]"); } catch (x) { }
+      log.push(rec);
+      if (log.length > 25) log = log.slice(-25);
+      localStorage.setItem(CRASH_KEY, JSON.stringify(log));
+    } catch (x) { }
+  }
+  function crashLogList() { try { return JSON.parse(localStorage.getItem(CRASH_KEY) || "[]"); } catch (e) { return []; } }
+  window.ewCrashLog = crashLogList;
+  window.addEventListener("error", function (ev) { logCrash("window.error", (ev && ev.error) || { message: ev && ev.message }); });
+  window.addEventListener("unhandledrejection", function (ev) { logCrash("promise", ev); });
+  function modalCrashLog() {
+    var list = crashLogList().slice().reverse();
+    var h = '<h2>Crash log</h2><p class="sub">Errors the app caught on this device &mdash; newest first. Send me a screenshot of this if something breaks.</p>';
+    if (!list.length) h += '<div class="empty">No crashes recorded on this device. 🎉</div>';
+    list.forEach(function (e) {
+      h += '<div class="card"><h3 style="font-size:13px;color:#b91c1c">' + esc(e.msg || "error") + '</h3>' +
+        '<div class="meta" style="font-size:11.5px">' + esc(String(e.t).replace("T", " ").slice(0, 19)) + ' &middot; v' + esc(e.v) + ' &middot; ' + esc(e.where || "") + (e.tab ? ' &middot; tab: ' + esc(e.tab) : "") + (e.user ? ' &middot; ' + esc(e.user) : "") + '</div>' +
+        (e.stack ? '<pre style="white-space:pre-wrap;font-size:10px;color:#64748b;margin:6px 0 0;max-height:130px;overflow:auto">' + esc(e.stack) + '</pre>' : "") + '</div>';
+    });
+    h += '<div class="foot"><button class="btn ghost" data-act="crash-clear">Clear log</button>' +
+      '<button class="btn" data-act="close">Close</button></div>';
+    return h;
+  }
+
+  /* render() is the crash boundary: if anything inside blows up, log it and show a safe recovery
+     screen instead of a frozen/blank app. The real work is in renderCore(). */
   function render() {
+    try { renderCore(); }
+    catch (err) {
+      logCrash("render", err);
+      try {
+        document.getElementById("root").innerHTML =
+          '<div style="max-width:540px;margin:60px auto;padding:24px;font-family:system-ui,sans-serif;text-align:center">' +
+          '<h2 style="color:#0f766e;margin:0 0 8px">Energy World hit a snag</h2>' +
+          '<p style="color:#64748b">The app caught an error and paused to keep your data safe. Your saved data is untouched.</p>' +
+          '<button onclick="location.reload()" style="padding:11px 20px;border:0;border-radius:10px;background:#0d9488;color:#fff;font-size:15px;cursor:pointer">Reload the app</button>' +
+          '<p style="margin-top:16px;font-size:11px;color:#94a3b8">Saved to the crash log (v' + APP_VERSION + ').</p></div>';
+      } catch (x) { }
+    }
+  }
+  function renderCore() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
     var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch };
@@ -5628,8 +5685,20 @@ function viewCatalogue() {
     var FREE_TAB = { dash: 1, brandboard: 1, matrix: 1, customers: 1, pitch: 1 };
     if (!FREE_TAB[S.tab] && !canSee(S.tab)) S.tab = (ROLE_TABS[S.role] || ["dash"])[0] || "dash";
     var pick = (S.tab === 'dash' && S.role === 'admin') ? viewOwner : (views[S.tab] || viewDash);
-    h += '<main>' + pick() +
-      '<div class="foot-note">Energy World Team v' + APP_VERSION + ' &middot; data lives in your Google Sheet</div></main>';
+    var body;
+    try { body = pick(); }
+    catch (err) {
+      logCrash("view:" + S.tab, err);
+      body = '<div class="card" style="border-color:#fecaca;background:#fef2f2">' +
+        '<h3>This screen hit an error</h3>' +
+        '<div class="meta">The app caught it and kept your data safe. Switch to another tab, or reload. The details are saved in the crash log.</div>' +
+        '<div class="acts" style="margin-top:10px;flex-wrap:wrap;gap:6px">' +
+        '<button class="btn sm" data-act="tab" data-tab="dash">Go to Today</button>' +
+        '<button class="btn sm ghost" data-act="crash-log">View crash log</button>' +
+        '<button class="btn sm ghost" data-act="reload-app">Reload app</button></div></div>';
+    }
+    h += '<main>' + body +
+      '<div class="foot-note">Energy World Team <span data-act="crash-log" style="cursor:pointer;border-bottom:1px dotted #cbd5e1" title="View crash log">v' + APP_VERSION + '</span> &middot; data lives in your Google Sheet</div></main>';
 
     h += '</div>';
     if (S.modal) h += '<div class="mask" data-act="mask"><div class="modal">' + S.modal + '</div></div>';
@@ -5705,6 +5774,9 @@ function viewCatalogue() {
        The mask still swallows the click so the main screen stays inert underneath. */
     if (act === "mask") { return; }
     if (act === "close") { S.modal = null; render(); return; }
+    if (act === "crash-log") { S.modal = modalCrashLog(); render(); return; }
+    if (act === "crash-clear") { try { localStorage.removeItem(CRASH_KEY); } catch (e) { } S.modal = modalCrashLog(); render(); return; }
+    if (act === "reload-app") { location.reload(); return; }
     if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; render(); return; }
     if (act === "del-sub") { S.delSub = t.getAttribute("data-s"); render(); return; }
     if (act === "leads-sub") { S.leadsSub = t.getAttribute("data-s"); render(); return; }
