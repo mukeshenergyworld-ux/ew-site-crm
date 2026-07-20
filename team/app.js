@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.48";
+  var APP_VERSION = "6.9.49";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -5635,7 +5635,10 @@ function viewCatalogue() {
       return;
     }
     if (act === "logout") { logout(); return; }
-    if (act === "mask" && e.target === t) { S.modal = null; render(); return; }
+    /* Clicking the dimmed background no longer closes a popup - a stray click while making a
+       challan used to wipe the whole form. Popups now close ONLY via their Cancel/Close button.
+       The mask still swallows the click so the main screen stays inert underneath. */
+    if (act === "mask") { return; }
     if (act === "close") { S.modal = null; render(); return; }
     if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; render(); return; }
     if (act === "del-sub") { S.delSub = t.getAttribute("data-s"); render(); return; }
