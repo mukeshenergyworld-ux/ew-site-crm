@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.47";
+  var APP_VERSION = "6.9.48";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -619,6 +619,21 @@ window.addEventListener("beforeunload", function (ev) {
     return h;
   }
 
+  /* Owner / sales-exec field. A new record is auto-assigned to whoever is entering it; only an
+     admin may change the assignment. Non-admins see it locked. The current owner is always kept
+     as a selectable option so an edit never silently drops it. Enforced again in the save. */
+  function ownerField(fid, current, isNew) {
+    var v = current || (isNew ? S.user : "");
+    if (S.role === "admin") {
+      var names = [""];
+      (S.data.team || []).filter(function (t2) { return String(t2.active).toUpperCase() !== "N"; })
+        .forEach(function (t2) { if (t2.name && names.indexOf(t2.name) < 0) names.push(t2.name); });
+      if (v && names.indexOf(v) < 0) names.push(v);
+      return '<select id="' + fid + '">' + opts(names, v) + '</select>';
+    }
+    return '<input id="' + fid + '" value="' + esc(v) + '" disabled style="background:#f1f5f9;color:#64748b"/>' +
+      '<div class="meta" style="font-size:11px;margin-top:2px">Auto-assigned to you. Only admin can reassign.</div>';
+  }
   function modalSite(x) {
     x = x || {};
     return '<h2>' + (x.id ? "Edit site" : "New site") + '</h2>' +
@@ -632,7 +647,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="grid2"><div><label>Architect</label><input id="s_arch" value="' + esc(x.architect) + '"/></div>' +
       '<div><label>Plumber</label><input id="s_plumb" value="' + esc(x.plumber) + '"/></div></div>' +
       '<div class="grid2"><div><label>Builder / PMC</label><input id="s_build" value="' + esc(x.builder) + '"/></div>' +
-      '<div><label>Owner (sales exec)</label><select id="s_owner">' + opts(["","Vivek Verma","Ashish Bhuker","Imran","Mukesh Verma","Dinesh Verma"], x.owner) + '</select></div></div>' +
+      '<div><label>Owner (sales exec)</label>' + ownerField("s_owner", x.owner, !x.id) + '</div></div>' +
       '<label>Notes</label><textarea id="s_notes">' + esc(x.notes) + '</textarea>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="site-save" data-id="' + esc(x.id || "") + '">Save</button></div>';
@@ -1461,6 +1476,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div><label>PMC</label><input id="c_pmc" list="dl_pmc" value="' + esc(c.pmc) + '"/></div></div>' +
       dl("dl_arch", "architect") + dl("dl_plumb", "plumber") + dl("dl_build", "builder") + dl("dl_pmc", "pmc") +
       '<label>Notes</label><textarea id="c_notes">' + esc(c.notes) + '</textarea>' +
+      '<label>Assigned to (sales exec)</label>' + ownerField("c_owner", c.ownedBy, !c.id) +
       /* Migration block - partners only. The server refuses these fields from anyone else, and
          a field that is visible but always errors is just a trap, so sales never sees it. */
       (S.role === "admin"
@@ -1473,10 +1489,7 @@ window.addEventListener("beforeunload", function (ev) {
           '</div>' +
           '<div class="grid2">' +
           '<div><label>Lead type</label><select id="c_leadtype">' + opts(["New", "Old"], c.leadType || "New") + '</select></div>' +
-          '<div><label>Assign to</label><select id="c_owner">' +
-          opts([""].concat((S.data.team || []).filter(function (t2) {
-            return String(t2.role).toLowerCase() === "sales" && String(t2.active).toUpperCase() !== "N";
-          }).map(function (t2) { return t2.name; })), c.ownedBy || "") + '</select></div>' +
+          '<div></div>' +
           '</div>' +
           '<div class="meta" style="margin-top:6px">A pending amount marks him <b>Old</b> automatically. It is money owed, not this month\u2019s sale, and it earns nobody an incentive.</div>' +
           '</div>'
@@ -3806,7 +3819,7 @@ function viewCatalogue() {
       var chs = (S.data.challans || []).filter(function (c) { return c.customerName === nm && String(c.receiptReceived).toUpperCase() === "Y"; });
       var net = chs.reduce(function (a, c) { return a + pricedLines(c, nm).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
       var paid = clientLedger(nm).paid, cl = clientByName(nm) || {};
-      return { name: nm, owner: cl.owner || "", net: net, paid: paid, due: net - paid };
+      return { name: nm, owner: cl.ownedBy || "", net: net, paid: paid, due: net - paid };
     }).filter(function (r) { return r.due > 0.5; });
   }
   function viewBilling() {
@@ -5757,7 +5770,12 @@ function viewCatalogue() {
             notes: f.notes,
             billingJson: JSON.stringify(S.billDraft || []),
             openingAmt: f.opAmt || "", openingAsOn: f.opDate || "",
-            leadType: f.leadType || "New", ownedBy: f.owner || ""
+            leadType: f.leadType || "New",
+            /* Auto-assign the creator; only admin may set/change it. Enforced here so a tampered
+               DOM cannot reassign a lead. */
+            ownedBy: (S.role === "admin"
+              ? (f.owner || (id ? ((S.clEditing && S.clEditing.ownedBy) || "") : S.user))
+              : (id ? ((S.clEditing && S.clEditing.ownedBy) || "") : S.user))
           });
         }).then(function (r) {
           if (!r) return;
@@ -6228,10 +6246,14 @@ function viewCatalogue() {
     if (act === "site-save") {
       var sn = val("s_name");
       if (!sn) { toast("Site name is required."); return; }
+      var existS = id ? (siteById(id) || {}) : {};
+      var sOwner = S.role === "admin"
+        ? (val("s_owner") || (id ? (existS.owner || "") : S.user))
+        : (id ? (existS.owner || "") : S.user);
       save("sites", {
         id: id || "", createdBy: S.user, name: sn, client: val("s_client"), mobile: val("s_mobile"),
         city: val("s_city"), stage: val("s_stage"), type: val("s_type"), architect: val("s_arch"),
-        plumber: val("s_plumb"), builder: val("s_build"), owner: val("s_owner"),
+        plumber: val("s_plumb"), builder: val("s_build"), owner: sOwner,
         status: "Active", notes: val("s_notes")
       }).then(function (r) { if (r) { S.modal = null; toast("Site saved."); render(); } });
       return;
