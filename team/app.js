@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.43";
+  var APP_VERSION = "6.9.44";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3869,7 +3869,7 @@ function viewCatalogue() {
     var sel = chs.filter(function (c) { return S.billSel[c.id] !== false; })
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
     var allNet = chs.reduce(function (a, c) { return a + pricedLines(c, cl).reduce(function (s, x) { return s + x.amt; }, 0); }, 0);
-    return commPdfBase("STATEMENT", {}, today()).then(function (b) {
+    return logosReady().then(function () { return commPdfBase("STATEMENT", {}, today()); }).then(function (b) {
       var doc = b.doc, F = b.F, L = b.L, R = b.R, y = 46;
       var RS = function (n) { return (b.uni ? "₹" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
       var cust = clientByName(cl) || {};
@@ -3878,39 +3878,44 @@ function viewCatalogue() {
       var line2 = [cust.area, cust.location].filter(Boolean).join(", "); if (line2) { doc.text(line2, L, y); y += 5; }
       if (cust.mobile) { doc.text("Mobile: " + cust.mobile, L, y); y += 5; }
       y += 3;
-      var cQ = R - 94, cR = R - 72, cD = R - 50, cN = R - 26, cA = R;
+      /* Columns pulled a touch inside the right margin so AMOUNT never rides the page edge. */
+      var cA = R - 2, cN = R - 27, cD = R - 49, cR = R - 68, cQ = R - 87;
+      var sX = L + 1, pX = L + 7, prodW = cQ - pX - 5;
       var head = function () {
-        doc.setFillColor(11, 59, 54); doc.rect(L, y - 4.5, R - L, 6.4, "F");
-        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(7);
-        doc.text("PRODUCT", L + 2, y); doc.text("QTY", cQ, y, { align: "right" });
+        doc.setFillColor(11, 59, 54); doc.rect(L, y - 3.8, R - L, 5.4, "F");
+        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.2);
+        doc.text("#", sX, y); doc.text("PRODUCT", pX, y); doc.text("QTY", cQ, y, { align: "right" });
         doc.text("RATE", cR, y, { align: "right" }); doc.text("DISC", cD, y, { align: "right" });
         doc.text("NET", cN, y, { align: "right" }); doc.text("AMOUNT", cA, y, { align: "right" });
-        y += 6;
+        y += 4.8;
       };
       var grand = 0;
       sel.forEach(function (c) {
-        if (y > 258) { doc.addPage(); y = 20; }
-        F("bold"); doc.setFontSize(9.5); doc.setTextColor(13, 118, 108);
-        doc.text(String(c.challanNo) + "   ·   " + fullDate(c.createdAt), L, y); y += 5.5;
+        if (y > 262) { doc.addPage(); y = 20; }
+        F("bold"); doc.setFontSize(8.6); doc.setTextColor(13, 118, 108);
+        doc.text(String(c.challanNo) + "   ·   " + fullDate(c.createdAt), L, y); y += 5;
         head();
         var priced = pricedLines(c, cl), sub = 0;
         priced.forEach(function (x, idx) {
-          if (y > 274) { doc.addPage(); y = 20; head(); }
-          if (idx % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4, R - L, 5.6, "F"); }
-          F("normal"); doc.setFontSize(8); doc.setTextColor(17, 34, 45);
-          doc.text(doc.splitTextToSize(String(x.desc), cQ - L - 8)[0], L + 2, y);
+          var lines = doc.splitTextToSize(String(x.desc || ""), prodW);
+          var nL = Math.min(lines.length, 2), rowH = nL > 1 ? 6.9 : 4.15;
+          if (y + rowH > 282) { doc.addPage(); y = 20; head(); }
+          if (idx % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 3.2, R - L, rowH, "F"); }
+          F("normal"); doc.setFontSize(6.8); doc.setTextColor(17, 34, 45);
+          doc.text(String(idx + 1), sX, y);
+          for (var li = 0; li < nL; li++) doc.text(lines[li], pX, y + li * 3.3);
           doc.text(String(x.qty), cQ, y, { align: "right" });
           doc.setTextColor(120, 120, 120);
           doc.text(x.disc > 0 ? RS(x.rate) : "-", cR, y, { align: "right" });
           doc.text(x.disc > 0 ? (x.disc + "%") : "-", cD, y, { align: "right" });
           doc.setTextColor(17, 34, 45); doc.text(RS(x.dr), cN, y, { align: "right" });
           F("bold"); doc.text(RS(x.amt), cA, y, { align: "right" }); F("normal");
-          y += 5.6; sub += x.amt;
+          y += rowH; sub += x.amt;
         });
         grand += sub;
-        doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.2); doc.line(L, y - 2.6, R, y - 2.6);
-        F("bold"); doc.setFontSize(9); doc.setTextColor(17, 34, 45);
-        doc.text("Challan total", cN, y, { align: "right" }); doc.text(RS(sub), cA, y, { align: "right" }); y += 9;
+        doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.2); doc.line(L, y - 2.2, R, y - 2.2);
+        F("bold"); doc.setFontSize(8); doc.setTextColor(17, 34, 45);
+        doc.text("Challan total", cN, y, { align: "right" }); doc.text(RS(sub), cA, y, { align: "right" }); y += 7.5;
       });
       if (!sel.length) { doc.setFontSize(10); doc.setTextColor(120, 120, 120); doc.text("No challans selected.", L, y); y += 6; }
       if (y > 250) { doc.addPage(); y = 20; }
@@ -3926,7 +3931,25 @@ function viewCatalogue() {
       doc.text("Account billed to date (net): " + RS(allNet), L, y); y += 5;
       doc.text("Received to date: " + RS(paid), L, y); y += 5;
       F("bold"); doc.setTextColor(17, 34, 45); doc.setFontSize(10.5);
-      doc.text("Balance due: " + RS(allNet - paid), L, y);
+      doc.text("Balance due: " + RS(allNet - paid), L, y); y += 6;
+
+      /* Authorised-distributor strip: brand logos in ONE line of small boxes, pinned to the
+         bottom of the last page (mirrors the delivery challan). Drops to a fresh page only if
+         the ledger ran long enough to collide with it. */
+      var slots = PDF_LOGO_ORDER.map(function (n) { return logoFor(n); }).filter(function (s) { return s && s.src; });
+      if (slots.length) {
+        if (y > 268) { doc.addPage(); y = 20; }
+        var GP = 1.2, BH = 6, y0 = 279, BW = (R - L - GP * (slots.length - 1)) / slots.length;
+        F("bold"); doc.setFontSize(5); doc.setTextColor(120, 130, 140);
+        doc.text("AUTHORISED DISTRIBUTOR FOR", L, y0 - 2);
+        slots.forEach(function (lg, i) {
+          var bx = L + i * (BW + GP);
+          doc.setDrawColor(216, 216, 216); doc.setLineWidth(0.18); doc.rect(bx, y0, BW, BH, "S");
+          var sc = Math.min((BW - 1.4) / lg.w, (BH - 1.4) / lg.h);
+          var iw = lg.w * sc, ih = lg.h * sc;
+          try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, y0 + (BH - ih) / 2, iw, ih); } catch (e) { }
+        });
+      }
       doc.setFontSize(6.6); doc.setTextColor(150, 163, 175); F("normal");
       doc.text("Energy World  |  Panipat · Sonipat · Karnal    |    Statement of account, not a tax invoice.", L, 291);
       return doc;
