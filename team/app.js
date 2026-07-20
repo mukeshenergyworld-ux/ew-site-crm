@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.64";
+  var APP_VERSION = "6.9.65";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3819,20 +3819,34 @@ function viewCatalogue() {
     var h = '<div class="row"><input class="grow" id="q" placeholder="Type a client to set their brand discounts..." list="dclients" value="' + esc(S.q) + '"/></div>' +
       '<datalist id="dclients">' + S.data.clients.map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>';
     if (!cl) {
-      var byClient = {};
+      /* one client per card, and under the name a brand-wise line for the discount and for
+         EACH partner role that has an incentive on at least one brand. A role with no incentive
+         anywhere is not shown at all. */
+      var agg = {};
       (S.data.discounts || []).forEach(function (d) {
-        if (Number(d.pct) > 0) { (byClient[d.client] = byClient[d.client] || []).push({ brand: d.brand, pct: d.pct }); }
+        var s = agg[d.client] = agg[d.client] || { disc: [], plumber: [], architect: [], pmc: [], builder: [] };
+        if (Number(d.pct) > 0) s.disc.push({ brand: d.brand, pct: d.pct });
+        var im = incMap(d);
+        ["plumber", "architect", "pmc", "builder"].forEach(function (role) {
+          var v = Number(im[role]) || 0;
+          if (v > 0) s[role].push({ brand: d.brand, pct: v });
+        });
       });
-      var names = Object.keys(byClient).sort();
+      var names = Object.keys(agg).filter(function (n) {
+        var s = agg[n]; return s.disc.length || s.plumber.length || s.architect.length || s.pmc.length || s.builder.length;
+      }).sort();
       h += '<div class="empty" style="text-align:left;padding:0 0 10px">Type a client above to set discounts, or tap one below to edit. Discounts feed the quote builder, each new challan and the billing screen. <b>Admin only</b>; edits apply to future challans, not past ones.</div>';
       if (!names.length) return h + '<div class="empty">No client discounts set yet. Type a client above to set the first one.</div>';
-      h += '<h3 style="margin:6px 0 8px;font-size:14px">Clients with a discount pre-set (' + names.length + ')</h3>';
+      h += '<h3 style="margin:6px 0 8px;font-size:14px">Clients with a discount / incentive set (' + names.length + ')</h3>';
+      var fmtBW = function (arr) { return arr.map(function (x) { return esc(x.brand) + ' <b>' + esc(x.pct) + '%</b>'; }).join('  &middot;  '); };
       names.forEach(function (n) {
-        var c = clientByName(n) || {};
-        var partners = [c.architect && "Architect: " + c.architect, c.plumber && "Plumber: " + c.plumber, c.builder && "Builder: " + c.builder, c.pmc && "PMC: " + c.pmc].filter(Boolean);
+        var c = clientByName(n) || {}, s = agg[n], lines = [];
+        if (s.disc.length) lines.push('<span style="color:#334155">Brand discount:</span> ' + fmtBW(s.disc));
+        [["plumber", "Plumber", c.plumber], ["architect", "Architect", c.architect], ["pmc", "PMC", c.pmc], ["builder", "Builder", c.builder]].forEach(function (rm) {
+          if (s[rm[0]].length) lines.push('<span style="color:#0d9488">' + rm[1] + (rm[2] ? ' (' + esc(rm[2]) + ')' : '') + ' incentive:</span> ' + fmtBW(s[rm[0]]));
+        });
         h += '<div class="card"><h3>' + esc(n) + (c.location ? ' <span class="pill teal">' + esc(c.location) + '</span>' : '') + '</h3>' +
-          '<div class="meta">' + byClient[n].map(function (x) { return esc(x.brand) + ' <b>' + esc(x.pct) + '%</b>'; }).join('  &middot;  ') +
-          (partners.length ? '<br><span style="color:#0d9488">Partners: ' + esc(partners.join('   ·   ')) + '</span>' : '<br><span style="color:#94a3b8">No linked partner</span>') + '</div>' +
+          '<div class="meta">' + lines.join('<br>') + '</div>' +
           '<div class="acts"><button class="btn sm ghost" data-act="disc-edit" data-n="' + esc(n) + '">Edit</button></div></div>';
       });
       return h;
