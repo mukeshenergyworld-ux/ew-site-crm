@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.65";
+  var APP_VERSION = "6.9.66";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3643,46 +3643,60 @@ function viewCatalogue() {
 
   function exGst(n) { return (Number(n) || 0) / GST_DIV; }
 
-  function rateFor(partner, brand) {
-    var r = S.data.commrates.filter(function (x) {
-      return String(x.associate).toLowerCase() === String(partner).toLowerCase() &&
-             String(x.brand) === String(brand);
-    })[0];
-    if (r) return Number(r.pct) || 0;
-    var a = S.data.associates.filter(function (x) { return String(x.name).toLowerCase() === String(partner).toLowerCase(); })[0];
-    return a ? Number(a.rate) || 0 : 0;
+  /* Value a registered sales return at the client's NET price (list price of each returned
+     product, less that client's brand discount) so its incentive can be reversed on the same
+     basis the sale earned it. Return items store only code + qty, so the brand and list price
+     come from the product catalogue. */
+  function returnLines(r) {
+    var items = []; try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { items = []; }
+    var cl = r.customerName;
+    return items.map(function (it) {
+      var p = PRODUCTS.filter(function (pp) { return pp.code === it.code; })[0] || {};
+      var brand = it.brand || realBrand(p) || p.brand || "";
+      var disc = clientDiscount(cl, brand);
+      var netRate = Math.round((Number(p.price) || 0) * (1 - disc / 100));
+      var qty = Number(it.qty) || 0;
+      return { brand: brand, qty: qty, amt: qty * netRate };
+    });
   }
 
   function partnerBook(name) {
     var nm = String(name).trim().toLowerCase();
     /* A partner earns on every client he is named on (as plumber / architect / builder / PMC),
-       at the rate set for THAT client and THAT brand - computed line by line, because one challan
-       can carry more than one brand. Only challans whose material receipt is in count as business. */
-    /* the partner's default rate is used only where no client-&-brand rate has been set yet, so
-       nobody's incentive silently drops to zero the day we switch to the per-client model */
-    var flatDefault = Number((partnerByName(name) || {}).rate) || 0;
+       at the rate set for THAT client and THAT brand - line by line, because one challan can
+       carry more than one brand. Incentive is paid ONLY where an explicit client-&-brand rate is
+       set (owner's decision: explicit-only, no default fallback). A registered sales RETURN
+       reverses the incentive on the returned goods at the same client/brand/role rate. Only
+       challans whose material receipt is in count as business. */
     var myClients = (S.data.clients || []).filter(function (cl) { return clientRolesOf(cl, nm).length; });
-    var billed = 0, earned = 0, rows = [], clientNames = {};
+    var billed = 0, earned = 0, returned = 0, reversed = 0, rows = [], clientNames = {};
+    var rateCB = function (roles, clName, br) {
+      var rate = 0; roles.forEach(function (role) { var r = incRate(clName, br, role); if (r > rate) rate = r; }); return rate;
+    };
     myClients.forEach(function (cl) {
-      var roles = clientRolesOf(cl, nm);
+      var roles = clientRolesOf(cl, nm), clLower = String(cl.name).trim().toLowerCase();
       var chs = S.data.challans.filter(function (c) {
-        return String(c.customerName || "").trim().toLowerCase() === String(cl.name).trim().toLowerCase() &&
+        return String(c.customerName || "").trim().toLowerCase() === clLower &&
                String(c.receiptReceived).toUpperCase() === "Y";
       });
       chs.forEach(function (c) {
         var base = 0, inc = 0;
         pricedLines(c, c.customerName).forEach(function (x) {
           base += x.amt;
-          var br = x.brand || c.brand || "";
-          /* the highest role rate set for this client & brand; if none set, the partner default */
-          var rate = 0;
-          roles.forEach(function (role) { var r = incRate(cl.name, br, role); if (r > rate) rate = r; });
-          if (rate === 0) rate = flatDefault;
-          inc += x.amt * rate / 100;
+          inc += x.amt * rateCB(roles, cl.name, x.brand || c.brand || "") / 100;
         });
         billed += base; earned += inc; clientNames[c.customerName] = 1;
         rows.push({ no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
           amount: base, base: base, pct: base > 0 ? (inc / base * 100) : 0, inc: inc });
+      });
+      /* reverse incentive on this client's registered returns, at the same client/brand/role rate */
+      (S.data.returns || []).filter(function (r) {
+        return String(r.customerName || "").trim().toLowerCase() === clLower;
+      }).forEach(function (r) {
+        returnLines(r).forEach(function (x) {
+          var rev = x.amt * rateCB(roles, cl.name, x.brand) / 100;
+          returned += x.amt; reversed += rev; earned -= rev;
+        });
       });
     });
     /* payable follows the money in, not the invoice out */
@@ -3695,8 +3709,8 @@ function viewCatalogue() {
     var sites = S.data.sites.filter(function (st) {
       return [st.architect, st.plumber, st.builder].some(function (x) { return String(x || "").toLowerCase() === nm; });
     });
-    return { rows: rows, billed: billed, earned: earned, collected: collected, ratio: ratio,
-      payable: payable, paid: paid, pending: payable - paid, sites: sites };
+    return { rows: rows, billed: billed, earned: earned, returned: returned, reversed: reversed,
+      collected: collected, ratio: ratio, payable: payable, paid: paid, pending: payable - paid, sites: sites };
   }
 
   function viewIncentives() {
@@ -3771,7 +3785,8 @@ function viewCatalogue() {
       '<div class="meta">' + (a.mobile ? esc(a.mobile) + '<br>' : "") +
       'Billed ' + money(b.billed) + ' &middot; collected ' + money(b.collected) +
       ' (' + Math.round(b.ratio * 100) + '% in)' +
-      '<br><i>Incentive becomes payable only in proportion to what the client has actually paid.</i></div>' +
+      (b.reversed > 0 ? '<br><span style="color:#dc2626">Returns: ' + money(b.returned) + ' came back &middot; ' + money(b.reversed) + ' incentive reversed</span>' : "") +
+      '<br><i>Incentive becomes payable only in proportion to what the client has actually paid. Sales returns reverse the incentive on the returned goods.</i></div>' +
       '<div class="acts"><button class="btn sm" data-act="pay-out" data-n="' + esc(name) + '">Record payout</button></div></div>';
 
     h += '<h3 style="margin:20px 0 10px;font-size:15px">Ongoing sites</h3>';
@@ -3836,6 +3851,7 @@ function viewCatalogue() {
         var s = agg[n]; return s.disc.length || s.plumber.length || s.architect.length || s.pmc.length || s.builder.length;
       }).sort();
       h += '<div class="empty" style="text-align:left;padding:0 0 10px">Type a client above to set discounts, or tap one below to edit. Discounts feed the quote builder, each new challan and the billing screen. <b>Admin only</b>; edits apply to future challans, not past ones.</div>';
+      h += '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:10px 12px"><div class="meta" style="font-size:11px;color:#92400e">🔒 Incentive figures are admin-only inside the app — but they also live in the CRM Google Sheet. Keep that sheet shared with as few Google accounts as possible (ideally just you) so partner rates stay private there too. Staff should work through the app, not the sheet.</div></div>';
       if (!names.length) return h + '<div class="empty">No client discounts set yet. Type a client above to set the first one.</div>';
       h += '<h3 style="margin:6px 0 8px;font-size:14px">Clients with a discount / incentive set (' + names.length + ')</h3>';
       var fmtBW = function (arr) { return arr.map(function (x) { return esc(x.brand) + ' <b>' + esc(x.pct) + '%</b>'; }).join('  &middot;  '); };
@@ -3874,12 +3890,23 @@ function viewCatalogue() {
           '<input class="incp" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-role="' + role + '" data-id="' + esc(d ? d.id : "") + '" inputmode="decimal" value="' + esc(rv) + '" placeholder="0" style="width:78px;padding:7px 10px"/>' +
           '<span class="pill">%</span></div>';
       });
+      /* incentive load = the sum of every assigned partner's rate on this brand (each earns on
+         the net). Shown so the combined giveaway is visible at the moment you set the rates. */
+      var pf = function (x) { return (Math.round(x * 100) / 100) + "%"; };
+      var totInc = ["plumber", "architect", "builder", "pmc"].reduce(function (a, role) {
+        return a + ((String(cObj[role] || "").trim() && Number(im[role])) || 0);
+      }, 0);
+      var dPct = Number(d && d.pct) || 0;
+      var loadLine = totInc > 0
+        ? '<div class="meta" style="margin-top:8px;font-size:11px;color:#64748b;border-top:1px solid #eef2f7;padding-top:6px">Incentive load: <b style="color:#b45309">' + pf(totInc) + ' of net</b>' + (dPct ? ' &middot; ≈ ' + pf(totInc * (1 - dPct / 100)) + ' of list, on top of the ' + pf(dPct) + ' discount' : "") + '</div>'
+        : "";
       h += '<div class="card"><h3>' + esc(b) + (d && Number(d.pct) ? ' <span class="pill teal">' + esc(d.pct) + '%</span>' : ' <span class="pill">not set</span>') + '</h3>' +
         '<div class="acts" style="align-items:center">' +
         '<span class="grow" style="font-size:12px;color:#334155">Brand discount</span>' +
         '<input class="dsc" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-id="' + esc(d ? d.id : "") + '" inputmode="decimal" value="' + esc(d ? d.pct : "") + '" placeholder="0" style="width:78px;padding:7px 10px"/>' +
         '<span class="pill">% off list</span></div>' +
         incRows +
+        loadLine +
         '</div>';
     });
     return h;
@@ -4604,6 +4631,14 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="dg-wa">WhatsApp</button></div>' +
       '<div class="meta" style="font-size:11px;color:#94a3b8;margin-top:4px">Tap each morning to push the team their to-dos. (Ask me to set up automatic 8 AM posting.)</div></div>';
 
+    /* the pitch-by-stage engine only works once sites are entered - nudge until at least a few are in */
+    if ((S.role === "admin" || S.role === "sales") && (S.data.sites || []).length < 3) {
+      h += '<div class="card" style="border-color:#bfdbfe;background:#eff6ff"><h3>Turn on stage-based pitching</h3>' +
+        '<div class="meta">Only <b>' + (S.data.sites || []).length + '</b> site(s) entered, so the pitch matrix stays mostly dark. Enter your live sites with their construction stage and the app will start flagging <b>what to pitch, to whom, and when</b> — pipes at rough-in, heat pumps &amp; softeners at finishing. This is the single biggest lever you have unused.</div>' +
+        '<div class="acts"><button class="btn sm" data-act="tab" data-tab="sites">Add a site</button>' +
+        '<button class="btn sm ghost" data-act="tab" data-tab="leads">Leads</button></div></div>';
+    }
+
     h += '<div class="cards">' +
       '<div class="stat ' + (due > 0 ? "alert" : "") + '"><div class="n">' + money(due) + '</div><div class="l">Client outstanding</div></div>' +
       '<div class="stat"><div class="n">' + money(incPend) + '</div><div class="l">Incentive to pay</div></div>' +
@@ -4875,8 +4910,8 @@ function viewCatalogue() {
           : "") +
         /* incentive: partners only. Never rendered for sales, accounts or service. */
         (S.role === "admin"
-          ? '<br>Default rate ' + (p.rate ? esc(p.rate) + "%" : '<span style="color:#94a3b8">not set</span>') +
-            (st.owed > 0 ? ' &middot; <b style="color:#0d9488">' + money(st.owed) + ' owed</b>' : "")
+          ? (function () { var _b = partnerBook(p.name); return '<br><b style="color:#0d9488">' + money(_b.pending) + '</b> incentive pending' +
+              (_b.reversed > 0 ? ' &middot; <span style="color:#dc2626">' + money(_b.reversed) + ' reversed on returns</span>' : ""); })()
           : "") +
         '</div>' +
         '<div class="acts"><button class="btn sm ghost" data-act="as-open" data-id="' + esc(p.id) + '">Open</button></div></div>';
@@ -4898,21 +4933,20 @@ function viewCatalogue() {
     a = a || {};
     var loc = a.location || locations()[0];
     return '<h2>' + (a.id ? "Edit partner" : "New partner") + '</h2>' +
-      '<p class="sub">Plumbers, architects, builders and PMCs. The default incentive % below is a fallback — the real rate is set per client &amp; brand on the Discounts screen.</p>' +
+      '<p class="sub">Plumbers, architects, builders and PMCs. Incentive % is set per client &amp; brand on the Discounts screen — a partner earns only where you set a rate there.</p>' +
       '<label>Name</label><input id="m_aname" value="' + esc(a.name) + '"/>' +
       '<div class="grid2">' +
       '<div><label>Role</label><select id="m_arole">' + opts(["Architect", "Plumber", "Builder", "PMC", "Contractor", "Dealer", "Other"], a.role || "Plumber") + '</select></div>' +
-      '<div><label>Default incentive %</label><input id="m_arate" inputmode="decimal" value="' + esc(a.rate || "") + '"/></div>' +
-      '</div>' +
-      '<div class="grid2">' +
       '<div><label>Mobile</label><input id="m_amobile" inputmode="numeric" value="' + esc(a.mobile) + '"/></div>' +
-      '<div><label>Alternate mobile</label><input id="m_amobile2" inputmode="numeric" value="' + esc(a.mobile2) + '"/></div>' +
       '</div>' +
       '<div class="grid2">' +
+      '<div><label>Alternate mobile</label><input id="m_amobile2" inputmode="numeric" value="' + esc(a.mobile2) + '"/></div>' +
       '<div><label>Location</label><select id="m_aloc" class="loc-sel2">' + opts(locations().concat(["+ Add new location"]), loc) + '</select></div>' +
-      '<div><label>Area</label><select id="m_aarea">' + opts([""].concat(areasIn(loc), ["+ Add new area"]), a.area || "") + '</select></div>' +
       '</div>' +
-      '<label>Address</label><input id="m_aaddr" value="' + esc(a.address) + '"/>' +
+      '<div class="grid2">' +
+      '<div><label>Area</label><select id="m_aarea">' + opts([""].concat(areasIn(loc), ["+ Add new area"]), a.area || "") + '</select></div>' +
+      '<div><label>Address</label><input id="m_aaddr" value="' + esc(a.address) + '"/></div>' +
+      '</div>' +
       '<div class="grid2">' +
       '<div><label>Birthday</label><input id="m_abday" type="date" value="' + esc(dstr(a.birthday)) + '"/></div>' +
       '<div><label>Anniversary</label><input id="m_aanniv" type="date" value="' + esc(dstr(a.anniversary)) + '"/></div>' +
