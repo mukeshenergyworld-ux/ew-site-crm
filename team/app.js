@@ -9,7 +9,12 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.33";
+  var APP_VERSION = "6.9.34";
+  /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
+     product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
+     keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
+     so the user stays on the product they were editing. */
+  var keepScroll = false;
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -4983,8 +4988,8 @@ function viewCatalogue() {
       '<span class="pill teal">' + picked.length + ' picked</span></h3>' +
       chPicker() +
       (picked.length
-        ? '<div class="picked-list">' + picked.map(function (i) {
-            return '<div class="prow"><div class="pinfo"><div class="pname">' + esc(i.desc) + '</div>' +
+        ? '<div class="picked-list">' + picked.map(function (i, idx) {
+            return '<div class="prow"><div class="pinfo"><div class="pname">' + (idx + 1) + '. ' + esc(i.desc) + '</div>' +
               '<div class="pmeta">' + esc(i.code) + '</div></div><div class="pqty">' +
               '<input class="ch-q" data-code="' + esc(i.code) + '" inputmode="numeric" value="' + esc(i.qty) + '"/>' +
               '<button class="stp" data-act="ch-qty" data-code="' + esc(i.code) + '" data-d="-1">&minus;</button></div></div>';
@@ -5168,7 +5173,11 @@ function viewCatalogue() {
     h += '</div>';
     if (S.modal) h += '<div class="mask" data-act="mask"><div class="modal">' + S.modal + '</div></div>';
 
+    var _msTop = null;
+    if (keepScroll) { var _msOld = document.querySelector(".modal"); if (_msOld) _msTop = _msOld.scrollTop; }
     document.getElementById("root").innerHTML = h;
+    if (_msTop != null) { var _msNew = document.querySelector(".modal"); if (_msNew) _msNew.scrollTop = _msTop; }
+    keepScroll = false;
     document.body.classList.toggle("navopen", !!S.navOpen);
 
     var q = el("q");
@@ -5507,6 +5516,7 @@ function viewCatalogue() {
         it.qty += delta;
         if (it.qty <= 0) S.qz.items = S.qz.items.filter(function (x) { return x.code !== code; });
       }
+      keepScroll = true;
       render(); return;
     }
     if (act === "qz-bd") {
@@ -6210,6 +6220,7 @@ function viewCatalogue() {
       if (!rr) { if (rd < 0) return; S.rt.items.push({ code: rc, desc: rp.desc || rc, unit: rp.unit || "No's", qty: 1 }); }
       else { rr.qty += rd; if (rr.qty <= 0) S.rt.items = S.rt.items.filter(function (i) { return i.code !== rc; }); }
       var restoreQ = keepFields(RT_FIELDS);
+      keepScroll = true;
       S.modal = modalReturn(); render(); restoreQ();
       return;
     }
@@ -6404,6 +6415,7 @@ function viewCatalogue() {
       }
       /* keep the form fields the user already typed - a redraw would wipe them */
       var restoreCh = keepFields(CH_FIELDS);
+      keepScroll = true;
       S.modal = modalChallan(); render(); restoreCh();
       return;
     }
@@ -6683,6 +6695,7 @@ function viewCatalogue() {
         S.qz.brandDiscs = S.qz.brandDiscs || {};
         if (qb && S.qz.brandDiscs[qb] === undefined) S.qz.brandDiscs[qb] = clientDiscount(S.qz.client, qb);
       }
+      keepScroll = true;
       render(); return;
     }
     if (t.classList && t.classList.contains("ch-q") && S.ch) {
@@ -6697,6 +6710,7 @@ function viewCatalogue() {
         S.ch.items.push({ code: chCode, desc: chProd.desc || chCode, unit: chProd.unit || "No's", qty: chQ, rate: chProd.price || 0 });
       }
       var restoreChQ = keepFields(CH_FIELDS);
+      keepScroll = true;
       S.modal = modalChallan(); render(); restoreChQ();
       return;
     }
