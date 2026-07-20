@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.49";
+  var APP_VERSION = "6.9.50";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -647,7 +647,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="grid2"><div><label>Architect</label><input id="s_arch" value="' + esc(x.architect) + '"/></div>' +
       '<div><label>Plumber</label><input id="s_plumb" value="' + esc(x.plumber) + '"/></div></div>' +
       '<div class="grid2"><div><label>Builder / PMC</label><input id="s_build" value="' + esc(x.builder) + '"/></div>' +
-      '<div><label>Owner (sales exec)</label>' + ownerField("s_owner", x.owner, !x.id) + '</div></div>' +
+      '<div><label>Owner (sales exec)</label>' + ownerField("s_owner", x.owner || x.createdBy, !x.id) + '</div></div>' +
       '<label>Notes</label><textarea id="s_notes">' + esc(x.notes) + '</textarea>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="site-save" data-id="' + esc(x.id || "") + '">Save</button></div>';
@@ -1476,7 +1476,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div><label>PMC</label><input id="c_pmc" list="dl_pmc" value="' + esc(c.pmc) + '"/></div></div>' +
       dl("dl_arch", "architect") + dl("dl_plumb", "plumber") + dl("dl_build", "builder") + dl("dl_pmc", "pmc") +
       '<label>Notes</label><textarea id="c_notes">' + esc(c.notes) + '</textarea>' +
-      '<label>Assigned to (sales exec)</label>' + ownerField("c_owner", c.ownedBy, !c.id) +
+      '<label>Assigned to (sales exec)</label>' + ownerField("c_owner", c.ownedBy || c.createdBy, !c.id) +
       /* Migration block - partners only. The server refuses these fields from anyone else, and
          a field that is visible but always errors is just a trap, so sales never sees it. */
       (S.role === "admin"
@@ -3595,13 +3595,14 @@ function viewCatalogue() {
     });
     var billed = 0, earned = 0;
     var rows = chs.map(function (c) {
-      var base = exGst(c.amount);
+      /* Incentive is now on the NET (post-discount) sale value, not the gross list price. */
+      var base = challanNet(c);
       var pct = rateFor(name, c.brand);
       var inc = base * pct / 100;
-      billed += Number(c.amount) || 0;
+      billed += base;
       earned += inc;
       return { no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
-        amount: Number(c.amount) || 0, base: base, pct: pct, inc: inc };
+        amount: base, base: base, pct: pct, inc: inc };
     });
     /* payable follows the money in, not the invoice out */
     var clients = {};
@@ -3812,6 +3813,9 @@ function viewCatalogue() {
   }
   /* Freight the CLIENT is billed for on a challan (company-borne freight is not the client's cost). */
   function chFreight(c) { return String(c.freightTo) === "Client" ? (Number(c.freight) || 0) : 0; }
+  /* Net (post-discount, ex-GST) goods value of a challan - the basis for dues and incentive.
+     Freight is NOT part of it (freight is a pass-through cost, not a sale). */
+  function challanNet(c) { return pricedLines(c, c.customerName).reduce(function (s, x) { return s + x.amt; }, 0); }
   /* Every billable client with a net outstanding balance (net billed incl. client freight, minus
      payments received), tagged with the sales executive who owns the client. */
   function hisabOutstanding() {
@@ -3819,7 +3823,8 @@ function viewCatalogue() {
       var chs = (S.data.challans || []).filter(function (c) { return c.customerName === nm && String(c.receiptReceived).toUpperCase() === "Y"; });
       var net = chs.reduce(function (a, c) { return a + pricedLines(c, nm).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
       var paid = clientLedger(nm).paid, cl = clientByName(nm) || {};
-      return { name: nm, owner: cl.ownedBy || "", net: net, paid: paid, due: net - paid };
+      /* No explicit sales-exec set yet -> falls to whoever entered the client. */
+      return { name: nm, owner: cl.ownedBy || cl.createdBy || "", net: net, paid: paid, due: net - paid };
     }).filter(function (r) { return r.due > 0.5; });
   }
   function viewBilling() {
@@ -3900,7 +3905,7 @@ function viewCatalogue() {
         '<td style="padding:6px;text-align:right;font-weight:800">' + money(chTotal) + '</td></tr></tfoot></table></div></div>';
     });
     var paid = clientLedger(cl).paid, bal = allNet - paid;
-    var gst = S.billGst ? Math.round(selGoods * 0.18) : 0;
+    var gst = S.billGst ? Math.round(selNet * 0.18) : 0;
     h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
       '<h3>Client ledger &mdash; ' + esc(cl) + '</h3>' +
       '<div class="meta" style="font-size:13.5px">Total billed (net): <b>' + money(allNet) + '</b>  &middot;  Received: <b>' + money(paid) + '</b>  &middot;  Balance due: <b style="color:' + (bal > 0 ? '#dc2626' : '#0d9488') + '">' + money(bal) + '</b></div>' +
@@ -4000,7 +4005,7 @@ function viewCatalogue() {
       });
       if (!sel.length) { doc.setFontSize(10); doc.setTextColor(120, 120, 120); doc.text("No challans selected.", L, y); y += 6; }
       if (y > 250) { doc.addPage(); y = 20; }
-      var gst = S.billGst ? Math.round(goodsGrand * 0.18) : 0, paid = clientLedger(cl).paid;
+      var gst = S.billGst ? Math.round(grand * 0.18) : 0, paid = clientLedger(cl).paid;
       doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(L, y - 1, R, y - 1); doc.setLineWidth(0.2); y += 5;
       F("bold"); doc.setFontSize(11); doc.setTextColor(17, 34, 45);
       doc.text("Statement total", cN, y, { align: "right" }); doc.text(RS(grand), cA, y, { align: "right" }); y += 6;
@@ -4043,7 +4048,8 @@ function viewCatalogue() {
       return c.customerName === client && String(c.receiptReceived).toUpperCase() === "Y";
     });
     var pays = S.data.payments.filter(function (p) { return p.client === client; });
-    var billed = chs.reduce(function (a, c) { return a + (Number(c.amount) || 0); }, 0);
+    /* Dues are now on the NET (post-discount) value, matching the HISAB statement. */
+    var billed = chs.reduce(function (a, c) { return a + challanNet(c); }, 0);
     var freight = chs.reduce(function (a, c) {
       return a + (String(c.freightTo) === "Client" ? (Number(c.freight) || 0) : 0);
     }, 0);
@@ -4176,7 +4182,7 @@ function viewCatalogue() {
       var bal = 0;
       var lines = [];
       l.chs.forEach(function (c) {
-        lines.push({ d: dstr(c.createdAt), p: "Challan " + c.challanNo + (c.brand ? " (" + c.brand + ")" : ""), dr: Number(c.amount) || 0, cr: 0 });
+        lines.push({ d: dstr(c.createdAt), p: "Challan " + c.challanNo + (c.brand ? " (" + c.brand + ")" : ""), dr: challanNet(c), cr: 0 });
         if (String(c.freightTo) === "Client" && Number(c.freight)) {
           lines.push({ d: dstr(c.createdAt), p: "Freight - " + c.challanNo + (c.driver ? " (" + c.driver + ")" : ""), dr: Number(c.freight), cr: 0 });
         }
@@ -4498,7 +4504,7 @@ function viewCatalogue() {
       incToSet.slice(0, 6).forEach(function (c) {
         h += '<div class="card"><h3>' + esc(c.challanNo) + ' <span class="pill due">decide</span></h3>' +
           '<div class="meta">' + esc(c.customerName) + ' &middot; ' + esc(c.brand || "-") +
-          '<br>Partner: ' + esc(c.associate) + ' &middot; billed ' + money(c.amount) + '</div></div>';
+          '<br>Partner: ' + esc(c.associate) + ' &middot; billed ' + money(challanNet(c)) + '</div></div>';
       });
     }
 
@@ -5051,7 +5057,7 @@ function viewCatalogue() {
     var overdue = open.filter(function (f) { return daysTo(f.dueDate) < 0; });
     var due = open.filter(function (f) { return daysTo(f.dueDate) === 0; });
     var hot = S.data.customers.filter(function (c) { return c.status === "Hot"; });
-    var sales = S.data.challans.reduce(function (a, c) { return a + (Number(c.amount) || 0); }, 0);
+    var sales = S.data.challans.reduce(function (a, c) { return a + challanNet(c); }, 0);
     var comm = S.data.challans.reduce(function (a, c) { return a + (Number(c.commissionAmt) || 0); }, 0);
 
     var h = '<div class="cards">' +
