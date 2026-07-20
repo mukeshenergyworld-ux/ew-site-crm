@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.54";
+  var APP_VERSION = "6.9.55";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -6070,16 +6070,23 @@ function viewCatalogue() {
           return o;
         });
         var blended = tot.gross > 0 ? Math.round((tot.gross - tot.net) / tot.gross * 100) : 0;
-        save("quotes", {
+        /* save() adds the quote to the list and repaints SYNCHRONOUSLY, then syncs to the server
+           behind the scenes. So the instant the row is in, we leave the wizard and show the saved
+           quote in the list - we do NOT sit on the Review screen waiting ~4s for the server, which
+           is exactly what made "Save quote" feel like it did nothing. On a rare server refusal,
+           save() undoes its row and toasts why, and we drop the user back on Review to retry. */
+        var draft = z;
+        var savePromise = save("quotes", {
           id: "", createdBy: S.user, quoteNo: qno, version: z.version || 1, parentId: z.parentId || "",
           siteId: "", siteName: "", client: z.client, brand: savedBrands.join(", "),
           items: JSON.stringify(savedItems), gross: tot.gross, discountPct: blended,
           net: tot.net, gstAmt: tot.gst, total: tot.total, status: "Draft", validTill: "", notes: ""
-        }).then(function (r) {
-          if (!r) return;   /* save() already undid the change and toasted why */
-          S.qz = null;
-          toast("Quote " + qno + " saved.");
-          render();
+        });
+        S.qz = null;
+        toast("Quote " + qno + " saved.");
+        render();
+        savePromise.then(function (r) {
+          if (!r) { draft.dupChecked = true; S.qz = draft; render(); return; }   /* server refused - back to Review */
           /* Auto-send the freshly saved quote to the Telegram group (setting: send on save).
              Strictly fire-and-forget - the quote is already saved and on screen, so a
              Telegram hiccup must never block the UI or undo the save. If it fails, the user
@@ -6099,7 +6106,7 @@ function viewCatalogue() {
 
       if (z.dupChecked) { qzDoSave(); return; }
       qzBtns("Checking...", true);
-      var qzTimeout = new Promise(function (res) { setTimeout(function () { res({ __timeout: true }); }, 3500); });
+      var qzTimeout = new Promise(function (res) { setTimeout(function () { res({ __timeout: true }); }, 2000); });
       Promise.race([
         api("quoteDup", { client: z.client, codes: z.items.map(function (i) { return i.code; }) }),
         qzTimeout
