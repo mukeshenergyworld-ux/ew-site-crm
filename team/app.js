@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.59";
+  var APP_VERSION = "6.9.60";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -2117,6 +2117,22 @@ function viewCatalogue() {
   }
 
   var LOGO_PICS = {}, LOGO_PRE = 0, PIC_DIM = {};
+  /* Processed brand logos are cached in localStorage so they are fetched + canvas-processed ONCE
+     per device (the slow bit), then reused instantly on every later PDF and every later session -
+     no live image downloads at export time. That is what keeps the statement fast while still
+     printing the real logos. */
+  var LOGO_STORE = "ew_logos_v2";
+  function saveLogoCache() {
+    try { if (Object.keys(LOGO_PICS).length) localStorage.setItem(LOGO_STORE, JSON.stringify({ at: Date.now(), pics: LOGO_PICS })); } catch (e) { }
+  }
+  function restoreLogoCache() {
+    try {
+      var c = JSON.parse(localStorage.getItem(LOGO_STORE) || "null");
+      if (c && c.pics && Object.keys(c.pics).length) { LOGO_PICS = c.pics; return true; }
+    } catch (e) { }
+    return false;
+  }
+  restoreLogoCache();
   function normB(x) { return String(x || "").toUpperCase().replace(/[^A-Z]/g, ""); }
   function logoFor(brand) {
     var k = normB(brand);
@@ -2142,7 +2158,7 @@ function viewCatalogue() {
         LOGO_PICS[normB(l.brand)] = { src: src, w: d.w, h: d.h };
         return true;
       }).catch(function () { return null; });
-    }));
+    })).then(function (r) { saveLogoCache(); return r; });
     return LOGO_READY;
   }
   function preloadLogos() { logosReady(); }
@@ -4023,9 +4039,13 @@ function viewCatalogue() {
           doc.text(RS(frt), cA, y, { align: "right" }); y += 4.4;
         }
         grand += chTotal; goodsGrand += sub;
-        doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.2); doc.line(L, y - 2.2, R, y - 2.2);
-        F("bold"); doc.setFontSize(8); doc.setTextColor(17, 34, 45);
-        doc.text("Challan total", cN, y, { align: "right" }); doc.text(RS(chTotal), cA, y, { align: "right" }); y += 7.5;
+        /* Challan total in a shaded band, text VERTICALLY CENTERED in the band (was sitting at
+           the top of the row). */
+        var tbY = y - 3.4, tbH = 6.4, tMid = tbY + tbH / 2 + 1.35;
+        doc.setFillColor(241, 245, 249); doc.rect(L, tbY, R - L, tbH, "F");
+        F("bold"); doc.setFontSize(8.2); doc.setTextColor(17, 34, 45);
+        doc.text("Challan total", cN, tMid, { align: "right" }); doc.text(RS(chTotal), cA, tMid, { align: "right" });
+        y = tbY + tbH + 3;
       });
       if (!sel.length) { doc.setFontSize(10); doc.setTextColor(120, 120, 120); doc.text("No challans selected.", L, y); y += 6; }
       if (y > 250) { doc.addPage(); y = 20; }
@@ -4043,15 +4063,29 @@ function viewCatalogue() {
       F("bold"); doc.setTextColor(17, 34, 45); doc.setFontSize(10.5);
       doc.text("Balance due: " + RS(allNet - paid), L, y); y += 6;
 
-      /* Authorised-distributor line, pinned to the bottom of the last page - the brand NAMES as
-         text, NOT logo images. Fetching + canvas-processing the 14 brand logos was the whole
-         cause of the slow, memory-heavy statement (and the tab reload that signed people out).
-         Text is instant, tiny, and still names the distributor and every brand. */
-      if (y > 270) { doc.addPage(); y = 20; }
+      /* Authorised-distributor strip. The brand logos are drawn from the persistent cache (fetched
+         + processed once per device, then reused instantly) - so there is NO live image download
+         at export time, which is what used to make the statement slow and reload the tab. Until
+         the cache is warm on a device we fall back to brand names as text; meanwhile logosReady()
+         warms it in the background for next time. */
+      logosReady();
+      if (y > 268) { doc.addPage(); y = 20; }
+      var slots = PDF_LOGO_ORDER.map(function (n) { return logoFor(n); }).filter(function (s) { return s && s.src; });
       F("bold"); doc.setFontSize(5); doc.setTextColor(120, 130, 140);
-      doc.text("AUTHORISED DISTRIBUTOR FOR", L, 278);
-      F("bold"); doc.setFontSize(7.4); doc.setTextColor(90, 100, 110);
-      doc.splitTextToSize(PDF_LOGO_ORDER.join("   ·   "), R - L).forEach(function (ln, i) { doc.text(ln, L, 283 + i * 3.6); });
+      doc.text("AUTHORISED DISTRIBUTOR FOR", L, 277);
+      if (slots.length >= 6) {
+        var GP = 1.2, BH = 6, y0 = 279, BW = (R - L - GP * (slots.length - 1)) / slots.length;
+        slots.forEach(function (lg, i) {
+          var bx = L + i * (BW + GP);
+          doc.setDrawColor(216, 216, 216); doc.setLineWidth(0.18); doc.rect(bx, y0, BW, BH, "S");
+          var sc = Math.min((BW - 1.4) / lg.w, (BH - 1.4) / lg.h);
+          var iw = lg.w * sc, ih = lg.h * sc;
+          try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, y0 + (BH - ih) / 2, iw, ih); } catch (e) { }
+        });
+      } else {
+        F("bold"); doc.setFontSize(7.4); doc.setTextColor(90, 100, 110);
+        doc.splitTextToSize(PDF_LOGO_ORDER.join("   ·   "), R - L).forEach(function (ln, i) { doc.text(ln, L, 282 + i * 3.6); });
+      }
       doc.setFontSize(6.6); doc.setTextColor(150, 163, 175); F("normal");
       doc.text("Energy World  |  Panipat · Sonipat · Karnal    |    Statement of account, not a tax invoice.", L, 291);
       return doc;
