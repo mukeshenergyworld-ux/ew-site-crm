@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.60";
+  var APP_VERSION = "6.9.61";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3864,8 +3864,10 @@ function viewCatalogue() {
       var chs = (S.data.challans || []).filter(function (c) { return c.customerName === nm && String(c.receiptReceived).toUpperCase() === "Y"; });
       var net = chs.reduce(function (a, c) { return a + pricedLines(c, nm).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
       var paid = clientLedger(nm).paid, cl = clientByName(nm) || {};
-      /* No explicit sales-exec set yet -> falls to whoever entered the client. */
-      return { name: nm, owner: cl.ownedBy || cl.createdBy || "", net: net, paid: paid, due: net - paid };
+      var opening = Number(cl.openingAmt) || 0;
+      /* No explicit sales-exec set yet -> falls to whoever entered the client. Billed includes
+         any old balance brought forward, so Billed - Received = Outstanding stays consistent. */
+      return { name: nm, owner: cl.ownedBy || cl.createdBy || "", net: net + opening, paid: paid, due: net + opening - paid };
     }).filter(function (r) { return r.due > 0.5; });
   }
   function viewBilling() {
@@ -3945,11 +3947,13 @@ function viewCatalogue() {
         '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total</td>' +
         '<td style="padding:6px;text-align:right;font-weight:800">' + money(chTotal) + '</td></tr></tfoot></table></div></div>';
     });
-    var paid = clientLedger(cl).paid, bal = allNet - paid;
+    var _led = clientLedger(cl), paid = _led.paid, opening = _led.opening || 0, bal = opening + allNet - paid;
     var gst = S.billGst ? Math.round(selNet * 0.18) : 0;
     h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
       '<h3>Client ledger &mdash; ' + esc(cl) + '</h3>' +
-      '<div class="meta" style="font-size:13.5px">Total billed (net): <b>' + money(allNet) + '</b>  &middot;  Received: <b>' + money(paid) + '</b>  &middot;  Balance due: <b style="color:' + (bal > 0 ? '#dc2626' : '#0d9488') + '">' + money(bal) + '</b></div>' +
+      '<div class="meta" style="font-size:13.5px">' +
+      (opening > 0 ? 'Previous balance (b/f): <b>' + money(opening) + '</b>  &middot;  ' : '') +
+      'Billed (net): <b>' + money(allNet) + '</b>  &middot;  Received: <b>' + money(paid) + '</b>  &middot;  Balance due: <b style="color:' + (bal > 0 ? '#dc2626' : '#0d9488') + '">' + money(bal) + '</b></div>' +
       '<div style="margin-top:8px;font-size:14px">Statement: <b>' + selCount + '</b> of ' + chs.length + ' challan(s) ticked &mdash; <b>' + money(selNet) + '</b>' + (S.billGst ? ' + GST ' + money(gst) + ' = <b>' + money(selNet + gst) + '</b>' : '') + '</div>' +
       '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:10px">' +
       '<button class="btn sm ' + (S.billGst ? '' : 'ghost') + '" data-act="bill-gst">' + (S.billGst ? 'GST 18% ✓' : 'Add GST 18%') + '</button>' +
@@ -4057,11 +4061,13 @@ function viewCatalogue() {
         F("normal"); doc.setFontSize(9.5); doc.text("GST @ 18%", cN, y, { align: "right" }); doc.text(RS(gst), cA, y, { align: "right" }); y += 5.5;
         F("bold"); doc.setFontSize(11); doc.text("Total incl. GST", cN, y, { align: "right" }); doc.text(RS(grand + gst), cA, y, { align: "right" }); y += 6;
       }
+      var opening = Number((clientByName(cl) || {}).openingAmt) || 0;
       y += 4; F("normal"); doc.setFontSize(9.5); doc.setTextColor(100, 116, 139);
+      if (opening > 0) { doc.text("Previous balance (before app): " + RS(opening), L, y); y += 5; }
       doc.text("Account billed to date (net): " + RS(allNet), L, y); y += 5;
       doc.text("Received to date: " + RS(paid), L, y); y += 5;
       F("bold"); doc.setTextColor(17, 34, 45); doc.setFontSize(10.5);
-      doc.text("Balance due: " + RS(allNet - paid), L, y); y += 6;
+      doc.text("Balance due: " + RS(opening + allNet - paid), L, y); y += 6;
 
       /* Authorised-distributor strip. The brand logos are drawn from the persistent cache (fetched
          + processed once per device, then reused instantly) - so there is NO live image download
@@ -4104,7 +4110,10 @@ function viewCatalogue() {
       return a + (String(c.freightTo) === "Client" ? (Number(c.freight) || 0) : 0);
     }, 0);
     var paid = pays.reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
-    return { chs: chs, pays: pays, billed: billed, freight: freight, paid: paid, due: billed + freight - paid };
+    /* Old balance carried in when the client was first entered (money owed before the app). It is
+       part of what they owe, so it rides in the dues and the HISAB balance. */
+    var opening = Number((clientByName(client) || {}).openingAmt) || 0;
+    return { chs: chs, pays: pays, opening: opening, billed: billed, freight: freight, paid: paid, due: opening + billed + freight - paid };
   }
 
   /* ---------- COLLECTION RADAR ----------
