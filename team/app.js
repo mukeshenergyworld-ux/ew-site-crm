@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.39";
+  var APP_VERSION = "6.9.40";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -112,10 +112,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules"],
-    accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","discounts","service","spares","dues","products","rates","pricelist"],
+    admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules"],
+    accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist"],
     godown:   ["dash","returns","tools","challans","products"],
-    sales:    ["dash","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","discounts","products"],
+    sales:    ["dash","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","products"],
     service:  ["dash","tools","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -3740,6 +3740,60 @@ function viewCatalogue() {
     return h;
   }
 
+  /* ---------- BILLING (admin / accounts) ----------
+     After a challan's receipt is confirmed it can be billed. This prices every received challan for
+     a client from the discount FROZEN on each line at creation: Qty · Rate · Disc% · discounted rate
+     · amount, a per-challan total, a grand total, and an optional 18% GST. Admin can override a
+     line's Disc% here for the rare product-wise case (it re-saves onto that challan). */
+  function viewBilling() {
+    var cl = S.q;
+    var h = '<div class="row"><input class="grow" id="q" placeholder="Type a client to bill (then Enter)..." list="billclients" value="' + esc(S.q) + '"/><button class="btn" data-act="bill-go">Show</button></div>' +
+      '<datalist id="billclients">' + (S.data.clients || []).map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>';
+    if (!cl) return h + '<div class="empty">Pick a client, then Enter. You\'ll see every received challan priced out &mdash; Qty, Rate, Disc %, discounted rate and amount &mdash; challan by challan, with a grand total and an Add-GST option.</div>';
+    var chs = (S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; })
+      .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+    if (!chs.length) return h + '<div class="empty">No received challans for <b>' + esc(cl) + '</b> yet. Only a challan whose receipt is confirmed can be billed.</div>';
+    var admin = S.role === "admin", grand = 0;
+    chs.forEach(function (c) {
+      var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+      items = items.slice().sort(function (a, b) { return (Number(b.qty) || 0) - (Number(a.qty) || 0); });
+      var sub = 0;
+      var rows = items.map(function (i, idx) {
+        var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0, disc = Number(i.disc) || 0;
+        var dr = Math.round(rate * (1 - disc / 100)), amt = qty * dr; sub += amt;
+        var discCell = admin
+          ? '<input class="bdsc" data-ch="' + esc(c.id) + '" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(disc) + '" style="width:50px;text-align:center;padding:4px;border:1px solid #cbd5e1;border-radius:5px"/>'
+          : (disc + '%');
+        return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (idx % 2 ? '#f8fafc' : '#fff') + '">' +
+          '<td style="padding:5px 6px;color:#64748b">' + (idx + 1) + '</td>' +
+          '<td style="padding:5px 6px">' + esc(i.desc || i.code || "") + '</td>' +
+          '<td style="padding:5px 6px;text-align:center">' + qty + '</td>' +
+          '<td style="padding:5px 6px;text-align:right">' + money(rate) + '</td>' +
+          '<td style="padding:5px 6px;text-align:center">' + discCell + '</td>' +
+          '<td style="padding:5px 6px;text-align:right">' + money(dr) + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;font-weight:700">' + money(amt) + '</td></tr>';
+      }).join("");
+      grand += sub;
+      h += '<div class="card"><h3>' + esc(c.challanNo) + ' <span class="pill teal">' + esc(dstr(c.createdAt)) + '</span>' +
+        (c.billNo ? ' <span class="pill Won">billed ' + esc(c.billNo) + '</span>' : '') + '</h3>' +
+        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0">' +
+        '<thead><tr style="background:#0b3b36;color:#fff">' +
+        '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product</th>' +
+        '<th style="padding:6px;text-align:center;width:40px">Qty</th><th style="padding:6px;text-align:right;width:66px">Rate</th>' +
+        '<th style="padding:6px;text-align:center;width:56px">Disc%</th><th style="padding:6px;text-align:right;width:72px">Disc rate</th>' +
+        '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' + rows + '</tbody>' +
+        '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total</td>' +
+        '<td style="padding:6px;text-align:right;font-weight:800">' + money(sub) + '</td></tr></tfoot></table></div></div>';
+    });
+    var gst = S.billGst ? Math.round(grand * 0.18) : 0;
+    h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><div class="acts" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
+      '<div><div style="font-size:17px;font-weight:800">Grand total: ' + money(grand) + '</div>' +
+      (S.billGst ? '<div class="pmeta">+ GST 18%: ' + money(gst) + '  &rarr;  <b>' + money(grand + gst) + '</b></div>' : '') + '</div>' +
+      '<button class="btn ' + (S.billGst ? '' : 'ghost') + '" data-act="bill-gst">' + (S.billGst ? 'GST 18% added ✓ (tap to remove)' : 'Add GST 18%') + '</button>' +
+      '</div></div>';
+    return h;
+  }
+
   /* ---------------- client payments + ledger ---------------- */
   function clientLedger(client) {
     var chs = S.data.challans.filter(function (c) {
@@ -5223,8 +5277,8 @@ function viewCatalogue() {
   function render() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "Billing"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -5242,9 +5296,9 @@ function viewCatalogue() {
 
     var GROUPS = [
       ["Sell", ["dash", "leads", "brandfollow", "quotes", "followups", "clients", "partners"]],
-      ["Deliver", ["deliveries", "tools", "collections", "discounts", "products"]],
+      ["Deliver", ["deliveries", "tools", "collections", "products"]],
       ["Service", ["service", "spares"]],
-      ["Admin", ["payrollhub", "report", "pricing", "rules"]]
+      ["Admin", ["payrollhub", "billing", "discounts", "report", "pricing", "rules"]]
     ];
     var label = {};
     tabs.forEach(function (t) { label[t[0]] = t[1]; });
@@ -5559,6 +5613,8 @@ function viewCatalogue() {
     }
     if (act === "bf-brand") { S.bf = t.getAttribute("data-brand"); render(); return; }
     if (act === "bf-mode") { S.bfMode = t.getAttribute("data-m") === "client" ? "client" : "lead"; render(); return; }
+    if (act === "bill-go") { render(); return; }
+    if (act === "bill-gst") { S.billGst = !S.billGst; render(); return; }
     if (act === "board-quote") {
       var bn = t.getAttribute("data-n"), bb = t.getAttribute("data-brand");
       var bcl = clientByName(bn);
@@ -6535,6 +6591,16 @@ function viewCatalogue() {
       var cObj = clientByName(cn) || {};
       var siteName = val("m_site");
       var siteObj = S.data.sites.filter(function (x) { return x.name === siteName; })[0] || {};
+      /* Freeze the client's pre-set brand discount onto each line at creation, so billing reads a
+         value that never changes even if an admin edits the pre-set later (edit affects only future
+         challans). Admin can override a line product-wise later in the Billing screen. */
+      var chBrandV = val("m_brand") || (S.ch && S.ch.brand) || "";
+      lines = lines.map(function (l) {
+        var prod = (PRODUCTS.filter(function (x) { return x.code === l.code; })[0]) || {};
+        var lb = l.brand || realBrand(prod) || chBrandV;
+        var pd = (l.disc != null && l.disc !== "") ? Number(l.disc) : clientDiscount(cn, lb);
+        return { code: l.code, desc: l.desc, unit: l.unit, qty: l.qty, rate: l.rate, brand: lb, disc: pd };
+      });
       var amount = lines.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0);
       var assocName = val("m_assoc");
       var itemsJson = JSON.stringify(lines);
@@ -6779,7 +6845,17 @@ function viewCatalogue() {
       saveBrandStatus(t.getAttribute("data-c"), t.getAttribute("data-b"), t.getAttribute("data-id"), pa);
       return;
     }
+    if (t.classList && t.classList.contains("bdsc")) {
+      if (S.role !== "admin") return;
+      var bch = (S.data.challans || []).filter(function (x) { return x.id === t.getAttribute("data-ch"); })[0];
+      if (!bch) return;
+      var bitems = []; try { bitems = JSON.parse(bch.itemsJson || "[]"); } catch (e) { bitems = []; }
+      var bit = bitems.filter(function (x) { return x.code === t.getAttribute("data-code"); })[0];
+      if (bit) { bit.disc = Number(t.value) || 0; bch.itemsJson = JSON.stringify(bitems); save("challans", bch); render(); }
+      return;
+    }
     if (t.classList && t.classList.contains("dsc")) {
+      if (S.role !== "admin") { toast("Only admin can set discounts."); return; }
       var cli = t.getAttribute("data-client");
       var br = t.getAttribute("data-brand");
       save("discounts", { id: t.getAttribute("data-id") || "", client: cli, brand: br, pct: t.value, notes: "" })
