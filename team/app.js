@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.42";
+  var APP_VERSION = "6.9.43";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3776,12 +3776,39 @@ function viewCatalogue() {
     priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
     return priced;
   }
+  /* Distinct customer names that actually have a received challan (these are the billable clients). */
+  function hisabClientNames() {
+    var seen = {}, out = [];
+    (S.data.challans || []).forEach(function (c) {
+      if (String(c.receiptReceived).toUpperCase() === "Y" && c.customerName && !seen[c.customerName]) {
+        seen[c.customerName] = 1; out.push(c.customerName);
+      }
+    });
+    return out.sort();
+  }
+  /* Resolve a typed name to a real billable client name: exact (case/space-tolerant) first,
+     then a unique partial match, so "atul" finds "Atul Garg / Hukam Chand Garg". "" if none/ambiguous. */
+  function hisabResolve(typed) {
+    var q = String(typed || "").trim().toLowerCase();
+    if (!q) return "";
+    var names = hisabClientNames();
+    var exact = names.filter(function (n) { return n.trim().toLowerCase() === q; });
+    if (exact.length) return exact[0];
+    var part = names.filter(function (n) { return n.toLowerCase().indexOf(q) >= 0; });
+    return part.length === 1 ? part[0] : "";
+  }
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
-    var cl = S.q;
+    var cl = hisabResolve(S.q);
+    var billNames = hisabClientNames();
     var h = '<div class="row"><input class="grow" id="q" placeholder="Type a client to bill (then Enter)..." list="billclients" value="' + esc(S.q) + '"/><button class="btn" data-act="bill-go">Show</button></div>' +
-      '<datalist id="billclients">' + (S.data.clients || []).map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>';
-    if (!cl) return h + '<div class="empty">Pick a client, then Enter. Every received challan is priced from your pre-set discounts &mdash; challan by challan &mdash; with a client ledger and the option to WhatsApp the statement (all or the ticked challans).</div>';
+      '<datalist id="billclients">' + billNames.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>';
+    if (!S.q) return h + '<div class="empty">Pick a client, then Enter. Every received challan is priced from your pre-set discounts &mdash; challan by challan &mdash; with a client ledger and the option to WhatsApp the statement (all or the ticked challans).</div>';
+    if (!cl) {
+      var guess = billNames.filter(function (n) { return n.toLowerCase().indexOf(String(S.q).trim().toLowerCase()) >= 0; });
+      return h + '<div class="empty">No received challans matching <b>' + esc(S.q) + '</b> yet.' +
+        (guess.length > 1 ? ' Did you mean: ' + guess.map(function (n) { return '<b>' + esc(n) + '</b>'; }).join(", ") + '?' : ' A challan lands here automatically once its receipt is confirmed.') + '</div>';
+    }
     var chs = (S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; })
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
     if (!chs.length) return h + '<div class="empty">No received challans for <b>' + esc(cl) + '</b> yet. A challan lands here automatically once its receipt is confirmed.</div>';
@@ -5729,20 +5756,20 @@ function viewCatalogue() {
     if (act === "bill-gst") { S.billGst = !S.billGst; render(); return; }
     if (act === "bill-selall") {
       if (!S.billSel) S.billSel = {};
-      var bsv = t.getAttribute("data-v") === "1";
-      (S.data.challans || []).filter(function (c) { return c.customerName === S.q && String(c.receiptReceived).toUpperCase() === "Y"; })
+      var bsv = t.getAttribute("data-v") === "1", bcl = hisabResolve(S.q);
+      (S.data.challans || []).filter(function (c) { return c.customerName === bcl && String(c.receiptReceived).toUpperCase() === "Y"; })
         .forEach(function (c) { S.billSel[c.id] = bsv; });
       render(); return;
     }
     if (act === "bill-wa") {
-      var wcl = S.q, wc = clientByName(wcl) || {};
+      var wcl = hisabResolve(S.q), wc = clientByName(wcl) || {};
       var wnum = String(wc.mobile || "").replace(/\D/g, ""); if (wnum.length === 10) wnum = "91" + wnum;
       var wmsg = "Dear " + wcl + ",\n\nPlease find your Energy World statement (hisab) attached.\n\nThank you.\nEnergy World";
       waShareDoc(loadLogo().then(function () { return hisabPdf(wcl); }), wcl.replace(/[^\w.-]/g, "_") + "_hisab.pdf", wnum, wmsg);
       return;
     }
     if (act === "bill-pdf") {
-      var pcl = S.q; toast("Building PDF...");
+      var pcl = hisabResolve(S.q); toast("Building PDF...");
       loadLogo().then(function () { return hisabPdf(pcl); }).then(function (d) { d.save(pcl.replace(/[^\w.-]/g, "_") + "_hisab.pdf"); }).catch(function () { toast("Could not build the PDF."); });
       return;
     }
