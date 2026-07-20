@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.37";
+  var APP_VERSION = "6.9.38";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1222,26 +1222,34 @@ window.addEventListener("beforeunload", function (ev) {
     var brands = brandList();
     if (!brands.length) return '<div class="empty">No brands set up yet.</div>';
     if (!S.bf || brands.indexOf(S.bf) < 0) S.bf = brands[0];
+    if (S.bfMode !== "client") S.bfMode = "lead";
+    var mode = S.bfMode, wantClient = mode === "client";
     var custs = S.data.clients || [];
     var openByBrand = {};
     brands.forEach(function (b) { openByBrand[b] = []; });
     custs.forEach(function (c) {
-      var isCl = isClient(c.name);
+      if (isClient(c.name) !== wantClient) return;
       brands.forEach(function (b) {
         var st = clientBrandState(c.name, b);
-        if (st === "none" || st === "live") openByBrand[b].push({ c: c, st: st, client: isCl });
+        if (st === "none" || st === "live") openByBrand[b].push({ c: c, st: st });
       });
     });
     var brand = S.bf, listOpen = openByBrand[brand] || [];
-    var h = '<div class="empty" style="text-align:left;padding:0 0 10px">Pick a brand, then work down. Everyone still <b>open</b> for it is here &mdash; <b>leads</b> to chase and <b>clients</b> to cross-sell &mdash; until you mark each one <b>Won</b>, <b>Lost</b> or <b>Not required</b> (with a reason). The number on each brand is how many are still open.</div>';
+    var h = '<div class="row" style="gap:8px;margin-bottom:10px">' +
+      '<button class="btn ' + (wantClient ? "ghost" : "") + '" data-act="bf-mode" data-m="lead">Lead follow-up</button>' +
+      '<button class="btn ' + (wantClient ? "" : "ghost") + '" data-act="bf-mode" data-m="client">Client follow-up</button>' +
+      '</div>';
+    h += '<div class="empty" style="text-align:left;padding:0 0 10px">' +
+      (wantClient
+        ? 'Clients who have bought at least one brand. Pick a brand and cross-sell the ones they haven\'t bought yet &mdash; a name drops off when that brand is marked <b>Won</b>, <b>Lost</b> or <b>Not required</b>.'
+        : 'Leads who haven\'t won a single brand yet. Pick a brand and chase each one &mdash; they stay here until a brand is <b>Won</b> (then they move to <b>Client follow-up</b>), <b>Lost</b> or <b>Not required</b>.') +
+      ' The number on each brand is how many are still open.</div>';
     h += '<div class="row" style="flex-wrap:wrap;gap:6px">' + brands.map(function (b) {
       var n = openByBrand[b].length;
       return '<button class="btn sm ' + (b === brand ? "" : "ghost") + '" data-act="bf-brand" data-brand="' + esc(b) + '">' + esc(b) + (n ? ' <b>' + n + '</b>' : '') + '</button>';
     }).join("") + '</div>';
-    var leadsL = listOpen.filter(function (x) { return !x.client; });
-    var clientsL = listOpen.filter(function (x) { return x.client; });
-    h += '<div class="cards"><div class="stat ' + (leadsL.length ? "alert" : "") + '"><div class="n">' + leadsL.length + '</div><div class="l">Leads to chase</div></div>' +
-      '<div class="stat"><div class="n">' + clientsL.length + '</div><div class="l">Clients to cross-sell</div></div></div>';
+    h += '<div class="cards"><div class="stat ' + (listOpen.length ? "alert" : "") + '"><div class="n">' + listOpen.length + '</div><div class="l">' +
+      (wantClient ? 'Clients to cross-sell' : 'Leads to chase') + ' &middot; ' + esc(brand) + '</div></div></div>';
     var rowH = function (x) {
       var c = x.c, num = String(c.mobile || "").replace(/\D/g, "");
       var pill = x.st === "live" ? '<span class="pill teal">in play</span>' : '<span class="pill">not started</span>';
@@ -1255,9 +1263,8 @@ window.addEventListener("beforeunload", function (ev) {
         '<button class="btn sm ghost" data-act="board-nr" data-n="' + esc(c.name) + '" data-brand="' + esc(brand) + '">Not required</button>' +
         '</div></div>';
     };
-    if (!listOpen.length) { h += '<div class="empty">Everyone is closed for ' + esc(brand) + ' &mdash; nothing to chase here. 🎉</div>'; return h; }
-    if (leadsL.length) { h += '<h3 style="margin:14px 0 6px;font-size:14px">Leads &mdash; chase for ' + esc(brand) + '</h3>'; leadsL.forEach(function (x) { h += rowH(x); }); }
-    if (clientsL.length) { h += '<h3 style="margin:14px 0 6px;font-size:14px">Clients &mdash; cross-sell ' + esc(brand) + '</h3>'; clientsL.forEach(function (x) { h += rowH(x); }); }
+    if (!listOpen.length) { h += '<div class="empty">No ' + (wantClient ? 'clients' : 'leads') + ' open for ' + esc(brand) + ' &mdash; nothing to chase here. 🎉</div>'; return h; }
+    listOpen.forEach(function (x) { h += rowH(x); });
     return h;
   }
 
@@ -5523,6 +5530,7 @@ function viewCatalogue() {
       S.modal = null; toast(nrb + " marked Not required."); render(); return;
     }
     if (act === "bf-brand") { S.bf = t.getAttribute("data-brand"); render(); return; }
+    if (act === "bf-mode") { S.bfMode = t.getAttribute("data-m") === "client" ? "client" : "lead"; render(); return; }
     if (act === "board-quote") {
       var bn = t.getAttribute("data-n"), bb = t.getAttribute("data-brand");
       var bcl = clientByName(bn);
