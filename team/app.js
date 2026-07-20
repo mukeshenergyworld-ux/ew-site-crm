@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.58";
+  var APP_VERSION = "6.9.59";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -315,10 +315,6 @@ window.addEventListener("beforeunload", function (ev) {
   }
 
   function loadCatalog() {
-    /* Warm the PDF assets (unicode fonts + brand logos) in the background, well before anyone
-       taps Download/WhatsApp, so a statement builds fast and its distributor logos are ready -
-       instead of firing 14 image downloads at the moment of export. Fire-and-forget. */
-    setTimeout(function () { try { loadFonts(); preloadLogos(); } catch (e) { } }, 3000);
     try {
       var c = JSON.parse(localStorage.getItem(CAT_KEY) || "null");
       if (c && c.at && (Date.now() - c.at < 86400000) && c.items && c.items.length) PRODUCTS = c.items;
@@ -3930,7 +3926,7 @@ function viewCatalogue() {
         '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' + rows +
         (frt > 0 ? '<tr style="background:#fffbeb;border-top:1px dashed #e2e8f0"><td colspan="6" style="padding:5px 6px;text-align:right;color:#92400e">Freight' + (c.driver ? ' (' + esc(c.driver) + ')' : '') + '</td><td style="padding:5px 6px;text-align:right;font-weight:700;color:#92400e">' + money(frt) + '</td></tr>' : '') +
         '</tbody>' +
-        '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total' + (frt > 0 ? ' (incl. freight)' : '') + '</td>' +
+        '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total</td>' +
         '<td style="padding:6px;text-align:right;font-weight:800">' + money(chTotal) + '</td></tr></tfoot></table></div></div>';
     });
     var paid = clientLedger(cl).paid, bal = allNet - paid;
@@ -3960,7 +3956,6 @@ function viewCatalogue() {
     /* The statement uses its OWN compact header (not the shared commPdfBase): a shorter band,
        a small un-shouty "STATEMENT" label top-right, then the client's details and date beneath
        it - so the client block need not repeat in the body. No company tagline. */
-    logosReady();   /* warm the brand logos in the background - never block the statement on them */
     /* The statement uses jsPDF's built-in Helvetica and "Rs." - NOT the ~600KB DejaVu Unicode
        font. Embedding that font took several seconds and bloated the file to ~550KB, spiking
        memory enough to reload the tab (which is what signed people out). Helvetica builds the
@@ -4030,7 +4025,7 @@ function viewCatalogue() {
         grand += chTotal; goodsGrand += sub;
         doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.2); doc.line(L, y - 2.2, R, y - 2.2);
         F("bold"); doc.setFontSize(8); doc.setTextColor(17, 34, 45);
-        doc.text(frt > 0 ? "Challan total (incl. freight)" : "Challan total", cN, y, { align: "right" }); doc.text(RS(chTotal), cA, y, { align: "right" }); y += 7.5;
+        doc.text("Challan total", cN, y, { align: "right" }); doc.text(RS(chTotal), cA, y, { align: "right" }); y += 7.5;
       });
       if (!sel.length) { doc.setFontSize(10); doc.setTextColor(120, 120, 120); doc.text("No challans selected.", L, y); y += 6; }
       if (y > 250) { doc.addPage(); y = 20; }
@@ -4048,27 +4043,15 @@ function viewCatalogue() {
       F("bold"); doc.setTextColor(17, 34, 45); doc.setFontSize(10.5);
       doc.text("Balance due: " + RS(allNet - paid), L, y); y += 6;
 
-      /* Authorised-distributor line, pinned to the bottom of the last page. If the brand logos
-         are already cached we draw them as one line of small boxes; if not, we fall back to the
-         brand NAMES as text so the line always appears - the statement NEVER waits on (or is held
-         hostage by) 14 image downloads, which is what made it slow and could reload the tab. */
-      if (y > 268) { doc.addPage(); y = 20; }
-      var slots = PDF_LOGO_ORDER.map(function (n) { return logoFor(n); }).filter(function (s) { return s && s.src; });
+      /* Authorised-distributor line, pinned to the bottom of the last page - the brand NAMES as
+         text, NOT logo images. Fetching + canvas-processing the 14 brand logos was the whole
+         cause of the slow, memory-heavy statement (and the tab reload that signed people out).
+         Text is instant, tiny, and still names the distributor and every brand. */
+      if (y > 270) { doc.addPage(); y = 20; }
       F("bold"); doc.setFontSize(5); doc.setTextColor(120, 130, 140);
-      doc.text("AUTHORISED DISTRIBUTOR FOR", L, 277);
-      if (slots.length) {
-        var GP = 1.2, BH = 6, y0 = 279, BW = (R - L - GP * (slots.length - 1)) / slots.length;
-        slots.forEach(function (lg, i) {
-          var bx = L + i * (BW + GP);
-          doc.setDrawColor(216, 216, 216); doc.setLineWidth(0.18); doc.rect(bx, y0, BW, BH, "S");
-          var sc = Math.min((BW - 1.4) / lg.w, (BH - 1.4) / lg.h);
-          var iw = lg.w * sc, ih = lg.h * sc;
-          try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, y0 + (BH - ih) / 2, iw, ih); } catch (e) { }
-        });
-      } else {
-        F("bold"); doc.setFontSize(7.4); doc.setTextColor(90, 100, 110);
-        doc.text(PDF_LOGO_ORDER.join("   ·   "), L, 282);
-      }
+      doc.text("AUTHORISED DISTRIBUTOR FOR", L, 278);
+      F("bold"); doc.setFontSize(7.4); doc.setTextColor(90, 100, 110);
+      doc.splitTextToSize(PDF_LOGO_ORDER.join("   ·   "), R - L).forEach(function (ln, i) { doc.text(ln, L, 283 + i * 3.6); });
       doc.setFontSize(6.6); doc.setTextColor(150, 163, 175); F("normal");
       doc.text("Energy World  |  Panipat · Sonipat · Karnal    |    Statement of account, not a tax invoice.", L, 291);
       return doc;
