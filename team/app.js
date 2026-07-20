@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.36";
+  var APP_VERSION = "6.9.37";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -112,10 +112,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules"],
+    admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules"],
     accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","discounts","service","spares","dues","products","rates","pricelist"],
     godown:   ["dash","returns","tools","challans","products"],
-    sales:    ["dash","report","returns","tools","clients","partners","quotes","sites","leads","winloss","visits","followups","challans","discounts","products"],
+    sales:    ["dash","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","discounts","products"],
     service:  ["dash","tools","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -1174,6 +1174,7 @@ window.addEventListener("beforeunload", function (ev) {
   function clientBrandState(name, brand) {
     if (clientWonBrands(name).indexOf(brand) >= 0) return "won";
     var ps = (clientPitch(name, brand) || {}).status || "";
+    if (ps === "Not required") return "nr";
     var qs = clientQuotes(name).filter(function (q) { return quoteBrands(q).indexOf(brand) >= 0; });
     var hasOpen = qs.some(function (q) { return ["Draft", "Sent", "Negotiating", "Revised"].indexOf(q.status) >= 0; });
     if (hasOpen || ["Pitched", "Quoted", "Negotiating", "Ongoing"].indexOf(ps) >= 0) return "live";
@@ -1189,6 +1190,7 @@ window.addEventListener("beforeunload", function (ev) {
       if (st === "won") { sty = base + "background:#f1f5f9;color:#94a3b8;border-color:#cbd5e1"; inner = "✓ " + esc(b); }
       else if (st === "lost") { sty = base + "background:#fef2f2;color:#dc2626;border-color:#fecaca"; inner = '<span style="text-decoration:line-through">' + esc(b) + '</span>'; }
       else if (st === "live") { sty = base + "background:#0d9488;color:#fff;border-color:#0d9488"; inner = esc(b); }
+      else if (st === "nr") { sty = base + "background:#f8fafc;color:#94a3b8;border-color:#e2e8f0"; inner = esc(b) + ' <span style="font-size:10px">n/a</span>'; }
       else { sty = base + "background:#fff;color:#334155;border-color:#e2e8f0"; inner = esc(b); }
       return '<button data-act="board-menu" data-n="' + esc(name) + '" data-brand="' + esc(b) + '" style="' + sty + '">' + inner + '</button>';
     }).join("") + '</div>';
@@ -1197,7 +1199,7 @@ window.addEventListener("beforeunload", function (ev) {
   function modalBrandAction(name, brand) {
     var st = clientBrandState(name, brand);
     var pstat = (clientPitch(name, brand) || {}).status || "";
-    var label = { won: "Won ✓", lost: "Lost", live: "In play", none: "Not started" }[st] || "";
+    var label = { won: "Won ✓", lost: "Lost", live: "In play", none: "Not started", nr: "Not required" }[st] || "";
     return '<h2>' + esc(brand) + '</h2>' +
       '<p class="sub">' + esc(name) + ' &middot; currently: <b>' + esc(label) + '</b></p>' +
       '<button class="btn" style="width:100%;justify-content:center;margin-bottom:12px" data-act="board-quote" data-n="' + esc(name) + '" data-brand="' + esc(brand) + '">Quote this brand</button>' +
@@ -1206,9 +1208,57 @@ window.addEventListener("beforeunload", function (ev) {
       '<button class="btn sm" data-act="board-status" data-n="' + esc(name) + '" data-brand="' + esc(brand) + '" data-s="Won">Mark Won</button>' +
       '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(name) + '" data-brand="' + esc(brand) + '" data-s="Ongoing">Ongoing</button>' +
       '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(name) + '" data-brand="' + esc(brand) + '" data-s="Lost">Lost</button>' +
+      '<button class="btn sm ghost" data-act="board-nr" data-n="' + esc(name) + '" data-brand="' + esc(brand) + '">Not required</button>' +
       (pstat && pstat !== "Not pitched" ? '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(name) + '" data-brand="' + esc(brand) + '" data-s="">Clear</button>' : "") +
       '</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button></div>';
+  }
+
+  /* ---------- BRAND-WISE FOLLOW-UP ----------
+     Every customer is chased brand by brand. A lead shows under every brand until he wins one
+     (then he becomes a Client but still shows under the brands he hasn't bought - cross-sell). A
+     brand drops off a customer's list only when it is marked Won, Lost or Not required (reason). */
+  function viewBrandFollow() {
+    var brands = brandList();
+    if (!brands.length) return '<div class="empty">No brands set up yet.</div>';
+    if (!S.bf || brands.indexOf(S.bf) < 0) S.bf = brands[0];
+    var custs = S.data.clients || [];
+    var openByBrand = {};
+    brands.forEach(function (b) { openByBrand[b] = []; });
+    custs.forEach(function (c) {
+      var isCl = isClient(c.name);
+      brands.forEach(function (b) {
+        var st = clientBrandState(c.name, b);
+        if (st === "none" || st === "live") openByBrand[b].push({ c: c, st: st, client: isCl });
+      });
+    });
+    var brand = S.bf, listOpen = openByBrand[brand] || [];
+    var h = '<div class="empty" style="text-align:left;padding:0 0 10px">Pick a brand, then work down. Everyone still <b>open</b> for it is here &mdash; <b>leads</b> to chase and <b>clients</b> to cross-sell &mdash; until you mark each one <b>Won</b>, <b>Lost</b> or <b>Not required</b> (with a reason). The number on each brand is how many are still open.</div>';
+    h += '<div class="row" style="flex-wrap:wrap;gap:6px">' + brands.map(function (b) {
+      var n = openByBrand[b].length;
+      return '<button class="btn sm ' + (b === brand ? "" : "ghost") + '" data-act="bf-brand" data-brand="' + esc(b) + '">' + esc(b) + (n ? ' <b>' + n + '</b>' : '') + '</button>';
+    }).join("") + '</div>';
+    var leadsL = listOpen.filter(function (x) { return !x.client; });
+    var clientsL = listOpen.filter(function (x) { return x.client; });
+    h += '<div class="cards"><div class="stat ' + (leadsL.length ? "alert" : "") + '"><div class="n">' + leadsL.length + '</div><div class="l">Leads to chase</div></div>' +
+      '<div class="stat"><div class="n">' + clientsL.length + '</div><div class="l">Clients to cross-sell</div></div></div>';
+    var rowH = function (x) {
+      var c = x.c, num = String(c.mobile || "").replace(/\D/g, "");
+      var pill = x.st === "live" ? '<span class="pill teal">in play</span>' : '<span class="pill">not started</span>';
+      return '<div class="card"><h3>' + esc(c.name) + ' ' + pill + '</h3>' +
+        '<div class="meta">' + esc([c.area, c.location].filter(Boolean).join(", ")) + (c.mobile ? '<br>' + esc(c.mobile) : "") + '</div>' +
+        '<div class="acts" style="flex-wrap:wrap;margin-top:6px">' +
+        '<button class="btn sm" data-act="board-quote" data-n="' + esc(c.name) + '" data-brand="' + esc(brand) + '">Quote</button>' +
+        (num ? '<a class="btn sm ghost" href="tel:' + esc(num) + '">Call</a>' : "") +
+        '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(c.name) + '" data-brand="' + esc(brand) + '" data-s="Won">Won</button>' +
+        '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(c.name) + '" data-brand="' + esc(brand) + '" data-s="Lost">Lost</button>' +
+        '<button class="btn sm ghost" data-act="board-nr" data-n="' + esc(c.name) + '" data-brand="' + esc(brand) + '">Not required</button>' +
+        '</div></div>';
+    };
+    if (!listOpen.length) { h += '<div class="empty">Everyone is closed for ' + esc(brand) + ' &mdash; nothing to chase here. 🎉</div>'; return h; }
+    if (leadsL.length) { h += '<h3 style="margin:14px 0 6px;font-size:14px">Leads &mdash; chase for ' + esc(brand) + '</h3>'; leadsL.forEach(function (x) { h += rowH(x); }); }
+    if (clientsL.length) { h += '<h3 style="margin:14px 0 6px;font-size:14px">Clients &mdash; cross-sell ' + esc(brand) + '</h3>'; clientsL.forEach(function (x) { h += rowH(x); }); }
+    return h;
   }
 
   /* Leads = customers with zero Won brands. Enter leads here; a brand tap starts its quote. */
@@ -5138,8 +5188,8 @@ function viewCatalogue() {
   function render() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -5156,7 +5206,7 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
     var GROUPS = [
-      ["Sell", ["dash", "leads", "quotes", "followups", "clients", "partners"]],
+      ["Sell", ["dash", "leads", "brandfollow", "quotes", "followups", "clients", "partners"]],
       ["Deliver", ["deliveries", "tools", "collections", "discounts", "products"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["payrollhub", "report", "pricing", "rules"]]
@@ -5465,6 +5515,14 @@ function viewCatalogue() {
       toast(stb + (stv === "Not pitched" ? " status cleared" : " marked " + stv) + (stv === "Won" ? " — moved to Clients" : ""));
       render(); return;
     }
+    if (act === "board-nr") {
+      var nrn = t.getAttribute("data-n"), nrb = t.getAttribute("data-brand");
+      var why = window.prompt("Why is " + nrb + " not required for " + nrn + "?\n(e.g. already has it, competitor tied up, not in scope)");
+      if (why === null) return;
+      saveBrandStatus(nrn, nrb, "", { status: "Not required", note: why });
+      S.modal = null; toast(nrb + " marked Not required."); render(); return;
+    }
+    if (act === "bf-brand") { S.bf = t.getAttribute("data-brand"); render(); return; }
     if (act === "board-quote") {
       var bn = t.getAttribute("data-n"), bb = t.getAttribute("data-brand");
       var bcl = clientByName(bn);
