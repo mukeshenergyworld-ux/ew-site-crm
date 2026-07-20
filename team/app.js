@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.41";
+  var APP_VERSION = "6.9.42";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3764,45 +3764,50 @@ function viewCatalogue() {
      a client from the discount FROZEN on each line at creation: Qty · Rate · Disc% · discounted rate
      · amount, a per-challan total, a grand total, and an optional 18% GST. Admin can override a
      line's Disc% here for the rare product-wise case (it re-saves onto that challan). */
+  function pricedLines(c, cl) {
+    var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+    var priced = items.map(function (i) {
+      var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0;
+      var bBrand = i.brand || realBrand((PRODUCTS.filter(function (p) { return p.code === i.code; })[0]) || {}) || c.brand || "";
+      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscount(cl, bBrand);
+      var dr = Math.round(rate * (1 - disc / 100));
+      return { desc: i.desc || i.code || "", code: i.code, qty: qty, rate: rate, disc: disc, dr: dr, amt: qty * dr };
+    });
+    priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
+    return priced;
+  }
   function viewBilling() {
+    if (!S.billSel) S.billSel = {};
     var cl = S.q;
     var h = '<div class="row"><input class="grow" id="q" placeholder="Type a client to bill (then Enter)..." list="billclients" value="' + esc(S.q) + '"/><button class="btn" data-act="bill-go">Show</button></div>' +
       '<datalist id="billclients">' + (S.data.clients || []).map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>';
-    if (!cl) return h + '<div class="empty">Pick a client, then Enter. You\'ll see every received challan priced out &mdash; Qty, Rate, Disc %, discounted rate and amount &mdash; challan by challan, with a grand total and an Add-GST option.</div>';
+    if (!cl) return h + '<div class="empty">Pick a client, then Enter. Every received challan is priced from your pre-set discounts &mdash; challan by challan &mdash; with a client ledger and the option to WhatsApp the statement (all or the ticked challans).</div>';
     var chs = (S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; })
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
-    if (!chs.length) return h + '<div class="empty">No received challans for <b>' + esc(cl) + '</b> yet. Only a challan whose receipt is confirmed can be billed.</div>';
-    var admin = S.role === "admin", grand = 0;
+    if (!chs.length) return h + '<div class="empty">No received challans for <b>' + esc(cl) + '</b> yet. A challan lands here automatically once its receipt is confirmed.</div>';
+    var admin = S.role === "admin";
+    var allNet = 0, selNet = 0, selCount = 0;
     chs.forEach(function (c) {
-      var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
-      /* Price each line (discount frozen on the line, else fall back to the client's current
-         pre-set brand discount), then sort HIGHEST DISCOUNT first. */
-      var priced = items.map(function (i) {
-        var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0;
-        var bBrand = i.brand || realBrand((PRODUCTS.filter(function (p) { return p.code === i.code; })[0]) || {}) || c.brand || "";
-        var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscount(cl, bBrand);
-        var dr = Math.round(rate * (1 - disc / 100));
-        return { i: i, rate: rate, qty: qty, disc: disc, dr: dr, amt: qty * dr };
-      });
-      priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
+      var sel = S.billSel[c.id] !== false;
+      var priced = pricedLines(c, cl);
       var sub = priced.reduce(function (a, x) { return a + x.amt; }, 0);
+      allNet += sub; if (sel) { selNet += sub; selCount++; }
       var rows = priced.map(function (x, idx) {
-        var i = x.i, disc = x.disc;
-        /* No discount → don't clutter with Rate + 0%; the net price is shown under Net rate only. */
+        var disc = x.disc;
         var discCell = admin
-          ? '<input class="bdsc" data-ch="' + esc(c.id) + '" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + (disc > 0 ? esc(disc) : "") + '" placeholder="0" style="width:48px;text-align:center;padding:4px;border:1px solid #cbd5e1;border-radius:5px"/>'
+          ? '<input class="bdsc" data-ch="' + esc(c.id) + '" data-code="' + esc(x.code) + '" inputmode="decimal" value="' + (disc > 0 ? esc(disc) : "") + '" placeholder="0" style="width:48px;text-align:center;padding:4px;border:1px solid #cbd5e1;border-radius:5px"/>'
           : (disc > 0 ? disc + '%' : '');
         return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (idx % 2 ? '#f8fafc' : '#fff') + '">' +
           '<td style="padding:5px 6px;color:#64748b">' + (idx + 1) + '</td>' +
-          '<td style="padding:5px 6px">' + esc(i.desc || i.code || "") + '</td>' +
+          '<td style="padding:5px 6px">' + esc(x.desc) + '</td>' +
           '<td style="padding:5px 6px;text-align:center">' + x.qty + '</td>' +
           '<td style="padding:5px 6px;text-align:right;color:#94a3b8">' + (disc > 0 ? money(x.rate) : '') + '</td>' +
           '<td style="padding:5px 6px;text-align:center">' + discCell + '</td>' +
           '<td style="padding:5px 6px;text-align:right;font-weight:600">' + money(x.dr) + '</td>' +
           '<td style="padding:5px 6px;text-align:right;font-weight:700">' + money(x.amt) + '</td></tr>';
       }).join("");
-      grand += sub;
-      h += '<div class="card"><h3>' + esc(c.challanNo) + ' <span class="pill teal">' + esc(dstr(c.createdAt)) + '</span>' +
+      h += '<div class="card" style="' + (sel ? '' : 'opacity:.5') + '"><h3>' +
+        '<label style="cursor:pointer;font-size:15px"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label> <span class="pill teal">' + esc(dstr(c.createdAt)) + '</span>' +
         (c.billNo ? ' <span class="pill Won">billed ' + esc(c.billNo) + '</span>' : '') + '</h3>' +
         '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0">' +
         '<thead><tr style="background:#0b3b36;color:#fff">' +
@@ -3813,13 +3818,92 @@ function viewCatalogue() {
         '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total</td>' +
         '<td style="padding:6px;text-align:right;font-weight:800">' + money(sub) + '</td></tr></tfoot></table></div></div>';
     });
-    var gst = S.billGst ? Math.round(grand * 0.18) : 0;
-    h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><div class="acts" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
-      '<div><div style="font-size:17px;font-weight:800">Grand total: ' + money(grand) + '</div>' +
-      (S.billGst ? '<div class="pmeta">+ GST 18%: ' + money(gst) + '  &rarr;  <b>' + money(grand + gst) + '</b></div>' : '') + '</div>' +
-      '<button class="btn ' + (S.billGst ? '' : 'ghost') + '" data-act="bill-gst">' + (S.billGst ? 'GST 18% added ✓ (tap to remove)' : 'Add GST 18%') + '</button>' +
+    var paid = clientLedger(cl).paid, bal = allNet - paid;
+    var gst = S.billGst ? Math.round(selNet * 0.18) : 0;
+    h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+      '<h3>Client ledger &mdash; ' + esc(cl) + '</h3>' +
+      '<div class="meta" style="font-size:13.5px">Total billed (net): <b>' + money(allNet) + '</b>  &middot;  Received: <b>' + money(paid) + '</b>  &middot;  Balance due: <b style="color:' + (bal > 0 ? '#dc2626' : '#0d9488') + '">' + money(bal) + '</b></div>' +
+      '<div style="margin-top:8px;font-size:14px">Statement: <b>' + selCount + '</b> of ' + chs.length + ' challan(s) ticked &mdash; <b>' + money(selNet) + '</b>' + (S.billGst ? ' + GST ' + money(gst) + ' = <b>' + money(selNet + gst) + '</b>' : '') + '</div>' +
+      '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:10px">' +
+      '<button class="btn sm ' + (S.billGst ? '' : 'ghost') + '" data-act="bill-gst">' + (S.billGst ? 'GST 18% ✓' : 'Add GST 18%') + '</button>' +
+      '<button class="btn sm ghost" data-act="bill-selall" data-v="1">Tick all</button>' +
+      '<button class="btn sm ghost" data-act="bill-selall" data-v="0">Untick all</button>' +
+      '<div class="grow"></div>' +
+      '<button class="btn sm" data-act="bill-wa">WhatsApp statement</button>' +
+      '<button class="btn sm ghost" data-act="bill-pdf">Download PDF</button>' +
       '</div></div>';
     return h;
+  }
+
+  /* The statement/hisab PDF: header, customer, then each TICKED challan priced out, a statement
+     total (+ optional GST), and the running account ledger (billed to date, received, balance). */
+  function hisabPdf(cl) {
+    var chs = (S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; });
+    var sel = chs.filter(function (c) { return S.billSel[c.id] !== false; })
+      .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+    var allNet = chs.reduce(function (a, c) { return a + pricedLines(c, cl).reduce(function (s, x) { return s + x.amt; }, 0); }, 0);
+    return commPdfBase("STATEMENT", {}, today()).then(function (b) {
+      var doc = b.doc, F = b.F, L = b.L, R = b.R, y = 46;
+      var RS = function (n) { return (b.uni ? "₹" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      var cust = clientByName(cl) || {};
+      F("bold"); doc.setFontSize(12); doc.setTextColor(17, 34, 45); doc.text(String(cl), L, y); y += 5.5;
+      F("normal"); doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+      var line2 = [cust.area, cust.location].filter(Boolean).join(", "); if (line2) { doc.text(line2, L, y); y += 5; }
+      if (cust.mobile) { doc.text("Mobile: " + cust.mobile, L, y); y += 5; }
+      y += 3;
+      var cQ = R - 94, cR = R - 72, cD = R - 50, cN = R - 26, cA = R;
+      var head = function () {
+        doc.setFillColor(11, 59, 54); doc.rect(L, y - 4.5, R - L, 6.4, "F");
+        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(7);
+        doc.text("PRODUCT", L + 2, y); doc.text("QTY", cQ, y, { align: "right" });
+        doc.text("RATE", cR, y, { align: "right" }); doc.text("DISC", cD, y, { align: "right" });
+        doc.text("NET", cN, y, { align: "right" }); doc.text("AMOUNT", cA, y, { align: "right" });
+        y += 6;
+      };
+      var grand = 0;
+      sel.forEach(function (c) {
+        if (y > 258) { doc.addPage(); y = 20; }
+        F("bold"); doc.setFontSize(9.5); doc.setTextColor(13, 118, 108);
+        doc.text(String(c.challanNo) + "   ·   " + fullDate(c.createdAt), L, y); y += 5.5;
+        head();
+        var priced = pricedLines(c, cl), sub = 0;
+        priced.forEach(function (x, idx) {
+          if (y > 274) { doc.addPage(); y = 20; head(); }
+          if (idx % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4, R - L, 5.6, "F"); }
+          F("normal"); doc.setFontSize(8); doc.setTextColor(17, 34, 45);
+          doc.text(doc.splitTextToSize(String(x.desc), cQ - L - 8)[0], L + 2, y);
+          doc.text(String(x.qty), cQ, y, { align: "right" });
+          doc.setTextColor(120, 120, 120);
+          doc.text(x.disc > 0 ? RS(x.rate) : "-", cR, y, { align: "right" });
+          doc.text(x.disc > 0 ? (x.disc + "%") : "-", cD, y, { align: "right" });
+          doc.setTextColor(17, 34, 45); doc.text(RS(x.dr), cN, y, { align: "right" });
+          F("bold"); doc.text(RS(x.amt), cA, y, { align: "right" }); F("normal");
+          y += 5.6; sub += x.amt;
+        });
+        grand += sub;
+        doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.2); doc.line(L, y - 2.6, R, y - 2.6);
+        F("bold"); doc.setFontSize(9); doc.setTextColor(17, 34, 45);
+        doc.text("Challan total", cN, y, { align: "right" }); doc.text(RS(sub), cA, y, { align: "right" }); y += 9;
+      });
+      if (!sel.length) { doc.setFontSize(10); doc.setTextColor(120, 120, 120); doc.text("No challans selected.", L, y); y += 6; }
+      if (y > 250) { doc.addPage(); y = 20; }
+      var gst = S.billGst ? Math.round(grand * 0.18) : 0, paid = clientLedger(cl).paid;
+      doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(L, y - 1, R, y - 1); doc.setLineWidth(0.2); y += 5;
+      F("bold"); doc.setFontSize(11); doc.setTextColor(17, 34, 45);
+      doc.text("Statement total", cN, y, { align: "right" }); doc.text(RS(grand), cA, y, { align: "right" }); y += 6;
+      if (S.billGst) {
+        F("normal"); doc.setFontSize(9.5); doc.text("GST @ 18%", cN, y, { align: "right" }); doc.text(RS(gst), cA, y, { align: "right" }); y += 5.5;
+        F("bold"); doc.setFontSize(11); doc.text("Total incl. GST", cN, y, { align: "right" }); doc.text(RS(grand + gst), cA, y, { align: "right" }); y += 6;
+      }
+      y += 4; F("normal"); doc.setFontSize(9.5); doc.setTextColor(100, 116, 139);
+      doc.text("Account billed to date (net): " + RS(allNet), L, y); y += 5;
+      doc.text("Received to date: " + RS(paid), L, y); y += 5;
+      F("bold"); doc.setTextColor(17, 34, 45); doc.setFontSize(10.5);
+      doc.text("Balance due: " + RS(allNet - paid), L, y);
+      doc.setFontSize(6.6); doc.setTextColor(150, 163, 175); F("normal");
+      doc.text("Energy World  |  Panipat · Sonipat · Karnal    |    Statement of account, not a tax invoice.", L, 291);
+      return doc;
+    });
   }
 
   /* ---------------- client payments + ledger ---------------- */
@@ -5643,6 +5727,25 @@ function viewCatalogue() {
     if (act === "bf-mode") { S.bfMode = t.getAttribute("data-m") === "client" ? "client" : "lead"; render(); return; }
     if (act === "bill-go") { render(); return; }
     if (act === "bill-gst") { S.billGst = !S.billGst; render(); return; }
+    if (act === "bill-selall") {
+      if (!S.billSel) S.billSel = {};
+      var bsv = t.getAttribute("data-v") === "1";
+      (S.data.challans || []).filter(function (c) { return c.customerName === S.q && String(c.receiptReceived).toUpperCase() === "Y"; })
+        .forEach(function (c) { S.billSel[c.id] = bsv; });
+      render(); return;
+    }
+    if (act === "bill-wa") {
+      var wcl = S.q, wc = clientByName(wcl) || {};
+      var wnum = String(wc.mobile || "").replace(/\D/g, ""); if (wnum.length === 10) wnum = "91" + wnum;
+      var wmsg = "Dear " + wcl + ",\n\nPlease find your Energy World statement (hisab) attached.\n\nThank you.\nEnergy World";
+      waShareDoc(loadLogo().then(function () { return hisabPdf(wcl); }), wcl.replace(/[^\w.-]/g, "_") + "_hisab.pdf", wnum, wmsg);
+      return;
+    }
+    if (act === "bill-pdf") {
+      var pcl = S.q; toast("Building PDF...");
+      loadLogo().then(function () { return hisabPdf(pcl); }).then(function (d) { d.save(pcl.replace(/[^\w.-]/g, "_") + "_hisab.pdf"); }).catch(function () { toast("Could not build the PDF."); });
+      return;
+    }
     if (act === "disc-edit") { S.q = t.getAttribute("data-n"); render(); return; }
     if (act === "disc-back") { S.q = ""; render(); return; }
     if (act === "board-quote") {
@@ -6873,6 +6976,12 @@ function viewCatalogue() {
     if (t.classList && t.classList.contains("bb-amt")) {
       var pa = {}; pa[t.getAttribute("data-f")] = t.value;
       saveBrandStatus(t.getAttribute("data-c"), t.getAttribute("data-b"), t.getAttribute("data-id"), pa);
+      return;
+    }
+    if (t.classList && t.classList.contains("billsel")) {
+      if (!S.billSel) S.billSel = {};
+      S.billSel[t.getAttribute("data-ch")] = t.checked;
+      var _sy = window.scrollY; render(); window.scrollTo(0, _sy);
       return;
     }
     if (t.classList && t.classList.contains("bdsc")) {
