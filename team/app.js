@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.57";
+  var APP_VERSION = "6.9.58";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3961,13 +3961,13 @@ function viewCatalogue() {
        a small un-shouty "STATEMENT" label top-right, then the client's details and date beneath
        it - so the client block need not repeat in the body. No company tagline. */
     logosReady();   /* warm the brand logos in the background - never block the statement on them */
-    return loadFonts().then(function (f) {
+    /* The statement uses jsPDF's built-in Helvetica and "Rs." - NOT the ~600KB DejaVu Unicode
+       font. Embedding that font took several seconds and bloated the file to ~550KB, spiking
+       memory enough to reload the tab (which is what signed people out). Helvetica builds the
+       statement in a blink at ~30KB. The trade is the rupee symbol shows as "Rs." here. */
+    return Promise.resolve().then(function () {
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
       var uni = false;
-      if (f) {
-        doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
-        doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold"); uni = true;
-      }
       var F = function (w) { doc.setFont(uni ? "DJ" : "helvetica", w || "normal"); };
       var W = 210, L = 16, R = W - 16, HB = 25;
       var RS = function (n) { return (uni ? "₹" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
