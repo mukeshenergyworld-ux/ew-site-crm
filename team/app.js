@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.38";
+  var APP_VERSION = "6.9.39";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3485,6 +3485,34 @@ function viewCatalogue() {
     return h + (sub === "returns" ? viewReturns() : viewChallans());
   }
 
+  /* A saved challan's items as a compact, numbered, qty-descending table (same look as the
+     challan builder and receipt) instead of one long comma string. Uses itemsJson when present,
+     else parses the legacy "desc xQty, ..." string. */
+  function challanItemsTable(c) {
+    var items = [];
+    try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+    if (!items.length && c.items) {
+      items = String(c.items).split(",").map(function (t) {
+        var m = String(t).match(/^(.*?)[x×](\d+)\s*$/);
+        return { desc: m ? m[1].trim() : String(t).trim(), qty: m ? m[2] : "" };
+      });
+    }
+    if (!items.length) return "";
+    items = items.slice().sort(function (a, b) { return (Number(b.qty) || 0) - (Number(a.qty) || 0); });
+    var tot = items.reduce(function (a, i) { return a + (Number(i.qty) || 0); }, 0);
+    var rows = items.map(function (i, idx) {
+      return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (idx % 2 ? '#f8fafc' : '#fff') + '">' +
+        '<td style="padding:5px 8px;color:#64748b;font-weight:700">' + (idx + 1) + '</td>' +
+        '<td style="padding:5px 8px">' + esc(i.desc || i.code || "") + '</td>' +
+        '<td style="padding:5px 8px;text-align:center;font-weight:700">' + esc(i.qty || "") + '</td></tr>';
+    }).join("");
+    return '<div style="overflow-x:auto;margin:8px 0 2px"><table style="width:100%;border-collapse:collapse;font-size:12.5px;border:1px solid #e2e8f0">' +
+      '<thead><tr style="background:#0b3b36;color:#fff"><th style="padding:6px 8px;text-align:left;width:32px">#</th>' +
+      '<th style="padding:6px 8px;text-align:left">Product</th><th style="padding:6px 8px;text-align:center;width:60px">Qty</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div>' +
+      '<div style="text-align:right;font-size:11.5px;color:#64748b;margin-bottom:4px"><b>' + items.length + '</b> item(s) &middot; <b>' + tot + '</b> units</div>';
+  }
+
   function viewChallans() {
     var list = S.data.challans.slice().reverse();
     var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
@@ -3505,12 +3533,12 @@ function viewCatalogue() {
         (String(c.receiptReceived).toUpperCase() === "Y" ? ' <span class="pill Won">receipt in</span>' : "") + '</h3>' +
         '<div class="meta">' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
         (c.brand ? '<br>Brand: ' + esc(c.brand) : "") +
-        '<br>' + esc(c.items || "") +
         (c.billNo ? '<br>Bill <b>' + esc(c.billNo) + '</b>' + (c.billTo ? ' to ' + esc(c.billTo) : "") :
           (String(c.billStatus) === "Sent for billing" ? '<br><span style="color:#b45309">With accounts for billing' + (c.billTo ? ' - ' + esc(c.billTo) : "") + '</span>' : "")) +
         (c.freight ? '<br>Freight ' + money(c.freight) + ' (' + esc(c.freightTo || "Client") + ') &middot; ' + esc(c.driver || "no driver") : "") +
         '<br>Created by ' + esc(c.createdBy || "") +
         (c.approvedBy ? ' &middot; approved by <b>' + esc(c.approvedBy) + '</b>' : "") + '</div>' +
+        challanItemsTable(c) +
         '<div class="acts">' +
         (st === "Draft" && canApprove() ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Approved">Approve</button>' : "") +
         (st === "Approved" && canApprove() ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : "") +
