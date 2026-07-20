@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.56";
+  var APP_VERSION = "6.9.57";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -315,6 +315,10 @@ window.addEventListener("beforeunload", function (ev) {
   }
 
   function loadCatalog() {
+    /* Warm the PDF assets (unicode fonts + brand logos) in the background, well before anyone
+       taps Download/WhatsApp, so a statement builds fast and its distributor logos are ready -
+       instead of firing 14 image downloads at the moment of export. Fire-and-forget. */
+    setTimeout(function () { try { loadFonts(); preloadLogos(); } catch (e) { } }, 3000);
     try {
       var c = JSON.parse(localStorage.getItem(CAT_KEY) || "null");
       if (c && c.at && (Date.now() - c.at < 86400000) && c.items && c.items.length) PRODUCTS = c.items;
@@ -3956,8 +3960,8 @@ function viewCatalogue() {
     /* The statement uses its OWN compact header (not the shared commPdfBase): a shorter band,
        a small un-shouty "STATEMENT" label top-right, then the client's details and date beneath
        it - so the client block need not repeat in the body. No company tagline. */
-    return Promise.all([logosReady(), loadFonts()]).then(function (rr) {
-      var f = rr[1];
+    logosReady();   /* warm the brand logos in the background - never block the statement on them */
+    return loadFonts().then(function (f) {
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
       var uni = false;
       if (f) {
@@ -4044,15 +4048,16 @@ function viewCatalogue() {
       F("bold"); doc.setTextColor(17, 34, 45); doc.setFontSize(10.5);
       doc.text("Balance due: " + RS(allNet - paid), L, y); y += 6;
 
-      /* Authorised-distributor strip: brand logos in ONE line of small boxes, pinned to the
-         bottom of the last page (mirrors the delivery challan). Drops to a fresh page only if
-         the ledger ran long enough to collide with it. */
+      /* Authorised-distributor line, pinned to the bottom of the last page. If the brand logos
+         are already cached we draw them as one line of small boxes; if not, we fall back to the
+         brand NAMES as text so the line always appears - the statement NEVER waits on (or is held
+         hostage by) 14 image downloads, which is what made it slow and could reload the tab. */
+      if (y > 268) { doc.addPage(); y = 20; }
       var slots = PDF_LOGO_ORDER.map(function (n) { return logoFor(n); }).filter(function (s) { return s && s.src; });
+      F("bold"); doc.setFontSize(5); doc.setTextColor(120, 130, 140);
+      doc.text("AUTHORISED DISTRIBUTOR FOR", L, 277);
       if (slots.length) {
-        if (y > 268) { doc.addPage(); y = 20; }
         var GP = 1.2, BH = 6, y0 = 279, BW = (R - L - GP * (slots.length - 1)) / slots.length;
-        F("bold"); doc.setFontSize(5); doc.setTextColor(120, 130, 140);
-        doc.text("AUTHORISED DISTRIBUTOR FOR", L, y0 - 2);
         slots.forEach(function (lg, i) {
           var bx = L + i * (BW + GP);
           doc.setDrawColor(216, 216, 216); doc.setLineWidth(0.18); doc.rect(bx, y0, BW, BH, "S");
@@ -4060,6 +4065,9 @@ function viewCatalogue() {
           var iw = lg.w * sc, ih = lg.h * sc;
           try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, y0 + (BH - ih) / 2, iw, ih); } catch (e) { }
         });
+      } else {
+        F("bold"); doc.setFontSize(7.4); doc.setTextColor(90, 100, 110);
+        doc.text(PDF_LOGO_ORDER.join("   ·   "), L, 282);
       }
       doc.setFontSize(6.6); doc.setTextColor(150, 163, 175); F("normal");
       doc.text("Energy World  |  Panipat · Sonipat · Karnal    |    Statement of account, not a tax invoice.", L, 291);
@@ -7373,7 +7381,14 @@ function viewCatalogue() {
           S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
           loadCatalog(); refresh();
         } else { S.pin = ""; renderLogin(); }
-      }).catch(function () { S.pin = ""; renderLogin("Network error."); });
+      }).catch(function () {
+        /* Network error on boot. If we already painted a valid warm session (this device's own
+           role-filtered data), DON'T sign the user out - they're just offline or the network
+           hiccupped, e.g. right after a heavy PDF reloaded the tab. Signing out here was what
+           booted people to the login screen after downloading a statement. */
+        if (S.warmStart) { toast("Offline - working from saved data."); loadCatalog(); }
+        else { S.pin = ""; renderLogin("Network error."); }
+      });
     } else {
       renderLogin();
       if (bioSaved() && bioAvailable()) setTimeout(bioUnlock, 400);
