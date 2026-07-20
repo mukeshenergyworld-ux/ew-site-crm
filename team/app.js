@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.35";
+  var APP_VERSION = "6.9.36";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1291,7 +1291,7 @@ window.addEventListener("beforeunload", function (ev) {
     var dispatched = [];
     try { dispatched = JSON.parse(c.itemsJson || "[]"); } catch (e) { }
     if (!S.alt.rows) {
-      S.alt.rows = dispatched.map(function (i) {
+      S.alt.rows = dispatched.slice().sort(function (a, b) { return (Number(b.qty) || 0) - (Number(a.qty) || 0); }).map(function (i) {
         return { code: i.code || "", desc: i.desc || "", unit: i.unit || "", was: Number(i.qty) || 0, now: Number(i.qty) || 0, note: "" };
       });
     }
@@ -2731,8 +2731,10 @@ function viewCatalogue() {
         return { code: "", desc: m ? m[1].trim() : String(t).trim(), unit: "", qty: m ? m[2] : "" };
       });
     }
+    items.sort(function (a, b) { return (Number(b.qty) || 0) - (Number(a.qty) || 0); });
     var alt = [];
     try { alt = JSON.parse(c.altJson || "[]"); } catch (e) { alt = []; }
+    alt.sort(function (a, b) { return (Number(b.was) || 0) - (Number(a.was) || 0); });
 
     return Promise.all([loadFonts(), challanLogos()]).then(function (res) {
       var f = res[0], LOGOS = res[1];
@@ -4973,7 +4975,7 @@ function viewCatalogue() {
     var z = S.ch;
     var clients = S.data.clients.map(function (x) { return x.name; });
     var sites = S.data.sites.map(function (x) { return x.name; });
-    var picked = (z.items || []);
+    var picked = (z.items || []).slice().sort(function (a, b) { return (Number(b.qty) || 0) - (Number(a.qty) || 0); });
     return '<h2>New delivery challan</h2>' +
       '<p class="sub">The printed challan carries no prices and no pictures - it is a delivery note, not a quote.</p>' +
       ((z && z.fromQuote) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#0d9488">Pre-filled from quote <b>' + esc(z.fromQuote) + '</b> - review the products and discount, then create.</div>' : "") +
@@ -6518,25 +6520,26 @@ function viewCatalogue() {
       var missingWhy = changed.filter(function (r) { return !r.note; });
       if (missingWhy.length) { toast("Give a reason for each changed line."); return; }
       var cid = S.alt.id;
-      t.disabled = true; t.textContent = "Saving...";
-      var step = changed.length
-        ? api("challanAlter", { id: cid, alterations: changed })
-        : Promise.resolve({ ok: true });
-      step.then(function (r) {
-        if (!r || !r.ok) { toast((r && r.error) || "Could not save the alteration."); render(); return; }
-        return api("challanMove", { id: cid, to: "Received" }).then(function (r2) {
-          if (!r2 || !r2.ok) { toast((r2 && r2.error) || "Could not mark received."); render(); return; }
-          var ch4 = S.data.challans.filter(function (x) { return x.id === cid; })[0];
-          if (ch4) {
-            ch4.status = "Received"; ch4.receiptReceived = "Y";
-            if (changed.length) { ch4.altJson = JSON.stringify(changed); ch4.alteredBy = S.user; }
-          }
-          S.alt = null; S.modal = null;
-          toast(changed.length ? "Receipt in, with " + changed.length + " alteration(s)." : "Receipt in - full quantity.");
-          render();
-          quietSync();
-        });
-      });
+      /* Optimistic save: update the challan locally and close the screen instantly, so the user
+         never waits on the two (slow) Apps Script round-trips. The save then runs in the
+         background; if the server rejects it, a quiet re-sync reconciles and we warn. */
+      var ch4 = S.data.challans.filter(function (x) { return x.id === cid; })[0];
+      if (ch4) {
+        ch4.status = "Received"; ch4.receiptReceived = "Y";
+        if (changed.length) { ch4.altJson = JSON.stringify(changed); ch4.alteredBy = S.user; }
+      }
+      S.alt = null; S.modal = null;
+      toast(changed.length ? "Receipt in, with " + changed.length + " alteration(s)." : "Receipt in - full quantity.");
+      render();
+      var fail = function () { toast("Saved on your device - server sync failed, it will retry on next refresh."); quietSync(); };
+      (changed.length ? api("challanAlter", { id: cid, alterations: changed }) : Promise.resolve({ ok: true }))
+        .then(function (r) {
+          if (!r || !r.ok) { fail(); return; }
+          return api("challanMove", { id: cid, to: "Received" }).then(function (r2) {
+            if (!r2 || !r2.ok) { fail(); return; }
+            quietSync();
+          });
+        }).catch(fail);
       return;
     }
     if (act === "ch-move") {
