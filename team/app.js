@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.45";
+  var APP_VERSION = "6.9.46";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3874,15 +3874,35 @@ function viewCatalogue() {
     var sel = chs.filter(function (c) { return S.billSel[c.id] !== false; })
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
     var allNet = chs.reduce(function (a, c) { return a + pricedLines(c, cl).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
-    return logosReady().then(function () { return commPdfBase("STATEMENT", {}, today()); }).then(function (b) {
-      var doc = b.doc, F = b.F, L = b.L, R = b.R, y = 46;
-      var RS = function (n) { return (b.uni ? "₹" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+    /* The statement uses its OWN compact header (not the shared commPdfBase): a shorter band,
+       a small un-shouty "STATEMENT" label top-right, then the client's details and date beneath
+       it - so the client block need not repeat in the body. No company tagline. */
+    return Promise.all([logosReady(), loadFonts()]).then(function (rr) {
+      var f = rr[1];
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var uni = false;
+      if (f) {
+        doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
+        doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold"); uni = true;
+      }
+      var F = function (w) { doc.setFont(uni ? "DJ" : "helvetica", w || "normal"); };
+      var W = 210, L = 16, R = W - 16, HB = 25;
+      var RS = function (n) { return (uni ? "₹" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
       var cust = clientByName(cl) || {};
-      F("bold"); doc.setFontSize(12); doc.setTextColor(17, 34, 45); doc.text(String(cl), L, y); y += 5.5;
-      F("normal"); doc.setFontSize(9); doc.setTextColor(100, 116, 139);
-      var line2 = [cust.area, cust.location].filter(Boolean).join(", "); if (line2) { doc.text(line2, L, y); y += 5; }
-      if (cust.mobile) { doc.text("Mobile: " + cust.mobile, L, y); y += 5; }
-      y += 3;
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, HB, "F");
+      doc.setFillColor(94, 234, 212); doc.rect(0, HB, W, 1.0, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 6, 26, 13); } catch (e) { } }
+      F("bold"); doc.setFontSize(7.4); doc.setTextColor(148, 210, 200);
+      doc.text("STATEMENT OF ACCOUNT", R, 7.5, { align: "right" });
+      F("bold"); doc.setFontSize(11.5); doc.setTextColor(255, 255, 255);
+      doc.text(String(cl), R, 13.6, { align: "right" });
+      F("normal"); doc.setFontSize(7.6); doc.setTextColor(172, 212, 205);
+      var line2 = [cust.area, cust.location].filter(Boolean).join(", ");
+      if (line2) { doc.text(line2, R, 18, { align: "right" }); }
+      var l3 = [cust.mobile ? "Mobile: " + cust.mobile : "", "Date: " + fullDate(today())].filter(Boolean).join("    ·    ");
+      doc.text(l3, R, 22.2, { align: "right" });
+      doc.setTextColor(17, 34, 45);
+      var y = HB + 9;
       /* Columns pulled a touch inside the right margin so AMOUNT never rides the page edge. */
       var cA = R - 2, cN = R - 27, cD = R - 49, cR = R - 68, cQ = R - 87;
       var sX = L + 1, pX = L + 7, prodW = cQ - pX - 5;
