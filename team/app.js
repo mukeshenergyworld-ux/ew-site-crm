@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.50";
+  var APP_VERSION = "6.9.51";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1077,6 +1077,19 @@ window.addEventListener("beforeunload", function (ev) {
       .filter(function (b) { return String(b.active).toUpperCase() !== "N" && live[b.brand]; })
       .map(function (b) { return b.brand; });
   }
+  /* Catalogue buckets that are NOT real brands and must never appear in brand follow-ups. */
+  var NON_BRANDS = ["accessory", "accessories", "net price items", "net price item", "net price", "misc", "miscellaneous"];
+  function isRealBrandName(name) {
+    return NON_BRANDS.indexOf(String(name || "").trim().toLowerCase()) < 0;
+  }
+  /* Brands you can FOLLOW UP / pitch - every active brand in the master, even one with no
+     products loaded yet (a brand you distribute can be pitched before its catalogue is entered).
+     Excludes accessory / net-price buckets, which are catalogue groups, not brands. */
+  function followBrandList() {
+    return S.data.brands
+      .filter(function (b) { return String(b.active).toUpperCase() !== "N" && isRealBrandName(b.brand); })
+      .map(function (b) { return b.brand; });
+  }
   function brandProducts(brand) {
     return PRODUCTS.filter(function (p) { return realBrand(p) === brand; });
   }
@@ -1234,7 +1247,7 @@ window.addEventListener("beforeunload", function (ev) {
      (then he becomes a Client but still shows under the brands he hasn't bought - cross-sell). A
      brand drops off a customer's list only when it is marked Won, Lost or Not required (reason). */
   function viewBrandFollow() {
-    var brands = brandList();
+    var brands = followBrandList();
     if (!brands.length) return '<div class="empty">No brands set up yet.</div>';
     if (!S.bf || brands.indexOf(S.bf) < 0) S.bf = brands[0];
     if (S.bfMode !== "client") S.bfMode = "lead";
