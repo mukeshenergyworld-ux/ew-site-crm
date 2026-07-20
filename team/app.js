@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.46";
+  var APP_VERSION = "6.9.47";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3799,13 +3799,49 @@ function viewCatalogue() {
   }
   /* Freight the CLIENT is billed for on a challan (company-borne freight is not the client's cost). */
   function chFreight(c) { return String(c.freightTo) === "Client" ? (Number(c.freight) || 0) : 0; }
+  /* Every billable client with a net outstanding balance (net billed incl. client freight, minus
+     payments received), tagged with the sales executive who owns the client. */
+  function hisabOutstanding() {
+    return hisabClientNames().map(function (nm) {
+      var chs = (S.data.challans || []).filter(function (c) { return c.customerName === nm && String(c.receiptReceived).toUpperCase() === "Y"; });
+      var net = chs.reduce(function (a, c) { return a + pricedLines(c, nm).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
+      var paid = clientLedger(nm).paid, cl = clientByName(nm) || {};
+      return { name: nm, owner: cl.owner || "", net: net, paid: paid, due: net - paid };
+    }).filter(function (r) { return r.due > 0.5; });
+  }
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
     var cl = hisabResolve(S.q);
     var billNames = hisabClientNames();
     var h = '<div class="row"><input class="grow" id="q" placeholder="Type a client to bill (then Enter)..." list="billclients" value="' + esc(S.q) + '"/><button class="btn" data-act="bill-go">Show</button></div>' +
       '<datalist id="billclients">' + billNames.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>';
-    if (!S.q) return h + '<div class="empty">Pick a client, then Enter. Every received challan is priced from your pre-set discounts &mdash; challan by challan &mdash; with a client ledger and the option to WhatsApp the statement (all or the ticked challans).</div>';
+    if (!S.q) {
+      var outs = hisabOutstanding();
+      if (!outs.length) return h + '<div class="empty">No outstanding balances &mdash; every received challan is fully paid. Type a client above to view their hisab.</div>';
+      var groups = {};
+      outs.forEach(function (r) { var k = r.owner || "Unassigned"; (groups[k] = groups[k] || []).push(r); });
+      var gtot = function (k) { return groups[k].reduce(function (s, r) { return s + r.due; }, 0); };
+      var gkeys = Object.keys(groups).sort(function (a, b) { return gtot(b) - gtot(a); });
+      var totalDue = outs.reduce(function (a, r) { return a + r.due; }, 0);
+      var oh = '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3>Outstanding &mdash; ' + money(totalDue) + ' across ' + outs.length + ' client(s)</h3>' +
+        '<div class="meta" style="font-size:13px">Grouped by sales executive &middot; net of pre-set discounts. Tap a client to open their hisab.</div></div>';
+      gkeys.forEach(function (k) {
+        var rows = groups[k].slice().sort(function (a, b) { return b.due - a.due; });
+        oh += '<div class="card"><h3>' + esc(k) + ' <span class="pill due">' + money(gtot(k)) + '</span> <span style="font-weight:400;color:#94a3b8;font-size:12.5px">' + rows.length + ' client(s)</span></h3>' +
+          '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+          '<thead><tr style="background:#f1f5f9;color:#475569"><th style="padding:6px 8px;text-align:left">Client</th>' +
+          '<th style="padding:6px 8px;text-align:right">Billed (net)</th><th style="padding:6px 8px;text-align:right">Received</th>' +
+          '<th style="padding:6px 8px;text-align:right">Outstanding</th></tr></thead><tbody>' +
+          rows.map(function (r, i) {
+            return '<tr style="border-bottom:1px solid #eef2f7;cursor:pointer;background:' + (i % 2 ? '#f8fafc' : '#fff') + '" data-act="bill-open" data-n="' + esc(r.name) + '">' +
+              '<td style="padding:7px 8px;font-weight:600;color:#0d766c">' + esc(r.name) + '</td>' +
+              '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.net) + '</td>' +
+              '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.paid) + '</td>' +
+              '<td style="padding:7px 8px;text-align:right;font-weight:800;color:#dc2626">' + money(r.due) + '</td></tr>';
+          }).join("") + '</tbody></table></div></div>';
+      });
+      return h + oh;
+    }
     if (!cl) {
       var guess = billNames.filter(function (n) { return n.toLowerCase().indexOf(String(S.q).trim().toLowerCase()) >= 0; });
       return h + '<div class="empty">No received challans matching <b>' + esc(S.q) + '</b> yet.' +
@@ -5808,6 +5844,7 @@ function viewCatalogue() {
     if (act === "bf-brand") { S.bf = t.getAttribute("data-brand"); render(); return; }
     if (act === "bf-mode") { S.bfMode = t.getAttribute("data-m") === "client" ? "client" : "lead"; render(); return; }
     if (act === "bill-go") { render(); return; }
+    if (act === "bill-open") { S.q = t.getAttribute("data-n"); render(); return; }
     if (act === "bill-gst") { S.billGst = !S.billGst; render(); return; }
     if (act === "bill-selall") {
       if (!S.billSel) S.billSel = {};
