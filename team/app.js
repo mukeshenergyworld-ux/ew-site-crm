@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.40";
+  var APP_VERSION = "6.9.41";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3725,9 +3725,28 @@ function viewCatalogue() {
     var cl = S.q;
     var h = '<div class="row"><input class="grow" id="q" placeholder="Type a client to set their brand discounts..." list="dclients" value="' + esc(S.q) + '"/></div>' +
       '<datalist id="dclients">' + S.data.clients.map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>';
-    if (!cl) return h + '<div class="empty">Pick a client. Each client can have a different discount per brand - that is what the quote builder pulls in automatically.</div>';
+    if (!cl) {
+      var byClient = {};
+      (S.data.discounts || []).forEach(function (d) {
+        if (Number(d.pct) > 0) { (byClient[d.client] = byClient[d.client] || []).push({ brand: d.brand, pct: d.pct }); }
+      });
+      var names = Object.keys(byClient).sort();
+      h += '<div class="empty" style="text-align:left;padding:0 0 10px">Type a client above to set discounts, or tap one below to edit. Discounts feed the quote builder, each new challan and the billing screen. <b>Admin only</b>; edits apply to future challans, not past ones.</div>';
+      if (!names.length) return h + '<div class="empty">No client discounts set yet. Type a client above to set the first one.</div>';
+      h += '<h3 style="margin:6px 0 8px;font-size:14px">Clients with a discount pre-set (' + names.length + ')</h3>';
+      names.forEach(function (n) {
+        var c = clientByName(n) || {};
+        var partners = [c.architect && "Architect: " + c.architect, c.plumber && "Plumber: " + c.plumber, c.builder && "Builder: " + c.builder, c.pmc && "PMC: " + c.pmc].filter(Boolean);
+        h += '<div class="card"><h3>' + esc(n) + (c.location ? ' <span class="pill teal">' + esc(c.location) + '</span>' : '') + '</h3>' +
+          '<div class="meta">' + byClient[n].map(function (x) { return esc(x.brand) + ' <b>' + esc(x.pct) + '%</b>'; }).join('  &middot;  ') +
+          (partners.length ? '<br><span style="color:#0d9488">Partners: ' + esc(partners.join('   ·   ')) + '</span>' : '<br><span style="color:#94a3b8">No linked partner</span>') + '</div>' +
+          '<div class="acts"><button class="btn sm ghost" data-act="disc-edit" data-n="' + esc(n) + '">Edit</button></div></div>';
+      });
+      return h;
+    }
     var brands = brandList();
-    h += '<div class="empty" style="text-align:left;padding:0 0 10px">Brand-wise discount for <b>' + esc(cl) + '</b>. Used by the quote builder and by the incentive base.</div>';
+    h += '<div class="row"><button class="btn sm ghost" data-act="disc-back">&larr; All discount clients</button></div>' +
+      '<div class="empty" style="text-align:left;padding:6px 0 10px">Brand-wise discount for <b>' + esc(cl) + '</b>. Used by the quote builder, new challans and the billing screen.</div>';
     brands.forEach(function (b) {
       var d = S.data.discounts.filter(function (x) {
         return String(x.client).toLowerCase() === cl.toLowerCase() && x.brand === b;
@@ -3756,22 +3775,31 @@ function viewCatalogue() {
     var admin = S.role === "admin", grand = 0;
     chs.forEach(function (c) {
       var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
-      items = items.slice().sort(function (a, b) { return (Number(b.qty) || 0) - (Number(a.qty) || 0); });
-      var sub = 0;
-      var rows = items.map(function (i, idx) {
-        var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0, disc = Number(i.disc) || 0;
-        var dr = Math.round(rate * (1 - disc / 100)), amt = qty * dr; sub += amt;
+      /* Price each line (discount frozen on the line, else fall back to the client's current
+         pre-set brand discount), then sort HIGHEST DISCOUNT first. */
+      var priced = items.map(function (i) {
+        var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0;
+        var bBrand = i.brand || realBrand((PRODUCTS.filter(function (p) { return p.code === i.code; })[0]) || {}) || c.brand || "";
+        var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscount(cl, bBrand);
+        var dr = Math.round(rate * (1 - disc / 100));
+        return { i: i, rate: rate, qty: qty, disc: disc, dr: dr, amt: qty * dr };
+      });
+      priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
+      var sub = priced.reduce(function (a, x) { return a + x.amt; }, 0);
+      var rows = priced.map(function (x, idx) {
+        var i = x.i, disc = x.disc;
+        /* No discount → don't clutter with Rate + 0%; the net price is shown under Net rate only. */
         var discCell = admin
-          ? '<input class="bdsc" data-ch="' + esc(c.id) + '" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(disc) + '" style="width:50px;text-align:center;padding:4px;border:1px solid #cbd5e1;border-radius:5px"/>'
-          : (disc + '%');
+          ? '<input class="bdsc" data-ch="' + esc(c.id) + '" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + (disc > 0 ? esc(disc) : "") + '" placeholder="0" style="width:48px;text-align:center;padding:4px;border:1px solid #cbd5e1;border-radius:5px"/>'
+          : (disc > 0 ? disc + '%' : '');
         return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (idx % 2 ? '#f8fafc' : '#fff') + '">' +
           '<td style="padding:5px 6px;color:#64748b">' + (idx + 1) + '</td>' +
           '<td style="padding:5px 6px">' + esc(i.desc || i.code || "") + '</td>' +
-          '<td style="padding:5px 6px;text-align:center">' + qty + '</td>' +
-          '<td style="padding:5px 6px;text-align:right">' + money(rate) + '</td>' +
+          '<td style="padding:5px 6px;text-align:center">' + x.qty + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;color:#94a3b8">' + (disc > 0 ? money(x.rate) : '') + '</td>' +
           '<td style="padding:5px 6px;text-align:center">' + discCell + '</td>' +
-          '<td style="padding:5px 6px;text-align:right">' + money(dr) + '</td>' +
-          '<td style="padding:5px 6px;text-align:right;font-weight:700">' + money(amt) + '</td></tr>';
+          '<td style="padding:5px 6px;text-align:right;font-weight:600">' + money(x.dr) + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;font-weight:700">' + money(x.amt) + '</td></tr>';
       }).join("");
       grand += sub;
       h += '<div class="card"><h3>' + esc(c.challanNo) + ' <span class="pill teal">' + esc(dstr(c.createdAt)) + '</span>' +
@@ -3780,7 +3808,7 @@ function viewCatalogue() {
         '<thead><tr style="background:#0b3b36;color:#fff">' +
         '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product</th>' +
         '<th style="padding:6px;text-align:center;width:40px">Qty</th><th style="padding:6px;text-align:right;width:66px">Rate</th>' +
-        '<th style="padding:6px;text-align:center;width:56px">Disc%</th><th style="padding:6px;text-align:right;width:72px">Disc rate</th>' +
+        '<th style="padding:6px;text-align:center;width:56px">Disc%</th><th style="padding:6px;text-align:right;width:72px">Net rate</th>' +
         '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' + rows + '</tbody>' +
         '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total</td>' +
         '<td style="padding:6px;text-align:right;font-weight:800">' + money(sub) + '</td></tr></tfoot></table></div></div>';
@@ -5278,7 +5306,7 @@ function viewCatalogue() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
     var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "Billing"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -5615,6 +5643,8 @@ function viewCatalogue() {
     if (act === "bf-mode") { S.bfMode = t.getAttribute("data-m") === "client" ? "client" : "lead"; render(); return; }
     if (act === "bill-go") { render(); return; }
     if (act === "bill-gst") { S.billGst = !S.billGst; render(); return; }
+    if (act === "disc-edit") { S.q = t.getAttribute("data-n"); render(); return; }
+    if (act === "disc-back") { S.q = ""; render(); return; }
     if (act === "board-quote") {
       var bn = t.getAttribute("data-n"), bb = t.getAttribute("data-brand");
       var bcl = clientByName(bn);
