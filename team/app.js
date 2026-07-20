@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.51";
+  var APP_VERSION = "6.9.52";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1540,14 +1540,13 @@ window.addEventListener("beforeunload", function (ev) {
     var list = S.data.quotes.slice().reverse();
     if (!list.length) h += '<div class="empty">No quotes yet. Every quote is versioned - revising keeps the old one.</div>';
     list.forEach(function (q) {
-      h += '<div class="card"><h3>' + esc(q.quoteNo) + ' <span class="pill ' + (q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "teal")) + '">' + esc(q.status) + '</span>' +
+      h += '<div class="card" style="padding:9px 13px;margin-bottom:8px"><h3 style="margin:0 0 2px;font-size:13.5px">' + esc(q.quoteNo) + ' <span class="pill ' + (q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "teal")) + '">' + esc(q.status) + '</span>' +
         (Number(q.version) > 1 ? ' <span class="pill">v' + esc(q.version) + '</span>' : "") + '</h3>' +
-        '<div class="meta">' + esc(q.client) + ' - ' + esc(q.brand) +
-        '<br>Gross ' + money(q.gross) + ' - disc ' + esc(q.discountPct) + '% - net ' + money(q.net) +
-        '<br><b>Total incl GST: ' + money(q.total) + '</b>' +
-        '<br>' + esc(dstr(q.createdAt)) + ' by ' + esc(q.createdBy) + '</div>' +
-        '<div class="acts">' +
-        '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:7px 10px;font-size:13px">' + opts(QSTATUS, q.status) + '</select>' +
+        '<div class="meta" style="font-size:12px;line-height:1.5">' + esc(q.client) + ' &middot; ' + esc(q.brand) +
+        '<br>net <b>' + money(q.net) + '</b> &middot; <b>' + money(q.total) + '</b> incl GST &middot; ' + esc(q.discountPct) + '% off ' + money(q.gross) +
+        ' <span style="color:#94a3b8">&middot; ' + esc(dstr(q.createdAt)) + ' ' + esc(q.createdBy) + '</span></div>' +
+        '<div class="acts" style="margin-top:7px;gap:6px">' +
+        '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:5px 8px;font-size:12.5px">' + opts(QSTATUS, q.status) + '</select>' +
         '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '">PDF</button>' +
         '<button class="btn sm" data-act="q-wa" data-id="' + esc(q.id) + '">WhatsApp</button>' +
         '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
