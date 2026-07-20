@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.34";
+  var APP_VERSION = "6.9.35";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4988,12 +4988,24 @@ function viewCatalogue() {
       '<span class="pill teal">' + picked.length + ' picked</span></h3>' +
       chPicker() +
       (picked.length
-        ? '<div class="picked-list">' + picked.map(function (i, idx) {
-            return '<div class="prow"><div class="pinfo"><div class="pname">' + (idx + 1) + '. ' + esc(i.desc) + '</div>' +
-              '<div class="pmeta">' + esc(i.code) + '</div></div><div class="pqty">' +
-              '<input class="ch-q" data-code="' + esc(i.code) + '" inputmode="numeric" value="' + esc(i.qty) + '"/>' +
-              '<button class="stp" data-act="ch-qty" data-code="' + esc(i.code) + '" data-d="-1">&minus;</button></div></div>';
-          }).join("") + '</div>'
+        ? '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e2e8f0">' +
+            '<thead><tr style="background:#0b3b36;color:#fff">' +
+            '<th style="padding:7px 8px;text-align:left;width:36px">#</th>' +
+            '<th style="padding:7px 8px;text-align:left">Product</th>' +
+            '<th style="padding:7px 8px;text-align:center;width:96px">Qty</th>' +
+            '<th style="width:38px"></th></tr></thead><tbody>' +
+            picked.map(function (i, idx) {
+              return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (idx % 2 ? '#f8fafc' : '#fff') + '">' +
+                '<td style="padding:6px 8px;color:#64748b;font-weight:700">' + (idx + 1) + '</td>' +
+                '<td style="padding:6px 8px"><b>' + esc(i.desc) + '</b><br><span style="font-size:11px;color:#94a3b8">' + esc(i.code) + '</span></td>' +
+                '<td style="padding:4px 6px;text-align:center"><input class="ch-q" data-code="' + esc(i.code) + '" inputmode="numeric" value="' + esc(i.qty) + '" style="width:76px;text-align:center;padding:7px;font-size:15px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px"/></td>' +
+                '<td style="text-align:center"><button class="stp" data-act="ch-qty" data-code="' + esc(i.code) + '" data-d="-1" title="reduce by one">&minus;</button></td>' +
+                '</tr>';
+            }).join("") +
+            '</tbody></table></div>' +
+            '<div style="text-align:right;font-size:12.5px;color:#64748b;margin-top:5px">' +
+            '<b>' + picked.length + '</b> line(s) &middot; <b>' +
+            picked.reduce(function (a, i) { return a + (Number(i.qty) || 0); }, 0) + '</b> units total</div>'
         : "") +
 
       '<div class="grid2" style="margin-top:10px">' +
