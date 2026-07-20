@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.62";
+  var APP_VERSION = "6.9.63";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1064,6 +1064,31 @@ window.addEventListener("beforeunload", function (ev) {
       return String(x.client).toLowerCase() === String(client).toLowerCase() && String(x.brand) === String(brand);
     })[0];
     return d ? Number(d.pct) || 0 : 0;
+  }
+  /* ---- per-client, per-brand, per-partner incentive ----
+     The incentive a partner earns is set at the SAME place as that client's brand discount
+     (admin only). We store it on the very same discount row, in its `notes` column, as a small
+     JSON map of role -> percent, e.g. {"plumber":5,"architect":3}. Role, not partner name, so it
+     follows whoever is that client's plumber / architect today. No new sheet column is needed. */
+  function discRow(client, brand) {
+    return S.data.discounts.filter(function (x) {
+      return String(x.client).trim().toLowerCase() === String(client).trim().toLowerCase() && String(x.brand) === String(brand);
+    })[0] || null;
+  }
+  function incMap(row) {
+    try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
+  }
+  function incRate(client, brand, role) {
+    var d = discRow(client, brand); if (!d) return 0;
+    return Number(incMap(d)[String(role).toLowerCase()]) || 0;
+  }
+  /* Which roles a partner fills on a client (usually one). Drives who earns the incentive. */
+  function clientRolesOf(client, partnerLower) {
+    var roles = [];
+    ["architect", "plumber", "builder", "pmc"].forEach(function (role) {
+      if (String(client[role] || "").trim().toLowerCase() === partnerLower && partnerLower) roles.push(role);
+    });
+    return roles;
   }
   /* The catalogue Master Brand column mixes real brands with categories. Map it. */
   function realBrand(p) {
@@ -3629,26 +3654,39 @@ function viewCatalogue() {
   }
 
   function partnerBook(name) {
-    var nm = String(name).toLowerCase();
-    /* only challans whose material receipt is in count as real business */
-    var chs = S.data.challans.filter(function (c) {
-      return String(c.associate || "").toLowerCase() === nm && String(c.receiptReceived).toUpperCase() === "Y";
-    });
-    var billed = 0, earned = 0;
-    var rows = chs.map(function (c) {
-      /* Incentive is now on the NET (post-discount) sale value, not the gross list price. */
-      var base = challanNet(c);
-      var pct = rateFor(name, c.brand);
-      var inc = base * pct / 100;
-      billed += base;
-      earned += inc;
-      return { no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
-        amount: base, base: base, pct: pct, inc: inc };
+    var nm = String(name).trim().toLowerCase();
+    /* A partner earns on every client he is named on (as plumber / architect / builder / PMC),
+       at the rate set for THAT client and THAT brand - computed line by line, because one challan
+       can carry more than one brand. Only challans whose material receipt is in count as business. */
+    /* the partner's default rate is used only where no client-&-brand rate has been set yet, so
+       nobody's incentive silently drops to zero the day we switch to the per-client model */
+    var flatDefault = Number((partnerByName(name) || {}).rate) || 0;
+    var myClients = (S.data.clients || []).filter(function (cl) { return clientRolesOf(cl, nm).length; });
+    var billed = 0, earned = 0, rows = [], clientNames = {};
+    myClients.forEach(function (cl) {
+      var roles = clientRolesOf(cl, nm);
+      var chs = S.data.challans.filter(function (c) {
+        return String(c.customerName || "").trim().toLowerCase() === String(cl.name).trim().toLowerCase() &&
+               String(c.receiptReceived).toUpperCase() === "Y";
+      });
+      chs.forEach(function (c) {
+        var base = 0, inc = 0;
+        pricedLines(c, c.customerName).forEach(function (x) {
+          base += x.amt;
+          var br = x.brand || c.brand || "";
+          /* the highest role rate set for this client & brand; if none set, the partner default */
+          var rate = 0;
+          roles.forEach(function (role) { var r = incRate(cl.name, br, role); if (r > rate) rate = r; });
+          if (rate === 0) rate = flatDefault;
+          inc += x.amt * rate / 100;
+        });
+        billed += base; earned += inc; clientNames[c.customerName] = 1;
+        rows.push({ no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
+          amount: base, base: base, pct: base > 0 ? (inc / base * 100) : 0, inc: inc });
+      });
     });
     /* payable follows the money in, not the invoice out */
-    var clients = {};
-    chs.forEach(function (c) { clients[c.customerName] = 1; });
-    var collected = S.data.payments.filter(function (p) { return clients[p.client]; })
+    var collected = S.data.payments.filter(function (p) { return clientNames[p.client]; })
       .reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
     var ratio = billed > 0 ? Math.min(1, collected / billed) : 0;
     var payable = earned * ratio;
@@ -3676,7 +3714,7 @@ function viewCatalogue() {
       '<div class="stat"><div class="n">' + money(tot.paid) + '</div><div class="l">Paid out</div></div>' +
       '<div class="stat ' + (tot.pending > 0 ? "alert" : "") + '"><div class="n">' + money(tot.pending) + '</div><div class="l">Still to pay</div></div>' +
       '</div>';
-    h += '<div class="empty" style="text-align:left;padding:0 0 12px">Incentive = net billed \u00f7 1.18 (ex-GST) \u00d7 the partner rate, and it only becomes <b>payable as the client pays</b>. A challan counts only once its material receipt is in.</div>';
+    h += '<div class="empty" style="text-align:left;padding:0 0 12px">Incentive = net sale (post-discount, ex-GST) \u00d7 the rate set for that <b>client &amp; brand</b> on the discount screen, paid to whoever is that client\u2019s plumber / architect / builder / PMC. It only becomes <b>payable as the client pays</b>, and a challan counts only once its material receipt is in.</div>';
     var cold = coldPartners();
     if (cold.length) {
       h += '<div class="card" style="border-color:#fdba74;background:#fff7ed"><h3>Stay in touch <span class="pill soon">' + cold.length + '</span></h3>' +
@@ -3800,16 +3838,35 @@ function viewCatalogue() {
       return h;
     }
     var brands = brandList();
+    var cObj = clientByName(cl) || {};
+    var ROLE_LABEL = { plumber: "Plumber", architect: "Architect", builder: "Builder", pmc: "PMC" };
+    var anyPartner = ["plumber", "architect", "builder", "pmc"].some(function (r) { return String(cObj[r] || "").trim(); });
     h += '<div class="row"><button class="btn sm ghost" data-act="disc-back">&larr; All discount clients</button></div>' +
-      '<div class="empty" style="text-align:left;padding:6px 0 10px">Brand-wise discount for <b>' + esc(cl) + '</b>. Used by the quote builder, new challans and the billing screen.</div>';
+      '<div class="empty" style="text-align:left;padding:6px 0 10px">Brand-wise discount for <b>' + esc(cl) + '</b>. Used by the quote builder, new challans and the billing screen.' +
+      (anyPartner
+        ? ' Below each discount, set the incentive % for this client’s partner(s) on that brand — each earns on the net (post-discount) sale.'
+        : ' <span style="color:#94a3b8">No plumber / architect / builder / PMC is linked to this client, so there is no incentive to set. Add one on the client’s record to set partner incentives here.</span>') +
+      '</div>';
     brands.forEach(function (b) {
-      var d = S.data.discounts.filter(function (x) {
-        return String(x.client).toLowerCase() === cl.toLowerCase() && x.brand === b;
-      })[0];
+      var d = discRow(cl, b);
+      var im = incMap(d);
+      var incRows = "";
+      ["plumber", "architect", "builder", "pmc"].forEach(function (role) {
+        var pn = String(cObj[role] || "").trim();
+        if (!pn) return;
+        var rv = (im[role] != null && im[role] !== "") ? im[role] : "";
+        incRows += '<div class="acts" style="align-items:center;margin-top:6px">' +
+          '<span class="grow" style="font-size:12px;color:#0d9488">' + esc(ROLE_LABEL[role]) + ' incentive <span style="color:#94a3b8">(' + esc(pn) + ')</span></span>' +
+          '<input class="incp" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-role="' + role + '" data-id="' + esc(d ? d.id : "") + '" inputmode="decimal" value="' + esc(rv) + '" placeholder="0" style="width:78px;padding:7px 10px"/>' +
+          '<span class="pill">%</span></div>';
+      });
       h += '<div class="card"><h3>' + esc(b) + (d && Number(d.pct) ? ' <span class="pill teal">' + esc(d.pct) + '%</span>' : ' <span class="pill">not set</span>') + '</h3>' +
         '<div class="acts" style="align-items:center">' +
-        '<input class="dsc" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-id="' + esc(d ? d.id : "") + '" inputmode="decimal" value="' + esc(d ? d.pct : "") + '" placeholder="0" style="width:90px;padding:7px 10px"/>' +
-        '<span class="pill">% off list</span></div></div>';
+        '<span class="grow" style="font-size:12px;color:#334155">Brand discount</span>' +
+        '<input class="dsc" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-id="' + esc(d ? d.id : "") + '" inputmode="decimal" value="' + esc(d ? d.pct : "") + '" placeholder="0" style="width:78px;padding:7px 10px"/>' +
+        '<span class="pill">% off list</span></div>' +
+        incRows +
+        '</div>';
     });
     return h;
   }
@@ -3826,7 +3883,7 @@ function viewCatalogue() {
       var bBrand = i.brand || realBrand((PRODUCTS.filter(function (p) { return p.code === i.code; })[0]) || {}) || c.brand || "";
       var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscount(cl, bBrand);
       var dr = Math.round(rate * (1 - disc / 100));
-      return { desc: i.desc || i.code || "", code: i.code, qty: qty, rate: rate, disc: disc, dr: dr, amt: qty * dr };
+      return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr, amt: qty * dr };
     });
     priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
     return priced;
@@ -4783,18 +4840,24 @@ function viewCatalogue() {
     }
 
     /* step 3 - the men */
+    /* the man running the most live sites sits at the top - that is who is worth a call first */
     var list = inRole.filter(function (a2) {
       if (S.pLoc && (a2.location || "-") !== S.pLoc) return false;
       return !q || (a2.name + " " + a2.area + " " + a2.location + " " + a2.mobile).toLowerCase().indexOf(q) >= 0;
-    }).sort(function (x, y) { return String(x.name).localeCompare(String(y.name)); });
+    }).map(function (a2) { return { p: a2, st: partnerStats(a2.name) }; })
+      .sort(function (x, y) {
+        return (y.st.live - x.st.live) || (y.st.open - x.st.open) || (y.st.clients - x.st.clients) ||
+          String(x.p.name).localeCompare(String(y.p.name));
+      });
 
     h += '<div class="row" style="margin:10px 0 4px"><div class="meta"><b>' + list.length + '</b> ' +
-      esc(S.pRole || "partner") + (list.length === 1 ? "" : "s") + (S.pLoc ? ' in ' + esc(S.pLoc) : "") + '</div>' +
+      esc(S.pRole || "partner") + (list.length === 1 ? "" : "s") + (S.pLoc ? ' in ' + esc(S.pLoc) : "") +
+      ' &middot; most live sites first</div>' +
       '<div class="grow"></div><button class="btn sm" data-act="as-new">+ Add</button></div>';
     if (!list.length) return h + '<div class="empty">Nobody here yet.</div>';
 
-    list.forEach(function (p) {
-      var st = partnerStats(p.name);
+    list.forEach(function (row) {
+      var p = row.p, st = row.st;
       h += '<div class="card"><h3>' + esc(p.name) +
         (p.flag ? ' <span class="pill Lost">needs number</span>' : "") +
         (st.live ? ' <span class="pill Won">' + st.live + ' live</span>' : "") +
@@ -4811,7 +4874,7 @@ function viewCatalogue() {
           : "") +
         /* incentive: partners only. Never rendered for sales, accounts or service. */
         (S.role === "admin"
-          ? '<br>Rate ' + (p.rate ? esc(p.rate) + "%" : '<span style="color:#94a3b8">not set</span>') +
+          ? '<br>Default rate ' + (p.rate ? esc(p.rate) + "%" : '<span style="color:#94a3b8">not set</span>') +
             (st.owed > 0 ? ' &middot; <b style="color:#0d9488">' + money(st.owed) + ' owed</b>' : "")
           : "") +
         '</div>' +
@@ -4834,11 +4897,11 @@ function viewCatalogue() {
     a = a || {};
     var loc = a.location || locations()[0];
     return '<h2>' + (a.id ? "Edit partner" : "New partner") + '</h2>' +
-      '<p class="sub">Plumbers, architects, builders and PMCs. Incentive % is set here.</p>' +
+      '<p class="sub">Plumbers, architects, builders and PMCs. The default incentive % below is a fallback — the real rate is set per client &amp; brand on the Discounts screen.</p>' +
       '<label>Name</label><input id="m_aname" value="' + esc(a.name) + '"/>' +
       '<div class="grid2">' +
       '<div><label>Role</label><select id="m_arole">' + opts(["Architect", "Plumber", "Builder", "PMC", "Contractor", "Dealer", "Other"], a.role || "Plumber") + '</select></div>' +
-      '<div><label>Incentive %</label><input id="m_arate" inputmode="decimal" value="' + esc(a.rate || "") + '"/></div>' +
+      '<div><label>Default incentive %</label><input id="m_arate" inputmode="decimal" value="' + esc(a.rate || "") + '"/></div>' +
       '</div>' +
       '<div class="grid2">' +
       '<div><label>Mobile</label><input id="m_amobile" inputmode="numeric" value="' + esc(a.mobile) + '"/></div>' +
@@ -7285,8 +7348,23 @@ function viewCatalogue() {
       if (S.role !== "admin") { toast("Only admin can set discounts."); return; }
       var cli = t.getAttribute("data-client");
       var br = t.getAttribute("data-brand");
-      save("discounts", { id: t.getAttribute("data-id") || "", client: cli, brand: br, pct: t.value, notes: "" })
+      var exd = discRow(cli, br);
+      save("discounts", { id: t.getAttribute("data-id") || (exd ? exd.id : "") || "", client: cli, brand: br, pct: t.value, notes: (exd && exd.notes) || "" })
         .then(function (r) { if (r) toast(br + " for " + cli + ": " + (t.value || 0) + "%"); });
+      return;
+    }
+    if (t.classList && t.classList.contains("incp")) {
+      if (S.role !== "admin") { toast("Only admin can set incentives."); return; }
+      var icli = t.getAttribute("data-client");
+      var ibr = t.getAttribute("data-brand");
+      var irole = String(t.getAttribute("data-role") || "").toLowerCase();
+      var iex = discRow(icli, ibr);
+      var m = incMap(iex);
+      var vv = String(t.value || "").trim();
+      if (vv === "" || Number(vv) === 0) { delete m[irole]; } else { m[irole] = Number(vv) || 0; }
+      var notesStr = Object.keys(m).length ? JSON.stringify(m) : "";
+      save("discounts", { id: (iex ? iex.id : "") || "", client: icli, brand: ibr, pct: (iex && iex.pct != null) ? iex.pct : "", notes: notesStr })
+        .then(function (r) { if (r) toast(irole + " incentive · " + icli + " · " + ibr + ": " + (vv || 0) + "%"); });
       return;
     }
     if (t.classList && t.classList.contains("bm")) {
