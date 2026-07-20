@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.32";
+  var APP_VERSION = "6.9.33";
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
 
@@ -4900,7 +4900,7 @@ function viewCatalogue() {
         '<div class="pmeta">' + esc(p.code) + ' &middot; ' + esc(p.unit) + '</div></div>' +
         '<div class="pqty">' +
         '<button class="stp" data-act="ch-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
-        '<b>' + (ex ? ex.qty : 0) + '</b>' +
+        '<input class="ch-q" data-code="' + esc(p.code) + '" inputmode="numeric" value="' + esc(ex ? ex.qty : "") + '" placeholder="0"/>' +
         '<button class="stp" data-act="ch-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
         '</div></div>';
     });
@@ -4985,7 +4985,8 @@ function viewCatalogue() {
       (picked.length
         ? '<div class="picked-list">' + picked.map(function (i) {
             return '<div class="prow"><div class="pinfo"><div class="pname">' + esc(i.desc) + '</div>' +
-              '<div class="pmeta">' + esc(i.code) + '</div></div><div class="pqty"><b>' + i.qty + '</b>' +
+              '<div class="pmeta">' + esc(i.code) + '</div></div><div class="pqty">' +
+              '<input class="ch-q" data-code="' + esc(i.code) + '" inputmode="numeric" value="' + esc(i.qty) + '"/>' +
               '<button class="stp" data-act="ch-qty" data-code="' + esc(i.code) + '" data-d="-1">&minus;</button></div></div>';
           }).join("") + '</div>'
         : "") +
@@ -6683,6 +6684,21 @@ function viewCatalogue() {
         if (qb && S.qz.brandDiscs[qb] === undefined) S.qz.brandDiscs[qb] = clientDiscount(S.qz.client, qb);
       }
       render(); return;
+    }
+    if (t.classList && t.classList.contains("ch-q") && S.ch) {
+      var chCode = t.getAttribute("data-code");
+      var chQ = Math.max(0, Math.floor(Number(t.value) || 0));
+      var chProd = PRODUCTS.filter(function (x) { return x.code === chCode; })[0] || {};
+      var chRow = (S.ch.items || []).filter(function (i) { return i.code === chCode; })[0];
+      if (chRow) {
+        if (chQ <= 0) S.ch.items = S.ch.items.filter(function (i) { return i.code !== chCode; });
+        else chRow.qty = chQ;
+      } else if (chQ > 0) {
+        S.ch.items.push({ code: chCode, desc: chProd.desc || chCode, unit: chProd.unit || "No's", qty: chQ, rate: chProd.price || 0 });
+      }
+      var restoreChQ = keepFields(CH_FIELDS);
+      S.modal = modalChallan(); render(); restoreChQ();
+      return;
     }
     if (t.classList && t.classList.contains("qz-d") && S.qz) {
       var c2 = t.getAttribute("data-code");
