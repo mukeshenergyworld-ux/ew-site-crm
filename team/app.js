@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.44";
+  var APP_VERSION = "6.9.45";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3797,6 +3797,8 @@ function viewCatalogue() {
     var part = names.filter(function (n) { return n.toLowerCase().indexOf(q) >= 0; });
     return part.length === 1 ? part[0] : "";
   }
+  /* Freight the CLIENT is billed for on a challan (company-borne freight is not the client's cost). */
+  function chFreight(c) { return String(c.freightTo) === "Client" ? (Number(c.freight) || 0) : 0; }
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
     var cl = hisabResolve(S.q);
@@ -3813,12 +3815,13 @@ function viewCatalogue() {
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
     if (!chs.length) return h + '<div class="empty">No received challans for <b>' + esc(cl) + '</b> yet. A challan lands here automatically once its receipt is confirmed.</div>';
     var admin = S.role === "admin";
-    var allNet = 0, selNet = 0, selCount = 0;
+    var allNet = 0, selNet = 0, selGoods = 0, selCount = 0;
     chs.forEach(function (c) {
       var sel = S.billSel[c.id] !== false;
       var priced = pricedLines(c, cl);
       var sub = priced.reduce(function (a, x) { return a + x.amt; }, 0);
-      allNet += sub; if (sel) { selNet += sub; selCount++; }
+      var frt = chFreight(c), chTotal = sub + frt;
+      allNet += chTotal; if (sel) { selNet += chTotal; selGoods += sub; selCount++; }
       var rows = priced.map(function (x, idx) {
         var disc = x.disc;
         var discCell = admin
@@ -3841,12 +3844,14 @@ function viewCatalogue() {
         '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product</th>' +
         '<th style="padding:6px;text-align:center;width:40px">Qty</th><th style="padding:6px;text-align:right;width:66px">Rate</th>' +
         '<th style="padding:6px;text-align:center;width:56px">Disc%</th><th style="padding:6px;text-align:right;width:72px">Net rate</th>' +
-        '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' + rows + '</tbody>' +
-        '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total</td>' +
-        '<td style="padding:6px;text-align:right;font-weight:800">' + money(sub) + '</td></tr></tfoot></table></div></div>';
+        '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' + rows +
+        (frt > 0 ? '<tr style="background:#fffbeb;border-top:1px dashed #e2e8f0"><td colspan="6" style="padding:5px 6px;text-align:right;color:#92400e">Freight' + (c.driver ? ' (' + esc(c.driver) + ')' : '') + '</td><td style="padding:5px 6px;text-align:right;font-weight:700;color:#92400e">' + money(frt) + '</td></tr>' : '') +
+        '</tbody>' +
+        '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total' + (frt > 0 ? ' (incl. freight)' : '') + '</td>' +
+        '<td style="padding:6px;text-align:right;font-weight:800">' + money(chTotal) + '</td></tr></tfoot></table></div></div>';
     });
     var paid = clientLedger(cl).paid, bal = allNet - paid;
-    var gst = S.billGst ? Math.round(selNet * 0.18) : 0;
+    var gst = S.billGst ? Math.round(selGoods * 0.18) : 0;
     h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
       '<h3>Client ledger &mdash; ' + esc(cl) + '</h3>' +
       '<div class="meta" style="font-size:13.5px">Total billed (net): <b>' + money(allNet) + '</b>  &middot;  Received: <b>' + money(paid) + '</b>  &middot;  Balance due: <b style="color:' + (bal > 0 ? '#dc2626' : '#0d9488') + '">' + money(bal) + '</b></div>' +
@@ -3868,7 +3873,7 @@ function viewCatalogue() {
     var chs = (S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; });
     var sel = chs.filter(function (c) { return S.billSel[c.id] !== false; })
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
-    var allNet = chs.reduce(function (a, c) { return a + pricedLines(c, cl).reduce(function (s, x) { return s + x.amt; }, 0); }, 0);
+    var allNet = chs.reduce(function (a, c) { return a + pricedLines(c, cl).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
     return logosReady().then(function () { return commPdfBase("STATEMENT", {}, today()); }).then(function (b) {
       var doc = b.doc, F = b.F, L = b.L, R = b.R, y = 46;
       var RS = function (n) { return (b.uni ? "₹" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
@@ -3889,7 +3894,7 @@ function viewCatalogue() {
         doc.text("NET", cN, y, { align: "right" }); doc.text("AMOUNT", cA, y, { align: "right" });
         y += 4.8;
       };
-      var grand = 0;
+      var grand = 0, goodsGrand = 0;
       sel.forEach(function (c) {
         if (y > 262) { doc.addPage(); y = 20; }
         F("bold"); doc.setFontSize(8.6); doc.setTextColor(13, 118, 108);
@@ -3912,14 +3917,21 @@ function viewCatalogue() {
           F("bold"); doc.text(RS(x.amt), cA, y, { align: "right" }); F("normal");
           y += rowH; sub += x.amt;
         });
-        grand += sub;
+        var frt = chFreight(c), chTotal = sub + frt;
+        if (frt > 0) {
+          if (y + 4.4 > 282) { doc.addPage(); y = 20; head(); }
+          F("normal"); doc.setFontSize(6.8); doc.setTextColor(146, 64, 14);
+          doc.text("Freight" + (c.driver ? " (" + c.driver + ")" : ""), pX, y);
+          doc.text(RS(frt), cA, y, { align: "right" }); y += 4.4;
+        }
+        grand += chTotal; goodsGrand += sub;
         doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.2); doc.line(L, y - 2.2, R, y - 2.2);
         F("bold"); doc.setFontSize(8); doc.setTextColor(17, 34, 45);
-        doc.text("Challan total", cN, y, { align: "right" }); doc.text(RS(sub), cA, y, { align: "right" }); y += 7.5;
+        doc.text(frt > 0 ? "Challan total (incl. freight)" : "Challan total", cN, y, { align: "right" }); doc.text(RS(chTotal), cA, y, { align: "right" }); y += 7.5;
       });
       if (!sel.length) { doc.setFontSize(10); doc.setTextColor(120, 120, 120); doc.text("No challans selected.", L, y); y += 6; }
       if (y > 250) { doc.addPage(); y = 20; }
-      var gst = S.billGst ? Math.round(grand * 0.18) : 0, paid = clientLedger(cl).paid;
+      var gst = S.billGst ? Math.round(goodsGrand * 0.18) : 0, paid = clientLedger(cl).paid;
       doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(L, y - 1, R, y - 1); doc.setLineWidth(0.2); y += 5;
       F("bold"); doc.setFontSize(11); doc.setTextColor(17, 34, 45);
       doc.text("Statement total", cN, y, { align: "right" }); doc.text(RS(grand), cA, y, { align: "right" }); y += 6;
