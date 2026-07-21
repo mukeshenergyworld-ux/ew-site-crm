@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.79";
+  var APP_VERSION = "6.9.81";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3722,6 +3722,7 @@ function viewCatalogue() {
   }
 
   function viewChallans() {
+    ensurePickerCss();   /* stage-action colours + picker styles must exist on the list view too */
     var list = S.data.challans.slice().reverse();
     var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
     var h = '<div class="cards">' +
@@ -3743,17 +3744,17 @@ function viewCatalogue() {
       /* action buttons stay on the compact card too, so approving many in a row never needs an
          extra tap to expand first. */
       var actions =
-        (st === "Draft" && canApprove() ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Approved">Approve</button>' : "") +
-        (st === "Approved" && canApprove() ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : "") +
+        (st === "Draft" && canApprove() ? '<button class="btn sm act-approve" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Approved">Approve</button>' : "") +
+        (st === "Approved" && canApprove() ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : "") +
         ((st === "Draft" || st === "Approved") && canApprove() ? '<button class="btn sm ghost" data-act="ch-edit" data-id="' + esc(c.id) + '">Edit</button>' : "") +
-        (st === "Dispatched" ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Receipt received</button>' : "") +
+        (st === "Dispatched" ? '<button class="btn sm act-receipt" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Receipt received</button>' : "") +
         /* Billing on a received challan. Accounts/admin enter it directly here (add or edit), so a
            delivered challan can be tied to its invoice number - the basis for tallying stock later.
            Other roles keep the hand-off ("Send for billing") that puts it in the accounts queue. */
         (st === "Received"
           ? ((S.role === "admin" || S.role === "accounts")
-              ? '<button class="btn sm' + (c.billNo ? ' ghost' : '') + '" data-act="bill-detail" data-id="' + esc(c.id) + '">' + (c.billNo ? 'Edit bill' : 'Add billing detail') + '</button>'
-              : (!c.billStatus ? '<button class="btn sm" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : ""))
+              ? '<button class="btn sm ' + (c.billNo ? 'act-billedit' : 'act-bill') + '" data-act="bill-detail" data-id="' + esc(c.id) + '">' + (c.billNo ? 'Edit bill' : 'Add billing detail') + '</button>'
+              : (!c.billStatus ? '<button class="btn sm act-billsend" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : ""))
           : "") +
         '<button class="btn sm ghost" data-act="ch-pdf" data-id="' + esc(c.id) + '">PDF</button>';
 
@@ -5605,7 +5606,24 @@ function viewCatalogue() {
       ".ew-crumb .tag{font-size:9.5px;text-transform:uppercase;letter-spacing:.3px;color:#64748b;font-weight:700}" +
       ".ew-crumb .cx{color:#94a3b8;font-weight:700}" +
       ".ew-crumb:active,.ew-crumb:hover{border-color:#ef4444;color:#b91c1c}" +
-      ".ew-crumb:hover .cx{color:#b91c1c}";
+      ".ew-crumb:hover .cx{color:#b91c1c}" +
+      /* Product rows: a small thumbnail on the left, name + meta beside it, qty stepper on the right -
+         the base CSS was showing a full-width photo. Override to a compact 54px thumbnail. */
+      ".plist .prow{display:flex!important;align-items:center;gap:10px;padding:6px 2px;border-bottom:1px solid #eef2f7}" +
+      ".plist .prow img,.plist .prow .noimg{width:54px!important;height:54px!important;min-width:54px;max-width:54px;object-fit:contain;border-radius:8px;background:#f8fafc;flex:0 0 54px}" +
+      ".plist .prow .pinfo{flex:1 1 auto;min-width:0}" +
+      ".plist .prow .pname{font-size:13.5px;font-weight:600;line-height:1.25}" +
+      ".plist .prow .pmeta{font-size:11.5px;color:#94a3b8}" +
+      ".plist .prow .pqty{flex:0 0 auto;display:flex;align-items:center;gap:6px}" +
+      ".plist .prow .pqty .ch-q{width:56px;text-align:center}" +
+      /* Colour-coded stage actions, so Approve / Dispatch / Receipt / Billing read apart at a glance.
+         Blue = authorise, Orange = releases material, Teal = goods in, Purple/Indigo = billing. */
+      ".btn.act-approve{background:#2563eb!important;border-color:#2563eb!important;color:#fff!important}" +
+      ".btn.act-dispatch{background:#ea580c!important;border-color:#ea580c!important;color:#fff!important}" +
+      ".btn.act-receipt{background:#0d9488!important;border-color:#0d9488!important;color:#fff!important}" +
+      ".btn.act-bill{background:#7c3aed!important;border-color:#7c3aed!important;color:#fff!important}" +
+      ".btn.act-billedit{background:#fff!important;border-color:#7c3aed!important;color:#7c3aed!important}" +
+      ".btn.act-billsend{background:#4f46e5!important;border-color:#4f46e5!important;color:#fff!important}";
     document.head.appendChild(s);
   }
 
