@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.74";
+  var APP_VERSION = "6.9.75";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1663,8 +1663,7 @@ window.addEventListener("beforeunload", function (ev) {
         '</div>' +
         '<div class="acts" style="margin:0;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end;gap:6px">' +
         '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:5px 8px;font-size:12.5px">' + opts(QSTATUS, q.status) + '</select>' +
-        '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '">PDF</button>' +
-        '<button class="btn sm" data-act="q-wa" data-id="' + esc(q.id) + '">WhatsApp</button>' +
+        '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
         '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
         (q.status === "Won" ? '<button class="btn sm" data-act="q-challan" data-id="' + esc(q.id) + '">Make challan</button>' : "") +
         '<button class="btn sm ghost" data-act="qz-revise" data-id="' + esc(q.id) + '">Revise</button></div>' +
@@ -5400,7 +5399,7 @@ function viewCatalogue() {
         esc(moneyAscii(q.net)) + ' (GST as applicable) &middot; ' + esc(q.status) +
         (S.role === "admin" && q.createdBy ? ' &middot; ' + esc(q.createdBy) : '') + '</div>' +
         '<div class="acts">' +
-        '<button class="btn sm" data-act="rad-wa" data-id="' + esc(q.id) + '">WhatsApp</button>' +
+        '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
         '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
         '<button class="btn sm ghost" data-act="rad-status" data-id="' + esc(q.id) + '" data-s="Won">Won</button>' +
         '<button class="btn sm ghost" data-act="rad-status" data-id="' + esc(q.id) + '" data-s="Lost">Lost</button>' +
