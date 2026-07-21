@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.87";
+  var APP_VERSION = "6.9.88";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -5038,9 +5038,13 @@ function viewCatalogue() {
   function partnerStats(name) {
     var n = String(name || "").trim().toLowerCase();
     var isMine = function (v) { return String(v || "").trim().toLowerCase() === n; };
-    /* his clients: he is named as the plumber / architect / builder / PMC on the client */
+    /* his clients: he is named as the plumber / architect / builder / PMC on the client. For a sales
+       exec the count is scoped to THEIR assigned clients only, so "sites going on" and the
+       most-sites-first order reflect this exec's own book, not the whole company's. */
     var mine = (S.data.clients || []).filter(function (c) {
-      return isMine(c.plumber) || isMine(c.architect) || isMine(c.builder) || isMine(c.pmc);
+      var named = isMine(c.plumber) || isMine(c.architect) || isMine(c.builder) || isMine(c.pmc);
+      if (!named) return false;
+      return seesAllClients() || isMineClient(c.name);
     });
     var names = {};
     mine.forEach(function (c) { names[String(c.name).trim().toLowerCase()] = 1; });
@@ -5126,7 +5130,7 @@ function viewCatalogue() {
 
     h += '<div class="row" style="margin:10px 0 4px"><div class="meta"><b>' + list.length + '</b> ' +
       esc(S.pRole || "partner") + (list.length === 1 ? "" : "s") + (S.pLoc ? ' in ' + esc(S.pLoc) : "") +
-      ' &middot; most live sites first</div>' +
+      ' &middot; most live sites first' + (seesAllClients() ? '' : ' (your clients)') + '</div>' +
       '<div class="grow"></div><button class="btn sm" data-act="as-new">+ Add</button></div>';
     if (!list.length) return h + '<div class="empty">Nobody here yet.</div>';
 
