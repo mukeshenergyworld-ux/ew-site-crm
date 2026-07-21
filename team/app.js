@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.84";
+  var APP_VERSION = "6.9.85";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -223,11 +223,18 @@
     var idx = -1;
     for (var k = 0; k < list.length; k++) { if (list[k] && ((row.id && list[k].id === row.id) || (row._lid && list[k]._lid === row._lid))) { idx = k; break; } }
     if (idx >= 0) Object.assign(list[idx], row); else { list.push(row); idx = list.length - 1; }
+    /* Send the FULL merged in-memory row, not just the handful of fields the caller passed. The
+       backend writes the whole sheet row from whatever it receives - any column it is NOT sent is
+       written blank - so a partial save would wipe the rest of the record (this is what blanked a
+       team member's name on an early PIN reset). Sending list[idx] (the existing row with this
+       change applied) means a save can only ever CHANGE the mentioned fields and can never blank the
+       others. Safe whether the backend merges or overwrites. */
+    var fullRow = list[idx] || row;
     S.pending = (S.pending || 0) + 1;
     var pk = "pk" + (++_pkSeq) + "_" + (row.id || row._lid || "x");
-    pendPut(pk, tab, row);            // journal the attempt on THIS DEVICE before the network call
+    pendPut(pk, tab, fullRow);        // journal the FULL row so an offline retry is safe too
     render();
-    var payload = Object.assign({}, row); delete payload._lid;   // local-only key never leaves the device
+    var payload = Object.assign({}, fullRow); delete payload._lid;   // local-only key never leaves the device
     var done = function () { S.pending = Math.max(0, (S.pending || 1) - 1); };
     return api("teamSave", { tab: tab, row: payload }).then(function (r) {
       if (!r || !r.ok) {
