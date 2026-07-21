@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.76";
+  var APP_VERSION = "6.9.77";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3679,6 +3679,18 @@ function viewCatalogue() {
       '<div style="text-align:right;font-size:11.5px;color:#64748b;margin-bottom:4px"><b>' + items.length + '</b> item(s) &middot; <b>' + tot + '</b> units</div>';
   }
 
+  /* line & unit counts for the compact challan card, without building the whole table */
+  function challanCount(c) {
+    var items = [];
+    try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+    if (!items.length && c.items) {
+      items = String(c.items).split(",").map(function (t) {
+        var m = String(t).match(/[x×](\d+)\s*$/); return { qty: m ? m[1] : 0 };
+      });
+    }
+    return { lines: items.length, units: items.reduce(function (a, i) { return a + (Number(i.qty) || 0); }, 0) };
+  }
+
   function viewChallans() {
     var list = S.data.challans.slice().reverse();
     var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
@@ -3695,17 +3707,12 @@ function viewCatalogue() {
     list.forEach(function (c) {
       var st = c.status || "Draft";
       var cls = st === "Received" ? "Won" : (st === "Draft" ? "due" : "teal");
-      h += '<div class="card"><h3>' + esc(c.challanNo) + ' <span class="pill ' + cls + '">' + esc(st) + '</span>' +
-        (String(c.receiptReceived).toUpperCase() === "Y" ? ' <span class="pill Won">receipt in</span>' : "") + '</h3>' +
-        '<div class="meta">' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
-        (c.brand ? '<br>Brand: ' + esc(c.brand) : "") +
-        (c.billNo ? '<br>Bill <b>' + esc(c.billNo) + '</b>' + (c.billTo ? ' to ' + esc(c.billTo) : "") :
-          (String(c.billStatus) === "Sent for billing" ? '<br><span style="color:#b45309">With accounts for billing' + (c.billTo ? ' - ' + esc(c.billTo) : "") + '</span>' : "")) +
-        (c.freight ? '<br>Freight ' + money(c.freight) + ' (' + esc(c.freightTo || "Client") + ') &middot; ' + esc(c.driver || "no driver") : "") +
-        '<br>Created by ' + esc(c.createdBy || "") +
-        (c.approvedBy ? ' &middot; approved by <b>' + esc(c.approvedBy) + '</b>' : "") + '</div>' +
-        challanItemsTable(c) +
-        '<div class="acts">' +
+      var open = !!(S.chExp && S.chExp[c.id]);
+      var cnt = challanCount(c);
+
+      /* action buttons stay on the compact card too, so approving many in a row never needs an
+         extra tap to expand first. */
+      var actions =
         (st === "Draft" && canApprove() ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Approved">Approve</button>' : "") +
         (st === "Approved" && canApprove() ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : "") +
         ((st === "Draft" || st === "Approved") && canApprove() ? '<button class="btn sm ghost" data-act="ch-edit" data-id="' + esc(c.id) + '">Edit</button>' : "") +
@@ -3714,8 +3721,31 @@ function viewCatalogue() {
         (st === "Received" && !c.billStatus ? '<button class="btn sm" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : "") +
         (String(c.billStatus) === "Sent for billing" && (S.role === "accounts" || S.role === "admin")
           ? '<button class="btn sm" data-act="bill-no" data-id="' + esc(c.id) + '">Enter bill no.</button>' : "") +
-        '<button class="btn sm ghost" data-act="ch-pdf" data-id="' + esc(c.id) + '">PDF</button>' +
-        '</div></div>';
+        '<button class="btn sm ghost" data-act="ch-pdf" data-id="' + esc(c.id) + '">PDF</button>';
+
+      h += '<div class="card">' +
+        /* header row: challan no + status, with the expand/collapse toggle pinned right */
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">' +
+        '<h3 style="margin:0">' + esc(c.challanNo) + ' <span class="pill ' + cls + '">' + esc(st) + '</span>' +
+        (String(c.receiptReceived).toUpperCase() === "Y" ? ' <span class="pill Won">receipt in</span>' : "") + '</h3>' +
+        '<button class="btn sm ghost" data-act="ch-exp" data-id="' + esc(c.id) + '" style="flex:0 0 auto">' + (open ? 'Collapse &#9650;' : 'Expand &#9660;') + '</button>' +
+        '</div>' +
+        /* compact summary — always visible */
+        '<div class="meta">' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
+        (cnt.lines ? ' &middot; <b>' + cnt.lines + '</b> item' + (cnt.lines > 1 ? 's' : '') + ' / <b>' + cnt.units + '</b> units' : "") +
+        (c.brand ? ' &middot; ' + esc(c.brand) : "") + '</div>';
+
+      if (open) {
+        var billLine = (c.billNo ? 'Bill <b>' + esc(c.billNo) + '</b>' + (c.billTo ? ' to ' + esc(c.billTo) : "") :
+          (String(c.billStatus) === "Sent for billing" ? '<span style="color:#b45309">With accounts for billing' + (c.billTo ? ' - ' + esc(c.billTo) : "") + '</span>' : ""));
+        var freightLine = (c.freight ? 'Freight ' + money(c.freight) + ' (' + esc(c.freightTo || "Client") + ') &middot; ' + esc(c.driver || "no driver") : "");
+        var madeLine = 'Created by ' + esc(c.createdBy || "") + (c.approvedBy ? ' &middot; approved by <b>' + esc(c.approvedBy) + '</b>' : "");
+        h += '<div class="meta" style="margin-top:4px">' +
+          [billLine, freightLine, madeLine].filter(function (x) { return x; }).join('<br>') +
+          '</div>' + challanItemsTable(c);
+      }
+
+      h += '<div class="acts">' + actions + '</div></div>';
     });
     return h;
   }
@@ -7193,6 +7223,14 @@ function viewCatalogue() {
       var restoreCh = keepFields(CH_FIELDS);
       keepScroll = true;
       S.modal = modalChallan(); render(); restoreCh();
+      return;
+    }
+    if (act === "ch-exp") {
+      S.chExp = S.chExp || {};
+      S.chExp[id] = !S.chExp[id];
+      var _y = window.scrollY;           // keep the page where it is - rebuilding #root resets scroll
+      render();
+      window.scrollTo(0, _y);
       return;
     }
     if (act === "ch-edit") {
