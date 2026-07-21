@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.91";
+  var APP_VERSION = "6.9.92";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1474,12 +1474,14 @@ window.addEventListener("beforeunload", function (ev) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") + '</div>';
     if (!list.length) return h + '<div class="empty">No clients yet. A lead becomes a client here the moment one of his quotes is marked Won.</div>';
-    list.forEach(function (c) {
+
+    ensurePickerCss();   /* the exec band (.ch-exec) styling lives with the picker CSS */
+    function clientCardHtml(c) {
       var partners = [c.architect && "Arch: " + c.architect, c.plumber && "Plumber: " + c.plumber,
         c.builder && "Builder: " + c.builder, c.pmc && "PMC: " + c.pmc].filter(Boolean);
       var won = clientWonCount(c.name);
       var cSeg = clientSegment(c);
-      h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
+      return '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
         (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
         ' <span class="bs win">' + (won ? won + ' WON' : 'CLIENT') + '</span></h3>' +
         '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  &middot;  ")) +
@@ -1488,7 +1490,31 @@ window.addEventListener("beforeunload", function (ev) {
         brandBoard(c.name) +
         '<div class="acts" style="margin-top:8px">' + (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
         '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>';
-    });
+    }
+
+    /* For admin / accounts, group the client list by the sales executive it's assigned to (a teal
+       band per exec), so the owner can read the book exec-wise. A sales exec (list already filtered
+       to their own clients) just gets the flat list. */
+    if (seesAllClients()) {
+      var groups = {}, order = [];
+      list.forEach(function (c) {
+        var e = String(c.ownedBy || c.createdBy || "").trim() || "Unassigned";
+        if (!groups[e]) { groups[e] = []; order.push(e); }
+        groups[e].push(c);
+      });
+      order.sort(function (a, b) {
+        if (a === "Unassigned") return 1; if (b === "Unassigned") return -1;
+        return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+      });
+      order.forEach(function (e) {
+        var cs = groups[e].slice().sort(function (a, b) { return String(a.name).toLowerCase() < String(b.name).toLowerCase() ? -1 : 1; });
+        h += '<div class="ch-exec">' + esc(e) +
+          '<span class="sub">' + cs.length + ' client' + (cs.length !== 1 ? 's' : '') + '</span></div>';
+        cs.forEach(function (c) { h += clientCardHtml(c); });
+      });
+    } else {
+      list.forEach(function (c) { h += clientCardHtml(c); });
+    }
     return h;
   }
 
