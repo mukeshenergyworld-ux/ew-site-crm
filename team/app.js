@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.88";
+  var APP_VERSION = "6.9.90";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -214,7 +214,7 @@
     var b = document.getElementById("ew_retry_btn"); if (b) b.onclick = function () { toast("Retrying..."); retryPending(); };
   }
 
-  function save(tab, row) {
+  function save(tab, row, quiet) {
     /* every NEW row (no server id yet) gets a stable local key so the recovery overlay can
        recognise it and never duplicate it - works for tabs with no natural key (discounts,
        payments, pitch...). The key is stripped before the row goes to the server. */
@@ -233,22 +233,27 @@
     S.pending = (S.pending || 0) + 1;
     var pk = "pk" + (++_pkSeq) + "_" + (row.id || row._lid || "x");
     pendPut(pk, tab, fullRow);        // journal the FULL row so an offline retry is safe too
-    render();
+    /* A "quiet" save (used by the discount / incentive editor) skips the repaint so the field being
+       typed in is never torn down mid-edit and focus can never jump to the search box. The row is
+       already in memory and journaled, so nothing is lost. */
+    if (!quiet) render();
     var payload = Object.assign({}, fullRow); delete payload._lid;   // local-only key never leaves the device
     var done = function () { S.pending = Math.max(0, (S.pending || 1) - 1); };
     return api("teamSave", { tab: tab, row: payload }).then(function (r) {
       if (!r || !r.ok) {
         done(); pendMark(pk, (r && r.error) || "server refused it");
-        toast("Not synced yet - kept safe on this device, will retry."); render();
+        toast("Not synced yet - kept safe on this device, will retry.");
+        if (!quiet) render(); else syncBanner();
         return row;                   // KEEP the record - never discard
       }
       done();
       if (list[idx]) Object.assign(list[idx], r.row);
-      pendDrop(pk); render(); quietSync();
+      pendDrop(pk); if (!quiet) render(); quietSync();
       return r.row;
     }).catch(function (e) {
       done(); pendMark(pk, (e && e.message) ? e.message : "network error");
-      toast("Not synced yet - kept safe on this device, will retry."); render();
+      toast("Not synced yet - kept safe on this device, will retry.");
+      if (!quiet) render(); else syncBanner();
       return row;                     // KEEP the record - never discard
     });
   }
@@ -3811,7 +3816,10 @@ function viewCatalogue() {
       (S.role === "admin" ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
       '<div class="grow"></div><button class="btn" data-act="ch-new">+ New challan</button></div>';
     if (!list.length) h += '<div class="empty">No challans yet.</div>';
-    list.forEach(function (c) {
+
+    /* One challan's card (compact summary + expandable detail). Factored out so the very same card
+       can be dropped under whichever client it belongs to in the grouped layout below. */
+    function challanCardHtml(c) {
       var st = c.status || "Draft";
       var cls = st === "Received" ? "Won" : (st === "Draft" ? "due" : "teal");
       var open = !!(S.chExp && S.chExp[c.id]);
@@ -3834,7 +3842,7 @@ function viewCatalogue() {
           : "") +
         '<button class="btn sm ghost" data-act="ch-pdf" data-id="' + esc(c.id) + '">PDF</button>';
 
-      h += '<div class="card">' +
+      var out = '<div class="card">' +
         /* header row: challan no + status, with the expand/collapse toggle pinned right */
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">' +
         '<h3 style="margin:0">' + esc(c.challanNo) + ' <span class="pill ' + cls + '">' + esc(st) + '</span>' +
@@ -3853,12 +3861,50 @@ function viewCatalogue() {
           (String(c.billStatus) === "Sent for billing" ? '<span style="color:#b45309">With accounts for billing' + (c.billTo ? ' - ' + esc(c.billTo) : "") + '</span>' : ""));
         var freightLine = (c.freight ? 'Freight ' + money(c.freight) + ' (' + esc(c.freightTo || "Client") + ') &middot; ' + esc(c.driver || "no driver") : "");
         var madeLine = 'Created by ' + esc(c.createdBy || "") + (c.approvedBy ? ' &middot; approved by <b>' + esc(c.approvedBy) + '</b>' : "");
-        h += '<div class="meta" style="margin-top:4px">' +
+        out += '<div class="meta" style="margin-top:4px">' +
           [billLine, freightLine, madeLine].filter(function (x) { return x; }).join('<br>') +
           '</div>' + challanItemsTable(c);
       }
 
-      h += '<div class="acts">' + actions + '</div></div>';
+      out += '<div class="acts">' + actions + '</div></div>';
+      return out;
+    }
+
+    /* Group the whole delivery book top-down: Sales exec -> Client -> that client's challans.
+       Admin / accounts see every exec; a sales exec (list already filtered) sees only their own
+       clients, so their view is simply their clients each with its challans. A client whose owner
+       is blank falls under "Unassigned", pinned to the bottom so it reads as a to-do. */
+    var groups = {}, execOrder = [];
+    list.forEach(function (c) {
+      var cl = clientByName(c.customerName) || {};
+      var exec = String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned";
+      var clientName = c.customerName || "(no client)";
+      if (!groups[exec]) { groups[exec] = { clients: {}, clientOrder: [], n: 0 }; execOrder.push(exec); }
+      var g = groups[exec];
+      if (!g.clients[clientName]) { g.clients[clientName] = []; g.clientOrder.push(clientName); }
+      g.clients[clientName].push(c);
+      g.n++;
+    });
+    execOrder.sort(function (a, b) {
+      if (a === "Unassigned") return 1; if (b === "Unassigned") return -1;
+      return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+    });
+    execOrder.forEach(function (exec) {
+      var g = groups[exec];
+      g.clientOrder.sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; });
+      /* the exec band only earns its space when more than one exec is on screen (i.e. admin/accounts);
+         for a single sales exec it would just repeat their own name over and over. */
+      if (seesAllClients()) {
+        h += '<div class="ch-exec">' + esc(exec) +
+          '<span class="sub">' + g.clientOrder.length + ' client' + (g.clientOrder.length > 1 ? 's' : '') +
+          ' &middot; ' + g.n + ' challan' + (g.n > 1 ? 's' : '') + '</span></div>';
+      }
+      g.clientOrder.forEach(function (clientName) {
+        var chs = g.clients[clientName];
+        h += '<div class="ch-client">' + esc(clientName) +
+          '<span class="sub">' + chs.length + ' challan' + (chs.length > 1 ? 's' : '') + '</span></div>';
+        chs.forEach(function (c) { h += challanCardHtml(c); });
+      });
     });
     return h;
   }
@@ -4143,6 +4189,12 @@ function viewCatalogue() {
         loadLine +
         '</div>';
     });
+    /* Explicit Save & Back. Each field already saves quietly the moment you leave it, so nothing is
+       lost even without tapping this — but the button gives a clear "I'm done" that also commits a
+       field still being typed (by blurring it first) and returns to the client list. */
+    h += '<div class="acts" style="position:sticky;bottom:0;background:#fff;padding:12px 0 14px;border-top:1px solid #e2e8f0;margin-top:10px;z-index:5">' +
+      '<button class="btn" data-act="disc-saveall">&#10003; Save &amp; back</button>' +
+      '<button class="btn ghost" data-act="disc-back">Back</button></div>';
     return h;
   }
 
@@ -5709,7 +5761,12 @@ function viewCatalogue() {
       ".btn.act-billedit{background:#fff!important;border-color:#7c3aed!important;color:#7c3aed!important}" +
       ".btn.act-billsend{background:#4f46e5!important;border-color:#4f46e5!important;color:#fff!important}" +
       ".btn.act-reset{background:#fff!important;border-color:#dc2626!important;color:#dc2626!important}" +
-      ".btn.act-reset:hover{background:#fef2f2!important}";
+      ".btn.act-reset:hover{background:#fef2f2!important}" +
+      /* Grouped challan book: a solid teal band per sales exec, a lighter left-ruled strip per client. */
+      ".ch-exec{margin:20px 0 4px;padding:9px 13px;background:#0f766e;color:#fff;border-radius:10px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:8px}" +
+      ".ch-exec .sub{font-size:11px;font-weight:600;background:rgba(255,255,255,.2);padding:2px 9px;border-radius:999px;white-space:nowrap}" +
+      ".ch-client{margin:12px 0 6px;padding:6px 11px;border-left:4px solid #0d9488;background:#f0fdfa;border-radius:0 8px 8px 0;font-weight:700;font-size:13.5px;color:#134e4a;display:flex;justify-content:space-between;align-items:center;gap:8px}" +
+      ".ch-client .sub{font-size:11px;font-weight:600;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:999px;white-space:nowrap}";
     document.head.appendChild(s);
   }
 
@@ -6121,8 +6178,10 @@ function viewCatalogue() {
     if (q) {
       q.addEventListener("input", function (e) { S.q = e.target.value; });
       q.addEventListener("keyup", function (e) { if (e.key === "Enter") render(); });
-      q.focus();
-      q.setSelectionRange(q.value.length, q.value.length);
+      /* Only grab focus when the box is empty (a fresh search). Once a client is loaded — e.g. while
+         editing that client's discounts / incentives — leave focus where the user put it so a
+         background repaint can never yank the caret back up to the search box. */
+      if (!q.value) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
     }
     /* quote builder code search: hold the text as it is typed (no re-render, so focus stays),
        and run the search on Enter. Not auto-focused - that would steal focus off the +/- taps. */
@@ -6462,6 +6521,13 @@ function viewCatalogue() {
     }
     if (act === "disc-edit") { S.q = t.getAttribute("data-n"); render(); return; }
     if (act === "disc-back") { S.q = ""; render(); return; }
+    if (act === "disc-saveall") {
+      /* commit a field that is still focused (its change handler fires on blur, saving quietly),
+         then go back to the discount-client list. The 60ms lets that in-flight save start. */
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      setTimeout(function () { S.q = ""; render(); toast("Discounts & incentives saved."); }, 60);
+      return;
+    }
     if (act === "board-quote") {
       var bn = t.getAttribute("data-n"), bb = t.getAttribute("data-brand");
       var bcl = clientByName(bn);
@@ -7845,7 +7911,7 @@ function viewCatalogue() {
       var cli = t.getAttribute("data-client");
       var br = t.getAttribute("data-brand");
       var exd = discRow(cli, br);
-      save("discounts", { id: t.getAttribute("data-id") || (exd ? exd.id : "") || "", client: cli, brand: br, pct: t.value, notes: (exd && exd.notes) || "" })
+      save("discounts", { id: t.getAttribute("data-id") || (exd ? exd.id : "") || "", client: cli, brand: br, pct: t.value, notes: (exd && exd.notes) || "" }, true)
         .then(function (r) { if (r) toast(br + " for " + cli + ": " + (t.value || 0) + "%"); });
       return;
     }
@@ -7859,7 +7925,7 @@ function viewCatalogue() {
       var vv = String(t.value || "").trim();
       if (vv === "" || Number(vv) === 0) { delete m[irole]; } else { m[irole] = Number(vv) || 0; }
       var notesStr = Object.keys(m).length ? JSON.stringify(m) : "";
-      save("discounts", { id: (iex ? iex.id : "") || "", client: icli, brand: ibr, pct: (iex && iex.pct != null) ? iex.pct : "", notes: notesStr })
+      save("discounts", { id: (iex ? iex.id : "") || "", client: icli, brand: ibr, pct: (iex && iex.pct != null) ? iex.pct : "", notes: notesStr }, true)
         .then(function (r) { if (r) toast(irole + " incentive · " + icli + " · " + ibr + ": " + (vv || 0) + "%"); });
       return;
     }
