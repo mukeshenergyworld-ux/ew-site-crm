@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.81";
+  var APP_VERSION = "6.9.82";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -130,7 +130,7 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules"],
+    admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins"],
     accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist"],
     godown:   ["dash","returns","tools","challans","products"],
     sales:    ["dash","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","products"],
@@ -3721,6 +3721,36 @@ function viewCatalogue() {
       '<button class="btn" data-act="bill-save" data-id="' + esc(id) + '">Save billing</button></div>';
   }
 
+  /* Owner-only PIN reset. It only ever CLEARS a teammate's PIN (pin + pinSet columns); it never
+     sets one. After a reset, the app forces that person to choose a fresh PIN the next time they
+     sign in (login checks pinSet !== "Y"). No PIN is ever seen or typed by anyone but its owner. */
+  function viewTeamPins() {
+    ensurePickerCss();
+    var team = (S.data.team || []).slice().sort(function (a, b) {
+      return String(a.name || "").toLowerCase().localeCompare(String(b.name || "").toLowerCase());
+    });
+    var h = '<h2>Team PINs</h2>' +
+      '<p class="sub">Reset a teammate\'s login PIN. A reset only <b>clears</b> their PIN — it never sets one. ' +
+      'Next time they open the app and type their name, the app asks them to choose a brand-new PIN of their own. ' +
+      'Nobody, not even you, sees or types anyone\'s PIN.</p>';
+    if (!team.length) return h + '<div class="empty">No team members loaded.</div>';
+    team.forEach(function (u) {
+      var setYes = String(u.pinSet || "").toUpperCase() === "Y";
+      var inactive = String(u.active || "").toUpperCase() === "N";
+      h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+        '<div style="min-width:0"><h3 style="margin:0">' + esc(u.name || "(no name)") +
+        ' <span class="pill ' + (u.role === "admin" ? "teal" : "") + '">' + esc(u.role || "") + '</span>' +
+        (inactive ? ' <span class="pill due">inactive</span>' : '') + '</h3>' +
+        '<div class="meta">' + (u.mobile ? esc(u.mobile) + ' &middot; ' : '') +
+        (setYes ? '<span style="color:#0f766e;font-weight:600">PIN set</span>'
+                : '<span style="color:#b45309;font-weight:600">no PIN — will set at next login</span>') + '</div></div>' +
+        (u.id ? '<button class="btn sm act-reset" data-act="tp-reset" data-id="' + esc(u.id) + '">Reset PIN</button>'
+              : '<span class="meta" style="color:#94a3b8">no id — reset in sheet</span>') +
+        '</div></div>';
+    });
+    return h;
+  }
+
   function viewChallans() {
     ensurePickerCss();   /* stage-action colours + picker styles must exist on the list view too */
     var list = S.data.challans.slice().reverse();
@@ -5623,7 +5653,9 @@ function viewCatalogue() {
       ".btn.act-receipt{background:#0d9488!important;border-color:#0d9488!important;color:#fff!important}" +
       ".btn.act-bill{background:#7c3aed!important;border-color:#7c3aed!important;color:#fff!important}" +
       ".btn.act-billedit{background:#fff!important;border-color:#7c3aed!important;color:#7c3aed!important}" +
-      ".btn.act-billsend{background:#4f46e5!important;border-color:#4f46e5!important;color:#fff!important}";
+      ".btn.act-billsend{background:#4f46e5!important;border-color:#4f46e5!important;color:#fff!important}" +
+      ".btn.act-reset{background:#fff!important;border-color:#dc2626!important;color:#dc2626!important}" +
+      ".btn.act-reset:hover{background:#fef2f2!important}";
     document.head.appendChild(s);
   }
 
@@ -5963,8 +5995,8 @@ function viewCatalogue() {
   function renderCore() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"]];
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -5984,7 +6016,7 @@ function viewCatalogue() {
       ["Sell", ["dash", "leads", "brandfollow", "quotes", "followups", "clients", "partners"]],
       ["Deliver", ["deliveries", "tools", "collections", "products"]],
       ["Service", ["service", "spares"]],
-      ["Admin", ["payrollhub", "billing", "discounts", "report", "pricing", "rules"]]
+      ["Admin", ["payrollhub", "billing", "discounts", "report", "pricing", "rules", "teampins"]]
     ];
     var label = {};
     tabs.forEach(function (t) { label[t[0]] = t[1]; });
@@ -6087,6 +6119,18 @@ function viewCatalogue() {
         S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
         loadCatalog(); refresh();
       });
+      return;
+    }
+    if (act === "tp-reset") {
+      if (S.role !== "admin") { toast("Only the owner can reset PINs."); return; }
+      var u = (S.data.team || []).filter(function (x) { return x.id === id; })[0];
+      if (!u) { toast("Team member not found."); return; }
+      if (!u.id) { toast("This member has no id - reset in the sheet."); return; }
+      if (!window.confirm("Reset the PIN for " + u.name + "?\n\nTheir current PIN is cleared. The next time they open the app and enter their name, they will be asked to set a NEW PIN of their own. You will not see or set it.")) return;
+      /* clear ONLY the pin + pinSet columns (merge save), forcing a fresh PIN at next login */
+      save("team", { id: u.id, pin: "", pinSet: "N" });
+      toast("PIN reset for " + u.name + " - they'll set a new one at next login.");
+      render();
       return;
     }
     if (act === "logout") { logout(); return; }
