@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.92";
+  var APP_VERSION = "6.9.93";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1446,10 +1446,12 @@ window.addEventListener("beforeunload", function (ev) {
       h += '</div>';
     }
     if (!shown.length) return h + '<div class="empty">No leads here. Add one, then tap a brand to start quoting.</div>';
-    shown.forEach(function (c) {
+
+    ensurePickerCss();   /* the exec band (.ch-exec) styling lives with the picker CSS */
+    function leadCardHtml(c) {
       var cSeg = clientSegment(c);
       var openQ = clientQuotes(c.name).filter(function (q) { return ["Draft", "Sent", "Negotiating", "Revised"].indexOf(q.status) >= 0; }).length;
-      h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
+      return '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
         (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
         (openQ ? ' <span class="pill soon">' + openQ + ' in play</span>' : "") + '</h3>' +
         '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  &middot;  ")) +
@@ -1457,7 +1459,30 @@ window.addEventListener("beforeunload", function (ev) {
         brandBoard(c.name) +
         '<div class="acts" style="margin-top:8px">' + (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
         '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>';
-    });
+    }
+
+    /* Admin / accounts read the lead book grouped under the sales executive it's assigned to (teal
+       band per exec), mirroring the Clients and Challans views. Everyone else keeps the flat list. */
+    if (seesAllClients()) {
+      var groups = {}, order = [];
+      shown.forEach(function (c) {
+        var e = String(c.ownedBy || c.createdBy || "").trim() || "Unassigned";
+        if (!groups[e]) { groups[e] = []; order.push(e); }
+        groups[e].push(c);
+      });
+      order.sort(function (a, b) {
+        if (a === "Unassigned") return 1; if (b === "Unassigned") return -1;
+        return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+      });
+      order.forEach(function (e) {
+        var cs = groups[e].slice().sort(function (a, b) { return String(a.name).toLowerCase() < String(b.name).toLowerCase() ? -1 : 1; });
+        h += '<div class="ch-exec">' + esc(e) +
+          '<span class="sub">' + cs.length + ' lead' + (cs.length !== 1 ? 's' : '') + '</span></div>';
+        cs.forEach(function (c) { h += leadCardHtml(c); });
+      });
+    } else {
+      shown.forEach(function (c) { h += leadCardHtml(c); });
+    }
     return h;
   }
 
