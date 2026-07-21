@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.85";
+  var APP_VERSION = "6.9.86";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -133,7 +133,7 @@
     admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins"],
     accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist"],
     godown:   ["dash","returns","tools","challans","products"],
-    sales:    ["dash","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","products"],
+    sales:    ["dash","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products"],
     service:  ["dash","tools","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -1457,6 +1457,7 @@ window.addEventListener("beforeunload", function (ev) {
   function viewClients() {
     var loc = S.q;
     var all = S.data.clients.filter(function (c) { return isClient(c.name); });
+    if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });   /* a sales exec sees only clients assigned to them */
     var list = all.filter(function (c) { return !loc || c.location === loc; });
     var clocs = [];
     all.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
@@ -1655,6 +1656,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (S.qz) return viewQzWizard();
     var h = '<div class="row"><div class="grow"></div><button class="btn" data-act="qz-new">+ New quote</button></div>';
     var list = S.data.quotes.slice().reverse();
+    if (!seesAllClients()) list = list.filter(function (q) { return isMineClient(q.client); });
     if (!list.length) h += '<div class="empty">No quotes yet. Every quote is versioned - revising keeps the old one.</div>';
     list.forEach(function (q) {
       /* Title + figures on the left; the action row sits top-right to use the empty space -
@@ -1852,41 +1854,55 @@ window.addEventListener("beforeunload", function (ev) {
       h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="3">Products</button>' +
         '<div class="grow"></div><button class="btn" data-act="qz-step" data-step="5">Review</button></div>';
 
-      /* one discount per brand - each brand is a separate negotiation */
+      /* one discount per brand - each brand is a separate negotiation. A sales exec cannot change
+         discounts: for them each brand is FIXED to the client's pre-set rate (owner-controlled), the
+         inputs become read-only chips, and the per-line override is hidden. */
+      var lockDisc = !canSetPricing();
+      if (lockDisc) {
+        z.brandDiscs = z.brandDiscs || {};
+        dBrands.forEach(function (b) { z.brandDiscs[b] = clientDiscount(z.client, b); });
+        (z.items || []).forEach(function (i) { delete i.disc; });   // no per-line overrides for sales
+      }
       h += '<div class="card"><h3>Discount by brand</h3>' +
-        '<div class="meta">Each brand gets its own discount, applied to every line of that brand. Type all of them, then Apply.</div>';
+        '<div class="meta">' + (lockDisc
+          ? 'Set from <b>' + esc(z.client) + '</b>\u2019s pre-set rate for each brand. Only the owner can change discounts.'
+          : 'Each brand gets its own discount, applied to every line of that brand. Type all of them, then Apply.') + '</div>';
       dBrands.forEach(function (b) {
         var bt = brandTotals(z, b);
         h += '<div class="row" style="margin:8px 0 0;align-items:center;gap:10px">' +
           '<div style="min-width:150px"><b>' + esc(b) + '</b>' +
           '<div class="pmeta">' + bt.count + ' item(s) \u00B7 ' + money(bt.gross) + ' \u2192 <b>' + money(bt.net) + '</b></div></div>' +
-          '<input class="qz-bd" data-brand="' + esc(b) + '" inputmode="decimal" value="' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '" style="width:80px;padding:9px 10px;font-size:16px;font-weight:700"/>' +
-          '<span class="pill teal">% off list</span></div>';
+          (lockDisc
+            ? '<span class="pill teal" style="font-size:15px;padding:8px 12px;font-weight:700">' + esc(z.brandDiscs[b] || 0) + '% off list</span>'
+            : '<input class="qz-bd" data-brand="' + esc(b) + '" inputmode="decimal" value="' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '" style="width:80px;padding:9px 10px;font-size:16px;font-weight:700"/>' +
+              '<span class="pill teal">% off list</span>') + '</div>';
       });
-      h += '<div class="acts" style="margin-top:12px"><button class="btn sm" data-act="qz-bd">Apply brand discounts</button></div></div>';
+      h += (lockDisc ? '' : '<div class="acts" style="margin-top:12px"><button class="btn sm" data-act="qz-bd">Apply brand discounts</button></div>') + '</div>';
 
-      /* product-wise override hidden behind a disclosure - most people never need it */
-      var overrides = (z.items || []).filter(function (i) { return i.disc !== undefined && i.disc !== ""; }).length;
-      h += '<button class="btn ghost" data-act="qz-adv" style="width:100%;margin-bottom:10px">' +
-        (z.adv ? "\u25B2 Hide product-wise discount" : "\u25BC Change discount product-wise") +
-        (overrides ? "  (" + overrides + " overridden)" : "") + '</button>';
+      if (!lockDisc) {
+        /* product-wise override hidden behind a disclosure - most people never need it */
+        var overrides = (z.items || []).filter(function (i) { return i.disc !== undefined && i.disc !== ""; }).length;
+        h += '<button class="btn ghost" data-act="qz-adv" style="width:100%;margin-bottom:10px">' +
+          (z.adv ? "\u25B2 Hide product-wise discount" : "\u25BC Change discount product-wise") +
+          (overrides ? "  (" + overrides + " overridden)" : "") + '</button>';
 
-      if (z.adv) {
-        h += '<div class="plist">';
-        dBrands.forEach(function (b) {
-          h += '<div class="prow" style="background:#f8fafc"><div class="pinfo"><b>' + esc(b) + '</b> <span class="pmeta">(brand ' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '%)</span></div></div>';
-          (z.items || []).filter(function (i) { return (i.brand || brandByCode(i.code)) === b; }).forEach(function (i) {
-            var d = lineDisc(i, z);
-            var lineNet = Math.round(i.qty * i.price * (1 - (Number(d) || 0) / 100));
-            h += '<div class="prow">' +
-              '<div class="pinfo"><div class="pname">' + esc(i.desc) + '</div>' +
-              '<div class="pmeta">' + i.qty + ' \u00d7 ' + money(i.price) + '  \u2192  <b>' + money(lineNet) + '</b></div></div>' +
-              '<div class="pqty">' +
-              '<input class="qz-d" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(i.disc === undefined ? "" : i.disc) + '" placeholder="' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '" style="width:52px"/>' +
-              '<span class="pill">%</span></div></div>';
+        if (z.adv) {
+          h += '<div class="plist">';
+          dBrands.forEach(function (b) {
+            h += '<div class="prow" style="background:#f8fafc"><div class="pinfo"><b>' + esc(b) + '</b> <span class="pmeta">(brand ' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '%)</span></div></div>';
+            (z.items || []).filter(function (i) { return (i.brand || brandByCode(i.code)) === b; }).forEach(function (i) {
+              var d = lineDisc(i, z);
+              var lineNet = Math.round(i.qty * i.price * (1 - (Number(d) || 0) / 100));
+              h += '<div class="prow">' +
+                '<div class="pinfo"><div class="pname">' + esc(i.desc) + '</div>' +
+                '<div class="pmeta">' + i.qty + ' \u00d7 ' + money(i.price) + '  \u2192  <b>' + money(lineNet) + '</b></div></div>' +
+                '<div class="pqty">' +
+                '<input class="qz-d" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(i.disc === undefined ? "" : i.disc) + '" placeholder="' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '" style="width:52px"/>' +
+                '<span class="pill">%</span></div></div>';
+            });
           });
-        });
-        h += '</div>';
+          h += '</div>';
+        }
       }
 
       h += '<div class="card"><div class="meta">Gross ' + money(t4.gross) +
@@ -2940,6 +2956,24 @@ function viewCatalogue() {
   var CH_FLOW = ["Draft", "Approved", "Dispatched", "Received"];
   function canApprove() { return S.role === "admin" || S.role === "sales"; }
 
+  /* ---- assignment-based visibility ----
+     A client is "assigned" to a sales exec via ownedBy (falling back to whoever entered it). Admin
+     and accounts see every client; a sales exec sees only the clients assigned to them, and through
+     them every related quote / challan / hisab, so they can chase payment and follow up. */
+  function seesAllClients() { return S.role === "admin" || S.role === "accounts"; }
+  function clientOwner(name) {
+    var cl = clientByName(name) || {};
+    return String(cl.ownedBy || cl.createdBy || "").trim().toLowerCase();
+  }
+  function isMineClient(name) {
+    if (seesAllClients()) return true;
+    if (!name) return false;
+    return clientOwner(name) === String(S.user || "").trim().toLowerCase();
+  }
+  /* Only the owner/admin may set pricing. A sales exec can view every figure and record a payment,
+     but can never change a discount % or a rate - pricing stays the owner's control. */
+  function canSetPricing() { return S.role === "admin"; }
+
   /* ---------------- DELIVERY CHALLAN (landscape) ----------------
      This is a picking and receiving sheet, not a sales document. So: no company logo or name,
      no price, no discount, no amount, no photos. Two columns on a landscape A4 fit ~52 lines a
@@ -3763,6 +3797,7 @@ function viewCatalogue() {
   function viewChallans() {
     ensurePickerCss();   /* stage-action colours + picker styles must exist on the list view too */
     var list = S.data.challans.slice().reverse();
+    if (!seesAllClients()) list = list.filter(function (c) { return isMineClient(c.customerName); });
     var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
     var h = '<div class="cards">' +
       '<div class="stat ' + (by("Draft") ? "alert" : "") + '"><div class="n">' + by("Draft") + '</div><div class="l">Awaiting approval</div></div>' +
@@ -4169,10 +4204,13 @@ function viewCatalogue() {
     if (!S.billSel) S.billSel = {};
     var cl = hisabResolve(S.q);
     var billNames = hisabClientNames();
+    if (!seesAllClients()) billNames = billNames.filter(function (n) { return isMineClient(n); });
     var h = '<div class="row"><input class="grow" id="q" placeholder="Type a client to bill (then Enter)..." list="billclients" value="' + esc(S.q) + '"/><button class="btn" data-act="bill-go">Show</button></div>' +
       '<datalist id="billclients">' + billNames.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>';
+    if (cl && !isMineClient(cl)) return h + '<div class="empty"><b>' + esc(cl) + '</b> is assigned to another sales executive, so their hisab is not open to you. You can view and follow up on the clients assigned to you.</div>';
     if (!S.q) {
       var outs = hisabOutstanding();
+      if (!seesAllClients()) outs = outs.filter(function (r) { return isMineClient(r.name); });
       if (!outs.length) return h + '<div class="empty">No outstanding balances &mdash; every received challan is fully paid. Type a client above to view their hisab.</div>';
       var groups = {};
       outs.forEach(function (r) { var k = r.owner || "Unassigned"; (groups[k] = groups[k] || []).push(r); });
@@ -4449,6 +4487,7 @@ function viewCatalogue() {
     S.data.challans.forEach(function (c) { if (String(c.receiptReceived).toUpperCase() === "Y") names[c.customerName] = 1; });
     var list = Object.keys(names).map(function (n) { return { name: n, l: clientLedger(n), age: payAge(n) }; })
       .sort(function (a, b) { return b.l.due - a.l.due; });
+    if (!seesAllClients()) list = list.filter(function (x) { return isMineClient(x.name); });   /* a sales exec sees only the clients assigned to them */
     var totDue = list.reduce(function (a, x) { return a + x.l.due; }, 0);
     var h = '<div class="cards">' +
       '<div class="stat ' + (totDue > 0 ? "alert" : "") + '"><div class="n">' + money(totDue) + '</div><div class="l">Outstanding from clients</div></div>' +
@@ -5828,8 +5867,8 @@ function viewCatalogue() {
          list price. Without this the credit is always slightly too generous and the leak is
          invisible, because each one looks fair on its own. */
       '<div class="grid2">' +
-      '<div><label>Discount given on the whole challan</label><input id="m_disc" inputmode="numeric" placeholder="0" value="' + esc((z && z.disc != null) ? z.disc : 0) + '"/></div>' +
-      '<div><label>Why (optional)</label><input id="m_discnote" placeholder="bargained on site" value="' + esc((z && z.discnote) || "") + '"/></div>' +
+      '<div><label>Discount given on the whole challan</label><input id="m_disc" inputmode="numeric" placeholder="0" value="' + esc((z && z.disc != null) ? z.disc : 0) + '"' + (canSetPricing() ? '' : ' readonly title="Only the owner can set a discount" style="background:#f1f5f9;color:#94a3b8"') + '/></div>' +
+      '<div><label>Why (optional)</label><input id="m_discnote" placeholder="bargained on site" value="' + esc((z && z.discnote) || "") + '"' + (canSetPricing() ? '' : ' readonly') + '/></div>' +
       '</div>' +
       '<div class="grid2" style="margin-top:6px">' +
       '<div><label>Driver</label><input id="m_driver" list="driverlist" placeholder="Driver name" value="' + esc((z && z.driver) || "") + '"/>' +
@@ -6023,9 +6062,9 @@ function viewCatalogue() {
 
     var GROUPS = [
       ["Sell", ["dash", "leads", "brandfollow", "quotes", "followups", "clients", "partners"]],
-      ["Deliver", ["deliveries", "tools", "collections", "products"]],
+      ["Deliver", ["deliveries", "tools", "collections", "billing", "products"]],
       ["Service", ["service", "spares"]],
-      ["Admin", ["payrollhub", "billing", "discounts", "report", "pricing", "rules", "teampins"]]
+      ["Admin", ["payrollhub", "discounts", "report", "pricing", "rules", "teampins"]]
     ];
     var label = {};
     tabs.forEach(function (t) { label[t[0]] = t[1]; });
@@ -6486,6 +6525,7 @@ function viewCatalogue() {
       render(); return;
     }
     if (act === "qz-bd") {
+      if (!canSetPricing()) { toast("Only the owner can change discounts."); return; }
       S.qz.brandDiscs = S.qz.brandDiscs || {};
       document.querySelectorAll(".qz-bd").forEach(function (el2) {
         var b = el2.getAttribute("data-brand");
@@ -7855,6 +7895,7 @@ function viewCatalogue() {
       return;
     }
     if (t.classList && t.classList.contains("qz-d") && S.qz) {
+      if (!canSetPricing()) return;   /* sales cannot change discounts */
       var c2 = t.getAttribute("data-code");
       var it2 = S.qz.items.filter(function (x) { return x.code === c2; })[0];
       if (it2) it2.disc = t.value === "" ? undefined : Number(t.value);
