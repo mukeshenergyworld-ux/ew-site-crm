@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.83";
+  var APP_VERSION = "6.9.84";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3730,20 +3730,24 @@ function viewCatalogue() {
       return String(a.name || "").toLowerCase().localeCompare(String(b.name || "").toLowerCase());
     });
     var h = '<h2>Team PINs</h2>' +
-      '<p class="sub">Reset a teammate\'s login PIN. A reset only <b>clears</b> their PIN — it never sets one. ' +
-      'Next time they open the app and type their name, the app asks them to choose a brand-new PIN of their own. ' +
-      'Nobody, not even you, sees or types anyone\'s PIN — for security the app is never even sent them.</p>';
+      '<p class="sub">Two ways to hand someone a fresh login. <b>Reset</b> clears their PIN so they pick their own at next sign-in (most secure — nobody ever sees a PIN). ' +
+      '<b>Temp PIN</b> sets a starting PIN of the <b>last 4 digits of their own mobile</b> and forces them to change it at first sign-in — handy for onboarding, but guessable, so only the forced change keeps it safe. Either way the person ends up with a private PIN of their own.</p>';
     if (!team.length) return h + '<div class="empty">No team members loaded.</div>';
     team.forEach(function (u) {
       if (!u.name) return;   /* skip blank placeholder rows from the sheet */
       var inactive = String(u.active || "").toUpperCase() === "N";
+      var mob = String(u.mobile || "").replace(/\D/g, "");
+      var temp = mob.length >= 4 ? mob.slice(-4) : "";
       h += '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
         '<div style="min-width:0"><h3 style="margin:0">' + esc(u.name) +
         ' <span class="pill ' + (u.role === "admin" ? "teal" : "") + '">' + esc(u.role || "") + '</span>' +
         (inactive ? ' <span class="pill due">inactive</span>' : '') + '</h3>' +
-        (u.mobile ? '<div class="meta">' + esc(u.mobile) + (u.office ? ' &middot; ' + esc(u.office) : '') + '</div>' : '') + '</div>' +
-        (u.id ? '<button class="btn sm act-reset" data-act="tp-reset" data-id="' + esc(u.id) + '">Reset PIN</button>'
-              : '<span class="meta" style="color:#94a3b8">no id — reset in sheet</span>') +
+        (u.mobile ? '<div class="meta">' + esc(u.mobile) + (u.office ? ' &middot; ' + esc(u.office) : '') +
+          (temp ? ' &middot; temp PIN would be <b>' + esc(temp) + '</b>' : '') + '</div>' : '') + '</div>' +
+        (u.id ? '<div style="display:flex;gap:6px;flex:0 0 auto">' +
+          (temp ? '<button class="btn sm act-billsend" data-act="tp-temp" data-id="' + esc(u.id) + '">Temp PIN</button>' : '') +
+          '<button class="btn sm act-reset" data-act="tp-reset" data-id="' + esc(u.id) + '">Reset PIN</button></div>'
+              : '<span class="meta" style="color:#94a3b8">no id — set in sheet</span>') +
         '</div></div>';
     });
     return h;
@@ -6125,9 +6129,27 @@ function viewCatalogue() {
       if (!u) { toast("Team member not found."); return; }
       if (!u.id) { toast("This member has no id - reset in the sheet."); return; }
       if (!window.confirm("Reset the PIN for " + u.name + "?\n\nTheir current PIN is cleared. The next time they open the app and enter their name, they will be asked to set a NEW PIN of their own. You will not see or set it.")) return;
-      /* clear ONLY the pin + pinSet columns (merge save), forcing a fresh PIN at next login */
-      save("team", { id: u.id, pin: "", pinSet: "N" });
+      /* Clear pin + pinSet, forcing a fresh PIN at next login. Send the FULL known member row (not
+         just the two fields) so that even if the backend ever wrote whole rows instead of merging
+         fields, a reset could never blank someone's name / role / mobile. */
+      save("team", Object.assign({}, u, { pin: "", pinSet: "N" }));
       toast("PIN reset for " + u.name + " - they'll set a new one at next login.");
+      render();
+      return;
+    }
+    if (act === "tp-temp") {
+      /* Give a TEMPORARY PIN = last 4 digits of the person's own mobile, and force a change at first
+         login (pinSet="N"). The owner clicks this; the value is derived from their mobile, never
+         chosen or typed by Claude. Convenient but guessable - the forced change is what protects it. */
+      if (S.role !== "admin") { toast("Only the owner can set PINs."); return; }
+      var tu = (S.data.team || []).filter(function (x) { return x.id === id; })[0];
+      if (!tu || !tu.id) { toast("Member not found."); return; }
+      var mob = String(tu.mobile || "").replace(/\D/g, "");
+      if (mob.length < 4) { toast("No mobile on file - can't make a temp PIN. Add a mobile first."); return; }
+      var temp = mob.slice(-4);
+      if (!window.confirm("Give " + tu.name + " a temporary PIN of " + temp + " (last 4 of their mobile)?\n\nThey must change it to their own private PIN the first time they sign in. Tell them this temp PIN.")) return;
+      save("team", Object.assign({}, tu, { pin: temp, pinSet: "N" }));
+      toast(tu.name + ": temp PIN " + temp + " set - they must change it at first login.");
       render();
       return;
     }
