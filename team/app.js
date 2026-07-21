@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.72";
+  var APP_VERSION = "6.9.73";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1680,31 +1680,29 @@ window.addEventListener("beforeunload", function (ev) {
      doesn't block the pop-up) and download the PDF to drag in. Shared by quote share (q-wa /
      rad-wa) and the payment reminder (pay-wa). */
   function waShareDoc(docPromise, fname, wnum, wmsg) {
-    var waUrl = "https://wa.me/" + (wnum || "") + "?text=" + encodeURIComponent(wmsg);
-    /* Attaching a file to a wa.me link is impossible, so the only real "attach" is the OS share
-       sheet (Web Share API with files) - which now works on modern phones AND desktops (macOS,
-       Windows). Try that first on EVERY device; the PDF rides along as the attachment and the
-       user picks WhatsApp / Telegram / any app. Because the PDF is now tiny (~50 KB) it builds
-       inside the click's activation window, so the share sheet isn't blocked. Only if the
-       browser can't share files do we fall back to opening the chat + downloading to drag in. */
-    toast("Preparing the PDF to share...");
+    /* WhatsApp cannot carry a file through a wa.me link - a hard platform limit. So we HOST the
+       PDF: the backend saves it to Drive and returns a view-only link, and we put that link in
+       the message. The customer taps it and gets the PDF, on any phone or computer. A blank tab
+       is opened first (inside the click, so it isn't popup-blocked) and redirected to WhatsApp
+       once the link is ready. If hosting fails, we fall back to downloading the PDF to drag in. */
+    var win = window.open("", "_blank");
+    toast("Preparing the PDF link...");
     docPromise.then(function (d) {
-      var file = null;
-      try { file = new File([d.output("blob")], fname, { type: "application/pdf" }); } catch (e) { }
-      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
-        navigator.share({ files: [file], text: wmsg, title: fname })
-          .then(function () { toast("Shared."); })
-          .catch(function (err) {
-            /* user cancelled the sheet - do nothing; a real failure - fall back to drag */
-            if (!err || String(err.name) !== "AbortError") { d.save(fname); window.open(waUrl, "_blank"); toast("Opened WhatsApp - drag the downloaded PDF in."); }
-          });
-        return;
-      }
-      /* no file-share support: open the chat and download the PDF to drag in manually */
-      window.open(waUrl, "_blank");
-      d.save(fname);
-      toast("WhatsApp opened - the PDF was downloaded, drag it into the chat.");
-    }).catch(function () { toast("Could not build the PDF."); });
+      var b64 = d.output("datauristring").split(",")[1];
+      return api("pdfHost", { pdfBase64: b64, filename: fname }).then(function (r) {
+        var link = (r && r.ok && r.url) ? r.url : "";
+        var msg = wmsg + (link ? "\n\nView / download your PDF:\n" + link : "");
+        var waUrl = "https://wa.me/" + (wnum || "") + "?text=" + encodeURIComponent(msg);
+        if (win && !win.closed) { win.location = waUrl; } else { window.open(waUrl, "_blank"); }
+        if (link) { toast("WhatsApp opened - the PDF link is in the message."); }
+        else { d.save(fname); toast("Couldn't host the PDF - opened WhatsApp, downloaded the PDF to drag in."); }
+      });
+    }).catch(function () {
+      /* PDF build or host errored: still open WhatsApp with the text, download the PDF to attach */
+      try { if (win && !win.closed) win.location = "https://wa.me/" + (wnum || "") + "?text=" + encodeURIComponent(wmsg); } catch (e) { }
+      docPromise.then(function (d) { d.save(fname); }).catch(function () { });
+      toast("Opened WhatsApp - attach the downloaded PDF.");
+    });
   }
 
   function waShareQuote(id) {
