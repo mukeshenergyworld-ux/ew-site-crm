@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.77";
+  var APP_VERSION = "6.9.78";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3691,6 +3691,36 @@ function viewCatalogue() {
     return { lines: items.length, units: items.reduce(function (a, i) { return a + (Number(i.qty) || 0); }, 0) };
   }
 
+  /* Billing-detail entry for a received challan. Billed-to picks from the client's saved billing
+     names (or add a new one, remembered on the client); bill number + optional date are recorded on
+     the challan so a delivered challan can be tied to its invoice for stock tallying. */
+  function modalBill(id) {
+    var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0] || {};
+    var cl = clientByName(c.customerName) || {};
+    var profiles = [];
+    try { profiles = JSON.parse(cl.billingJson || "[]"); } catch (e) { profiles = []; }
+    var cnt = challanCount(c);
+    var curTo = c.billTo || "";
+    var profOpts = profiles.map(function (p) {
+      var v = p.gstin ? p.name + " - " + p.gstin : p.name;
+      return '<option value="' + esc(v) + '"' + (v === curTo ? ' selected' : '') + '>' + esc(v) + '</option>';
+    }).join("");
+    var wantNew = !profiles.length || !curTo;
+    return '<h2>Billing detail</h2>' +
+      '<p class="sub">' + esc(c.challanNo) + ' &middot; ' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
+      ' &middot; ' + cnt.lines + ' item' + (cnt.lines > 1 ? 's' : '') + ' / ' + cnt.units + ' units</p>' +
+      '<label>Billed to (party name / GSTIN)</label>' +
+      '<select id="b_to">' + profOpts +
+      '<option value="__new"' + (wantNew ? ' selected' : '') + '>+ New billing name...</option></select>' +
+      '<div class="grid2" style="margin-top:6px">' +
+      '<div><label>New billing name (if not in the list)</label><input id="b_newname" placeholder="Name on the invoice"/></div>' +
+      '<div><label>GSTIN (optional)</label><input id="b_newgst" placeholder="GSTIN"/></div>' +
+      '</div>' +
+      '<label>Bill number</label><input id="b_no" value="' + esc(c.billNo || "") + '" placeholder="Invoice / bill no."/>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="bill-save" data-id="' + esc(id) + '">Save billing</button></div>';
+  }
+
   function viewChallans() {
     var list = S.data.challans.slice().reverse();
     var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
@@ -3717,10 +3747,14 @@ function viewCatalogue() {
         (st === "Approved" && canApprove() ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : "") +
         ((st === "Draft" || st === "Approved") && canApprove() ? '<button class="btn sm ghost" data-act="ch-edit" data-id="' + esc(c.id) + '">Edit</button>' : "") +
         (st === "Dispatched" ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Receipt received</button>' : "") +
-        /* the billing hand-off: godown/sales send it, accounts closes it */
-        (st === "Received" && !c.billStatus ? '<button class="btn sm" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : "") +
-        (String(c.billStatus) === "Sent for billing" && (S.role === "accounts" || S.role === "admin")
-          ? '<button class="btn sm" data-act="bill-no" data-id="' + esc(c.id) + '">Enter bill no.</button>' : "") +
+        /* Billing on a received challan. Accounts/admin enter it directly here (add or edit), so a
+           delivered challan can be tied to its invoice number - the basis for tallying stock later.
+           Other roles keep the hand-off ("Send for billing") that puts it in the accounts queue. */
+        (st === "Received"
+          ? ((S.role === "admin" || S.role === "accounts")
+              ? '<button class="btn sm' + (c.billNo ? ' ghost' : '') + '" data-act="bill-detail" data-id="' + esc(c.id) + '">' + (c.billNo ? 'Edit bill' : 'Add billing detail') + '</button>'
+              : (!c.billStatus ? '<button class="btn sm" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : ""))
+          : "") +
         '<button class="btn sm ghost" data-act="ch-pdf" data-id="' + esc(c.id) + '">PDF</button>';
 
       h += '<div class="card">' +
@@ -3733,7 +3767,9 @@ function viewCatalogue() {
         /* compact summary — always visible */
         '<div class="meta">' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
         (cnt.lines ? ' &middot; <b>' + cnt.lines + '</b> item' + (cnt.lines > 1 ? 's' : '') + ' / <b>' + cnt.units + '</b> units' : "") +
-        (c.brand ? ' &middot; ' + esc(c.brand) : "") + '</div>';
+        (c.brand ? ' &middot; ' + esc(c.brand) : "") +
+        (c.billNo ? ' &middot; <span class="pill Won">Bill ' + esc(c.billNo) + '</span>' :
+          (st === "Received" ? ' &middot; <span class="pill due">not billed</span>' : "")) + '</div>';
 
       if (open) {
         var billLine = (c.billNo ? 'Bill <b>' + esc(c.billNo) + '</b>' + (c.billTo ? ' to ' + esc(c.billTo) : "") :
@@ -7084,6 +7120,46 @@ function viewCatalogue() {
     /* "+ New" from inside a challan / return / old-delivery. Remember what the man had already
        typed, open the FULL client form, and when he saves, come straight back to where he was
        with the client filled in. Registering a client must never cost him the form he was on. */
+    if (act === "bill-detail") {
+      S.modal = modalBill(id); render(); return;
+    }
+    if (act === "bill-save") {
+      var bch = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      if (!bch) { toast("Challan not found."); return; }
+      var sel = val("b_to"), billTo = "";
+      if (sel && sel !== "__new") {
+        billTo = sel;
+      } else {
+        var nn = String(val("b_newname") || "").trim();
+        if (!nn) { toast("Pick a billing name, or type a new one."); return; }
+        var gg = String(val("b_newgst") || "").trim();
+        billTo = gg ? nn + " - " + gg : nn;
+        /* remember this billing name on the client for next time */
+        var bcl = clientByName(bch.customerName) || {};
+        var profs = []; try { profs = JSON.parse(bcl.billingJson || "[]"); } catch (e) { profs = []; }
+        if (bcl.id && !profs.some(function (p) { return (p.gstin ? p.name + " - " + p.gstin : p.name) === billTo; })) {
+          profs.push({ name: nn, gstin: gg });
+          save("clients", { id: bcl.id, name: bcl.name, billingJson: JSON.stringify(profs) });
+        }
+      }
+      var billNo = String(val("b_no") || "").trim();
+      if (!billNo) { toast("Enter the bill number."); return; }
+      /* Warn (don't block) if this bill number is already on another challan - could be a legitimate
+         consolidated bill, or a typo. */
+      var dupes = (S.data.challans || []).filter(function (x) {
+        return x.id !== id && String(x.billNo || "").trim() && String(x.billNo).trim().toLowerCase() === billNo.toLowerCase();
+      }).map(function (x) { return x.challanNo; });
+      if (dupes.length && !window.confirm("Bill " + billNo + " is already on:\n\n" + dupes.join("\n") +
+        "\n\nSave it on " + bch.challanNo + " too?\n(Fine for a consolidated bill; cancel if it's a typo.)")) return;
+      /* Optimistic + journaled full-row save, so the billing detail can't be lost. */
+      S.modal = null;
+      var updated = Object.assign({}, bch, { billTo: billTo, billNo: billNo, billStatus: "Billed" });
+      Object.assign(bch, { billTo: billTo, billNo: billNo, billStatus: "Billed" });
+      toast("Bill " + billNo + " recorded on " + bch.challanNo + ".");
+      render();
+      save("challans", updated).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
+      return;
+    }
     if (act === "bill-send") {
       var bc = S.data.challans.filter(function (x) { return x.id === id; })[0];
       if (!bc) return;
