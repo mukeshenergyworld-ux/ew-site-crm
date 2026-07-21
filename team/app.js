@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.86";
+  var APP_VERSION = "6.9.87";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -336,7 +336,9 @@ window.addEventListener("beforeunload", function (ev) {
   function radarQuotes() {
     var list = (S.data.quotes || []).filter(function (q) {
       if (["Sent", "Negotiating"].indexOf(q.status) < 0) return false;
-      if (S.role !== "admin" && q.createdBy !== S.user) return false;
+      /* follow-up is by CLIENT ASSIGNMENT, not who typed the quote: a sales exec chases every quote
+         for the clients assigned to them, even one an admin created. */
+      if (!seesAllClients() && !isMineClient(q.client)) return false;
       return qSilentDays(q) >= RADAR_MIN && !quoteSnoozed(q);
     });
     return list.sort(function (a, b) { return qSilentDays(b) - qSilentDays(a); });
