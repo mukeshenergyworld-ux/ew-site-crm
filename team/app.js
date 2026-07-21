@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.93";
+  var APP_VERSION = "6.9.94";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1715,11 +1715,13 @@ window.addEventListener("beforeunload", function (ev) {
     var h = '<div class="row"><div class="grow"></div><button class="btn" data-act="qz-new">+ New quote</button></div>';
     var list = S.data.quotes.slice().reverse();
     if (!seesAllClients()) list = list.filter(function (q) { return isMineClient(q.client); });
-    if (!list.length) h += '<div class="empty">No quotes yet. Every quote is versioned - revising keeps the old one.</div>';
-    list.forEach(function (q) {
+    if (!list.length) { h += '<div class="empty">No quotes yet. Every quote is versioned - revising keeps the old one.</div>'; return h; }
+
+    ensurePickerCss();   /* exec band (.ch-exec) + sub-strip (.ch-client) styling */
+    function quoteCardHtml(q) {
       /* Title + figures on the left; the action row sits top-right to use the empty space -
          and WRAPS below on a narrow screen (phone/tablet) so nothing gets squeezed. */
-      h += '<div class="card" style="padding:9px 13px;margin-bottom:8px">' +
+      return '<div class="card" style="padding:9px 13px;margin-bottom:8px">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
         '<div style="flex:1 1 240px;min-width:0">' +
         '<h3 style="margin:0 0 2px;font-size:13.5px">' + esc(q.quoteNo) + ' <span class="pill ' + (q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "teal")) + '">' + esc(q.status) + '</span>' +
@@ -1735,7 +1737,49 @@ window.addEventListener("beforeunload", function (ev) {
         (q.status === "Won" ? '<button class="btn sm" data-act="q-challan" data-id="' + esc(q.id) + '">Make challan</button>' : "") +
         '<button class="btn sm ghost" data-act="qz-revise" data-id="' + esc(q.id) + '">Revise</button></div>' +
         '</div></div>';
-    });
+    }
+    /* win/loss lens: Won, then Lost, then everything still open (Draft/Sent/Negotiating/Revised). */
+    var qCat = function (q) { return q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "In play"); };
+    var CAT = ["Won", "Lost", "In play"];
+    var catColor = { "Won": "#047857", "Lost": "#b91c1c", "In play": "#0f766e" };
+    function renderByOutcome(quotes) {
+      var byCat = { "Won": [], "Lost": [], "In play": [] };
+      quotes.forEach(function (q) { byCat[qCat(q)].push(q); });
+      CAT.forEach(function (cat) {
+        if (!byCat[cat].length) return;
+        h += '<div class="ch-client" style="border-left-color:' + catColor[cat] + ';color:' + catColor[cat] + '">' + cat +
+          '<span class="sub" style="color:' + catColor[cat] + '">' + byCat[cat].length + '</span></div>';
+        byCat[cat].forEach(function (q) { h += quoteCardHtml(q); });
+      });
+    }
+
+    /* Admin / accounts read the quote book grouped by the sales executive who owns the client, and
+       within each exec by outcome (Won / Lost / In play). A sales exec (list already filtered to
+       their own clients) skips the exec band but still gets the win/loss breakdown. */
+    if (seesAllClients()) {
+      var groups = {}, order = [];
+      list.forEach(function (q) {
+        var cl = clientByName(q.client) || {};
+        var e = String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned";
+        if (!groups[e]) { groups[e] = []; order.push(e); }
+        groups[e].push(q);
+      });
+      order.sort(function (a, b) {
+        if (a === "Unassigned") return 1; if (b === "Unassigned") return -1;
+        return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+      });
+      order.forEach(function (e) {
+        var qs = groups[e];
+        var won = qs.filter(function (q) { return q.status === "Won"; }).length;
+        var lost = qs.filter(function (q) { return q.status === "Lost"; }).length;
+        h += '<div class="ch-exec">' + esc(e) +
+          '<span class="sub">' + qs.length + ' quote' + (qs.length !== 1 ? 's' : '') +
+          ' &middot; ' + won + ' won &middot; ' + lost + ' lost</span></div>';
+        renderByOutcome(qs);
+      });
+    } else {
+      renderByOutcome(list);
+    }
     return h;
   }
 
