@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.70";
+  var APP_VERSION = "6.9.71";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -169,6 +169,7 @@
   function pendMark(pk, err) { var l = pendLoad(); l.forEach(function (x) { if (x.pk === pk) x.err = err; }); pendStore(l); }
   function pendDrop(pk) { pendStore(pendLoad().filter(function (x) { return x.pk !== pk; })); }
   function natEq(a, b) {
+    if (b._lid && a._lid === b._lid) return true;   // client-side local key: dedupes NEW rows of any tab
     if (b.id && a.id === b.id) return true;
     if (b.quoteNo) return a.quoteNo === b.quoteNo;
     if (b.challanNo) return a.challanNo === b.challanNo;
@@ -190,7 +191,8 @@
     var l = pendLoad(); if (!l.length) return;
     _retrying = true;
     var e = l[0];
-    api("teamSave", { tab: e.tab, row: e.row }).then(function (r) {
+    var payload = Object.assign({}, e.row); delete payload._lid;
+    api("teamSave", { tab: e.tab, row: payload }).then(function (r) {
       _retrying = false;
       if (r && r.ok) {
         var arr = S.data[e.tab] || []; for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { Object.assign(arr[j], r.row); break; } }
@@ -213,16 +215,21 @@
   }
 
   function save(tab, row) {
+    /* every NEW row (no server id yet) gets a stable local key so the recovery overlay can
+       recognise it and never duplicate it - works for tabs with no natural key (discounts,
+       payments, pitch...). The key is stripped before the row goes to the server. */
+    if (!row.id && !row._lid) row._lid = "l" + (++_pkSeq) + "_" + Date.now();
     var list = (S.data[tab] = S.data[tab] || []);
     var idx = -1;
-    for (var k = 0; k < list.length; k++) { if (list[k] && row.id && list[k].id === row.id) { idx = k; break; } }
+    for (var k = 0; k < list.length; k++) { if (list[k] && ((row.id && list[k].id === row.id) || (row._lid && list[k]._lid === row._lid))) { idx = k; break; } }
     if (idx >= 0) Object.assign(list[idx], row); else { list.push(row); idx = list.length - 1; }
     S.pending = (S.pending || 0) + 1;
-    var pk = "pk" + (++_pkSeq) + "_" + (row.id || row.quoteNo || row.challanNo || row.name || "x");
+    var pk = "pk" + (++_pkSeq) + "_" + (row.id || row._lid || "x");
     pendPut(pk, tab, row);            // journal the attempt on THIS DEVICE before the network call
     render();
+    var payload = Object.assign({}, row); delete payload._lid;   // local-only key never leaves the device
     var done = function () { S.pending = Math.max(0, (S.pending || 1) - 1); };
-    return api("teamSave", { tab: tab, row: row }).then(function (r) {
+    return api("teamSave", { tab: tab, row: payload }).then(function (r) {
       if (!r || !r.ok) {
         done(); pendMark(pk, (r && r.error) || "server refused it");
         toast("Not synced yet - kept safe on this device, will retry."); render();
