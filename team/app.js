@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.71";
+  var APP_VERSION = "6.9.72";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1179,8 +1179,12 @@ window.addEventListener("beforeunload", function (ev) {
   function brandList() {
     var live = {};
     PRODUCTS.forEach(function (p) { var b = realBrand(p); if (b) live[b] = (live[b] || 0) + 1; });
+    /* Include a brand if it is active AND (it has catalogue products OR it is a real brand you
+       distribute). This lets a brand with no products yet (FIMA, TOTO...) still be set up for
+       discounts/incentives and picked in the quote builder - products can be added when needed.
+       Accessory / Net-price buckets only appear when they actually carry products. */
     return S.data.brands
-      .filter(function (b) { return String(b.active).toUpperCase() !== "N" && live[b.brand]; })
+      .filter(function (b) { return String(b.active).toUpperCase() !== "N" && (live[b.brand] || isRealBrandName(b.brand)); })
       .map(function (b) { return b.brand; });
   }
   /* Catalogue buckets that are NOT real brands and must never appear in brand follow-ups. */
@@ -1814,6 +1818,11 @@ window.addEventListener("beforeunload", function (ev) {
         return h;
       }
 
+      /* a brand you distribute but have not catalogued yet: say so plainly instead of an empty
+         "pick a family" with no families under it */
+      if (!brandProducts(z.brand).length) {
+        return h + '<div class="empty" style="text-align:left">No products loaded for <b>' + esc(z.brand) + '</b> yet. Add them under <b>Products</b> (Catalogue) and they will appear here to quote. You can still set this brand’s discount &amp; incentive on the <b>Discounts</b> screen and chase it under <b>Brand follow-up</b>.</div>';
+      }
       /* families as small horizontal chips, not a vertical wall of cards */
       var fams = familyList(z.brand);
       h += '<div class="chips">' + fams.map(function (f) {
