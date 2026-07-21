@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.67";
+  var APP_VERSION = "6.9.68";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3689,9 +3689,12 @@ function viewCatalogue() {
         rows.push({ no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
           amount: base, base: base, pct: base > 0 ? (inc / base * 100) : 0, inc: inc });
       });
-      /* reverse incentive on this client's registered returns, at the same client/brand/role rate */
+      /* reverse incentive only once a return is BOOKED IN at the godown (status "Received") —
+         symmetric with a sale, which counts only when its material receipt is in. A return that
+         is merely raised or in transit does not reverse anything yet. */
       (S.data.returns || []).filter(function (r) {
-        return String(r.customerName || "").trim().toLowerCase() === clLower;
+        return String(r.customerName || "").trim().toLowerCase() === clLower &&
+               String(r.status || "").trim().toLowerCase() === "received";
       }).forEach(function (r) {
         returnLines(r).forEach(function (x) {
           var rev = x.amt * rateCB(roles, cl.name, x.brand) / 100;
