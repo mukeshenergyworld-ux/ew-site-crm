@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.78";
+  var APP_VERSION = "6.9.79";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -5582,25 +5582,71 @@ function viewCatalogue() {
       '<button class="x" data-act="li-del" data-row="' + i + '">&times;</button></div>';
   }
 
-  /* Picking products on a challan now works exactly like the quote: brand chips, family chips,
-     then product rows with the photo and a +/- stepper. The photo is there to stop the storeman
-     picking the wrong 110mm fitting - it never reaches the printed challan. */
+  /* One-time injection of the picker styles. The site's base CSS lives in index.html; rather than
+     ship a second file, the new brand/category picker brings its own styles the first time it draws
+     so the whole change stays inside app.js. */
+  function ensurePickerCss() {
+    if (document.getElementById("ew_pick_css")) return;
+    var s = document.createElement("style");
+    s.id = "ew_pick_css";
+    s.textContent =
+      ".ew-picklabel{font-size:12px;font-weight:700;color:#0f766e;margin:12px 0 7px;text-transform:uppercase;letter-spacing:.4px}" +
+      ".ew-picklabel .step{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#0f766e;color:#fff;font-size:11px;margin-right:6px}" +
+      ".ew-pickgrid{display:flex;flex-wrap:wrap;gap:8px}" +
+      ".ew-pickbtn{border:1.5px solid #cbd5e1;background:#fff;border-radius:11px;padding:11px 15px;font-size:14px;font-weight:600;cursor:pointer;color:#0f172a;display:inline-flex;align-items:center;gap:7px;line-height:1}" +
+      ".ew-pickbtn.brand{border-color:#0d9488;color:#0f766e;background:#f0fdfa}" +
+      ".ew-pickbtn.brand:active,.ew-pickbtn.brand:hover{background:#ccfbf1}" +
+      ".ew-pickbtn.cat{border-color:#a5b4fc;color:#3730a3;background:#eef2ff}" +
+      ".ew-pickbtn.cat:active,.ew-pickbtn.cat:hover{background:#e0e7ff}" +
+      ".ew-pickbtn .cnt{background:#0f766e;color:#fff;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700}" +
+      ".ew-pickbtn.cat .cnt{background:#4f46e5}" +
+      ".ew-pickbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0 2px;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:11px}" +
+      ".ew-crumb{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;color:#0f172a;display:inline-flex;align-items:center;gap:7px}" +
+      ".ew-crumb .tag{font-size:9.5px;text-transform:uppercase;letter-spacing:.3px;color:#64748b;font-weight:700}" +
+      ".ew-crumb .cx{color:#94a3b8;font-weight:700}" +
+      ".ew-crumb:active,.ew-crumb:hover{border-color:#ef4444;color:#b91c1c}" +
+      ".ew-crumb:hover .cx{color:#b91c1c}";
+    document.head.appendChild(s);
+  }
+
+  /* Product picker for a challan — deliberately ONE step at a time so a brand can never be mistaken
+     for a category. Step 1 shows only brands (teal). Pick one and it collapses to a breadcrumb; Step
+     2 shows only that brand's categories (indigo). Pick one and Step 3 lists the products with photo
+     and a +/- stepper. Tap a breadcrumb's × to change that level. The photo is there to stop picking
+     the wrong 110mm fitting - it never reaches the printed challan. */
   function chPicker() {
+    ensurePickerCss();
     var z = S.ch;
-    var h = '<div class="row" style="margin-top:6px">' +
-      (S.data.brands || []).filter(function (br) {
-        return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
-      }).map(function (br) {
-        return '<button class="chip ' + (z.brand === br.brand ? "on" : "") + '" data-act="ch-brand" data-brand="' + esc(br.brand) + '">' + esc(br.brand) + '</button>';
-      }).join("") + '</div>';
-    if (!z.brand) return h + '<div class="empty">Pick a brand to see its products.</div>';
-    var fams = familyList(z.brand);
-    h += '<div class="chips">' + fams.map(function (f) {
-      var n = brandProducts(z.brand).filter(function (p) { return p.family === f; }).length;
-      return '<button class="chip ' + (z.family === f ? "on" : "") + '" data-act="ch-fam" data-fam="' + esc(f) + '">' + esc(f) + ' <b>' + n + '</b></button>';
-    }).join("") + '</div>';
-    if (!z.family) return h + '<div class="empty">Pick a family above.</div>';
-    h += '<div class="plist">';
+    var brands = (S.data.brands || []).filter(function (br) {
+      return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
+    });
+
+    /* STEP 1 — no brand yet: show ONLY brands */
+    if (!z.brand) {
+      return '<div class="ew-picklabel"><span class="step">1</span>Tap a brand</div>' +
+        '<div class="ew-pickgrid">' + brands.map(function (br) {
+          return '<button class="ew-pickbtn brand" data-act="ch-brand" data-brand="' + esc(br.brand) + '">' + esc(br.brand) + '</button>';
+        }).join("") + '</div>';
+    }
+
+    /* brand chosen — a breadcrumb bar; tap a crumb's × to go back a level */
+    var bar = '<div class="ew-pickbar">' +
+      '<button class="ew-crumb" data-act="ch-brandclear"><span class="tag">Brand</span> ' + esc(z.brand) + ' <span class="cx">&#10005;</span></button>' +
+      (z.family ? '<button class="ew-crumb" data-act="ch-famclear"><span class="tag">Category</span> ' + esc(z.family) + ' <span class="cx">&#10005;</span></button>' : '') +
+      '</div>';
+
+    /* STEP 2 — brand but no category: show ONLY that brand's categories */
+    if (!z.family) {
+      var fams = familyList(z.brand);
+      return bar + '<div class="ew-picklabel"><span class="step">2</span>Tap a category in ' + esc(z.brand) + ' &middot; ' + fams.length + '</div>' +
+        '<div class="ew-pickgrid">' + fams.map(function (f) {
+          var n = brandProducts(z.brand).filter(function (p) { return p.family === f; }).length;
+          return '<button class="ew-pickbtn cat" data-act="ch-fam" data-fam="' + esc(f) + '">' + esc(f) + ' <span class="cnt">' + n + '</span></button>';
+        }).join("") + '</div>';
+    }
+
+    /* STEP 3 — products in the chosen brand+category */
+    var h = bar + '<div class="ew-picklabel"><span class="step">3</span>Set quantities</div><div class="plist">';
     brandProducts(z.brand).filter(function (p) { return p.family === z.family; }).forEach(function (p) {
       var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
       h += '<div class="prow ' + (ex ? "picked" : "") + '">' +
@@ -7277,10 +7323,12 @@ function viewCatalogue() {
       });
       return;
     }
-    if (act === "ch-brand" || act === "ch-fam") {
+    if (act === "ch-brand" || act === "ch-fam" || act === "ch-brandclear" || act === "ch-famclear") {
       var restoreC = keepFields(CH_FIELDS);
       if (act === "ch-brand") { S.ch.brand = t.getAttribute("data-brand"); S.ch.family = ""; }
-      else { S.ch.family = t.getAttribute("data-fam"); }
+      else if (act === "ch-fam") { S.ch.family = t.getAttribute("data-fam"); }
+      else if (act === "ch-brandclear") { S.ch.brand = ""; S.ch.family = ""; }  /* back to Step 1 */
+      else if (act === "ch-famclear") { S.ch.family = ""; }                     /* back to Step 2 */
       S.modal = modalChallan(); render(); restoreC(); return;
     }
     if (act === "ch-qty") {
