@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.75";
+  var APP_VERSION = "6.9.76";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3708,6 +3708,7 @@ function viewCatalogue() {
         '<div class="acts">' +
         (st === "Draft" && canApprove() ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Approved">Approve</button>' : "") +
         (st === "Approved" && canApprove() ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : "") +
+        ((st === "Draft" || st === "Approved") && canApprove() ? '<button class="btn sm ghost" data-act="ch-edit" data-id="' + esc(c.id) + '">Edit</button>' : "") +
         (st === "Dispatched" ? '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Receipt received</button>' : "") +
         /* the billing hand-off: godown/sales send it, accounts closes it */
         (st === "Received" && !c.billStatus ? '<button class="btn sm" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : "") +
@@ -5611,15 +5612,17 @@ function viewCatalogue() {
     var clients = S.data.clients.map(function (x) { return x.name; });
     var sites = S.data.sites.map(function (x) { return x.name; });
     var picked = (z.items || []).slice().sort(function (a, b) { return (Number(b.qty) || 0) - (Number(a.qty) || 0); });
-    return '<h2>New delivery challan</h2>' +
+    var isEdit = !!(z && z.editId);
+    return '<h2>' + (isEdit ? 'Edit challan ' + esc(z.editNo || "") : 'New delivery challan') + '</h2>' +
       '<p class="sub">The printed challan carries no prices and no pictures - it is a delivery note, not a quote.</p>' +
+      (isEdit && z.editStatus === "Approved" ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#b45309">This challan is <b>Approved</b>. Saving a change sends it back to <b>Draft</b> so it must be approved again before dispatch - approval releases material and can\'t carry over to changed contents.</div>' : "") +
       ((z && z.fromQuote) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#0d9488">Pre-filled from quote <b>' + esc(z.fromQuote) + '</b> - review the products and discount, then create.</div>' : "") +
-      '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, LOCATIONS[0]) + '</select>' +
+      '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, (z && z.loc) || LOCATIONS[0]) + '</select>' +
       clientField("m_client", (S.ch && S.ch.client) || "") +
-      '<label>Site (optional)</label><input id="m_site" list="sitelist" placeholder="Site / project"/>' +
+      '<label>Site (optional)</label><input id="m_site" list="sitelist" placeholder="Site / project" value="' + esc((z && z.site) || "") + '"/>' +
       '<datalist id="sitelist">' + sites.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
       '<label>Referring partner (optional)</label><select id="m_assoc">' +
-      opts([""].concat((S.data.associates || []).map(function (p) { return p.name; })), "") + '</select>' +
+      opts([""].concat((S.data.associates || []).map(function (p) { return p.name; })), (z && z.assoc) || "") + '</select>' +
 
       '<h3 style="margin:14px 0 4px;font-size:14px">Products ' +
       '<span class="pill teal">' + picked.length + ' picked</span></h3>' +
@@ -5646,8 +5649,8 @@ function viewCatalogue() {
         : "") +
 
       '<div class="grid2" style="margin-top:10px">' +
-      '<div><label>Freight / tempo fare</label><input id="m_freight" inputmode="numeric" value="0"/></div>' +
-      '<div><label>Freight borne by</label><select id="m_fto">' + opts(["Client", "Energy World"], "Client") + '</select></div>' +
+      '<div><label>Freight / tempo fare</label><input id="m_freight" inputmode="numeric" value="' + esc((z && z.freight != null) ? z.freight : 0) + '"/></div>' +
+      '<div><label>Freight borne by</label><select id="m_fto">' + opts(["Client", "Energy World"], (z && z.fto) || "Client") + '</select></div>' +
       '</div>' +
       /* The bargain. Enter it once, here, and every line quietly remembers what the client
          ACTUALLY paid - so if 5 of 20 come back later, he is credited what he paid, not the
@@ -5655,18 +5658,18 @@ function viewCatalogue() {
          invisible, because each one looks fair on its own. */
       '<div class="grid2">' +
       '<div><label>Discount given on the whole challan</label><input id="m_disc" inputmode="numeric" placeholder="0" value="' + esc((z && z.disc != null) ? z.disc : 0) + '"/></div>' +
-      '<div><label>Why (optional)</label><input id="m_discnote" placeholder="bargained on site"/></div>' +
+      '<div><label>Why (optional)</label><input id="m_discnote" placeholder="bargained on site" value="' + esc((z && z.discnote) || "") + '"/></div>' +
       '</div>' +
       '<div class="grid2" style="margin-top:6px">' +
-      '<div><label>Driver</label><input id="m_driver" list="driverlist" placeholder="Driver name"/>' +
+      '<div><label>Driver</label><input id="m_driver" list="driverlist" placeholder="Driver name" value="' + esc((z && z.driver) || "") + '"/>' +
       '<datalist id="driverlist">' + (S.data.drivers || []).map(function (d) {
         return '<option value="' + esc(d.name) + '"></option>';
       }).join("") + '</datalist></div>' +
-      '<div><label>Driver mobile</label><input id="m_dmob" inputmode="numeric" placeholder="10 digits"/></div>' +
+      '<div><label>Driver mobile</label><input id="m_dmob" inputmode="numeric" placeholder="10 digits" value="' + esc((z && z.dmob) || "") + '"/></div>' +
       '</div>' +
-      '<label>Vehicle number</label><input id="m_veh" placeholder="HR-06-AB-1234"/>' +
+      '<label>Vehicle number</label><input id="m_veh" placeholder="HR-06-AB-1234" value="' + esc((z && z.veh) || "") + '"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      '<button class="btn" data-act="ch-save">Create challan</button></div>';
+      '<button class="btn" data-act="ch-save">' + (isEdit ? 'Save changes' : 'Create challan') + '</button></div>';
   }
 
   function buildPdf(ch, cust, lines) {
@@ -7192,6 +7195,22 @@ function viewCatalogue() {
       S.modal = modalChallan(); render(); restoreCh();
       return;
     }
+    if (act === "ch-edit") {
+      var ce = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      if (!ce) return;
+      if (ce.status === "Dispatched" || ce.status === "Received") { toast("A dispatched challan can't be edited."); return; }
+      var eItems = []; try { eItems = JSON.parse(ce.itemsJson || "[]"); } catch (e) { eItems = []; }
+      S.ch = {
+        editId: ce.id, editNo: ce.challanNo, editStatus: ce.status || "Draft",
+        brand: ce.brand || "", family: "",
+        client: ce.customerName || "", site: ce.site || "", assoc: ce.associate || "",
+        loc: ce.location || "", freight: (ce.freight != null ? ce.freight : 0), fto: ce.freightTo || "Client",
+        disc: (ce.discAmt != null ? ce.discAmt : 0), discnote: ce.discNote || "",
+        driver: ce.driver || "", dmob: ce.driverMobile || "", veh: ce.vehicle || "",
+        items: eItems.map(function (l) { return { code: l.code, desc: l.desc, unit: l.unit, qty: l.qty, rate: l.rate, brand: l.brand, disc: l.disc }; })
+      };
+      S.modal = modalChallan(); render(); return;
+    }
     if (act === "ch-save") {
       var cn = val("m_client");
       if (!cn) { toast("Enter the client."); return; }
@@ -7234,11 +7253,49 @@ function viewCatalogue() {
               })[0] || null;
             });
 
+      /* Editing an existing challan? Capture its identity BEFORE we clear S.ch. */
+      var editId = S.ch && S.ch.editId, editNo = S.ch && S.ch.editNo, editStatus = S.ch && S.ch.editStatus;
+      var editRow = editId ? ((S.data.challans || []).filter(function (x) { return x.id === editId; })[0] || {}) : null;
+
       /* SNAPPY: close the builder instantly and toast, so the user never stares at a blocked
          "Creating..." button through two slow Apps Script round-trips. The driver-lookup and the
          challan-number reservation now run in PARALLEL (were sequential), and the actual save is
          journaled by the bulletproof save() so nothing can be lost even if the network drops. */
       S.modal = null; S.ch = null;
+
+      /* ----- EDIT an existing (pre-dispatch) challan ----- */
+      if (editId) {
+        var wasApproved = editStatus === "Approved";
+        toast("Saving changes to " + editNo + "...");
+        render();
+        driverReady.then(function (dRec) {
+          var ch = Object.assign({}, editRow, {
+            id: editId, challanNo: editNo,
+            customerId: cObj.id || editRow.customerId || "", customerName: cn,
+            siteId: siteObj.id || "", site: siteName || "",
+            brand: brandV, location: locV,
+            items: lines.map(function (l) { return l.desc + " x" + l.qty; }).join(", "),
+            itemsJson: itemsJson, amount: amount,
+            freight: freightV, freightTo: ftoV,
+            discAmt: discV, discNote: discnoteV,
+            driver: dName, driverId: (dRec && dRec.id) || editRow.driverId || "",
+            driverMobile: dMob || (dRec && dRec.mobile) || "",
+            vehicle: dVeh || (dRec && dRec.vehicle) || "",
+            associate: assocName
+          });
+          /* Approval was given on the earlier contents. Changed contents must be approved again
+             before any material is released, so an edit sends an Approved challan back to Draft. */
+          if (wasApproved) { ch.status = "Draft"; ch.approvedBy = ""; }
+          return save("challans", ch).then(function (r) {
+            if (!r) return;
+            toast(wasApproved ? "Saved - back to Draft, approve again before dispatch." : "Challan " + editNo + " updated.");
+            render();
+          });
+        }).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
+        return;
+      }
+
+      /* ----- CREATE a new challan ----- */
       toast("Creating challan for " + cn + "...");
       render();
 
