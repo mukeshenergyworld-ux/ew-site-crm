@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.68";
+  var APP_VERSION = "6.9.69";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -103,6 +103,24 @@
      Nobody pays a plumber 84.7 paise - round to the rupee everywhere money is shown. */
   function money(n) { return "\u20B9" + Math.round(Number(n) || 0).toLocaleString("en-IN"); }
   function moneyAscii(n) { return "Rs. " + Math.round(Number(n) || 0).toLocaleString("en-IN"); }
+
+  /* The PDFs use the core Helvetica font (no heavy Unicode font embed - that would bloat every
+     quote and break the WhatsApp/Telegram send). Core Helvetica can only draw Latin-1, so any
+     fancy symbol a product description carries (bullets, diamonds, arrows, the \u20B9 sign, smart
+     quotes) would print as garbage like "\u00D8=\u00DD". pdfSafe maps the common ones to clean ASCII and
+     drops anything else, so descriptions always read cleanly. */
+  function pdfSafe(s) {
+    return String(s == null ? "" : s)
+      .replace(/\u20B9/g, "Rs.")
+      .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
+      .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
+      .replace(/[\u2013\u2014\u2015]/g, "-")
+      .replace(/[\u2192\u21D2\u27A4\u27A2\u279C\u2794\u2799\u279E]/g, "->")
+      .replace(/[\u2022\u25CF\u25CB\u25C6\u25C7\u25A0\u25A1\u2219\u2023\u2043\u30FB\u00B7\u2666\u2756\u276F\u00BB]/g, " \u00B7 ")
+      .replace(/[\u2713\u2714\u2705\u2611]/g, "")
+      .replace(/[^\x20-\xFF]/g, " ")
+      .replace(/\s+/g, " ").trim();
+  }
 
   function toast(msg) {
     var t = document.createElement("div");
@@ -2343,7 +2361,7 @@ function viewCatalogue() {
           : Number(i.disc);
         d = Number(d) || 0;
         var net = Math.round(i.price * (1 - d / 100));
-        return { desc: String(i.desc == null ? "" : i.desc).replace(/\s+/g, " ").trim(), code: i.code, pic: pics[idx], dim: PIC_DIM[i.pic] || null,
+        return { desc: pdfSafe(i.desc), code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[i.pic] || null,
           unit: i.unit || "No's",
           qty: i.qty, price: i.price, disc: d, net: net, total: net * i.qty };
       });
@@ -4121,7 +4139,7 @@ function viewCatalogue() {
         head();
         var priced = pricedLines(c, cl), sub = 0;
         priced.forEach(function (x, idx) {
-          var lines = doc.splitTextToSize(String(x.desc || ""), prodW);
+          var lines = doc.splitTextToSize(pdfSafe(x.desc), prodW);
           var nL = Math.min(lines.length, 2), rowH = nL > 1 ? 6.9 : 4.15;
           if (y + rowH > 282) { doc.addPage(); y = 20; head(); }
           if (idx % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 3.2, R - L, rowH, "F"); }
