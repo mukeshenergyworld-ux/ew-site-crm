@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.66";
+  var APP_VERSION = "6.9.67";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1596,29 +1596,29 @@ window.addEventListener("beforeunload", function (ev) {
      rad-wa) and the payment reminder (pay-wa). */
   function waShareDoc(docPromise, fname, wnum, wmsg) {
     var waUrl = "https://wa.me/" + (wnum || "") + "?text=" + encodeURIComponent(wmsg);
-    var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-    if (isMobile) {
-      toast("Preparing to share...");
-      docPromise.then(function (d) {
-        try {
-          var file = new File([d.output("blob")], fname, { type: "application/pdf" });
-          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            navigator.share({ files: [file], text: wmsg })
-              .catch(function () { d.save(fname); window.open(waUrl, "_blank"); });
-            return;
-          }
-        } catch (e) { }
-        d.save(fname); window.open(waUrl, "_blank");
-      }).catch(function () { toast("Could not build the PDF."); });
-      return;
-    }
-    /* Desktop: open WhatsApp NOW (keeps the click permission so it isn't blocked),
-       then download the PDF so it can be dragged into the chat. */
-    window.open(waUrl, "_blank");
-    toast("Opening WhatsApp - building the PDF to attach...");
+    /* Attaching a file to a wa.me link is impossible, so the only real "attach" is the OS share
+       sheet (Web Share API with files) - which now works on modern phones AND desktops (macOS,
+       Windows). Try that first on EVERY device; the PDF rides along as the attachment and the
+       user picks WhatsApp / Telegram / any app. Because the PDF is now tiny (~50 KB) it builds
+       inside the click's activation window, so the share sheet isn't blocked. Only if the
+       browser can't share files do we fall back to opening the chat + downloading to drag in. */
+    toast("Preparing the PDF to share...");
     docPromise.then(function (d) {
+      var file = null;
+      try { file = new File([d.output("blob")], fname, { type: "application/pdf" }); } catch (e) { }
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], text: wmsg, title: fname })
+          .then(function () { toast("Shared."); })
+          .catch(function (err) {
+            /* user cancelled the sheet - do nothing; a real failure - fall back to drag */
+            if (!err || String(err.name) !== "AbortError") { d.save(fname); window.open(waUrl, "_blank"); toast("Opened WhatsApp - drag the downloaded PDF in."); }
+          });
+        return;
+      }
+      /* no file-share support: open the chat and download the PDF to drag in manually */
+      window.open(waUrl, "_blank");
       d.save(fname);
-      toast("PDF downloaded - drag it into the WhatsApp chat.");
+      toast("WhatsApp opened - the PDF was downloaded, drag it into the chat.");
     }).catch(function () { toast("Could not build the PDF."); });
   }
 
@@ -2308,8 +2308,11 @@ function viewCatalogue() {
   function quotePdf(q) {
     var items = [];
     try { items = JSON.parse(q.items || "[]"); } catch (e) {}
+    /* No DejaVu ₹-font embed: it added ~600 KB to every quote, which made the Telegram bot send
+       (base64 over the wire) fail and the WhatsApp share sluggish. Uses "Rs." in core Helvetica,
+       exactly like the statement PDF. Result: ~50 KB, sends reliably. */
     return Promise.all([
-      loadFonts(),
+      Promise.resolve(null),
       loadLogo(),
       Promise.all(items.map(function (i) { return loadPic(i.pic); })),
       logosReady()
@@ -2485,17 +2488,14 @@ function viewCatalogue() {
         doc.text(fitCell(doc, F, r.unit, UNIT_W, 1, "normal", 6.2)[0], X.unit, y + 0.6, { align: "right" });
         F("bold"); doc.text(String(r.qty), X.qty, y + 0.6, { align: "right" });
         F("normal");
-        /* Always print the list price and the discounted price. Only the DIS.% cell is
-           conditional - a line with no discount shows an en-dash there instead of a blank,
-           so a zero-discount quote never looks like the columns failed to render. */
-        col(GREY);
-        doc.text(R(r.price), X.price, y + 0.6, { align: "right" });
+        /* A discounted line shows list PRICE, DIS.%, and the DISC. PRICE. A line with NO
+           discount would just repeat the same figure in PRICE and DISC. PRICE, so we leave the
+           PRICE and DIS.% cells blank and print the single price once, under DISC. PRICE. */
         if (r.disc > 0) {
+          col(GREY); F("normal");
+          doc.text(R(r.price), X.price, y + 0.6, { align: "right" });
           col([13, 148, 136]); F("bold");
           doc.text(r.disc.toFixed(1) + "%", X.dis, y + 0.6, { align: "right" });
-        } else {
-          col([160, 174, 192]); F("normal");
-          doc.text("–", X.dis, y + 0.6, { align: "right" });
         }
         col(INK); F("normal");
         doc.text(R(r.net), X.dprice, y + 0.6, { align: "right" });
