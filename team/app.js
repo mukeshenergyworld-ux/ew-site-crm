@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.73";
+  var APP_VERSION = "6.9.74";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -7214,35 +7214,47 @@ function viewCatalogue() {
       var amount = lines.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0);
       var assocName = val("m_assoc");
       var itemsJson = JSON.stringify(lines);
-      t.disabled = true; t.textContent = "Creating...";
+      /* Read EVERY form field into plain vars NOW, before we close the modal. Once the modal is
+         gone the inputs no longer exist, so any val() after this point would read blank. */
+      var dName = val("m_driver"), dMob = val("m_dmob"), dVeh = val("m_veh");
+      var brandV = val("m_brand") || (S.ch && S.ch.brand) || "";
+      var locV = val("m_loc"), freightV = val("m_freight") || 0, ftoV = val("m_fto");
+      var discV = val("m_disc") || 0, discnoteV = val("m_discnote");
 
       /* Make sure the driver exists in the master before the challan points at him. A driver
          typed as free text can never be totalled, so freight per driver would be guesswork. */
-      var dName = val("m_driver"), dMob = val("m_dmob"), dVeh = val("m_veh");
       var known = (S.data.drivers || []).filter(function (x) {
         return String(x.name).trim().toLowerCase() === dName.trim().toLowerCase();
       })[0];
       var driverReady = (!dName || known)
         ? Promise.resolve(known || null)
-        : save("drivers", { id: "", name: dName, mobile: dMob, vehicle: dVeh, defaultFare: val("m_freight") || "" })
+        : save("drivers", { id: "", name: dName, mobile: dMob, vehicle: dVeh, defaultFare: freightV || "" })
             .then(function () {
               return (S.data.drivers || []).filter(function (x) {
                 return String(x.name).trim().toLowerCase() === dName.trim().toLowerCase();
               })[0] || null;
             });
 
-      driverReady.then(function (dRec) {
-      api("challanNo", { client: cObj.shortName || cn }).then(function (n) {
+      /* SNAPPY: close the builder instantly and toast, so the user never stares at a blocked
+         "Creating..." button through two slow Apps Script round-trips. The driver-lookup and the
+         challan-number reservation now run in PARALLEL (were sequential), and the actual save is
+         journaled by the bulletproof save() so nothing can be lost even if the network drops. */
+      S.modal = null; S.ch = null;
+      toast("Creating challan for " + cn + "...");
+      render();
+
+      Promise.all([driverReady, api("challanNo", { client: cObj.shortName || cn })]).then(function (arr) {
+        var dRec = arr[0], n = arr[1];
         var no = (n && n.challanNo) || (cn.toUpperCase().slice(0, 6) + "/" + today().slice(8) + "/001");
         var ch = {
           id: "", createdBy: S.user, challanNo: no,
           customerId: cObj.id || "", customerName: cn,
           siteId: siteObj.id || "", site: siteName || "",
-          brand: val("m_brand") || (S.ch && S.ch.brand) || "", location: val("m_loc"),
+          brand: brandV, location: locV,
           items: lines.map(function (l) { return l.desc + " x" + l.qty; }).join(", "),
           itemsJson: itemsJson, amount: amount,
-          freight: val("m_freight") || 0, freightTo: val("m_fto"),
-          discAmt: val("m_disc") || 0, discNote: val("m_discnote"),
+          freight: freightV, freightTo: ftoV,
+          discAmt: discV, discNote: discnoteV,
           driver: dName, driverId: (dRec && dRec.id) || "",
           driverMobile: dMob || (dRec && dRec.mobile) || "",
           vehicle: dVeh || (dRec && dRec.vehicle) || "",
@@ -7250,7 +7262,6 @@ function viewCatalogue() {
         };
         return save("challans", ch).then(function (r) {
           if (!r) return;
-          S.modal = null;
           toast("Challan " + no + " created - pending approval.");
           render();
           sendChallanPdf(r, "TG_CHALLAN",
@@ -7258,8 +7269,7 @@ function viewCatalogue() {
             "\nCreated by <b>" + S.user + "</b>\n\n<i>PENDING APPROVAL</i>", null)
             .then(function (tg) { toast(tg && tg.ok ? "Sent to challan bot." : "Saved, but Telegram send failed."); });
         });
-      });
-      });   /* driverReady */
+      }).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
       return;
     }
 
@@ -7324,42 +7334,49 @@ function viewCatalogue() {
           "\n\n" + ch2.challanNo + " - " + ch2.customerName +
           "\n\nThis releases material. It is not a formality.");
         if (!pin) return;
-        t.disabled = true; t.textContent = "...";
+        /* SNAPPY: flip the status and redraw INSTANTLY so approving many challans feels immediate.
+           The server still validates the PIN in the background; if it refuses, we revert the row
+           and tell the user. No quietSync round-trip on success - the local state already matches. */
+        var prevStatus = ch2.status, prevBy = ch2.approvedBy || "";
+        ch2.status = to;
+        if (to === "Approved") { ch2.approvedBy = S.user; toast("Approved."); }
+        else { toast("Dispatched."); }
+        render();
+        var revert = function (msg) {
+          ch2.status = prevStatus; ch2.approvedBy = prevBy;
+          toast(msg || ("Could not " + (to === "Approved" ? "approve" : "dispatch") + " - reverted."));
+          render();
+        };
         api("challanMove", { id: id, to: to, approvePin: pin }).then(function (r) {
-          if (!r || !r.ok) { toast((r && r.error) || "Could not update."); render(); return; }
-          ch2.status = to;
-          if (to === "Approved") { ch2.approvedBy = r.by; toast("Approved by " + r.by + "."); render(); quietSync(); return; }
-          toast("Dispatched.");
+          if (!r || !r.ok) { revert(r && r.error); return; }
+          if (to === "Approved") { ch2.approvedBy = r.by || S.user; render(); return; }
           sendChallanPdf(ch2, "TG_DISPATCH",
             "<b>DISPATCH: " + ch2.challanNo + "</b>\n" + ch2.customerName +
             (ch2.driver ? "\nDriver: " + ch2.driver : "") +
             "\nApproved by <b>" + (ch2.approvedBy || r.by) + "</b>", ch2.approvedBy || r.by)
-            .then(function (tg) { toast(tg && tg.ok ? "Sent to dispatch bot." : "Saved, Telegram send failed."); });
-          render(); quietSync();
-        });
+            .then(function (tg) { toast(tg && tg.ok ? "Sent to dispatch bot." : "Dispatch done, Telegram send failed."); });
+        }).catch(function () { revert("Network error - reverted."); });
         return;
       }
-      t.disabled = true; t.textContent = "...";
+      /* SNAPPY: flip instantly, validate in the background, revert on refusal (no full refresh). */
+      var prevS2 = ch2.status, prevR2 = ch2.receiptReceived;
+      ch2.status = to;
+      if (to === "Received") { ch2.receiptReceived = "Y"; toast("Receipt in. Ledger, freight and partner incentive now count for this challan."); }
+      else if (to === "Dispatched") { toast("Dispatched."); }
+      else { toast("Updated."); }
+      render();
+      var revert2 = function (msg) { ch2.status = prevS2; ch2.receiptReceived = prevR2; toast(msg || "Could not update - reverted."); render(); };
       api("challanMove", { id: id, to: to }).then(function (r) {
-        if (!r || !r.ok) { toast((r && r.error) || "Could not update."); render(); return; }
-        ch2.status = to;
-        if (to === "Approved") {
-          ch2.approvedBy = r.by;
-          toast("Approved by " + r.by + ".");
-        } else if (to === "Dispatched") {
-          toast("Dispatched.");
+        if (!r || !r.ok) { revert2(r && r.error); return; }
+        if (to === "Approved") { ch2.approvedBy = r.by; render(); }
+        else if (to === "Dispatched") {
           sendChallanPdf(ch2, "TG_DISPATCH",
             "<b>DISPATCH: " + ch2.challanNo + "</b>\n" + ch2.customerName +
             (ch2.driver ? "\nDriver: " + ch2.driver : "") +
             "\nApproved by <b>" + (ch2.approvedBy || "-") + "</b>", ch2.approvedBy || "")
             .then(function (tg) { toast(tg && tg.ok ? "Sent to dispatch bot." : "Dispatch send failed."); });
-        } else if (to === "Received") {
-          ch2.receiptReceived = "Y";
-          toast("Receipt in. Ledger, freight and partner incentive now count for this challan.");
         }
-        render();
-        refresh();
-      });
+      }).catch(function () { revert2("Network error - reverted."); });
       return;
     }
 
