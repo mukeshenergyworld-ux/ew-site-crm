@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.90";
+  var APP_VERSION = "6.9.91";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4156,6 +4156,7 @@ function viewCatalogue() {
       (anyPartner
         ? ' Below each discount, set the incentive % for this client’s partner(s) on that brand — each earns on the net (post-discount) sale.'
         : ' <span style="color:#94a3b8">No plumber / architect / builder / PMC is linked to this client, so there is no incentive to set. Add one on the client’s record to set partner incentives here.</span>') +
+      '<br><span style="color:#0f766e;font-weight:600">Fill in every brand you need, then tap <b>Save &amp; back</b> — nothing is saved until you do.</span>' +
       '</div>';
     brands.forEach(function (b) {
       var d = discRow(cl, b);
@@ -4189,12 +4190,12 @@ function viewCatalogue() {
         loadLine +
         '</div>';
     });
-    /* Explicit Save & Back. Each field already saves quietly the moment you leave it, so nothing is
-       lost even without tapping this — but the button gives a clear "I'm done" that also commits a
-       field still being typed (by blurring it first) and returns to the client list. */
+    /* Explicit, DEFERRED Save. Typing in a discount / incentive box writes nothing; this button is
+       the only thing that commits — it reads every box on the screen and saves them in one pass,
+       then returns to the client list. "Back" leaves without saving (discards unsaved edits). */
     h += '<div class="acts" style="position:sticky;bottom:0;background:#fff;padding:12px 0 14px;border-top:1px solid #e2e8f0;margin-top:10px;z-index:5">' +
       '<button class="btn" data-act="disc-saveall">&#10003; Save &amp; back</button>' +
-      '<button class="btn ghost" data-act="disc-back">Back</button></div>';
+      '<button class="btn ghost" data-act="disc-back">Back (don\'t save)</button></div>';
     return h;
   }
 
@@ -6522,10 +6523,40 @@ function viewCatalogue() {
     if (act === "disc-edit") { S.q = t.getAttribute("data-n"); render(); return; }
     if (act === "disc-back") { S.q = ""; render(); return; }
     if (act === "disc-saveall") {
-      /* commit a field that is still focused (its change handler fires on blur, saving quietly),
-         then go back to the discount-client list. The 60ms lets that in-flight save start. */
-      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-      setTimeout(function () { S.q = ""; render(); toast("Discounts & incentives saved."); }, 60);
+      if (S.role !== "admin") { toast("Only admin can set discounts."); return; }
+      /* DEFERRED SAVE: read every discount (.dsc) and incentive (.incp) box on the screen and
+         commit them in ONE pass — grouped per client+brand, because one discount row carries the
+         brand discount AND every partner's incentive together in its notes. Nothing was written
+         while the owner typed; this is the only place a discount edit reaches the sheet. */
+      var groups = {};
+      document.querySelectorAll(".dsc").forEach(function (el) {
+        var cl = el.getAttribute("data-client"), br = el.getAttribute("data-brand"), k = cl + "||" + br;
+        groups[k] = groups[k] || { client: cl, brand: br };
+        groups[k].pctSet = true; groups[k].pct = String(el.value || "").trim();
+      });
+      document.querySelectorAll(".incp").forEach(function (el) {
+        var cl = el.getAttribute("data-client"), br = el.getAttribute("data-brand"), k = cl + "||" + br;
+        groups[k] = groups[k] || { client: cl, brand: br };
+        (groups[k].inc = groups[k].inc || []).push({ role: String(el.getAttribute("data-role") || "").toLowerCase(), val: String(el.value || "").trim() });
+      });
+      var saved = 0;
+      Object.keys(groups).forEach(function (k) {
+        var g = groups[k], exd = discRow(g.client, g.brand);
+        var pct = g.pctSet ? (g.pct === "" ? "" : (Number(g.pct) || 0)) : (exd && exd.pct != null ? exd.pct : "");
+        var notes = incMap(exd);           // start from what's stored, overlay the on-screen roles
+        (g.inc || []).forEach(function (f) {
+          if (f.val === "" || Number(f.val) === 0) { delete notes[f.role]; } else { notes[f.role] = Number(f.val) || 0; }
+        });
+        var notesStr = Object.keys(notes).length ? JSON.stringify(notes) : "";
+        var isEmpty = (pct === "" || pct === 0) && !notesStr;
+        if (isEmpty && !exd) return;       // don't create a blank row for a brand never touched
+        save("discounts", { id: (exd ? exd.id : "") || "", client: g.client, brand: g.brand, pct: pct, notes: notesStr }, true);
+        saved++;
+      });
+      setTimeout(function () {
+        S.q = ""; render();
+        toast(saved ? ("Saved " + saved + " brand line" + (saved > 1 ? "s" : "") + " for this client.") : "Nothing to save.");
+      }, 120);
       return;
     }
     if (act === "board-quote") {
@@ -7906,27 +7937,11 @@ function viewCatalogue() {
       if (bit) { bit.disc = Number(t.value) || 0; bch.itemsJson = JSON.stringify(bitems); save("challans", bch); render(); }
       return;
     }
-    if (t.classList && t.classList.contains("dsc")) {
-      if (S.role !== "admin") { toast("Only admin can set discounts."); return; }
-      var cli = t.getAttribute("data-client");
-      var br = t.getAttribute("data-brand");
-      var exd = discRow(cli, br);
-      save("discounts", { id: t.getAttribute("data-id") || (exd ? exd.id : "") || "", client: cli, brand: br, pct: t.value, notes: (exd && exd.notes) || "" }, true)
-        .then(function (r) { if (r) toast(br + " for " + cli + ": " + (t.value || 0) + "%"); });
-      return;
-    }
-    if (t.classList && t.classList.contains("incp")) {
-      if (S.role !== "admin") { toast("Only admin can set incentives."); return; }
-      var icli = t.getAttribute("data-client");
-      var ibr = t.getAttribute("data-brand");
-      var irole = String(t.getAttribute("data-role") || "").toLowerCase();
-      var iex = discRow(icli, ibr);
-      var m = incMap(iex);
-      var vv = String(t.value || "").trim();
-      if (vv === "" || Number(vv) === 0) { delete m[irole]; } else { m[irole] = Number(vv) || 0; }
-      var notesStr = Object.keys(m).length ? JSON.stringify(m) : "";
-      save("discounts", { id: (iex ? iex.id : "") || "", client: icli, brand: ibr, pct: (iex && iex.pct != null) ? iex.pct : "", notes: notesStr }, true)
-        .then(function (r) { if (r) toast(irole + " incentive · " + icli + " · " + ibr + ": " + (vv || 0) + "%"); });
+    if (t.classList && (t.classList.contains("dsc") || t.classList.contains("incp"))) {
+      /* Discount / incentive fields are now DEFERRED: nothing is written as you type or leave a
+         field. The values just sit in the boxes until you tap "Save & back", which reads every box
+         on screen and commits them in one go (see the disc-saveall handler). This is what the owner
+         asked for — no save after every entry. */
       return;
     }
     if (t.classList && t.classList.contains("bm")) {
