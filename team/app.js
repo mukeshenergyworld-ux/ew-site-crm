@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.69";
+  var APP_VERSION = "6.9.70";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -155,41 +155,95 @@
     }).then(function (r) { return r.json(); });
   }
 
-  function save(tab, row) {
-  var list = (S.data[tab] = S.data[tab] || []);
-  var idx = -1;
-  for (var k = 0; k < list.length; k++) {
-    if (list[k] && row.id && list[k].id === row.id) { idx = k; break; }
+  /* ---------- bulletproof saving ----------
+     A save used to be DISCARDED (rolled back) the instant the network hiccuped - that is how a
+     finished quote could vanish. Now nothing is ever thrown away: every save is written to a
+     recovery JOURNAL on this device first. If the server confirms it, the journal entry clears.
+     If it fails, the record STAYS on screen and in the journal, a red banner shows, and it is
+     retried automatically - and again the next time the app opens. Data cannot silently disappear. */
+  var PEND_KEY = "ew_pending_v1", _pkSeq = 0, _retrying = false;
+  function pendLoad() { try { return JSON.parse(localStorage.getItem(PEND_KEY) || "[]") || []; } catch (e) { return []; } }
+  function pendStore(l) { try { localStorage.setItem(PEND_KEY, JSON.stringify(l)); } catch (e) { } S.pendCount = l.length; syncBanner(); }
+  function pendCount() { return pendLoad().length; }
+  function pendPut(pk, tab, row) { var l = pendLoad().filter(function (x) { return x.pk !== pk; }); l.push({ pk: pk, tab: tab, row: row, at: Date.now(), err: "" }); pendStore(l); }
+  function pendMark(pk, err) { var l = pendLoad(); l.forEach(function (x) { if (x.pk === pk) x.err = err; }); pendStore(l); }
+  function pendDrop(pk) { pendStore(pendLoad().filter(function (x) { return x.pk !== pk; })); }
+  function natEq(a, b) {
+    if (b.id && a.id === b.id) return true;
+    if (b.quoteNo) return a.quoteNo === b.quoteNo;
+    if (b.challanNo) return a.challanNo === b.challanNo;
+    if (b.returnNo) return a.returnNo === b.returnNo;
+    if (b.name) return a.name === b.name && (a.mobile || "") === (b.mobile || "");
+    return false;
   }
-  var prev = idx >= 0 ? Object.assign({}, list[idx]) : null;
-  if (idx >= 0) Object.assign(list[idx], row);
-  else { list.push(row); idx = list.length - 1; }
-  S.pending = (S.pending || 0) + 1;
-  render();
-  var undo = function (why) {
-    S.pending = Math.max(0, (S.pending || 1) - 1);
-    if (prev) Object.assign(list[idx], prev);
-    else list.splice(idx, 1);
-    toast("NOT saved - " + why + ". Your change has been undone.");
+  /* re-overlay unsynced records on top of a fresh server pull, so a background sync can never
+     erase something that has not been confirmed saved yet */
+  function applyPending() {
+    pendLoad().forEach(function (e) {
+      var arr = (S.data[e.tab] = S.data[e.tab] || []), found = false;
+      for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { found = true; break; } }
+      if (!found) arr.push(e.row);
+    });
+  }
+  function retryPending() {
+    if (_retrying) return;
+    var l = pendLoad(); if (!l.length) return;
+    _retrying = true;
+    var e = l[0];
+    api("teamSave", { tab: e.tab, row: e.row }).then(function (r) {
+      _retrying = false;
+      if (r && r.ok) {
+        var arr = S.data[e.tab] || []; for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { Object.assign(arr[j], r.row); break; } }
+        pendDrop(e.pk); render();
+        if (pendCount()) retryPending(); else toast("All pending records are now saved.");
+      } else { pendMark(e.pk, (r && r.error) || "server refused"); }
+    }).catch(function () { _retrying = false; });
+  }
+  function syncBanner() {
+    var n = pendLoad().length, el = document.getElementById("ew_sync_banner");
+    if (!n) { if (el && el.parentNode) el.parentNode.removeChild(el); return; }
+    if (!el) {
+      el = document.createElement("div"); el.id = "ew_sync_banner";
+      el.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:99998;background:#b91c1c;color:#fff;padding:10px 14px;font:600 13px system-ui,sans-serif;display:flex;align-items:center;gap:12px;justify-content:center;box-shadow:0 -2px 10px rgba(0,0,0,.25)";
+      document.body.appendChild(el);
+    }
+    el.innerHTML = "⚠ " + n + " record(s) not yet saved to the server — kept safe on this device. " +
+      '<button id="ew_retry_btn" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Retry now</button>';
+    var b = document.getElementById("ew_retry_btn"); if (b) b.onclick = function () { toast("Retrying..."); retryPending(); };
+  }
+
+  function save(tab, row) {
+    var list = (S.data[tab] = S.data[tab] || []);
+    var idx = -1;
+    for (var k = 0; k < list.length; k++) { if (list[k] && row.id && list[k].id === row.id) { idx = k; break; } }
+    if (idx >= 0) Object.assign(list[idx], row); else { list.push(row); idx = list.length - 1; }
+    S.pending = (S.pending || 0) + 1;
+    var pk = "pk" + (++_pkSeq) + "_" + (row.id || row.quoteNo || row.challanNo || row.name || "x");
+    pendPut(pk, tab, row);            // journal the attempt on THIS DEVICE before the network call
     render();
-    return null;
-  };
-  return api("teamSave", { tab: tab, row: row }).then(function (r) {
-    if (!r || !r.ok) return undo((r && r.error) || "server refused it");
-    S.pending = Math.max(0, (S.pending || 1) - 1);
-    Object.assign(list[idx], r.row);
-    render();
-    quietSync();
-    return r.row;
-  }).catch(function (e) {
-    return undo(e && e.message ? e.message : "network error");
-  });
-}
+    var done = function () { S.pending = Math.max(0, (S.pending || 1) - 1); };
+    return api("teamSave", { tab: tab, row: row }).then(function (r) {
+      if (!r || !r.ok) {
+        done(); pendMark(pk, (r && r.error) || "server refused it");
+        toast("Not synced yet - kept safe on this device, will retry."); render();
+        return row;                   // KEEP the record - never discard
+      }
+      done();
+      if (list[idx]) Object.assign(list[idx], r.row);
+      pendDrop(pk); render(); quietSync();
+      return r.row;
+    }).catch(function (e) {
+      done(); pendMark(pk, (e && e.message) ? e.message : "network error");
+      toast("Not synced yet - kept safe on this device, will retry."); render();
+      return row;                     // KEEP the record - never discard
+    });
+  }
 
 /* A save now repaints instantly and syncs behind. If someone closes the app while
    a save is still in flight, warn them rather than lose it silently. */
 window.addEventListener("beforeunload", function (ev) {
-  if (typeof S !== "undefined" && S && S.pending > 0) { ev.preventDefault(); ev.returnValue = ""; }
+  var stuck = false; try { stuck = pendCount() > 0; } catch (e) { }
+  if (typeof S !== "undefined" && S && (S.pending > 0 || stuck)) { ev.preventDefault(); ev.returnValue = ""; }
 });
 
   /* background re-sync, at most once every 20s, never blocks the screen */
@@ -199,7 +253,8 @@ window.addEventListener("beforeunload", function (ev) {
     syncing = true;
     api("teamGet").then(function (r) {
       syncing = false; syncAt = Date.now();
-      if (r && r.ok) { S.data = r; snapSave(); render(); }
+      if (r && r.ok) { S.data = r; applyPending(); snapSave(); render(); }
+      if (pendCount()) retryPending();
     }).catch(function () { syncing = false; });
   }
 
@@ -223,8 +278,9 @@ window.addEventListener("beforeunload", function (ev) {
     return api("teamGet").then(function (r) {
       S.busy = false;
       syncAt = Date.now();
-      if (r && r.ok) { S.data = r; snapSave(); }
-      render();
+      if (r && r.ok) { S.data = r; applyPending(); snapSave(); }
+      render(); syncBanner();
+      if (pendCount()) retryPending();
     });
   }
 
@@ -5745,7 +5801,7 @@ function viewCatalogue() {
   /* render() is the crash boundary: if anything inside blows up, log it and show a safe recovery
      screen instead of a frozen/blank app. The real work is in renderCore(). */
   function render() {
-    try { renderCore(); }
+    try { renderCore(); try { syncBanner(); } catch (e) { } }
     catch (err) {
       logCrash("render", err);
       try {
