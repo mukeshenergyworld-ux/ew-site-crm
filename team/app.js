@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.95";
+  var APP_VERSION = "6.9.96";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -216,35 +216,27 @@
     var bk = document.getElementById("ew_backup_btn"); if (bk) bk.onclick = exportPending;
   }
 
-  /* Off-device backup of the unsynced journal. Reads ew_pending_v1, offers it as a downloadable
-     JSON file AND copies it to the clipboard AND shows it in a selectable box — so on any phone at
-     least one of those captures the full records before anything touches the login. Read-only:
+  /* Off-device backup of the unsynced journal. Shows the full records in a selectable box with a
+     Copy button and a Share/Save button. Deliberately NO auto blob-download: on iOS Safari that
+     navigates to the blob URL and fails ("WebKitBlobResource error 1"). Copy (clipboard) + native
+     Share (files where supported, else text) + on-screen select-all all work on a phone. Read-only:
      it never changes or clears the journal. */
   function exportPending() {
     var raw = "[]";
     try { raw = localStorage.getItem("ew_pending_v1") || "[]"; } catch (e) { }
     var pretty = raw;
     try { pretty = JSON.stringify(JSON.parse(raw), null, 2); } catch (e) { }
-    var stamp = "";
-    try { stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-"); } catch (e) { }
-    /* 1) download a file */
-    try {
-      var blob = new Blob([pretty], { type: "application/json" });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement("a");
-      a.href = url; a.download = "ew_unsynced_backup_" + (stamp || "copy") + ".json";
-      document.body.appendChild(a); a.click();
-      setTimeout(function () { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch (e) { } }, 1500);
-    } catch (e) { }
-    /* 2) copy to clipboard as a fallback */
-    try { if (navigator.clipboard) navigator.clipboard.writeText(pretty); } catch (e) { }
-    /* 3) show it on screen so it can always be selected/screenshotted */
-    S.modal = '<h2>Backup of unsynced records</h2>' +
-      '<p class="sub">A file was downloaded and the text copied to your clipboard. As a further safety net, you can also select all below and copy, or screenshot it. This does NOT change anything — your records stay on the device.</p>' +
-      '<textarea readonly style="width:100%;height:38vh;font:12px monospace;padding:8px;border:1px solid #cbd5e1;border-radius:8px" onclick="this.select()">' + esc(pretty) + '</textarea>' +
-      '<div class="foot"><button class="btn" data-act="close">Done</button></div>';
+    var n = 0; try { n = JSON.parse(raw).length; } catch (e) { }
+    window.__ewBackupText = pretty;
+    S.modal = '<h2>Backup — ' + n + ' unsynced record(s)</h2>' +
+      '<p class="sub">A safety copy of everything not yet on the server. This changes nothing. Tap <b>Copy</b> and paste it into Notes / WhatsApp, or <b>Share / Save</b> to keep it as a file. You can also long-press the box to select all.</p>' +
+      '<div class="acts" style="margin-bottom:8px">' +
+      '<button class="btn" data-act="backup-copy">Copy</button>' +
+      '<button class="btn ghost" data-act="backup-share">Share / Save</button></div>' +
+      '<textarea id="ew_backup_text" readonly style="width:100%;height:40vh;font:12px monospace;padding:8px;border:1px solid #cbd5e1;border-radius:8px" onclick="this.select()">' + esc(pretty) + '</textarea>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Done</button></div>';
     render();
-    toast("Backup saved — file downloaded + copied to clipboard.");
+    toast("Backup ready — Copy it or Share it to save.");
   }
 
   function save(tab, row, quiet) {
@@ -6646,6 +6638,32 @@ function viewCatalogue() {
     if (act === "bill-pdf") {
       var pcl = hisabResolve(S.q); toast("Building PDF...");
       loadLogo().then(function () { return hisabPdf(pcl); }).then(function (d) { d.save(pcl.replace(/[^\w.-]/g, "_") + "_hisab.pdf"); }).catch(function () { toast("Could not build the PDF."); });
+      return;
+    }
+    if (act === "backup-copy") {
+      var bt = window.__ewBackupText || "";
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(bt).then(function () { toast("Copied — paste it into Notes or WhatsApp to keep it safe."); })
+            .catch(function () { var el = document.getElementById("ew_backup_text"); if (el) { el.focus(); el.select(); } toast("Select all in the box and copy."); });
+        } else { var el2 = document.getElementById("ew_backup_text"); if (el2) { el2.focus(); el2.select(); } toast("Select all in the box and copy."); }
+      } catch (e) { toast("Select all in the box and copy."); }
+      return;
+    }
+    if (act === "backup-share") {
+      var st = window.__ewBackupText || "";
+      try {
+        if (navigator.share) {
+          var didFile = false;
+          try {
+            if (window.File && navigator.canShare) {
+              var f = new File([st], "ew_unsynced_backup.json", { type: "application/json" });
+              if (navigator.canShare({ files: [f] })) { navigator.share({ files: [f], title: "EW unsynced backup" }); didFile = true; }
+            }
+          } catch (e) { }
+          if (!didFile) navigator.share({ title: "EW unsynced backup", text: st }).catch(function () { });
+        } else { toast("Sharing isn't available here — use Copy instead."); }
+      } catch (e) { toast("Couldn't open Share — use Copy instead."); }
       return;
     }
     if (act === "disc-edit") { S.q = t.getAttribute("data-n"); render(); return; }
