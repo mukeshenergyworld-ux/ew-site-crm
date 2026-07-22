@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.99";
+  var APP_VERSION = "6.9.100";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -6371,6 +6371,7 @@ function viewCatalogue() {
       (bioAvailable() ? (bioSaved()
         ? '<button class="btn sm ghost" data-act="bio-off">Face ID on</button>'
         : '<button class="btn sm ghost" data-act="bio-on">Enable Face ID</button>') : '') +
+      '<button class="btn sm" data-act="app-refresh" title="Reload the app fresh — latest version and all updates">&#8635; Refresh</button>' +
       '<button class="btn sm ghost" data-act="pin-change">PIN</button>' +
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
@@ -6532,6 +6533,17 @@ function viewCatalogue() {
       S.modal = null; render(); return;
     }
     if (act === "pnag-open") { S.modal = modalPartnerNag(); render(); return; }
+    if (act === "app-refresh") {
+      /* Hard-refresh: refetch app.js past the browser cache (cache:"reload" replaces the stored
+         copy), then reload the page — fresh version AND fresh data. Unsynced records are safe:
+         the journal lives in localStorage and survives any reload. Only an in-flight save asks
+         for a few seconds' patience. */
+      if (S.pending > 0) { toast("A save is still syncing — tap Refresh again in a few seconds."); return; }
+      toast("Refreshing the app…");
+      fetch("app.js", { cache: "reload" }).catch(function () { })
+        .then(function () { try { location.reload(); } catch (e2) { location.href = location.pathname; } });
+      return;
+    }
     if (act === "crash-log") { S.modal = modalCrashLog(); render(); return; }
     if (act === "crash-clear") { try { localStorage.removeItem(CRASH_KEY); } catch (e) { } S.modal = modalCrashLog(); render(); return; }
     if (act === "reload-app") { location.reload(); return; }
