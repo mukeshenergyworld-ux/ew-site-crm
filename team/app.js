@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.98";
+  var APP_VERSION = "6.9.99";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1790,8 +1790,15 @@ window.addEventListener("beforeunload", function (ev) {
     return '<h2>' + (c.id ? "Edit customer" : "New lead") + '</h2>' +
       '<p class="sub">Enter a new lead — or an old client. Partners named here flow into every quote, challan and incentive. Mark his brands on the board afterwards.</p>' +
       '<label>Client name</label><input id="c_name" value="' + esc(c.name) + '"/>' +
-      '<div class="grid2"><div><label>Location</label><input id="c_loc" list="cloclist" value="' + esc(c.location || "") + '" placeholder="City e.g. Karnal" autocomplete="off"/>' +
-      '<datalist id="cloclist">' + locations().map(function (l) { return '<option value="' + esc(l) + '"></option>'; }).join("") + '</datalist></div>' +
+      '<div class="grid2"><div><label>Location</label>' + (function () {
+        /* CITY dropdown only — free-typed plot/colony text was exploding into dozens of
+           unusable location chips. Pick a city, or "+ Add new location" for a genuinely new
+           one. An old odd value stays selectable, so just opening a client changes nothing;
+           correcting it moves the odd text into Address (see cl-save) so nothing is lost. */
+        var ls = locations(), cur = String(c.location || "").trim();
+        var listL = [""].concat(cur && ls.indexOf(cur) < 0 ? [cur] : [], ls, ["+ Add new location"]);
+        return '<select id="c_loc">' + opts(listL, cur) + '</select>';
+      })() + '</div>' +
       '<div><label>Type</label><select id="c_type">' + opts(CLIENT_TYPES, c.type || "Home owner") + '</select></div></div>' +
       '<div class="grid2"><div><label>Segment</label><select id="c_segment">' + opts(["", "Residential", "Project"], c.segment || "") + '</select>' +
       '<div class="pmeta" style="font-size:11px;color:#94a3b8">Leave blank to auto-classify from Type.</div></div><div></div></div>' +
@@ -6639,6 +6646,13 @@ function viewCatalogue() {
       /* Money owed from before the app means he is an OLD lead, whatever the dropdown says.
          Otherwise a migrated client quietly inflates next month's "new leads" figure. */
       if (Number(f.opAmt) > 0) f.leadType = "Old";
+      /* If the location held plot/colony text (not a real city) and is being corrected to a
+         proper city, keep the old text by moving it into Address — never lose what was typed. */
+      var oldLocV = String((S.clEditing && S.clEditing.location) || "").trim();
+      if (oldLocV && oldLocV !== f.loc && locations().indexOf(oldLocV) < 0 &&
+          String(f.addr || "").toLowerCase().indexOf(oldLocV.toLowerCase()) < 0) {
+        f.addr = (f.addr ? f.addr + ", " : "") + oldLocV;
+      }
       var mob = f.mob, loc = f.loc, ar = f.ar;
       var arch = f.arch, plumb = f.plumb, build = f.build, pmc = f.pmc;
       var back = S.clBack;
