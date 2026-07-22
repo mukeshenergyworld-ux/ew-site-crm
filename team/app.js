@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.100";
+  var APP_VERSION = "6.9.101";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1386,11 +1386,22 @@ window.addEventListener("beforeunload", function (ev) {
     if (ps === "Lost" || qs.length) return "lost";
     return "none";
   }
-  function brandBoard(name) {
+  function brandBoard(name, compact) {
     var brands = brandList();
+    /* compact card mode: only REAL brands - "Accessory" / "Net Price Items" are allied-item
+       heads, not brands, and they were eating a whole line on every lead card. Still quotable
+       from the quote builder. One line, small chips, side-scroll if narrow. */
+    if (compact) brands = brands.filter(function (b) {
+      var l = String(b).toLowerCase();
+      return l.indexOf("accessor") < 0 && l.indexOf("net price") < 0;
+    });
     if (!brands.length) return "";
-    var base = "display:inline-flex;align-items:center;gap:4px;padding:6px 11px;border-radius:14px;font-size:12px;margin:0 6px 6px 0;border:1px solid;cursor:pointer;";
-    return '<div style="margin-top:8px;display:flex;flex-wrap:wrap">' + brands.map(function (b) {
+    var base = compact
+      ? "display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:10px;font-size:11px;margin:0 4px 0 0;border:1px solid;cursor:pointer;flex:0 0 auto;"
+      : "display:inline-flex;align-items:center;gap:4px;padding:6px 11px;border-radius:14px;font-size:12px;margin:0 6px 6px 0;border:1px solid;cursor:pointer;";
+    return (compact
+      ? '<div style="margin-top:6px;display:flex;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px">'
+      : '<div style="margin-top:8px;display:flex;flex-wrap:wrap">') + brands.map(function (b) {
       var st = clientBrandState(name, b), sty, inner;
       if (st === "won") { sty = base + "background:#f1f5f9;color:#94a3b8;border-color:#cbd5e1"; inner = "✓ " + esc(b); }
       else if (st === "lost") { sty = base + "background:#fef2f2;color:#dc2626;border-color:#fecaca"; inner = '<span style="text-decoration:line-through">' + esc(b) + '</span>'; }
@@ -1489,13 +1500,8 @@ window.addEventListener("beforeunload", function (ev) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") +
       '<div class="grow"></div><button class="btn" data-act="cl-new">+ New lead</button></div>';
-    /* the owner's standing rule, kept in sight: leads without partner names get chased weekly */
-    var pmiss = partnersMissing();
-    if (pmiss.length) {
-      h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><h3>Names missing <span class="pill due">' + pmiss.length + '</span></h3>' +
-        '<div class="meta"><b>' + pmiss.length + '</b> lead(s)/client(s) have no plumber or architect named. A lead is no use without these names — fill them in.</div>' +
-        '<div class="acts"><button class="btn sm" data-act="pnag-open">See the list</button></div></div>';
-    }
+    /* The owner's standing rule now lives ON each card as PL/AR badges (red = enter detail),
+       so no separate "names missing" card here - the weekly reminder modal still fires. */
     var aging = agingLeads();
     if (!seesAllClients()) aging = aging.filter(function (x) { return isMineClient(x.c.name); });
     if (aging.length) {
@@ -1515,14 +1521,19 @@ window.addEventListener("beforeunload", function (ev) {
     function leadCardHtml(c) {
       var cSeg = clientSegment(c);
       var openQ = clientQuotes(c.name).filter(function (q) { return ["Draft", "Sent", "Negotiating", "Revised"].indexOf(q.status) >= 0; }).length;
-      return '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
+      /* COMPACT: one header line (name + pills + PL/AR badges + Call/Edit), one brand line.
+         The plumber/architect gap shows on the card itself - green with phone, red to fill. */
+      return '<div class="card lc-compact">' +
+        '<div class="lc-top"><div class="lc-id"><b>' + esc(c.name) + '</b>' +
+        ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
         (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
-        (openQ ? ' <span class="pill soon">' + openQ + ' in play</span>' : "") + '</h3>' +
-        '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  &middot;  ")) +
-        (c.area ? '<br>' + esc(c.area) : "") + '</div>' +
-        brandBoard(c.name) +
-        '<div class="acts" style="margin-top:8px">' + (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
-        '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>';
+        (openQ ? ' <span class="pill soon">' + openQ + ' in play</span>' : "") +
+        (c.mobile ? ' <span style="color:#94a3b8;font-size:12px;white-space:nowrap">' + esc(c.mobile) + '</span>' : "") +
+        '</div>' +
+        '<div class="lc-right">' + partnerBadge(c, "plumber") + partnerBadge(c, "architect") +
+        (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
+        '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>' +
+        brandBoard(c.name, true) + '</div>';
     }
 
     /* Admin / accounts read the lead book grouped under the sales executive it's assigned to (teal
@@ -1566,19 +1577,21 @@ window.addEventListener("beforeunload", function (ev) {
 
     ensurePickerCss();   /* the exec band (.ch-exec) styling lives with the picker CSS */
     function clientCardHtml(c) {
-      var partners = [c.architect && "Arch: " + c.architect, c.plumber && "Plumber: " + c.plumber,
-        c.builder && "Builder: " + c.builder, c.pmc && "PMC: " + c.pmc].filter(Boolean);
       var won = clientWonCount(c.name);
       var cSeg = clientSegment(c);
-      return '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
+      /* COMPACT: one header line (name + pills + PL/AR badges + Call/Edit), one brand line.
+         Builder/PMC/address stay on the Edit form - the card is for scanning the book fast. */
+      return '<div class="card lc-compact">' +
+        '<div class="lc-top"><div class="lc-id"><b>' + esc(c.name) + '</b>' +
+        ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
         (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
-        ' <span class="bs win">' + (won ? won + ' WON' : 'CLIENT') + '</span></h3>' +
-        '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  &middot;  ")) +
-        (c.area ? '<br>' + esc(c.area) : "") + (c.address ? '<br>' + esc(c.address) : "") +
-        (partners.length ? '<br>' + esc(partners.join(" - ")) : "") + '</div>' +
-        brandBoard(c.name) +
-        '<div class="acts" style="margin-top:8px">' + (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
-        '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>';
+        ' <span class="bs win">' + (won ? won + ' WON' : 'CLIENT') + '</span>' +
+        (c.mobile ? ' <span style="color:#94a3b8;font-size:12px;white-space:nowrap">' + esc(c.mobile) + '</span>' : "") +
+        '</div>' +
+        '<div class="lc-right">' + partnerBadge(c, "plumber") + partnerBadge(c, "architect") +
+        (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
+        '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>' +
+        brandBoard(c.name, true) + '</div>';
     }
 
     /* For admin / accounts, group the client list by the sales executive it's assigned to (a teal
@@ -1730,6 +1743,17 @@ window.addEventListener("beforeunload", function (ev) {
       (p.other.length ? '<optgroup label="Other partners">' + p.other.map(opt).join("") + '</optgroup>' : "") +
       (noAdd ? "" : '<option value="__new__">+ Add new (not in list)</option>') +
       '</select>';
+  }
+  /* PL / AR status badge for a lead/client card. Green with the partner's phone when named;
+     red "Enter Detail" (tap = open Edit) when missing - the gap shows on the card itself. */
+  function partnerBadge(c, role) {
+    var pre = role === "plumber" ? "PL" : "AR";
+    var nm = String(c[role] || "").trim();
+    if (!nm) return '<button class="pl-badge pl-miss" data-act="cl-open" data-id="' + esc(c.id) + '">' + pre + ' &mdash; Enter Detail</button>';
+    var key = nm.toLowerCase();
+    var a = (S.data.associates || []).filter(function (x) { return String(x.name || "").trim().toLowerCase() === key; })[0] || {};
+    var ph = String(a.mobile || "").trim();
+    return '<span class="pl-badge pl-ok">' + pre + ' ' + esc(nm) + (ph ? ' &middot; ' + esc(ph) : '') + '</span>';
   }
   var CL_FORM_IDS = ["c_name","c_loc","c_type","c_segment","c_mob","c_short","c_addr","c_arch","c_plumb","c_build","c_pmc","c_notes","c_owner","c_opamt","c_opdate","c_leadtype","c_billname","c_billgst"];
   function clFormVals() {
@@ -6017,7 +6041,18 @@ function viewCatalogue() {
       ".ch-exec{margin:20px 0 4px;padding:9px 13px;background:#0f766e;color:#fff;border-radius:10px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:8px}" +
       ".ch-exec .sub{font-size:11px;font-weight:600;background:rgba(255,255,255,.2);padding:2px 9px;border-radius:999px;white-space:nowrap}" +
       ".ch-client{margin:12px 0 6px;padding:6px 11px;border-left:4px solid #0d9488;background:#f0fdfa;border-radius:0 8px 8px 0;font-weight:700;font-size:13.5px;color:#134e4a;display:flex;justify-content:space-between;align-items:center;gap:8px}" +
-      ".ch-client .sub{font-size:11px;font-weight:600;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:999px;white-space:nowrap}";
+      ".ch-client .sub{font-size:11px;font-weight:600;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:999px;white-space:nowrap}" +
+      /* Compact lead/client cards: one header line (name+pills left, PL/AR badges + Call/Edit
+         right), one scrollable brand line. PL/AR badge: green = named (with phone), red = fill. */
+      ".card.lc-compact{padding:8px 12px;margin-bottom:6px}" +
+      ".lc-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}" +
+      ".lc-id{display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 240px;overflow:hidden}" +
+      ".lc-id b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+      ".lc-right{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}" +
+      ".pl-badge{font-size:11px;font-weight:700;border-radius:999px;padding:4px 9px;white-space:nowrap;border:0}" +
+      ".pl-ok{background:#dcfce7;color:#15803d}" +
+      ".pl-miss{background:#fee2e2;color:#b91c1c;cursor:pointer}" +
+      ".pl-miss:hover{background:#fecaca}";
     document.head.appendChild(s);
   }
 
