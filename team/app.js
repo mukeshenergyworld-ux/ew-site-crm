@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.101";
+  var APP_VERSION = "6.9.102";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1755,7 +1755,7 @@ window.addEventListener("beforeunload", function (ev) {
     var ph = String(a.mobile || "").trim();
     return '<span class="pl-badge pl-ok">' + pre + ' ' + esc(nm) + (ph ? ' &middot; ' + esc(ph) : '') + '</span>';
   }
-  var CL_FORM_IDS = ["c_name","c_loc","c_type","c_segment","c_mob","c_short","c_addr","c_arch","c_plumb","c_build","c_pmc","c_notes","c_owner","c_opamt","c_opdate","c_leadtype","c_billname","c_billgst"];
+  var CL_FORM_IDS = ["c_name","c_loc","c_type","c_segment","c_mob","c_mob2","c_short","c_area","c_addr","c_arch","c_plumb","c_build","c_pmc","c_notes","c_owner","c_opamt","c_opdate","c_leadtype","c_billname","c_billgst"];
   function clFormVals() {
     var v = {};
     CL_FORM_IDS.forEach(function (fid) { var e2 = el(fid); if (e2) v[fid] = e2.value; });
@@ -1827,7 +1827,9 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="grid2"><div><label>Segment</label><select id="c_segment">' + opts(["", "Residential", "Project"], c.segment || "") + '</select>' +
       '<div class="pmeta" style="font-size:11px;color:#94a3b8">Leave blank to auto-classify from Type.</div></div><div></div></div>' +
       '<div class="grid2"><div><label>Mobile</label><input id="c_mob" inputmode="numeric" value="' + esc(c.mobile) + '"/></div>' +
-      '<div><label>Short name (challan no.)</label><input id="c_short" value="' + esc(c.shortName) + '" placeholder="SHARMA"/></div></div>' +
+      '<div><label>Alternate mobile</label><input id="c_mob2" inputmode="numeric" value="' + esc(c.mobile2 || "") + '"/></div></div>' +
+      '<div class="grid2"><div><label>Short name (challan no.)</label><input id="c_short" value="' + esc(c.shortName) + '" placeholder="SHARMA"/></div>' +
+      '<div><label>Area / colony</label><input id="c_area" value="' + esc(c.area || "") + '" placeholder="e.g. Model Town"/></div></div>' +
       '<label>Address</label><input id="c_addr" value="' + esc(c.address) + '"/>' +
       '<div class="grid2"><div><label>Architect</label>' + partnerSelect("c_arch", "architect", c.architect) + '</div>' +
       '<div><label>Plumber</label>' + partnerSelect("c_plumb", "plumber", c.plumber) + '</div></div>' +
@@ -3825,7 +3827,9 @@ function viewCatalogue() {
   function viewReturns() {
     var list = (S.data.returns || []).slice().reverse();
     /* a sales exec sees returns for THEIR clients only */
-    if (!seesAllClients()) list = list.filter(function (r) { return isMineClient(r.customerName); });
+    /* ONLY a sales exec is scoped to their own clients. Godown/service are operational roles that
+       must see the whole dispatch/return board, not an owner-filtered slice. */
+    if (S.role === "sales") list = list.filter(function (r) { return isMineClient(r.customerName); });
     var by = function (st) { return list.filter(function (r) { return (r.status || "Raised") === st; }).length; };
     var h = '<div class="cards">' +
       '<div class="stat ' + (by("Raised") ? "alert" : "") + '"><div class="n">' + by("Raised") + '</div><div class="l">Raised, to collect</div></div>' +
@@ -4072,7 +4076,8 @@ function viewCatalogue() {
   function viewChallans() {
     ensurePickerCss();   /* stage-action colours + picker styles must exist on the list view too */
     var list = S.data.challans.slice().reverse();
-    if (!seesAllClients()) list = list.filter(function (c) { return isMineClient(c.customerName); });
+    /* ONLY sales is owner-scoped; godown must see every challan to dispatch/receipt them. */
+    if (S.role === "sales") list = list.filter(function (c) { return isMineClient(c.customerName); });
     var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
     var h = '<div class="cards">' +
       '<div class="stat ' + (by("Draft") ? "alert" : "") + '"><div class="n">' + by("Draft") + '</div><div class="l">Awaiting approval</div></div>' +
@@ -6682,8 +6687,12 @@ function viewCatalogue() {
       if (!cn) { toast("Client name is required."); return; }
       /* READ EVERY FIELD FIRST. Creating a partner re-renders the app, which rebuilds
          this modal - anything read afterwards comes back empty. That bug ate mobile2. */
+      /* NEVER read a field that isn't on the form as "" — that blanks it on save (the backend
+         writes the whole row). If an input is absent, keep the client's existing value. */
+      var keep = S.clEditing || {};
+      var fld = function (fid, prop) { var e2 = el(fid); return e2 ? e2.value : String(keep[prop] || ""); };
       var f = {
-        mob: val("c_mob"), mob2: val("c_mob2"), loc: val("c_loc"), ar: val("c_area"),
+        mob: val("c_mob"), mob2: fld("c_mob2", "mobile2"), loc: val("c_loc"), ar: fld("c_area", "area"),
         addr: val("c_addr"), type: val("c_type"), notes: val("c_notes"), seg: val("c_segment"),
         arch: val("c_arch"), plumb: val("c_plumb"), build: val("c_build"), pmc: val("c_pmc"),
         /* migration fields - only rendered for a partner, so blank for everyone else */
@@ -6714,7 +6723,10 @@ function viewCatalogue() {
           ensurePartner(pmc, "PMC", loc, ar)
         ]).then(function () {
           return save("clients", {
-            id: id || "", createdBy: S.user, name: cn,
+            /* On EDIT keep the ORIGINAL creator — overwriting it with the editor flipped a
+               lead's ownership (clientOwner falls back to createdBy when ownedBy is blank), so a
+               migrated lead vanished from the real exec's book the moment an admin edited it. */
+            id: id || "", createdBy: (id ? (String(keep.createdBy || "").trim() || S.user) : S.user), name: cn,
             shortName: shortNameOf(cn, f.mob),
             location: f.loc, area: f.ar, mobile: f.mob, mobile2: f.mob2,
             address: f.addr, type: f.type, segment: f.seg,
@@ -8246,18 +8258,27 @@ function viewCatalogue() {
     /* + Add new location / area, right inside the dropdown */
     if (t.id === "c_loc" || t.id === "m_aloc") {
       if (t.value === "+ Add new location") {
-        var nl = window.prompt("New location name");
-        if (!nl) { t.value = locations()[0]; return; }
-        save("areas", { id: "", location: nl, area: "" }).then(function () {
-          if (t.id === "c_loc") S.clLoc = nl;
-          toast("Location added: " + nl);
-        });
+        var nl = String(window.prompt("New location (city) name") || "").trim();
+        if (!nl) { t.value = (S.clEditing && S.clEditing.location) || ""; return; }
+        if (t.id === "c_loc") {
+          /* preserve the whole half-filled client form across the save's repaint, then reselect
+             the new city — the old code blanked everything typed so far. */
+          var vals = clFormVals(); vals.c_loc = nl;
+          save("areas", { id: "", location: nl, area: "" }, true).then(function () {
+            S.modal = modalClient(S.clEditing || null); render();
+            clFormRestore(vals);
+            var sel = el("c_loc");
+            if (sel && sel.value !== nl) { var o = document.createElement("option"); o.value = nl; o.textContent = nl; sel.appendChild(o); sel.value = nl; }
+            toast("Location added: " + nl);
+          });
+        } else {
+          save("areas", { id: "", location: nl, area: "" }, true).then(function () { toast("Location added: " + nl); });
+        }
         return;
       }
-      var areaSel = document.getElementById(t.id === "c_loc" ? "c_area" : "m_aarea");
-      if (areaSel) {
-        areaSel.innerHTML = opts([""].concat(areasIn(t.value), ["+ Add new area"]), "");
-      }
+      /* partner form's area select cascades; the client form's area is a plain input (no cascade) */
+      var areaSel = document.getElementById(t.id === "m_aloc" ? "m_aarea" : "");
+      if (areaSel) areaSel.innerHTML = opts([""].concat(areasIn(t.value), ["+ Add new area"]), "");
       return;
     }
     if (t.id === "c_area" || t.id === "m_aarea") {
