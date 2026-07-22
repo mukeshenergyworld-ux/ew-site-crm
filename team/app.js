@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.96";
+  var APP_VERSION = "6.9.97";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -187,19 +187,34 @@
     });
   }
   function retryPending() {
+    /* Try EVERY journaled record, one after another, skipping past any the server refuses — one
+       stuck record must never block the queue behind it (it did once: the first refused save
+       stopped the loop, and 15 good records sat behind it looking "unsavable"). Refused records
+       stay in the journal with the server's reason shown on the banner. */
     if (_retrying) return;
-    var l = pendLoad(); if (!l.length) return;
+    if (!pendLoad().length) return;
     _retrying = true;
-    var e = l[0];
-    var payload = Object.assign({}, e.row); delete payload._lid;
-    api("teamSave", { tab: e.tab, row: payload }).then(function (r) {
-      _retrying = false;
-      if (r && r.ok) {
-        var arr = S.data[e.tab] || []; for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { Object.assign(arr[j], r.row); break; } }
-        pendDrop(e.pk); render();
-        if (pendCount()) retryPending(); else toast("All pending records are now saved.");
-      } else { pendMark(e.pk, (r && r.error) || "server refused"); }
-    }).catch(function () { _retrying = false; });
+    var okCount = 0, i = 0;
+    var step = function () {
+      var l2 = pendLoad();
+      if (i >= l2.length) {
+        _retrying = false;
+        render();
+        if (!pendCount()) toast("All pending records are now saved.");
+        else if (okCount) toast(okCount + " saved. " + pendCount() + " still held — the banner shows the server's reason.");
+        return;
+      }
+      var e = l2[i];
+      var payload = Object.assign({}, e.row); delete payload._lid;
+      api("teamSave", { tab: e.tab, row: payload }).then(function (r) {
+        if (r && r.ok) {
+          var arr = S.data[e.tab] || []; for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { Object.assign(arr[j], r.row); break; } }
+          pendDrop(e.pk); okCount++;          /* list shifted left — same index now holds the next record */
+        } else { pendMark(e.pk, (r && r.error) || "server refused"); i++; }
+        step();
+      }).catch(function () { pendMark(e.pk, "network error"); i++; step(); });
+    };
+    step();
   }
   function syncBanner() {
     var n = pendLoad().length, el = document.getElementById("ew_sync_banner");
@@ -209,7 +224,11 @@
       el.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:99998;background:#b91c1c;color:#fff;padding:10px 14px;font:600 13px system-ui,sans-serif;display:flex;align-items:center;gap:12px;justify-content:center;box-shadow:0 -2px 10px rgba(0,0,0,.25)";
       document.body.appendChild(el);
     }
+    /* If the server gave a REASON for refusing (a rule, not a network drop), show it right here —
+       a stuck record must never be a silent mystery again. */
+    var errs = pendLoad().map(function (e) { return e.err; }).filter(function (x) { return x && x !== "server refused" && x !== "network error"; });
     el.innerHTML = "⚠ " + n + " record(s) not yet saved to the server — kept safe on this device. " +
+      (errs.length ? '<span style="font-weight:400;font-size:12px">Server says: “' + String(errs[0]).slice(0, 90) + '”</span> ' : '') +
       '<button id="ew_retry_btn" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Retry now</button>' +
       '<button id="ew_backup_btn" style="background:#fde68a;color:#7c2d12;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Save a copy</button>';
     var b = document.getElementById("ew_retry_btn"); if (b) b.onclick = function () { toast("Retrying..."); retryPending(); };
@@ -671,14 +690,21 @@ window.addEventListener("beforeunload", function (ev) {
 
   function viewWinLoss() {
     var by = S.wlBy || "brand";
+    /* a sales exec gets brand-wise rates and THEIR OWN scorecard; the partner ranking and other
+       executives' numbers stay with admin/accounts. */
+    var modes = seesAllClients()
+      ? [["brand", "By brand"], ["exec", "By executive"], ["partner", "By partner"]]
+      : [["brand", "By brand"], ["exec", "My scorecard"]];
+    if (!modes.some(function (o) { return o[0] === by; })) by = "brand";
     var h = '<div class="row" style="margin-bottom:10px">' +
-      [["brand", "By brand"], ["exec", "By executive"], ["partner", "By partner"]].map(function (o) {
+      modes.map(function (o) {
         return '<button class="btn sm ' + (by === o[0] ? "" : "ghost") + '" data-act="wl-by" data-k="' + o[0] + '">' + o[1] + '</button>';
       }).join("") + '</div>';
 
     if (by === "exec") {
       var ex = {};
       (S.data.quotes || []).forEach(function (q) {
+        if (!seesAllClients() && q.createdBy !== S.user && !isMineClient(q.client)) return;
         var e = q.createdBy || "?"; ex[e] = ex[e] || { won: 0, lost: 0, val: 0 };
         if (q.status === "Won") { ex[e].won++; ex[e].val += Number(q.net) || 0; } else if (q.status === "Lost") ex[e].lost++;
       });
@@ -1402,6 +1428,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (S.bfMode !== "client") S.bfMode = "lead";
     var mode = S.bfMode, wantClient = mode === "client";
     var custs = S.data.clients || [];
+    if (!seesAllClients()) custs = custs.filter(function (c) { return isMineClient(c.name); });
     var openByBrand = {};
     brands.forEach(function (b) { openByBrand[b] = []; });
     custs.forEach(function (c) {
@@ -1449,6 +1476,8 @@ window.addEventListener("beforeunload", function (ev) {
   function viewLeadBoard() {
     var loc = S.q;
     var leads = S.data.clients.filter(function (c) { return !isClient(c.name); });
+    /* a sales exec's lead board holds ONLY their own leads (assigned to them, or entered by them) */
+    if (!seesAllClients()) leads = leads.filter(function (c) { return isMineClient(c.name); });
     var shown = leads.filter(function (c) { return !loc || c.location === loc; });
     var clocs = [];
     leads.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
@@ -1459,6 +1488,7 @@ window.addEventListener("beforeunload", function (ev) {
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") +
       '<div class="grow"></div><button class="btn" data-act="cl-new">+ New lead</button></div>';
     var aging = agingLeads();
+    if (!seesAllClients()) aging = aging.filter(function (x) { return isMineClient(x.c.name); });
     if (aging.length) {
       h += '<div class="card" style="border-color:#fdba74;background:#fff7ed"><h3>Going quiet <span class="pill soon">' + aging.length + '</span></h3>' +
         '<div class="meta">No quote activity for ' + STALE_LEAD + '+ days — give them a nudge before they go cold.</div>';
@@ -5625,20 +5655,25 @@ function viewCatalogue() {
   }
 
   function viewDash() {
-    var open = openFollowups();
+    /* every figure on a sales exec's dashboard is THEIR book only: their reminders, their
+       customers, their clients' challans. Admin/accounts still see the whole company. */
+    var mineF = function (f) { return seesAllClients() || f.createdBy === S.user || isMineClient(f.customerName); };
+    var open = openFollowups().filter(mineF);
     var overdue = open.filter(function (f) { return daysTo(f.dueDate) < 0; });
     var due = open.filter(function (f) { return daysTo(f.dueDate) === 0; });
-    var hot = S.data.customers.filter(function (c) { return c.status === "Hot"; });
-    var sales = S.data.challans.reduce(function (a, c) { return a + challanNet(c); }, 0);
-    var comm = S.data.challans.reduce(function (a, c) { return a + (Number(c.commissionAmt) || 0); }, 0);
+    var custAll = (S.data.customers || []).filter(function (c) { return seesAllClients() || c.createdBy === S.user; });
+    var hot = custAll.filter(function (c) { return c.status === "Hot"; });
+    var myCh = (S.data.challans || []).filter(function (c) { return seesAllClients() || isMineClient(c.customerName); });
+    var sales = myCh.reduce(function (a, c) { return a + challanNet(c); }, 0);
+    var comm = myCh.reduce(function (a, c) { return a + (Number(c.commissionAmt) || 0); }, 0);
 
     var h = '<div class="cards">' +
-      '<div class="stat"><div class="n">' + S.data.customers.length + '</div><div class="l">Customers</div></div>' +
+      '<div class="stat"><div class="n">' + custAll.length + '</div><div class="l">Customers</div></div>' +
       '<div class="stat ' + (overdue.length ? 'alert' : '') + '"><div class="n">' + overdue.length + '</div><div class="l">Follow-ups overdue</div></div>' +
       '<div class="stat"><div class="n">' + due.length + '</div><div class="l">Due today</div></div>' +
       '<div class="stat"><div class="n">' + hot.length + '</div><div class="l">Hot leads</div></div>' +
       '<div class="stat"><div class="n">' + money(sales) + '</div><div class="l">Challan value</div></div>' +
-      '<div class="stat"><div class="n">' + money(comm) + '</div><div class="l">Incentive owed</div></div>' +
+      (seesAllClients() ? '<div class="stat"><div class="n">' + money(comm) + '</div><div class="l">Incentive owed</div></div>' : '') +
       '</div>';
 
     var todo = overdue.concat(due);
@@ -5732,9 +5767,10 @@ function viewCatalogue() {
         '</div></div>';
     });
 
-    /* ---- manual reminders (unchanged) ---- */
-    var open = openFollowups().sort(function (a, b) { return daysTo(a.dueDate) - daysTo(b.dueDate); });
-    var done = S.data.followups.filter(function (f) { return f.status === "Done"; }).slice(-10).reverse();
+    /* ---- manual reminders — a sales exec sees only their own (made by them or on their client) ---- */
+    var mineFu = function (f) { return seesAllClients() || f.createdBy === S.user || isMineClient(f.customerName); };
+    var open = openFollowups().filter(mineFu).sort(function (a, b) { return daysTo(a.dueDate) - daysTo(b.dueDate); });
+    var done = S.data.followups.filter(function (f) { return f.status === "Done"; }).filter(mineFu).slice(-10).reverse();
     h += '<div class="row" style="margin-top:18px"><h3 style="margin:0;font-size:15px">Your reminders</h3>' +
       '<div class="grow"></div><button class="btn" data-act="fu-new">+ New follow-up</button></div>';
     if (!open.length) h += '<div class="empty">No open reminders.</div>';
