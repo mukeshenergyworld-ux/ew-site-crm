@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.97";
+  var APP_VERSION = "6.9.98";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -344,6 +344,7 @@ window.addEventListener("beforeunload", function (ev) {
       if (r && r.ok) { S.data = r; applyPending(); snapSave(); }
       render(); syncBanner();
       if (pendCount()) retryPending();
+      try { maybePartnerNag(); } catch (e) { }   /* weekly: chase missing plumber/architect names */
     });
   }
 
@@ -790,8 +791,9 @@ window.addEventListener("beforeunload", function (ev) {
       '<label>Current construction stage</label><select id="s_stage">' + opts(STAGES2, x.stage || STAGES2[0]) + '</select>' +
       '<div class="grid2"><div><label>City</label><input id="s_city" value="' + esc(x.city) + '"/></div>' +
       '<div><label>Type</label><select id="s_type">' + opts(["Bungalow","Apartment","Villa Project","Commercial","Hotel","Hospital","Other"], x.type || "Bungalow") + '</select></div></div>' +
-      '<div class="grid2"><div><label>Architect</label><input id="s_arch" value="' + esc(x.architect) + '"/></div>' +
-      '<div><label>Plumber</label><input id="s_plumb" value="' + esc(x.plumber) + '"/></div></div>' +
+      '<div class="grid2"><div><label>Architect</label>' + partnerSelect("s_arch", "architect", x.architect, true) + '</div>' +
+      '<div><label>Plumber</label>' + partnerSelect("s_plumb", "plumber", x.plumber, true) + '</div></div>' +
+      '<div class="meta" style="font-size:11px;color:#94a3b8;margin:-4px 0 6px">Pick from registered partners. A new man? Add him first (Partners tab or the client card) &mdash; mobile required.</div>' +
       '<div class="grid2"><div><label>Builder / PMC</label><input id="s_build" value="' + esc(x.builder) + '"/></div>' +
       '<div><label>Owner (sales exec)</label>' + ownerField("s_owner", x.owner || x.createdBy, !x.id) + '</div></div>' +
       '<label>Notes</label><textarea id="s_notes">' + esc(x.notes) + '</textarea>' +
@@ -1487,6 +1489,13 @@ window.addEventListener("beforeunload", function (ev) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") +
       '<div class="grow"></div><button class="btn" data-act="cl-new">+ New lead</button></div>';
+    /* the owner's standing rule, kept in sight: leads without partner names get chased weekly */
+    var pmiss = partnersMissing();
+    if (pmiss.length) {
+      h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><h3>Names missing <span class="pill due">' + pmiss.length + '</span></h3>' +
+        '<div class="meta"><b>' + pmiss.length + '</b> lead(s)/client(s) have no plumber or architect named. A lead is no use without these names — fill them in.</div>' +
+        '<div class="acts"><button class="btn sm" data-act="pnag-open">See the list</button></div></div>';
+    }
     var aging = agingLeads();
     if (!seesAllClients()) aging = aging.filter(function (x) { return isMineClient(x.c.name); });
     if (aging.length) {
@@ -1692,6 +1701,81 @@ window.addEventListener("beforeunload", function (ev) {
       }).join("") + '</datalist>';
   }
 
+  /* ---- partner dropdowns + the weekly "names missing" push ----
+     Owner's rule: a lead is no use without its plumber and architect. So those two fields are
+     DROPDOWN-ONLY (pick a registered partner, or add a new one - which demands a mobile number),
+     and whoever entered a lead/client that is still missing either name is reminded weekly. */
+  function partnerNames(role) {
+    var want = String(role || "").toLowerCase();
+    var seen = {}, primary = [], other = [];
+    (S.data.associates || []).forEach(function (a) {
+      var n = String(a.name || "").trim(); if (!n || seen[n]) return; seen[n] = 1;
+      (String(a.role || "").toLowerCase() === want ? primary : other).push(n);
+    });
+    (S.data.clients || []).forEach(function (x) {
+      var n = String(x[want] || "").trim(); if (n && !seen[n]) { seen[n] = 1; other.push(n); }
+    });
+    primary.sort(); other.sort();
+    return { primary: primary, other: other };
+  }
+  function partnerSelect(id, role, cur, noAdd) {
+    var p = partnerNames(role);
+    cur = String(cur || "").trim();
+    var have = p.primary.indexOf(cur) >= 0 || p.other.indexOf(cur) >= 0;
+    var opt = function (n) { return '<option value="' + esc(n) + '"' + (n === cur ? " selected" : "") + '>' + esc(n) + '</option>'; };
+    return '<select id="' + id + '">' +
+      '<option value="">&mdash; select &mdash;</option>' +
+      (cur && !have ? opt(cur) : "") +
+      p.primary.map(opt).join("") +
+      (p.other.length ? '<optgroup label="Other partners">' + p.other.map(opt).join("") + '</optgroup>' : "") +
+      (noAdd ? "" : '<option value="__new__">+ Add new (not in list)</option>') +
+      '</select>';
+  }
+  var CL_FORM_IDS = ["c_name","c_loc","c_type","c_segment","c_mob","c_short","c_addr","c_arch","c_plumb","c_build","c_pmc","c_notes","c_owner","c_opamt","c_opdate","c_leadtype","c_billname","c_billgst"];
+  function clFormVals() {
+    var v = {};
+    CL_FORM_IDS.forEach(function (fid) { var e2 = el(fid); if (e2) v[fid] = e2.value; });
+    return v;
+  }
+  function clFormRestore(v) {
+    CL_FORM_IDS.forEach(function (fid) { var e2 = el(fid); if (e2 && v[fid] !== undefined) e2.value = v[fid]; });
+  }
+  function partnersMissing() {
+    return (S.data.clients || []).filter(function (c) {
+      if (!String(c.name || "").trim()) return false;
+      var missP = !String(c.plumber || "").trim(), missA = !String(c.architect || "").trim();
+      if (!missP && !missA) return false;
+      if (!seesAllClients() && !isMineClient(c.name)) return false;
+      return true;
+    });
+  }
+  function modalPartnerNag() {
+    var list = partnersMissing();
+    var h = '<h2>Missing plumber / architect names</h2>' +
+      '<p class="sub">A lead is no use without its plumber and architect. Fill them in &mdash; pick from the list, or add the partner (mobile number required).</p>';
+    list.slice(0, 30).forEach(function (c) {
+      var miss = [!String(c.plumber || "").trim() ? "plumber" : "", !String(c.architect || "").trim() ? "architect" : ""].filter(Boolean).join(" + ");
+      h += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(c.name) + '</b>' +
+        (seesAllClients() ? ' <span style="color:#94a3b8;font-size:11px">' + esc(c.ownedBy || c.createdBy || "") + '</span>' : '') +
+        '<br><span style="font-size:11px;color:#b45309">missing ' + miss + '</span></div>' +
+        '<button class="btn sm" data-act="cl-open" data-id="' + esc(c.id) + '">Fill now</button></div>';
+    });
+    if (list.length > 30) h += '<div class="meta" style="margin-top:8px">&hellip;and ' + (list.length - 30) + ' more.</div>';
+    h += '<div class="foot"><button class="btn ghost" data-act="close">Later</button></div>';
+    return h;
+  }
+  function maybePartnerNag() {
+    try {
+      if (!S.user || S.modal) return;
+      var key = "ew_pnag_" + S.user;
+      var last = Number(localStorage.getItem(key) || 0);
+      if (Date.now() - last < 7 * 86400000) return;      /* once a week per person */
+      if (!partnersMissing().length) return;
+      localStorage.setItem(key, String(Date.now()));
+      S.modal = modalPartnerNag(); render();
+    } catch (e) { }
+  }
+
   function modalClient(c) {
     c = c || {};
     var names = function (role) {
@@ -1714,11 +1798,12 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="grid2"><div><label>Mobile</label><input id="c_mob" inputmode="numeric" value="' + esc(c.mobile) + '"/></div>' +
       '<div><label>Short name (challan no.)</label><input id="c_short" value="' + esc(c.shortName) + '" placeholder="SHARMA"/></div></div>' +
       '<label>Address</label><input id="c_addr" value="' + esc(c.address) + '"/>' +
-      '<div class="grid2"><div><label>Architect</label><input id="c_arch" list="dl_arch" value="' + esc(c.architect) + '"/></div>' +
-      '<div><label>Plumber</label><input id="c_plumb" list="dl_plumb" value="' + esc(c.plumber) + '"/></div></div>' +
+      '<div class="grid2"><div><label>Architect</label>' + partnerSelect("c_arch", "architect", c.architect) + '</div>' +
+      '<div><label>Plumber</label>' + partnerSelect("c_plumb", "plumber", c.plumber) + '</div></div>' +
+      '<div class="meta" style="font-size:11px;color:#94a3b8;margin:-4px 0 6px">Pick from the list. If he isn’t on it, choose <b>+ Add new</b> &mdash; his mobile number is required.</div>' +
       '<div class="grid2"><div><label>Builder</label><input id="c_build" list="dl_build" value="' + esc(c.builder) + '"/></div>' +
       '<div><label>PMC</label><input id="c_pmc" list="dl_pmc" value="' + esc(c.pmc) + '"/></div></div>' +
-      dl("dl_arch", "architect") + dl("dl_plumb", "plumber") + dl("dl_build", "builder") + dl("dl_pmc", "pmc") +
+      dl("dl_build", "builder") + dl("dl_pmc", "pmc") +
       '<label>Notes</label><textarea id="c_notes">' + esc(c.notes) + '</textarea>' +
       '<label>Assigned to (sales exec)</label>' + ownerField("c_owner", c.ownedBy || c.createdBy, !c.id) +
       /* Migration block - partners only. The server refuses these fields from anyone else, and
@@ -3708,6 +3793,8 @@ function viewCatalogue() {
 
   function viewReturns() {
     var list = (S.data.returns || []).slice().reverse();
+    /* a sales exec sees returns for THEIR clients only */
+    if (!seesAllClients()) list = list.filter(function (r) { return isMineClient(r.customerName); });
     var by = function (st) { return list.filter(function (r) { return (r.status || "Raised") === st; }).length; };
     var h = '<div class="cards">' +
       '<div class="stat ' + (by("Raised") ? "alert" : "") + '"><div class="n">' + by("Raised") + '</div><div class="l">Raised, to collect</div></div>' +
@@ -6426,7 +6513,18 @@ function viewCatalogue() {
        challan used to wipe the whole form. Popups now close ONLY via their Cancel/Close button.
        The mask still swallows the click so the main screen stays inert underneath. */
     if (act === "mask") { return; }
-    if (act === "close") { S.modal = null; render(); return; }
+    if (act === "close") {
+      /* cancelling a partner form that was opened FROM the client form goes back to the client
+         form with everything still typed - never dumps the user's half-entered lead. */
+      if (S.clDraft) {
+        var cd = S.clDraft; S.clDraft = null;
+        S.modal = modalClient(S.clEditing || null); render();
+        clFormRestore(cd.vals);
+        return;
+      }
+      S.modal = null; render(); return;
+    }
+    if (act === "pnag-open") { S.modal = modalPartnerNag(); render(); return; }
     if (act === "crash-log") { S.modal = modalCrashLog(); render(); return; }
     if (act === "crash-clear") { try { localStorage.removeItem(CRASH_KEY); } catch (e) { } S.modal = modalCrashLog(); render(); return; }
     if (act === "reload-app") { location.reload(); return; }
@@ -7364,13 +7462,33 @@ function viewCatalogue() {
     if (act === "as-save") {
       var an = val("m_aname");
       if (!an) { toast("Name is required."); return; }
+      /* Owner's rule: NO partner without a phone number. A partner you cannot call is a name,
+         not a partner. 10 digits minimum, always. */
+      var am = String(val("m_amobile") || "").replace(/\D/g, "");
+      if (am.length < 10) { toast("Partner mobile number is required (10 digits) — no partner without a phone."); return; }
       save("associates", {
         id: id || "", name: an, role: val("m_arole"),
         mobile: val("m_amobile"), mobile2: val("m_amobile2"),
         location: val("m_aloc"), area: val("m_aarea"), address: val("m_aaddr"),
         birthday: val("m_abday"), anniversary: val("m_aanniv"),
         rate: val("m_arate"), notes: val("m_anotes")
-      }).then(function (r) { if (r) { S.modal = null; toast("Partner saved."); render(); } });
+      }).then(function (r) {
+        if (!r) return;
+        /* came here from a half-filled client form? Reopen it with everything typed intact and
+           the new partner selected in the field that started this. */
+        if (S.clDraft) {
+          var d = S.clDraft; S.clDraft = null;
+          S.modal = modalClient(S.clEditing || null); render();
+          d.vals[d.field] = an;
+          clFormRestore(d.vals);
+          var sel = el(d.field);
+          if (sel && sel.value !== an) {   /* option may not exist yet on a slow sync - inject it */
+            var o = document.createElement("option"); o.value = an; o.textContent = an;
+            sel.insertBefore(o, sel.firstChild); sel.value = an;
+          }
+          toast("Partner saved — " + an + " selected. Finish the client and Save.");
+        } else { S.modal = null; toast("Partner saved."); render(); }
+      });
       return;
     }
 
@@ -8036,6 +8154,20 @@ function viewCatalogue() {
 
   document.addEventListener("change", function (e) {
     var t = e.target;
+
+    /* "+ Add new" chosen on the client form's plumber/architect dropdown: park the half-filled
+       client form, open the partner form (mobile compulsory), and come back with him selected. */
+    if (t.id === "c_arch" || t.id === "c_plumb") {
+      if (t.value === "__new__") {
+        S.clDraft = { field: t.id, vals: clFormVals() };
+        S.clDraft.vals[t.id] = "";
+        S.modal = modalAssociate({ role: t.id === "c_arch" ? "Architect" : "Plumber" });
+        render();
+      }
+      return;
+    }
+    /* sites form never offers add-new; just guard the sentinel in case */
+    if ((t.id === "s_arch" || t.id === "s_plumb") && t.value === "__new__") { t.value = ""; return; }
 
     /* pick a known driver and his number, vehicle and usual fare fill themselves in */
     if (t.id === "m_driver") {
