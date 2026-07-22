@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.102";
+  var APP_VERSION = "6.9.103";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4115,15 +4115,19 @@ function viewCatalogue() {
           : "") +
         '<button class="btn sm ghost" data-act="ch-pdf" data-id="' + esc(c.id) + '">PDF</button>';
 
-      var out = '<div class="card">' +
-        /* header row: challan no + status, with the expand/collapse toggle pinned right */
-        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">' +
-        '<h3 style="margin:0">' + esc(c.challanNo) + ' <span class="pill ' + cls + '">' + esc(st) + '</span>' +
-        (String(c.receiptReceived).toUpperCase() === "Y" ? ' <span class="pill Won">receipt in</span>' : "") + '</h3>' +
-        '<button class="btn sm ghost" data-act="ch-exp" data-id="' + esc(c.id) + '" style="flex:0 0 auto">' + (open ? 'Collapse &#9650;' : 'Expand &#9660;') + '</button>' +
+      /* two-line compact card, same pattern as the lead/client cards:
+         line 1 - challan no + status pills, all action buttons pinned right
+         line 2 - client · site · items/units · brand · bill state */
+      var out = '<div class="card lc-compact">' +
+        '<div class="lc-top"><div class="lc-id"><b>' + esc(c.challanNo) + '</b>' +
+        ' <span class="pill ' + cls + '">' + esc(st) + '</span>' +
+        (String(c.receiptReceived).toUpperCase() === "Y" ? ' <span class="pill Won">receipt in</span>' : "") +
         '</div>' +
+        '<div class="lc-right">' + actions +
+        '<button class="btn sm ghost" data-act="ch-exp" data-id="' + esc(c.id) + '">' + (open ? '&#9650;' : '&#9660;') + '</button>' +
+        '</div></div>' +
         /* compact summary — always visible */
-        '<div class="meta">' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
+        '<div class="meta" style="margin-top:2px">' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
         (cnt.lines ? ' &middot; <b>' + cnt.lines + '</b> item' + (cnt.lines > 1 ? 's' : '') + ' / <b>' + cnt.units + '</b> units' : "") +
         (c.brand ? ' &middot; ' + esc(c.brand) : "") +
         (c.billNo ? ' &middot; <span class="pill Won">Bill ' + esc(c.billNo) + '</span>' :
@@ -4139,7 +4143,7 @@ function viewCatalogue() {
           '</div>' + challanItemsTable(c);
       }
 
-      out += '<div class="acts">' + actions + '</div></div>';
+      out += '</div>';
       return out;
     }
 
