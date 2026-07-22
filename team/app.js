@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.103";
+  var APP_VERSION = "6.9.104";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1791,6 +1791,9 @@ window.addEventListener("beforeunload", function (ev) {
   function maybePartnerNag() {
     try {
       if (!S.user || S.modal) return;
+      /* the weekly chase is for whoever enters/owns leads - sales and admin.
+         Accounts / godown / service can't fix a lead's plumber, so never nag them. */
+      if (S.role !== "sales" && S.role !== "admin") return;
       var key = "ew_pnag_" + S.user;
       var last = Number(localStorage.getItem(key) || 0);
       if (Date.now() - last < 7 * 86400000) return;      /* once a week per person */
