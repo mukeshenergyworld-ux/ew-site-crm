@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.94";
+  var APP_VERSION = "6.9.95";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -210,8 +210,41 @@
       document.body.appendChild(el);
     }
     el.innerHTML = "⚠ " + n + " record(s) not yet saved to the server — kept safe on this device. " +
-      '<button id="ew_retry_btn" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Retry now</button>';
+      '<button id="ew_retry_btn" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Retry now</button>' +
+      '<button id="ew_backup_btn" style="background:#fde68a;color:#7c2d12;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Save a copy</button>';
     var b = document.getElementById("ew_retry_btn"); if (b) b.onclick = function () { toast("Retrying..."); retryPending(); };
+    var bk = document.getElementById("ew_backup_btn"); if (bk) bk.onclick = exportPending;
+  }
+
+  /* Off-device backup of the unsynced journal. Reads ew_pending_v1, offers it as a downloadable
+     JSON file AND copies it to the clipboard AND shows it in a selectable box — so on any phone at
+     least one of those captures the full records before anything touches the login. Read-only:
+     it never changes or clears the journal. */
+  function exportPending() {
+    var raw = "[]";
+    try { raw = localStorage.getItem("ew_pending_v1") || "[]"; } catch (e) { }
+    var pretty = raw;
+    try { pretty = JSON.stringify(JSON.parse(raw), null, 2); } catch (e) { }
+    var stamp = "";
+    try { stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-"); } catch (e) { }
+    /* 1) download a file */
+    try {
+      var blob = new Blob([pretty], { type: "application/json" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = "ew_unsynced_backup_" + (stamp || "copy") + ".json";
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch (e) { } }, 1500);
+    } catch (e) { }
+    /* 2) copy to clipboard as a fallback */
+    try { if (navigator.clipboard) navigator.clipboard.writeText(pretty); } catch (e) { }
+    /* 3) show it on screen so it can always be selected/screenshotted */
+    S.modal = '<h2>Backup of unsynced records</h2>' +
+      '<p class="sub">A file was downloaded and the text copied to your clipboard. As a further safety net, you can also select all below and copy, or screenshot it. This does NOT change anything — your records stay on the device.</p>' +
+      '<textarea readonly style="width:100%;height:38vh;font:12px monospace;padding:8px;border:1px solid #cbd5e1;border-radius:8px" onclick="this.select()">' + esc(pretty) + '</textarea>' +
+      '<div class="foot"><button class="btn" data-act="close">Done</button></div>';
+    render();
+    toast("Backup saved — file downloaded + copied to clipboard.");
   }
 
   function save(tab, row, quiet) {
