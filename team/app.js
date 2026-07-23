@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.106";
+  var APP_VERSION = "6.9.107";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3280,7 +3280,12 @@ function viewCatalogue() {
 
     return Promise.all([loadFonts(), challanLogos()]).then(function (res) {
       var f = res[0], LOGOS = res[1];
-      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+      /* v6.9.107: small challan -> HALF an A4 sheet (297 x 105 mm) so paper isn't wasted;
+         set the printer to "2 pages per sheet" or cut the sheet - owner's request. A challan
+         with more items (or an alteration sheet) stays full A4 landscape and flows onto
+         further pages, each carrying the SAME full header and footer. */
+      var half = (items.length <= 9) && !alt.length;
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: (half ? [297, 105] : "a4"), orientation: "landscape" });
       var uni = false;
       if (f) {
         doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
@@ -3291,7 +3296,7 @@ function viewCatalogue() {
       var RS = function (n) { return (uni ? "\u20B9" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
       var g = function (v) { doc.setTextColor(v, v, v); };
       var dg = function (v) { doc.setDrawColor(v, v, v); };
-      var W = 297, H = 210, L = 10, R = W - 10;
+      var W = 297, H = (half ? 105 : 210), L = 10, R = W - 10;
       var COLGAP = 8, COLW = (R - L - COLGAP) / 2, RH = 4.7;
       var LOGO_H = 12, FOOT_H = 24;   /* one line of logos */
       var cols = function (x) {
@@ -3394,24 +3399,22 @@ function viewCatalogue() {
         doc.text("Contact number", L + 72, H - 4);
         doc.text("Date", L + 134, H - 4);
         g(140); doc.setFontSize(6);
-        doc.text("Page " + p + " / " + pages, R, H - 4, { align: "right" });
+        doc.text("Page " + p + " of " + pages, R, H - 4, { align: "right" });
       }
 
-      /* page 1 carries the full header; later pages only a slim strip, so they hold more rows */
-      var TOP1 = 34, TOPN = 19;
+      /* v6.9.107: every page carries the SAME full header (owner's request), so row
+         capacity is uniform across pages. */
+      var TOP = 34;
       var bottomLimit = H - FOOT_H - LOGO_H - 2;
-      var perCol1 = Math.floor((bottomLimit - TOP1 - 7) / RH);
-      var perColN = Math.floor((bottomLimit - TOPN - 7) / RH);
-      var itemPages = 1, left = items.length - perCol1 * 2;
-      while (left > 0) { itemPages++; left -= perColN * 2; }
+      var perCol = Math.floor((bottomLimit - TOP - 7) / RH);
+      var itemPages = Math.max(1, Math.ceil(items.length / (perCol * 2)));
       var totalPages = itemPages + (alt.length ? 1 : 0);
       var idx = 0, page = 1, lastY = 0, lastX = L;
 
       do {
         if (page > 1) doc.addPage();
-        if (page === 1) header(); else slimHead();
-        var top = (page === 1) ? TOP1 : TOPN;
-        var perCol = (page === 1) ? perCol1 : perColN;
+        header();
+        var top = TOP;
         for (var ci = 0; ci < 2 && idx < items.length; ci++) {
           var x = L + ci * (COLW + COLGAP), y = top + 4;
           colHead(x, y); y += 6.6;
