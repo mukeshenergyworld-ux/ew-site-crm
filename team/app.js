@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.109";
+  var APP_VERSION = "6.9.110";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3286,12 +3286,12 @@ function viewCatalogue() {
          further pages, each carrying the SAME full header and footer. */
       var hasTr = !!(c.driver || c.vehicle || c.freight);
       var slotsNeeded = items.length + (hasTr ? 1 : 0);
-      /* v6.9.109: owner's paper-saving spec - a small challan prints on HALF an A4 sheet
-         (210 x 148.5 mm, LANDSCAPE), one full-width item column; cut an A4 across the middle
-         and two challans come off one sheet. Bigger challans stay full A4 landscape and flow
-         over pages, same header/footer on each. Never portrait. */
-      var small = (slotsNeeded <= 13) && !alt.length;
-      var doc = new window.jspdf.jsPDF({ unit: "mm", format: (small ? [210, 148.5] : "a4"), orientation: "landscape" });
+      /* v6.9.110: the page is ALWAYS a full A4 LANDSCAPE sheet - no custom sizes, so no
+         viewer or printer ever rotates it to portrait. A small challan draws everything in
+         the TOP half only; the bottom half stays completely clean (not one word), so the
+         sheet can be cut and the blank half reused - owner's paper-saving spec. */
+      var small = (slotsNeeded <= 10) && !alt.length;
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
       var uni = false;
       if (f) {
         doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
@@ -3302,8 +3302,8 @@ function viewCatalogue() {
       var RS = function (n) { return (uni ? "\u20B9" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
       var g = function (v) { doc.setTextColor(v, v, v); };
       var dg = function (v) { doc.setDrawColor(v, v, v); };
-      var W = (small ? 210 : 297), H = (small ? 148.5 : 210), L = 10, R = W - L;
-      var COLGAP = 8, COLS = (small ? 1 : 2), COLW = (small ? (R - L) : (R - L - COLGAP) / 2), RH = 4.7;
+      var W = 297, H = (small ? 105 : 210), L = 10, R = W - L;   /* H = content bottom; page stays 210 tall */
+      var COLGAP = 8, COLS = 2, COLW = (R - L - COLGAP) / 2, RH = 4.7;
       var LOGO_H = 12, FOOT_H = 24;   /* one line of logos */
       var cols = function (x) {
         return { n: x + 1.5, code: x + 7, desc: x + 30, unit: x + COLW - 26, qty: x + COLW - 2 };
@@ -3325,7 +3325,7 @@ function viewCatalogue() {
         var y = 18;
         g(90); F("bold"); doc.setFontSize(5.6); doc.text("DELIVER TO", L, y);
         g(0); F("bold"); doc.setFontSize(10);
-        doc.text(fitCell(doc, F, String(c.customerName || "-"), (small ? 64 : 170), 1, "bold", 10)[0], L, y + 5.5);
+        doc.text(fitCell(doc, F, String(c.customerName || "-"), 170, 1, "bold", 10)[0], L, y + 5.5);
         g(60); F("normal"); doc.setFontSize(7);
         var AWID = 110;
         if (addr) doc.text(fitCell(doc, F, addr, AWID, 1, "normal", 7)[0], L, y + 10);
