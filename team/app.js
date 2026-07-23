@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.111";
+  var APP_VERSION = "6.9.112";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -2135,11 +2135,11 @@ window.addEventListener("beforeunload", function (ev) {
       /* one discount per brand - each brand is a separate negotiation. A sales exec cannot change
          discounts: for them each brand is FIXED to the client's pre-set rate (owner-controlled), the
          inputs become read-only chips, and the per-line override is hidden. */
-      var lockDisc = !canSetPricing();
+      var lockDisc = !canQuoteDiscount();
+      z.brandDiscs = z.brandDiscs || {};
+      dBrands.forEach(function (b) { if (z.brandDiscs[b] == null) z.brandDiscs[b] = clientDiscount(z.client, b); });
       if (lockDisc) {
-        z.brandDiscs = z.brandDiscs || {};
-        dBrands.forEach(function (b) { z.brandDiscs[b] = clientDiscount(z.client, b); });
-        (z.items || []).forEach(function (i) { delete i.disc; });   // no per-line overrides for sales
+        (z.items || []).forEach(function (i) { delete i.disc; });   // no per-line overrides when locked
       }
       h += '<div class="card"><h3>Discount by brand</h3>' +
         '<div class="meta">' + (lockDisc
@@ -3251,6 +3251,9 @@ function viewCatalogue() {
   /* Only the owner/admin may set pricing. A sales exec can view every figure and record a payment,
      but can never change a discount % or a rate - pricing stays the owner's control. */
   function canSetPricing() { return S.role === "admin"; }
+  /* v6.9.112: quote-builder discounts are open to every sales exec (owner request).
+     Challan-level discounts, price lists and incentive data stay admin-only. */
+  function canQuoteDiscount() { return S.role === "admin" || S.role === "sales"; }
 
   /* ---------------- DELIVERY CHALLAN (landscape) ----------------
      This is a picking and receiving sheet, not a sales document. So: no company logo or name,
@@ -7012,7 +7015,7 @@ function viewCatalogue() {
       render(); return;
     }
     if (act === "qz-bd") {
-      if (!canSetPricing()) { toast("Only the owner can change discounts."); return; }
+      if (!canQuoteDiscount()) { toast("Your role cannot change discounts."); return; }
       S.qz.brandDiscs = S.qz.brandDiscs || {};
       document.querySelectorAll(".qz-bd").forEach(function (el2) {
         var b = el2.getAttribute("data-brand");
@@ -8409,7 +8412,7 @@ function viewCatalogue() {
       return;
     }
     if (t.classList && t.classList.contains("qz-d") && S.qz) {
-      if (!canSetPricing()) return;   /* sales cannot change discounts */
+      if (!canQuoteDiscount()) return;   /* quote discounts: admin + sales */
       var c2 = t.getAttribute("data-code");
       var it2 = S.qz.items.filter(function (x) { return x.code === c2; })[0];
       if (it2) it2.disc = t.value === "" ? undefined : Number(t.value);
