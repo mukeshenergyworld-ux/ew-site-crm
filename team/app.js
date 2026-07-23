@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.105";
+  var APP_VERSION = "6.9.106";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3502,7 +3502,8 @@ function viewCatalogue() {
   function sendChallanPdf(c, bot, caption, approver) {
     return loadLogo().then(function () { return challanPdf(c, approver); }).then(function (d) {
       return api("tgSend", { bot: bot, pdfBase64: d.output("datauristring").split(",")[1],
-        filename: String(c.challanNo).replace(/[^\w.-]/g, "_") + ".pdf", caption: caption });
+        filename: String(c.challanNo).replace(/[^\w.-]/g, "_") + ".pdf", caption: caption,
+        challanId: c.id });   /* v6.9.106: server stores the Telegram message id on the challan */
     });
   }
 
@@ -4134,7 +4135,14 @@ function viewCatalogue() {
         (cnt.lines ? ' &middot; <b>' + cnt.lines + '</b> item' + (cnt.lines > 1 ? 's' : '') + ' / <b>' + cnt.units + '</b> units' : "") +
         (c.brand ? ' &middot; ' + esc(c.brand) : "") +
         (c.billNo ? ' &middot; <span class="pill Won">Bill ' + esc(c.billNo) + '</span>' :
-          (st === "Received" ? ' &middot; <span class="pill due">not billed</span>' : "")) + '</div>';
+          (st === "Received" ? ' &middot; <span class="pill due">not billed</span>' : "")) +
+        (function () {   /* v6.9.106: jump straight to this challan's PDF in the Telegram group */
+          var tm = String(c.tgMsg || "");
+          if (tm.indexOf("/") < 0) return "";
+          var chat = tm.split("/")[0], msg = tm.split("/")[1];
+          if (chat.indexOf("-100") === 0) chat = chat.slice(4);
+          return ' &middot; <a href="https://t.me/c/' + esc(chat) + '/' + esc(msg) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600;text-decoration:none">Telegram &#8599;</a>';
+        })() + '</div>';
 
       if (open) {
         var billLine = (c.billNo ? 'Bill <b>' + esc(c.billNo) + '</b>' + (c.billTo ? ' to ' + esc(c.billTo) : "") :
@@ -6913,7 +6921,7 @@ function viewCatalogue() {
         var notesStr = Object.keys(notes).length ? JSON.stringify(notes) : "";
         var isEmpty = (pct === "" || pct === 0) && !notesStr;
         if (isEmpty && !exd) return;       // don't create a blank row for a brand never touched
-        save("discounts", { id: (exd ? exd.id : "") || "", client: g.client, brand: g.brand, pct: pct, notes: notesStr }, true);
+        save("discounts", { id: (exd ? exd.id : "") || ("D-" + Date.now() + "-" + Math.floor(Math.random() * 1000)), client: g.client, brand: g.brand, pct: pct, notes: notesStr }, true);
         saved++;
       });
       setTimeout(function () {
@@ -7370,7 +7378,7 @@ function viewCatalogue() {
       var amt2 = Number(val("pi_amt")) || 0;
       if (amt2 <= 0) { toast("Enter an amount."); return; }
       var site = S.data.challans.filter(function (c) { return c.customerName === cln && c.siteId; })[0] || {};
-      save("payments", { id: "", createdBy: S.user, siteId: site.siteId || "", siteName: site.site || "",
+      save("payments", { id: "P-" + Date.now() + "-" + Math.floor(Math.random() * 1000), createdBy: S.user, siteId: site.siteId || "", siteName: site.site || "",
         client: cln, date: val("pi_date"), amount: amt2, mode: val("pi_mode"), ref: val("pi_ref"), notes: "" })
         .then(function (r) { if (r) { S.modal = null; toast("Payment recorded. Incentive payable updated."); render(); } });
       return;
