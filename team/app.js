@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.110";
+  var APP_VERSION = "6.9.111";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3286,11 +3286,11 @@ function viewCatalogue() {
          further pages, each carrying the SAME full header and footer. */
       var hasTr = !!(c.driver || c.vehicle || c.freight);
       var slotsNeeded = items.length + (hasTr ? 1 : 0);
-      /* v6.9.110: the page is ALWAYS a full A4 LANDSCAPE sheet - no custom sizes, so no
-         viewer or printer ever rotates it to portrait. A small challan draws everything in
-         the TOP half only; the bottom half stays completely clean (not one word), so the
-         sheet can be cut and the blank half reused - owner's paper-saving spec. */
-      var small = (slotsNeeded <= 10) && !alt.length;
+      /* v6.9.111: the page is ALWAYS a full A4 LANDSCAPE sheet - never portrait. A small
+         challan draws everything in the LEFT half only (one item column, full height); the
+         right half stays completely clean - not one word - so the printed sheet is cut down
+         the middle and the blank half reused. Owner's paper-saving spec. */
+      var small = (slotsNeeded <= 26) && !alt.length;
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
       var uni = false;
       if (f) {
@@ -3302,8 +3302,8 @@ function viewCatalogue() {
       var RS = function (n) { return (uni ? "\u20B9" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
       var g = function (v) { doc.setTextColor(v, v, v); };
       var dg = function (v) { doc.setDrawColor(v, v, v); };
-      var W = 297, H = (small ? 105 : 210), L = 10, R = W - L;   /* H = content bottom; page stays 210 tall */
-      var COLGAP = 8, COLS = 2, COLW = (R - L - COLGAP) / 2, RH = 4.7;
+      var W = 297, H = 210, L = (small ? 6 : 10), R = (small ? 142.5 : W - 10);   /* R = content right edge; right half of the sheet stays blank when small */
+      var COLGAP = 8, COLS = (small ? 1 : 2), COLW = (small ? (R - L) : (R - L - COLGAP) / 2), RH = 4.7;
       var LOGO_H = 12, FOOT_H = 24;   /* one line of logos */
       var cols = function (x) {
         return { n: x + 1.5, code: x + 7, desc: x + 30, unit: x + COLW - 26, qty: x + COLW - 2 };
@@ -3319,24 +3319,24 @@ function viewCatalogue() {
 
       function header() {
         dg(120); doc.setLineWidth(0.4); doc.line(L, 12, R, 12);
-        g(0); F("bold"); doc.setFontSize(11);
+        g(0); F("bold"); doc.setFontSize(small ? 9 : 11);
         doc.text("DELIVERY CHALLAN", L, 10);
         doc.text(String(c.challanNo || ""), R, 10, { align: "right" });
         var y = 18;
         g(90); F("bold"); doc.setFontSize(5.6); doc.text("DELIVER TO", L, y);
-        g(0); F("bold"); doc.setFontSize(10);
-        doc.text(fitCell(doc, F, String(c.customerName || "-"), 170, 1, "bold", 10)[0], L, y + 5.5);
+        g(0); F("bold"); doc.setFontSize(small ? 8.6 : 10);
+        doc.text(fitCell(doc, F, String(c.customerName || "-"), (small ? 54 : 170), 1, "bold", (small ? 8.6 : 10))[0], L, y + 5.5);
         g(60); F("normal"); doc.setFontSize(7);
-        var AWID = 110;
+        var AWID = small ? 66 : 110;
         if (addr) doc.text(fitCell(doc, F, addr, AWID, 1, "normal", 7)[0], L, y + 10);
         if (c.site) doc.text(fitCell(doc, F, "Site: " + c.site, AWID, 1, "normal", 7)[0], L, y + 14);
         g(90); F("bold"); doc.setFontSize(5.6);
-        var OFF1 = 52, OFF2 = 105;
+        var OFF1 = small ? 36 : 52, OFF2 = small ? 74 : 105;
         doc.text("DATE", R, y, { align: "right" });
         doc.text("PREPARED BY", R - OFF1, y, { align: "right" });
         doc.text("APPROVED BY", R - OFF2, y, { align: "right" });
         g(0); F("normal"); doc.setFontSize(7.6);
-        doc.setFontSize(7.6);
+        doc.setFontSize(small ? 6.8 : 7.6);
         doc.text(String(c.createdAt || "").slice(0, 10), R, y + 4.5, { align: "right" });
         doc.text(String(c.createdBy || "-"), R - OFF1, y + 4.5, { align: "right" });
         doc.text(String(approver || c.approvedBy || "-"), R - OFF2, y + 4.5, { align: "right" });
@@ -3400,7 +3400,7 @@ function viewCatalogue() {
         g(90); F("bold"); doc.setFontSize(5.6);
         doc.text("RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, H - 15.8);
         dg(150); doc.setLineWidth(0.3);
-        var S1 = 62, G1 = 72, S2 = 124, G2 = 134, S3 = 180;
+        var S1 = small ? 42 : 62, G1 = small ? 48 : 72, S2 = small ? 84 : 124, G2 = small ? 90 : 134, S3 = small ? 116 : 180;
         doc.line(L, H - 7, L + S1, H - 7);
         doc.line(L + G1, H - 7, L + S2, H - 7);
         doc.line(L + G2, H - 7, L + S3, H - 7);
