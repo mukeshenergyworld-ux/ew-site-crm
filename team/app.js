@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.104";
+  var APP_VERSION = "6.9.105";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -5294,7 +5294,7 @@ function viewCatalogue() {
       }
     }).then(function () {
       S.user = saved.user; S.pin = saved.pin;
-      api("teamAuth").then(function (r) {
+      api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
         if (!r || !r.ok) { localStorage.removeItem(BIO_KEY);
       try { localStorage.removeItem(snapKey()); } catch (e) { } S.pin = ""; renderLogin("Saved sign-in no longer valid."); return; }
         S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
@@ -5754,7 +5754,7 @@ function viewCatalogue() {
     if (!name) { renderLogin("Enter your name."); return; }
     if (!pin) { renderLogin("Enter your PIN."); return; }
     S.user = name; S.pin = pin;
-    api("teamAuth").then(function (r) {
+    api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
       if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
       S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
       try { localStorage.setItem(STORE, JSON.stringify({ pin: pin, user: S.user, role: S.role, pinSet: S.pinSet })); } catch (e) {}
@@ -5791,17 +5791,20 @@ function viewCatalogue() {
     var open = openFollowups().filter(mineF);
     var overdue = open.filter(function (f) { return daysTo(f.dueDate) < 0; });
     var due = open.filter(function (f) { return daysTo(f.dueDate) === 0; });
-    var custAll = (S.data.customers || []).filter(function (c) { return seesAllClients() || c.createdBy === S.user; });
-    var hot = custAll.filter(function (c) { return c.status === "Hot"; });
+    /* v6.9.105: live tiles - count the REAL book (clients sheet), not the legacy customers
+       table those two tiles used to read. Same role scoping as every other screen. */
+    var book = (S.data.clients || []).filter(function (c) { return seesAllClients() || isMineClient(c.name); });
+    var liveClients = book.filter(function (c) { return isClient(c.name); });
+    var liveLeads = book.length - liveClients.length;
     var myCh = (S.data.challans || []).filter(function (c) { return seesAllClients() || isMineClient(c.customerName); });
     var sales = myCh.reduce(function (a, c) { return a + challanNet(c); }, 0);
     var comm = myCh.reduce(function (a, c) { return a + (Number(c.commissionAmt) || 0); }, 0);
 
     var h = '<div class="cards">' +
-      '<div class="stat"><div class="n">' + custAll.length + '</div><div class="l">Customers</div></div>' +
+      '<div class="stat"><div class="n">' + liveClients.length + '</div><div class="l">Clients</div></div>' +
       '<div class="stat ' + (overdue.length ? 'alert' : '') + '"><div class="n">' + overdue.length + '</div><div class="l">Follow-ups overdue</div></div>' +
       '<div class="stat"><div class="n">' + due.length + '</div><div class="l">Due today</div></div>' +
-      '<div class="stat"><div class="n">' + hot.length + '</div><div class="l">Hot leads</div></div>' +
+      '<div class="stat"><div class="n">' + liveLeads + '</div><div class="l">Leads</div></div>' +
       '<div class="stat"><div class="n">' + money(sales) + '</div><div class="l">Challan value</div></div>' +
       (seesAllClients() ? '<div class="stat"><div class="n">' + money(comm) + '</div><div class="l">Incentive owed</div></div>' : '') +
       '</div>';
@@ -8531,7 +8534,7 @@ function viewCatalogue() {
         render();
       }
     }
-      api("teamAuth").then(function (r) {
+      api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
         if (r && r.ok) {
           S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
           if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return; }
