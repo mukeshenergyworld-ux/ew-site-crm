@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.107";
+  var APP_VERSION = "6.9.108";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3284,8 +3284,14 @@ function viewCatalogue() {
          set the printer to "2 pages per sheet" or cut the sheet - owner's request. A challan
          with more items (or an alteration sheet) stays full A4 landscape and flows onto
          further pages, each carrying the SAME full header and footer. */
-      var half = (items.length <= 9) && !alt.length;
-      var doc = new window.jspdf.jsPDF({ unit: "mm", format: (half ? [297, 105] : "a4"), orientation: "landscape" });
+      var hasTr = !!(c.driver || c.vehicle || c.freight);
+      var slotsNeeded = items.length + (hasTr ? 1 : 0);
+      /* v6.9.108: page shrinks to the CONTENT, always landscape - owner's paper-saving spec.
+         quarter = one item column wide, half height (148.5 x 105 = a quarter of an A4 sheet);
+         half = full width, half height; anything bigger = full A4 landscape, multi-page. */
+      var quarter = (slotsNeeded <= 5) && !alt.length;
+      var half = !quarter && (slotsNeeded <= 10) && !alt.length;
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: (quarter ? [148.5, 105] : half ? [297, 105] : "a4"), orientation: "landscape" });
       var uni = false;
       if (f) {
         doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
@@ -3296,8 +3302,8 @@ function viewCatalogue() {
       var RS = function (n) { return (uni ? "\u20B9" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
       var g = function (v) { doc.setTextColor(v, v, v); };
       var dg = function (v) { doc.setDrawColor(v, v, v); };
-      var W = 297, H = (half ? 105 : 210), L = 10, R = W - 10;
-      var COLGAP = 8, COLW = (R - L - COLGAP) / 2, RH = 4.7;
+      var W = (quarter ? 148.5 : 297), H = ((quarter || half) ? 105 : 210), L = (quarter ? 6 : 10), R = W - L;
+      var COLGAP = 8, COLS = (quarter ? 1 : 2), COLW = (quarter ? (R - L) : (R - L - COLGAP) / 2), RH = 4.7;
       var LOGO_H = 12, FOOT_H = 24;   /* one line of logos */
       var cols = function (x) {
         return { n: x + 1.5, code: x + 7, desc: x + 30, unit: x + COLW - 26, qty: x + COLW - 2 };
@@ -3313,24 +3319,27 @@ function viewCatalogue() {
 
       function header() {
         dg(120); doc.setLineWidth(0.4); doc.line(L, 12, R, 12);
-        g(0); F("bold"); doc.setFontSize(11);
+        g(0); F("bold"); doc.setFontSize(quarter ? 9 : 11);
         doc.text("DELIVERY CHALLAN", L, 10);
         doc.text(String(c.challanNo || ""), R, 10, { align: "right" });
         var y = 18;
         g(90); F("bold"); doc.setFontSize(5.6); doc.text("DELIVER TO", L, y);
-        g(0); F("bold"); doc.setFontSize(10);
-        doc.text(String(c.customerName || "-"), L, y + 5.5);
+        g(0); F("bold"); doc.setFontSize(quarter ? 8.6 : 10);
+        doc.text(fitCell(doc, F, String(c.customerName || "-"), (quarter ? 54 : 170), 1, "bold", (quarter ? 8.6 : 10))[0], L, y + 5.5);
         g(60); F("normal"); doc.setFontSize(7);
-        if (addr) doc.text(fitCell(doc, F, addr, 110, 1, "normal", 7)[0], L, y + 10);
-        if (c.site) doc.text(fitCell(doc, F, "Site: " + c.site, 110, 1, "normal", 7)[0], L, y + 14);
+        var AWID = quarter ? 66 : 110;
+        if (addr) doc.text(fitCell(doc, F, addr, AWID, 1, "normal", 7)[0], L, y + 10);
+        if (c.site) doc.text(fitCell(doc, F, "Site: " + c.site, AWID, 1, "normal", 7)[0], L, y + 14);
         g(90); F("bold"); doc.setFontSize(5.6);
+        var OFF1 = quarter ? 36 : 52, OFF2 = quarter ? 74 : 105;
         doc.text("DATE", R, y, { align: "right" });
-        doc.text("PREPARED BY", R - 52, y, { align: "right" });
-        doc.text("APPROVED BY", R - 105, y, { align: "right" });
+        doc.text("PREPARED BY", R - OFF1, y, { align: "right" });
+        doc.text("APPROVED BY", R - OFF2, y, { align: "right" });
         g(0); F("normal"); doc.setFontSize(7.6);
+        doc.setFontSize(quarter ? 6.8 : 7.6);
         doc.text(String(c.createdAt || "").slice(0, 10), R, y + 4.5, { align: "right" });
-        doc.text(String(c.createdBy || "-"), R - 52, y + 4.5, { align: "right" });
-        doc.text(String(approver || c.approvedBy || "-"), R - 105, y + 4.5, { align: "right" });
+        doc.text(String(c.createdBy || "-"), R - OFF1, y + 4.5, { align: "right" });
+        doc.text(String(approver || c.approvedBy || "-"), R - OFF2, y + 4.5, { align: "right" });
         /* Freight and the driver used to sit up here. They belong at the FOOT of the item
            list - the storeman reads top to bottom and the transport line is the last thing
            he checks off, not the first. */
@@ -3391,13 +3400,14 @@ function viewCatalogue() {
         g(90); F("bold"); doc.setFontSize(5.6);
         doc.text("RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, H - 15.8);
         dg(150); doc.setLineWidth(0.3);
-        doc.line(L, H - 7, L + 62, H - 7);
-        doc.line(L + 72, H - 7, L + 124, H - 7);
-        doc.line(L + 134, H - 7, L + 180, H - 7);
+        var S1 = quarter ? 42 : 62, G1 = quarter ? 48 : 72, S2 = quarter ? 84 : 124, G2 = quarter ? 90 : 134, S3 = quarter ? 116 : 180;
+        doc.line(L, H - 7, L + S1, H - 7);
+        doc.line(L + G1, H - 7, L + S2, H - 7);
+        doc.line(L + G2, H - 7, L + S3, H - 7);
         g(95); F("normal"); doc.setFontSize(5.6);
         doc.text("Client name & signature", L, H - 4);
-        doc.text("Contact number", L + 72, H - 4);
-        doc.text("Date", L + 134, H - 4);
+        doc.text("Contact number", L + G1, H - 4);
+        doc.text("Date", L + G2, H - 4);
         g(140); doc.setFontSize(6);
         doc.text("Page " + p + " of " + pages, R, H - 4, { align: "right" });
       }
@@ -3407,7 +3417,7 @@ function viewCatalogue() {
       var TOP = 34;
       var bottomLimit = H - FOOT_H - LOGO_H - 2;
       var perCol = Math.floor((bottomLimit - TOP - 7) / RH);
-      var itemPages = Math.max(1, Math.ceil(items.length / (perCol * 2)));
+      var itemPages = Math.max(1, Math.ceil(items.length / (perCol * COLS)));
       var totalPages = itemPages + (alt.length ? 1 : 0);
       var idx = 0, page = 1, lastY = 0, lastX = L;
 
@@ -3415,7 +3425,7 @@ function viewCatalogue() {
         if (page > 1) doc.addPage();
         header();
         var top = TOP;
-        for (var ci = 0; ci < 2 && idx < items.length; ci++) {
+        for (var ci = 0; ci < COLS && idx < items.length; ci++) {
           var x = L + ci * (COLW + COLGAP), y = top + 4;
           colHead(x, y); y += 6.6;
           var C = cols(x);
