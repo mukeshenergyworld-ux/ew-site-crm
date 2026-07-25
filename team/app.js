@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.117";
+  var APP_VERSION = "6.9.118";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4728,10 +4728,17 @@ function viewCatalogue() {
           '<span class="pill due" style="font-weight:700">Bill pending</span><br>' +
           '<button class="btn sm" data-act="bill-detail" data-id="' + esc(c.id) + '" style="margin-top:5px">Add bill / GST</button></div>';
       }
+      /* v6.9.118: if a site/project was entered on the challan, show it centred at the top of every
+         challan card in HISAB. Only rendered when c.site has a value. */
+      var siteBlock = c.site
+        ? '<div style="flex:1 1 auto;text-align:center;min-width:110px;align-self:center">' +
+            '<span style="display:inline-block;font-size:13px;font-weight:700;color:#0b3b36;background:#ecfdf5;border:1px solid #99f6e4;border-radius:999px;padding:3px 12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">' + esc(c.site) + '</span></div>'
+        : '';
       h += '<div class="card" style="' + (sel ? '' : 'opacity:.5') + '">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
         '<h3 style="margin:0">' +
         '<label style="cursor:pointer;font-size:15px"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label> <span class="pill teal">' + esc(d10(c.createdAt)) + '</span></h3>' +
+        siteBlock +
         billBlock + '</div>' +
         '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0">' +
         '<thead><tr style="background:#0b3b36;color:#fff">' +
