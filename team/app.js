@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.120";
+  var APP_VERSION = "6.9.121";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4137,7 +4137,7 @@ function viewCatalogue() {
         '<div class="pmeta">' + esc(p.code) + ' &middot; ' + esc(p.unit) + '</div></div>' +
         '<div class="pqty">' +
         '<button class="stp" data-act="rt-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
-        '<b>' + (ex ? ex.qty : 0) + '</b>' +
+        '<input class="rt-q" data-code="' + esc(p.code) + '" inputmode="numeric" value="' + esc(ex ? ex.qty : "") + '" placeholder="0"/>' +
         '<button class="stp" data-act="rt-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
         '</div></div>';
     });
@@ -4399,9 +4399,23 @@ function viewCatalogue() {
       var p = PRODUCTS.filter(function (pp) { return pp.code === it.code; })[0] || {};
       var brand = it.brand || realBrand(p) || p.brand || "";
       var disc = clientDiscount(cl, brand);
-      var netRate = Math.round((Number(p.price) || 0) * (1 - disc / 100));
+      var rate = Number(p.price) || 0;
+      var netRate = Math.round(rate * (1 - disc / 100));
       var qty = Number(it.qty) || 0;
-      return { brand: brand, qty: qty, amt: qty * netRate };
+      /* desc/code/rate/disc/dr added for the HISAB return card; incentive code only reads brand/qty/amt. */
+      return { brand: brand, qty: qty, amt: qty * netRate, desc: it.desc || p.desc || it.code || "", code: it.code, rate: rate, disc: disc, dr: netRate };
+    });
+  }
+  /* Net (post-discount) value of a booked-in return — a credit against the client's ledger. */
+  function returnNet(r) { return returnLines(r).reduce(function (s, x) { return s + x.amt; }, 0); }
+  /* Returns for a client that are BOOKED IN at the godown (status "Received") — these are the ones
+     that count as a money credit in HISAB, symmetric with a challan counting only once its receipt
+     is in. A return merely raised or in transit is not yet deducted. */
+  function clientReturns(cl) {
+    var q = String(cl || "").trim().toLowerCase();
+    return (S.data.returns || []).filter(function (r) {
+      return String(r.customerName || "").trim().toLowerCase() === q &&
+             String(r.status || "").trim().toLowerCase() === "received";
     });
   }
 
@@ -4729,9 +4743,12 @@ function viewCatalogue() {
       var net = chs.reduce(function (a, c) { return a + pricedLines(c, nm).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
       var paid = clientLedger(nm).paid, cl = clientByName(nm) || {};
       var opening = Number(cl.openingAmt) || 0;
+      /* v6.9.121: booked-in material returns credit the client, so they come off the outstanding
+         here too — keeping the overview total in step with each client's HISAB balance. */
+      var returned = clientReturns(nm).reduce(function (a, r) { return a + returnNet(r); }, 0);
       /* No explicit sales-exec set yet -> falls to whoever entered the client. Billed includes
-         any old balance brought forward, so Billed - Received = Outstanding stays consistent. */
-      return { name: nm, owner: cl.ownedBy || cl.createdBy || "", net: net + opening, paid: paid, due: net + opening - paid };
+         any old balance brought forward, so Billed - Received - Returns = Outstanding stays consistent. */
+      return { name: nm, owner: cl.ownedBy || cl.createdBy || "", net: net + opening, paid: paid, returned: returned, due: net + opening - paid - returned };
     }).filter(function (r) { return r.due > 0.5; });
   }
   function viewBilling() {
@@ -4839,13 +4856,52 @@ function viewCatalogue() {
         '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total</td>' +
         '<td style="padding:6px;text-align:right;font-weight:800">' + money(chTotal) + '</td></tr></tfoot></table></div></div>';
     });
-    var _led = clientLedger(cl), paid = _led.paid, opening = _led.opening || 0, bal = opening + allNet - paid;
+    /* v6.9.121: booked-in material returns show here like a challan in reverse — a red card whose
+       amounts are negative and which credit (reduce) the client's balance. Only "Received" returns. */
+    var rets = clientReturns(cl);
+    var retTotal = 0;
+    rets.slice().sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); }).forEach(function (r) {
+      var rl = returnLines(r);
+      var rSub = rl.reduce(function (a, x) { return a + x.amt; }, 0);
+      retTotal += rSub;
+      var rrows = rl.map(function (x, idx) {
+        return '<tr style="border-bottom:1px solid #fecaca;background:' + (idx % 2 ? '#fff5f5' : '#fff') + '">' +
+          '<td style="padding:5px 6px;color:#64748b">' + (idx + 1) + '</td>' +
+          '<td style="padding:5px 6px">' + esc(x.desc) + '</td>' +
+          '<td style="padding:5px 6px;text-align:center">' + x.qty + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;color:#94a3b8">' + (x.disc > 0 ? money(x.rate) : '') + '</td>' +
+          '<td style="padding:5px 6px;text-align:center">' + (x.disc > 0 ? x.disc + '%' : '') + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;font-weight:600">' + money(x.dr) + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;font-weight:700;color:#dc2626">&minus;' + money(x.amt) + '</td></tr>';
+      }).join("");
+      var rSite = r.site
+        ? '<div style="flex:1 1 auto;text-align:center;min-width:110px;align-self:center">' +
+            '<span style="display:inline-block;font-size:13px;font-weight:700;color:#7f1d1d;background:#fef2f2;border:1px solid #fecaca;border-radius:999px;padding:3px 12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">' + esc(r.site) + '</span></div>'
+        : '';
+      h += '<div class="card" style="border-color:#fecaca;background:#fff7f7">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+        '<h3 style="margin:0">' + esc(r.returnNo) + ' <span class="pill due" style="background:#fee2e2;color:#b91c1c">Return</span> <span class="pill teal">' + esc(d10(r.createdAt)) + '</span>' +
+        (r.challanNo ? ' <span style="font-size:12px;color:#64748b">vs ' + esc(r.challanNo) + '</span>' : '') + '</h3>' +
+        rSite +
+        '<div style="text-align:right;font-size:12px;color:#b91c1c;flex:0 0 auto">Credit to client<br><b>&minus;' + money(rSub) + '</b></div></div>' +
+        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #fecaca">' +
+        '<thead><tr style="background:#7f1d1d;color:#fff">' +
+        '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product returned</th>' +
+        '<th style="padding:6px;text-align:center;width:40px">Qty</th><th style="padding:6px;text-align:right;width:66px">Rate</th>' +
+        '<th style="padding:6px;text-align:center;width:56px">Disc%</th><th style="padding:6px;text-align:right;width:72px">Net rate</th>' +
+        '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' + rrows +
+        '</tbody><tfoot><tr style="background:#fee2e2"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Return total</td>' +
+        '<td style="padding:6px;text-align:right;font-weight:800;color:#b91c1c">&minus;' + money(rSub) + '</td></tr></tfoot></table></div></div>';
+    });
+    var _led = clientLedger(cl), paid = _led.paid, opening = _led.opening || 0, bal = opening + allNet - paid - retTotal;
     var gst = S.billGst ? Math.round(selNet * 0.18) : 0;
     h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
       '<h3>Client ledger &mdash; ' + esc(cl) + '</h3>' +
       '<div class="meta" style="font-size:13.5px">' +
       (opening > 0 ? 'Previous balance (b/f): <b>' + money(opening) + '</b>  &middot;  ' : '') +
-      'Billed (net): <b>' + money(allNet) + '</b>  &middot;  Received: <b>' + money(paid) + '</b>  &middot;  Balance due: <b style="color:' + (bal > 0 ? '#dc2626' : '#0d9488') + '">' + money(bal) + '</b></div>' +
+      'Billed (net): <b>' + money(allNet) + '</b>  &middot;  Received: <b>' + money(paid) + '</b>  &middot;  ' +
+      (retTotal > 0 ? 'Returns (&minus;): <b style="color:#dc2626">' + money(retTotal) + '</b>  &middot;  ' : '') +
+      'Balance due: <b style="color:' + (bal > 0 ? '#dc2626' : '#0d9488') + '">' + money(bal) + '</b></div>' +
       '<div style="margin-top:8px;font-size:14px">Statement: <b>' + selCount + '</b> of ' + chs.length + ' challan(s) ticked &mdash; <b>' + money(selNet) + '</b>' + (S.billGst ? ' + GST ' + money(gst) + ' = <b>' + money(selNet + gst) + '</b>' : '') + '</div>' +
       '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:10px">' +
       '<button class="btn sm ' + (S.billGst ? '' : 'ghost') + '" data-act="bill-gst">' + (S.billGst ? 'GST 18% ✓' : 'Add GST 18%') + '</button>' +
@@ -4961,12 +5017,16 @@ function viewCatalogue() {
         F("bold"); doc.setFontSize(11); doc.text("Total incl. GST", cN, y, { align: "right" }); doc.text(RS(grand + gst), cA, y, { align: "right" }); y += 6;
       }
       var opening = Number((clientByName(cl) || {}).openingAmt) || 0;
+      /* v6.9.121: booked-in material returns are a credit against the account, so the statement
+         balance matches the HISAB screen. */
+      var retTot = clientReturns(cl).reduce(function (a, r) { return a + returnNet(r); }, 0);
       y += 4; F("normal"); doc.setFontSize(9.5); doc.setTextColor(100, 116, 139);
       if (opening > 0) { doc.text("Previous balance (before app): " + RS(opening), L, y); y += 5; }
       doc.text("Account billed to date (net): " + RS(allNet), L, y); y += 5;
       doc.text("Received to date: " + RS(paid), L, y); y += 5;
+      if (retTot > 0) { doc.setTextColor(185, 28, 28); doc.text("Less material returns: -" + RS(retTot), L, y); y += 5; doc.setTextColor(100, 116, 139); }
       F("bold"); doc.setTextColor(17, 34, 45); doc.setFontSize(10.5);
-      doc.text("Balance due: " + RS(opening + allNet - paid), L, y); y += 6;
+      doc.text("Balance due: " + RS(opening + allNet - paid - retTot), L, y); y += 6;
 
       /* Authorised-distributor strip. The brand logos are drawn from the persistent cache (fetched
          + processed once per device, then reused instantly) - so there is NO live image download
@@ -5012,7 +5072,11 @@ function viewCatalogue() {
     /* Old balance carried in when the client was first entered (money owed before the app). It is
        part of what they owe, so it rides in the dues and the HISAB balance. */
     var opening = Number((clientByName(client) || {}).openingAmt) || 0;
-    return { chs: chs, pays: pays, opening: opening, billed: billed, freight: freight, paid: paid, due: opening + billed + freight - paid };
+    /* v6.9.121: booked-in material returns are a credit — they reduce what the client owes, exactly
+       like a challan in reverse. Only "Received" returns count (goods actually back at the godown). */
+    var rets = clientReturns(client);
+    var returned = rets.reduce(function (a, r) { return a + returnNet(r); }, 0);
+    return { chs: chs, pays: pays, rets: rets, opening: opening, billed: billed, freight: freight, paid: paid, returned: returned, due: opening + billed + freight - paid - returned };
   }
 
   /* ---------- COLLECTION RADAR ----------
@@ -6272,7 +6336,7 @@ function viewCatalogue() {
       ".plist .prow .pname{font-size:13.5px;font-weight:600;line-height:1.25}" +
       ".plist .prow .pmeta{font-size:11.5px;color:#94a3b8}" +
       ".plist .prow .pqty{flex:0 0 auto;display:flex;align-items:center;gap:6px}" +
-      ".plist .prow .pqty .ch-q{width:56px;text-align:center}" +
+      ".plist .prow .pqty .ch-q,.plist .prow .pqty .rt-q{width:56px;text-align:center}" +
       /* Colour-coded stage actions, so Approve / Dispatch / Receipt / Billing read apart at a glance.
          Blue = authorise, Orange = releases material, Teal = goods in, Purple/Indigo = billing. */
       ".btn.act-approve{background:#2563eb!important;border-color:#2563eb!important;color:#fff!important}" +
@@ -8655,6 +8719,23 @@ function viewCatalogue() {
       var restoreChQ = keepFields(CH_FIELDS);
       keepScroll = true;
       S.modal = modalChallan(); render(); restoreChQ();
+      return;
+    }
+    if (t.classList && t.classList.contains("rt-q") && S.rt) {
+      /* v6.9.121: typed qty on the material-return picker (same as the challan builder). */
+      var rtCode = t.getAttribute("data-code");
+      var rtQ = Math.max(0, Math.floor(Number(t.value) || 0));
+      var rtProd = PRODUCTS.filter(function (x) { return x.code === rtCode; })[0] || {};
+      var rtRow = (S.rt.items || []).filter(function (i) { return i.code === rtCode; })[0];
+      if (rtRow) {
+        if (rtQ <= 0) S.rt.items = S.rt.items.filter(function (i) { return i.code !== rtCode; });
+        else rtRow.qty = rtQ;
+      } else if (rtQ > 0) {
+        S.rt.items.push({ code: rtCode, desc: rtProd.desc || rtCode, unit: rtProd.unit || "No's", qty: rtQ });
+      }
+      var restoreRtQ = keepFields(RT_FIELDS);
+      keepScroll = true;
+      S.modal = modalReturn(); render(); restoreRtQ();
       return;
     }
     if (t.classList && t.classList.contains("qz-d") && S.qz) {
