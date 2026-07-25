@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.121";
+  var APP_VERSION = "6.9.122";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -5007,6 +5007,51 @@ function viewCatalogue() {
         y = tbY + tbH + 3;
       });
       if (!sel.length) { doc.setFontSize(10); doc.setTextColor(120, 120, 120); doc.text("No challans selected.", L, y); y += 6; }
+      /* v6.9.122: booked-in material returns printed in the body as "challan in reverse" blocks — a
+         red header, each line a negative amount, then a Return total — so the statement itemises what
+         came back, matching the HISAB screen. Shown for every Received return (not tied to the ticks). */
+      var retList = clientReturns(cl).slice().sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+      retList.forEach(function (r) {
+        if (y > 258) { doc.addPage(); y = 20; }
+        F("bold"); doc.setFontSize(8.6); doc.setTextColor(185, 28, 28);
+        doc.text("RETURN  " + String(r.returnNo) + "   ·   " + fullDate(r.createdAt), L, y);
+        if (r.site && String(r.site).trim()) {
+          F("normal"); doc.setFontSize(7.6); doc.setTextColor(150, 110, 110);
+          doc.text("Site: " + pdfSafe(String(r.site).trim()), R, y, { align: "right" });
+        }
+        y += 5;
+        var rhead = function () {
+          doc.setFillColor(127, 29, 29); doc.rect(L, y - 3.8, R - L, 5.4, "F");
+          doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.2);
+          doc.text("#", sX, y); doc.text("PRODUCT RETURNED", pX, y); doc.text("QTY", cQ, y, { align: "right" });
+          doc.text("RATE", cR, y, { align: "right" }); doc.text("DISC", cD, y, { align: "right" });
+          doc.text("NET", cN, y, { align: "right" }); doc.text("AMOUNT", cA, y, { align: "right" });
+          y += 4.8;
+        };
+        rhead();
+        var rl = returnLines(r), rsub = 0;
+        rl.forEach(function (x, idx) {
+          var lines = doc.splitTextToSize(pdfSafe(x.desc), prodW);
+          var nL = Math.min(lines.length, 2), rowH = nL > 1 ? 6.9 : 4.15;
+          if (y + rowH > 282) { doc.addPage(); y = 20; rhead(); }
+          if (idx % 2) { doc.setFillColor(254, 242, 242); doc.rect(L, y - 3.2, R - L, rowH, "F"); }
+          F("normal"); doc.setFontSize(6.8); doc.setTextColor(17, 34, 45);
+          doc.text(String(idx + 1), sX, y);
+          for (var li = 0; li < nL; li++) doc.text(lines[li], pX, y + li * 3.3);
+          doc.text(String(x.qty), cQ, y, { align: "right" });
+          doc.setTextColor(120, 120, 120);
+          doc.text(x.disc > 0 ? RS(x.rate) : "-", cR, y, { align: "right" });
+          doc.text(x.disc > 0 ? (x.disc + "%") : "-", cD, y, { align: "right" });
+          doc.text(RS(x.dr), cN, y, { align: "right" });
+          F("bold"); doc.setTextColor(185, 28, 28); doc.text("-" + RS(x.amt), cA, y, { align: "right" }); F("normal");
+          y += rowH; rsub += x.amt;
+        });
+        var rbY = y - 3.4, rbH = 6.4, rMid = rbY + rbH / 2 + 1.35;
+        doc.setFillColor(254, 226, 226); doc.rect(L, rbY, R - L, rbH, "F");
+        F("bold"); doc.setFontSize(8.2); doc.setTextColor(185, 28, 28);
+        doc.text("Return total", cN, rMid, { align: "right" }); doc.text("-" + RS(rsub), cA, rMid, { align: "right" });
+        y = rbY + rbH + 3;
+      });
       if (y > 250) { doc.addPage(); y = 20; }
       var gst = S.billGst ? Math.round(grand * 0.18) : 0, paid = clientLedger(cl).paid;
       doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(L, y - 1, R, y - 1); doc.setLineWidth(0.2); y += 5;
