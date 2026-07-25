@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.126";
+  var APP_VERSION = "6.9.127";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4771,6 +4771,45 @@ function viewCatalogue() {
       return { name: nm, owner: cl.ownedBy || cl.createdBy || "", net: net + opening, paid: paid, returned: returned, due: net + opening - paid - returned };
     }).filter(function (r) { return r.due > 0.5; });
   }
+  /* v6.9.127 — AR AGEING. Splits a client's outstanding across age buckets (0-30 / 31-60 / 61-90 / 90+
+     days) so overdue money is visible at a glance. Payments and booked-in returns are applied to the
+     OLDEST deliveries first (FIFO), so what remains is bucketed by the age of the delivery it belongs
+     to. The opening balance carried in from before the app is treated as the oldest debt. */
+  function clientAging(name) {
+    var chs = dedupeChallans((S.data.challans || []).filter(function (c) {
+      return c.customerName === name && String(c.receiptReceived).toUpperCase() === "Y";
+    }));
+    var cl = clientByName(name) || {};
+    var items = [], opening = Number(cl.openingAmt) || 0;
+    if (opening > 0) items.push({ age: 99999, amt: opening });      // brought-forward = oldest
+    chs.forEach(function (c) {
+      var amt = challanNet(c) + chFreight(c);
+      if (amt > 0) items.push({ age: Math.max(0, -daysTo(String(c.createdAt || "").slice(0, 10))), amt: amt });
+    });
+    items.sort(function (a, b) { return b.age - a.age; });          // oldest first
+    var led = clientLedger(name), credit = (led.paid || 0) + (led.returned || 0);
+    items.forEach(function (it) { if (credit > 0) { var u = Math.min(credit, it.amt); it.amt -= u; credit -= u; } });
+    var b = { cur: 0, d30: 0, d60: 0, d90: 0 }, oldest = 0;
+    items.forEach(function (it) {
+      if (it.amt <= 0.5) return;
+      var age = it.age >= 99999 ? 120 : it.age;                     // show brought-forward as 90+
+      if (age > oldest) oldest = age;
+      if (age <= 30) b.cur += it.amt; else if (age <= 60) b.d30 += it.amt;
+      else if (age <= 90) b.d60 += it.amt; else b.d90 += it.amt;
+    });
+    return { b: b, oldest: oldest, overdue: b.d60 + b.d90, due: b.cur + b.d30 + b.d60 + b.d90 };
+  }
+  /* Small coloured pill for a client's oldest unpaid money — green fresh, amber 31-60, orange 61-90,
+     red 90+ (the "chase hard" band). */
+  function agePill(ag) {
+    if (!ag || ag.due <= 0.5) return "";
+    var d = ag.oldest, bg, fg, lbl;
+    if (d > 90) { bg = "#fee2e2"; fg = "#b91c1c"; lbl = "90+ d"; }
+    else if (d > 60) { bg = "#ffedd5"; fg = "#c2410c"; lbl = d + " d"; }
+    else if (d > 30) { bg = "#fef9c3"; fg = "#92400e"; lbl = d + " d"; }
+    else { bg = "#dcfce7"; fg = "#166534"; lbl = d + " d"; }
+    return ' <span style="background:' + bg + ';color:' + fg + ';border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap">' + lbl + '</span>';
+  }
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
     var cl = hisabResolve(S.q);
@@ -4790,18 +4829,41 @@ function viewCatalogue() {
       var gtot = function (k) { return groups[k].reduce(function (s, r) { return s + r.due; }, 0); };
       var gkeys = Object.keys(groups).sort(function (a, b) { return gtot(b) - gtot(a); });
       var totalDue = outs.reduce(function (a, r) { return a + r.due; }, 0);
+      /* v6.9.127: age every outstanding client and total the buckets for the summary strip. */
+      outs.forEach(function (r) { r.ag = clientAging(r.name); });
+      var agg = { cur: 0, d30: 0, d60: 0, d90: 0 };
+      outs.forEach(function (r) { agg.cur += r.ag.b.cur; agg.d30 += r.ag.b.d30; agg.d60 += r.ag.b.d60; agg.d90 += r.ag.b.d90; });
+      var overdueTot = agg.d60 + agg.d90;
       var oh = '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3>Outstanding &mdash; ' + money(totalDue) + ' across ' + outs.length + ' client(s)</h3>' +
         '<div class="meta" style="font-size:13px">Grouped by sales executive &middot; net of pre-set discounts. Tap a client to open their hisab.</div></div>';
+      /* Ageing strip: how the outstanding splits by how long it has been owed. 60+ days is money to
+         chase hard. Buckets are 0-30 / 31-60 / 61-90 / 90+ days from delivery (payments clear oldest
+         first). Tell me your credit terms and I can tune the "overdue" line to them. */
+      var ageTile = function (lbl, amt, bg, fg) {
+        return '<div style="flex:1 1 120px;min-width:120px;background:' + bg + ';border-radius:10px;padding:10px 12px">' +
+          '<div style="font-size:18px;font-weight:800;color:' + fg + '">' + money(amt) + '</div>' +
+          '<div style="font-size:11.5px;color:' + fg + ';opacity:.85">' + lbl + '</div></div>';
+      };
+      oh += '<div class="card"><h3 style="margin:0 0 8px">Ageing of outstanding' +
+        (overdueTot > 0 ? ' &middot; <span style="color:#b91c1c">' + money(overdueTot) + ' overdue (60+ days)</span>' : '') + '</h3>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        ageTile('0 - 30 days (current)', agg.cur, '#dcfce7', '#166534') +
+        ageTile('31 - 60 days', agg.d30, '#fef9c3', '#92400e') +
+        ageTile('61 - 90 days', agg.d60, '#ffedd5', '#c2410c') +
+        ageTile('90+ days (chase hard)', agg.d90, '#fee2e2', '#b91c1c') +
+        '</div></div>';
       gkeys.forEach(function (k) {
-        var rows = groups[k].slice().sort(function (a, b) { return b.due - a.due; });
+        var rows = groups[k].slice().sort(function (a, b) { return (b.ag ? b.ag.oldest : 0) - (a.ag ? a.ag.oldest : 0) || b.due - a.due; });
         oh += '<div class="card"><h3>' + esc(k) + ' <span class="pill due">' + money(gtot(k)) + '</span> <span style="font-weight:400;color:#94a3b8;font-size:12.5px">' + rows.length + ' client(s)</span></h3>' +
           '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
           '<thead><tr style="background:#f1f5f9;color:#475569"><th style="padding:6px 8px;text-align:left">Client</th>' +
+          '<th style="padding:6px 8px;text-align:center">Age</th>' +
           '<th style="padding:6px 8px;text-align:right">Billed (net)</th><th style="padding:6px 8px;text-align:right">Received</th>' +
           '<th style="padding:6px 8px;text-align:right">Outstanding</th></tr></thead><tbody>' +
           rows.map(function (r, i) {
             return '<tr style="border-bottom:1px solid #eef2f7;cursor:pointer;background:' + (i % 2 ? '#f8fafc' : '#fff') + '" data-act="bill-open" data-n="' + esc(r.name) + '">' +
               '<td style="padding:7px 8px;font-weight:600;color:#0d766c">' + esc(r.name) + '</td>' +
+              '<td style="padding:7px 8px;text-align:center">' + agePill(r.ag) + '</td>' +
               '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.net) + '</td>' +
               '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.paid) + '</td>' +
               '<td style="padding:7px 8px;text-align:right;font-weight:800;color:#dc2626">' + money(r.due) + '</td></tr>';
