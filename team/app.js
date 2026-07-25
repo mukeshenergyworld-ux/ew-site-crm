@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.124";
+  var APP_VERSION = "6.9.125";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4441,10 +4441,10 @@ function viewCatalogue() {
     };
     myClients.forEach(function (cl) {
       var roles = clientRolesOf(cl, nm), clLower = String(cl.name).trim().toLowerCase();
-      var chs = S.data.challans.filter(function (c) {
+      var chs = dedupeChallans(S.data.challans.filter(function (c) {
         return String(c.customerName || "").trim().toLowerCase() === clLower &&
                String(c.receiptReceived).toUpperCase() === "Y";
-      });
+      }));
       chs.forEach(function (c) {
         var base = 0, inc = 0;
         pricedLines(c, c.customerName).forEach(function (x) {
@@ -4742,11 +4742,21 @@ function viewCatalogue() {
   /* Net (post-discount, ex-GST) goods value of a challan - the basis for dues and incentive.
      Freight is NOT part of it (freight is a pass-through cost, not a sale). */
   function challanNet(c) { return pricedLines(c, c.customerName).reduce(function (s, x) { return s + x.amt; }, 0); }
+  /* v6.9.125 — defence-in-depth against DOUBLE-BILLING. The v6.9.124 stable-id fix stops duplicate
+     challans being created; this makes the money maths immune even if a duplicate ever slips in from
+     old data: when two challans carry the SAME challan number, only ONE is counted (the later row
+     wins). Used by every place that sums a client's received challans into a total. */
+  function dedupeChallans(list) {
+    var seen = {};
+    (list || []).slice().sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); })
+      .forEach(function (c) { seen[String(c.challanNo || c.id)] = c; });   // later createdAt overwrites earlier
+    return Object.keys(seen).map(function (k) { return seen[k]; });
+  }
   /* Every billable client with a net outstanding balance (net billed incl. client freight, minus
      payments received), tagged with the sales executive who owns the client. */
   function hisabOutstanding() {
     return hisabClientNames().map(function (nm) {
-      var chs = (S.data.challans || []).filter(function (c) { return c.customerName === nm && String(c.receiptReceived).toUpperCase() === "Y"; });
+      var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === nm && String(c.receiptReceived).toUpperCase() === "Y"; }));
       var net = chs.reduce(function (a, c) { return a + pricedLines(c, nm).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
       var paid = clientLedger(nm).paid, cl = clientByName(nm) || {};
       var opening = Number(cl.openingAmt) || 0;
@@ -4801,7 +4811,7 @@ function viewCatalogue() {
       return h + '<div class="empty">No received challans matching <b>' + esc(S.q) + '</b> yet.' +
         (guess.length > 1 ? ' Did you mean: ' + guess.map(function (n) { return '<b>' + esc(n) + '</b>'; }).join(", ") + '?' : ' A challan lands here automatically once its receipt is confirmed.') + '</div>';
     }
-    var chs = (S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; })
+    var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }))
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
     if (!chs.length) return h + '<div class="empty">No received challans for <b>' + esc(cl) + '</b> yet. A challan lands here automatically once its receipt is confirmed.</div>';
     var admin = S.role === "admin";
@@ -4924,7 +4934,7 @@ function viewCatalogue() {
   /* The statement/hisab PDF: header, customer, then each TICKED challan priced out, a statement
      total (+ optional GST), and the running account ledger (billed to date, received, balance). */
   function hisabPdf(cl) {
-    var chs = (S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; });
+    var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }));
     var sel = chs.filter(function (c) { return S.billSel[c.id] !== false; })
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
     var allNet = chs.reduce(function (a, c) { return a + pricedLines(c, cl).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
@@ -5111,9 +5121,9 @@ function viewCatalogue() {
 
   /* ---------------- client payments + ledger ---------------- */
   function clientLedger(client) {
-    var chs = S.data.challans.filter(function (c) {
+    var chs = dedupeChallans(S.data.challans.filter(function (c) {
       return c.customerName === client && String(c.receiptReceived).toUpperCase() === "Y";
-    });
+    }));
     var pays = S.data.payments.filter(function (p) { return p.client === client; });
     /* Dues are now on the NET (post-discount) value, matching the HISAB statement. */
     var billed = chs.reduce(function (a, c) { return a + challanNet(c); }, 0);
