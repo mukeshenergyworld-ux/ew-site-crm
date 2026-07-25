@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.123";
+  var APP_VERSION = "6.9.124";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -365,10 +365,17 @@
   }
 
   function save(tab, row, quiet) {
-    /* every NEW row (no server id yet) gets a stable local key so the recovery overlay can
-       recognise it and never duplicate it - works for tabs with no natural key (discounts,
-       payments, pitch...). The key is stripped before the row goes to the server. */
-    if (!row.id && !row._lid) row._lid = "l" + (++_pkSeq) + "_" + Date.now();
+    /* v6.9.124 — DUPLICATE FIX: every NEW row (no server id yet) is given a STABLE client-generated
+       id that IS sent to the server. The backend upserts by id, so if a create is ever delivered
+       twice — a lost/slow response followed by a journal retry, or a double-tap on Save/Approve — the
+       second delivery UPDATES the same row instead of the server minting a fresh id and appending a
+       DUPLICATE. This is exactly what made an approved challan duplicate (two rows, same challanNo,
+       different ids). Because every tab saves through here, the fix covers challans, returns,
+       payments, clients, everything.
+       (Previously new rows went up with id="" so each delivery created a brand-new server row, and
+       the local _lid dedup key was stripped before the server ever saw it — the server had no way to
+       know it was the same record.) */
+    if (!row.id) row.id = "L-" + (++_pkSeq) + "-" + Date.now() + "-" + Math.floor(Math.random() * 1000000);
     var list = (S.data[tab] = S.data[tab] || []);
     var idx = -1;
     for (var k = 0; k < list.length; k++) { if (list[k] && ((row.id && list[k].id === row.id) || (row._lid && list[k]._lid === row._lid))) { idx = k; break; } }
