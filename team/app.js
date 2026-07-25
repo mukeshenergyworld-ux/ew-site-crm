@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.125";
+  var APP_VERSION = "6.9.126";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4376,8 +4376,11 @@ function viewCatalogue() {
       }
       g.clientOrder.forEach(function (clientName) {
         var chs = g.clients[clientName];
-        h += '<div class="ch-client">' + esc(clientName) +
-          '<span class="sub">' + chs.length + ' challan' + (chs.length > 1 ? 's' : '') + '</span></div>';
+        /* v6.9.126: the client header is a tappable link straight into that client's full HISAB. */
+        h += '<div class="ch-client" data-act="ch-hisab" data-cl="' + esc(clientName) + '" style="cursor:pointer" title="Open ' + esc(clientName) + '’s HISAB">' +
+          '<span style="border-bottom:1px dotted currentColor">' + esc(clientName) + '</span>' +
+          '<span class="sub">' + chs.length + ' challan' + (chs.length > 1 ? 's' : '') +
+          ' &middot; <span style="color:#0d9488;font-weight:700">HISAB ›</span></span></div>';
         chs.forEach(function (c) { h += challanCardHtml(c); });
       });
     });
@@ -6785,7 +6788,7 @@ function viewCatalogue() {
     var GROUPS = [
       ["Sync", ["pending"]],
       ["Sell", ["dash", "leads", "brandfollow", "quotes", "followups", "clients", "partners"]],
-      ["Deliver", ["deliveries", "tools", "collections", "billing", "products"]],
+      ["Deliver", ["deliveries", "billing", "tools", "collections", "products"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["payrollhub", "discounts", "report", "pricing", "rules", "teampins"]]
     ];
@@ -6956,6 +6959,12 @@ function viewCatalogue() {
     if (act === "reload-app") { location.reload(); return; }
     if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; render(); return; }
     if (act === "del-sub") { S.delSub = t.getAttribute("data-s"); render(); return; }
+    if (act === "ch-hisab") {
+      /* v6.9.126: jump from a client's challan group straight into their full HISAB ledger. */
+      var hcl = t.getAttribute("data-cl") || "";
+      if (!canSee("billing")) { toast("HISAB isn’t available for your role."); return; }
+      S.tab = "billing"; S.q = hcl; render(); return;
+    }
     if (act === "leads-sub") { S.leadsSub = t.getAttribute("data-s"); render(); return; }
     if (act === "quotes-sub") { S.quotesSub = t.getAttribute("data-s"); render(); return; }
     if (act === "coll-sub") { S.collSub = t.getAttribute("data-s"); render(); return; }
