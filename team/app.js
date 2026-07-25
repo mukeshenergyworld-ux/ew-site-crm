@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.115";
+  var APP_VERSION = "6.9.116";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4643,7 +4643,9 @@ function viewCatalogue() {
     var cl = hisabResolve(S.q);
     var billNames = hisabClientNames();
     if (!seesAllClients()) billNames = billNames.filter(function (n) { return isMineClient(n); });
-    var h = '<div class="row"><input class="grow" id="q" placeholder="Type a client to bill (then Enter)..." list="billclients" value="' + esc(S.q) + '"/><button class="btn" data-act="bill-go">Show</button></div>' +
+    var h = '<div class="row">' +
+      (S.q ? '<button class="btn sm ghost" data-act="bill-clear">\u2190 All clients</button>' : '') +
+      '<input class="grow" id="q" placeholder="Type a client to bill (then Enter)..." list="billclients" value="' + esc(S.q) + '"/><button class="btn" data-act="bill-go">Show</button></div>' +
       '<datalist id="billclients">' + billNames.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>';
     if (cl && !isMineClient(cl)) return h + '<div class="empty"><b>' + esc(cl) + '</b> is assigned to another sales executive, so their hisab is not open to you. You can view and follow up on the clients assigned to you.</div>';
     if (!S.q) {
@@ -4704,9 +4706,25 @@ function viewCatalogue() {
           '<td style="padding:5px 6px;text-align:right;font-weight:600">' + money(x.dr) + '</td>' +
           '<td style="padding:5px 6px;text-align:right;font-weight:700">' + money(x.amt) + '</td></tr>';
       }).join("");
-      h += '<div class="card" style="' + (sel ? '' : 'opacity:.5') + '"><h3>' +
-        '<label style="cursor:pointer;font-size:15px"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label> <span class="pill teal">' + esc(dstr(c.createdAt)) + '</span>' +
-        (c.billNo ? ' <span class="pill Won">billed ' + esc(c.billNo) + '</span>' : '') + '</h3>' +
+      /* v6.9.116: each challan shows its billing detail top-right - Bill no, bill date and GSTIN.
+         Red \u201cBill pending\u201d with an Add button when nothing is entered yet. */
+      var billBlock;
+      var gstinPart = (String(c.billTo || "").split(" - ")[1] || "").trim();
+      if (c.billNo) {
+        billBlock = '<div style="text-align:right;font-size:12px;line-height:1.55;color:#15803d;flex:0 0 auto">' +
+          '<b>Bill: ' + esc(c.billNo) + '</b><br>Date: ' + esc(d10(c.billedAt || c.createdAt)) + '<br>' +
+          (gstinPart ? 'GST: ' + esc(gstinPart) + '<br>' : (c.billTo ? esc(c.billTo) + '<br>' : '')) +
+          '<button class="btn sm ghost" data-act="bill-detail" data-id="' + esc(c.id) + '" style="margin-top:2px">Edit bill</button></div>';
+      } else {
+        billBlock = '<div style="text-align:right;font-size:12px;flex:0 0 auto">' +
+          '<span class="pill due" style="font-weight:700">Bill pending</span><br>' +
+          '<button class="btn sm" data-act="bill-detail" data-id="' + esc(c.id) + '" style="margin-top:5px">Add bill / GST</button></div>';
+      }
+      h += '<div class="card" style="' + (sel ? '' : 'opacity:.5') + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+        '<h3 style="margin:0">' +
+        '<label style="cursor:pointer;font-size:15px"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label> <span class="pill teal">' + esc(d10(c.createdAt)) + '</span></h3>' +
+        billBlock + '</div>' +
         '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0">' +
         '<thead><tr style="background:#0b3b36;color:#fff">' +
         '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product</th>' +
@@ -7912,6 +7930,7 @@ function viewCatalogue() {
     /* "+ New" from inside a challan / return / old-delivery. Remember what the man had already
        typed, open the FULL client form, and when he saves, come straight back to where he was
        with the client filled in. Registering a client must never cost him the form he was on. */
+    if (act === "bill-clear") { S.q = ""; render(); return; }
     if (act === "bill-detail") {
       S.modal = modalBill(id); render(); return;
     }
@@ -7945,8 +7964,9 @@ function viewCatalogue() {
         "\n\nSave it on " + bch.challanNo + " too?\n(Fine for a consolidated bill; cancel if it's a typo.)")) return;
       /* Optimistic + journaled full-row save, so the billing detail can't be lost. */
       S.modal = null;
-      var updated = Object.assign({}, bch, { billTo: billTo, billNo: billNo, billStatus: "Billed" });
-      Object.assign(bch, { billTo: billTo, billNo: billNo, billStatus: "Billed" });
+      var _bnow = today();
+      var updated = Object.assign({}, bch, { billTo: billTo, billNo: billNo, billStatus: "Billed", billedAt: bch.billedAt || _bnow, billedBy: S.user });
+      Object.assign(bch, { billTo: billTo, billNo: billNo, billStatus: "Billed", billedAt: bch.billedAt || _bnow, billedBy: S.user });
       toast("Bill " + billNo + " recorded on " + bch.challanNo + ".");
       render();
       save("challans", updated).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
