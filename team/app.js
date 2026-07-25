@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.116";
+  var APP_VERSION = "6.9.117";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4527,8 +4527,16 @@ function viewCatalogue() {
       });
       return h;
     }
+    /* v6.9.116: discounts belong to REAL clients only. If the typed name is not an existing
+       client, refuse to open the editor - this is what let a phantom row (client "in") be created. */
+    var cObj0 = clientByName(cl);
+    if (!cObj0) {
+      var guessD = S.data.clients.filter(function (c) { return String(c.name || "").toLowerCase().indexOf(String(cl).trim().toLowerCase()) >= 0; });
+      return h + '<div class="empty">No client named <b>' + esc(cl) + '</b>. Discounts can only be set for an existing client.' +
+        (guessD.length ? ' Did you mean: ' + guessD.slice(0, 6).map(function (c) { return '<b>' + esc(c.name) + '</b>'; }).join(", ") + '?' : ' Add the client first from the Clients tab.') + '</div>';
+    }
     var brands = brandList();
-    var cObj = clientByName(cl) || {};
+    var cObj = cObj0 || {};
     var ROLE_LABEL = { plumber: "Plumber", architect: "Architect", builder: "Builder", pmc: "PMC" };
     var anyPartner = ["plumber", "architect", "builder", "pmc"].some(function (r) { return String(cObj[r] || "").trim(); });
     h += '<div class="row"><button class="btn sm ghost" data-act="disc-back">&larr; All discount clients</button></div>' +
@@ -7007,6 +7015,7 @@ function viewCatalogue() {
     if (act === "disc-back") { S.q = ""; render(); return; }
     if (act === "disc-saveall") {
       if (S.role !== "admin") { toast("Only admin can set discounts."); return; }
+      if (!clientByName(S.q)) { toast("Discounts can only be set for an existing client."); return; }
       /* DEFERRED SAVE: read every discount (.dsc) and incentive (.incp) box on the screen and
          commit them in ONE pass — grouped per client+brand, because one discount row carries the
          brand discount AND every partner's incentive together in its notes. Nothing was written
