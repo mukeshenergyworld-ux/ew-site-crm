@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.128";
+  var APP_VERSION = "6.9.129";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -5220,8 +5220,8 @@ function viewCatalogue() {
      Returns the total value, count, and the challan list (deduped so a stray duplicate can't inflate). */
   function unbilledStats() {
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) {
-      return String(c.receiptReceived).toUpperCase() === "Y" && !String(c.billNo || "").trim();
-    }));
+      return String(c.receiptReceived).toUpperCase() === "Y" && !String(c.billNo || "").trim() && isMineClient(c.customerName);
+    }));   /* isMineClient = all for admin/accounts, own clients for a sales exec */
     var val = chs.reduce(function (a, c) { return a + challanNet(c) + chFreight(c); }, 0);
     return { val: val, count: chs.length, list: chs };
   }
@@ -6245,12 +6245,23 @@ function viewCatalogue() {
     var sales = myCh.reduce(function (a, c) { return a + challanNet(c); }, 0);
     var comm = myCh.reduce(function (a, c) { return a + (Number(c.commissionAmt) || 0); }, 0);
 
+    /* v6.9.129: a sales exec sees the collection picture for THEIR OWN clients too — total outstanding
+       and how much of it is 60+ days overdue — with a tap through to HISAB. Same figures admin sees,
+       scoped to their book, so the whole team can chase their own dues. */
+    var myOutstanding = 0, myOverdue = 0;
+    liveClients.forEach(function (c) {
+      var dv = clientLedger(c.name).due;
+      if (dv > 0.5) { myOutstanding += dv; myOverdue += clientAging(c.name).overdue; }
+    });
+
     var h = '<div class="cards">' +
       '<div class="stat"><div class="n">' + liveClients.length + '</div><div class="l">Clients</div></div>' +
       '<div class="stat ' + (overdue.length ? 'alert' : '') + '"><div class="n">' + overdue.length + '</div><div class="l">Follow-ups overdue</div></div>' +
       '<div class="stat"><div class="n">' + due.length + '</div><div class="l">Due today</div></div>' +
       '<div class="stat"><div class="n">' + liveLeads + '</div><div class="l">Leads</div></div>' +
       '<div class="stat"><div class="n">' + money(sales) + '</div><div class="l">Challan value</div></div>' +
+      '<div class="stat ' + (myOutstanding > 0 ? 'alert' : '') + '" data-act="tab" data-tab="billing" style="cursor:pointer" title="Open HISAB"><div class="n">' + money(myOutstanding) + '</div><div class="l">Outstanding' + (seesAllClients() ? '' : ' (my clients)') + '</div></div>' +
+      '<div class="stat ' + (myOverdue > 0 ? 'alert' : '') + '" data-act="tab" data-tab="billing" style="cursor:pointer" title="Open HISAB"><div class="n">' + money(myOverdue) + '</div><div class="l">Overdue 60+ days</div></div>' +
       (seesAllClients() ? '<div class="stat"><div class="n">' + money(comm) + '</div><div class="l">Incentive owed</div></div>' : '') +
       '</div>';
 
