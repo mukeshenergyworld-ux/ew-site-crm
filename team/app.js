@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.114";
+  var APP_VERSION = "6.9.115";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1088,11 +1088,22 @@ window.addEventListener("beforeunload", function (ev) {
       h += '<div class="card"><h3>' + esc(x.client) + ' <span class="pill ' + d.k + '">' + d.t + '</span>' +
         (x.amcType && x.amcType !== "None" ? ' <span class="pill teal">AMC' + (x.amcEnd ? " to " + esc(dstr(x.amcEnd)) : "") + '</span>' : "") +
         (bal > 0 ? ' <span class="pill due">' + money(bal) + ' pending</span>' : "") + '</h3>' +
-        '<div class="meta">' + esc(x.product || "") + (x.model ? " " + esc(x.model) : "") +
+        '<div class="meta">' + (function () {
+          var ps = instProducts(x), lines = [];
+          ps.forEach(function (p) {
+            var we = warrantyEnd(p);
+            var wtxt = we ? (daysTo(we) >= 0
+              ? ' &middot; <span style="color:#15803d">in warranty to ' + esc(d10(we)) + '</span>'
+              : ' &middot; <span style="color:#94a3b8">warranty ended ' + esc(d10(we)) + '</span>') : "";
+            lines.push('<b>' + esc(p.product) + '</b>' + (p.model ? " " + esc(p.model) : "") +
+              (p.installDate ? ' &middot; inst ' + esc(d10(p.installDate)) : "") + wtxt +
+              (Number(p.serviceReq) ? ' &middot; service q' + esc(p.serviceMonths) + 'm' : ' &middot; no service'));
+          });
+          return lines.join("<br>");
+        })() +
         '<br>' + esc(x.area || "") + (x.mobile ? ' &middot; ' + esc(x.mobile) : "") +
-        '<br>Every ' + esc(x.cycleDays || "?") + ' days &middot; water: ' + esc(x.waterQuality || "-") +
-        '<br>Engineer: ' + esc(x.engineer || "unassigned") +
-        (x.lastService ? '<br>Last service: ' + esc(dstr(x.lastService)) : "") + '</div>' +
+        '<br>Water: ' + esc(x.waterQuality || "-") + ' &middot; Engineer: ' + esc(x.engineer || "unassigned") +
+        (x.lastService ? '<br>Last service: ' + esc(d10(x.lastService)) : "") + '</div>' +
         '<div class="acts">' +
         (x.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.mobile) + '">Call</a>' : "") +
         '<button class="btn sm" data-act="visit-new" data-id="' + esc(x.id) + '">Log visit</button>' +
@@ -1169,22 +1180,55 @@ window.addEventListener("beforeunload", function (ev) {
     return h;
   }
 
+  /* v6.9.115: an installation can hold MANY products, each with its own install +
+     commissioning date, warranty (months), and its own periodic-service setting. Stored as
+     productsJson; the flat product/model/installDate/cycleDays/nextService columns are kept in
+     sync (from the first serviced product) so the reminder engine and old rows keep working. */
+  function instProducts(x) {
+    x = x || {};
+    var arr = [];
+    try { arr = JSON.parse(x.productsJson || "[]"); } catch (e) { arr = []; }
+    if (!arr.length && (x.product || x.id)) {
+      arr = [{ product: x.product || SVC_PRODUCTS[0], model: x.model || "", installDate: dstr(x.installDate) || "",
+        commDate: "", warrantyMonths: "", serviceReq: (Number(x.cycleDays) ? 1 : 0),
+        serviceMonths: Math.max(1, Math.round((Number(x.cycleDays) || 60) / 30)) }];
+    }
+    if (!arr.length) arr = [{ product: SVC_PRODUCTS[0], model: "", installDate: today(), commDate: "", warrantyMonths: "", serviceReq: 1, serviceMonths: 2 }];
+    return arr;
+  }
+  /* warranty end = (commissioning date, else install date) + warrantyMonths */
+  function warrantyEnd(p) {
+    var m = Number(p.warrantyMonths) || 0; if (!m) return "";
+    var base = dstr(p.commDate) || dstr(p.installDate); if (!base) return "";
+    var d = new Date(base + "T00:00:00"); d.setMonth(d.getMonth() + m);
+    return d.toISOString().slice(0, 10);
+  }
+  function instProdRow(p, i) {
+    p = p || {};
+    return '<div class="ip-row" data-row="' + i + '" style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#f8fafc">' +
+      '<div class="grid2"><div><label>Product</label><select class="ip-prod">' + opts(SVC_PRODUCTS, p.product || SVC_PRODUCTS[0]) + '</select></div>' +
+      '<div><label>Model / capacity</label><input class="ip-model" value="' + esc(p.model || "") + '"/></div></div>' +
+      '<div class="grid2"><div><label>Install date</label><input class="ip-idate" type="date" value="' + esc(dstr(p.installDate) || today()) + '"/></div>' +
+      '<div><label>Commissioning date</label><input class="ip-cdate" type="date" value="' + esc(dstr(p.commDate)) + '"/></div></div>' +
+      '<div class="grid2"><div><label>Warranty (months)</label><input class="ip-warr" inputmode="numeric" placeholder="12" value="' + esc(p.warrantyMonths || "") + '"/></div>' +
+      '<div><label>Periodic service?</label><select class="ip-svc">' + opts(["No", "Yes"], (Number(p.serviceReq) ? "Yes" : "No")) + '</select></div></div>' +
+      '<div class="grid2"><div><label>Service every (months)</label><input class="ip-svcm" inputmode="numeric" placeholder="2" value="' + esc(p.serviceMonths || "") + '"/></div>' +
+      '<div style="display:flex;align-items:flex-end;justify-content:flex-end"><button class="btn sm ghost" data-act="ip-del" data-row="' + i + '">Remove</button></div></div>' +
+      '</div>';
+  }
   function modalInstall(x) {
     x = x || {};
+    var prods = instProducts(x);
     return '<h2>' + (x.id ? "Edit installation" : "New installation") + '</h2>' +
-      '<p class="sub">Service cycle drives the reminders. Hard water = shorter cycle.</p>' +
+      '<p class="sub">Add each product with its own dates &amp; warranty. \u201cPeriodic service = Yes\u201d drives the reminders.</p>' +
       '<label>Client</label><input id="i_client" value="' + esc(x.client) + '"/>' +
       '<div class="grid2"><div><label>Mobile</label><input id="i_mobile" inputmode="numeric" value="' + esc(x.mobile) + '"/></div>' +
       '<div><label>Area / route</label><input id="i_area" value="' + esc(x.area) + '"/></div></div>' +
       '<label>Address</label><input id="i_addr" value="' + esc(x.address) + '"/>' +
-      '<div class="grid2"><div><label>Product</label><select id="i_prod">' + opts(SVC_PRODUCTS, x.product || SVC_PRODUCTS[0]) + '</select></div>' +
-      '<div><label>Model / capacity</label><input id="i_model" value="' + esc(x.model) + '"/></div></div>' +
-      '<div class="grid2"><div><label>Serial no.</label><input id="i_serial" value="' + esc(x.serial) + '"/></div>' +
-      '<div><label>Install date</label><input id="i_idate" type="date" value="' + esc(dstr(x.installDate) || today()) + '"/></div></div>' +
-      '<div class="grid2"><div><label>Water quality</label><select id="i_water">' + opts(WATER, x.waterQuality || "Hard") + '</select></div>' +
-      '<div><label>Service every (days)</label><input id="i_cycle" inputmode="numeric" value="' + esc(x.cycleDays || "60") + '"/></div></div>' +
-      '<div class="grid2"><div><label>Last service</label><input id="i_last" type="date" value="' + esc(dstr(x.lastService)) + '"/></div>' +
-      '<div><label>Next service</label><input id="i_next" type="date" value="' + esc(dstr(x.nextService)) + '"/></div></div>' +
+      '<label>Water quality</label><select id="i_water" style="max-width:220px">' + opts(WATER, x.waterQuality || "Hard") + '</select>' +
+      '<h3 style="margin:14px 0 6px;font-size:14px">Products</h3>' +
+      '<div id="i_products">' + prods.map(function (p, i) { return instProdRow(p, i); }).join("") + '</div>' +
+      '<button class="btn sm ghost" data-act="ip-add" style="margin-bottom:12px">+ Add another product</button>' +
       '<div class="grid2"><div><label>AMC</label><select id="i_amc">' + opts(["None","Yearly","Visit-based"], x.amcType || "None") + '</select></div>' +
       '<div><label>AMC amount (Rs)</label><input id="i_amcamt" inputmode="numeric" value="' + esc(x.amcAmount || "") + '"/></div></div>' +
       '<div class="grid2"><div><label>AMC ends</label><input id="i_amcend" type="date" value="' + esc(dstr(x.amcEnd)) + '"/></div>' +
@@ -7278,16 +7322,46 @@ function viewCatalogue() {
     if (act === "inst-save") {
       var ic = val("i_client");
       if (!ic) { toast("Client name is required."); return; }
-      var cyc = Number(val("i_cycle")) || 60;
-      var last = val("i_last");
-      var next = val("i_next") || (last ? addDays(last, cyc) : addDays(val("i_idate") || today(), cyc));
+      var prods = [];
+      (document.querySelectorAll("#i_products .ip-row") || []).forEach(function (row) {
+        var g = function (cls) { var e2 = row.querySelector("." + cls); return e2 ? e2.value : ""; };
+        var pr = g("ip-prod"); if (!pr) return;
+        prods.push({ product: pr, model: g("ip-model"), installDate: g("ip-idate"), commDate: g("ip-cdate"),
+          warrantyMonths: Number(g("ip-warr")) || 0, serviceReq: (g("ip-svc") === "Yes") ? 1 : 0,
+          serviceMonths: Number(g("ip-svcm")) || 0 });
+      });
+      if (!prods.length) { toast("Add at least one product."); return; }
+      /* derived, backward-compatible fields for the reminder engine + list view */
+      var serviced = prods.filter(function (p) { return p.serviceReq && p.serviceMonths; });
+      var cyc = serviced.length ? Math.round(serviced[0].serviceMonths * 30) : 0;
+      var prev = installById(id) || {};
+      var derivedNext = "";
+      serviced.forEach(function (p) {
+        var base = p.commDate || p.installDate || today();
+        var nx = addDays(base, Math.round(p.serviceMonths * 30));
+        if (!derivedNext || nx < derivedNext) derivedNext = nx;
+      });
+      var next = (id && prev.nextService) ? prev.nextService : derivedNext;
       save("installs", {
-        id: id || "", createdBy: S.user, client: ic, mobile: val("i_mobile"), address: val("i_addr"),
-        area: val("i_area"), product: val("i_prod"), model: val("i_model"), serial: val("i_serial"),
-        installDate: val("i_idate"), waterQuality: val("i_water"), cycleDays: cyc,
-        lastService: last, nextService: next, amcType: val("i_amc"), amcAmount: val("i_amcamt"),
-        amcEnd: val("i_amcend"), engineer: val("i_eng"), status: "Active", notes: val("i_notes")
+        id: id || "", createdBy: (id ? (prev.createdBy || S.user) : S.user), client: ic,
+        mobile: val("i_mobile"), address: val("i_addr"), area: val("i_area"),
+        product: prods[0].product, model: prods[0].model, installDate: prods[0].installDate,
+        productsJson: JSON.stringify(prods), waterQuality: val("i_water"), cycleDays: cyc,
+        lastService: prev.lastService || "", nextService: next, amcType: val("i_amc"),
+        amcAmount: val("i_amcamt"), amcEnd: val("i_amcend"), engineer: val("i_eng"),
+        status: "Active", notes: val("i_notes")
       }).then(function (r) { if (r) { S.modal = null; toast("Installation saved."); render(); } });
+      return;
+    }
+    if (act === "ip-add") {
+      var box = el("i_products");
+      if (box) box.insertAdjacentHTML("beforeend", instProdRow({ installDate: today(), serviceReq: 1, serviceMonths: 2 }, box.children.length));
+      return;
+    }
+    if (act === "ip-del") {
+      var rows = document.querySelectorAll("#i_products .ip-row");
+      if (rows.length <= 1) { toast("At least one product is needed."); return; }
+      var rr = t.closest(".ip-row"); if (rr) rr.remove();
       return;
     }
     if (act === "visit-new") {
