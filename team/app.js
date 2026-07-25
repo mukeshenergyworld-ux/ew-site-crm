@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.113";
+  var APP_VERSION = "6.9.114";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -98,6 +98,15 @@
   function el(id) { return document.getElementById(id); }
   function val(id) { var e = el(id); return e ? String(e.value || "").trim() : ""; }
   function today() { return new Date().toISOString().slice(0, 10); }
+  /* v6.9.114: one canonical DISPLAY date - always DD/MM/YYYY (owner's format).
+     Storage/compare stay ISO (today()/dstr); this is only for showing to a human. */
+  function d10(v) {
+    var s = String(v || "").trim(); if (!s) return "";
+    var m = s.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[3] + "/" + m[2] + "/" + m[1];
+    var d = new Date(s); if (isNaN(d.getTime())) return s;
+    return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
+  }
   function dstr(d) { return d ? String(d).slice(0, 10) : ""; }
   /* Incentive is a division (amount / 1.18 * rate), so it lands on fractions of a paisa.
      Nobody pays a plumber 84.7 paise - round to the rupee everywhere money is shown. */
@@ -895,7 +904,7 @@ window.addEventListener("beforeunload", function (ev) {
   function fullDate(v) {
     var s = String(v || "").trim(); if (!s) return "";
     var d = new Date(s); if (isNaN(d.getTime())) return s;
-    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
   }
 
   function modalCommission(chId) {
@@ -1773,6 +1782,20 @@ window.addEventListener("beforeunload", function (ev) {
   function clFormRestore(v) {
     CL_FORM_IDS.forEach(function (fid) { var e2 = el(fid); if (e2 && v[fid] !== undefined) e2.value = v[fid]; });
   }
+  /* v6.9.114: reopen the client form with the half-typed values baked straight into the HTML
+     (value="...") instead of restoring them by JS after render - a later background repaint can
+     no longer wipe the form. Maps input ids back to client-object fields. */
+  var CL_ID2FIELD = { c_name:"name", c_loc:"location", c_type:"type", c_segment:"segment",
+    c_mob:"mobile", c_mob2:"mobile2", c_short:"shortName", c_area:"area", c_addr:"address",
+    c_arch:"architect", c_plumb:"plumber", c_build:"builder", c_pmc:"pmc", c_notes:"notes",
+    c_owner:"ownedBy", c_opamt:"openingAmt", c_opdate:"openingAsOn", c_leadtype:"leadType" };
+  function clDraftToClient(vals) {
+    var base = {}; if (S.clEditing) for (var k in S.clEditing) base[k] = S.clEditing[k];
+    Object.keys(CL_ID2FIELD).forEach(function (fid) {
+      if (vals[fid] !== undefined && vals[fid] !== "") base[CL_ID2FIELD[fid]] = vals[fid];
+    });
+    return base;
+  }
   function partnersMissing() {
     return (S.data.clients || []).filter(function (c) {
       if (!String(c.name || "").trim()) return false;
@@ -1913,7 +1936,7 @@ window.addEventListener("beforeunload", function (ev) {
         (Number(q.version) > 1 ? ' <span class="pill">v' + esc(q.version) + '</span>' : "") + '</h3>' +
         '<div class="meta" style="font-size:12px;line-height:1.5">' + esc(q.client) + ' &middot; ' + esc(q.brand) +
         '<br>net <b>' + money(q.net) + '</b> &middot; <b>' + money(q.total) + '</b> incl GST &middot; ' + esc(q.discountPct) + '% off ' + money(q.gross) +
-        ' <span style="color:#94a3b8">&middot; ' + esc(dstr(q.createdAt)) + ' ' + esc(q.createdBy) + '</span></div>' +
+        ' <span style="color:#94a3b8">&middot; ' + esc(d10(q.createdAt)) + ' ' + esc(q.createdBy) + '</span></div>' +
         '</div>' +
         '<div class="acts" style="margin:0;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end;gap:6px">' +
         '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:5px 8px;font-size:12.5px">' + opts(QSTATUS, q.status) + '</select>' +
@@ -3349,7 +3372,7 @@ function viewCatalogue() {
         doc.text("APPROVED BY", R - OFF2, y, { align: "right" });
         g(0); F("normal"); doc.setFontSize(7.6);
         doc.setFontSize(small ? 6.8 : 7.6);
-        doc.text(String(c.createdAt || "").slice(0, 10), R, y + 4.5, { align: "right" });
+        doc.text(d10(c.createdAt), R, y + 4.5, { align: "right" });
         doc.text(String(c.createdBy || "-"), R - OFF1, y + 4.5, { align: "right" });
         doc.text(String(approver || c.approvedBy || "-"), R - OFF2, y + 4.5, { align: "right" });
         /* Freight and the driver used to sit up here. They belong at the FOOT of the item
@@ -3405,7 +3428,7 @@ function viewCatalogue() {
         if (p === pages && (approver || c.approvedBy)) {
           g(165); F("normal"); doc.setFontSize(4.6);
           doc.text("Dispatch approved by " + String(approver || c.approvedBy) +
-            (c.approvedAt ? " on " + String(c.approvedAt).slice(0, 10) + " at " + String(c.approvedAt).slice(11, 16) : "") +
+            (c.approvedAt ? " on " + d10(c.approvedAt) + " at " + String(c.approvedAt).slice(11, 16) : "") +
             ", verified by PIN.", R, H - 23.5, { align: "right" });
         }
         dg(190); doc.setLineWidth(0.2); doc.line(L, H - 20, R, H - 20);
@@ -3668,7 +3691,7 @@ function viewCatalogue() {
       h += '<h3 style="margin:14px 0 4px;font-size:14px">Chain of custody</h3><div class="meta">';
       S.tool.chain.forEach(function (m) {
         h += '<div style="padding:5px 0;border-bottom:1px solid #f1f5f9">' +
-          '<b>' + esc(m.action) + '</b> &middot; ' + esc(String(m.createdAt).slice(0, 10)) + '<br>' +
+          '<b>' + esc(m.action) + '</b> &middot; ' + esc(d10(m.createdAt)) + '<br>' +
           esc(m.fromHolder || "Godown") + ' &rarr; ' + esc(m.toHolder || "Godown") +
           (m.site ? ' &middot; ' + esc(m.site) : "") + '<br>' +
           '<span style="color:#0d9488">Transferred by ' + esc(m.by) +
@@ -3830,7 +3853,7 @@ function viewCatalogue() {
         h += '<div class="card" style="border-color:#fecaca;background:#fef2f2">' +
           '<h3>' + esc(t.code) + ' &middot; ' + esc(t.name || "unnamed") + ' <span class="pill Lost">' + toolDays(t) + 'd</span></h3>' +
           '<div class="meta">With <b>' + esc(t.holder) + '</b> (' + esc(t.holderType || "") + ')' +
-          (t.site ? ' at ' + esc(t.site) : "") + '<br>Agreed ' + esc(t.dueDays) + ' days &middot; out since ' + esc(String(t.issuedAt).slice(0, 10)) + '</div>' +
+          (t.site ? ' at ' + esc(t.site) : "") + '<br>Agreed ' + esc(t.dueDays) + ' days &middot; out since ' + esc(d10(t.issuedAt)) + '</div>' +
           '<div class="acts"><button class="btn sm" data-act="tl-open" data-id="' + esc(t.id) + '">Open</button></div></div>';
       });
     }
@@ -3898,7 +3921,7 @@ function viewCatalogue() {
         '<br>' + its.map(function (i) { return esc(i.desc) + " x" + i.qty; }).join(", ") +
         (r.reason ? '<br>Reason: ' + esc(r.reason) : "") +
         (r.driver ? '<br>Pickup: ' + esc(r.driver) + (r.vehicle ? " (" + esc(r.vehicle) + ")" : "") : "") +
-        '<br>' + esc(String(r.createdAt).slice(0, 10)) + ' by ' + esc(r.createdBy) +
+        '<br>' + esc(d10(r.createdAt)) + ' by ' + esc(r.createdBy) +
         (r.receivedBy ? '<br>Booked in by ' + esc(r.receivedBy) : "") + '</div>' +
         '<div class="acts">' +
         (stt === "Raised" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Picked up">Picked up</button>' : "") +
@@ -4532,11 +4555,14 @@ function viewCatalogue() {
   /* Distinct customer names that actually have a received challan (these are the billable clients). */
   function hisabClientNames() {
     var seen = {}, out = [];
+    var add = function (nm) { if (nm && !seen[nm]) { seen[nm] = 1; out.push(nm); } };
     (S.data.challans || []).forEach(function (c) {
-      if (String(c.receiptReceived).toUpperCase() === "Y" && c.customerName && !seen[c.customerName]) {
-        seen[c.customerName] = 1; out.push(c.customerName);
-      }
+      if (String(c.receiptReceived).toUpperCase() === "Y") add(c.customerName);
     });
+    /* v6.9.114: a client with an OLD pending balance (entered on the lead) or any payment
+       received shows in HISAB immediately - no need to wait for the first challan. */
+    (S.data.clients || []).forEach(function (c) { if ((Number(c.openingAmt) || 0) > 0) add(c.name); });
+    (S.data.payments || []).forEach(function (p) { add(p.client); });
     return out.sort();
   }
   /* Resolve a typed name to a real billable client name: exact (case/space-tolerant) first,
@@ -5442,7 +5468,7 @@ function viewCatalogue() {
     if (!s2) return "";
     var d = new Date(s2);
     if (isNaN(d.getTime())) return s2;
-    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+    return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
   }
 
   function viewPartners() {
@@ -6609,8 +6635,7 @@ function viewCatalogue() {
          form with everything still typed - never dumps the user's half-entered lead. */
       if (S.clDraft) {
         var cd = S.clDraft; S.clDraft = null;
-        S.modal = modalClient(S.clEditing || null); render();
-        clFormRestore(cd.vals);
+        S.modal = modalClient(clDraftToClient(cd.vals)); render();
         return;
       }
       S.modal = null; render(); return;
@@ -7594,11 +7619,10 @@ function viewCatalogue() {
            the new partner selected in the field that started this. */
         if (S.clDraft) {
           var d = S.clDraft; S.clDraft = null;
-          S.modal = modalClient(S.clEditing || null); render();
-          d.vals[d.field] = an;
-          clFormRestore(d.vals);
+          d.vals[d.field] = an;                    /* newly added partner selected in his field */
+          S.modal = modalClient(clDraftToClient(d.vals)); render();
           var sel = el(d.field);
-          if (sel && sel.value !== an) {   /* option may not exist yet on a slow sync - inject it */
+          if (sel && sel.value !== an) {           /* option may not exist yet on a slow sync - inject it */
             var o = document.createElement("option"); o.value = an; o.textContent = an;
             sel.insertBefore(o, sel.firstChild); sel.value = an;
           }
