@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.118";
+  var APP_VERSION = "6.9.119";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4820,7 +4820,14 @@ function viewCatalogue() {
       sel.forEach(function (c) {
         if (y > 262) { doc.addPage(); y = 20; }
         F("bold"); doc.setFontSize(8.6); doc.setTextColor(13, 118, 108);
-        doc.text(String(c.challanNo) + "   ·   " + fullDate(c.createdAt), L, y); y += 5;
+        doc.text(String(c.challanNo) + "   ·   " + fullDate(c.createdAt), L, y);
+        /* v6.9.119: if the challan carries a Site/project, print it right-aligned on the same
+           header line so the statement shows which site each challan belongs to. */
+        if (c.site && String(c.site).trim()) {
+          F("normal"); doc.setFontSize(7.6); doc.setTextColor(100, 116, 139);
+          doc.text("Site: " + pdfSafe(String(c.site).trim()), R, y, { align: "right" });
+        }
+        y += 5;
         head();
         var priced = pricedLines(c, cl), sub = 0;
         priced.forEach(function (x, idx) {
