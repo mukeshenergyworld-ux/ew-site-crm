@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.122";
+  var APP_VERSION = "6.9.123";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -8719,7 +8719,23 @@ function viewCatalogue() {
       if (!bch) return;
       var bitems = []; try { bitems = JSON.parse(bch.itemsJson || "[]"); } catch (e) { bitems = []; }
       var bit = bitems.filter(function (x) { return x.code === t.getAttribute("data-code"); })[0];
-      if (bit) { bit.disc = Number(t.value) || 0; bch.itemsJson = JSON.stringify(bitems); save("challans", bch); render(); }
+      if (!bit) return;
+      /* v6.9.123: a pre-set discount can only be changed in HISAB after a PIN confirmation. The PIN
+         is the same one used to sign in (the user types it — never stored in the box). One confirm
+         unlocks discount edits for 3 minutes so a multi-line change is not nagged on every field. */
+      var _now = Date.now();
+      if (!(S.discPinAt && (_now - S.discPinAt) < 180000)) {
+        var dpin = window.prompt("Enter your PIN to change a pre-set discount.\n\n" +
+          bch.customerName + " — " + (bit.desc || bit.code || "") + "\nNew discount: " + (Number(t.value) || 0) + "%\n\n" +
+          "Discounts are pre-set — changing one is a deliberate action.");
+        if (!dpin || String(dpin) !== String(S.pin)) {
+          if (dpin) toast("PIN incorrect — discount not changed.");
+          render();   /* redraw reverts the box to the stored discount */
+          return;
+        }
+        S.discPinAt = _now;
+      }
+      bit.disc = Number(t.value) || 0; bch.itemsJson = JSON.stringify(bitems); save("challans", bch); render();
       return;
     }
     if (t.classList && (t.classList.contains("dsc") || t.classList.contains("incp"))) {
