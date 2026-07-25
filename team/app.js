@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.119";
+  var APP_VERSION = "6.9.120";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -152,7 +152,7 @@
     var member = { deliveries: ["challans", "returns"], collections: ["payments", "dues"],
       pricing: ["rates", "pricelist", "catalogue"], payrollhub: ["commission", "payroll"] };
     if (member[tab]) return member[tab].some(function (m) { return t.indexOf(m) >= 0; });
-    return t.indexOf(tab) >= 0 || tab === "matrix";
+    return t.indexOf(tab) >= 0 || tab === "matrix" || tab === "pending";
   }
 
   function api(action, extra) {
@@ -274,6 +274,94 @@
       '<div class="foot"><button class="btn ghost" data-act="close">Done</button></div>';
     render();
     toast("Backup ready — Copy it or Share it to save.");
+  }
+
+  /* v6.9.120: a small red count badge for the "Pending upload" tab — how many records are saved
+     on this device but not yet confirmed by the server. */
+  function pendBadge() {
+    var n = pendCount();
+    return n ? ' <span style="background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:700;margin-left:4px">' + n + '</span>' : '';
+  }
+  /* Friendly names for each kind of record shown on the Pending upload tab. */
+  var PEND_TYPE = { challans: "Challan", quotes: "Quote", returns: "Material return", payments: "Payment",
+    clients: "Client", partners: "Partner", associates: "Partner", discounts: "Discount",
+    commission: "Incentive", incentives: "Incentive", commrates: "Incentive rule", service: "Service visit",
+    installs: "Service install", spares: "Spare", visits: "Site visit", sitevisits: "Site visit",
+    followups: "Follow-up", leads: "Lead", sites: "Site", customers: "Customer", products: "Product",
+    catalogue: "Catalogue item", pitch: "Pitch", pricerev: "Rate revision", brands: "Brand", payroll: "Payroll" };
+  function pendLabel(row) {
+    row = row || {};
+    if (row.quoteNo) return row.quoteNo;
+    if (row.challanNo) return row.challanNo;
+    if (row.returnNo) return row.returnNo;
+    if (row.billNo) return "Bill " + row.billNo;
+    if (row.name) return row.name;
+    if (row.client) return row.client;
+    if (row.customerName) return row.customerName;
+    if (row.brand) return row.brand;
+    return "(record)";
+  }
+  var _pendPoll = null;
+  /* The "Pending upload" tab: everything saved on this device that has not yet been confirmed by the
+     server. Work done offline (or during a bad signal at a site) is kept here and uploads by itself
+     the moment the connection is back — this screen just makes that queue visible instead of only a
+     bottom banner. It changes nothing; it only shows the same journal the app already keeps. */
+  function viewPending() {
+    var list = pendLoad().slice().sort(function (a, b) { return (a.at || 0) - (b.at || 0); });
+    var online = (typeof navigator !== "undefined" && "onLine" in navigator) ? navigator.onLine : true;
+    /* While this tab is open and items are waiting, keep it lively: re-check every 8s and, if we are
+       online, quietly retry the queue so the list drains in front of the user. */
+    if (_pendPoll) { clearTimeout(_pendPoll); _pendPoll = null; }
+    if (list.length) {
+      _pendPoll = setTimeout(function () {
+        if (S.tab !== "pending") return;
+        if (online && pendCount()) retryPending(); else render();
+      }, 8000);
+    }
+    var statusPill = online
+      ? '<span class="pill teal" style="background:#dcfce7;color:#166534">● Online</span>'
+      : '<span class="pill due" style="background:#fef3c7;color:#92400e">● Offline — will upload when back online</span>';
+    var h = '<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<div><h2 style="margin:0">Pending upload' + (list.length ? ' <span style="color:#b91c1c">(' + list.length + ')</span>' : '') + '</h2>' +
+      '<div class="meta" style="font-size:13px">Work saved on this phone/computer that has not reached the server yet.</div></div>' +
+      '<div style="text-align:right">' + statusPill + '</div></div>';
+
+    if (!list.length) {
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;text-align:center;padding:26px">' +
+        '<div style="font-size:34px;line-height:1">✓</div>' +
+        '<h3 style="margin:8px 0 4px;color:#0f766e">All work is uploaded</h3>' +
+        '<div class="meta" style="font-size:13.5px">Nothing is waiting. Anything you save while offline shows up here and uploads automatically the moment you are back online.</div>' +
+        '<div class="acts" style="justify-content:center;margin-top:12px"><button class="btn sm ghost" data-act="pend-refresh">Check now</button></div></div>';
+      return h;
+    }
+
+    h += '<div class="card" style="background:#fff7ed;border-color:#fed7aa">' +
+      '<div class="meta" style="font-size:13.5px;color:#7c2d12">These ' + list.length + ' item(s) are kept safe on this device and will upload by themselves when the connection is good. You can also push them now.</div>' +
+      '<div class="acts" style="margin-top:10px;flex-wrap:wrap;gap:8px">' +
+      '<button class="btn" data-act="pend-retry">⬆ Upload all now</button>' +
+      '<button class="btn ghost" data-act="pend-refresh">Check connection</button>' +
+      '<button class="btn ghost" data-act="pend-backup">Save a copy</button></div></div>';
+
+    list.forEach(function (e) {
+      var row = e.row || {};
+      var type = PEND_TYPE[e.tab] || (e.tab ? e.tab.charAt(0).toUpperCase() + e.tab.slice(1) : "Record");
+      var ageTxt = "";
+      if (e.at) {
+        var mins = Math.floor((Date.now() - e.at) / 60000);
+        ageTxt = mins < 1 ? "just now" : mins < 60 ? mins + " min ago" :
+          mins < 1440 ? Math.floor(mins / 60) + " hr ago" : Math.floor(mins / 1440) + " day(s) ago";
+      }
+      var waiting = !e.err;
+      var statusTxt = waiting ? "Waiting to upload…" : "Last try: " + String(e.err).slice(0, 90);
+      var statusColor = waiting ? "#92400e" : "#b91c1c";
+      h += '<div class="card" style="border-left:4px solid ' + (waiting ? '#f59e0b' : '#ef4444') + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+        '<div><b style="font-size:14.5px">' + esc(type) + '</b> <span style="color:#475569">' + esc(pendLabel(row)) + '</span>' +
+        '<div class="meta" style="font-size:12.5px;margin-top:3px;color:' + statusColor + '">' + esc(statusTxt) + '</div></div>' +
+        '<div style="text-align:right;flex:0 0 auto">' +
+        '<span class="pill" style="background:#fef3c7;color:#92400e">' + (ageTxt || "saved") + '</span></div></div></div>';
+    });
+    return h;
   }
 
   function save(tab, row, quiet) {
@@ -6550,8 +6638,8 @@ function viewCatalogue() {
   function renderCore() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"]];
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -6569,6 +6657,7 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
     var GROUPS = [
+      ["Sync", ["pending"]],
       ["Sell", ["dash", "leads", "brandfollow", "quotes", "followups", "clients", "partners"]],
       ["Deliver", ["deliveries", "tools", "collections", "billing", "products"]],
       ["Service", ["service", "spares"]],
@@ -6582,7 +6671,7 @@ function viewCatalogue() {
       var items = grp[1].filter(function (k) { return canSee(k) && label[k]; });
       if (!items.length) return;
       navHtml += '<div class="navgrp"><span class="grp">' + grp[0] + '</span>' + items.map(function (k) {
-        return '<button data-act="tab" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + label[k] + (k === "followups" ? radarBadge() : "") + '</button>';
+        return '<button data-act="tab" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + label[k] + (k === "followups" ? radarBadge() : "") + (k === "pending" ? pendBadge() : "") + '</button>';
       }).join("") + '</div>';
     });
 
@@ -7025,6 +7114,13 @@ function viewCatalogue() {
       } catch (e) { toast("Couldn't open Share — use Copy instead."); }
       return;
     }
+    if (act === "pend-retry") {
+      if (!pendCount()) { toast("Nothing pending — all uploaded."); return; }
+      if (typeof navigator !== "undefined" && "onLine" in navigator && !navigator.onLine) { toast("You're offline — it will upload automatically when the connection is back."); return; }
+      toast("Uploading pending work…"); retryPending(); return;
+    }
+    if (act === "pend-refresh") { toast("Checking…"); refresh(); return; }
+    if (act === "pend-backup") { exportPending(); return; }
     if (act === "disc-edit") { S.q = t.getAttribute("data-n"); render(); return; }
     if (act === "disc-back") { S.q = ""; render(); return; }
     if (act === "disc-saveall") {
