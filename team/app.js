@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.112";
+  var APP_VERSION = "6.9.113";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -224,11 +224,20 @@
       el.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:99998;background:#b91c1c;color:#fff;padding:10px 14px;font:600 13px system-ui,sans-serif;display:flex;align-items:center;gap:12px;justify-content:center;box-shadow:0 -2px 10px rgba(0,0,0,.25)";
       document.body.appendChild(el);
     }
-    /* If the server gave a REASON for refusing (a rule, not a network drop), show it right here —
-       a stuck record must never be a silent mystery again. */
-    var errs = pendLoad().map(function (e) { return e.err; }).filter(function (x) { return x && x !== "server refused" && x !== "network error"; });
-    el.innerHTML = "⚠ " + n + " record(s) not yet saved to the server — kept safe on this device. " +
-      (errs.length ? '<span style="font-weight:400;font-size:12px">Server says: “' + String(errs[0]).slice(0, 90) + '”</span> ' : '') +
+    /* v6.9.113: the banner now ALWAYS names the stuck record, its age and the last
+       failure — including plain "network error" — so it is never a silent mystery. */
+    var l0 = pendLoad(), first = l0[0] || {}, r0 = first.row || {};
+    var lbl = (first.tab || "record") +
+      (r0.quoteNo ? " " + r0.quoteNo : r0.challanNo ? " " + r0.challanNo :
+       r0.name ? " — " + r0.name : r0.client ? " — " + r0.client : r0.customerName ? " — " + r0.customerName : "");
+    var ageTxt = "";
+    if (first.at) {
+      var dAge = Math.floor((Date.now() - first.at) / 86400000);
+      ageTxt = dAge <= 0 ? "today" : dAge + " day" + (dAge > 1 ? "s" : "") + " old";
+    }
+    var lastErr = first.err ? String(first.err).slice(0, 90) : "not tried yet";
+    el.innerHTML = "⚠ " + n + " record(s) not yet saved — kept safe on this device. " +
+      '<span style="font-weight:400;font-size:12px">' + esc(lbl) + (ageTxt ? " · " + ageTxt : "") + ' · last try: “' + esc(lastErr) + '”</span> ' +
       '<button id="ew_retry_btn" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Retry now</button>' +
       '<button id="ew_backup_btn" style="background:#fde68a;color:#7c2d12;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Save a copy</button>';
     var b = document.getElementById("ew_retry_btn"); if (b) b.onclick = function () { toast("Retrying..."); retryPending(); };
