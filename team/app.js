@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.127";
+  var APP_VERSION = "6.9.128";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4276,6 +4276,15 @@ function viewCatalogue() {
       '<div class="stat"><div class="n">' + by("Dispatched") + '</div><div class="l">Awaiting receipt</div></div>' +
       '<div class="stat"><div class="n">' + by("Received") + '</div><div class="l">Receipt in</div></div>' +
       '</div>';
+    /* v6.9.128: delivered-but-not-billed banner, so bills get raised (a delivered challan with no bill
+       is money shipped without a tax invoice). Only for billing-capable roles. */
+    if (canSee("billing")) {
+      var _unb = unbilledStats();
+      if (_unb.val > 0) {
+        h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+          '<div class="meta" style="font-size:13.5px;color:#7c2d12"><b>' + money(_unb.val) + '</b> in <b>' + _unb.count + '</b> delivered challan(s) not billed yet — raise the bills so nothing slips on GST.</div></div>';
+      }
+    }
     h += '<div class="row">' +
       (S.role === "admin" ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
       '<div class="grow"></div><button class="btn" data-act="ch-new">+ New challan</button></div>';
@@ -5206,6 +5215,17 @@ function viewCatalogue() {
     return { chs: chs, pays: pays, rets: rets, opening: opening, billed: billed, freight: freight, paid: paid, returned: returned, due: opening + billed + freight - paid - returned };
   }
 
+  /* v6.9.128 — UNBILLED TRACKER. Value delivered (receipt in) but not yet turned into a tax bill
+     (no bill number on the challan). This is money shipped without an invoice — a GST/receivables gap.
+     Returns the total value, count, and the challan list (deduped so a stray duplicate can't inflate). */
+  function unbilledStats() {
+    var chs = dedupeChallans((S.data.challans || []).filter(function (c) {
+      return String(c.receiptReceived).toUpperCase() === "Y" && !String(c.billNo || "").trim();
+    }));
+    var val = chs.reduce(function (a, c) { return a + challanNet(c) + chFreight(c); }, 0);
+    return { val: val, count: chs.length, list: chs };
+  }
+
   /* ---------- COLLECTION RADAR ----------
      Money already earned but not yet in the bank. Aged from the LATEST delivered challan
      (when the collection clock started). Buckets 15 / 30 days; a grace of PAY_MIN days keeps
@@ -5600,6 +5620,7 @@ function viewCatalogue() {
     var svcDue = S.data.installs.filter(function (x) { return x.nextService && daysTo(x.nextService) <= 0; });
     var visitsToday = S.data.sitevisits.filter(function (v) { return dstr(v.date) === today(); });
     var quotesOpen = S.data.quotes.filter(function (q) { return q.status === "Sent" || q.status === "Negotiating"; });
+    var unb = unbilledStats();   /* v6.9.128: delivered but not yet billed */
 
     /* the one thing */
     var one = null;
@@ -5640,6 +5661,8 @@ function viewCatalogue() {
       '<div class="stat"><div class="n">' + awaitRcpt.length + '</div><div class="l">Awaiting receipt</div></div>' +
       '<div class="stat"><div class="n">' + quotesOpen.length + '</div><div class="l">Quotes live</div></div>' +
       '<div class="stat ' + (svcDue.length ? "alert" : "") + '"><div class="n">' + svcDue.length + '</div><div class="l">Service overdue</div></div>' +
+      '<div class="stat ' + (unb.val > 0 ? "alert" : "") + '" data-act="tab" data-tab="deliveries" style="cursor:pointer" title="' + unb.count + ' delivered challan(s) with no bill yet — tap to open">' +
+        '<div class="n">' + money(unb.val) + '</div><div class="l">Delivered, not billed</div></div>' +
       '<div class="stat"><div class="n">' + visitsToday.length + '</div><div class="l">Site visits today</div></div>' +
       '</div>';
 
