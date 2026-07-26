@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.134";
+  var APP_VERSION = "6.9.135";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -7000,10 +7000,12 @@ function viewCatalogue() {
     return { m: m, desc: desc };
   }
   function viewStock() {
+    if (S.imp) return viewStockImport();
     ensureStock();
     var h = '<div class="card"><h2 style="margin:0">Stock on hand</h2>' +
       '<div class="meta" style="font-size:13px">On-hand = opening + goods received + adjustments &minus; delivered (from received challans) + booked-in returns. Enter your opening count once, then log each purchase as it arrives — deliveries deduct on their own.</div>' +
       '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px">' +
+      '<button class="btn sm" data-act="stock-import">&#8593; Import from bill</button>' +
       '<button class="btn sm" data-act="stock-add" data-type="in">+ Goods received</button>' +
       '<button class="btn sm ghost" data-act="stock-add" data-type="opening">Set opening stock</button>' +
       '<button class="btn sm ghost" data-act="stock-add" data-type="adjust">Adjustment</button>' +
@@ -7056,6 +7058,71 @@ function viewCatalogue() {
       '<div ' + lbl + '>Notes</div><input id="stk_notes" ' + inp + '/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="stock-save" data-type="' + esc(type) + '">Save</button></div>';
+  }
+
+  /* Parse a pasted-from-Excel block of "code<tab/comma/space>qty" lines into {code, qty} rows,
+     aggregating duplicate codes. Robust to tab, comma, or 2+ spaces between the two columns. */
+  function parseStockPaste(text) {
+    var out = {}, order = [];
+    String(text || "").split(/\r?\n/).forEach(function (ln) {
+      var s = String(ln || "").trim();
+      if (!s) return;
+      var parts = s.split(/\t|,|\s{2,}/).map(function (x) { return x.trim(); }).filter(function (x) { return x !== ""; });
+      if (parts.length < 2) {
+        var mm = s.match(/^(.*\S)\s+([\d.,]+)\s*$/);
+        if (mm) parts = [mm[1].trim(), mm[2].trim()]; else return;
+      }
+      var code = parts[0];
+      var qty = Number(String(parts[parts.length - 1]).replace(/[^0-9.\-]/g, "")) || 0;
+      if (!code) return;
+      var k = code.toLowerCase();
+      if (!out[k]) { out[k] = { code: code, qty: 0 }; order.push(k); }
+      out[k].qty += qty;
+    });
+    return order.map(function (k) { return out[k]; });
+  }
+
+  function viewStockImport() {
+    var im = S.imp || {};
+    var lbl = 'style="font-size:12px;color:#475569;margin:8px 0 2px"';
+    var inp = 'style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"';
+    var h = '<div class="row"><button class="btn sm ghost" data-act="imp-cancel">&larr; Back to Stock</button></div>';
+    if (im.step === 2) {
+      var matched = im.matched || [], newc = im.newc || [];
+      h += '<div class="card"><h2 style="margin:0">Review import</h2>' +
+        '<div class="meta" style="font-size:13px">Bill <b>' + esc(im.ref || "-") + '</b> &middot; ' + esc(im.asOn || "") + ' &middot; ' +
+        (im.type === "opening" ? "Opening stock" : "Goods received") + '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
+        '<div style="flex:1 1 120px;background:#dcfce7;border-radius:10px;padding:10px 12px"><div style="font-size:20px;font-weight:800;color:#166534">' + matched.length + '</div><div style="font-size:12px;color:#166534">matched to catalogue</div></div>' +
+        '<div style="flex:1 1 120px;background:' + (newc.length ? '#fff7ed' : '#f1f5f9') + ';border-radius:10px;padding:10px 12px"><div style="font-size:20px;font-weight:800;color:' + (newc.length ? '#b45309' : '#64748b') + '">' + newc.length + '</div><div style="font-size:12px;color:' + (newc.length ? '#b45309' : '#64748b') + '">new item(s) &mdash; need details</div></div>' +
+        '</div></div>';
+      if (newc.length) {
+        h += '<div class="card" style="border-color:#fdba74;background:#fffbeb"><h3 style="margin:0 0 4px">New items — add a description (added to your catalogue)</h3>' +
+          '<div class="meta" style="font-size:12px">Brand is optional. These get created in the Product Catalog and stocked in one go.</div>';
+        newc.forEach(function (x, i) {
+          h += '<div style="border-top:1px solid #fde68a;padding:8px 0"><div style="font-weight:700;font-size:13px">' + esc(x.code) + ' <span style="color:#94a3b8;font-weight:400">&middot; qty ' + x.qty + '</span></div>' +
+            '<div class="row" style="margin-top:4px"><input id="imp_desc_' + i + '" placeholder="Description" ' + inp + ' style="flex:2;padding:8px;border:1px solid #cbd5e1;border-radius:8px"/>' +
+            '<input id="imp_brand_' + i + '" placeholder="Brand (optional)" style="flex:1;padding:8px;border:1px solid #cbd5e1;border-radius:8px"/></div></div>';
+        });
+        h += '</div>';
+      }
+      h += '<div class="acts" style="flex-wrap:wrap;gap:6px"><button class="btn" data-act="imp-submit">Submit import (' + (matched.length + newc.length) + ' items)</button>' +
+        '<button class="btn ghost" data-act="imp-back">&larr; Edit paste</button></div>';
+      return h;
+    }
+    // step 1
+    h += '<div class="card"><h2 style="margin:0">Import stock from a bill</h2>' +
+      '<div class="meta" style="font-size:13px">Convert your purchase bill to Excel, then copy the <b>code</b> and <b>qty</b> columns and paste below (one item per line). Known codes are stocked automatically; new codes are flagged so you can add them to the catalogue.</div>' +
+      '<div class="row" style="margin-top:6px"><div style="flex:1"><div ' + lbl + '>Purchase bill no</div><input id="imp_ref" value="' + esc(im.ref || "") + '" ' + inp + '/></div>' +
+      '<div style="flex:1"><div ' + lbl + '>Bill date</div><input id="imp_date" type="date" value="' + esc(im.asOn || today()) + '" ' + inp + '/></div></div>' +
+      '<div ' + lbl + '>This upload is</div>' +
+      '<div class="acts" style="gap:6px;margin-bottom:4px">' +
+      '<button class="btn sm ' + (im.type === "opening" ? "" : "ghost") + '" data-act="imp-type" data-t="opening">Opening stock</button>' +
+      '<button class="btn sm ' + (im.type !== "opening" ? "" : "ghost") + '" data-act="imp-type" data-t="in">Goods received (purchase)</button></div>' +
+      '<div ' + lbl + '>Paste rows (code &nbsp;&lt;tab&gt;&nbsp; qty)</div>' +
+      '<textarea id="imp_paste" rows="12" placeholder="HUL-32MM\t50&#10;STL-1IN-ELB\t200&#10;…" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:13px monospace">' + esc(im.paste || "") + '</textarea>' +
+      '<div class="acts" style="margin-top:8px"><button class="btn" data-act="imp-parse">Parse &amp; preview</button></div></div>';
+    return h;
   }
 
   function renderCore() {
@@ -7269,6 +7336,53 @@ function viewCatalogue() {
         if (r && r.ok) { S.stock = (S.stock || []).concat([_srow]); toast("Stock updated."); render(); }
         else { toast((r && r.error) || "Save failed — only admin/godown can edit stock."); }
       }).catch(function () { toast("Save failed — check connection."); });
+      return;
+    }
+    if (act === "stock-import") { S.imp = { step: 1, type: "in", asOn: today(), ref: "", paste: "" }; S.tab = "stock"; render(); return; }
+    if (act === "imp-cancel") { S.imp = null; render(); return; }
+    if (act === "imp-back") { if (S.imp) S.imp.step = 1; render(); return; }
+    if (act === "imp-type") {
+      if (S.imp) {
+        S.imp.ref = (el("imp_ref") || {}).value || S.imp.ref;
+        S.imp.asOn = (el("imp_date") || {}).value || S.imp.asOn;
+        S.imp.paste = (el("imp_paste") || {}).value || S.imp.paste;
+        S.imp.type = t.getAttribute("data-t") || "in";
+      }
+      render(); return;
+    }
+    if (act === "imp-parse") {
+      var _rows = parseStockPaste((el("imp_paste") || {}).value || "");
+      if (!_rows.length) { toast("Paste some rows first (code and qty)."); return; }
+      var _cm = {}; PRODUCTS.forEach(function (p) { if (p.code) _cm[String(p.code).trim().toLowerCase()] = p; });
+      var _matched = [], _newc = [];
+      _rows.forEach(function (x) {
+        var p = _cm[x.code.toLowerCase()];
+        if (p) _matched.push({ code: p.code, desc: p.desc, qty: x.qty });
+        else _newc.push({ code: x.code, qty: x.qty });
+      });
+      S.imp = { step: 2, type: (S.imp && S.imp.type) || "in", ref: String((el("imp_ref") || {}).value || "").trim(),
+        asOn: (el("imp_date") || {}).value || today(), paste: (el("imp_paste") || {}).value || "",
+        matched: _matched, newc: _newc };
+      render(); return;
+    }
+    if (act === "imp-submit") {
+      var _im = S.imp || {};
+      var _new = (_im.newc || []).map(function (x, i) {
+        return { code: x.code, qty: x.qty, desc: String((el("imp_desc_" + i) || {}).value || "").trim(), brand: String((el("imp_brand_" + i) || {}).value || "").trim() };
+      });
+      for (var _i = 0; _i < _new.length; _i++) { if (!_new[_i].desc) { toast("Add a description for " + _new[_i].code); return; } }
+      var _allRows = (_im.matched || []).map(function (x) { return { code: x.code, qty: x.qty, desc: x.desc }; })
+        .concat(_new.map(function (x) { return { code: x.code, qty: x.qty, desc: x.desc }; }));
+      if (!_allRows.length) { toast("Nothing to import."); return; }
+      toast("Uploading " + _allRows.length + " items…");
+      api("stockImport", { ref: _im.ref, asOn: _im.asOn, type: _im.type, rows: _allRows, newItems: _new }).then(function (r) {
+        if (r && r.ok) {
+          S.imp = null; STOCK_LOADED = false; S.stock = [];
+          toast("Imported " + r.stock + " stock row(s)" + (r.added ? ", added " + r.added + " new item(s)" : "") + ".");
+          if (r.added) { try { loadCatalog(); } catch (e) {} }
+          ensureStock(); S.tab = "stock"; render();
+        } else { toast((r && r.error) || "Import failed."); }
+      }).catch(function () { toast("Import failed — check connection."); });
       return;
     }
     if (act === "del-sub") { S.delSub = t.getAttribute("data-s"); render(); return; }
