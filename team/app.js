@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.133";
+  var APP_VERSION = "6.9.134";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -139,9 +139,9 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health"],
+    admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","stock"],
     accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist"],
-    godown:   ["dash","returns","tools","challans","products"],
+    godown:   ["dash","returns","tools","challans","products","stock"],
     sales:    ["dash","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products"],
     service:  ["dash","tools","service","spares","dues","followups","products"]
   };
@@ -6959,11 +6959,110 @@ function viewCatalogue() {
       } catch (x) { }
     }
   }
+  /* ---------- INVENTORY (Phase 1) ----------
+     Live on-hand per product from the isolated stock store + existing challans/returns:
+       onHand = (opening + received + adjustments)  -  delivered (received challans)  +  booked-in returns.
+     Stock movements live in their own TeamStock sheet (api stockList/stockSave), admin & godown only. */
+  var STOCK_LOADED = false, STOCK_LOADING = false;
+  function ensureStock() {
+    if (STOCK_LOADED || STOCK_LOADING) return;
+    STOCK_LOADING = true;
+    api("stockList").then(function (r) {
+      STOCK_LOADING = false; STOCK_LOADED = true;
+      S.stock = (r && r.ok && r.rows) ? r.rows : [];
+      render();
+    }).catch(function () { STOCK_LOADING = false; });
+  }
+  function stockDeliveredByCode() {
+    var m = {};
+    (S.data.challans || []).forEach(function (c) {
+      if (String(c.receiptReceived).toUpperCase() !== "Y") return;
+      chItems(c).forEach(function (i) { var k = String(i.code || "").trim(); if (k) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
+    });
+    return m;
+  }
+  function stockReturnedByCode() {
+    var m = {};
+    (S.data.returns || []).forEach(function (r) {
+      if (String(r.status || "").trim().toLowerCase() !== "received") return;
+      var items = []; try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) {}
+      items.forEach(function (i) { var k = String(i.code || "").trim(); if (k) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
+    });
+    return m;
+  }
+  function stockMovementByCode() {
+    var m = {}, desc = {};
+    (S.stock || []).forEach(function (row) {
+      var k = String(row.code || "").trim(); if (!k) return;
+      m[k] = (m[k] || 0) + (Number(row.qty) || 0);
+      if (row.desc && !desc[k]) desc[k] = row.desc;
+    });
+    return { m: m, desc: desc };
+  }
+  function viewStock() {
+    ensureStock();
+    var h = '<div class="card"><h2 style="margin:0">Stock on hand</h2>' +
+      '<div class="meta" style="font-size:13px">On-hand = opening + goods received + adjustments &minus; delivered (from received challans) + booked-in returns. Enter your opening count once, then log each purchase as it arrives — deliveries deduct on their own.</div>' +
+      '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px">' +
+      '<button class="btn sm" data-act="stock-add" data-type="in">+ Goods received</button>' +
+      '<button class="btn sm ghost" data-act="stock-add" data-type="opening">Set opening stock</button>' +
+      '<button class="btn sm ghost" data-act="stock-add" data-type="adjust">Adjustment</button>' +
+      '<button class="btn sm ghost" data-act="stock-refresh">Refresh</button></div></div>';
+    if (!STOCK_LOADED && !(S.stock && S.stock.length)) return h + '<div class="empty">Loading stock…</div>';
+    var mv = stockMovementByCode(), del = stockDeliveredByCode(), ret = stockReturnedByCode();
+    var codes = {};
+    Object.keys(mv.m).forEach(function (k) { codes[k] = 1; });
+    Object.keys(del).forEach(function (k) { codes[k] = 1; });
+    var list = Object.keys(codes).map(function (k) {
+      var p = (PRODUCTS.filter(function (x) { return x.code === k; })[0]) || {};
+      return { code: k, desc: p.desc || mv.desc[k] || k, brand: p.brand || "", inq: mv.m[k] || 0, del: del[k] || 0, ret: ret[k] || 0, onhand: (mv.m[k] || 0) - (del[k] || 0) + (ret[k] || 0) };
+    });
+    if (!list.length) return h + '<div class="empty">No stock entries yet. Tap <b>Set opening stock</b> to key in your current counts, then log goods as they arrive. Deliveries already recorded on challans will deduct automatically.</div>';
+    var q = String(S.q || "").trim().toLowerCase();
+    if (q) list = list.filter(function (x) { return (x.code + " " + x.desc).toLowerCase().indexOf(q) >= 0; });
+    list.sort(function (a, b) { return a.onhand - b.onhand; });
+    var low = list.filter(function (x) { return x.onhand <= 0; }).length;
+    h += '<div class="row"><input class="grow" id="q" placeholder="Filter product / code…" value="' + esc(S.q) + '"/></div>';
+    if (low) h += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><b style="color:#b91c1c">' + low + ' item(s) at or below zero</b> &middot; restock, or add the goods-received entry that is missing.</div>';
+    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr style="background:#0b3b36;color:#fff"><th style="padding:6px 8px;text-align:left">Product</th>' +
+      '<th style="padding:6px 8px;text-align:right">In</th><th style="padding:6px 8px;text-align:right">Delivered</th>' +
+      '<th style="padding:6px 8px;text-align:right">Returned</th><th style="padding:6px 8px;text-align:right">On hand</th></tr></thead><tbody>' +
+      list.map(function (x, i) {
+        var neg = x.onhand <= 0;
+        return '<tr style="border-bottom:1px solid #eef2f7;background:' + (neg ? '#fef2f2' : (i % 2 ? '#f8fafc' : '#fff')) + '">' +
+          '<td style="padding:6px 8px"><div style="font-weight:600">' + esc(x.desc) + '</div><div style="font-size:11px;color:#94a3b8">' + esc(x.code) + (x.brand ? ' &middot; ' + esc(x.brand) : '') + '</div></td>' +
+          '<td style="padding:6px 8px;text-align:right">' + x.inq + '</td>' +
+          '<td style="padding:6px 8px;text-align:right">' + x.del + '</td>' +
+          '<td style="padding:6px 8px;text-align:right">' + x.ret + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + (neg ? '#b91c1c' : '#0f766e') + '">' + x.onhand + '</td></tr>';
+      }).join("") + '</tbody></table></div>' +
+      '<div class="meta" style="font-size:11.5px;margin-top:6px">Showing products with a stock entry or a delivery. Type in the filter to find one. Products never delivered and never stocked don’t appear until you add them.</div>';
+    return h;
+  }
+  function modalStockAdd(type) {
+    var title = type === "opening" ? "Set opening stock" : (type === "adjust" ? "Stock adjustment" : "Goods received");
+    var lbl = 'style="font-size:12px;color:#475569;margin:8px 0 2px"';
+    var inp = 'style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"';
+    var opts = PRODUCTS.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.code) + ' &mdash; ' + esc(p.desc || "") + '</option>'; }).join("");
+    return '<h2 style="margin:0 0 4px">' + title + '</h2>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:6px">' +
+      (type === "adjust" ? 'Enter a <b>negative</b> quantity to reduce stock (damage / loss), positive to add.' : 'Adds to on-hand. Deliveries already deduct automatically from received challans.') + '</div>' +
+      '<div ' + lbl + '>Product (type code or name)</div>' +
+      '<input id="stk_code" list="stk_prods" placeholder="Start typing a code or name…" ' + inp + '/>' +
+      '<datalist id="stk_prods">' + opts + '</datalist>' +
+      '<div class="row" style="margin-top:2px"><div style="flex:1"><div ' + lbl + '>Quantity</div><input id="stk_qty" inputmode="numeric" ' + inp + '/></div>' +
+      '<div style="flex:1"><div ' + lbl + '>Ref (supplier / bill)</div><input id="stk_ref" ' + inp + '/></div></div>' +
+      '<div ' + lbl + '>Notes</div><input id="stk_notes" ' + inp + '/>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="stock-save" data-type="' + esc(type) + '">Save</button></div>';
+  }
+
   function renderCore() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"]];
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, stock: viewStock };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["stock", "Stock"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -6983,7 +7082,7 @@ function viewCatalogue() {
     var GROUPS = [
       ["Sync", ["pending", "health"]],
       ["Sell", ["dash", "leads", "brandfollow", "quotes", "followups", "clients", "partners"]],
-      ["Deliver", ["deliveries", "billing", "tools", "collections", "products"]],
+      ["Deliver", ["deliveries", "billing", "stock", "tools", "collections", "products"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["payrollhub", "discounts", "report", "pricing", "rules", "teampins"]]
     ];
@@ -7153,6 +7252,25 @@ function viewCatalogue() {
     if (act === "crash-clear") { try { localStorage.removeItem(CRASH_KEY); } catch (e) { } S.modal = modalCrashLog(); render(); return; }
     if (act === "reload-app") { location.reload(); return; }
     if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; render(); return; }
+    if (act === "stock-add") { S.modal = modalStockAdd(t.getAttribute("data-type") || "in"); render(); return; }
+    if (act === "stock-refresh") { STOCK_LOADED = false; STOCK_LOADING = false; S.stock = []; ensureStock(); toast("Refreshing stock…"); return; }
+    if (act === "stock-save") {
+      var _stype = t.getAttribute("data-type") || "in";
+      var _scode = String((el("stk_code") || {}).value || "").trim();
+      var _sqty = Number(String((el("stk_qty") || {}).value || "").trim());
+      if (!_scode) { toast("Pick a product first."); return; }
+      if (!_sqty) { toast("Enter a quantity."); return; }
+      var _sp = (PRODUCTS.filter(function (x) { return x.code === _scode; })[0]) || {};
+      var _srow = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000), type: _stype, code: _scode,
+        desc: _sp.desc || "", qty: _sqty, ref: String((el("stk_ref") || {}).value || "").trim(),
+        asOn: today(), notes: String((el("stk_notes") || {}).value || "").trim() };
+      S.modal = null; render(); toast("Saving…");
+      api("stockSave", { row: _srow }).then(function (r) {
+        if (r && r.ok) { S.stock = (S.stock || []).concat([_srow]); toast("Stock updated."); render(); }
+        else { toast((r && r.error) || "Save failed — only admin/godown can edit stock."); }
+      }).catch(function () { toast("Save failed — check connection."); });
+      return;
+    }
     if (act === "del-sub") { S.delSub = t.getAttribute("data-s"); render(); return; }
     if (act === "fcs-setup") {
       /* v6.9.131: jump to the Discounts screen for this client to set discount + partner incentive. */
