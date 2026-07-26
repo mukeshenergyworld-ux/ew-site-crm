@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.132";
+  var APP_VERSION = "6.9.133";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4780,6 +4780,10 @@ function viewCatalogue() {
       return { name: nm, owner: cl.ownedBy || cl.createdBy || "", net: net + opening, paid: paid, returned: returned, due: net + opening - paid - returned };
     }).filter(function (r) { return r.due > 0.5; });
   }
+  /* v6.9.133 — CREDIT_DAYS is Energy World's payment window (trade credit). Anything owed PAST this
+     many days is "overdue" (money to chase). Change this one number to re-tune every overdue line in
+     the app. The display buckets below stay 0-30 / 31-60 / 61-90 / 90+ regardless. */
+  var CREDIT_DAYS = 30;
   /* v6.9.127 — AR AGEING. Splits a client's outstanding across age buckets (0-30 / 31-60 / 61-90 / 90+
      days) so overdue money is visible at a glance. Payments and booked-in returns are applied to the
      OLDEST deliveries first (FIFO), so what remains is bucketed by the age of the delivery it belongs
@@ -4798,15 +4802,16 @@ function viewCatalogue() {
     items.sort(function (a, b) { return b.age - a.age; });          // oldest first
     var led = clientLedger(name), credit = (led.paid || 0) + (led.returned || 0);
     items.forEach(function (it) { if (credit > 0) { var u = Math.min(credit, it.amt); it.amt -= u; credit -= u; } });
-    var b = { cur: 0, d30: 0, d60: 0, d90: 0 }, oldest = 0;
+    var b = { cur: 0, d30: 0, d60: 0, d90: 0 }, oldest = 0, overdue = 0;
     items.forEach(function (it) {
       if (it.amt <= 0.5) return;
       var age = it.age >= 99999 ? 120 : it.age;                     // show brought-forward as 90+
       if (age > oldest) oldest = age;
+      if (age > CREDIT_DAYS) overdue += it.amt;                     // past the credit window = overdue
       if (age <= 30) b.cur += it.amt; else if (age <= 60) b.d30 += it.amt;
       else if (age <= 90) b.d60 += it.amt; else b.d90 += it.amt;
     });
-    return { b: b, oldest: oldest, overdue: b.d60 + b.d90, due: b.cur + b.d30 + b.d60 + b.d90 };
+    return { b: b, oldest: oldest, overdue: overdue, due: b.cur + b.d30 + b.d60 + b.d90 };
   }
   /* Small coloured pill for a client's oldest unpaid money — green fresh, amber 31-60, orange 61-90,
      red 90+ (the "chase hard" band). */
@@ -4815,7 +4820,7 @@ function viewCatalogue() {
     var d = ag.oldest, bg, fg, lbl;
     if (d > 90) { bg = "#fee2e2"; fg = "#b91c1c"; lbl = "90+ d"; }
     else if (d > 60) { bg = "#ffedd5"; fg = "#c2410c"; lbl = d + " d"; }
-    else if (d > 30) { bg = "#fef9c3"; fg = "#92400e"; lbl = d + " d"; }
+    else if (d > CREDIT_DAYS) { bg = "#fef9c3"; fg = "#92400e"; lbl = d + " d"; }
     else { bg = "#dcfce7"; fg = "#166534"; lbl = d + " d"; }
     return ' <span style="background:' + bg + ';color:' + fg + ';border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap">' + lbl + '</span>';
   }
@@ -4842,7 +4847,7 @@ function viewCatalogue() {
       outs.forEach(function (r) { r.ag = clientAging(r.name); });
       var agg = { cur: 0, d30: 0, d60: 0, d90: 0 };
       outs.forEach(function (r) { agg.cur += r.ag.b.cur; agg.d30 += r.ag.b.d30; agg.d60 += r.ag.b.d60; agg.d90 += r.ag.b.d90; });
-      var overdueTot = agg.d60 + agg.d90;
+      var overdueTot = outs.reduce(function (a, r) { return a + (r.ag ? r.ag.overdue : 0); }, 0);
       var oh = '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3>Outstanding &mdash; ' + money(totalDue) + ' across ' + outs.length + ' client(s)</h3>' +
         '<div class="meta" style="font-size:13px">Grouped by sales executive &middot; net of pre-set discounts. Tap a client to open their hisab.</div></div>';
       /* Ageing strip: how the outstanding splits by how long it has been owed. 60+ days is money to
@@ -4854,7 +4859,7 @@ function viewCatalogue() {
           '<div style="font-size:11.5px;color:' + fg + ';opacity:.85">' + lbl + '</div></div>';
       };
       oh += '<div class="card"><h3 style="margin:0 0 8px">Ageing of outstanding' +
-        (overdueTot > 0 ? ' &middot; <span style="color:#b91c1c">' + money(overdueTot) + ' overdue (60+ days)</span>' : '') + '</h3>' +
+        (overdueTot > 0 ? ' &middot; <span style="color:#b91c1c">' + money(overdueTot) + ' overdue (past ' + CREDIT_DAYS + '-day terms)</span>' : '') + '</h3>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
         ageTile('0 - 30 days (current)', agg.cur, '#dcfce7', '#166534') +
         ageTile('31 - 60 days', agg.d30, '#fef9c3', '#92400e') +
@@ -6346,7 +6351,7 @@ function viewCatalogue() {
       '<div class="stat"><div class="n">' + liveLeads + '</div><div class="l">Leads</div></div>' +
       '<div class="stat"><div class="n">' + money(sales) + '</div><div class="l">Challan value</div></div>' +
       '<div class="stat ' + (myOutstanding > 0 ? 'alert' : '') + '" data-act="tab" data-tab="billing" style="cursor:pointer" title="Open HISAB"><div class="n">' + money(myOutstanding) + '</div><div class="l">Outstanding' + (seesAllClients() ? '' : ' (my clients)') + '</div></div>' +
-      '<div class="stat ' + (myOverdue > 0 ? 'alert' : '') + '" data-act="tab" data-tab="billing" style="cursor:pointer" title="Open HISAB"><div class="n">' + money(myOverdue) + '</div><div class="l">Overdue 60+ days</div></div>' +
+      '<div class="stat ' + (myOverdue > 0 ? 'alert' : '') + '" data-act="tab" data-tab="billing" style="cursor:pointer" title="Open HISAB"><div class="n">' + money(myOverdue) + '</div><div class="l">Overdue (' + CREDIT_DAYS + '+ days)</div></div>' +
       (seesAllClients() ? '<div class="stat"><div class="n">' + money(comm) + '</div><div class="l">Incentive owed</div></div>' : '') +
       '</div>';
 
