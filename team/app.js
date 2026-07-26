@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.129";
+  var APP_VERSION = "6.9.132";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -139,7 +139,7 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins"],
+    admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health"],
     accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist"],
     godown:   ["dash","returns","tools","challans","products"],
     sales:    ["dash","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products"],
@@ -4870,8 +4870,10 @@ function viewCatalogue() {
           '<th style="padding:6px 8px;text-align:right">Billed (net)</th><th style="padding:6px 8px;text-align:right">Received</th>' +
           '<th style="padding:6px 8px;text-align:right">Outstanding</th></tr></thead><tbody>' +
           rows.map(function (r, i) {
+            var _mob = (clientByName(r.name) || {}).mobile || '';
             return '<tr style="border-bottom:1px solid #eef2f7;cursor:pointer;background:' + (i % 2 ? '#f8fafc' : '#fff') + '" data-act="bill-open" data-n="' + esc(r.name) + '">' +
-              '<td style="padding:7px 8px;font-weight:600;color:#0d766c">' + esc(r.name) + '</td>' +
+              '<td style="padding:7px 8px"><div style="font-weight:600;color:#0d766c">' + esc(r.name) + '</div>' +
+                (_mob ? '<div style="font-size:11.5px;color:#94a3b8">☎ ' + esc(_mob) + '</div>' : '') + '</td>' +
               '<td style="padding:7px 8px;text-align:center">' + agePill(r.ag) + '</td>' +
               '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.net) + '</td>' +
               '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.paid) + '</td>' +
@@ -4986,8 +4988,10 @@ function viewCatalogue() {
     });
     var _led = clientLedger(cl), paid = _led.paid, opening = _led.opening || 0, bal = opening + allNet - paid - retTotal;
     var gst = S.billGst ? Math.round(selNet * 0.18) : 0;
+    var _clMob = (clientByName(cl) || {}).mobile || '';
     h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
-      '<h3>Client ledger &mdash; ' + esc(cl) + '</h3>' +
+      '<h3 style="margin:0 0 2px">Client ledger &mdash; ' + esc(cl) + '</h3>' +
+      (_clMob ? '<div style="font-size:13px;margin-bottom:6px">☎ <a href="tel:' + esc(String(_clMob).replace(/[^\d+]/g, '')) + '" style="color:#0d766c;font-weight:600;text-decoration:none">' + esc(_clMob) + '</a></div>' : '') +
       '<div class="meta" style="font-size:13.5px">' +
       (opening > 0 ? 'Previous balance (b/f): <b>' + money(opening) + '</b>  &middot;  ' : '') +
       'Billed (net): <b>' + money(allNet) + '</b>  &middot;  Received: <b>' + money(paid) + '</b>  &middot;  ' +
@@ -5598,6 +5602,87 @@ function viewCatalogue() {
     });
   }
 
+  /* v6.9.130 — DATA-HEALTH SCAN. Surfaces anomalies before they become a customer problem: duplicate
+     challan numbers, challans stuck in Draft/Dispatched too long, delivered-but-unbilled, negative
+     (overpaid) balances, and discounts pointing at a client that no longer exists. Runs on the
+     in-memory book; admin-only screen. */
+  function healthScan() {
+    var chs = S.data.challans || [];
+    var byNo = {};
+    chs.forEach(function (c) { var n = String(c.challanNo || "").trim(); if (n) (byNo[n] = byNo[n] || []).push(c); });
+    var dup = Object.keys(byNo).filter(function (n) { return byNo[n].length > 1; })
+      .map(function (n) { return { no: n, rows: byNo[n] }; });
+    var stuckDraft = [], stuckDisp = [];
+    chs.forEach(function (c) {
+      var age = Math.max(0, -daysTo(String(c.createdAt || "").slice(0, 10)));
+      if (String(c.status || "Draft") === "Draft" && age >= 3) stuckDraft.push({ c: c, age: age });
+      else if (String(c.status) === "Dispatched" && age >= 7) stuckDisp.push({ c: c, age: age });
+    });
+    stuckDraft.sort(function (a, b) { return b.age - a.age; });
+    stuckDisp.sort(function (a, b) { return b.age - a.age; });
+    var unb = unbilledStats();
+    var neg = [];
+    hisabClientNames().forEach(function (n) { var d = clientLedger(n).due; if (d < -0.5) neg.push({ name: n, due: d }); });
+    var cnames = {};
+    (S.data.clients || []).forEach(function (c) { cnames[String(c.name || "").trim().toLowerCase()] = 1; });
+    var orphanDisc = (S.data.discounts || []).filter(function (d) { return !cnames[String(d.client || "").trim().toLowerCase()]; });
+    var total = dup.length + stuckDraft.length + stuckDisp.length + (unb.count ? 1 : 0) + neg.length + orphanDisc.length;
+    return { dup: dup, stuckDraft: stuckDraft, stuckDisp: stuckDisp, unb: unb, neg: neg, orphanDisc: orphanDisc, total: total };
+  }
+  function viewHealth() {
+    var s = healthScan();
+    var h = '<div class="card" style="' + (s.total ? 'border-color:#fed7aa;background:#fff7ed' : 'border-color:#99f6e4;background:#f0fdfa') + '">' +
+      '<h2 style="margin:0">Data health check</h2>' +
+      '<div class="meta" style="font-size:13px">A quick scan for things that quietly cause problems — so they show up in a report, not from a customer. Refreshes each time you open this screen.</div>' +
+      (s.total ? '<div style="margin-top:8px;font-weight:700;color:#b45309">' + s.total + ' area(s) need a look</div>'
+               : '<div style="margin-top:8px;font-weight:700;color:#0f766e">✓ All clear — nothing unusual found.</div>') +
+      '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="health-refresh">Re-scan</button></div></div>';
+
+    var section = function (title, count, color, body) {
+      if (!count) return '';
+      return '<div class="card"><h3>' + esc(title) + ' <span class="pill due" style="background:' + color + '22;color:' + color + '">' + count + '</span></h3>' + body + '</div>';
+    };
+
+    /* Duplicate challan numbers — the exact class of bug we just fixed; nothing should appear here now. */
+    h += section('Duplicate challan numbers', s.dup.length, '#b91c1c',
+      s.dup.map(function (d) {
+        return '<div class="meta" style="font-size:13px;border-bottom:1px solid #f1f5f9;padding:4px 0"><b>' + esc(d.no) + '</b> — ' + d.rows.length + ' rows: ' +
+          d.rows.map(function (c) { return esc((c.status || 'Draft')) + (String(c.receiptReceived).toUpperCase() === 'Y' ? '/received' : ''); }).join(', ') +
+          ' &middot; ' + esc(d.rows[0].customerName || '') + '</div>';
+      }).join(''));
+
+    /* Challans that never moved forward. */
+    h += section('Challans stuck in Draft (3+ days, never approved)', s.stuckDraft.length, '#c2410c',
+      s.stuckDraft.slice(0, 20).map(function (x) {
+        return '<div class="meta" style="font-size:13px;padding:3px 0"><b>' + esc(x.c.challanNo || '') + '</b> &middot; ' + esc(x.c.customerName || '') + ' &middot; <span style="color:#b91c1c">' + x.age + ' days old</span></div>';
+      }).join('') + (s.stuckDraft.length > 20 ? '<div class="meta" style="font-size:12px;color:#94a3b8">…and ' + (s.stuckDraft.length - 20) + ' more</div>' : ''));
+
+    h += section('Dispatched but receipt not confirmed (7+ days)', s.stuckDisp.length, '#c2410c',
+      s.stuckDisp.slice(0, 20).map(function (x) {
+        return '<div class="meta" style="font-size:13px;padding:3px 0"><b>' + esc(x.c.challanNo || '') + '</b> &middot; ' + esc(x.c.customerName || '') + ' &middot; <span style="color:#b91c1c">out ' + x.age + ' days</span></div>';
+      }).join(''));
+
+    /* Delivered but not billed — one row (value + count), tap through to Deliveries. */
+    if (s.unb.count) {
+      h += '<div class="card"><h3>Delivered but not billed <span class="pill due" style="background:#f59e0b22;color:#b45309">' + s.unb.count + '</span></h3>' +
+        '<div class="meta" style="font-size:13.5px"><b>' + money(s.unb.val) + '</b> across ' + s.unb.count + ' delivered challan(s) with no bill number — raise the bills so nothing slips on GST.</div>' +
+        '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="tab" data-tab="deliveries">Open Deliveries</button></div></div>';
+    }
+
+    /* Negative / overpaid balances. */
+    h += section('Negative (overpaid) client balances', s.neg.length, '#7c3aed',
+      s.neg.map(function (x) {
+        return '<div class="meta" style="font-size:13px;padding:3px 0;cursor:pointer" data-act="bill-open" data-n="' + esc(x.name) + '"><b>' + esc(x.name) + '</b> &middot; <span style="color:#7c3aed">' + money(x.due) + '</span> (received more than billed — check for a mis-keyed payment or a missing challan)</div>';
+      }).join(''));
+
+    /* Discounts pointing at a client that doesn't exist (the "in" class of error). */
+    h += section('Discounts on a non-existent client', s.orphanDisc.length, '#b91c1c',
+      s.orphanDisc.map(function (d) {
+        return '<div class="meta" style="font-size:13px;padding:3px 0"><b>' + esc(d.client || '(blank)') + '</b> — ' + esc(d.brand || '') + ' ' + esc(d.pct || '') + '% &middot; no client by this name. Fix on the Discounts screen.</div>';
+      }).join(''));
+
+    return h;
+  }
   function viewOwner() {
     var clients = {};
     S.data.challans.forEach(function (c) { if (String(c.receiptReceived).toUpperCase() === "Y") clients[c.customerName] = 1; });
@@ -6636,6 +6721,15 @@ function viewCatalogue() {
     return h + '</div>';
   }
 
+  /* v6.9.131: shown right after a client's first challan is created. Routes to the Discounts screen for
+     that client, where BOTH the pre-set brand discount and the partner (plumber/architect) incentive rate
+     are configured. */
+  function modalFirstChallanSetup(cn) {
+    return '<h2>First delivery to ' + esc(cn) + '</h2>' +
+      '<p class="sub">Set this client’s <b>pre-set discount structure</b> and their <b>partner incentive</b> now, so every challan is priced right and the plumber / architect incentive is correct from the very first delivery — not fixed up afterwards.</p>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Later</button>' +
+      '<button class="btn" data-act="fcs-setup" data-cl="' + esc(cn) + '">Set discount &amp; incentive</button></div>';
+  }
   function modalChallan() {
     if (!S.ch) S.ch = { brand: "", family: "", items: [] };
     var z = S.ch;
@@ -6863,8 +6957,8 @@ function viewCatalogue() {
   function renderCore() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"]];
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -6882,7 +6976,7 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
     var GROUPS = [
-      ["Sync", ["pending"]],
+      ["Sync", ["pending", "health"]],
       ["Sell", ["dash", "leads", "brandfollow", "quotes", "followups", "clients", "partners"]],
       ["Deliver", ["deliveries", "billing", "tools", "collections", "products"]],
       ["Service", ["service", "spares"]],
@@ -7055,6 +7149,13 @@ function viewCatalogue() {
     if (act === "reload-app") { location.reload(); return; }
     if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; render(); return; }
     if (act === "del-sub") { S.delSub = t.getAttribute("data-s"); render(); return; }
+    if (act === "fcs-setup") {
+      /* v6.9.131: jump to the Discounts screen for this client to set discount + partner incentive. */
+      var _fcl = t.getAttribute("data-cl") || "";
+      S.modal = null;
+      if (canSee("discounts")) { S.tab = "discounts"; S.q = _fcl; }
+      render(); return;
+    }
     if (act === "ch-hisab") {
       /* v6.9.126: jump from a client's challan group straight into their full HISAB ledger. */
       var hcl = t.getAttribute("data-cl") || "";
@@ -7351,6 +7452,7 @@ function viewCatalogue() {
       toast("Uploading pending work…"); retryPending(); return;
     }
     if (act === "pend-refresh") { toast("Checking…"); refresh(); return; }
+    if (act === "health-refresh") { toast("Re-scanning…"); refresh(); return; }
     if (act === "pend-backup") { exportPending(); return; }
     if (act === "disc-edit") { S.q = t.getAttribute("data-n"); render(); return; }
     if (act === "disc-back") { S.q = ""; render(); return; }
@@ -8574,6 +8676,12 @@ function viewCatalogue() {
       }
 
       /* ----- CREATE a new challan ----- */
+      /* v6.9.131: on a client's FIRST challan, if no pre-set discount/incentive is set for them yet,
+         prompt to set it up now — so pricing and the plumber/architect incentive are right from
+         challan #1 (not fixed up later). */
+      var _priorCh = (S.data.challans || []).filter(function (x) { return String(x.customerName || "") === cn; }).length;
+      var _hasDisc = (S.data.discounts || []).some(function (d) { return String(d.client || "").trim().toLowerCase() === String(cn).trim().toLowerCase(); });
+      var firstSetup = (_priorCh === 0 && !_hasDisc);
       toast("Creating challan for " + cn + "...");
       render();
 
@@ -8597,6 +8705,11 @@ function viewCatalogue() {
         return save("challans", ch).then(function (r) {
           if (!r) return;
           toast("Challan " + no + " created - pending approval.");
+          /* first-challan setup prompt (admin can set it; others get a reminder to ask admin) */
+          if (firstSetup) {
+            if (canSee("discounts")) S.modal = modalFirstChallanSetup(cn);
+            else toast("First delivery to " + cn + " — ask a partner to set their discount & incentive.");
+          }
           render();
           sendChallanPdf(r, "TG_CHALLAN",
             "<b>Challan " + no + "</b>\n" + cn + (siteName ? " - " + siteName : "") +
