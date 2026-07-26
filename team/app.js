@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.137";
+  var APP_VERSION = "6.9.138";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4465,6 +4465,7 @@ function viewCatalogue() {
         });
         billed += base; earned += inc; clientNames[c.customerName] = 1;
         rows.push({ no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
+          ymd: String(c.createdAt || "").slice(0, 10),
           amount: base, base: base, pct: base > 0 ? (inc / base * 100) : 0, inc: inc });
       });
       /* reverse incentive only once a return is BOOKED IN at the godown (status "Received") —
@@ -4569,6 +4570,39 @@ function viewCatalogue() {
       (b.reversed > 0 ? '<br><span style="color:#dc2626">Returns: ' + money(b.returned) + ' came back &middot; ' + money(b.reversed) + ' incentive reversed</span>' : "") +
       '<br><i>Incentive becomes payable only in proportion to what the client has actually paid. Sales returns reverse the incentive on the returned goods.</i></div>' +
       '<div class="acts"><button class="btn sm" data-act="pay-out" data-n="' + esc(name) + '">Record payout</button></div></div>';
+
+    /* v6.9.138 — PART 4: monthly incentive statement (in-app view + PDF). */
+    var _mset = {};
+    b.rows.forEach(function (r) { var m = String(r.ymd || "").slice(0, 7); if (m) _mset[m] = 1; });
+    _mset[new Date().toISOString().slice(0, 7)] = 1;
+    var _months = Object.keys(_mset).sort().reverse();
+    var _ym = (S.pMonth && _mset[S.pMonth]) ? S.pMonth : _months[0];
+    var _mrows = b.rows.filter(function (r) { return String(r.ymd || "").slice(0, 7) === _ym; })
+      .sort(function (x, y) { return String(x.ymd).localeCompare(String(y.ymd)); });
+    var _mInc = _mrows.reduce(function (s, r) { return s + r.inc; }, 0);
+    var _mBilled = _mrows.reduce(function (s, r) { return s + r.amount; }, 0);
+    h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 6px">Monthly incentive statement</h3>' +
+      '<div class="row" style="margin-bottom:6px;flex-wrap:wrap;gap:6px">' +
+      '<select id="pmonth" style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff">' +
+      _months.map(function (m) { return '<option value="' + m + '"' + (m === _ym ? ' selected' : '') + '>' + monthLabel(m) + '</option>'; }).join("") + '</select>' +
+      '<button class="btn sm" data-act="p-stmt-pdf" data-n="' + esc(name) + '" data-m="' + esc(_ym) + '">Statement PDF</button>' +
+      (a.mobile ? '<button class="btn sm ghost" data-act="p-stmt-wa" data-n="' + esc(name) + '" data-m="' + esc(_ym) + '">WhatsApp</button>' : "") +
+      '</div>' +
+      '<div class="meta" style="font-size:13px"><b>' + monthLabel(_ym) + ':</b> ' + _mrows.length + ' challan(s) &middot; drove ' + money(_mBilled) + ' &middot; incentive earned <b style="color:#0f766e">' + money(_mInc) + '</b></div>';
+    if (_mrows.length) {
+      h += '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
+        '<thead><tr style="background:#e2f5f1;color:#0b3b36"><th style="padding:5px 6px;text-align:left">Date</th><th style="padding:5px 6px;text-align:left">Challan</th><th style="padding:5px 6px;text-align:left">Client / brand</th><th style="padding:5px 6px;text-align:right">Ex-GST</th><th style="padding:5px 6px;text-align:right">Rate</th><th style="padding:5px 6px;text-align:right">Incentive</th></tr></thead><tbody>' +
+        _mrows.map(function (r, i) {
+          return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' +
+            '<td style="padding:5px 6px">' + esc(dstr(r.ymd)) + '</td>' +
+            '<td style="padding:5px 6px">' + esc(r.no || "") + '</td>' +
+            '<td style="padding:5px 6px">' + esc(r.client || "") + (r.brand ? ' <span style="color:#94a3b8">/ ' + esc(r.brand) + '</span>' : "") + '</td>' +
+            '<td style="padding:5px 6px;text-align:right">' + money(r.base) + '</td>' +
+            '<td style="padding:5px 6px;text-align:right">' + (Math.round(r.pct * 10) / 10) + '%</td>' +
+            '<td style="padding:5px 6px;text-align:right;font-weight:700;color:#0f766e">' + money(r.inc) + '</td></tr>';
+        }).join("") + '</tbody></table></div>';
+    }
+    h += '</div>';
 
     h += '<h3 style="margin:20px 0 10px;font-size:15px">Ongoing sites</h3>';
     if (!b.sites.length) h += '<div class="empty">No sites linked to this partner.</div>';
@@ -5391,6 +5425,92 @@ function viewCatalogue() {
       doc.setFontSize(11);
       doc.text(R2(l.due), Rt - 2, y + 1.6, { align: "right" });
       F("normal"); doc.setFontSize(6.4); doc.setTextColor(150, 163, 175);
+      doc.text("Energy World  |  Panipat \u00b7 Sonipat \u00b7 Karnal", L, 290);
+      return doc;
+    });
+  }
+
+  /* "2026-07" -> "Jul 2026" */
+  function monthLabel(ym) {
+    var m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    var p = String(ym || "").split("-");
+    return (m[(Number(p[1]) || 1) - 1] || "") + " " + (p[0] || "");
+  }
+
+  /* v6.9.138 \u2014 PART 4: monthly partner INCENTIVE STATEMENT PDF. One partner, one month: every
+     incentive-earning challan (date, challan, client/brand, ex-GST base, rate, incentive) with the
+     month subtotal, plus the partner's overall running position (earned / payable / paid / pending). */
+  function partnerStatementPdf(name, ym) {
+    var b = partnerBook(name);
+    var a = (S.data.associates.filter(function (x) { return x.name === name; })[0]) || {};
+    var rows = b.rows.filter(function (r) { return String(r.ymd || "").slice(0, 7) === ym; })
+      .sort(function (x, y) { return String(x.ymd).localeCompare(String(y.ymd)); });
+    var mInc = rows.reduce(function (s, r) { return s + r.inc; }, 0);
+    return loadFonts().then(function (f) {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var uni = false;
+      if (f) {
+        doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
+        doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold");
+        uni = true;
+      }
+      var F = function (w) { doc.setFont(uni ? "DJ" : "helvetica", w || "normal"); };
+      var R2 = function (n) { return (uni ? "\u20b9" : "Rs.") + Number(n || 0).toLocaleString("en-IN"); };
+      var W = 210, L = 14, Rt = W - 14, y = 0;
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 34, "F");
+      doc.setFillColor(94, 234, 212); doc.rect(0, 34, W, 1.2, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 8, 30, 16); } catch (e) {} }
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(13);
+      doc.text("INCENTIVE STATEMENT", Rt, 13, { align: "right" });
+      F("normal"); doc.setFontSize(8); doc.setTextColor(160, 205, 199);
+      doc.text(name + (a.role ? "  (" + a.role + ")" : ""), Rt, 20, { align: "right" });
+      doc.text(monthLabel(ym), Rt, 25, { align: "right" });
+      if (a.mobile) doc.text(String(a.mobile), Rt, 30, { align: "right" });
+
+      y = 48;
+      doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, Rt - L, 9, "F");
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6);
+      doc.text("DATE", L + 2, y);
+      doc.text("CHALLAN", L + 20, y);
+      doc.text("CLIENT / BRAND", L + 44, y);
+      doc.text("EX-GST", Rt - 42, y, { align: "right" });
+      doc.text("RATE", Rt - 26, y, { align: "right" });
+      doc.text("INCENTIVE", Rt - 2, y, { align: "right" });
+      y += 9;
+      if (!rows.length) {
+        doc.setTextColor(120, 120, 120); F("normal"); doc.setFontSize(9);
+        doc.text("No incentive-earning challans in " + monthLabel(ym) + ".", L, y + 2); y += 10;
+      }
+      rows.forEach(function (r, i) {
+        if (y > 250) { doc.addPage(); y = 24; }
+        if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, Rt - L, 7, "F"); }
+        doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(6.6);
+        doc.text(dstr(r.ymd), L + 2, y);
+        doc.text(String(r.no || ""), L + 20, y);
+        doc.text(doc.splitTextToSize((r.client || "") + (r.brand ? " / " + r.brand : ""), 66)[0], L + 44, y);
+        doc.text(R2(r.base), Rt - 42, y, { align: "right" });
+        doc.text((Math.round(r.pct * 10) / 10) + "%", Rt - 26, y, { align: "right" });
+        F("bold"); doc.text(R2(r.inc), Rt - 2, y, { align: "right" });
+        y += 7;
+      });
+
+      y += 4;
+      doc.setFillColor(236, 253, 245); doc.roundedRect(108, y - 5, Rt - 108, 12, 1.5, 1.5, "F");
+      doc.setTextColor(13, 118, 108); F("bold"); doc.setFontSize(8);
+      doc.text("Earned in " + monthLabel(ym), 112, y + 1.4);
+      doc.setFontSize(11); doc.text(R2(mInc), Rt - 2, y + 1.6, { align: "right" });
+      y += 18;
+
+      F("bold"); doc.setFontSize(8); doc.setTextColor(30, 41, 59);
+      doc.text("Overall position (all months)", L, y); y += 7;
+      [["Total incentive earned", b.earned], ["Payable (as clients have paid)", b.payable],
+       ["Paid out so far", b.paid], ["Still to pay", b.pending]].forEach(function (p) {
+        F("normal"); doc.setFontSize(7.6); doc.setTextColor(80, 90, 100); doc.text(p[0], L, y);
+        F("bold"); doc.setTextColor(17, 34, 45); doc.text(R2(p[1]), Rt - 2, y, { align: "right" }); y += 6.4;
+      });
+
+      F("normal"); doc.setFontSize(6.2); doc.setTextColor(150, 163, 175);
+      doc.text(doc.splitTextToSize("Incentive is the ex-GST (post-discount) net sale x the rate set for that client & brand. It becomes payable only in proportion to what the client has actually paid; sales returns reverse it.", Rt - L), L, 280);
       doc.text("Energy World  |  Panipat \u00b7 Sonipat \u00b7 Karnal", L, 290);
       return doc;
     });
@@ -7291,6 +7411,9 @@ function viewCatalogue() {
       gqi.addEventListener("input", function (e) { S.gq = e.target.value; });
       gqi.addEventListener("keyup", function (e) { if (e.key === "Enter") runGlobalSearch(); });
     }
+    /* Part 4: partner monthly-statement month picker. */
+    var pmo = el("pmonth");
+    if (pmo) pmo.addEventListener("change", function (e) { S.pMonth = e.target.value; render(); });
     /* Stock import: read an uploaded Tally CSV export and jump straight to the review step. */
     var impf = el("imp_file");
     if (impf) {
@@ -8259,8 +8382,24 @@ function viewCatalogue() {
     }
     if (act === "p-sort") { S.pSort = t.getAttribute("data-k"); render(); return; }
     if (act === "wl-by") { S.wlBy = t.getAttribute("data-k"); render(); return; }
-    if (act === "p-open") { S.partner = t.getAttribute("data-n"); render(); return; }
+    if (act === "p-open") { S.partner = t.getAttribute("data-n"); S.pMonth = ""; render(); return; }
     if (act === "p-back") { S.partner = ""; render(); return; }
+    if (act === "p-stmt-pdf") {
+      var _psn = t.getAttribute("data-n"), _psm = t.getAttribute("data-m") || S.pMonth;
+      toast("Building statement…");
+      loadLogo().then(function () { return partnerStatementPdf(_psn, _psm); })
+        .then(function (d) { d.save(String(_psn).replace(/[^\w.-]/g, "_") + "_incentive_" + _psm + ".pdf"); })
+        .catch(function () { toast("Could not build the statement PDF."); });
+      return;
+    }
+    if (act === "p-stmt-wa") {
+      var _pwn = t.getAttribute("data-n"), _pwm = t.getAttribute("data-m") || S.pMonth;
+      var _pwa = (S.data.associates.filter(function (x) { return x.name === _pwn; })[0]) || {};
+      var _pwmsg = "Namaste " + _pwn + ", your Energy World incentive statement for " + monthLabel(_pwm) + " is attached.";
+      waShareDoc(loadLogo().then(function () { return partnerStatementPdf(_pwn, _pwm); }),
+        String(_pwn).replace(/[^\w.-]/g, "_") + "_incentive_" + _pwm + ".pdf", _pwa.mobile, _pwmsg);
+      return;
+    }
 
     if (act === "pay-out") { S.modal = modalPayout(t.getAttribute("data-n")); render(); return; }
     if (act === "po-save") {
