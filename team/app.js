@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.135";
+  var APP_VERSION = "6.9.137";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -140,7 +140,7 @@
 
   var ROLE_TABS = {
     admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","stock"],
-    accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist"],
+    accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","stock"],
     godown:   ["dash","returns","tools","challans","products","stock"],
     sales:    ["dash","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products"],
     service:  ["dash","tools","service","spares","dues","followups","products"]
@@ -7082,6 +7082,74 @@ function viewCatalogue() {
     return order.map(function (k) { return out[k]; });
   }
 
+  /* Parse a Tally (or any) CSV export into {code, qty} rows. Auto-detects a header row and picks the
+     item-code column and the closing-quantity column by common names; falls back to first col = code,
+     last numeric col = qty. Strips units/commas from qty ("1,250 Nos" -> 1250). Aggregates dup codes. */
+  function parseCsvStock(text) {
+    var lines = String(text || "").split(/\r?\n/).filter(function (l) { return l.trim() !== ""; });
+    if (!lines.length) return { rows: [] };
+    var delim = (lines[0].indexOf("\t") >= 0 && lines[0].indexOf(",") < 0) ? "\t" : (lines[0].indexOf(",") >= 0 ? "," : "\t");
+    function cells(l) { return l.split(delim).map(function (c) { return c.replace(/^"|"$/g, "").trim(); }); }
+    var num = function (s) { return Number(String(s == null ? "" : s).replace(/[^0-9.\-]/g, "")) || 0; };
+    var codeKw = ["code", "item code", "itemcode", "alias", "sku", "part no", "part code", "part number"];
+    var qtyKw = ["closing qty", "closing quantity", "closing balance", "closing bal", "closing stock", "closing", "quantity", "qty", "balance", "stock"];
+    var head = cells(lines[0]).map(function (c) { return c.toLowerCase(); });
+    var lastCellNumeric = /[0-9]/.test((cells(lines[0])[cells(lines[0]).length - 1]) || "") && /^[\d.,\s]+[a-z]*$/i.test((cells(lines[0])[cells(lines[0]).length - 1]) || "x");
+    var hasHeader = !lastCellNumeric && head.some(function (c) { return codeKw.indexOf(c) >= 0 || qtyKw.indexOf(c) >= 0 || /item|name|qty|quantit|closing|code|alias/.test(c); });
+    var codeCol = 0, qtyCol = -1, start = 0;
+    if (hasHeader) {
+      start = 1;
+      var ci = -1; head.forEach(function (c, i) { if (ci < 0 && codeKw.indexOf(c) >= 0) ci = i; }); if (ci >= 0) codeCol = ci;
+      var qi = -1; qtyKw.forEach(function (kw) { if (qi < 0) head.forEach(function (c, i) { if (qi < 0 && c === kw) qi = i; }); }); qtyCol = qi;
+    }
+    var map = {}, order = [];
+    for (var r = start; r < lines.length; r++) {
+      var c = cells(lines[r]); if (!c.length) continue;
+      var code = String(c[codeCol] || "").trim();
+      if (!code || /^(grand )?total$/i.test(code)) continue;
+      var qty;
+      if (qtyCol >= 0) qty = num(c[qtyCol]);
+      else if (c.length === 2) qty = num(c[1]);
+      else { qty = 0; for (var k = c.length - 1; k >= 1; k--) { if (/[0-9]/.test(c[k])) { qty = num(c[k]); break; } } }
+      var key = code.toLowerCase();
+      if (!map[key]) { map[key] = { code: code, qty: 0 }; order.push(key); }
+      map[key].qty += qty;
+    }
+    return { rows: order.map(function (k) { return map[k]; }) };
+  }
+
+  /* Shared: match {code,qty} rows against the catalogue and move the import to the review step. */
+  function impParseAndPreview(rows) {
+    if (!rows || !rows.length) { toast("No code/qty rows found."); return; }
+    var cm = {}; PRODUCTS.forEach(function (p) { if (p.code) cm[String(p.code).trim().toLowerCase()] = p; });
+    var matched = [], newc = [];
+    rows.forEach(function (x) {
+      var p = cm[String(x.code).toLowerCase()];
+      if (p) matched.push({ code: p.code, desc: p.desc, qty: x.qty });
+      else newc.push({ code: x.code, qty: x.qty });
+    });
+    S.imp = {
+      step: 2, type: (S.imp && S.imp.type) || "in",
+      ref: String((el("imp_ref") || {}).value || (S.imp && S.imp.ref) || "").trim(),
+      asOn: (el("imp_date") || {}).value || (S.imp && S.imp.asOn) || today(),
+      paste: (el("imp_paste") || {}).value || (S.imp && S.imp.paste) || "",
+      matched: matched, newc: newc
+    };
+    render();
+  }
+
+  /* Read an uploaded Tally CSV: normalise to code+qty, drop it into the paste box (so it's visible /
+     editable), and jump to the review step. */
+  function stockImportFromFile(text, name) {
+    var parsed = parseCsvStock(text);
+    if (!parsed.rows.length) { toast("Couldn't read code & qty from that file — export it as CSV with an item-code column and a closing-qty column."); return; }
+    if (!S.imp) S.imp = { step: 1, type: "in", asOn: today() };
+    S.imp.ref = String((el("imp_ref") || {}).value || S.imp.ref || (name ? String(name).replace(/\.[^.]+$/, "") : "")).trim();
+    S.imp.asOn = (el("imp_date") || {}).value || S.imp.asOn || today();
+    S.imp.paste = parsed.rows.map(function (x) { return x.code + "\t" + x.qty; }).join("\n");
+    impParseAndPreview(parsed.rows);
+  }
+
   function viewStockImport() {
     var im = S.imp || {};
     var lbl = 'style="font-size:12px;color:#475569;margin:8px 0 2px"';
@@ -7119,6 +7187,9 @@ function viewCatalogue() {
       '<div class="acts" style="gap:6px;margin-bottom:4px">' +
       '<button class="btn sm ' + (im.type === "opening" ? "" : "ghost") + '" data-act="imp-type" data-t="opening">Opening stock</button>' +
       '<button class="btn sm ' + (im.type !== "opening" ? "" : "ghost") + '" data-act="imp-type" data-t="in">Goods received (purchase)</button></div>' +
+      '<div ' + lbl + '>Upload a Tally CSV export (item code + closing qty)</div>' +
+      '<input type="file" id="imp_file" accept=".csv,.txt" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
+      '<div style="text-align:center;color:#94a3b8;font-size:12px;margin:6px 0">— or paste rows —</div>' +
       '<div ' + lbl + '>Paste rows (code &nbsp;&lt;tab&gt;&nbsp; qty)</div>' +
       '<textarea id="imp_paste" rows="12" placeholder="HUL-32MM\t50&#10;STL-1IN-ELB\t200&#10;…" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:13px monospace">' + esc(im.paste || "") + '</textarea>' +
       '<div class="acts" style="margin-top:8px"><button class="btn" data-act="imp-parse">Parse &amp; preview</button></div></div>';
@@ -7219,6 +7290,16 @@ function viewCatalogue() {
     if (gqi) {
       gqi.addEventListener("input", function (e) { S.gq = e.target.value; });
       gqi.addEventListener("keyup", function (e) { if (e.key === "Enter") runGlobalSearch(); });
+    }
+    /* Stock import: read an uploaded Tally CSV export and jump straight to the review step. */
+    var impf = el("imp_file");
+    if (impf) {
+      impf.addEventListener("change", function (e) {
+        var f = e.target.files && e.target.files[0]; if (!f) return;
+        var rd = new FileReader();
+        rd.onload = function () { try { stockImportFromFile(String(rd.result || ""), f.name); } catch (err) { toast("Couldn't read that file — try a plain CSV export."); } };
+        rd.readAsText(f);
+      });
     }
   }
 
@@ -7351,19 +7432,8 @@ function viewCatalogue() {
       render(); return;
     }
     if (act === "imp-parse") {
-      var _rows = parseStockPaste((el("imp_paste") || {}).value || "");
-      if (!_rows.length) { toast("Paste some rows first (code and qty)."); return; }
-      var _cm = {}; PRODUCTS.forEach(function (p) { if (p.code) _cm[String(p.code).trim().toLowerCase()] = p; });
-      var _matched = [], _newc = [];
-      _rows.forEach(function (x) {
-        var p = _cm[x.code.toLowerCase()];
-        if (p) _matched.push({ code: p.code, desc: p.desc, qty: x.qty });
-        else _newc.push({ code: x.code, qty: x.qty });
-      });
-      S.imp = { step: 2, type: (S.imp && S.imp.type) || "in", ref: String((el("imp_ref") || {}).value || "").trim(),
-        asOn: (el("imp_date") || {}).value || today(), paste: (el("imp_paste") || {}).value || "",
-        matched: _matched, newc: _newc };
-      render(); return;
+      impParseAndPreview(parseStockPaste((el("imp_paste") || {}).value || ""));
+      return;
     }
     if (act === "imp-submit") {
       var _im = S.imp || {};
