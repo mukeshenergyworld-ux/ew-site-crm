@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.138";
+  var APP_VERSION = "6.9.139";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -41,6 +41,26 @@
     "Concealed Plumbing (rough-in)","Concealed Electrical","Plastering","Waterproofing",
     "Flooring / Tiling","Sanitary & CP Fitting","False Ceiling / Painting","Final Fitout / Handover","Post-Handover / AMC"];
   var PSTATUS = ["Not pitched","Pitched","Quoted","Negotiating","Won","Lost","Not applicable"];
+
+  /* What to pitch at each construction stage (keyed to STAGES2, the 13-stage site scale).
+     This is the always-on playbook: it needs NO per-brand rule set up — set a site's stage and
+     the Pitch board instantly shows what fits. `win:true` marks a fast-closing window (concealed
+     work that gets sealed inside the wall — miss it and the sale is gone for this project). */
+  var PITCH2 = {
+    "Design / Drawing":            { lines:["Share the catalogue & brand range","Get pipes / CP / water systems specified in the drawing","Book a site visit"], win:false },
+    "Excavation / Foundation":     { lines:["SWR / underground drainage pipes","Underground water tank & fittings","Sump / dewatering pump"], win:false },
+    "Structure / Slab":            { lines:["Conduit pipes for the slab","Earthing accessories","Confirm sleeves / inserts for plumbing"], win:false },
+    "Brickwork / Masonry":         { lines:["Lock the concealed pipe requirement","Quote CPVC / UPVC rough-in","Fix bathroom & kitchen point count"], win:true },
+    "Concealed Plumbing (rough-in)":{ lines:["CPVC / UPVC pipes & fittings","Concealed valves & diverters","Overhead / underground tanks"], win:true },
+    "Concealed Electrical":        { lines:["Wires & cables","MCB / distribution board","Conduits & switch boxes"], win:true },
+    "Plastering":                  { lines:["Keep the quote warm — follow up","Confirm CP & sanitary selections","Quote waterproofing chemicals"], win:false },
+    "Waterproofing":               { lines:["Waterproofing membranes & chemicals","Bathroom & terrace treatment"], win:true },
+    "Flooring / Tiling":           { lines:["Floor drains, gratings & traps","Bathroom waste fittings","Balcony / terrace outlets"], win:true },
+    "Sanitary & CP Fitting":       { lines:["CP fittings & faucets","Sanitaryware — WC, basins","Shower systems & health faucets"], win:true },
+    "False Ceiling / Painting":    { lines:["Water heater / geyser","Exhaust & ventilation","Confirm pressure-pump points"], win:false },
+    "Final Fitout / Handover":     { lines:["Water heater / geyser","RO / water purifier","Water softener","Pressure pump","Solar water heater"], win:true },
+    "Post-Handover / AMC":         { lines:["AMC / extended warranty","Salt & filter refills","Solar / inverter upgrade","Ask for a referral"], win:false }
+  };
 
   var LOCATIONS = ["Panipat", "Sonipat"];
   var CLIENT_TYPES = ["Builder", "Architect", "Plumber", "Contractor", "Home owner", "Dealer", "PMC"];
@@ -152,7 +172,8 @@
     var member = { deliveries: ["challans", "returns"], collections: ["payments", "dues"],
       pricing: ["rates", "pricelist", "catalogue"], payrollhub: ["commission", "payroll"] };
     if (member[tab]) return member[tab].some(function (m) { return t.indexOf(m) >= 0; });
-    return t.indexOf(tab) >= 0 || tab === "matrix" || tab === "pending";
+    return t.indexOf(tab) >= 0 || tab === "matrix" || tab === "pending" ||
+      (tab === "pitch" && (t.indexOf("sites") >= 0 || t.indexOf("leads") >= 0));
   }
 
   function api(action, extra) {
@@ -6598,15 +6619,68 @@ function viewCatalogue() {
      key in the views object, so the Incentives tab was showing a raw sum of stored figures
      with no GST strip and no collection gate. Do not reintroduce it. */
 
+  /* Pitch board — the daily stage-based playbook, keyed to live SITES.
+     Set a site to its construction stage and this tells you what to pitch there, to whom, and
+     when the window closes. Works even before per-brand Pitch rules are configured. */
   function viewPitch() {
-    var h = '<div class="empty" style="padding:6px 0 16px;text-align:left">Pick the stage the site is at and pitch what fits. Customers are grouped by their current stage.</div>';
-    STAGES.forEach(function (st) {
-      var cs = S.data.customers.filter(function (c) { return c.stage === st; });
-      var p = PITCH[st] || [];
-      h += '<div class="card"><h3>' + esc(st) + ' <span class="pill">' + cs.length + ' customer(s)</span></h3>' +
-        '<div class="meta"><b>Pitch:</b> ' + esc(p.join(", ") || "-") +
-        (cs.length ? '<br><b>Who:</b> ' + esc(cs.map(function (c) { return c.name; }).join(", ")) : '') +
-        '</div></div>';
+    var q = S.q.toLowerCase();
+    var sites = (S.data.sites || []).filter(function (x) {
+      return !q || (x.name + " " + x.client + " " + x.city + " " + x.architect + " " + x.plumber).toLowerCase().indexOf(q) >= 0;
+    });
+    var byStage = {}; STAGES2.forEach(function (s) { byStage[s] = []; });
+    var noStage = [];
+    sites.forEach(function (st) { if (st.stage && byStage[st.stage]) byStage[st.stage].push(st); else noStage.push(st); });
+
+    var h = '<div class="empty" style="text-align:left;padding:0 0 12px"><b>Stage-based pitching.</b> ' +
+      'Set each live site to its construction stage — the board shows exactly what to pitch there, to whom, and which windows close soon. This is the single biggest lever in the app.</div>';
+
+    h += '<div class="row"><input class="grow" id="q" placeholder="Search sites, client, plumber, architect..." value="' + esc(S.q) + '"/>' +
+      '<button class="btn" data-act="site-new">+ New site</button></div>';
+
+    /* sites still missing a stage — nothing can be pitched until the stage is set */
+    if (noStage.length) {
+      h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>Set a stage <span class="pill soon">' + noStage.length + ' site(s)</span></h3>' +
+        '<div class="meta">These sites have no construction stage yet, so the board can\'t pitch for them. One tap to set it.</div>';
+      noStage.slice(0, 12).forEach(function (st) {
+        h += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(st.name) + '</b>' +
+          (st.client ? ' <span style="font-size:11px;color:#64748b">' + esc(st.client) + '</span>' : '') + '</div>' +
+          '<button class="btn sm" data-act="site-open" data-id="' + esc(st.id) + '">Set stage</button></div>';
+      });
+      h += '</div>';
+    }
+
+    /* ---- what to pitch NOW: only stages that actually have sites, most-advanced first ---- */
+    var activeStages = STAGES2.map(function (s, i) { return { s: s, i: i }; }).filter(function (o) { return byStage[o.s].length; });
+    if (activeStages.length) {
+      h += '<h3 style="margin:18px 0 8px;font-size:15px">Pitch now — your live sites by stage</h3>';
+      activeStages.forEach(function (o) {
+        var stage = o.s, sn = o.i + 1, def = PITCH2[stage] || { lines: [], win: false }, here = byStage[stage];
+        h += '<div class="card" style="border-color:' + (def.win ? '#fca5a5' : '#bfdbfe') + ';background:' + (def.win ? '#fef2f2' : '#eff6ff') + '">' +
+          '<h3>' + sn + '. ' + esc(stage) + ' <span class="pill due">' + here.length + ' site(s)</span>' +
+          (def.win ? ' <span class="pill soon">window closing</span>' : '') + '</h3>' +
+          '<div class="meta"><b>Pitch:</b> ' + esc(def.lines.join(" · ") || "-") + '</div>';
+        here.forEach(function (st) {
+          var who = [st.architect ? "Arch: " + st.architect : "", st.plumber ? "Plumber: " + st.plumber : "", st.builder ? "Builder: " + st.builder : ""].filter(Boolean).join(" · ");
+          h += '<div class="acts" style="align-items:center;border-top:1px solid #f1f5f9;margin-top:8px;padding-top:8px">' +
+            '<div class="grow"><b>' + esc(st.name) + '</b>' + (st.client ? ' — ' + esc(st.client) : '') +
+            (who ? '<br><span style="font-size:11px;color:#64748b">' + esc(who) + '</span>' : '') + '</div>' +
+            (st.mobile ? '<a class="btn sm ghost" href="tel:' + esc(st.mobile) + '">Call</a>' : '') +
+            '<button class="btn sm" data-act="matrix" data-id="' + esc(st.id) + '">Pitch matrix</button>' +
+            '<button class="btn sm ghost" data-act="site-open" data-id="' + esc(st.id) + '">Stage</button></div>';
+        });
+        h += '</div>';
+      });
+    } else if (!noStage.length) {
+      h += '<div class="empty">No sites yet. Add a live site with its stage and the board lights up.</div>';
+    }
+
+    /* ---- the full playbook: every stage and what to pitch there (reference, always visible) ---- */
+    h += '<h3 style="margin:22px 0 8px;font-size:15px;color:#64748b">Stage playbook — what to pitch at each stage</h3>';
+    STAGES2.forEach(function (stage, i) {
+      var def = PITCH2[stage] || { lines: [], win: false };
+      h += '<div class="card"><h3 style="font-size:14px">' + (i + 1) + '. ' + esc(stage) +
+        (def.win ? ' <span class="pill soon">key window</span>' : '') + '</h3>' +
+        '<div class="meta">' + esc(def.lines.join(" · ") || "-") + '</div></div>';
     });
     return h;
   }
@@ -7320,7 +7394,7 @@ function viewCatalogue() {
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
     var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, stock: viewStock };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["stock", "Stock"]];
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["stock", "Stock"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -7339,7 +7413,7 @@ function viewCatalogue() {
 
     var GROUPS = [
       ["Sync", ["pending", "health"]],
-      ["Sell", ["dash", "leads", "brandfollow", "quotes", "followups", "clients", "partners"]],
+      ["Sell", ["dash", "leads", "pitch", "brandfollow", "quotes", "followups", "clients", "partners"]],
       ["Deliver", ["deliveries", "billing", "stock", "tools", "collections", "products"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["payrollhub", "discounts", "report", "pricing", "rules", "teampins"]]
