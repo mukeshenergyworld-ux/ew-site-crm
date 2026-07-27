@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.149";
+  var APP_VERSION = "6.9.150";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -68,6 +68,10 @@
   var GST = 0.18;
 
   var SVC_PRODUCTS = ["Water Softener","Sand Filter","Carbon Filter","RO / Purifier","Heat Pump","Pressure Pump","Other"];
+  /* Serviceable brands — a product can only be put on an AMC / service log under one of these. A new
+     brand is added on the spot (picks "+ Register new brand" in the product row). Any brand ever used
+     on an install is remembered too, so a once-registered brand keeps appearing. */
+  var SVC_BRANDS = ["Pentair", "Green Heat", "Adani", "Grundfos", "Leo"];
   var SVC_ENGINEERS = ["Manoj","Jaiprakash"];
   var VISIT_TYPES = ["Periodic service","Complaint","Salt delivery","AMC visit","Installation","Repair"];
   var WATER = ["Normal","Hard","Very hard"];
@@ -1339,9 +1343,34 @@ window.addEventListener("beforeunload", function (ev) {
     var d = new Date(base + "T00:00:00"); d.setMonth(d.getMonth() + m);
     return d.toISOString().slice(0, 10);
   }
+  /* Base serviceable brands + any brand already used on an existing install (so a once-added brand
+     persists across sessions without a new store). */
+  function svcBrands() {
+    var seen = {}, out = [];
+    var add = function (b) { b = String(b || "").trim(); var k = b.toLowerCase(); if (b && !seen[k]) { seen[k] = 1; out.push(b); } };
+    SVC_BRANDS.forEach(add);
+    (S.data.installs || []).forEach(function (x) { try { JSON.parse(x.productsJson || "[]").forEach(function (p) { if (p.brand) add(p.brand); }); } catch (e) { } });
+    return out;
+  }
+  function svcBrandOpts(sel) {
+    var list = svcBrands(); sel = String(sel || "");
+    var have = list.some(function (b) { return b === sel; });
+    return '<option value="">— Select brand —</option>' +
+      (sel && !have ? '<option value="' + esc(sel) + '" selected>' + esc(sel) + '</option>' : '') +
+      list.map(function (b) { return '<option value="' + esc(b) + '"' + (b === sel ? ' selected' : '') + '>' + esc(b) + '</option>'; }).join("") +
+      '<option value="__newbrand__">+ Register new brand…</option>';
+  }
+  /* Registered clients that are WON (a won quote, a won pitch, or a delivered challan — the app's
+     isClient() signal). Only these can get a service/AMC record. */
+  function wonClientNames() {
+    return (S.data.clients || []).map(function (c) { return c.name; })
+      .filter(function (n) { return n && isClient(n); })
+      .sort(function (a, b) { return a.localeCompare(b); });
+  }
   function instProdRow(p, i) {
     p = p || {};
     return '<div class="ip-row" data-row="' + i + '" style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#f8fafc">' +
+      '<label>Serviceable brand</label><select class="ip-brand">' + svcBrandOpts(p.brand) + '</select>' +
       '<div class="grid2"><div><label>Product</label><select class="ip-prod">' + opts(SVC_PRODUCTS, p.product || SVC_PRODUCTS[0]) + '</select></div>' +
       '<div><label>Model / capacity</label><input class="ip-model" value="' + esc(p.model || "") + '"/></div></div>' +
       '<div class="grid2"><div><label>Install date</label><input class="ip-idate" type="date" value="' + esc(dstr(p.installDate) || today()) + '"/></div>' +
@@ -1357,7 +1386,14 @@ window.addEventListener("beforeunload", function (ev) {
     var prods = instProducts(x);
     return '<h2>' + (x.id ? "Edit installation" : "New installation") + '</h2>' +
       '<p class="sub">Add each product with its own dates &amp; warranty. \u201cPeriodic service = Yes\u201d drives the reminders.</p>' +
-      '<label>Client</label><input id="i_client" value="' + esc(x.client) + '"/>' +
+      '<label>Client (won lead) <span style="color:#ef4444">*</span></label>' +
+      '<select id="i_client">' + (function () {
+        var names = wonClientNames(), cur = String(x.client || ""), have = names.indexOf(cur) >= 0;
+        return '<option value="">— Select a won client —</option>' +
+          (cur && !have ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + ' (not marked won)</option>' : '') +
+          names.map(function (n) { return '<option value="' + esc(n) + '"' + (n === cur ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join("");
+      })() + '</select>' +
+      '<div class="meta" style="font-size:11px;color:#94a3b8;margin:2px 0 6px">Only a registered lead marked <b>Won</b> (a won quote, a won pitch, or a delivered challan) can get a service / AMC record. Not listed? Win the quote or mark the pitch <b>Won</b> first.</div>' +
       '<div class="grid2"><div><label>Mobile</label><input id="i_mobile" inputmode="numeric" value="' + esc(x.mobile) + '"/></div>' +
       '<div><label>Area / route</label><input id="i_area" value="' + esc(x.area) + '"/></div></div>' +
       '<label>Address</label><input id="i_addr" value="' + esc(x.address) + '"/>' +
@@ -8528,16 +8564,19 @@ function viewCatalogue() {
     if (act === "inst-open") { S.modal = modalInstall(installById(id)); render(); return; }
     if (act === "inst-save") {
       var ic = val("i_client");
-      if (!ic) { toast("Client name is required."); return; }
-      var prods = [];
+      if (!ic) { toast("Pick a won client from the list."); return; }
+      if (!id && !isClient(ic)) { toast("Only a lead marked Won can get a service/AMC record. Win the quote or mark the pitch Won first."); return; }
+      var prods = [], _missBrand = false;
       (document.querySelectorAll("#i_products .ip-row") || []).forEach(function (row) {
         var g = function (cls) { var e2 = row.querySelector("." + cls); return e2 ? e2.value : ""; };
         var pr = g("ip-prod"); if (!pr) return;
-        prods.push({ product: pr, model: g("ip-model"), installDate: g("ip-idate"), commDate: g("ip-cdate"),
+        var br = g("ip-brand"); if (!br || br === "__newbrand__") { _missBrand = true; }
+        prods.push({ brand: br, product: pr, model: g("ip-model"), installDate: g("ip-idate"), commDate: g("ip-cdate"),
           warrantyMonths: Number(g("ip-warr")) || 0, serviceReq: (g("ip-svc") === "Yes") ? 1 : 0,
           serviceMonths: Number(g("ip-svcm")) || 0 });
       });
       if (!prods.length) { toast("Add at least one product."); return; }
+      if (_missBrand) { toast("Pick a serviceable brand for each product (or register a new one)."); return; }
       /* derived, backward-compatible fields for the reminder engine + list view */
       var serviced = prods.filter(function (p) { return p.serviceReq && p.serviceMonths; });
       var cyc = serviced.length ? Math.round(serviced[0].serviceMonths * 30) : 0;
@@ -9658,6 +9697,24 @@ function viewCatalogue() {
       var dup = Array.prototype.slice.call(t.options).filter(function (o) { return o.value === nb; })[0];
       if (!dup) { var ob = document.createElement("option"); ob.value = nb; ob.textContent = nb; t.insertBefore(ob, t.options[1] || null); }
       t.value = nb; return;
+    }
+    /* Service/AMC: register a new serviceable brand on the spot (per product row). */
+    if (t.classList && t.classList.contains("ip-brand") && t.value === "__newbrand__") {
+      var nbr = String(window.prompt("New serviceable brand to register") || "").trim();
+      if (!nbr) { t.value = ""; return; }
+      var dupB = Array.prototype.slice.call(t.options).filter(function (o) { return o.value.toLowerCase() === nbr.toLowerCase(); })[0];
+      if (!dupB) { var obr = document.createElement("option"); obr.value = nbr; obr.textContent = nbr; t.insertBefore(obr, t.options[t.options.length - 1] || null); }
+      t.value = nbr; return;
+    }
+    /* Service/AMC: picking the won client fills in their saved mobile / area / address. */
+    if (t.id === "i_client") {
+      var _ci = clientByName(t.value);
+      if (_ci) {
+        if (el("i_mobile") && !el("i_mobile").value) el("i_mobile").value = _ci.mobile || "";
+        if (el("i_addr") && !el("i_addr").value) el("i_addr").value = _ci.address || "";
+        if (el("i_area") && !el("i_area").value) el("i_area").value = _ci.area || "";
+      }
+      return;
     }
 
     /* pick a known driver and his number, vehicle and usual fare fill themselves in */
