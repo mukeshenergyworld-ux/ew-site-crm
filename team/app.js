@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.145";
+  var APP_VERSION = "6.9.146";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -6959,7 +6959,7 @@ function viewCatalogue() {
       '<div class="meta">For material already delivered before this app. It is saved straight as ' +
       '<b>Received</b> with the date you give, and <b>no Telegram message is sent to anyone</b>.' +
       '<br>For material going out today, use <b>+ New challan</b> instead.</div></div>' +
-      clientField("o_client", (S.oc && S.oc.client) || "") +
+      strictClientField("o_client", (S.oc && S.oc.client) || "") +
       '<div class="grid2">' +
       '<div><label>Date it was delivered</label><input id="o_date" type="date" value="' + today() + '"/></div>' +
       '<div><label>Old challan no. (optional)</label><input id="o_no" placeholder="leave blank to auto-number"/></div>' +
@@ -7576,7 +7576,7 @@ function viewCatalogue() {
     if (pmo) pmo.addEventListener("change", function (e) { S.pMonth = e.target.value; render(); });
     /* Strict client dropdowns (challan + material return): refresh the preset-discount flash live,
        and remember the pick so an inline "+ Register new" round-trip (or any re-render) keeps it. */
-    [["m_client", "ch"], ["r_client", "rt"]].forEach(function (pair) {
+    [["m_client", "ch"], ["r_client", "rt"], ["o_client", "oc"]].forEach(function (pair) {
       var elc = el(pair[0]);
       if (!elc) return;
       elc.addEventListener("change", function (e) {
@@ -7927,7 +7927,7 @@ function viewCatalogue() {
             if (back.keep) back.keep[back.forId] = r.name;
             if (back.modal === "challan") { if (S.ch) S.ch.client = r.name; S.modal = modalChallan(); }
             else if (back.modal === "return") { if (S.rt) S.rt.client = r.name; S.modal = modalReturn(); }
-            else if (back.modal === "old") S.modal = modalOldChallan();
+            else if (back.modal === "old") { if (S.oc) S.oc.client = r.name; S.modal = modalOldChallan(); }
             render();
             restoreSnapshot(back.keep);
             return;
@@ -9158,7 +9158,8 @@ function viewCatalogue() {
     }
     if (act === "oc-save") {
       var ocl = val("o_client"), odate = val("o_date");
-      if (!ocl) { toast("Enter the client."); return; }
+      if (!ocl) { toast("Pick a registered client from the list, or tap + Register new."); return; }
+      if (!clientByName(ocl)) { toast("“" + ocl + "” isn’t a registered client — register it first."); return; }
       if (!odate) { toast("Give the date it was actually delivered."); return; }
       if (!(S.oc.items || []).length) { toast("Pick at least one product."); return; }
       t.disabled = true; t.textContent = "Saving...";
