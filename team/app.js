@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.140";
+  var APP_VERSION = "6.9.141";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4555,7 +4555,7 @@ function viewCatalogue() {
     var paid = S.data.commpay.filter(function (p) { return String(p.associate).toLowerCase() === nm; })
       .reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
     var sites = S.data.sites.filter(function (st) {
-      return [st.architect, st.plumber, st.builder].some(function (x) { return String(x || "").toLowerCase() === nm; });
+      return [st.architect, st.plumber, st.builder, st.pmc].some(function (x) { return String(x || "").toLowerCase() === nm; });
     });
     return { rows: rows, billed: billed, earned: earned, returned: returned, reversed: reversed,
       collected: collected, ratio: ratio, payable: payable, paid: paid, pending: payable - paid, sites: sites };
@@ -4670,11 +4670,24 @@ function viewCatalogue() {
     }
     h += '</div>';
 
-    h += '<h3 style="margin:20px 0 10px;font-size:15px">Ongoing sites</h3>';
-    if (!b.sites.length) h += '<div class="empty">No sites linked to this partner.</div>';
+    /* Projects under this partner — one architect / builder often runs several sites at once.
+       List every one with its stage and live pitch count, and add more right here. */
+    h += '<div class="row" style="margin:20px 0 6px;align-items:center"><h3 style="margin:0;font-size:15px">Projects / sites under ' + esc(name) +
+      ' <span class="pill teal">' + b.sites.length + '</span></h3><div class="grow"></div>' +
+      (canSee("sites") ? '<button class="btn sm" data-act="p-newsite" data-n="' + esc(name) + '" data-role="' + esc(String(a.role || "").toLowerCase()) + '">+ New project</button>' : "") + '</div>';
+    if (!b.sites.length) h += '<div class="empty">No sites linked yet. Add this partner’s running projects so each one can be tracked and pitched.</div>';
     b.sites.forEach(function (st) {
-      h += '<div class="card"><h3>' + esc(st.name) + ' <span class="pill teal">' + esc(st.stage || "-") + '</span></h3>' +
-        '<div class="meta">' + esc(st.client || "") + '</div></div>';
+      var al = siteAlerts(st);
+      var who = [st.architect ? "Arch: " + st.architect : "", st.plumber ? "Plumber: " + st.plumber : "", st.builder ? "Builder: " + st.builder : "", st.pmc ? "PMC: " + st.pmc : ""].filter(Boolean).join(" · ");
+      h += '<div class="card"><h3>' + esc(st.name) + ' <span class="pill teal">stage ' + stageNo(st) + '</span>' +
+        ' <span style="font-size:11px;color:#94a3b8">' + esc(st.stage || "-") + '</span>' +
+        (al.open ? ' <span class="pill due">' + al.open + ' to pitch now</span>' : "") +
+        (al.closed ? ' <span class="pill">' + al.closed + ' closed</span>' : "") + '</h3>' +
+        '<div class="meta">' + esc(st.client || "") + (st.city ? ' · ' + esc(st.city) : "") +
+        (who ? '<br>' + esc(who) : "") + '</div>' +
+        '<div class="acts">' +
+        '<button class="btn sm" data-act="matrix" data-id="' + esc(st.id) + '">Pitch matrix</button>' +
+        '<button class="btn sm ghost" data-act="site-open" data-id="' + esc(st.id) + '">Edit</button></div></div>';
     });
 
     h += '<h3 style="margin:20px 0 10px;font-size:15px">Challans &amp; incentive</h3>';
@@ -8445,6 +8458,18 @@ function viewCatalogue() {
     }
 
     if (act === "site-new") { S.modal = modalSite(null); render(); return; }
+    /* New project pre-linked to a partner (from the partner card): seed their name into the field
+       matching their role so a builder/architect running several sites adds each in one tap. */
+    if (act === "p-newsite") {
+      var _pn = t.getAttribute("data-n") || "";
+      var _prole = String(t.getAttribute("data-role") || "").toLowerCase();
+      var _seed = {};
+      if (_prole === "architect") _seed.architect = _pn;
+      else if (_prole === "plumber") _seed.plumber = _pn;
+      else if (_prole === "pmc") _seed.pmc = _pn;
+      else _seed.builder = _pn;   /* builder or any other role → builder field (free text) */
+      S.modal = modalSite(_seed); render(); return;
+    }
     if (act === "site-open") { S.modal = modalSite(siteById(id)); render(); return; }
     if (act === "site-save") {
       var sn = val("s_name");
