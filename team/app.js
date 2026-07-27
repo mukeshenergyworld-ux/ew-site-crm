@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.147";
+  var APP_VERSION = "6.9.148";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -5146,7 +5146,8 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="bill-selall" data-v="1">Tick all</button>' +
       '<button class="btn sm ghost" data-act="bill-selall" data-v="0">Untick all</button>' +
       '<div class="grow"></div>' +
-      '<button class="btn sm" data-act="bill-wa">WhatsApp statement</button>' +
+      (bal > 0 && canSee("payments") ? '<button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '">&#8377; Payment received</button>' : '') +
+      '<button class="btn sm ghost" data-act="bill-wa">WhatsApp statement</button>' +
       '<button class="btn sm ghost" data-act="bill-pdf">Download PDF</button>' +
       '</div></div>';
     return h;
