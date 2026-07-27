@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.146";
+  var APP_VERSION = "6.9.147";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -7270,11 +7270,21 @@ function viewCatalogue() {
   function stockMovementByCode() {
     var m = {}, desc = {};
     (S.stock || []).forEach(function (row) {
+      var ty = String(row.type || "");
+      if (ty === "reorder" || ty === "rate") return;   /* settings rows, not movements */
       var k = String(row.code || "").trim(); if (!k) return;
       m[k] = (m[k] || 0) + (Number(row.qty) || 0);
       if (row.desc && !desc[k]) desc[k] = row.desc;
     });
     return { m: m, desc: desc };
+  }
+  /* Per-code reorder level and latest purchase rate — stored as their own stock rows (type
+     "reorder" / "rate"), so no new sheet column is needed. Last row wins (rows arrive chronological). */
+  function reorderByCode() {
+    var m = {}; (S.stock || []).forEach(function (r) { if (String(r.type) !== "reorder") return; var k = String(r.code || "").trim(); if (k) m[k] = Number(r.qty) || 0; }); return m;
+  }
+  function rateByCode() {
+    var m = {}; (S.stock || []).forEach(function (r) { if (String(r.type) !== "rate") return; var k = String(r.code || "").trim(); if (k) m[k] = Number(r.qty) || 0; }); return m;
   }
   function viewStock() {
     if (S.imp) return viewStockImport();
@@ -7289,35 +7299,73 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="stock-refresh">Refresh</button></div></div>';
     if (!STOCK_LOADED && !(S.stock && S.stock.length)) return h + '<div class="empty">Loading stock…</div>';
     var mv = stockMovementByCode(), del = stockDeliveredByCode(), ret = stockReturnedByCode();
+    var reo = reorderByCode(), rate = rateByCode();
     var codes = {};
     Object.keys(mv.m).forEach(function (k) { codes[k] = 1; });
     Object.keys(del).forEach(function (k) { codes[k] = 1; });
+    Object.keys(reo).forEach(function (k) { codes[k] = 1; });
     var list = Object.keys(codes).map(function (k) {
       var p = (PRODUCTS.filter(function (x) { return x.code === k; })[0]) || {};
-      return { code: k, desc: p.desc || mv.desc[k] || k, brand: p.brand || "", inq: mv.m[k] || 0, del: del[k] || 0, ret: ret[k] || 0, onhand: (mv.m[k] || 0) - (del[k] || 0) + (ret[k] || 0) };
+      var onhand = (mv.m[k] || 0) - (del[k] || 0) + (ret[k] || 0);
+      var rl = reo[k] || 0, rt = rate[k] || 0;
+      return { code: k, desc: p.desc || mv.desc[k] || k, brand: p.brand || "", inq: mv.m[k] || 0, del: del[k] || 0, ret: ret[k] || 0,
+        onhand: onhand, reorder: rl, rate: rt, value: onhand > 0 ? onhand * rt : 0,
+        zero: onhand <= 0, low: rl > 0 && onhand <= rl };
     });
     if (!list.length) return h + '<div class="empty">No stock entries yet. Tap <b>Set opening stock</b> to key in your current counts, then log goods as they arrive. Deliveries already recorded on challans will deduct automatically.</div>';
     var q = String(S.q || "").trim().toLowerCase();
     if (q) list = list.filter(function (x) { return (x.code + " " + x.desc).toLowerCase().indexOf(q) >= 0; });
     list.sort(function (a, b) { return a.onhand - b.onhand; });
-    var low = list.filter(function (x) { return x.onhand <= 0; }).length;
+    var lowList = list.filter(function (x) { return x.low || x.zero; });
+    var totVal = list.reduce(function (s, x) { return s + (x.value || 0); }, 0);
     h += '<div class="row"><input class="grow" id="q" placeholder="Filter product / code…" value="' + esc(S.q) + '"/></div>';
-    if (low) h += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><b style="color:#b91c1c">' + low + ' item(s) at or below zero</b> &middot; restock, or add the goods-received entry that is missing.</div>';
+
+    if (lowList.length) {
+      h += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3 style="margin:0 0 3px;color:#b91c1c">Reorder now — ' + lowList.length + ' item(s)</h3>' +
+        '<div class="meta" style="font-size:12px">Out of stock, or at/below the reorder level you set. Tap one to buy against, or to adjust its level.</div>';
+      lowList.slice(0, 25).forEach(function (x) {
+        h += '<div class="acts" style="align-items:center;border-top:1px solid #fee2e2;margin-top:6px;padding-top:6px"><div class="grow"><b>' + esc(x.desc) + '</b> <span style="font-size:11px;color:#94a3b8">' + esc(x.code) + '</span>' +
+          '<br><span style="font-size:12px;color:#b91c1c">on hand <b>' + x.onhand + '</b>' + (x.reorder ? ' · reorder at ' + x.reorder : ' · no level set') + '</span></div>' +
+          '<button class="btn sm ghost" data-act="stock-item" data-code="' + esc(x.code) + '">Set level</button></div>';
+      });
+      h += '</div>';
+    }
+    if (totVal > 0) h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><b>Stock value (approx):</b> ' + money(totVal) + ' <span style="font-size:11px;color:#64748b">— on-hand × latest purchase rate, for items where a rate is set.</span></div>';
+
     h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
       '<thead><tr style="background:#0b3b36;color:#fff"><th style="padding:6px 8px;text-align:left">Product</th>' +
-      '<th style="padding:6px 8px;text-align:right">In</th><th style="padding:6px 8px;text-align:right">Delivered</th>' +
-      '<th style="padding:6px 8px;text-align:right">Returned</th><th style="padding:6px 8px;text-align:right">On hand</th></tr></thead><tbody>' +
+      '<th style="padding:6px 8px;text-align:right">On hand</th><th style="padding:6px 8px;text-align:right">Reorder</th>' +
+      '<th style="padding:6px 8px;text-align:right">Value</th></tr></thead><tbody>' +
       list.map(function (x, i) {
-        var neg = x.onhand <= 0;
-        return '<tr style="border-bottom:1px solid #eef2f7;background:' + (neg ? '#fef2f2' : (i % 2 ? '#f8fafc' : '#fff')) + '">' +
-          '<td style="padding:6px 8px"><div style="font-weight:600">' + esc(x.desc) + '</div><div style="font-size:11px;color:#94a3b8">' + esc(x.code) + (x.brand ? ' &middot; ' + esc(x.brand) : '') + '</div></td>' +
-          '<td style="padding:6px 8px;text-align:right">' + x.inq + '</td>' +
-          '<td style="padding:6px 8px;text-align:right">' + x.del + '</td>' +
-          '<td style="padding:6px 8px;text-align:right">' + x.ret + '</td>' +
-          '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + (neg ? '#b91c1c' : '#0f766e') + '">' + x.onhand + '</td></tr>';
+        var col = x.zero ? '#b91c1c' : (x.low ? '#c2410c' : '#0f766e');
+        var bg = x.zero ? '#fef2f2' : (x.low ? '#fff7ed' : (i % 2 ? '#f8fafc' : '#fff'));
+        return '<tr data-act="stock-item" data-code="' + esc(x.code) + '" style="border-bottom:1px solid #eef2f7;background:' + bg + ';cursor:pointer">' +
+          '<td style="padding:6px 8px"><div style="font-weight:600">' + esc(x.desc) + '</div><div style="font-size:11px;color:#94a3b8">' + esc(x.code) + (x.brand ? ' &middot; ' + esc(x.brand) : '') +
+          '<br>in ' + x.inq + ' &middot; del ' + x.del + ' &middot; ret ' + x.ret + (x.rate ? ' &middot; @' + money(x.rate) : '') + '</div></td>' +
+          '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + col + '">' + x.onhand + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;color:#64748b">' + (x.reorder ? x.reorder : '—') + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;color:#64748b">' + (x.value ? money(x.value) : '—') + '</td></tr>';
       }).join("") + '</tbody></table></div>' +
-      '<div class="meta" style="font-size:11.5px;margin-top:6px">Showing products with a stock entry or a delivery. Type in the filter to find one. Products never delivered and never stocked don’t appear until you add them.</div>';
+      '<div class="meta" style="font-size:11.5px;margin-top:6px">Tap any row to set its <b>reorder level</b> and <b>purchase rate</b>. Showing products with a stock entry, a delivery, or a reorder level.</div>';
     return h;
+  }
+
+  /* Per-item settings: reorder level + latest purchase rate. Saved as isolated "reorder"/"rate"
+     stock rows (admin/godown), so on-hand math is untouched and no sheet column is added. */
+  function modalStockItem(code) {
+    var mv = stockMovementByCode(), del = stockDeliveredByCode(), ret = stockReturnedByCode(), reo = reorderByCode(), rate = rateByCode();
+    var p = (PRODUCTS.filter(function (x) { return x.code === code; })[0]) || {};
+    var onhand = (mv.m[code] || 0) - (del[code] || 0) + (ret[code] || 0);
+    var lbl = 'style="font-size:12px;color:#475569;margin:8px 0 2px"';
+    var inp = 'style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"';
+    return '<h2 style="margin:0 0 2px">' + esc(p.desc || mv.desc[code] || code) + '</h2>' +
+      '<div class="meta" style="font-size:12px;margin-bottom:4px">' + esc(code) + (p.brand ? ' · ' + esc(p.brand) : '') + ' · on hand <b>' + onhand + '</b></div>' +
+      '<div ' + lbl + '>Reorder level (turn red when on-hand reaches this)</div>' +
+      '<input id="si_reorder" inputmode="numeric" value="' + esc(reo[code] || "") + '" placeholder="e.g. 20" ' + inp + '/>' +
+      '<div ' + lbl + '>Latest purchase rate (₹ / unit, optional — used for stock value)</div>' +
+      '<input id="si_rate" inputmode="decimal" value="' + esc(rate[code] || "") + '" placeholder="e.g. 250" ' + inp + '/>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="stock-item-save" data-code="' + esc(code) + '">Save</button></div>';
   }
   function modalStockAdd(type) {
     var title = type === "opening" ? "Set opening stock" : (type === "adjust" ? "Stock adjustment" : "Goods received");
@@ -7712,6 +7760,29 @@ function viewCatalogue() {
       api("stockSave", { row: _srow }).then(function (r) {
         if (r && r.ok) { S.stock = (S.stock || []).concat([_srow]); toast("Stock updated."); render(); }
         else { toast((r && r.error) || "Save failed — only admin/godown can edit stock."); }
+      }).catch(function () { toast("Save failed — check connection."); });
+      return;
+    }
+    if (act === "stock-item") { S.modal = modalStockItem(t.getAttribute("data-code")); render(); return; }
+    if (act === "stock-item-save") {
+      var _icode = t.getAttribute("data-code");
+      var _irl = String((el("si_reorder") || {}).value || "").trim();
+      var _irt = String((el("si_rate") || {}).value || "").trim();
+      var _saves = [];
+      if (_irl !== "") _saves.push({ type: "reorder", qty: Number(_irl) || 0 });
+      if (_irt !== "") _saves.push({ type: "rate", qty: Number(_irt) || 0 });
+      if (!_saves.length) { toast("Enter a reorder level or a rate first."); return; }
+      S.modal = null; render(); toast("Saving…");
+      var _proms = _saves.map(function (s) {
+        var row = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-" + s.type,
+          type: s.type, code: _icode, desc: "", qty: s.qty, ref: "", asOn: today(), notes: "" };
+        S.stock = (S.stock || []).concat([row]);
+        return api("stockSave", { row: row });
+      });
+      Promise.all(_proms).then(function (rs) {
+        var ok = rs.every(function (r) { return r && r.ok; });
+        toast(ok ? "Levels updated." : "Save failed — only admin/godown can edit stock.");
+        render();
       }).catch(function () { toast("Save failed — check connection."); });
       return;
     }
