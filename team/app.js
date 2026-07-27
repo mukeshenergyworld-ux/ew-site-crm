@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.141";
+  var APP_VERSION = "6.9.142";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -928,7 +928,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="grid2"><div><label>Architect</label>' + partnerSelect("s_arch", "architect", x.architect, true) + '</div>' +
       '<div><label>Plumber</label>' + partnerSelect("s_plumb", "plumber", x.plumber, true) + '</div></div>' +
       '<div class="meta" style="font-size:11px;color:#94a3b8;margin:-4px 0 6px">Pick from registered partners. A new man? Add him first (Partners tab or the client card) &mdash; mobile required.</div>' +
-      '<div class="grid2"><div><label>Builder / PMC</label><input id="s_build" value="' + esc(x.builder) + '"/></div>' +
+      '<div class="grid2"><div><label>Builder</label>' + partnerSelect("s_build", "builder", x.builder, false) + '</div>' +
       '<div><label>Owner (sales exec)</label>' + ownerField("s_owner", x.owner || x.createdBy, !x.id) + '</div></div>' +
       '<label>Notes</label><textarea id="s_notes">' + esc(x.notes) + '</textarea>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
@@ -1949,6 +1949,11 @@ window.addEventListener("beforeunload", function (ev) {
       (String(a.role || "").toLowerCase() === want ? primary : other).push(n);
     });
     (S.data.clients || []).forEach(function (x) {
+      var n = String(x[want] || "").trim(); if (n && !seen[n]) { seen[n] = 1; other.push(n); }
+    });
+    /* also surface anyone already named in this role on a SITE, so builders/architects entered
+       on projects stay pickable (and consistently spelled) next time. */
+    (S.data.sites || []).forEach(function (x) {
       var n = String(x[want] || "").trim(); if (n && !seen[n]) { seen[n] = 1; other.push(n); }
     });
     primary.sort(); other.sort();
@@ -9461,8 +9466,17 @@ function viewCatalogue() {
       }
       return;
     }
-    /* sites form never offers add-new; just guard the sentinel in case */
+    /* sites form: architect/plumber are register-first, so just guard the sentinel */
     if ((t.id === "s_arch" || t.id === "s_plumb") && t.value === "__new__") { t.value = ""; return; }
+    /* builder: a lighter partner — allow adding a name on the spot (no mobile needed). It becomes a
+       reusable, consistently-spelled option next time via partnerNames' site scan. */
+    if (t.id === "s_build" && t.value === "__new__") {
+      var nb = String(window.prompt("New builder name") || "").trim();
+      if (!nb) { t.value = ""; return; }
+      var dup = Array.prototype.slice.call(t.options).filter(function (o) { return o.value === nb; })[0];
+      if (!dup) { var ob = document.createElement("option"); ob.value = nb; ob.textContent = nb; t.insertBefore(ob, t.options[1] || null); }
+      t.value = nb; return;
+    }
 
     /* pick a known driver and his number, vehicle and usual fare fill themselves in */
     if (t.id === "m_driver") {
