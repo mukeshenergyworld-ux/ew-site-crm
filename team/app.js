@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.139";
+  var APP_VERSION = "6.9.140";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1890,6 +1890,51 @@ window.addEventListener("beforeunload", function (ev) {
       '<datalist id="ew_clientlist">' + list.map(function (n) {
         return '<option value="' + esc(n) + '"></option>';
       }).join("") + '</datalist>';
+  }
+
+  /* STRICT client picker for the delivery challan: a real <select>, not a free-text datalist, so a
+     challan can only ever be raised against a REGISTERED client. The name is then always exact —
+     which is what the pre-set brand-discount lookup keys on. A typed or near-match name used to
+     silently lose the discount. Not in the list → "+ Register new" first. */
+  function chClientField(value) {
+    var clients = (S.data.clients || []).slice().sort(function (a, b) {
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    });
+    var raw = String(value || "");
+    var matched = clientByName(raw);
+    var sel = matched ? matched.name : raw;
+    var inList = clients.some(function (c) { return c.name === sel; });
+    /* preserve an unregistered name on an old challan being edited, so a save never blanks it */
+    var extra = (sel && !inList) ? '<option value="' + esc(sel) + '" selected>' + esc(sel) + ' (unregistered)</option>' : '';
+    var options = '<option value="">— Select a registered client —</option>' + extra +
+      clients.map(function (c) {
+        return '<option value="' + esc(c.name) + '"' + (c.name === sel ? ' selected' : '') + '>' + esc(c.name) + '</option>';
+      }).join("");
+    return '<label>Client <span style="color:#ef4444">*</span></label>' +
+      '<div class="row">' +
+      '<select class="grow" id="m_client">' + options + '</select>' +
+      '<button class="btn sm ghost" data-act="cl-inline" data-for="m_client">+ Register new</button>' +
+      '</div>' +
+      '<div class="meta" style="font-size:11px;color:#94a3b8;margin:2px 0 0">A challan can only be raised against a registered client / lead — this keeps the name exact so the preset discount always applies. Not listed? Tap <b>+ Register new</b> first.</div>' +
+      '<div id="m_disc_flash">' + presetFlashHtml(sel) + '</div>';
+  }
+
+  /* The reassuring "flash": show the client's pre-set brand discounts right on the challan form, so
+     the user SEES the bargain that will be frozen onto every line at billing time. */
+  function presetFlashHtml(name) {
+    var c = clientByName(name); if (!c) return '';
+    var t = String(c.name).trim().toLowerCase();
+    var drows = (S.data.discounts || []).filter(function (x) {
+      return String(x.client || "").trim().toLowerCase() === t && (Number(x.pct) || 0) > 0;
+    }).sort(function (a, b) { return String(a.brand || "").localeCompare(String(b.brand || "")); });
+    if (!drows.length) {
+      return '<div class="meta" style="font-size:12px;color:#64748b;margin-top:6px">No preset discount set for this client.</div>';
+    }
+    return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;margin-top:8px;padding:10px 12px">' +
+      '<h3 style="margin:0;font-size:13px">Preset discount for ' + esc(c.name) + ' — applied automatically at billing</h3>' +
+      '<div class="meta" style="margin-top:5px">' +
+      drows.map(function (d) { return '<span class="pill teal" style="margin:2px 5px 2px 0">' + esc(d.brand) + ' ' + (Number(d.pct) || 0) + '%</span>'; }).join("") +
+      '</div></div>';
   }
 
   /* ---- partner dropdowns + the weekly "names missing" push ----
@@ -6941,7 +6986,7 @@ function viewCatalogue() {
       (isEdit && z.editStatus === "Approved" ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#b45309">This challan is <b>Approved</b>. Saving a change sends it back to <b>Draft</b> so it must be approved again before dispatch - approval releases material and can\'t carry over to changed contents.</div>' : "") +
       ((z && z.fromQuote) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#0d9488">Pre-filled from quote <b>' + esc(z.fromQuote) + '</b> - review the products and discount, then create.</div>' : "") +
       '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, (z && z.loc) || LOCATIONS[0]) + '</select>' +
-      clientField("m_client", (S.ch && S.ch.client) || "") +
+      chClientField((S.ch && S.ch.client) || "") +
       '<label>Site (optional)</label><input id="m_site" list="sitelist" placeholder="Site / project" value="' + esc((z && z.site) || "") + '"/>' +
       '<datalist id="sitelist">' + sites.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
       '<label>Referring partner (optional)</label><select id="m_assoc">' +
@@ -7488,6 +7533,13 @@ function viewCatalogue() {
     /* Part 4: partner monthly-statement month picker. */
     var pmo = el("pmonth");
     if (pmo) pmo.addEventListener("change", function (e) { S.pMonth = e.target.value; render(); });
+    /* Challan strict client dropdown: refresh the preset-discount flash live, and remember the pick
+       so an inline "+ Register new" round-trip (or any re-render) keeps it selected. */
+    var mcl = el("m_client");
+    if (mcl) mcl.addEventListener("change", function (e) {
+      if (S.ch) S.ch.client = e.target.value;
+      var fl = el("m_disc_flash"); if (fl) fl.innerHTML = presetFlashHtml(e.target.value);
+    });
     /* Stock import: read an uploaded Tally CSV export and jump straight to the review step. */
     var impf = el("imp_file");
     if (impf) {
@@ -7826,7 +7878,7 @@ function viewCatalogue() {
           if (back) {
             S.clBack = null;
             if (back.keep) back.keep[back.forId] = r.name;
-            if (back.modal === "challan") S.modal = modalChallan();
+            if (back.modal === "challan") { if (S.ch) S.ch.client = r.name; S.modal = modalChallan(); }
             else if (back.modal === "return") S.modal = modalReturn();
             else if (back.modal === "old") S.modal = modalOldChallan();
             render();
@@ -9113,7 +9165,8 @@ function viewCatalogue() {
     }
     if (act === "ch-save") {
       var cn = val("m_client");
-      if (!cn) { toast("Enter the client."); return; }
+      if (!cn) { toast("Pick a registered client from the list, or tap + Register new."); return; }
+      if (!clientByName(cn)) { toast("“" + cn + "” isn’t a registered client — register it first so the preset discount applies."); return; }
       var lines = (S.ch && S.ch.items) || [];
       if (!lines.length) { toast("Pick at least one product."); return; }
       var cObj = clientByName(cn) || {};
