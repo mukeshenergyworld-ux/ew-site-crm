@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.148";
+  var APP_VERSION = "6.9.149";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4867,12 +4867,14 @@ function viewCatalogue() {
   function hisabClientNames() {
     var seen = {}, out = [];
     var add = function (nm) { if (nm && !seen[nm]) { seen[nm] = 1; out.push(nm); } };
-    (S.data.challans || []).forEach(function (c) {
-      if (String(c.receiptReceived).toUpperCase() === "Y") add(c.customerName);
-    });
-    /* v6.9.114: a client with an OLD pending balance (entered on the lead) or any payment
-       received shows in HISAB immediately - no need to wait for the first challan. */
-    (S.data.clients || []).forEach(function (c) { if ((Number(c.openingAmt) || 0) > 0) add(c.name); });
+    /* Any challan for a client — ANY status — makes them findable in HISAB. A just-dispatched or
+       approved challan (receipt not yet confirmed) no longer counts in the money, but the client is
+       still visible so you can find them and confirm the receipt from here. */
+    (S.data.challans || []).forEach(function (c) { add(c.customerName); });
+    /* v6.9.114 / v6.9.149: a client with an opening balance shows in HISAB immediately — no need to
+       wait for the first received challan. Opening can be a DEBIT (they owe) or a CREDIT/advance
+       (minus), so include any NON-ZERO opening, not only positive. */
+    (S.data.clients || []).forEach(function (c) { if ((Number(c.openingAmt) || 0) !== 0) add(c.name); });
     (S.data.payments || []).forEach(function (p) { add(p.client); });
     return out.sort();
   }
@@ -4917,6 +4919,15 @@ function viewCatalogue() {
          any old balance brought forward, so Billed - Received - Returns = Outstanding stays consistent. */
       return { name: nm, owner: cl.ownedBy || cl.createdBy || "", net: net + opening, paid: paid, returned: returned, due: net + opening - paid - returned };
     }).filter(function (r) { return r.due > 0.5; });
+  }
+  /* Clients whose net balance is a CREDIT (we hold their money / advance / an over-payment / a minus
+     opening balance). These never showed in the outstanding list (which is due > 0), so a minus-balance
+     client like an advance-paying customer was invisible. Surfaced as their own section. */
+  function hisabCredits() {
+    return hisabClientNames().map(function (nm) {
+      var l = clientLedger(nm), cl = clientByName(nm) || {};
+      return { name: nm, owner: cl.ownedBy || cl.createdBy || "", due: l.due };
+    }).filter(function (r) { return r.due < -0.5; });
   }
   /* v6.9.133 — CREDIT_DAYS is Energy World's payment window (trade credit). Anything owed PAST this
      many days is "overdue" (money to chase). Change this one number to re-tune every overdue line in
@@ -4975,7 +4986,11 @@ function viewCatalogue() {
     if (!S.q) {
       var outs = hisabOutstanding();
       if (!seesAllClients()) outs = outs.filter(function (r) { return isMineClient(r.name); });
-      if (!outs.length) return h + '<div class="empty">No outstanding balances &mdash; every received challan is fully paid. Type a client above to view their hisab.</div>';
+      var credits = hisabCredits();
+      if (!seesAllClients()) credits = credits.filter(function (r) { return isMineClient(r.name); });
+      if (!outs.length && !credits.length) return h + '<div class="empty">No outstanding balances &mdash; every received challan is fully paid. Type a client above to view their hisab.</div>';
+      var oh = '';
+      if (outs.length) {
       var groups = {};
       outs.forEach(function (r) { var k = r.owner || "Unassigned"; (groups[k] = groups[k] || []).push(r); });
       var gtot = function (k) { return groups[k].reduce(function (s, r) { return s + r.due; }, 0); };
@@ -4986,7 +5001,7 @@ function viewCatalogue() {
       var agg = { cur: 0, d30: 0, d60: 0, d90: 0 };
       outs.forEach(function (r) { agg.cur += r.ag.b.cur; agg.d30 += r.ag.b.d30; agg.d60 += r.ag.b.d60; agg.d90 += r.ag.b.d90; });
       var overdueTot = outs.reduce(function (a, r) { return a + (r.ag ? r.ag.overdue : 0); }, 0);
-      var oh = '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3>Outstanding &mdash; ' + money(totalDue) + ' across ' + outs.length + ' client(s)</h3>' +
+      oh += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3>Outstanding &mdash; ' + money(totalDue) + ' across ' + outs.length + ' client(s)</h3>' +
         '<div class="meta" style="font-size:13px">Grouped by sales executive &middot; net of pre-set discounts. Tap a client to open their hisab.</div></div>';
       /* Ageing strip: how the outstanding splits by how long it has been owed. 60+ days is money to
          chase hard. Buckets are 0-30 / 31-60 / 61-90 / 90+ days from delivery (payments clear oldest
@@ -5023,6 +5038,21 @@ function viewCatalogue() {
               '<td style="padding:7px 8px;text-align:right;font-weight:800;color:#dc2626">' + money(r.due) + '</td></tr>';
           }).join("") + '</tbody></table></div></div>';
       });
+      }
+      /* In-credit / advance clients — money we hold or a minus opening balance. Shown as their own
+         green section so they're never invisible just because their balance isn't a debit. */
+      if (credits.length) {
+        var credTot = credits.reduce(function (a, r) { return a + r.due; }, 0);
+        oh += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 4px">In credit / advance &mdash; ' + money(-credTot) + ' across ' + credits.length + ' client(s)</h3>' +
+          '<div class="meta" style="font-size:12.5px">These clients have a credit balance (advance paid, an over-payment, or a minus opening balance). Tap to open the ledger.</div>' +
+          '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+          '<thead><tr style="background:#e2f5f1;color:#0b3b36"><th style="padding:6px 8px;text-align:left">Client</th><th style="padding:6px 8px;text-align:right">In credit</th></tr></thead><tbody>' +
+          credits.slice().sort(function (a, b) { return a.due - b.due; }).map(function (r, i) {
+            return '<tr style="border-bottom:1px solid #dcfce7;cursor:pointer;background:' + (i % 2 ? '#f8fafc' : '#fff') + '" data-act="bill-open" data-n="' + esc(r.name) + '">' +
+              '<td style="padding:7px 8px;font-weight:600;color:#0d766c">' + esc(r.name) + '</td>' +
+              '<td style="padding:7px 8px;text-align:right;font-weight:800;color:#0d9488">' + money(-r.due) + '</td></tr>';
+          }).join("") + '</tbody></table></div></div>';
+      }
       return h + oh;
     }
     if (!cl) {
@@ -5032,7 +5062,39 @@ function viewCatalogue() {
     }
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }))
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
-    if (!chs.length) return h + '<div class="empty">No received challans for <b>' + esc(cl) + '</b> yet. A challan lands here automatically once its receipt is confirmed.</div>';
+    if (!chs.length) {
+      /* No receipt-confirmed challan yet. Still show the client if they carry an opening balance, a
+         booked return, or a challan that's only approved/dispatched — so a case like "minus opening +
+         a dispatched challan" is never a dead end, and the pending challan can be receipt-confirmed
+         right from here (which then brings it into the account). */
+      var _l0 = clientLedger(cl);
+      var _pending = (S.data.challans || []).filter(function (c) {
+        return c.customerName === cl && String(c.receiptReceived).toUpperCase() !== "Y" &&
+          ["Approved", "Dispatched"].indexOf(String(c.status)) >= 0;
+      });
+      if (!_l0.opening && !_pending.length && !(_l0.rets || []).length) {
+        return h + '<div class="empty">No received challans for <b>' + esc(cl) + '</b> yet. A challan lands here automatically once its receipt is confirmed.</div>';
+      }
+      var _oh = '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 4px">Client ledger &mdash; ' + esc(cl) + '</h3>' +
+        '<div class="meta" style="font-size:13.5px">' +
+        (_l0.opening ? 'Opening balance: <b style="color:' + (_l0.opening < 0 ? '#0d9488' : '#dc2626') + '">' + money(_l0.opening) + (_l0.opening < 0 ? ' (advance / credit)' : '') + '</b> &middot; ' : '') +
+        'Received: <b>' + money(_l0.paid) + '</b> &middot; ' +
+        (_l0.returned > 0 ? 'Returns (&minus;): <b style="color:#dc2626">' + money(_l0.returned) + '</b> &middot; ' : '') +
+        'Balance: <b style="color:' + (_l0.due > 0 ? '#dc2626' : '#0d9488') + '">' + money(_l0.due) + (_l0.due < -0.5 ? ' (in credit)' : '') + '</b></div>' +
+        (canSee("payments") && _l0.due > 0 ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '">&#8377; Payment received</button></div>' : '') +
+        '</div>';
+      if (_pending.length) {
+        _oh += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3 style="margin:0 0 3px;font-size:14px">Not in the account yet &mdash; ' + _pending.length + ' challan(s)</h3>' +
+          '<div class="meta" style="font-size:12.5px">Approved / dispatched, but the <b>receipt isn\'t confirmed</b>, so they don\'t count in the balance yet. Confirm receipt and they move into the ledger.</div>';
+        _pending.sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); }).forEach(function (c) {
+          _oh += '<div class="acts" style="align-items:center;border-top:1px solid #fef3c7;margin-top:6px;padding-top:6px"><div class="grow"><b>' + esc(c.challanNo) + '</b> <span class="pill teal">' + esc(String(c.status)) + '</span>' +
+            '<br><span style="font-size:11px;color:#64748b">' + esc(d10(c.createdAt)) + (c.site ? ' &middot; ' + esc(c.site) : '') + '</span></div>' +
+            (canSee("billing") ? '<button class="btn sm act-receipt" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Receipt received</button>' : '') + '</div>';
+        });
+        _oh += '</div>';
+      }
+      return h + _oh;
+    }
     var admin = S.role === "admin";
     var allNet = 0, selNet = 0, selGoods = 0, selCount = 0;
     chs.forEach(function (c) {
