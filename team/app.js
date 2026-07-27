@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.142";
+  var APP_VERSION = "6.9.143";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -9380,6 +9380,11 @@ function viewCatalogue() {
       /* Approving a dispatch releases real material. A pocket tap must not do that, so the PIN
          is asked again here - the same one used to sign in, nothing new to remember. */
       if (to === "Approved" || to === "Dispatched") {
+        /* In-flight lock: while a move for this challan is being saved, ignore further taps on it.
+           Stops a double-tap (or an impatient re-tap during a slow save) firing two moves — the
+           thing that used to send the dispatch bot TWO copies. */
+        S.chMoving = S.chMoving || {};
+        if (S.chMoving[id]) { toast("Still saving " + ch2.challanNo + " — one moment."); return; }
         var pin = window.prompt("Enter your PIN to " + (to === "Approved" ? "APPROVE" : "DISPATCH") +
           "\n\n" + ch2.challanNo + " - " + ch2.customerName +
           "\n\nThis releases material. It is not a formality.");
@@ -9392,20 +9397,32 @@ function viewCatalogue() {
         if (to === "Approved") { ch2.approvedBy = S.user; toast("Approved."); }
         else { toast("Dispatched."); }
         render();
+        S.chMoving[id] = true;
         var revert = function (msg) {
           ch2.status = prevStatus; ch2.approvedBy = prevBy;
           toast(msg || ("Could not " + (to === "Approved" ? "approve" : "dispatch") + " - reverted."));
           render();
         };
         api("challanMove", { id: id, to: to, approvePin: pin }).then(function (r) {
+          S.chMoving[id] = false;
           if (!r || !r.ok) { revert(r && r.error); return; }
           if (to === "Approved") { ch2.approvedBy = r.by || S.user; render(); return; }
+          /* Notify the dispatch bot AT MOST ONCE per challan. Even if an earlier attempt looked like
+             it failed and the user dispatched again, the bot gets exactly one copy. Set the guard
+             BEFORE sending so two near-simultaneous sends can never both pass it. */
+          S.dispatchSent = S.dispatchSent || {};
+          if (S.dispatchSent[id]) { toast("Already sent to dispatch bot."); return; }
+          S.dispatchSent[id] = true;
           sendChallanPdf(ch2, "TG_DISPATCH",
             "<b>DISPATCH: " + ch2.challanNo + "</b>\n" + ch2.customerName +
             (ch2.driver ? "\nDriver: " + ch2.driver : "") +
             "\nApproved by <b>" + (ch2.approvedBy || r.by) + "</b>", ch2.approvedBy || r.by)
-            .then(function (tg) { toast(tg && tg.ok ? "Sent to dispatch bot." : "Dispatch done, Telegram send failed."); });
-        }).catch(function () { revert("Network error - reverted."); });
+            .then(function (tg) {
+              if (tg && tg.ok) { toast("Sent to dispatch bot."); }
+              else { toast("Dispatched — but the Telegram message didn't go. Download the PDF and send it manually."); }
+            })
+            .catch(function () { toast("Dispatched — Telegram send failed. Download the PDF and send it manually."); });
+        }).catch(function () { S.chMoving[id] = false; revert("Network error - reverted."); });
         return;
       }
       /* SNAPPY: flip instantly, validate in the background, revert on refusal (no full refresh). */
