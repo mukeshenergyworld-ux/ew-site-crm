@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.151";
+  var APP_VERSION = "6.9.152";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -233,7 +233,7 @@
       var l2 = pendLoad();
       if (i >= l2.length) {
         _retrying = false;
-        render();
+        renderBg();
         if (!pendCount()) toast("All pending records are now saved.");
         else if (okCount) toast(okCount + " saved. " + pendCount() + " still held — the banner shows the server's reason.");
         return;
@@ -340,7 +340,7 @@
     if (list.length) {
       _pendPoll = setTimeout(function () {
         if (S.tab !== "pending") return;
-        if (online && pendCount()) retryPending(); else render();
+        if (online && pendCount()) retryPending(); else renderBg();
       }, 8000);
     }
     var statusPill = online
@@ -418,7 +418,7 @@
     /* A "quiet" save (used by the discount / incentive editor) skips the repaint so the field being
        typed in is never torn down mid-edit and focus can never jump to the search box. The row is
        already in memory and journaled, so nothing is lost. */
-    if (!quiet) render();
+    if (!quiet) renderBg();
     var payload = Object.assign({}, fullRow); delete payload._lid;   // local-only key never leaves the device
     var done = function () { S.pending = Math.max(0, (S.pending || 1) - 1); };
     return api("teamSave", { tab: tab, row: payload }).then(function (r) {
