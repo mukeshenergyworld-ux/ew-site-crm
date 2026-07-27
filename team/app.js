@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.150";
+  var APP_VERSION = "6.9.151";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1247,6 +1247,7 @@ window.addEventListener("beforeunload", function (ev) {
         '<div class="acts">' +
         (x.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.mobile) + '">Call</a>' : "") +
         '<button class="btn sm" data-act="visit-new" data-id="' + esc(x.id) + '">Log visit</button>' +
+        '<button class="btn sm ghost" data-act="svc-ledger" data-n="' + esc(x.client) + '">Service hisab</button>' +
         '<button class="btn sm ghost" data-act="inst-open" data-id="' + esc(x.id) + '">Edit</button></div></div>';
     });
     return h;
@@ -1294,6 +1295,51 @@ window.addEventListener("beforeunload", function (ev) {
       });
       h += '</div></div>';
     });
+    return h;
+  }
+
+  /* ---- SERVICE LEDGER (service/AMC hisab, separate from the goods HISAB) ----
+     Every service visit carries total (billed), collected (paid) and balance (due). A client's service
+     ledger is the sum + list of their visits. Kept apart from the goods ledger so the two never mix. */
+  function serviceLedger(client) {
+    var vs = (S.data.visits || []).filter(function (v) { return v.client === client; })
+      .slice().sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+    var billed = vs.reduce(function (a, v) { return a + (Number(v.total) || 0); }, 0);
+    var collected = vs.reduce(function (a, v) { return a + (Number(v.collected) || 0); }, 0);
+    var due = vs.reduce(function (a, v) { return a + (Number(v.balance) || 0); }, 0);
+    return { visits: vs, billed: billed, collected: collected, due: due };
+  }
+  /* A compact service-ledger card + "View service hisab" button, reused in the goods HISAB and the
+     Service tab. Renders nothing if the client has no service activity. */
+  function serviceLedgerCard(client) {
+    var l = serviceLedger(client);
+    if (!l.visits.length && !l.billed) return '';
+    return '<div class="card" style="border-color:#c7d2fe;background:#eef2ff"><h3 style="margin:0 0 2px;font-size:14px">Service ledger</h3>' +
+      '<div class="meta" style="font-size:13px">Service billed: <b>' + money(l.billed) + '</b> &middot; collected: <b>' + money(l.collected) + '</b> &middot; due: <b style="color:' + (l.due > 0 ? '#dc2626' : '#0d9488') + '">' + money(l.due) + '</b> &middot; ' + l.visits.length + ' visit(s)</div>' +
+      '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="svc-ledger" data-n="' + esc(client) + '">View service hisab</button></div></div>';
+  }
+  function modalServiceLedger(client) {
+    var l = serviceLedger(client);
+    var h = '<h2 style="margin:0 0 2px">Service hisab &mdash; ' + esc(client) + '</h2>' +
+      '<div class="card" style="border-color:#c7d2fe;background:#eef2ff"><div class="meta" style="font-size:13.5px">' +
+      'Service billed: <b>' + money(l.billed) + '</b> &middot; Collected: <b>' + money(l.collected) + '</b> &middot; ' +
+      'Due: <b style="color:' + (l.due > 0 ? '#dc2626' : '#0d9488') + '">' + money(l.due) + '</b></div></div>';
+    if (!l.visits.length) h += '<div class="empty">No service visits logged for this client yet.</div>';
+    else {
+      h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+        '<thead><tr style="background:#0b3b36;color:#fff"><th style="padding:6px;text-align:left">Date</th><th style="padding:6px;text-align:left">Type</th><th style="padding:6px;text-align:left">Engineer</th><th style="padding:6px;text-align:right">Billed</th><th style="padding:6px;text-align:right">Paid</th><th style="padding:6px;text-align:right">Due</th></tr></thead><tbody>' +
+        l.visits.map(function (v, i) {
+          var due = Number(v.balance) || 0;
+          return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' +
+            '<td style="padding:5px 6px">' + esc(dstr(v.date)) + '</td>' +
+            '<td style="padding:5px 6px">' + esc(v.type || '') + '</td>' +
+            '<td style="padding:5px 6px">' + esc(v.engineer || '') + '</td>' +
+            '<td style="padding:5px 6px;text-align:right">' + money(v.total) + '</td>' +
+            '<td style="padding:5px 6px;text-align:right">' + money(v.collected) + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;font-weight:700;color:' + (due > 0 ? '#dc2626' : '#0d9488') + '">' + money(v.balance) + '</td></tr>';
+        }).join("") + '</tbody></table></div>';
+    }
+    h += '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
     return h;
   }
 
@@ -5057,8 +5103,11 @@ function viewCatalogue() {
         '</div></div>';
       gkeys.forEach(function (k) {
         var rows = groups[k].slice().sort(function (a, b) { return (b.ag ? b.ag.oldest : 0) - (a.ag ? a.ag.oldest : 0) || b.due - a.due; });
-        oh += '<div class="card"><h3>' + esc(k) + ' <span class="pill due">' + money(gtot(k)) + '</span> <span style="font-weight:400;color:#94a3b8;font-size:12.5px">' + rows.length + ' client(s)</span></h3>' +
-          '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+        /* Collapsible per-executive. The logged-in person's OWN group is open by default; every other
+           executive shows just its total, expandable on tap — a clean overview for the owner. Explicit
+           taps are remembered in S.hisabExp. */
+        var expanded = (S.hisabExp && (k in S.hisabExp)) ? !!S.hisabExp[k] : (k === S.user || gkeys.length === 1);
+        var _tbl = '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
           '<thead><tr style="background:#f1f5f9;color:#475569"><th style="padding:6px 8px;text-align:left">Client</th>' +
           '<th style="padding:6px 8px;text-align:center">Age</th>' +
           '<th style="padding:6px 8px;text-align:right">Billed (net)</th><th style="padding:6px 8px;text-align:right">Received</th>' +
@@ -5072,7 +5121,11 @@ function viewCatalogue() {
               '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.net) + '</td>' +
               '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.paid) + '</td>' +
               '<td style="padding:7px 8px;text-align:right;font-weight:800;color:#dc2626">' + money(r.due) + '</td></tr>';
-          }).join("") + '</tbody></table></div></div>';
+          }).join("") + '</tbody></table></div>';
+        oh += '<div class="card"><h3 data-act="hisab-grp" data-k="' + esc(k) + '" style="margin:0;cursor:pointer;user-select:none">' +
+          '<span style="display:inline-block;width:16px;color:#94a3b8">' + (expanded ? '&#9662;' : '&#9656;') + '</span>' +
+          esc(k) + ' <span class="pill due">' + money(gtot(k)) + '</span> <span style="font-weight:400;color:#94a3b8;font-size:12.5px">' + rows.length + ' client(s)' + (expanded ? '' : ' &middot; tap to view') + '</span></h3>' +
+          (expanded ? _tbl : '') + '</div>';
       });
       }
       /* In-credit / advance clients — money we hold or a minus opening balance. Shown as their own
@@ -5129,6 +5182,7 @@ function viewCatalogue() {
         });
         _oh += '</div>';
       }
+      _oh += serviceLedgerCard(cl);
       return h + _oh;
     }
     var admin = S.role === "admin";
@@ -5173,13 +5227,8 @@ function viewCatalogue() {
         ? '<div style="flex:1 1 auto;text-align:center;min-width:110px;align-self:center">' +
             '<span style="display:inline-block;font-size:13px;font-weight:700;color:#0b3b36;background:#ecfdf5;border:1px solid #99f6e4;border-radius:999px;padding:3px 12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">' + esc(c.site) + '</span></div>'
         : '';
-      h += '<div class="card" style="' + (sel ? '' : 'opacity:.5') + '">' +
-        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
-        '<h3 style="margin:0">' +
-        '<label style="cursor:pointer;font-size:15px"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label> <span class="pill teal">' + esc(d10(c.createdAt)) + '</span></h3>' +
-        siteBlock +
-        billBlock + '</div>' +
-        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0">' +
+      var _chExp = !!(S.chExp && S.chExp[c.id]);
+      var _ctbl = '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0">' +
         '<thead><tr style="background:#0b3b36;color:#fff">' +
         '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product</th>' +
         '<th style="padding:6px;text-align:center;width:40px">Qty</th><th style="padding:6px;text-align:right;width:66px">Rate</th>' +
@@ -5188,7 +5237,15 @@ function viewCatalogue() {
         (frt > 0 ? '<tr style="background:#fffbeb;border-top:1px dashed #e2e8f0"><td colspan="6" style="padding:5px 6px;text-align:right;color:#92400e">Freight' + (c.driver ? ' (' + esc(c.driver) + ')' : '') + '</td><td style="padding:5px 6px;text-align:right;font-weight:700;color:#92400e">' + money(frt) + '</td></tr>' : '') +
         '</tbody>' +
         '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total</td>' +
-        '<td style="padding:6px;text-align:right;font-weight:800">' + money(chTotal) + '</td></tr></tfoot></table></div></div>';
+        '<td style="padding:6px;text-align:right;font-weight:800">' + money(chTotal) + '</td></tr></tfoot></table></div>';
+      h += '<div class="card" style="' + (sel ? '' : 'opacity:.5') + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+        '<h3 style="margin:0">' +
+        '<label style="cursor:pointer;font-size:15px"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label> <span class="pill teal">' + esc(d10(c.createdAt)) + '</span></h3>' +
+        siteBlock +
+        billBlock + '</div>' +
+        '<div class="acts" style="align-items:center;margin-top:6px"><button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '">' + (_chExp ? '&#9662; Hide items' : '&#9656; Show ' + priced.length + ' item(s)') + '</button><div class="grow"></div><span style="font-size:13px;color:#334155">Total <b>' + money(chTotal) + '</b></span></div>' +
+        (_chExp ? _ctbl : '') + '</div>';
     });
     /* v6.9.121: booked-in material returns show here like a challan in reverse — a red card whose
        amounts are negative and which credit (reduce) the client's balance. Only "Received" returns. */
@@ -5248,6 +5305,7 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="bill-wa">WhatsApp statement</button>' +
       '<button class="btn sm ghost" data-act="bill-pdf">Download PDF</button>' +
       '</div></div>';
+    h += serviceLedgerCard(cl);
     return h;
   }
 
@@ -7620,7 +7678,23 @@ function viewCatalogue() {
     return h;
   }
 
+  /* Thin, unobtrusive scrollbars everywhere. The default OS scrollbar was a thick bar that sat over
+     the side-nav tabs and the data tables, making tabs hard to tap while scrolling. */
+  function ensureCoreCss() {
+    if (document.getElementById("ew_core_css")) return;
+    var s = document.createElement("style"); s.id = "ew_core_css";
+    s.textContent =
+      "*{scrollbar-width:thin;scrollbar-color:rgba(100,116,139,.4) transparent}" +
+      "::-webkit-scrollbar{width:7px;height:7px}" +
+      "::-webkit-scrollbar-track{background:transparent}" +
+      "::-webkit-scrollbar-thumb{background:rgba(100,116,139,.35);border-radius:8px}" +
+      "::-webkit-scrollbar-thumb:hover{background:rgba(100,116,139,.55)}" +
+      "nav{scrollbar-width:thin}nav::-webkit-scrollbar{width:5px}" +
+      "nav button{position:relative;z-index:1}";
+    document.head.appendChild(s);
+  }
   function renderCore() {
+    try { ensureCoreCss(); } catch (e) { }
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
     var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, stock: viewStock };
@@ -8173,6 +8247,15 @@ function viewCatalogue() {
     if (act === "bf-mode") { S.bfMode = t.getAttribute("data-m") === "client" ? "client" : "lead"; render(); return; }
     if (act === "bill-go") { render(); return; }
     if (act === "bill-open") { S.q = t.getAttribute("data-n"); render(); return; }
+    if (act === "hisab-grp") {
+      var gk = t.getAttribute("data-k"); S.hisabExp = S.hisabExp || {};
+      var cur = (gk in S.hisabExp) ? !!S.hisabExp[gk] : (gk === S.user);
+      S.hisabExp[gk] = !cur; render(); return;
+    }
+    if (act === "ch-detail") {
+      var cid = t.getAttribute("data-id"); S.chExp = S.chExp || {};
+      S.chExp[cid] = !S.chExp[cid]; render(); return;
+    }
     if (act === "bill-gst") { S.billGst = !S.billGst; render(); return; }
     if (act === "bill-selall") {
       if (!S.billSel) S.billSel = {};
@@ -8562,6 +8645,7 @@ function viewCatalogue() {
     }
     if (act === "inst-new") { S.modal = modalInstall(null); render(); return; }
     if (act === "inst-open") { S.modal = modalInstall(installById(id)); render(); return; }
+    if (act === "svc-ledger") { S.modal = modalServiceLedger(t.getAttribute("data-n")); render(); return; }
     if (act === "inst-save") {
       var ic = val("i_client");
       if (!ic) { toast("Pick a won client from the list."); return; }
