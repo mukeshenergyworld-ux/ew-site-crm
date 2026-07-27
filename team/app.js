@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.152";
+  var APP_VERSION = "6.9.153";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4551,11 +4551,20 @@ function viewCatalogue() {
       g.clientOrder.sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; });
       /* the exec band only earns its space when more than one exec is on screen (i.e. admin/accounts);
          for a single sales exec it would just repeat their own name over and over. */
-      if (seesAllClients()) {
-        h += '<div class="ch-exec">' + esc(exec) +
+      var grouped = seesAllClients();
+      /* v6.9.153: collapsible per-executive, same as HISAB. The logged-in person's OWN group is open
+         by default; every other executive collapses to just its client/challan count, expandable on
+         tap — so the owner gets a clean overview instead of one endless scroll. Remembered in
+         S.chGrpExp. Only applies when the exec band is shown (admin / accounts). */
+      var gExpanded = !grouped ? true :
+        ((S.chGrpExp && (exec in S.chGrpExp)) ? !!S.chGrpExp[exec] : (exec === S.user || execOrder.length === 1));
+      if (grouped) {
+        h += '<div class="ch-exec" data-act="ch-grp" data-k="' + esc(exec) + '" style="cursor:pointer;user-select:none">' +
+          '<span style="display:inline-block;width:15px;color:#94a3b8">' + (gExpanded ? '&#9662;' : '&#9656;') + '</span>' + esc(exec) +
           '<span class="sub">' + g.clientOrder.length + ' client' + (g.clientOrder.length > 1 ? 's' : '') +
-          ' &middot; ' + g.n + ' challan' + (g.n > 1 ? 's' : '') + '</span></div>';
+          ' &middot; ' + g.n + ' challan' + (g.n > 1 ? 's' : '') + (gExpanded ? '' : ' &middot; tap to view') + '</span></div>';
       }
+      if (!gExpanded) return;
       g.clientOrder.forEach(function (clientName) {
         var chs = g.clients[clientName];
         /* v6.9.126: the client header is a tappable link straight into that client's full HISAB. */
@@ -8255,6 +8264,11 @@ function viewCatalogue() {
     if (act === "ch-detail") {
       var cid = t.getAttribute("data-id"); S.chExp = S.chExp || {};
       S.chExp[cid] = !S.chExp[cid]; render(); return;
+    }
+    if (act === "ch-grp") {
+      var _cgk = t.getAttribute("data-k"); S.chGrpExp = S.chGrpExp || {};
+      var _cgcur = (_cgk in S.chGrpExp) ? !!S.chGrpExp[_cgk] : (_cgk === S.user);
+      S.chGrpExp[_cgk] = !_cgcur; render(); return;
     }
     if (act === "bill-gst") { S.billGst = !S.billGst; render(); return; }
     if (act === "bill-selall") {
