@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.143";
+  var APP_VERSION = "6.9.144";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -421,17 +421,17 @@
       if (!r || !r.ok) {
         done(); pendMark(pk, (r && r.error) || "server refused it");
         toast("Not synced yet - kept safe on this device, will retry.");
-        if (!quiet) render(); else syncBanner();
+        if (!quiet) renderBg(); else syncBanner();
         return row;                   // KEEP the record - never discard
       }
       done();
       if (list[idx]) Object.assign(list[idx], r.row);
-      pendDrop(pk); if (!quiet) render(); quietSync();
+      pendDrop(pk); if (!quiet) renderBg(); quietSync();
       return r.row;
     }).catch(function (e) {
       done(); pendMark(pk, (e && e.message) ? e.message : "network error");
       toast("Not synced yet - kept safe on this device, will retry.");
-      if (!quiet) render(); else syncBanner();
+      if (!quiet) renderBg(); else syncBanner();
       return row;                     // KEEP the record - never discard
     });
   }
@@ -450,7 +450,7 @@ window.addEventListener("beforeunload", function (ev) {
     syncing = true;
     api("teamGet").then(function (r) {
       syncing = false; syncAt = Date.now();
-      if (r && r.ok) { S.data = r; applyPending(); snapSave(); render(); }
+      if (r && r.ok) { S.data = r; applyPending(); snapSave(); renderBg(); }
       if (pendCount()) retryPending();
     }).catch(function () { syncing = false; });
   }
@@ -480,6 +480,26 @@ window.addEventListener("beforeunload", function (ev) {
       if (pendCount()) retryPending();
       try { maybePartnerNag(); } catch (e) { }   /* weekly: chase missing plumber/architect names */
     });
+  }
+
+  /* ---- form safety ----
+     A background repaint (a 20s re-sync, or a slow save finally acknowledging) used to call render()
+     and rebuild the whole screen — INCLUDING any form the user was in the middle of filling in — so
+     their typed-but-not-yet-saved values were wiped. Two guards stop that:
+       • renderBg(): a background repaint is DEFERRED while a form is open (the fresh data is already
+         in S.data and paints the instant the form closes).
+       • a modal "generation" counter (_mgen): a completed save only closes the form if it is still
+         the SAME form that was open when the save started. If the user has since moved to another
+         entry, the save quietly finishes without touching their new form. */
+  var _mgen = 0, _shownModal = null;
+  function renderBg() {
+    if (S.modal) { S.bgPending = true; return; }
+    render();
+  }
+  function closeAck(gen, msg) {
+    if (msg) toast(msg);
+    if (gen === _mgen && S.modal) { S.modal = null; render(); }
+    else renderBg();
   }
 
   function custById(id) {
@@ -7517,7 +7537,10 @@ function viewCatalogue() {
       '<div class="foot-note">Energy World Team <span data-act="crash-log" style="cursor:pointer;border-bottom:1px dotted #cbd5e1" title="View crash log">v' + APP_VERSION + '</span> &middot; data lives in your Google Sheet</div></main>';
 
     h += '</div>';
-    if (S.modal) h += '<div class="mask" data-act="mask"><div class="modal">' + S.modal + '</div></div>';
+    /* bump the modal generation whenever a DIFFERENT form is shown, so a save that started under an
+       earlier form knows the user has moved on and must not close the new one. */
+    if (S.modal) { if (S.modal !== _shownModal) { _mgen++; _shownModal = S.modal; } h += '<div class="mask" data-act="mask"><div class="modal">' + S.modal + '</div></div>'; }
+    else { _shownModal = null; S.bgPending = false; }
 
     var _msTop = null;
     if (keepScroll) { var _msOld = document.querySelector(".modal"); if (_msOld) _msTop = _msOld.scrollTop; }
@@ -7586,6 +7609,9 @@ function viewCatalogue() {
     if (!t) return;
     var act = t.getAttribute("data-act");
     var id = t.getAttribute("data-id");
+    /* form generation at the instant of THIS click — a save started now must only close the form
+       that is open now, never a different one the user opens while the save is still in flight. */
+    var _gClick = _mgen;
 
     if (act === "login") { doLogin(); return; }
     if (act === "pin-change") { renderPinChange(); return; }
@@ -7776,7 +7802,7 @@ function viewCatalogue() {
       var bn = val("b_name");
       if (!bn) { toast("Brand name is required."); return; }
       save("brands", { id: id || "", brand: bn, active: val("b_active"), notes: val("b_notes") })
-        .then(function (r) { if (r) { S.modal = null; toast("Brand saved."); render(); } });
+        .then(function (r) { if (r) closeAck(_gClick, "Brand saved."); });
       return;
     }
     if (act === "br-del") {
@@ -8394,7 +8420,7 @@ function viewCatalogue() {
         lastService: prev.lastService || "", nextService: next, amcType: val("i_amc"),
         amcAmount: val("i_amcamt"), amcEnd: val("i_amcend"), engineer: val("i_eng"),
         status: "Active", notes: val("i_notes")
-      }).then(function (r) { if (r) { S.modal = null; toast("Installation saved."); render(); } });
+      }).then(function (r) { if (r) closeAck(_gClick, "Installation saved."); });
       return;
     }
     if (act === "ip-add") {
@@ -8488,7 +8514,7 @@ function viewCatalogue() {
         city: val("s_city"), stage: val("s_stage"), type: val("s_type"), architect: val("s_arch"),
         plumber: val("s_plumb"), builder: val("s_build"), owner: sOwner,
         status: "Active", notes: val("s_notes")
-      }).then(function (r) { if (r) { S.modal = null; toast("Site saved."); render(); } });
+      }).then(function (r) { if (r) closeAck(_gClick, "Site saved."); });
       return;
     }
     if (act === "lead-brand") { S.leadBrand = t.getAttribute("data-b"); render(); return; }
@@ -8564,7 +8590,7 @@ function viewCatalogue() {
       if (amt <= 0) { toast("Enter an amount."); return; }
       save("commpay", { id: "", createdBy: S.user, associate: pn, siteId: "", siteName: "",
         date: val("po_date"), amount: amt, mode: val("po_mode"), notes: val("po_note") })
-        .then(function (r) { if (r) { S.modal = null; toast("Payout recorded."); render(); } });
+        .then(function (r) { if (r) closeAck(_gClick, "Payout recorded."); });
       return;
     }
 
@@ -8576,7 +8602,7 @@ function viewCatalogue() {
       var site = S.data.challans.filter(function (c) { return c.customerName === cln && c.siteId; })[0] || {};
       save("payments", { id: "P-" + Date.now() + "-" + Math.floor(Math.random() * 1000), createdBy: S.user, siteId: site.siteId || "", siteName: site.site || "",
         client: cln, date: val("pi_date"), amount: amt2, mode: val("pi_mode"), ref: val("pi_ref"), notes: "" })
-        .then(function (r) { if (r) { S.modal = null; toast("Payment recorded. Incentive payable updated."); render(); } });
+        .then(function (r) { if (r) closeAck(_gClick, "Payment recorded. Incentive payable updated."); });
       return;
     }
 
@@ -8692,7 +8718,7 @@ function viewCatalogue() {
         id: id || "", createdBy: S.user, name: name, mobile: val("m_mobile"), city: val("m_city"),
         address: val("m_address"), site: val("m_site"), type: val("m_type"), stage: val("m_stage"),
         associate: val("m_assoc"), status: val("m_status"), notes: val("m_notes")
-      }).then(function (r) { if (r) { S.modal = null; toast("Customer saved."); render(); } });
+      }).then(function (r) { if (r) closeAck(_gClick, "Customer saved."); });
       return;
     }
 
@@ -8704,7 +8730,7 @@ function viewCatalogue() {
       save("followups", {
         id: "", createdBy: S.user, customerId: c.id, customerName: c.name,
         dueDate: val("m_due"), note: val("m_note"), status: "Open"
-      }).then(function (r) { if (r) { S.modal = null; toast("Follow-up added."); render(); } });
+      }).then(function (r) { if (r) closeAck(_gClick, "Follow-up added."); });
       return;
     }
     if (act === "fu-done") {
@@ -8736,7 +8762,7 @@ function viewCatalogue() {
       /* the radar detects a snooze by finding the quote number in an open follow-up's note */
       if (note.indexOf(snq.quoteNo) < 0) note = "[" + snq.quoteNo + "] " + note;
       save("followups", { id: "", createdBy: S.user, customerId: "", customerName: snq.client, dueDate: due, note: note, status: "Open" })
-        .then(function (r) { if (r) { S.modal = null; toast("Snoozed to " + dstr(due) + "."); render(); } });
+        .then(function (r) { if (r) closeAck(_gClick, "Snoozed to " + dstr(due) + "."); });
       return;
     }
     if (act === "rad-wa") { waShareQuote(id); return; }
