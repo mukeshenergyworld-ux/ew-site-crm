@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.154";
+  var APP_VERSION = "6.9.155";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4219,15 +4219,102 @@ function viewCatalogue() {
     if (score >= 60) return { t: "Needs focus", c: "#92400e", bg: "#fef3c7" };
     return { t: "Action needed", c: "#b91c1c", bg: "#fee2e2" };
   }
+  /* ---- Part 2: Partner scorecard (architect / builder / plumber / PMC) ----
+     Reuses the incentive engine's partnerBook() so nothing is recomputed differently. "Revenue
+     influenced" = net business driven across every client/site the partner is named on; conversion =
+     of the clients they're linked to, how many actually bought. Tier is a simple A/B/C blend of
+     revenue + conversion — partners are relationships, not employees, so no 100-point exam. */
+  function scPartnerMetrics(name) {
+    var b = partnerBook(name);
+    var a = (S.data.associates || []).filter(function (x) { return x.name === name; })[0] || {};
+    var nm = String(name).trim().toLowerCase();
+    var myClients = (S.data.clients || []).filter(function (cl) { return clientRolesOf(cl, nm).length; });
+    var bought = {}; b.rows.forEach(function (r) { bought[r.client] = 1; });
+    var referred = myClients.length, converted = Object.keys(bought).length;
+    return {
+      name: name, role: a.role || "", billed: b.billed, payable: b.payable, pending: b.pending,
+      projects: (b.sites || []).length, referred: referred, converted: converted,
+      conv: referred > 0 ? converted / referred : 0,
+      coll: b.billed > 0 ? Math.min(1, b.collected / b.billed) : 0, sites: b.sites || []
+    };
+  }
+  function scTier(m) {
+    var t = m.billed >= 500000 ? "A" : (m.billed >= 100000 ? "B" : "C");
+    if (t === "A" && m.conv < 0.25) t = "B";
+    return t;
+  }
+  function scTierStyle(t) {
+    if (t === "A") return { bg: "#fef3c7", c: "#92400e", label: "Top-tier partner" };
+    if (t === "B") return { bg: "#e0e7ff", c: "#3730a3", label: "Steady contributor" };
+    return { bg: "#f1f5f9", c: "#475569", label: "Occasional / low" };
+  }
+  function scToggle() {
+    var t = (S.sc && S.sc.tab) || "exec";
+    return '<div class="row" style="gap:8px;margin-bottom:6px">' +
+      '<button class="btn sm ' + (t === "exec" ? "" : "ghost") + '" data-act="sc-tab" data-k="exec">Executives</button>' +
+      '<button class="btn sm ' + (t === "partner" ? "" : "ghost") + '" data-act="sc-tab" data-k="partner">Partners</button></div>';
+  }
+  function viewScPartner() {
+    var partners = (S.data.associates || []).slice();
+    if (!partners.length) return '<div class="empty">No partners yet. Add architects / builders / plumbers under <b>Partners</b> first.</div>';
+    var board = partners.map(function (a) { return scPartnerMetrics(a.name); }).sort(function (x, y) { return y.billed - x.billed; });
+    if (!S.sc.partner || !board.some(function (m) { return m.name === S.sc.partner; })) S.sc.partner = board[0].name;
+
+    var h = '<div class="card"><h3 style="margin:0 0 6px;font-size:14px">Partner leaderboard — by revenue influenced</h3>';
+    board.forEach(function (m, i) {
+      var t = scTier(m), ts = scTierStyle(t), on = m.name === S.sc.partner;
+      h += '<div data-act="sc-ppick" data-n="' + esc(m.name) + '" style="display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid #e2e8f0;cursor:pointer;border-radius:8px;' + (on ? 'background:#f0fdfa' : '') + '">' +
+        '<span style="width:24px;height:24px;border-radius:50%;background:#0b3b36;color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex:0 0 auto">' + (i + 1) + '</span>' +
+        '<div style="flex:1"><b>' + esc(m.name) + '</b> <span style="color:#94a3b8;font-size:11px">' + esc(m.role) + '</span>' +
+        '<div style="font-size:11px;color:#64748b">' + m.projects + ' project(s) · ' + Math.round(m.conv * 100) + '% convert</div></div>' +
+        '<span class="pill" style="background:' + ts.bg + ';color:' + ts.c + ';font-weight:800">' + t + '</span>' +
+        '<div style="font-weight:800;color:#0f766e;text-align:right;min-width:74px">' + money(m.billed) + '</div></div>';
+    });
+    h += '</div>';
+
+    var M = scPartnerMetrics(S.sc.partner), tier = scTier(M), ts = scTierStyle(tier);
+    h += '<div class="card" style="margin-top:12px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">' +
+      '<div><div style="font-size:17px;font-weight:800;color:#0b3b36">' + esc(M.name) + ' <span class="pill" style="background:' + ts.bg + ';color:' + ts.c + '">' + esc(M.role || "Partner") + '</span></div>' +
+      '<div class="meta">' + M.projects + ' live project(s)</div></div>' +
+      '<div style="text-align:center;min-width:104px"><div style="font-size:30px;font-weight:900;color:#fff;background:linear-gradient(135deg,#b45309,#f59e0b);border-radius:12px;padding:6px 4px">' + tier + '</div>' +
+      '<div style="font-size:11px;color:#64748b;margin-top:4px">' + esc(ts.label) + '</div></div></div>';
+
+    var tile = function (l, v, col) { return '<div style="flex:1 1 130px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:11px 13px">' +
+      '<div style="font-size:11.5px;color:#64748b">' + l + '</div><div style="font-size:18px;font-weight:800;color:' + (col || "#0b3b36") + ';margin-top:2px">' + v + '</div></div>'; };
+    h += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px">' +
+      tile("Revenue influenced", money(M.billed)) +
+      tile("Clients linked", String(M.referred)) +
+      tile("Converted (bought)", M.converted + " · " + Math.round(M.conv * 100) + "%", "#16a34a") +
+      tile("Live projects", String(M.projects)) +
+      tile("Collections", Math.round(M.coll * 100) + "%", M.coll >= 0.6 ? "#16a34a" : "#d97706") +
+      tile("Incentive payable", money(M.pending)) +
+      '</div>';
+
+    if (M.sites.length) {
+      h += '<div class="meta" style="margin-top:12px;font-weight:700;color:#0b3b36">Their projects &amp; current stage</div>';
+      M.sites.slice(0, 12).forEach(function (st) {
+        h += '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 4px;border-bottom:1px solid #f1f5f9;font-size:13px">' +
+          '<span>' + esc(st.name || "(site)") + '</span><span class="pill teal" style="background:#ccfbf1;color:#0f766e">' + esc(st.stage || "-") + '</span></div>';
+      });
+    }
+    h += '<div class="meta" style="margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;color:#7c2d12">' +
+      'Tier is a simple blend of revenue influenced and conversion (A ≥ ₹5L &amp; converting, B ≥ ₹1L, else C) — adjustable. Everything here is read from the incentive engine and your partner records; nothing new to enter.</div>';
+    h += '</div>';
+    return h;
+  }
+
   function viewScorecard() {
     if (S.role !== "admin") return '<div class="empty">Scorecards are visible to the owner only.</div>';
-    var execs = scExecs();
     S.sc = S.sc || {};
+    if (!S.sc.tab) S.sc.tab = "exec";
+    if (S.sc.tab === "partner") return scToggle() + viewScPartner();
+    var execs = scExecs();
     var months = scMonths();
     if (!S.sc.month) S.sc.month = months[0];
     if (!S.sc.exec || execs.indexOf(S.sc.exec) < 0) S.sc.exec = execs[0] || "";
 
-    var h = '<div class="row" style="align-items:center;gap:10px;flex-wrap:wrap">' +
+    var h = scToggle() + '<div class="row" style="align-items:center;gap:10px;flex-wrap:wrap">' +
       '<div><label>Month</label><select id="sc_month">' + opts(months, S.sc.month) + '</select></div>' +
       '<div class="grow"></div>' +
       '<span class="pill teal" style="background:#ccfbf1;color:#0f766e">Executive scorecard</span></div>';
@@ -8413,6 +8500,8 @@ function viewCatalogue() {
       S.chGrpExp[_cgk] = !_cgcur; render(); return;
     }
     if (act === "sc-pick") { S.sc = S.sc || {}; S.sc.exec = t.getAttribute("data-n"); render(); return; }
+    if (act === "sc-tab") { S.sc = S.sc || {}; S.sc.tab = t.getAttribute("data-k") || "exec"; render(); return; }
+    if (act === "sc-ppick") { S.sc = S.sc || {}; S.sc.partner = t.getAttribute("data-n"); render(); return; }
     if (act === "bill-gst") { S.billGst = !S.billGst; render(); return; }
     if (act === "bill-selall") {
       if (!S.billSel) S.billSel = {};
