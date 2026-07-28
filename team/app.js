@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.160";
+  var APP_VERSION = "6.9.161";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3091,7 +3091,7 @@ function viewCatalogue() {
 
       var INK = [17, 34, 45], DEEP = [11, 59, 54], MINT = [94, 234, 212],
           SLATE = [30, 41, 59], GREY = [110, 125, 140], LINE = [226, 232, 240], SOFT = [248, 250, 252];
-      var W = 210, L = 14, Rt = W - 14;
+      var W = 210, L = 10, Rt = W - 10;   /* tighter print margins (10mm) -> a wider table for the description */
 
       var bd = Number(q.discountPct) || 0;
       var rows = items.map(function (i, idx) {
@@ -3194,8 +3194,11 @@ function viewCatalogue() {
       /* ================= TABLE ================= */
       /* money columns widened: a lakh figure like Rs 4,51,869 needs real room, and it
          was running into the next column. Everything shrunk a notch so 100+ lines fit. */
-      var X = { n: L + 2, pic: L + 6, item: L + 21, unit: 106, qty: 118, price: 137, dis: 149, dprice: 172, amt: Rt - 1 };
-      var UNIT_W = 13;                       /* "Per Set", "Per Pc." at 6.2pt, with air */
+      /* Column x-positions rebalanced (v6.9.161): the numeric block is packed to the right at its
+         real worst-case widths so the DESCRIPTION gets ~93mm (was ~56). Verified with jsPDF that no
+         number or header column overlaps even at 8-digit figures. */
+      var X = { n: L + 1, pic: L + 3.5, item: L + 16, unit: 132, qty: 141, price: 156, dis: 165, dprice: 180, amt: Rt - 1 };
+      var UNIT_W = 11;                       /* "Per Set", "Per Pc." at 6.2pt */
       var DESC_W = X.unit - UNIT_W - X.item - 2;
       var head = function () {
         fill(SLATE); doc.rect(L, y - 4.6, Rt - L, 7.6, "F");
@@ -3219,6 +3222,9 @@ function viewCatalogue() {
            right-aligned at X.unit, so its text grows leftwards - reserve room for it. */
         var lines = fitCell(doc, F, r.desc, DESC_W, 40, "normal", 6.4);
         var hgt = Math.max(11, 5 + lines.length * 3.1);
+        /* baseline for the right-aligned numbers, vertically CENTRED in the row so a one-line item
+           aligns with its description and a multi-line item keeps its figures in the middle. */
+        var mid = (y - 3.6) + hgt / 2 + 1.1;
         if (y + hgt > 272) { doc.addPage(); y = 20; head(); }
         if (r.optional) {
           fill([255, 236, 209]); doc.setDrawColor(217, 119, 6); doc.setLineWidth(0.5);
@@ -3250,22 +3256,22 @@ function viewCatalogue() {
         doc.text(lines, X.item, y + 3, { lineHeightFactor: 1.15 });
 
         col(INK); F("normal"); doc.setFontSize(6.2);
-        doc.text(fitCell(doc, F, r.unit, UNIT_W, 1, "normal", 6.2)[0], X.unit, y + 0.6, { align: "right" });
-        F("bold"); doc.text(String(r.qty), X.qty, y + 0.6, { align: "right" });
+        doc.text(fitCell(doc, F, r.unit, UNIT_W, 1, "normal", 6.2)[0], X.unit, mid, { align: "right" });
+        F("bold"); doc.text(String(r.qty), X.qty, mid, { align: "right" });
         F("normal");
         /* A discounted line shows list PRICE, DIS.%, and the DISC. PRICE. A line with NO
            discount would just repeat the same figure in PRICE and DISC. PRICE, so we leave the
            PRICE and DIS.% cells blank and print the single price once, under DISC. PRICE. */
         if (r.disc > 0) {
           col(GREY); F("normal");
-          doc.text(R(r.price), X.price, y + 0.6, { align: "right" });
+          doc.text(R(r.price), X.price, mid, { align: "right" });
           col([13, 148, 136]); F("bold");
-          doc.text(r.disc.toFixed(1) + "%", X.dis, y + 0.6, { align: "right" });
+          doc.text(r.disc.toFixed(1) + "%", X.dis, mid, { align: "right" });
         }
         col(r.optional ? [180, 83, 9] : INK); F("normal");
-        doc.text(R(r.net), X.dprice, y + 0.6, { align: "right" });
+        doc.text(R(r.net), X.dprice, mid, { align: "right" });
         F("bold"); doc.setFontSize(6.6); col(r.optional ? [180, 83, 9] : INK);
-        doc.text(r.optional ? "(" + R(r.total) + ")" : R(r.total), X.amt, y + 0.6, { align: "right" });
+        doc.text(r.optional ? "(" + R(r.total) + ")" : R(r.total), X.amt, mid, { align: "right" });
 
         y += hgt;
         doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.line(L, y - 2.8, Rt, y - 2.8);
