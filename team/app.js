@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.157";
+  var APP_VERSION = "6.9.158";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -8803,7 +8803,8 @@ function viewCatalogue() {
         brand: (its[0] && its[0].brand) || old.brand, items: its,
         brandDisc: Number(old.discountPct) || 0, brandDiscs: revBd, parentId: old.id,
         version: (Number(old.version) || 1) + 1, quoteNo: old.quoteNo,
-        gst: its.some(function (i) { return Number(i.gst) === 1; }) };
+        gst: its.some(function (i) { return Number(i.gst) === 1; }),
+        noTotal: its.some(function (i) { return Number(i.noTotal) === 1; }) };
       S.tab = "quotes"; render(); return;
     }
     if (act === "qz-save") {
