@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.166";
+  var APP_VERSION = "6.9.167";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4388,7 +4388,87 @@ function viewCatalogue() {
     return '<div class="row" style="gap:8px;margin-bottom:6px">' +
       '<button class="btn sm ' + (t === "exec" ? "" : "ghost") + '" data-act="sc-tab" data-k="exec">Executives</button>' +
       '<button class="btn sm ' + (t === "partner" ? "" : "ghost") + '" data-act="sc-tab" data-k="partner">Partners</button>' +
-      '<button class="btn sm ' + (t === "activity" ? "" : "ghost") + '" data-act="sc-tab" data-k="activity">Activity</button></div>';
+      '<button class="btn sm ' + (t === "activity" ? "" : "ghost") + '" data-act="sc-tab" data-k="activity">Activity</button>' +
+      '<button class="btn sm ' + (t === "health" ? "" : "ghost") + '" data-act="sc-tab" data-k="health">Client health</button></div>';
+  }
+  /* ---- Part 5: Client health score — a ranked watch-list of accounts growing / shrinking / risky.
+     recent = last 90 days of orders, prior = the 90 before that; overdue/due from HISAB aging. ---- */
+  function scClientSales(nm, fromDaysAgo, toDaysAgo) {
+    var now = Date.now();
+    return (S.data.challans || []).filter(function (c) {
+      if (String(c.customerName) !== nm) return false;
+      if (["Approved", "Dispatched", "Received"].indexOf(String(c.status)) < 0) return false;
+      var d = new Date(String(c.createdAt || "").slice(0, 10) + "T00:00:00").getTime();
+      if (isNaN(d)) return false;
+      var age = (now - d) / 86400000;
+      return age >= toDaysAgo && age < fromDaysAgo;
+    }).reduce(function (a, c) { return a + pricedLines(c, nm).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
+  }
+  function scHealthStyle(flag) {
+    if (flag === "At risk") return { bg: "#fee2e2", c: "#b91c1c" };
+    if (flag === "Gone quiet") return { bg: "#ffedd5", c: "#9a3412" };
+    if (flag === "Shrinking") return { bg: "#fef3c7", c: "#92400e" };
+    if (flag === "Growing") return { bg: "#dcfce7", c: "#166534" };
+    return { bg: "#f1f5f9", c: "#475569" };
+  }
+  function scClientHealth() {
+    var now = Date.now();
+    return (hisabClientNames() || []).map(function (nm) {
+      var cl = clientByName(nm) || {};
+      var recent = scClientSales(nm, 90, 0), prior = scClientSales(nm, 180, 90);
+      var chs = (S.data.challans || []).filter(function (c) { return String(c.customerName) === nm; });
+      var lastDays = 99999;
+      chs.forEach(function (c) { var d = new Date(String(c.createdAt || "").slice(0, 10) + "T00:00:00").getTime(); if (!isNaN(d)) lastDays = Math.min(lastDays, (now - d) / 86400000); });
+      var ag = clientAging(nm), overdue = (ag && ag.overdue) || 0;
+      var l = clientLedger(nm), due = Math.max(0, l.due || 0);
+      var everBought = chs.some(function (c) { return String(c.receiptReceived).toUpperCase() === "Y"; }) || recent > 0 || prior > 0;
+      var flag, reason, sev;
+      if (overdue > 0.5) { flag = "At risk"; sev = 3; reason = "Overdue " + money(overdue) + " past " + CREDIT_DAYS + " days"; }
+      else if (everBought && lastDays > 90 && lastDays < 9000) { flag = "Gone quiet"; sev = 2; reason = "No order in " + Math.round(lastDays) + " days"; }
+      else if (prior > 0 && recent < prior * 0.6) { flag = "Shrinking"; sev = 2; reason = "Buying " + Math.round((1 - recent / prior) * 100) + "% less than the previous quarter"; }
+      else if (recent > 0 && recent > prior * 1.2) { flag = "Growing"; sev = 0; reason = prior > 0 ? "Up " + Math.round((recent / prior - 1) * 100) + "% vs last quarter" : "New buying activity"; }
+      else { flag = "Steady"; sev = 1; reason = "Stable"; }
+      return { name: nm, owner: String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned", flag: flag, sev: sev, reason: reason, recent: recent, prior: prior, overdue: overdue, due: due, lastDays: lastDays };
+    }).sort(function (a, b) { return (b.sev - a.sev) || (b.overdue - a.overdue) || (b.due - a.due); });
+  }
+  function viewScHealth() {
+    var list = scClientHealth();
+    var nRisk = list.filter(function (r) { return r.flag === "At risk"; }).length;
+    var nQuiet = list.filter(function (r) { return r.flag === "Gone quiet" || r.flag === "Shrinking"; }).length;
+    var nGrow = list.filter(function (r) { return r.flag === "Growing"; }).length;
+    S.sc = S.sc || {}; var f = S.sc.hFilter || "watch";
+    var h = '<div class="cards" style="margin-bottom:4px">' +
+      '<div class="stat ' + (nRisk ? "alert" : "") + '"><div class="n">' + nRisk + '</div><div class="l">At risk (overdue)</div></div>' +
+      '<div class="stat"><div class="n">' + nQuiet + '</div><div class="l">Quiet / shrinking</div></div>' +
+      '<div class="stat"><div class="n">' + nGrow + '</div><div class="l">Growing</div></div>' +
+      '<div class="stat"><div class="n">' + list.length + '</div><div class="l">Clients tracked</div></div></div>';
+    var filters = [["watch", "Needs attention"], ["all", "All"], ["Growing", "Growing"]];
+    h += '<div class="row" style="gap:6px;flex-wrap:wrap">' + filters.map(function (o) {
+      return '<button class="btn sm ' + (f === o[0] ? "" : "ghost") + '" data-act="sc-hfilter" data-k="' + o[0] + '">' + o[1] + '</button>';
+    }).join("") + '</div>';
+    var shown = list.filter(function (r) {
+      if (f === "all") return true;
+      if (f === "Growing") return r.flag === "Growing";
+      return r.sev >= 2;   /* "watch" = at risk / quiet / shrinking */
+    });
+    if (!shown.length) h += '<div class="empty">Nothing here.</div>';
+    shown.forEach(function (r) {
+      var st = scHealthStyle(r.flag);
+      var trend = r.prior > 0 ? (r.recent >= r.prior ? "&#9650;" : "&#9660;") : "";
+      var trendCol = r.recent >= r.prior ? "#16a34a" : "#dc2626";
+      h += '<div class="card" style="padding:10px 13px;margin-bottom:7px"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+        '<div style="flex:1 1 200px;min-width:0"><b style="font-size:14px">' + esc(r.name) + '</b> ' +
+        '<span class="pill" style="background:' + st.bg + ';color:' + st.c + ';font-weight:700">' + esc(r.flag) + '</span>' +
+        '<div class="meta" style="font-size:12px">' + esc(r.reason) + ' &middot; <span style="color:#94a3b8">' + esc(r.owner) + '</span></div></div>' +
+        '<div style="text-align:right;font-size:12px;flex:0 0 auto">' +
+        'Last 90d <b>' + money(r.recent) + '</b> <span style="color:' + trendCol + '">' + trend + '</span>' +
+        '<br><span style="color:#94a3b8">prev ' + money(r.prior) + '</span>' +
+        (r.overdue > 0.5 ? '<br><span style="color:#dc2626;font-weight:700">overdue ' + money(r.overdue) + '</span>' : (r.due > 0.5 ? '<br><span style="color:#334155">due ' + money(r.due) + '</span>' : '')) +
+        '</div></div>' +
+        '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="ch-hisab" data-cl="' + esc(r.name) + '">Open HISAB</button></div></div>';
+    });
+    h += '<div class="meta" style="margin-top:6px;color:#94a3b8">Ranked worst-first. “Growing/shrinking” compares the last 90 days of orders with the 90 before. Payment risk uses the HISAB overdue figure.</div>';
+    return h;
   }
   /* ---- Part 4: Leading indicators — activity + pitch funnel ----
      The scorecard measures RESULTS; this measures the behaviours that produce next month's results.
@@ -4519,6 +4599,7 @@ function viewCatalogue() {
     if (!S.sc.tab) S.sc.tab = "exec";
     if (S.sc.tab === "partner") return scToggle() + viewScPartner();
     if (S.sc.tab === "activity") return scToggle() + viewScActivity();
+    if (S.sc.tab === "health") return scToggle() + viewScHealth();
     var execs = scExecs();
     var months = scMonths();
     if (!S.sc.month) S.sc.month = months[0];
@@ -8716,6 +8797,7 @@ function viewCatalogue() {
     if (act === "sc-pick") { S.sc = S.sc || {}; S.sc.exec = t.getAttribute("data-n"); render(); return; }
     if (act === "sc-tab") { S.sc = S.sc || {}; S.sc.tab = t.getAttribute("data-k") || "exec"; render(); return; }
     if (act === "sc-ppick") { S.sc = S.sc || {}; S.sc.partner = t.getAttribute("data-n"); render(); return; }
+    if (act === "sc-hfilter") { S.sc = S.sc || {}; S.sc.hFilter = t.getAttribute("data-k") || "watch"; render(); return; }
     if (act === "kt-open") { S.modal = modalKraTargets(t.getAttribute("data-n")); render(); return; }
     if (act === "kt-clear") { kraSaveTarget(t.getAttribute("data-n"), { sales: 0, coll: 0, newC: 0, service: 0, overdue: 0 }); S.modal = null; toast("Targets reset to defaults."); render(); return; }
     if (act === "kt-save") {
