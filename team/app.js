@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.153";
+  var APP_VERSION = "6.9.154";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -163,7 +163,7 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","report","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","stock"],
+    admin:    ["dash","report","scorecard","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","stock"],
     accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","stock"],
     godown:   ["dash","returns","tools","challans","products","stock"],
     sales:    ["dash","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products"],
@@ -4142,6 +4142,146 @@ function viewCatalogue() {
     return h;
   }
 
+  /* ============================ SCORECARDS — Part 1: Executive KRA ============================
+     A monthly, weighted view of each sales executive built ENTIRELY from data already in the app —
+     no new data entry. Targets are transparent starter defaults; a Targets screen (a later part)
+     will let the owner set them per executive. The sales target auto-personalises to the exec's own
+     recent months, so the score is meaningful from day one. Admin-only. */
+  var SC_DEFAULTS = { salesFloor: 200000, collTarget: 0.80, overdueMax: 0.25, newClients: 3, service: 2 };
+
+  function scOwnerOf(name) { var cl = clientByName(name) || {}; return String(cl.ownedBy || cl.createdBy || "").trim(); }
+  function scExecs() {
+    return (S.data.team || []).filter(function (t2) {
+      return String(t2.role).toLowerCase() === "sales" && String(t2.active).toUpperCase() !== "N";
+    }).map(function (t2) { return t2.name; });
+  }
+  function scMonths() {
+    var out = []; for (var i = 0; i < 12; i++) { var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i); out.push(d.toISOString().slice(0, 7)); } return out;
+  }
+  function scMonLabel(m) { try { var d = new Date(m + "-01T00:00:00"); return d.toLocaleDateString("en-IN", { month: "long", year: "numeric" }); } catch (e) { return m; } }
+  function scSalesFor(exec, month) {
+    return (S.data.challans || []).filter(function (c) {
+      return String(c.createdAt || "").slice(0, 7) === month
+        && ["Approved", "Dispatched", "Received"].indexOf(String(c.status)) >= 0
+        && scOwnerOf(c.customerName) === exec;
+    }).reduce(function (a, c) {
+      return a + pricedLines(c, c.customerName).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c);
+    }, 0);
+  }
+  function scExecMetrics(exec, month) {
+    var sales = scSalesFor(exec, month);
+    /* sales target = the exec's own average of the previous 3 months (falls back to a floor) */
+    var prev = 0, pn = 0;
+    for (var i = 1; i <= 3; i++) { var d = new Date(month + "-01T00:00:00"); d.setMonth(d.getMonth() - i); prev += scSalesFor(exec, d.toISOString().slice(0, 7)); pn++; }
+    var salesTarget = Math.max(Math.round(prev / (pn || 1)), SC_DEFAULTS.salesFloor);
+
+    /* collections + overdue across every client this exec owns (position, not just this month) */
+    var billed = 0, paid = 0, overdue = 0, due = 0;
+    (hisabClientNames() || []).forEach(function (nm) {
+      if (scOwnerOf(nm) !== exec) return;
+      var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === nm && String(c.receiptReceived).toUpperCase() === "Y"; }));
+      var net = chs.reduce(function (a, c) { return a + pricedLines(c, nm).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
+      var cl = clientByName(nm) || {}, opening = Number(cl.openingAmt) || 0;
+      var l = clientLedger(nm), ret = clientReturns(nm).reduce(function (a, r) { return a + returnNet(r); }, 0);
+      billed += net + opening; paid += (l.paid || 0);
+      var d0 = net + opening - (l.paid || 0) - ret; if (d0 > 0.5) due += d0;
+      var ag = clientAging(nm); overdue += (ag && ag.overdue) || 0;
+    });
+    var collRate = billed > 0.5 ? paid / billed : 1;
+    var overduePct = due > 0.5 ? overdue / due : 0;
+
+    var newClients = (S.data.customers || []).filter(function (c) {
+      return String(c.createdAt || "").slice(0, 7) === month && String(c.ownedBy || c.createdBy || "").trim() === exec;
+    }).length;
+    var svc = (S.data.installs || []).filter(function (x) {
+      var dm = String(x.createdAt || x.installDate || "").slice(0, 7);
+      return dm === month && scOwnerOf(x.client) === exec;
+    }).length;
+
+    var areas = [
+      { key: "sales", label: "Sales booked", kpi: "Net billed on their clients’ challans (this month)", w: 40, target: salesTarget, actual: sales, money: true, higher: true },
+      { key: "coll", label: "Collections", kpi: "Received vs billed across their clients", w: 25, target: SC_DEFAULTS.collTarget, actual: collRate, pct: true, higher: true },
+      { key: "over", label: "Overdue control", kpi: "Dues past " + CREDIT_DAYS + " days (lower is better)", w: 15, target: SC_DEFAULTS.overdueMax, actual: overduePct, pct: true, higher: false },
+      { key: "new", label: "New clients", kpi: "Clients added this month", w: 10, target: SC_DEFAULTS.newClients, actual: newClients, higher: true },
+      { key: "svc", label: "Service / AMC", kpi: "Installs / AMC added this month", w: 10, target: SC_DEFAULTS.service, actual: svc, higher: true }
+    ];
+    areas.forEach(function (a) {
+      var ach;
+      if (a.higher) ach = a.target > 0 ? a.actual / a.target : 1;
+      else ach = a.actual <= 0 ? 1 : Math.min(1, a.target / a.actual);
+      a.ach = ach; a.score = a.w * Math.max(0, Math.min(1, ach));
+    });
+    return { exec: exec, month: month, areas: areas, score: areas.reduce(function (s, a) { return s + a.score; }, 0), sales: sales };
+  }
+  function scBand(score) {
+    if (score >= 90) return { t: "Excellent", c: "#166534", bg: "#dcfce7" };
+    if (score >= 75) return { t: "Good — on track", c: "#0f766e", bg: "#ccfbf1" };
+    if (score >= 60) return { t: "Needs focus", c: "#92400e", bg: "#fef3c7" };
+    return { t: "Action needed", c: "#b91c1c", bg: "#fee2e2" };
+  }
+  function viewScorecard() {
+    if (S.role !== "admin") return '<div class="empty">Scorecards are visible to the owner only.</div>';
+    var execs = scExecs();
+    S.sc = S.sc || {};
+    var months = scMonths();
+    if (!S.sc.month) S.sc.month = months[0];
+    if (!S.sc.exec || execs.indexOf(S.sc.exec) < 0) S.sc.exec = execs[0] || "";
+
+    var h = '<div class="row" style="align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<div><label>Month</label><select id="sc_month">' + opts(months, S.sc.month) + '</select></div>' +
+      '<div class="grow"></div>' +
+      '<span class="pill teal" style="background:#ccfbf1;color:#0f766e">Executive scorecard</span></div>';
+    if (!execs.length) return h + '<div class="empty">No sales executives found. Add team members with the <b>sales</b> role first (Team PINs).</div>';
+
+    var board = execs.map(function (e) { return scExecMetrics(e, S.sc.month); }).sort(function (a, b) { return b.score - a.score; });
+    h += '<div class="card" style="margin-top:10px"><h3 style="margin:0 0 6px;font-size:14px">Team leaderboard — ' + esc(scMonLabel(S.sc.month)) + '</h3>';
+    board.forEach(function (m, i) {
+      var b = scBand(m.score), on = m.exec === S.sc.exec;
+      h += '<div data-act="sc-pick" data-n="' + esc(m.exec) + '" style="display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid #e2e8f0;cursor:pointer;border-radius:8px;' + (on ? 'background:#f0fdfa' : '') + '">' +
+        '<span style="width:24px;height:24px;border-radius:50%;background:#0b3b36;color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex:0 0 auto">' + (i + 1) + '</span>' +
+        '<div style="flex:1;font-weight:600">' + esc(m.exec) + '</div>' +
+        '<span class="pill" style="background:' + b.bg + ';color:' + b.c + ';font-weight:700">' + b.t + '</span>' +
+        '<div style="font-weight:800;color:#0f766e;width:38px;text-align:right">' + Math.round(m.score) + '</div></div>';
+    });
+    h += '</div>';
+
+    var M = scExecMetrics(S.sc.exec, S.sc.month), bnd = scBand(M.score);
+    h += '<div class="card" style="margin-top:12px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">' +
+      '<div><div style="font-size:17px;font-weight:800;color:#0b3b36">' + esc(S.sc.exec) + '</div>' +
+      '<div class="meta">Sales Executive · ' + esc(scMonLabel(S.sc.month)) + '</div></div>' +
+      '<div style="text-align:center;min-width:110px"><div style="font-size:34px;font-weight:900;line-height:1;color:#0f766e">' + Math.round(M.score) + '</div>' +
+      '<div style="font-size:11px;color:#64748b">out of 100</div>' +
+      '<span class="pill" style="background:' + bnd.bg + ';color:' + bnd.c + ';font-weight:800;margin-top:4px;display:inline-block">' + bnd.t + '</span></div></div>';
+
+    var fmt = function (a, v) { return a.money ? money(v) : a.pct ? (Math.round(v * 100) + "%") : String(Math.round(v)); };
+    h += '<div style="overflow-x:auto;margin-top:12px"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr style="background:#0b3b36;color:#fff">' +
+      '<th style="padding:8px;text-align:left">Key Result Area</th>' +
+      '<th style="padding:8px;text-align:center;width:56px">Weight</th>' +
+      '<th style="padding:8px;text-align:right;width:96px">Target</th>' +
+      '<th style="padding:8px;text-align:right;width:96px">Actual</th>' +
+      '<th style="padding:8px;text-align:center;width:72px">Achieved</th>' +
+      '<th style="padding:8px;text-align:center;width:52px">Score</th></tr></thead><tbody>';
+    M.areas.forEach(function (a, i) {
+      var achPct = Math.round(a.ach * 100), col = a.ach >= 0.9 ? "#16a34a" : a.ach >= 0.6 ? "#d97706" : "#dc2626";
+      h += '<tr style="border-bottom:1px solid #e2e8f0;background:' + (i % 2 ? "#f8fafc" : "#fff") + '">' +
+        '<td style="padding:9px 8px"><b style="color:#0b3b36">' + esc(a.label) + '</b><div style="font-size:11.5px;color:#64748b">' + esc(a.kpi) + '</div></td>' +
+        '<td style="padding:9px 8px;text-align:center">' + a.w + '%</td>' +
+        '<td style="padding:9px 8px;text-align:right">' + fmt(a, a.target) + (a.key === "over" ? " max" : "") + '</td>' +
+        '<td style="padding:9px 8px;text-align:right;font-weight:700">' + fmt(a, a.actual) + '</td>' +
+        '<td style="padding:9px 8px;text-align:center;color:' + col + ';font-weight:700">' + achPct + '%</td>' +
+        '<td style="padding:9px 8px;text-align:center;font-weight:800">' + (Math.round(a.score * 10) / 10) + '</td></tr>';
+    });
+    h += '<tr style="background:#f1f5f9"><td style="padding:9px 8px;font-weight:800">Total</td><td style="padding:9px 8px;text-align:center;font-weight:800">100%</td><td></td><td></td><td></td><td style="padding:9px 8px;text-align:center;font-weight:900">' + Math.round(M.score) + '</td></tr>' +
+      '</tbody></table></div>';
+
+    h += '<div class="meta" style="margin-top:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;color:#7c2d12">' +
+      'Targets are starter defaults — the sales target auto-adjusts to this executive’s own recent months; collections and overdue use fixed thresholds. A screen to set targets per executive is coming next. Collections fill in as receipts are recorded in HISAB.</div>';
+    h += '</div>';
+    return h;
+  }
+
   function viewTools() {
     var list = (S.data.tools || []).slice().sort(function (a, b) { return String(a.code).localeCompare(String(b.code)); });
     var out = list.filter(function (t) { return String(t.status) === "Issued"; });
@@ -7706,8 +7846,8 @@ function viewCatalogue() {
     try { ensureCoreCss(); } catch (e) { }
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, stock: viewStock };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["stock", "Stock"]];
+    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, stock: viewStock };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["stock", "Stock"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -7729,7 +7869,7 @@ function viewCatalogue() {
       ["Sell", ["dash", "leads", "pitch", "brandfollow", "quotes", "followups", "clients", "partners"]],
       ["Deliver", ["deliveries", "billing", "stock", "tools", "collections", "products"]],
       ["Service", ["service", "spares"]],
-      ["Admin", ["payrollhub", "discounts", "report", "pricing", "rules", "teampins"]]
+      ["Admin", ["payrollhub", "discounts", "report", "scorecard", "pricing", "rules", "teampins"]]
     ];
     var label = {};
     tabs.forEach(function (t) { label[t[0]] = t[1]; });
@@ -7804,6 +7944,8 @@ function viewCatalogue() {
     /* Part 4: partner monthly-statement month picker. */
     var pmo = el("pmonth");
     if (pmo) pmo.addEventListener("change", function (e) { S.pMonth = e.target.value; render(); });
+    var scm = el("sc_month");
+    if (scm) scm.addEventListener("change", function (e) { S.sc = S.sc || {}; S.sc.month = e.target.value; render(); });
     /* Strict client dropdowns (challan + material return): refresh the preset-discount flash live,
        and remember the pick so an inline "+ Register new" round-trip (or any re-render) keeps it. */
     [["m_client", "ch"], ["r_client", "rt"], ["o_client", "oc"]].forEach(function (pair) {
@@ -8270,6 +8412,7 @@ function viewCatalogue() {
       var _cgcur = (_cgk in S.chGrpExp) ? !!S.chGrpExp[_cgk] : (_cgk === S.user);
       S.chGrpExp[_cgk] = !_cgcur; render(); return;
     }
+    if (act === "sc-pick") { S.sc = S.sc || {}; S.sc.exec = t.getAttribute("data-n"); render(); return; }
     if (act === "bill-gst") { S.billGst = !S.billGst; render(); return; }
     if (act === "bill-selall") {
       if (!S.billSel) S.billSel = {};
