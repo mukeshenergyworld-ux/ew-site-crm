@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.163";
+  var APP_VERSION = "6.9.164";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3207,7 +3207,8 @@ function viewCatalogue() {
       var UNIT_W = 11;                       /* "Per Set", "Per Pc." at 6.2pt */
       var DESC_W = X.unit - UNIT_W - X.item - 2;
       var head = function () {
-        fill(SLATE); doc.rect(L, y - 4.6, Rt - L, 7.6, "F");
+        fill(DEEP); doc.rect(L, y - 4.6, Rt - L, 7.6, "F");
+        fill(MINT); doc.rect(L, y + 2.4, Rt - L, 0.5, "F");   /* mint underline ties the table header to the brand band */
         col([255, 255, 255]); F("bold"); doc.setFontSize(5.2);
         doc.text("#", X.n, y);
         doc.text("ITEM DESCRIPTION", X.item, y);
@@ -3289,34 +3290,37 @@ function viewCatalogue() {
          Terms panel) from ever riding on top of the total. */
       var hasOpt = rows.some(function (r) { return r.optional; });
       y += 4;
-      var boxH = noTotal ? 9 : (showGst ? 18 : 11);
+      var boxH = noTotal ? 9 : (showGst ? 18 : 13);
       if ((y - 4.5) + boxH > 285) { doc.addPage(); y = 26; }
       var boxTop = y - 4.5;
+      var TBL = 104;   /* the total panel starts a little left of the numeric columns */
       if (noTotal) {
-        fill([255, 251, 235]); doc.roundedRect(106, boxTop, Rt - 106, boxH, 1.5, 1.5, "F");
+        fill([255, 251, 235]); doc.roundedRect(TBL, boxTop, Rt - TBL, boxH, 1.5, 1.5, "F");
         col([124, 45, 18]); F("normal"); doc.setFontSize(6.4);
         doc.text("Item-wise pricing - no consolidated total.", 110, y + 1.2);
       } else if (showGst) {
         var GST_RATE = 18;
         var gstAmt = Math.round(subTotal * GST_RATE / 100);
         var grand = subTotal + gstAmt;
-        fill([236, 253, 245]); doc.roundedRect(106, boxTop, Rt - 106, boxH, 1.5, 1.5, "F");
-        col([13, 118, 108]); F("normal"); doc.setFontSize(6.8);
+        fill(DEEP); doc.roundedRect(TBL, boxTop, Rt - TBL, boxH, 2, 2, "F");
+        fill(MINT); doc.rect(TBL, boxTop, 1.6, boxH, "F");
+        col([190, 230, 224]); F("normal"); doc.setFontSize(6.6);
         doc.text("Sub-Total", 110, y + 1);
-        F("bold"); doc.text(R(subTotal), X.amt, y + 1, { align: "right" });
-        col([75, 85, 99]); F("normal"); doc.setFontSize(6.8);
+        col([255, 255, 255]); F("bold"); doc.text(R(subTotal), X.amt, y + 1, { align: "right" });
+        col([190, 230, 224]); F("normal"); doc.setFontSize(6.6);
         doc.text("GST @ 18%", 110, y + 6.4);
         doc.text(R(gstAmt), X.amt, y + 6.4, { align: "right" });
-        doc.setDrawColor(178, 217, 210); doc.setLineWidth(0.25); doc.line(110, y + 9, Rt - 4, y + 9); doc.setLineWidth(0.2);
-        col([13, 118, 108]); F("normal"); doc.setFontSize(6.8);
-        doc.text("Grand Total (incl. GST)", 110, y + 12.2);
-        F("bold"); doc.text(R(grand), X.amt, y + 12.2, { align: "right" });
+        doc.setDrawColor(94, 234, 212); doc.setLineWidth(0.25); doc.line(110, y + 8.8, Rt - 6, y + 8.8); doc.setLineWidth(0.2);
+        col(MINT); F("bold"); doc.setFontSize(7);
+        doc.text("GRAND TOTAL (incl. GST)", 110, y + 12.4);
+        col([255, 255, 255]); doc.text(R(grand), X.amt, y + 12.4, { align: "right" });
       } else {
-        fill([236, 253, 245]); doc.roundedRect(106, boxTop, Rt - 106, boxH, 1.5, 1.5, "F");
-        col([13, 118, 108]); F("bold"); doc.setFontSize(6.8);
-        doc.text("Sub-Total { GST as Actual }", 110, y + 1.4);
-        doc.setFontSize(10);
-        doc.text(R(subTotal), X.amt, y + 1.6, { align: "right" });
+        fill(DEEP); doc.roundedRect(TBL, boxTop, Rt - TBL, boxH, 2, 2, "F");
+        fill(MINT); doc.rect(TBL, boxTop, 1.6, boxH, "F");
+        col(MINT); F("bold"); doc.setFontSize(6.6); doc.text("SUB-TOTAL", 110, y - 0.2);
+        col([190, 230, 224]); F("normal"); doc.setFontSize(5.4); doc.text("{ GST as Actual }", 110, y + 3.4);
+        col([255, 255, 255]); F("bold"); doc.setFontSize(12.5);
+        doc.text(R(subTotal), X.amt, y + 2.2, { align: "right" });
       }
       y = boxTop + boxH + 5;   /* single, deterministic point clear of the total box */
 
