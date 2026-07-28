@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.156";
+  var APP_VERSION = "6.9.157";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -4184,6 +4184,20 @@ function viewCatalogue() {
      recent months, so the score is meaningful from day one. Admin-only. */
   var SC_DEFAULTS = { salesFloor: 200000, collTarget: 0.80, overdueMax: 0.25, newClients: 3, service: 2 };
 
+  /* Part 3 — Targets engine. Per-executive monthly targets set by the owner, overriding the smart
+     defaults. Stored on THIS device (localStorage) — the scorecard is admin-only and reviewed by the
+     owner, so a device-local store keeps it instant and needs no backend column. Blank = use default
+     (sales still auto-uses the person's own 3-month average). */
+  var KRA_TGT_KEY = "ew_kra_targets";
+  function kraTargets() { try { return JSON.parse(localStorage.getItem(KRA_TGT_KEY) || "{}") || {}; } catch (e) { return {}; } }
+  function kraTargetFor(exec) { return kraTargets()[exec] || {}; }
+  function kraSaveTarget(exec, obj) {
+    var all = kraTargets(); all[exec] = Object.assign({}, all[exec] || {}, obj);
+    /* drop blank/zero keys so "blank = default" holds */
+    Object.keys(all[exec]).forEach(function (k) { if (!(Number(all[exec][k]) > 0)) delete all[exec][k]; });
+    try { localStorage.setItem(KRA_TGT_KEY, JSON.stringify(all)); } catch (e) { }
+  }
+
   function scOwnerOf(name) { var cl = clientByName(name) || {}; return String(cl.ownedBy || cl.createdBy || "").trim(); }
   function scExecs() {
     return (S.data.team || []).filter(function (t2) {
@@ -4208,7 +4222,13 @@ function viewCatalogue() {
     /* sales target = the exec's own average of the previous 3 months (falls back to a floor) */
     var prev = 0, pn = 0;
     for (var i = 1; i <= 3; i++) { var d = new Date(month + "-01T00:00:00"); d.setMonth(d.getMonth() - i); prev += scSalesFor(exec, d.toISOString().slice(0, 7)); pn++; }
-    var salesTarget = Math.max(Math.round(prev / (pn || 1)), SC_DEFAULTS.salesFloor);
+    var _tgt = kraTargetFor(exec);
+    var salesTarget = Number(_tgt.sales) > 0 ? Number(_tgt.sales) : Math.max(Math.round(prev / (pn || 1)), SC_DEFAULTS.salesFloor);
+    var collTarget = Number(_tgt.coll) > 0 ? Number(_tgt.coll) / 100 : SC_DEFAULTS.collTarget;
+    var overdueMax = Number(_tgt.overdue) > 0 ? Number(_tgt.overdue) / 100 : SC_DEFAULTS.overdueMax;
+    var newTarget = Number(_tgt.newC) > 0 ? Number(_tgt.newC) : SC_DEFAULTS.newClients;
+    var svcTarget = Number(_tgt.service) > 0 ? Number(_tgt.service) : SC_DEFAULTS.service;
+    var _custom = !!(Number(_tgt.sales) > 0 || Number(_tgt.coll) > 0 || Number(_tgt.overdue) > 0 || Number(_tgt.newC) > 0 || Number(_tgt.service) > 0);
 
     /* collections + overdue across every client this exec owns (position, not just this month) */
     var billed = 0, paid = 0, overdue = 0, due = 0;
@@ -4235,10 +4255,10 @@ function viewCatalogue() {
 
     var areas = [
       { key: "sales", label: "Sales booked", kpi: "Net billed on their clients’ challans (this month)", w: 40, target: salesTarget, actual: sales, money: true, higher: true },
-      { key: "coll", label: "Collections", kpi: "Received vs billed across their clients", w: 25, target: SC_DEFAULTS.collTarget, actual: collRate, pct: true, higher: true },
-      { key: "over", label: "Overdue control", kpi: "Dues past " + CREDIT_DAYS + " days (lower is better)", w: 15, target: SC_DEFAULTS.overdueMax, actual: overduePct, pct: true, higher: false },
-      { key: "new", label: "New clients", kpi: "Clients added this month", w: 10, target: SC_DEFAULTS.newClients, actual: newClients, higher: true },
-      { key: "svc", label: "Service / AMC", kpi: "Installs / AMC added this month", w: 10, target: SC_DEFAULTS.service, actual: svc, higher: true }
+      { key: "coll", label: "Collections", kpi: "Received vs billed across their clients", w: 25, target: collTarget, actual: collRate, pct: true, higher: true },
+      { key: "over", label: "Overdue control", kpi: "Dues past " + CREDIT_DAYS + " days (lower is better)", w: 15, target: overdueMax, actual: overduePct, pct: true, higher: false },
+      { key: "new", label: "New clients", kpi: "Clients added this month", w: 10, target: newTarget, actual: newClients, higher: true },
+      { key: "svc", label: "Service / AMC", kpi: "Installs / AMC added this month", w: 10, target: svcTarget, actual: svc, higher: true }
     ];
     areas.forEach(function (a) {
       var ach;
@@ -4246,13 +4266,29 @@ function viewCatalogue() {
       else ach = a.actual <= 0 ? 1 : Math.min(1, a.target / a.actual);
       a.ach = ach; a.score = a.w * Math.max(0, Math.min(1, ach));
     });
-    return { exec: exec, month: month, areas: areas, score: areas.reduce(function (s, a) { return s + a.score; }, 0), sales: sales };
+    return { exec: exec, month: month, areas: areas, score: areas.reduce(function (s, a) { return s + a.score; }, 0), sales: sales, custom: _custom };
   }
   function scBand(score) {
     if (score >= 90) return { t: "Excellent", c: "#166534", bg: "#dcfce7" };
     if (score >= 75) return { t: "Good — on track", c: "#0f766e", bg: "#ccfbf1" };
     if (score >= 60) return { t: "Needs focus", c: "#92400e", bg: "#fef3c7" };
     return { t: "Action needed", c: "#b91c1c", bg: "#fee2e2" };
+  }
+  function modalKraTargets(exec) {
+    var t = kraTargetFor(exec);
+    var v = function (k) { return Number(t[k]) > 0 ? t[k] : ""; };
+    return '<h2>Targets — ' + esc(exec) + '</h2>' +
+      '<p class="sub">Monthly targets for the scorecard. Leave any blank to use the smart default — sales then auto-uses this executive’s own 3-month average. Saved on this device.</p>' +
+      '<div class="grid2">' +
+      '<div><label>Sales per month (₹)</label><input id="kt_sales" inputmode="numeric" value="' + esc(v("sales")) + '" placeholder="auto · 3-mo avg"/></div>' +
+      '<div><label>Collection %</label><input id="kt_coll" inputmode="numeric" value="' + esc(v("coll")) + '" placeholder="80"/></div>' +
+      '<div><label>New clients per month</label><input id="kt_new" inputmode="numeric" value="' + esc(v("newC")) + '" placeholder="3"/></div>' +
+      '<div><label>Service / AMC per month</label><input id="kt_svc" inputmode="numeric" value="' + esc(v("service")) + '" placeholder="2"/></div>' +
+      '<div><label>Overdue max %</label><input id="kt_over" inputmode="numeric" value="' + esc(v("overdue")) + '" placeholder="25"/></div>' +
+      '</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn ghost" data-act="kt-clear" data-n="' + esc(exec) + '">Reset to defaults</button>' +
+      '<button class="btn" data-act="kt-save" data-n="' + esc(exec) + '">Save targets</button></div>';
   }
   /* ---- Part 2: Partner scorecard (architect / builder / plumber / PMC) ----
      Reuses the incentive engine's partnerBook() so nothing is recomputed differently. "Revenue
@@ -4371,7 +4407,8 @@ function viewCatalogue() {
     h += '<div class="card" style="margin-top:12px">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">' +
       '<div><div style="font-size:17px;font-weight:800;color:#0b3b36">' + esc(S.sc.exec) + '</div>' +
-      '<div class="meta">Sales Executive · ' + esc(scMonLabel(S.sc.month)) + '</div></div>' +
+      '<div class="meta">Sales Executive · ' + esc(scMonLabel(S.sc.month)) + '</div>' +
+      '<button class="btn sm ghost" data-act="kt-open" data-n="' + esc(S.sc.exec) + '" style="margin-top:6px;font-size:12px">&#9881; Set targets' + (M.custom ? ' <span class="pill teal" style="background:#ccfbf1;color:#0f766e">custom</span>' : '') + '</button></div>' +
       '<div style="text-align:center;min-width:110px"><div style="font-size:34px;font-weight:900;line-height:1;color:#0f766e">' + Math.round(M.score) + '</div>' +
       '<div style="font-size:11px;color:#64748b">out of 100</div>' +
       '<span class="pill" style="background:' + bnd.bg + ';color:' + bnd.c + ';font-weight:800;margin-top:4px;display:inline-block">' + bnd.t + '</span></div></div>';
@@ -4399,7 +4436,8 @@ function viewCatalogue() {
       '</tbody></table></div>';
 
     h += '<div class="meta" style="margin-top:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;color:#7c2d12">' +
-      'Targets are starter defaults — the sales target auto-adjusts to this executive’s own recent months; collections and overdue use fixed thresholds. A screen to set targets per executive is coming next. Collections fill in as receipts are recorded in HISAB.</div>';
+      (M.custom ? 'Using <b>your set targets</b> for this executive (tap “Set targets” to change). ' : 'Using <b>smart defaults</b> — sales auto-adjusts to this executive’s own recent months; collections/overdue use fixed thresholds. Tap “Set targets” to override per person. ') +
+      'Collections fill in as receipts are recorded in HISAB.</div>';
     h += '</div>';
     return h;
   }
@@ -8538,6 +8576,13 @@ function viewCatalogue() {
     if (act === "sc-pick") { S.sc = S.sc || {}; S.sc.exec = t.getAttribute("data-n"); render(); return; }
     if (act === "sc-tab") { S.sc = S.sc || {}; S.sc.tab = t.getAttribute("data-k") || "exec"; render(); return; }
     if (act === "sc-ppick") { S.sc = S.sc || {}; S.sc.partner = t.getAttribute("data-n"); render(); return; }
+    if (act === "kt-open") { S.modal = modalKraTargets(t.getAttribute("data-n")); render(); return; }
+    if (act === "kt-clear") { kraSaveTarget(t.getAttribute("data-n"), { sales: 0, coll: 0, newC: 0, service: 0, overdue: 0 }); S.modal = null; toast("Targets reset to defaults."); render(); return; }
+    if (act === "kt-save") {
+      var _ke = t.getAttribute("data-n");
+      kraSaveTarget(_ke, { sales: Number(val("kt_sales")) || 0, coll: Number(val("kt_coll")) || 0, newC: Number(val("kt_new")) || 0, service: Number(val("kt_svc")) || 0, overdue: Number(val("kt_over")) || 0 });
+      S.modal = null; toast("Targets saved for " + _ke + "."); render(); return;
+    }
     if (act === "bill-gst") { S.billGst = !S.billGst; render(); return; }
     if (act === "bill-selall") {
       if (!S.billSel) S.billSel = {};
