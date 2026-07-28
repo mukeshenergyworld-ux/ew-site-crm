@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.155";
+  var APP_VERSION = "6.9.156";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -1588,6 +1588,7 @@ window.addEventListener("beforeunload", function (ev) {
     (z.items || []).forEach(function (i) {
       var b = i.brand || brandByCode(i.code) || "";
       if (b !== brand) return;
+      if (i.optional) return;   /* option lines excluded from the brand subtotal too */
       gross += i.qty * i.price;
       net += Math.round(i.price * (1 - (lineDisc(i, z)) / 100)) * i.qty; n++;
     });
@@ -2220,6 +2221,7 @@ window.addEventListener("beforeunload", function (ev) {
   function qzTotals() {
     var gross = 0, net = 0;
     (S.qz.items || []).forEach(function (i) {
+      if (i.optional) return;   /* alternative option lines are shown but never summed */
       var d = lineDisc(i, S.qz);
       gross += i.qty * i.price;
       /* round per line (discounted unit rate x qty) so the on-screen total, the
@@ -2566,33 +2568,47 @@ window.addEventListener("beforeunload", function (ev) {
         var dr = Math.round(i.price * (1 - d / 100));
         var amt = dr * i.qty;
         var ov = (i.disc !== "" && i.disc !== undefined && i.disc !== null);
-        h += '<tr>' +
-          '<td ' + tdL + '><div style="font-weight:600">' + esc(i.desc) + '</div>' +
-            '<div style="font-size:10px;color:#94a3b8">' + esc(i.code) + '</div></td>' +
+        var opt = !!i.optional;
+        h += '<tr style="' + (opt ? 'background:#fffdf5' : '') + '">' +
+          '<td ' + tdL + '><div style="font-weight:600">' + esc(i.desc) +
+            (opt ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-weight:700">Option</span>' : '') + '</div>' +
+            '<div style="font-size:10px;color:#94a3b8">' + esc(i.code) + '</div>' +
+            '<button class="btn sm ghost" data-act="qz-opt" data-code="' + esc(i.code) + '" style="margin-top:3px;font-size:11px;padding:2px 8px">' + (opt ? '&#9745; Optional — not in total' : '&#9744; Mark as option') + '</button></td>' +
           '<td ' + tdR + '>' + i.qty + '</td>' +
           '<td ' + tdR + '>' + money(i.price) + '</td>' +
           '<td ' + tdR + '>' + (Number(d) || 0) + (ov ? '<span style="color:#0f766e">*</span>' : '') + '</td>' +
           '<td ' + tdR + '>' + money(dr) + '</td>' +
-          '<td ' + tdR + '><b>' + money(amt) + '</b></td>' +
+          '<td ' + tdR + '>' + (opt ? '<span style="color:#94a3b8">' + money(amt) + '</span>' : '<b>' + money(amt) + '</b>') + '</td>' +
           '</tr>';
       });
-      h += '<tr><td colspan="5" style="' + TB + 'padding:6px 8px;text-align:right;font-size:12px;background:#f8fafc">' +
+      if (!z.noTotal) h += '<tr><td colspan="5" style="' + TB + 'padding:6px 8px;text-align:right;font-size:12px;background:#f8fafc">' +
         esc(b) + ' subtotal (gross ' + money(bt.gross) + ')</td>' +
         '<td style="' + TB + 'padding:6px 8px;text-align:right;background:#f8fafc"><b>' + money(bt.net) + '</b></td></tr>';
     });
-    h += '</tbody><tfoot>' +
+    var _optCount = (z.items || []).filter(function (i) { return i.optional; }).length;
+    h += '</tbody>' + (z.noTotal ? '' : ('<tfoot>' +
       '<tr><td colspan="5" style="' + TB + 'padding:8px;text-align:right;font-weight:700;font-size:13px">Grand total (before GST)</td>' +
       '<td style="' + TB + 'padding:8px;text-align:right;font-weight:800;font-size:13px;color:#0f766e">' + money(tt.net) + '</td></tr>' +
-      '</tfoot></table></div>';
-    h += '<div class="meta" style="margin-top:8px">Gross ' + money(tt.gross) + ' &middot; after discount <b>' + money(tt.net) + '</b> &middot; GST 18% ' + money(tt.gst) +
-      ' &middot; <b>Total incl GST ' + money(tt.total) + '</b>' +
-      '<br><span style="color:#94a3b8">* = product-wise override.</span></div>';
+      '</tfoot>')) + '</table></div>';
+    if (z.noTotal) {
+      h += '<div class="meta" style="margin-top:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;color:#7c2d12"><b>Item-wise pricing</b> — no consolidated total is shown on this quote.' +
+        (_optCount ? ' ' + _optCount + ' option line(s) shown separately.' : '') + '</div>';
+    } else {
+      h += '<div class="meta" style="margin-top:8px">Gross ' + money(tt.gross) + ' &middot; after discount <b>' + money(tt.net) + '</b> &middot; GST 18% ' + money(tt.gst) +
+        ' &middot; <b>Total incl GST ' + money(tt.total) + '</b>' +
+        (_optCount ? '<br><span style="color:#92400e">' + _optCount + ' option line(s) shown but excluded from the total.</span>' : '') +
+        '<br><span style="color:#94a3b8">* = product-wise override.</span></div>';
+    }
     /* GST-on-the-PDF toggle. Ticked -> the PDF prints Sub-Total, GST @ 18% and Grand Total.
        Unticked -> the PDF keeps "Sub-Total { GST as Actual }" with no GST amount. */
     h += '<label class="card" data-act="qz-gst" style="margin-top:10px;border-color:#99f6e4;background:#f0fdfa;display:flex;align-items:center;gap:12px;cursor:pointer">' +
       '<span style="flex:0 0 auto;width:22px;height:22px;border-radius:6px;border:2px solid #0d9488;background:' + (z.gst ? '#0d9488' : '#fff') + ';color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:15px">' + (z.gst ? '✓' : '') + '</span>' +
       '<span><b style="font-size:14px">Show 18% GST on the quote PDF</b>' +
       '<div class="pmeta" style="font-size:12px;color:#64748b">Ticked: the PDF prints Sub-Total, GST @ 18% and Grand Total (incl. GST). Unticked: it shows &ldquo;Sub-Total { GST as Actual }&rdquo; with no GST amount.</div></span></label>';
+    h += '<label class="card" data-act="qz-nototal" style="margin-top:10px;border-color:#fde68a;background:#fffbeb;display:flex;align-items:center;gap:12px;cursor:pointer">' +
+      '<span style="flex:0 0 auto;width:22px;height:22px;border-radius:6px;border:2px solid #d97706;background:' + (z.noTotal ? '#d97706' : '#fff') + ';color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:15px">' + (z.noTotal ? '✓' : '') + '</span>' +
+      '<span><b style="font-size:14px">Item-wise pricing — hide the total</b>' +
+      '<div class="pmeta" style="font-size:12px;color:#64748b">Ticked: the quote shows each item’s price but no grand total. Use when giving item-wise rates, or several options for the client to pick from. Mark any line above as an <b>option</b> to show its price without adding it to the total.</div></span></label>';
     h += '<div class="acts" style="margin-top:12px"><button class="btn" data-act="qz-save">Save quote</button></div></div>';
     return h;
   }
@@ -2779,10 +2795,21 @@ function viewCatalogue() {
     h += '<h3 style="margin:24px 0 10px;font-size:15px">Brands</h3>' +
       '<div class="row"><div class="grow"></div><button class="btn sm" data-act="br-new">+ Add brand</button></div>';
     S.data.brands.forEach(function (b) {
-      var n = brandProducts(b.brand).length;
-      h += '<div class="card"><h3>' + esc(b.brand) + ' <span class="pill' + (n ? " teal" : " due") + '">' + n + ' products</span>' +
-        (String(b.active).toUpperCase() === "N" ? ' <span class="pill">inactive</span>' : "") + '</h3>' +
+      var prods = brandProducts(b.brand);
+      var n = prods.length;
+      var bopen = !!(S.brandOpen && S.brandOpen[b.brand]);
+      h += '<div class="card"><h3 data-act="br-list" data-b="' + esc(b.brand) + '" style="cursor:pointer;user-select:none">' +
+        '<span style="display:inline-block;width:15px;color:#94a3b8">' + (bopen ? '&#9662;' : '&#9656;') + '</span>' +
+        esc(b.brand) + ' <span class="pill' + (n ? " teal" : " due") + '">' + n + ' products</span>' +
+        (String(b.active).toUpperCase() === "N" ? ' <span class="pill">inactive</span>' : "") +
+        (n ? ' <span style="font-weight:400;color:#94a3b8;font-size:12px">' + (bopen ? 'hide' : 'tap to view') + '</span>' : '') + '</h3>' +
         '<div class="meta">' + esc(b.notes || "") + '</div>' +
+        (bopen ? ('<div style="margin-top:6px;border-top:1px solid #f1f5f9;padding-top:6px">' +
+          (n ? prods.slice().sort(function (x, y) { return String(x.desc).localeCompare(String(y.desc)); }).map(function (p) {
+            return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:4px 0;border-bottom:1px solid #f8fafc">' +
+              '<span>' + esc(p.desc) + ' <span style="color:#94a3b8;font-size:11px">' + esc(p.code) + '</span></span>' +
+              '<span style="color:#0f766e;font-weight:600;white-space:nowrap">' + money(p.price) + '</span></div>';
+          }).join("") : '<div class="meta">No products mapped to this brand yet.</div>') + '</div>') : "") +
         '<div class="acts"><button class="btn sm ghost" data-act="br-open" data-id="' + esc(b.id) + '">Edit</button>' +
         '<button class="btn sm ghost" data-act="br-del" data-id="' + esc(b.id) + '">Remove</button></div></div>';
     });
@@ -3075,16 +3102,19 @@ function viewCatalogue() {
           : Number(i.disc);
         d = Number(d) || 0;
         var net = Math.round(i.price * (1 - d / 100));
-        return { desc: pdfSafe(i.desc), code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[i.pic] || null,
-          unit: i.unit || "No's",
+        return { desc: pdfSafe(i.desc) + (i.optional ? "  (optional)" : ""), code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[i.pic] || null,
+          unit: i.unit || "No's", optional: i.optional ? 1 : 0,
           qty: i.qty, price: i.price, disc: d, net: net, total: net * i.qty };
       });
       var ordered = rows.filter(function (r) { return r.disc > 0; }).sort(function (a, b) { return b.disc - a.disc; })
         .concat(rows.filter(function (r) { return r.disc <= 0; }));
-      var subTotal = rows.reduce(function (a, r) { return a + r.total; }, 0);
+      /* option lines are printed with their own price but never added into the sub-total */
+      var subTotal = rows.reduce(function (a, r) { return a + (r.optional ? 0 : r.total); }, 0);
       /* Some projects must show 18% GST spelled out on the quote. The flag rides along inside
          the saved items (no sheet column), so it round-trips. Off = the old "{ GST as Actual }". */
       var showGst = items.some(function (i) { return Number(i.gst) === 1; });
+      /* item-wise pricing: print each line's price but NO consolidated total box */
+      var noTotal = items.some(function (i) { return Number(i.noTotal) === 1; });
       var c = clientByName(q.client) || {};
 
       /* ================= HEADER =================
@@ -3241,7 +3271,12 @@ function viewCatalogue() {
       /* ---- sub-total. Either "{ GST as Actual }" (default) or a spelled-out 18% GST block. ---- */
       y += 4;
       if (y > (showGst ? 250 : 258)) { doc.addPage(); y = 26; }
-      if (showGst) {
+      if (noTotal) {
+        fill([255, 251, 235]); doc.roundedRect(106, y - 4.5, Rt - 106, 9, 1.5, 1.5, "F");
+        col([124, 45, 18]); F("normal"); doc.setFontSize(6.4);
+        doc.text("Item-wise pricing - no consolidated total.", 110, y + 1.2);
+        y += 4;
+      } else if (showGst) {
         var GST_RATE = 18;
         var gstAmt = Math.round(subTotal * GST_RATE / 100);
         var grand = subTotal + gstAmt;
@@ -8281,6 +8316,7 @@ function viewCatalogue() {
       });
       return;
     }
+    if (act === "br-list") { var _bb = t.getAttribute("data-b"); S.brandOpen = S.brandOpen || {}; S.brandOpen[_bb] = !S.brandOpen[_bb]; render(); return; }
     if (act === "br-new") { S.modal = modalBrand(null); render(); return; }
     if (act === "br-open") { S.modal = modalBrand(S.data.brands.filter(function (b) { return b.id === id; })[0]); render(); return; }
     if (act === "br-save") {
@@ -8644,6 +8680,13 @@ function viewCatalogue() {
     if (act === "qz-code-go") { var qcb = el("qz_code"); if (qcb && S.qz) S.qz.codeq = qcb.value; render(); return; }
     if (act === "qz-code-clear") { if (S.qz) S.qz.codeq = ""; render(); return; }
     if (act === "qz-gst") { if (S.qz) S.qz.gst = !S.qz.gst; render(); return; }
+    if (act === "qz-nototal") { if (S.qz) S.qz.noTotal = !S.qz.noTotal; render(); return; }
+    if (act === "qz-opt") {
+      var _oc = t.getAttribute("data-code");
+      var _oi = (S.qz && S.qz.items || []).filter(function (x) { return x.code === _oc; })[0];
+      if (_oi) _oi.optional = !_oi.optional;
+      render(); return;
+    }
     if (act === "qz-step") { S.qz.step = Number(t.getAttribute("data-step")); render(); return; }
     if (act === "qz-qty") {
       var code = t.getAttribute("data-code");
@@ -8752,6 +8795,8 @@ function viewCatalogue() {
           if (i.disc !== "" && i.disc !== undefined && i.disc !== null) o.disc = Number(i.disc) || 0;
           /* GST-on-PDF flag rides inside each item so it persists without a new sheet column */
           if (z.gst) o.gst = 1;
+          if (i.optional) o.optional = 1;   /* alternative option line — shown, not summed */
+          if (z.noTotal) o.noTotal = 1;      /* item-wise quote — hide the consolidated total */
           return o;
         });
         var blended = tot.gross > 0 ? Math.round((tot.gross - tot.net) / tot.gross * 100) : 0;
