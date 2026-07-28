@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.161";
+  var APP_VERSION = "6.9.162";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3232,7 +3232,7 @@ function viewCatalogue() {
         } else if (i % 2 === 1) { fill(SOFT); doc.rect(L, y - 3.6, Rt - L, hgt, "F"); }
 
         col(GREY); F("normal"); doc.setFontSize(5.6);
-        doc.text(String(i + 1), X.n, y);
+        doc.text(String(i + 1), X.n, mid);   /* serial # centred in the row, level with the figures */
         /* A photo was forced into a fixed 10 x 9 box, so a tall product (the sand filter)
            came out visibly squashed. Fit it inside the box on its own aspect ratio and centre
            it. Products with no photo in the catalogue simply leave the cell blank. */
