@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.165";
+  var APP_VERSION = "6.9.166";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4387,7 +4387,81 @@ function viewCatalogue() {
     var t = (S.sc && S.sc.tab) || "exec";
     return '<div class="row" style="gap:8px;margin-bottom:6px">' +
       '<button class="btn sm ' + (t === "exec" ? "" : "ghost") + '" data-act="sc-tab" data-k="exec">Executives</button>' +
-      '<button class="btn sm ' + (t === "partner" ? "" : "ghost") + '" data-act="sc-tab" data-k="partner">Partners</button></div>';
+      '<button class="btn sm ' + (t === "partner" ? "" : "ghost") + '" data-act="sc-tab" data-k="partner">Partners</button>' +
+      '<button class="btn sm ' + (t === "activity" ? "" : "ghost") + '" data-act="sc-tab" data-k="activity">Activity</button></div>';
+  }
+  /* ---- Part 4: Leading indicators — activity + pitch funnel ----
+     The scorecard measures RESULTS; this measures the behaviours that produce next month's results.
+     All from existing data: site check-ins (sitevisits), follow-ups (with doneAt/dueDate), site stages. */
+  function scActivityFor(exec, month) {
+    var visits = (S.data.sitevisits || []).filter(function (v) {
+      return String(v.createdBy || "") === exec && String(v.createdAt || v.date || "").slice(0, 7) === month;
+    }).length;
+    var fus = (S.data.followups || []).filter(function (f) { return String(f.createdBy || "") === exec; });
+    var doneThis = fus.filter(function (f) { return f.status === "Done" && String(f.doneAt || "").slice(0, 7) === month; });
+    var onTime = doneThis.filter(function (f) { return f.dueDate && String(f.doneAt || "").slice(0, 10) <= String(f.dueDate).slice(0, 10); }).length;
+    var overdue = fus.filter(function (f) { return f.status !== "Done" && f.dueDate && daysTo(f.dueDate) < 0; }).length;
+    return { visits: visits, fuDone: doneThis.length, onTime: doneThis.length ? Math.round(onTime / doneThis.length * 100) : null, overdue: overdue };
+  }
+  function scFunnel() {
+    var sites = S.data.sites || [];
+    var byStage = {};
+    sites.forEach(function (s) { var st = String(s.stage || "").trim() || "(no stage set)"; byStage[st] = (byStage[st] || 0) + 1; });
+    var order = STAGES2.concat(["(no stage set)"]);
+    var rows = order.filter(function (st) { return byStage[st]; }).map(function (st) { return { stage: st, n: byStage[st] }; });
+    Object.keys(byStage).forEach(function (st) { if (order.indexOf(st) < 0) rows.push({ stage: st, n: byStage[st] }); });
+    var hit = {}; (S.data.challans || []).forEach(function (c) { if (c.site) hit[String(c.site).trim().toLowerCase()] = 1; });
+    var converted = sites.filter(function (s) { return hit[String(s.name || "").trim().toLowerCase()]; }).length;
+    return { rows: rows, total: sites.length, converted: converted };
+  }
+  function viewScActivity() {
+    var execs = scExecs();
+    var months = scMonths();
+    if (!S.sc.month) S.sc.month = months[0];
+    var h = '<div class="row" style="align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<div><label>Month</label><select id="sc_month">' + opts(months, S.sc.month) + '</select></div>' +
+      '<div class="grow"></div><span class="pill teal" style="background:#ccfbf1;color:#0f766e">Activity &amp; pitch funnel</span></div>';
+
+    h += '<div class="card" style="margin-top:10px"><h3 style="margin:0 0 6px;font-size:14px">Executive activity — ' + esc(scMonLabel(S.sc.month)) + '</h3>';
+    if (!execs.length) { h += '<div class="empty">No sales executives found.</div>'; }
+    else {
+      h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+        '<thead><tr style="background:#0b3b36;color:#fff">' +
+        '<th style="padding:8px;text-align:left">Executive</th>' +
+        '<th style="padding:8px;text-align:center">Site visits</th>' +
+        '<th style="padding:8px;text-align:center">Follow-ups done</th>' +
+        '<th style="padding:8px;text-align:center">On-time</th>' +
+        '<th style="padding:8px;text-align:center">Overdue open</th></tr></thead><tbody>';
+      execs.forEach(function (e, i) {
+        var a = scActivityFor(e, S.sc.month);
+        h += '<tr style="border-bottom:1px solid #e2e8f0;background:' + (i % 2 ? "#f8fafc" : "#fff") + '">' +
+          '<td style="padding:8px;font-weight:600">' + esc(e) + '</td>' +
+          '<td style="padding:8px;text-align:center">' + a.visits + '</td>' +
+          '<td style="padding:8px;text-align:center">' + a.fuDone + '</td>' +
+          '<td style="padding:8px;text-align:center">' + (a.onTime == null ? "—" : a.onTime + "%") + '</td>' +
+          '<td style="padding:8px;text-align:center;color:' + (a.overdue > 0 ? "#dc2626" : "#16a34a") + ';font-weight:700">' + a.overdue + '</td></tr>';
+      });
+      h += '</tbody></table></div>';
+    }
+    h += '<div class="meta" style="margin-top:6px;color:#94a3b8">Leading indicators — the behaviours that drive next month’s numbers. Visits and follow-ups are credited to whoever logged them.</div></div>';
+
+    var fn = scFunnel();
+    h += '<div class="card" style="margin-top:12px"><h3 style="margin:0 0 8px;font-size:14px">Pitch funnel — ' + fn.total + ' live project(s)</h3>';
+    if (!fn.rows.length) { h += '<div class="empty">No projects yet.</div>'; }
+    else {
+      var mx = Math.max.apply(null, fn.rows.map(function (r) { return r.n; }).concat([1]));
+      fn.rows.forEach(function (r) {
+        var w = Math.max(4, Math.round(r.n / mx * 100));
+        h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+          '<div style="width:150px;font-size:11.5px;color:#334155;text-align:right;flex:0 0 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.stage) + '</div>' +
+          '<div style="flex:1;background:#eef2f2;border-radius:6px;overflow:hidden;height:16px"><div style="width:' + w + '%;height:100%;background:#0d9488"></div></div>' +
+          '<div style="width:26px;text-align:right;font-weight:700;color:#0f766e">' + r.n + '</div></div>';
+      });
+      var convPct = fn.total ? Math.round(fn.converted / fn.total * 100) : 0;
+      h += '<div class="meta" style="margin-top:8px">Converted to an order: <b>' + fn.converted + '</b> of ' + fn.total + ' (<b>' + convPct + '%</b>). A project counts as converted once a challan is raised against its site — so a stage where many projects sit but few convert is where deals stall.</div>';
+    }
+    h += '</div>';
+    return h;
   }
   function viewScPartner() {
     var partners = (S.data.associates || []).slice();
@@ -4444,6 +4518,7 @@ function viewCatalogue() {
     S.sc = S.sc || {};
     if (!S.sc.tab) S.sc.tab = "exec";
     if (S.sc.tab === "partner") return scToggle() + viewScPartner();
+    if (S.sc.tab === "activity") return scToggle() + viewScActivity();
     var execs = scExecs();
     var months = scMonths();
     if (!S.sc.month) S.sc.month = months[0];
