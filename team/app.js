@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.159";
+  var APP_VERSION = "6.9.160";
   /* When a handler re-renders the whole page after a small in-modal change (e.g. changing a
      product quantity), the modal is rebuilt and its scroll jumps back to the top. Setting
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
@@ -3102,7 +3102,7 @@ function viewCatalogue() {
           : Number(i.disc);
         d = Number(d) || 0;
         var net = Math.round(i.price * (1 - d / 100));
-        return { desc: pdfSafe(i.desc) + (i.optional ? "   [OPTIONAL - not added to total]" : ""), code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[i.pic] || null,
+        return { desc: pdfSafe(i.desc) + (i.optional ? "   [OPTIONAL - NOT ADDED TO VALUE]" : ""), code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[i.pic] || null,
           unit: i.unit || "No's", optional: i.optional ? 1 : 0,
           qty: i.qty, price: i.price, disc: d, net: net, total: net * i.qty };
       });
@@ -3220,8 +3220,10 @@ function viewCatalogue() {
         var lines = fitCell(doc, F, r.desc, DESC_W, 40, "normal", 6.4);
         var hgt = Math.max(11, 5 + lines.length * 3.1);
         if (y + hgt > 272) { doc.addPage(); y = 20; head(); }
-        if (r.optional) { fill([255, 243, 222]); doc.rect(L, y - 3.6, Rt - L, hgt, "F"); }
-        else if (i % 2 === 1) { fill(SOFT); doc.rect(L, y - 3.6, Rt - L, hgt, "F"); }
+        if (r.optional) {
+          fill([255, 236, 209]); doc.setDrawColor(217, 119, 6); doc.setLineWidth(0.5);
+          doc.roundedRect(L + 0.4, y - 3.4, Rt - L - 0.8, hgt - 0.3, 1, 1, "FD"); doc.setLineWidth(0.2);
+        } else if (i % 2 === 1) { fill(SOFT); doc.rect(L, y - 3.6, Rt - L, hgt, "F"); }
 
         col(GREY); F("normal"); doc.setFontSize(5.6);
         doc.text(String(i + 1), X.n, y);
@@ -3244,7 +3246,7 @@ function viewCatalogue() {
 
         col([13, 148, 136]); F("bold"); doc.setFontSize(5.4);
         doc.text(String(r.code || ""), X.item, y - 0.6);
-        col(r.optional ? [146, 64, 14] : INK); F("normal"); doc.setFontSize(6.4);
+        col(r.optional ? [146, 64, 14] : INK); F(r.optional ? "bold" : "normal"); doc.setFontSize(6.4);
         doc.text(lines, X.item, y + 3, { lineHeightFactor: 1.15 });
 
         col(INK); F("normal"); doc.setFontSize(6.2);
@@ -3269,20 +3271,24 @@ function viewCatalogue() {
         doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.line(L, y - 2.8, Rt, y - 2.8);
       });
 
-      /* ---- sub-total. Either "{ GST as Actual }" (default) or a spelled-out 18% GST block. ---- */
+      /* ---- sub-total. Either "{ GST as Actual }" (default) or a spelled-out 18% GST block. ----
+         The box HEIGHT is known up-front per branch, so we advance y to a single deterministic
+         point BELOW the box afterwards. This is what stops the optional-lines footnote (and the
+         Terms panel) from ever riding on top of the total. */
+      var hasOpt = rows.some(function (r) { return r.optional; });
       y += 4;
-      if (y > (showGst ? 250 : 258)) { doc.addPage(); y = 26; }
+      var boxH = noTotal ? 9 : (showGst ? 18 : 11);
+      if ((y - 4.5) + boxH > 285) { doc.addPage(); y = 26; }
+      var boxTop = y - 4.5;
       if (noTotal) {
-        fill([255, 251, 235]); doc.roundedRect(106, y - 4.5, Rt - 106, 9, 1.5, 1.5, "F");
+        fill([255, 251, 235]); doc.roundedRect(106, boxTop, Rt - 106, boxH, 1.5, 1.5, "F");
         col([124, 45, 18]); F("normal"); doc.setFontSize(6.4);
         doc.text("Item-wise pricing - no consolidated total.", 110, y + 1.2);
-        y += 4;
       } else if (showGst) {
         var GST_RATE = 18;
         var gstAmt = Math.round(subTotal * GST_RATE / 100);
         var grand = subTotal + gstAmt;
-        var GBH = 18;
-        fill([236, 253, 245]); doc.roundedRect(106, y - 4.5, Rt - 106, GBH, 1.5, 1.5, "F");
+        fill([236, 253, 245]); doc.roundedRect(106, boxTop, Rt - 106, boxH, 1.5, 1.5, "F");
         col([13, 118, 108]); F("normal"); doc.setFontSize(6.8);
         doc.text("Sub-Total", 110, y + 1);
         F("bold"); doc.text(R(subTotal), X.amt, y + 1, { align: "right" });
@@ -3290,30 +3296,32 @@ function viewCatalogue() {
         doc.text("GST @ 18%", 110, y + 6.4);
         doc.text(R(gstAmt), X.amt, y + 6.4, { align: "right" });
         doc.setDrawColor(178, 217, 210); doc.setLineWidth(0.25); doc.line(110, y + 9, Rt - 4, y + 9); doc.setLineWidth(0.2);
-        /* Grand total kept at the SAME weight/size as the Sub-Total line (normal label, bold
-           figure, 6.8pt) - not the oversized bold it had, per Mukesh. */
         col([13, 118, 108]); F("normal"); doc.setFontSize(6.8);
         doc.text("Grand Total (incl. GST)", 110, y + 12.2);
         F("bold"); doc.text(R(grand), X.amt, y + 12.2, { align: "right" });
-        /* Advance clear of the FULL box (bottom = y-4.5+GBH). The Terms panel adds its own +4
-           below this, so the panel can never ride over the total again. */
-        y += (GBH - 5);
       } else {
-        fill([236, 253, 245]); doc.roundedRect(106, y - 4.5, Rt - 106, 11, 1.5, 1.5, "F");
+        fill([236, 253, 245]); doc.roundedRect(106, boxTop, Rt - 106, boxH, 1.5, 1.5, "F");
         col([13, 118, 108]); F("bold"); doc.setFontSize(6.8);
         doc.text("Sub-Total { GST as Actual }", 110, y + 1.4);
         doc.setFontSize(10);
         doc.text(R(subTotal), X.amt, y + 1.6, { align: "right" });
       }
+      y = boxTop + boxH + 5;   /* single, deterministic point clear of the total box */
 
-      /* Footnote whenever any line is an alternative option, so the highlighted amber rows read as
-         "choose one" and never look like they were left out of the total by mistake. */
-      if (rows.some(function (r) { return r.optional; })) {
-        y += 4;
-        fill([255, 243, 222]); doc.roundedRect(L, y - 3.6, Rt - L, 6.4, 1.2, 1.2, "F");
-        col([146, 64, 14]); F("normal"); doc.setFontSize(5.8);
-        doc.text("Rows shaded amber and marked [OPTIONAL] are alternative choices - their price is shown but is NOT included in the total above.", L + 3, y + 0.4);
-        y += 3.5;
+      /* Footnote whenever any line is an alternative option — a bordered amber strip drawn BELOW
+         the total box (never over it). Text is wrapped and the box is sized to the wrapped lines. */
+      if (hasOpt) {
+        F("bold"); doc.setFontSize(5.8);
+        var fnLines = doc.splitTextToSize(
+          "Rows outlined in amber and marked  OPTIONAL - NOT ADDED TO VALUE  are alternative choices. Their price is shown for comparison but is NOT included in the total above.",
+          Rt - L - 8);
+        var fnH = 3.6 + fnLines.length * 2.5;
+        if (y + fnH > 288) { doc.addPage(); y = 26; }
+        fill([255, 243, 222]); doc.setDrawColor(217, 119, 6); doc.setLineWidth(0.4);
+        doc.roundedRect(L, y, Rt - L, fnH, 1.4, 1.4, "FD"); doc.setLineWidth(0.2);
+        col([146, 64, 14]); F("bold");
+        doc.text(fnLines, L + 4, y + 3.4);
+        y += fnH + 1;
       }
 
       /* ================= TERMS ================= */
