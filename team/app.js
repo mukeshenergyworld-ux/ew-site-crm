@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.171";
+  var APP_VERSION = "6.9.172";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -6665,6 +6665,9 @@ function viewCatalogue() {
         '<div class="acts"><button class="btn sm" data-act="tab" data-tab="' + one.a + '">' + esc(one.b) + '</button></div></div>';
     }
 
+    /* the agent's own top of the list, above the plain digest — it names names and drafts the text */
+    if (canSee("agent")) { try { h += agTodayCard(); } catch (e) { console.warn("[agent] today card:", e); } }
+
     var dg = digestLines();
     h += '<div class="card"><h3>Team digest — today</h3>' +
       '<div class="meta">' + (dg.length ? dg.map(function (l) { return "&bull; " + esc(l); }).join("<br>") : "All clear — nothing pending. 🎉") + '</div>' +
@@ -7478,6 +7481,25 @@ function viewCatalogue() {
 
   /* The drafted message. Written the way this business actually talks to a plumber or an
      architect: short, specific to the stage, one clear ask. Always editable, never auto-sent. */
+  /* Contacts for a CLIENT-scoped action (money, quotations, service). The client comes
+     first, then the plumber / architect / builder on any site of that client — so a stuck
+     quotation can also be chased through the man who actually specifies the material. */
+  function agContactsFor(name) {
+    var t = String(name || "").trim().toLowerCase(), out = [];
+    if (!t) return out;
+    var c = clientByName(name);
+    out.push({ role: "Client", name: String(name), mobile: (c && c.mobile) ? String(c.mobile).replace(/\D/g, "") : "" });
+    (S.data.sites || []).forEach(function (st) {
+      if (String(st.client || "").trim().toLowerCase() !== t) return;
+      [["Plumber", st.plumber], ["Architect", st.architect], ["Builder", st.builder]].forEach(function (p) {
+        var nm = String(p[1] || "").trim(); if (!nm) return;
+        if (out.some(function (x) { return x.name.toLowerCase() === nm.toLowerCase(); })) return;
+        out.push({ role: p[0], name: nm, mobile: agMobileOf(nm) });
+      });
+    });
+    return out;
+  }
+
   function agDraftText(a, who) {
     var name = who && who.name ? who.name : "Sir";
     var site = a.siteName || "your project";
@@ -7509,7 +7531,39 @@ function viewCatalogue() {
       return head + "It has been a while since we visited " + site + ". May I come by this week to " +
         "see the progress? If the work has moved ahead I will bring the right material list with me." + sign;
     }
-    return head + "Regarding " + site + " — " + (a.title || "") + sign;
+    /* --- Part 3 kinds: money, quotations, service, partners --- */
+    if (a.kind === "pay") {
+      return head + "Regarding your account with Energy World \u2014 an amount of " + moneyAscii(a.amount) +
+        " is outstanding against material delivered and received " + a.age + " days ago.\n\n" +
+        "Kindly arrange the payment at your convenience. If you would like the full ledger for checking, " +
+        "I can send it across right away." + sign;
+    }
+    if (a.kind === "coldquote") {
+      return head + "We had sent you our quotation " + (a.quoteNo || "") +
+        (a.brandTxt ? " for " + a.brandTxt : "") + (a.qdate ? " on " + d10(a.qdate) : "") +
+        ", and I have not heard back yet.\n\n" +
+        "Is there anything you would like changed \u2014 the rate, the make, or the quantity? " +
+        "I can revise it today. If the market rate has moved I will still hold our quoted rate for you." + sign;
+    }
+    if (a.kind === "service") {
+      return head + "Your " + (a.product || "unit") + " is due for service" +
+        (a.od > 0 ? " \u2014 it is " + a.od + " day(s) past the due date" : "") + ".\n\n" +
+        "Shall I send our engineer this week? Servicing on time keeps the water quality right, " +
+        "protects the machine and keeps the warranty valid." + sign;
+    }
+    if (a.kind === "amcend") {
+      return head + "The AMC on your " + (a.product || "unit") + " ends on " + d10(a.till) + ".\n\n" +
+        "May I renew it for you? The AMC covers periodic service, salt and filter refills at agreed rates, " +
+        "and priority attention if anything ever stops." + sign;
+    }
+    if (a.kind === "partner") {
+      return "Namaste " + name + ",\n\n" +
+        "It has been about " + a.days + " days since we last worked on a site together. " +
+        "Do you have anything coming up at plumbing or finishing stage?\n\n" +
+        "Energy World is an authorised distributor with our own service team, stock ready at Panipat, " +
+        "and we clear partner incentives on time. Happy to visit the site with you." + sign;
+    }
+    return head + "Regarding " + site + " \u2014 " + (a.title || "") + sign;
   }
 
   var AG_BANDS = [
@@ -7519,10 +7573,183 @@ function viewCatalogue() {
   ];
   function agBand(a) { return a.prio >= 80 ? 0 : (a.prio >= 50 ? 1 : 2); }
 
-  /* The rules engine. Everything here is derived from data already in the sheet — no new
+  /* ================= Part 3 — the agent beyond pitching =================
+     Pitching is only half a day's work. These rules read the SAME sheet for the other half:
+     money already earned but not collected, quotations that have gone quiet, service that has
+     fallen due, and partners who have gone cold. They join the very same ranked list, obey the
+     same draft-and-confirm rule, and write nothing back to the sheet.
+
+     Every mute key carries a bucket that MOVES on its own \u2014 a payment ages into the next
+     15-day bucket, a quotation into the next week, a service into its next due date \u2014 so
+     "Done" can never bury a live problem permanently. */
+  function agScanBiz() {
+    var out = [];
+    var mk = function (o) {
+      o.stageNo = 0; o.siteId = o.siteId || ""; o.contacts = o.contacts || []; o.lines = o.lines || [];
+      o.mute = agMuted(o.key);
+      return o;
+    };
+
+    /* 5. MONEY \u2014 delivered, receipt signed, still not in the bank. Aged from the latest
+          delivered challan exactly the way the Collections screen ages it, so the two can
+          never tell you different numbers. */
+    try {
+      var payNames = {};
+      (S.data.challans || []).forEach(function (c) {
+        if (String(c.receiptReceived).toUpperCase() === "Y" && c.customerName) payNames[c.customerName] = 1;
+      });
+      Object.keys(payNames).forEach(function (nm) {
+        if (!isMineClient(nm)) return;
+        var l = clientLedger(nm); if (!(l.due > 0)) return;
+        var age = payAge(nm); if (age < PAY_MIN) return;
+        out.push(mk({
+          key: "pay|" + nm + "|" + Math.floor(age / 15), kind: "pay",
+          prio: age >= 30 ? 94 : (age >= 15 ? 70 : 48),
+          tag: age >= 30 ? "OVERDUE " + age + "d" : age + "d OLD",
+          title: "Collect " + money(l.due) + " \u2014 " + nm,
+          why: "Material delivered and receipted " + age + " days ago, and " + moneyAscii(l.due) +
+            " is still outstanding. This is money already earned \u2014 nothing new has to be sold to bring it in.",
+          sub: nm + " \u00b7 outstanding " + money(l.due) + " \u00b7 oldest delivery " + age + " days ago",
+          client: nm, siteName: nm, amount: l.due, age: age, contacts: agContactsFor(nm),
+          btns: [{ act: "pay-wa", attrs: { n: nm }, label: "Send ledger PDF" },
+                 { act: "tab", attrs: { tab: "collections" }, label: "Collections", ghost: 1 }]
+        }));
+      });
+    } catch (e) { console.warn("[agent] rule skipped:", e); }
+
+    /* 6. QUOTATIONS GONE QUIET \u2014 still Sent or Negotiating and untouched for a week or
+          more. A quotation nobody chases is a quotation the competitor answers. */
+    try {
+      var qcold = [];
+      (S.data.quotes || []).forEach(function (q) {
+        if (q.status !== "Sent" && q.status !== "Negotiating") return;
+        if (!isMineClient(q.client) && q.createdBy !== S.user && !seesAllClients()) return;
+        var d = q.updatedAt || q.createdAt || ""; if (!d) return;
+        var idle = -daysTo(d); if (idle < 7) return;
+        qcold.push({ q: q, idle: idle });
+      });
+      qcold.sort(function (a, b) { return b.idle - a.idle; });
+      qcold.slice(0, 25).forEach(function (x) {
+        var q = x.q, idle = x.idle, bt = String(q.brand || "").trim();
+        out.push(mk({
+          key: "coldquote|" + q.id + "|" + Math.floor(idle / 7), kind: "coldquote",
+          prio: idle >= 21 ? 82 : (idle >= 14 ? 64 : 50),
+          tag: idle + "d NO REPLY",
+          title: "Chase quotation \u2014 " + (q.client || "client"),
+          why: "Quotation " + (q.quoteNo || q.id) + (bt ? " (" + bt + ")" : "") + " worth " + money(q.net) +
+            " has been sitting at \u201c" + q.status + "\u201d for " + idle + " days with no movement. " +
+            "One call now is worth more than a new quotation next month.",
+          sub: (q.client || "client") + " \u00b7 " + (q.quoteNo || "") + " \u00b7 " + money(q.net) + " \u00b7 " + q.status,
+          client: q.client || "", siteName: q.client || "quotation",
+          quoteNo: q.quoteNo || "", brandTxt: bt, qdate: q.updatedAt || q.createdAt || "",
+          contacts: agContactsFor(q.client),
+          btns: [{ act: "qz-revise", attrs: { id: q.id }, label: "Revise it", ghost: 1 },
+                 { act: "q-pdf", attrs: { id: q.id }, label: "Send PDF again", ghost: 1 }]
+        }));
+      });
+    } catch (e) { console.warn("[agent] rule skipped:", e); }
+
+    /* 7. SERVICE FALLEN DUE \u2014 the machine is on site, the date has passed. Service is the
+          cheapest sale there is: the customer already owns the unit. */
+    try {
+      (S.data.installs || []).forEach(function (x) {
+        if (!x.nextService) return;
+        if (String(x.status || "Active") !== "Active") return;
+        var od = -daysTo(x.nextService); if (od < 0) return;
+        out.push(mk({
+          key: "svc|" + x.id + "|" + d10(x.nextService), kind: "service",
+          prio: od >= 30 ? 86 : (od >= 7 ? 60 : 50),
+          tag: od === 0 ? "DUE TODAY" : od + "d OVERDUE",
+          title: "Service due \u2014 " + (x.client || "client"),
+          why: (x.product || "The unit") + " at " + (x.client || "this client") + " was due for service on " +
+            d10(x.nextService) + (od > 0 ? ", " + od + " days ago" : "") +
+            ". Salt, filters and the visit charge all sit on this one call.",
+          sub: (x.client || "") + " \u00b7 " + (x.product || "") + " \u00b7 due " + d10(x.nextService) +
+            (x.engineer ? " \u00b7 " + x.engineer : ""),
+          client: x.client || "", siteName: x.client || "service", product: x.product || "", od: od,
+          contacts: agContactsFor(x.client),
+          btns: [{ act: "visit-new", attrs: { id: x.id }, label: "Log the visit", ghost: 1 },
+                 { act: "inst-open", attrs: { id: x.id }, label: "Open record", ghost: 1 }]
+        }));
+      });
+    } catch (e) { console.warn("[agent] rule skipped:", e); }
+
+    /* 8. AMC ABOUT TO LAPSE \u2014 renew before it expires, not after. Once it lapses the
+          customer is free and the next breakdown call goes to somebody else. */
+    try {
+      (S.data.installs || []).forEach(function (x) {
+        if (!x.amcType || x.amcType === "None" || !x.amcEnd) return;
+        var left = daysTo(x.amcEnd);
+        if (left > 45 || left < -30) return;
+        out.push(mk({
+          key: "amcend|" + x.id + "|" + d10(x.amcEnd), kind: "amcend",
+          prio: left < 0 ? 72 : (left <= 15 ? 66 : 54),
+          tag: left < 0 ? "LAPSED " + (-left) + "d" : left + "d LEFT",
+          title: "Renew AMC \u2014 " + (x.client || "client"),
+          why: "The " + (x.amcType || "") + " AMC on " + (x.product || "the unit") + " at " + (x.client || "this client") +
+            (left < 0 ? " lapsed on " : " ends on ") + d10(x.amcEnd) +
+            ". Renewing now keeps the machine under our care and the next breakdown call ours.",
+          sub: (x.client || "") + " \u00b7 " + (x.product || "") + " \u00b7 AMC to " + d10(x.amcEnd) +
+            (x.amcAmount ? " \u00b7 " + money(x.amcAmount) : ""),
+          client: x.client || "", siteName: x.client || "AMC", product: x.product || "", till: x.amcEnd,
+          contacts: agContactsFor(x.client),
+          btns: [{ act: "amc-wa", attrs: { n: x.client || "", p: x.product || "", till: d10(x.amcEnd) }, label: "AMC offer", ghost: 1 },
+                 { act: "inst-open", attrs: { id: x.id }, label: "Open record", ghost: 1 }]
+        }));
+      });
+    } catch (e) { console.warn("[agent] rule skipped:", e); }
+
+    /* 9. PARTNERS GONE COLD \u2014 no challan, no site visit, no incentive paid for a month.
+          Plumbers and architects decide what goes into a building long before the owner does. */
+    try {
+      coldPartners().slice(0, 12).forEach(function (x) {
+        var nm = x.a.name, mob = String(x.a.mobile || "").replace(/\D/g, "");
+        out.push(mk({
+          key: "partner|" + nm + "|" + Math.floor(x.days / 30), kind: "partner",
+          prio: x.days >= 90 ? 50 : 44,
+          tag: x.days + "d COLD",
+          title: "Warm up " + nm,
+          why: "No challan, site visit or incentive payout with " + nm + " for " + x.days + " days. " +
+            "A plumber or architect decides the make long before the owner does \u2014 a two-minute call keeps you on that list.",
+          sub: nm + (x.a.role ? " \u00b7 " + x.a.role : "") + (x.a.area ? " \u00b7 " + x.a.area : "") + " \u00b7 quiet " + x.days + " days",
+          client: "", siteName: nm, days: x.days,
+          contacts: [{ role: x.a.role || "Partner", name: nm, mobile: mob }],
+          btns: [{ act: "tab", attrs: { tab: "partners" }, label: "Partners", ghost: 1 }]
+        }));
+      });
+    } catch (e) { console.warn("[agent] rule skipped:", e); }
+
+    /* 10. DELIVERED BUT NEVER BILLED \u2014 one aggregate flag, not a card per challan. Goods
+           gone out on a signed receipt with no tax bill behind them is a GST and receivables gap. */
+    try {
+      var unb = unbilledStats();
+      if (unb.count > 0) out.push(mk({
+        key: "unbilled|" + unb.count, kind: "unbilled", prio: 64, nodraft: true,
+        tag: unb.count + " CHALLAN(S)",
+        title: "Bill " + money(unb.val) + " already delivered",
+        why: unb.count + " delivered challan(s) worth " + moneyAscii(unb.val) +
+          " carry no bill number. The material has left the godown on a signed receipt with no tax bill behind it \u2014 " +
+          "that is a GST gap and it also keeps the money out of the ledger.",
+        sub: unb.count + " challan(s) \u00b7 " + money(unb.val) + " \u00b7 no bill number",
+        client: "", siteName: "Billing",
+        btns: [{ act: "tab", attrs: { tab: "deliveries" }, label: "Open deliveries" }]
+      }));
+    } catch (e) { console.warn("[agent] rule skipped:", e); }
+
+    return out;
+  }
+
+  /* The rules engine. Everything here is derived from data already in the sheet \u2014 no new
      column, no new screen to maintain. Each rule states plainly WHY it fired, because an
      instruction you don't believe is an instruction you ignore. */
+  /* The scan is asked for three times in one paint \u2014 the nav badge, the Today strip and the
+     board itself. It reads the whole book each time, so one render gets exactly one scan.
+     The cache is dropped at the top of every render(), which is also what makes a snooze or a
+     newly-saved record show up immediately. */
+  var AG_CACHE = null;
+  function agClearCache() { AG_CACHE = null; }
   function agScan() {
+    if (AG_CACHE) { AG_INDEX = AG_CACHE.idx; return AG_CACHE.out; }
     var out = [];
     var sites = (S.data.sites || []);
     /* a sales exec gets their own sites; admin and accounts see everything */
@@ -7584,11 +7811,15 @@ function viewCatalogue() {
         "No visit logged in " + idle + " days. If the work has moved on, every pitch window above is being read off a wrong stage."));
     });
 
+    /* the rest of the day's work: money, quotations, service, partners, billing */
+    try { agScanBiz().forEach(function (a) { out.push(a); }); } catch (e) { console.warn("[agent] business rules failed:", e); }
+
     out.sort(function (a, b) {
-      return (b.prio - a.prio) || (b.stageNo - a.stageNo) || String(a.siteName).localeCompare(String(b.siteName));
+      return (b.prio - a.prio) || ((b.stageNo || 0) - (a.stageNo || 0)) || String(a.siteName).localeCompare(String(b.siteName));
     });
     AG_INDEX = {};
     out.forEach(function (a) { AG_INDEX[a.key] = a; });
+    AG_CACHE = { out: out, idx: AG_INDEX };
     return out;
   }
 
@@ -7600,25 +7831,38 @@ function viewCatalogue() {
     return n ? ' <span style="background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:700;margin-left:4px">' + n + '</span>' : '';
   }
 
+  /* One card shape for every kind of suggestion. A site action shows its construction stage and
+     a way into the pitch matrix; a money / quotation / service / partner action shows its own
+     one-line summary and its own shortcut buttons. Snooze and Done sit on all of them. */
   function agCard(a, b) {
-    var who = a.contacts.map(function (c) {
+    var who = (a.contacts || []).map(function (c) {
       return '<span class="pill">' + esc(c.role) + ': ' + esc(c.name) + '</span>' +
         (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : '');
     }).join(" ");
+    var line = a.sub
+      ? esc(a.sub)
+      : '<b>' + esc(a.siteName) + '</b>' + (a.client ? ' \u00b7 ' + esc(a.client) : '') + ' \u00b7 ' + esc(a.stage || "") +
+        (a.stageNo ? ' (stage ' + a.stageNo + ' of 13)' : '');
+    var extra = (a.btns || []).map(function (x) {
+      var at = "";
+      Object.keys(x.attrs || {}).forEach(function (k) { at += ' data-' + k + '="' + esc(x.attrs[k]) + '"'; });
+      return '<button class="btn sm' + (x.ghost ? " ghost" : "") + '" data-act="' + esc(x.act) + '"' + at + '>' + esc(x.label) + '</button>';
+    }).join("");
+    var primary = a.kind === "nostage"
+      ? '<button class="btn sm" data-act="site-open" data-id="' + esc(a.siteId) + '">Set the stage</button>'
+      : (a.nodraft ? "" : '<button class="btn sm" data-act="ag-draft" data-k="' + esc(a.key) + '">Write the message</button>');
+
     return '<div class="card" style="border-color:' + b.c + ';background:' + b.bg + '">' +
       '<h3>' + esc(a.title) + ' <span class="pill due">' + esc(a.tag) + '</span></h3>' +
       '<div class="meta">' + esc(a.why) + '</div>' +
-      '<div class="meta" style="margin-top:6px"><b>' + esc(a.siteName) + '</b>' +
-      (a.client ? ' · ' + esc(a.client) : '') + ' · ' + esc(a.stage) +
-      (a.stageNo ? ' (stage ' + a.stageNo + ' of 13)' : '') + '</div>' +
+      '<div class="meta" style="margin-top:6px">' + line + '</div>' +
       (who
         ? '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' + who + '</div>'
-        : '<div class="meta" style="margin-top:6px;color:#b45309">No contact saved on this site — add the client, plumber or architect and the agent can write the message too.</div>') +
+        : (a.nodraft ? ''
+          : '<div class="meta" style="margin-top:6px;color:#b45309">No mobile saved for this contact \u2014 add it on the client, site or partner record and the agent can pre-address the message too.</div>')) +
       '<div class="acts" style="flex-wrap:wrap;gap:6px;margin-top:8px">' +
-      (a.kind === "nostage"
-        ? '<button class="btn sm" data-act="site-open" data-id="' + esc(a.siteId) + '">Set the stage</button>'
-        : '<button class="btn sm" data-act="ag-draft" data-k="' + esc(a.key) + '">Write the message</button>') +
-      '<button class="btn sm ghost" data-act="matrix" data-id="' + esc(a.siteId) + '">Pitch matrix</button>' +
+      primary + extra +
+      (a.siteId ? '<button class="btn sm ghost" data-act="matrix" data-id="' + esc(a.siteId) + '">Pitch matrix</button>' : '') +
       '<button class="btn sm ghost" data-act="ag-snooze" data-k="' + esc(a.key) + '">Snooze 7d</button>' +
       '<button class="btn sm ghost" data-act="ag-done" data-k="' + esc(a.key) + '">Done</button>' +
       '</div></div>';
@@ -7631,9 +7875,10 @@ function viewCatalogue() {
     var nBand = function (i) { return live.filter(function (a) { return agBand(a) === i; }).length; };
 
     var h = '<div class="empty" style="text-align:left;padding:0 0 12px"><b>Your agent.</b> ' +
-      'It reads every live site’s construction stage, your pitch rules, the quotations already out and the date of the last visit — ' +
-      'then tells you who to contact today, why, and writes the message for you. ' +
-      '<b>It never sends anything on its own</b> — you read the draft and press send.</div>';
+      'Every time you open this it re-reads the whole book — each live site’s construction stage and your pitch rules, ' +
+      'the money delivered but not yet collected, the quotations lying unanswered, the services and AMCs that have fallen due, ' +
+      'and the partners who have gone quiet — then ranks what to do today, says plainly why, and writes the message for you. ' +
+      '<b>It never sends anything on its own</b> — you read the draft and press send, and nothing here ever deletes a record.</div>';
 
     h += '<div class="cards">' +
       '<div class="stat ' + (nBand(0) ? "alert" : "") + '"><div class="n">' + nBand(0) + '</div><div class="l">Do today</div></div>' +
@@ -7641,8 +7886,15 @@ function viewCatalogue() {
       '<div class="stat"><div class="n">' + live.length + '</div><div class="l">Open suggestions</div></div>' +
       '<div class="stat"><div class="n">' + muted.length + '</div><div class="l">Snoozed / done</div></div></div>';
 
+    if (live.length) {
+      h += '<div class="row" style="flex-wrap:wrap;gap:6px;margin:2px 0 8px">' +
+        '<button class="btn sm ghost" data-act="ag-tg">Send today\u2019s list to the team (Telegram)</button>' +
+        '<button class="btn sm ghost" data-act="ag-wa2">Share on WhatsApp</button></div>';
+    }
+
     if (!all.length) {
-      return h + '<div class="empty">Nothing to work on yet. The agent runs entirely off your live sites and their construction stage — enter a few and it lights up.' +
+      return h + '<div class="empty">Nothing needs you right now — no window closing, no money overdue, no quotation waiting, no service due. ' +
+        'The pitching half of the agent runs off your live sites and their construction stage, so entering those sharpens it the most.' +
         '<div class="acts" style="justify-content:center;margin-top:10px">' +
         '<button class="btn sm" data-act="tab" data-tab="sites">Add a site</button>' +
         '<button class="btn sm ghost" data-act="tab" data-tab="pitch">Stage playbook</button></div></div>';
@@ -7668,6 +7920,81 @@ function viewCatalogue() {
           '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="ag-unmute" data-k="' + esc(a.key) + '">Bring it back</button></div></div>';
       });
     }
+    return h;
+  }
+
+  /* ================= Part 5 — the agent on the Today screen and in the team push =================
+     The board is only useful if you open it. So the top of the agent's list also lands on Today,
+     and one tap turns the whole ranked list into a PDF the team gets on Telegram. The push is
+     still owner-initiated: the agent prepares it, you press the button. */
+
+  function agLive() {
+    try { return agScan().filter(function (a) { return !a.mute; }); } catch (e) { return []; }
+  }
+  function agLines(cap) {
+    return agLive().slice(0, cap || 20).map(function (a) {
+      return "[" + AG_BANDS[agBand(a)].t + "] " + a.title + " \u2014 " + a.tag;
+    });
+  }
+  function agTgText() {
+    var live = agLive(), n0 = live.filter(function (a) { return agBand(a) === 0; }).length;
+    return "Energy World \u2014 what the agent says today (" + fullDate(today()) + ")\n\n" +
+      (live.length
+        ? n0 + " to do today, " + live.length + " open in all. Top of the list:\n" +
+          agLines(8).map(function (x) { return "\u2022 " + x; }).join("\n")
+        : "Nothing outstanding \u2014 no window closing, no money overdue, no quotation waiting.") +
+      "\n\n(auto-ranked by the CRM \u2014 open the Agent tab for the drafted messages)";
+  }
+  function agPdf() {
+    return commPdfBase("WHAT THE AGENT SAYS TODAY", {}, today()).then(function (b) {
+      var doc = b.doc, F = b.F, L = b.L, R = b.R, y = 48;
+      var live = agLive();
+      doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(11.5);
+      if (!live.length) doc.text("Nothing outstanding today.", L, y);
+      live.slice(0, 30).forEach(function (a) {
+        if (y > 268) { doc.addPage(); y = 24; }
+        F("bold"); doc.setFontSize(11.5); doc.setTextColor(17, 34, 45);
+        doc.splitTextToSize(a.title + "  (" + a.tag + ")", R - L - 8).forEach(function (t2, i) {
+          doc.text((i === 0 ? "\u2022  " : "    ") + t2, L, y); y += 6;
+        });
+        F("normal"); doc.setFontSize(9.2); doc.setTextColor(90, 105, 120);
+        doc.splitTextToSize(a.why, R - L - 14).forEach(function (t2) {
+          if (y > 275) { doc.addPage(); y = 24; }
+          doc.text("    " + t2, L, y); y += 4.6;
+        });
+        y += 3.4;
+      });
+      doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
+      doc.text("Energy World  |  Panipat \u00b7 Sonipat \u00b7 Karnal", L, 290);
+      return doc;
+    });
+  }
+
+  /* The Today-screen strip: the agent's own top three, with the drafted message one tap away. */
+  function agTodayCard() {
+    var live = agLive();
+    var top = live.filter(function (a) { return agBand(a) === 0; });
+    if (!top.length) top = live.slice(0, 2);
+    if (!top.length) return "";
+    var n0 = live.filter(function (a) { return agBand(a) === 0; }).length;
+    var h = '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
+      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#b91c1c"><b>Your agent</b></div>' +
+      '<h3 style="font-size:17px;margin:4px 0 2px">' +
+      (n0 ? n0 + " thing(s) to do today" : live.length + " open suggestion(s)") + '</h3>' +
+      '<div class="meta" style="margin-bottom:6px">Ranked from your sites, your money, your quotations and your service book. The message is already written.</div>';
+    top.slice(0, 3).forEach(function (a) {
+      h += '<div style="border-top:1px solid #fecaca;padding:7px 0 4px">' +
+        '<div style="font-weight:600;font-size:13.5px">' + esc(a.title) +
+        ' <span class="pill due">' + esc(a.tag) + '</span></div>' +
+        '<div class="meta" style="font-size:12px">' + esc(a.why) + '</div>' +
+        (a.nodraft ? '' :
+          '<div class="acts" style="margin-top:5px"><button class="btn sm" data-act="ag-draft" data-k="' + esc(a.key) + '">Write the message</button></div>') +
+        '</div>';
+    });
+    h += '<div class="acts" style="flex-wrap:wrap;gap:6px;margin-top:8px">' +
+      '<button class="btn sm" data-act="tab" data-tab="agent">Open the agent' +
+      (live.length > 3 ? ' (' + live.length + ')' : '') + '</button>' +
+      '<button class="btn sm ghost" data-act="ag-tg">Send the list to the team</button></div></div>';
     return h;
   }
 
@@ -8221,6 +8548,7 @@ function viewCatalogue() {
   /* render() is the crash boundary: if anything inside blows up, log it and show a safe recovery
      screen instead of a frozen/blank app. The real work is in renderCore(). */
   function render() {
+    try { agClearCache(); } catch (e) { }   /* one agent scan per paint, always fresh */
     try { renderCore(); try { syncBanner(); } catch (e) { } }
     catch (err) {
       logCrash("render", err);
@@ -9775,6 +10103,23 @@ function viewCatalogue() {
       try { window.open("https://wa.me/" + agM + "?text=" + encodeURIComponent(agT), "_blank"); }
       catch (e) { toast("Couldn't open WhatsApp \u2014 copy the text instead."); return; }
       toast("WhatsApp opened with the draft. Read it, then press send.");
+      return;
+    }
+    if (act === "ag-tg") {
+      /* The owner presses this. It sends the agent's own ranked list to the team channel as a
+         branded PDF, with the top eight in the caption. Nothing customer-facing goes out here. */
+      toast("Building today\u2019s list...");
+      loadLogo().then(function () { return agPdf(); }).then(function (d) {
+        return api("tgSend", {
+          bot: "TG_QUOTES", pdfBase64: d.output("datauristring").split(",")[1],
+          filename: "EW_agent_" + today() + ".pdf", caption: agTgText()
+        });
+      }).then(function (r) { toast(r && r.ok ? "Sent to the team." : "Send failed."); })
+        .catch(function () { toast("Could not send the list."); });
+      return;
+    }
+    if (act === "ag-wa2") {
+      waShareDoc(loadLogo().then(function () { return agPdf(); }), "EW_agent_" + today() + ".pdf", "", agTgText());
       return;
     }
     if (act === "ag-snooze") {
