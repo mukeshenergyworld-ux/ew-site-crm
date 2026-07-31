@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.167";
+  var APP_VERSION = "6.9.168";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3249,10 +3249,14 @@ function viewCatalogue() {
         var bCount = bBlocks.reduce(function (a, x) { return a + x.length; }, 0);
         var hasB = (r.bullets && r.bullets.length) ? 1 : 0;
         var hgt = Math.max(11, 4 + tLines.length * 3.2 + (hasB ? 1.2 : 0) + bCount * 2.9 + (hasB ? 1.5 : 0));
+        /* Page-break FIRST, then derive mid from the post-break y. If mid were computed
+           before the break, a row that wraps to a new page would draw its serial # and
+           figures at the old bottom-of-page y (off the printable area) while the
+           description drew at the new top - the "item 17 invisible" bug. */
+        if (y + hgt > 272) { doc.addPage(); y = 20; head(); }
         /* baseline for the right-aligned numbers, vertically CENTRED in the row so a one-line item
            aligns with its description and a multi-line item keeps its figures in the middle. */
         var mid = (y - 3.6) + hgt / 2 + 1.1;
-        if (y + hgt > 272) { doc.addPage(); y = 20; head(); }
         if (r.optional) {
           fill([255, 236, 209]); doc.setDrawColor(217, 119, 6); doc.setLineWidth(0.5);
           doc.roundedRect(L + 0.4, y - 3.4, Rt - L - 0.8, hgt - 0.3, 1, 1, "FD"); doc.setLineWidth(0.2);
