@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.170";
+  var APP_VERSION = "6.9.171";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -169,10 +169,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","report","scorecard","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","stock"],
+    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","stock"],
     accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","stock"],
     godown:   ["dash","returns","tools","challans","products","stock"],
-    sales:    ["dash","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products"],
+    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products"],
     service:  ["dash","tools","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -7415,6 +7415,290 @@ function viewCatalogue() {
      key in the views object, so the Incentives tab was showing a raw sum of stored figures
      with no GST strip and no collection gate. Do not reintroduce it. */
 
+  /* ===================== THE AGENT — stage-based pitch agent =====================
+     A normal CRM stores what happened. This part NOTICES and DECIDES. Every time the
+     board is opened it re-reads every live site's construction stage, the configured
+     pitch rules, the quotes already raised and the date of the last site visit, then
+     produces a RANKED list of what to do today — with the message already written.
+
+     Two hard rules, deliberate, not to be relaxed:
+       1. DRAFT AND CONFIRM. The agent never sends anything by itself. It writes the
+          message and opens WhatsApp with the text already loaded; the owner reads it
+          and presses send. Nothing leaves the phone without a human tap.
+       2. NOTHING IS DELETED. "Done" and "Snooze" only hide a suggestion on THIS
+          device (localStorage). No business record is ever touched.
+
+     The action key carries the site's stage number, so the moment a site advances to
+     its next stage every suggestion for it is reborn automatically — a dismissal can
+     never silence a site for the rest of the project. */
+
+  var AG_MEM_KEY = "ew_agent_mem_v1";
+  var AG_INDEX = {};   /* key -> action, rebuilt on every scan so a handler can look one up */
+
+  function agMem() {
+    try { return JSON.parse(localStorage.getItem(AG_MEM_KEY) || "{}") || {}; } catch (e) { return {}; }
+  }
+  function agMemWrite(m) { try { localStorage.setItem(AG_MEM_KEY, JSON.stringify(m)); } catch (e) { } }
+  function agMemPut(key, rec) { var m = agMem(); m[key] = rec; agMemWrite(m); }
+  function agMemDrop(key) { var m = agMem(); delete m[key]; agMemWrite(m); }
+  /* The hide-record if this suggestion is currently muted, else null. An expired snooze
+     cleans itself up, so the suggestion returns on its own without any housekeeping. */
+  function agMuted(key) {
+    var r = agMem()[key];
+    if (!r) return null;
+    if (r.kind === "snooze" && r.until && r.until <= today()) { agMemDrop(key); return null; }
+    return r;
+  }
+
+  function agMobileOf(name) {
+    var t = String(name || "").trim().toLowerCase();
+    if (!t) return "";
+    var a = (S.data.associates || []).filter(function (x) { return String(x.name || "").trim().toLowerCase() === t; })[0];
+    if (a && a.mobile) return String(a.mobile).replace(/\D/g, "");
+    var c = clientByName(name);
+    if (c && c.mobile) return String(c.mobile).replace(/\D/g, "");
+    return "";
+  }
+  function agWa(m) { var n = String(m || "").replace(/\D/g, ""); if (n.length === 10) n = "91" + n; return n; }
+  /* Everyone worth contacting about a site, in the order they actually decide: the client
+     pays, but at rough-in it is the plumber and the architect who specify the material. */
+  function agContacts(st) {
+    var out = [];
+    var add = function (role, name, mob) {
+      name = String(name || "").trim(); if (!name) return;
+      if (out.some(function (x) { return x.name.toLowerCase() === name.toLowerCase(); })) return;
+      out.push({ role: role, name: name, mobile: String(mob || "").replace(/\D/g, "") || agMobileOf(name) });
+    };
+    add("Client", st.client, st.mobile);
+    add("Plumber", st.plumber, "");
+    add("Architect", st.architect, "");
+    add("Builder", st.builder, "");
+    return out;
+  }
+
+  /* The drafted message. Written the way this business actually talks to a plumber or an
+     architect: short, specific to the stage, one clear ask. Always editable, never auto-sent. */
+  function agDraftText(a, who) {
+    var name = who && who.name ? who.name : "Sir";
+    var site = a.siteName || "your project";
+    var head = "Namaste " + name + ",\n\n";
+    var sign = "\n\nRegards,\n" + (S.user || "Energy World") + "\nEnergy World, Panipat / Sonipat";
+    var lines = (a.lines || []).map(function (l) { return "- " + l; }).join("\n");
+    if (a.kind === "closing") {
+      return head + site + " is at the " + a.stage + " stage, so this is the last window for " +
+        a.brand + ". Once this stage is closed the material cannot go into this project at all.\n\n" +
+        "May I send you a quotation for " + (a.line || a.brand) + " today?" + sign;
+    }
+    if (a.kind === "window") {
+      return head + "As per our record " + site + " is now at the " + a.stage + " stage. " +
+        "At this stage the following normally goes in:\n" + lines +
+        "\n\nThis material gets sealed into the building, so the window closes as the work moves ahead. " +
+        "Shall I send a quotation with our best rates?" + sign;
+    }
+    if (a.kind === "stagepitch") {
+      return head + site + " is at the " + a.stage + " stage. At this stage we supply:\n" + lines +
+        "\n\nEnergy World is an authorised distributor with our own service team. " +
+        "May I share the catalogue and a quotation?" + sign;
+    }
+    if (a.kind === "amc") {
+      return head + site + " is handed over now. To keep the softener, RO and heat pump running " +
+        "properly we offer an AMC — periodic service, salt and filter refills, priority breakdown support.\n\n" +
+        "Shall I send you the AMC plan? And if you are happy with our work, kindly refer us to one more site." + sign;
+    }
+    if (a.kind === "stale") {
+      return head + "It has been a while since we visited " + site + ". May I come by this week to " +
+        "see the progress? If the work has moved ahead I will bring the right material list with me." + sign;
+    }
+    return head + "Regarding " + site + " — " + (a.title || "") + sign;
+  }
+
+  var AG_BANDS = [
+    { k: "now", min: 80, t: "Do today", c: "#fca5a5", bg: "#fef2f2" },
+    { k: "week", min: 50, t: "This week", c: "#fdba74", bg: "#fffbeb" },
+    { k: "soon", min: 0, t: "Keep an eye on", c: "#bfdbfe", bg: "#eff6ff" }
+  ];
+  function agBand(a) { return a.prio >= 80 ? 0 : (a.prio >= 50 ? 1 : 2); }
+
+  /* The rules engine. Everything here is derived from data already in the sheet — no new
+     column, no new screen to maintain. Each rule states plainly WHY it fired, because an
+     instruction you don't believe is an instruction you ignore. */
+  function agScan() {
+    var out = [];
+    var sites = (S.data.sites || []);
+    /* a sales exec gets their own sites; admin and accounts see everything */
+    if (!seesAllClients()) sites = sites.filter(function (st) { return !st.owner || st.owner === S.user || st.createdBy === S.user; });
+
+    sites.forEach(function (st) {
+      var sn = stageNo(st), stage = st.stage || "", def = PITCH2[stage] || { lines: [], win: false };
+      var contacts = agContacts(st);
+      var mk = function (kind, prio, tag, title, why, extra) {
+        var a = Object.assign({
+          key: kind + "|" + st.id + "|" + sn, kind: kind, prio: prio, tag: tag, title: title,
+          why: why, siteId: st.id, siteName: st.name || "(site)", client: st.client || "",
+          stage: stage || "(no stage)", stageNo: sn, contacts: contacts, lines: (def.lines || []).slice()
+        }, extra || {});
+        a.mute = agMuted(a.key);
+        return a;
+      };
+
+      /* 0. no stage = the engine is blind on this site. Highest-leverage single tap in the app. */
+      if (!sn) {
+        out.push(mk("nostage", 62, "BLIND", "Set the stage — " + (st.name || "this site"),
+          "No construction stage on this site, so nothing can be pitched for it. One tap unlocks every rule below."));
+        return;
+      }
+
+      /* 1. a configured brand rule whose window closes at THIS stage — the sharpest signal there is */
+      (S.data.rules || []).forEach(function (r) {
+        var p = pitchRow(st.id, r.brand);
+        if (action(st, r, p).k !== "now") return;
+        out.push(mk("closing", 100, "CLOSES NOW", r.brand + " closes at " + (st.name || "site"),
+          "The pitch window for " + r.brand + " ends at stage " + r.pitchBy + " and this site is at stage " + sn +
+          ". After this the sale is gone for this project.",
+          { key: "closing|" + st.id + "|" + sn + "|" + r.brand, brand: r.brand, line: r.line || r.brand }));
+      });
+
+      var post = String(stage).toLowerCase().indexOf("post-handover") >= 0;
+      var qs = clientQuotes(st.client);
+      var fresh = qs.filter(function (q) { return -daysTo(q.updatedAt || q.createdAt || "") <= 30; });
+
+      /* 2. the stage's own playbook. A "key window" stage is concealed work that gets sealed into
+            the wall — urgent. An ordinary stage is a normal pitch. Both are suppressed while a
+            fresh quote is already sitting with that client; there is no point pitching twice. */
+      if (!post && def.lines.length && !fresh.length) {
+        if (def.win) out.push(mk("window", 88, "KEY WINDOW", "Pitch now — " + (st.name || "site"),
+          "This stage seals material into the building. What fits right now: " + def.lines.join(" · ") + "."));
+        else if (!qs.length) out.push(mk("stagepitch", 56, "NEVER QUOTED", "First quotation — " + (st.name || "site"),
+          "A live site at " + stage + " and not one quotation raised for " + (st.client || "this client") + " yet."));
+      }
+
+      /* 3. handed over — the AMC, refill and referral moment, and the one most often missed */
+      if (post) out.push(mk("amc", 52, "AMC", "AMC & referral — " + (st.name || "site"),
+        "Handed over. Softener salt, RO filters, heat-pump service and a referral all sit here."));
+
+      /* 4. gone quiet — the stage on record may already be stale, which silently mis-reads every
+            window above. Checking in is how the whole engine stays honest. */
+      var idle = siteActivityDays(st);
+      if (idle !== null && idle >= STALE_SITE && !post) out.push(mk("stale", 46, idle + "d QUIET",
+        "Check in — " + (st.name || "site"),
+        "No visit logged in " + idle + " days. If the work has moved on, every pitch window above is being read off a wrong stage."));
+    });
+
+    out.sort(function (a, b) {
+      return (b.prio - a.prio) || (b.stageNo - a.stageNo) || String(a.siteName).localeCompare(String(b.siteName));
+    });
+    AG_INDEX = {};
+    out.forEach(function (a) { AG_INDEX[a.key] = a; });
+    return out;
+  }
+
+  function agTodayCount() {
+    try { return agScan().filter(function (a) { return !a.mute && agBand(a) === 0; }).length; } catch (e) { return 0; }
+  }
+  function agBadge() {
+    var n = agTodayCount();
+    return n ? ' <span style="background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:700;margin-left:4px">' + n + '</span>' : '';
+  }
+
+  function agCard(a, b) {
+    var who = a.contacts.map(function (c) {
+      return '<span class="pill">' + esc(c.role) + ': ' + esc(c.name) + '</span>' +
+        (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : '');
+    }).join(" ");
+    return '<div class="card" style="border-color:' + b.c + ';background:' + b.bg + '">' +
+      '<h3>' + esc(a.title) + ' <span class="pill due">' + esc(a.tag) + '</span></h3>' +
+      '<div class="meta">' + esc(a.why) + '</div>' +
+      '<div class="meta" style="margin-top:6px"><b>' + esc(a.siteName) + '</b>' +
+      (a.client ? ' · ' + esc(a.client) : '') + ' · ' + esc(a.stage) +
+      (a.stageNo ? ' (stage ' + a.stageNo + ' of 13)' : '') + '</div>' +
+      (who
+        ? '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">' + who + '</div>'
+        : '<div class="meta" style="margin-top:6px;color:#b45309">No contact saved on this site — add the client, plumber or architect and the agent can write the message too.</div>') +
+      '<div class="acts" style="flex-wrap:wrap;gap:6px;margin-top:8px">' +
+      (a.kind === "nostage"
+        ? '<button class="btn sm" data-act="site-open" data-id="' + esc(a.siteId) + '">Set the stage</button>'
+        : '<button class="btn sm" data-act="ag-draft" data-k="' + esc(a.key) + '">Write the message</button>') +
+      '<button class="btn sm ghost" data-act="matrix" data-id="' + esc(a.siteId) + '">Pitch matrix</button>' +
+      '<button class="btn sm ghost" data-act="ag-snooze" data-k="' + esc(a.key) + '">Snooze 7d</button>' +
+      '<button class="btn sm ghost" data-act="ag-done" data-k="' + esc(a.key) + '">Done</button>' +
+      '</div></div>';
+  }
+
+  function viewAgent() {
+    var all = agScan();
+    var live = all.filter(function (a) { return !a.mute; });
+    var muted = all.filter(function (a) { return a.mute; });
+    var nBand = function (i) { return live.filter(function (a) { return agBand(a) === i; }).length; };
+
+    var h = '<div class="empty" style="text-align:left;padding:0 0 12px"><b>Your agent.</b> ' +
+      'It reads every live site’s construction stage, your pitch rules, the quotations already out and the date of the last visit — ' +
+      'then tells you who to contact today, why, and writes the message for you. ' +
+      '<b>It never sends anything on its own</b> — you read the draft and press send.</div>';
+
+    h += '<div class="cards">' +
+      '<div class="stat ' + (nBand(0) ? "alert" : "") + '"><div class="n">' + nBand(0) + '</div><div class="l">Do today</div></div>' +
+      '<div class="stat"><div class="n">' + nBand(1) + '</div><div class="l">This week</div></div>' +
+      '<div class="stat"><div class="n">' + live.length + '</div><div class="l">Open suggestions</div></div>' +
+      '<div class="stat"><div class="n">' + muted.length + '</div><div class="l">Snoozed / done</div></div></div>';
+
+    if (!all.length) {
+      return h + '<div class="empty">Nothing to work on yet. The agent runs entirely off your live sites and their construction stage — enter a few and it lights up.' +
+        '<div class="acts" style="justify-content:center;margin-top:10px">' +
+        '<button class="btn sm" data-act="tab" data-tab="sites">Add a site</button>' +
+        '<button class="btn sm ghost" data-act="tab" data-tab="pitch">Stage playbook</button></div></div>';
+    }
+    if (!live.length) {
+      h += '<div class="card" style="border-color:#86efac;background:#f0fdf4"><h3>All caught up</h3>' +
+        '<div class="meta">Every suggestion is done or snoozed. They come back on their own — a snooze expires, and any site that moves to its next stage gets a fresh set.</div></div>';
+    }
+
+    AG_BANDS.forEach(function (b, bi) {
+      var rows = live.filter(function (a) { return agBand(a) === bi; });
+      if (!rows.length) return;
+      h += '<h3 style="margin:18px 0 8px;font-size:15px">' + b.t + ' <span class="pill">' + rows.length + '</span></h3>';
+      rows.forEach(function (a) { h += agCard(a, b); });
+    });
+
+    if (muted.length) {
+      h += '<h3 style="margin:22px 0 8px;font-size:15px;color:#64748b">Snoozed &amp; done <span class="pill">' + muted.length + '</span></h3>';
+      muted.forEach(function (a) {
+        h += '<div class="card" style="opacity:.72"><h3 style="font-size:14px">' + esc(a.title) + '</h3>' +
+          '<div class="meta">' + (a.mute.kind === "done" ? "Marked done on " + d10(a.mute.at) : "Snoozed till " + d10(a.mute.until)) +
+          ' · it returns by itself when the site moves to its next stage.</div>' +
+          '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="ag-unmute" data-k="' + esc(a.key) + '">Bring it back</button></div></div>';
+      });
+    }
+    return h;
+  }
+
+  function modalAgentDraft(a, whoIdx) {
+    var cs = (a.contacts || []).filter(function (c) { return c.name; });
+    whoIdx = Number(whoIdx) || 0;
+    var who = cs[whoIdx] || null;
+    var txt = agDraftText(a, who);
+    return '<h2>Message ready — you press send</h2>' +
+      '<p class="sub">' + esc(a.title) + ' · ' + esc(a.siteName) + '</p>' +
+      (cs.length > 1
+        ? '<label>Write it to</label><div class="acts" style="flex-wrap:wrap;gap:6px;margin-bottom:8px">' +
+          cs.map(function (c, i) {
+            return '<button class="btn sm ' + (i === whoIdx ? "" : "ghost") + '" data-act="ag-who" data-k="' + esc(a.key) + '" data-i="' + i + '">' +
+              esc(c.role) + ': ' + esc(c.name) + '</button>';
+          }).join("") + '</div>'
+        : '') +
+      '<label>Draft — edit it however you like</label>' +
+      '<textarea id="ag_msg" rows="12" style="font-size:13.5px">' + esc(txt) + '</textarea>' +
+      '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:4px">' +
+      (who && who.mobile
+        ? 'WhatsApp opens with this text already filled in for <b>' + esc(who.name) + '</b> (' + esc(who.mobile) + '). Nothing is sent until you press send inside WhatsApp.'
+        : 'No mobile saved for this contact, so WhatsApp can’t be pre-addressed. Copy the text and paste it — or add the mobile on the site / partner record and it will be.') +
+      '</div>' +
+      '<div class="foot" style="flex-wrap:wrap;gap:6px">' +
+      '<button class="btn ghost" data-act="close">Close</button>' +
+      '<button class="btn ghost" data-act="ag-copy">Copy text</button>' +
+      '<button class="btn" data-act="ag-wa" data-k="' + esc(a.key) + '" data-m="' + esc(who ? agWa(who.mobile) : "") + '">Open WhatsApp</button>' +
+      '</div>';
+  }
+
   /* Pitch board — the daily stage-based playbook, keyed to live SITES.
      Set a site to its construction stage and this tells you what to pitch there, to whom, and
      when the window closes. Works even before per-brand Pitch rules are configured. */
@@ -8254,8 +8538,8 @@ function viewCatalogue() {
     try { ensureCoreCss(); } catch (e) { }
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, stock: viewStock };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["stock", "Stock"]];
+    var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, stock: viewStock };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["stock", "Stock"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -8274,7 +8558,7 @@ function viewCatalogue() {
 
     var GROUPS = [
       ["Sync", ["pending", "health"]],
-      ["Sell", ["dash", "leads", "pitch", "brandfollow", "quotes", "followups", "clients", "partners"]],
+      ["Sell", ["dash", "agent", "leads", "pitch", "brandfollow", "quotes", "followups", "clients", "partners"]],
       ["Deliver", ["deliveries", "billing", "stock", "tools", "collections", "products"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["payrollhub", "discounts", "report", "scorecard", "pricing", "rules", "teampins"]]
@@ -8287,7 +8571,7 @@ function viewCatalogue() {
       var items = grp[1].filter(function (k) { return canSee(k) && label[k]; });
       if (!items.length) return;
       navHtml += '<div class="navgrp"><span class="grp">' + grp[0] + '</span>' + items.map(function (k) {
-        return '<button data-act="tab" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + label[k] + (k === "followups" ? radarBadge() : "") + (k === "pending" ? pendBadge() : "") + '</button>';
+        return '<button data-act="tab" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + label[k] + (k === "followups" ? radarBadge() : "") + (k === "agent" ? agBadge() : "") + (k === "pending" ? pendBadge() : "") + '</button>';
       }).join("") + '</div>';
     });
 
@@ -9460,6 +9744,48 @@ function viewCatalogue() {
       return;
     }
     if (act === "pay-wa") { payReminder(t.getAttribute("data-n")); return; }
+    /* ---- THE AGENT. Every one of these is local-only or opens an app with a DRAFT.
+       Nothing here sends a message, and nothing here deletes a business record. ---- */
+    if (act === "ag-draft") {
+      var agK = t.getAttribute("data-k"), agA = AG_INDEX[agK];
+      if (!agA) { toast("That suggestion just changed \u2014 refreshing the list."); render(); return; }
+      S.agWho = 0;
+      S.modal = modalAgentDraft(agA, 0); render(); return;
+    }
+    if (act === "ag-who") {
+      var agK2 = t.getAttribute("data-k"), agA2 = AG_INDEX[agK2];
+      if (!agA2) { toast("That suggestion just changed \u2014 refreshing the list."); S.modal = null; render(); return; }
+      S.agWho = Number(t.getAttribute("data-i")) || 0;
+      S.modal = modalAgentDraft(agA2, S.agWho); render(); return;
+    }
+    if (act === "ag-copy") {
+      var agTx = String((el("ag_msg") || {}).value || "");
+      if (!agTx.trim()) { toast("The message is empty."); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(agTx).then(function () { toast("Copied \u2014 paste it into WhatsApp."); },
+          function () { toast("Couldn't copy \u2014 long-press the box and copy it by hand."); });
+      } else toast("Long-press the box and copy it by hand.");
+      return;
+    }
+    if (act === "ag-wa") {
+      /* Opens WhatsApp with the text pre-filled. The OWNER presses send \u2014 by design. */
+      var agM = t.getAttribute("data-m") || "";
+      var agT = String((el("ag_msg") || {}).value || "");
+      if (!agT.trim()) { toast("The message is empty."); return; }
+      try { window.open("https://wa.me/" + agM + "?text=" + encodeURIComponent(agT), "_blank"); }
+      catch (e) { toast("Couldn't open WhatsApp \u2014 copy the text instead."); return; }
+      toast("WhatsApp opened with the draft. Read it, then press send.");
+      return;
+    }
+    if (act === "ag-snooze") {
+      agMemPut(t.getAttribute("data-k"), { kind: "snooze", until: addDays(today(), 7), at: today() });
+      toast("Snoozed for 7 days \u2014 it comes back on its own."); render(); return;
+    }
+    if (act === "ag-done") {
+      agMemPut(t.getAttribute("data-k"), { kind: "done", at: today() });
+      toast("Marked done. It returns when this site moves to its next stage."); render(); return;
+    }
+    if (act === "ag-unmute") { agMemDrop(t.getAttribute("data-k")); toast("Back on the list."); render(); return; }
 
     if (act === "visit-start") { startVisit(); return; }
     if (act === "cal-prev" || act === "cal-next") {
