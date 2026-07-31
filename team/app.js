@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.173";
+  var APP_VERSION = "6.9.174";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -6408,18 +6408,33 @@ function viewCatalogue() {
 
   /* The chip row. `fid` names the hidden input that carries the answer, so every existing
      save handler can read it with val(fid) and nothing else has to change. */
+  /* What is worth selling at this stage, as its own block so a tap can refill it without a
+     re-render. Empty for a stage with no playbook, and empty when nothing is answered. */
+  function stageHintHtml(cur) {
+    var p = PITCH2[String(cur || "")];
+    if (!p || !p.lines || !p.lines.length) return "";
+    return '<div style="margin-top:8px;border-top:1px solid ' + (p.win ? '#fecaca' : '#ccfbf1') + ';padding-top:7px">' +
+      '<div class="meta" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:' +
+      (p.win ? '#b91c1c' : '#0f766e') + '"><b>Pitch now' + (p.win ? ' \u2014 window closing' : '') + '</b></div>' +
+      '<div class="meta" style="font-size:12.5px;color:#334155">' +
+      p.lines.map(function (l) { return esc(l); }).join(' &middot; ') + '</div>' +
+      (p.win ? '<div class="meta" style="font-size:11.5px;color:#b91c1c;margin-top:3px">This goes inside the wall. Miss it and the sale is gone for this project.</div>' : '') +
+      '</div>';
+  }
+  function stageAskLine(cur) {
+    return cur ? 'Tap another chip if it has moved on.'
+      : 'One tap. This is what decides what you can sell here and when \u2014 without it the site is invisible to the pitch board.';
+  }
+
   function stageChips(fid, current, label) {
     var cur = String(current || "");
-    var h = '<div class="card" id="' + esc(fid) + '_box" style="border-color:' + (cur ? '#99f6e4' : '#fca5a5') +
+    return '<div class="card" id="' + esc(fid) + '_box" style="border-color:' + (cur ? '#99f6e4' : '#fca5a5') +
       ';background:' + (cur ? '#f0fdfa' : '#fef2f2') + ';margin:10px 0">' +
-      '<div class="meta" style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:' +
+      '<div class="meta" data-stagelabel style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:' +
       (cur ? '#0f766e' : '#b91c1c') + '"><b>' + esc(label || "Construction stage") + '</b></div>' +
       '<h3 style="font-size:15px;margin:3px 0 2px">' +
       (cur ? esc(cur) : 'Which stage is this site at?') + '</h3>' +
-      '<div class="meta" style="margin-bottom:6px">' +
-      (cur ? 'Tap another chip if it has moved on.'
-           : 'One tap. This is what decides what you can sell here and when \u2014 without it the site is invisible to the pitch board.') +
-      '</div>' +
+      '<div class="meta" data-stageask style="margin-bottom:6px">' + stageAskLine(cur) + '</div>' +
       '<input type="hidden" id="' + esc(fid) + '" value="' + esc(cur) + '"/>' +
       '<div class="chips">' + STAGES2.map(function (s, i) {
         return '<button type="button" class="chip ' + (cur === s ? "on" : "") +
@@ -6427,18 +6442,10 @@ function viewCatalogue() {
           (i + 1) + '. ' + esc(s) + '</button>';
       }).join("") +
       '<button type="button" class="chip ' + (cur ? "" : "on") +
-      '" data-act="stage-pick" data-fid="' + esc(fid) + '" data-s="">Don\u2019t know yet</button></div>';
-    if (cur && PITCH2[cur]) {
-      var p = PITCH2[cur];
-      h += '<div style="margin-top:8px;border-top:1px solid ' + (p.win ? '#fecaca' : '#ccfbf1') + ';padding-top:7px">' +
-        '<div class="meta" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:' +
-        (p.win ? '#b91c1c' : '#0f766e') + '"><b>Pitch now' + (p.win ? ' \u2014 window closing' : '') + '</b></div>' +
-        '<div class="meta" style="font-size:12.5px;color:#334155">' +
-        p.lines.map(function (l) { return esc(l); }).join(' &middot; ') + '</div>' +
-        (p.win ? '<div class="meta" style="font-size:11.5px;color:#b91c1c;margin-top:3px">This goes inside the wall. Miss it and the sale is gone for this project.</div>' : '') +
-        '</div>';
-    }
-    return h + '</div>';
+      '" data-act="stage-pick" data-fid="' + esc(fid) + '" data-s="">Don\u2019t know yet</button></div>' +
+      /* always present, even when empty - the tap handler fills it in place */
+      '<div data-stagehint>' + stageHintHtml(cur) + '</div>' +
+      '</div>';
   }
 
   /* Make the save button say plainly what is about to happen. Nothing is blocked - the wording
@@ -10378,15 +10385,13 @@ function viewCatalogue() {
       }
       /* the "pitch now" strip and the save-button wording both depend on the answer */
       if (S.qz && S.qz.step === 1 && sfid === "qz_stage") { S.qz.stage = sval; render(); return; }
-      var hint = box ? box.querySelector("[data-stagehint]") : null;
-      if (hint) {
-        var pp = PITCH2[sval];
-        hint.innerHTML = pp
-          ? '<div class="meta" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:' +
-            (pp.win ? '#b91c1c' : '#0f766e') + '"><b>Pitch now' + (pp.win ? ' \u2014 window closing' : '') + '</b></div>' +
-            '<div class="meta" style="font-size:12.5px;color:#334155">' +
-            pp.lines.map(function (l) { return esc(l); }).join(' &middot; ') + '</div>'
-          : '';
+      if (box) {
+        var hint = box.querySelector("[data-stagehint]");
+        if (hint) hint.innerHTML = stageHintHtml(sval);
+        var askL = box.querySelector("[data-stageask]");
+        if (askL) askL.innerHTML = stageAskLine(sval);
+        var labL = box.querySelector("[data-stagelabel]");
+        if (labL) labL.style.color = sval ? "#0f766e" : "#b91c1c";
       }
       /* Only one form is ever open, so find its save button by the marker rather than by
          guessing a name - the challan and the follow-up share the same field id. */
