@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.168";
+  var APP_VERSION = "6.9.169";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2954,7 +2954,14 @@ function viewCatalogue() {
   function logosReady() {
     if (LOGO_READY) return LOGO_READY;
     var list = (S.data.logos || []).filter(function (l) { return l.url; });
-    LOGO_READY = Promise.all(list.map(function (l) {
+    /* The processed brand logos are restored from localStorage at load (restoreLogoCache).
+       Re-fetching EVERY one through the backend on the first PDF of each session cost ~7-12 slow
+       round-trips - on a weak mobile connection that made the quote "hang" or fail to generate,
+       and it delayed the Telegram send (which builds the same PDF first). Only fetch the logos we
+       do NOT already hold; when the cache is complete, resolve instantly with no network at all. */
+    var missing = list.filter(function (l) { return !LOGO_PICS[normB(l.brand)]; });
+    if (!missing.length) { LOGO_READY = Promise.resolve(true); return LOGO_READY; }
+    LOGO_READY = Promise.all(missing.map(function (l) {
       return loadPic(l.url, true).then(function (src) {
         if (!src) return null;
         var d = PIC_DIM[l.url] || { w: 100, h: 40 };
@@ -3044,7 +3051,7 @@ function viewCatalogue() {
     url = driveImg(url, trim ? 700 : 200);
     if (!url) return Promise.resolve(null);
     if (PIC_CACHE[url] !== undefined) return Promise.resolve(PIC_CACHE[url]);
-    return api("imgB64", { url: url }).then(function (r) {
+    var fetched = api("imgB64", { url: url }).then(function (r) {
       if (!r || !r.ok) { PIC_CACHE[url] = null; return null; }
       return shrinkPic("data:" + r.mime + ";base64," + r.b64, trim ? 600 : 300, trim ? 0.85 : 0.75, trim).then(function (p) {
         PIC_CACHE[url] = p ? p.src : null;
@@ -3058,6 +3065,13 @@ function viewCatalogue() {
         return PIC_CACHE[url];
       });
     }).catch(function () { PIC_CACHE[url] = null; return null; });
+    /* One slow image used to stall the WHOLE quote PDF: the export waits on every picture, and a
+       single hung request (weak signal / big Drive image) meant the PDF never appeared and the
+       Telegram send never fired. Cap each fetch - if it has not returned in time, draw the PDF
+       WITHOUT that one image instead of hanging. We deliberately do NOT cache the miss, so the
+       next export tries the image again. */
+    var timed = new Promise(function (res) { setTimeout(function () { res(null); }, 12000); });
+    return Promise.race([fetched, timed]);
   }
 
   /* the 12 logos that print on a quote, in the order Mukesh grouped them.
