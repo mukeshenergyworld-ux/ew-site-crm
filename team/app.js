@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.169";
+  var APP_VERSION = "6.9.170";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2954,12 +2954,21 @@ function viewCatalogue() {
   function logosReady() {
     if (LOGO_READY) return LOGO_READY;
     var list = (S.data.logos || []).filter(function (l) { return l.url; });
-    /* The processed brand logos are restored from localStorage at load (restoreLogoCache).
-       Re-fetching EVERY one through the backend on the first PDF of each session cost ~7-12 slow
-       round-trips - on a weak mobile connection that made the quote "hang" or fail to generate,
-       and it delayed the Telegram send (which builds the same PDF first). Only fetch the logos we
-       do NOT already hold; when the cache is complete, resolve instantly with no network at all. */
-    var missing = list.filter(function (l) { return !LOGO_PICS[normB(l.brand)]; });
+    /* Only the PDF_LOGO_ORDER brands are ever printed (every caller reads them through logoFor).
+       Re-fetching the WHOLE logo table through the backend on the first PDF of each session cost
+       ~7-12 slow round-trips - including extra/legacy rows that never appear on a quote, several
+       of which never cached and so re-fired every single time. On a weak mobile connection that
+       made the quote "hang" or fail to generate, and delayed the Telegram send (which builds the
+       same PDF first). Fetch ONLY the printed brands, and skip any already held in the device
+       cache (restoreLogoCache loads them at startup). Warm cache => zero network, instant PDF. */
+    var wanted = function (brand) {
+      var k = normB(brand);
+      return PDF_LOGO_ORDER.some(function (n) {
+        var nk = normB(n);
+        return k === nk || k.indexOf(nk.slice(0, 5)) === 0 || nk.indexOf(k.slice(0, 5)) === 0;
+      });
+    };
+    var missing = list.filter(function (l) { return wanted(l.brand) && !LOGO_PICS[normB(l.brand)]; });
     if (!missing.length) { LOGO_READY = Promise.resolve(true); return LOGO_READY; }
     LOGO_READY = Promise.all(missing.map(function (l) {
       return loadPic(l.url, true).then(function (src) {
