@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.172";
+  var APP_VERSION = "6.9.173";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2092,7 +2092,7 @@ window.addEventListener("beforeunload", function (ev) {
     var ph = String(a.mobile || "").trim();
     return '<span class="pl-badge pl-ok">' + pre + ' ' + esc(nm) + (ph ? ' &middot; ' + esc(ph) : '') + '</span>';
   }
-  var CL_FORM_IDS = ["c_name","c_loc","c_type","c_segment","c_mob","c_mob2","c_short","c_area","c_addr","c_arch","c_plumb","c_build","c_pmc","c_notes","c_owner","c_opamt","c_opdate","c_leadtype","c_billname","c_billgst"];
+  var CL_FORM_IDS = ["c_name","c_loc","c_type","c_segment","c_mob","c_mob2","c_short","c_area","c_addr","c_arch","c_plumb","c_build","c_pmc","c_notes","c_owner","c_opamt","c_opdate","c_leadtype","c_billname","c_billgst","c_stage"];
   function clFormVals() {
     var v = {};
     CL_FORM_IDS.forEach(function (fid) { var e2 = el(fid); if (e2) v[fid] = e2.value; });
@@ -2107,7 +2107,8 @@ window.addEventListener("beforeunload", function (ev) {
   var CL_ID2FIELD = { c_name:"name", c_loc:"location", c_type:"type", c_segment:"segment",
     c_mob:"mobile", c_mob2:"mobile2", c_short:"shortName", c_area:"area", c_addr:"address",
     c_arch:"architect", c_plumb:"plumber", c_build:"builder", c_pmc:"pmc", c_notes:"notes",
-    c_owner:"ownedBy", c_opamt:"openingAmt", c_opdate:"openingAsOn", c_leadtype:"leadType" };
+    c_owner:"ownedBy", c_opamt:"openingAmt", c_opdate:"openingAsOn", c_leadtype:"leadType",
+    c_stage:"stage" };
   function clDraftToClient(vals) {
     var base = {}; if (S.clEditing) for (var k in S.clEditing) base[k] = S.clEditing[k];
     Object.keys(CL_ID2FIELD).forEach(function (fid) {
@@ -2180,6 +2181,10 @@ window.addEventListener("beforeunload", function (ev) {
       '<div><label>Type</label><select id="c_type">' + opts(CLIENT_TYPES, c.type || "Home owner") + '</select></div></div>' +
       '<div class="grid2"><div><label>Segment</label><select id="c_segment">' + opts(["", "Residential", "Project"], c.segment || "") + '</select>' +
       '<div class="pmeta" style="font-size:11px;color:#94a3b8">Leave blank to auto-classify from Type.</div></div><div></div></div>' +
+      /* THE STAGE. Asked here, on the very first screen a lead is entered on, because a lead
+         with no stage is a lead nobody can sell to. Answering it also creates the site record,
+         so the pitch board has something to work with from day one. */
+      stageChips("c_stage", c.stage || clientStage(c.name), "Construction stage of his site") +
       '<div class="grid2"><div><label>Mobile</label><input id="c_mob" inputmode="numeric" value="' + esc(c.mobile) + '"/></div>' +
       '<div><label>Alternate mobile</label><input id="c_mob2" inputmode="numeric" value="' + esc(c.mobile2 || "") + '"/></div></div>' +
       '<div class="grid2"><div><label>Short name (challan no.)</label><input id="c_short" value="' + esc(c.shortName) + '" placeholder="SHARMA"/></div>' +
@@ -2219,7 +2224,8 @@ window.addEventListener("beforeunload", function (ev) {
       '<input id="c_billgst" placeholder="GSTIN (optional)" style="width:150px"/>' +
       '<button class="btn sm ghost" data-act="bill-add">Add</button></div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      '<button class="btn" data-act="cl-save" data-id="' + esc(c.id || "") + '">Save client</button></div>';
+      '<button class="btn" data-act="cl-save" data-stagebtn="Save client" data-id="' + esc(c.id || "") + '">' +
+      ((c.stage || clientStage(c.name)) ? 'Save client' : 'Save client without stage') + '</button></div>';
   }
 
   function uniRupee() { return true; }
@@ -2391,6 +2397,15 @@ window.addEventListener("beforeunload", function (ev) {
             esc(c.mobile || "") + '<br>' + esc(c.address || "") +
             '<br>Arch: ' + esc(c.architect || "-") + ' - Plumber: ' + esc(c.plumber || "-") +
             '<br>Builder: ' + esc(c.builder || "-") + ' - PMC: ' + esc(c.pmc || "-") + '</div></div>';
+        }
+        /* One pause before the products. The stage is confirmed here because it decides what is
+           worth quoting at all - and when it is already known, the strip below reminds the exec
+           what to put in the quotation before he starts picking codes. */
+        if (z.clientObj && z.askStage) {
+          var qcur = z.stage !== undefined && z.stage !== null ? z.stage : clientStage(z.client);
+          h += stageChips("qz_stage", qcur, "Stage of this client\u2019s site") +
+            '<div class="acts"><button class="btn" data-act="qz-client-go">' +
+            (qcur ? 'Continue to the products' : 'Continue without stage') + '</button></div>';
         }
       }
       return h;
@@ -6368,6 +6383,106 @@ function viewCatalogue() {
   }
   /* A client's construction stage, DERIVED from a matching site/customer record (clients don't
      carry their own stage). Blank when there is no stage source for them. */
+  /* ================== STAGE ENTRY — asked everywhere, one tap, never blocking ==================
+     A site with no construction stage is invisible: the pitch matrix cannot fire, the agent has
+     nothing to rank, and the executive walks in with no idea what to sell. So the stage is asked
+     at every point a record is touched — a new lead, a quotation, a challan, a follow-up — as a
+     one-tap chip row that also shows what to pitch at that stage.
+
+     It is asked hard but never blocks. If it is left blank the button says so plainly and the
+     client lands on the "Stage missing" list, which the executive sees on Today every morning.
+     Answering it WRITES A SITE, because sites are what the pitch engine reads — so every stage
+     answered quietly builds the site book instead of asking for the same thing twice. */
+
+  function siteForClient(name) {
+    var t = String(name || "").trim().toLowerCase();
+    if (!t) return null;
+    var list = (S.data.sites || []).filter(function (x) {
+      return String(x.client || "").trim().toLowerCase() === t ||
+             String(x.name || "").trim().toLowerCase() === t;
+    });
+    /* prefer a site that already carries a stage, then the most recently touched */
+    var withStage = list.filter(function (x) { return x.stage; });
+    return (withStage[0] || list[0] || null);
+  }
+
+  /* The chip row. `fid` names the hidden input that carries the answer, so every existing
+     save handler can read it with val(fid) and nothing else has to change. */
+  function stageChips(fid, current, label) {
+    var cur = String(current || "");
+    var h = '<div class="card" id="' + esc(fid) + '_box" style="border-color:' + (cur ? '#99f6e4' : '#fca5a5') +
+      ';background:' + (cur ? '#f0fdfa' : '#fef2f2') + ';margin:10px 0">' +
+      '<div class="meta" style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:' +
+      (cur ? '#0f766e' : '#b91c1c') + '"><b>' + esc(label || "Construction stage") + '</b></div>' +
+      '<h3 style="font-size:15px;margin:3px 0 2px">' +
+      (cur ? esc(cur) : 'Which stage is this site at?') + '</h3>' +
+      '<div class="meta" style="margin-bottom:6px">' +
+      (cur ? 'Tap another chip if it has moved on.'
+           : 'One tap. This is what decides what you can sell here and when \u2014 without it the site is invisible to the pitch board.') +
+      '</div>' +
+      '<input type="hidden" id="' + esc(fid) + '" value="' + esc(cur) + '"/>' +
+      '<div class="chips">' + STAGES2.map(function (s, i) {
+        return '<button type="button" class="chip ' + (cur === s ? "on" : "") +
+          '" data-act="stage-pick" data-fid="' + esc(fid) + '" data-s="' + esc(s) + '">' +
+          (i + 1) + '. ' + esc(s) + '</button>';
+      }).join("") +
+      '<button type="button" class="chip ' + (cur ? "" : "on") +
+      '" data-act="stage-pick" data-fid="' + esc(fid) + '" data-s="">Don\u2019t know yet</button></div>';
+    if (cur && PITCH2[cur]) {
+      var p = PITCH2[cur];
+      h += '<div style="margin-top:8px;border-top:1px solid ' + (p.win ? '#fecaca' : '#ccfbf1') + ';padding-top:7px">' +
+        '<div class="meta" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:' +
+        (p.win ? '#b91c1c' : '#0f766e') + '"><b>Pitch now' + (p.win ? ' \u2014 window closing' : '') + '</b></div>' +
+        '<div class="meta" style="font-size:12.5px;color:#334155">' +
+        p.lines.map(function (l) { return esc(l); }).join(' &middot; ') + '</div>' +
+        (p.win ? '<div class="meta" style="font-size:11.5px;color:#b91c1c;margin-top:3px">This goes inside the wall. Miss it and the sale is gone for this project.</div>' : '') +
+        '</div>';
+    }
+    return h + '</div>';
+  }
+
+  /* Make the save button say plainly what is about to happen. Nothing is blocked - the wording
+     is the whole nudge. */
+  function stageBtnSync(cur) {
+    var b = document.querySelector("[data-stagebtn]");
+    if (!b) return;
+    var base = b.getAttribute("data-stagebtn");
+    b.textContent = cur ? base : base + " without stage";
+  }
+
+  /* Write the answer. Updates the client's existing site, or creates one named after the client
+     so the pitch engine has something to read. Never blocks, never throws into the caller. */
+  function saveClientStage(clientName, stage, extra) {
+    var nm = String(clientName || "").trim();
+    stage = String(stage || "").trim();
+    if (!nm || !stage) return Promise.resolve(null);
+    var st = siteForClient(nm);
+    if (st && String(st.stage || "") === stage) return Promise.resolve(st);
+    var c = clientByName(nm) || {};
+    var row = st
+      ? { id: st.id, createdBy: st.createdBy || S.user, name: st.name, client: st.client || nm,
+          mobile: st.mobile || c.mobile || "", city: st.city || c.location || "",
+          stage: stage, type: st.type || "Bungalow", architect: st.architect || c.architect || "",
+          plumber: st.plumber || c.plumber || "", builder: st.builder || c.builder || "",
+          owner: st.owner || S.user, status: st.status || "Active", notes: st.notes || "" }
+      : { id: "", createdBy: S.user, name: nm, client: nm,
+          mobile: (extra && extra.mobile) || c.mobile || "",
+          city: (extra && extra.city) || c.location || "",
+          stage: stage, type: "Bungalow",
+          architect: c.architect || "", plumber: c.plumber || "", builder: c.builder || "",
+          owner: (extra && extra.owner) || S.user, status: "Active",
+          notes: "Created from the stage question." };
+    return save("sites", row).catch(function () { return null; });
+  }
+
+  /* Clients on my book with no stage recorded anywhere. This is the chase list. */
+  function stageMissingClients() {
+    return (S.data.clients || []).filter(function (c) {
+      if (!isMineClient(c.name)) return false;
+      return !clientStage(c.name);
+    });
+  }
+
   function clientStage(clientName) {
     var s = (S.data.sites || []).filter(function (x) { return x.client === clientName || x.name === clientName; })[0];
     if (s && s.stage) return s.stage;
@@ -6664,6 +6779,9 @@ function viewCatalogue() {
         '<div class="meta">' + esc(one.s) + '</div>' +
         '<div class="acts"><button class="btn sm" data-act="tab" data-tab="' + one.a + '">' + esc(one.b) + '</button></div></div>';
     }
+
+    /* every executive's own sites in stage order, with what to sell at each \u2014 this is the round */
+    try { h += stageBoardCard(); } catch (e) { console.warn("[stage] board:", e); }
 
     /* the agent's own top of the list, above the plain digest — it names names and drafts the text */
     if (canSee("agent")) { try { h += agTodayCard(); } catch (e) { console.warn("[agent] today card:", e); } }
@@ -7928,6 +8046,101 @@ function viewCatalogue() {
      and one tap turns the whole ranked list into a PDF the team gets on Telegram. The push is
      still owner-initiated: the agent prepares it, you press the button. */
 
+  /* ============== THE STAGE BOARD \u2014 every executive's own sites, in stage order ==============
+     One card, first thing in the morning: which of my sites is at which stage, and exactly what
+     I can sell at each one today. The stages where the work is about to be sealed inside the wall
+     come first, in red, because that money is gone the day the plaster goes on. Underneath it,
+     the clients whose stage nobody has answered yet \u2014 the chase list. */
+
+  function myStageSites() {
+    var sites = (S.data.sites || []);
+    if (!seesAllClients()) {
+      sites = sites.filter(function (st) { return !st.owner || st.owner === S.user || st.createdBy === S.user; });
+    }
+    return sites.filter(function (st) { return String(st.status || "Active") !== "Closed"; });
+  }
+
+  function stageBoardCard() {
+    var sites = myStageSites();
+    var miss = [];
+    try { miss = stageMissingClients(); } catch (e) { miss = []; }
+    var noStage = sites.filter(function (st) { return !String(st.stage || "").trim(); });
+    if (!sites.length && !miss.length) return "";
+
+    var byStage = {};
+    sites.forEach(function (st) {
+      var s2 = String(st.stage || "").trim();
+      if (!s2) return;
+      (byStage[s2] = byStage[s2] || []).push(st);
+    });
+    var order = STAGES2.filter(function (s2) { return byStage[s2]; });
+    var winCount = order.filter(function (s2) { return PITCH2[s2] && PITCH2[s2].win; })
+      .reduce(function (a, s2) { return a + byStage[s2].length; }, 0);
+
+    var h = '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#0f766e"><b>What to pitch, stage by stage</b></div>' +
+      '<h3 style="font-size:17px;margin:4px 0 2px">' + sites.length + ' site(s) on your book</h3>' +
+      '<div class="meta" style="margin-bottom:4px">' +
+      (winCount ? '<b style="color:#b91c1c">' + winCount + ' at a stage where the window is closing.</b> ' : '') +
+      'Take this list on the round \u2014 it is what he can buy today, not next month.</div>';
+
+    /* the closing windows first, then everything else in build order */
+    var ranked = order.slice().sort(function (a, b) {
+      var wa = PITCH2[a] && PITCH2[a].win ? 0 : 1, wb = PITCH2[b] && PITCH2[b].win ? 0 : 1;
+      if (wa !== wb) return wa - wb;
+      return STAGES2.indexOf(a) - STAGES2.indexOf(b);
+    });
+
+    ranked.forEach(function (s2) {
+      var list = byStage[s2], p = PITCH2[s2] || { lines: [], win: false };
+      var no = STAGES2.indexOf(s2) + 1;
+      h += '<div style="border-top:1px solid ' + (p.win ? '#fecaca' : '#ccfbf1') + ';padding:8px 0 5px">' +
+        '<div style="font-weight:700;font-size:13.5px;color:' + (p.win ? '#b91c1c' : '#0f766e') + '">' +
+        no + '. ' + esc(s2) + ' <span class="pill' + (p.win ? ' due' : ' teal') + '">' + list.length + ' site(s)</span>' +
+        (p.win ? ' <span style="font-size:11px;font-weight:600">window closing</span>' : '') + '</div>';
+      if (p.lines.length) {
+        h += '<div class="meta" style="font-size:12.5px;color:#334155;margin:2px 0 4px"><b>Pitch:</b> ' +
+          p.lines.map(function (l) { return esc(l); }).join(' &middot; ') + '</div>';
+      }
+      h += '<div class="acts" style="flex-wrap:wrap;gap:5px">' +
+        list.slice(0, 8).map(function (st) {
+          return '<button class="btn sm ghost" data-act="site-open" data-id="' + esc(st.id) + '">' +
+            esc(st.client || st.name) + '</button>';
+        }).join("") +
+        (list.length > 8 ? '<span class="meta" style="font-size:11.5px;align-self:center">+ ' + (list.length - 8) + ' more</span>' : '') +
+        '</div></div>';
+    });
+
+    if (!ranked.length) {
+      h += '<div class="meta" style="border-top:1px solid #ccfbf1;padding-top:8px;font-size:12.5px">' +
+        'Not one site has a stage on it yet, so there is nothing to pitch from here. ' +
+        'Answer the stage once on any lead, quotation or challan and this list fills itself.</div>';
+    }
+
+    /* the chase list \u2014 asked, skipped, still owed */
+    var chase = noStage.map(function (st) { return { nm: st.client || st.name, id: st.id, site: true }; });
+    var seenN = {};
+    chase.forEach(function (x) { seenN[String(x.nm).toLowerCase()] = 1; });
+    miss.forEach(function (c) {
+      if (seenN[String(c.name).toLowerCase()]) return;
+      seenN[String(c.name).toLowerCase()] = 1;
+      chase.push({ nm: c.name, id: c.id, site: false });
+    });
+    if (chase.length) {
+      h += '<div style="border-top:1px solid #fecaca;background:#fef2f2;margin:8px -12px -12px;padding:9px 12px;border-radius:0 0 12px 12px">' +
+        '<div style="font-weight:700;font-size:13px;color:#b91c1c">Stage missing (' + chase.length + ')</div>' +
+        '<div class="meta" style="font-size:12px;margin-bottom:5px">Nobody can pitch to these \u2014 one tap each and they join the list above.</div>' +
+        '<div class="acts" style="flex-wrap:wrap;gap:5px">' +
+        chase.slice(0, 10).map(function (x) {
+          return '<button class="btn sm" data-act="' + (x.site ? "site-open" : "cl-open") + '" data-id="' + esc(x.id) + '">' +
+            esc(x.nm) + '</button>';
+        }).join("") +
+        (chase.length > 10 ? '<span class="meta" style="font-size:11.5px;align-self:center">+ ' + (chase.length - 10) + ' more</span>' : '') +
+        '</div></div>';
+    }
+    return h + '</div>';
+  }
+
   function agLive() {
     try { return agScan().filter(function (a) { return !a.mute; }); } catch (e) { return []; }
   }
@@ -8128,10 +8341,13 @@ function viewCatalogue() {
     var pre = f.customerId ? (custById(f.customerId) || {}).name : "";
     return '<h2>New follow-up</h2><p class="sub">Nothing gets forgotten if it has a date.</p>' +
       '<label>Customer</label><select id="m_cust">' + opts(cs, pre) + '</select>' +
+      /* You are about to ring him. Know what he is building before you do. */
+      stageChips("m_stage", clientStage(pre), "Stage of his site") +
       '<label>Follow up on</label><input id="m_due" type="date" value="' + esc(f.dueDate || today()) + '"/>' +
       '<label>What to do / discuss</label><textarea id="m_note">' + esc(f.note) + '</textarea>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      '<button class="btn" data-act="fu-save">Save</button></div>';
+      '<button class="btn" data-act="fu-save" data-stagebtn="Save">' +
+      (clientStage(pre) ? 'Save' : 'Save without stage') + '</button></div>';
   }
 
   function modalSnooze(q) {
@@ -8351,6 +8567,9 @@ function viewCatalogue() {
       strictClientField("m_client", (S.ch && S.ch.client) || "") +
       '<label>Site (optional)</label><input id="m_site" list="sitelist" placeholder="Site / project" value="' + esc((z && z.site) || "") + '"/>' +
       '<datalist id="sitelist">' + sites.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      /* Material is going to this site today, so the man loading it knows the stage better than
+         anyone. Confirm it here and the pitch board is right without a single extra visit. */
+      stageChips("m_stage", clientStage((S.ch && S.ch.client) || ""), "Stage of the site this is going to") +
       '<label>Referring partner (optional)</label><select id="m_assoc">' +
       opts([""].concat((S.data.associates || []).map(function (p) { return p.name; })), (z && z.assoc) || "") + '</select>' +
 
@@ -8399,7 +8618,10 @@ function viewCatalogue() {
       '</div>' +
       '<label>Vehicle number</label><input id="m_veh" placeholder="HR-06-AB-1234" value="' + esc((z && z.veh) || "") + '"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      '<button class="btn" data-act="ch-save">' + (isEdit ? 'Save changes' : 'Create challan') + '</button></div>';
+      '<button class="btn" data-act="ch-save" data-stagebtn="' + (isEdit ? 'Save changes' : 'Create challan') + '">' +
+      (clientStage((S.ch && S.ch.client) || "")
+        ? (isEdit ? 'Save changes' : 'Create challan')
+        : (isEdit ? 'Save changes without stage' : 'Create challan without stage')) + '</button></div>';
   }
 
   function buildPdf(ch, cust, lines) {
@@ -8974,8 +9196,21 @@ function viewCatalogue() {
       elc.addEventListener("change", function (e) {
         if (S[pair[1]]) S[pair[1]].client = e.target.value;
         var fl = el(pair[0] + "_flash"); if (fl) fl.innerHTML = presetFlashHtml(e.target.value);
+        /* a different client means a different site - repaint the stage question for him */
+        var sb = el("m_stage_box");
+        if (sb) sb.outerHTML = stageChips("m_stage", clientStage(e.target.value), "Stage of the site this is going to");
+        stageBtnSync(clientStage(e.target.value));
       });
     });
+    /* Follow-up form: the customer dropdown drives the stage question the same way. */
+    var fuc = el("m_cust");
+    if (fuc) {
+      fuc.addEventListener("change", function (e) {
+        var sb2 = el("m_stage_box");
+        if (sb2) sb2.outerHTML = stageChips("m_stage", clientStage(e.target.value), "Stage of his site");
+        stageBtnSync(clientStage(e.target.value));
+      });
+    }
     /* Stock import: read an uploaded Tally CSV export and jump straight to the review step. */
     var impf = el("imp_file");
     if (impf) {
@@ -9289,7 +9524,9 @@ function viewCatalogue() {
         arch: val("c_arch"), plumb: val("c_plumb"), build: val("c_build"), pmc: val("c_pmc"),
         /* migration fields - only rendered for a partner, so blank for everyone else */
         opAmt: val("c_opamt"), opDate: val("c_opdate"),
-        leadType: val("c_leadtype"), owner: val("c_owner")
+        leadType: val("c_leadtype"), owner: val("c_owner"),
+        /* read with everything else - creating a partner rebuilds this modal */
+        stage: fld("c_stage", "stage")
       };
       /* Money owed from before the app means he is an OLD lead, whatever the dropdown says.
          Otherwise a migrated client quietly inflates next month's "new leads" figure. */
@@ -9336,6 +9573,13 @@ function viewCatalogue() {
         }).then(function (r) {
           if (!r) return;
           toast("Client saved as " + r.shortName + ".");
+          /* The stage answer becomes a site, so the pitch board and the agent can see him.
+             Never blocks the client save - if it fails the client is still safely written. */
+          if (f.stage) {
+            saveClientStage(r.name, f.stage, { mobile: f.mob, city: f.loc, owner: r.ownedBy || S.user });
+          } else {
+            toast("Saved without a stage \u2014 he is on the Stage missing list.");
+          }
           if (S.qz && S.qz.step === 1) { S.qz.client = r.name; S.qz.clientObj = r; }
           /* came here from another form? go back to it, with the new client filled in */
           if (back) {
@@ -9570,10 +9814,18 @@ function viewCatalogue() {
     if (act === "qz-cancel") { S.qz = null; render(); return; }
     if (act === "qz-loc") { S.qz.location = t.getAttribute("data-loc"); render(); return; }
     if (act === "qz-client-go") {
-      var nm = val("qz_client");
+      var nm = val("qz_client") || S.qz.client;
       var c1 = clientByName(nm);
       if (!c1) { toast("Not found - register the client."); S.qz.client = nm; render(); return; }
-      S.qz.client = c1.name; S.qz.clientObj = c1; S.qz.step = 2; render(); return;
+      S.qz.client = c1.name; S.qz.clientObj = c1;
+      /* Pause exactly once to confirm the stage. Never twice, and never a block - the second
+         press goes through whatever the answer is. */
+      if (!S.qz.askStage) { S.qz.askStage = true; render(); return; }
+      /* an untouched wizard falls back to what is already on file - no false "no stage" warning */
+      var qst = String(S.qz.stage !== undefined ? S.qz.stage : (clientStage(c1.name) || "")).trim();
+      if (qst) saveClientStage(c1.name, qst, { mobile: c1.mobile, city: c1.location });
+      else toast("Quoting without a stage \u2014 he stays on the Stage missing list.");
+      S.qz.step = 2; render(); return;
     }
     if (act === "qz-brand") {
       var bch = t.getAttribute("data-brand");
@@ -10105,6 +10357,42 @@ function viewCatalogue() {
       toast("WhatsApp opened with the draft. Read it, then press send.");
       return;
     }
+    if (act === "stage-pick") {
+      /* Pure DOM: sets the hidden field and repaints the chip row in place, so a half-filled
+         form is never lost to a re-render. The value is written only when the form is saved. */
+      var sfid = t.getAttribute("data-fid"), sval = t.getAttribute("data-s") || "";
+      var sinp = el(sfid);
+      if (sinp) sinp.value = sval;
+      var wrap = t.parentNode;
+      if (wrap) {
+        Array.prototype.forEach.call(wrap.querySelectorAll(".chip"), function (ch) {
+          ch.className = "chip" + (ch.getAttribute("data-s") === sval ? " on" : "");
+        });
+      }
+      var box = t.closest ? t.closest(".card") : null;
+      if (box) {
+        var hd = box.querySelector("h3");
+        if (hd) hd.innerHTML = sval ? esc(sval) : "Which stage is this site at?";
+        box.style.borderColor = sval ? "#99f6e4" : "#fca5a5";
+        box.style.background = sval ? "#f0fdfa" : "#fef2f2";
+      }
+      /* the "pitch now" strip and the save-button wording both depend on the answer */
+      if (S.qz && S.qz.step === 1 && sfid === "qz_stage") { S.qz.stage = sval; render(); return; }
+      var hint = box ? box.querySelector("[data-stagehint]") : null;
+      if (hint) {
+        var pp = PITCH2[sval];
+        hint.innerHTML = pp
+          ? '<div class="meta" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:' +
+            (pp.win ? '#b91c1c' : '#0f766e') + '"><b>Pitch now' + (pp.win ? ' \u2014 window closing' : '') + '</b></div>' +
+            '<div class="meta" style="font-size:12.5px;color:#334155">' +
+            pp.lines.map(function (l) { return esc(l); }).join(' &middot; ') + '</div>'
+          : '';
+      }
+      /* Only one form is ever open, so find its save button by the marker rather than by
+         guessing a name - the challan and the follow-up share the same field id. */
+      stageBtnSync(sval);
+      return;
+    }
     if (act === "ag-tg") {
       /* The owner presses this. It sends the agent's own ranked list to the team channel as a
          branded PDF, with the top eight in the caption. Nothing customer-facing goes out here. */
@@ -10244,6 +10532,8 @@ function viewCatalogue() {
       var cname = val("m_cust");
       var c = S.data.customers.filter(function (x) { return x.name === cname; })[0];
       if (!c) { toast("Pick a customer."); return; }
+      var fuStage = val("m_stage");
+      if (fuStage) saveClientStage(cname, fuStage, { mobile: c.mobile });
       save("followups", {
         id: "", createdBy: S.user, customerId: c.id, customerName: c.name,
         dueDate: val("m_due"), note: val("m_note"), status: "Open"
@@ -10747,6 +11037,9 @@ function viewCatalogue() {
       var cObj = clientByName(cn) || {};
       var siteName = val("m_site");
       var siteObj = S.data.sites.filter(function (x) { return x.name === siteName; })[0] || {};
+      /* the stage answer, written straight away - it never holds up the challan */
+      var chStage = val("m_stage");
+      if (chStage) saveClientStage(cn, chStage, { mobile: cObj.mobile, city: val("m_loc") });
       /* Freeze the client's pre-set brand discount onto each line at creation, so billing reads a
          value that never changes even if an admin edits the pre-set later (edit affects only future
          challans). Admin can override a line product-wise later in the Billing screen. */
