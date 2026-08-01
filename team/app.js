@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.177";
+  var APP_VERSION = "6.9.178";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1884,6 +1884,13 @@ window.addEventListener("beforeunload", function (ev) {
     leads.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
     clocs.sort();
     var h = '<div class="empty" style="text-align:left;padding:0 0 10px">A <b>lead</b> is a customer who hasn’t won a single brand yet. Tap a brand to quote it; the moment one brand’s quote is marked <b>Won</b>, he moves to <b>Clients</b> automatically.</div>';
+    ensureCompactCss();
+    if (cvMode() === "compact") {
+      return h + '<div class="row" style="margin-bottom:8px">' + cvSeg() + '<div class="grow"></div>' +
+        '<button class="btn" data-act="cl-new">+ New lead</button></div>' +
+        tidyBanner() + cvHtml("leads", leads);
+    }
+    h += '<div class="row" style="margin-bottom:8px">' + cvSeg() + '<div class="grow"></div></div>';
     h += '<div class="row">' + clocs.map(function (l) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") +
@@ -2079,6 +2086,11 @@ window.addEventListener("beforeunload", function (ev) {
     all.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
     clocs.sort();
     var h = '<div class="empty" style="text-align:left;padding:0 0 10px">A <b>client</b> has won at least one brand. Keep cross-selling the rest — tap any brand on his board to quote it.</div>';
+    /* Compact is a whole different read of the same list, so it returns early rather than
+       trying to share the area chips and the search box below - those belong to the card view. */
+    ensureCompactCss();
+    h += '<div class="row" style="margin-bottom:8px">' + cvSeg() + '<div class="grow"></div></div>';
+    if (cvMode() === "compact") return h + tidyBanner() + cvHtml("clients", all);
     h += '<div class="row">' + clocs.map(function (l) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") + '</div>';
@@ -2565,6 +2577,9 @@ window.addEventListener("beforeunload", function (ev) {
     }).join("") + '<div class="grow"></div>' +
       (z.step > 1 ? '<button class="btn sm ghost" data-act="qz-step" data-step="' + backStep + '">&larr; Back</button>' : '') +
       '<button class="btn sm ghost" data-act="qz-cancel">Cancel</button></div>';
+    ensureCompactCss();
+    /* every step, not just step 1 - the number has to still be there when the discount is set */
+    if (z.client) h += qzDueBanner(z.client);
 
     if (z.step === 1) {
       var all = z.location === "*";
@@ -7344,6 +7359,246 @@ function viewCatalogue() {
       '<div class="foot"><button class="btn ghost" data-act="close">Done</button></div>';
   }
 
+  /* ---------- COMPACT VIEW (v6.9.178) ----------
+     One book, two lenses. EXPAND is the card list that has always been here - every detail on
+     every customer. COMPACT answers the question actually asked between two sites: whose money
+     is outstanding, in which colony, and what is still open to sell him. So it reads
+     executive -> district -> area -> name, and against each name only two things: the pending
+     amount (that is the reason to ring him) and the brands still to follow up. A brand already
+     won, already lost, or marked not required is finished business and is not drawn at all.
+     Nothing here writes anything. It is a way of LOOKING at rows that already exist. */
+  var CV_KEY = "ew_cv_mode";
+  function cvMode() {
+    if (S.cv !== "compact" && S.cv !== "expand") {
+      var m = ""; try { m = localStorage.getItem(CV_KEY) || ""; } catch (e) { }
+      S.cv = (m === "compact" || m === "expand") ? m : "expand";
+    }
+    return S.cv;
+  }
+  function cvSetMode(m) {
+    S.cv = (m === "compact") ? "compact" : "expand";
+    try { localStorage.setItem(CV_KEY, S.cv); } catch (e) { }
+  }
+  /* Colour is not decoration here - it is how a district is recognised without reading it. The
+     same name always lands on the same colour because the index comes from the name itself, so
+     Panipat is the same teal on the Leads tab, the Clients tab and tomorrow morning. */
+  var CV_COLORS = [
+    ["#0f766e", "#ccfbf1"], ["#4338ca", "#e0e7ff"], ["#b45309", "#fef3c7"],
+    ["#be185d", "#fce7f3"], ["#15803d", "#dcfce7"], ["#0369a1", "#e0f2fe"],
+    ["#7c3aed", "#ede9fe"], ["#c2410c", "#ffedd5"]
+  ];
+  function cvColor(s) {
+    var t = String(s == null ? "" : s), n = 0;
+    for (var i = 0; i < t.length; i++) n = (n * 31 + t.charCodeAt(i)) % 100000;
+    return CV_COLORS[n % CV_COLORS.length];
+  }
+  /* Where a row sits in the tree. A record entered before the district/area dropdowns has its
+     colony - or a plot number - sitting in the District box. guessDistrictArea() reads it the
+     same way the Tidy screen does, so the tree looks right BEFORE anything is tidied, and
+     tidying it later does not make the tree jump. Display only: the saved row is not touched. */
+  function cvPlace(c) {
+    var loc = String((c && c.location) || "").replace(/^\s+|\s+$/g, "");
+    var ar = String((c && c.area) || "").replace(/^\s+|\s+$/g, "");
+    if (ar) { var s0 = areaSplit(ar); if (s0.area && !s0.rest) ar = s0.area; }
+    if (loc && locations().indexOf(loc) < 0) {
+      var g = guessDistrictArea(loc);
+      return { district: g.district || "Not set", area: ar || g.area || "Not set" };
+    }
+    return { district: loc || "Not set", area: ar || "Not set" };
+  }
+  /* Brands still worth a call. Won and Lost are settled, "not required" was answered - none of
+     the three is a follow-up, so none of them appears. What is left is either in play or never
+     pitched, and those two are drawn differently because they need different sentences. */
+  function cvBrands(name) {
+    var live = [], open = [];
+    brandGroupList().forEach(function (b) {
+      if (!isRealBrandName(b)) return;
+      var l = String(b).toLowerCase();
+      if (l.indexOf("accessor") > -1 || l.indexOf("net price") > -1) return;
+      var st = clientGroupState(name, b);
+      if (st === "live") live.push(b);
+      else if (st === "none") open.push(b);
+    });
+    return { live: live, open: open };
+  }
+  function cvSeg() {
+    var m = cvMode();
+    return '<span class="cv-seg">' +
+      '<button class="' + (m === "compact" ? "on" : "") + '" data-act="cv-mode" data-m="compact">Compact</button>' +
+      '<button class="' + (m === "expand" ? "on" : "") + '" data-act="cv-mode" data-m="expand">Expand</button>' +
+      '</span>';
+  }
+  function cvTag(n, bg, fg) {
+    return '<span class="cv-tag" style="background:' + bg + ';color:' + fg + '">' + n + '</span>';
+  }
+  function cvClientHtml(c) {
+    var due = clientDue(c.name);
+    var b = cvBrands(c.name);
+    /* Six untouched brands is already a full line on a phone. The rest collapse into one chip
+       that opens his card, where the whole board is - the point of this line is the money and
+       the two or three names he should actually raise on the next visit. */
+    var shown = b.open.slice(0, 6), more = b.open.length - shown.length;
+    var chip = function (x, cls) {
+      return '<button class="cv-b' + cls + '" data-act="board-menu" data-n="' + esc(c.name) +
+        '" data-brand="' + esc(x) + '">' + esc(x) + '</button>';
+    };
+    var bs = b.live.map(function (x) { return chip(x, " live"); }).join("") +
+      shown.map(function (x) { return chip(x, ""); }).join("") +
+      (more > 0 ? '<button class="cv-b more" data-act="cl-open" data-id="' + esc(c.id) + '">+' + more + ' more</button>' : "");
+    return '<div class="cv-cli">' +
+      '<div class="cv-line">' +
+      '<button class="cv-nm" data-act="cl-open" data-id="' + esc(c.id) + '">' + esc(c.name) + '</button>' +
+      (due > 0.5
+        ? '<span class="cv-due" title="Outstanding as per HISAB">' + money(due) + '</span>'
+        : '<span class="cv-ok">no dues</span>') +
+      '</div>' +
+      '<div class="cv-bs">' + (bs || '<span class="cv-b done">every brand settled</span>') + '</div>' +
+      '</div>';
+  }
+  /* kind ("leads" / "clients") only namespaces the open/closed memory, so opening Panipat on
+     the Leads tab does not silently open it on Clients as well. */
+  function cvHtml(kind, list) {
+    if (!list || !list.length) {
+      return '<div class="empty">Nothing here yet. Register a customer and he will appear under his district.</div>';
+    }
+    var solo = !seesAllClients();
+    var dueOf = function (c) { return clientDue(c.name); };
+    var sumDue = function (rs) { return rs.reduce(function (a, c) { return a + dueOf(c); }, 0); };
+    /* money first, then alphabetical - the man who owes the most is the first name you see */
+    var byMoney = function (a, b) {
+      var da = dueOf(a), db = dueOf(b);
+      if (Math.abs(da - db) > 0.5) return db - da;
+      return String(a.name).toLowerCase() < String(b.name).toLowerCase() ? -1 : 1;
+    };
+    var groupBy = function (rows, keyFn) {
+      var m = {}, order = [];
+      rows.forEach(function (r) {
+        var k = keyFn(r);
+        if (!m[k]) { m[k] = []; order.push(k); }
+        m[k].push(r);
+      });
+      return { m: m, order: order };
+    };
+    var byTotal = function (m) {
+      return function (a, b) {
+        if (a === "Not set") return 1; if (b === "Not set") return -1;
+        var da = sumDue(m[a]), db = sumDue(m[b]);
+        if (Math.abs(da - db) > 0.5) return db - da;
+        if (m[a].length !== m[b].length) return m[b].length - m[a].length;
+        return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+      };
+    };
+
+    var h = "";
+    var ex = groupBy(list, function (c) {
+      return solo ? "" : (String(c.ownedBy || c.createdBy || "").replace(/^\s+|\s+$/g, "") || "Unassigned");
+    });
+    ex.order.sort(function (a, b) {
+      if (a === "Unassigned") return 1; if (b === "Unassigned") return -1;
+      return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+    });
+    ex.order.forEach(function (e) {
+      var cs = ex.m[e];
+      var eDue = sumDue(cs), ec = cvColor(e || "me");
+      if (!solo) {
+        h += '<div class="cv-exec" style="background:' + ec[0] + '">' +
+          '<span class="cv-en">' + esc(e) + '</span>' +
+          '<span class="cv-tags">' + cvTag(cs.length + (cs.length === 1 ? " name" : " names"), "rgba(255,255,255,.22)", "#fff") +
+          (eDue > 0.5 ? cvTag(money(eDue) + " pending", "#fecaca", "#7f1d1d") : "") + '</span></div>';
+      }
+      var ds = groupBy(cs, function (c) { c.__cvp = cvPlace(c); return c.__cvp.district; });
+      ds.order.sort(byTotal(ds.m));
+      ds.order.forEach(function (d) {
+        var rows = ds.m[d], dDue = sumDue(rows), dc = cvColor(d);
+        var k = kind + "|" + e + "|" + d;
+        var on = !!(S.cvOpen && S.cvOpen[k]);
+        h += '<button class="cv-dist' + (on ? " on" : "") + '" data-act="cv-dist" data-k="' + esc(k) + '"' +
+          ' style="border-left-color:' + dc[0] + ';background:' + (on ? dc[1] : "#fff") + '">' +
+          '<span class="cv-caret" style="color:' + dc[0] + '">' + (on ? "▾" : "▸") + '</span>' +
+          '<span class="cv-dn" style="color:' + dc[0] + '">' + esc(d) + '</span>' +
+          '<span class="cv-tags">' + cvTag(rows.length, dc[1], dc[0]) +
+          (dDue > 0.5 ? cvTag(money(dDue), "#fee2e2", "#b91c1c") : "") + '</span></button>';
+        if (!on) return;
+        var as = groupBy(rows, function (c) { return c.__cvp.area; });
+        as.order.sort(byTotal(as.m));
+        h += '<div class="cv-body" style="border-left-color:' + dc[0] + '">';
+        as.order.forEach(function (a) {
+          var rs = as.m[a].slice().sort(byMoney), aDue = sumDue(rs);
+          h += '<div class="cv-area" style="color:' + dc[0] + '"><span class="cv-an">' + esc(a) + '</span>' +
+            '<span class="cv-tags">' + cvTag(rs.length, dc[1], dc[0]) +
+            (aDue > 0.5 ? cvTag(money(aDue), "#fee2e2", "#b91c1c") : "") + '</span></div>';
+          rs.forEach(function (c) { h += cvClientHtml(c); });
+        });
+        h += '</div>';
+      });
+    });
+    return h;
+  }
+  /* A quote is where the next order gets committed. If money from the last one is still out,
+     that belongs on the screen BEFORE this one is priced - so it rides along on every step of
+     the wizard, not only the step where the client was picked. */
+  function qzDueBanner(name) {
+    var due = 0;
+    try { due = clientDue(name); } catch (e) { return ""; }
+    if (!(due > 0.5)) return "";
+    return '<div class="cv-duebar">' +
+      '<span class="cv-duetag">PENDING</span>' +
+      '<b>' + money(due) + '</b>' +
+      '<span class="cv-duemsg">still outstanding from ' + esc(name) +
+      ' &mdash; settle or agree it along with this order.</span>' +
+      '<button class="btn sm" data-act="tab" data-tab="billing">Open HISAB</button>' +
+      '</div>';
+  }
+  /* Compact-view styling, plus this file's first MOBILE rules. The base stylesheet has exactly
+     one media query (the desktop modal) and .grid2 is a hard 1fr 1fr - which on a 360px phone
+     squeezes every paired field into a 157px column. Injecting from here keeps the whole app
+     one deployable file. */
+  function ensureCompactCss() {
+    if (document.getElementById("ew_cv_css")) return;
+    var s = document.createElement("style");
+    s.id = "ew_cv_css";
+    s.textContent =
+      ".cv-seg{display:inline-flex;border:1px solid #cbd5e1;border-radius:999px;overflow:hidden;background:#fff}" +
+      ".cv-seg button{border:0;background:#fff;color:#475569;font-size:12.5px;font-weight:700;padding:8px 16px;cursor:pointer;min-height:36px;line-height:1}" +
+      ".cv-seg button.on{background:#0f766e;color:#fff}" +
+      ".cv-exec{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;color:#fff;border-radius:12px;padding:9px 13px;margin:14px 0 8px;font-weight:700;font-size:13.5px}" +
+      ".cv-en{flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+      ".cv-tags{display:inline-flex;gap:5px;align-items:center;flex-wrap:wrap;flex:0 0 auto}" +
+      ".cv-tag{border-radius:999px;padding:3px 9px;font-size:11.5px;font-weight:700;white-space:nowrap}" +
+      ".cv-dist{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:1px solid #e2e8f0;border-left-width:5px;border-radius:11px;padding:10px 12px;margin-bottom:6px;cursor:pointer;font-weight:700;font-size:13.5px;min-height:46px}" +
+      ".cv-caret{flex:0 0 auto;font-size:12px}" +
+      ".cv-dn{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+      ".cv-body{border-left:3px solid;margin:0 0 12px 9px;padding-left:10px}" +
+      ".cv-area{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;margin:9px 0 5px}" +
+      ".cv-an{flex:1 1 100px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+      ".cv-cli{border:1px solid #eef2f7;border-radius:10px;padding:7px 10px;margin-bottom:5px;background:#fff}" +
+      ".cv-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}" +
+      ".cv-nm{flex:1 1 130px;min-width:0;text-align:left;border:0;background:none;padding:0;font-size:13.5px;font-weight:700;color:#0f172a;cursor:pointer;line-height:1.3}" +
+      ".cv-due{background:#fee2e2;color:#b91c1c;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:800;white-space:nowrap}" +
+      ".cv-ok{background:#dcfce7;color:#166534;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap}" +
+      ".cv-bs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}" +
+      ".cv-b{border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:8px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer;line-height:1.2}" +
+      ".cv-b.live{background:#0d9488;border-color:#0d9488;color:#fff}" +
+      ".cv-b.more{background:#f1f5f9;color:#64748b}" +
+      ".cv-b.done{background:#f8fafc;color:#94a3b8;border-style:dashed;cursor:default}" +
+      ".cv-duebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fef2f2;border:1px solid #fecaca;border-left:5px solid #dc2626;border-radius:11px;padding:9px 12px;margin:0 0 12px;color:#7f1d1d}" +
+      ".cv-duebar b{font-size:17px;color:#b91c1c;white-space:nowrap}" +
+      ".cv-duetag{background:#dc2626;color:#fff;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:800;letter-spacing:.4px}" +
+      ".cv-duemsg{font-size:12px;flex:1 1 170px;min-width:0}" +
+      /* THE MOBILE RULES. Paired fields stop being two slivers, a row's flexible child is
+         allowed to get small enough to actually wrap, and the compact tree tightens up. */
+      "@media(max-width:560px){" +
+      ".grid2{grid-template-columns:1fr!important}" +
+      ".row .grow{min-width:120px}" +
+      ".cv-exec{font-size:12.5px;padding:8px 11px}" +
+      ".cv-dist{font-size:13px;padding:10px;gap:7px}" +
+      ".cv-body{margin-left:5px;padding-left:8px}" +
+      ".cv-nm{flex-basis:100%}" +
+      ".cv-duebar b{font-size:16px}" +
+      "}";
+    document.head.appendChild(s);
+  }
+
   function partnerByName(n) {
     var t = String(n || "").trim().toLowerCase();
     return S.data.associates.filter(function (a) { return String(a.name).trim().toLowerCase() === t; })[0] || null;
@@ -9516,6 +9771,10 @@ function viewCatalogue() {
   }
   function renderCore() {
     try { ensureCoreCss(); } catch (e) { }
+    try { ensureCompactCss(); } catch (e) { }
+    /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
+       and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
+    _clDueCache = null; _clStageCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
     var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, stock: viewStock };
@@ -9998,6 +10257,15 @@ function viewCatalogue() {
         toast("Area registered: " + anName + " (" + anLoc + ")");
       });
       return;
+    }
+
+    /* ---- compact / expand (v6.9.178) ---- */
+    if (act === "cv-mode") { cvSetMode(t.getAttribute("data-m")); render(); return; }
+    if (act === "cv-dist") {
+      var cvK = t.getAttribute("data-k") || "";
+      if (!S.cvOpen) S.cvOpen = {};
+      if (S.cvOpen[cvK]) delete S.cvOpen[cvK]; else S.cvOpen[cvK] = 1;
+      render(); return;
     }
 
     /* ---- tidy the old free-typed districts (v6.9.177) ---- */
