@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.174";
+  var APP_VERSION = "6.9.175";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1848,24 +1848,65 @@ window.addEventListener("beforeunload", function (ev) {
     return h;
   }
 
-  function viewClients() {
-    var loc = S.q;
+  /* v6.9.175 — MONEY AND STAGE ON THE CLIENT BOOK.
+     Both maps are built ONCE per full render and cached, because the client list repaints on every
+     keystroke of the search box below. hisabOutstanding() already walks every received challan,
+     payment and booked-in return in one pass AND tags each row with the same owner expression this
+     tab groups by (ownedBy || createdBy) — so the amount beside a client's phone and the total on
+     his executive's band come from exactly the same arithmetic as HISAB. There is deliberately no
+     second definition of "pending" anywhere in this file to drift out of step.
+     Calling clientLedger() per card would have re-walked the whole challan book once per client. */
+  var _clDueCache = null, _clStageCache = null;
+  function clientDueMap() {
+    if (_clDueCache) return _clDueCache;
+    var m = {};
+    /* hisabOutstanding() already drops anything <= Rs 0.50 and anything in credit, so a client who
+       is square simply has no entry here and shows no amount at all. */
+    (hisabOutstanding() || []).forEach(function (r) { m[String(r.name || "").trim().toLowerCase()] = r.due; });
+    _clDueCache = m;
+    return m;
+  }
+  function clientDue(name) { return clientDueMap()[String(name || "").trim().toLowerCase()] || 0; }
+  /* One pass over sites (and customers) for the whole book. Keyed on TRIMMED + LOWERCASED name, so a
+     stray trailing space or a capital letter in a client name can never hide a stage that really is
+     recorded — clientStage() matches the name exactly and case-sensitively, which is fine for a
+     single lookup off a picked record but wrong for scanning 80 hand-typed client names. */
+  function clientStageMap() {
+    if (_clStageCache) return _clStageCache;
+    var m = {};
+    function put(k, v) { var t = String(k || "").trim().toLowerCase(); if (t && v && !m[t]) m[t] = v; }
+    (S.data.sites || []).forEach(function (s) { if (s && s.stage) { put(s.client, s.stage); put(s.name, s.stage); } });
+    (S.data.customers || []).forEach(function (c) { if (c && c.stage) put(c.name, c.stage); });
+    _clStageCache = m;
+    return m;
+  }
+  function clientStage2(name) { return clientStageMap()[String(name || "").trim().toLowerCase()] || ""; }
+
+  /* The client list body, split out of viewClients() so a keystroke in the search box can repaint
+     JUST this block — the input element itself is never re-created, so the caret and the phone
+     keyboard stay exactly where they are. */
+  function clientsListHtml() {
+    var loc = S.q, qq = String(S.clq || "").trim().toLowerCase();
     var all = S.data.clients.filter(function (c) { return isClient(c.name); });
     if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });   /* a sales exec sees only clients assigned to them */
     var list = all.filter(function (c) { return !loc || c.location === loc; });
-    var clocs = [];
-    all.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
-    clocs.sort();
-    var h = '<div class="empty" style="text-align:left;padding:0 0 10px">A <b>client</b> has won at least one brand. Keep cross-selling the rest — tap any brand on his board to quote it.</div>';
-    h += '<div class="row">' + clocs.map(function (l) {
-      return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
-    }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") + '</div>';
-    if (!list.length) return h + '<div class="empty">No clients yet. A lead becomes a client here the moment one of his quotes is marked Won.</div>';
+    if (qq) list = list.filter(function (c) {
+      return String(c.name || "").toLowerCase().indexOf(qq) > -1
+        || String(c.mobile || "").toLowerCase().indexOf(qq) > -1
+        || String(c.location || "").toLowerCase().indexOf(qq) > -1
+        || String(c.plumber || "").toLowerCase().indexOf(qq) > -1
+        || String(c.architect || "").toLowerCase().indexOf(qq) > -1
+        || String(c.address || "").toLowerCase().indexOf(qq) > -1;
+    });
+    if (!list.length) return '<div class="empty">' + (qq
+      ? 'No client matches <b>' + esc(S.clq) + '</b>. Search runs on name, phone, area, plumber, architect and address.'
+      : (loc ? 'No clients in ' + esc(loc) + ' yet.' : 'No clients yet. A lead becomes a client here the moment one of his quotes is marked Won.')) + '</div>';
 
-    ensurePickerCss();   /* the exec band (.ch-exec) styling lives with the picker CSS */
     function clientCardHtml(c) {
       var won = clientWonCount(c.name);
       var cSeg = clientSegment(c);
+      var due = clientDue(c.name);
+      var stg = clientStage2(c.name);
       /* COMPACT: one header line (name + pills + PL/AR badges + Call/Edit), one brand line.
          Builder/PMC/address stay on the Edit form - the card is for scanning the book fast. */
       return '<div class="card lc-compact">' +
@@ -1873,7 +1914,15 @@ window.addEventListener("beforeunload", function (ev) {
         ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
         (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
         ' <span class="bs win">' + (won ? won + ' WON' : 'CLIENT') + '</span>' +
+        /* Stage sits on the card because it is what decides WHAT to pitch him next. Red when it is
+           still blank — tap it to open his card and answer it. */
+        (stg
+          ? ' <span class="pill" style="background:#ccfbf1;color:#0f766e" title="Construction stage">' + esc(stg) + '</span>'
+          : ' <span class="pill" data-act="cl-open" data-id="' + esc(c.id) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer" title="No construction stage recorded - tap to set it">Stage ?</span>') +
         (c.mobile ? ' <span style="color:#94a3b8;font-size:12px;white-space:nowrap">' + esc(c.mobile) + '</span>' : "") +
+        /* The money sits right beside the phone number on purpose: the number you would call and the
+           reason you would call him, read as one line. */
+        (due > 0.5 ? ' <span style="color:#b91c1c;font-size:12px;font-weight:700;white-space:nowrap" title="Outstanding as per HISAB">' + money(due) + ' due</span>' : "") +
         '</div>' +
         '<div class="lc-right">' + partnerBadge(c, "plumber") + partnerBadge(c, "architect") +
         (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
@@ -1881,6 +1930,7 @@ window.addEventListener("beforeunload", function (ev) {
         brandBoard(c.name, true) + '</div>';
     }
 
+    var h = "";
     /* For admin / accounts, group the client list by the sales executive it's assigned to (a teal
        band per exec), so the owner can read the book exec-wise. A sales exec (list already filtered
        to their own clients) just gets the flat list. */
@@ -1897,13 +1947,46 @@ window.addEventListener("beforeunload", function (ev) {
       });
       order.forEach(function (e) {
         var cs = groups[e].slice().sort(function (a, b) { return String(a.name).toLowerCase() < String(b.name).toLowerCase() ? -1 : 1; });
+        /* The band total is the sum of the clients SHOWN under it, so it always adds up to what is
+           on screen — filter by area or type in the search box and the total follows the filter. */
+        var eDue = cs.reduce(function (a, c) { return a + clientDue(c.name); }, 0);
         h += '<div class="ch-exec">' + esc(e) +
-          '<span class="sub">' + cs.length + ' client' + (cs.length !== 1 ? 's' : '') + '</span></div>';
+          '<span style="display:flex;gap:6px;align-items:center">' +
+          '<span class="sub">' + cs.length + ' client' + (cs.length !== 1 ? 's' : '') + '</span>' +
+          (eDue > 0.5 ? '<span class="sub" style="background:#fecaca;color:#7f1d1d">' + money(eDue) + ' pending</span>' : '') +
+          '</span></div>';
         cs.forEach(function (c) { h += clientCardHtml(c); });
       });
     } else {
+      var mDue = list.reduce(function (a, c) { return a + clientDue(c.name); }, 0);
+      if (mDue > 0.5) h += '<div class="ch-exec">Your book' +
+        '<span style="display:flex;gap:6px;align-items:center">' +
+        '<span class="sub">' + list.length + ' client' + (list.length !== 1 ? 's' : '') + '</span>' +
+        '<span class="sub" style="background:#fecaca;color:#7f1d1d">' + money(mDue) + ' pending</span>' +
+        '</span></div>';
       list.forEach(function (c) { h += clientCardHtml(c); });
     }
+    return h;
+  }
+
+  function viewClients() {
+    _clDueCache = null; _clStageCache = null;   /* fresh money + stages on every full render */
+    var all = S.data.clients.filter(function (c) { return isClient(c.name); });
+    if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });
+    var clocs = [];
+    all.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
+    clocs.sort();
+    var h = '<div class="empty" style="text-align:left;padding:0 0 10px">A <b>client</b> has won at least one brand. Keep cross-selling the rest — tap any brand on his board to quote it.</div>';
+    h += '<div class="row">' + clocs.map(function (l) {
+      return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
+    }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") + '</div>';
+
+    ensurePickerCss();   /* the exec band (.ch-exec) styling lives with the picker CSS */
+    /* Client search. Deliberately NOT the shared #q box: #q on this tab already holds the area
+       filter, and the two must work together (pick Panipat, then type a name inside it). */
+    h += '<div class="row"><input class="grow" id="cl_q" placeholder="Search ' + all.length + ' clients — name, phone, area, plumber..." value="' + esc(S.clq || "") + '"/>' +
+      (S.clq ? '<button class="btn sm ghost" data-act="cl-qclear">Clear</button>' : '') + '</div>';
+    h += '<div id="cl_list">' + clientsListHtml() + '</div>';
     return h;
   }
 
@@ -9177,6 +9260,17 @@ function viewCatalogue() {
          background repaint can never yank the caret back up to the search box. */
       if (!q.value) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
     }
+    /* v6.9.175 client search: repaint ONLY the list block, never the whole page, so the caret and
+       the phone keyboard stay put while typing. */
+    var clqi = el("cl_q");
+    if (clqi) {
+      clqi.addEventListener("input", function (e) {
+        S.clq = e.target.value;
+        var box = el("cl_list");
+        if (box) box.innerHTML = clientsListHtml();
+      });
+      clqi.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
+    }
     /* quote builder code search: hold the text as it is typed (no re-render, so focus stays),
        and run the search on Enter. Not auto-focused - that would steal focus off the +/- taps. */
     var qzc = el("qz_code");
@@ -9329,7 +9423,7 @@ function viewCatalogue() {
     if (act === "crash-log") { S.modal = modalCrashLog(); render(); return; }
     if (act === "crash-clear") { try { localStorage.removeItem(CRASH_KEY); } catch (e) { } S.modal = modalCrashLog(); render(); return; }
     if (act === "reload-app") { location.reload(); return; }
-    if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; render(); return; }
+    if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; S.clq = ""; render(); return; }
     if (act === "stock-add") { S.modal = modalStockAdd(t.getAttribute("data-type") || "in"); render(); return; }
     if (act === "stock-refresh") { STOCK_LOADED = false; STOCK_LOADING = false; S.stock = []; ensureStock(); toast("Refreshing stock…"); return; }
     if (act === "stock-save") {
@@ -9510,6 +9604,7 @@ function viewCatalogue() {
 
     if (act === "geo-filter") { S.geoOnly = !S.geoOnly; render(); return; }
     if (act === "cl-loc") { S.q = t.getAttribute("data-loc"); render(); return; }
+    if (act === "cl-qclear") { S.clq = ""; render(); return; }
     if (act === "cl-new") {
       S.billDraft = []; S.clEditing = null; S.modal = modalClient(null); render(); return; }
     if (act === "cl-open") {
