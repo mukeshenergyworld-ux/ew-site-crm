@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.184";
+  var APP_VERSION = "6.9.185";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7478,7 +7478,11 @@ function viewCatalogue() {
     CV_REPAINT = repaint;
     return '<div class="row"><input class="grow" id="cv_q" placeholder="Search ' + n + ' ' +
       esc(noun) + ' &mdash; name, phone, colony, plumber..." value="' + esc(S.cvq || "") + '"/>' +
-      (S.cvq ? '<button class="btn sm ghost" data-act="cv-qclear">Clear</button>' : '') + '</div>';
+      /* v6.9.185: always in the page, only shown or hidden. The row itself is never re-drawn
+         while a man types - that is what keeps the caret still - so a button that was only
+         drawn when the box already had text would never appear while he was typing. */
+      '<button class="btn sm ghost" id="cv_qc" data-act="cv-qclear"' +
+      (S.cvq ? '' : ' style="display:none"') + '>Clear</button></div>';
   }
   function cvQ() { return String(S.cvq || "").replace(/^\s+|\s+$/g, "").toLowerCase(); }
   function cvTag(n, bg, fg) {
@@ -10169,6 +10173,8 @@ function viewCatalogue() {
     if (cvqi) {
       cvqi.addEventListener("input", function (e) {
         S.cvq = e.target.value;
+        var qc = el("cv_qc");
+        if (qc) qc.style.display = e.target.value ? "" : "none";
         var box = el("cv_list");
         if (box && CV_REPAINT) box.innerHTML = CV_REPAINT();
       });
