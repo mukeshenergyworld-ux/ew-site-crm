@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.179";
+  var APP_VERSION = "6.9.181";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -142,6 +142,14 @@
      Nobody pays a plumber 84.7 paise - round to the rupee everywhere money is shown. */
   function money(n) { return "\u20B9" + Math.round(Number(n) || 0).toLocaleString("en-IN"); }
   function moneyAscii(n) { return "Rs. " + Math.round(Number(n) || 0).toLocaleString("en-IN"); }
+  /* v6.9.181: money we are OWED is labelled DUE AMT, in caps, right beside the figure and
+     highlighted. A red number on its own was ambiguous - it could be a bill value, a lost
+     quote or an actual outstanding. One helper so the label looks the same everywhere.
+     "lg" for a headline figure, "on" for a solid-red badge on a pale background. */
+  function dueAmt(v, cls) {
+    return '<span class="due-amt' + (cls ? " " + cls : "") + '" title="DUE AMT - outstanding as per HISAB">' +
+      '<span class="due-amt-k">DUE AMT</span><b>' + money(v) + '</b></span>';
+  }
 
   /* The PDFs use the core Helvetica font (no heavy Unicode font embed - that would bloat every
      quote and break the WhatsApp/Telegram send). Core Helvetica can only draw Latin-1, so any
@@ -1233,7 +1241,7 @@ window.addEventListener("beforeunload", function (ev) {
         .reduce(function (a, v) { return a + (Number(v.balance) || 0); }, 0);
       h += '<div class="card"><h3>' + esc(x.client) + ' <span class="pill ' + d.k + '">' + d.t + '</span>' +
         (x.amcType && x.amcType !== "None" ? ' <span class="pill teal">AMC' + (x.amcEnd ? " to " + esc(dstr(x.amcEnd)) : "") + '</span>' : "") +
-        (bal > 0 ? ' <span class="pill due">' + money(bal) + ' pending</span>' : "") + '</h3>' +
+        (bal > 0 ? ' ' + dueAmt(bal) : "") + '</h3>' +
         '<div class="meta">' + (function () {
           var ps = instProducts(x), lines = [];
           ps.forEach(function (p) {
@@ -1294,7 +1302,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (!names.length) return h + '<div class="empty">Nothing pending. Everything collected.</div>';
     names.forEach(function (k) {
       var vs = S.data.visits.filter(function (v) { return v.client === k && (Number(v.balance) || 0) > 0; });
-      h += '<div class="card"><h3>' + esc(k) + ' <span class="pill due">' + money(by[k].bal) + '</span></h3><div class="meta">';
+      h += '<div class="card"><h3>' + esc(k) + ' ' + dueAmt(by[k].bal) + '</h3><div class="meta">';
       vs.forEach(function (v) {
         h += esc(dstr(v.date)) + ' &middot; ' + esc(v.type) + ' &middot; billed ' + money(v.total) +
           ', paid ' + money(v.collected) + ', <b>due ' + money(v.balance) + '</b><br>';
@@ -2031,7 +2039,7 @@ window.addEventListener("beforeunload", function (ev) {
         (c.mobile ? ' <span style="color:#94a3b8;font-size:12px;white-space:nowrap">' + esc(c.mobile) + '</span>' : "") +
         /* The money sits right beside the phone number on purpose: the number you would call and the
            reason you would call him, read as one line. */
-        (due > 0.5 ? ' <span style="color:#b91c1c;font-size:12px;font-weight:700;white-space:nowrap" title="Outstanding as per HISAB">' + money(due) + ' due</span>' : "") +
+        (due > 0.5 ? ' ' + dueAmt(due) : "") +
         '</div>' +
         '<div class="lc-right">' + partnerBadge(c, "plumber") + partnerBadge(c, "architect") +
         (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
@@ -2062,7 +2070,7 @@ window.addEventListener("beforeunload", function (ev) {
         h += '<div class="ch-exec">' + esc(e) +
           '<span style="display:flex;gap:6px;align-items:center">' +
           '<span class="sub">' + cs.length + ' client' + (cs.length !== 1 ? 's' : '') + '</span>' +
-          (eDue > 0.5 ? '<span class="sub" style="background:#fecaca;color:#7f1d1d">' + money(eDue) + ' pending</span>' : '') +
+          (eDue > 0.5 ? dueAmt(eDue) : '') +
           '</span></div>';
         cs.forEach(function (c) { h += clientCardHtml(c); });
       });
@@ -2071,7 +2079,7 @@ window.addEventListener("beforeunload", function (ev) {
       if (mDue > 0.5) h += '<div class="ch-exec">Your book' +
         '<span style="display:flex;gap:6px;align-items:center">' +
         '<span class="sub">' + list.length + ' client' + (list.length !== 1 ? 's' : '') + '</span>' +
-        '<span class="sub" style="background:#fecaca;color:#7f1d1d">' + money(mDue) + ' pending</span>' +
+        dueAmt(mDue) +
         '</span></div>';
       list.forEach(function (c) { h += clientCardHtml(c); });
     }
@@ -2457,7 +2465,7 @@ window.addEventListener("beforeunload", function (ev) {
 
     ensurePickerCss();   /* exec band (.ch-exec) + sub-strip (.ch-client) styling */
     /* quoteCardHtml is a hoisted declaration, so the compact tree can borrow it from here */
-    if (cvMode() === "compact") return h + qvHtml(list, quoteCardHtml);
+    if (cvMode() === "compact") return h + tidyBanner() + qvHtml(list, quoteCardHtml);
     function quoteCardHtml(q) {
       /* Title + figures on the left; the action row sits top-right to use the empty space -
          and WRAPS below on a narrow screen (phone/tablet) so nothing gets squeezed. */
@@ -5863,7 +5871,7 @@ function viewCatalogue() {
       var agg = { cur: 0, d30: 0, d60: 0, d90: 0 };
       outs.forEach(function (r) { agg.cur += r.ag.b.cur; agg.d30 += r.ag.b.d30; agg.d60 += r.ag.b.d60; agg.d90 += r.ag.b.d90; });
       var overdueTot = outs.reduce(function (a, r) { return a + (r.ag ? r.ag.overdue : 0); }, 0);
-      oh += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3>Outstanding &mdash; ' + money(totalDue) + ' across ' + outs.length + ' client(s)</h3>' +
+      oh += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3>DUE AMT &mdash; ' + money(totalDue) + ' across ' + outs.length + ' client(s)</h3>' +
         '<div class="meta" style="font-size:13px">Grouped by sales executive &middot; net of pre-set discounts. Tap a client to open their hisab.</div></div>';
       /* Ageing strip: how the outstanding splits by how long it has been owed. 60+ days is money to
          chase hard. Buckets are 0-30 / 31-60 / 61-90 / 90+ days from delivery (payments clear oldest
@@ -5949,7 +5957,9 @@ function viewCatalogue() {
         (_l0.opening ? 'Opening balance: <b style="color:' + (_l0.opening < 0 ? '#0d9488' : '#dc2626') + '">' + money(_l0.opening) + (_l0.opening < 0 ? ' (advance / credit)' : '') + '</b> &middot; ' : '') +
         'Received: <b>' + money(_l0.paid) + '</b> &middot; ' +
         (_l0.returned > 0 ? 'Returns (&minus;): <b style="color:#dc2626">' + money(_l0.returned) + '</b> &middot; ' : '') +
-        'Balance: <b style="color:' + (_l0.due > 0 ? '#dc2626' : '#0d9488') + '">' + money(_l0.due) + (_l0.due < -0.5 ? ' (in credit)' : '') + '</b></div>' +
+        (_l0.due > 0.5
+          ? dueAmt(_l0.due, "lg")
+          : 'Balance: <b style="color:#0d9488">' + money(_l0.due) + (_l0.due < -0.5 ? ' (in credit)' : '') + '</b>') + '</div>' +
         (canSee("payments") && _l0.due > 0 ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '">&#8377; Payment received</button></div>' : '') +
         '</div>';
       if (_pending.length) {
@@ -6074,7 +6084,9 @@ function viewCatalogue() {
       (opening > 0 ? 'Previous balance (b/f): <b>' + money(opening) + '</b>  &middot;  ' : '') +
       'Billed (net): <b>' + money(allNet) + '</b>  &middot;  Received: <b>' + money(paid) + '</b>  &middot;  ' +
       (retTotal > 0 ? 'Returns (&minus;): <b style="color:#dc2626">' + money(retTotal) + '</b>  &middot;  ' : '') +
-      'Balance due: <b style="color:' + (bal > 0 ? '#dc2626' : '#0d9488') + '">' + money(bal) + '</b></div>' +
+      (bal > 0.5
+        ? dueAmt(bal, "lg")
+        : 'Balance due: <b style="color:#0d9488">' + money(bal) + '</b>') + '</div>' +
       '<div style="margin-top:8px;font-size:14px">Statement: <b>' + selCount + '</b> of ' + chs.length + ' challan(s) ticked &mdash; <b>' + money(selNet) + '</b>' + (S.billGst ? ' + GST ' + money(gst) + ' = <b>' + money(selNet + gst) + '</b>' : '') + '</div>' +
       '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:10px">' +
       '<button class="btn sm ' + (S.billGst ? '' : 'ghost') + '" data-act="bill-gst">' + (S.billGst ? 'GST 18% ✓' : 'Add GST 18%') + '</button>' +
@@ -6351,7 +6363,7 @@ function viewCatalogue() {
     if (!seesAllClients()) list = list.filter(function (x) { return isMineClient(x.name); });   /* a sales exec sees only the clients assigned to them */
     var totDue = list.reduce(function (a, x) { return a + x.l.due; }, 0);
     var h = '<div class="cards">' +
-      '<div class="stat ' + (totDue > 0 ? "alert" : "") + '"><div class="n">' + money(totDue) + '</div><div class="l">Outstanding from clients</div></div>' +
+      '<div class="stat ' + (totDue > 0 ? "alert" : "") + '"><div class="n">' + money(totDue) + '</div><div class="l">DUE AMT &mdash; outstanding from clients</div></div>' +
       '<div class="stat"><div class="n">' + list.length + '</div><div class="l">Client ledgers</div></div>' +
       '</div>';
 
@@ -6376,7 +6388,7 @@ function viewCatalogue() {
     if (!list.length) return h + '<div class="empty">Nothing delivered yet.</div>';
     list.forEach(function (x) {
       h += '<div class="card"><h3>' + esc(x.name) +
-        (x.l.due > 0 ? ' <span class="pill due">' + money(x.l.due) + ' due</span>' : ' <span class="pill Won">clear</span>') +
+        (x.l.due > 0 ? ' ' + dueAmt(x.l.due) : ' <span class="pill Won">clear</span>') +
         (x.l.due > 0 && x.age ? ' <span class="pill ' + payBucket(x.age).cls + '">' + x.age + 'd old</span>' : "") + '</h3>' +
         '<div class="meta">' + x.l.chs.length + ' challan(s) &middot; billed ' + money(x.l.billed) +
         (x.l.freight ? ' + freight ' + money(x.l.freight) : "") +
@@ -7307,9 +7319,12 @@ function viewCatalogue() {
     if (!d) d = commonDistrict();
     return { district: d, area: sp0.area, rest: sp0.rest };
   }
+  /* v6.9.180: every executive tidies, not only the owner - but a sales exec is only ever
+     offered HIS OWN records, so one man's tidy-up can never move another man's customer. */
   function oddLocations() {
     var known = locations(), byVal = {}, order = [];
     S.data.clients.forEach(function (c) {
+      if (!isMineClient(c.name)) return;
       var v = String(c.location || "").replace(/^\s+|\s+$/g, "");
       if (!v || known.indexOf(v) > -1) return;
       if (!byVal[v]) { byVal[v] = []; order.push(v); }
@@ -7321,13 +7336,22 @@ function viewCatalogue() {
     });
   }
   function tidyBanner() {
-    if (!seesAllClients()) return "";
     var n = oddLocations().length;
     if (!n) return "";
+    var mine = !seesAllClients();
     return '<div class="row" style="align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px;border:1px solid #fde68a;background:#fffbeb;border-radius:10px">' +
-      '<div class="grow" style="font-size:12px"><b>' + n + ' area name(s) need tidying.</b> ' +
+      '<div class="grow" style="font-size:12px"><b>' + n + ' area name(s) need tidying' + (mine ? ' in your book' : '') + '.</b> ' +
       'A colony or a plot number was typed into the District box &mdash; that is why this filter row is so long.</div>' +
       '<button class="btn sm" data-act="tidy-areas">Tidy areas</button></div>';
+  }
+  /* "Not set" is not a place - it is a question. Wherever the tree has to draw it, it draws
+     the way to answer it instead of just the words. */
+  function cvSetBtn(label) {
+    return '<button class="cv-set" data-act="tidy-areas">' + label + '</button>';
+  }
+  function cvNeedsPlace(c) {
+    var p = (c && c.__cvp) || cvPlace(c || {});
+    return p.district === "Not set" || p.area === "Not set";
   }
   function modalTidyAreas() {
     var rows = oddLocations();
@@ -7448,11 +7472,13 @@ function viewCatalogue() {
     var bs = b.live.map(function (x) { return chip(x, " live"); }).join("") +
       shown.map(function (x) { return chip(x, ""); }).join("") +
       (more > 0 ? '<button class="cv-b more" data-act="cl-open" data-id="' + esc(c.id) + '">+' + more + ' more</button>' : "");
-    return '<div class="cv-cli">' +
+    var needs = cvNeedsPlace(c);
+    return '<div class="cv-cli' + (needs ? " ask" : "") + '">' +
       '<div class="cv-line">' +
       '<button class="cv-nm" data-act="cl-open" data-id="' + esc(c.id) + '">' + esc(c.name) + '</button>' +
+      (needs ? '<button class="cv-set" data-act="cl-open" data-id="' + esc(c.id) + '">Set district &amp; area</button>' : '') +
       (due > 0.5
-        ? '<span class="cv-due" title="Outstanding as per HISAB">' + money(due) + '</span>'
+        ? dueAmt(due)
         : '<span class="cv-ok">no dues</span>') +
       '</div>' +
       '<div class="cv-bs">' + (bs || '<span class="cv-b done">every brand settled</span>') + '</div>' +
@@ -7520,7 +7546,13 @@ function viewCatalogue() {
           '<span class="cv-caret" style="color:' + dc[0] + '">' + (on ? "▾" : "▸") + '</span>' +
           '<span class="cv-dn" style="color:' + dc[0] + '">' + esc(d) + '</span>' +
           '<span class="cv-tags">' + cvTag(rows.length, dc[1], dc[0]) +
-          (dDue > 0.5 ? cvTag(money(dDue), "#fee2e2", "#b91c1c") : "") + '</span></button>';
+          (dDue > 0.5 ? cvTag(money(dDue), "#fee2e2", "#b91c1c") : "") +
+          (d === "Not set" ? cvTag("needs a district", "#fef3c7", "#92400e") : "") + '</span></button>';
+        if (d === "Not set") {
+          h += '<div class="cv-ask">These names have no district yet, so nobody can plan a round for them. ' +
+            'Tidy areas reads each one and proposes a district and an area &mdash; nothing moves until you tap Apply.' +
+            cvSetBtn("Tidy areas") + '</div>';
+        }
         if (!on) return;
         var as = groupBy(rows, function (c) { return c.__cvp.area; });
         as.order.sort(byTotal(as.m));
@@ -7529,7 +7561,8 @@ function viewCatalogue() {
           var rs = as.m[a].slice().sort(byMoney), aDue = sumDue(rs);
           h += '<div class="cv-area" style="color:' + dc[0] + '"><span class="cv-an">' + esc(a) + '</span>' +
             '<span class="cv-tags">' + cvTag(rs.length, dc[1], dc[0]) +
-            (aDue > 0.5 ? cvTag(money(aDue), "#fee2e2", "#b91c1c") : "") + '</span></div>';
+            (aDue > 0.5 ? cvTag(money(aDue), "#fee2e2", "#b91c1c") : "") +
+            (a === "Not set" ? cvSetBtn("Set area") : "") + '</span></div>';
           rs.forEach(function (c) { h += cvClientHtml(c); });
         });
         h += '</div>';
@@ -7545,7 +7578,7 @@ function viewCatalogue() {
     try { due = clientDue(name); } catch (e) { return ""; }
     if (!(due > 0.5)) return "";
     return '<div class="cv-duebar">' +
-      '<span class="cv-duetag">PENDING</span>' +
+      '<span class="cv-duetag">DUE AMT</span>' +
       '<b>' + money(due) + '</b>' +
       '<span class="cv-duemsg">still outstanding from ' + esc(name) +
       ' &mdash; settle or agree it along with this order.</span>' +
@@ -7584,6 +7617,11 @@ function viewCatalogue() {
       ".cv-b.live{background:#0d9488;border-color:#0d9488;color:#fff}" +
       ".cv-b.more{background:#f1f5f9;color:#64748b}" +
       ".cv-b.done{background:#f8fafc;color:#94a3b8;border-style:dashed;cursor:default}" +
+      ".cv-set{border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:999px;padding:4px 11px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;line-height:1.2}" +
+      ".cv-set:hover{background:#fef3c7}" +
+      ".cv-ask{display:flex;align-items:center;gap:9px;flex-wrap:wrap;background:#fffbeb;border:1px dashed #fcd34d;border-radius:10px;padding:8px 11px;margin:0 0 8px;font-size:12px;color:#92400e;line-height:1.45}" +
+      ".cv-ask.sm{margin:6px 0 0;padding:6px 9px;font-size:11.5px}" +
+      ".cv-cli.ask{border-color:#fde68a;background:#fffdf5}" +
       ".cv-duebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fef2f2;border:1px solid #fecaca;border-left:5px solid #dc2626;border-radius:11px;padding:9px 12px;margin:0 0 12px;color:#7f1d1d}" +
       ".cv-duebar b{font-size:17px;color:#b91c1c;white-space:nowrap}" +
       ".cv-duetag{background:#dc2626;color:#fff;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:800;letter-spacing:.4px}" +
@@ -7643,8 +7681,11 @@ function viewCatalogue() {
       '<button class="qv-hd" data-act="qv-cli" data-k="' + esc(key) + '">' +
       '<span class="cv-caret" style="color:' + c[0] + '">' + (on ? "▾" : "▸") + '</span>' +
       '<span class="qv-nm">' + esc(rec.name) + '</span>' +
-      (due > 0.5 ? '<span class="cv-due">' + money(due) + ' pending</span>' : '') +
+      (due > 0.5 ? dueAmt(due) : '') +
       '</button>' +
+      ((rec.id && (rec.district === "Not set" || rec.area === "Not set"))
+        ? '<div class="cv-ask sm">No district on this customer yet.' +
+          '<button class="cv-set" data-act="cl-open" data-id="' + esc(rec.id) + '">Set district &amp; area</button></div>' : '') +
       '<div class="qv-log">' +
       cvTag(st.n + (st.n === 1 ? " quote submitted" : " quotes submitted"), c[1], c[0]) +
       cvTag(st.brands.length + (st.brands.length === 1 ? " brand pitched" : " brands pitched"), "#e0e7ff", "#3730a3") +
@@ -7684,7 +7725,7 @@ function viewCatalogue() {
       var p = cvPlace(cl || {});
       var st = qvStats(byCli[n]);
       return {
-        name: n, qs: byCli[n], st: st, val: st.val,
+        name: n, qs: byCli[n], st: st, val: st.val, id: (cl && cl.id) || "",
         exec: solo ? "" : (String((cl && (cl.ownedBy || cl.createdBy)) || "").replace(/^\s+|\s+$/g, "") || "Unassigned"),
         district: p.district, area: p.area
       };
@@ -7742,7 +7783,11 @@ function viewCatalogue() {
           '<span class="cv-dn" style="color:' + dc[0] + '">' + esc(d) + '</span>' +
           '<span class="cv-tags">' + cvTag(drs.length + (drs.length === 1 ? " name" : " names"), dc[1], dc[0]) +
           cvTag(dq + (dq === 1 ? " quote" : " quotes"), dc[1], dc[0]) +
-          cvTag(money(sumVal(drs)), "#f1f5f9", "#334155") + '</span></button>';
+          cvTag(money(sumVal(drs)), "#f1f5f9", "#334155") +
+          (d === "Not set" ? cvTag("needs a district", "#fef3c7", "#92400e") : "") + '</span></button>';
+        if (d === "Not set") {
+          h += '<div class="cv-ask">These customers have no district yet.' + cvSetBtn("Tidy areas") + '</div>';
+        }
         if (!on) return;
         var as = groupBy(drs, function (r) { return r.area; });
         as.order.sort(byTotal(as.m));
@@ -8273,7 +8318,7 @@ function viewCatalogue() {
       '<div class="stat"><div class="n">' + due.length + '</div><div class="l">Due today</div></div>' +
       '<div class="stat"><div class="n">' + liveLeads + '</div><div class="l">Leads</div></div>' +
       '<div class="stat"><div class="n">' + money(sales) + '</div><div class="l">Challan value</div></div>' +
-      '<div class="stat ' + (myOutstanding > 0 ? 'alert' : '') + '" data-act="tab" data-tab="billing" style="cursor:pointer" title="Open HISAB"><div class="n">' + money(myOutstanding) + '</div><div class="l">Outstanding' + (seesAllClients() ? '' : ' (my clients)') + '</div></div>' +
+      '<div class="stat ' + (myOutstanding > 0 ? 'alert' : '') + '" data-act="tab" data-tab="billing" style="cursor:pointer" title="Open HISAB"><div class="n">' + money(myOutstanding) + '</div><div class="l">DUE AMT' + (seesAllClients() ? '' : ' (my clients)') + '</div></div>' +
       '<div class="stat ' + (myOverdue > 0 ? 'alert' : '') + '" data-act="tab" data-tab="billing" style="cursor:pointer" title="Open HISAB"><div class="n">' + money(myOverdue) + '</div><div class="l">Overdue (' + CREDIT_DAYS + '+ days)</div></div>' +
       (seesAllClients() ? '<div class="stat"><div class="n">' + money(comm) + '</div><div class="l">Incentive owed</div></div>' : '') +
       '</div>';
@@ -9947,7 +9992,14 @@ function viewCatalogue() {
       "::-webkit-scrollbar-thumb{background:rgba(100,116,139,.35);border-radius:8px}" +
       "::-webkit-scrollbar-thumb:hover{background:rgba(100,116,139,.55)}" +
       "nav{scrollbar-width:thin}nav::-webkit-scrollbar{width:5px}" +
-      "nav button{position:relative;z-index:1}";
+      "nav button{position:relative;z-index:1}" +
+      /* v6.9.181 DUE AMT pill - one look for owed money across every tab */
+      ".due-amt{display:inline-flex;align-items:center;gap:5px;background:#fee2e2;border:1px solid #fca5a5;border-radius:999px;padding:2px 9px 2px 3px;white-space:nowrap;vertical-align:middle;line-height:1.3}" +
+      ".due-amt-k{background:#dc2626;color:#fff;border-radius:999px;padding:2px 7px;font-size:9.5px;font-weight:800;letter-spacing:.7px}" +
+      ".due-amt b{color:#b91c1c;font-size:12.5px;font-weight:800}" +
+      ".due-amt.lg{padding:3px 12px 3px 4px}.due-amt.lg b{font-size:16px}" +
+      ".due-amt.on{background:#dc2626;border-color:#dc2626}.due-amt.on .due-amt-k{background:#fff;color:#dc2626}.due-amt.on b{color:#fff}" +
+      "@media(max-width:560px){.due-amt b{font-size:12px}.due-amt.lg b{font-size:15px}}";
     document.head.appendChild(s);
   }
   function renderCore() {
