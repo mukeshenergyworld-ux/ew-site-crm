@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.175";
+  var APP_VERSION = "6.9.176";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1659,7 +1659,13 @@ window.addEventListener("beforeunload", function (ev) {
     });
     return Object.keys(set);
   }
-  function clientWonCount(name) { return clientWonBrands(name).length; }
+  /* The WON pill counts BRAND GROUPS, so it always reads against the 14 chips on the
+     board - winning HT PRO and ULTRA SILENT at one site is one Huliot win, not two. */
+  function clientWonCount(name) {
+    var set = {};
+    clientWonBrands(name).forEach(function (b) { var g = brandGroup(b); if (g) set[g] = 1; });
+    return Object.keys(set).length;
+  }
   function isClient(name) { return clientWonBrands(name).length > 0 || clientDelivered(name); }
   /* Board state blends quotes + delivered challans + a manual per-brand status (clientPitch), so
      old clients with pre-app history can be recorded directly. Priority: won > live > lost > none. */
@@ -1673,8 +1679,103 @@ window.addEventListener("beforeunload", function (ev) {
     if (ps === "Lost" || qs.length) return "lost";
     return "none";
   }
+  /* ---------- BRAND GROUPS (v6.9.176) ----------
+     The catalogue must keep its sub-brands: Huliot HT PRO and Huliot ULTRA SILENT carry
+     different price lists, preset discounts and stock, so a QUOTE can never merge them.
+     But when pitching and following up, the owner works one brand at a time - 14 names,
+     not 19. So the boards and the brand pickers roll the catalogue up into groups, while
+     the quote builder, discount screen, stock and incentives keep the real sub-brand.
+     A brand matching no rule keeps its own name, so a new brand is never silently hidden. */
+  var BRAND_GROUP_ORDER = ["HULIOT", "HELIROMA", "FIMA", "TOTO", "STELLAR", "GRUNDFOS",
+    "PENTAIR", "GREEN HEAT", "GEBERIT", "INAIR", "OYSTER", "MEA", "IONCARE", "ADANI"];
+  var BRAND_GROUP_RULES = [
+    ["HULIOT", ["huliot", "ht pro", "htpro", "ultra silent", "ultrasilent"]],
+    ["HELIROMA", ["heliroma", "drp", "ppr"]],
+    ["STELLAR", ["stellar", "sanitaar", "sanitar"]],
+    ["INAIR", ["inair", "lunos"]],
+    ["GREEN HEAT", ["green heat", "greenheat"]],
+    ["FIMA", ["fima"]],
+    ["TOTO", ["toto"]],
+    ["GRUNDFOS", ["grundfos"]],
+    ["PENTAIR", ["pentair"]],
+    ["GEBERIT", ["geberit"]],
+    ["OYSTER", ["oyster"]],
+    ["MEA", ["mea"]],
+    ["IONCARE", ["ioncare", "ion care"]],
+    ["ADANI", ["adani"]]
+  ];
+  /* Whole-word match on a normalised name, so "MEA" can never match inside another word. */
+  function brandGroup(b) {
+    var raw = String(b == null ? "" : b).replace(/^\s+|\s+$/g, "");
+    var s = " " + raw.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/^\s+|\s+$/g, "") + " ";
+    if (s === " " || s === "  ") return raw;
+    for (var i = 0; i < BRAND_GROUP_RULES.length; i++) {
+      var keys = BRAND_GROUP_RULES[i][1];
+      for (var j = 0; j < keys.length; j++) {
+        if (s.indexOf(" " + keys[j] + " ") > -1) return BRAND_GROUP_RULES[i][0];
+      }
+    }
+    return raw;
+  }
+  /* Built once per paint - the boards ask for it on every client card. */
+  var _bgCache = null;
+  function brandGroupIndex() {
+    if (_bgCache) return _bgCache;
+    var byGroup = {}, order = [];
+    brandList().forEach(function (b) {
+      var g = brandGroup(b);
+      if (!g) return;
+      if (!byGroup[g]) byGroup[g] = [];
+      if (byGroup[g].indexOf(b) < 0) byGroup[g].push(b);
+    });
+    BRAND_GROUP_ORDER.forEach(function (g) { if (byGroup[g]) order.push(g); });
+    Object.keys(byGroup).forEach(function (g) { if (order.indexOf(g) < 0) order.push(g); });
+    _bgCache = { order: order, byGroup: byGroup };
+    return _bgCache;
+  }
+  function brandGroupList() { return brandGroupIndex().order; }
+  function groupMembers(g) { return brandGroupIndex().byGroup[g] || []; }
+  /* A group is only as parked as its best member: won > live > lost > untouched, and
+     "not required" shows only when EVERY sub-brand in the group is marked so. */
+  var GROUP_RANK = { won: 5, live: 4, lost: 3, none: 2, nr: 1 };
+  function clientGroupState(name, g) {
+    var members = groupMembers(g);
+    if (!members.length) return clientBrandState(name, g);
+    var best = clientBrandState(name, members[0]);
+    for (var i = 1; i < members.length; i++) {
+      var st = clientBrandState(name, members[i]);
+      if ((GROUP_RANK[st] || 0) > (GROUP_RANK[best] || 0)) best = st;
+    }
+    return best;
+  }
+  /* Every action that acts on a brand arrives with either a real catalogue brand or a
+     rolled-up group name. One member -> use it silently. More than one -> ask which,
+     never guess, because the sub-brand carries the rate and the discount. */
+  function resolveBrand(name, b, act, extra) {
+    var members = groupMembers(b);
+    if (!members.length) return b;
+    if (members.length === 1) return members[0];
+    S.modal = modalBrandPick(name, b, act, extra);
+    render();
+    return null;
+  }
+  function modalBrandPick(name, g, act, extra) {
+    var members = groupMembers(g);
+    var a = act || "board-menu";
+    var lbl = { won: "Won ✓", lost: "Lost", live: "In play", none: "Not started", nr: "Not required" };
+    return '<h2>' + esc(g) + '</h2>' +
+      '<p class="sub">' + esc(name) + ' &middot; which one?</p>' +
+      '<div style="display:flex;flex-direction:column;gap:8px">' +
+      members.map(function (b) {
+        var st = clientBrandState(name, b);
+        return '<button class="btn ghost" style="justify-content:space-between;width:100%" data-act="' +
+          esc(a) + '" data-n="' + esc(name) + '" data-brand="' + esc(b) + '"' + (extra || "") + '>' +
+          esc(b) + ' <span class="pill">' + esc(lbl[st] || "") + '</span></button>';
+      }).join("") +
+      '</div><div class="foot"><button class="btn ghost" data-act="close">Cancel</button></div>';
+  }
   function brandBoard(name, compact) {
-    var brands = brandList();
+    var brands = brandGroupList();
     /* compact card mode: only REAL brands - "Accessory" / "Net Price Items" are allied-item
        heads, not brands, and they were eating a whole line on every lead card. Still quotable
        from the quote builder. One line, small chips, side-scroll if narrow. */
@@ -1689,7 +1790,7 @@ window.addEventListener("beforeunload", function (ev) {
     return (compact
       ? '<div style="margin-top:6px;display:flex;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px">'
       : '<div style="margin-top:8px;display:flex;flex-wrap:wrap">') + brands.map(function (b) {
-      var st = clientBrandState(name, b), sty, inner;
+      var st = clientGroupState(name, b), sty, inner;
       if (st === "won") { sty = base + "background:#f1f5f9;color:#94a3b8;border-color:#cbd5e1"; inner = "✓ " + esc(b); }
       else if (st === "lost") { sty = base + "background:#fef2f2;color:#dc2626;border-color:#fecaca"; inner = '<span style="text-decoration:line-through">' + esc(b) + '</span>'; }
       else if (st === "live") { sty = base + "background:#0d9488;color:#fff;border-color:#0d9488"; inner = esc(b); }
@@ -1722,7 +1823,7 @@ window.addEventListener("beforeunload", function (ev) {
      (then he becomes a Client but still shows under the brands he hasn't bought - cross-sell). A
      brand drops off a customer's list only when it is marked Won, Lost or Not required (reason). */
   function viewBrandFollow() {
-    var brands = followBrandList();
+    var brands = brandGroupList().filter(function (g) { return isRealBrandName(g); });
     if (!brands.length) return '<div class="empty">No brands set up yet.</div>';
     if (!S.bf || brands.indexOf(S.bf) < 0) S.bf = brands[0];
     if (S.bfMode !== "client") S.bfMode = "lead";
@@ -1734,7 +1835,7 @@ window.addEventListener("beforeunload", function (ev) {
     custs.forEach(function (c) {
       if (isClient(c.name) !== wantClient) return;
       brands.forEach(function (b) {
-        var st = clientBrandState(c.name, b);
+        var st = clientGroupState(c.name, b);
         if (st === "none" || st === "live") openByBrand[b].push({ c: c, st: st });
       });
     });
@@ -6582,24 +6683,47 @@ function viewCatalogue() {
   /* Cross-sell list for a brand: clients who buy at least one OTHER brand from us but have not
      been quoted THIS brand yet — the visiting brand executive's gold list. */
   function crossSellClients(brand) {
-    var bl = String(brand || "").toLowerCase();
+    /* group-aware: a client who bought Huliot HT PRO is NOT a Huliot cross-sell target,
+       and one who bought Lunos is not an Inair target. Works whether the caller passes a
+       group name ("HULIOT") or a real catalogue brand ("Huliot HT PRO"). */
+    var g = brandGroup(brand);
     return (S.data.clients || []).filter(function (c) {
       var brands = clientQuotedBrands(c.name);
       if (!brands.length) return false;   /* not a buyer yet -> a lead, not a cross-sell */
-      return !brands.some(function (b) { return b.toLowerCase() === bl || b.toLowerCase().indexOf(bl) > -1; });
+      return !brands.some(function (b) { return brandGroup(b) === g; });
     });
+  }
+  /* Pending leads for a whole brand group. Rules and pitch rows stay keyed to the real
+     sub-brand, so rather than merge two rules we union the two lists and keep the most
+     urgent view of each site - exact, and no rule ever has to be guessed at. */
+  function groupLeads(g) {
+    var members = groupMembers(g);
+    if (members.length < 2) return brandLeads(members.length ? members[0] : g);
+    var bySite = {}, rule = null;
+    members.forEach(function (b) {
+      var r = brandLeads(b);
+      if (!rule && r.rule && r.rule.brand) rule = r.rule;
+      r.list.forEach(function (x) {
+        var k = x.site.id;
+        if (!bySite[k] || (x.urgent && !bySite[k].urgent)) bySite[k] = x;
+      });
+    });
+    var list = Object.keys(bySite).map(function (k) { return bySite[k]; });
+    list.sort(function (a, b) { return (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0); });
+    return { rule: rule || {}, list: list };
   }
 
   function viewLeads() {
     var h = '<div class="empty" style="text-align:left;padding:0 0 12px">Pick a brand. <b>Cross-sell</b> = your clients who already buy other brands but not this one yet (with plumber, architect and stage) — the list to hand a visiting brand executive. <b>New leads</b> = prospect sites that are not yet your clients.</div>';
-    h += '<div class="row">' + brandList().map(function (b) {
+    if (S.leadBrand) S.leadBrand = brandGroup(S.leadBrand);   /* an old sub-brand pick still lands */
+    h += '<div class="row" style="flex-wrap:wrap;gap:6px">' + brandGroupList().map(function (b) {
       var n = crossSellClients(b).length;
       return '<button class="btn sm ' + (S.leadBrand === b ? "" : "ghost") + '" data-act="lead-brand" data-b="' + esc(b) + '">' + esc(b) + ' (' + n + ')</button>';
     }).join("") + '</div>';
     if (!S.leadBrand) return h;
     var brand = S.leadBrand;
     var cross = crossSellClients(brand);
-    var leads = brandLeads(brand).list;
+    var leads = groupLeads(brand).list;
     var urgent = leads.filter(function (x) { return x.urgent; }).length;
 
     h += '<div class="cards">' +
@@ -6650,7 +6774,7 @@ function viewCatalogue() {
   }
 
   function leadsPdf(brand) {
-    var r = brandLeads(brand);
+    var r = groupLeads(brand);
     return loadFonts().then(function (f) {
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
       var uni = false;
@@ -8861,6 +8985,7 @@ function viewCatalogue() {
      screen instead of a frozen/blank app. The real work is in renderCore(). */
   function render() {
     try { agClearCache(); } catch (e) { }   /* one agent scan per paint, always fresh */
+    _bgCache = null;                        /* brand groups rebuilt if the catalogue changed */
     try { renderCore(); try { syncBanner(); } catch (e) { } }
     catch (err) {
       logCrash("render", err);
@@ -9746,16 +9871,25 @@ function viewCatalogue() {
       S.tab = "quotes"; render(); return;
     }
     /* Brand board: tapping a brand opens a small menu (quote it, or just record the outcome). */
-    if (act === "board-menu") { S.modal = modalBrandAction(t.getAttribute("data-n"), t.getAttribute("data-brand")); render(); return; }
+    if (act === "board-menu") {
+      var bmn = t.getAttribute("data-n");
+      var bmb = resolveBrand(bmn, t.getAttribute("data-brand"), "board-menu", "");
+      if (bmb === null) return;             /* group with several sub-brands - picker shown */
+      S.modal = modalBrandAction(bmn, bmb); render(); return;
+    }
     if (act === "board-status") {
-      var stn = t.getAttribute("data-n"), stb = t.getAttribute("data-brand"), stv = t.getAttribute("data-s") || "Not pitched";
+      var stn = t.getAttribute("data-n"), stv = t.getAttribute("data-s") || "Not pitched";
+      var stb = resolveBrand(stn, t.getAttribute("data-brand"), "board-status", ' data-s="' + esc(stv) + '"');
+      if (stb === null) return;
       saveBrandStatus(stn, stb, "", { status: stv });
       S.modal = null;
       toast(stb + (stv === "Not pitched" ? " status cleared" : " marked " + stv) + (stv === "Won" ? " — moved to Clients" : ""));
       render(); return;
     }
     if (act === "board-nr") {
-      var nrn = t.getAttribute("data-n"), nrb = t.getAttribute("data-brand");
+      var nrn = t.getAttribute("data-n");
+      var nrb = resolveBrand(nrn, t.getAttribute("data-brand"), "board-nr", "");
+      if (nrb === null) return;
       var why = window.prompt("Why is " + nrb + " not required for " + nrn + "?\n(e.g. already has it, competitor tied up, not in scope)");
       if (why === null) return;
       saveBrandStatus(nrn, nrb, "", { status: "Not required", note: why });
@@ -9885,7 +10019,9 @@ function viewCatalogue() {
       return;
     }
     if (act === "board-quote") {
-      var bn = t.getAttribute("data-n"), bb = t.getAttribute("data-brand");
+      var bn = t.getAttribute("data-n");
+      var bb = resolveBrand(bn, t.getAttribute("data-brand"), "board-quote", "");
+      if (bb === null) return;
       var bcl = clientByName(bn);
       S.qz = { step: 3, location: (bcl && bcl.location) || "", client: bn, clientObj: bcl || null,
         items: [], brandDisc: 0, brandDiscs: {}, brand: bb, family: "", codeq: "" };
@@ -9896,7 +10032,8 @@ function viewCatalogue() {
     if (act === "lead-quote") {
       var lc = clientById(id);
       if (!lc) return;
-      var lbr = t.getAttribute("data-brand");
+      var lbr = resolveBrand(lc.name, t.getAttribute("data-brand"), "lead-quote", ' data-id="' + esc(lc.id) + '"');
+      if (lbr === null) return;
       S.qz = { step: 3, location: lc.location, client: lc.name, clientObj: lc, items: [], brandDisc: 0, brandDiscs: {}, brand: lbr, family: "", codeq: "" };
       S.qz.brandDiscs[lbr] = clientDiscount(lc.name, lbr);
       S.tab = "quotes"; render(); return;
