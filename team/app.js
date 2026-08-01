@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.195";
+  var APP_VERSION = "6.9.196";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1069,6 +1069,7 @@ window.addEventListener("beforeunload", function (ev) {
       var wm = x.cat.months;
       return '<div class="acts" style="align-items:center;margin:6px 0"><div class="grow"><b>' + esc(x.i.desc) + '</b>' +
         '<br><span style="font-size:11px;color:#94a3b8">' + esc(x.cat.label) + ' &middot; qty ' + esc(x.i.qty || 1) + '</span></div>' +
+        '<input class="cm-sn" data-idx="' + x.idx + '" placeholder="serial no." value="' + esc((x.i.comm && x.i.comm.sn) || "") + '" style="width:120px;padding:6px 8px;font-size:13px;font-family:ui-monospace,monospace"/>' +
         '<input class="cm-wm" data-idx="' + x.idx + '" inputmode="numeric" value="' + esc(wm) + '" style="width:60px;padding:6px 8px;font-size:13px"/>' +
         '<span style="font-size:12px;color:#64748b">months</span></div>';
     }).join("");
@@ -1076,7 +1077,8 @@ window.addEventListener("beforeunload", function (ev) {
       '<p class="sub">' + esc(ch.customerName || "") + (ch.site ? ' &middot; ' + esc(ch.site) : "") + ' &middot; ' + esc(ch.challanNo || "") + '</p>' +
       '<div class="grid2"><div><label>Commissioning date</label><input id="cm_date" type="date" value="' + today() + '"/></div>' +
       '<div><label>Engineer</label><select id="cm_eng">' + opts(SVC_ENGINEERS, SVC_ENGINEERS[0]) + '</select></div></div>' +
-      '<label style="margin-top:8px">Warranty per product</label>' + rows +
+      '<label style="margin-top:8px">Serial number and warranty, per product</label>' +
+      '<div class="meta" style="font-size:11px;color:#94a3b8;margin:2px 0 6px">You are standing in front of the machine now &mdash; this is the only easy moment to read the serial off it. A warranty claim later is made against this number.</div>' + rows +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="comm-save" data-ch="' + esc(ch.id) + '">Commission &amp; generate</button></div>';
   }
@@ -1124,12 +1126,16 @@ window.addEventListener("beforeunload", function (ev) {
       doc.text("PRODUCT", L + 3, y); doc.text("QTY", R - 40, y, { align: "right" }); doc.text("WARRANTY", R - 3, y, { align: "right" });
       y += 9;
       ci.forEach(function (x, idx) {
-        if (idx % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, R - L, 7, "F"); }
+        var _sn = (x.i.comm && x.i.comm.sn) ? String(x.i.comm.sn) : "";
+        var _rh = _sn ? 11 : 7;
+        if (idx % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, R - L, _rh, "F"); }
         doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(9);
         doc.text(doc.splitTextToSize(String(x.i.desc || ""), 120)[0], L + 3, y);
         doc.text(String(x.i.qty || 1), R - 40, y, { align: "right" });
         doc.text(((x.i.comm && x.i.comm.wm) || x.cat.months) + " months", R - 3, y, { align: "right" });
-        y += 7;
+        /* the serial sits under the product name, in the customer's own copy */
+        if (_sn) { doc.setFontSize(7.6); doc.setTextColor(100, 116, 139); doc.text("Serial no: " + _sn, L + 3, y + 4); }
+        y += _rh;
       });
       y += 8; doc.setFontSize(9.5); doc.setTextColor(17, 34, 45); F("normal");
       doc.text("Challan No: " + String(ch.challanNo || "-"), L, y);
@@ -1155,14 +1161,18 @@ window.addEventListener("beforeunload", function (ev) {
       doc.text("PRODUCT", L + 3, y); doc.text("COMMISSIONED", R - 46, y, { align: "right" }); doc.text("WARRANTY VALID TILL", R - 3, y, { align: "right" });
       y += 9;
       ci.forEach(function (x, idx) {
-        if (idx % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, R - L, 7, "F"); }
+        var _sn = (x.i.comm && x.i.comm.sn) ? String(x.i.comm.sn) : "";
+        var _rh = _sn ? 11 : 7;
+        if (idx % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, R - L, _rh, "F"); }
         doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(9);
         doc.text(doc.splitTextToSize(String(x.i.desc || ""), 92)[0], L + 3, y);
         var cd = (x.i.comm && x.i.comm.date) || dateStr;
         var wm = (x.i.comm && x.i.comm.wm) || x.cat.months;
         doc.text(fullDate(cd), R - 46, y, { align: "right" });
         F("bold"); doc.text(fullDate((x.i.comm && x.i.comm.till) || addMonths(cd, wm)), R - 3, y, { align: "right" }); F("normal");
-        y += 7;
+        /* a warranty claim is made against this number - it must be on the card the customer keeps */
+        if (_sn) { doc.setFontSize(7.6); doc.setTextColor(100, 116, 139); doc.text("Serial no: " + _sn, L + 3, y + 4); doc.setFontSize(9); }
+        y += _rh;
       });
       y += 10; F("bold"); doc.setFontSize(9); doc.setTextColor(13, 118, 108); doc.text("WARRANTY TERMS", L, y); F("normal");
       y += 6; doc.setFontSize(8.2); doc.setTextColor(80, 92, 108);
@@ -1179,6 +1189,108 @@ window.addEventListener("beforeunload", function (ev) {
       doc.text("Energy World  |  Panipat · Sonipat · Karnal", L, 290);
       return doc;
     });
+  }
+
+  /* ---------- INSTALLED BASE (Part C1) ----------
+     Every commissioned unit, read straight out of the challans' own itemsJson - which is
+     the record that cannot be lost, because it is one existing column and not a new one.
+     A unit is identified by challan id + its row index, so the same challan can carry two
+     softeners and they stay two units.  Nothing here writes; it only reads and lists. */
+  var _baseCache = null;
+  function unitKey(chId, idx) { return String(chId || "") + "#" + String(idx); }
+  function baseUnits() {
+    if (_baseCache) return _baseCache;
+    var out = [];
+    (S.data.challans || []).forEach(function (c) {
+      commItemsOf(c).forEach(function (x) {
+        var cm = x.i.comm;
+        if (!cm || !cm.date) return;              /* not commissioned yet - not installed base */
+        out.push({
+          key: unitKey(c.id, x.idx), chId: c.id, idx: x.idx,
+          challanNo: c.challanNo || "", client: c.customerName || "", site: c.site || "",
+          exec: c.createdBy || c.executive || "",
+          product: x.cat.label || "", model: x.i.desc || "", qty: x.i.qty || 1,
+          sn: String(cm.sn || ""), date: cm.date || "", till: cm.till || "",
+          wm: cm.wm || x.cat.months, eng: cm.eng || "", cycle: x.cat.cycle || 180
+        });
+      });
+    });
+    out.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+    _baseCache = out;
+    return out;
+  }
+  /* A unit with no serial is not a failure, it is a gap worth closing - the engineer can
+     add it later from this same screen without touching anything else. */
+  function baseNoSerial() { return baseUnits().filter(function (u) { return !u.sn; }); }
+  function baseMatch(u, q) {
+    if (!q) return true;
+    return (u.client + " " + u.site + " " + u.product + " " + u.model + " " + u.sn + " " +
+      u.challanNo + " " + u.eng + " " + u.exec).toLowerCase().indexOf(q) >= 0;
+  }
+  function baseWarrLabel(u) {
+    if (!u.till) return { t: "no warranty date", k: "" };
+    var d = daysTo(u.till);
+    if (d < 0) return { t: "warranty ended " + fullDate(u.till), k: "due" };
+    if (d <= 60) return { t: "warranty ends in " + d + "d", k: "soon" };
+    return { t: "in warranty to " + fullDate(u.till), k: "Won" };
+  }
+
+  function viewBase() {
+    var all = baseUnits(), q = String(S.baseQ || "").toLowerCase();
+    var list = all.filter(function (u) { return baseMatch(u, q); });
+    var noSn = baseNoSerial().length;
+    var h = '<div class="cards">' +
+      '<div class="stat"><div class="n">' + all.length + '</div><div class="l">Units installed</div></div>' +
+      '<div class="stat ' + (noSn ? "alert" : "") + '"><div class="n">' + noSn + '</div><div class="l">Without a serial no.</div></div>' +
+      '<div class="stat"><div class="n">' + all.filter(function (u) { return u.till && daysTo(u.till) >= 0; }).length + '</div><div class="l">Still in warranty</div></div>' +
+      '</div>';
+    h += '<div class="meta" style="margin:8px 0">Every unit Energy World has commissioned. Search by serial number, customer, site or product &mdash; a service call becomes one lookup.</div>';
+    h += '<div class="row"><input class="grow" id="baseq" placeholder="Serial no., customer, site, product..." value="' + esc(S.baseQ || "") + '"/>' +
+      '<button class="btn sm" data-act="base-find">Find</button>' +
+      (S.baseQ ? '<button class="btn sm ghost" data-act="base-clear">Clear</button>' : "") + '</div>';
+    if (!all.length) return h + '<div class="empty">Nothing commissioned yet. A unit appears here the moment it is commissioned on the Service screen.</div>';
+    if (!list.length) return h + '<div class="empty">No unit matches that. Try just the last few digits of the serial.</div>';
+    list.slice(0, 300).forEach(function (u) {
+      var w = baseWarrLabel(u);
+      h += '<div class="card"><h3>' + esc(u.client) + (u.site ? ' <span style="color:#94a3b8;font-size:12px">' + esc(u.site) + '</span>' : "") +
+        ' <span class="pill ' + w.k + '">' + esc(w.t) + '</span></h3>' +
+        '<div class="meta"><b>' + esc(u.product) + '</b> &middot; ' + esc(u.model) + (u.qty > 1 ? ' &middot; qty ' + esc(u.qty) : "") + '<br>' +
+        (u.sn
+          ? 'Serial <b style="color:#0f766e;font-family:ui-monospace,monospace">' + esc(u.sn) + '</b>'
+          : '<span class="pill due">no serial number</span>') +
+        ' &middot; commissioned ' + esc(fullDate(u.date)) + (u.eng ? ' by ' + esc(u.eng) : "") +
+        ' &middot; challan ' + esc(u.challanNo) + '</div>' +
+        '<div class="acts" style="margin-top:8px;flex-wrap:wrap">' +
+        '<button class="btn sm ghost" data-act="base-sn" data-k="' + esc(u.key) + '">' + (u.sn ? "Correct the serial" : "Add the serial") + '</button>' +
+        '<button class="btn sm ghost" data-act="comm-warr" data-ch="' + esc(u.chId) + '">Warranty card</button>' +
+        (u.till ? '<button class="btn sm" data-act="amc-wa" data-n="' + esc(u.client) + '" data-p="' + esc(u.product) + '" data-till="' + esc(u.till) + '">Offer AMC</button>' : "") +
+        '</div></div>';
+    });
+    if (list.length > 300) h += '<div class="meta">Showing the 300 most recent of ' + list.length + '. Narrow the search to see the rest.</div>';
+    return h;
+  }
+
+  /* Typing a serial in later is a correction, not a rewrite: the old value is kept in the
+     audit trail by the ordinary save, and the unit simply starts carrying the new one. */
+  function modalSerial(key) {
+    var u = baseUnits().filter(function (x) { return x.key === key; })[0];
+    if (!u) return "";
+    return '<h2>' + (u.sn ? "Correct the serial number" : "Add the serial number") + '</h2>' +
+      '<p class="sub">' + esc(u.client) + (u.site ? ' &middot; ' + esc(u.site) : "") + ' &middot; ' + esc(u.model) + '</p>' +
+      '<label>Serial number on the machine</label>' +
+      '<input id="sn_val" value="' + esc(u.sn) + '" placeholder="as printed on the unit" style="font-family:ui-monospace,monospace"/>' +
+      '<div class="meta" style="margin-top:6px">Type it exactly as it is printed. This is what a warranty claim is made against.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="base-sn-save" data-k="' + esc(u.key) + '">Save the serial</button></div>';
+  }
+
+  function viewServiceDesk() {
+    var sub = (S.svcSub === "base") ? "base" : "visits";
+    var h = '<div class="row" style="margin-bottom:10px">' +
+      '<button class="btn sm ' + (sub === "visits" ? "" : "ghost") + '" data-act="svc-sub" data-s="visits">Service visits</button>' +
+      '<button class="btn sm ' + (sub === "base" ? "" : "ghost") + '" data-act="svc-sub" data-s="base">Installed base</button>' +
+      '</div>';
+    return h + (sub === "base" ? viewBase() : viewService());
   }
 
   function commissioningSection() {
@@ -12024,10 +12136,10 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _prfCache = null;
+    _clDueCache = null; _clStageCache = null; _prfCache = null; _baseCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
+    var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
     var tabs = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
 
     var h = '<div class="top">' +
@@ -13168,15 +13280,48 @@ function viewCatalogue() {
       });
       return;
     }
+    if (act === "svc-sub") { S.svcSub = t.getAttribute("data-s"); S.q = ""; render(); return; }
+    if (act === "base-find") { S.baseQ = val("baseq") || ""; render(); return; }
+    if (act === "base-clear") { S.baseQ = ""; render(); return; }
+    if (act === "base-sn") { S.modal = modalSerial(t.getAttribute("data-k")); render(); return; }
+    if (act === "base-sn-save") {
+      var _bk = String(t.getAttribute("data-k") || ""), _bu = baseUnits().filter(function (x) { return x.key === _bk; })[0];
+      if (!_bu) { toast("That unit is no longer on the list. Refresh and try again."); return; }
+      var _bv = String(val("sn_val") || "").trim();
+      var _bch = (S.data.challans || []).filter(function (x) { return x.id === _bu.chId; })[0];
+      if (!_bch) { toast("Challan not found."); return; }
+      var _bi = chItems(_bch);
+      if (!_bi[_bu.idx] || !_bi[_bu.idx].comm) { toast("That product is not commissioned yet."); return; }
+      /* nothing is removed - the previous serial goes on the audit trail before the new one lands */
+      var _bold = String(_bi[_bu.idx].comm.sn || "");
+      _bi[_bu.idx].comm.sn = _bv;
+      _bch.itemsJson = JSON.stringify(_bi);
+      t.disabled = true; t.textContent = "Saving...";
+      save("challans", _bch).then(function () {
+        try {
+          save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "unit:serial",
+            target: _bk, detail: JSON.stringify({ client: _bu.client, product: _bu.product, from: _bold, to: _bv }), ip: "" });
+        } catch (e) { }
+        _baseCache = null; S.modal = null;
+        toast(_bv ? "Serial saved." : "Serial cleared.");
+        render();
+      });
+      return;
+    }
     if (act === "comm-open") { S.modal = modalCommission(t.getAttribute("data-ch")); render(); return; }
     if (act === "comm-save") {
       var commCh = (S.data.challans || []).filter(function (x) { return x.id === t.getAttribute("data-ch"); })[0];
       if (!commCh) return;
       var cDate = val("cm_date") || today(), cEng = val("cm_eng");
       var cItems = chItems(commCh), justDone = [];
+      /* the serial is read off the machine at the same moment as the warranty - one screen, one trip */
+      var _sn = {};
+      [].slice.call(document.querySelectorAll(".cm-sn")).forEach(function (s2) {
+        _sn[String(s2.getAttribute("data-idx"))] = String(s2.value || "").trim();
+      });
       [].slice.call(document.querySelectorAll(".cm-wm")).forEach(function (inp) {
         var idx = Number(inp.getAttribute("data-idx")), wm = Number(inp.value) || 0;
-        if (cItems[idx]) { cItems[idx].comm = { date: cDate, eng: cEng, wm: wm, till: addMonths(cDate, wm) }; justDone.push(cItems[idx]); }
+        if (cItems[idx]) { cItems[idx].comm = { date: cDate, eng: cEng, wm: wm, till: addMonths(cDate, wm), sn: _sn[String(idx)] || "" }; justDone.push(cItems[idx]); }
       });
       commCh.itemsJson = JSON.stringify(cItems);
       t.disabled = true; t.textContent = "Generating...";
@@ -13190,7 +13335,7 @@ function viewCatalogue() {
           save("installs", {
             id: "", createdBy: S.user, client: commCh.customerName, mobile: cl.mobile || "",
             address: cl.address || "", area: cl.area || cl.location || "",
-            product: cat.label || it.desc, model: it.desc, serial: "",
+            product: cat.label || it.desc, model: it.desc, serial: (it.comm && it.comm.sn) || "",
             installDate: cDate, waterQuality: "", cycleDays: cyc,
             lastService: "", nextService: addDays(cDate, cyc),
             amcType: "None", amcAmount: "", amcEnd: "", engineer: cEng, status: "Active",
