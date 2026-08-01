@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.178";
+  var APP_VERSION = "6.9.179";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2449,12 +2449,15 @@ window.addEventListener("beforeunload", function (ev) {
 
   function viewQuotes() {
     if (S.qz) return viewQzWizard();
-    var h = '<div class="row"><div class="grow"></div><button class="btn" data-act="qz-new">+ New quote</button></div>';
+    ensureCompactCss(); ensureQuoteCss();
+    var h = '<div class="row">' + cvSeg() + '<div class="grow"></div><button class="btn" data-act="qz-new">+ New quote</button></div>';
     var list = S.data.quotes.slice().reverse();
     if (!seesAllClients()) list = list.filter(function (q) { return isMineClient(q.client); });
     if (!list.length) { h += '<div class="empty">No quotes yet. Every quote is versioned - revising keeps the old one.</div>'; return h; }
 
     ensurePickerCss();   /* exec band (.ch-exec) + sub-strip (.ch-client) styling */
+    /* quoteCardHtml is a hoisted declaration, so the compact tree can borrow it from here */
+    if (cvMode() === "compact") return h + qvHtml(list, quoteCardHtml);
     function quoteCardHtml(q) {
       /* Title + figures on the left; the action row sits top-right to use the empty space -
          and WRAPS below on a narrow screen (phone/tablet) so nothing gets squeezed. */
@@ -7599,6 +7602,184 @@ function viewCatalogue() {
     document.head.appendChild(s);
   }
 
+  /* ---- QUOTES COMPACT VIEW (v6.9.179) -----------------------------------------------
+     The card list answers "what did we send out?". This answers "where do we stand with
+     each customer?" - the same executive -> district -> area tree as Leads and Clients,
+     but every name carries its quote log: how many quotes went out, how many brands were
+     pitched, what is still in play, what he already owes. Tap a name and the quotes
+     themselves unfold underneath, rendered by the very same card the Expand view uses -
+     so there is one definition of a quote card, not two. Nothing here writes. */
+  function qvBrandsOf(qs) {
+    var seen = {}, out = [];
+    qs.forEach(function (q) {
+      var g = "";
+      try { g = brandGroup(q.brand); } catch (e) { g = ""; }
+      g = String(g || q.brand || "").replace(/^\s+|\s+$/g, "");
+      if (!g || seen[g]) return;
+      seen[g] = 1; out.push(g);
+    });
+    return out;
+  }
+  /* Won and In-play are both real money on the table, so both are counted; Lost is kept as a
+     number but carries no value, because quoting a number we did not get would flatter the book. */
+  function qvStats(qs) {
+    var st = { n: qs.length, won: 0, lost: 0, live: 0, wonVal: 0, liveVal: 0, last: "" };
+    qs.forEach(function (q) {
+      var v = Number(q.net) || 0, sx = String(q.status || "");
+      if (sx === "Won") { st.won++; st.wonVal += v; }
+      else if (sx === "Lost") { st.lost++; }
+      else { st.live++; st.liveVal += v; }
+      var dt = String(q.createdAt || "");
+      if (dt > st.last) st.last = dt;
+    });
+    st.brands = qvBrandsOf(qs);
+    st.val = st.wonVal + st.liveVal;
+    return st;
+  }
+  function qvClientHtml(rec, key, cardFn) {
+    var st = rec.st, on = !!(S.qvOpen && S.qvOpen[key]), c = cvColor(rec.name);
+    var due = 0; try { due = clientDue(rec.name); } catch (e) { due = 0; }
+    var h = '<div class="qv-cli' + (on ? " on" : "") + '" style="border-left-color:' + c[0] + '">' +
+      '<button class="qv-hd" data-act="qv-cli" data-k="' + esc(key) + '">' +
+      '<span class="cv-caret" style="color:' + c[0] + '">' + (on ? "▾" : "▸") + '</span>' +
+      '<span class="qv-nm">' + esc(rec.name) + '</span>' +
+      (due > 0.5 ? '<span class="cv-due">' + money(due) + ' pending</span>' : '') +
+      '</button>' +
+      '<div class="qv-log">' +
+      cvTag(st.n + (st.n === 1 ? " quote submitted" : " quotes submitted"), c[1], c[0]) +
+      cvTag(st.brands.length + (st.brands.length === 1 ? " brand pitched" : " brands pitched"), "#e0e7ff", "#3730a3") +
+      (st.live ? cvTag(st.live + " in play &middot; " + money(st.liveVal), "#ccfbf1", "#0f766e") : "") +
+      (st.won ? cvTag(st.won + " won &middot; " + money(st.wonVal), "#dcfce7", "#166534") : "") +
+      (st.lost ? cvTag(st.lost + " lost", "#fee2e2", "#b91c1c") : "") +
+      (st.last ? cvTag("last " + esc(d10(st.last)), "#f1f5f9", "#475569") : "") +
+      '</div>';
+    if (st.brands.length) {
+      h += '<div class="qv-bs">' + st.brands.map(function (b) {
+        return '<span class="cv-b done">' + esc(b) + '</span>';
+      }).join("") + '</div>';
+    }
+    if (on) {
+      var newest = rec.qs.slice().sort(function (a, b) {
+        var A = String(a.createdAt || ""), B = String(b.createdAt || "");
+        return A < B ? 1 : (A > B ? -1 : 0);
+      });
+      h += '<div class="qv-open">' + newest.map(function (q) { return cardFn(q); }).join("") + '</div>';
+    }
+    return h + '</div>';
+  }
+  function qvHtml(list, cardFn) {
+    if (!list || !list.length) {
+      return '<div class="empty">No quotes yet. Every quote is versioned - revising keeps the old one.</div>';
+    }
+    var solo = !seesAllClients();
+    /* one bucket per CUSTOMER, because the log he asked for is per customer, not per quote */
+    var byCli = {}, order = [];
+    list.forEach(function (q) {
+      var n = String(q.client || "").replace(/^\s+|\s+$/g, "") || "Unnamed";
+      if (!byCli[n]) { byCli[n] = []; order.push(n); }
+      byCli[n].push(q);
+    });
+    var recs = order.map(function (n) {
+      var cl = null; try { cl = clientByName(n); } catch (e) { cl = null; }
+      var p = cvPlace(cl || {});
+      var st = qvStats(byCli[n]);
+      return {
+        name: n, qs: byCli[n], st: st, val: st.val,
+        exec: solo ? "" : (String((cl && (cl.ownedBy || cl.createdBy)) || "").replace(/^\s+|\s+$/g, "") || "Unassigned"),
+        district: p.district, area: p.area
+      };
+    });
+    var sumVal = function (rs) { return rs.reduce(function (a, r) { return a + r.val; }, 0); };
+    var groupBy = function (rows, keyFn) {
+      var m = {}, ord = [];
+      rows.forEach(function (r) { var k = keyFn(r); if (!m[k]) { m[k] = []; ord.push(k); } m[k].push(r); });
+      return { m: m, order: ord };
+    };
+    /* biggest book first - the same "money leads" rule the Leads and Clients tree uses */
+    var byTotal = function (m) {
+      return function (a, b) {
+        if (a === "Not set") return 1; if (b === "Not set") return -1;
+        var da = sumVal(m[a]), db = sumVal(m[b]);
+        if (Math.abs(da - db) > 0.5) return db - da;
+        if (m[a].length !== m[b].length) return m[b].length - m[a].length;
+        return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+      };
+    };
+    var byBook = function (a, b) {
+      if (Math.abs(a.val - b.val) > 0.5) return b.val - a.val;
+      return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1;
+    };
+
+    var h = "";
+    var ex = groupBy(recs, function (r) { return r.exec; });
+    ex.order.sort(function (a, b) {
+      if (a === "Unassigned") return 1; if (b === "Unassigned") return -1;
+      return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+    });
+    ex.order.forEach(function (e) {
+      var rs = ex.m[e], eq = rs.reduce(function (a, r) { return a + r.st.n; }, 0);
+      var eWon = rs.reduce(function (a, r) { return a + r.st.won; }, 0);
+      var ec = cvColor(e || "me");
+      if (!solo) {
+        h += '<div class="cv-exec" style="background:' + ec[0] + '">' +
+          '<span class="cv-en">' + esc(e) + '</span>' +
+          '<span class="cv-tags">' +
+          cvTag(eq + (eq === 1 ? " quote" : " quotes"), "rgba(255,255,255,.22)", "#fff") +
+          cvTag(eWon + " won", "rgba(255,255,255,.22)", "#fff") +
+          cvTag(money(sumVal(rs)), "#fff", ec[0]) +
+          '</span></div>';
+      }
+      var ds = groupBy(rs, function (r) { return r.district; });
+      ds.order.sort(byTotal(ds.m));
+      ds.order.forEach(function (d) {
+        var drs = ds.m[d], dc = cvColor(d);
+        var k = "quotes|" + e + "|" + d;
+        var on = !!(S.cvOpen && S.cvOpen[k]);
+        var dq = drs.reduce(function (a, r) { return a + r.st.n; }, 0);
+        h += '<button class="cv-dist' + (on ? " on" : "") + '" data-act="cv-dist" data-k="' + esc(k) + '"' +
+          ' style="border-left-color:' + dc[0] + ';background:' + (on ? dc[1] : "#fff") + '">' +
+          '<span class="cv-caret" style="color:' + dc[0] + '">' + (on ? "▾" : "▸") + '</span>' +
+          '<span class="cv-dn" style="color:' + dc[0] + '">' + esc(d) + '</span>' +
+          '<span class="cv-tags">' + cvTag(drs.length + (drs.length === 1 ? " name" : " names"), dc[1], dc[0]) +
+          cvTag(dq + (dq === 1 ? " quote" : " quotes"), dc[1], dc[0]) +
+          cvTag(money(sumVal(drs)), "#f1f5f9", "#334155") + '</span></button>';
+        if (!on) return;
+        var as = groupBy(drs, function (r) { return r.area; });
+        as.order.sort(byTotal(as.m));
+        h += '<div class="cv-body" style="border-left-color:' + dc[0] + '">';
+        as.order.forEach(function (a) {
+          var ars = as.m[a].slice().sort(byBook);
+          h += '<div class="cv-area" style="color:' + dc[0] + '"><span class="cv-an">' + esc(a) + '</span>' +
+            '<span class="cv-tags">' + cvTag(ars.length, dc[1], dc[0]) +
+            cvTag(money(sumVal(ars)), "#f1f5f9", "#334155") + '</span></div>';
+          ars.forEach(function (r) { h += qvClientHtml(r, "quotes|" + e + "|" + d + "|" + r.name, cardFn); });
+        });
+        h += '</div>';
+      });
+    });
+    return h;
+  }
+  function ensureQuoteCss() {
+    if (document.getElementById("ew_qv_css")) return;
+    var s = document.createElement("style");
+    s.id = "ew_qv_css";
+    s.textContent =
+      ".qv-cli{border:1px solid #eef2f7;border-left-width:5px;border-radius:11px;padding:8px 11px;margin-bottom:7px;background:#fff}" +
+      ".qv-cli.on{background:#fbfdff;border-color:#dbeafe}" +
+      ".qv-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;text-align:left;border:0;background:none;padding:0;cursor:pointer}" +
+      ".qv-nm{flex:1 1 130px;min-width:0;font-size:13.5px;font-weight:700;color:#0f172a;line-height:1.3}" +
+      ".qv-log{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}" +
+      ".qv-bs{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}" +
+      ".qv-open{margin-top:9px;padding-top:8px;border-top:1px dashed #e2e8f0}" +
+      ".qv-open .card{margin-bottom:7px}" +
+      "@media(max-width:560px){" +
+      ".qv-cli{padding:8px 9px}" +
+      ".qv-nm{flex-basis:100%}" +
+      ".qv-log .cv-tag{font-size:11px;padding:3px 8px}" +
+      "}";
+    document.head.appendChild(s);
+  }
+
   function partnerByName(n) {
     var t = String(n || "").trim().toLowerCase();
     return S.data.associates.filter(function (a) { return String(a.name).trim().toLowerCase() === t; })[0] || null;
@@ -9772,6 +9953,7 @@ function viewCatalogue() {
   function renderCore() {
     try { ensureCoreCss(); } catch (e) { }
     try { ensureCompactCss(); } catch (e) { }
+    try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
     _clDueCache = null; _clStageCache = null;
@@ -10261,6 +10443,12 @@ function viewCatalogue() {
 
     /* ---- compact / expand (v6.9.178) ---- */
     if (act === "cv-mode") { cvSetMode(t.getAttribute("data-m")); render(); return; }
+    if (act === "qv-cli") {
+      var qvK = t.getAttribute("data-k") || "";
+      if (!S.qvOpen) S.qvOpen = {};
+      if (S.qvOpen[qvK]) delete S.qvOpen[qvK]; else S.qvOpen[qvK] = 1;
+      render(); return;
+    }
     if (act === "cv-dist") {
       var cvK = t.getAttribute("data-k") || "";
       if (!S.cvOpen) S.cvOpen = {};
