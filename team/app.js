@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.198";
+  var APP_VERSION = "6.9.199";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1547,6 +1547,14 @@ window.addEventListener("beforeunload", function (ev) {
     }
     if (!arr.length) arr = [{ product: SVC_PRODUCTS[0], model: "", installDate: today(), commDate: "", warrantyMonths: "", serviceReq: 1, serviceMonths: 2 }];
     return arr;
+  }
+  /* Returns the raw contents of productsJson when it is NOT a usable product list,
+     and "" when it is. Used to decide whether a write is a plain edit or a repair. */
+  function badProductsJson(x) {
+    var raw = (x || {}).productsJson;
+    if (raw === undefined || raw === null || raw === "") return "";
+    try { if (Array.isArray(JSON.parse(raw))) return ""; } catch (e) { }
+    return String(raw);
   }
   /* warranty end = (commissioning date, else install date) + warrantyMonths */
   function warrantyEnd(p) {
@@ -13326,7 +13334,7 @@ function viewCatalogue() {
     if (act === "base-sn-save") {
       var _bk = String(t.getAttribute("data-k") || ""), _bu = baseUnits().filter(function (x) { return x.key === _bk; })[0];
       if (!_bu) { toast("That unit is no longer on the list. Refresh and try again."); return; }
-      var _bv = String(val("sn_val") || "").trim(), _bold = "", _brow = null, _btab = "";
+      var _bv = String(val("sn_val") || "").trim(), _bold = "", _brow = null, _btab = "", _bsalv = "";
       if (_bu.src === "comm") {
         _brow = (S.data.challans || []).filter(function (x) { return x.id === _bu.chId; })[0];
         if (!_brow) { toast("Challan not found."); return; }
@@ -13343,6 +13351,12 @@ function viewCatalogue() {
         var _bp = instProducts(_brow);
         if (!_bp[_bu.pi]) { toast("That product line is no longer on the installation."); return; }
         _bold = String(_bp[_bu.pi].serial || (_bu.pi === 0 ? (_brow.serial || "") : ""));
+        /* Some old rows have something other than a product list sitting in this column -
+           a stray timestamp, a half-written string. instProducts() quietly works around it,
+           so the screen looks right and nobody ever finds out. Writing the serial is the
+           moment that value would disappear. Nothing is deleted in this app, so whatever
+           was there goes onto the audit trail first and the column is then repaired. */
+        _bsalv = badProductsJson(_brow);
         _bp[_bu.pi].serial = _bv;
         _brow.productsJson = JSON.stringify(_bp);
         if (_bu.pi === 0) _brow.serial = _bv;      /* keep the old single-serial column in step */
@@ -13351,11 +13365,13 @@ function viewCatalogue() {
       t.disabled = true; t.textContent = "Saving...";
       save(_btab, _brow).then(function () {
         try {
+          var _bd = { client: _bu.client, product: _bu.product, from: _bold, to: _bv };
+          if (_bsalv) { _bd.repaired = "productsJson"; _bd.salvage = _bsalv.slice(0, 900); }
           save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "unit:serial",
-            target: _bk, detail: JSON.stringify({ client: _bu.client, product: _bu.product, from: _bold, to: _bv }), ip: "" });
+            target: _bk, detail: JSON.stringify(_bd), ip: "" });
         } catch (e) { }
         _baseCache = null; S.modal = null;
-        toast(_bv ? "Serial saved." : "Serial cleared.");
+        toast(_bsalv ? "Serial saved. An old bad value on this row was moved to the audit trail." : (_bv ? "Serial saved." : "Serial cleared."));
         render();
       });
       return;
