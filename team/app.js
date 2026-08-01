@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.196";
+  var APP_VERSION = "6.9.198";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -127,7 +127,17 @@
   }
   function el(id) { return document.getElementById(id); }
   function val(id) { var e = el(id); return e ? String(e.value || "").trim() : ""; }
-  function today() { return new Date().toISOString().slice(0, 10); }
+  /* Read the date a person in Panipat would read off the wall calendar.
+     toISOString() converts to UTC first, and India is 5.5 hours AHEAD of UTC, so
+     local midnight lands on the previous day - every calculated date came back
+     one day short. This reads the local parts directly and never shifts. */
+  function ymdLocal(d) {
+    if (!d || isNaN(d.getTime())) return "";
+    return d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+  function today() { return ymdLocal(new Date()); }
   /* v6.9.114: one canonical DISPLAY date - always DD/MM/YYYY (owner's format).
      Storage/compare stay ISO (today()/dstr); this is only for showing to a human. */
   function d10(v) {
@@ -979,7 +989,7 @@ window.addEventListener("beforeunload", function (ev) {
     var x = new Date(String(d).slice(0, 10) + "T00:00:00");
     if (isNaN(x.getTime())) x = new Date();
     x.setDate(x.getDate() + Number(n || 0));
-    return x.toISOString().slice(0, 10);
+    return ymdLocal(x);
   }
   function installById(id) { return S.data.installs.filter(function (x) { return x.id === id; })[0] || null; }
   function spareByName(n) {
@@ -1054,7 +1064,7 @@ window.addEventListener("beforeunload", function (ev) {
     var d = new Date(dstr(dateStr) + "T00:00:00");
     if (isNaN(d.getTime())) return "";
     d.setMonth(d.getMonth() + (Number(m) || 0));
-    return d.toISOString().slice(0, 10);
+    return ymdLocal(d);
   }
   function fullDate(v) {
     var s = String(v || "").trim(); if (!s) return "";
@@ -1198,20 +1208,48 @@ window.addEventListener("beforeunload", function (ev) {
      softeners and they stay two units.  Nothing here writes; it only reads and lists. */
   var _baseCache = null;
   function unitKey(chId, idx) { return String(chId || "") + "#" + String(idx); }
+  /* Same machine, two possible records: a commissioned challan line, or an installation
+     row someone typed in by hand. Both are real units standing on real sites, so both
+     belong here. The challan wins a tie because it carries the warranty and the challan
+     number; the install row is matched on the exact triple the auto-created row is built
+     from at commissioning time, so a unit is never counted twice. */
+  function baseDedupeKey(client, model, date) {
+    return String(client || "").trim().toLowerCase() + "|" +
+           String(model || "").trim().toLowerCase() + "|" + String(dstr(date) || "");
+  }
   function baseUnits() {
     if (_baseCache) return _baseCache;
-    var out = [];
+    var out = [], seen = {};
     (S.data.challans || []).forEach(function (c) {
       commItemsOf(c).forEach(function (x) {
         var cm = x.i.comm;
         if (!cm || !cm.date) return;              /* not commissioned yet - not installed base */
+        seen[baseDedupeKey(c.customerName, x.i.desc, cm.date)] = 1;
         out.push({
-          key: unitKey(c.id, x.idx), chId: c.id, idx: x.idx,
+          key: unitKey(c.id, x.idx), src: "comm", chId: c.id, idx: x.idx, pi: 0,
           challanNo: c.challanNo || "", client: c.customerName || "", site: c.site || "",
           exec: c.createdBy || c.executive || "",
           product: x.cat.label || "", model: x.i.desc || "", qty: x.i.qty || 1,
           sn: String(cm.sn || ""), date: cm.date || "", till: cm.till || "",
           wm: cm.wm || x.cat.months, eng: cm.eng || "", cycle: x.cat.cycle || 180
+        });
+      });
+    });
+    /* Machines installed before this screen existed, or entered straight on the Service
+       screen. They have no challan and usually no serial - that is the gap to close. */
+    (S.data.installs || []).forEach(function (ins) {
+      instProducts(ins).forEach(function (p, pi) {
+        var idate = dstr(p.installDate) || dstr(ins.installDate) || "";
+        if (seen[baseDedupeKey(ins.client, p.model || p.product, idate)]) return;   /* already on the list from its challan */
+        out.push({
+          key: "inst#" + String(ins.id || "") + "#" + pi, src: "inst", chId: "", idx: -1, pi: pi,
+          instId: ins.id || "", challanNo: "", client: ins.client || "", site: ins.area || "",
+          exec: ins.createdBy || "",
+          product: p.product || ins.product || "", model: p.model || ins.model || "", qty: 1,
+          sn: String(p.serial || (pi === 0 ? (ins.serial || "") : "")),
+          date: idate, till: warrantyEnd(p) || "",
+          wm: Number(p.warrantyMonths) || 0, eng: ins.engineer || "",
+          cycle: Number(ins.cycleDays) || 180
         });
       });
     });
@@ -1244,11 +1282,11 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="stat ' + (noSn ? "alert" : "") + '"><div class="n">' + noSn + '</div><div class="l">Without a serial no.</div></div>' +
       '<div class="stat"><div class="n">' + all.filter(function (u) { return u.till && daysTo(u.till) >= 0; }).length + '</div><div class="l">Still in warranty</div></div>' +
       '</div>';
-    h += '<div class="meta" style="margin:8px 0">Every unit Energy World has commissioned. Search by serial number, customer, site or product &mdash; a service call becomes one lookup.</div>';
+    h += '<div class="meta" style="margin:8px 0">Every unit Energy World has standing on a site &mdash; commissioned on a challan or entered on the Service screen. Search by serial number, customer, site or product, and a service call becomes one lookup.</div>';
     h += '<div class="row"><input class="grow" id="baseq" placeholder="Serial no., customer, site, product..." value="' + esc(S.baseQ || "") + '"/>' +
       '<button class="btn sm" data-act="base-find">Find</button>' +
       (S.baseQ ? '<button class="btn sm ghost" data-act="base-clear">Clear</button>' : "") + '</div>';
-    if (!all.length) return h + '<div class="empty">Nothing commissioned yet. A unit appears here the moment it is commissioned on the Service screen.</div>';
+    if (!all.length) return h + '<div class="empty">No units yet. A machine appears here the moment it is commissioned on a challan, or as soon as an installation is added on the Service screen.</div>';
     if (!list.length) return h + '<div class="empty">No unit matches that. Try just the last few digits of the serial.</div>';
     list.slice(0, 300).forEach(function (u) {
       var w = baseWarrLabel(u);
@@ -1258,11 +1296,12 @@ window.addEventListener("beforeunload", function (ev) {
         (u.sn
           ? 'Serial <b style="color:#0f766e;font-family:ui-monospace,monospace">' + esc(u.sn) + '</b>'
           : '<span class="pill due">no serial number</span>') +
-        ' &middot; commissioned ' + esc(fullDate(u.date)) + (u.eng ? ' by ' + esc(u.eng) : "") +
-        ' &middot; challan ' + esc(u.challanNo) + '</div>' +
+        ' &middot; ' + (u.src === "comm" ? "commissioned " : "installed ") + esc(fullDate(u.date)) + (u.eng ? ' by ' + esc(u.eng) : "") +
+        (u.challanNo ? ' &middot; challan ' + esc(u.challanNo) : ' &middot; <span style="color:#94a3b8">no challan on record</span>') + '</div>' +
         '<div class="acts" style="margin-top:8px;flex-wrap:wrap">' +
         '<button class="btn sm ghost" data-act="base-sn" data-k="' + esc(u.key) + '">' + (u.sn ? "Correct the serial" : "Add the serial") + '</button>' +
-        '<button class="btn sm ghost" data-act="comm-warr" data-ch="' + esc(u.chId) + '">Warranty card</button>' +
+        (u.src === "comm" ? '<button class="btn sm ghost" data-act="comm-warr" data-ch="' + esc(u.chId) + '">Warranty card</button>' : "") +
+        (u.src === "inst" ? '<button class="btn sm ghost" data-act="inst-open" data-id="' + esc(u.instId) + '">Open installation</button>' : "") +
         (u.till ? '<button class="btn sm" data-act="amc-wa" data-n="' + esc(u.client) + '" data-p="' + esc(u.product) + '" data-till="' + esc(u.till) + '">Offer AMC</button>' : "") +
         '</div></div>';
     });
@@ -1514,7 +1553,7 @@ window.addEventListener("beforeunload", function (ev) {
     var m = Number(p.warrantyMonths) || 0; if (!m) return "";
     var base = dstr(p.commDate) || dstr(p.installDate); if (!base) return "";
     var d = new Date(base + "T00:00:00"); d.setMonth(d.getMonth() + m);
-    return d.toISOString().slice(0, 10);
+    return ymdLocal(d);
   }
   /* Base serviceable brands + any brand already used on an existing install (so a once-added brand
      persists across sessions without a new store). */
@@ -3471,7 +3510,7 @@ async function priceListPdf(brands) {
     F(); doc.setFontSize(13); doc.setTextColor(15, 118, 110);
     doc.text(String(brand).toUpperCase(), bx, 12);
     doc.setFontSize(6.4); doc.setTextColor(100, 116, 139);
-    doc.text("PRICE LIST  \u00b7  " + dmy(new Date().toISOString().slice(0, 10)), bx, 17);
+    doc.text("PRICE LIST  \u00b7  " + dmy(today()), bx, 17);
     doc.setFontSize(6); doc.setTextColor(120, 113, 108);
     doc.text("All prices inclusive of 18% GST", Rt, 17, { align: "right" });
     y = 31;
@@ -3953,7 +3992,7 @@ function viewCatalogue() {
 
       col([160, 205, 199]); F("normal"); doc.setFontSize(7.4);
       var VALID_DAYS = 30;
-      var vUntil = new Date(Date.now() + VALID_DAYS * 86400000).toISOString().slice(0, 10);
+      var vUntil = ymdLocal(new Date(Date.now() + VALID_DAYS * 86400000));
       doc.text("Quote No.   " + String(q.quoteNo || ""), Rt, 36.8, { align: "right" });
       doc.text("Date   " + today(), Rt, 40.6, { align: "right" });
       col(MINT);
@@ -4448,7 +4487,7 @@ function viewCatalogue() {
     return h;
   }
 
-  function todayStr() { return new Date().toISOString().slice(0, 10); }
+  function todayStr() { return ymdLocal(new Date()); }
 
   /* ---------------- CHALLAN LIFECYCLE ----------------
      Draft -> Approved -> Dispatched -> Received.
@@ -11206,7 +11245,7 @@ function viewCatalogue() {
   }
 
   function modalSnooze(q) {
-    var due5 = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+    var due5 = ymdLocal(new Date(Date.now() + 5 * 86400000));
     return '<h2>Snooze ' + esc(q.quoteNo) + '</h2>' +
       '<p class="sub">Hides it from the radar until this date. It also appears in your reminders below.</p>' +
       '<label>Follow up on</label><input id="sn_due" type="date" value="' + due5 + '"/>' +
@@ -13287,17 +13326,30 @@ function viewCatalogue() {
     if (act === "base-sn-save") {
       var _bk = String(t.getAttribute("data-k") || ""), _bu = baseUnits().filter(function (x) { return x.key === _bk; })[0];
       if (!_bu) { toast("That unit is no longer on the list. Refresh and try again."); return; }
-      var _bv = String(val("sn_val") || "").trim();
-      var _bch = (S.data.challans || []).filter(function (x) { return x.id === _bu.chId; })[0];
-      if (!_bch) { toast("Challan not found."); return; }
-      var _bi = chItems(_bch);
-      if (!_bi[_bu.idx] || !_bi[_bu.idx].comm) { toast("That product is not commissioned yet."); return; }
-      /* nothing is removed - the previous serial goes on the audit trail before the new one lands */
-      var _bold = String(_bi[_bu.idx].comm.sn || "");
-      _bi[_bu.idx].comm.sn = _bv;
-      _bch.itemsJson = JSON.stringify(_bi);
+      var _bv = String(val("sn_val") || "").trim(), _bold = "", _brow = null, _btab = "";
+      if (_bu.src === "comm") {
+        _brow = (S.data.challans || []).filter(function (x) { return x.id === _bu.chId; })[0];
+        if (!_brow) { toast("Challan not found."); return; }
+        var _bi = chItems(_brow);
+        if (!_bi[_bu.idx] || !_bi[_bu.idx].comm) { toast("That product is not commissioned yet."); return; }
+        /* nothing is removed - the previous serial goes on the audit trail before the new one lands */
+        _bold = String(_bi[_bu.idx].comm.sn || "");
+        _bi[_bu.idx].comm.sn = _bv;
+        _brow.itemsJson = JSON.stringify(_bi);
+        _btab = "challans";
+      } else {
+        _brow = (S.data.installs || []).filter(function (x) { return x.id === _bu.instId; })[0];
+        if (!_brow) { toast("Installation not found."); return; }
+        var _bp = instProducts(_brow);
+        if (!_bp[_bu.pi]) { toast("That product line is no longer on the installation."); return; }
+        _bold = String(_bp[_bu.pi].serial || (_bu.pi === 0 ? (_brow.serial || "") : ""));
+        _bp[_bu.pi].serial = _bv;
+        _brow.productsJson = JSON.stringify(_bp);
+        if (_bu.pi === 0) _brow.serial = _bv;      /* keep the old single-serial column in step */
+        _btab = "installs";
+      }
       t.disabled = true; t.textContent = "Saving...";
-      save("challans", _bch).then(function () {
+      save(_btab, _brow).then(function () {
         try {
           save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "unit:serial",
             target: _bk, detail: JSON.stringify({ client: _bu.client, product: _bu.product, from: _bold, to: _bv }), ip: "" });
