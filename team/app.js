@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.185";
+  var APP_VERSION = "6.9.186";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2385,7 +2385,12 @@ window.addEventListener("beforeunload", function (ev) {
     return '<h2>' + (c.id ? "Edit customer" : "New lead") + '</h2>' +
       '<p class="sub">Enter a new lead — or an old client. Partners named here flow into every quote, challan and incentive. Mark his brands on the board afterwards.</p>' +
       '<label>Client name</label><input id="c_name" value="' + esc(c.name) + '"/>' +
-      '<div class="grid2"><div><label>Location</label>' + (function () {
+      /* v6.9.186: DISTRICT and AREA are one answer, so they are asked as one row, directly
+         under the name. They used to be five fields apart - District (labelled "Location", a
+         word that appears nowhere else in the app) at the top, Area down beside Short name -
+         and a man filling this in on a phone never saw them together, which is why he said the
+         form was not asking for them at all. */
+      '<div class="grid2"><div><label>District *</label>' + (function () {
         /* CITY dropdown only — free-typed plot/colony text was exploding into dozens of
            unusable location chips. Pick a city, or "+ Add new location" for a genuinely new
            one. An old odd value stays selectable, so just opening a client changes nothing;
@@ -2394,23 +2399,29 @@ window.addEventListener("beforeunload", function (ev) {
         var listL = [""].concat(cur && ls.indexOf(cur) < 0 ? [cur] : [], ls, ["+ Add new location"]);
         return '<select id="c_loc">' + opts(listL, cur) + '</select>';
       })() + '</div>' +
-      '<div><label>Type</label><select id="c_type">' + opts(CLIENT_TYPES, c.type || "Home owner") + '</select></div></div>' +
-      '<div class="grid2"><div><label>Segment</label><select id="c_segment">' + opts(["", "Residential", "Project"], c.segment || "") + '</select>' +
-      '<div class="pmeta" style="font-size:11px;color:#94a3b8">Leave blank to auto-classify from Type.</div></div><div></div></div>' +
+      /* AREA is a dropdown off the chosen DISTRICT (v6.9.177). Free text here is what filled
+         the Leads filter row with plot numbers. "+ Register new area" opens an inline box that
+         suggests the names already registered before it lets a second spelling be created. */
+      '<div><label>Area / colony *</label>' +
+      areaSelectHtml("c_area", String(c.location || "").replace(/^\s+|\s+$/g, ""), c.area) +
+      '<div id="c_area_new"></div></div></div>' +
+      /* v6.9.186: Type and Segment are two halves of "what kind of customer is this", and
+         each was sitting alone on a half-width row with an empty box beside it. On a phone that
+         is two wasted lines in a form he is already scrolling. */
+      '<div class="grid2"><div><label>Type</label><select id="c_type">' + opts(CLIENT_TYPES, c.type || "Home owner") + '</select></div>' +
+      '<div><label>Segment</label><select id="c_segment">' + opts(["", "Residential", "Project"], c.segment || "") + '</select></div></div>' +
+      '<div class="pmeta" style="font-size:11px;color:#94a3b8;margin:-4px 0 8px">Leave Segment blank to auto-classify from Type.</div>' +
       /* THE STAGE. Asked here, on the very first screen a lead is entered on, because a lead
          with no stage is a lead nobody can sell to. Answering it also creates the site record,
          so the pitch board has something to work with from day one. */
       stageChips("c_stage", c.stage || clientStage(c.name), "Construction stage of his site") +
       '<div class="grid2"><div><label>Mobile</label><input id="c_mob" inputmode="numeric" value="' + esc(c.mobile) + '"/></div>' +
       '<div><label>Alternate mobile</label><input id="c_mob2" inputmode="numeric" value="' + esc(c.mobile2 || "") + '"/></div></div>' +
+      /* v6.9.186: the empty half beside Short name was left over from when Area lived there.
+         Address moves up into it - the two are read together when a challan is written, and
+         the address is now also what proposes his colony. */
       '<div class="grid2"><div><label>Short name (challan no.)</label><input id="c_short" value="' + esc(c.shortName) + '" placeholder="SHARMA"/></div>' +
-      /* AREA is a dropdown off the chosen DISTRICT (v6.9.177). Free text here is what filled
-         the Leads filter row with plot numbers. "+ Register new area" opens an inline box that
-         suggests the names already registered before it lets a second spelling be created. */
-      '<div><label>Area / colony</label>' +
-      areaSelectHtml("c_area", String(c.location || "").replace(/^\s+|\s+$/g, "") || locations()[0], c.area) +
-      '<div id="c_area_new"></div></div></div>' +
-      '<label>Address</label><input id="c_addr" value="' + esc(c.address) + '"/>' +
+      '<div><label>Address</label><input id="c_addr" value="' + esc(c.address) + '"/></div></div>' +
       '<div class="grid2"><div><label>Architect</label>' + partnerSelect("c_arch", "architect", c.architect) + '</div>' +
       '<div><label>Plumber</label>' + partnerSelect("c_plumb", "plumber", c.plumber) + '</div></div>' +
       '<div class="meta" style="font-size:11px;color:#94a3b8;margin:-4px 0 6px">Pick from the list. If he isn’t on it, choose <b>+ Add new</b> &mdash; his mobile number is required.</div>' +
@@ -2445,6 +2456,10 @@ window.addEventListener("beforeunload", function (ev) {
       '<input id="c_billgst" placeholder="GSTIN (optional)" style="width:150px"/>' +
       '<button class="btn sm ghost" data-act="bill-add">Add</button></div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      /* v6.9.186: the same honesty the stage question already had. Nothing is blocked - a man
+         standing at a site can still save a name and a number in four seconds - but the button
+         says out loud what he is choosing to leave out, and the toast afterwards says where to
+         find it again. */
       '<button class="btn" data-act="cl-save" data-stagebtn="Save client" data-id="' + esc(c.id || "") + '">' +
       ((c.stage || clientStage(c.name)) ? 'Save client' : 'Save client without stage') + '</button></div>';
   }
@@ -7225,6 +7240,56 @@ function viewCatalogue() {
     }
     return { area: "", rest: t };
   }
+  /* v6.9.186: the same colony names, but looked for ANYWHERE in a line of text rather than
+     only at the front. AREA_ALIAS is anchored with ^ because its job is to split a typed AREA
+     ("Sec 12/1060" -> Sector 11-12 + plot 1060). An ADDRESS is the other way round - the plot
+     number comes first and the colony is buried in the middle: "678R MT, Panipat",
+     "5592 D Block Ansal", "D244, TDI Toll Plaza". So the address gets its own unanchored list,
+     longest and most specific first. */
+  var AREA_HINT = [
+    [/\bsec(?:tor)?\s*0*13\s*[\/\-]?\s*0*17\b/, "Sector 13-17"],
+    [/\bsec(?:tor)?\s*0*11\s*[\/\-]?\s*0*12\b/, "Sector 11-12"],
+    [/\bansal\s*sushant\b/, "Ansal Sushant City"],
+    [/\bsushant\s*city\b/, "Ansal Sushant City"],
+    [/\bansal\b/, "Ansal Sushant City"],
+    [/\bmodel\s*town\b/, "Model Town"],
+    [/\beldeco\b/, "Eldeco"],
+    [/\bgt\s*road\b/, "GT Road"],
+    [/\btdi\b/, "TDI"],
+    [/\bhuda\b/, "HUDA"],
+    [/\bsec(?:tor)?\s*0*1[12]\b/, "Sector 11-12"],
+    [/\bsec(?:tor)?\s*0*1[37]\b/, "Sector 13-17"],
+    [/\bsec(?:tor)?\s*0*(\d{1,2})\b/, "Sector $1"],
+    /* "MT" is what the whole team writes for Model Town, but only as a word on its own -
+       otherwise it would fire inside any word that happens to contain those two letters. */
+    [/\bmt\b/, "Model Town"]
+  ];
+  /* Propose a colony for a record that has none, by reading his address. Returns "" rather
+     than a guess it cannot stand behind - a wrong colony filed confidently is worse than an
+     empty box, because nobody goes back to check it. */
+  function areaFromAddress(loc, addr) {
+    var t = areaNorm(addr);
+    if (!t) return "";
+    /* the district's own name is not a colony inside its own address */
+    var dn = areaNorm(loc);
+    if (dn) t = (" " + t + " ").split(" " + dn + " ").join(" ").replace(/^\s+|\s+$/g, "");
+    if (!t) return "";
+    /* a colony already registered under this district wins over any pattern - it is the
+       spelling the team actually uses */
+    var reg = areasIn2(loc), i;
+    for (i = 0; i < reg.length; i++) {
+      var rn = areaNorm(reg[i]);
+      if (rn && rn.length > 2 && t.indexOf(rn) > -1) return reg[i];
+    }
+    for (i = 0; i < AREA_HINT.length; i++) {
+      var m = t.match(AREA_HINT[i][0]);
+      if (m) return String(AREA_HINT[i][1]).replace("$1", m[1] || "");
+    }
+    /* "Vill Risalu, Panipat" - a village is a colony we have simply never sold in before */
+    var v = t.match(/\b(?:vill|village|gaon)\s+([a-z]{3,})\b/);
+    if (v) return v[1].charAt(0).toUpperCase() + v[1].slice(1);
+    return "";
+  }
   /* The district's area list: the owner's seeds + whatever is already registered, folded onto
      one spelling each and sorted. An unknown name is never dropped - it just keeps its own. */
   function areasIn2(loc) {
@@ -7268,7 +7333,16 @@ function viewCatalogue() {
     return out.slice(0, 4);
   }
   function areaSelectHtml(id, loc, cur) {
-    var list = areasIn2(loc), c = String(cur == null ? "" : cur).replace(/^\s+|\s+$/g, "");
+    var c = String(cur == null ? "" : cur).replace(/^\s+|\s+$/g, "");
+    /* v6.9.186: with no district chosen this used to fall back to locations()[0] and quietly
+       offer PANIPAT's colonies. A man entering a Karnal lead could pick Panipat's "Model Town"
+       without ever having chosen Panipat, and the record looked complete while being wrong.
+       An unanswered district now offers nothing but the reason why. */
+    if (!String(loc || "").replace(/^\s+|\s+$/g, "")) {
+      return '<select id="' + esc(id) + '"><option value="">Pick a district first</option>' +
+        (c ? '<option value="' + esc(c) + '" selected>' + esc(c) + '</option>' : '') + '</select>';
+    }
+    var list = areasIn2(loc);
     var listA = [""].concat(c && list.indexOf(c) < 0 ? [c] : [], list, ["+ Register new area"]);
     return '<select id="' + esc(id) + '">' + opts(listA, c) + '</select>';
   }
@@ -7345,14 +7419,56 @@ function viewCatalogue() {
       return { value: v, clients: byVal[v], guess: guessDistrictArea(v) };
     });
   }
+  /* v6.9.186: the two gaps the Tidy screen could not see. oddLocations() only ever found a
+     colony typed into the District box; these find a record with NO district and a record with
+     no area. One row per customer, never a group - two men in the same district are usually in
+     two different colonies, so a single Apply must never speak for both. */
+  function noDistrictRows() {
+    var out = [];
+    S.data.clients.forEach(function (c) {
+      if (!isMineClient(c.name)) return;
+      if (String(c.location || "").replace(/^\s+|\s+$/g, "")) return;
+      var g = guessDistrictArea(String(c.address || ""));
+      var d = (locations().indexOf(g.district) > -1) ? g.district : commonDistrict();
+      out.push({ c: c, district: d, area: areaFromAddress(d, c.address) });
+    });
+    return out;
+  }
+  function noAreaRows() {
+    var out = [];
+    S.data.clients.forEach(function (c) {
+      if (!isMineClient(c.name)) return;
+      var d = String(c.location || "").replace(/^\s+|\s+$/g, "");
+      if (!d || locations().indexOf(d) < 0) return;      /* handled by the other two sections */
+      if (String(c.area || "").replace(/^\s+|\s+$/g, "")) return;
+      out.push({ c: c, district: d, area: areaFromAddress(d, c.address) });
+    });
+    out.sort(function (a, b) {
+      if (a.district !== b.district) return a.district < b.district ? -1 : 1;
+      /* the ones the address already answered come first - those are the quick taps */
+      if (!!a.area !== !!b.area) return a.area ? -1 : 1;
+      return String(a.c.name).toLowerCase() < String(b.c.name).toLowerCase() ? -1 : 1;
+    });
+    return out;
+  }
+  function placeGaps() {
+    return { odd: oddLocations(), nod: noDistrictRows(), noa: noAreaRows() };
+  }
+  /* v6.9.186: the banner used to count ONE kind of gap - a colony typed into the District
+     box - and he had already cleared every one of those, so it never appeared while 66 records
+     still had no colony at all. It counts all three gaps now, and says which. */
   function tidyBanner() {
-    var n = oddLocations().length;
+    var g = placeGaps(), n = g.odd.length + g.nod.length + g.noa.length;
     if (!n) return "";
     var mine = !seesAllClients();
+    var bits = [];
+    if (g.odd.length) bits.push(g.odd.length + " district name(s) that are really a colony");
+    if (g.nod.length) bits.push(g.nod.length + " with no district");
+    if (g.noa.length) bits.push(g.noa.length + " with no colony");
     return '<div class="row" style="align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px;border:1px solid #fde68a;background:#fffbeb;border-radius:10px">' +
-      '<div class="grow" style="font-size:12px"><b>' + n + ' area name(s) need tidying' + (mine ? ' in your book' : '') + '.</b> ' +
-      'A colony or a plot number was typed into the District box &mdash; that is why this filter row is so long.</div>' +
-      '<button class="btn sm" data-act="tidy-areas">Tidy areas</button></div>';
+      '<div class="grow" style="font-size:12px"><b>' + n + ' record(s) need a district or a colony' + (mine ? ' in your book' : '') + '.</b> ' +
+      esc(bits.join(", ")) + '. Where the address already says which colony it is, the answer is filled in for you.</div>' +
+      '<button class="btn sm" data-act="tidy-areas">Set district &amp; area</button></div>';
   }
   /* "Not set" is not a place - it is a question. Wherever the tree has to draw it, it draws
      the way to answer it instead of just the words. */
@@ -7363,17 +7479,50 @@ function viewCatalogue() {
     var p = (c && c.__cvp) || cvPlace(c || {});
     return p.district === "Not set" || p.area === "Not set";
   }
+  /* v6.9.186: one row for one customer whose district or area is missing, with the answer
+     already proposed from his address. He reads the line, changes it if it is wrong, and taps
+     Apply. Nothing is written before that tap. */
+  function placeRowHtml(r, i, kind) {
+    var ds0 = locations();
+    var alist = areasIn2(r.district);
+    if (r.area && alist.indexOf(r.area) < 0) alist = [r.area].concat(alist);
+    var addr = String(r.c.address || "").replace(/^\s+|\s+$/g, "");
+    var pre = kind === "nod" ? "pd" : "pa";
+    return '<div style="border:1px solid ' + (r.area ? "#99f6e4" : "#e2e8f0") + ';border-radius:10px;padding:8px;margin-bottom:8px' +
+      (r.area ? ';background:#f0fdfa' : '') + '">' +
+      '<div style="font-weight:600;font-size:13px">' + esc(r.c.name) + '</div>' +
+      '<div class="meta" style="font-size:11px;margin-bottom:6px">' +
+      (addr ? esc(addr) : '<i>no address on this record &mdash; pick the colony from what you know</i>') + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">' +
+      (kind === "nod"
+        ? '<div><label>District</label><select id="' + pre + '_d' + i + '" class="pl-d" data-i="' + i + '" data-pre="' + pre + '">' + opts(ds0, r.district) + '</select></div>'
+        : '<div><label>District</label><input value="' + esc(r.district) + '" disabled/></div>') +
+      '<div><label>Area / colony</label><select id="' + pre + '_a' + i + '">' + opts([""].concat(alist), r.area) + '</select></div>' +
+      '</div>' +
+      '<div class="foot" style="margin-top:6px">' +
+      (r.area ? '<span class="meta" style="font-size:11px;color:#0f766e;margin-right:auto">read from his address</span>' : '') +
+      '<button class="btn sm" data-act="place-apply" data-kind="' + kind + '" data-i="' + i + '" data-id="' + esc(r.c.id) + '">Apply</button></div>' +
+      '</div>';
+  }
+  var PLACE_CAP = 60;
   function modalTidyAreas() {
-    var rows = oddLocations();
-    if (!rows.length) {
-      return '<h2>Tidy areas</h2><p class="sub">Every lead already sits under a proper district. Nothing to tidy.</p>' +
+    var g = placeGaps(), rows = g.odd;
+    if (!rows.length && !g.nod.length && !g.noa.length) {
+      return '<h2>District &amp; area</h2><p class="sub">Every customer already sits under a district and a colony. Nothing to set.</p>' +
         '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
     }
     var ds0 = locations();
-    return '<h2>Tidy areas</h2>' +
-      '<p class="sub">' + rows.length + ' name(s) sitting in the District box are really a colony or a plot number. ' +
-      'Check each line and tap Apply. Nothing moves until you do, and the plot number is kept in the address.</p>' +
-      rows.map(function (r, i) {
+    var h = '<h2>District &amp; area</h2>' +
+      '<p class="sub">Everything the tree is asking for is on this one screen. Each line is a <b>proposal</b> ' +
+      'read off the record itself &mdash; check it, change it if it is wrong, and tap Apply. Nothing moves until you tap.</p>';
+
+    /* -------- section 1: a colony typed into the District box (the original tidy job) -------- */
+    if (rows.length) {
+      h += '<h3 style="margin:12px 0 4px;font-size:13px">' + rows.length +
+        ' district name(s) that are really a colony</h3>' +
+        '<div class="meta" style="font-size:11px;margin-bottom:6px">These move as a group because they all carry the same typed value. The plot number is kept in the address.</div>';
+    }
+    h += rows.map(function (r, i) {
         var alist = areasIn2(r.guess.district);
         if (r.guess.area && alist.indexOf(r.guess.area) < 0) alist = [r.guess.area].concat(alist);
         /* a city we have never sold in before is offered as its own district on this line only */
@@ -7392,8 +7541,31 @@ function viewCatalogue() {
           '<label>Keep this in the address</label><input id="td_r' + i + '" value="' + esc(r.guess.rest) + '"/>' +
           '<div class="foot" style="margin-top:6px"><button class="btn sm" data-act="tidy-apply" data-i="' + i + '">Apply to ' + r.clients.length + ' record(s)</button></div>' +
           '</div>';
-      }).join("") +
-      '<div class="foot"><button class="btn ghost" data-act="close">Done</button></div>';
+      }).join("");
+
+    /* -------- section 2: no district at all -------- */
+    if (g.nod.length) {
+      h += '<h3 style="margin:14px 0 4px;font-size:13px">' + g.nod.length +
+        ' name(s) with no district</h3>' +
+        '<div class="meta" style="font-size:11px;margin-bottom:6px">Nobody can plan a round for these until they sit in a district.</div>' +
+        g.nod.slice(0, PLACE_CAP).map(function (r, i) { return placeRowHtml(r, i, "nod"); }).join("");
+    }
+
+    /* -------- section 3: a district but no colony - the big one -------- */
+    if (g.noa.length) {
+      var shown = g.noa.slice(0, PLACE_CAP);
+      h += '<h3 style="margin:14px 0 4px;font-size:13px">' + g.noa.length +
+        ' name(s) with a district but no colony</h3>' +
+        '<div class="meta" style="font-size:11px;margin-bottom:6px">' +
+        'This is what puts the amber <b>no area</b> chips on the tree. Where the address said which colony it is, ' +
+        'the answer is already filled in and the line is green &mdash; those are one tap each.' +
+        (g.noa.length > PLACE_CAP
+          ? ' Showing the first ' + PLACE_CAP + ' of ' + g.noa.length + '; the rest appear as these are applied.'
+          : '') +
+        '</div>' +
+        shown.map(function (r, i) { return placeRowHtml(r, i, "noa"); }).join("");
+    }
+    return h + '<div class="foot"><button class="btn ghost" data-act="close">Done</button></div>';
   }
 
   /* ---------- COMPACT VIEW (v6.9.178) ----------
@@ -7610,8 +7782,8 @@ function viewCatalogue() {
           (d === "Not set" ? cvTag("needs a district", "#fef3c7", "#92400e") : "") + '</span></button>';
         if (d === "Not set") {
           h += '<div class="cv-ask">These names have no district yet, so nobody can plan a round for them. ' +
-            'Tidy areas reads each one and proposes a district and an area &mdash; nothing moves until you tap Apply.' +
-            cvSetBtn("Tidy areas") + '</div>';
+            'The next screen reads each one\'s address and proposes a district and a colony &mdash; nothing moves until you tap Apply.' +
+            cvSetBtn("Set district &amp; area") + '</div>';
         }
         var as = groupBy(rows, function (c) { return c.__cvp.area; });
         as.order.sort(byTotal(as.m));
@@ -7858,7 +8030,7 @@ function viewCatalogue() {
           cvTag(money(sumVal(drs)), "#f1f5f9", "#334155") +
           (d === "Not set" ? cvTag("needs a district", "#fef3c7", "#92400e") : "") + '</span></button>';
         if (d === "Not set") {
-          h += '<div class="cv-ask">These customers have no district yet.' + cvSetBtn("Tidy areas") + '</div>';
+          h += '<div class="cv-ask">These customers have no district yet.' + cvSetBtn("Set district &amp; area") + '</div>';
         }
         var as = groupBy(drs, function (r) { return r.area; });
         as.order.sort(byTotal(as.m));
@@ -10616,6 +10788,26 @@ function viewCatalogue() {
       });
       return;
     }
+    /* v6.9.186: one customer, one Apply. Only the district and the area are written - every
+       other field on that record is left exactly as it was, and nothing is deleted. */
+    if (act === "place-apply") {
+      var pk = t.getAttribute("data-kind"), pi = Number(t.getAttribute("data-i"));
+      var pg = placeGaps();
+      var pr = (pk === "nod" ? pg.nod : pg.noa)[pi];
+      var pid = t.getAttribute("data-id");
+      if (!pr || pr.c.id !== pid) { toast("That line moved - reopening the list."); S.modal = modalTidyAreas(); render(); return; }
+      var pre = pk === "nod" ? "pd" : "pa";
+      var pD = pk === "nod" ? val(pre + "_d" + pi) : pr.district;
+      var pA = val(pre + "_a" + pi);
+      if (!pD) { toast("Pick a district first."); return; }
+      if (!pA) { toast("Pick a colony for " + pr.c.name + " first."); return; }
+      save("clients", { id: pr.c.id, location: pD, area: pA }, true).then(function () {
+        toast(pr.c.name + " \u2192 " + pD + " / " + pA);
+        S.modal = modalTidyAreas();
+        render();
+      });
+      return;
+    }
     if (act === "cl-qclear") { S.clq = ""; render(); return; }
     if (act === "cv-qclear") { S.cvq = ""; render(); return; }
     if (act === "cl-new") {
@@ -10695,6 +10887,11 @@ function viewCatalogue() {
           } else {
             toast("Saved without a stage \u2014 he is on the Stage missing list.");
           }
+          /* v6.9.186: say it once, plainly, and name the screen that fixes it. A record with no
+             district cannot be put on anybody's round, and one with no colony is why the tree
+             carries amber chips. */
+          if (!f.loc) toast("Saved without a district \u2014 tap Set district & area to place him.");
+          else if (!f.ar) toast("Saved without a colony \u2014 tap Set district & area to place him.");
           if (S.qz && S.qz.step === 1) { S.qz.client = r.name; S.qz.clientObj = r; }
           /* came here from another form? go back to it, with the new client filled in */
           if (back) {
@@ -12514,10 +12711,17 @@ function viewCatalogue() {
         }
         return;
       }
-      /* BOTH forms cascade now: pick the district, the area list follows it. */
+      /* BOTH forms cascade now: pick the district, the area list follows it.
+         v6.9.186: and if the district is cleared back to blank, the Area box goes back to
+         asking for one. Rebuilding it here by hand was how the old fallback survived the
+         splice - the select was correct until he touched the District box, which is the one
+         moment it actually matters. */
       var areaSel = document.getElementById(t.id === "m_aloc" ? "m_aarea" : "c_area");
       if (areaSel) {
-        areaSel.innerHTML = opts([""].concat(areasIn2(t.value), ["+ Register new area"]), "");
+        var lv0 = String(t.value || "").replace(/^\s+|\s+$/g, "");
+        areaSel.innerHTML = lv0
+          ? opts([""].concat(areasIn2(lv0), ["+ Register new area"]), "")
+          : '<option value="">Pick a district first</option>';
         var np0 = document.getElementById(areaSel.id + "_new");
         if (np0) np0.innerHTML = "";
       }
@@ -12528,7 +12732,16 @@ function viewCatalogue() {
       if (t.value === "+ Register new area") {
         t.value = "";
         var locSel = document.getElementById(t.id === "c_area" ? "c_loc" : "m_aloc");
-        var lv = locSel ? locSel.value : locations()[0];
+        /* v6.9.186: registering a colony under no district at all put a name into the areas
+           master that no district could ever show. It also fell back to locations()[0], so a
+           Karnal colony could quietly be filed under Panipat. Ask for the district first. */
+        var lv = String((locSel && locSel.value) || "").replace(/^\s+|\s+$/g, "");
+        if (!lv) {
+          if (panel) panel.innerHTML = "";
+          toast("Pick the district first — a colony has to sit under one.");
+          if (locSel && locSel.focus) locSel.focus();
+          return;
+        }
         /* an inline panel, not window.prompt: a prompt cannot show the near-duplicates, and on
            a phone it hides the form behind it. */
         if (panel) panel.innerHTML = areaNewPanelHtml(t.id, lv, "");
@@ -12537,6 +12750,12 @@ function viewCatalogue() {
         return;
       }
       if (panel) panel.innerHTML = "";
+      return;
+    }
+    /* v6.9.186: same cascade on the per-customer rows. */
+    if (t.classList && t.classList.contains("pl-d")) {
+      var plA = el(t.getAttribute("data-pre") + "_a" + t.getAttribute("data-i"));
+      if (plA) plA.innerHTML = opts([""].concat(areasIn2(t.value)), "");
       return;
     }
     /* Tidy screen: changing a line's district reloads that line's area list. */
