@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.194";
+  var APP_VERSION = "6.9.195";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -11815,6 +11815,179 @@ function viewCatalogue() {
 
   /* Thin, unobtrusive scrollbars everywhere. The default OS scrollbar was a thick bar that sat over
      the side-nav tabs and the data tables, making tabs hard to tap while scrolling. */
+  /* ---------------------------------------------------------------------------------
+     THE NAVIGATION. Forty-two views, five men, one phone screen.
+
+     Two rules held this together:
+       1. Nothing is taken away. Every tab a role can see today it can still reach today.
+          A nav change that quietly removes a screen is a nav change that generates a phone
+          call, and the man on the other end is standing at a site.
+       2. Collapsing must never hide work. A group that is shut still shows a dot when
+          something inside it wants attention.
+
+     The counting is per man, per device, in localStorage. It never goes to the sheet: how
+     often somebody opens Scorecards is nobody's business but his, and it is not worth a
+     round trip.
+     --------------------------------------------------------------------------------- */
+  var NAVUSE_KEY = "ew_navuse_v1", NAVGRP_KEY = "ew_navgrp_v1";
+  var NAV_GROUPS = [
+    ["Sell",    ["dash", "brief", "agent", "leads", "pitch", "brandfollow", "quotes", "followups", "clients", "partners"]],
+    ["Deliver", ["deliveries", "billing", "stock", "tools", "collections", "products"]],
+    ["Service", ["service", "spares"]],
+    ["Admin",   ["payrollhub", "discounts", "report", "scorecard", "pricing", "rules", "teampins"]],
+    ["Sync",    ["pending", "health", "dups"]]
+  ];
+  /* A new man's opening six. Not a guess - it is the first six screens each role's day
+     actually starts with. It drifts to his real habit within a fortnight of use. */
+  var NAV_SEED = {
+    admin:    ["dash", "brief", "challans", "quotes", "clients", "billing"],
+    sales:    ["dash", "leads", "quotes", "clients", "followups", "sites"],
+    accounts: ["dash", "billing", "collections", "challans", "clients", "payments"],
+    godown:   ["dash", "challans", "stock", "products", "returns", "tools"],
+    service:  ["dash", "service", "spares", "followups", "dues", "products"]
+  };
+  function navWho() { return String(S.user || "-"); }
+  function navUse() {
+    try {
+      var all = JSON.parse(localStorage.getItem(NAVUSE_KEY) || "{}") || {};
+      var m = all[navWho()];
+      return (m && typeof m === "object") ? m : {};
+    } catch (e) { return {}; }
+  }
+  function navBump(tab) {
+    if (!tab) return;
+    try {
+      var all = JSON.parse(localStorage.getItem(NAVUSE_KEY) || "{}") || {};
+      var w = navWho();
+      if (!all[w] || typeof all[w] !== "object") all[w] = {};
+      all[w][tab] = (Number(all[w][tab]) || 0) + 1;
+      localStorage.setItem(NAVUSE_KEY, JSON.stringify(all));
+    } catch (e) { }
+  }
+  /* Which group a tab belongs to. Tabs that live in no group - Search, Sites, Customers and
+     the rest reached from inside a screen - answer "", and the open group is left alone. */
+  function navGroupOf(tab) {
+    for (var i = 0; i < NAV_GROUPS.length; i++) {
+      if (NAV_GROUPS[i][1].indexOf(tab) >= 0) return NAV_GROUPS[i][0];
+    }
+    return "";
+  }
+  function navOpenGrp() {
+    if (S.navGrp === "ALL" || S.navGrp === "") return S.navGrp;
+    if (S.navGrp) return S.navGrp;
+    var g = navGroupOf(S.tab);
+    if (g) return g;
+    try { return String(localStorage.getItem(NAVGRP_KEY) || ""); } catch (e) { return ""; }
+  }
+  function navSetGrp(g) {
+    S.navGrp = g;
+    try { localStorage.setItem(NAVGRP_KEY, g === "ALL" ? "" : g); } catch (e) { }
+  }
+  /* The six. Sorted by how often he has opened each one; ties broken by his role's seed
+     order so a brand-new man gets a sensible strip rather than an alphabetical one. Only
+     tabs his role can see are eligible - the six can never become a back door. */
+  function navSix(label) {
+    var use = navUse(), seed = NAV_SEED[S.role] || NAV_SEED.admin;
+    var pool = {};
+    NAV_GROUPS.forEach(function (g) { g[1].forEach(function (k) { pool[k] = 1; }); });
+    seed.forEach(function (k) { pool[k] = 1; });
+    ["challans", "returns", "sites", "payments", "dues", "commission", "rates", "pricelist",
+      "catalogue", "payroll", "winloss", "visits", "customers"].forEach(function (k) { pool[k] = 1; });
+    var keys = Object.keys(pool).filter(function (k) { return label[k] && canSee(k); });
+    keys.sort(function (a, b) {
+      var ua = Number(use[a]) || 0, ub = Number(use[b]) || 0;
+      if (ua !== ub) return ub - ua;
+      var sa = seed.indexOf(a), sb = seed.indexOf(b);
+      if (sa < 0) sa = 99; if (sb < 0) sb = 99;
+      if (sa !== sb) return sa - sb;
+      return label[a] < label[b] ? -1 : 1;
+    });
+    return keys.slice(0, 6);
+  }
+  /* Roll a member's badge up onto its group pill so a shut group can never swallow work. */
+  function navGrpDot(items) {
+    var hot = false;
+    items.forEach(function (k) {
+      try {
+        if (k === "pending" && pendBadge()) hot = true;
+        if (k === "followups" && radarBadge()) hot = true;
+        if (k === "agent" && agBadge()) hot = true;
+      } catch (e) { }
+    });
+    return hot ? '<span class="nvdot"></span>' : '';
+  }
+  function navBtn(k, label) {
+    var extra = "";
+    try {
+      if (k === "followups") extra = radarBadge();
+      else if (k === "agent") extra = agBadge();
+      else if (k === "pending") extra = pendBadge();
+    } catch (e) { }
+    return '<button data-act="tab" data-tab="' + k + '" class="nvb' + (S.tab === k ? ' on' : '') +
+      '">' + label[k] + extra + '</button>';
+  }
+  function navHtmlBuild(label) {
+    var open = navOpenGrp();
+    var six = navSix(label);
+    var h = '<div class="nvsix"><span class="grp">Your six</span>' +
+      six.map(function (k) { return navBtn(k, label); }).join("") + '</div>';
+
+    h += '<div class="nvrow">';
+    NAV_GROUPS.forEach(function (g) {
+      var items = g[1].filter(function (k) { return canSee(k) && label[k]; });
+      if (!items.length) return;
+      var on = (open === "ALL" || open === g[0]);
+      h += '<button class="nvg' + (on ? ' on' : '') + '" data-act="nav-grp" data-g="' + g[0] + '">' +
+        g[0] + '<i>' + items.length + '</i>' + (on ? '' : navGrpDot(items)) + '</button>';
+    });
+    h += '<button class="nvg alt' + (open === "ALL" ? ' on' : '') + '" data-act="nav-grp" data-g="ALL" ' +
+      'title="Show every tab at once, the way it used to look">All</button></div>';
+
+    if (open) {
+      NAV_GROUPS.forEach(function (g) {
+        if (open !== "ALL" && open !== g[0]) return;
+        var items = g[1].filter(function (k) { return canSee(k) && label[k]; });
+        if (!items.length) return;
+        h += '<div class="nvitems"><span class="grp">' + g[0] + '</span>' +
+          items.map(function (k) { return navBtn(k, label); }).join("") + '</div>';
+      });
+    }
+    return h;
+  }
+  function ensureNavCss() {
+    if (document.getElementById("ew_nav_css")) return;
+    var s = document.createElement("style"); s.id = "ew_nav_css";
+    s.textContent =
+      /* the strip stops being a conveyor belt and becomes rows that wrap */
+      "nav{flex-wrap:wrap!important;overflow-x:visible!important;padding:7px 10px 0!important;align-items:flex-start}" +
+      ".nvsix,.nvrow,.nvitems{display:flex;flex-wrap:wrap;align-items:center;gap:5px;width:100%}" +
+      ".nvsix{padding-bottom:7px;border-bottom:1px dashed #e2e8f0}" +
+      ".nvrow{padding:7px 0}" +
+      ".nvitems{background:#f8fafc;border-top:1px solid #e2e8f0;margin:0 -10px;padding:8px 10px 9px}" +
+      ".nvsix .grp,.nvitems .grp{font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;" +
+      "color:#0f766e;background:#ccfbf1;border-radius:999px;padding:3px 8px;white-space:nowrap;margin-right:3px}" +
+      /* every nav item is a chip now - a real tap target, and it wraps */
+      "nav button.nvb{background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:6px 12px;" +
+      "font-family:inherit;font-size:13px;font-weight:600;color:#475569;cursor:pointer;white-space:nowrap;line-height:1.35}" +
+      "nav button.nvb:hover{border-color:#5eead4;color:#0f172a}" +
+      "nav button.nvb.on{background:#0f766e;border-color:#0f766e;color:#fff}" +
+      /* group pills */
+      "nav button.nvg{position:relative;background:#fff;border:1px solid #cbd5e1;border-radius:9px;padding:6px 11px;" +
+      "font-family:inherit;font-size:12.5px;font-weight:700;color:#334155;cursor:pointer;white-space:nowrap;line-height:1.35}" +
+      "nav button.nvg i{font-style:normal;font-size:10px;font-weight:700;opacity:.55;margin-left:5px}" +
+      "nav button.nvg:hover{border-color:#5eead4}" +
+      "nav button.nvg.on{background:#0f766e;border-color:#0f766e;color:#fff}" +
+      "nav button.nvg.on i{opacity:.75}" +
+      "nav button.nvg.alt{font-weight:600;color:#64748b}" +
+      ".nvdot{position:absolute;top:3px;right:4px;width:7px;height:7px;border-radius:50%;background:#dc2626;" +
+      "box-shadow:0 0 0 2px #fff}" +
+      /* a phone: slightly tighter, still no sideways swipe */
+      "@media(max-width:560px){nav{padding:6px 8px 0!important}" +
+      ".nvitems{margin:0 -8px;padding:7px 8px 8px}" +
+      "nav button.nvb{font-size:12.5px;padding:6px 10px}" +
+      "nav button.nvg{font-size:12px;padding:6px 9px}}";
+    document.head.appendChild(s);
+  }
   function ensureCoreCss() {
     if (document.getElementById("ew_core_css")) return;
     var s = document.createElement("style"); s.id = "ew_core_css";
@@ -11846,6 +12019,7 @@ function viewCatalogue() {
   }
   function renderCore() {
     try { ensureCoreCss(); } catch (e) { }
+    try { ensureNavCss(); } catch (e) { }
     try { ensureCompactCss(); } catch (e) { }
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
@@ -11871,24 +12045,10 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="pin-change">PIN</button>' +
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
-    var GROUPS = [
-      ["Sync", ["pending", "health", "dups"]],
-      ["Sell", ["dash", "brief", "agent", "leads", "pitch", "brandfollow", "quotes", "followups", "clients", "partners"]],
-      ["Deliver", ["deliveries", "billing", "stock", "tools", "collections", "products"]],
-      ["Service", ["service", "spares"]],
-      ["Admin", ["payrollhub", "discounts", "report", "scorecard", "pricing", "rules", "teampins"]]
-    ];
     var label = {};
     tabs.forEach(function (t) { label[t[0]] = t[1]; });
-
-    var navHtml = '';
-    GROUPS.forEach(function (grp) {
-      var items = grp[1].filter(function (k) { return canSee(k) && label[k]; });
-      if (!items.length) return;
-      navHtml += '<div class="navgrp"><span class="grp">' + grp[0] + '</span>' + items.map(function (k) {
-        return '<button data-act="tab" data-tab="' + k + '" class="' + (S.tab === k ? 'on' : '') + '">' + label[k] + (k === "followups" ? radarBadge() : "") + (k === "agent" ? agBadge() : "") + (k === "pending" ? pendBadge() : "") + '</button>';
-      }).join("") + '</div>';
-    });
+    /* v6.9.195: three wrapped rows instead of one sideways belt - see navHtmlBuild. */
+    var navHtml = navHtmlBuild(label);
 
     h += '<div class="scrim" data-act="nav-close"></div><div class="shell"><nav>' + navHtml + '</nav>';
 
@@ -12161,7 +12321,19 @@ function viewCatalogue() {
     if (act === "crash-log") { S.modal = modalCrashLog(); render(); return; }
     if (act === "crash-clear") { try { localStorage.removeItem(CRASH_KEY); } catch (e) { } S.modal = modalCrashLog(); render(); return; }
     if (act === "reload-app") { location.reload(); return; }
-    if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; S.clq = ""; S.cvq = ""; render(); return; }
+    if (act === "tab") {
+      S.tab = t.getAttribute("data-tab");
+      /* counted on his own device, against his own name, so "Your six" becomes his six */
+      try { navBump(S.tab); } catch (e) { }
+      /* follow him into whichever group he landed in, so the open band is always the useful one */
+      try { var _ng = navGroupOf(S.tab); if (_ng && S.navGrp !== "ALL") navSetGrp(_ng); } catch (e) { }
+      S.q = ""; S.clq = ""; S.cvq = ""; render(); return;
+    }
+    if (act === "nav-grp") {
+      var _g = t.getAttribute("data-g") || "";
+      navSetGrp(navOpenGrp() === _g ? "" : _g);
+      render(); return;
+    }
     if (act === "stock-add") { S.modal = modalStockAdd(t.getAttribute("data-type") || "in"); render(); return; }
     if (act === "stock-refresh") { STOCK_LOADED = false; STOCK_LOADING = false; S.stock = []; ensureStock(); toast("Refreshing stock…"); return; }
     if (act === "stock-save") {
