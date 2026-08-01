@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.182";
+  var APP_VERSION = "6.9.183";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7398,7 +7398,11 @@ function viewCatalogue() {
   function cvMode() {
     if (S.cv !== "compact" && S.cv !== "expand") {
       var m = ""; try { m = localStorage.getItem(CV_KEY) || ""; } catch (e) { }
-      S.cv = (m === "compact" || m === "expand") ? m : "expand";
+      /* v6.9.183: Compact is what a man lands on now. It answers the question actually
+         asked between two sites - whose money, which colony, what is left to sell - and it
+         fits a phone. Expand is untouched and one tap away: it still owns the search box and
+         the full card, so nothing was taken away, only re-ordered. */
+      S.cv = (m === "compact" || m === "expand") ? m : "compact";
     }
     return S.cv;
   }
@@ -7457,6 +7461,32 @@ function viewCatalogue() {
   }
   function cvTag(n, bg, fg) {
     return '<span class="cv-tag" style="background:' + bg + ';color:' + fg + '">' + n + '</span>';
+  }
+  /* v6.9.183: which colonies are inside a district, WITHOUT opening it. A closed district
+     used to give a headcount and a figure, and the areas - the thing that decides the route -
+     were hidden behind a tap. So they sit on the outside of the fold, biggest first, each with
+     its count. Tapping any of them opens the district. An area nobody has been filed into yet
+     is drawn amber and reads "no area", because that chip is a job of work, not a place. Ten
+     chips is already two lines on a phone, so the tail collapses into one. */
+  function cvPeek(as, k, dc) {
+    var order = as.order.slice().sort(function (a, b) {
+      if (a === "Not set") return 1; if (b === "Not set") return -1;
+      if (as.m[a].length !== as.m[b].length) return as.m[b].length - as.m[a].length;
+      return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+    });
+    if (!order.length) return "";
+    var shown = order.slice(0, 10), more = order.length - shown.length;
+    return '<div class="cv-peek">' + shown.map(function (a) {
+      var un = (a === "Not set");
+      return '<button class="cv-pk' + (un ? " un" : "") + '" data-act="cv-dist" data-k="' + esc(k) + '"' +
+        (un ? "" : ' style="border-color:' + dc[1] + ';color:' + dc[0] + '"') +
+        ' title="' + esc(un ? "These names have no area yet" : a) + '">' +
+        esc(un ? "no area" : a) + '<b>' + as.m[a].length + '</b></button>';
+    }).join("") +
+      (more > 0
+        ? '<button class="cv-pk more" data-act="cv-dist" data-k="' + esc(k) + '">+' + more + ' more</button>'
+        : "") +
+      '</div>';
   }
   function cvClientHtml(c) {
     var due = clientDue(c.name);
@@ -7553,9 +7583,9 @@ function viewCatalogue() {
             'Tidy areas reads each one and proposes a district and an area &mdash; nothing moves until you tap Apply.' +
             cvSetBtn("Tidy areas") + '</div>';
         }
-        if (!on) return;
         var as = groupBy(rows, function (c) { return c.__cvp.area; });
         as.order.sort(byTotal(as.m));
+        if (!on) { h += cvPeek(as, k, dc); return; }
         h += '<div class="cv-body" style="border-left-color:' + dc[0] + '">';
         as.order.forEach(function (a) {
           var rs = as.m[a].slice().sort(byMoney), aDue = sumDue(rs);
@@ -7605,6 +7635,13 @@ function viewCatalogue() {
       ".cv-caret{flex:0 0 auto;font-size:12px}" +
       ".cv-dn{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
       ".cv-body{border-left:3px solid;margin:0 0 12px 9px;padding-left:10px}" +
+      /* v6.9.183 the area peek strip that hangs off a CLOSED district */
+      ".cv-peek{display:flex;flex-wrap:wrap;gap:5px;margin:-2px 0 10px 14px}" +
+      ".cv-pk{display:inline-flex;align-items:center;gap:5px;max-width:100%;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:999px;padding:3px 4px 3px 10px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3}" +
+      ".cv-pk b{background:#f1f5f9;color:#0f172a;border-radius:999px;padding:1px 7px;font-size:10.5px;font-weight:800}" +
+      ".cv-pk.un{border-color:#fcd34d;background:#fffbeb;color:#92400e}" +
+      ".cv-pk.un b{background:#fde68a;color:#7c2d12}" +
+      ".cv-pk.more{border-style:dashed;color:#64748b;padding:3px 11px}" +
       ".cv-area{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;margin:9px 0 5px}" +
       ".cv-an{flex:1 1 100px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
       ".cv-cli{border:1px solid #eef2f7;border-radius:10px;padding:7px 10px;margin-bottom:5px;background:#fff}" +
@@ -7634,6 +7671,9 @@ function viewCatalogue() {
       ".cv-exec{font-size:12.5px;padding:8px 11px}" +
       ".cv-dist{font-size:13px;padding:10px;gap:7px}" +
       ".cv-body{margin-left:5px;padding-left:8px}" +
+      ".cv-peek{margin-left:8px;gap:4px}" +
+      ".cv-pk{font-size:10.5px;padding:3px 3px 3px 9px}" +
+      ".cv-pk b{font-size:10px;padding:1px 6px}" +
       ".cv-nm{flex-basis:100%}" +
       ".cv-duebar b{font-size:16px}" +
       "}";
@@ -7788,9 +7828,9 @@ function viewCatalogue() {
         if (d === "Not set") {
           h += '<div class="cv-ask">These customers have no district yet.' + cvSetBtn("Tidy areas") + '</div>';
         }
-        if (!on) return;
         var as = groupBy(drs, function (r) { return r.area; });
         as.order.sort(byTotal(as.m));
+        if (!on) { h += cvPeek(as, k, dc); return; }
         h += '<div class="cv-body" style="border-left-color:' + dc[0] + '">';
         as.order.forEach(function (a) {
           var ars = as.m[a].slice().sort(byBook);
