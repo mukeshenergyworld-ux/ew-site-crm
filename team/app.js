@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.200";
+  var APP_VERSION = "6.9.201";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1333,11 +1333,34 @@ window.addEventListener("beforeunload", function (ev) {
      already carrying an AMC is a contract somebody closed before this pipeline existed; it is
      Won whether or not a button was ever pressed. Failing that, a warranty inside its last sixty
      days is Due - nobody has done anything about it yet, and that is exactly the point. */
+  /* One installation row can carry more than one machine. Marking one of them Won
+     writes the AMC onto the ROW - it has to, because that is where the service-due
+     logic and the amcend reminder read it from. This answers the question that write
+     creates: is the AMC sitting on this row already spoken for by a machine somebody
+     actually moved? If it is, the OTHER machines on the row must not wear it. A
+     contract nobody sold is worse than no contract at all - it hides a live
+     opportunity and it inflates the won figure the owner reads. */
+  function amcRowSpokenFor(ins, u) {
+    if (!ins) return false;
+    if (instProducts(ins).length < 2) return false;   /* one machine on the row - no ambiguity */
+    var m = amcStageMap(), keys = Object.keys(m), hit = false;
+    if (!keys.length) return false;                   /* nobody has moved anything - old data stands */
+    var units = baseUnits();
+    keys.forEach(function (k) {
+      if (hit || k === u.key) return;
+      var other = null;
+      units.forEach(function (x) { if (!other && x.key === k) other = x; });
+      if (!other) return;
+      var oi = amcInstallFor(other);
+      if (oi && String(oi.id || "") === String(ins.id || "")) hit = true;
+    });
+    return hit;
+  }
   function amcOf(u) {
     var ex = amcStageMap()[u.key];
     if (ex) return { stage: ex.stage, at: ex.at, by: ex.by, amount: ex.amount, till: ex.till, note: ex.note, how: "moved" };
     var ins = amcInstallFor(u);
-    if (ins && ins.amcType && ins.amcType !== "None") {
+    if (ins && ins.amcType && ins.amcType !== "None" && !amcRowSpokenFor(ins, u)) {
       return { stage: "Won", at: "", by: "", amount: Number(ins.amcAmount) || 0,
         till: dstr(ins.amcEnd) || "", note: "", how: "already on the installation record" };
     }
