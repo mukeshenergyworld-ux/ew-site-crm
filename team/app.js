@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.186";
+  var APP_VERSION = "6.9.189";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -177,10 +177,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","stock"],
-    accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","stock"],
+    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","dups","stock"],
+    accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","dups","stock"],
     godown:   ["dash","returns","tools","challans","products","stock"],
-    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products"],
+    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products","dups"],
     service:  ["dash","tools","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -6939,6 +6939,479 @@ function viewCatalogue() {
      challan numbers, challans stuck in Draft/Dispatched too long, delivered-but-unbilled, negative
      (overpaid) balances, and discounts pointing at a client that no longer exists. Runs on the
      in-memory book; admin-only screen. */
+  /* ============================ DUPLICATE RADAR ============================
+     Why this exists, in his own words: "like a builder entered with 5 sites". Space Construction
+     really is in the book three times on one phone number - "MT Site", "C208 Sec 23" and
+     "Sec 12 Site" - because there was no other way to record that a builder has three sites. One
+     of the three carries a challan, so opening either of the other two shows a customer who has
+     never bought anything, and his money, his history and his pitching are split three ways.
+
+     Two design rules hold here exactly as everywhere else in this app:
+       1. NOTHING IS DELETED. Not one client row is changed or removed by any of this. The
+          detector reads; the answers are written as new, append-only rows to the audit log; the
+          screen groups what it reads. A wrong answer is undone by giving a different answer.
+       2. DRAFT AND CONFIRM. The app proposes the groups; the owner presses Keep / Fix / Manage.
+          The app never merges anything by itself. */
+
+  /* Words that carry no identity. "Builder Gurpreet Singh" and "Gurpreet Singh" are one man;
+     the word "builder" is the Type column leaking into the Name column. */
+  var DUP_NOISE = {
+    builder: 1, contractor: 1, architect: 1, plumber: 1, dealer: 1, pmc: 1, sir: 1, ji: 1,
+    shri: 1, sri: 1, smt: 1, mr: 1, mrs: 1, ms: 1, sh: 1, messrs: 1, dr: 1, er: 1, ar: 1,
+    ca: 1, adv: 1, late: 1, the: 1, and: 1, of: 1, at: 1, "for": 1, new: 1, old: 1
+  };
+
+  /* A phone is the strongest thing in the book, but only when it is really a phone. A run of the
+     same digit, or a number the team typed as a placeholder, would otherwise glue a dozen
+     unrelated customers into one group. */
+  function dupPhoneKey(v) {
+    var d = String(v == null ? "" : v).replace(/\D/g, "");
+    if (d.length > 10) d = d.slice(-10);                 /* +91 / 0 prefixes */
+    if (d.length !== 10) return "";
+    if (/^(\d)\1{9}$/.test(d)) return "";                /* 0000000000, 9999999999 */
+    if (d.charAt(0) < "5") return "";                    /* not an Indian mobile */
+    return d;
+  }
+
+  /* The short name is what gets printed on a challan, so two customers sharing one is already a
+     problem in its own right - SPACE2028 must not appear on challans for three different rows. */
+  function dupShortKey(v) {
+    var s = String(v == null ? "" : v).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return s.length >= 3 ? s : "";
+  }
+
+  /* The whole name, made comparable: lower case, punctuation gone, honorifics and type-words
+     dropped, tokens DEDUPED (this is what stopped "Atul Garg / Hukam Chand Garg" matching itself
+     on the word "garg"), then sorted so word order cannot hide a match. A single leftover word is
+     never a key - there are two different Mohits in this book and they are not the same man. */
+  function dupNameKey(v) {
+    var raw = String(v == null ? "" : v).toLowerCase().replace(/[^a-z0-9]+/g, " ");
+    var seen = {}, out = [];
+    raw.split(" ").forEach(function (w) {
+      if (!w || DUP_NOISE[w] || seen[w]) return;
+      seen[w] = 1; out.push(w);
+    });
+    if (out.length < 2) return "";
+    return out.sort().join(" ");
+  }
+
+  /* An address is a SUPPORTING note, never a key. "mt panipat" is written on five unrelated
+     customers and "sec 18 panipat" on three; grouping on it would have produced nonsense the
+     team stops trusting after the first wrong group. */
+  function dupAddrKey(v) {
+    return String(v == null ? "" : v).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/^\s+|\s+$/g, "");
+  }
+
+  function dupRecKeys(c) {
+    var out = [];
+    var p1 = dupPhoneKey(c.mobile); if (p1) out.push({ k: "p:" + p1, why: "same phone number" });
+    var p2 = dupPhoneKey(c.mobile2); if (p2 && p2 !== p1) out.push({ k: "p:" + p2, why: "same phone number" });
+    var sn = dupShortKey(c.shortName); if (sn) out.push({ k: "s:" + sn, why: "same short name (" + sn + ")" });
+    var nk = dupNameKey(c.name); if (nk) out.push({ k: "n:" + nk, why: "same name" });
+    return out;
+  }
+
+  /* ---- the decision log ----
+     Answers live as append-only rows on the AUDIT sheet, which every device already downloads.
+     That means Imran's "these are two different men" reaches Ashish's phone without anybody
+     re-deciding it, and it survives a reinstall - unlike a note kept on one device. */
+  var DUP_ACTIONS = { "dup:keep": 1, "dup:fix": 1, "dup:manage": 1, "dup:reopen": 1 };
+  function dupDecisions() {
+    return (S.data.audit || []).filter(function (r) {
+      return r && DUP_ACTIONS[String(r.action || "")];
+    }).map(function (r) {
+      var det = {};
+      try { det = JSON.parse(r.detail || "{}") || {}; } catch (e) { det = {}; }
+      return {
+        id: r.id, at: r.createdAt, by: r.actor,
+        kind: String(r.action).slice(4),                 /* keep | fix | manage */
+        ids: String(r.target || "").split(/\s+/).filter(Boolean),
+        det: det
+      };
+    }).sort(function (a, b) { return String(a.at || "") < String(b.at || "") ? -1 : 1; });
+  }
+
+  /* A decision is remembered per PAIR. Answer once for two records and that answer stands even
+     when a third record joins them later - only the genuinely NEW question comes back. */
+  function dupPairMap(decs) {
+    var m = {};
+    (decs || dupDecisions()).forEach(function (d) {
+      for (var i = 0; i < d.ids.length; i++) {
+        for (var j = i + 1; j < d.ids.length; j++) {
+          var a = d.ids[i], b = d.ids[j];
+          var pk = (a < b ? a + "|" + b : b + "|" + a);
+          /* Changing his mind is a NEW row saying "reopen", not the removal of the old one. The
+             sheet stays a complete history of who decided what and when. */
+          if (d.kind === "reopen") delete m[pk]; else m[pk] = d;   /* later row overrides earlier */
+        }
+      }
+    });
+    return m;
+  }
+  function dupPairsOpen(ids, pm) {
+    var open = 0;
+    for (var i = 0; i < ids.length; i++) {
+      for (var j = i + 1; j < ids.length; j++) {
+        var a = ids[i], b = ids[j];
+        if (!pm[(a < b ? a + "|" + b : b + "|" + a)]) open++;
+      }
+    }
+    return open;
+  }
+
+  /* Everything the card needs to show about ONE record, so he can tell the copies apart without
+     opening each one: who owns it, what is attached to it and what it is worth. The record with
+     the history is the one that should stay. */
+  function dupCtx(c) {
+    var nm = String(c.name || "").trim(), lo = nm.toLowerCase();
+    var qs = (S.data.quotes || []).filter(function (q) { return String(q.client || "").trim().toLowerCase() === lo; });
+    var chs = (S.data.challans || []).filter(function (x) { return String(x.customerName || "").trim().toLowerCase() === lo; });
+    var sts = (S.data.sites || []).filter(function (x) { return String(x.client || "").trim().toLowerCase() === lo; });
+    var fus = (S.data.followups || []).filter(function (f) { return String(f.client || "").trim().toLowerCase() === lo; });
+    var due = 0; try { due = clientDue(nm); } catch (e) { due = 0; }
+    var last = String(c.createdAt || "").slice(0, 10);
+    chs.concat(qs).forEach(function (x) {
+      var d = String(x.createdAt || x.date || "").slice(0, 10);
+      if (d > last) last = d;
+    });
+    return {
+      c: c, id: c.id, name: nm,
+      owner: String(c.ownedBy || c.createdBy || "").trim(),
+      mobile: String(c.mobile || "").trim(), mobile2: String(c.mobile2 || "").trim(),
+      district: String(c.location || "").trim(), area: String(c.area || "").trim(),
+      address: String(c.address || "").trim(), type: String(c.type || "").trim(),
+      shortName: String(c.shortName || "").trim(),
+      quotes: qs.length, challans: chs.length, sites: sts.length, followups: fus.length,
+      due: due, last: last,
+      /* the one number that decides which copy should be the main record */
+      weight: chs.length * 100 + qs.length * 10 + fus.length * 2 + (due > 0 ? 5 : 0)
+    };
+  }
+
+  /* The scan itself. Union-find over the strong keys, so a group that is tied together by a phone
+     AND a short name comes out as ONE group rather than two overlapping ones. */
+  function dupScan(opts) {
+    opts = opts || {};
+    /* Ownership is read off the ROW itself, not looked up by name. isMineClient() finds the FIRST
+       client answering to a name - and when a name is duplicated across two executives that is
+       exactly the wrong answer: it would show Imran a copy of Gurpreet Singh that belongs to
+       Ashish. A duplicate that crosses two executives is the owner's to settle, so it is raised
+       only to admin/accounts, who can see both sides of it. */
+    var me = String(S.user || "").trim().toLowerCase();
+    var rows = (S.data.clients || []).filter(function (c) {
+      if (!c || !String(c.name || "").trim()) return false;
+      if (opts.all || seesAllClients()) return true;
+      return String(c.ownedBy || c.createdBy || "").trim().toLowerCase() === me;
+    });
+    var parent = {}, byId = {};
+    function find(x) { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+    function join(a, b) { a = find(a); b = find(b); if (a !== b) parent[a] = b; }
+
+    var keyOwner = {}, whyOf = {};
+    rows.forEach(function (c) {
+      var id = c.id || ("nm:" + String(c.name).trim().toLowerCase());
+      parent[id] = parent[id] || id; byId[id] = c;
+      dupRecKeys(c).forEach(function (kk) {
+        if (keyOwner[kk.k]) { join(id, keyOwner[kk.k]); (whyOf[find(id)] = whyOf[find(id)] || {})[kk.why] = 1; }
+        else keyOwner[kk.k] = id;
+      });
+    });
+    /* the "why" was stamped on whatever the root was at the time; re-stamp against final roots */
+    var why2 = {};
+    Object.keys(whyOf).forEach(function (r0) {
+      var r = find(r0);
+      Object.keys(whyOf[r0]).forEach(function (w) { (why2[r] = why2[r] || {})[w] = 1; });
+    });
+
+    var buck = {};
+    Object.keys(byId).forEach(function (id) { (buck[find(id)] = buck[find(id)] || []).push(id); });
+
+    var decs = dupDecisions(), pm = dupPairMap(decs);
+    var groups = [], settled = 0;
+    Object.keys(buck).forEach(function (root) {
+      var ids = buck[root];
+      if (ids.length < 2) return;
+      var recs = ids.map(function (id) { return dupCtx(byId[id]); })
+        .sort(function (a, b) { return b.weight - a.weight; });
+      var realIds = recs.map(function (r) { return r.id; });
+      var open = dupPairsOpen(realIds, pm);
+      var prior = null;
+      for (var i = 0; i < realIds.length && !prior; i++) {
+        for (var j = i + 1; j < realIds.length && !prior; j++) {
+          var a = realIds[i], b = realIds[j];
+          prior = pm[(a < b ? a + "|" + b : b + "|" + a)] || null;
+        }
+      }
+      /* every pair already answered -> the group is settled and stays off the radar */
+      if (!open) { settled++; if (!opts.withSettled) return; }
+
+      /* a shared address is shown as supporting evidence, never as the reason for the group */
+      var addr = {}, sameAddr = false;
+      recs.forEach(function (r) { var a = dupAddrKey(r.address); if (a) { if (addr[a]) sameAddr = true; addr[a] = 1; } });
+
+      var whys = Object.keys(why2[root] || {});
+      var owners = {}; recs.forEach(function (r) { if (r.owner) owners[r.owner] = 1; });
+      groups.push({
+        key: realIds.slice().sort().join(" "),
+        ids: realIds, recs: recs,
+        why: whys.length ? whys : ["same details"],
+        sameAddress: sameAddr,
+        owners: Object.keys(owners),
+        crossExec: Object.keys(owners).length > 1,
+        openPairs: open, settled: !open, prior: prior,
+        /* the copy that carries the history - proposed as the main record, never forced */
+        main: recs[0],
+        others: recs.slice(1),
+        quotes: recs.reduce(function (s, r) { return s + r.quotes; }, 0),
+        challans: recs.reduce(function (s, r) { return s + r.challans; }, 0),
+        due: recs.reduce(function (s, r) { return s + r.due; }, 0),
+        /* a group where every copy has a DIFFERENT address is the builder-with-many-sites shape */
+        looksMultiSite: !sameAddr && recs.filter(function (r) { return r.address; }).length >= 2
+      });
+    });
+
+    groups.sort(function (a, b) {
+      if (b.challans !== a.challans) return b.challans - a.challans;
+      if (b.quotes !== a.quotes) return b.quotes - a.quotes;
+      return b.recs.length - a.recs.length;
+    });
+    return { groups: groups, total: groups.length, settled: settled, decisions: decs };
+  }
+
+  /* One append-only row on the audit sheet. Nothing else in the app is touched by an answer. */
+  function dupLog(kind, ids, det) {
+    /* The id is minted HERE rather than left to save(), because the row has to be findable in
+       the pending journal a moment later to check whether it actually went up. */
+    var rid = "D-" + Date.now() + "-" + Math.floor(Math.random() * 1000000);
+    return save("audit", {
+      id: rid, createdAt: new Date().toISOString(), actor: S.user || "",
+      action: "dup:" + kind, target: (ids || []).join(" "),
+      detail: JSON.stringify(det || {}), ip: ""
+    }).then(function (res) {
+      /* Still in the journal = the sheet did not take it. A duplicate decision is only worth
+         anything if the whole team gets it, so say so plainly instead of "will retry". */
+      var stuck = false;
+      try {
+        stuck = pendLoad().some(function (x) {
+          return x && x.tab === "audit" && x.row && x.row.id === rid;
+        });
+      } catch (e) { stuck = false; }
+      if (stuck) {
+        toast("Answer saved on this device only — the team sheet has not taken it yet, so the others still see this group.");
+      }
+      return res;
+    });
+  }
+
+  /* What the team has already settled, for the "already sorted out" list and for the client card.
+     Keyed by client id so a record can say, on its own card, "recorded as another name for X". */
+  function dupResolvedMap() {
+    var m = {};
+    dupDecisions().forEach(function (d) {
+      if (d.kind === "keep" || d.kind === "reopen") return;
+      var main = d.det && d.det.main;
+      if (!main) return;
+      d.ids.forEach(function (id) {
+        if (id === main) return;
+        m[id] = { kind: d.kind, main: main, mainName: (d.det && d.det.mainName) || "", at: d.at, by: d.by };
+      });
+    });
+    return m;
+  }
+
+  /* ---------------- the screen ---------------- */
+  function dupWhyPill(w) {
+    var col = w.indexOf("phone") >= 0 ? "#b91c1c" : w.indexOf("short") >= 0 ? "#b45309" : "#4338ca";
+    return '<span class="pill" style="background:' + col + '18;color:' + col + ';margin-right:4px">' + esc(w) + '</span>';
+  }
+
+  /* Which record in THIS group keeps the history. S.dupMain is one slot shared by the whole
+     screen, so a pick is only honoured when the picked record is actually in the group being
+     drawn - otherwise the group falls back to the one the scan proposed. Without this, a stale
+     id from another group would silently become the main record that Fix and Manage file
+     everything under. */
+  function dupMainOf(g) {
+    var picked = S.dupMain && g.recs.filter(function (r) { return r.id === S.dupMain; })[0];
+    return picked || g.main;
+  }
+  function dupRecRow(r, g, picking) {
+    var isMain = dupMainOf(g).id === r.id;
+    var bits = [];
+    if (r.challans) bits.push(r.challans + " challan(s)");
+    if (r.quotes) bits.push(r.quotes + " quote(s)");
+    if (r.followups) bits.push(r.followups + " follow-up(s)");
+    if (r.sites) bits.push(r.sites + " site(s)");
+    if (r.due > 0) bits.push(money(r.due) + " due");
+    var empty = !bits.length;
+    return '<div style="border:1px solid ' + (isMain ? '#0f766e' : '#e2e8f0') + ';background:' + (isMain ? '#f0fdfa' : '#fff') +
+      ';border-radius:10px;padding:8px 10px;margin:6px 0">' +
+      '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">' +
+      '<div style="flex:1 1 160px;min-width:0">' +
+      '<b style="font-size:14px;word-break:break-word">' + esc(r.name) + '</b>' +
+      (isMain && !picking ? ' <span class="pill" style="background:#0f766e18;color:#0f766e">has the history</span>' : '') +
+      '<div class="meta" style="font-size:12px;line-height:1.6">' +
+      (r.owner ? esc(r.owner) : '<span style="color:#b91c1c">no executive</span>') +
+      (r.type ? ' &middot; ' + esc(r.type) : '') +
+      (r.district ? ' &middot; ' + esc(r.district) : '') + (r.area ? ' / ' + esc(r.area) : '') +
+      (r.mobile ? '<br>' + esc(r.mobile) : '') +
+      (r.address ? '<br><span style="color:#94a3b8">' + esc(r.address) + '</span>' : '') +
+      '<br>' + (empty ? '<span style="color:#b91c1c">nothing attached — this copy has no history at all</span>'
+                      : '<span style="color:#0f766e">' + esc(bits.join(' · ')) + '</span>') +
+      '</div></div>' +
+      '<button class="btn sm ghost" data-act="cl-open" data-n="' + esc(r.name) + '" style="flex:0 0 auto">Open</button>' +
+      '</div>' +
+      /* At the FOOT of the card, full width, so it can only be read as belonging to the record
+         written above it. This button decides which copy keeps the money and the history. */
+      (picking
+        ? '<button class="btn sm ' + (isMain ? '' : 'ghost') + '" data-act="dup-main" data-id="' + esc(r.id) + '"' +
+          ' style="width:100%;margin-top:8px">' +
+          (isMain ? '✓ this one keeps the history' : 'Keep this one instead') + '</button>'
+        : '') +
+      '</div>';
+  }
+
+  /* The Manage panel drafts the projects BEFORE anything is written - he reads them, then presses
+     the button. The site name is the part of the record name that is not the customer's name
+     ("Space Construction C208 Sec 23" under "Space Construction" becomes the project "C208 Sec 23"),
+     falling back to the address, then to the whole name. */
+  function dupSiteName(rec, mainName) {
+    var nm = String(rec.name || "").trim();
+    var mn = String(mainName || "").trim();
+    var cut = nm;
+    if (mn && nm.toLowerCase().indexOf(mn.toLowerCase()) === 0) cut = nm.slice(mn.length);
+    cut = cut.replace(/^[\s\-–—,:/|]+/, "").replace(/[\s\-,]+$/, "");
+    if (!cut) cut = String(rec.address || "").trim();
+    if (!cut) cut = String(rec.area || rec.district || "").trim();
+    return cut || nm;
+  }
+
+  function dupPanel(g) {
+    var main = dupMainOf(g), mainId = main.id;
+    var others = g.recs.filter(function (r) { return r.id !== mainId; });
+    var h = '<div style="border-top:2px dashed #cbd5e1;margin-top:10px;padding-top:10px">';
+
+    if (S.dupMode === "fix") {
+      h += '<div class="meta" style="font-size:13px;color:#334155"><b>Same person, entered more than once.</b> ' +
+        'Pick the record that keeps the history — normally the one carrying the challans. ' +
+        'The others stay exactly where they are and are recorded as <b>other names for the same man</b>, ' +
+        'so the team stops opening the wrong one. <b>Nothing is deleted.</b></div>';
+      h += g.recs.map(function (r) { return dupRecRow(r, g, true); }).join("");
+      h += '<div class="meta" style="font-size:12.5px;background:#f8fafc;border-radius:8px;padding:8px;margin-top:6px">' +
+        'After you press Confirm: <b>' + esc(main.name) + '</b> is the customer. ' +
+        esc(others.map(function (r) { return r.name; }).join(", ")) +
+        ' will show as <i>another name for ' + esc(main.name) + '</i> wherever they appear. ' +
+        'Their own challans and quotes stay on them — nothing moves, nothing is lost.</div>';
+      h += '<div class="acts" style="margin-top:8px">' +
+        '<button class="btn" data-act="dup-fix-go" data-k="' + esc(g.key) + '">Confirm — one man, ' + (others.length + 1) + ' records</button>' +
+        '<button class="btn ghost" data-act="dup-cancel">Cancel</button></div>';
+    } else {
+      h += '<div class="meta" style="font-size:13px;color:#334155"><b>One customer, several sites.</b> ' +
+        'Pick the record that stays as the <b>customer</b>. Each of the others becomes a ' +
+        '<b>project under him</b>, so his money and his history come together in one place while ' +
+        'each site keeps its own construction stage and its own pitch. <b>Nothing is deleted.</b></div>';
+      h += g.recs.map(function (r) { return dupRecRow(r, g, true); }).join("");
+      h += '<div class="meta" style="font-size:12.5px;background:#f8fafc;border-radius:8px;padding:8px;margin-top:6px">' +
+        '<b>Projects that will be created under ' + esc(main.name) + ':</b><br>' +
+        others.map(function (r) {
+          return '&bull; <b>' + esc(dupSiteName(r, main.name)) + '</b>' +
+            (r.district ? ' &middot; ' + esc(r.district) : '') +
+            (r.address ? ' &middot; <span style="color:#94a3b8">' + esc(r.address) + '</span>' : '');
+        }).join("<br>") +
+        '<br><span style="color:#94a3b8">You can set each site’s stage afterwards on the Sites screen — that is what turns on the pitch board for it.</span></div>';
+      h += '<div class="acts" style="margin-top:8px">' +
+        '<button class="btn" data-act="dup-manage-go" data-k="' + esc(g.key) + '">Create ' + others.length + ' project(s) under ' + esc(main.name) + '</button>' +
+        '<button class="btn ghost" data-act="dup-cancel">Cancel</button></div>';
+    }
+    return h + '</div>';
+  }
+
+  function dupGroupCard(g, settledView) {
+    var open = S.dupOpen === g.key;
+    var h = '<div class="card" style="border-left:4px solid ' + (settledView ? '#94a3b8' : g.challans || g.due > 0 ? '#b91c1c' : '#f59e0b') + '">' +
+      '<h3 style="margin:0 0 2px">' + esc(g.main.name) +
+      ' <span class="pill due" style="background:#b91c1c18;color:#b91c1c">' + g.recs.length + ' records</span></h3>' +
+      '<div style="margin:4px 0 2px">' + g.why.map(dupWhyPill).join("") +
+      (g.sameAddress ? dupWhyPill("same address") : "") +
+      (g.crossExec ? '<span class="pill" style="background:#7c3aed18;color:#7c3aed">' + esc(g.owners.join(" + ")) + '</span>' : '') +
+      '</div>';
+    if (g.due > 0 || g.challans || g.quotes) {
+      h += '<div class="meta" style="font-size:12.5px;color:#b45309">' +
+        'Split across these records: ' +
+        [g.challans ? g.challans + ' challan(s)' : '', g.quotes ? g.quotes + ' quote(s)' : '', g.due > 0 ? money(g.due) + ' due' : '']
+          .filter(Boolean).join(' · ') +
+        ' — whoever opens the wrong copy sees a customer who has never bought anything.</div>';
+    }
+    if (settledView && g.prior) {
+      h += '<div class="meta" style="font-size:12.5px;color:#0f766e;margin-top:4px">Answered <b>' +
+        esc({ keep: "keep separate", fix: "same person", manage: "one customer, many sites" }[g.prior.kind] || g.prior.kind) +
+        '</b> by ' + esc(g.prior.by || "someone") + (g.prior.at ? ' on ' + esc(dstr(g.prior.at)) : '') + '.</div>';
+    }
+    h += g.recs.map(function (r) { return dupRecRow(r, g, false); }).join("");
+
+    if (open) { h += dupPanel(g); }
+    else if (settledView) {
+      h += '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="dup-reopen" data-k="' + esc(g.key) + '">Look at it again</button></div>';
+    } else {
+      h += '<div class="acts" style="margin-top:8px;flex-wrap:wrap">' +
+        '<button class="btn sm" data-act="dup-manage" data-k="' + esc(g.key) + '"' +
+        (g.looksMultiSite ? ' title="Different addresses — this looks like one customer with several sites"' : '') + '>' +
+        (g.looksMultiSite ? '★ ' : '') + 'One customer, many sites</button>' +
+        '<button class="btn sm" data-act="dup-fix" data-k="' + esc(g.key) + '">Same person — fix</button>' +
+        '<button class="btn sm ghost" data-act="dup-keep" data-k="' + esc(g.key) + '">Different people — keep separate</button>' +
+        '</div>';
+      if (g.looksMultiSite) {
+        h += '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:4px">Each copy has a different address, so this is most likely one customer with several sites.</div>';
+      }
+    }
+    return h + '</div>';
+  }
+
+  function viewDups() {
+    var s = dupScan();
+    var h = '<div class="card" style="' + (s.total ? 'border-color:#fed7aa;background:#fff7ed' : 'border-color:#99f6e4;background:#f0fdfa') + '">' +
+      '<h2 style="margin:0">Duplicate check</h2>' +
+      '<div class="meta" style="font-size:13px">The same customer entered twice splits his money, his history and his follow-ups between two records — and whoever opens the wrong one thinks he has never bought anything. This screen finds them and asks you which of three things is true. <b>Nothing here deletes or changes a single record.</b></div>' +
+      (s.total
+        ? '<div style="margin-top:8px;font-weight:700;color:#b45309">' + s.total + ' group(s) to look at</div>'
+        : '<div style="margin-top:8px;font-weight:700;color:#0f766e">✓ Nothing to look at — every set of look-alike records has been answered.</div>') +
+      (s.settled ? '<div class="meta" style="font-size:12.5px;color:#0f766e">' + s.settled + ' already sorted out by the team.</div>' : '') +
+      '<div class="acts" style="margin-top:8px">' +
+      '<button class="btn sm ghost" data-act="dup-rescan">Re-scan</button>' +
+      (s.settled ? '<button class="btn sm ghost" data-act="dup-showsettled">' + (S.dupShowSettled ? 'Hide' : 'Show') + ' the ' + s.settled + ' already sorted out</button>' : '') +
+      '</div></div>';
+
+    if (!seesAllClients()) {
+      h += '<div class="meta" style="font-size:12.5px;color:#94a3b8;margin:0 0 8px">You are seeing look-alike records inside your own book. A customer entered by two different executives can only be settled by the owner, who can see both sides of it.</div>';
+    }
+    s.groups.forEach(function (g) { h += dupGroupCard(g, false); });
+
+    if (S.dupShowSettled) {
+      var all = dupScan({ withSettled: true }).groups.filter(function (g) { return g.settled; });
+      if (all.length) {
+        h += '<h3 style="margin:14px 0 6px;font-size:14px;color:#64748b">Already sorted out</h3>';
+        all.forEach(function (g) { h += dupGroupCard(g, true); });
+      }
+    }
+    return h;
+  }
+
+  /* The one-line note on the dashboard — his "duplicate entry log / note / warning". It only
+     appears when there is something to answer, and it says what it will cost him to ignore it. */
+  function dupDashCard() {
+    var s;
+    try { s = dupScan(); } catch (e) { return ""; }
+    if (!s.total) return "";
+    var money0 = s.groups.reduce(function (a, g) { return a + (g.due > 0 ? g.due : 0); }, 0);
+    var recs = s.groups.reduce(function (a, g) { return a + g.recs.length; }, 0);
+    return '<div class="card" style="border-color:#fed7aa;background:#fff7ed">' +
+      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Duplicate entries</b></div>' +
+      '<h3 style="font-size:16px;margin:4px 0 2px">' + s.total + ' customer(s) look like they are in the book more than once</h3>' +
+      '<div class="meta" style="font-size:13px">' + recs + ' records between them' +
+      (money0 > 0 ? ', with ' + money(money0) + ' of dues split across the copies' : '') +
+      '. Tell the app which are the same man, which are one customer with several sites, and which are simply two different people — it will remember for the whole team.</div>' +
+      '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="tab" data-tab="dups">Open duplicate check</button></div></div>';
+  }
+
   function healthScan() {
     var chs = S.data.challans || [];
     var byNo = {};
@@ -7061,6 +7534,9 @@ function viewCatalogue() {
 
     /* the agent's own top of the list, above the plain digest — it names names and drafts the text */
     if (canSee("agent")) { try { h += agTodayCard(); } catch (e) { console.warn("[agent] today card:", e); } }
+
+    /* duplicate entries, if there are any left to answer */
+    try { h += dupDashCard(); } catch (e) { console.warn("[dups] card:", e); }
 
     var dg = digestLines();
     h += '<div class="card"><h3>Team digest — today</h3>' +
@@ -8566,6 +9042,8 @@ function viewCatalogue() {
       '<div class="stat ' + (myOverdue > 0 ? 'alert' : '') + '" data-act="tab" data-tab="billing" style="cursor:pointer" title="Open HISAB"><div class="n">' + money(myOverdue) + '</div><div class="l">Overdue (' + CREDIT_DAYS + '+ days)</div></div>' +
       (seesAllClients() ? '<div class="stat"><div class="n">' + money(comm) + '</div><div class="l">Incentive owed</div></div>' : '') +
       '</div>';
+
+    try { h += dupDashCard(); } catch (e) { console.warn("[dups] card:", e); }
 
     var todo = overdue.concat(due);
     h += '<h3 style="margin:0 0 10px;font-size:15px">Today: ' + todo.length + ' to call</h3>';
@@ -10255,8 +10733,8 @@ function viewCatalogue() {
     _clDueCache = null; _clStageCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, stock: viewStock };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["stock", "Stock"]];
+    var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["dups", "Duplicate check"], ["stock", "Stock"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -10274,7 +10752,7 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
     var GROUPS = [
-      ["Sync", ["pending", "health"]],
+      ["Sync", ["pending", "health", "dups"]],
       ["Sell", ["dash", "agent", "leads", "pitch", "brandfollow", "quotes", "followups", "clients", "partners"]],
       ["Deliver", ["deliveries", "billing", "stock", "tools", "collections", "products"]],
       ["Service", ["service", "spares"]],
@@ -11536,6 +12014,93 @@ function viewCatalogue() {
       S.modal = modalSite(_seed); render(); return;
     }
     if (act === "site-open") { S.modal = modalSite(siteById(id)); render(); return; }
+    if (act === "dup-rescan") { render(); return; }
+    if (act === "dup-showsettled") { S.dupShowSettled = !S.dupShowSettled; render(); return; }
+    if (act === "dup-cancel") { S.dupOpen = null; S.dupMode = null; S.dupMain = null; render(); return; }
+    if (act === "dup-main") { S.dupMain = t.getAttribute("data-id"); render(); return; }
+    if (act === "dup-fix" || act === "dup-manage") {
+      S.dupOpen = t.getAttribute("data-k");
+      S.dupMode = act === "dup-fix" ? "fix" : "manage";
+      S.dupMain = null;
+      render(); return;
+    }
+    if (act === "dup-keep") {
+      var gk = t.getAttribute("data-k");
+      var gg = dupScan().groups.filter(function (x) { return x.key === gk; })[0];
+      if (!gg) { toast("That group has already moved on — re-scanning."); render(); return; }
+      dupLog("keep", gg.ids, {
+        names: gg.recs.map(function (r) { return r.name; }),
+        why: gg.why.join("; ")
+      });
+      S.dupOpen = null; S.dupMode = null; S.dupMain = null;
+      toast("Noted — different people. The team will not be asked about these again.");
+      render(); return;
+    }
+    if (act === "dup-reopen") {
+      var rk = t.getAttribute("data-k");
+      var rg = dupScan({ withSettled: true }).groups.filter(function (x) { return x.key === rk; })[0];
+      if (!rg) { render(); return; }
+      /* Reopening is a new row, not the removal of the old one — the sheet keeps the whole story. */
+      dupLog("reopen", rg.ids, { names: rg.recs.map(function (r) { return r.name; }) });
+      toast("Opened again for a fresh look.");
+      render(); return;
+    }
+    if (act === "dup-fix-go") {
+      var fk = t.getAttribute("data-k");
+      var fg = dupScan().groups.filter(function (x) { return x.key === fk; })[0];
+      if (!fg) { toast("That group has already moved on — re-scanning."); render(); return; }
+      var fmainId = S.dupMain || fg.main.id;
+      var fmain = fg.recs.filter(function (r) { return r.id === fmainId; })[0] || fg.main;
+      dupLog("fix", fg.ids, {
+        main: fmain.id, mainName: fmain.name,
+        aliases: fg.recs.filter(function (r) { return r.id !== fmain.id; })
+          .map(function (r) { return { id: r.id, name: r.name }; }),
+        why: fg.why.join("; ")
+      });
+      S.dupOpen = null; S.dupMode = null; S.dupMain = null;
+      toast("Recorded — one man, " + fg.recs.length + " records. Nothing was deleted.");
+      render(); return;
+    }
+    if (act === "dup-manage-go") {
+      var mk = t.getAttribute("data-k");
+      var mg = dupScan().groups.filter(function (x) { return x.key === mk; })[0];
+      if (!mg) { toast("That group has already moved on — re-scanning."); render(); return; }
+      var mmainId = S.dupMain || mg.main.id;
+      var mmain = mg.recs.filter(function (r) { return r.id === mmainId; })[0] || mg.main;
+      var kids = mg.recs.filter(function (r) { return r.id !== mmain.id; });
+      /* A project is only created where one does not already exist for that customer under that
+         name — pressing the button twice must never give him two copies of the same site. */
+      var existing = {};
+      (S.data.sites || []).forEach(function (x) {
+        if (String(x.client || "").trim().toLowerCase() === String(mmain.name).trim().toLowerCase()) {
+          existing[String(x.name || "").trim().toLowerCase()] = 1;
+        }
+      });
+      var made = 0;
+      kids.forEach(function (r) {
+        var snm = dupSiteName(r, mmain.name);
+        if (!snm || existing[snm.toLowerCase()]) return;
+        existing[snm.toLowerCase()] = 1; made++;
+        save("sites", {
+          id: "", createdBy: S.user, name: snm, client: mmain.name,
+          mobile: r.mobile || mmain.mobile || "", city: r.district || mmain.district || "",
+          stage: "", type: "", architect: r.c.architect || "", plumber: r.c.plumber || "",
+          builder: r.c.builder || "", owner: r.owner || mmain.owner || S.user,
+          status: "Active",
+          notes: "From the customer record \"" + r.name + "\". " + (r.address || "")
+        });
+      });
+      dupLog("manage", mg.ids, {
+        main: mmain.id, mainName: mmain.name,
+        sites: kids.map(function (r) { return { id: r.id, name: r.name, site: dupSiteName(r, mmain.name) }; }),
+        created: made, why: mg.why.join("; ")
+      });
+      S.dupOpen = null; S.dupMode = null; S.dupMain = null;
+      toast(made
+        ? made + " project(s) created under " + mmain.name + ". Set each site's stage to turn on its pitch board."
+        : "Already recorded — those projects were there. Nothing was duplicated.");
+      render(); return;
+    }
     if (act === "site-save") {
       var sn = val("s_name");
       if (!sn) { toast("Site name is required."); return; }
