@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.189";
+  var APP_VERSION = "6.9.190";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7178,6 +7178,17 @@ function viewCatalogue() {
     return { groups: groups, total: groups.length, settled: settled, decisions: decs };
   }
 
+  /* Still sitting in the recovery journal a moment after save() resolved = the server did NOT
+     take the row. Returns the journal entry (which carries the backend's own error text) rather
+     than a bare true/false, so the self-test below can show WHY instead of just "no". */
+  function dupStuck(rid) {
+    try {
+      return pendLoad().filter(function (x) {
+        return x && x.tab === "audit" && x.row && x.row.id === rid;
+      })[0] || null;
+    } catch (e) { return null; }
+  }
+
   /* One append-only row on the audit sheet. Nothing else in the app is touched by an answer. */
   function dupLog(kind, ids, det) {
     /* The id is minted HERE rather than left to save(), because the row has to be findable in
@@ -7190,16 +7201,41 @@ function viewCatalogue() {
     }).then(function (res) {
       /* Still in the journal = the sheet did not take it. A duplicate decision is only worth
          anything if the whole team gets it, so say so plainly instead of "will retry". */
-      var stuck = false;
-      try {
-        stuck = pendLoad().some(function (x) {
-          return x && x.tab === "audit" && x.row && x.row.id === rid;
-        });
-      } catch (e) { stuck = false; }
+      var stuck = !!dupStuck(rid);
       if (stuck) {
         toast("Answer saved on this device only — the team sheet has not taken it yet, so the others still see this group.");
       }
       return res;
+    });
+  }
+
+  /* THE SELF TEST. Every other sheet this app writes has been written a thousand times; the
+     audit sheet the frontend had never touched before this screen existed. Rather than let his
+     first real decision be the experiment, this writes a row that is deliberately inert -
+     "dup:selftest" is not in DUP_ACTIONS, so it settles nothing, hides no group and changes no
+     record - and then reports plainly whether the team sheet accepted it. If it did not, it
+     shows the backend's own words, which is what tells us what to change. */
+  function dupSelfTest() {
+    var rid = "D-" + Date.now() + "-" + Math.floor(Math.random() * 1000000);
+    S.dupTest = { state: "running" };
+    render();
+    return save("audit", {
+      id: rid, createdAt: new Date().toISOString(), actor: S.user || "",
+      action: "dup:selftest", target: "",
+      detail: "Connection test from the Duplicate check screen. Changes nothing.", ip: ""
+    }).then(function () {
+      var e = dupStuck(rid);
+      if (e) {
+        S.dupTest = { state: "fail", why: String((e && e.err) || "no reason given") };
+        /* Do not leave the failed test row queued forever - it is not data, it was a question.
+           His REAL decisions stay in the journal and keep retrying; this one has served its
+           purpose the moment we have read the error off it. */
+        try { pendDrop(e.pk); } catch (e2) { }
+      } else {
+        S.dupTest = { state: "ok" };
+      }
+      render();
+      return S.dupTest;
     });
   }
 
@@ -7377,8 +7413,16 @@ function viewCatalogue() {
       (s.settled ? '<div class="meta" style="font-size:12.5px;color:#0f766e">' + s.settled + ' already sorted out by the team.</div>' : '') +
       '<div class="acts" style="margin-top:8px">' +
       '<button class="btn sm ghost" data-act="dup-rescan">Re-scan</button>' +
+      '<button class="btn sm ghost" data-act="dup-selftest">' +
+      (S.dupTest && S.dupTest.state === "running" ? 'Testing…' : 'Test team sync') + '</button>' +
       (s.settled ? '<button class="btn sm ghost" data-act="dup-showsettled">' + (S.dupShowSettled ? 'Hide' : 'Show') + ' the ' + s.settled + ' already sorted out</button>' : '') +
-      '</div></div>';
+      '</div>' +
+      /* The verdict of the self test, in his words, under the button that caused it. */
+      (S.dupTest && S.dupTest.state === "ok"
+        ? '<div class="meta" style="font-size:12.5px;color:#0f766e;margin-top:6px">✓ The team sheet accepted it. Your answers here will reach everyone.</div>' : '') +
+      (S.dupTest && S.dupTest.state === "fail"
+        ? '<div class="meta" style="font-size:12.5px;color:#b91c1c;margin-top:6px"><b>The team sheet did not accept it.</b> Answers you give here would stay on this phone only. The server said: ' + esc(S.dupTest.why) + ' — send me that line and I will change where the answers are filed.</div>' : '') +
+      '</div>';
 
     if (!seesAllClients()) {
       h += '<div class="meta" style="font-size:12.5px;color:#94a3b8;margin:0 0 8px">You are seeing look-alike records inside your own book. A customer entered by two different executives can only be settled by the owner, who can see both sides of it.</div>';
@@ -10715,6 +10759,15 @@ function viewCatalogue() {
       "::-webkit-scrollbar-thumb:hover{background:rgba(100,116,139,.55)}" +
       "nav{scrollbar-width:thin}nav::-webkit-scrollbar{width:5px}" +
       "nav button{position:relative;z-index:1}" +
+      /* v6.9.190 the sticky way out of a long popup. Pinned to the top of the popup's own
+         scroll box, pulled over its 18px padding so it spans edge to edge and nothing shows
+         through above it. Right-aligned so it never sits where a thumb is about to tap a
+         field, and translucent-white with a blur so the heading under it stays readable. */
+      ".modalx{position:sticky;top:-18px;z-index:5;margin:-18px -18px 6px;padding:8px 12px;" +
+      "display:flex;justify-content:flex-end;background:rgba(255,255,255,.94);" +
+      "backdrop-filter:saturate(180%) blur(6px);-webkit-backdrop-filter:saturate(180%) blur(6px);" +
+      "border-bottom:1px solid #e2e8f0;border-radius:18px 18px 0 0}" +
+      ".modalx .btn{padding:5px 12px;font-size:12.5px}" +
       /* v6.9.181 DUE AMT pill - one look for owed money across every tab */
       ".due-amt{display:inline-flex;align-items:center;gap:5px;background:#fee2e2;border:1px solid #fca5a5;border-radius:999px;padding:2px 9px 2px 3px;white-space:nowrap;vertical-align:middle;line-height:1.3}" +
       ".due-amt-k{background:#dc2626;color:#fff;border-radius:999px;padding:2px 7px;font-size:9.5px;font-weight:800;letter-spacing:.7px}" +
@@ -10796,7 +10849,17 @@ function viewCatalogue() {
     h += '</div>';
     /* bump the modal generation whenever a DIFFERENT form is shown, so a save that started under an
        earlier form knows the user has moved on and must not close the new one. */
-    if (S.modal) { if (S.modal !== _shownModal) { _mgen++; _shownModal = S.modal; } h += '<div class="mask" data-act="mask"><div class="modal">' + S.modal + '</div></div>'; }
+    if (S.modal) {
+      if (S.modal !== _shownModal) { _mgen++; _shownModal = S.modal; }
+      /* v6.9.190: a sticky way out, pinned to the top of the popup's own scroll box. The popup
+         is max-height:92vh with overflow:auto, so this bar stays visible no matter how far down
+         a long form he has scrolled. Negative top/margins pull it over the popup's 18px padding
+         so it spans the full width and nothing shows through above it. */
+      h += '<div class="mask" data-act="mask"><div class="modal">' +
+        '<div class="modalx">' +
+        '<button class="btn sm ghost" data-act="close" aria-label="Close">✕ Close</button>' +
+        '</div>' + S.modal + '</div></div>';
+    }
     else { _shownModal = null; S.bgPending = false; }
 
     var _msTop = null;
@@ -12015,6 +12078,7 @@ function viewCatalogue() {
     }
     if (act === "site-open") { S.modal = modalSite(siteById(id)); render(); return; }
     if (act === "dup-rescan") { render(); return; }
+    if (act === "dup-selftest") { dupSelfTest(); return; }
     if (act === "dup-showsettled") { S.dupShowSettled = !S.dupShowSettled; render(); return; }
     if (act === "dup-cancel") { S.dupOpen = null; S.dupMode = null; S.dupMain = null; render(); return; }
     if (act === "dup-main") { S.dupMain = t.getAttribute("data-id"); render(); return; }
