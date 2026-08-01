@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.191";
+  var APP_VERSION = "6.9.193";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -177,10 +177,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","dups","stock"],
+    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","dups","stock","brief"],
     accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","dups","stock"],
     godown:   ["dash","returns","tools","challans","products","stock"],
-    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products","dups"],
+    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products","dups","brief"],
     service:  ["dash","tools","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -2515,6 +2515,19 @@ window.addEventListener("beforeunload", function (ev) {
           '<div></div>' +
           '</div>' +
           '<div class="meta" style="margin-top:6px">A pending amount marks him <b>Old</b> automatically. It is money owed, not this month\u2019s sale, and it earns nobody an incentive.</div>' +
+          '</div>'
+        : "") +
+      /* CREDIT TERMS (v6.9.193). A commercial decision, so only a partner sets it. Left blank
+         the app behaves exactly as it always has - nobody is stopped, nothing changes. */
+      (S.role === "admin"
+        ? '<div style="margin-top:12px;padding:10px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:10px">' +
+          '<h3 style="margin:0 0 2px;font-size:13px">Credit terms</h3>' +
+          '<div class="meta" style="margin-bottom:8px">How much of our material may stand at his site unpaid, and for how long. Leave blank for no limit.</div>' +
+          '<div class="grid2">' +
+          '<div><label>Credit limit</label><input id="c_credlim" inputmode="numeric" placeholder="200000" value="' + esc(c.creditLimit || "") + '"/></div>' +
+          '<div><label>Credit days</label><input id="c_creddays" inputmode="numeric" placeholder="' + CREDIT_DAYS + '" value="' + esc(c.creditDays || "") + '"/></div>' +
+          '</div>' +
+          '<div class="meta" style="margin-top:6px">Approving a challan that breaks either one stops the approver and shows him the figures. It never blocks him &mdash; it records what he decided.</div>' +
           '</div>'
         : "") +
       /* Billing names. A man bills his house in his own name and his shop through his firm -
@@ -5938,6 +5951,81 @@ function viewCatalogue() {
     else { bg = "#dcfce7"; fg = "#166534"; lbl = d + " d"; }
     return ' <span style="background:' + bg + ';color:' + fg + ';border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap">' + lbl + '</span>';
   }
+  /* ---------- CREDIT CONTROL (v6.9.193) ----------
+     HISAB, dues and the brief all REPORT credit - they tell you afterwards. Nothing in the app
+     stood between a customer already sitting on two lakh at seventy days and the next load
+     leaving the godown. These four functions are that gate. They never block anybody: they stop
+     the approver, show him the figures, and put his name on whatever he decides. */
+
+  /* Terms come off the client record. Blank limit = no limit (the app behaves as it always has).
+     Blank days falls back to the company-wide CREDIT_DAYS. */
+  function creditTerms(name) {
+    var cl = clientByName(name) || {};
+    return {
+      limit: Math.max(0, Number(cl.creditLimit) || 0),
+      days: Math.max(0, Number(cl.creditDays) || 0) || CREDIT_DAYS
+    };
+  }
+  /* Material already approved or dispatched but NOT yet signed for. The ledger cannot see it -
+     only a received challan enters HISAB - but it is out of the godown and unpaid, so it is
+     real exposure. Ignoring it is how a client quietly goes double his limit in one week. */
+  function chOnRoad(name, skipId) {
+    return dedupeChallans((S.data.challans || []).filter(function (c) {
+      return c.customerName === name && String(c.receiptReceived).toUpperCase() !== "Y" &&
+        c.id !== skipId && (c.status === "Approved" || c.status === "Dispatched");
+    })).reduce(function (a, c) { return a + challanNet(c) + chFreight(c); }, 0);
+  }
+  /* The judgement. Two independent reasons to stop: he is over his money limit, or he is over
+     his time limit. Either one is enough. */
+  function creditGate(ch) {
+    var name = ch.customerName, t = creditTerms(name), ag = clientAging(name);
+    var road = chOnRoad(name, ch.id), now = challanNet(ch) + chFreight(ch);
+    var exposure = ag.due + road + now, reasons = [];
+    if (t.limit > 0 && exposure > t.limit + 0.5) reasons.push("he goes past his credit limit");
+    if (ag.overdue > 0.5 && ag.oldest > t.days) reasons.push("he is holding money past " + t.days + " days");
+    return {
+      name: name, limit: t.limit, days: t.days, ag: ag, road: road, now: now,
+      exposure: exposure, over: Math.max(0, exposure - t.limit),
+      reasons: reasons, stop: reasons.length > 0
+    };
+  }
+  /* Written as a statement of account, not a warning, because a man about to release sixty
+     thousand rupees of material deserves the numbers rather than a red triangle. */
+  function creditGateText(g, ch) {
+    var L = [];
+    L.push("CREDIT STOP - " + g.name);
+    L.push(String(ch.challanNo || "") + (ch.site ? "  /  " + ch.site : ""));
+    L.push("");
+    L.push("Already owing (delivered, unpaid) . " + moneyAscii(g.ag.due));
+    if (g.ag.oldest) L.push("Oldest unpaid money . . . . . . . . " + g.ag.oldest + " days");
+    if (g.ag.overdue > 0.5) L.push("Past " + g.days + " days . . . . . . . . . . . . " + moneyAscii(g.ag.overdue));
+    if (g.road > 0.5) L.push("Out on the road, not signed for . . " + moneyAscii(g.road));
+    L.push("This challan . . . . . . . . . . . . " + moneyAscii(g.now));
+    L.push("-----------------------------------");
+    L.push("Standing at his site if released . . " + moneyAscii(g.exposure));
+    L.push(g.limit > 0 ? "His credit limit . . . . . . . . . . " + moneyAscii(g.limit)
+                       : "No credit limit is set for him.");
+    L.push("");
+    L.push("Why you are being stopped: " + g.reasons.join(", and ") + ".");
+    L.push("");
+    L.push("Press OK only if you have decided to send it anyway.");
+    L.push("The decision is recorded under your name.");
+    return L.join("\n");
+  }
+  /* Headroom at a glance on the Payments screen. Costs nothing for the clients who have no
+     limit set - it returns before it touches the ageing. */
+  function creditPill(name) {
+    var t = creditTerms(name);
+    if (!t.limit) return "";
+    var ex = clientAging(name).due + chOnRoad(name, "");
+    if (ex <= t.limit + 0.5) {
+      return ' <span style="background:#dcfce7;color:#166534;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap">' +
+        money(t.limit - ex) + ' left</span>';
+    }
+    return ' <span style="background:#fee2e2;color:#b91c1c;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap">' +
+      money(ex - t.limit) + ' over limit</span>';
+  }
+
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
     var cl = hisabResolve(S.q);
@@ -6482,7 +6570,7 @@ function viewCatalogue() {
     h += '<div class="empty" style="text-align:left;padding:0 0 12px">Only challans with a <b>signed material receipt</b> enter the ledger. Freight appears here when the client bears it.</div>';
     if (!list.length) return h + '<div class="empty">Nothing delivered yet.</div>';
     list.forEach(function (x) {
-      h += '<div class="card"><h3>' + esc(x.name) +
+      h += '<div class="card"><h3>' + esc(x.name) + creditPill(x.name) +
         (x.l.due > 0 ? ' ' + dueAmt(x.l.due) : ' <span class="pill Won">clear</span>') +
         (x.l.due > 0 && x.age ? ' <span class="pill ' + payBucket(x.age).cls + '">' + x.age + 'd old</span>' : "") + '</h3>' +
         '<div class="meta">' + x.l.chs.length + ' challan(s) &middot; billed ' + money(x.l.billed) +
@@ -6490,6 +6578,7 @@ function viewCatalogue() {
         '<br>Received ' + money(x.l.paid) + '</div>' +
         '<div class="acts"><button class="btn sm" data-act="pay-in" data-n="' + esc(x.name) + '">Payment received</button>' +
         (x.l.due > 0 ? '<button class="btn sm ghost" data-act="pay-wa" data-n="' + esc(x.name) + '">Remind on WhatsApp</button>' : "") +
+        '<button class="btn sm ghost" data-act="rc-list" data-n="' + esc(x.name) + '">Receipts</button>' +
         '<button class="btn sm ghost" data-act="ledger-pdf" data-n="' + esc(x.name) + '">Ledger PDF</button></div></div>';
     });
     return h;
@@ -6506,6 +6595,134 @@ function viewCatalogue() {
       '<label>Reference (cheque / UTR)</label><input id="pi_ref"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="pi-save" data-n="' + esc(client) + '">Save payment</button></div>';
+  }
+
+  /* ---------- PAYMENT RECEIPT (v6.9.193) ----------
+     Money came in, the entry was made, and the customer got nothing back. This is the one gap
+     in the whole chain that a customer actually notices - and the thing that ends the "I already
+     paid that" argument before it starts. One page, on the letterhead, amount in words the way
+     every receipt in this trade is written. */
+
+  /* Indian numbering - crore, lakh, thousand. Written out so the figure and the words can never
+     disagree, which is the only reason a receipt carries words at all. */
+  function amountWords(n) {
+    n = Math.round(Number(n) || 0);
+    if (n <= 0) return "Zero";
+    var ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+      "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+    var tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+    var two = function (x) { return x < 20 ? ones[x] : (tens[Math.floor(x / 10)] + (x % 10 ? " " + ones[x % 10] : "")); };
+    var three = function (x) { return x >= 100 ? (ones[Math.floor(x / 100)] + " Hundred" + (x % 100 ? " " + two(x % 100) : "")) : two(x); };
+    var out = [], units = [[10000000, "Crore"], [100000, "Lakh"], [1000, "Thousand"], [100, "Hundred"]];
+    units.forEach(function (u) {
+      var q = Math.floor(n / u[0]);
+      if (q) { out.push((u[0] === 10000000 ? three(q) : two(q)) + " " + u[1]); n -= q * u[0]; }
+    });
+    if (n) out.push(two(n));
+    return out.join(" ");
+  }
+  /* Derived from the payment's own id, so every payment ever recorded - including the ones saved
+     long before this screen existed - already has a receipt number, with no migration and no
+     second sequence to keep in step with the server. */
+  function receiptNo(p) {
+    var d = String(p.date || "").replace(/-/g, "").slice(2);
+    /* six digits off the id, zero-padded: a day's worth of receipts can never collide, and a
+       payment recorded on a phone that was offline gets the same number as everyone else sees. */
+    var s = ("000000" + String(p.id || "").replace(/\D/g, "")).slice(-6);
+    return "RC-" + (d || "000000") + "-" + s;
+  }
+  function receiptPdf(p) {
+    var cl = clientByName(p.client) || {}, led = clientLedger(p.client);
+    return commPdfBase("PAYMENT RECEIPT", { customerName: p.client, site: p.siteName || "" }, p.date || today())
+      .then(function (b) {
+        var doc = b.doc, F = b.F, L = b.L, R = b.R, y = 46;
+        var Rs = function (n) { return (b.uni ? "₹" : "Rs. ") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+        F("bold"); doc.setFontSize(9.5); doc.setTextColor(13, 118, 108);
+        doc.text("RECEIPT No. " + receiptNo(p), L, y);
+        F("normal"); doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+        doc.text("Dated " + fullDate(p.date || today()), R, y, { align: "right" });
+        y += 13;
+        F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
+        doc.text("RECEIVED WITH THANKS FROM", L, y);
+        y += 8; F("bold"); doc.setFontSize(12.5); doc.setTextColor(17, 34, 45);
+        doc.text(String(p.client || "-"), L, y);
+        var addr = String(cl.address || "");
+        if (cl.area) addr += (addr ? ", " : "") + cl.area;
+        if (cl.location) addr += (addr ? ", " : "") + cl.location;
+        F("normal"); doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+        if (addr) { y += 6; doc.text(doc.splitTextToSize(addr, R - L)[0], L, y); }
+        if (p.siteName) { y += 5.5; doc.text("Site: " + String(p.siteName), L, y); }
+        y += 14;
+        doc.setFillColor(232, 246, 244); doc.rect(L, y - 8, R - L, 26, "F");
+        doc.setFillColor(13, 118, 108); doc.rect(L, y - 8, 1.8, 26, "F");
+        F("normal"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
+        doc.text("THE SUM OF", L + 7, y - 2);
+        F("bold"); doc.setFontSize(17); doc.setTextColor(17, 34, 45);
+        doc.text(Rs(p.amount), L + 7, y + 7);
+        F("normal"); doc.setFontSize(8.5); doc.setTextColor(71, 85, 105);
+        doc.text(doc.splitTextToSize(amountWords(p.amount) + " Rupees only", R - L - 16)[0], L + 7, y + 14);
+        y += 34;
+        var rows = [["By", String(p.mode || "-")]];
+        if (p.ref) rows.push([String(p.mode) === "Cheque" ? "Cheque no." : "Reference", String(p.ref)]);
+        rows.push(["On account of", "Payment against outstanding dues"]);
+        rows.forEach(function (r) {
+          F("normal"); doc.setFontSize(9); doc.setTextColor(100, 116, 139); doc.text(r[0], L, y);
+          F("bold"); doc.setFontSize(9.5); doc.setTextColor(17, 34, 45);
+          doc.text(doc.splitTextToSize(r[1], R - L - 40)[0], L + 40, y);
+          y += 7.5;
+        });
+        y += 7; doc.setDrawColor(220, 228, 232); doc.line(L, y, R, y); y += 10;
+        F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
+        doc.text("HIS ACCOUNT WITH US TODAY", L, y); y += 9;
+        var pos = [
+          ["Total billed", (led.opening || 0) + (led.billed || 0) + (led.freight || 0), 0],
+          ["Received in all", led.paid || 0, 0],
+          ["Returns credited", led.returned || 0, 0],
+          ["Balance outstanding", led.due || 0, 1]
+        ];
+        pos.forEach(function (r) {
+          if (!r[1] && !r[2] && r[0] === "Returns credited") return;
+          if (r[2]) { F("bold"); doc.setFontSize(10.5); doc.setTextColor(17, 34, 45); }
+          else { F("normal"); doc.setFontSize(9.5); doc.setTextColor(71, 85, 105); }
+          doc.text(r[0], L, y); doc.text(Rs(r[1]), R, y, { align: "right" });
+          y += 7.5;
+        });
+        var sy = 252; doc.setDrawColor(180, 190, 200); doc.line(R - 62, sy, R, sy);
+        F("normal"); doc.setFontSize(8); doc.setTextColor(100, 116, 139);
+        doc.text("For Energy World — Authorised Signatory", R, sy + 5, { align: "right" });
+        doc.setFontSize(7.6); doc.text("Cheques and transfers are subject to realisation.", L, sy + 5);
+        doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
+        doc.text("Energy World  |  Panipat · Sonipat · Karnal", L, 290);
+        return doc;
+      });
+  }
+  /* Shown the moment a payment is saved - the one second at which sending the receipt costs
+     nobody any effort. "Later" is a real option; the same receipt is always reachable again
+     from the Receipts button on his card. */
+  function modalPayDone(p) {
+    return '<h2>Payment recorded</h2><p class="sub">' + esc(p.client) + ' &middot; ' + money(p.amount) + '</p>' +
+      '<div class="card"><div class="meta">Receipt no. <b>' + esc(receiptNo(p)) + '</b><br>' +
+      'Send it to him now. It looks professional, and it ends the &ldquo;I already paid that&rdquo; conversation before it starts.</div></div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Later</button>' +
+      '<button class="btn ghost" data-act="rc-pdf" data-p="' + esc(p.id) + '">Download</button>' +
+      '<button class="btn" data-act="rc-wa" data-p="' + esc(p.id) + '">Send on WhatsApp</button></div>';
+  }
+  function modalReceipts(client) {
+    var ps = (S.data.payments || []).filter(function (x) { return x.client === client; })
+      .sort(function (a, b) { return String(b.date || "").localeCompare(String(a.date || "")); });
+    var h = '<h2>Receipts</h2><p class="sub">' + esc(client) + '</p>';
+    if (!ps.length) {
+      return h + '<div class="empty">No payment has been recorded for him yet.</div>' +
+        '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+    }
+    ps.forEach(function (p) {
+      h += '<div class="card"><h3>' + money(p.amount) + ' <span class="pill">' + esc(p.mode || "") + '</span></h3>' +
+        '<div class="meta">' + esc(fullDate(p.date)) + ' &middot; receipt ' + esc(receiptNo(p)) +
+        (p.ref ? ' &middot; ref ' + esc(p.ref) : "") + '</div>' +
+        '<div class="acts"><button class="btn sm ghost" data-act="rc-pdf" data-p="' + esc(p.id) + '">Download</button>' +
+        '<button class="btn sm" data-act="rc-wa" data-p="' + esc(p.id) + '">WhatsApp</button></div></div>';
+    });
+    return h + '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
   }
 
   function ledgerPdf(client) {
@@ -9887,6 +10104,485 @@ function viewCatalogue() {
     return h + '</div>';
   }
 
+  /* ======================== THE WEEKLY BRIEF (v6.9.192) ========================
+     Everything below reads the book that is already in memory. It writes nothing, stores nothing
+     and deletes nothing. Scope follows the person looking: a sales executive sees his own
+     customers, the owner and accounts see everybody split by executive. */
+
+  /* Local-date string. Deliberately NOT toISOString(): at an Indian midnight that shifts the
+     date back a day, which would put Monday's work in the previous week. */
+  function briefD(dt) {
+    var m = dt.getMonth() + 1, d = dt.getDate();
+    return dt.getFullYear() + "-" + (m < 10 ? "0" : "") + m + "-" + (d < 10 ? "0" : "") + d;
+  }
+  /* Monday-based week. off = 0 this week, -1 last week, and so on. */
+  function briefWeek(off) {
+    var d = new Date(today() + "T00:00:00");
+    var dow = d.getDay();                                   /* 0 = Sunday */
+    d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1) + (Number(off) || 0) * 7);
+    var mon = briefD(d);
+    var e = new Date(mon + "T00:00:00"); e.setDate(e.getDate() + 6);
+    return { mon: mon, sun: briefD(e), off: Number(off) || 0 };
+  }
+  function briefIn(v, w) { var s = dstr(v); return !!s && s >= w.mon && s <= w.sun; }
+  function briefWkLabel(w) {
+    if (w.off === 0) return "This week";
+    if (w.off === -1) return "Last week";
+    return fullDate(w.mon) + " – " + fullDate(w.sun);
+  }
+  function briefMine(nm) { try { return isMineClient(nm); } catch (e) { return true; } }
+  function briefBy(map) {
+    return Object.keys(map || {}).map(function (k) { return { k: k, v: map[k] }; })
+      .sort(function (a, b) { return b.v - a.v; });
+  }
+  function briefState() {
+    if (!S.brief) S.brief = { mode: (new Date().getDay() >= 4 ? "recap" : "plan"), off: 0 };
+    return S.brief;
+  }
+
+  /* ---------------- MONDAY: where the week goes ----------------
+     The plan is always about NOW. There is no honest way to reconstruct last Monday's ageing, so
+     the plan has no week arrows - only the recap does. */
+  function briefPlan() {
+    var w = briefWeek(0);
+
+    /* A. money to collect - past the credit window only, biggest first */
+    var money = [];
+    try {
+      (hisabClientNames() || []).forEach(function (nm) {
+        if (!briefMine(nm)) return;
+        var ag = clientAging(nm);
+        if (!ag || ag.overdue <= 0.5) return;
+        money.push({ client: nm, overdue: ag.overdue, due: ag.due, oldest: ag.oldest, exec: scOwnerOf(nm) });
+      });
+    } catch (e) { }
+    money.sort(function (a, b) { return b.overdue - a.overdue; });
+
+    /* B. pitch windows closing - straight off the agent, so one engine ranks them, not two */
+    var windows = [];
+    try {
+      windows = agLive().filter(function (a) { return a.kind === "closing" || a.kind === "window"; });
+    } catch (e) { windows = []; }
+
+    /* C. quotations waiting on an answer */
+    var quotes = [];
+    try {
+      quotes = radarQuotes().map(function (q) {
+        return { quoteNo: q.quoteNo || "", client: q.client || "", days: qSilentDays(q),
+          net: Number(q.net) || 0, status: q.status || "" };
+      });
+    } catch (e) { quotes = []; }
+
+    /* D. names going quiet - leads with no movement, sites with no visit */
+    var quiet = { leads: [], sites: [] };
+    try {
+      quiet.leads = agingLeads().filter(function (x) { return briefMine(x.c.name); })
+        .map(function (x) { return { name: x.c.name, days: x.days, exec: String(x.c.ownedBy || x.c.createdBy || "") }; });
+    } catch (e) { }
+    try {
+      quiet.sites = staleSites().filter(function (x) { return !x.st.client || briefMine(x.st.client); })
+        .map(function (x) { return { name: x.st.name, client: x.st.client || "", days: x.days, exec: String(x.st.owner || "") }; });
+    } catch (e) { }
+
+    /* E. where each executive stands - against his month target AND against the calendar.
+       "Pace" is what he should have booked by today if the month were spread evenly. */
+    var execs = [];
+    if (seesAllClients()) {
+      var mth = today().slice(0, 7);
+      var dayN = Number(today().slice(8, 10)) || 1;
+      var dim = new Date(Number(today().slice(0, 4)), Number(today().slice(5, 7)), 0).getDate() || 30;
+      try {
+        scExecs().forEach(function (e) {
+          var m = scExecMetrics(e, mth);
+          var sa = (m.areas || []).filter(function (a) { return a.key === "sales"; })[0] || {};
+          var tgt = Number(sa.target) || 0;
+          var pace = Math.round(tgt * dayN / dim);
+          execs.push({ exec: e, sales: Math.round(m.sales || 0), target: tgt, pace: pace,
+            gap: Math.round(pace - (m.sales || 0)), score: Math.round(m.score || 0) });
+        });
+      } catch (e2) { execs = []; }
+      execs.sort(function (a, b) { return b.gap - a.gap; });
+    }
+
+    /* F. the decisions nobody else can take */
+    var owner = null;
+    if (seesAllClients()) {
+      var drafts = (S.data.challans || []).filter(function (c) { return (c.status || "Draft") === "Draft"; }).length;
+      var unb = { val: 0, count: 0 };
+      try { var u = unbilledStats(); unb = { val: u.val, count: u.count }; } catch (e3) { }
+      var dups = 0;
+      try { dups = dupScan().groups.filter(function (g) { return !g.settled; }).length; } catch (e4) { }
+      var toComm = 0; try { toComm = commPending().length; } catch (e5) { }
+      owner = { drafts: drafts, unbilled: unb, dups: dups, commission: toComm };
+    }
+
+    return { week: w, money: money, windows: windows, quotes: quotes, quiet: quiet,
+      execs: execs, owner: owner };
+  }
+
+  /* ---------------- FRIDAY: where the week actually went ---------------- */
+  function briefRecap(off) {
+    var w = briefWeek(Math.min(0, Number(off) || 0));
+    var mineOnly = !seesAllClients();
+
+    /* A. billed - the same three statuses the scorecard counts, so the two never disagree */
+    var chs = dedupeChallans((S.data.challans || []).filter(function (c) {
+      return briefIn(c.createdAt, w)
+        && ["Approved", "Dispatched", "Received"].indexOf(String(c.status)) >= 0
+        && briefMine(c.customerName);
+    }));
+    var billed = { total: 0, count: chs.length, by: {} };
+    chs.forEach(function (c) {
+      var amt = challanNet(c) + chFreight(c);
+      billed.total += amt;
+      var e = scOwnerOf(c.customerName) || "(not assigned)";
+      billed.by[e] = (billed.by[e] || 0) + amt;
+    });
+
+    /* B. collected */
+    var pays = (S.data.payments || []).filter(function (p) { return briefIn(p.date, w) && briefMine(p.client); });
+    var collected = { total: 0, count: pays.length, by: {} };
+    pays.forEach(function (p) {
+      var amt = Number(p.amount) || 0;
+      collected.total += amt;
+      var e = scOwnerOf(p.client) || "(not assigned)";
+      collected.by[e] = (collected.by[e] || 0) + amt;
+    });
+
+    /* C. quotations */
+    var qs = (S.data.quotes || []).filter(function (q) { return briefMine(q.client); });
+    var raised = qs.filter(function (q) { return briefIn(q.createdAt, w); });
+    var won = qs.filter(function (q) { return q.status === "Won" && briefIn(q.updatedAt || q.createdAt, w); });
+    var lost = qs.filter(function (q) { return q.status === "Lost" && briefIn(q.updatedAt || q.createdAt, w); });
+    var quotes = { raised: raised.length, lost: lost.length, won: won.length,
+      raisedAmt: raised.reduce(function (a, q) { return a + (Number(q.net) || 0); }, 0),
+      wonAmt: won.reduce(function (a, q) { return a + (Number(q.net) || 0); }, 0) };
+
+    /* D. new names entered */
+    var names = (S.data.clients || []).filter(function (c) { return briefIn(c.createdAt, w) && briefMine(c.name); })
+      .map(function (c) { return { name: c.name, exec: String(c.ownedBy || c.createdBy || ""), city: c.location || "" }; });
+
+    /* E. site visits logged */
+    var vs = (S.data.sitevisits || []).filter(function (v) { return briefIn(v.date || v.createdAt, w); });
+    if (mineOnly) vs = vs.filter(function (v) { return String(v.createdBy || "") === S.user; });
+    var visits = { total: vs.length, by: {} };
+    vs.forEach(function (v) { var e = String(v.createdBy || "(unknown)"); visits.by[e] = (visits.by[e] || 0) + 1; });
+
+    /* F. WHAT SLIPPED - derived from dates, never from a stored copy of Monday's plan.
+       sinceMon is how many days have passed since that Monday, so "already overdue then" is
+       simply "older than the credit window plus those days". */
+    var sinceMon = Math.max(0, -daysTo(w.mon));
+    var slipped = { money: [], quotes: [], followups: [] };
+    try {
+      (hisabClientNames() || []).forEach(function (nm) {
+        if (!briefMine(nm)) return;
+        var ag = clientAging(nm);
+        if (!ag || ag.overdue <= 0.5) return;
+        if (ag.oldest > CREDIT_DAYS + sinceMon) {
+          slipped.money.push({ client: nm, overdue: ag.overdue, oldest: ag.oldest, exec: scOwnerOf(nm) });
+        }
+      });
+    } catch (e) { }
+    slipped.money.sort(function (a, b) { return b.overdue - a.overdue; });
+    try {
+      slipped.quotes = radarQuotes().filter(function (q) { return qSilentDays(q) > RADAR_MIN + sinceMon; })
+        .map(function (q) { return { quoteNo: q.quoteNo || "", client: q.client || "", days: qSilentDays(q) }; });
+    } catch (e) { }
+    try {
+      slipped.followups = openFollowups().filter(function (f) {
+        if (mineOnly && String(f.createdBy || "") !== S.user) return false;
+        return f.dueDate && dstr(f.dueDate) < w.mon;
+      }).map(function (f) {
+        return { who: f.customerName || "", note: f.note || "", due: dstr(f.dueDate), exec: String(f.createdBy || "") };
+      });
+    } catch (e) { }
+
+    return { week: w, billed: billed, collected: collected, quotes: quotes, names: names,
+      visits: visits, slipped: slipped, sinceMon: sinceMon };
+  }
+
+  /* ---------------- the draft, in words, for the team channel ---------------- */
+  function briefText() {
+    var st = briefState(), out = [];
+    if (st.mode === "recap") {
+      var r = briefRecap(st.off);
+      out.push("Energy World — the week behind (" + fullDate(r.week.mon) + " to " + fullDate(r.week.sun) + ")");
+      out.push("");
+      out.push("Billed: " + moneyAscii(r.billed.total) + " on " + r.billed.count + " challan(s)");
+      briefBy(r.billed.by).forEach(function (x) { out.push("  • " + x.k + ": " + moneyAscii(x.v)); });
+      out.push("Collected: " + moneyAscii(r.collected.total) + " in " + r.collected.count + " receipt(s)");
+      briefBy(r.collected.by).forEach(function (x) { out.push("  • " + x.k + ": " + moneyAscii(x.v)); });
+      out.push("Quotations: " + r.quotes.raised + " raised, " + r.quotes.won + " won, " + r.quotes.lost + " lost");
+      out.push("New names entered: " + r.names.length + "   Site visits logged: " + r.visits.total);
+      out.push("");
+      var sl = r.slipped.money.length + r.slipped.quotes.length + r.slipped.followups.length;
+      out.push(sl ? "What slipped (" + sl + "):" : "Nothing slipped — nothing was carried over from Monday.");
+      r.slipped.money.slice(0, 6).forEach(function (m) {
+        out.push("  • " + m.client + " — " + moneyAscii(m.overdue) + " still not paid, oldest " + m.oldest + " days");
+      });
+      r.slipped.quotes.slice(0, 5).forEach(function (q) {
+        out.push("  • " + (q.quoteNo || "Quotation") + " to " + q.client + " — quiet " + q.days + " days");
+      });
+      r.slipped.followups.slice(0, 5).forEach(function (f) {
+        out.push("  • Follow-up on " + (f.who || "a customer") + " — was due " + fullDate(f.due));
+      });
+      out.push("");
+      out.push("(from the CRM — read it, change anything, then send)");
+      return out.join("\n");
+    }
+
+    var pl = briefPlan();
+    out.push("Energy World — the week ahead (from " + fullDate(pl.week.mon) + ")");
+    out.push("");
+    var mTot = pl.money.reduce(function (a, x) { return a + x.overdue; }, 0);
+    out.push(pl.money.length
+      ? "Money to collect: " + moneyAscii(mTot) + " from " + pl.money.length + " customer(s)"
+      : "Money to collect: nothing past " + CREDIT_DAYS + " days.");
+    pl.money.slice(0, 6).forEach(function (m) {
+      out.push("  • " + m.client + " — " + moneyAscii(m.overdue) + ", oldest " + m.oldest + " days" + (m.exec ? " (" + m.exec + ")" : ""));
+    });
+    out.push("");
+    out.push(pl.windows.length ? "Pitch windows closing: " + pl.windows.length : "Pitch windows closing: none this week.");
+    pl.windows.slice(0, 6).forEach(function (a) { out.push("  • " + a.title + " — " + a.tag); });
+    out.push("");
+    out.push(pl.quotes.length ? "Quotations waiting on an answer: " + pl.quotes.length : "Quotations waiting: none gone quiet.");
+    pl.quotes.slice(0, 6).forEach(function (q) {
+      out.push("  • " + (q.quoteNo || "Quotation") + " to " + q.client + " — quiet " + q.days + " days, " + moneyAscii(q.net));
+    });
+    out.push("");
+    var qn = pl.quiet.leads.length + pl.quiet.sites.length;
+    out.push(qn ? "Going quiet: " + pl.quiet.leads.length + " lead(s), " + pl.quiet.sites.length + " site(s)"
+      : "Going quiet: nothing — every lead and site has been touched.");
+    pl.quiet.leads.slice(0, 4).forEach(function (l) { out.push("  • " + l.name + " — no movement " + l.days + " days"); });
+    pl.quiet.sites.slice(0, 4).forEach(function (s2) { out.push("  • " + s2.name + " — no visit " + s2.days + " days"); });
+    if (pl.execs.length) {
+      out.push("");
+      out.push("Where each executive stands this month:");
+      pl.execs.forEach(function (e) {
+        out.push("  • " + e.exec + ": " + moneyAscii(e.sales) + " of " + moneyAscii(e.target) +
+          " — " + (e.gap > 0 ? moneyAscii(e.gap) + " behind the pace" : "on or ahead of the pace"));
+      });
+    }
+    if (pl.owner) {
+      var od = [];
+      if (pl.owner.drafts) od.push(pl.owner.drafts + " challan(s) waiting for your approval");
+      if (pl.owner.unbilled.count) od.push(pl.owner.unbilled.count + " delivery(ies) not yet billed — " + moneyAscii(pl.owner.unbilled.val));
+      if (pl.owner.commission) od.push(pl.owner.commission + " product(s) waiting to be commissioned");
+      if (pl.owner.dups) od.push(pl.owner.dups + " duplicate customer(s) to settle");
+      if (od.length) { out.push(""); out.push("Only you can clear these:"); od.forEach(function (x) { out.push("  • " + x); }); }
+    }
+    out.push("");
+    out.push("(from the CRM — read it, change anything, then send)");
+    return out.join("\n");
+  }
+
+  function briefPdf() {
+    var st = briefState();
+    return commPdfBase(st.mode === "recap" ? "THE WEEK BEHIND" : "THE WEEK AHEAD", {}, today()).then(function (b) {
+      var doc = b.doc, F = b.F, L = b.L, R = b.R, y = 48;
+      var lines = briefText().split("\n").slice(2);        /* the header already carries the title */
+      lines.forEach(function (ln) {
+        if (y > 276) { doc.addPage(); y = 24; }
+        if (!ln.trim()) { y += 3.2; return; }
+        var sub = ln.indexOf("  •") === 0;
+        F(sub ? "normal" : "bold"); doc.setFontSize(sub ? 10 : 11.5);
+        if (sub) doc.setTextColor(90, 105, 120); else doc.setTextColor(17, 34, 45);
+        doc.splitTextToSize(ln, R - L - 6).forEach(function (t2, i) {
+          if (y > 281) { doc.addPage(); y = 24; }
+          doc.text((i === 0 ? "" : "     ") + t2, L, y); y += sub ? 5.1 : 6.4;
+        });
+      });
+      doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
+      doc.text("Energy World  |  Panipat · Sonipat · Karnal", L, 290);
+      return doc;
+    });
+  }
+
+  function modalBriefSend() {
+    return '<h2>The brief — you press send</h2>' +
+      '<p class="sub">Nothing has gone out yet. Read it, change any line you like, then send it. It goes out as a PDF with this text as the message.</p>' +
+      '<label>Draft</label>' +
+      '<textarea id="brief_msg" rows="14" style="font-size:13px">' + esc(briefText()) + '</textarea>' +
+      '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:4px">This is an internal note for your own team — no customer sees it.</div>' +
+      '<div class="foot" style="flex-wrap:wrap;gap:6px">' +
+      '<button class="btn ghost" data-act="close">Close</button>' +
+      '<button class="btn ghost" data-act="brief-copy">Copy text</button>' +
+      '<button class="btn ghost" data-act="brief-wa">WhatsApp</button>' +
+      '<button class="btn" data-act="brief-tg">Send to the team</button>' +
+      '</div>';
+  }
+
+  /* ---------------- the screen ---------------- */
+  function briefCard(title, note, count, body, tone) {
+    var c = tone === "warn" ? "#fca5a5" : (tone === "good" ? "#86efac" : "#e2e8f0");
+    var bg = tone === "warn" ? "#fef2f2" : (tone === "good" ? "#f0fdf4" : "#fff");
+    return '<div class="card" style="border-color:' + c + ';background:' + bg + '">' +
+      '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">' +
+      '<h3 style="margin:0;font-size:15px">' + esc(title) + '</h3>' +
+      (count === null || count === undefined ? '' : '<span class="pill teal">' + esc(String(count)) + '</span>') +
+      '</div>' +
+      (note ? '<div class="meta" style="margin:3px 0 7px">' + esc(note) + '</div>' : '<div style="height:6px"></div>') +
+      body + '</div>';
+  }
+  function briefRow(left, right, sub) {
+    return '<div style="border-top:1px solid #e2e8f0;padding:6px 0;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:150px"><div style="font-weight:600;font-size:13.5px">' + left + '</div>' +
+      (sub ? '<div class="meta" style="font-size:12px">' + sub + '</div>' : '') + '</div>' +
+      (right ? '<div style="font-size:13px;white-space:nowrap">' + right + '</div>' : '') + '</div>';
+  }
+  function briefEmpty(msg) { return '<div class="meta" style="color:#16a34a;font-size:12.5px">' + esc(msg) + '</div>'; }
+
+  function viewBrief() {
+    var st = briefState();
+    var isPlan = st.mode !== "recap";
+    var h = '<div class="card" style="background:#0b3b36;border-color:#0b3b36;color:#fff">' +
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:180px">' +
+      '<div style="font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#5eead4"><b>The brief</b></div>' +
+      '<h3 style="margin:3px 0 0;font-size:18px;color:#fff">' + (isPlan ? "Where this week goes" : "Where the week went") + '</h3>' +
+      '<div style="font-size:12.5px;color:#a7f3e8;margin-top:2px">' +
+      (isPlan ? "Monday plan — read it once, then work down it." : "Friday recap — including the part nobody likes.") +
+      '</div></div>' +
+      '<div class="acts" style="gap:6px;flex-wrap:wrap">' +
+      '<button class="btn sm' + (isPlan ? '' : ' ghost') + '" data-act="brief-mode" data-m="plan">Plan</button>' +
+      '<button class="btn sm' + (isPlan ? ' ghost' : '') + '" data-act="brief-mode" data-m="recap">Recap</button>' +
+      '<button class="btn sm ghost" data-act="brief-send">Send to the team</button>' +
+      '</div></div></div>';
+
+    if (isPlan) {
+      var pl = briefPlan();
+      h += '<div class="meta" style="margin:8px 0 4px">Week of <b>' + esc(fullDate(pl.week.mon)) + '</b> · built from your own book a moment ago · nothing here is stored or sent by itself.</div>';
+
+      /* money */
+      var mTot = pl.money.reduce(function (a, x) { return a + x.overdue; }, 0);
+      var mb = "";
+      if (!pl.money.length) mb = briefEmpty("Nothing is past " + CREDIT_DAYS + " days. Rare — keep it that way.");
+      else {
+        mb = '<div class="meta" style="margin-bottom:2px">Total past ' + CREDIT_DAYS + ' days: <b style="color:#b91c1c">' + money(mTot) + '</b></div>';
+        pl.money.slice(0, 12).forEach(function (m) {
+          mb += briefRow(esc(m.client), '<b style="color:#b91c1c">' + money(m.overdue) + '</b>',
+            "oldest " + m.oldest + " days" + (m.exec ? " · " + esc(m.exec) : ""));
+        });
+        if (pl.money.length > 12) mb += '<div class="meta" style="margin-top:5px">… and ' + (pl.money.length - 12) + ' more. Open HISAB for the full list.</div>';
+        mb += '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="tab" data-tab="billing">Open HISAB</button></div>';
+      }
+      h += briefCard("Money to collect", "Past the " + CREDIT_DAYS + "-day credit window. Biggest first — start at the top.", pl.money.length, mb, pl.money.length ? "warn" : "good");
+
+      /* windows */
+      var wb = "";
+      if (!pl.windows.length) wb = briefEmpty("No window closing this week.");
+      else {
+        pl.windows.slice(0, 10).forEach(function (a) {
+          wb += briefRow(esc(a.title) + ' <span class="pill due">' + esc(a.tag) + '</span>', "", esc(a.why || ""));
+        });
+        wb += '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="tab" data-tab="agent">Open the agent — the messages are written</button></div>';
+      }
+      h += briefCard("Pitch windows closing", "A site only stays at a stage for so long. These are the ones that will not wait.", pl.windows.length, wb, pl.windows.length ? "warn" : "good");
+
+      /* quotes */
+      var qb = "";
+      if (!pl.quotes.length) qb = briefEmpty("No quotation has gone quiet.");
+      else {
+        pl.quotes.slice(0, 10).forEach(function (q) {
+          qb += briefRow(esc(q.quoteNo || "Quotation") + " · " + esc(q.client), money(q.net),
+            "quiet " + q.days + " days · " + esc(q.status));
+        });
+        qb += '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="tab" data-tab="followups">Open follow-ups</button></div>';
+      }
+      h += briefCard("Quotations waiting on an answer", "Sent or under negotiation, no movement for days. A quotation nobody chases is a quotation somebody else wins.", pl.quotes.length, qb, pl.quotes.length ? "warn" : null);
+
+      /* quiet */
+      var qtb = "";
+      if (!pl.quiet.leads.length && !pl.quiet.sites.length) qtb = briefEmpty("Every lead and every site has been touched recently.");
+      else {
+        pl.quiet.leads.slice(0, 6).forEach(function (l) {
+          qtb += briefRow(esc(l.name), '<span class="pill soon">lead</span>', "no movement " + l.days + " days" + (l.exec ? " · " + esc(l.exec) : ""));
+        });
+        pl.quiet.sites.slice(0, 6).forEach(function (s2) {
+          qtb += briefRow(esc(s2.name), '<span class="pill soon">site</span>', "no visit " + s2.days + " days" + (s2.client ? " · " + esc(s2.client) : ""));
+        });
+        var more = Math.max(0, pl.quiet.leads.length - 6) + Math.max(0, pl.quiet.sites.length - 6);
+        if (more) qtb += '<div class="meta" style="margin-top:5px">… and ' + more + ' more.</div>';
+      }
+      h += briefCard("Going quiet", "Nobody decided to drop these — they just stopped being touched. One call each fixes it.", pl.quiet.leads.length + pl.quiet.sites.length, qtb, null);
+
+      /* execs */
+      if (pl.execs.length) {
+        var eb = '<div class="meta" style="margin-bottom:2px">Pace = what an even month would have booked by today. Behind the pace is not a failure — it is a number to talk about on Monday.</div>';
+        pl.execs.forEach(function (e) {
+          var behind = e.gap > 0;
+          eb += briefRow(esc(e.exec),
+            '<b style="color:' + (behind ? "#b91c1c" : "#15803d") + '">' + (behind ? money(e.gap) + " behind" : "on pace") + '</b>',
+            money(e.sales) + " of " + money(e.target) + " · pace " + money(e.pace) + " · scorecard " + e.score + "/100");
+        });
+        eb += '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="tab" data-tab="scorecard">Open the scorecards</button></div>';
+        h += briefCard("Where each executive stands", "Against his own monthly target and against the calendar.", null, eb, null);
+      }
+
+      /* owner-only */
+      if (pl.owner) {
+        var ob = "", any = 0;
+        if (pl.owner.drafts) { any++; ob += briefRow("Challans waiting for your approval", '<b>' + pl.owner.drafts + '</b>', "Nothing moves out of the godown until you approve them."); }
+        if (pl.owner.unbilled.count) { any++; ob += briefRow("Delivered but not billed", '<b style="color:#b91c1c">' + money(pl.owner.unbilled.val) + '</b>', pl.owner.unbilled.count + " challan(s) — goods gone, no bill raised."); }
+        if (pl.owner.commission) { any++; ob += briefRow("Products waiting to be commissioned", '<b>' + pl.owner.commission + '</b>', "The warranty clock does not start until they are."); }
+        if (pl.owner.dups) { any++; ob += briefRow("Duplicate customers to settle", '<b>' + pl.owner.dups + '</b>', "Money and history split across copies of the same man."); }
+        if (!any) ob = briefEmpty("Nothing is waiting on you. Everything is with the team.");
+        h += briefCard("Only you can clear these", "Decisions no executive can take on your behalf.", null, ob, any ? "warn" : "good");
+      }
+    } else {
+      var r = briefRecap(st.off);
+      h += '<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 4px">' +
+        '<button class="btn sm ghost" data-act="brief-week" data-o="-1">← Earlier</button>' +
+        '<b style="font-size:14px">' + esc(briefWkLabel(r.week)) + '</b>' +
+        '<span class="meta">' + esc(fullDate(r.week.mon)) + ' – ' + esc(fullDate(r.week.sun)) + '</span>' +
+        '<div class="grow"></div>' +
+        (r.week.off < 0 ? '<button class="btn sm ghost" data-act="brief-week" data-o="1">Later →</button>' : '') +
+        '</div>';
+
+      var bb = '<div style="font-size:22px;font-weight:800;color:#0f766e">' + money(r.billed.total) + '</div>' +
+        '<div class="meta">on ' + r.billed.count + ' challan(s), approved or beyond</div>';
+      briefBy(r.billed.by).forEach(function (x) { bb += briefRow(esc(x.k), money(x.v), ""); });
+      h += briefCard("Billed this week", "", null, bb, r.billed.total > 0 ? "good" : null);
+
+      var cb = '<div style="font-size:22px;font-weight:800;color:#0f766e">' + money(r.collected.total) + '</div>' +
+        '<div class="meta">in ' + r.collected.count + ' receipt(s) actually banked</div>';
+      briefBy(r.collected.by).forEach(function (x) { cb += briefRow(esc(x.k), money(x.v), ""); });
+      h += briefCard("Collected this week", "Billing is a promise. This is the money.", null, cb, r.collected.total > 0 ? "good" : null);
+
+      var qb2 = briefRow("Quotations raised", '<b>' + r.quotes.raised + '</b>', money(r.quotes.raisedAmt)) +
+        briefRow("Won", '<b style="color:#15803d">' + r.quotes.won + '</b>', money(r.quotes.wonAmt)) +
+        briefRow("Lost", '<b style="color:#b91c1c">' + r.quotes.lost + '</b>', "") +
+        briefRow("New names entered", '<b>' + r.names.length + '</b>',
+          r.names.slice(0, 4).map(function (x) { return esc(x.name); }).join(", ") + (r.names.length > 4 ? " …" : "")) +
+        briefRow("Site visits logged", '<b>' + r.visits.total + '</b>',
+          briefBy(r.visits.by).slice(0, 4).map(function (x) { return esc(x.k) + " " + x.v; }).join(" · "));
+      h += briefCard("What the week produced", "", null, qb2, null);
+
+      var sl = r.slipped.money.length + r.slipped.quotes.length + r.slipped.followups.length;
+      var sb = "";
+      if (!sl) sb = briefEmpty("Nothing carried over from Monday. That is a good week.");
+      else {
+        sb = '<div class="meta" style="margin-bottom:4px">These were already sitting there on ' + esc(fullDate(r.week.mon)) +
+          ' and they are still sitting there. Worked out from the dates — not from a list anyone kept.</div>';
+        r.slipped.money.slice(0, 8).forEach(function (m) {
+          sb += briefRow(esc(m.client), '<b style="color:#b91c1c">' + money(m.overdue) + '</b>',
+            "still not paid · oldest " + m.oldest + " days" + (m.exec ? " · " + esc(m.exec) : ""));
+        });
+        r.slipped.quotes.slice(0, 6).forEach(function (q) {
+          sb += briefRow(esc(q.quoteNo || "Quotation") + " · " + esc(q.client), '<span class="pill due">quiet</span>', q.days + " days without a word");
+        });
+        r.slipped.followups.slice(0, 6).forEach(function (f) {
+          sb += briefRow(esc(f.who || "A customer"), '<span class="pill due">overdue</span>',
+            "was due " + esc(fullDate(f.due)) + (f.note ? " · " + esc(f.note) : ""));
+        });
+      }
+      h += briefCard("What slipped", "", sl, sb, sl ? "warn" : "good");
+    }
+
+    h += '<div class="meta" style="margin:10px 0 4px;color:#94a3b8">Every figure on this screen is worked out from the book each time you open it. Nothing here is saved, and nothing is sent until you press send and read the draft.</div>';
+    return h;
+  }
+
   function agLive() {
     try { return agScan().filter(function (a) { return !a.mute; }); } catch (e) { return []; }
   }
@@ -10856,8 +11552,8 @@ function viewCatalogue() {
     _clDueCache = null; _clStageCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["dups", "Duplicate check"], ["stock", "Stock"]];
+    var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
+    var tabs = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -10876,7 +11572,7 @@ function viewCatalogue() {
 
     var GROUPS = [
       ["Sync", ["pending", "health", "dups"]],
-      ["Sell", ["dash", "agent", "leads", "pitch", "brandfollow", "quotes", "followups", "clients", "partners"]],
+      ["Sell", ["dash", "brief", "agent", "leads", "pitch", "brandfollow", "quotes", "followups", "clients", "partners"]],
       ["Deliver", ["deliveries", "billing", "stock", "tools", "collections", "products"]],
       ["Service", ["service", "spares"]],
       ["Admin", ["payrollhub", "discounts", "report", "scorecard", "pricing", "rules", "teampins"]]
@@ -11462,6 +12158,8 @@ function viewCatalogue() {
         arch: val("c_arch"), plumb: val("c_plumb"), build: val("c_build"), pmc: val("c_pmc"),
         /* migration fields - only rendered for a partner, so blank for everyone else */
         opAmt: val("c_opamt"), opDate: val("c_opdate"),
+        /* credit terms - admin-only inputs, so fld() keeps them intact for everyone else */
+        credLim: fld("c_credlim", "creditLimit"), credDays: fld("c_creddays", "creditDays"),
         leadType: val("c_leadtype"), owner: val("c_owner"),
         /* read with everything else - creating a partner rebuilds this modal */
         stage: fld("c_stage", "stage")
@@ -11502,6 +12200,8 @@ function viewCatalogue() {
             billingJson: JSON.stringify(S.billDraft || []),
             openingAmt: f.opAmt || "", openingAsOn: f.opDate || "",
             leadType: f.leadType || "New",
+            creditLimit: String(f.credLim || "").replace(/[^\d.]/g, ""),
+            creditDays: String(f.credDays || "").replace(/[^\d]/g, ""),
             /* Auto-assign the creator; only admin may set/change it. Enforced here so a tampered
                DOM cannot reassign a lead. */
             ownedBy: (S.role === "admin"
@@ -12356,10 +13056,37 @@ function viewCatalogue() {
       var site = S.data.challans.filter(function (c) { return c.customerName === cln && c.siteId; })[0] || {};
       save("payments", { id: "P-" + Date.now() + "-" + Math.floor(Math.random() * 1000), createdBy: S.user, siteId: site.siteId || "", siteName: site.site || "",
         client: cln, date: val("pi_date"), amount: amt2, mode: val("pi_mode"), ref: val("pi_ref"), notes: "" })
-        .then(function (r) { if (r) closeAck(_gClick, "Payment recorded. Incentive payable updated."); });
+        .then(function (r) {
+          if (!r) return;
+          toast("Payment recorded. Incentive payable updated.");
+          /* Straight into the receipt while he still has the customer in front of him. */
+          S.modal = modalPayDone(r); render();
+        });
       return;
     }
 
+    if (act === "rc-list") { S.modal = modalReceipts(t.getAttribute("data-n")); render(); return; }
+    if (act === "rc-pdf" || act === "rc-wa") {
+      var rpid = t.getAttribute("data-p");
+      var rp = (S.data.payments || []).filter(function (x) { return x.id === rpid; })[0];
+      if (!rp) { toast("That payment is not on this device — pull the team data down and try again."); return; }
+      var rfn = "Receipt_" + String(receiptNo(rp)).replace(/[^\w.-]/g, "_") + ".pdf";
+      if (act === "rc-pdf") {
+        toast("Building the receipt...");
+        loadLogo().then(function () { return receiptPdf(rp); })
+          .then(function (d) { d.save(rfn); toast("Receipt downloaded."); })
+          .catch(function () { toast("Could not build the receipt. Try once more."); });
+        return;
+      }
+      var rcl = clientByName(rp.client) || {};
+      var rnum = String(rcl.mobile || "").replace(/\D/g, "");
+      if (rnum.length === 10) rnum = "91" + rnum;
+      var rmsg = "Hello " + rp.client + ",\n\nWe have received " + moneyAscii(rp.amount) +
+        " by " + String(rp.mode || "").toLowerCase() + " on " + fullDate(rp.date) + ".\n" +
+        "Receipt no. " + receiptNo(rp) + ".\n\nThank you,\nEnergy World";
+      waShareDoc(loadLogo().then(function () { return receiptPdf(rp); }), rfn, rnum, rmsg);
+      return;
+    }
     if (act === "ledger-pdf") {
       var lc = t.getAttribute("data-n");
       toast("Building ledger...");
@@ -12433,6 +13160,43 @@ function viewCatalogue() {
       /* Only one form is ever open, so find its save button by the marker rather than by
          guessing a name - the challan and the follow-up share the same field id. */
       stageBtnSync(sval);
+      return;
+    }
+    if (act === "brief-mode") {
+      briefState().mode = t.getAttribute("data-m") === "recap" ? "recap" : "plan";
+      briefState().off = 0; render(); return;
+    }
+    if (act === "brief-week") {
+      var bst = briefState();
+      bst.off = Math.min(0, (Number(bst.off) || 0) + (Number(t.getAttribute("data-o")) || 0));
+      render(); return;
+    }
+    if (act === "brief-send") { S.modal = modalBriefSend(); render(); return; }
+    if (act === "brief-copy") {
+      var bta = document.getElementById("brief_msg");
+      if (!bta) return;
+      bta.select();
+      try { document.execCommand("copy"); toast("Copied — paste it wherever you like."); }
+      catch (e) { toast("Could not copy — select the text and copy it by hand."); }
+      return;
+    }
+    if (act === "brief-tg") {
+      /* draft-and-confirm: whatever is in the box right now is what goes out, not what the
+         app would have written on its own. */
+      var bel = document.getElementById("brief_msg");
+      var bmsg = (bel && bel.value) || briefText();
+      toast("Building the brief…");
+      loadLogo().then(function () { return briefPdf(); }).then(function (d) {
+        return api("tgSend", { bot: "TG_QUOTES", pdfBase64: d.output("datauristring").split(",")[1],
+          filename: "EW_brief_" + today() + ".pdf", caption: bmsg.slice(0, 1000) });
+      }).then(function (r) { toast(r && r.ok ? "Sent to the team." : "Send failed — the draft is still on screen."); })
+        .catch(function () { toast("Could not send the brief."); });
+      return;
+    }
+    if (act === "brief-wa") {
+      var bel2 = document.getElementById("brief_msg");
+      waShareDoc(loadLogo().then(function () { return briefPdf(); }), "EW_brief_" + today() + ".pdf", "",
+        (bel2 && bel2.value) || briefText());
       return;
     }
     if (act === "ag-tg") {
@@ -13259,6 +14023,28 @@ function viewCatalogue() {
       if (to === "Received") { S.alt = { id: id, rows: null }; S.modal = modalAlter(); render(); return; }
       /* Approving a dispatch releases real material. A pocket tap must not do that, so the PIN
          is asked again here - the same one used to sign in, nothing new to remember. */
+      /* THE CREDIT GATE (v6.9.193). Approving is the last moment at which this money can still
+         be saved - after it, the material is gone. If the customer is over his limit or holding
+         money past his days, the approver is shown the account and asked to decide. He is never
+         blocked. If he releases anyway, that is written to the audit sheet under his own name,
+         quietly, and nothing else about the challan changes. */
+      if (to === "Approved") {
+        var cgate = creditGate(ch2);
+        if (cgate.stop) {
+          if (!window.confirm(creditGateText(cgate, ch2))) { toast("Held. Nothing was approved."); return; }
+          save("audit", {
+            id: "C-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+            createdAt: new Date().toISOString(), actor: S.user || "", action: "credit:override",
+            target: String(ch2.challanNo || ch2.id) + " / " + String(ch2.customerName || ""),
+            detail: JSON.stringify({
+              due: Math.round(cgate.ag.due), onRoad: Math.round(cgate.road),
+              challan: Math.round(cgate.now), exposure: Math.round(cgate.exposure),
+              limit: cgate.limit, days: cgate.days, oldest: cgate.ag.oldest,
+              overdue: Math.round(cgate.ag.overdue), why: cgate.reasons.join(" + ")
+            }), ip: ""
+          }, true);
+        }
+      }
       if (to === "Approved" || to === "Dispatched") {
         /* In-flight lock: while a move for this challan is being saved, ignore further taps on it.
            Stops a double-tap (or an impatient re-tap during a slow save) firing two moves — the
