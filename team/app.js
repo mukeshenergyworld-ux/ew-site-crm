@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.199";
+  var APP_VERSION = "6.9.200";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1273,6 +1273,96 @@ window.addEventListener("beforeunload", function (ev) {
     return { t: "in warranty to " + fullDate(u.till), k: "Won" };
   }
 
+  /* ---------- AMC AS A PIPELINE (Part C2) ----------
+     An AMC is a sale and a sale has stages. The app already knew the two ends - a warranty
+     ending, and a contract signed - and nothing in between, so an offer that went out and was
+     never answered left no trace anywhere. These five stages are that missing middle.
+
+     Stages live on the AUDIT sheet, one row per move, newest row wins. Not a new column:
+     TEAM_TABS lives on the server and silently drops keys it does not know, and a silent drop
+     on an AMC would not surface for a year. The audit sheet is also append-only, so the whole
+     history of an offer stays readable - including the price that was named and refused. */
+  var AMC_STAGES = ["Due", "Offered", "Quoted", "Won", "Lost"];
+  var AMC_DUE_DAYS = 60;
+  var _amcCache = null;
+  function amcPillClass(s) {
+    return s === "Won" ? "Won" : (s === "Due" ? "due" : (s === "Lost" ? "" : "soon"));
+  }
+  /* Built once per paint. The audit sheet grows forever and the base can be hundreds of cards
+     long; walking the sheet per card would make the list crawl on a phone. */
+  function amcStageMap() {
+    if (_amcCache) return _amcCache;
+    var m = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "amc:stage") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.key || AMC_STAGES.indexOf(String(d.stage)) < 0) return;
+      var prev = m[d.key];
+      /* newest wins - a unit moved to Quoted after it was Offered reads as Quoted because that
+         row is newer, not because the Offered row went anywhere */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[d.key] = {
+          stage: String(d.stage), at: r.createdAt || "", by: r.actor || "",
+          amount: Number(d.amount) || 0, till: String(d.till || ""), note: String(d.note || "")
+        };
+      }
+    });
+    _amcCache = m;
+    return m;
+  }
+  /* The installation row that describes this same machine. For a hand-entered unit that is its
+     own row; for a commissioned one it is the row auto-created at commissioning, matched on the
+     exact triple that row is built from - client, model, date. */
+  function amcInstallFor(u) {
+    if (!u) return null;
+    if (u.src === "inst") return (S.data.installs || []).filter(function (x) { return x.id === u.instId; })[0] || null;
+    var want = baseDedupeKey(u.client, u.model, u.date), hit = null;
+    (S.data.installs || []).forEach(function (ins) {
+      if (hit) return;
+      instProducts(ins).forEach(function (p) {
+        if (hit) return;
+        var idate = dstr(p.installDate) || dstr(ins.installDate) || "";
+        if (baseDedupeKey(ins.client, p.model || p.product, idate) === want) hit = ins;
+      });
+    });
+    return hit;
+  }
+  /* Where a unit stands, and how we know - because those are different questions and the screen
+     should not pretend otherwise. An explicit move always wins. Failing that, an install row
+     already carrying an AMC is a contract somebody closed before this pipeline existed; it is
+     Won whether or not a button was ever pressed. Failing that, a warranty inside its last sixty
+     days is Due - nobody has done anything about it yet, and that is exactly the point. */
+  function amcOf(u) {
+    var ex = amcStageMap()[u.key];
+    if (ex) return { stage: ex.stage, at: ex.at, by: ex.by, amount: ex.amount, till: ex.till, note: ex.note, how: "moved" };
+    var ins = amcInstallFor(u);
+    if (ins && ins.amcType && ins.amcType !== "None") {
+      return { stage: "Won", at: "", by: "", amount: Number(ins.amcAmount) || 0,
+        till: dstr(ins.amcEnd) || "", note: "", how: "already on the installation record" };
+    }
+    if (u.till && daysTo(u.till) <= AMC_DUE_DAYS) {
+      return { stage: "Due", at: "", by: "", amount: 0, till: "", note: "", how: "warranty ending" };
+    }
+    return { stage: "", at: "", by: "", amount: 0, till: "", note: "", how: "" };
+  }
+  function amcPipeline() {
+    var c = { Due: 0, Offered: 0, Quoted: 0, Won: 0, Lost: 0, wonValue: 0, open: [] };
+    baseUnits().forEach(function (u) {
+      var a = amcOf(u);
+      if (!a.stage) return;
+      c[a.stage]++;
+      if (a.stage === "Won") c.wonValue += Number(a.amount) || 0;
+      if (a.stage === "Due" || a.stage === "Offered" || a.stage === "Quoted") {
+        c.open.push({ key: u.key, client: u.client, product: u.product, model: u.model, site: u.site,
+          stage: a.stage, till: u.till || "", days: u.till ? daysTo(u.till) : 9999, exec: u.exec || "" });
+      }
+    });
+    /* the machine closest to being out of cover comes first - that is the one being lost */
+    c.open.sort(function (a, b) { return a.days - b.days; });
+    return c;
+  }
+
   function viewBase() {
     var all = baseUnits(), q = String(S.baseQ || "").toLowerCase();
     var list = all.filter(function (u) { return baseMatch(u, q); });
@@ -1282,6 +1372,20 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="stat ' + (noSn ? "alert" : "") + '"><div class="n">' + noSn + '</div><div class="l">Without a serial no.</div></div>' +
       '<div class="stat"><div class="n">' + all.filter(function (u) { return u.till && daysTo(u.till) >= 0; }).length + '</div><div class="l">Still in warranty</div></div>' +
       '</div>';
+    var pipe = amcPipeline();
+    if (pipe.Due + pipe.Offered + pipe.Quoted + pipe.Won + pipe.Lost) {
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;margin-top:10px">' +
+        '<h3 style="margin:0 0 6px;font-size:14px">AMC pipeline</h3>' +
+        '<div class="row" style="flex-wrap:wrap;gap:6px">' +
+        AMC_STAGES.map(function (s2) {
+          return '<span class="pill ' + amcPillClass(s2) + '">' + esc(s2) + ' <b>' + pipe[s2] + '</b></span>';
+        }).join("") +
+        (pipe.wonValue ? '<span class="pill teal">Won value <b>' + money(pipe.wonValue) + '</b></span>' : "") +
+        '</div>' +
+        '<div class="meta" style="margin-top:6px">A unit becomes <b>Due</b> on its own, the moment its warranty is inside its last ' +
+        AMC_DUE_DAYS + ' days. Everything after that is somebody deciding something &mdash; move it along as you offer, quote and close, ' +
+        'and an offer that goes unanswered stops being invisible.</div></div>';
+    }
     h += '<div class="meta" style="margin:8px 0">Every unit Energy World has standing on a site &mdash; commissioned on a challan or entered on the Service screen. Search by serial number, customer, site or product, and a service call becomes one lookup.</div>';
     h += '<div class="row"><input class="grow" id="baseq" placeholder="Serial no., customer, site, product..." value="' + esc(S.baseQ || "") + '"/>' +
       '<button class="btn sm" data-act="base-find">Find</button>' +
@@ -1289,9 +1393,11 @@ window.addEventListener("beforeunload", function (ev) {
     if (!all.length) return h + '<div class="empty">No units yet. A machine appears here the moment it is commissioned on a challan, or as soon as an installation is added on the Service screen.</div>';
     if (!list.length) return h + '<div class="empty">No unit matches that. Try just the last few digits of the serial.</div>';
     list.slice(0, 300).forEach(function (u) {
-      var w = baseWarrLabel(u);
+      var w = baseWarrLabel(u), am = amcOf(u);
       h += '<div class="card"><h3>' + esc(u.client) + (u.site ? ' <span style="color:#94a3b8;font-size:12px">' + esc(u.site) + '</span>' : "") +
-        ' <span class="pill ' + w.k + '">' + esc(w.t) + '</span></h3>' +
+        ' <span class="pill ' + w.k + '">' + esc(w.t) + '</span>' +
+        (am.stage ? ' <span class="pill ' + amcPillClass(am.stage) + '" title="AMC ' + esc(am.how === "moved" ? ("moved" + (am.by ? " by " + am.by : "")) : am.how) + '">AMC ' + esc(am.stage) + '</span>' : "") +
+        '</h3>' +
         '<div class="meta"><b>' + esc(u.product) + '</b> &middot; ' + esc(u.model) + (u.qty > 1 ? ' &middot; qty ' + esc(u.qty) : "") + '<br>' +
         (u.sn
           ? 'Serial <b style="color:#0f766e;font-family:ui-monospace,monospace">' + esc(u.sn) + '</b>'
@@ -1303,6 +1409,7 @@ window.addEventListener("beforeunload", function (ev) {
         (u.src === "comm" ? '<button class="btn sm ghost" data-act="comm-warr" data-ch="' + esc(u.chId) + '">Warranty card</button>' : "") +
         (u.src === "inst" ? '<button class="btn sm ghost" data-act="inst-open" data-id="' + esc(u.instId) + '">Open installation</button>' : "") +
         (u.till ? '<button class="btn sm" data-act="amc-wa" data-n="' + esc(u.client) + '" data-p="' + esc(u.product) + '" data-till="' + esc(u.till) + '">Offer AMC</button>' : "") +
+        '<button class="btn sm ghost" data-act="amc-stage" data-k="' + esc(u.key) + '">' + (am.stage ? "Move AMC stage" : "Start the AMC") + '</button>' +
         '</div></div>';
     });
     if (list.length > 300) h += '<div class="meta">Showing the 300 most recent of ' + list.length + '. Narrow the search to see the rest.</div>';
@@ -1321,6 +1428,36 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="meta" style="margin-top:6px">Type it exactly as it is printed. This is what a warranty claim is made against.</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="base-sn-save" data-k="' + esc(u.key) + '">Save the serial</button></div>';
+  }
+
+  /* Moving an AMC along is a decision, so the app does not take it. It lays out where the unit
+     stands, offers the next stage, and waits for the button - draft-and-confirm, same as
+     everywhere else. Marking it Won also writes the contract onto the installation record, so
+     the service reminders and the amcend nudge pick it up with nothing rewired. */
+  function modalAmcStage(key) {
+    var u = baseUnits().filter(function (x) { return x.key === key; })[0];
+    if (!u) return "";
+    var a = amcOf(u), ins = amcInstallFor(u), w = baseWarrLabel(u);
+    return '<h2>AMC &mdash; where does this stand?</h2>' +
+      '<p class="sub">' + esc(u.client) + (u.site ? ' &middot; ' + esc(u.site) : "") + ' &middot; ' + esc(u.product) +
+      (u.model ? ' ' + esc(u.model) : "") + (u.sn ? ' &middot; serial ' + esc(u.sn) : "") + '</p>' +
+      '<div class="meta" style="margin-bottom:8px">' + esc(w.t) + ' &middot; ' +
+      (a.stage
+        ? 'now at <b>' + esc(a.stage) + '</b>' + (a.how === "moved" ? (a.by ? ', moved by ' + esc(a.by) : "") : ' (' + esc(a.how) + ')')
+        : 'not in the AMC pipeline yet') +
+      (a.note ? '<br>Last note: ' + esc(a.note) : "") + '</div>' +
+      '<label>Stage</label><select id="am_stage">' + opts(AMC_STAGES, a.stage || "Due") + '</select>' +
+      '<div class="grid2"><div><label>AMC amount (Rs)</label><input id="am_amt" inputmode="numeric" value="' + esc(a.amount || "") + '"/></div>' +
+      '<div><label>AMC ends</label><input id="am_till" type="date" value="' + esc(a.till || "") + '"/></div></div>' +
+      '<label>Note &mdash; what was actually said</label>' +
+      '<textarea id="am_note" placeholder="e.g. quoted Rs 4,500 to Mr Sharma, wants to decide after Diwali">' + esc(a.note || "") + '</textarea>' +
+      '<div class="meta" style="margin-top:6px">' +
+      (ins
+        ? 'Marking this <b>Won</b> writes the AMC onto the installation record for ' + esc(ins.client) + ', so the service reminders pick it up.'
+        : 'There is no installation record for this unit, so a won AMC is recorded on the trail only. Add the installation on the Service screen to get the reminders too.') +
+      '<br>Nothing here replaces anything &mdash; every move is added, so the offer and the price stay readable afterwards.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="amc-stage-save" data-k="' + esc(u.key) + '">Save the stage</button></div>';
   }
 
   function viewServiceDesk() {
@@ -10676,8 +10813,15 @@ function viewCatalogue() {
       owner = { drafts: drafts, unbilled: unb, dups: dups, commission: toComm };
     }
 
+    /* G. AMCs standing open - a warranty ending with nothing done, an offer nobody answered,
+       a price named and never chased. Straight off the pipeline so one engine ranks them. */
+    var amc = [];
+    try {
+      amc = amcPipeline().open.filter(function (x) { return briefMine(x.client); });
+    } catch (e) { amc = []; }
+
     return { week: w, money: money, windows: windows, quotes: quotes, quiet: quiet,
-      execs: execs, owner: owner };
+      execs: execs, owner: owner, amc: amc };
   }
 
   /* ---------------- FRIDAY: where the week actually went ---------------- */
@@ -10757,8 +10901,23 @@ function viewCatalogue() {
       });
     } catch (e) { }
 
+    /* G. AMCs closed this week, read off the pipeline's own rows - the same rows the Installed
+       base screen reads, so the two screens can never disagree about what was won. */
+    var amcWon = { count: 0, value: 0 };
+    try {
+      (S.data.audit || []).forEach(function (r) {
+        if (!r || String(r.action || "") !== "amc:stage") return;
+        if (!briefIn(r.createdAt, w)) return;
+        var d = {};
+        try { d = JSON.parse(r.detail || "{}") || {}; } catch (e2) { return; }
+        if (String(d.stage) !== "Won") return;
+        if (!briefMine(String(d.client || ""))) return;
+        amcWon.count++; amcWon.value += Number(d.amount) || 0;
+      });
+    } catch (e) { }
+
     return { week: w, billed: billed, collected: collected, quotes: quotes, names: names,
-      visits: visits, slipped: slipped, sinceMon: sinceMon };
+      visits: visits, slipped: slipped, sinceMon: sinceMon, amcWon: amcWon };
   }
 
   /* ---------------- the draft, in words, for the team channel ---------------- */
@@ -10774,6 +10933,7 @@ function viewCatalogue() {
       briefBy(r.collected.by).forEach(function (x) { out.push("  • " + x.k + ": " + moneyAscii(x.v)); });
       out.push("Quotations: " + r.quotes.raised + " raised, " + r.quotes.won + " won, " + r.quotes.lost + " lost");
       out.push("New names entered: " + r.names.length + "   Site visits logged: " + r.visits.total);
+      out.push("AMCs won: " + r.amcWon.count + (r.amcWon.value ? " (" + moneyAscii(r.amcWon.value) + ")" : ""));
       out.push("");
       var sl = r.slipped.money.length + r.slipped.quotes.length + r.slipped.followups.length;
       out.push(sl ? "What slipped (" + sl + "):" : "Nothing slipped — nothing was carried over from Monday.");
@@ -10808,6 +10968,12 @@ function viewCatalogue() {
     out.push(pl.quotes.length ? "Quotations waiting on an answer: " + pl.quotes.length : "Quotations waiting: none gone quiet.");
     pl.quotes.slice(0, 6).forEach(function (q) {
       out.push("  • " + (q.quoteNo || "Quotation") + " to " + q.client + " — quiet " + q.days + " days, " + moneyAscii(q.net));
+    });
+    out.push("");
+    out.push(pl.amc.length ? "AMCs waiting to be closed: " + pl.amc.length : "AMCs waiting: none unanswered.");
+    pl.amc.slice(0, 6).forEach(function (a) {
+      out.push("  • " + a.client + " — " + a.product + " (" + a.stage + ")" +
+        (a.till ? ", warranty " + (a.days < 0 ? "ended " + Math.abs(a.days) + " days ago" : "ends in " + a.days + " days") : ""));
     });
     out.push("");
     var qn = pl.quiet.leads.length + pl.quiet.sites.length;
@@ -10951,6 +11117,21 @@ function viewCatalogue() {
       }
       h += briefCard("Quotations waiting on an answer", "Sent or under negotiation, no movement for days. A quotation nobody chases is a quotation somebody else wins.", pl.quotes.length, qb, pl.quotes.length ? "warn" : null);
 
+      /* AMCs waiting to be closed */
+      var ab = "";
+      if (!pl.amc.length) ab = briefEmpty("No AMC is sitting unanswered.");
+      else {
+        pl.amc.slice(0, 10).forEach(function (a) {
+          ab += briefRow(esc(a.client) + ' <span class="pill ' + amcPillClass(a.stage) + '">' + esc(a.stage) + '</span>',
+            "", esc(a.product) + (a.model ? " " + esc(a.model) : "") +
+            (a.till ? " · warranty " + (a.days < 0 ? "ended " + Math.abs(a.days) + " days ago" : "ends in " + a.days + " days") : "") +
+            (a.exec ? " · " + esc(a.exec) : ""));
+        });
+        if (pl.amc.length > 10) ab += '<div class="meta" style="margin-top:5px">… and ' + (pl.amc.length - 10) + ' more.</div>';
+        ab += '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="amc-open-base">Open the installed base</button></div>';
+      }
+      h += briefCard("AMCs waiting to be closed", "A machine out of warranty with no AMC gets serviced by whoever picks up the phone. Due means nobody has started; Offered and Quoted mean somebody did and then stopped.", pl.amc.length, ab, pl.amc.length ? "warn" : "good");
+
       /* quiet */
       var qtb = "";
       if (!pl.quiet.leads.length && !pl.quiet.sites.length) qtb = briefEmpty("Every lead and every site has been touched recently.");
@@ -11015,7 +11196,9 @@ function viewCatalogue() {
         briefRow("New names entered", '<b>' + r.names.length + '</b>',
           r.names.slice(0, 4).map(function (x) { return esc(x.name); }).join(", ") + (r.names.length > 4 ? " …" : "")) +
         briefRow("Site visits logged", '<b>' + r.visits.total + '</b>',
-          briefBy(r.visits.by).slice(0, 4).map(function (x) { return esc(x.k) + " " + x.v; }).join(" · "));
+          briefBy(r.visits.by).slice(0, 4).map(function (x) { return esc(x.k) + " " + x.v; }).join(" · ")) +
+        briefRow("AMCs won", '<b style="color:' + (r.amcWon.count ? "#15803d" : "#64748b") + '">' + r.amcWon.count + '</b>',
+          r.amcWon.value ? money(r.amcWon.value) : "");
       h += briefCard("What the week produced", "", null, qb2, null);
 
       var sl = r.slipped.money.length + r.slipped.quotes.length + r.slipped.followups.length;
@@ -12183,7 +12366,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _prfCache = null; _baseCache = null;
+    _clDueCache = null; _clStageCache = null; _prfCache = null; _baseCache = null; _amcCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
     var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
@@ -13331,6 +13514,41 @@ function viewCatalogue() {
     if (act === "base-find") { S.baseQ = val("baseq") || ""; render(); return; }
     if (act === "base-clear") { S.baseQ = ""; render(); return; }
     if (act === "base-sn") { S.modal = modalSerial(t.getAttribute("data-k")); render(); return; }
+    if (act === "amc-stage") { S.modal = modalAmcStage(t.getAttribute("data-k")); render(); return; }
+    if (act === "amc-open-base") { S.tab = "service"; S.svcSub = "base"; S.modal = null; S.q = ""; render(); return; }
+    if (act === "amc-stage-save") {
+      var _ak = String(t.getAttribute("data-k") || ""), _au = baseUnits().filter(function (x) { return x.key === _ak; })[0];
+      if (!_au) { toast("That unit is no longer on the list. Refresh and try again."); return; }
+      var _as = String(val("am_stage") || "");
+      var _aamt = Number(String(val("am_amt") || "").replace(/[^\d.]/g, "")) || 0;
+      var _atill = dstr(val("am_till")) || "", _anote = String(val("am_note") || "");
+      if (AMC_STAGES.indexOf(_as) < 0) { toast("Pick a stage."); return; }
+      /* a won AMC with no end date is a contract nobody can be reminded about */
+      if (_as === "Won" && !_atill) { toast("A won AMC needs an end date - that is what the reminder counts down to."); return; }
+      var _ains = amcInstallFor(_au);
+      t.disabled = true; t.textContent = "Saving...";
+      /* the move itself: one added row, nothing overwritten, the whole history readable later */
+      try {
+        save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "amc:stage",
+          target: _ak, detail: JSON.stringify({ key: _ak, stage: _as, amount: _aamt, till: _atill,
+            note: _anote.slice(0, 400), client: _au.client, product: _au.product, model: _au.model }), ip: "" });
+      } catch (e) { }
+      var _adone = function (msg) { _amcCache = null; _baseCache = null; S.modal = null; toast(msg); render(); };
+      if (_as === "Won" && _ains) {
+        /* keep whatever type was already chosen; only fill it in when it was never set */
+        _ains.amcType = (_ains.amcType && _ains.amcType !== "None") ? _ains.amcType : "Yearly";
+        if (_aamt) _ains.amcAmount = _aamt;
+        _ains.amcEnd = _atill;
+        save("installs", _ains).then(function () {
+          _adone("AMC won. It is on the installation record, so the service reminders will pick it up.");
+        });
+        return;
+      }
+      _adone(_as === "Won"
+        ? "AMC won and recorded. There is no installation record for this unit yet - add one on the Service screen to get the reminders."
+        : "Moved to " + _as + ".");
+      return;
+    }
     if (act === "base-sn-save") {
       var _bk = String(t.getAttribute("data-k") || ""), _bu = baseUnits().filter(function (x) { return x.key === _bk; })[0];
       if (!_bu) { toast("That unit is no longer on the list. Refresh and try again."); return; }
