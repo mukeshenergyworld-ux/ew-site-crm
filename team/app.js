@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.183";
+  var APP_VERSION = "6.9.184";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1894,9 +1894,11 @@ window.addEventListener("beforeunload", function (ev) {
     var h = '<div class="empty" style="text-align:left;padding:0 0 10px">A <b>lead</b> is a customer who hasn’t won a single brand yet. Tap a brand to quote it; the moment one brand’s quote is marked <b>Won</b>, he moves to <b>Clients</b> automatically.</div>';
     ensureCompactCss();
     if (cvMode() === "compact") {
+      var cvL = function () { var q = cvQ(); return cvHtml("leads", leads.filter(function (c) { return cvMatch(c, q); })); };
       return h + '<div class="row" style="margin-bottom:8px">' + cvSeg() + '<div class="grow"></div>' +
         '<button class="btn" data-act="cl-new">+ New lead</button></div>' +
-        tidyBanner() + cvHtml("leads", leads);
+        cvSearchRow(leads.length, leads.length === 1 ? "lead" : "leads", cvL) +
+        tidyBanner() + '<div id="cv_list">' + cvL() + '</div>';
     }
     h += '<div class="row" style="margin-bottom:8px">' + cvSeg() + '<div class="grow"></div></div>';
     h += '<div class="row">' + clocs.map(function (l) {
@@ -2002,19 +2004,23 @@ window.addEventListener("beforeunload", function (ev) {
   /* The client list body, split out of viewClients() so a keystroke in the search box can repaint
      JUST this block — the input element itself is never re-created, so the caret and the phone
      keyboard stay exactly where they are. */
+  /* v6.9.184: ONE definition of "does this customer match what was typed", shared by the
+     Expand card list and the Compact tree. Two copies would drift, and then the same name
+     would be findable in one lens and not the other. */
+  function cvMatch(c, qq) {
+    if (!qq) return true;
+    var f = ["name", "mobile", "mobile2", "location", "area", "plumber", "architect", "address"];
+    for (var i = 0; i < f.length; i++) {
+      if (String((c && c[f[i]]) || "").toLowerCase().indexOf(qq) > -1) return true;
+    }
+    return false;
+  }
   function clientsListHtml() {
     var loc = S.q, qq = String(S.clq || "").trim().toLowerCase();
     var all = S.data.clients.filter(function (c) { return isClient(c.name); });
     if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });   /* a sales exec sees only clients assigned to them */
     var list = all.filter(function (c) { return !loc || c.location === loc; });
-    if (qq) list = list.filter(function (c) {
-      return String(c.name || "").toLowerCase().indexOf(qq) > -1
-        || String(c.mobile || "").toLowerCase().indexOf(qq) > -1
-        || String(c.location || "").toLowerCase().indexOf(qq) > -1
-        || String(c.plumber || "").toLowerCase().indexOf(qq) > -1
-        || String(c.architect || "").toLowerCase().indexOf(qq) > -1
-        || String(c.address || "").toLowerCase().indexOf(qq) > -1;
-    });
+    if (qq) list = list.filter(function (c) { return cvMatch(c, qq); });
     if (!list.length) return '<div class="empty">' + (qq
       ? 'No client matches <b>' + esc(S.clq) + '</b>. Search runs on name, phone, area, plumber, architect and address.'
       : (loc ? 'No clients in ' + esc(loc) + ' yet.' : 'No clients yet. A lead becomes a client here the moment one of his quotes is marked Won.')) + '</div>';
@@ -2098,7 +2104,11 @@ window.addEventListener("beforeunload", function (ev) {
        trying to share the area chips and the search box below - those belong to the card view. */
     ensureCompactCss();
     h += '<div class="row" style="margin-bottom:8px">' + cvSeg() + '<div class="grow"></div></div>';
-    if (cvMode() === "compact") return h + tidyBanner() + cvHtml("clients", all);
+    if (cvMode() === "compact") {
+      var cvC = function () { var q = cvQ(); return cvHtml("clients", all.filter(function (c) { return cvMatch(c, q); })); };
+      return h + cvSearchRow(all.length, all.length === 1 ? "client" : "clients", cvC) +
+        tidyBanner() + '<div id="cv_list">' + cvC() + '</div>';
+    }
     h += '<div class="row">' + clocs.map(function (l) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") + '</div>';
@@ -7459,6 +7469,18 @@ function viewCatalogue() {
       '<button class="' + (m === "expand" ? "on" : "") + '" data-act="cv-mode" data-m="expand">Expand</button>' +
       '</span>';
   }
+  /* v6.9.184: the search Compact was missing. It is the reason a man had to drop back to
+     Expand when a customer rang - Expand owned the only box that could find him by number.
+     The tree is repainted on its own (never the whole page) so the caret and the phone
+     keyboard stay exactly where they are, the same trick the client list uses. */
+  var CV_REPAINT = null;
+  function cvSearchRow(n, noun, repaint) {
+    CV_REPAINT = repaint;
+    return '<div class="row"><input class="grow" id="cv_q" placeholder="Search ' + n + ' ' +
+      esc(noun) + ' &mdash; name, phone, colony, plumber..." value="' + esc(S.cvq || "") + '"/>' +
+      (S.cvq ? '<button class="btn sm ghost" data-act="cv-qclear">Clear</button>' : '') + '</div>';
+  }
+  function cvQ() { return String(S.cvq || "").replace(/^\s+|\s+$/g, "").toLowerCase(); }
   function cvTag(n, bg, fg) {
     return '<span class="cv-tag" style="background:' + bg + ';color:' + fg + '">' + n + '</span>';
   }
@@ -7518,7 +7540,9 @@ function viewCatalogue() {
      the Leads tab does not silently open it on Clients as well. */
   function cvHtml(kind, list) {
     if (!list || !list.length) {
-      return '<div class="empty">Nothing here yet. Register a customer and he will appear under his district.</div>';
+      return '<div class="empty">' + (cvQ()
+        ? 'Nobody matches <b>' + esc(S.cvq) + '</b>. The search runs on name, phone, colony, plumber, architect and address.'
+        : 'Nothing here yet. Register a customer and he will appear under his district.') + '</div>';
     }
     var solo = !seesAllClients();
     var dueOf = function (c) { return clientDue(c.name); };
@@ -7570,7 +7594,9 @@ function viewCatalogue() {
       ds.order.forEach(function (d) {
         var rows = ds.m[d], dDue = sumDue(rows), dc = cvColor(d);
         var k = kind + "|" + e + "|" + d;
-        var on = !!(S.cvOpen && S.cvOpen[k]);
+        /* while something is typed every district opens itself - a match hidden inside a
+           closed fold is the same as no match at all. */
+        var on = !!(S.cvOpen && S.cvOpen[k]) || !!cvQ();
         h += '<button class="cv-dist' + (on ? " on" : "") + '" data-act="cv-dist" data-k="' + esc(k) + '"' +
           ' style="border-left-color:' + dc[0] + ';background:' + (on ? dc[1] : "#fff") + '">' +
           '<span class="cv-caret" style="color:' + dc[0] + '">' + (on ? "▾" : "▸") + '</span>' +
@@ -7585,7 +7611,9 @@ function viewCatalogue() {
         }
         var as = groupBy(rows, function (c) { return c.__cvp.area; });
         as.order.sort(byTotal(as.m));
-        if (!on) { h += cvPeek(as, k, dc); return; }
+        /* a "Not set" district already carries the amber banner above; a "no area" chip under
+           it as well would be saying the same thing twice. */
+        if (!on) { if (d !== "Not set") h += cvPeek(as, k, dc); return; }
         h += '<div class="cv-body" style="border-left-color:' + dc[0] + '">';
         as.order.forEach(function (a) {
           var rs = as.m[a].slice().sort(byMoney), aDue = sumDue(rs);
@@ -7830,7 +7858,7 @@ function viewCatalogue() {
         }
         var as = groupBy(drs, function (r) { return r.area; });
         as.order.sort(byTotal(as.m));
-        if (!on) { h += cvPeek(as, k, dc); return; }
+        if (!on) { if (d !== "Not set") h += cvPeek(as, k, dc); return; }
         h += '<div class="cv-body" style="border-left-color:' + dc[0] + '">';
         as.order.forEach(function (a) {
           var ars = as.m[a].slice().sort(byBook);
@@ -10135,6 +10163,17 @@ function viewCatalogue() {
     }
     /* v6.9.175 client search: repaint ONLY the list block, never the whole page, so the caret and
        the phone keyboard stay put while typing. */
+    /* v6.9.184: the compact tree's own search. Same rule as the client list - repaint the
+       tree block alone, never the page, so the caret and the keyboard stay put. */
+    var cvqi = el("cv_q");
+    if (cvqi) {
+      cvqi.addEventListener("input", function (e) {
+        S.cvq = e.target.value;
+        var box = el("cv_list");
+        if (box && CV_REPAINT) box.innerHTML = CV_REPAINT();
+      });
+      cvqi.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
+    }
     var clqi = el("cl_q");
     if (clqi) {
       clqi.addEventListener("input", function (e) {
@@ -10296,7 +10335,7 @@ function viewCatalogue() {
     if (act === "crash-log") { S.modal = modalCrashLog(); render(); return; }
     if (act === "crash-clear") { try { localStorage.removeItem(CRASH_KEY); } catch (e) { } S.modal = modalCrashLog(); render(); return; }
     if (act === "reload-app") { location.reload(); return; }
-    if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; S.clq = ""; render(); return; }
+    if (act === "tab") { S.tab = t.getAttribute("data-tab"); S.q = ""; S.clq = ""; S.cvq = ""; render(); return; }
     if (act === "stock-add") { S.modal = modalStockAdd(t.getAttribute("data-type") || "in"); render(); return; }
     if (act === "stock-refresh") { STOCK_LOADED = false; STOCK_LOADING = false; S.stock = []; ensureStock(); toast("Refreshing stock…"); return; }
     if (act === "stock-save") {
@@ -10572,6 +10611,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "cl-qclear") { S.clq = ""; render(); return; }
+    if (act === "cv-qclear") { S.cvq = ""; render(); return; }
     if (act === "cl-new") {
       S.billDraft = []; S.clEditing = null; S.modal = modalClient(null); render(); return; }
     if (act === "cl-open") {
