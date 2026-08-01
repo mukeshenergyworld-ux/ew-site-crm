@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.181";
+  var APP_VERSION = "6.9.182";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7533,7 +7533,7 @@ function viewCatalogue() {
         h += '<div class="cv-exec" style="background:' + ec[0] + '">' +
           '<span class="cv-en">' + esc(e) + '</span>' +
           '<span class="cv-tags">' + cvTag(cs.length + (cs.length === 1 ? " name" : " names"), "rgba(255,255,255,.22)", "#fff") +
-          (eDue > 0.5 ? cvTag(money(eDue) + " pending", "#fecaca", "#7f1d1d") : "") + '</span></div>';
+          (eDue > 0.5 ? dueAmt(eDue) : "") + '</span></div>';
       }
       var ds = groupBy(cs, function (c) { c.__cvp = cvPlace(c); return c.__cvp.district; });
       ds.order.sort(byTotal(ds.m));
@@ -7546,7 +7546,7 @@ function viewCatalogue() {
           '<span class="cv-caret" style="color:' + dc[0] + '">' + (on ? "▾" : "▸") + '</span>' +
           '<span class="cv-dn" style="color:' + dc[0] + '">' + esc(d) + '</span>' +
           '<span class="cv-tags">' + cvTag(rows.length, dc[1], dc[0]) +
-          (dDue > 0.5 ? cvTag(money(dDue), "#fee2e2", "#b91c1c") : "") +
+          (dDue > 0.5 ? dueAmt(dDue) : "") +
           (d === "Not set" ? cvTag("needs a district", "#fef3c7", "#92400e") : "") + '</span></button>';
         if (d === "Not set") {
           h += '<div class="cv-ask">These names have no district yet, so nobody can plan a round for them. ' +
@@ -7561,7 +7561,7 @@ function viewCatalogue() {
           var rs = as.m[a].slice().sort(byMoney), aDue = sumDue(rs);
           h += '<div class="cv-area" style="color:' + dc[0] + '"><span class="cv-an">' + esc(a) + '</span>' +
             '<span class="cv-tags">' + cvTag(rs.length, dc[1], dc[0]) +
-            (aDue > 0.5 ? cvTag(money(aDue), "#fee2e2", "#b91c1c") : "") +
+            (aDue > 0.5 ? dueAmt(aDue) : "") +
             (a === "Not set" ? cvSetBtn("Set area") : "") + '</span></div>';
           rs.forEach(function (c) { h += cvClientHtml(c); });
         });
@@ -7767,7 +7767,7 @@ function viewCatalogue() {
           '<span class="cv-tags">' +
           cvTag(eq + (eq === 1 ? " quote" : " quotes"), "rgba(255,255,255,.22)", "#fff") +
           cvTag(eWon + " won", "rgba(255,255,255,.22)", "#fff") +
-          cvTag(money(sumVal(rs)), "#fff", ec[0]) +
+          cvTag("book " + money(sumVal(rs)), "#fff", ec[0]) +
           '</span></div>';
       }
       var ds = groupBy(rs, function (r) { return r.district; });
