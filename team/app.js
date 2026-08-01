@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.176";
+  var APP_VERSION = "6.9.177";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -68,7 +68,7 @@
     "Post-Handover / AMC":         { lines:["AMC / extended warranty","Salt & filter refills","Solar / inverter upgrade","Ask for a referral"], win:false }
   };
 
-  var LOCATIONS = ["Panipat", "Sonipat"];
+  var LOCATIONS = ["Panipat", "Sonipat", "Karnal"];
   var CLIENT_TYPES = ["Builder", "Architect", "Plumber", "Contractor", "Home owner", "Dealer", "PMC"];
   var QSTATUS = ["Draft", "Sent", "Negotiating", "Won", "Lost", "Revised"];
   var GST = 0.18;
@@ -1888,6 +1888,7 @@ window.addEventListener("beforeunload", function (ev) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") +
       '<div class="grow"></div><button class="btn" data-act="cl-new">+ New lead</button></div>';
+    h += tidyBanner();
     /* The owner's standing rule now lives ON each card as PL/AR badges (red = enter detail),
        so no separate "names missing" card here - the weekly reminder modal still fires. */
     var aging = agingLeads();
@@ -2081,6 +2082,7 @@ window.addEventListener("beforeunload", function (ev) {
     h += '<div class="row">' + clocs.map(function (l) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") + '</div>';
+    h += tidyBanner();
 
     ensurePickerCss();   /* the exec band (.ch-exec) styling lives with the picker CSS */
     /* Client search. Deliberately NOT the shared #q box: #q on this tab already holds the area
@@ -2372,7 +2374,12 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="grid2"><div><label>Mobile</label><input id="c_mob" inputmode="numeric" value="' + esc(c.mobile) + '"/></div>' +
       '<div><label>Alternate mobile</label><input id="c_mob2" inputmode="numeric" value="' + esc(c.mobile2 || "") + '"/></div></div>' +
       '<div class="grid2"><div><label>Short name (challan no.)</label><input id="c_short" value="' + esc(c.shortName) + '" placeholder="SHARMA"/></div>' +
-      '<div><label>Area / colony</label><input id="c_area" value="' + esc(c.area || "") + '" placeholder="e.g. Model Town"/></div></div>' +
+      /* AREA is a dropdown off the chosen DISTRICT (v6.9.177). Free text here is what filled
+         the Leads filter row with plot numbers. "+ Register new area" opens an inline box that
+         suggests the names already registered before it lets a second spelling be created. */
+      '<div><label>Area / colony</label>' +
+      areaSelectHtml("c_area", String(c.location || "").replace(/^\s+|\s+$/g, "") || locations()[0], c.area) +
+      '<div id="c_area_new"></div></div></div>' +
       '<label>Address</label><input id="c_addr" value="' + esc(c.address) + '"/>' +
       '<div class="grid2"><div><label>Architect</label>' + partnerSelect("c_arch", "architect", c.architect) + '</div>' +
       '<div><label>Plumber</label>' + partnerSelect("c_plumb", "plumber", c.plumber) + '</div></div>' +
@@ -7129,6 +7136,214 @@ function viewCatalogue() {
     return S.data.areas.filter(function (a) { return a.location === loc; })
       .map(function (a) { return a.area; }).filter(Boolean);
   }
+  /* ---------- DISTRICT + AREA (v6.9.177) ----------
+     A lead is entered DISTRICT first, then AREA from that district's own list. Free text was
+     turning the Leads filter row into a wall of plot numbers - "Sec 12/1254", "Ansal 1188 c",
+     even a phone number - so no two executives ever named the same colony the same way.
+     Seeds are only the names the owner actually uses. Everything else is registered as it
+     comes, and a near-duplicate is offered back BEFORE a second spelling is created.
+     Nothing here rewrites saved data: an old odd value stays selectable on its own record,
+     and the Tidy screen moves it only when the owner taps Apply. */
+  var AREA_SEED = {
+    "Panipat": ["Model Town", "Sector 11-12", "Ansal Sushant City", "Eldeco"],
+    "Sonipat": [],
+    "Karnal": []
+  };
+  /* One colony, one spelling. Longest pattern first so "sec 13/17" wins over "sec 13". */
+  var AREA_ALIAS = [
+    [/^(?:sec|sector)\s*0*11\s*0*12\b/, "Sector 11-12"],
+    [/^(?:sec|sector)\s*0*13\s*0*17\b/, "Sector 13-17"],
+    [/^ansal\b/, "Ansal Sushant City"],
+    [/^eldeco\b/, "Eldeco"],
+    [/^model\s*town\b/, "Model Town"],
+    [/^gt\s*road\b/, "GT Road"],
+    [/^(?:sec|sector)\s*0*1[12]\b/, "Sector 11-12"],
+    [/^(?:sec|sector)\s*0*1[37]\b/, "Sector 13-17"],
+    [/^(?:sec|sector)\s*0*15\b/, "Sector 15"],
+    [/^(?:sec|sector)\s*0*25\b/, "Sector 25"]
+  ];
+  function areaNorm(s) {
+    return String(s == null ? "" : s).toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ").replace(/^\s+|\s+$/g, "");
+  }
+  /* Walk the ORIGINAL string until `want` alphanumerics have gone by, so a match found on the
+     normalised copy can be cut off the real text without losing the plot number after it. */
+  function areaCut(t, want) {
+    var seen = 0, j = 0;
+    for (; j < t.length && seen < want; j++) if (/[A-Za-z0-9]/.test(t.charAt(j))) seen++;
+    return t.slice(j).replace(/^[^A-Za-z0-9]+/, "").replace(/\s+$/, "");
+  }
+  /* "Sec 12/1060/61" -> { area:"Sector 11-12", rest:"1060/61" }. rest is the plot/house number:
+     it is kept and moved into the address, never thrown away. */
+  function areaSplit(raw) {
+    var t = String(raw == null ? "" : raw).replace(/^\s+|\s+$/g, "");
+    var n = areaNorm(t);
+    for (var i = 0; i < AREA_ALIAS.length; i++) {
+      var m = n.match(AREA_ALIAS[i][0]);
+      if (!m) continue;
+      return { area: AREA_ALIAS[i][1], rest: areaCut(t, m[0].replace(/[^a-z0-9]/g, "").length) };
+    }
+    return { area: "", rest: t };
+  }
+  /* The district's area list: the owner's seeds + whatever is already registered, folded onto
+     one spelling each and sorted. An unknown name is never dropped - it just keeps its own. */
+  function areasIn2(loc) {
+    var seen = {}, out = [];
+    var push = function (a) {
+      var x = String(a == null ? "" : a).replace(/^\s+|\s+$/g, "");
+      if (!x) return;
+      var sp = areaSplit(x);
+      if (sp.area && !sp.rest) x = sp.area;
+      var k = areaNorm(x);
+      if (!k || seen[k]) return;
+      seen[k] = 1; out.push(x);
+    };
+    (AREA_SEED[loc] || []).forEach(push);
+    areasIn(loc).forEach(push);
+    out.sort(function (a, b) { return String(a).localeCompare(String(b)); });
+    return out;
+  }
+  function areaSim(a, b) {   /* token overlap - cheap, and colony names are 1-3 words */
+    var A = a.split(" ").filter(Boolean), B = b.split(" ").filter(Boolean);
+    if (!A.length || !B.length) return 0;
+    var hit = 0;
+    A.forEach(function (t) { if (B.indexOf(t) > -1) hit++; });
+    return (2 * hit) / (A.length + B.length);
+  }
+  /* Names already registered under this district that look like what is being typed. */
+  function areaSuggest(loc, text) {
+    var q = areaNorm(text);
+    if (!q) return [];
+    var sp = areaSplit(text), out = [];
+    areasIn2(loc).forEach(function (a) {
+      var n = areaNorm(a), s;
+      if (n === q) s = 100;
+      else if (sp.area && areaNorm(sp.area) === n) s = 96;
+      else if (n.indexOf(q) === 0 || q.indexOf(n) === 0) s = 82;
+      else if (n.indexOf(q) > -1 || q.indexOf(n) > -1) s = 72;
+      else s = Math.round(100 * areaSim(q, n));
+      if (s >= 62) out.push({ area: a, score: s });
+    });
+    out.sort(function (a, b) { return b.score - a.score; });
+    return out.slice(0, 4);
+  }
+  function areaSelectHtml(id, loc, cur) {
+    var list = areasIn2(loc), c = String(cur == null ? "" : cur).replace(/^\s+|\s+$/g, "");
+    var listA = [""].concat(c && list.indexOf(c) < 0 ? [c] : [], list, ["+ Register new area"]);
+    return '<select id="' + esc(id) + '">' + opts(listA, c) + '</select>';
+  }
+  function areaSugHtml(selId, loc, typed) {
+    var sug = areaSuggest(loc, typed);
+    if (!sug.length) {
+      return areaNorm(typed)
+        ? '<div class="meta" style="font-size:11px;margin-top:6px;color:#0f766e">New name &mdash; nothing like it is registered under ' + esc(loc) + '.</div>'
+        : "";
+    }
+    return '<div class="meta" style="font-size:11px;margin-top:6px">Already registered &mdash; tap to use it instead:</div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:4px;margin-top:2px;margin-bottom:0">' +
+      sug.map(function (s) {
+        return '<button class="btn sm ghost" data-act="area-pick" data-sel="' + esc(selId) + '" data-area="' + esc(s.area) + '">' + esc(s.area) + '</button>';
+      }).join("") + '</div>';
+  }
+  function areaNewPanelHtml(selId, loc, typed) {
+    return '<div style="margin-top:6px;padding:8px;border:1px solid #99f6e4;background:#f0fdfa;border-radius:10px">' +
+      '<div class="meta" style="font-size:11px;margin-bottom:4px">New area under <b>' + esc(loc) + '</b> &mdash; one colony should carry one name.</div>' +
+      '<div class="row" style="margin-bottom:0"><input class="grow an-in" id="' + esc(selId) + '_nn" data-sel="' + esc(selId) + '" data-loc="' + esc(loc) + '" placeholder="e.g. Eldeco" value="' + esc(typed || "") + '" autocomplete="off"/>' +
+      '<button class="btn sm" data-act="area-new-save" data-sel="' + esc(selId) + '" data-loc="' + esc(loc) + '">Register</button>' +
+      '<button class="btn sm ghost" data-act="area-new-cancel" data-sel="' + esc(selId) + '">Cancel</button></div>' +
+      '<div id="' + esc(selId) + '_sug">' + areaSugHtml(selId, loc, typed || "") + '</div></div>';
+  }
+
+  /* ---------- tidying what was typed before the dropdowns existed ----------
+     Draft-and-confirm: this only ever PROPOSES a district + area for an odd value. Not one
+     record moves until the owner taps Apply on that line. */
+  function commonDistrict() {
+    var known = locations(), n = {}, best = known[0] || "Panipat", bn = 0;
+    S.data.clients.forEach(function (c) {
+      var v = String(c.location || "").replace(/^\s+|\s+$/g, "");
+      if (known.indexOf(v) < 0) return;
+      n[v] = (n[v] || 0) + 1;
+      if (n[v] > bn) { bn = n[v]; best = v; }
+    });
+    return best;
+  }
+  function guessDistrictArea(v) {
+    var t = String(v == null ? "" : v).replace(/^\s+|\s+$/g, ""), d = "";
+    var ls = locations().slice().sort(function (a, b) { return String(b).length - String(a).length; });
+    for (var i = 0; i < ls.length; i++) {
+      var nt = areaNorm(t), nl = areaNorm(ls[i]);
+      if (!nl) continue;
+      if (nt === nl || nt.indexOf(nl + " ") === 0) {
+        d = ls[i];
+        t = areaCut(t, nl.replace(/[^a-z0-9]/g, "").length);
+        break;
+      }
+    }
+    var sp0 = areaSplit(t);
+    /* A single bare word with no plot number and no colony match - "Firozabad", "Gurugram" - is
+       almost certainly a CITY he sold in once, not a colony. Propose it as its own district
+       rather than dragging it under Panipat. He can still change the line before applying. */
+    if (!d && !sp0.area && /^[A-Za-z][A-Za-z.\-]*$/.test(t) && t.length <= 24) {
+      return { district: t, area: "", rest: "", newDistrict: true };
+    }
+    if (!d) d = commonDistrict();
+    return { district: d, area: sp0.area, rest: sp0.rest };
+  }
+  function oddLocations() {
+    var known = locations(), byVal = {}, order = [];
+    S.data.clients.forEach(function (c) {
+      var v = String(c.location || "").replace(/^\s+|\s+$/g, "");
+      if (!v || known.indexOf(v) > -1) return;
+      if (!byVal[v]) { byVal[v] = []; order.push(v); }
+      byVal[v].push(c);
+    });
+    order.sort();
+    return order.map(function (v) {
+      return { value: v, clients: byVal[v], guess: guessDistrictArea(v) };
+    });
+  }
+  function tidyBanner() {
+    if (!seesAllClients()) return "";
+    var n = oddLocations().length;
+    if (!n) return "";
+    return '<div class="row" style="align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px;border:1px solid #fde68a;background:#fffbeb;border-radius:10px">' +
+      '<div class="grow" style="font-size:12px"><b>' + n + ' area name(s) need tidying.</b> ' +
+      'A colony or a plot number was typed into the District box &mdash; that is why this filter row is so long.</div>' +
+      '<button class="btn sm" data-act="tidy-areas">Tidy areas</button></div>';
+  }
+  function modalTidyAreas() {
+    var rows = oddLocations();
+    if (!rows.length) {
+      return '<h2>Tidy areas</h2><p class="sub">Every lead already sits under a proper district. Nothing to tidy.</p>' +
+        '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    }
+    var ds0 = locations();
+    return '<h2>Tidy areas</h2>' +
+      '<p class="sub">' + rows.length + ' name(s) sitting in the District box are really a colony or a plot number. ' +
+      'Check each line and tap Apply. Nothing moves until you do, and the plot number is kept in the address.</p>' +
+      rows.map(function (r, i) {
+        var alist = areasIn2(r.guess.district);
+        if (r.guess.area && alist.indexOf(r.guess.area) < 0) alist = [r.guess.area].concat(alist);
+        /* a city we have never sold in before is offered as its own district on this line only */
+        var ds = ds0.indexOf(r.guess.district) < 0 ? [r.guess.district].concat(ds0) : ds0;
+        var who = r.clients.slice(0, 3).map(function (c) { return c.name; }).join(", ");
+        return '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:8px;margin-bottom:8px">' +
+          '<div style="font-weight:600;font-size:13px">' + esc(r.value) + '</div>' +
+          '<div class="meta" style="font-size:11px;margin-bottom:6px">' + r.clients.length + ' record(s): ' + esc(who) +
+          (r.clients.length > 3 ? " +" + (r.clients.length - 3) + " more" : "") + '</div>' +
+          /* auto-fit, not a hard 1fr 1fr: on a 360px phone the two selects stack instead of
+             squeezing "Ansal Sushant City" down to an unreadable sliver. */
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">' +
+          '<div><label>District</label><select id="td_d' + i + '" class="td-d" data-i="' + i + '">' + opts(ds, r.guess.district) + '</select></div>' +
+          '<div><label>Area</label><select id="td_a' + i + '">' + opts([""].concat(alist), r.guess.area) + '</select></div>' +
+          '</div>' +
+          '<label>Keep this in the address</label><input id="td_r' + i + '" value="' + esc(r.guess.rest) + '"/>' +
+          '<div class="foot" style="margin-top:6px"><button class="btn sm" data-act="tidy-apply" data-i="' + i + '">Apply to ' + r.clients.length + ' record(s)</button></div>' +
+          '</div>';
+      }).join("") +
+      '<div class="foot"><button class="btn ghost" data-act="close">Done</button></div>';
+  }
+
   function partnerByName(n) {
     var t = String(n || "").trim().toLowerCase();
     return S.data.associates.filter(function (a) { return String(a.name).trim().toLowerCase() === t; })[0] || null;
@@ -7326,7 +7541,7 @@ function viewCatalogue() {
       '<div><label>Location</label><select id="m_aloc" class="loc-sel2">' + opts(locations().concat(["+ Add new location"]), loc) + '</select></div>' +
       '</div>' +
       '<div class="grid2">' +
-      '<div><label>Area</label><select id="m_aarea">' + opts([""].concat(areasIn(loc), ["+ Add new area"]), a.area || "") + '</select></div>' +
+      '<div><label>Area</label>' + areaSelectHtml("m_aarea", loc, a.area) + '<div id="m_aarea_new"></div></div>' +
       '<div><label>Address</label><input id="m_aaddr" value="' + esc(a.address) + '"/></div>' +
       '</div>' +
       '<div class="grid2">' +
@@ -9729,6 +9944,85 @@ function viewCatalogue() {
 
     if (act === "geo-filter") { S.geoOnly = !S.geoOnly; render(); return; }
     if (act === "cl-loc") { S.q = t.getAttribute("data-loc"); render(); return; }
+
+    /* ---- area registration (v6.9.177) ---- */
+    if (act === "area-pick") {
+      var apSel = el(t.getAttribute("data-sel"));
+      if (apSel) {
+        var apV = t.getAttribute("data-area");
+        var found = false, oi;
+        for (oi = 0; oi < apSel.options.length; oi++) if (apSel.options[oi].value === apV) found = true;
+        if (!found) {
+          var apO = document.createElement("option");
+          apO.value = apV; apO.textContent = apV;
+          apSel.insertBefore(apO, apSel.options[apSel.options.length - 1]);
+        }
+        apSel.value = apV;
+      }
+      var apP = el(t.getAttribute("data-sel") + "_new");
+      if (apP) apP.innerHTML = "";
+      return;
+    }
+    if (act === "area-new-cancel") {
+      var acSel = el(t.getAttribute("data-sel"));
+      if (acSel) acSel.value = "";
+      var acP = el(t.getAttribute("data-sel") + "_new");
+      if (acP) acP.innerHTML = "";
+      return;
+    }
+    if (act === "area-new-save") {
+      var anSel = t.getAttribute("data-sel"), anLoc = t.getAttribute("data-loc");
+      var anName = String(val(anSel + "_nn") || "").replace(/^\s+|\s+$/g, "");
+      if (!anName) { toast("Type the area name first."); return; }
+      var anDup = areaSuggest(anLoc, anName)[0];
+      var anUse = (anDup && anDup.score >= 96) ? anDup.area : anName;
+      var anFinish = function () {
+        var s2 = el(anSel);
+        if (s2) {
+          s2.innerHTML = opts([""].concat(areasIn2(anLoc), ["+ Register new area"]), anUse);
+          if (s2.value !== anUse) {
+            var o4 = document.createElement("option");
+            o4.value = anUse; o4.textContent = anUse;
+            s2.insertBefore(o4, s2.options[s2.options.length - 1]);
+            s2.value = anUse;
+          }
+        }
+        var p4 = el(anSel + "_new");
+        if (p4) p4.innerHTML = "";
+      };
+      /* An exact match already on the list is reused, never registered twice. */
+      if (anUse !== anName) { anFinish(); toast("Already registered as " + anUse + " - using that."); return; }
+      /* quiet save: a repaint here would tear down the half-filled lead form behind this panel */
+      save("areas", { id: "", location: anLoc, area: anName }, true).then(function () {
+        anFinish();
+        toast("Area registered: " + anName + " (" + anLoc + ")");
+      });
+      return;
+    }
+
+    /* ---- tidy the old free-typed districts (v6.9.177) ---- */
+    if (act === "tidy-areas") { S.modal = modalTidyAreas(); render(); return; }
+    if (act === "tidy-apply") {
+      var tyI = Number(t.getAttribute("data-i"));
+      var tyRow = oddLocations()[tyI];
+      if (!tyRow) { toast("Nothing to apply."); return; }
+      var tyD = val("td_d" + tyI), tyA = val("td_a" + tyI), tyR = String(val("td_r" + tyI) || "").replace(/^\s+|\s+$/g, "");
+      if (!tyD) { toast("Pick a district first."); return; }
+      /* Nothing is deleted: the plot number goes into the address, the district and area are
+         corrected, and every other field on the record is left exactly as it was. */
+      var tyJobs = tyRow.clients.map(function (c) {
+        var addr = String(c.address || "");
+        if (tyR && addr.toLowerCase().indexOf(tyR.toLowerCase()) < 0) addr = (addr ? addr + ", " : "") + tyR;
+        return save("clients", { id: c.id, location: tyD, area: tyA || c.area || "", address: addr }, true);
+      });
+      if (S.q === tyRow.value) S.q = "";
+      Promise.all(tyJobs).then(function () {
+        toast(tyRow.value + " \u2192 " + tyD + (tyA ? " / " + tyA : "") + " (" + tyRow.clients.length + " record(s))");
+        S.modal = modalTidyAreas();
+        render();
+      });
+      return;
+    }
     if (act === "cl-qclear") { S.clq = ""; render(); return; }
     if (act === "cl-new") {
       S.billDraft = []; S.clEditing = null; S.modal = modalClient(null); render(); return; }
@@ -11615,6 +11909,10 @@ function viewCatalogue() {
             clFormRestore(vals);
             var sel = el("c_loc");
             if (sel && sel.value !== nl) { var o = document.createElement("option"); o.value = nl; o.textContent = nl; sel.appendChild(o); sel.value = nl; }
+            /* the cascade does not fire on a programmatic set, so follow the new district by hand
+               or the Area box would still be offering the previous city's colonies */
+            var aSel0 = el("c_area");
+            if (aSel0) aSel0.innerHTML = opts([""].concat(areasIn2(nl), ["+ Register new area"]), "");
             toast("Location added: " + nl);
           });
         } else {
@@ -11622,23 +11920,35 @@ function viewCatalogue() {
         }
         return;
       }
-      /* partner form's area select cascades; the client form's area is a plain input (no cascade) */
-      var areaSel = document.getElementById(t.id === "m_aloc" ? "m_aarea" : "");
-      if (areaSel) areaSel.innerHTML = opts([""].concat(areasIn(t.value), ["+ Add new area"]), "");
+      /* BOTH forms cascade now: pick the district, the area list follows it. */
+      var areaSel = document.getElementById(t.id === "m_aloc" ? "m_aarea" : "c_area");
+      if (areaSel) {
+        areaSel.innerHTML = opts([""].concat(areasIn2(t.value), ["+ Register new area"]), "");
+        var np0 = document.getElementById(areaSel.id + "_new");
+        if (np0) np0.innerHTML = "";
+      }
       return;
     }
     if (t.id === "c_area" || t.id === "m_aarea") {
-      if (t.value === "+ Add new area") {
+      var panel = document.getElementById(t.id + "_new");
+      if (t.value === "+ Register new area") {
+        t.value = "";
         var locSel = document.getElementById(t.id === "c_area" ? "c_loc" : "m_aloc");
         var lv = locSel ? locSel.value : locations()[0];
-        var na = window.prompt("New area under " + lv);
-        if (!na) { t.value = ""; return; }
-        save("areas", { id: "", location: lv, area: na }).then(function () {
-          t.innerHTML = opts([""].concat(areasIn(lv), ["+ Add new area"]), na);
-          toast("Area added: " + na);
-        });
+        /* an inline panel, not window.prompt: a prompt cannot show the near-duplicates, and on
+           a phone it hides the form behind it. */
+        if (panel) panel.innerHTML = areaNewPanelHtml(t.id, lv, "");
+        var inp0 = el(t.id + "_nn");
+        if (inp0) inp0.focus();
         return;
       }
+      if (panel) panel.innerHTML = "";
+      return;
+    }
+    /* Tidy screen: changing a line's district reloads that line's area list. */
+    if (t.classList && t.classList.contains("td-d")) {
+      var tdA = el("td_a" + t.getAttribute("data-i"));
+      if (tdA) tdA.innerHTML = opts([""].concat(areasIn2(t.value)), "");
       return;
     }
 
@@ -11801,6 +12111,13 @@ function viewCatalogue() {
 
   document.addEventListener("input", function (e) {
     var t = e.target;
+    /* Only the suggestion strip is repainted while he types - never the input itself, so the
+       caret never jumps. */
+    if (t.classList && t.classList.contains("an-in")) {
+      var sugBox = document.getElementById(t.getAttribute("data-sel") + "_sug");
+      if (sugBox) sugBox.innerHTML = areaSugHtml(t.getAttribute("data-sel"), t.getAttribute("data-loc"), t.value);
+      return;
+    }
     if (t.classList && t.classList.contains("sv-d")) {
       var sp = spareByName(t.value);
       if (!sp) return;
