@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.190";
+  var APP_VERSION = "6.9.191";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2183,12 +2183,25 @@ window.addEventListener("beforeunload", function (ev) {
      and son really do share a phone, and blocking that would just teach people to type 0000.
      Checks clients, partners and drivers together, because the same plumber is often two of
      the three. */
-  function dupWarn(fields) {
+  function dupWarn(fields, rich) {
     return api("dupCheck", fields).then(function (r) {
       var hits = (r && r.hits) || [];
-      if (!hits.length) return true;
+      if (!hits.length) return "go";
       var phone = hits.filter(function (h) { return h.why === "same phone number"; });
       var name = hits.filter(function (h) { return h.why === "same name"; });
+      /* v6.9.191: the third answer. Only offered against a number that already belongs to a
+         REGISTERED client - someone we can actually file a site under. A partner or a driver
+         sharing the number is a different situation and still gets the plain warning. */
+      var owners = phone.filter(function (h) {
+        return String(h.kind || "").toLowerCase().indexOf("client") === 0 && !!clientByName(h.name);
+      });
+      if (rich && owners.length) {
+        return new Promise(function (resolve) {
+          S.dupAsk = { resolve: resolve, owners: owners, typed: fields };
+          S.modal = modalDupAsk();
+          render();
+        });
+      }
       var msg = "";
       if (phone.length) {
         msg += "This NUMBER is already saved against:\n\n" +
@@ -2200,8 +2213,65 @@ window.addEventListener("beforeunload", function (ev) {
           name.slice(0, 6).map(function (h) { return "  \u2022 " + h.name + " - " + (h.mobile || "no number") + " (" + h.kind + ")"; }).join("\n") +
           "\n\nDifferent person in a different town? Carry on.\n";
       }
-      return window.confirm(msg + "\nSave anyway?");
-    }).catch(function () { return true; });   /* never block a save because the check failed */
+      return window.confirm(msg + "\nSave anyway?") ? "go" : "stop";
+    }).catch(function () { return "go"; });   /* never block a save because the check failed */
+  }
+
+  /* THE QUESTION, asked properly. A confirm box can only ever offer two answers; this one has to
+     offer three, and the third has to be the easiest to press, because it is the right one most
+     of the time. Nothing on this screen deletes or edits anything - it only decides whether the
+     next record is a second customer or another site under the customer we already have. */
+  function modalDupAsk() {
+    var a = S.dupAsk || {}, ty = a.typed || {}, owners = a.owners || [];
+    return '<h2>That number is already in the book</h2>' +
+      '<div class="meta">You typed <b>' + esc(ty.name || "") + '</b> against <b>' +
+      esc(ty.mobile || "") + '</b>. That number already belongs to:</div>' +
+      '<div class="meta" style="margin-top:6px">' +
+      owners.map(function (o) {
+        var c = clientByName(o.name) || {};
+        var due = clientDue(c.name);
+        return '&bull; <b>' + esc(o.name) + '</b>' +
+          (c.location ? ' &middot; ' + esc(c.location) : '') +
+          (due ? ' &middot; ' + money(due) + ' due' : '');
+      }).join("<br>") + '</div>' +
+      '<div class="meta" style="margin-top:12px;font-weight:600;color:#0f172a">Which is true?</div>' +
+      owners.map(function (o, i) {
+        return '<button class="btn" data-act="dupask-site" data-i="' + i + '" ' +
+          'style="width:100%;margin-top:8px;text-align:left;white-space:normal;' +
+          'word-break:break-word;line-height:1.35">&#9733; It is a NEW SITE for ' +
+          esc(o.name) + '</button>';
+      }).join("") +
+      '<div class="meta" style="font-size:12px;color:#475569;margin-top:6px">Files what you typed as' +
+      ' another site under him. One customer, one set of dues, one history &mdash; no second copy' +
+      ' in the customer list. This is what a builder with several sites should look like.</div>' +
+      '<div class="foot" style="flex-wrap:wrap;gap:6px">' +
+      '<button class="btn ghost" data-act="dupask-cancel">Cancel &mdash; I will open him instead</button>' +
+      '<button class="btn ghost" data-act="dupask-anyway">Different person &mdash; save anyway</button>' +
+      '</div>';
+  }
+
+  /* The builder with five sites, handled at the door. Deliberately the same row shape the
+     "One customer, many sites" decision produces on the Duplicate check screen, so a site added
+     here and a site sorted out there are indistinguishable afterwards. */
+  function newSiteUnder(clientName, f, typedName) {
+    var c = clientByName(clientName) || {};
+    var who = c.name || clientName;
+    var label = String(typedName || "").trim() || String(f.addr || "").trim() || (who + " - new site");
+    return save("sites", {
+      id: "", createdBy: S.user, name: label, client: who,
+      mobile: f.mob || c.mobile || "", city: f.loc || c.location || "",
+      stage: f.stage || "", type: "Bungalow",
+      architect: f.arch || c.architect || "", plumber: f.plumb || c.plumber || "",
+      builder: f.build || c.builder || "",
+      owner: c.ownedBy || c.createdBy || S.user, status: "Active",
+      notes: "Added at entry as another site for " + who + (f.addr ? " - " + f.addr : "")
+    }).then(function (r) {
+      if (!r) { toast("Could not add the site - it is queued and will retry."); return; }
+      toast("Added as a new site for " + who + " - no second customer created.");
+      toast("Find it on the Pitch board under " + who + ".");
+      render();
+      return r;
+    });
   }
 
   function clientField(id, value, label) {
@@ -11037,7 +11107,27 @@ function viewCatalogue() {
         S.modal = modalClient(clDraftToClient(cd.vals)); render();
         return;
       }
+      /* a pending duplicate question must never be left hanging - closing it is a "no" */
+      if (S.dupAsk) { var dqc = S.dupAsk; S.dupAsk = null; S.modal = null; render();
+        if (dqc.resolve) dqc.resolve("stop"); return; }
       S.modal = null; render(); return;
+    }
+    if (act === "dupask-site") {
+      var dqa = S.dupAsk; if (!dqa) return;
+      var dqo = (dqa.owners || [])[Number(t.getAttribute("data-i")) || 0];
+      S.dupAsk = null; S.modal = null; render();
+      if (dqa.resolve) dqa.resolve(dqo ? ("site:" + dqo.name) : "stop");
+      return;
+    }
+    if (act === "dupask-anyway") {
+      var dqb = S.dupAsk; S.dupAsk = null; S.modal = null; render();
+      if (dqb && dqb.resolve) dqb.resolve("go");
+      return;
+    }
+    if (act === "dupask-cancel") {
+      var dqd = S.dupAsk; S.dupAsk = null; S.modal = null; render();
+      if (dqd && dqd.resolve) dqd.resolve("stop");
+      return;
     }
     if (act === "pnag-open") { S.modal = modalPartnerNag(); render(); return; }
     if (act === "app-refresh") {
@@ -11454,8 +11544,9 @@ function viewCatalogue() {
            "modal won't close / not responsive" complaint. Run the check behind the closed
            form - the confirm only ever pops in the rare duplicate case. */
         S.modal = null; render();
-        dupWarn({ id: id || "", name: cn, mobile: mob }).then(function (go) {
-          if (!go) { toast("Client not saved - looks like a duplicate."); return; }
+        dupWarn({ id: id || "", name: cn, mobile: mob }, true).then(function (go) {
+          if (String(go).indexOf("site:") === 0) { newSiteUnder(String(go).slice(5), f, cn); return; }
+          if (go !== "go") { toast("Client not saved - looks like a duplicate."); return; }
           doSave();
         });
         return;
@@ -11464,7 +11555,7 @@ function viewCatalogue() {
          name handed back into that form, so keep the modal up with live button feedback. */
       t.disabled = true; t.textContent = "Checking...";
       dupWarn({ id: id || "", name: cn, mobile: mob }).then(function (go) {
-        if (!go) { t.disabled = false; t.textContent = "Save client"; return; }
+        if (go !== "go") { t.disabled = false; t.textContent = "Save client"; return; }
         t.textContent = "Saving...";
         return doSave();
       });
