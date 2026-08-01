@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.193";
+  var APP_VERSION = "6.9.194";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -496,6 +496,7 @@ window.addEventListener("beforeunload", function (ev) {
       if (r && r.ok) { S.data = r; applyPending(); snapSave(); }
       render(); syncBanner();
       if (pendCount()) retryPending();
+      try { prfFlush(); } catch (e) { }          /* delivery proofs taken out of signal */
       try { maybePartnerNag(); } catch (e) { }   /* weekly: chase missing plumber/architect names */
     });
   }
@@ -2127,6 +2128,285 @@ window.addEventListener("beforeunload", function (ev) {
      Short, excess, or something added at site. The dispatched list is never rewritten - what
      went out stays exactly as it went out, and this records what actually landed. Otherwise a
      shortage silently disappears and there is nothing to put to the transporter. */
+  /* ================= PROOF OF DELIVERY (v6.9.194) =================================
+     A screen entry is not proof. When a site supervisor says three months later that four
+     sheets never came, "our own man ticked a box" does not settle it, and in a dispute over
+     forty thousand rupees it will not hold. What settles it is a photograph of the material
+     standing on his floor and his own name signed under it, on our letterhead, carrying the
+     date, the challan number and - where the phone can give it - the place.
+
+     WHERE IT IS KEPT. The photograph, the signature and the received quantities are drawn into
+     ONE PDF. That PDF is hosted on Drive by the very same backend call that already hosts quote
+     PDFs, and only the LINK comes back. The link is written as an append-only row on the AUDIT
+     sheet, which every device already downloads - so the proof reaches the office without
+     anybody forwarding anything, and it survives a reinstall.
+
+     Three consequences worth stating, because they are the reasons for this shape:
+       - no sheet column is added, on any tab, so no backend change is needed for it to work;
+       - nothing large ever goes near a sheet cell (a photo is ~150KB; a cell holds 50,000
+         characters), so a proof can never be what breaks a save;
+       - an audit row is not editable from inside the app. A proof that could be quietly
+         rewritten afterwards would not be a proof at all.
+
+     OFFLINE. Godowns and half-built structures are where this is used, so hosting will fail
+     sometimes. The finished PDF is parked in a small queue on the phone and pushed on the next
+     refresh. The receipt itself is NEVER held up waiting for it - the material has arrived
+     whether or not Drive is reachable, and the challan says so immediately. */
+
+  var PROOF_KEY = "ew_proof_v1", _prfBusy = false, _prfCache = null;
+
+  function prfLoad() { try { var l = JSON.parse(localStorage.getItem(PROOF_KEY) || "[]"); return (l && l.length !== undefined && typeof l !== "string") ? l : []; } catch (e) { return []; } }
+  function prfStore(l) { try { localStorage.setItem(PROOF_KEY, JSON.stringify(l)); } catch (e) { } }
+  function prfPut(e) { var l = prfLoad().filter(function (x) { return x.pk !== e.pk; }); l.push(e); prfStore(l); }
+  function prfDrop(pk) { prfStore(prfLoad().filter(function (x) { return x.pk !== pk; })); }
+  function prfCount() { try { return prfLoad().length; } catch (e) { return 0; } }
+
+  /* What the phone knows about where it is standing. Never allowed to hold anything up: if the
+     answer has not come in seven seconds we go without it, because a proof with no coordinates
+     is still a proof and a receipt that hangs is not. */
+  function proofGeo() {
+    return new Promise(function (res) {
+      if (!navigator.geolocation) { res(""); return; }
+      var done = false;
+      var t = setTimeout(function () { if (!done) { done = true; res(""); } }, 7000);
+      navigator.geolocation.getCurrentPosition(function (p) {
+        if (done) return; done = true; clearTimeout(t);
+        res(Number(p.coords.latitude).toFixed(5) + ", " + Number(p.coords.longitude).toFixed(5) +
+          " (±" + Math.round(p.coords.accuracy || 0) + "m)");
+      }, function () {
+        if (done) return; done = true; clearTimeout(t); res("");
+      }, { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 });
+    });
+  }
+
+  /* ---- reading proofs back out of the audit sheet ----
+     Built once per paint. The challan list can be hundreds of cards long and the audit sheet
+     grows forever; walking it per card would make the list crawl on a phone. */
+  function proofMap() {
+    if (_prfCache) return _prfCache;
+    var m = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "challan:proof") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.chId) return;
+      var prev = m[d.chId];
+      /* The newest row wins. A proof that finally uploads a day later replaces the one that
+         said "not up yet" - by being newer, not by anything being removed. */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[d.chId] = {
+          at: r.createdAt || "", by: d.by || "", url: d.url || "", geo: d.geo || "",
+          actor: r.actor || "", photo: !!d.photo, sig: !!d.sig
+        };
+      }
+    });
+    _prfCache = m;
+    return m;
+  }
+  function challanProof(chId) { return chId ? (proofMap()[chId] || null) : null; }
+
+  /* Shown on the challan card. Three states, and the middle one matters most: a proof that was
+     taken but has not reached Drive yet must LOOK different from no proof at all, or the man who
+     took it will take it again. */
+  function proofLink(c) {
+    var q = prfLoad().filter(function (x) { return x.chId === c.id; })[0];
+    if (q) return ' &middot; <span class="pill due" title="The proof is on the phone it was taken on. It goes up on the next refresh.">proof waiting to upload</span>';
+    var p = challanProof(c.id);
+    if (!p) return "";
+    if (!p.url) return ' &middot; <span class="pill due">proof recorded</span>';
+    return ' &middot; <a href="' + esc(p.url) + '" target="_blank" rel="noopener" ' +
+      'title="Delivery proof' + (p.by ? " - received by " + esc(p.by) : "") + '" ' +
+      'style="color:#0f766e;font-weight:600;text-decoration:none">Proof &#8599;</a>';
+  }
+
+  /* ---- the document itself ---- */
+  function proofPdf(ch, prf, meta) {
+    var rows = (prf.rows || []).slice();
+    return loadLogo().then(function () {
+      return commPdfBase("PROOF OF DELIVERY", ch, String(meta.at || "").slice(0, 10));
+    }).then(function (b) {
+      var doc = b.doc, F = b.F, L = b.L, R = b.R, y;
+
+      b.y = 46; y = commCustomerBlock(b, ch);
+
+      /* the facts of the delivery, in a tinted band so the eye lands on them first */
+      doc.setFillColor(240, 253, 250); doc.rect(L, y - 5, R - L, 22, "F");
+      doc.setDrawColor(153, 246, 228); doc.setLineWidth(0.3); doc.rect(L, y - 5, R - L, 22);
+      F("bold"); doc.setFontSize(9); doc.setTextColor(13, 118, 108);
+      doc.text("CHALLAN", L + 3, y);
+      doc.text("DELIVERED", L + 62, y);
+      doc.text("DRIVER / VEHICLE", L + 112, y);
+      F("normal"); doc.setFontSize(9.5); doc.setTextColor(17, 34, 45);
+      doc.text(String(ch.challanNo || "-"), L + 3, y + 6);
+      doc.text(fullDate(String(meta.at || "").slice(0, 10)), L + 62, y + 6);
+      doc.text(doc.splitTextToSize(String(ch.driver || "-") + (ch.vehicle ? " / " + ch.vehicle : ""), 60)[0], L + 112, y + 6);
+      doc.setFontSize(7.6); doc.setTextColor(100, 116, 139);
+      doc.text("Recorded by " + String(meta.actor || "") + " at " +
+        String(meta.at || "").slice(11, 16) + " hrs" + (meta.geo ? "  ·  " + meta.geo : ""), L + 3, y + 13);
+      y += 28;
+
+      /* what actually came off the vehicle */
+      doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, R - L, 9, "F");
+      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(7.6);
+      doc.text("MATERIAL RECEIVED", L + 3, y);
+      doc.text("SENT", R - 62, y, { align: "right" });
+      doc.text("RECEIVED", R - 40, y, { align: "right" });
+      doc.text("NOTE", R - 3, y, { align: "right" });
+      y += 9;
+      rows.forEach(function (r, i) {
+        if (y > 236) { doc.addPage(); y = 22; }
+        if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, R - L, 7, "F"); }
+        var diff = Number(r.now) - Number(r.was);
+        F("normal"); doc.setFontSize(8.6); doc.setTextColor(17, 34, 45);
+        doc.text(doc.splitTextToSize(String(r.desc || ""), 84)[0], L + 3, y);
+        doc.setTextColor(100, 116, 139);
+        doc.text(String(r.was), R - 62, y, { align: "right" });
+        if (diff !== 0) { F("bold"); doc.setTextColor(diff < 0 ? 190 : 13, diff < 0 ? 24 : 118, diff < 0 ? 24 : 108); }
+        else { doc.setTextColor(17, 34, 45); }
+        doc.text(String(r.now), R - 40, y, { align: "right" });
+        F("normal"); doc.setFontSize(7.4); doc.setTextColor(100, 116, 139);
+        doc.text(doc.splitTextToSize(String(r.note || (diff === 0 ? "full" : "")), 36)[0], R - 3, y, { align: "right" });
+        y += 7;
+      });
+      doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.3); doc.line(L, y - 1, R, y - 1);
+      y += 8;
+
+      /* the signature - the part that makes this a document rather than a note */
+      if (y > 214) { doc.addPage(); y = 26; }
+      F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
+      doc.text("RECEIVED AT SITE BY", L, y);
+      y += 7;
+      F("normal"); doc.setFontSize(12); doc.setTextColor(17, 34, 45);
+      doc.text(String(meta.by || "—"), L, y);
+      if (prf.sig) {
+        try { doc.addImage(prf.sig, "PNG", L, y + 3, 56, 22); } catch (e) { }
+      }
+      doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.4);
+      doc.line(L, y + 27, L + 60, y + 27);
+      F("normal"); doc.setFontSize(7.4); doc.setTextColor(100, 116, 139);
+      doc.text(prf.sig ? "Signature of the receiver" : "Signature not taken", L, y + 31);
+      y += 40;
+
+      /* the photograph */
+      if (prf.photo) {
+        if (y > 150) { doc.addPage(); y = 26; }
+        F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
+        doc.text("MATERIAL AS UNLOADED", L, y);
+        y += 5;
+        try {
+          var iw = R - L, ih = 92;
+          doc.addImage("data:image/jpeg;base64," + prf.photo, "JPEG", L, y, iw, ih);
+          doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(L, y, iw, ih);
+          y += ih + 6;
+        } catch (e) { }
+      }
+
+      if (y > 262) { doc.addPage(); y = 26; }
+      F("normal"); doc.setFontSize(7.4); doc.setTextColor(120, 130, 145);
+      doc.splitTextToSize("This document was created on the phone at the moment of delivery and stored unaltered. " +
+        "Quantities shown as received are what the receiver named above confirmed on site.", R - L)
+        .forEach(function (ln) { doc.text(ln, L, y); y += 4; });
+
+      return doc;
+    });
+  }
+
+  /* ---- pushing it up ---- */
+  function prfSend(e) {
+    return api("pdfHost", { pdfBase64: e.b64, filename: e.fname }).then(function (r) {
+      if (!r || !r.ok || !r.url) return false;
+      /* The audit id is minted ONCE, when the proof is queued, and reused on every retry - so a
+         proof that takes three attempts still leaves exactly one row on the sheet. */
+      return save("audit", {
+        id: e.aid, createdAt: e.at || new Date().toISOString(), actor: e.actor || "",
+        action: "challan:proof", target: String(e.no || "") + " / " + String(e.client || ""),
+        detail: JSON.stringify({
+          chId: e.chId, no: e.no, client: e.client, site: e.site,
+          by: e.by, geo: e.geo, url: r.url, at: e.at, photo: !!e.hasPhoto, sig: !!e.hasSig
+        }), ip: ""
+      }, true).then(function () { prfDrop(e.pk); return true; });
+    }).catch(function () { return false; });
+  }
+
+  /* One at a time, on refresh. Not a burst: a man who confirmed four receipts in a basement is
+     coming back into signal with four PDFs, and firing them together is how you get four
+     timeouts instead of one success. */
+  function prfFlush() {
+    if (_prfBusy) return;
+    var l = prfLoad();
+    if (!l.length) return;
+    _prfBusy = true;
+    var e = l[0];
+    prfSend(e).then(function (ok) {
+      _prfBusy = false;
+      if (ok) { _prfCache = null; toast("Delivery proof for " + e.no + " is up."); renderBg(); }
+    }).catch(function () { _prfBusy = false; });
+  }
+
+  /* Called the instant the receipt is confirmed. Everything here runs BEHIND the receipt - the
+     challan is already Received and the screen has already closed. */
+  function proofStart(cid, prf) {
+    var ch = (S.data.challans || []).filter(function (x) { return x.id === cid; })[0];
+    if (!ch) return;
+    proofGeo().then(function (g) {
+      var at = new Date().toISOString();
+      var meta = { by: prf.by || "", at: at, geo: g, actor: S.user || "" };
+      return proofPdf(ch, prf, meta).then(function (d) {
+        var b64 = d.output("datauristring").split(",")[1];
+        var stamp = Date.now(), rnd = Math.floor(Math.random() * 1000000);
+        prfPut({
+          pk: "PK-" + stamp + "-" + rnd,
+          aid: "PF-" + stamp + "-" + rnd,
+          chId: cid, no: String(ch.challanNo || ""), client: String(ch.customerName || ""),
+          site: String(ch.site || ""), by: prf.by || "", at: at, geo: g, actor: S.user || "",
+          hasPhoto: !!prf.photo, hasSig: !!prf.sig,
+          fname: "PROOF-" + String(ch.challanNo || cid).replace(/[^\w.-]+/g, "-") + ".pdf",
+          b64: b64
+        });
+        _prfCache = null;
+        prfFlush();
+      });
+    }).catch(function () {
+      toast("Could not build the delivery proof — the receipt itself is safe.");
+    });
+  }
+
+  /* ---- the signature pad ----
+     A finger on a canvas. Kept small (a signature PNG is a few kilobytes) and read back into
+     S.alt.sig before ANY repaint, because a repaint rebuilds the canvas blank and a signature
+     taken twice is a signature nobody trusts. */
+  function sigWire(cv) {
+    if (!cv || cv._wired) return;
+    cv._wired = 1;
+    var ctx = cv.getContext("2d");
+    ctx.lineWidth = 2.2; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#0f172a";
+    if (S.alt && S.alt.sig) {
+      var im = new Image();
+      im.onload = function () { try { ctx.drawImage(im, 0, 0, cv.width, cv.height); } catch (e) { } };
+      im.src = S.alt.sig;
+    }
+    var down = false;
+    function pt(ev) {
+      var r = cv.getBoundingClientRect();
+      var t = (ev.touches && ev.touches[0]) || ev;
+      return { x: (t.clientX - r.left) * (cv.width / r.width), y: (t.clientY - r.top) * (cv.height / r.height) };
+    }
+    function start(ev) { ev.preventDefault(); down = true; cv._ink = 1; var p = pt(ev); ctx.beginPath(); ctx.moveTo(p.x, p.y); }
+    function move(ev) { if (!down) return; ev.preventDefault(); var p = pt(ev); ctx.lineTo(p.x, p.y); ctx.stroke(); }
+    function end() { down = false; }
+    cv.addEventListener("mousedown", start); cv.addEventListener("mousemove", move);
+    cv.addEventListener("mouseup", end); cv.addEventListener("mouseleave", end);
+    cv.addEventListener("touchstart", start, { passive: false });
+    cv.addEventListener("touchmove", move, { passive: false });
+    cv.addEventListener("touchend", end);
+  }
+  function sigRead() {
+    var cv = el("alt_sig");
+    if (!cv) return S.alt ? (S.alt.sig || "") : "";
+    if (!cv._ink && !(S.alt && S.alt.sig)) return "";
+    try { return cv.toDataURL("image/png"); } catch (e) { return S.alt ? (S.alt.sig || "") : ""; }
+  }
+
   function modalAlter() {
     var c = (S.data.challans || []).filter(function (x) { return x.id === S.alt.id; })[0] || {};
     var dispatched = [];
@@ -2154,6 +2434,27 @@ window.addEventListener("beforeunload", function (ev) {
         '</tr>';
     });
     h += '</table></div>' +
+      /* PROOF OF DELIVERY (v6.9.194). Three things, in the order a man actually does them at a
+         site: he asks who is taking it, he photographs it standing on the floor, and he holds
+         the phone out to be signed. None of the three is compulsory - a receipt is never held
+         up - but leaving all three empty asks him to say so out loud. */
+      '<div class="card" style="margin-top:12px;border-color:#99f6e4;background:#f0fdfa">' +
+      '<div style="font-weight:700;font-size:12px;color:#0f766e;margin-bottom:2px">Proof of delivery</div>' +
+      '<div class="meta" style="margin-bottom:8px">A photograph and a signature settle a dispute three months later. A tick on a screen does not.</div>' +
+      '<label>Received at site by</label>' +
+      '<input id="alt_by" value="' + esc(S.alt.by || "") + '" placeholder="Name of whoever took delivery" autocomplete="off"/>' +
+      '<label style="margin-top:8px">Photograph of the material as unloaded</label>' +
+      '<input type="file" id="alt_photo" accept="image/*" capture="environment" ' +
+      'style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
+      '<div id="alt_photo_note" class="meta" style="margin-top:4px;color:' + (S.alt.photo ? "#0f766e" : "#94a3b8") + '">' +
+      (S.alt.photo ? "Photo attached." : "Optional \u2014 but it is the one thing a customer cannot argue with.") + '</div>' +
+      '<label style="margin-top:8px">His signature</label>' +
+      '<canvas id="alt_sig" width="600" height="200" ' +
+      'style="width:100%;height:96px;background:#fff;border:1px dashed #94a3b8;border-radius:8px;touch-action:none;display:block"></canvas>' +
+      '<div class="row" style="margin-top:4px;align-items:center">' +
+      '<span class="meta grow" style="color:#94a3b8">Hand him the phone and let him sign with his finger.</span>' +
+      '<button class="btn sm ghost" data-act="alt-sigclear">Clear</button></div>' +
+      '</div>' +
       '<label style="margin-top:10px">Add a product that was NOT on the challan</label>' +
       '<div class="row"><input class="grow" id="alt_add" list="prodlist" placeholder="Product code or name"/>' +
       '<input id="alt_addq" inputmode="numeric" placeholder="Qty" style="width:70px"/>' +
@@ -5398,7 +5699,7 @@ function viewCatalogue() {
           var chat = tm.split("/")[0], msg = tm.split("/")[1];
           if (chat.indexOf("-100") === 0) chat = chat.slice(4);
           return ' &middot; <a href="https://t.me/c/' + esc(chat) + '/' + esc(msg) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600;text-decoration:none">Telegram &#8599;</a>';
-        })() + '</div>';
+        })() + proofLink(c) + '</div>';
 
       if (open) {
         var billLine = (c.billNo ? 'Bill <b>' + esc(c.billNo) + '</b>' + (c.billTo ? ' to ' + esc(c.billTo) : "") :
@@ -11549,7 +11850,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null;
+    _clDueCache = null; _clStageCache = null; _prfCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
     var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewService, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
@@ -11707,6 +12008,26 @@ function viewCatalogue() {
         var sb2 = el("m_stage_box");
         if (sb2) sb2.outerHTML = stageChips("m_stage", clientStage(e.target.value), "Stage of his site");
         stageBtnSync(clientStage(e.target.value));
+      });
+    }
+    /* Proof of delivery: the signature pad, and the photo captured the moment it is chosen
+       (not read at save time - a repaint empties a file input and the photo would be lost). */
+    var sigC = el("alt_sig");
+    if (sigC) { try { sigWire(sigC); } catch (e) { } }
+    var phEl = el("alt_photo");
+    if (phEl) {
+      phEl.addEventListener("change", function (e) {
+        var f = e.target.files && e.target.files[0];
+        var note = el("alt_photo_note");
+        if (!f) return;
+        if (note) { note.textContent = "Shrinking the photo\u2026"; note.style.color = "#94a3b8"; }
+        shrinkPhoto(f).then(function (b64) {
+          if (S.alt) S.alt.photo = b64 || "";
+          var n2 = el("alt_photo_note");
+          if (!n2) return;
+          if (b64) { n2.textContent = "Photo attached."; n2.style.color = "#0f766e"; }
+          else { n2.textContent = "That file could not be read \u2014 try taking it again."; n2.style.color = "#b45309"; }
+        });
       });
     }
     /* Stock import: read an uploaded Tally CSV export and jump straight to the review step. */
@@ -13968,6 +14289,12 @@ function viewCatalogue() {
     }
 
     if (act === "alt-q") { return; }
+    if (act === "alt-sigclear") {
+      var cvx = el("alt_sig");
+      if (cvx) { try { cvx.getContext("2d").clearRect(0, 0, cvx.width, cvx.height); } catch (e) { } cvx._ink = 0; }
+      if (S.alt) S.alt.sig = "";
+      return;
+    }
     if (act === "alt-cancel") { S.alt = null; S.modal = null; render(); return; }
     /* read what is on screen back into state before ANY re-render, or the quantities the
        storeman just typed are wiped by the redraw. */
@@ -13977,6 +14304,12 @@ function viewCatalogue() {
         if (q) r.now = Number(q.value) || 0;
         if (n2) r.note = String(n2.value || "").trim();
       });
+      /* the proof travels with the quantities: a repaint (adding a line, say) rebuilds the
+         canvas blank and empties the file input, so both are read into state FIRST. The photo
+         is already in S.alt.photo - it is captured on the change event, not read from here. */
+      var byEl = el("alt_by");
+      if (byEl) S.alt.by = String(byEl.value || "").trim();
+      S.alt.sig = sigRead();
     }
     if (act === "alt-add") {
       altReadBack();
@@ -13993,6 +14326,20 @@ function viewCatalogue() {
       var changed = S.alt.rows.filter(function (r) { return Number(r.now) !== Number(r.was); });
       var missingWhy = changed.filter(function (r) { return !r.note; });
       if (missingWhy.length) { toast("Give a reason for each changed line."); return; }
+      /* PROOF (v6.9.194) - a stop-and-ask, the same shape as the credit gate, never a block.
+         A man in a hurry can still confirm; he is only asked to say out loud that this receipt
+         will stand on nothing but his own word. */
+      if (!S.alt.by && !S.alt.photo && !S.alt.sig) {
+        if (!window.confirm(
+          "No name, no photograph and no signature.\n\n" +
+          "This receipt will then stand on nothing but your own word. If the customer disputes " +
+          "the quantity months later, there is nothing to show him.\n\n" +
+          "Press OK to confirm it anyway.")) {
+          toast("Nothing confirmed \u2014 add the receiver's name, a photo, or his signature.");
+          return;
+        }
+      }
+      var prf = { by: S.alt.by || "", photo: S.alt.photo || "", sig: S.alt.sig || "", rows: (S.alt.rows || []).slice() };
       var cid = S.alt.id;
       /* Optimistic save: update the challan locally and close the screen instantly, so the user
          never waits on the two (slow) Apps Script round-trips. The save then runs in the
@@ -14005,6 +14352,9 @@ function viewCatalogue() {
       S.alt = null; S.modal = null;
       toast(changed.length ? "Receipt in, with " + changed.length + " alteration(s)." : "Receipt in - full quantity.");
       render();
+      /* Behind the receipt, never in front of it: the material has arrived whether or not Drive
+         is reachable, so the challan says so immediately and the proof follows on its own. */
+      if (prf.by || prf.photo || prf.sig) { try { proofStart(cid, prf); } catch (e) { } }
       var fail = function () { toast("Saved on your device - server sync failed, it will retry on next refresh."); quietSync(); };
       (changed.length ? api("challanAlter", { id: cid, alterations: changed }) : Promise.resolve({ ok: true }))
         .then(function (r) {
@@ -14020,7 +14370,7 @@ function viewCatalogue() {
       var to = t.getAttribute("data-to");
       var ch2 = S.data.challans.filter(function (x) { return x.id === id; })[0];
       if (!ch2) return;
-      if (to === "Received") { S.alt = { id: id, rows: null }; S.modal = modalAlter(); render(); return; }
+      if (to === "Received") { S.alt = { id: id, rows: null, by: "", photo: "", sig: "" }; S.modal = modalAlter(); render(); return; }
       /* Approving a dispatch releases real material. A pocket tap must not do that, so the PIN
          is asked again here - the same one used to sign in, nothing new to remember. */
       /* THE CREDIT GATE (v6.9.193). Approving is the last moment at which this money can still
