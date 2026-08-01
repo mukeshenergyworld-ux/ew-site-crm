@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.201";
+  var APP_VERSION = "6.9.202";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -12244,6 +12244,18 @@ function viewCatalogue() {
     if (g) return g;
     try { return String(localStorage.getItem(NAVGRP_KEY) || ""); } catch (e) { return ""; }
   }
+  /* Called once per paint. Returns the group it moved the band to, or "" if it left
+     the band alone - the return value is what makes this testable. */
+  function navFollowTab() {
+    if (S._navSeenTab === S.tab) return "";   /* he opened a group chip; the tab did not move */
+    S._navSeenTab = S.tab;
+    if (S.navGrp === "ALL") return "";        /* "All" is his explicit choice, not ours to undo */
+    var g = navGroupOf(S.tab);
+    if (!g) return "";                        /* Search, Sites, Customers - leave the band as it was */
+    if (navOpenGrp() === g) return "";         /* already right */
+    navSetGrp(g);
+    return g;
+  }
   function navSetGrp(g) {
     S.navGrp = g;
     try { localStorage.setItem(NAVGRP_KEY, g === "ALL" ? "" : g); } catch (e) { }
@@ -12383,6 +12395,16 @@ function viewCatalogue() {
     document.head.appendChild(s);
   }
   function renderCore() {
+    /* The band under the group chips has to describe the screen he is actually on.
+       act "tab" follows the group already, but every in-screen jump - Open the installed
+       base, Open installation, the brand board, the site matrix, the HISAB jump - sets
+       S.tab straight and would leave Sell highlighted over a Service screen. Doing it
+       here catches all of them, including jumps written after today.
+       Deliberately NOT derived on every paint: opening a group chip to see what is inside
+       it leaves the tab alone, and deriving would slam it shut again as he opened it. So
+       the tab wins only when the tab MOVED. "All" is his explicit choice and is left
+       alone, and a tab that belongs to no group leaves the band where it was. */
+    try { navFollowTab(); } catch (e) { }
     try { ensureCoreCss(); } catch (e) { }
     try { ensureNavCss(); } catch (e) { }
     try { ensureCompactCss(); } catch (e) { }
