@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.205";
+  var APP_VERSION = "6.9.206";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -478,7 +478,7 @@ window.addEventListener("beforeunload", function (ev) {
     syncing = true;
     api("teamGet").then(function (r) {
       syncing = false; syncAt = Date.now();
-      if (r && r.ok) { S.data = r; applyPending(); snapSave(); renderBg(); }
+      if (r && r.ok) { S.data = r; applyPending(); splitCancelled(); snapSave(); renderBg(); }
       if (pendCount()) retryPending();
     }).catch(function () { syncing = false; });
   }
@@ -488,7 +488,21 @@ window.addEventListener("beforeunload", function (ev) {
      copy land underneath. The snapshot is per user, so nobody sees another role's data. */
   function snapKey() { return "ew_snap_" + (S.user || "x"); }
   function snapSave() {
-    try { localStorage.setItem(snapKey(), JSON.stringify({ at: Date.now(), d: S.data })); } catch (e) { }
+    try {
+      /* v6.9.206: cancelled rows are held OUT of S.data, so they have to be put back before the
+         snapshot is written - otherwise a cancelled record would be unrecoverable on this device
+         until the next server refresh. Order-independent, so it is safe at every call site. */
+      var d = S.data;
+      if (S.cancelled) {
+        d = {};
+        Object.keys(S.data || {}).forEach(function (k) { d[k] = S.data[k]; });
+        Object.keys(S.cancelled).forEach(function (k) {
+          if (!(S.cancelled[k] || []).length) return;
+          d[k] = (d[k] || []).concat(S.cancelled[k]);
+        });
+      }
+      localStorage.setItem(snapKey(), JSON.stringify({ at: Date.now(), d: d }));
+    } catch (e) { }
   }
   function snapLoad() {
     try {
@@ -499,11 +513,11 @@ window.addEventListener("beforeunload", function (ev) {
 
   function refresh() {
     var snap = snapLoad();
-    if (snap && snap.ok) { S.data = snap; S.busy = false; render(); }
+    if (snap && snap.ok) { S.data = snap; splitCancelled(); S.busy = false; render(); }
     return api("teamGet").then(function (r) {
       S.busy = false;
       syncAt = Date.now();
-      if (r && r.ok) { S.data = r; applyPending(); snapSave(); }
+      if (r && r.ok) { S.data = r; applyPending(); splitCancelled(); snapSave(); }
       render(); syncBanner();
       if (pendCount()) retryPending();
       try { prfFlush(); } catch (e) { }          /* delivery proofs taken out of signal */
@@ -1068,6 +1082,256 @@ window.addEventListener("beforeunload", function (ev) {
       '<button class="btn" data-act="quote-lost-save" data-id="' + esc(q.id) + '">Save the reason</button></div>';
   }
 
+  /* ================= v6.9.206  CANCEL / VOID  =================
+     There is no delete in this app and there never will be one.  The sheet is the ledger:
+     a deleted challan takes its stock movement, the client's dues, the incentive line and the
+     brand total away with it, silently, and every figure on every screen quietly changes with
+     no record of why.  A man who wanted one row gone would have moved a dozen numbers he never
+     looked at.
+
+     So a record is CANCELLED instead.  It is set aside - out of every count, total, due and
+     stock figure - and it can be brought back.  Nothing leaves the sheet, ever.
+
+     Stored as an audit row (action "rec:cancel"), never as a new column: TEAM_TABS lives in
+     GAS and silently drops any key it does not know, so a new column would need a matching
+     deploy and would fail without a sound if that deploy were missed.  Same pattern as
+     amc:stage and quote:lost.  Bringing a record back writes ANOTHER row with undo:true -
+     newest wins, and the first answer stays readable underneath it.
+
+     The whole design turns on one thing: cancelled rows are split OUT of S.data at the four
+     places S.data is assigned.  Every existing count, ledger, stock movement and incentive
+     then excludes them with no change at any of the hundred-odd places that read those lists.
+     That is also why the goods on a cancelled challan come back to the godown by themselves -
+     on-hand is DERIVED from received challans (stockDeliveredByCode), so a challan that is no
+     longer in the list is no longer deducted.  No reversal code, so no double reversal. */
+  var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return" };
+  /* Fixed list, same reasoning as the loss reasons: free text cannot be counted, and "mistake",
+     "Mistake" and "wrong entry" are three rows and one reason. */
+  var CANCEL_REASONS = [
+    "Raised by mistake",
+    "Duplicate of another record",
+    "Customer cancelled the order",
+    "Wrong client / wrong site",
+    "Wrong items or quantity",
+    "Test / practice entry",
+    "Order changed - a new one was raised",
+    "Other"
+  ];
+
+  var _cxCache = null;
+  function cancelMap() {
+    if (_cxCache) return _cxCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "rec:cancel") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var tab = String(d.tab || ""), rid = String(d.recId || "");
+      if (!tab || !rid || !CANCEL_TABS[tab]) return;
+      var k = tab + "|" + rid, prev = m[k];
+      /* newest wins - a record brought back reads as brought back because that row is newer,
+         not because the cancel row went anywhere */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[k] = {
+          on: !d.undo, reason: String(d.reason || ""), note: String(d.note || ""),
+          label: String(d.label || ""), sub: String(d.sub || ""), value: Number(d.value) || 0,
+          at: r.createdAt || "", by: r.actor || ""
+        };
+      }
+    });
+    _cxCache = m;
+    return m;
+  }
+  function cancelInfo(tab, id) { return cancelMap()[String(tab) + "|" + String(id || "")] || null; }
+  function isCancelled(tab, id) { var c = cancelInfo(tab, id); return !!(c && c.on); }
+
+  /* Rebuilt from live + held every time, so it is idempotent (running it twice changes nothing)
+     and reversible (a record brought back walks straight back into the live list).  A row with
+     no id is always kept live - it cannot be cancelled, because there is nothing to name it by. */
+  function splitCancelled() {
+    if (!S.data) return;
+    S.cancelled = S.cancelled || {};
+    _cxCache = null;
+    var m = cancelMap();
+    Object.keys(CANCEL_TABS).forEach(function (tab) {
+      var live = S.data[tab] || [], held = S.cancelled[tab] || [];
+      var seen = {}, keep = [], gone = [];
+      live.concat(held).forEach(function (r) {
+        var k = String((r && r.id) || "");
+        if (!k) { keep.push(r); return; }
+        if (seen[k]) return;
+        seen[k] = 1;
+        var c = m[tab + "|" + k];
+        (c && c.on ? gone : keep).push(r);
+      });
+      S.data[tab] = keep;
+      S.cancelled[tab] = gone;
+    });
+  }
+
+  function cancelLabel(tab, r) {
+    if (!r) return "";
+    if (tab === "challans") return String(r.challanNo || r.id || "");
+    if (tab === "returns") return String(r.returnNo || r.id || "");
+    return String(r.name || r.id || "");
+  }
+  function cxValue(tab, r) {
+    try {
+      if (tab === "challans") return challanNet(r);
+      if (tab === "returns") return returnNet(r);
+    } catch (e) { }
+    return 0;
+  }
+  function cancelSub(tab, r) {
+    if (!r) return "";
+    if (tab === "challans") return String(r.customerName || "") + (r.site ? " · " + r.site : "") + " · " + money(cxValue("challans", r));
+    if (tab === "returns") return String(r.customerName || "") + (r.challanNo ? " · against " + r.challanNo : "");
+    if (tab === "sites") return String(r.client || "") + (r.area ? " · " + r.area : "");
+    return String(r.mobile || "") + (r.location ? " · " + r.location : "");
+  }
+
+  function cancelledRows() {
+    var out = [];
+    S.cancelled = S.cancelled || {};
+    Object.keys(CANCEL_TABS).forEach(function (tab) {
+      (S.cancelled[tab] || []).forEach(function (r) {
+        var c = cancelInfo(tab, r.id) || {};
+        out.push({
+          tab: tab, id: r.id, row: r, label: cancelLabel(tab, r), sub: cancelSub(tab, r),
+          reason: c.reason || "", note: c.note || "", at: c.at || "", by: c.by || ""
+        });
+      });
+    });
+    out.sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
+    return out;
+  }
+
+  /* What is holding this record.  "stop" refuses the cancel and names the thing to clear first -
+     the order matters (cancel the challan, then the client), and saying so is cheaper than
+     letting him find out from a wrong total next month.  "warn" lets it through but says out
+     loud which number is about to move. */
+  var CX_OPENQ = ["Draft", "Sent", "Negotiating", "Revised"];
+  function cancelBlockers(tab, id) {
+    var out = { stop: [], warn: [] }, D = S.data || {}, n;
+    var row = (D[tab] || []).filter(function (x) { return x.id === id; })[0];
+    if (!row) return out;
+    function s(x) { return x > 1 ? "s" : ""; }
+    if (tab === "clients") {
+      var nm = String(row.name || "");
+      n = (D.challans || []).filter(function (x) { return x.customerName === nm; }).length;
+      if (n) out.stop.push(n + " challan" + s(n) + " stand against this name — cancel those first");
+      n = (D.payments || []).filter(function (x) { return x.client === nm; }).length;
+      if (n) out.stop.push(n + " payment" + s(n) + " received — that money is already in the books");
+      n = (D.installs || []).filter(function (x) { return x.client === nm; }).length;
+      if (n) out.stop.push(n + " machine" + s(n) + " installed under this client");
+      n = (D.sites || []).filter(function (x) { return x.client === nm; }).length;
+      if (n) out.stop.push(n + " site" + s(n) + " under this name — cancel the site first");
+      n = (D.quotes || []).filter(function (x) { return x.client === nm && CX_OPENQ.indexOf(String(x.status)) >= 0; }).length;
+      if (n) out.warn.push(n + " open quote" + s(n) + " will be left pointing at a cancelled client");
+      n = (D.returns || []).filter(function (x) { return x.customerName === nm; }).length;
+      if (n) out.stop.push(n + " material return" + s(n) + " against this name — cancel those first");
+    }
+    if (tab === "sites") {
+      n = (D.challans || []).filter(function (x) { return String(x.siteId || "") === id; }).length;
+      if (n) out.stop.push(n + " challan" + s(n) + " delivered to this site — cancel those first");
+      n = (D.quotes || []).filter(function (x) { return String(x.siteId || "") === id && CX_OPENQ.indexOf(String(x.status)) >= 0; }).length;
+      if (n) out.stop.push(n + " open quote" + s(n) + " on this site");
+      n = (D.sitevisits || []).filter(function (x) { return String(x.siteId || "") === id; }).length;
+      if (n) out.warn.push(n + " site visit" + s(n) + " recorded — they stay in the visit log");
+      n = (D.pitch || []).filter(function (x) { return String(x.siteId || "") === id; }).length;
+      if (n) out.warn.push(n + " pitch record" + s(n) + " will drop off the pitch board");
+    }
+    if (tab === "challans") {
+      var cn = String(row.challanNo || "");
+      n = cn ? (D.returns || []).filter(function (x) { return String(x.challanNo || "") === cn; }).length : 0;
+      if (n) out.stop.push(n + " material return" + s(n) + " raised against this challan — cancel that first");
+      if (String(row.receiptReceived).toUpperCase() === "Y") {
+        out.warn.push("The receipt is already signed. The goods go back into the godown count, and this client owes " + money(cxValue("challans", row)) + " less.");
+      }
+      if (row.billNo) out.warn.push("A bill number (" + String(row.billNo) + ") is on this challan. The bill itself is not touched — handle it in Tally separately.");
+      if (String(row.status || "") === "Dispatched") out.warn.push("It is already dispatched. Make sure the goods are actually back before you cancel it.");
+    }
+    if (tab === "returns") {
+      if (String(row.status || "").trim().toLowerCase() === "received") {
+        out.warn.push("Already booked in at the godown. Cancelling takes the goods back OUT of the on-hand count and withdraws the client's credit of " + money(cxValue("returns", row)) + ".");
+      }
+    }
+    return out;
+  }
+
+  /* One added audit row - the cancel and the bringing-back are the same write with a flag. */
+  function cxWrite(tab, id, row, reason, note, undo) {
+    try {
+      save("audit", {
+        id: "", createdAt: new Date().toISOString(), actor: S.user, action: "rec:cancel",
+        target: String(CANCEL_TABS[tab] || tab) + " / " + cancelLabel(tab, row),
+        detail: JSON.stringify({
+          tab: tab, recId: String(id), label: cancelLabel(tab, row), sub: cancelSub(tab, row),
+          reason: String(reason || ""), note: String(note || ""), undo: !!undo,
+          value: cxValue(tab, row),
+          client: String(row.customerName || row.client || row.name || "")
+        }), ip: ""
+      });
+    } catch (e) { }
+    _cxCache = null;
+    splitCancelled();
+    try { snapSave(); } catch (e) { }
+    S.modal = null;
+    render();
+  }
+
+  function modalCancelRec(tab, id) {
+    if (S.role !== "admin") return "";
+    if (!CANCEL_TABS[tab]) return "";
+    var row = ((S.data || {})[tab] || []).filter(function (x) { return x.id === id; })[0];
+    if (!row) return "";
+    var b = cancelBlockers(tab, id), lbl = cancelLabel(tab, row), sub = cancelSub(tab, row);
+    var h = '<h2>Cancel this ' + esc(String(CANCEL_TABS[tab]).toLowerCase()) + '?</h2>' +
+      '<p class="sub">' + esc(lbl) + (sub ? ' &middot; ' + esc(sub) : '') + '</p>';
+    if (b.stop.length) {
+      h += '<div class="card" style="border-left:4px solid #b91c1c;padding:10px 13px;margin-bottom:8px">' +
+        '<b style="color:#b91c1c;font-size:13px">This one cannot be cancelled yet</b>' +
+        b.stop.map(function (x) { return '<div class="meta" style="font-size:12.5px;padding:2px 0">&bull; ' + esc(x) + '</div>'; }).join('') +
+        '<div class="meta" style="font-size:12px;margin-top:5px">Live records still depend on it. Clear those first and every total stays honest.</div></div>' +
+        '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+      return h;
+    }
+    h += '<div class="meta" style="margin-bottom:8px">Nothing is deleted. This record is set aside &mdash; it drops out of every count, total, due and stock figure, and you can bring it back any time from <b>Health &rarr; Cancelled records</b>.</div>';
+    if (b.warn.length) {
+      h += '<div class="card" style="border-left:4px solid #b45309;padding:10px 13px;margin-bottom:8px">' +
+        '<b style="color:#b45309;font-size:13px">What this moves</b>' +
+        b.warn.map(function (x) { return '<div class="meta" style="font-size:12.5px;padding:2px 0">&bull; ' + esc(x) + '</div>'; }).join('') + '</div>';
+    }
+    h += '<label>Reason</label><select id="cx_reason">' + opts([""].concat(CANCEL_REASONS), "") + '</select>' +
+      '<label>Note (optional)</label>' +
+      '<textarea id="cx_note" placeholder="e.g. customer changed the model before dispatch"></textarea>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Keep it</button>' +
+      '<button class="btn" data-act="cx-do" data-tab="' + esc(tab) + '" data-id="' + esc(id) + '">Cancel this record</button></div>';
+    return h;
+  }
+
+  /* The one place everything cancelled can be seen and brought back. */
+  function cancelledCardHtml() {
+    var rows = cancelledRows();
+    var h = '<div class="ch-client" style="border-left-color:#64748b;color:#475569">Cancelled records<span class="sub" style="color:#475569">' + rows.length + '</span></div>';
+    if (!rows.length) {
+      return h + '<div class="empty" style="text-align:left;padding:0 0 8px">Nothing has been cancelled. A challan, client, site or material return that was cancelled is set aside here &mdash; never deleted &mdash; and can be brought back in one press.</div>';
+    }
+    h += '<div class="empty" style="text-align:left;padding:0 0 8px">These are out of every count, total, due and stock figure. Bringing one back puts it straight back into all of them.</div>';
+    rows.forEach(function (r) {
+      h += '<div class="card" style="padding:8px 13px;margin-bottom:6px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+        '<div style="flex:1 1 175px;min-width:0">' +
+        '<b style="font-size:13px">' + esc(r.label) + '</b> <span class="pill cx">' + esc(CANCEL_TABS[r.tab]) + '</span>' +
+        (r.sub ? '<div class="meta" style="font-size:11.5px">' + esc(r.sub) + '</div>' : '') +
+        '<div class="meta" style="font-size:11.5px">' + esc(r.reason || "no reason recorded") + (r.note ? ' &mdash; ' + esc(r.note) : '') + '</div>' +
+        '<div class="meta" style="font-size:11px;color:#94a3b8">' + esc(d10(r.at)) + (r.by ? ' by ' + esc(r.by) : '') + '</div></div>' +
+        (S.role === "admin" ? '<button class="btn sm ghost" data-act="cx-undo" data-tab="' + esc(r.tab) + '" data-id="' + esc(r.id) + '">Bring back</button>' : '') +
+        '</div></div>';
+    });
+    return h;
+  }
+
   function viewWinLoss() {
     var by = S.wlBy || "brand";
     /* a sales exec gets brand-wise rates and THEIR OWN scorecard; the partner ranking and other
@@ -1181,6 +1445,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div><label>Owner (sales exec)</label>' + ownerField("s_owner", x.owner || x.createdBy, !x.id) + '</div></div>' +
       '<label>Notes</label><textarea id="s_notes">' + esc(x.notes) + '</textarea>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      (x.id && S.role === "admin" ? '<button class="btn ghost" data-act="cx-open" data-tab="sites" data-id="' + esc(x.id) + '" style="color:#b91c1c">Cancel this site</button>' : "") +
       '<button class="btn" data-act="site-save" data-id="' + esc(x.id || "") + '">Save</button></div>';
   }
 
@@ -3363,6 +3628,7 @@ window.addEventListener("beforeunload", function (ev) {
          standing at a site can still save a name and a number in four seconds - but the button
          says out loud what he is choosing to leave out, and the toast afterwards says where to
          find it again. */
+      (c.id && S.role === "admin" ? '<button class="btn ghost" data-act="cx-open" data-tab="clients" data-id="' + esc(c.id) + '" style="color:#b91c1c">Cancel this client</button>' : "") +
       '<button class="btn" data-act="cl-save" data-stagebtn="Save client" data-id="' + esc(c.id || "") + '">' +
       ((c.stage || clientStage(c.name)) ? 'Save client' : 'Save client without stage') + '</button></div>';
   }
@@ -5958,6 +6224,7 @@ function viewCatalogue() {
         '<div class="acts">' +
         (stt === "Raised" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Picked up">Picked up</button>' : "") +
         (stt === "Picked up" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received">Received at godown</button>' : "") +
+        (S.role === "admin" ? '<button class="btn sm ghost" data-act="cx-open" data-tab="returns" data-id="' + esc(r.id) + '" style="color:#b91c1c">Cancel</button>' : "") +
         '</div></div>';
     });
     return h;
@@ -6206,7 +6473,10 @@ function viewCatalogue() {
               ? '<button class="btn sm ' + (c.billNo ? 'act-billedit' : 'act-bill') + '" data-act="bill-detail" data-id="' + esc(c.id) + '">' + (c.billNo ? 'Edit bill' : 'Add billing detail') + '</button>'
               : (!c.billStatus ? '<button class="btn sm act-billsend" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : ""))
           : "") +
-        '<button class="btn sm ghost" data-act="ch-pdf" data-id="' + esc(c.id) + '">PDF</button>';
+        '<button class="btn sm ghost" data-act="ch-pdf" data-id="' + esc(c.id) + '">PDF</button>' +
+        /* v6.9.206 - on the card, not in the edit form: a dispatched or received challan has no
+           edit form to put it in, and those are exactly the ones he needs to be able to void. */
+        (S.role === "admin" ? '<button class="btn sm ghost" data-act="cx-open" data-tab="challans" data-id="' + esc(c.id) + '" style="color:#b91c1c">Cancel</button>' : "");
 
       /* two-line compact card, same pattern as the lead/client cards:
          line 1 - challan no + status pills, all action buttons pinned right
@@ -8651,6 +8921,9 @@ function viewCatalogue() {
         return '<div class="meta" style="font-size:13px;padding:3px 0"><b>' + esc(d.client || '(blank)') + '</b> — ' + esc(d.brand || '') + ' ' + esc(d.pct || '') + '% &middot; no client by this name. Fix on the Discounts screen.</div>';
       }).join(''));
 
+    /* v6.9.206 - everything that was set aside, and the one button that brings it back. */
+    h += cancelledCardHtml();
+
     return h;
   }
   function viewOwner() {
@@ -9706,6 +9979,7 @@ function viewCatalogue() {
          Won, due, soon and teal only, so every Lost pill in the app has rendered plain grey.
          It goes here rather than in team_main.html so there is one file to deploy. */
       ".pill.Lost{background:#fee2e2;color:#b91c1c}" +
+        ".pill.cx{background:#e2e8f0;color:#475569;white-space:nowrap}" +
       "@media(max-width:560px){" +
       ".qv-cli{padding:8px 9px}" +
       ".qv-nm{flex-basis:100%}" +
@@ -12823,7 +13097,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _prfCache = null; _baseCache = null; _amcCache = null; _lossCache = null;
+    _clDueCache = null; _clStageCache = null; _prfCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
     var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
@@ -14438,6 +14712,30 @@ function viewCatalogue() {
       toast("Reason recorded. It is on Win/Loss - Why we lose.");
       render(); return;
     }
+    if (act === "cx-open") { S.modal = modalCancelRec(t.getAttribute("data-tab"), t.getAttribute("data-id")); render(); return; }
+    if (act === "cx-do") {
+      if (S.role !== "admin") { toast("Only the owner can cancel a record."); return; }
+      var _cxt = t.getAttribute("data-tab"), _cxi = t.getAttribute("data-id");
+      var _cxr = ((S.data || {})[_cxt] || []).filter(function (x) { return x.id === _cxi; })[0];
+      if (!_cxr) { toast("That record is no longer on the list. Refresh and try again."); return; }
+      if (cancelBlockers(_cxt, _cxi).stop.length) { toast("Live records still depend on this one."); render(); return; }
+      var _cxrs = String(val("cx_reason") || "");
+      if (!_cxrs) { toast("Pick a reason - that is the whole record of why."); return; }
+      t.disabled = true; t.textContent = "Cancelling...";
+      cxWrite(_cxt, _cxi, _cxr, _cxrs, String(val("cx_note") || "").slice(0, 400), false);
+      toast(CANCEL_TABS[_cxt] + " cancelled. It is on Health - Cancelled records if you ever need it back.");
+      return;
+    }
+    if (act === "cx-undo") {
+      if (S.role !== "admin") { toast("Only the owner can bring a record back."); return; }
+      var _cut = t.getAttribute("data-tab"), _cui = t.getAttribute("data-id");
+      var _cur = ((S.cancelled || {})[_cut] || []).filter(function (x) { return x.id === _cui; })[0];
+      if (!_cur) { toast("That record is not on the cancelled list."); return; }
+      t.disabled = true; t.textContent = "Bringing back...";
+      cxWrite(_cut, _cui, _cur, "", "", true);
+      toast(CANCEL_TABS[_cut] + " is back. Every count and total includes it again.");
+      return;
+    }
     if (act === "p-open") { S.partner = t.getAttribute("data-n"); S.pMonth = ""; render(); return; }
     if (act === "p-back") { S.partner = ""; render(); return; }
     if (act === "p-stmt-pdf") {
@@ -15988,6 +16286,7 @@ function viewCatalogue() {
       if (String(S.pinSet || "").toUpperCase() === "Y") {   // "Y" = PIN is set; anything else must reset it first
         S.tab = (ROLE_TABS[S.role] || ["dash"])[0] || "dash";
         S.data = warm;
+        splitCancelled();
         S.warmStart = true;
         loadCatalog();
         render();
