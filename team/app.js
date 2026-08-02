@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.207";
+  var APP_VERSION = "6.9.208";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -6337,9 +6337,13 @@ function viewCatalogue() {
     ids.forEach(function (i) { var e = el(i); if (e) keep[i] = e.value; });
     return function () {
       ids.forEach(function (i) { var e = el(i); if (e && keep[i] !== undefined) e.value = keep[i]; });
+      /* hidden chip-driven fields carry a picture with them - put the picture back too */
+      try { stageResync(); } catch (e) { }
     };
   }
-  var CH_FIELDS = ["m_loc", "m_client", "m_site", "m_assoc", "m_freight", "m_fto", "m_driver", "m_dmob", "m_veh", "m_disc", "m_discnote"];
+  /* m_stage is a hidden field written by the stage chips, not typed - it has to be kept too, or
+     tapping a brand rebuilds the form and throws away the stage he just answered. */
+  var CH_FIELDS = ["m_loc", "m_client", "m_site", "m_assoc", "m_freight", "m_fto", "m_driver", "m_dmob", "m_veh", "m_disc", "m_discnote", "m_stage"];
   var RT_FIELDS = ["r_client", "r_site", "r_ch", "r_reason", "r_driver", "r_freight"];
 
   function modalReturn() {
@@ -8156,17 +8160,27 @@ function viewCatalogue() {
       : 'One tap. This is what decides what you can sell here and when \u2014 without it the site is invisible to the pitch board.';
   }
 
+  /* The collapsed answer: one green chip saying what was picked, and a way back to the full list.
+     Rendered into [data-stagesel]; the 13-chip grid is hidden the moment a stage is chosen so the
+     form stops shouting a question that has already been answered. */
+  function stageSelHtml(cur) {
+    if (!cur) return "";
+    return '<span class="chip on" style="pointer-events:none">\u2713 ' + esc(cur) + '</span>' +
+      '<button type="button" class="chip" data-act="stage-open">Change</button>';
+  }
+
   function stageChips(fid, current, label) {
     var cur = String(current || "");
-    return '<div class="card" id="' + esc(fid) + '_box" style="border-color:' + (cur ? '#99f6e4' : '#fca5a5') +
+    return '<div class="card" id="' + esc(fid) + '_box" data-stagebox="' + esc(fid) + '" style="border-color:' + (cur ? '#99f6e4' : '#fca5a5') +
       ';background:' + (cur ? '#f0fdfa' : '#fef2f2') + ';margin:10px 0">' +
       '<div class="meta" data-stagelabel style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:' +
       (cur ? '#0f766e' : '#b91c1c') + '"><b>' + esc(label || "Construction stage") + '</b></div>' +
-      '<h3 style="font-size:15px;margin:3px 0 2px">' +
+      '<h3 data-stagehead style="font-size:15px;margin:3px 0 2px">' +
       (cur ? esc(cur) : 'Which stage is this site at?') + '</h3>' +
       '<div class="meta" data-stageask style="margin-bottom:6px">' + stageAskLine(cur) + '</div>' +
       '<input type="hidden" id="' + esc(fid) + '" value="' + esc(cur) + '"/>' +
-      '<div class="chips">' + STAGES2.map(function (s, i) {
+      '<div class="chips" data-stagesel' + (cur ? '' : ' style="display:none"') + '>' + stageSelHtml(cur) + '</div>' +
+      '<div class="chips" data-stagegrid' + (cur ? ' style="display:none"' : '') + '>' + STAGES2.map(function (s, i) {
         return '<button type="button" class="chip ' + (cur === s ? "on" : "") +
           '" data-act="stage-pick" data-fid="' + esc(fid) + '" data-s="' + esc(s) + '">' +
           (i + 1) + '. ' + esc(s) + '</button>';
@@ -8176,6 +8190,56 @@ function viewCatalogue() {
       /* always present, even when empty - the tap handler fills it in place */
       '<div data-stagehint>' + stageHintHtml(cur) + '</div>' +
       '</div>';
+  }
+
+  /* Repaint one stage card to show sval, without a re-render. Everything the card shows - the
+     border, the heading, the collapsed chip, the grid, the pitch strip - is driven from here, so
+     the tap handler and the after-repaint resync can never drift apart.
+     keepOpen leaves the 13-chip grid visible (used when he presses Change). */
+  function stagePaint(box, sval, keepOpen) {
+    if (!box) return;
+    sval = String(sval || "");
+    var fid = box.getAttribute("data-stagebox") || "";
+    var inp = fid ? el(fid) : null;
+    if (inp) inp.value = sval;
+    try {
+      Array.prototype.forEach.call(box.querySelectorAll("[data-stagegrid] .chip"), function (ch) {
+        ch.className = "chip" + (ch.getAttribute("data-s") === sval ? " on" : "");
+      });
+    } catch (e) { }
+    box.style.borderColor = sval ? "#99f6e4" : "#fca5a5";
+    box.style.background = sval ? "#f0fdfa" : "#fef2f2";
+    var hd = box.querySelector("[data-stagehead]") || box.querySelector("h3");
+    if (hd) hd.innerHTML = sval ? esc(sval) : "Which stage is this site at?";
+    var sel = box.querySelector("[data-stagesel]");
+    if (sel) { sel.innerHTML = stageSelHtml(sval); sel.style.display = sval ? "" : "none"; }
+    var grid = box.querySelector("[data-stagegrid]");
+    if (grid) grid.style.display = (sval && !keepOpen) ? "none" : "";
+    var hint = box.querySelector("[data-stagehint]");
+    if (hint) hint.innerHTML = stageHintHtml(sval);
+    var askL = box.querySelector("[data-stageask]");
+    if (askL) askL.innerHTML = stageAskLine(sval);
+    var labL = box.querySelector("[data-stagelabel]");
+    if (labL) labL.style.color = sval ? "#0f766e" : "#b91c1c";
+  }
+
+  /* After any repaint that rebuilt the card from a stale default (picking a brand rebuilds the
+     whole challan form), the hidden field still carries the answer he gave - the chips do not.
+     This walks every stage card on screen and makes the picture agree with the field again. */
+  function stageResync() {
+    try {
+      var boxes = document.querySelectorAll("[data-stagebox]");
+      for (var i = 0; i < boxes.length; i++) {
+        var b = boxes[i], fid = b.getAttribute("data-stagebox");
+        var inp = fid ? el(fid) : null;
+        var v = inp ? String(inp.value || "") : "";
+        if (!v) continue;
+        var hd = b.querySelector("[data-stagehead]");
+        if (hd && String(hd.textContent || "") === v) continue;   /* already right, leave it alone */
+        stagePaint(b, v);
+        try { stageBtnSync(v); } catch (e) { }
+      }
+    } catch (e) { }
   }
 
   /* Make the save button say plainly what is about to happen. Nothing is blocked - the wording
@@ -12566,7 +12630,7 @@ function viewCatalogue() {
     try { agClearCache(); } catch (e) { }   /* one agent scan per paint, always fresh */
     _bgCache = null;                        /* brand groups rebuilt if the catalogue changed */
     var _fsnap = null; try { _fsnap = formSnap(); } catch (e) { }
-    try { renderCore(); try { formRestore(_fsnap); } catch (e) { } try { syncBanner(); } catch (e) { } }
+    try { renderCore(); try { formRestore(_fsnap); } catch (e) { } try { stageResync(); } catch (e) { } try { syncBanner(); } catch (e) { } }
     catch (err) {
       logCrash("render", err);
       try {
@@ -15059,37 +15123,30 @@ function viewCatalogue() {
       return;
     }
     if (act === "stage-pick") {
-      /* Pure DOM: sets the hidden field and repaints the chip row in place, so a half-filled
-         form is never lost to a re-render. The value is written only when the form is saved. */
+      /* Pure DOM: sets the hidden field and repaints the card in place, so a half-filled form is
+         never lost to a re-render. The value is written only when the form is saved.
+         Once a stage is picked the 13-chip grid collapses to a single green chip - the question
+         has been answered, it should stop taking up half the form. */
       var sfid = t.getAttribute("data-fid"), sval = t.getAttribute("data-s") || "";
       var sinp = el(sfid);
       if (sinp) sinp.value = sval;
-      var wrap = t.parentNode;
-      if (wrap) {
-        Array.prototype.forEach.call(wrap.querySelectorAll(".chip"), function (ch) {
-          ch.className = "chip" + (ch.getAttribute("data-s") === sval ? " on" : "");
-        });
-      }
-      var box = t.closest ? t.closest(".card") : null;
-      if (box) {
-        var hd = box.querySelector("h3");
-        if (hd) hd.innerHTML = sval ? esc(sval) : "Which stage is this site at?";
-        box.style.borderColor = sval ? "#99f6e4" : "#fca5a5";
-        box.style.background = sval ? "#f0fdfa" : "#fef2f2";
-      }
-      /* the "pitch now" strip and the save-button wording both depend on the answer */
+      /* the quote wizard is a full re-render by design - it needs the answer in S, not the DOM */
       if (S.qz && S.qz.step === 1 && sfid === "qz_stage") { S.qz.stage = sval; render(); return; }
-      if (box) {
-        var hint = box.querySelector("[data-stagehint]");
-        if (hint) hint.innerHTML = stageHintHtml(sval);
-        var askL = box.querySelector("[data-stageask]");
-        if (askL) askL.innerHTML = stageAskLine(sval);
-        var labL = box.querySelector("[data-stagelabel]");
-        if (labL) labL.style.color = sval ? "#0f766e" : "#b91c1c";
-      }
+      var box = (t.closest ? t.closest("[data-stagebox]") : null) || el(sfid + "_box");
+      stagePaint(box, sval);
       /* Only one form is ever open, so find its save button by the marker rather than by
          guessing a name - the challan and the follow-up share the same field id. */
       stageBtnSync(sval);
+      return;
+    }
+    if (act === "stage-open") {
+      /* He wants to change his answer: open the full list again, keeping the current pick lit. */
+      var obox = (t.closest ? t.closest("[data-stagebox]") : null);
+      if (obox) {
+        var ofid = obox.getAttribute("data-stagebox") || "";
+        var oinp = ofid ? el(ofid) : null;
+        stagePaint(obox, oinp ? String(oinp.value || "") : "", true);
+      }
       return;
     }
     if (act === "brief-mode") {
