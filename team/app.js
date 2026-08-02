@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.202";
+  var APP_VERSION = "6.9.203";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -12365,6 +12365,40 @@ function viewCatalogue() {
       "nav button.nvg{font-size:12px;padding:6px 9px}}";
     document.head.appendChild(s);
   }
+  /* v6.9.203 THE HEADER ON A PHONE.
+     Measured, not guessed: _top_rig.js renders this exact markup against this exact
+     stylesheet at 320/360/390/430 and the bar lays out 558px wide at every one of them,
+     which puts Sign out, PIN and half of Refresh off the side of the screen with no way
+     to scroll to them. Nobody caught this on a live check because a Chrome window will
+     not go below 500 CSS px - every check quietly measured 500 and passed, and a phone
+     was never actually rendered. Below 640px - the same line the sheet already uses for modals, so
+     there is one phone breakpoint in this app and not two - the bar wraps instead.
+     The search box takes a row of its own because it is the widest thing here and the one
+     that most wants the room. .who stops being a right-aligned text block and becomes a
+     wrapping row, so the name, the pill and the four buttons flow instead of marching off
+     the edge; the name ellipsises rather than shoving the buttons out. And the header stops
+     being sticky - on a phone the strip worth holding on screen is the one he navigates
+     with, so nav takes the top instead and he gets ~120px of a 720px screen back. */
+  function ensureTopCss() {
+    if (document.getElementById("ew_top_css")) return;
+    var s = document.createElement("style"); s.id = "ew_top_css";
+    s.textContent =
+      "@media(max-width:639px){" +
+      ".top{position:static;flex-wrap:wrap;gap:6px 8px;padding:8px 10px}" +
+      ".top>img{height:26px}" +
+      /* #gq carries its width as an inline style, so this has to shout to be heard */
+      "#gq{order:9;flex:1 0 100%!important;min-width:0!important;max-width:none!important;" +
+      "margin:0!important;padding:8px 12px!important}" +
+      ".top .who{margin-left:auto;min-width:0;display:flex;flex-wrap:wrap;" +
+      "align-items:center;justify-content:flex-end;gap:4px;text-align:left;line-height:1.2}" +
+      ".top .who b{display:inline;font-size:12px;max-width:118px;white-space:nowrap;" +
+      "overflow:hidden;text-overflow:ellipsis}" +
+      ".top .who>div{margin-top:0!important;flex-wrap:wrap}" +
+      ".top .who .btn.sm{padding:5px 8px;font-size:11.5px}" +
+      "nav{top:0}" +
+      "}";
+    document.head.appendChild(s);
+  }
   function ensureCoreCss() {
     if (document.getElementById("ew_core_css")) return;
     var s = document.createElement("style"); s.id = "ew_core_css";
@@ -12406,6 +12440,7 @@ function viewCatalogue() {
        alone, and a tab that belongs to no group leaves the band where it was. */
     try { navFollowTab(); } catch (e) { }
     try { ensureCoreCss(); } catch (e) { }
+    try { ensureTopCss(); } catch (e) { }
     try { ensureNavCss(); } catch (e) { }
     try { ensureCompactCss(); } catch (e) { }
     try { ensureQuoteCss(); } catch (e) { }
