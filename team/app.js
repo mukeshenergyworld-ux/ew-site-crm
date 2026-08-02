@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.208";
+  var APP_VERSION = "6.9.209";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -572,7 +572,7 @@ window.addEventListener("beforeunload", function (ev) {
 
   function refresh() {
     var snap = snapLoad();
-    if (snap && snap.ok) { S.data = snap; applyConfirmed(); splitCancelled(); S.busy = false; render(); }
+    if (snap && snap.ok) { S.data = snap; applyPending(); applyConfirmed(); splitCancelled(); S.busy = false; render(); }
     return api("teamGet").then(function (r) {
       S.busy = false;
       syncAt = Date.now();
@@ -1163,7 +1163,10 @@ window.addEventListener("beforeunload", function (ev) {
      That is also why the goods on a cancelled challan come back to the godown by themselves -
      on-hand is DERIVED from received challans (stockDeliveredByCode), so a challan that is no
      longer in the list is no longer deducted.  No reversal code, so no double reversal. */
-  var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return" };
+  /* payments joined the list in v6.9.209.  A payment entered twice used to be un-unpickable -
+     there was no way for him to set the wrong one aside, and the ledger simply showed double the
+     money.  Nothing is deleted here either: the row moves to S.cancelled and stays readable. */
+  var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return", payments: "Payment received" };
   /* Fixed list, same reasoning as the loss reasons: free text cannot be counted, and "mistake",
      "Mistake" and "wrong entry" are three rows and one reason. */
   var CANCEL_REASONS = [
@@ -1232,12 +1235,14 @@ window.addEventListener("beforeunload", function (ev) {
     if (!r) return "";
     if (tab === "challans") return String(r.challanNo || r.id || "");
     if (tab === "returns") return String(r.returnNo || r.id || "");
+    if (tab === "payments") { try { return receiptNo(r); } catch (e) { return String(r.id || ""); } }
     return String(r.name || r.id || "");
   }
   function cxValue(tab, r) {
     try {
       if (tab === "challans") return challanNet(r);
       if (tab === "returns") return returnNet(r);
+      if (tab === "payments") return Math.round(Number(r.amount) || 0);
     } catch (e) { }
     return 0;
   }
@@ -1245,6 +1250,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (!r) return "";
     if (tab === "challans") return String(r.customerName || "") + (r.site ? " · " + r.site : "") + " · " + money(cxValue("challans", r));
     if (tab === "returns") return String(r.customerName || "") + (r.challanNo ? " · against " + r.challanNo : "");
+    if (tab === "payments") return String(r.client || "") + " · " + money(r.amount) + " · " + String(r.mode || "") + " · " + fullDate(r.date);
     if (tab === "sites") return String(r.client || "") + (r.area ? " · " + r.area : "");
     return String(r.mobile || "") + (r.location ? " · " + r.location : "");
   }
@@ -1309,6 +1315,11 @@ window.addEventListener("beforeunload", function (ev) {
       }
       if (row.billNo) out.warn.push("A bill number (" + String(row.billNo) + ") is on this challan. The bill itself is not touched — handle it in Tally separately.");
       if (String(row.status || "") === "Dispatched") out.warn.push("It is already dispatched. Make sure the goods are actually back before you cancel it.");
+    }
+    if (tab === "payments") {
+      out.warn.push(String(row.client || "This client") + " will owe " + money(cxValue("payments", row)) + " MORE the moment this is set aside \u2014 make sure the money really did not come in.");
+      out.warn.push("Receipt " + cancelLabel("payments", row) + " stays readable in the cancelled list. If you already sent it on WhatsApp, tell him it was withdrawn.");
+      out.warn.push("Incentive payable on this client's sales moves with it.");
     }
     if (tab === "returns") {
       if (String(row.status || "").trim().toLowerCase() === "received") {
@@ -7069,7 +7080,16 @@ function viewCatalogue() {
     return part.length === 1 ? part[0] : "";
   }
   /* Freight the CLIENT is billed for on a challan (company-borne freight is not the client's cost). */
-  function chFreight(c) { return String(c.freightTo) === "Client" ? (Number(c.freight) || 0) : 0; }
+  /* v6.9.209 - freight and the opening balance are typed by hand and land in the sheet as TEXT.
+     A man who types "1,500" or "Rs 1500" used to have it read back as Number("1,500") = NaN = 0,
+     and the whole line silently vanished from his dues. nAmt reads what he meant. */
+  function nAmt(v) {
+    if (typeof v === "number") return isFinite(v) ? v : 0;
+    var t = String(v === undefined || v === null ? "" : v).replace(/[^0-9.\-]/g, "");
+    var n = Number(t);
+    return isFinite(n) ? n : 0;
+  }
+  function chFreight(c) { return String(c.freightTo) === "Client" ? nAmt(c.freight) : 0; }
   /* Net (post-discount, ex-GST) goods value of a challan - the basis for dues and incentive.
      Freight is NOT part of it (freight is a pass-through cost, not a sale). */
   function challanNet(c) { return pricedLines(c, c.customerName).reduce(function (s, x) { return s + x.amt; }, 0); }
@@ -7121,14 +7141,17 @@ function viewCatalogue() {
       return c.customerName === name && String(c.receiptReceived).toUpperCase() === "Y";
     }));
     var cl = clientByName(name) || {};
-    var items = [], opening = Number(cl.openingAmt) || 0;
+    var items = [], opening = nAmt(cl.openingAmt);
     if (opening > 0) items.push({ age: 99999, amt: opening });      // brought-forward = oldest
+    /* v6.9.209: a NEGATIVE opening is money he paid us in advance. It used to be thrown away here,
+       so the ageing tiles disagreed with DUE AMT and his credit headroom read lower than it is -
+       which can wrongly block a dispatch. It is a credit, so it goes in with the other credits. */
     chs.forEach(function (c) {
       var amt = challanNet(c) + chFreight(c);
       if (amt > 0) items.push({ age: Math.max(0, -daysTo(String(c.createdAt || "").slice(0, 10))), amt: amt });
     });
     items.sort(function (a, b) { return b.age - a.age; });          // oldest first
-    var led = clientLedger(name), credit = (led.paid || 0) + (led.returned || 0);
+    var led = clientLedger(name), credit = (led.paid || 0) + (led.returned || 0) + (opening < 0 ? -opening : 0);
     items.forEach(function (it) { if (credit > 0) { var u = Math.min(credit, it.amt); it.amt -= u; credit -= u; } });
     var b = { cur: 0, d30: 0, d60: 0, d90: 0 }, oldest = 0, overdue = 0;
     items.forEach(function (it) {
@@ -7682,12 +7705,12 @@ function viewCatalogue() {
     /* Dues are now on the NET (post-discount) value, matching the HISAB statement. */
     var billed = chs.reduce(function (a, c) { return a + challanNet(c); }, 0);
     var freight = chs.reduce(function (a, c) {
-      return a + (String(c.freightTo) === "Client" ? (Number(c.freight) || 0) : 0);
+      return a + chFreight(c);
     }, 0);
     var paid = pays.reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
     /* Old balance carried in when the client was first entered (money owed before the app). It is
        part of what they owe, so it rides in the dues and the HISAB balance. */
-    var opening = Number((clientByName(client) || {}).openingAmt) || 0;
+    var opening = nAmt((clientByName(client) || {}).openingAmt);
     /* v6.9.121: booked-in material returns are a credit — they reduce what the client owes, exactly
        like a challan in reverse. Only "Received" returns count (goods actually back at the godown). */
     var rets = clientReturns(client);
@@ -7739,9 +7762,118 @@ function viewCatalogue() {
       name.replace(/[^\w.-]/g, "_") + "_ledger.pdf", pnum, pmsg);
   }
 
+  /* ---------------- payment history, for every client, downloadable  (v6.9.209) ----------------
+     He asked to be able to check the payment history of every client and take it away with him.
+     CSV, not PDF, because CSV is what opens in Excel and what an accountant can pull into Tally -
+     and every field is quoted, so a client name with a comma in it cannot shift the columns. */
+  function csvCell(v) { return '"' + String(v === undefined || v === null ? "" : v).replace(/"/g, '""') + '"'; }
+  function dlCsv(name, rows) {
+    try {
+      var body = rows.map(function (r) { return r.map(csvCell).join(","); }).join("\r\n");
+      /* the BOM is what makes Excel show a rupee sign and a Hindi name correctly */
+      var blob = new Blob(["\uFEFF" + body], { type: "text/csv;charset=utf-8;" });
+      var url = URL.createObjectURL(blob), a = document.createElement("a");
+      a.href = url; a.download = name; a.style.display = "none";
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch (e) { } }, 2000);
+      toast("Downloaded " + name);
+    } catch (e) { toast("Could not build the file on this device."); }
+  }
+
+  /* Live rows and cancelled rows together, newest first.  A cancelled payment is SHOWN, struck
+     through and labelled - a history that quietly drops the entry he cancelled is exactly the
+     kind of history nobody trusts. */
+  function payHistRows(client) {
+    var out = [];
+    (S.data.payments || []).forEach(function (x) { out.push({ p: x, cx: null }); });
+    (((S.cancelled || {}).payments) || []).forEach(function (x) { out.push({ p: x, cx: cancelInfo("payments", x.id) || {} }); });
+    if (client) {
+      var t = String(client).trim().toLowerCase();
+      out = out.filter(function (r) { return String(r.p.client || "").trim().toLowerCase() === t; });
+    }
+    if (!seesAllClients()) out = out.filter(function (r) { return isMineClient(r.p.client); });
+    out.sort(function (a, b) {
+      return String(b.p.date || "").localeCompare(String(a.p.date || "")) ||
+             String(b.p.id || "").localeCompare(String(a.p.id || ""));
+    });
+    return out;
+  }
+
+  function payCsv(client) {
+    var rows = payHistRows(client);
+    var out = [["Receipt no", "Date", "Client", "Site", "Amount", "Mode", "Reference", "Entered by", "Status", "Cancel reason", "Cancel note"]];
+    rows.forEach(function (r) {
+      var p = r.p, live = !(r.cx && r.cx.on);
+      out.push([receiptNo(p), p.date || "", p.client || "", p.siteName || "",
+        Math.round(Number(p.amount) || 0), p.mode || "", p.ref || "", p.createdBy || "",
+        live ? "Received" : "CANCELLED", live ? "" : (r.cx.reason || ""), live ? "" : (r.cx.note || "")]);
+    });
+    var tot = rows.reduce(function (a, r) { return a + ((r.cx && r.cx.on) ? 0 : Math.round(Number(r.p.amount) || 0)); }, 0);
+    out.push([]);
+    out.push(["", "", "", "Total received (cancelled excluded)", tot]);
+    dlCsv("Payments_" + String(client || "all_clients").replace(/[^\w.-]/g, "_") + "_" + today() + ".csv", out);
+  }
+
+  /* One row of history, used by the all-client list and by the per-client Receipts modal. */
+  function payHistCard(r, showClient) {
+    var p = r.p, dead = !!(r.cx && r.cx.on);
+    var h = '<div class="card"' + (dead ? ' style="border-color:#fecaca;background:#fef2f2;opacity:.85"' : '') + '>' +
+      '<h3' + (dead ? ' style="text-decoration:line-through"' : '') + '>' + money(p.amount) +
+      ' <span class="pill">' + esc(p.mode || "") + '</span>' +
+      (dead ? ' <span class="pill due">Cancelled</span>' : '') + '</h3>' +
+      '<div class="meta">' + (showClient ? '<b>' + esc(p.client || "") + '</b><br>' : '') +
+      esc(fullDate(p.date)) + ' &middot; receipt ' + esc(receiptNo(p)) +
+      (p.siteName ? ' &middot; ' + esc(p.siteName) : "") +
+      (p.ref ? ' &middot; ref ' + esc(p.ref) : "") +
+      (p.createdBy ? '<br>Entered by ' + esc(p.createdBy) : "") +
+      (dead ? '<br><b>Cancelled</b>' + (r.cx.reason ? ' \u2014 ' + esc(r.cx.reason) : "") +
+        (r.cx.by ? ' by ' + esc(r.cx.by) : "") + (r.cx.note ? '<br>' + esc(r.cx.note) : "") : "") +
+      '</div><div class="acts">';
+    if (!dead) {
+      h += '<button class="btn sm ghost" data-act="rc-pdf" data-p="' + esc(p.id) + '">Download</button>' +
+        '<button class="btn sm" data-act="rc-wa" data-p="' + esc(p.id) + '">WhatsApp</button>';
+      if (S.role === "admin" && p.id) {
+        h += '<button class="btn sm ghost" data-act="cx-open" data-tab="payments" data-id="' + esc(p.id) + '" style="color:#b91c1c">Cancel this</button>';
+      }
+    } else if (S.role === "admin" && p.id) {
+      h += '<button class="btn sm ghost" data-act="cx-undo" data-tab="payments" data-id="' + esc(p.id) + '">Bring it back</button>';
+    }
+    return h + '</div></div>';
+  }
+
+  /* The whole book of receipts, every client, newest first. */
+  function payHistHtml() {
+    var rows = payHistRows("");
+    var live = rows.filter(function (r) { return !(r.cx && r.cx.on); });
+    var tot = live.reduce(function (a, r) { return a + (Number(r.p.amount) || 0); }, 0);
+    var h = '<div class="card"><h3>Payment history \u2014 every client</h3>' +
+      '<div class="meta">' + live.length + ' payment(s) totalling ' + money(tot) +
+      (rows.length - live.length ? ' &middot; ' + (rows.length - live.length) + ' cancelled, shown struck through' : "") +
+      '<br>Newest first. The download opens straight in Excel.</div>' +
+      '<div class="acts"><button class="btn sm" data-act="pay-csv">Download all (CSV)</button>' +
+      '<button class="btn sm ghost" data-act="pay-hist">Hide history</button></div></div>';
+    if (!rows.length) return h + '<div class="empty">No payment has been recorded yet.</div>';
+    var shown = rows.slice(0, 300), lastD = "";
+    shown.forEach(function (r) {
+      var d = String(r.p.date || "");
+      if (d !== lastD) { lastD = d; h += '<div class="meta" style="margin:12px 0 4px;font-weight:700">' + esc(fullDate(d)) + '</div>'; }
+      h += payHistCard(r, true);
+    });
+    if (rows.length > shown.length) {
+      h += '<div class="empty">Showing the latest ' + shown.length + ' of ' + rows.length +
+        '. The CSV download has every one of them.</div>';
+    }
+    return h;
+  }
+
   function viewPayments() {
     var names = {};
     S.data.challans.forEach(function (c) { if (String(c.receiptReceived).toUpperCase() === "Y") names[c.customerName] = 1; });
+    /* v6.9.209: a client whose only entry is a brought-forward balance, or who has paid us but has
+       no signed receipt yet, used to have no ledger card at all - his money was in the totals but
+       there was no row to open. */
+    (S.data.clients || []).forEach(function (c) { if (nAmt(c.openingAmt) !== 0 && c.name) names[c.name] = 1; });
+    (S.data.payments || []).forEach(function (x) { if (x.client) names[x.client] = 1; });
     var list = Object.keys(names).map(function (n) { return { name: n, l: clientLedger(n), age: payAge(n) }; })
       .sort(function (a, b) { return b.l.due - a.l.due; });
     if (!seesAllClients()) list = list.filter(function (x) { return isMineClient(x.name); });   /* a sales exec sees only the clients assigned to them */
@@ -7768,6 +7900,12 @@ function viewCatalogue() {
       h += '</div>';
     }
 
+    h += '<div class="acts" style="margin-bottom:10px">' +
+      '<button class="btn sm ' + (S.payHist ? '' : 'ghost') + '" data-act="pay-hist">' +
+      (S.payHist ? 'Hide payment history' : 'Payment history \u2014 all clients') + '</button>' +
+      '<button class="btn sm ghost" data-act="pay-csv">Download all payments (CSV)</button></div>';
+    if (S.payHist) return h + payHistHtml();
+
     h += '<div class="empty" style="text-align:left;padding:0 0 12px">Only challans with a <b>signed material receipt</b> enter the ledger. Freight appears here when the client bears it.</div>';
     if (!list.length) return h + '<div class="empty">Nothing delivered yet.</div>';
     list.forEach(function (x) {
@@ -7785,15 +7923,113 @@ function viewCatalogue() {
     return h;
   }
 
+  /* ---------------- money in: one form, one reader, one writer  (v6.9.209) ----------------
+     Everything about a payment entry now goes through readPayIn -> payTwin -> payWrite.  The
+     ordinary Save and the "yes, this really is a second payment" path share the same code, so
+     they can never read the form differently or write a different row. */
+  var _payPend = null, _poPend = null;
+
+  /* Every site this client is known at, so the receipt carries the RIGHT site instead of
+     whichever challan happened to sort first. */
+  function clientSiteList(client) {
+    var t = String(client || "").trim().toLowerCase(), seen = {}, out = [];
+    (S.data.sites || []).forEach(function (x) {
+      if (String(x.client || "").trim().toLowerCase() !== t) return;
+      var k = String(x.id || "");
+      if (!k || seen[k]) return;
+      seen[k] = 1; out.push({ id: k, name: String(x.name || x.site || "") || k });
+    });
+    (S.data.challans || []).forEach(function (c) {
+      if (String(c.customerName || "").trim().toLowerCase() !== t) return;
+      var k = String(c.siteId || "");
+      if (!k || seen[k]) return;
+      seen[k] = 1; out.push({ id: k, name: String(c.site || "") || k });
+    });
+    return out;
+  }
+
+  /* Reads the payment form once and says plainly what is wrong with it.  Returns {row} or {err}. */
+  function readPayIn(client) {
+    /* nAmt keeps the minus sign.  Stripping it turned a typed "-500" into a receipt for
+       Rs 500 RECEIVED - money that never came in.  Now it is simply refused. */
+    var amt = Math.round(nAmt(val("pi_amt")));
+    if (amt <= 0) return { err: "Enter the amount received." };
+    var d = String(val("pi_date") || "");
+    if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(d)) return { err: "Pick the date this money came in." };
+    if (d > today()) return { err: "That date has not arrived yet \u2014 check it once." };
+    var sid = String(val("pi_site") || "");
+    var st = sid ? clientSiteList(client).filter(function (x) { return x.id === sid; })[0] : null;
+    return {
+      row: {
+        id: "P-" + Date.now() + "-" + Math.floor(Math.random() * 1000), createdBy: S.user,
+        siteId: st ? st.id : "", siteName: st ? st.name : "",
+        client: client, date: d, amount: amt, mode: val("pi_mode"), ref: val("pi_ref"), notes: ""
+      }
+    };
+  }
+
+  /* The same man, the same day, the same amount, the same mode.  In this business that is almost
+     always a double tap or a re-entry of something already in the book - so we stop and ask
+     rather than quietly writing it.  Cancelled rows are not in S.data, so a payment he already
+     set aside will never block him from entering the correct one. */
+  function payTwin(p) {
+    return (S.data.payments || []).filter(function (x) {
+      return String(x.client || "") === String(p.client || "") &&
+        String(x.date || "") === String(p.date || "") &&
+        Math.round(Number(x.amount) || 0) === Math.round(Number(p.amount) || 0) &&
+        String(x.mode || "") === String(p.mode || "");
+    })[0] || null;
+  }
+  function poTwin(p) {
+    return (S.data.commpay || []).filter(function (x) {
+      return String(x.associate || "") === String(p.associate || "") &&
+        String(x.date || "") === String(p.date || "") &&
+        Math.round(Number(x.amount) || 0) === Math.round(Number(p.amount) || 0);
+    })[0] || null;
+  }
+
+  function modalDupStop(head, who, lines, forceAct, forceLabel) {
+    return '<h2>' + esc(head) + '</h2><p class="sub">' + esc(who) + '</p>' +
+      '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><div class="meta">' +
+      '<b>Already in the book</b><br>' + lines.join("<br>") + '</div></div>' +
+      '<div class="meta" style="margin:8px 0">If the screen hung and you pressed Save twice, this is that same entry. ' +
+      'Press <b>No</b> and nothing more is written \u2014 the money is already recorded.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">No, it is already there</button>' +
+      '<button class="btn" data-act="' + esc(forceAct) + '">' + esc(forceLabel) + '</button></div>';
+  }
+
+  /* The only place a payment row is written. */
+  function payWrite(p, gen, btn) {
+    var land = function (synced) {
+      unlockBtn(btn);
+      if (gen === _mgen) { S.modal = modalPayDone(p, synced); render(); }
+      else { toast(synced ? "Payment recorded." : "Payment held on this phone."); renderBg(); }
+    };
+    save("payments", p).then(function (r) {
+      /* save() hands back the SAME object it was given when the server refused it, and a fresh
+         one built from the server's reply when it went through.  That identity is the only honest
+         signal we have - and telling him "recorded" when it was not is precisely what makes a man
+         enter the payment a second time. */
+      land(!!(r && r !== p));
+    }).catch(function () { land(false); });
+  }
+
   function modalPayIn(client) {
-    var l = clientLedger(client);
-    return '<h2>Payment received</h2><p class="sub">' + esc(client) + '</p>' +
+    var l = clientLedger(client), sites = clientSiteList(client);
+    var h = '<h2>Payment received</h2><p class="sub">' + esc(client) + '</p>' +
       '<div class="card"><div class="meta">Billed ' + money(l.billed) + (l.freight ? ' + freight ' + money(l.freight) : "") +
       '<br>Received so far ' + money(l.paid) + '<br><b>Due ' + money(l.due) + '</b></div></div>' +
       '<label>Amount received</label><input id="pi_amt" inputmode="numeric" value="' + Math.round(l.due > 0 ? l.due : 0) + '"/>' +
-      '<div class="grid2"><div><label>Date</label><input id="pi_date" type="date" value="' + today() + '"/></div>' +
-      '<div><label>Mode</label><select id="pi_mode">' + opts(["Cash", "Bank transfer", "Cheque", "UPI"], "Bank transfer") + '</select></div></div>' +
-      '<label>Reference (cheque / UTR)</label><input id="pi_ref"/>' +
+      '<div class="grid2"><div><label>Date</label><input id="pi_date" type="date" max="' + today() + '" value="' + today() + '"/></div>' +
+      '<div><label>Mode</label><select id="pi_mode">' + opts(["Cash", "Bank transfer", "Cheque", "UPI"], "Bank transfer") + '</select></div></div>';
+    /* Only asked when there is a real choice to make - one site needs no question. */
+    if (sites.length > 1) {
+      h += '<label>Against which site</label><select id="pi_site"><option value="">Not tied to one site</option>' +
+        sites.map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.name) + '</option>'; }).join("") + '</select>';
+    } else if (sites.length === 1) {
+      h += '<input type="hidden" id="pi_site" value="' + esc(sites[0].id) + '"/>';
+    }
+    return h + '<label>Reference (cheque / UTR)</label><input id="pi_ref"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="pi-save" data-n="' + esc(client) + '">Save payment</button></div>';
   }
@@ -7900,29 +8136,31 @@ function viewCatalogue() {
   /* Shown the moment a payment is saved - the one second at which sending the receipt costs
      nobody any effort. "Later" is a real option; the same receipt is always reachable again
      from the Receipts button on his card. */
-  function modalPayDone(p) {
-    return '<h2>Payment recorded</h2><p class="sub">' + esc(p.client) + ' &middot; ' + money(p.amount) + '</p>' +
-      '<div class="card"><div class="meta">Receipt no. <b>' + esc(receiptNo(p)) + '</b><br>' +
-      'Send it to him now. It looks professional, and it ends the &ldquo;I already paid that&rdquo; conversation before it starts.</div></div>' +
+  function modalPayDone(p, synced) {
+    var ok = (synced !== false);
+    return '<h2>' + (ok ? 'Payment recorded' : 'Held on this phone') + '</h2><p class="sub">' + esc(p.client) + ' &middot; ' + money(p.amount) + '</p>' +
+      '<div class="card"' + (ok ? '' : ' style="border-color:#fcd34d;background:#fffbeb"') + '><div class="meta">Receipt no. <b>' + esc(receiptNo(p)) + '</b><br>' +
+      (ok ? 'Send it to him now. It looks professional, and it ends the &ldquo;I already paid that&rdquo; conversation before it starts.'
+          : 'The team sheet did not answer, so this payment is held safely on this phone and goes up by itself when the signal is back. <b>Do not enter it again.</b>') +
+      '</div></div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Later</button>' +
       '<button class="btn ghost" data-act="rc-pdf" data-p="' + esc(p.id) + '">Download</button>' +
       '<button class="btn" data-act="rc-wa" data-p="' + esc(p.id) + '">Send on WhatsApp</button></div>';
   }
   function modalReceipts(client) {
-    var ps = (S.data.payments || []).filter(function (x) { return x.client === client; })
-      .sort(function (a, b) { return String(b.date || "").localeCompare(String(a.date || "")); });
-    var h = '<h2>Receipts</h2><p class="sub">' + esc(client) + '</p>';
-    if (!ps.length) {
+    var rows = payHistRows(client);
+    var live = rows.filter(function (r) { return !(r.cx && r.cx.on); });
+    var tot = live.reduce(function (a, r) { return a + (Number(r.p.amount) || 0); }, 0);
+    var h = '<h2>Payment history</h2><p class="sub">' + esc(client) + '</p>';
+    if (!rows.length) {
       return h + '<div class="empty">No payment has been recorded for him yet.</div>' +
         '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
     }
-    ps.forEach(function (p) {
-      h += '<div class="card"><h3>' + money(p.amount) + ' <span class="pill">' + esc(p.mode || "") + '</span></h3>' +
-        '<div class="meta">' + esc(fullDate(p.date)) + ' &middot; receipt ' + esc(receiptNo(p)) +
-        (p.ref ? ' &middot; ref ' + esc(p.ref) : "") + '</div>' +
-        '<div class="acts"><button class="btn sm ghost" data-act="rc-pdf" data-p="' + esc(p.id) + '">Download</button>' +
-        '<button class="btn sm" data-act="rc-wa" data-p="' + esc(p.id) + '">WhatsApp</button></div></div>';
-    });
+    h += '<div class="card"><div class="meta">' + live.length + ' payment(s) &middot; <b>' + money(tot) + ' received in all</b>' +
+      (rows.length - live.length ? '<br>' + (rows.length - live.length) + ' cancelled entr(ies), shown struck through' : "") + '</div>' +
+      '<div class="acts"><button class="btn sm ghost" data-act="pay-csv" data-n="' + esc(client) + '">Download (CSV)</button>' +
+      '<button class="btn sm ghost" data-act="ledger-pdf" data-n="' + esc(client) + '">Ledger PDF</button></div></div>';
+    rows.forEach(function (r) { h += payHistCard(r, false); });
     return h + '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
   }
 
@@ -7937,7 +8175,8 @@ function viewCatalogue() {
         uni = true;
       }
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
-      var R2 = function (n) { return (uni ? "\u20B9" : "Rs.") + Number(n || 0).toLocaleString("en-IN"); };
+      /* rounded, exactly like money() - the table and the balance box must not disagree by paise */
+      var R2 = function (n) { return (uni ? "\u20B9" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
       var W = 210, L = 14, Rt = W - 14, y = 0;
       doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 34, "F");
       doc.setFillColor(94, 234, 212); doc.rect(0, 34, W, 1.2, "F");
@@ -7960,10 +8199,19 @@ function viewCatalogue() {
 
       var bal = 0;
       var lines = [];
+      /* v6.9.209: the brought-forward balance and the credited returns used to be missing from
+         this table while the "Balance due" box below it included them - two different numbers on
+         one page a customer is holding. Both belong in the running balance. */
+      if (l.opening) {
+        lines.push({ d: "", p: "Balance brought forward", dr: l.opening > 0 ? l.opening : 0, cr: l.opening < 0 ? -l.opening : 0 });
+      }
+      (l.rets || []).forEach(function (rt) {
+        lines.push({ d: dstr(rt.createdAt || rt.date), p: "Material returned" + (rt.returnNo ? " - " + rt.returnNo : ""), dr: 0, cr: returnNet(rt) });
+      });
       l.chs.forEach(function (c) {
         lines.push({ d: dstr(c.createdAt), p: "Challan " + c.challanNo + (c.brand ? " (" + c.brand + ")" : ""), dr: challanNet(c), cr: 0 });
-        if (String(c.freightTo) === "Client" && Number(c.freight)) {
-          lines.push({ d: dstr(c.createdAt), p: "Freight - " + c.challanNo + (c.driver ? " (" + c.driver + ")" : ""), dr: Number(c.freight), cr: 0 });
+        if (chFreight(c) > 0) {
+          lines.push({ d: dstr(c.createdAt), p: "Freight - " + c.challanNo + (c.driver ? " (" + c.driver + ")" : ""), dr: chFreight(c), cr: 0 });
         }
       });
       l.pays.forEach(function (p) {
@@ -13544,6 +13792,45 @@ function viewCatalogue() {
     return out;
   }
 
+  /* ---------------- One tap, one record  (v6.9.209) ----------------
+     A save on a weak signal can take several seconds.  While it was in the air the Save button
+     stayed live, so an impatient second tap wrote a SECOND record - which is exactly how one
+     payment of Rs 1,00,000 became two.  Every write button named in WRITE_ACTS is locked the
+     instant it is pressed and unlocked when the save settles.  WRITE_LOCK_MS is a backstop: if a
+     promise is ever dropped the button comes back by itself, so he is never left tapping a dead
+     screen with the customer standing in front of him. */
+  var WRITE_ACTS = { "pi-save": 1, "pi-force": 1, "po-save": 1, "po-force": 1 };
+  var WRITE_LOCK_MS = 30000;
+  var _lockTimer = {}, _lockSeq = 0;
+
+  function lockBtn(t) {
+    if (!t || !t.getAttribute) return true;
+    if (t.getAttribute("data-busy") === "1") return false;      /* already saving - swallow this tap */
+    t.setAttribute("data-busy", "1");
+    var k = "lk" + (++_lockSeq);
+    t.setAttribute("data-lockkey", k);
+    try {
+      t.setAttribute("data-lockhtml", t.innerHTML);
+      if (String(t.tagName || "").toUpperCase() === "BUTTON") { t.innerHTML = "Saving\u2026"; t.disabled = true; }
+      t.style.opacity = "0.6"; t.style.pointerEvents = "none";
+    } catch (e) { }
+    _lockTimer[k] = setTimeout(function () { unlockBtn(t); }, WRITE_LOCK_MS);
+    return true;
+  }
+
+  function unlockBtn(t) {
+    if (!t || !t.getAttribute) return;
+    var k = t.getAttribute("data-lockkey");
+    if (k && _lockTimer[k]) { clearTimeout(_lockTimer[k]); delete _lockTimer[k]; }
+    if (t.getAttribute("data-busy") !== "1") return;
+    try {
+      var h = t.getAttribute("data-lockhtml");
+      if (h !== null && String(t.tagName || "").toUpperCase() === "BUTTON") t.innerHTML = h;
+      t.disabled = false; t.style.opacity = ""; t.style.pointerEvents = "";
+    } catch (e) { }
+    t.removeAttribute("data-busy"); t.removeAttribute("data-lockkey"); t.removeAttribute("data-lockhtml");
+  }
+
   document.addEventListener("click", function (e) {
     var t = e.target.closest("[data-act]");
     if (!t) return;
@@ -13552,6 +13839,9 @@ function viewCatalogue() {
     /* form generation at the instant of THIS click — a save started now must only close the form
        that is open now, never a different one the user opens while the save is still in flight. */
     var _gClick = _mgen;
+
+    /* A write button is dead to a second tap until the first one has settled. */
+    if (WRITE_ACTS[act] && !lockBtn(t)) { toast("Still saving \u2014 one moment."); return; }
 
     if (act === "login") { doLogin(); return; }
     if (act === "pin-change") { renderPinChange(); return; }
@@ -15032,37 +15322,70 @@ function viewCatalogue() {
     }
 
     if (act === "pay-out") { S.modal = modalPayout(t.getAttribute("data-n")); render(); return; }
-    if (act === "po-save") {
-      var pn = t.getAttribute("data-n");
-      var amt = Number(val("po_amt")) || 0;
-      if (amt <= 0) { toast("Enter an amount."); return; }
-      save("commpay", { id: "", createdBy: S.user, associate: pn, siteId: "", siteName: "",
-        date: val("po_date"), amount: amt, mode: val("po_mode"), notes: val("po_note") })
-        .then(function (r) { if (r) closeAck(_gClick, "Payout recorded."); });
+    if (act === "po-save" || act === "po-force") {
+      var poRow;
+      if (act === "po-force") { poRow = _poPend; _poPend = null; }
+      else {
+        var pn = t.getAttribute("data-n");
+        var amt = Math.round(nAmt(val("po_amt")));   /* keeps the minus sign - see readPayIn */
+        if (amt <= 0) { unlockBtn(t); toast("Enter an amount."); return; }
+        var pod = String(val("po_date") || "");
+        if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(pod)) { unlockBtn(t); toast("Pick the date of the payout."); return; }
+        if (pod > today()) { unlockBtn(t); toast("That date has not arrived yet \u2014 check it once."); return; }
+        poRow = { id: "", createdBy: S.user, associate: pn, siteId: "", siteName: "",
+          date: pod, amount: amt, mode: val("po_mode"), notes: val("po_note") };
+        var pot = poTwin(poRow);
+        if (pot) {
+          unlockBtn(t); _poPend = poRow;
+          S.modal = modalDupStop("This payout is already entered", pn,
+            [money(pot.amount) + " by " + esc(String(pot.mode || "")) + " on " + esc(fullDate(pot.date))],
+            "po-force", "Yes, a second separate payout");
+          render(); return;
+        }
+      }
+      if (!poRow) { unlockBtn(t); toast("That entry has gone stale \u2014 open it again."); return; }
+      (function (row, gen, btn) {
+        save("commpay", row).then(function (r) {
+          unlockBtn(btn);
+          closeAck(gen, (r && r !== row) ? "Payout recorded." : "Payout held on this phone \u2014 it will sync by itself.");
+        }).catch(function () { unlockBtn(btn); closeAck(gen, "Payout held on this phone \u2014 it will sync by itself."); });
+      })(poRow, _gClick, t);
       return;
     }
 
     if (act === "pay-in") { S.modal = modalPayIn(t.getAttribute("data-n")); render(); return; }
-    if (act === "pi-save") {
-      var cln = t.getAttribute("data-n");
-      var amt2 = Number(val("pi_amt")) || 0;
-      if (amt2 <= 0) { toast("Enter an amount."); return; }
-      var site = S.data.challans.filter(function (c) { return c.customerName === cln && c.siteId; })[0] || {};
-      save("payments", { id: "P-" + Date.now() + "-" + Math.floor(Math.random() * 1000), createdBy: S.user, siteId: site.siteId || "", siteName: site.site || "",
-        client: cln, date: val("pi_date"), amount: amt2, mode: val("pi_mode"), ref: val("pi_ref"), notes: "" })
-        .then(function (r) {
-          if (!r) return;
-          toast("Payment recorded. Incentive payable updated.");
-          /* Straight into the receipt while he still has the customer in front of him. */
-          S.modal = modalPayDone(r); render();
-        });
+    if (act === "pi-save" || act === "pi-force") {
+      var piRow;
+      if (act === "pi-force") { piRow = _payPend; _payPend = null; }
+      else {
+        var pRead = readPayIn(t.getAttribute("data-n"));
+        if (pRead.err) { unlockBtn(t); toast(pRead.err); return; }
+        piRow = pRead.row;
+        var twin = payTwin(piRow);
+        if (twin) {
+          unlockBtn(t); _payPend = piRow;
+          S.modal = modalDupStop("This looks like the same payment again", piRow.client,
+            [money(twin.amount) + " by " + esc(String(twin.mode || "")) + " on " + esc(fullDate(twin.date)),
+             "Receipt " + esc(receiptNo(twin)) + (twin.ref ? " &middot; ref " + esc(twin.ref) : "")],
+            "pi-force", "Yes, a second separate payment");
+          render(); return;
+        }
+      }
+      if (!piRow) { unlockBtn(t); toast("That entry has gone stale \u2014 open it again."); return; }
+      payWrite(piRow, _gClick, t);
       return;
     }
 
+    if (act === "pay-hist") { S.payHist = !S.payHist; S.modal = null; render(); return; }
+    if (act === "pay-csv") { payCsv(t.getAttribute("data-n") || ""); return; }
     if (act === "rc-list") { S.modal = modalReceipts(t.getAttribute("data-n")); render(); return; }
     if (act === "rc-pdf" || act === "rc-wa") {
       var rpid = t.getAttribute("data-p");
-      var rp = (S.data.payments || []).filter(function (x) { return x.id === rpid; })[0];
+      /* v6.9.209: an EMPTY id used to match the first payment row that also had a blank id -
+         and then WhatsApp the wrong customer his own amount. No id, no receipt. */
+      if (!rpid) { toast("This payment has no receipt number yet \u2014 pull the team data down and try again."); return; }
+      var rp = (S.data.payments || []).concat(((S.cancelled || {}).payments) || [])
+        .filter(function (x) { return String(x.id || "") === rpid; })[0];
       if (!rp) { toast("That payment is not on this device — pull the team data down and try again."); return; }
       var rfn = "Receipt_" + String(receiptNo(rp)).replace(/[^\w.-]/g, "_") + ".pdf";
       if (act === "rc-pdf") {
@@ -16350,7 +16673,10 @@ function viewCatalogue() {
         }
         S.discPinAt = _now;
       }
-      bit.disc = Number(t.value) || 0; bch.itemsJson = JSON.stringify(bitems); save("challans", bch); render();
+      /* v6.9.209: clamped. 100 typed by mistake zeroed the line; a minus sign over-billed him. */
+      var _nd = Math.max(0, Math.min(90, Math.round(Number(t.value) || 0)));
+      if (_nd !== (Number(t.value) || 0)) toast("Discount kept within 0-90%.");
+      bit.disc = _nd; bch.itemsJson = JSON.stringify(bitems); save("challans", bch); render();
       return;
     }
     if (t.classList && (t.classList.contains("dsc") || t.classList.contains("incp"))) {
@@ -16581,6 +16907,10 @@ function viewCatalogue() {
       if (String(S.pinSet || "").toUpperCase() === "Y") {   // "Y" = PIN is set; anything else must reset it first
         S.tab = (ROLE_TABS[S.role] || ["dash"])[0] || "dash";
         S.data = warm;
+        /* v6.9.209: replay whatever is still journaled on this phone BEFORE painting. Without it a
+           payment saved offline vanished off the screen on reopen - and a man who cannot see the
+           payment he just entered enters it again. */
+        try { applyPending(); } catch (e) { }
         applyConfirmed();
         splitCancelled();
         S.warmStart = true;
