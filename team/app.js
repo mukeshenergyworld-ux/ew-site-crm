@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.206";
+  var APP_VERSION = "6.9.207";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -221,7 +221,18 @@
      retried automatically - and again the next time the app opens. Data cannot silently disappear. */
   var PEND_KEY = "ew_pending_v1", _pkSeq = 0, _retrying = false;
   function pendLoad() { try { return JSON.parse(localStorage.getItem(PEND_KEY) || "[]") || []; } catch (e) { return []; } }
-  function pendStore(l) { try { localStorage.setItem(PEND_KEY, JSON.stringify(l)); } catch (e) { } S.pendCount = l.length; syncBanner(); }
+  /* v6.9.207: if the device is out of storage the recovery journal silently stopped working -
+     S.pendCount still claimed a queue that storage did not hold. Now it says so, once, loudly. */
+  var _quotaTold = false;
+  function pendStore(l) {
+    try { localStorage.setItem(PEND_KEY, JSON.stringify(l)); S.pendQuota = false; }
+    catch (e) {
+      S.pendQuota = true;
+      try { console.error("[EW] recovery journal could not be written - device storage is full", e); } catch (x) { }
+      if (!_quotaTold) { _quotaTold = true; try { toast("This device is out of storage - unsaved work can no longer be kept safe offline. Please refresh while you have signal."); } catch (x) { } }
+    }
+    S.pendCount = l.length; syncBanner();
+  }
   function pendCount() { return pendLoad().length; }
   function pendPut(pk, tab, row) { var l = pendLoad().filter(function (x) { return x.pk !== pk; }); l.push({ pk: pk, tab: tab, row: row, at: Date.now(), err: "" }); pendStore(l); }
   function pendMark(pk, err) { var l = pendLoad(); l.forEach(function (x) { if (x.pk === pk) x.err = err; }); pendStore(l); }
@@ -413,6 +424,45 @@
     return h;
   }
 
+  /* ---- v6.9.207 · SERVER-CONFIRMED REGISTER ----
+     THE BUG THIS FIXES, in the owner's words: "saving a thing erasing current ongoing work data"
+     and "double discount for same client". They were the SAME bug.
+
+     Saving the discount screen fires one save() per brand line, all at once. The FIRST one that
+     came back called quietSync(), whose teamGet raced the OTHER saves still in flight. The server
+     answered from a copy of the sheet taken BEFORE the last writes landed, `S.data = r` threw the
+     confirmed-but-not-yet-in-that-copy rows away, pendDrop() had already cleared them from the
+     journal so applyPending() could not put them back, and snapSave() then wrote the loss to the
+     device. Minutes later the owner edited the same brand again, discRow() found nothing, and a
+     SECOND row was minted - which is why the challan form showed Heliroma 50% twice.
+     (Proved on his own data: the two Sandeep Gupta pairs are 99,180 ms apart to the millisecond.)
+
+     Two guards, both additive - neither can ever remove a row:
+       1. every row the SERVER has confirmed is remembered here for 5 minutes, and re-inserted
+          after any wholesale replacement of S.data if the incoming copy is missing it;
+       2. a background re-sync never starts while a save is still in flight (see !S.pending below).
+     Held for 5 minutes because that is far longer than any sheet write takes to become visible,
+     and short enough that a row the owner later CANCELS cannot be resurrected by it. */
+  var _conf = {}, CONF_TTL = 300000;
+  function confPut(tab, row) {
+    if (!row || !row.id) return;
+    var c = {}; Object.keys(row).forEach(function (k) { c[k] = row[k]; });
+    _conf[tab + "|" + row.id] = { tab: tab, at: Date.now(), row: c };
+  }
+  function confDrop(tab, id) { try { delete _conf[tab + "|" + id]; } catch (e) { } }
+  function applyConfirmed() {
+    if (!S.data) return;
+    var now = Date.now(), back = 0;
+    Object.keys(_conf).forEach(function (k) {
+      var e = _conf[k];
+      if (now - e.at > CONF_TTL) { delete _conf[k]; return; }
+      var arr = (S.data[e.tab] = S.data[e.tab] || []), found = false;
+      for (var i = 0; i < arr.length; i++) { if (arr[i] && String(arr[i].id) === String(e.row.id)) { found = true; break; } }
+      if (!found) { arr.push(e.row); back++; }
+    });
+    if (back) { try { console.warn("[EW] put back " + back + " confirmed row(s) a re-sync had not caught up with"); } catch (x) { } }
+  }
+
   function save(tab, row, quiet) {
     /* v6.9.124 — DUPLICATE FIX: every NEW row (no server id yet) is given a STABLE client-generated
        id that IS sent to the server. The backend upserts by id, so if a create is ever delivered
@@ -454,7 +504,11 @@
       }
       done();
       if (list[idx]) Object.assign(list[idx], r.row);
-      pendDrop(pk); if (!quiet) renderBg(); quietSync();
+      /* v6.9.207: remember what the server just confirmed, and never re-sync on top of a save
+         that is still in the air - that race is what erased rows and duplicated discounts. */
+      confPut(tab, list[idx] || r.row);
+      pendDrop(pk); if (!quiet) renderBg();
+      if (!S.pending) quietSync();
       return r.row;
     }).catch(function (e) {
       done(); pendMark(pk, (e && e.message) ? e.message : "network error");
@@ -475,10 +529,11 @@ window.addEventListener("beforeunload", function (ev) {
   var syncAt = 0, syncing = false;
   function quietSync() {
     if (syncing || Date.now() - syncAt < 20000) return;
+    if (S.pending) return;              /* v6.9.207: never pull while a save is still in flight */
     syncing = true;
     api("teamGet").then(function (r) {
       syncing = false; syncAt = Date.now();
-      if (r && r.ok) { S.data = r; applyPending(); splitCancelled(); snapSave(); renderBg(); }
+      if (r && r.ok) { S.data = r; applyPending(); applyConfirmed(); splitCancelled(); snapSave(); renderBg(); }
       if (pendCount()) retryPending();
     }).catch(function () { syncing = false; });
   }
@@ -502,7 +557,11 @@ window.addEventListener("beforeunload", function (ev) {
         });
       }
       localStorage.setItem(snapKey(), JSON.stringify({ at: Date.now(), d: d }));
-    } catch (e) { }
+      S.snapQuota = false;
+    } catch (e) {
+      S.snapQuota = true;   /* v6.9.207: offline copy is now stale - say so rather than pretend */
+      try { console.error("[EW] offline copy could not be written - device storage is full", e); } catch (x) { }
+    }
   }
   function snapLoad() {
     try {
@@ -513,11 +572,11 @@ window.addEventListener("beforeunload", function (ev) {
 
   function refresh() {
     var snap = snapLoad();
-    if (snap && snap.ok) { S.data = snap; splitCancelled(); S.busy = false; render(); }
+    if (snap && snap.ok) { S.data = snap; applyConfirmed(); splitCancelled(); S.busy = false; render(); }
     return api("teamGet").then(function (r) {
       S.busy = false;
       syncAt = Date.now();
-      if (r && r.ok) { S.data = r; applyPending(); splitCancelled(); snapSave(); }
+      if (r && r.ok) { S.data = r; applyPending(); applyConfirmed(); splitCancelled(); snapSave(); }
       render(); syncBanner();
       if (pendCount()) retryPending();
       try { prfFlush(); } catch (e) { }          /* delivery proofs taken out of signal */
@@ -2286,22 +2345,45 @@ window.addEventListener("beforeunload", function (ev) {
     var t = String(n || "").trim().toLowerCase();
     return S.data.clients.filter(function (c) { return String(c.name).trim().toLowerCase() === t; })[0] || null;
   }
-  function clientDiscount(client, brand) {
-    var d = S.data.discounts.filter(function (x) {
-      return String(x.client).toLowerCase() === String(client).toLowerCase() && String(x.brand) === String(brand);
-    })[0];
-    return d ? Number(d.pct) || 0 : 0;
+  /* ---- v6.9.207 · ONE rule for finding a client's discount ----
+     There used to be THREE. clientDiscount() did not trim the name, discRow() did, and the teal
+     "preset discount" card on the challan form matched on the client alone and ignored the brand.
+     So the card could promise a discount that the billing screen then failed to find - a silent
+     money leak - and a duplicated row rendered as a duplicated chip.
+     dkey() is now the ONLY way a client or brand name is compared anywhere: trimmed, inner runs of
+     spaces collapsed, lower-cased. And where history has left more than one row for the same
+     client+brand, discPick() always chooses the SAME winner, everywhere in the app, so what the
+     challan form shows is exactly what billing charges. */
+  function dkey(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
+  function discRowsFor(client, brand) {
+    var c = dkey(client), b = dkey(brand);
+    return (S.data.discounts || []).filter(function (x) { return dkey(x.client) === c && dkey(x.brand) === b; });
   }
+  /* The richest row wins: a real discount counts most, then each partner incentive it carries,
+     and the newest row breaks a tie. Deliberate - it keeps the row holding BOTH plumber and
+     architect over a later one that only holds the plumber, so nobody loses an incentive. */
+  function discScore(d) {
+    var s = (Number(d && d.pct) || 0) > 0 ? 4 : 0, m = incMap(d);
+    Object.keys(m).forEach(function (k) { if (Number(m[k]) > 0) s += 1; });
+    return s;
+  }
+  function discStamp(d) { var m = String((d && d.id) || "").match(/(\d{10,})/); return m ? Number(m[1]) : 0; }
+  function discPick(rows) {
+    if (!rows || !rows.length) return null;
+    var best = rows[0];
+    for (var i = 1; i < rows.length; i++) {
+      var sa = discScore(rows[i]), sb = discScore(best);
+      if (sa > sb || (sa === sb && discStamp(rows[i]) > discStamp(best))) best = rows[i];
+    }
+    return best;
+  }
+  function clientDiscount(client, brand) { var d = discRow(client, brand); return d ? Number(d.pct) || 0 : 0; }
   /* ---- per-client, per-brand, per-partner incentive ----
      The incentive a partner earns is set at the SAME place as that client's brand discount
      (admin only). We store it on the very same discount row, in its `notes` column, as a small
      JSON map of role -> percent, e.g. {"plumber":5,"architect":3}. Role, not partner name, so it
      follows whoever is that client's plumber / architect today. No new sheet column is needed. */
-  function discRow(client, brand) {
-    return S.data.discounts.filter(function (x) {
-      return String(x.client).trim().toLowerCase() === String(client).trim().toLowerCase() && String(x.brand) === String(brand);
-    })[0] || null;
-  }
+  function discRow(client, brand) { return discPick(discRowsFor(client, brand)); }
   function incMap(row) {
     try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
   }
@@ -3403,17 +3485,24 @@ window.addEventListener("beforeunload", function (ev) {
      the user SEES the bargain that will be frozen onto every line at billing time. */
   function presetFlashHtml(name) {
     var c = clientByName(name); if (!c) return '';
-    var t = String(c.name).trim().toLowerCase();
-    var drows = (S.data.discounts || []).filter(function (x) {
-      return String(x.client || "").trim().toLowerCase() === t && (Number(x.pct) || 0) > 0;
-    }).sort(function (a, b) { return String(a.brand || "").localeCompare(String(b.brand || "")); });
+    /* v6.9.207: ONE chip per brand. Where history left two rows for the same brand this shows the
+       winning one - the very row billing will use - so the card can never promise a different
+       number from the one that gets charged. This is what showed "Heliroma 50%" twice. */
+    var t = dkey(c.name), seenB = {}, drows = [];
+    (S.data.discounts || []).forEach(function (x) {
+      if (dkey(x.client) !== t) return;
+      var bk = dkey(x.brand); if (!bk || seenB[bk]) return; seenB[bk] = 1;
+      var win = discPick(discRowsFor(c.name, x.brand));
+      if (win && (Number(win.pct) || 0) > 0) drows.push(win);
+    });
+    drows.sort(function (a, b) { return String(a.brand || "").localeCompare(String(b.brand || "")); });
     if (!drows.length) {
       return '<div class="meta" style="font-size:12px;color:#b45309;margin-top:6px">No preset discount set for this client — set one under <b>Discounts</b> if this client should get one.</div>';
     }
     return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;margin-top:8px;padding:10px 12px">' +
       '<h3 style="margin:0;font-size:13px">Preset discount for ' + esc(c.name) + ' — applied automatically at billing</h3>' +
       '<div class="meta" style="margin-top:5px">' +
-      drows.map(function (d) { return '<span class="pill teal" style="margin:2px 5px 2px 0">' + esc(d.brand) + ' ' + (Number(d.pct) || 0) + '%</span>'; }).join("") +
+      drows.map(function (d) { return '<span class="pill teal" style="margin:2px 5px 2px 0;display:inline-block;max-width:100%">' + esc(d.brand) + ' ' + (Number(d.pct) || 0) + '%</span>'; }).join(" ") +
       '</div></div>';
   }
 
@@ -6839,7 +6928,12 @@ function viewCatalogue() {
          anywhere is not shown at all. */
       var agg = {};
       (S.data.discounts || []).forEach(function (d) {
-        var s = agg[d.client] = agg[d.client] || { disc: [], plumber: [], architect: [], pmc: [], builder: [] };
+        /* v6.9.207: skip any row that is not the winner for its client+brand, and file it under the
+           client's REAL spelling - so "Sandeep Gupta" and "sandeep  gupta" are one card, not two. */
+        var win = discPick(discRowsFor(d.client, d.brand));
+        if (win && win !== d) return;
+        var cn0 = (clientByName(d.client) || {}).name || String(d.client || "").trim();
+        var s = agg[cn0] = agg[cn0] || { disc: [], plumber: [], architect: [], pmc: [], builder: [] };
         if (Number(d.pct) > 0) s.disc.push({ brand: d.brand, pct: d.pct });
         var im = incMap(d);
         ["plumber", "architect", "pmc", "builder"].forEach(function (role) {
@@ -8684,7 +8778,9 @@ function viewCatalogue() {
       '<br>' + (empty ? '<span style="color:#b91c1c">nothing attached — this copy has no history at all</span>'
                       : '<span style="color:#0f766e">' + esc(bits.join(' · ')) + '</span>') +
       '</div></div>' +
-      '<button class="btn sm ghost" data-act="cl-open" data-n="' + esc(r.name) + '" style="flex:0 0 auto">Open</button>' +
+      /* v6.9.207: cl-open reads data-id. This sent data-n, so Open produced a BLANK new-client
+         form - and a third copy got created on the very screen meant to remove duplicates. */
+      '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(r.id) + '" style="flex:0 0 auto">Open</button>' +
       '</div>' +
       /* At the FOOT of the card, full width, so it can only be read as belonging to the record
          written above it. This button decides which copy keeps the money and the history. */
@@ -8866,8 +8962,26 @@ function viewCatalogue() {
     var cnames = {};
     (S.data.clients || []).forEach(function (c) { cnames[String(c.name || "").trim().toLowerCase()] = 1; });
     var orphanDisc = (S.data.discounts || []).filter(function (d) { return !cnames[String(d.client || "").trim().toLowerCase()]; });
-    var total = dup.length + stuckDraft.length + stuckDisp.length + (unb.count ? 1 : 0) + neg.length + orphanDisc.length;
-    return { dup: dup, stuckDraft: stuckDraft, stuckDisp: stuckDisp, unb: unb, neg: neg, orphanDisc: orphanDisc, total: total };
+    /* v6.9.207: more than one discount row for the same client+brand. The app now always reads the
+       same winner so pricing is already correct, but the extra rows are shown here so they can be
+       cleared away - and so it is obvious if the fault ever comes back. */
+    var dgrp = {}, dupDisc = [];
+    (S.data.discounts || []).forEach(function (d) {
+      var k = dkey(d.client) + "||" + dkey(d.brand);
+      if (!k || k === "||") return;
+      (dgrp[k] = dgrp[k] || []).push(d);
+    });
+    Object.keys(dgrp).forEach(function (k) {
+      var rows = dgrp[k]; if (rows.length < 2) return;
+      var win = discPick(rows);
+      dupDisc.push({
+        client: (clientByName(rows[0].client) || {}).name || rows[0].client, brand: rows[0].brand,
+        n: rows.length, win: win,
+        losers: rows.filter(function (r) { return r !== win; })
+      });
+    });
+    var total = dup.length + stuckDraft.length + stuckDisp.length + (unb.count ? 1 : 0) + neg.length + orphanDisc.length + dupDisc.length;
+    return { dup: dup, stuckDraft: stuckDraft, stuckDisp: stuckDisp, unb: unb, neg: neg, orphanDisc: orphanDisc, dupDisc: dupDisc, total: total };
   }
   function viewHealth() {
     var s = healthScan();
@@ -8914,6 +9028,25 @@ function viewCatalogue() {
       s.neg.map(function (x) {
         return '<div class="meta" style="font-size:13px;padding:3px 0;cursor:pointer" data-act="bill-open" data-n="' + esc(x.name) + '"><b>' + esc(x.name) + '</b> &middot; <span style="color:#7c3aed">' + money(x.due) + '</span> (received more than billed — check for a mis-keyed payment or a missing challan)</div>';
       }).join(''));
+
+    /* v6.9.207: the same client+brand set twice. Shows which one the app is using, so the owner
+       can see the pricing is already right before deciding to tidy. Draft-and-confirm: the card is
+       the draft, the button is the confirm, and the extra rows are BLANKED, never deleted. */
+    h += section('Same discount set twice', (s.dupDisc || []).length, '#b45309',
+      (s.dupDisc || []).map(function (x) {
+        var w = x.win || {}, im = incMap(w);
+        var inc = Object.keys(im).filter(function (k) { return Number(im[k]) > 0; })
+          .map(function (k) { return k + " " + im[k] + "%"; }).join(", ");
+        return '<div class="meta" style="font-size:13px;padding:4px 0;border-top:1px solid #f1f5f9">' +
+          '<b>' + esc(x.client || '(blank)') + '</b> &middot; ' + esc(x.brand || '') +
+          ' \u2014 <b>' + x.n + ' rows</b><br>' +
+          '<span style="color:#0f766e">In use: ' + (Number(w.pct) || 0) + '%' + (inc ? ' &middot; ' + esc(inc) : '') + '</span>' +
+          ' <span style="color:#94a3b8">&middot; ' + x.losers.length + ' extra row(s) doing nothing</span></div>';
+      }).join('') +
+      ((s.dupDisc || []).length
+        ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="disc-tidy">Clear the extra rows</button></div>' +
+          '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Nothing is deleted \u2014 the extra rows are emptied and stay in the sheet.</div>'
+        : ''));
 
     /* Discounts pointing at a client that doesn't exist (the "in" class of error). */
     h += section('Discounts on a non-existent client', s.orphanDisc.length, '#b91c1c',
@@ -12369,10 +12502,71 @@ function viewCatalogue() {
 
   /* render() is the crash boundary: if anything inside blows up, log it and show a safe recovery
      screen instead of a frozen/blank app. The real work is in renderCore(). */
+  /* ---- v6.9.207 · IN-FORM SEATBELT ----
+     renderBg() already defers a background repaint while a MODAL is open, but a repaint that gets
+     through for any other reason - an inline editor like Discounts, a catalogue reload, a PDF
+     finishing - still rebuilt the screen from its template and wiped whatever was typed but not
+     yet saved. This takes a photograph of every field just before the rebuild and puts the values
+     back afterwards.
+     Three rules keep it honest:
+       • it only refills a field the rebuild left EMPTY, so it can never fight a value the app
+         changed on purpose;
+       • it does nothing at all unless the SAME screen came back (same tab, same search, same
+         form) - switching screens never carries old typing across;
+       • password and file inputs are never read or written. */
+  function formCtx() { return String(S.tab || "") + "|" + String(S.q || "") + "|" + (S.modal ? "M" + _mgen : "-"); }
+  function formSnap() {
+    var box; try { box = document.querySelector(".modal") || document.getElementById("root"); } catch (e) { return null; }
+    if (!box) return null;
+    var snap = { ctx: formCtx(), v: {}, focus: "", s0: 0, s1: 0 }, act = null, any = false;
+    try { act = document.activeElement; } catch (e) { }
+    try {
+      var list = box.querySelectorAll("input,select,textarea");
+      for (var i = 0; i < list.length; i++) {
+        var e2 = list[i], id = e2.id, ty = String(e2.type || "").toLowerCase();
+        if (!id || ty === "file" || ty === "password" || ty === "checkbox" || ty === "radio") continue;
+        if (e2.value === "" || e2.value == null) continue;
+        snap.v[id] = e2.value; any = true;
+        if (e2 === act) { snap.focus = id; try { snap.s0 = e2.selectionStart; snap.s1 = e2.selectionEnd; } catch (x) { } }
+      }
+    } catch (e) { return null; }
+    return any ? snap : null;
+  }
+  function formRestore(snap) {
+    if (!snap || snap.ctx !== formCtx()) return;
+    var box; try { box = document.querySelector(".modal") || document.getElementById("root"); } catch (e) { return; }
+    if (!box) return;
+    try {
+      var list = box.querySelectorAll("input,select,textarea");
+      for (var i = 0; i < list.length; i++) {
+        var e2 = list[i], id = e2.id, ty = String(e2.type || "").toLowerCase();
+        if (!id || ty === "file" || ty === "password" || ty === "checkbox" || ty === "radio") continue;
+        if (String(e2.value == null ? "" : e2.value) !== "") continue;   /* never overwrite a real value */
+        var was = snap.v[id];
+        if (was === undefined || was === "") continue;
+        if (e2.tagName === "SELECT") {
+          var has = false;
+          for (var j = 0; j < e2.options.length; j++) { if (e2.options[j].value === was) { has = true; break; } }
+          if (!has) continue;
+        }
+        e2.value = was;
+      }
+      if (snap.focus) {
+        var lost = true;
+        try { lost = !document.activeElement || document.activeElement === document.body; } catch (x) { }
+        if (lost) {
+          var f = null; try { f = document.getElementById(snap.focus); } catch (x) { }
+          if (f) { try { f.focus(); f.setSelectionRange(snap.s0, snap.s1); } catch (x) { } }
+        }
+      }
+    } catch (e) { }
+  }
+
   function render() {
     try { agClearCache(); } catch (e) { }   /* one agent scan per paint, always fresh */
     _bgCache = null;                        /* brand groups rebuilt if the catalogue changed */
-    try { renderCore(); try { syncBanner(); } catch (e) { } }
+    var _fsnap = null; try { _fsnap = formSnap(); } catch (e) { }
+    try { renderCore(); try { formRestore(_fsnap); } catch (e) { } try { syncBanner(); } catch (e) { } }
     catch (err) {
       logCrash("render", err);
       try {
@@ -12396,7 +12590,7 @@ function viewCatalogue() {
     api("stockList").then(function (r) {
       STOCK_LOADING = false; STOCK_LOADED = true;
       S.stock = (r && r.ok && r.rows) ? r.rows : [];
-      render();
+      renderBg();
     }).catch(function () { STOCK_LOADING = false; });
   }
   function stockDeliveredByCode() {
@@ -13520,7 +13714,7 @@ function viewCatalogue() {
     if (act === "coll-sub") { S.collSub = t.getAttribute("data-s"); render(); return; }
     if (act === "price-sub") { S.priceSub = t.getAttribute("data-s"); render(); return; }
     if (act === "pay-sub") { S.payHubSub = t.getAttribute("data-s"); render(); return; }
-    if (act === "cat-reload") { toast("Reloading catalogue..."); loadCatalog().then(function () { toast(PRODUCTS.length + " products loaded."); render(); }); return; }
+    if (act === "cat-reload") { toast("Reloading catalogue..."); loadCatalog().then(function () { toast(PRODUCTS.length + " products loaded."); renderBg(); }); return; }
 
     if (act === "nav-toggle") { S.navOpen = !S.navOpen; render(); return; }
     if (act === "nav-close") { S.navOpen = false; render(); return; }
@@ -13586,7 +13780,7 @@ function viewCatalogue() {
         if (!r || !r.ok) { toast((r && r.error) || "Save failed."); return; }
         S.modal = null;
         toast(r.created ? "Product added." : "Product updated.");
-        loadCatalog().then(function () { render(); });
+        loadCatalog().then(function () { renderBg(); });
       });
       return;
     }
@@ -13596,7 +13790,7 @@ function viewCatalogue() {
       api("catalogDelete", { code: code }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Delete failed."); return; }
         toast("Removed from catalogue.");
-        loadCatalog().then(function () { render(); });
+        loadCatalog().then(function () { renderBg(); });
       });
       return;
     }
@@ -13738,11 +13932,13 @@ function viewCatalogue() {
         mob: val("c_mob"), mob2: fld("c_mob2", "mobile2"), loc: val("c_loc"), ar: fld("c_area", "area"),
         addr: val("c_addr"), type: val("c_type"), notes: val("c_notes"), seg: val("c_segment"),
         arch: val("c_arch"), plumb: val("c_plumb"), build: val("c_build"), pmc: val("c_pmc"),
-        /* migration fields - only rendered for a partner, so blank for everyone else */
-        opAmt: val("c_opamt"), opDate: val("c_opdate"),
+        /* migration fields - only rendered for a partner, so fld() keeps them intact for everyone
+           else. v6.9.207: these were read with val(), so a sales or accounts user editing a client
+           blanked the opening balance the migration had set - real money off the ledger. */
+        opAmt: fld("c_opamt", "openingAmt"), opDate: fld("c_opdate", "openingAsOn"),
         /* credit terms - admin-only inputs, so fld() keeps them intact for everyone else */
         credLim: fld("c_credlim", "creditLimit"), credDays: fld("c_creddays", "creditDays"),
-        leadType: val("c_leadtype"), owner: val("c_owner"),
+        leadType: fld("c_leadtype", "leadType"), owner: val("c_owner"),
         /* read with everything else - creating a partner rebuilds this modal */
         stage: fld("c_stage", "stage")
       };
@@ -13860,7 +14056,7 @@ function viewCatalogue() {
           filename: String(qt.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf",
           caption: "<b>Quotation " + qt.quoteNo + "</b>\n" + qt.client + "\n" + qt.brand + "\nSub-total Rs. " + qt.net + " (GST as actual)\nBy " + qt.createdBy
         });
-      }).then(function (r) { toast(r && r.ok ? "Quote sent to Telegram." : "Send failed."); render(); });
+      }).then(function (r) { toast(r && r.ok ? "Quote sent to Telegram." : "Send failed."); renderBg(); });
       return;
     }
     if (act === "qz-new") { S.qz = { step: 1, location: "", client: "", items: [], brandDisc: 0, brandDiscs: {} }; S.tab = "quotes"; render(); return; }
@@ -13979,6 +14175,22 @@ function viewCatalogue() {
     if (act === "pend-backup") { exportPending(); return; }
     if (act === "disc-edit") { S.q = t.getAttribute("data-n"); render(); return; }
     if (act === "disc-back") { S.q = ""; render(); return; }
+    if (act === "disc-tidy") {
+      if (S.role !== "admin") { toast("Only admin can change discounts."); return; }
+      var dupsT = (healthScan().dupDisc || []);
+      if (!dupsT.length) { toast("Nothing to tidy."); return; }
+      var cleared = 0;
+      dupsT.forEach(function (g) {
+        g.losers.forEach(function (r) {
+          /* BLANKED, not deleted - the row stays in the sheet with its id and its client+brand, so
+             nothing the owner ever typed disappears from the record. It simply stops counting. */
+          save("discounts", { id: r.id, client: r.client, brand: r.brand, pct: "", notes: "" }, true);
+          cleared++;
+        });
+      });
+      setTimeout(function () { render(); toast("Emptied " + cleared + " duplicate discount row(s). Nothing was deleted."); }, 200);
+      return;
+    }
     if (act === "disc-saveall") {
       if (S.role !== "admin") { toast("Only admin can set discounts."); return; }
       if (!clientByName(S.q)) { toast("Discounts can only be set for an existing client."); return; }
@@ -13988,12 +14200,12 @@ function viewCatalogue() {
          while the owner typed; this is the only place a discount edit reaches the sheet. */
       var groups = {};
       document.querySelectorAll(".dsc").forEach(function (el) {
-        var cl = el.getAttribute("data-client"), br = el.getAttribute("data-brand"), k = cl + "||" + br;
+        var cl = el.getAttribute("data-client"), br = el.getAttribute("data-brand"), k = dkey(cl) + "||" + dkey(br);
         groups[k] = groups[k] || { client: cl, brand: br };
         groups[k].pctSet = true; groups[k].pct = String(el.value || "").trim();
       });
       document.querySelectorAll(".incp").forEach(function (el) {
-        var cl = el.getAttribute("data-client"), br = el.getAttribute("data-brand"), k = cl + "||" + br;
+        var cl = el.getAttribute("data-client"), br = el.getAttribute("data-brand"), k = dkey(cl) + "||" + dkey(br);
         groups[k] = groups[k] || { client: cl, brand: br };
         (groups[k].inc = groups[k].inc || []).push({ role: String(el.getAttribute("data-role") || "").toLowerCase(), val: String(el.value || "").trim() });
       });
@@ -14661,7 +14873,7 @@ function viewCatalogue() {
           filename: "Leads_" + S.leadBrand.replace(/[^\w.-]/g, "_") + ".pdf",
           caption: "<b>" + S.leadBrand + " - pending leads</b>\nFor: <b>" + exec + "</b>\n" +
             r2.list.length + " open" + (urg ? ", <b>" + urg + " closing now</b>" : "") + "\nSent by " + S.user });
-      }).then(function (r3) { toast(r3 && r3.ok ? "Sent to " + exec + "." : "Send failed."); render(); });
+      }).then(function (r3) { toast(r3 && r3.ok ? "Sent to " + exec + "." : "Send failed."); renderBg(); });
       return;
     }
     if (act === "s-go") {
@@ -15160,7 +15372,7 @@ function viewCatalogue() {
     if (!bs.length) { toast("Pick a brand first."); return; }
     t.disabled = true; t.textContent = "Building...";
     priceListPdf(bs).catch(function (e) { toast("PDF failed: " + e.message); })
-      .then(function () { render(); });
+      .then(function () { renderBg(); });
     return;
   }
   if (act === "pr-new") { S.pr = { brand: "", overrides: [] }; S.modal = modalPrice(); render(); return; }
@@ -15399,7 +15611,9 @@ function viewCatalogue() {
         var gst = window.prompt("GSTIN for " + nm + "?\n(leave blank if none)") || "";
         chosen = gst ? nm + " - " + gst : nm;
         profiles.push({ name: nm, gstin: gst });
-        save("clients", { id: cl2.id, name: cl2.name, billingJson: JSON.stringify(profiles) });
+        /* v6.9.207: only if we actually found the client. With no id this minted a brand-new,
+           nameless client row every time a bill went out for an unregistered name. */
+        if (cl2.id) save("clients", { id: cl2.id, name: cl2.name, billingJson: JSON.stringify(profiles) });
       } else if (profiles.length === 1) {
         chosen = profiles[0].gstin ? profiles[0].name + " - " + profiles[0].gstin : profiles[0].name;
         if (!window.confirm("Bill " + bc.challanNo + " to " + chosen + "?")) return;
@@ -15606,6 +15820,11 @@ function viewCatalogue() {
          "Creating..." button through two slow Apps Script round-trips. The driver-lookup and the
          challan-number reservation now run in PARALLEL (were sequential), and the actual save is
          journaled by the bulletproof save() so nothing can be lost even if the network drops. */
+      /* v6.9.207: hold on to the builder's contents. If the challan-number reservation or the
+         driver save never comes back, the form is put straight back on screen with every line
+         still in it, instead of the whole challan vanishing behind a "kept safe" message that
+         was not true - nothing had been journaled at that point because save() had not run. */
+      var chDraft = S.ch, chSaved = false;
       S.modal = null; S.ch = null;
 
       /* ----- EDIT an existing (pre-dispatch) challan ----- */
@@ -15668,6 +15887,7 @@ function viewCatalogue() {
           associate: assocName, commissionSet: "N", status: "Draft", receiptReceived: "N"
         };
         return save("challans", ch).then(function (r) {
+          chSaved = true;
           if (!r) return;
           toast("Challan " + no + " created - pending approval.");
           /* first-challan setup prompt (admin can set it; others get a reminder to ask admin) */
@@ -15681,7 +15901,12 @@ function viewCatalogue() {
             "\nCreated by <b>" + S.user + "</b>\n\n<i>PENDING APPROVAL</i>", null)
             .then(function (tg) { toast(tg && tg.ok ? "Sent to challan bot." : "Saved, but Telegram send failed."); });
         });
-      }).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
+      }).catch(function (e) {
+        if (chSaved) { toast("Challan saved. Something after it did not finish - pull down to refresh."); return; }
+        /* Nothing reached the server and nothing was journaled - so give the challan back. */
+        S.ch = chDraft; S.modal = modalChallan(); render();
+        toast("Could not reach the server. Nothing was lost - your challan is back on screen, press Create again.");
+      });
       return;
     }
 
@@ -16159,10 +16384,23 @@ function viewCatalogue() {
       return;
     }
     if (t.classList && t.classList.contains("pay-sal")) {
+      /* v6.9.207: the id was read from a DOM attribute written at the last paint, and the screen is
+         not repainted after a salary edit - so a SECOND correction in the same sitting went up with
+         a blank id and created a duplicate payroll row, and the reader takes [0], so the correction
+         appeared to revert. Look the row up in memory instead, and write the new id back onto the
+         input. Also stop sending notes:"" - that blanked the payroll note on every salary edit. */
+      var pMon = t.getAttribute("data-month"), pEng = t.getAttribute("data-eng");
+      var pRow = (S.data.payroll || []).filter(function (x) {
+        return String(x.month) === String(pMon) && String(x.engineer) === String(pEng);
+      })[0];
       save("payroll", {
-        id: t.getAttribute("data-id") || "", month: t.getAttribute("data-month"),
-        engineer: t.getAttribute("data-eng"), salary: t.value, notes: ""
-      }).then(function (r) { if (r) toast("Salary saved."); });
+        id: (pRow && pRow.id) || t.getAttribute("data-id") || "",
+        month: pMon, engineer: pEng, salary: t.value
+      }).then(function (r) {
+        if (!r) return;
+        try { if (r.id) t.setAttribute("data-id", r.id); } catch (e) { }
+        toast("Salary saved.");
+      });
       return;
     }
     if (t.classList && t.classList.contains("pm-status")) { savePitch(t.getAttribute("data-brand"), { status: t.value }); return; }
@@ -16286,6 +16524,7 @@ function viewCatalogue() {
       if (String(S.pinSet || "").toUpperCase() === "Y") {   // "Y" = PIN is set; anything else must reset it first
         S.tab = (ROLE_TABS[S.role] || ["dash"])[0] || "dash";
         S.data = warm;
+        applyConfirmed();
         splitCancelled();
         S.warmStart = true;
         loadCatalog();
