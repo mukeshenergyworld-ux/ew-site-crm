@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.204";
+  var APP_VERSION = "6.9.205";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -872,18 +872,218 @@ window.addEventListener("beforeunload", function (ev) {
       .sort(function (a, b) { return b.days - a.days; });
   }
 
+  /* ================= v6.9.205  WHY WE LOSE  =================
+     A lost quote's reason is knowable for about thirty seconds - while the executive is
+     dropping the status to Lost - and then it is gone.  So it is asked there.
+
+     Stored as an audit row (action "quote:lost"), never as a new quotes column: TEAM_TABS
+     lives in GAS and silently drops any key it does not know, so a new column would need a
+     deploy and would fail silently if that deploy were missed.  Same pattern as amc:stage.
+     A corrected reason is an added row - newest wins, the first answer stays readable.
+
+     The list is fixed because free text cannot be counted: "price", "Price", "rate high"
+     and "costly" are four rows and one reason.  The short label is what fits on a pill on
+     a phone; the long one is what he picks from and what the board prints. */
+  var LOSS_REASONS = [
+    ["Price - competitor quoted lower", "Price"],
+    ["Architect/plumber pushed another brand", "Partner pushed"],
+    ["Customer picked a cheaper brand", "Cheaper brand"],
+    ["Stock or delivery time", "Delivery"],
+    ["Project postponed or dropped", "Postponed"],
+    ["Bought direct or from another dealer", "Bought elsewhere"],
+    ["Credit terms not agreed", "Credit terms"],
+    ["Went cold - no reply", "Went cold"],
+    ["We missed the follow-up", "We missed it"],
+    ["Other", "Other"]
+  ];
+  function lossReasonList() { return LOSS_REASONS.map(function (p) { return p[0]; }); }
+  function lossShort(r) {
+    var t = String(r || "");
+    for (var i = 0; i < LOSS_REASONS.length; i++) if (LOSS_REASONS[i][0] === t) return LOSS_REASONS[i][1];
+    return t.length > 18 ? t.slice(0, 17) + "…" : t;   /* an older reason that has since been reworded */
+  }
+
+  /* Built once per paint, like amcStageMap - the audit sheet grows forever and the quote
+     list is walked card by card. */
+  var _lossCache = null;
+  function lossMap() {
+    if (_lossCache) return _lossCache;
+    var m = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "quote:lost") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var id = String(d.quoteId || "");
+      if (!id || !d.reason) return;
+      var prev = m[id];
+      /* newest wins - a corrected reason reads as the correction because that row is newer,
+         not because the first row went anywhere */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[id] = {
+          reason: String(d.reason), lostTo: String(d.lostTo || ""), note: String(d.note || ""),
+          at: r.createdAt || "", by: r.actor || "",
+          district: String(d.district || ""), area: String(d.area || "")
+        };
+      }
+    });
+    _lossCache = m;
+    return m;
+  }
+  function lossOf(qid) { return lossMap()[String(qid || "")] || null; }
+
+  /* Every Lost quote this signed-in person is allowed to see, joined to its reason.  The
+     geography is read LIVE off the client, because an area filled in next month should
+     improve last month's board; the figure stored on the audit row is the fallback for a
+     client that has since been renamed. */
+  function lostQuoteRows() {
+    var lm = lossMap(), out = [];
+    (S.data.quotes || []).forEach(function (q) {
+      if (String(q.status) !== "Lost") return;
+      if (!seesAllClients() && q.createdBy !== S.user && !isMineClient(q.client)) return;
+      var c = clientByName(q.client) || {}, l = lm[q.id] || null;
+      out.push({
+        id: q.id, quoteNo: q.quoteNo || "", client: q.client || "", exec: q.createdBy || "",
+        net: Number(q.net) || 0, brand: String(q.brand || "").trim() || "—",
+        district: String(c.location || (l && l.district) || "").trim() || "—",
+        area: String(c.area || (l && l.area) || "").trim() || "—",
+        reason: l ? l.reason : "", lostTo: l ? String(l.lostTo || "").trim() : "",
+        note: l ? l.note : "", at: l ? l.at : ""
+      });
+    });
+    return out;
+  }
+  function lossGroup(rows, keyFn) {
+    var m = {}, order = [];
+    rows.forEach(function (r) {
+      var k = keyFn(r);
+      if (!k) return;
+      if (!m[k]) { m[k] = { k: k, n: 0, val: 0, reasons: {} }; order.push(k); }
+      m[k].n++; m[k].val += r.net;
+      if (r.reason) m[k].reasons[r.reason] = (m[k].reasons[r.reason] || 0) + 1;
+    });
+    return order.map(function (k) { return m[k]; }).sort(function (a, b) { return b.val - a.val || b.n - a.n; });
+  }
+  function lossTopReason(g) {
+    var best = "", n = 0;
+    Object.keys(g.reasons || {}).forEach(function (k) { if (g.reasons[k] > n) { n = g.reasons[k]; best = k; } });
+    return best ? { r: best, n: n } : null;
+  }
+  /* One row of the board.  A wrapping flex row, not a table: the review table taught us that
+     anything with a min-width runs off a 320px phone. */
+  function lossBar(name, n, val, share, sub, colour) {
+    return '<div class="card" style="padding:9px 13px;margin-bottom:7px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">' +
+      '<b style="font-size:13.5px;flex:1 1 150px;min-width:0">' + esc(name) + '</b>' +
+      '<span class="meta" style="font-size:12px;flex:0 0 auto">' + n + ' quote' + (n === 1 ? "" : "s") + ' &middot; ' + money(val) + '</span>' +
+      '</div>' +
+      (share === null ? "" :
+        '<div style="height:6px;background:#eef2f7;border-radius:4px;margin-top:6px;overflow:hidden">' +
+        '<div style="height:6px;width:' + Math.max(2, Math.round(share)) + '%;background:' + colour + '"></div></div>') +
+      (sub ? '<div class="meta" style="font-size:11.5px;margin-top:5px">' + sub + '</div>' : "") +
+      '</div>';
+  }
+
+  /* The board itself.  Recorded reasons are counted; the ones nobody answered are shown as
+     exactly that and are NEVER spread across the reasons - a made-up "why" is worse than no
+     "why", because he would act on it. */
+  function wlWhyHtml() {
+    var rows = lostQuoteRows();
+    if (!rows.length) {
+      return '<div class="empty">No lost quotes on the book yet. When a quote is marked <b>Lost</b> the app asks why, and the answers land here.</div>';
+    }
+    var told = rows.filter(function (r) { return !!r.reason; });
+    var lostVal = rows.reduce(function (a, r) { return a + r.net; }, 0);
+    var toldVal = told.reduce(function (a, r) { return a + r.net; }, 0);
+
+    var h = '<div class="card" style="padding:10px 13px;margin-bottom:10px;border-left:5px solid #b91c1c">' +
+      '<h3 style="margin:0 0 3px;font-size:14px">' + rows.length + ' quote' + (rows.length === 1 ? "" : "s") + ' lost &middot; ' + money(lostVal) + '</h3>' +
+      '<div class="meta" style="font-size:12px">' +
+      (told.length === rows.length
+        ? 'A reason is recorded on every one of them.'
+        : (told.length
+          ? 'A reason is recorded on <b>' + told.length + ' of ' + rows.length + '</b> (' + money(toldVal) + ' of ' + money(lostVal) + '). The split below counts those ' + told.length + ' only &mdash; the other ' + (rows.length - told.length) + ' are shown at the bottom as <b>reason not recorded</b>, not guessed at.'
+          : 'No reason has been recorded on any of them yet, so there is nothing to split. Open a lost quote and press <b>Why lost?</b>, or mark the next one Lost and the app will ask.')) +
+      '</div></div>';
+
+    if (told.length) {
+      h += '<div class="ch-client" style="border-left-color:#b91c1c;color:#b91c1c">Why<span class="sub" style="color:#b91c1c">' + told.length + '</span></div>';
+      lossGroup(told, function (r) { return r.reason; }).forEach(function (g) {
+        var lt = {}, order = [];
+        told.forEach(function (r) { if (r.reason === g.k && r.lostTo) { if (!lt[r.lostTo]) { lt[r.lostTo] = 0; order.push(r.lostTo); } lt[r.lostTo]++; } });
+        order.sort(function (a, b) { return lt[b] - lt[a]; });
+        h += lossBar(g.k, g.n, g.val, toldVal > 0 ? g.val * 100 / toldVal : 0,
+          order.length ? 'Lost to: ' + esc(order.slice(0, 4).map(function (x) { return x + " (" + lt[x] + ")"; }).join(", ")) : "",
+          "#b91c1c");
+      });
+
+      h += '<div class="ch-client" style="border-left-color:#0f766e;color:#0f766e">By brand<span class="sub" style="color:#0f766e">' + lossGroup(told, function (r) { return r.brand; }).length + '</span></div>';
+      lossGroup(told, function (r) { return r.brand; }).forEach(function (g) {
+        var t2 = lossTopReason(g);
+        h += lossBar(g.k, g.n, g.val, toldVal > 0 ? g.val * 100 / toldVal : 0,
+          t2 ? 'Most often: <b>' + esc(t2.r) + '</b> (' + t2.n + ' of ' + g.n + ')' : "", "#0f766e");
+      });
+
+      h += '<div class="ch-client" style="border-left-color:#7c3aed;color:#7c3aed">By area<span class="sub" style="color:#7c3aed">' + lossGroup(told, function (r) { return r.district + " · " + r.area; }).length + '</span></div>';
+      lossGroup(told, function (r) { return r.district + " · " + r.area; }).forEach(function (g) {
+        var t3 = lossTopReason(g);
+        h += lossBar(g.k, g.n, g.val, toldVal > 0 ? g.val * 100 / toldVal : 0,
+          t3 ? 'Most often: <b>' + esc(t3.r) + '</b> (' + t3.n + ' of ' + g.n + ')' : "", "#7c3aed");
+      });
+    }
+
+    var quiet = rows.filter(function (r) { return !r.reason; });
+    if (quiet.length) {
+      h += '<div class="ch-client" style="border-left-color:#94a3b8;color:#64748b">Reason not recorded<span class="sub" style="color:#64748b">' + quiet.length + '</span></div>';
+      h += '<div class="empty" style="text-align:left;padding:0 0 8px">These are counted in the total above but in none of the splits. Press <b>Why lost?</b> on the quote to fill one in &mdash; it can be done months later.</div>';
+      quiet.slice(0, 25).sort(function (a, b) { return b.net - a.net; }).forEach(function (r) {
+        h += '<div class="card" style="padding:8px 13px;margin-bottom:6px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+          '<div style="flex:1 1 170px;min-width:0"><b style="font-size:13px">' + esc(r.quoteNo || r.client) + '</b>' +
+          '<div class="meta" style="font-size:11.5px">' + esc(r.client) + ' &middot; ' + esc(r.brand) + ' &middot; ' + money(r.net) + '</div></div>' +
+          '<button class="btn sm" data-act="quote-lost" data-id="' + esc(r.id) + '">Why lost?</button></div></div>';
+      });
+      if (quiet.length > 25) h += '<div class="meta" style="font-size:11.5px">' + (quiet.length - 25) + ' more not shown.</div>';
+    }
+    return h;
+  }
+
+  /* The question itself.  It opens on the status change, so it has to be skippable - an
+     executive in front of a customer cannot be held hostage by a modal.  Skipping leaves the
+     quote Lost and the reason blank, and the board says so out loud. */
+  function modalQuoteLost(id) {
+    var q = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
+    if (!q) return "";
+    var l = lossOf(id) || {};
+    return '<h2>Why did we lose this one?</h2>' +
+      '<p class="sub">' + esc(q.quoteNo || "") + ' &middot; ' + esc(q.client || "") + ' &middot; ' + esc(q.brand || "") +
+      ' &middot; ' + money(q.net) + ' net</p>' +
+      '<div class="meta" style="margin-bottom:8px">Half a minute now is the whole of next quarter&rsquo;s answer to <b>why we lose</b>. Nothing here is ever shown to the customer.</div>' +
+      '<label>Reason</label><select id="ql_reason">' + opts([""].concat(lossReasonList()), l.reason || "") + '</select>' +
+      '<label>Lost to &mdash; company or brand, if you know</label>' +
+      '<input id="ql_to" value="' + esc(l.lostTo || "") + '" placeholder="e.g. Kent, or the dealer in Sonipat"/>' +
+      '<label>Note &mdash; what was actually said</label>' +
+      '<textarea id="ql_note" placeholder="e.g. architect had already fixed the brand with the owner">' + esc(l.note || "") + '</textarea>' +
+      '<div class="meta" style="margin-top:6px">The quote is already marked <b>Lost</b> &mdash; this only adds the reason. Nothing is overwritten, and it can be changed later from the quote card.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Skip for now</button>' +
+      '<button class="btn" data-act="quote-lost-save" data-id="' + esc(q.id) + '">Save the reason</button></div>';
+  }
+
   function viewWinLoss() {
     var by = S.wlBy || "brand";
     /* a sales exec gets brand-wise rates and THEIR OWN scorecard; the partner ranking and other
        executives' numbers stay with admin/accounts. */
+    /* v6.9.205 - everyone gets "Why we lose", because the man who lost the quote is the man
+       who knows why; he simply sees his own quotes in it, exactly as he does in the scorecard. */
     var modes = seesAllClients()
-      ? [["brand", "By brand"], ["exec", "By executive"], ["partner", "By partner"]]
-      : [["brand", "By brand"], ["exec", "My scorecard"]];
+      ? [["brand", "By brand"], ["exec", "By executive"], ["partner", "By partner"], ["why", "Why we lose"]]
+      : [["brand", "By brand"], ["exec", "My scorecard"], ["why", "Why we lose"]];
     if (!modes.some(function (o) { return o[0] === by; })) by = "brand";
     var h = '<div class="row" style="margin-bottom:10px">' +
       modes.map(function (o) {
         return '<button class="btn sm ' + (by === o[0] ? "" : "ghost") + '" data-act="wl-by" data-k="' + o[0] + '">' + o[1] + '</button>';
       }).join("") + '</div>';
+
+    if (by === "why") return h + wlWhyHtml();
 
     if (by === "exec") {
       var ex = {};
@@ -3211,6 +3411,14 @@ window.addEventListener("beforeunload", function (ev) {
         '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
         '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
         (q.status === "Won" ? '<button class="btn sm" data-act="q-challan" data-id="' + esc(q.id) + '">Make challan</button>' : "") +
+        /* v6.9.205 - every quote already marked Lost can still be answered, so the back
+           catalogue is fillable without a migration. The pill carries the SHORT label: the
+           full reason is 38 characters and would burst the acts row on a phone. */
+        (q.status === "Lost" ? (function () {
+          var _lr = lossOf(q.id);
+          return (_lr ? '<span class="pill Lost" title="' + esc(_lr.reason + (_lr.note ? " - " + _lr.note : "")) + '">' + esc(lossShort(_lr.reason)) + (_lr.lostTo ? ' &middot; ' + esc(_lr.lostTo) : "") + '</span>' : "") +
+            '<button class="btn sm' + (_lr ? " ghost" : "") + '" data-act="quote-lost" data-id="' + esc(q.id) + '">' + (_lr ? "Change reason" : "Why lost?") + '</button>';
+        })() : "") +
         '<button class="btn sm ghost" data-act="qz-revise" data-id="' + esc(q.id) + '">Revise</button></div>' +
         '</div></div>';
     }
@@ -9493,6 +9701,11 @@ function viewCatalogue() {
       ".qv-bs{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}" +
       ".qv-open{margin-top:9px;padding-top:8px;border-top:1px dashed #e2e8f0}" +
       ".qv-open .card{margin-bottom:7px}" +
+      /* v6.9.205 - viewWinLoss and the quote card have both been emitting class="pill Lost"
+         since long before this, and no .pill.Lost rule has ever existed: team_main.html has
+         Won, due, soon and teal only, so every Lost pill in the app has rendered plain grey.
+         It goes here rather than in team_main.html so there is one file to deploy. */
+      ".pill.Lost{background:#fee2e2;color:#b91c1c}" +
       "@media(max-width:560px){" +
       ".qv-cli{padding:8px 9px}" +
       ".qv-nm{flex-basis:100%}" +
@@ -12610,7 +12823,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _prfCache = null; _baseCache = null; _amcCache = null;
+    _clDueCache = null; _clStageCache = null; _prfCache = null; _baseCache = null; _amcCache = null; _lossCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
     var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
@@ -14202,6 +14415,29 @@ function viewCatalogue() {
     }
     if (act === "p-sort") { S.pSort = t.getAttribute("data-k"); render(); return; }
     if (act === "wl-by") { S.wlBy = t.getAttribute("data-k"); render(); return; }
+    if (act === "quote-lost") { S.modal = modalQuoteLost(t.getAttribute("data-id")); render(); return; }
+    if (act === "quote-lost-save") {
+      var _qlq = (S.data.quotes || []).filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
+      if (!_qlq) { toast("That quote is no longer on the list. Refresh and try again."); return; }
+      var _qlr = String(val("ql_reason") || "");
+      if (!_qlr) { toast("Pick a reason - that is the whole question."); return; }
+      var _qlc = clientByName(_qlq.client) || {};
+      t.disabled = true; t.textContent = "Saving...";
+      /* one added row, nothing overwritten - a corrected reason wins by being newer */
+      try {
+        save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "quote:lost",
+          target: String(_qlq.quoteNo || _qlq.id), detail: JSON.stringify({
+            quoteId: _qlq.id, quoteNo: String(_qlq.quoteNo || ""), reason: _qlr,
+            lostTo: String(val("ql_to") || "").slice(0, 80), note: String(val("ql_note") || "").slice(0, 400),
+            client: String(_qlq.client || ""), brand: String(_qlq.brand || ""), net: Number(_qlq.net) || 0,
+            district: String(_qlc.location || ""), area: String(_qlc.area || ""),
+            exec: String(_qlq.createdBy || "")
+          }), ip: "" });
+      } catch (e) { }
+      _lossCache = null; S.modal = null;
+      toast("Reason recorded. It is on Win/Loss - Why we lose.");
+      render(); return;
+    }
     if (act === "p-open") { S.partner = t.getAttribute("data-n"); S.pMonth = ""; render(); return; }
     if (act === "p-back") { S.partner = ""; render(); return; }
     if (act === "p-stmt-pdf") {
@@ -15608,8 +15844,13 @@ function viewCatalogue() {
     if (t.classList && t.classList.contains("qs")) {
       var qq = S.data.quotes.filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
       if (!qq) return;
+      var _wasLost = String(qq.status) === "Lost";
       qq.status = t.value;
       save("quotes", qq).then(function (r) { if (r) toast("Quote " + qq.status + "."); });
+      /* v6.9.205 - the reason is knowable for about thirty seconds, and this is them. The
+         status is saved on the line above FIRST, deliberately: closing this modal without
+         answering still leaves the quote Lost, it just reads as "reason not recorded". */
+      if (String(qq.status) === "Lost" && !_wasLost) { S.modal = modalQuoteLost(qq.id); render(); }
       return;
     }
     if (t.classList && t.classList.contains("sp-price")) {
