@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.203";
+  var APP_VERSION = "6.9.204";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3575,6 +3575,11 @@ window.addEventListener("beforeunload", function (ev) {
       '<span style="flex:0 0 auto;width:22px;height:22px;border-radius:6px;border:2px solid #d97706;background:' + (z.noTotal ? '#d97706' : '#fff') + ';color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:900;font-size:15px">' + (z.noTotal ? '✓' : '') + '</span>' +
       '<span><b style="font-size:14px">Item-wise pricing — hide the total</b>' +
       '<div class="pmeta" style="font-size:12px;color:#64748b">Ticked: the quote shows each item’s price but no grand total. Use when giving item-wise rates, or several options for the client to pick from. Mark any line above as an <b>option</b> to show its price without adding it to the total.</div></span></label>';
+    /* v6.9.204 - what this quote actually earns, under the discount he just set. Owner
+       only, and outside the review TABLE on purpose: that table is already 560px wide and
+       two more columns would run it off a phone. It sits above Save so the number is read
+       before the quote is committed, not after. */
+    h += qzMarginCard(z);
     h += '<div class="acts" style="margin-top:12px"><button class="btn" data-act="qz-save">Save quote</button></div></div>';
     return h;
   }
@@ -11928,7 +11933,7 @@ function viewCatalogue() {
     var m = {}, desc = {};
     (S.stock || []).forEach(function (row) {
       var ty = String(row.type || "");
-      if (ty === "reorder" || ty === "rate") return;   /* settings rows, not movements */
+      if (ty === "reorder" || ty === "rate" || ty === "landing") return;   /* settings rows, not movements */
       var k = String(row.code || "").trim(); if (!k) return;
       m[k] = (m[k] || 0) + (Number(row.qty) || 0);
       if (row.desc && !desc[k]) desc[k] = row.desc;
@@ -11943,6 +11948,141 @@ function viewCatalogue() {
   function rateByCode() {
     var m = {}; (S.stock || []).forEach(function (r) { if (String(r.type) !== "rate") return; var k = String(r.code || "").trim(); if (k) m[k] = Number(r.qty) || 0; }); return m;
   }
+
+  /* ---------- v6.9.204 PART D1: LANDED COST AND MARGIN ----------
+     The purchase rate above is what the goods cost on the bill. Landing is what it cost to
+     get them here - freight, loading, unloading, breakage. Stored as its own stock row,
+     type "landing": code "*" is the one figure that applies to everything, a product code
+     is an override for that item. Same settings-row pattern as "reorder" and "rate", for
+     the same reason - TEAM_TABS lives in GAS and silently drops any key it does not know,
+     so a new sheet column would need a GAS deploy and would fail quietly without one.
+     stockMovementByCode() skips it, so on-hand is untouched. */
+  function landingPcts() {
+    var g = 0, m = {};
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "landing") return;
+      var k = String(r.code || "").trim();
+      if (!k || k === "*") { g = Number(r.qty) || 0; return; }   /* last row wins */
+      m[k] = Number(r.qty) || 0;
+    });
+    return { global: g, byCode: m };
+  }
+  function landingPct(code, lp) {
+    lp = lp || landingPcts();
+    var k = String(code || "").trim();
+    return (lp.byCode && lp.byCode[k] !== undefined) ? lp.byCode[k] : lp.global;
+  }
+  /* Landed cost per unit. 0 means "we do not know" - never means "free". Every caller has
+     to treat 0 as uncovered, or a product with no rate would look infinitely profitable. */
+  function landedCost(code, rateMap, lp) {
+    var rt = Number((rateMap || {})[String(code || "").trim()]) || 0;
+    if (!rt) return 0;
+    return rt * (1 + (Number(landingPct(code, lp)) || 0) / 100);
+  }
+  /* Margin for a quote in progress, per brand and in total.
+
+     Two rules that matter:
+     1. The revenue figure is worked out EXACTLY the way qzTotals() and brandTotals() work
+        it out - round the discounted unit rate, then multiply by qty. If it were rounded
+        anywhere else the margin card and the grand total would disagree by a few rupees
+        and nobody would trust either of them again.
+     2. Coverage is tracked separately. netCov is the revenue of the lines we actually know
+        a cost for; the percentage is worked out on netCov, never on net. Optional lines are
+        excluded here for the same reason they are excluded from the total - they are shown
+        to the client as alternatives and were never sold. */
+  function qzMargin(z) {
+    var rate = rateByCode(), lp = landingPcts();
+    var byB = {}, order = [];
+    var out = { brands: [], net: 0, netCov: 0, landed: 0, cov: 0, tot: 0, below: [] };
+    (z.items || []).forEach(function (i) {
+      if (i.optional) return;
+      var b = i.brand || brandByCode(i.code) || "—";
+      if (!byB[b]) { byB[b] = { brand: b, net: 0, netCov: 0, landed: 0, cov: 0, tot: 0 }; order.push(b); }
+      var r = byB[b];
+      var qty = Number(i.qty) || 0;
+      var dr = Math.round(i.price * (1 - (Number(lineDisc(i, z)) || 0) / 100));
+      var amt = dr * qty;
+      r.net += amt; out.net += amt; r.tot++; out.tot++;
+      var lc = landedCost(i.code, rate, lp);
+      if (lc > 0) {
+        r.landed += lc * qty; out.landed += lc * qty;
+        r.netCov += amt; out.netCov += amt;
+        r.cov++; out.cov++;
+        if (dr < lc) out.below.push({ code: i.code, desc: i.desc, qty: qty, dr: dr, landed: Math.round(lc) });
+      }
+    });
+    order.forEach(function (b) {
+      var r = byB[b];
+      r.landed = Math.round(r.landed);
+      r.margin = r.netCov - r.landed;
+      r.pct = r.netCov > 0 ? (r.margin * 100 / r.netCov) : 0;
+      out.brands.push(r);
+    });
+    out.landed = Math.round(out.landed);
+    out.margin = out.netCov - out.landed;
+    out.pct = out.netCov > 0 ? (out.margin * 100 / out.netCov) : 0;
+    return out;
+  }
+  function marginColour(pct) { return pct >= 20 ? "#0f766e" : (pct >= 10 ? "#c2410c" : "#b91c1c"); }
+  /* The card itself. Owner only: an executive cannot move a discount anyway, so showing
+     them landed cost would give away more than the discount lock protects. Laid out as
+     wrapping rows, not a table - the review table above is already min-width:560px and a
+     second wide table would run this screen off a phone. */
+  function qzMarginCard(z) {
+    if (S.role !== "admin") return "";
+    ensureStock();
+    var head = '<div class="card" style="margin-top:10px;border-color:#99f6e4;background:#f0fdfa">' +
+      '<h3 style="margin:0 0 2px;color:#0f766e">Margin — your eyes only</h3>';
+    if (!STOCK_LOADED && !(S.stock && S.stock.length)) return head + '<div class="meta" style="font-size:12px">Fetching purchase rates…</div></div>';
+    var m = qzMargin(z);
+    if (!m.tot) return "";
+    var lp = landingPcts();
+    head += '<div class="meta" style="font-size:11.5px;margin-bottom:8px">Landed cost = latest purchase rate × (1 + landing ' + (Number(lp.global) || 0) + '%). ' +
+      'Never printed on the quote, never shown to an executive.</div>';
+    if (!m.cov) {
+      return head + '<div class="meta" style="font-size:12.5px;color:#b91c1c">No purchase rate is set for any of these ' + m.tot + ' line(s), so margin cannot be worked out. ' +
+        'Set rates on the <b>Stock</b> screen — tap a product, fill in <b>latest purchase rate</b>.</div></div>';
+    }
+    var h = head;
+    m.brands.forEach(function (r) {
+      var known = r.cov === r.tot;
+      h += '<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;border-top:1px solid #ccfbf1;padding:6px 0">' +
+        '<b style="flex:1 1 120px;min-width:0;font-size:13px">' + esc(r.brand) + '</b>';
+      if (!r.cov) {
+        h += '<span style="font-size:12px;color:#94a3b8">no purchase rate on any of its ' + r.tot + ' line(s)</span></div>';
+        return;
+      }
+      h += '<span style="font-size:12px;color:#475569">sell ' + money(r.netCov) + ' &middot; cost ' + money(r.landed) + '</span>' +
+        '<b style="font-size:13px;color:' + marginColour(r.pct) + '">' + money(r.margin) + ' &middot; ' + r.pct.toFixed(1) + '%</b>' +
+        (known ? '' : '<span style="font-size:11px;color:#94a3b8;flex:1 1 100%">on ' + r.cov + ' of ' + r.tot + ' line(s)</span>') +
+        '</div>';
+    });
+    h += '<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;border-top:2px solid #0d9488;padding:8px 0 2px">' +
+      '<b style="flex:1 1 120px;min-width:0;font-size:13px">Whole quote</b>' +
+      '<span style="font-size:12px;color:#475569">sell ' + money(m.netCov) + ' &middot; cost ' + money(m.landed) + '</span>' +
+      '<b style="font-size:14px;color:' + marginColour(m.pct) + '">' + money(m.margin) + ' &middot; ' + m.pct.toFixed(1) + '%</b></div>';
+    /* the honest bit - say what is NOT counted, in the same breath as the number */
+    h += '<div class="meta" style="font-size:11.5px;margin-top:4px">' +
+      (m.cov === m.tot
+        ? 'Every line has a purchase rate — this covers the whole quote.'
+        : '<b>Margin known on ' + m.cov + ' of ' + m.tot + ' line(s)</b> — ' + money(m.netCov) + ' of ' + money(m.net) +
+          '. The percentage above is worked out on that ' + money(m.netCov) + ' only; the rest have no purchase rate on the Stock screen yet.') +
+      '</div>';
+    if (m.below.length) {
+      h += '<div class="card" style="margin-top:8px;border-color:#fecaca;background:#fef2f2">' +
+        '<b style="color:#b91c1c;font-size:13px">Below cost — ' + m.below.length + ' line(s)</b>' +
+        '<div class="meta" style="font-size:11.5px">The discounted rate is under what the item costs us landed.</div>';
+      m.below.slice(0, 12).forEach(function (x) {
+        h += '<div style="border-top:1px solid #fee2e2;margin-top:5px;padding-top:5px;font-size:12px">' +
+          '<b>' + esc(x.desc) + '</b> <span style="color:#94a3b8;font-size:11px">' + esc(x.code) + '</span><br>' +
+          '<span style="color:#b91c1c">selling at ' + money(x.dr) + ' &middot; landed ' + money(x.landed) + ' &middot; ' +
+          money((x.landed - x.dr) * x.qty) + ' short on ' + x.qty + ' unit(s)</span></div>';
+      });
+      h += '</div>';
+    }
+    return h + '</div>';
+  }
+
   function viewStock() {
     if (S.imp) return viewStockImport();
     ensureStock();
@@ -11953,6 +12093,7 @@ function viewCatalogue() {
       '<button class="btn sm" data-act="stock-add" data-type="in">+ Goods received</button>' +
       '<button class="btn sm ghost" data-act="stock-add" data-type="opening">Set opening stock</button>' +
       '<button class="btn sm ghost" data-act="stock-add" data-type="adjust">Adjustment</button>' +
+      (canSetPricing() ? '<button class="btn sm ghost" data-act="stock-landing">Landing %</button>' : '') +
       '<button class="btn sm ghost" data-act="stock-refresh">Refresh</button></div></div>';
     if (!STOCK_LOADED && !(S.stock && S.stock.length)) return h + '<div class="empty">Loading stock…</div>';
     var mv = stockMovementByCode(), del = stockDeliveredByCode(), ret = stockReturnedByCode();
@@ -11987,6 +12128,11 @@ function viewCatalogue() {
       });
       h += '</div>';
     }
+    var _lpG = Number(landingPcts().global) || 0;
+    if (canSetPricing()) h += '<div class="card" style="border-color:#e2e8f0"><div style="font-size:12.5px;color:#475569">' +
+      (_lpG ? '<b>Landing ' + _lpG + '%</b> is added to every purchase rate to work out landed cost on a quote.'
+            : '<b>No landing % set.</b> Freight, loading and breakage are not counted, so quote margins read higher than they are.') +
+      ' <button class="btn sm ghost" data-act="stock-landing">Change</button></div></div>';
     if (totVal > 0) h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><b>Stock value (approx):</b> ' + money(totVal) + ' <span style="font-size:11px;color:#64748b">— on-hand × latest purchase rate, for items where a rate is set.</span></div>';
 
     h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
@@ -12021,8 +12167,26 @@ function viewCatalogue() {
       '<input id="si_reorder" inputmode="numeric" value="' + esc(reo[code] || "") + '" placeholder="e.g. 20" ' + inp + '/>' +
       '<div ' + lbl + '>Latest purchase rate (₹ / unit, optional — used for stock value)</div>' +
       '<input id="si_rate" inputmode="decimal" value="' + esc(rate[code] || "") + '" placeholder="e.g. 250" ' + inp + '/>' +
+      '<div ' + lbl + '>Landing % for this item (optional — leave blank to use the ' + (Number(landingPcts().global) || 0) + '% set for everything)</div>' +
+      '<input id="si_landing" inputmode="decimal" value="' + esc(landingPcts().byCode[code] !== undefined ? landingPcts().byCode[code] : "") + '" placeholder="e.g. 4" ' + inp + '/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="stock-item-save" data-code="' + esc(code) + '">Save</button></div>';
+  }
+  /* One figure for the whole catalogue, saved as a "landing" stock row with code "*".
+     Deliberately one number: a per-item freight sheet is the kind of thing that gets set
+     up once and never filled in, and a wrong landed cost is worse than a rough one. */
+  function modalStockLanding() {
+    var lbl = 'style="font-size:12px;color:#475569;margin:8px 0 2px"';
+    var inp = 'style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"';
+    var cur = Number(landingPcts().global) || 0;
+    return '<h2 style="margin:0 0 2px">Landing %</h2>' +
+      '<div class="meta" style="font-size:12.5px">What it costs to get goods here on top of the bill — freight, loading, unloading, breakage — as a percentage of the purchase rate. ' +
+      'Quote margin uses <b>purchase rate × (1 + this)</b> as the landed cost. If you are not sure, 3–5% is the usual range; you can change it any time.</div>' +
+      '<div ' + lbl + '>Landing % applied to every product</div>' +
+      '<input id="sl_pct" inputmode="decimal" value="' + esc(cur || "") + '" placeholder="e.g. 4" ' + inp + '/>' +
+      '<div class="meta" style="font-size:11.5px;margin-top:6px">A single item can override this from its own row on the Stock screen.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="stock-landing-save">Save</button></div>';
   }
   function modalStockAdd(type) {
     var title = type === "opening" ? "Set opening stock" : (type === "adjust" ? "Stock adjustment" : "Goods received");
@@ -12776,6 +12940,20 @@ function viewCatalogue() {
       return;
     }
     if (act === "stock-item") { S.modal = modalStockItem(t.getAttribute("data-code")); render(); return; }
+    if (act === "stock-landing") { S.modal = modalStockLanding(); render(); return; }
+    if (act === "stock-landing-save") {
+      var _lpv = String((el("sl_pct") || {}).value || "").trim();
+      if (_lpv === "") { toast("Enter a landing % first."); return; }
+      var _lrow = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-landing",
+        type: "landing", code: "*", desc: "", qty: Number(_lpv) || 0, ref: "", asOn: today(), notes: "" };
+      S.modal = null; render(); toast("Saving…");
+      S.stock = (S.stock || []).concat([_lrow]);
+      api("stockSave", { row: _lrow }).then(function (r) {
+        toast((r && r.ok) ? "Landing set to " + _lrow.qty + "%." : ((r && r.error) || "Save failed — only admin/godown can edit stock."));
+        render();
+      }).catch(function () { toast("Save failed — check connection."); });
+      return;
+    }
     if (act === "stock-item-save") {
       var _icode = t.getAttribute("data-code");
       var _irl = String((el("si_reorder") || {}).value || "").trim();
@@ -12783,6 +12961,8 @@ function viewCatalogue() {
       var _saves = [];
       if (_irl !== "") _saves.push({ type: "reorder", qty: Number(_irl) || 0 });
       if (_irt !== "") _saves.push({ type: "rate", qty: Number(_irt) || 0 });
+      var _ild = String((el("si_landing") || {}).value || "").trim();
+      if (_ild !== "") _saves.push({ type: "landing", qty: Number(_ild) || 0 });
       if (!_saves.length) { toast("Enter a reorder level or a rate first."); return; }
       S.modal = null; render(); toast("Saving…");
       var _proms = _saves.map(function (s) {
