@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.209";
+  var APP_VERSION = "6.9.210";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2924,6 +2924,16 @@ window.addEventListener("beforeunload", function (ev) {
         /* The money sits right beside the phone number on purpose: the number you would call and the
            reason you would call him, read as one line. */
         (due > 0.5 ? ' ' + dueAmt(due) : "") +
+        /* v6.9.210 - the old book. Only ever shown for a client carried over WITH a balance:
+           teal and tappable once the statement is attached, red until it is, and gone entirely
+           the day his money clears. */
+        (function () {
+          if (!(nAmt(c.openingAmt) > 0)) return "";
+          var hd = hisabDoc(c.id);
+          if (hd && hd.url) return ' <a class="pill" href="' + esc(hd.url) + '" target="_blank" rel="noopener" style="background:#ccfbf1;color:#0f766e;text-decoration:none" title="The statement from the old books">Old hisab &#8599;</a>';
+          if (clientDue(c.name) <= 0.5) return "";
+          return ' <span class="pill" data-act="cl-open" data-id="' + esc(c.id) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer" title="Carried over with a balance and no old statement attached - tap to attach it">Old hisab ?</span>';
+        })() +
         '</div>' +
         '<div class="lc-right">' + partnerBadge(c, "plumber") + partnerBadge(c, "architect") +
         (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
@@ -3038,23 +3048,11 @@ window.addEventListener("beforeunload", function (ev) {
   function prfDrop(pk) { prfStore(prfLoad().filter(function (x) { return x.pk !== pk; })); }
   function prfCount() { try { return prfLoad().length; } catch (e) { return 0; } }
 
-  /* What the phone knows about where it is standing. Never allowed to hold anything up: if the
-     answer has not come in seven seconds we go without it, because a proof with no coordinates
-     is still a proof and a receipt that hangs is not. */
-  function proofGeo() {
-    return new Promise(function (res) {
-      if (!navigator.geolocation) { res(""); return; }
-      var done = false;
-      var t = setTimeout(function () { if (!done) { done = true; res(""); } }, 7000);
-      navigator.geolocation.getCurrentPosition(function (p) {
-        if (done) return; done = true; clearTimeout(t);
-        res(Number(p.coords.latitude).toFixed(5) + ", " + Number(p.coords.longitude).toFixed(5) +
-          " (±" + Math.round(p.coords.accuracy || 0) + "m)");
-      }, function () {
-        if (done) return; done = true; clearTimeout(t); res("");
-      }, { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 });
-    });
-  }
+  /* v6.9.210: THERE IS NO GPS ANY MORE, and that is deliberate, not a regression.
+     The material is carried by a tempo or a rickshaw driver. His phone is not going to be asked
+     where it is standing, and waiting on an answer that never comes was holding up the one thing
+     that matters - the photograph of the signed paper receipt. The `geo` field is still written
+     as an empty string so every proof row ever recorded still reads back cleanly. */
 
   /* ---- reading proofs back out of the audit sheet ----
      Built once per paint. The challan list can be hundreds of cards long and the audit sheet
@@ -3096,93 +3094,225 @@ window.addEventListener("beforeunload", function (ev) {
       'style="color:#0f766e;font-weight:600;text-decoration:none">Proof &#8599;</a>';
   }
 
-  /* ---- the document itself ---- */
+  /* ---- the lines of a delivery, as the receipt should show them ----
+     Reads itemsJson, falls back to the old "desc x qty" text, then overlays whatever alteration
+     was recorded against the challan - so a delivery received short still prints short, and a
+     line added at the site still appears. Used when a receipt is attached to a challan that was
+     already marked Received, which is every challan we have. */
+  function proofRows(ch) {
+    var items = [];
+    try { items = JSON.parse(ch.itemsJson || "[]"); } catch (e) { items = []; }
+    if (!items.length && ch.items) {
+      items = String(ch.items).split(",").map(function (t) {
+        var m = String(t).match(/^(.*)x(\d+)\s*$/);
+        return { code: "", desc: m ? m[1].trim() : String(t).trim(), unit: "", qty: m ? m[2] : "" };
+      });
+    }
+    var alt = [];
+    try { alt = JSON.parse(ch.altJson || "[]"); } catch (e) { alt = []; }
+    var am = {};
+    alt.forEach(function (a) { am[String(a.code || "") + "|" + String(a.desc || "")] = a; });
+    var out = items.map(function (i2) {
+      var k = String(i2.code || "") + "|" + String(i2.desc || "");
+      var a = am[k];
+      if (a) { delete am[k]; }
+      return {
+        code: i2.code || "", desc: i2.desc || "", unit: i2.unit || "",
+        was: Number(i2.qty) || 0,
+        now: a ? (Number(a.now) || 0) : (Number(i2.qty) || 0),
+        note: a ? String(a.note || "") : ""
+      };
+    });
+    Object.keys(am).forEach(function (k) {
+      var a = am[k];
+      out.push({
+        code: a.code || "", desc: a.desc || "", unit: a.unit || "",
+        was: Number(a.was) || 0, now: Number(a.now) || 0, note: String(a.note || "Added at site")
+      });
+    });
+    return out;
+  }
+
+  /* ---- the document itself ----
+     ONE document, not two (the owner's decision). The delivery challan and the receipt that came
+     back from the site are printed as a single PDF, because that is the thing that actually gets
+     sent to the customer on WhatsApp, and two files is two chances to send the wrong one. */
   function proofPdf(ch, prf, meta) {
     var rows = (prf.rows || []).slice();
-    return loadLogo().then(function () {
-      return commPdfBase("PROOF OF DELIVERY", ch, String(meta.at || "").slice(0, 10));
+    return Promise.all([loadLogo(), challanLogos()]).then(function (lres) {
+      var LG = lres[1] || [];
+      return commPdfBase("DELIVERY CHALLAN & RECEIPT", ch, String(meta.at || "").slice(0, 10))
+        .then(function (b) { b.LG = LG; return b; });
     }).then(function (b) {
-      var doc = b.doc, F = b.F, L = b.L, R = b.R, y;
+      var doc = b.doc, F = b.F, L = b.L, R = b.R, LOGOS = b.LG || [], y;
 
-      b.y = 46; y = commCustomerBlock(b, ch);
+      b.y = 46;
+      var yc = commCustomerBlock(b, ch);
 
-      /* the facts of the delivery, in a tinted band so the eye lands on them first */
-      doc.setFillColor(240, 253, 250); doc.rect(L, y - 5, R - L, 22, "F");
-      doc.setDrawColor(153, 246, 228); doc.setLineWidth(0.3); doc.rect(L, y - 5, R - L, 22);
-      F("bold"); doc.setFontSize(9); doc.setTextColor(13, 118, 108);
-      doc.text("CHALLAN", L + 3, y);
-      doc.text("DELIVERED", L + 62, y);
-      doc.text("DRIVER / VEHICLE", L + 112, y);
-      F("normal"); doc.setFontSize(9.5); doc.setTextColor(17, 34, 45);
-      doc.text(String(ch.challanNo || "-"), L + 3, y + 6);
-      doc.text(fullDate(String(meta.at || "").slice(0, 10)), L + 62, y + 6);
-      doc.text(doc.splitTextToSize(String(ch.driver || "-") + (ch.vehicle ? " / " + ch.vehicle : ""), 60)[0], L + 112, y + 6);
-      doc.setFontSize(7.6); doc.setTextColor(100, 116, 139);
-      doc.text("Recorded by " + String(meta.actor || "") + " at " +
-        String(meta.at || "").slice(11, 16) + " hrs" + (meta.geo ? "  ·  " + meta.geo : ""), L + 3, y + 13);
-      y += 28;
+      /* Where it went. Assembled exactly the way the challan does it, so a part that is already
+         in the address is not printed a second time. */
+      var cli = clientByName(ch.customerName) || {};
+      var addr = [cli.address, cli.area, cli.location].filter(Boolean).map(String)
+        .reduce(function (acc, p) {
+          if (acc.join(", ").toLowerCase().indexOf(p.trim().toLowerCase()) < 0) acc.push(p.trim());
+          return acc;
+        }, []).join(", ");
+      y = yc - 6;
+      if (addr) {
+        F("normal"); doc.setFontSize(8.4); doc.setTextColor(100, 116, 139);
+        doc.splitTextToSize(addr, R - L).slice(0, 2).forEach(function (ln) { doc.text(ln, L, y); y += 4.4; });
+        y += 5;
+      } else { y = yc; }
 
-      /* what actually came off the vehicle */
-      doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, R - L, 9, "F");
-      doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(7.6);
-      doc.text("MATERIAL RECEIVED", L + 3, y);
-      doc.text("SENT", R - 62, y, { align: "right" });
-      doc.text("RECEIVED", R - 40, y, { align: "right" });
-      doc.text("NOTE", R - 3, y, { align: "right" });
+      /* The facts of the delivery, in a tinted band so the eye lands on them first. Six of them,
+         two rows of three: what was sent, when it went, who carried it - then who wrote it, who
+         released it, and who signed for it. */
+      doc.setFillColor(240, 253, 250); doc.rect(L, y - 5, R - L, 36, "F");
+      doc.setDrawColor(153, 246, 228); doc.setLineWidth(0.3); doc.rect(L, y - 5, R - L, 36);
+      var CW = (R - L) / 3;
+      var fact = function (lab, v, col, row) {
+        var x = L + 3 + col * CW, yy = y + row * 15;
+        F("bold"); doc.setFontSize(7.2); doc.setTextColor(13, 118, 108);
+        doc.text(lab, x, yy);
+        F("normal"); doc.setFontSize(9.2); doc.setTextColor(17, 34, 45);
+        doc.text(doc.splitTextToSize(String(v || "-"), CW - 5)[0] || "-", x, yy + 5.8);
+      };
+      fact("CHALLAN NO.", ch.challanNo, 0, 0);
+      fact("DELIVERED ON", fullDate(String(meta.at || "").slice(0, 10)), 1, 0);
+      fact("DRIVER / VEHICLE", String(ch.driver || "-") + (ch.vehicle ? " / " + ch.vehicle : ""), 2, 0);
+      fact("PREPARED BY", ch.createdBy, 0, 1);
+      fact("APPROVED BY", ch.approvedBy, 1, 1);
+      fact("RECEIVED AT SITE BY", meta.by, 2, 1);
+      y += 40;
+      F("normal"); doc.setFontSize(7.2); doc.setTextColor(120, 130, 145);
+      doc.text("Receipt recorded by " + String(meta.actor || "-") + " on " +
+        fullDate(String(meta.at || "").slice(0, 10)) + " at " + String(meta.at || "").slice(11, 16) + " hrs", L, y);
       y += 9;
-      rows.forEach(function (r, i) {
-        if (y > 236) { doc.addPage(); y = 22; }
-        if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, R - L, 7, "F"); }
+
+      /* The material. The header repeats on every page, because a second sheet with no column
+         names is a sheet somebody reads the wrong way round in an argument. */
+      var tableHead = function () {
+        doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, R - L, 9, "F");
+        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(7.2);
+        doc.text("#", L + 3, y);
+        doc.text("CODE", L + 9, y);
+        doc.text("ITEM DESCRIPTION", L + 40, y);
+        doc.text("UNIT", R - 44, y, { align: "right" });
+        doc.text("SENT", R - 23, y, { align: "right" });
+        doc.text("RECEIVED", R - 3, y, { align: "right" });
+        y += 9;
+      };
+      tableHead();
+      var shortLines = 0, excessLines = 0;
+      /* The description column stops well clear of UNIT.  It was running under it, which on a
+         delivery argument is the one column nobody can afford to have to guess at. */
+      var DESCX = L + 40, DESCW = (R - 44) - DESCX - 10;
+      rows.forEach(function (r, i2) {
+        var note = String(r.note || "");
+        doc.setFontSize(8.4);
+        var dl = doc.splitTextToSize(String(r.desc || ""), DESCW).slice(0, 2);
+        var need = 7 + (dl.length > 1 ? 4.2 : 0) + (note ? 4.2 : 0);
+        if (y + need > 265) { doc.addPage(); y = 24; tableHead(); }
+        if (i2 % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, R - L, need - 0.6, "F"); }
         var diff = Number(r.now) - Number(r.was);
-        F("normal"); doc.setFontSize(8.6); doc.setTextColor(17, 34, 45);
-        doc.text(doc.splitTextToSize(String(r.desc || ""), 84)[0], L + 3, y);
-        doc.setTextColor(100, 116, 139);
-        doc.text(String(r.was), R - 62, y, { align: "right" });
+        if (diff < 0) shortLines++;
+        if (diff > 0) excessLines++;
+        F("normal"); doc.setFontSize(8.2); doc.setTextColor(17, 34, 45);
+        doc.text(String(i2 + 1), L + 3, y);
+        doc.setFontSize(7.4); doc.setTextColor(100, 116, 139);
+        doc.text(doc.splitTextToSize(String(r.code || "-"), 28)[0] || "-", L + 9, y);
+        doc.setFontSize(8.4); doc.setTextColor(17, 34, 45);
+        dl.forEach(function (ln, li) { doc.text(ln, DESCX, y + li * 4.2); });
+        doc.setFontSize(8); doc.setTextColor(100, 116, 139);
+        doc.text(String(r.unit || "No's"), R - 44, y, { align: "right" });
+        doc.text(String(r.was), R - 23, y, { align: "right" });
         if (diff !== 0) { F("bold"); doc.setTextColor(diff < 0 ? 190 : 13, diff < 0 ? 24 : 118, diff < 0 ? 24 : 108); }
-        else { doc.setTextColor(17, 34, 45); }
-        doc.text(String(r.now), R - 40, y, { align: "right" });
-        F("normal"); doc.setFontSize(7.4); doc.setTextColor(100, 116, 139);
-        doc.text(doc.splitTextToSize(String(r.note || (diff === 0 ? "full" : "")), 36)[0], R - 3, y, { align: "right" });
-        y += 7;
+        else { F("normal"); doc.setTextColor(17, 34, 45); }
+        doc.text(String(r.now), R - 3, y, { align: "right" });
+        if (note) {
+          F("normal"); doc.setFontSize(7.2); doc.setTextColor(180, 83, 9);
+          doc.text(doc.splitTextToSize(note, DESCW)[0] || "", DESCX, y + dl.length * 4.2);
+        }
+        y += need;
       });
       doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.3); doc.line(L, y - 1, R, y - 1);
-      y += 8;
-
-      /* the signature - the part that makes this a document rather than a note */
-      if (y > 214) { doc.addPage(); y = 26; }
-      F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
-      doc.text("RECEIVED AT SITE BY", L, y);
-      y += 7;
-      F("normal"); doc.setFontSize(12); doc.setTextColor(17, 34, 45);
-      doc.text(String(meta.by || "—"), L, y);
-      if (prf.sig) {
-        try { doc.addImage(prf.sig, "PNG", L, y + 3, 56, 22); } catch (e) { }
+      y += 6;
+      F("normal"); doc.setFontSize(8);
+      if (shortLines || excessLines) {
+        doc.setTextColor(180, 83, 9);
+        doc.text((shortLines ? shortLines + " line(s) came up short. " : "") +
+          (excessLines ? excessLines + " line(s) came in over. " : "") +
+          "The reason is written against each one.", L, y);
+      } else {
+        doc.setTextColor(13, 118, 108);
+        doc.text("Every line arrived in full.", L, y);
       }
-      doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.4);
-      doc.line(L, y + 27, L + 60, y + 27);
-      F("normal"); doc.setFontSize(7.4); doc.setTextColor(100, 116, 139);
-      doc.text(prf.sig ? "Signature of the receiver" : "Signature not taken", L, y + 31);
-      y += 40;
+      y += 11;
 
-      /* the photograph */
+      /* The sign-off. Two ruled lines, because on most deliveries the signature is on the paper
+         in the photograph below and not on this sheet - and a blank line that says so honestly is
+         worth more than a line that pretends. */
+      if (y > 206) { doc.addPage(); y = 26; }
+      F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
+      doc.text("RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, y);
+      y += 9;
+      F("normal"); doc.setFontSize(11.5); doc.setTextColor(17, 34, 45);
+      doc.text(String(meta.by || "\u2014"), L, y);
+      if (prf.sig) { try { doc.addImage(prf.sig, "PNG", L + 66, y - 7, 50, 19); } catch (e) { } }
+      doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.4);
+      doc.line(L, y + 15, L + 58, y + 15);
+      doc.line(L + 66, y + 15, L + 124, y + 15);
+      F("normal"); doc.setFontSize(7.2); doc.setTextColor(100, 116, 139);
+      doc.text("Name of the receiver", L, y + 19);
+      doc.text(prf.sig ? "Signature" : "Signature is on the paper receipt below", L + 66, y + 19);
+      y += 28;
+
+      /* The photograph of the paper. Drawn to its own shape, not stretched into a fixed box - a
+         receipt squashed out of proportion is a receipt somebody argues about. */
       if (prf.photo) {
-        if (y > 150) { doc.addPage(); y = 26; }
-        F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
-        doc.text("MATERIAL AS UNLOADED", L, y);
-        y += 5;
+        var MAXW = R - L, MAXH = 214, iw = MAXW, ih = 150;
         try {
-          var iw = R - L, ih = 92;
-          doc.addImage("data:image/jpeg;base64," + prf.photo, "JPEG", L, y, iw, ih);
-          doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(L, y, iw, ih);
-          y += ih + 6;
+          var ip = doc.getImageProperties("data:image/jpeg;base64," + prf.photo);
+          if (ip && ip.width && ip.height) {
+            var sc = Math.min(MAXW / ip.width, MAXH / ip.height);
+            iw = ip.width * sc; ih = ip.height * sc;
+          }
+        } catch (e) { }
+        if (y + ih + 14 > 288) { doc.addPage(); y = 26; }
+        F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
+        doc.text("THE RECEIPT AS IT CAME BACK FROM THE SITE", L, y);
+        y += 5;
+        var ix = L + (MAXW - iw) / 2;
+        try {
+          doc.addImage("data:image/jpeg;base64," + prf.photo, "JPEG", ix, y, iw, ih);
+          doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(ix, y, iw, ih);
+          y += ih + 7;
         } catch (e) { }
       }
 
-      if (y > 262) { doc.addPage(); y = 26; }
-      F("normal"); doc.setFontSize(7.4); doc.setTextColor(120, 130, 145);
-      doc.splitTextToSize("This document was created on the phone at the moment of delivery and stored unaltered. " +
-        "Quantities shown as received are what the receiver named above confirmed on site.", R - L)
-        .forEach(function (ln) { doc.text(ln, L, y); y += 4; });
+      /* Whose paper this is. Same strip as the challan carries. */
+      if (y > 256) { doc.addPage(); y = 26; }
+      var lok = LOGOS.filter(function (l) { return l && l.src; });
+      if (lok.length) {
+        F("bold"); doc.setFontSize(6.2); doc.setTextColor(120, 130, 145);
+        doc.text("AUTH. DISTRIBUTOR FOR", L, y);
+        y += 3;
+        var GP = 1.6, BW = ((R - L) - GP * (lok.length - 1)) / lok.length, BH = 8;
+        lok.forEach(function (lg, i3) {
+          var bx = L + i3 * (BW + GP);
+          doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.2); doc.rect(bx, y, BW, BH, "S");
+          try {
+            var sc = Math.min((BW - 1.2) / lg.w, (BH - 1.2) / lg.h);
+            var lw = lg.w * sc, lh = lg.h * sc;
+            doc.addImage(lg.src, "JPEG", bx + (BW - lw) / 2, y + (BH - lh) / 2, lw, lh);
+          } catch (e) { }
+        });
+        y += BH + 7;
+      }
+      F("normal"); doc.setFontSize(7.2); doc.setTextColor(120, 130, 145);
+      doc.splitTextToSize("This is one document: the delivery challan and the receipt that came back from the site, " +
+        "kept together and stored unaltered. The quantities shown as received are what the person named above confirmed.",
+        R - L).forEach(function (ln) { doc.text(ln, L, y); y += 4; });
 
       return doc;
     });
@@ -3225,27 +3355,154 @@ window.addEventListener("beforeunload", function (ev) {
   function proofStart(cid, prf) {
     var ch = (S.data.challans || []).filter(function (x) { return x.id === cid; })[0];
     if (!ch) return;
-    proofGeo().then(function (g) {
-      var at = new Date().toISOString();
-      var meta = { by: prf.by || "", at: at, geo: g, actor: S.user || "" };
-      return proofPdf(ch, prf, meta).then(function (d) {
-        var b64 = d.output("datauristring").split(",")[1];
-        var stamp = Date.now(), rnd = Math.floor(Math.random() * 1000000);
-        prfPut({
-          pk: "PK-" + stamp + "-" + rnd,
-          aid: "PF-" + stamp + "-" + rnd,
-          chId: cid, no: String(ch.challanNo || ""), client: String(ch.customerName || ""),
-          site: String(ch.site || ""), by: prf.by || "", at: at, geo: g, actor: S.user || "",
-          hasPhoto: !!prf.photo, hasSig: !!prf.sig,
-          fname: "PROOF-" + String(ch.challanNo || cid).replace(/[^\w.-]+/g, "-") + ".pdf",
-          b64: b64
-        });
-        _prfCache = null;
-        prfFlush();
+    var at = new Date().toISOString();
+    /* When the receipt is attached later - which is the normal case now - nobody re-types the
+       quantities, so the lines are rebuilt from the challan itself and from whatever alteration
+       was already recorded against it. */
+    var rows = (prf.rows && prf.rows.length) ? prf.rows.slice() : proofRows(ch);
+    var meta = { by: prf.by || "", at: at, geo: "", actor: S.user || "" };
+    proofPdf(ch, { rows: rows, photo: prf.photo || "", sig: prf.sig || "" }, meta).then(function (d) {
+      var b64 = d.output("datauristring").split(",")[1];
+      var stamp = Date.now(), rnd = Math.floor(Math.random() * 1000000);
+      prfPut({
+        pk: "PK-" + stamp + "-" + rnd,
+        aid: "PF-" + stamp + "-" + rnd,
+        chId: cid, no: String(ch.challanNo || ""), client: String(ch.customerName || ""),
+        site: String(ch.site || ""), by: prf.by || "", at: at, geo: "", actor: S.user || "",
+        hasPhoto: !!prf.photo, hasSig: !!prf.sig,
+        fname: "DELIVERY-" + String(ch.challanNo || cid).replace(/[^\w.-]+/g, "-") + ".pdf",
+        b64: b64
       });
+      _prfCache = null;
+      prfFlush();
+      renderBg();
     }).catch(function () {
-      toast("Could not build the delivery proof — the receipt itself is safe.");
+      toast("Could not build the delivery document — the receipt itself is safe.");
     });
+  }
+
+  /* ---- attaching a receipt to a challan that has already been received ----
+     This is the screen that was missing, and it is the whole reason not one proof exists on the
+     sheet today: the capture card lived inside "Receipt received", which only opens for a challan
+     still sitting at Dispatched. But the photo does not arrive at the moment of delivery - it
+     arrives an hour later, on WhatsApp, from a tempo driver. So it must be attachable afterwards,
+     to any delivery, by anyone who can see it. */
+  function modalProof(chId) {
+    var c = (S.data.challans || []).filter(function (x) { return x.id === chId; })[0] || {};
+    var have = challanProof(chId);
+    var q = prfLoad().filter(function (x) { return x.chId === chId; })[0];
+    return '<h2>Attach the delivery receipt</h2>' +
+      '<div class="meta" style="margin-bottom:8px"><b>' + esc(c.challanNo || "") + '</b> &middot; ' +
+      esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") + '</div>' +
+      (q ? '<div class="card" style="border-color:#fde68a;background:#fffbeb"><div class="meta">A receipt for this challan is still waiting to go up from this phone. It uploads on the next refresh. Nothing here is lost.</div></div>' : "") +
+      (have ? '<div class="card" style="border-color:#fde68a;background:#fffbeb"><div class="meta">A receipt is already on file for this delivery' +
+        (have.url ? ' \u2014 <a href="' + esc(have.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600">open it &#8599;</a>' : "") +
+        '. Attaching another one makes it the current one. Nothing is deleted \u2014 the old one stays on the sheet.</div></div>' : "") +
+      '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+      '<div class="meta" style="margin-bottom:8px">Photograph the signed paper receipt, or pick the photo the driver sent you on WhatsApp. What comes out is <b>one document</b> \u2014 this challan and this receipt together \u2014 ready to send to the customer.</div>' +
+      '<label>Received at site by</label>' +
+      '<input id="prf_by" value="' + esc((S.prf && S.prf.by) || "") + '" placeholder="Name of whoever signed it" autocomplete="off"/>' +
+      '<label style="margin-top:8px">Photograph of the receipt</label>' +
+      '<input type="file" id="prf_photo" accept="image/*" ' +
+      'style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
+      '<div id="prf_photo_note" class="meta" style="margin-top:4px;color:' + ((S.prf && S.prf.photo) ? "#0f766e" : "#94a3b8") + '">' +
+      ((S.prf && S.prf.photo) ? "Photo attached." : "Camera or gallery \u2014 whichever one the photo is in.") + '</div>' +
+      '</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="prf-cancel">Cancel</button>' +
+      '<button class="btn" data-act="prf-save">Attach receipt</button></div>';
+  }
+
+  /* ---- one place to check every delivery ----
+     Deliberately a screen and not a new tab: there are already more tabs than fit on a phone. */
+  function modalProofList() {
+    var list = (S.data.challans || []).filter(function (c) {
+      var st = c.status || "Draft";
+      return st === "Dispatched" || st === "Received";
+    });
+    if (S.role === "sales") list = list.filter(function (c) { return isMineClient(c.customerName); });
+    var pmap = {};
+    prfLoad().forEach(function (p) { pmap[p.chId] = p; });
+    var on = [], off = [];
+    list.forEach(function (c) { if (challanProof(c.id) || pmap[c.id]) on.push(c); else off.push(c); });
+    on.sort(function (a, b) {
+      var pa = challanProof(a.id) || {}, pb = challanProof(b.id) || {};
+      return String(pb.at || "").localeCompare(String(pa.at || ""));
+    });
+    off.reverse();
+    var CAP = 200;
+    var h = '<h2>Delivery receipts</h2>' +
+      '<div class="meta" style="margin-bottom:8px">Every delivery that has gone out, and whether the signed receipt has come back. <b>' +
+      on.length + '</b> on file, <b>' + off.length + '</b> still missing.</div>' +
+      '<div style="max-height:58vh;overflow:auto">';
+    if (off.length) {
+      h += '<div class="card" style="border-color:#fecaca;background:#fef2f2">' +
+        '<h3 style="margin:0 0 4px;font-size:13px">No receipt on file (' + off.length + ')</h3>';
+      off.slice(0, CAP).forEach(function (c) {
+        h += '<div class="row" style="align-items:center;border-top:1px solid #fecaca;padding:5px 0">' +
+          '<div class="grow" style="font-size:12.5px"><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(c.customerName || "") +
+          (c.site ? '<div style="color:#94a3b8;font-size:11px">' + esc(c.site) + '</div>' : "") + '</div>' +
+          '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '">Attach</button></div>';
+      });
+      if (off.length > CAP) h += '<div class="meta" style="margin-top:6px">Showing the newest ' + CAP + ' of ' + off.length + '. The rest are still on their own challan cards.</div>';
+      h += '</div>';
+    }
+    if (on.length) {
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+        '<h3 style="margin:0 0 4px;font-size:13px">On file (' + on.length + ')</h3>';
+      on.slice(0, CAP).forEach(function (c) {
+        var p = challanProof(c.id);
+        h += '<div class="row" style="align-items:center;border-top:1px solid #99f6e4;padding:5px 0">' +
+          '<div class="grow" style="font-size:12.5px"><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(c.customerName || "") +
+          '<div style="color:#94a3b8;font-size:11px">' +
+          (p ? fullDate(String(p.at || "").slice(0, 10)) : "waiting to upload") +
+          (p && p.by ? ' &middot; signed by ' + esc(p.by) : "") + '</div></div>' +
+          (p && p.url
+            ? '<a class="btn sm ghost" href="' + esc(p.url) + '" target="_blank" rel="noopener">Open</a>'
+            : '<span class="pill due">uploading</span>') +
+          '<button class="btn sm ghost" data-act="ch-wa" data-id="' + esc(c.id) + '" style="color:#0f766e">Send</button></div>';
+      });
+      if (on.length > CAP) h += '<div class="meta" style="margin-top:6px">Showing the newest ' + CAP + ' of ' + on.length + '.</div>';
+      h += '</div>';
+    }
+    if (!on.length && !off.length) h += '<div class="empty">Nothing has been dispatched yet.</div>';
+    h += '</div><div class="foot"><button class="btn ghost" data-act="prf-cancel">Close</button></div>';
+    return h;
+  }
+
+  /* ---- the old book, attached to the client ----
+     A client carried over from the old Excel arrives with a balance and no story. This lets that
+     story - the hisab statement from the old books - be attached to the man himself, hosted on
+     Drive, so nobody opens the spreadsheet again. Filed as an audit row, exactly like every other
+     document this app stores: no new column is asked of the sheet. */
+  var _hdCache = null;
+  function hisabDocMap() {
+    if (_hdCache) return _hdCache;
+    var m = {};
+    (S.data.audit || []).forEach(function (a) {
+      if (a.action !== "client:hisab") return;
+      var d;
+      try { d = JSON.parse(a.detail || "{}"); } catch (e) { return; }
+      if (!d || !d.clientId) return;
+      var cur = m[d.clientId];
+      if (!cur || String(a.createdAt || "") > String(cur.createdAt || "")) {
+        m[d.clientId] = {
+          url: d.url || "", at: d.at || a.createdAt || "", note: d.note || "",
+          by: a.actor || "", createdAt: a.createdAt || ""
+        };
+      }
+    });
+    _hdCache = m;
+    return m;
+  }
+  function hisabDoc(cid) { return hisabDocMap()[cid] || null; }
+  /* Who is still owed-from AND has no old book attached. The asking stops the day the money
+     clears - chasing paperwork for an old client who has paid up helps nobody. */
+  function hisabDocMissing() {
+    return (S.data.clients || []).filter(function (c) {
+      if (!(nAmt(c.openingAmt) > 0)) return false;
+      if (hisabDoc(c.id)) return false;
+      return clientDue(c.name) > 0.5;
+    }).sort(function (a, b) { return nAmt(b.openingAmt) - nAmt(a.openingAmt); });
   }
 
   /* ---- the signature pad ----
@@ -3321,7 +3578,10 @@ window.addEventListener("beforeunload", function (ev) {
       '<label>Received at site by</label>' +
       '<input id="alt_by" value="' + esc(S.alt.by || "") + '" placeholder="Name of whoever took delivery" autocomplete="off"/>' +
       '<label style="margin-top:8px">Photograph of the material as unloaded</label>' +
-      '<input type="file" id="alt_photo" accept="image/*" capture="environment" ' +
+      /* v6.9.210: capture="environment" is gone. It forced the camera open and hid the gallery,
+         and the photo of the receipt is nearly always already in the gallery - the driver sent it
+         on WhatsApp. Camera or gallery, whichever one it is in. */
+      '<input type="file" id="alt_photo" accept="image/*" ' +
       'style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
       '<div id="alt_photo_note" class="meta" style="margin-top:4px;color:' + (S.alt.photo ? "#0f766e" : "#94a3b8") + '">' +
       (S.alt.photo ? "Photo attached." : "Optional \u2014 but it is the one thing a customer cannot argue with.") + '</div>' +
@@ -3700,6 +3960,26 @@ window.addEventListener("beforeunload", function (ev) {
           '<div></div>' +
           '</div>' +
           '<div class="meta" style="margin-top:6px">A pending amount marks him <b>Old</b> automatically. It is money owed, not this month\u2019s sale, and it earns nobody an incentive.</div>' +
+          /* v6.9.210 - the old book itself, attached to the man. Hosted on Drive and remembered
+             against his id, so the old Excel never has to be opened to explain a balance. Only
+             offered once he exists, because the document is filed against that id. */
+          (c.id
+            ? (function () {
+                var hd = hisabDoc(c.id);
+                return '<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #fcd34d">' +
+                  '<label>Old hisab \u2014 his statement from the old books</label>' +
+                  (hd && hd.url
+                    ? '<div class="meta" style="margin-bottom:6px">On file &middot; <a href="' + esc(hd.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600">open it &#8599;</a>' +
+                      (hd.note ? ' &middot; ' + esc(hd.note) : "") + '. Attaching another one makes it the current one; nothing is deleted.</div>'
+                    : '<div class="meta" style="margin-bottom:6px">Not attached yet. A PDF is best \u2014 a clear photo of the page also works.</div>') +
+                  '<input type="file" id="c_hisab" accept="application/pdf,image/*" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
+                  '<div id="c_hisab_note" class="meta" style="margin-top:4px;color:#94a3b8">Pick the file, then press Attach. It goes up on its own \u2014 you do not have to save the client.</div>' +
+                  '<input id="c_hisab_txt" placeholder="A note, e.g. as on 31-03-2026" style="margin-top:6px"/>' +
+                  '<div class="row" style="margin-top:6px"><div class="grow"></div>' +
+                  '<button class="btn sm" data-act="hd-attach" data-id="' + esc(c.id) + '">Attach the old hisab</button></div>' +
+                  '</div>';
+              })()
+            : '<div class="meta" style="margin-top:8px;color:#b45309">Save him first \u2014 then his old hisab can be attached here.</div>') +
           '</div>'
         : "") +
       /* CREDIT TERMS (v6.9.193). A commercial decision, so only a partner sets it. Left blank
@@ -5070,6 +5350,52 @@ function viewCatalogue() {
       };
       fr.onerror = function () { res(null); };
       fr.readAsDataURL(file);
+    });
+  }
+
+  /* v6.9.210. Everything that goes up to Drive has to be a real PDF: the backend stores exactly
+     what it is handed, and a photograph saved under a .pdf name is a file nobody can open six
+     months later. So a photo is wrapped into a one-page A4 PDF here, on the phone, before it is
+     sent - and an Excel file is refused politely rather than stored as something broken. */
+  function fileB64(file) {
+    return new Promise(function (res) {
+      var fr = new FileReader();
+      fr.onload = function () { try { res(String(fr.result).split(",")[1] || null); } catch (e) { res(null); } };
+      fr.onerror = function () { res(null); };
+      fr.readAsDataURL(file);
+    });
+  }
+  function fileKind(f) {
+    var n = String((f && f.name) || "").toLowerCase();
+    var t = String((f && f.type) || "").toLowerCase();
+    if (t.indexOf("pdf") >= 0 || /\.pdf$/.test(n)) return "pdf";
+    if (t.indexOf("image/") === 0 || /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/.test(n)) return "image";
+    if (/\.(xlsx?|csv|ods|numbers)$/.test(n)) return "sheet";
+    return "other";
+  }
+  function imgToPdf(b64, title) {
+    return loadFonts().then(function (f) {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      if (f) {
+        try {
+          doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
+          doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold");
+        } catch (e) { }
+      }
+      try { doc.setFont(ppEmbed(doc), "bold"); } catch (e) { }
+      doc.setFontSize(11); doc.setTextColor(13, 118, 108);
+      doc.text(String(title || "Document"), 16, 18);
+      var iw = 178, ih = 245, x = 16, yy = 26;
+      try {
+        var ip = doc.getImageProperties("data:image/jpeg;base64," + b64);
+        if (ip && ip.width && ip.height) {
+          var sc = Math.min(178 / ip.width, 245 / ip.height);
+          iw = ip.width * sc; ih = ip.height * sc;
+          x = 16 + (178 - iw) / 2;
+        }
+      } catch (e) { }
+      try { doc.addImage("data:image/jpeg;base64," + b64, "JPEG", x, yy, iw, ih); } catch (e) { }
+      return doc;
     });
   }
 
@@ -6551,6 +6877,7 @@ function viewCatalogue() {
     }
     h += '<div class="row">' +
       (S.role === "admin" ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
+      '<button class="btn sm ghost" data-act="prf-list">Delivery receipts</button>' +
       '<div class="grow"></div><button class="btn" data-act="ch-new">+ New challan</button></div>';
     if (!list.length) h += '<div class="empty">No challans yet.</div>';
 
@@ -6578,6 +6905,14 @@ function viewCatalogue() {
               : (!c.billStatus ? '<button class="btn sm act-billsend" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : ""))
           : "") +
         '<button class="btn sm ghost" data-act="ch-pdf" data-id="' + esc(c.id) + '">PDF</button>' +
+        /* v6.9.210 - the two buttons this whole feature exists for, and BOTH are open to anyone
+           who can see the challan (the owner's decision): the godown man who loaded the tempo is
+           the man holding the photo, and the sales exec standing at the site is the man who has
+           the customer's number open. Attach disappears once a receipt is on file. */
+        ((st === "Dispatched" || st === "Received")
+          ? '<button class="btn sm ghost" data-act="ch-wa" data-id="' + esc(c.id) + '" style="color:#0f766e">Send</button>' +
+            (challanProof(c.id) ? "" : '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(c.id) + '">Attach receipt</button>')
+          : "") +
         /* v6.9.206 - on the card, not in the edit form: a dispatched or received challan has no
            edit form to put it in, and those are exactly the ones he needs to be able to void. */
         (S.role === "admin" ? '<button class="btn sm ghost" data-act="cx-open" data-tab="challans" data-id="' + esc(c.id) + '" style="color:#b91c1c">Cancel</button>' : "");
@@ -7265,6 +7600,23 @@ function viewCatalogue() {
       if (!seesAllClients()) outs = outs.filter(function (r) { return isMineClient(r.name); });
       var credits = hisabCredits();
       if (!seesAllClients()) credits = credits.filter(function (r) { return isMineClient(r.name); });
+      /* v6.9.210 - old clients who still owe money and whose old-book statement was never
+         attached. Partner only, and it empties itself: a name leaves this list either when the
+         statement goes up or when the money clears, whichever happens first. */
+      if (S.role === "admin") {
+        var hdm = hisabDocMissing();
+        if (hdm.length) {
+          h += '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
+            '<h3 style="margin:0 0 2px;font-size:13px">' + hdm.length + ' old client(s) owe money with no old hisab attached</h3>' +
+            '<div class="meta" style="margin-bottom:6px">Attach each one\u2019s statement from the old books, so the balance can be explained without opening the spreadsheet. Tap a name to open his card.</div>' +
+            hdm.slice(0, 40).map(function (hc) {
+              return '<span class="pill" data-act="cl-open" data-id="' + esc(hc.id) + '" style="background:#fef3c7;color:#92400e;cursor:pointer;margin:2px 4px 2px 0;display:inline-block">' +
+                esc(hc.name) + ' &middot; ' + money(nAmt(hc.openingAmt)) + '</span>';
+            }).join("") +
+            (hdm.length > 40 ? '<div class="meta" style="margin-top:6px">and ' + (hdm.length - 40) + ' more.</div>' : "") +
+            '</div>';
+        }
+      }
       if (!outs.length && !credits.length) return h + '<div class="empty">No outstanding balances &mdash; every received challan is fully paid. Type a client above to view their hisab.</div>';
       var oh = '';
       if (outs.length) {
@@ -13603,7 +13955,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _prfCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null;
+    _clDueCache = null; _clStageCache = null; _prfCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
     var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
@@ -13769,6 +14121,54 @@ function viewCatalogue() {
         });
       });
     }
+    /* v6.9.210 - the receipt photograph, attachable on any delivery. Camera OR gallery: the
+       photo usually lands on WhatsApp from a driver an hour after the material did, and forcing
+       the camera open is exactly why no proof was ever attached. Read on the change event, never
+       at save time - a repaint empties a file input and the photo would be gone. */
+    var pfEl = el("prf_photo");
+    if (pfEl) {
+      pfEl.addEventListener("change", function (e) {
+        var f = e.target.files && e.target.files[0];
+        var note = el("prf_photo_note");
+        if (!f) return;
+        if (note) { note.textContent = "Shrinking the photo\u2026"; note.style.color = "#94a3b8"; }
+        shrinkPhoto(f).then(function (b64) {
+          if (S.prf) S.prf.photo = b64 || "";
+          var n3 = el("prf_photo_note");
+          if (!n3) return;
+          if (b64) { n3.textContent = "Photo attached."; n3.style.color = "#0f766e"; }
+          else { n3.textContent = "That file could not be read \u2014 try picking it again."; n3.style.color = "#b45309"; }
+        });
+      });
+    }
+    /* v6.9.210 - the old hisab file. A PDF goes up as it is; a photo of the page is wrapped into
+       a PDF at attach time. An Excel file is refused here, out loud, rather than stored as
+       something that cannot be opened later. */
+    var hdEl = el("c_hisab");
+    if (hdEl) {
+      hdEl.addEventListener("change", function (e) {
+        var f = e.target.files && e.target.files[0];
+        var note = el("c_hisab_note");
+        if (!f) return;
+        var k = fileKind(f);
+        if (k !== "pdf" && k !== "image") {
+          S.hdFile = null;
+          if (note) { note.textContent = "Only a PDF or a photo can be stored. Open it, Save as PDF, and attach that."; note.style.color = "#b45309"; }
+          return;
+        }
+        if (note) { note.textContent = "Reading the file\u2026"; note.style.color = "#94a3b8"; }
+        (k === "pdf" ? fileB64(f) : shrinkPhoto(f)).then(function (b64) {
+          var n4 = el("c_hisab_note");
+          if (!b64) {
+            S.hdFile = null;
+            if (n4) { n4.textContent = "That file could not be read \u2014 try again."; n4.style.color = "#b45309"; }
+            return;
+          }
+          S.hdFile = { b64: b64, name: f.name || "hisab", kind: k };
+          if (n4) { n4.textContent = "Ready \u2014 now press Attach the old hisab."; n4.style.color = "#0f766e"; }
+        });
+      });
+    }
     /* Stock import: read an uploaded Tally CSV export and jump straight to the review step. */
     var impf = el("imp_file");
     if (impf) {
@@ -13799,7 +14199,7 @@ function viewCatalogue() {
      instant it is pressed and unlocked when the save settles.  WRITE_LOCK_MS is a backstop: if a
      promise is ever dropped the button comes back by itself, so he is never left tapping a dead
      screen with the customer standing in front of him. */
-  var WRITE_ACTS = { "pi-save": 1, "pi-force": 1, "po-save": 1, "po-force": 1 };
+  var WRITE_ACTS = { "pi-save": 1, "pi-force": 1, "po-save": 1, "po-force": 1, "prf-save": 1, "hd-attach": 1 };
   var WRITE_LOCK_MS = 30000;
   var _lockTimer = {}, _lockSeq = 0;
 
@@ -16465,6 +16865,100 @@ function viewCatalogue() {
       return;
     }
 
+    /* ---- delivery receipts (v6.9.210) ---- */
+    if (act === "ch-proof") {
+      S.prf = { id: id, by: "", photo: "" };
+      S.modal = modalProof(id); render(); return;
+    }
+    if (act === "prf-cancel") { S.prf = null; S.modal = null; render(); return; }
+    if (act === "prf-list") { S.modal = modalProofList(); render(); return; }
+    if (act === "prf-save") {
+      if (!S.prf) return;
+      var pby = el("prf_by") ? String(el("prf_by").value || "").trim() : "";
+      var pph = S.prf.photo || "";
+      var pcid = S.prf.id;
+      if (!pph && !pby) { toast("Add the photo of the receipt, or at least the name of whoever signed it."); return; }
+      S.prf = null; S.modal = null;
+      toast("Making the document \u2014 it will show on the challan in a moment.");
+      render();
+      /* Behind the screen, never in front of it. The document is built on this phone and queued;
+         it goes up on its own and survives being closed, exactly like the older proof queue. */
+      try { proofStart(pcid, { by: pby, photo: pph, sig: "", rows: null }); } catch (e) { }
+      return;
+    }
+    /* Sending a delivery to the customer. If the combined document is already hosted we send THAT
+       link straight out - instant, nothing to rebuild. If it is still uploading we say so rather
+       than sending half a story. If there is no receipt at all, the plain challan goes. */
+    if (act === "ch-wa") {
+      var chw = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      if (!chw) return;
+      var clw = clientByName(chw.customerName) || {};
+      var nw = String(clw.mobile || "").replace(/\D/g, "");
+      if (nw.length === 10) nw = "91" + nw;
+      var msgw = "Namaste " + String(chw.customerName || "") + ",\n\nMaterial delivered against challan " +
+        String(chw.challanNo || "") + (chw.site ? " at " + chw.site : "") + ".\n\nEnergy World";
+      var pw = challanProof(chw.id);
+      if (pw && pw.url) {
+        window.open("https://wa.me/" + nw + "?text=" +
+          encodeURIComponent(msgw + "\n\nDelivery challan & receipt:\n" + pw.url), "_blank");
+        return;
+      }
+      if (prfLoad().filter(function (x) { return x.chId === chw.id; })[0]) {
+        toast("The receipt for this delivery is still going up \u2014 refresh, then send.");
+        return;
+      }
+      waShareDoc(loadLogo().then(function () { return challanPdf(chw, chw.approvedBy || ""); }),
+        String(chw.challanNo || "challan").replace(/[^\w.-]/g, "_") + ".pdf", nw, msgw);
+      return;
+    }
+    /* ---- the old hisab, attached to a client (v6.9.210) ----
+       Uploaded on its own, without saving the client, so a half-filled form is never at risk. */
+    if (act === "hd-attach") {
+      var hcl = (S.data.clients || []).filter(function (x) { return x.id === id; })[0];
+      if (!hcl) { toast("Save the client first, then attach his old hisab."); return; }
+      if (!S.hdFile || !S.hdFile.b64) { toast("Pick the file first."); return; }
+      var hnote = el("c_hisab_txt") ? String(el("c_hisab_txt").value || "").trim() : "";
+      var hnEl = el("c_hisab_note");
+      if (hnEl) { hnEl.textContent = "Uploading\u2026"; hnEl.style.color = "#94a3b8"; }
+      var hf = S.hdFile;
+      var hcid = hcl.id;
+      (hf.kind === "pdf"
+        ? Promise.resolve(hf.b64)
+        : imgToPdf(hf.b64, String(hcl.name || "") + " \u2014 old hisab").then(function (d) {
+            return d.output("datauristring").split(",")[1];
+          })
+      ).then(function (b64h) {
+        return api("pdfHost", {
+          pdfBase64: b64h,
+          filename: "HISAB-" + String(hcl.name || hcid).replace(/[^\w.-]+/g, "-") + ".pdf"
+        });
+      }).then(function (r) {
+        if (!r || !r.ok || !r.url) throw new Error("host");
+        var nowh = new Date().toISOString();
+        return save("audit", {
+          id: "HD-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+          createdAt: nowh, actor: S.user || "", action: "client:hisab",
+          target: String(hcl.name || ""),
+          detail: JSON.stringify({ clientId: hcid, name: hcl.name || "", url: r.url, at: nowh, note: hnote }),
+          ip: ""
+        }, true).then(function () {
+          _hdCache = null; S.hdFile = null;
+          /* No repaint on purpose: he may be halfway through editing this very client, and a
+             redraw would take his typing with it. The line under the file box just changes. */
+          var h3 = el("c_hisab_note");
+          if (h3) {
+            h3.innerHTML = 'Attached. <a href="' + esc(r.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600">Open it &#8599;</a>';
+            h3.style.color = "#0f766e";
+          }
+          toast("Old hisab attached for " + String(hcl.name || "") + ".");
+        });
+      }).catch(function () {
+        var h4 = el("c_hisab_note");
+        if (h4) { h4.textContent = "That did not go up \u2014 nothing was lost, try again in a moment."; h4.style.color = "#b45309"; }
+        toast("Could not attach it \u2014 nothing was lost, try again.");
+      });
+      return;
+    }
     if (act === "ch-pdf") {
       var ch3 = S.data.challans.filter(function (x) { return x.id === id; })[0];
       if (!ch3) return;
