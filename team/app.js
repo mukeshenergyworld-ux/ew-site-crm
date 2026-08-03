@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.210";
+  var APP_VERSION = "6.9.212";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2660,6 +2660,61 @@ window.addEventListener("beforeunload", function (ev) {
       }).join("") +
       '</div><div class="foot"><button class="btn ghost" data-act="close">Cancel</button></div>';
   }
+  /* v6.9.211 - THE WHOLE BOARD FOR ONE CLIENT, AS A LIST.
+     Compact used to collapse the tail of the brand row into a "+N more" chip that opened his
+     EDIT FORM. So from Compact there was no way at all to mark a brand Won or Lost, and the
+     brands already settled were not on that line to begin with. This is the list that was
+     missing: every real brand, where it stands today, and a tap straight through to the same
+     Win / Lose menu the Expand card has always had. */
+  function modalClientBrands(name) {
+    var lbl = { won: "Won ✓", lost: "Lost", live: "In play", none: "Not started", nr: "Not required" };
+    var col = {
+      won: "background:#dcfce7;color:#166534", lost: "background:#fee2e2;color:#b91c1c",
+      live: "background:#0d9488;color:#fff", none: "background:#f1f5f9;color:#475569",
+      nr: "background:#f8fafc;color:#94a3b8"
+    };
+    var rank = { live: 0, none: 1, won: 2, lost: 3, nr: 4 };
+    var rows = brandGroupList().filter(function (b) {
+      if (!isRealBrandName(b)) return false;
+      var l = String(b).toLowerCase();
+      return l.indexOf("accessor") < 0 && l.indexOf("net price") < 0;
+    }).map(function (b) { return { b: b, st: clientGroupState(name, b) }; });
+    /* in play first, then never pitched - the two that are still work. Settled ones sit below,
+       reachable, which is the whole point of this screen. */
+    rows.sort(function (x, y) {
+      var rx = (rank[x.st] == null ? 9 : rank[x.st]), ry = (rank[y.st] == null ? 9 : rank[y.st]);
+      if (rx !== ry) return rx - ry;
+      return String(x.b).toLowerCase() < String(y.b).toLowerCase() ? -1 : 1;
+    });
+    return '<h2>Brands</h2>' +
+      '<p class="sub">' + esc(name) + ' &middot; tap a brand to quote it, or to mark it Won or Lost.</p>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;max-height:58vh;overflow:auto">' +
+      rows.map(function (r) {
+        return '<button class="btn ghost" style="justify-content:space-between;width:100%" data-act="board-menu" data-n="' +
+          esc(name) + '" data-brand="' + esc(r.b) + '">' + esc(r.b) +
+          ' <span class="pill" style="' + (col[r.st] || col.none) + '">' + esc(lbl[r.st] || "Not started") + '</span></button>';
+      }).join("") +
+      '</div><div class="foot"><button class="btn ghost" data-act="close">Cancel</button></div>';
+  }
+
+  /* v6.9.211 - answer the construction stage on the spot.
+     The red "Stage ?" pill used to open the whole client form, where the answer had to survive
+     a long screen before anything was written. This writes it the moment it is tapped. */
+  function modalClientStage(name) {
+    var cur = clientStage2(name);
+    return '<h2>Construction stage</h2>' +
+      '<p class="sub">' + esc(name) +
+      (cur ? ' &middot; currently: <b>' + esc(cur) + '</b>' : ' &middot; not answered yet') +
+      '</p>' +
+      '<div class="empty" style="text-align:left;padding:0 0 8px;font-size:12.5px">This is what decides what you can sell here and when. One tap and it is saved.</div>' +
+      '<div class="chips">' + STAGES2.map(function (s, i) {
+        return '<button type="button" class="chip ' + (cur === s ? "on" : "") +
+          '" data-act="cl-stage-set" data-n="' + esc(name) + '" data-s="' + esc(s) + '">' +
+          (i + 1) + '. ' + esc(s) + '</button>';
+      }).join("") + '</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button></div>';
+  }
+
   function brandBoard(name, compact) {
     var brands = brandGroupList();
     /* compact card mode: only REAL brands - "Accessory" / "Net Price Items" are allied-item
@@ -2872,8 +2927,28 @@ window.addEventListener("beforeunload", function (ev) {
     if (_clStageCache) return _clStageCache;
     var m = {};
     function put(k, v) { var t = String(k || "").trim().toLowerCase(); if (t && v && !m[t]) m[t] = v; }
+    /* v6.9.211 - THE ANSWER AS IT WAS ACTUALLY GIVEN, filed as an audit row, read FIRST.
+       This is the only copy of a stage that cannot go missing. The site write can fail; the
+       clients sheet has no stage column at all, so a stage sent on the client row is silently
+       dropped by the server. That is why a stage answered on the lead form came back blank and
+       the red "Stage ?" box returned the moment a brand was marked Won. An audit row is the
+       same shape every other document in this app already uses - no new column is asked for.
+       Newest answer wins. */
+    var aud = {};
+    (S.data.audit || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== "client:stage") return;
+      var d; try { d = JSON.parse(a.detail || "{}"); } catch (e) { return; }
+      if (!d || !d.stage) return;
+      var k = String(d.name || a.target || "").trim().toLowerCase();
+      if (!k) return;
+      var cur = aud[k];
+      if (!cur || String(a.createdAt || "") >= String(cur.at || "")) aud[k] = { at: a.createdAt || "", stage: d.stage };
+    });
+    Object.keys(aud).forEach(function (k) { m[k] = aud[k].stage; });
     (S.data.sites || []).forEach(function (s) { if (s && s.stage) { put(s.client, s.stage); put(s.name, s.stage); } });
     (S.data.customers || []).forEach(function (c) { if (c && c.stage) put(c.name, c.stage); });
+    /* and the client row itself, for the day the sheet grows a stage column */
+    (S.data.clients || []).forEach(function (c) { if (c && c.stage) put(c.name, c.stage); });
     _clStageCache = m;
     return m;
   }
@@ -2919,7 +2994,9 @@ window.addEventListener("beforeunload", function (ev) {
            still blank — tap it to open his card and answer it. */
         (stg
           ? ' <span class="pill" style="background:#ccfbf1;color:#0f766e" title="Construction stage">' + esc(stg) + '</span>'
-          : ' <span class="pill" data-act="cl-open" data-id="' + esc(c.id) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer" title="No construction stage recorded - tap to set it">Stage ?</span>') +
+          /* v6.9.211 - tapping this used to open the whole client form. It now opens the stage
+             chips on their own and writes the answer the moment one is tapped. */
+          : ' <span class="pill" data-act="cl-stage" data-n="' + esc(c.name) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer" title="No construction stage recorded - tap to answer it here">Stage ?</span>') +
         (c.mobile ? ' <span style="color:#94a3b8;font-size:12px;white-space:nowrap">' + esc(c.mobile) + '</span>' : "") +
         /* The money sits right beside the phone number on purpose: the number you would call and the
            reason you would call him, read as one line. */
@@ -3057,6 +3134,52 @@ window.addEventListener("beforeunload", function (ev) {
   /* ---- reading proofs back out of the audit sheet ----
      Built once per paint. The challan list can be hundreds of cards long and the audit sheet
      grows forever; walking it per card would make the list crawl on a phone. */
+  /* v6.9.212 - THE RECEIPT, SMALL ENOUGH TO LIVE ON THE SHEET.
+     His words: "once material receipt marked received, remove attached receipt, only show
+     receipt received with a small thumbnail may be of 2 to 3 kb". This is that thumbnail.
+     It is made once, on the phone, at the moment the receipt is attached, and it travels in the
+     SAME audit row as the rest of the proof - so no new column is asked of the sheet and no
+     second fetch is made when the list paints. The full document stays on Drive, one tap away;
+     this is only so a man scrolling a hundred challans can SEE which paper came back.
+     The budget is a hard ceiling, not a hope: the steps below get smaller until the picture fits,
+     and if none of them fits, no picture is stored at all and the card simply reads
+     "Receipt received". A card without a picture is a small loss. A 40 KB string on every proof
+     row would slow every screen in the app, and that is not. */
+  var THUMB_MAX_CH = 3600; /* base64 characters ~ 2.6 KB of actual image */
+  function proofThumb(b64) {
+    return new Promise(function (res) {
+      if (!b64) return res("");
+      var img = new Image();
+      img.onload = function () {
+        try {
+          /* v6.9.212 - if the photograph is ALREADY a small thumbnail-sized picture inside
+             the budget, it is kept exactly as it came. Re-encoding a 90x120 slip at a lower
+             quality only makes it uglier and saves nothing. Both conditions are required:
+             a large picture that merely happens to compress small is still re-made, because
+             a 1100px image decoded on every row of a hundred-challan list costs memory even
+             when its bytes are few. */
+          var big = Math.max(img.width || 0, img.height || 0);
+          if (big && big <= 150 && b64.length <= THUMB_MAX_CH) return res(b64);
+          var steps = [[150, 0.6], [140, 0.5], [120, 0.45], [96, 0.4], [80, 0.35]];
+          for (var i = 0; i < steps.length; i++) {
+            var side = steps[i][0], q = steps[i][1];
+            var sc = Math.min(1, side / Math.max(img.width || 1, img.height || 1));
+            var c = document.createElement("canvas");
+            c.width = Math.max(1, Math.round((img.width || side) * sc));
+            c.height = Math.max(1, Math.round((img.height || side) * sc));
+            c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+            var out = (c.toDataURL("image/jpeg", q).split(",")[1] || "");
+            if (out && out.length <= THUMB_MAX_CH) return res(out);
+          }
+          res("");
+        } catch (e) { res(""); }
+      };
+      /* a picture that will not decode is not an error worth stopping a delivery for */
+      img.onerror = function () { res(""); };
+      try { img.src = "data:image/jpeg;base64," + b64; } catch (e) { res(""); }
+    });
+  }
+
   function proofMap() {
     if (_prfCache) return _prfCache;
     var m = {};
@@ -3071,7 +3194,10 @@ window.addEventListener("beforeunload", function (ev) {
       if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
         m[d.chId] = {
           at: r.createdAt || "", by: d.by || "", url: d.url || "", geo: d.geo || "",
-          actor: r.actor || "", photo: !!d.photo, sig: !!d.sig
+          actor: r.actor || "", photo: !!d.photo, sig: !!d.sig,
+          /* v6.9.212. Older proof rows have none - they read back as "" and the card shows the
+             seal without a picture, which is exactly right and needs no migration. */
+          thumb: String(d.thumb || "")
         };
       }
     });
@@ -3083,15 +3209,51 @@ window.addEventListener("beforeunload", function (ev) {
   /* Shown on the challan card. Three states, and the middle one matters most: a proof that was
      taken but has not reached Drive yet must LOOK different from no proof at all, or the man who
      took it will take it again. */
+  /* v6.9.212 - what a finished delivery looks like, in one glance.
+     Inline styles on purpose: the stylesheet lives in the shell file and this must ship in app.js
+     alone, in one deploy. `size` is the only thing that changes between the card line and the
+     bigger showing on the receipts screen. */
+  function proofThumbImg(thumb, size) {
+    if (!thumb) return "";
+    var px = size || 26;
+    return '<img src="data:image/jpeg;base64,' + esc(thumb) + '" alt="" loading="lazy" ' +
+      /* v6.9.212 - box-sizing is stated here and not assumed. This tag carries its own
+         styles because it must work wherever it is dropped, and a 1px border on a
+         content-box image makes a 26px chip draw 28px and shove the line it sits on. */
+      'style="width:' + px + 'px;height:' + px + 'px;box-sizing:border-box;object-fit:cover;' +
+      'border-radius:5px;border:1px solid #cbd5e1;background:#fff;vertical-align:middle;' +
+      'flex:0 0 auto"/>';
+  }
+  function proofSeal(url, thumb, waiting, by) {
+    var img = proofThumbImg(thumb, 26);
+    var tip = "Receipt received" + (by ? " - signed by " + by : "");
+    if (waiting) {
+      return '<span title="' + esc(tip) + ' - the document is on the phone it was made on and goes up on the next refresh." ' +
+        'style="display:inline-flex;align-items:center;gap:5px;background:#fffbeb;border:1px solid #fde68a;' +
+        'color:#92400e;border-radius:999px;padding:2px 8px 2px 3px;font-size:11px;font-weight:700">' +
+        (img || '') + '<span>Receipt received \u2713 &middot; uploading</span></span>';
+    }
+    var body = (img || '') + '<span>Receipt received \u2713</span>';
+    if (!url) {
+      return '<span title="' + esc(tip) + '" style="display:inline-flex;align-items:center;gap:5px;background:#f0fdfa;' +
+        'border:1px solid #99f6e4;color:#0f766e;border-radius:999px;padding:2px 8px 2px 3px;' +
+        'font-size:11px;font-weight:700">' + body + '</span>';
+    }
+    return '<a href="' + esc(url) + '" target="_blank" rel="noopener" title="' + esc(tip) +
+      ' - tap to open the full delivery document" ' +
+      'style="display:inline-flex;align-items:center;gap:5px;background:#f0fdfa;border:1px solid #99f6e4;' +
+      'color:#0f766e;border-radius:999px;padding:2px 8px 2px 3px;font-size:11px;font-weight:700;' +
+      'text-decoration:none">' + body + ' <span style="opacity:.75">&#8599;</span></a>';
+  }
+
   function proofLink(c) {
+    /* v6.9.212 - the queued copy carries its own thumbnail, so the picture of the paper is on the
+       card the instant it is attached, long before Drive has heard of it. */
     var q = prfLoad().filter(function (x) { return x.chId === c.id; })[0];
-    if (q) return ' &middot; <span class="pill due" title="The proof is on the phone it was taken on. It goes up on the next refresh.">proof waiting to upload</span>';
+    if (q) return ' &middot; ' + proofSeal("", q.thumb || "", true, q.by || "");
     var p = challanProof(c.id);
     if (!p) return "";
-    if (!p.url) return ' &middot; <span class="pill due">proof recorded</span>';
-    return ' &middot; <a href="' + esc(p.url) + '" target="_blank" rel="noopener" ' +
-      'title="Delivery proof' + (p.by ? " - received by " + esc(p.by) : "") + '" ' +
-      'style="color:#0f766e;font-weight:600;text-decoration:none">Proof &#8599;</a>';
+    return ' &middot; ' + proofSeal(p.url || "", p.thumb || "", false, p.by || "");
   }
 
   /* ---- the lines of a delivery, as the receipt should show them ----
@@ -3329,7 +3491,9 @@ window.addEventListener("beforeunload", function (ev) {
         action: "challan:proof", target: String(e.no || "") + " / " + String(e.client || ""),
         detail: JSON.stringify({
           chId: e.chId, no: e.no, client: e.client, site: e.site,
-          by: e.by, geo: e.geo, url: r.url, at: e.at, photo: !!e.hasPhoto, sig: !!e.hasSig
+          by: e.by, geo: e.geo, url: r.url, at: e.at, photo: !!e.hasPhoto, sig: !!e.hasSig,
+          /* v6.9.212 - the 2-3 KB picture of the paper, filed with the proof itself. */
+          thumb: String(e.thumb || "")
         }), ip: ""
       }, true).then(function () { prfDrop(e.pk); return true; });
     }).catch(function () { return false; });
@@ -3361,7 +3525,15 @@ window.addEventListener("beforeunload", function (ev) {
        was already recorded against it. */
     var rows = (prf.rows && prf.rows.length) ? prf.rows.slice() : proofRows(ch);
     var meta = { by: prf.by || "", at: at, geo: "", actor: S.user || "" };
-    proofPdf(ch, { rows: rows, photo: prf.photo || "", sig: prf.sig || "" }, meta).then(function (d) {
+    /* v6.9.212 - the small picture is made at the same moment as the big document, from the same
+       photograph, and queued with it. It never has its own failure path: proofThumb resolves to
+       an empty string on anything it cannot do, and an empty string simply means the card shows
+       the seal without a picture. Nothing about the delivery waits on it. */
+    Promise.all([
+      proofPdf(ch, { rows: rows, photo: prf.photo || "", sig: prf.sig || "" }, meta),
+      proofThumb(prf.photo || "")
+    ]).then(function (both) {
+      var d = both[0], th = String(both[1] || "");
       var b64 = d.output("datauristring").split(",")[1];
       var stamp = Date.now(), rnd = Math.floor(Math.random() * 1000000);
       prfPut({
@@ -3369,7 +3541,7 @@ window.addEventListener("beforeunload", function (ev) {
         aid: "PF-" + stamp + "-" + rnd,
         chId: cid, no: String(ch.challanNo || ""), client: String(ch.customerName || ""),
         site: String(ch.site || ""), by: prf.by || "", at: at, geo: "", actor: S.user || "",
-        hasPhoto: !!prf.photo, hasSig: !!prf.sig,
+        hasPhoto: !!prf.photo, hasSig: !!prf.sig, thumb: th,
         fname: "DELIVERY-" + String(ch.challanNo || cid).replace(/[^\w.-]+/g, "-") + ".pdf",
         b64: b64
       });
@@ -3395,7 +3567,10 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="meta" style="margin-bottom:8px"><b>' + esc(c.challanNo || "") + '</b> &middot; ' +
       esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") + '</div>' +
       (q ? '<div class="card" style="border-color:#fde68a;background:#fffbeb"><div class="meta">A receipt for this challan is still waiting to go up from this phone. It uploads on the next refresh. Nothing here is lost.</div></div>' : "") +
-      (have ? '<div class="card" style="border-color:#fde68a;background:#fffbeb"><div class="meta">A receipt is already on file for this delivery' +
+      /* v6.9.212 - if one is already on file, show it. */
+      (have ? '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
+        (have.thumb ? '<div style="margin-bottom:6px">' + proofThumbImg(have.thumb, 84) + '</div>' : "") +
+        '<div class="meta">A receipt is already on file for this delivery' +
         (have.url ? ' \u2014 <a href="' + esc(have.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600">open it &#8599;</a>' : "") +
         '. Attaching another one makes it the current one. Nothing is deleted \u2014 the old one stays on the sheet.</div></div>' : "") +
       '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
@@ -3451,7 +3626,10 @@ window.addEventListener("beforeunload", function (ev) {
         '<h3 style="margin:0 0 4px;font-size:13px">On file (' + on.length + ')</h3>';
       on.slice(0, CAP).forEach(function (c) {
         var p = challanProof(c.id);
+        /* v6.9.212 - the filed picture, or the queued one if it has not gone up yet. */
+        var pth = (p && p.thumb) || (pmap[c.id] && pmap[c.id].thumb) || "";
         h += '<div class="row" style="align-items:center;border-top:1px solid #99f6e4;padding:5px 0">' +
+          (pth ? '<div style="margin-right:8px">' + proofThumbImg(pth, 38) + '</div>' : "") +
           '<div class="grow" style="font-size:12.5px"><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(c.customerName || "") +
           '<div style="color:#94a3b8;font-size:11px">' +
           (p ? fullDate(String(p.at || "").slice(0, 10)) : "waiting to upload") +
@@ -3781,36 +3959,93 @@ window.addEventListener("beforeunload", function (ev) {
      Owner's rule: a lead is no use without its plumber and architect. So those two fields are
      DROPDOWN-ONLY (pick a registered partner, or add a new one - which demands a mobile number),
      and whoever entered a lead/client that is still missing either name is reminded weekly. */
+  /* v6.9.212 - A PLUMBER HAS NO BUSINESS IN THE ARCHITECT LIST.
+     His words: "in partner dropdown select, show only arch if arch to select, plumber if plumber
+     to select, its showing all as one, seems confusing". He was right, and this is why: every
+     registered partner whose role did NOT match was being swept into one "Other partners" group
+     at the bottom of every dropdown. With ~296 partners on the book, the Architect list was
+     mostly plumbers.
+
+     What belongs in the Architect list, and nothing else:
+       - registered partners whose role IS Architect;
+       - people already named as the architect on a client or a site but never registered - they
+         are architects by the only evidence there is, and dropping them would make an existing,
+         correctly-spelled name unpickable and invite a second spelling of the same man;
+       - registered partners with NO role recorded - a partner entered before roles were being
+         kept is not a plumber, he is an unknown, and hiding him would quietly lose him.
+     A registered partner with a DIFFERENT role - a Plumber, a Dealer, a Contractor - is now
+     excluded outright. He is not deleted and not changed; he simply is not offered in a field he
+     does not belong in. He is still in Partners, and still in his own field's list. */
+  var PARTNER_ROLES = { architect: 1, plumber: 1, builder: 1, pmc: 1, contractor: 1, dealer: 1 };
   function partnerNames(role) {
     var want = String(role || "").toLowerCase();
-    var seen = {}, primary = [], other = [];
+    var seen = {}, primary = [], named = [], unknown = [];
     (S.data.associates || []).forEach(function (a) {
-      var n = String(a.name || "").trim(); if (!n || seen[n]) return; seen[n] = 1;
-      (String(a.role || "").toLowerCase() === want ? primary : other).push(n);
+      var n = String(a.name || "").trim(); if (!n || seen[n]) return;
+      var r = String(a.role || "").trim().toLowerCase();
+      if (r === want) { seen[n] = 1; primary.push(n); return; }
+      /* a role that is set and is some OTHER known trade - not offered here at all */
+      if (PARTNER_ROLES[r]) return;
+      /* blank, "Other", or anything unrecognised - kept, but said out loud */
+      seen[n] = 1; unknown.push(n);
     });
     (S.data.clients || []).forEach(function (x) {
-      var n = String(x[want] || "").trim(); if (n && !seen[n]) { seen[n] = 1; other.push(n); }
+      var n = String(x[want] || "").trim(); if (n && !seen[n]) { seen[n] = 1; named.push(n); }
     });
     /* also surface anyone already named in this role on a SITE, so builders/architects entered
        on projects stay pickable (and consistently spelled) next time. */
     (S.data.sites || []).forEach(function (x) {
-      var n = String(x[want] || "").trim(); if (n && !seen[n]) { seen[n] = 1; other.push(n); }
+      var n = String(x[want] || "").trim(); if (n && !seen[n]) { seen[n] = 1; named.push(n); }
     });
-    primary.sort(); other.sort();
-    return { primary: primary, other: other };
+    primary.sort(); named.sort(); unknown.sort();
+    /* `other` is kept on the returned object so nothing that used to read it breaks. */
+    return { primary: primary, named: named, unknown: unknown, other: named.concat(unknown) };
+  }
+  function partnerLabel(role) {
+    var r = String(role || "").toLowerCase();
+    return r === "architect" ? "Architects" : r === "plumber" ? "Plumbers"
+      : r === "builder" ? "Builders" : r === "pmc" ? "PMCs" : "Partners";
   }
   function partnerSelect(id, role, cur, noAdd) {
     var p = partnerNames(role);
     cur = String(cur || "").trim();
-    var have = p.primary.indexOf(cur) >= 0 || p.other.indexOf(cur) >= 0;
+    var have = p.primary.indexOf(cur) >= 0 || p.named.indexOf(cur) >= 0 || p.unknown.indexOf(cur) >= 0;
     var opt = function (n) { return '<option value="' + esc(n) + '"' + (n === cur ? " selected" : "") + '>' + esc(n) + '</option>'; };
+    var grp = function (label, list) { return list.length ? '<optgroup label="' + esc(label) + '">' + list.map(opt).join("") + '</optgroup>' : ""; };
+    var lbl = partnerLabel(role);
     return '<select id="' + id + '">' +
       '<option value="">&mdash; select &mdash;</option>' +
-      (cur && !have ? opt(cur) : "") +
-      p.primary.map(opt).join("") +
-      (p.other.length ? '<optgroup label="Other partners">' + p.other.map(opt).join("") + '</optgroup>' : "") +
+      /* whatever is already on this record stays selectable even if it matches nothing - a name
+         typed before this version must never silently drop off its own client. */
+      (cur && !have ? '<optgroup label="On this record">' + opt(cur) + '</optgroup>' : "") +
+      grp(lbl + " (registered)", p.primary) +
+      /* a plain ampersand here - grp() escapes the label, and writing the entity would render it twice */
+      grp("Named on leads & sites, not registered", p.named) +
+      grp("Role not recorded", p.unknown) +
       (noAdd ? "" : '<option value="__new__">+ Add new (not in list)</option>') +
       '</select>';
+  }
+  /* v6.9.212 - the referral field is genuinely any-partner: an architect, a plumber or a dealer
+     can all send work. So it keeps everybody - but sorted under his trade instead of one flat
+     run of 296 names, which is the same confusion in a different field. */
+  function partnerAnyOptions(cur) {
+    cur = String(cur || "").trim();
+    var by = {}, order = ["Architect", "Plumber", "Builder", "PMC", "Contractor", "Dealer"], seen = {};
+    (S.data.associates || []).forEach(function (a) {
+      var n = String(a.name || "").trim(); if (!n || seen[n]) return; seen[n] = 1;
+      var r = String(a.role || "").trim();
+      var k = r ? (order.filter(function (o) { return o.toLowerCase() === r.toLowerCase(); })[0] || "Other") : "Role not recorded";
+      (by[k] = by[k] || []).push(n);
+    });
+    var opt = function (n) { return '<option value="' + esc(n) + '"' + (n === cur ? " selected" : "") + '>' + esc(n) + '</option>'; };
+    var out = '<option value=""' + (cur ? "" : " selected") + '>&mdash; none &mdash;</option>';
+    if (cur && !seen[cur]) out += '<optgroup label="On this record">' + opt(cur) + '</optgroup>';
+    order.concat(["Other", "Role not recorded"]).forEach(function (k) {
+      if (!by[k] || !by[k].length) return;
+      by[k].sort();
+      out += '<optgroup label="' + esc(k) + '">' + by[k].map(opt).join("") + '</optgroup>';
+    });
+    return out;
   }
   /* PL / AR status badge for a lead/client card. Green with the partner's phone when named;
      red "Enter Detail" (tap = open Edit) when missing - the gap shows on the card itself. */
@@ -6911,7 +7146,13 @@ function viewCatalogue() {
            the customer's number open. Attach disappears once a receipt is on file. */
         ((st === "Dispatched" || st === "Received")
           ? '<button class="btn sm ghost" data-act="ch-wa" data-id="' + esc(c.id) + '" style="color:#0f766e">Send</button>' +
-            (challanProof(c.id) ? "" : '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(c.id) + '">Attach receipt</button>')
+            /* v6.9.212 - and it also goes the moment the receipt is attached, not only once
+               Drive has confirmed it. Until now the card could say "waiting to upload" and offer
+               "Attach receipt" in the same breath, which is how a man attaches the same paper
+               twice. A receipt on this phone counts as a receipt. */
+            ((challanProof(c.id) || prfLoad().filter(function (x) { return x.chId === c.id; })[0])
+              ? ""
+              : '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(c.id) + '">Attach receipt</button>')
           : "") +
         /* v6.9.206 - on the card, not in the edit form: a dispatched or received challan has no
            edit form to put it in, and those are exactly the ones he needs to be able to void. */
@@ -8858,7 +9099,21 @@ function viewCatalogue() {
     stage = String(stage || "").trim();
     if (!nm || !stage) return Promise.resolve(null);
     var st = siteForClient(nm);
-    if (st && String(st.stage || "") === stage) return Promise.resolve(st);
+    if (st && String(st.stage || "") === stage) { _clStageCache = null; return Promise.resolve(st); }
+    /* v6.9.211 - file the answer as an audit row FIRST and always. The site write below is the
+       one the pitch engine reads, but it can fail, and until this version a failure meant the
+       stage was simply gone. This row is what makes an answered stage stay answered. It never
+       blocks and never throws into the caller. */
+    _clStageCache = null;
+    try {
+      var nowCS = new Date().toISOString();
+      save("audit", {
+        id: "CS-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+        createdAt: nowCS, actor: S.user || "", action: "client:stage",
+        target: nm, detail: JSON.stringify({ name: nm, stage: stage, at: nowCS }), ip: ""
+      }, true).catch(function () { return null; });
+    } catch (e) { }
+    _clStageCache = null;
     var c = clientByName(nm) || {};
     var row = st
       ? { id: st.id, createdBy: st.createdBy || S.user, name: st.name, client: st.client || nm,
@@ -8885,10 +9140,12 @@ function viewCatalogue() {
   }
 
   function clientStage(clientName) {
-    var s = (S.data.sites || []).filter(function (x) { return x.client === clientName || x.name === clientName; })[0];
-    if (s && s.stage) return s.stage;
-    var cu = (S.data.customers || []).filter(function (x) { return x.name === clientName; })[0];
-    return (cu && cu.stage) || "";
+    /* v6.9.211 - ONE reader for everybody. This used to look only at sites and customers, and
+       matched the name exactly and case-sensitively, so a stage answered on the lead form read
+       back as blank on the very next screen. It now goes through clientStageMap(), which reads
+       the audit row, the site, the legacy customer row and the client row, on a trimmed and
+       lowercased name. */
+    return clientStage2(clientName);
   }
   /* Cross-sell list for a brand: clients who buy at least one OTHER brand from us but have not
      been quoted THIS brand yet — the visiting brand executive's gold list. */
@@ -10333,7 +10590,7 @@ function viewCatalogue() {
      the three is a follow-up, so none of them appears. What is left is either in play or never
      pitched, and those two are drawn differently because they need different sentences. */
   function cvBrands(name) {
-    var live = [], open = [];
+    var live = [], open = [], done = 0;
     brandGroupList().forEach(function (b) {
       if (!isRealBrandName(b)) return;
       var l = String(b).toLowerCase();
@@ -10341,8 +10598,12 @@ function viewCatalogue() {
       var st = clientGroupState(name, b);
       if (st === "live") live.push(b);
       else if (st === "none") open.push(b);
+      /* v6.9.211 - won / lost / not-required are settled and rightly stay off this line, but
+         they were unreachable from Compact altogether. Counting them is what lets the chip at
+         the end of the row say there is more board to see. */
+      else done++;
     });
-    return { live: live, open: open };
+    return { live: live, open: open, done: done };
   }
   function cvSeg() {
     var m = cvMode();
@@ -10409,7 +10670,16 @@ function viewCatalogue() {
     };
     var bs = b.live.map(function (x) { return chip(x, " live"); }).join("") +
       shown.map(function (x) { return chip(x, ""); }).join("") +
-      (more > 0 ? '<button class="cv-b more" data-act="cl-open" data-id="' + esc(c.id) + '">+' + more + ' more</button>' : "");
+      /* v6.9.211 - THIS CHIP USED TO OPEN THE CLIENT EDIT FORM (data-act="cl-open"), which is why
+         Win and Lose could not be reached from Compact at all. It now opens the brand board for
+         this client, with every brand on it - settled ones included - each going straight to the
+         Win / Lose menu. When nothing overflows but something is already settled it still shows,
+         reading "All brands", because that board is otherwise invisible from this screen. */
+      (more > 0
+        ? '<button class="cv-b more" data-act="cv-brands" data-n="' + esc(c.name) + '">+' + more + ' more</button>'
+        : (b.done > 0
+            ? '<button class="cv-b more" data-act="cv-brands" data-n="' + esc(c.name) + '">All brands</button>'
+            : ""));
     var needs = cvNeedsPlace(c);
     return '<div class="cv-cli' + (needs ? " ask" : "") + '">' +
       '<div class="cv-line">' +
@@ -10560,7 +10830,10 @@ function viewCatalogue() {
       ".cv-an{flex:1 1 100px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
       ".cv-cli{border:1px solid #eef2f7;border-radius:10px;padding:7px 10px;margin-bottom:5px;background:#fff}" +
       ".cv-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}" +
-      ".cv-nm{flex:1 1 130px;min-width:0;text-align:left;border:0;background:none;padding:0;font-size:13.5px;font-weight:700;color:#0f172a;cursor:pointer;line-height:1.3}" +
+      /* v6.9.211 - the client name is the most-tapped control on this line and it was an 18px
+         bare text button. The row is already ~24px because of the dues pill, so 4px of padding
+         makes it a proper thumb target and costs about 2px of row height. */
+      ".cv-nm{flex:1 1 130px;min-width:0;text-align:left;border:0;background:none;padding:4px 0;font-size:13.5px;font-weight:700;color:#0f172a;cursor:pointer;line-height:1.3}" +
       ".cv-due{background:#fee2e2;color:#b91c1c;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:800;white-space:nowrap}" +
       ".cv-ok{background:#dcfce7;color:#166534;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap}" +
       ".cv-bs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}" +
@@ -12724,7 +12997,8 @@ function viewCatalogue() {
       '<div><label>Status</label><select id="m_status">' + opts(STATUSES, c.status || "Warm") + '</select></div>' +
       '</div>' +
       '<label>Construction stage</label><select id="m_stage">' + opts(STAGES, c.stage || STAGES[0]) + '</select>' +
-      '<label>Referred by (partner)</label><select id="m_assoc">' + opts([""].concat(S.data.associates.map(function (a) { return a.name; })), c.associate) + '</select>' +
+      /* v6.9.212 - grouped by trade, not one flat run of every partner on the book. */
+      '<label>Referred by (partner)</label><select id="m_assoc">' + partnerAnyOptions(c.associate) + '</select>' +
       '<label>Notes</label><textarea id="m_notes">' + esc(c.notes) + '</textarea>' +
       '<div class="foot">' +
       '<button class="btn ghost" data-act="close">Cancel</button>' +
@@ -12967,8 +13241,9 @@ function viewCatalogue() {
       /* Material is going to this site today, so the man loading it knows the stage better than
          anyone. Confirm it here and the pitch board is right without a single extra visit. */
       stageChips("m_stage", clientStage((S.ch && S.ch.client) || ""), "Stage of the site this is going to") +
+      /* v6.9.212 - grouped by trade, same as the lead form. */
       '<label>Referring partner (optional)</label><select id="m_assoc">' +
-      opts([""].concat((S.data.associates || []).map(function (p) { return p.name; })), (z && z.assoc) || "") + '</select>' +
+      partnerAnyOptions((z && z.assoc) || "") + '</select>' +
 
       '<h3 style="margin:14px 0 4px;font-size:14px">Products ' +
       '<span class="pill teal">' + picked.length + ' picked</span></h3>' +
@@ -14734,6 +15009,10 @@ function viewCatalogue() {
             leadType: f.leadType || "New",
             creditLimit: String(f.credLim || "").replace(/[^\d.]/g, ""),
             creditDays: String(f.credDays || "").replace(/[^\d]/g, ""),
+            /* v6.9.211 - sent so the answer is on the client's own row the day the clients sheet
+               grows a stage column. Until then the server drops it silently, which is harmless:
+               the audit row written by saveClientStage() below is the copy that survives. */
+            stage: f.stage || "",
             /* Auto-assign the creator; only admin may set/change it. Enforced here so a tampered
                DOM cannot reassign a lead. */
             ownedBy: (S.role === "admin"
@@ -14818,6 +15097,20 @@ function viewCatalogue() {
       var c0 = clientById(id);
       S.qz = { step: 2, location: c0.location, client: c0.name, clientObj: c0, items: [], brandDisc: 0, brandDiscs: {} };
       S.tab = "quotes"; render(); return;
+    }
+    /* v6.9.211 - the whole brand board for one client, opened from the Compact line. */
+    if (act === "cv-brands") { S.modal = modalClientBrands(t.getAttribute("data-n")); render(); return; }
+    /* v6.9.211 - the construction stage, answered where it is asked. */
+    if (act === "cl-stage") { S.modal = modalClientStage(t.getAttribute("data-n")); render(); return; }
+    if (act === "cl-stage-set") {
+      var csn = t.getAttribute("data-n"), csv = t.getAttribute("data-s") || "";
+      if (!csn || !csv) return;
+      var csc = clientByName(csn) || {};
+      saveClientStage(csn, csv, { mobile: csc.mobile, city: csc.location });
+      _clStageCache = null;
+      S.modal = null;
+      toast(csn + " \u2014 stage set to " + csv + ".");
+      render(); return;
     }
     /* Brand board: tapping a brand opens a small menu (quote it, or just record the outcome). */
     if (act === "board-menu") {
