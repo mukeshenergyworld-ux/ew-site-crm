@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.212";
+  var APP_VERSION = "6.9.213";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1497,6 +1497,30 @@ window.addEventListener("beforeunload", function (ev) {
     }
     return '<input id="' + fid + '" value="' + esc(v) + '" disabled style="background:#f1f5f9;color:#64748b"/>' +
       '<div class="meta" style="font-size:11px;margin-top:2px">Auto-assigned to you. Only admin can reassign.</div>';
+  }
+
+  /* v6.9.213 - WHO THE LEAD BELONGS TO, ASKED FIRST AND IN COLOUR.
+     His words: "while creating lead, assigned to should be on top of box colorful, highlited".
+     It used to sit at the very bottom of the lead form, under Notes, after eleven other fields.
+     A man entering a lead in a hurry never scrolled that far, so the lead was assigned by
+     whatever the box happened to be showing - and a lead on the wrong man's book is a lead
+     nobody follows up and nobody is paid for. It is now the first thing on the form, in its own
+     coloured panel, and it says out loud whose book the lead is going onto.
+     The panel is only paint. The rule underneath has not moved: a new record is auto-assigned to
+     whoever is entering it, only an admin may change it, and the save enforces that again. */
+  function ownerBanner(fid, current, isNew) {
+    var v = current || (isNew ? S.user : "");
+    return '<div style="margin:0 0 12px;padding:10px 12px;border:1.5px solid #6366f1;' +
+      'background:linear-gradient(180deg,#eef2ff,#e0e7ff);border-radius:12px;box-sizing:border-box">' +
+      '<label style="display:block;margin:0 0 4px;padding:0;color:#3730a3;font-weight:800;' +
+      'font-size:12px;letter-spacing:.3px;text-transform:uppercase">Assigned to (sales exec)</label>' +
+      ownerField(fid, current, isNew) +
+      /* said only to an admin: the locked field already tells everyone else the same thing,
+         and two lines saying one thing is how a form starts being skimmed instead of read. */
+      (S.role === "admin" && v
+        ? '<div class="meta" style="margin-top:5px;font-size:11px;color:#4338ca">This lead goes onto <b>' + esc(v) + '</b>\u2019s book.</div>'
+        : "") +
+      '</div>';
   }
   function modalSite(x) {
     x = x || {};
@@ -4134,6 +4158,8 @@ window.addEventListener("beforeunload", function (ev) {
     };
     return '<h2>' + (c.id ? "Edit customer" : "New lead") + '</h2>' +
       '<p class="sub">Enter a new lead — or an old client. Partners named here flow into every quote, challan and incentive. Mark his brands on the board afterwards.</p>' +
+      /* v6.9.213 - first question on the form, and the only one in colour. */
+      ownerBanner("c_owner", c.ownedBy || c.createdBy, !c.id) +
       '<label>Client name</label><input id="c_name" value="' + esc(c.name) + '"/>' +
       /* v6.9.186: DISTRICT and AREA are one answer, so they are asked as one row, directly
          under the name. They used to be five fields apart - District (labelled "Location", a
@@ -4179,7 +4205,6 @@ window.addEventListener("beforeunload", function (ev) {
       '<div><label>PMC</label><input id="c_pmc" list="dl_pmc" value="' + esc(c.pmc) + '"/></div></div>' +
       dl("dl_build", "builder") + dl("dl_pmc", "pmc") +
       '<label>Notes</label><textarea id="c_notes">' + esc(c.notes) + '</textarea>' +
-      '<label>Assigned to (sales exec)</label>' + ownerField("c_owner", c.ownedBy || c.createdBy, !c.id) +
       /* Migration block - partners only. The server refuses these fields from anyone else, and
          a field that is visible but always errors is just a trap, so sales never sees it. */
       (S.role === "admin"
