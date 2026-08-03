@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.213";
+  var APP_VERSION = "6.9.214";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3705,6 +3705,47 @@ window.addEventListener("beforeunload", function (ev) {
       if (hisabDoc(c.id)) return false;
       return clientDue(c.name) > 0.5;
     }).sort(function (a, b) { return nAmt(b.openingAmt) - nAmt(a.openingAmt); });
+  }
+
+  /* v6.9.214 - HIS WORDS: "when checking client hisab, ask to attach old hisab if client
+     entered with old pending payment".
+     The list on the HISAB front page is a partner's to-do list. This is the same question asked
+     at the moment it actually matters - while somebody is standing in that one man's account
+     wondering where the balance came from. Three states, and only three:
+       on file  -> a link to it, for everybody. Opening the old page in front of the client is
+                   worth more than any reminder ever will be.
+       missing, and he still owes -> a partner is asked to attach it, with the button that opens
+                   his card. A partner only, because the attach control itself is partner-only and
+                   a nag nobody is able to act on is just noise on the screen.
+       settled  -> nothing at all. The asking stops the day the money clears. */
+  function hisabAskCard(name) {
+    var c = clientByName(name);
+    if (!c || !c.id) return "";
+    var hd = hisabDoc(c.id);
+    if (hd && hd.url) {
+      /* v6.9.214 - a real target, not a line of coloured text. The browser rig measured the bare
+         link at 15px tall: that is a thumb hitting nothing on a phone, and this is the one thing
+         on this card he will actually tap when a client questions his balance. */
+      return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 10px">' +
+        '<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<a href="' + esc(hd.url) + '" target="_blank" rel="noopener" class="btn sm" ' +
+        'style="background:#0d9488;border-color:#0d9488;color:#fff;text-decoration:none;' +
+        'display:inline-flex;align-items:center;min-height:32px;padding:5px 12px;box-sizing:border-box">' +
+        'Open his old hisab &#8599;</a>' +
+        '<div class="meta grow" style="font-size:12px;min-width:0">The statement from the old books is on file' +
+        (hd.note ? ' &middot; ' + esc(hd.note) : "") + '.</div></div></div>';
+    }
+    if (!(nAmt(c.openingAmt) > 0)) return "";
+    if (!(clientDue(c.name) > 0.5)) return "";
+    if (S.role !== "admin") return "";
+    return '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
+      '<h3 style="margin:0 0 2px;font-size:13px">Old hisab not attached</h3>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:7px"><b>' + esc(c.name) +
+      '</b> came over from the old books carrying <b>' + money(nAmt(c.openingAmt)) + '</b> pending' +
+      (c.openingAsOn ? ' as on ' + esc(d10(c.openingAsOn)) : "") +
+      ', and the statement from those books is not on file. Attach it once, and this balance can be' +
+      ' explained to him without anybody opening the old spreadsheet again.</div>' +
+      '<button class="btn sm" data-act="cl-open" data-id="' + esc(c.id) + '">Attach the old hisab</button></div>';
   }
 
   /* ---- the signature pad ----
@@ -7962,6 +8003,10 @@ function viewCatalogue() {
       return h + '<div class="empty">No received challans matching <b>' + esc(S.q) + '</b> yet.' +
         (guess.length > 1 ? ' Did you mean: ' + guess.map(function (n) { return '<b>' + esc(n) + '</b>'; }).join(", ") + '?' : ' A challan lands here automatically once its receipt is confirmed.') + '</div>';
     }
+    /* v6.9.214 - asked here, above everything, so it is read before the numbers are.
+       Added to h and not to one branch, because a man with an opening balance and no
+       received challan yet is EXACTLY the man this question is about. */
+    h += hisabAskCard(cl);
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }))
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
     if (!chs.length) {
