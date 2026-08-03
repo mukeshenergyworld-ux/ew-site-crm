@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.216";
+  var APP_VERSION = "6.9.217";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2913,7 +2913,9 @@ window.addEventListener("beforeunload", function (ev) {
       var c = x.c, num = String(c.mobile || "").replace(/\D/g, "");
       var pill = x.st === "live" ? '<span class="pill teal">in play</span>' : '<span class="pill">not started</span>';
       return '<div class="card"><h3>' + esc(c.name) + ' ' + pill + '</h3>' +
-        '<div class="meta">' + esc([c.area, c.location].filter(Boolean).join(", ")) + (c.mobile ? '<br>' + esc(c.mobile) : "") + '</div>' +
+        '<div class="meta">' + esc([c.area, c.location].filter(Boolean).join(", ")) + (c.mobile ? '<br>' + esc(c.mobile) : "") +
+        /* v6.9.217 - "a lead have how many quotes, which brand pitched" - on the chase list too */
+        '<br>' + leadSummaryLine(c.name) + '</div>' +
         '<div class="acts" style="flex-wrap:wrap;margin-top:6px">' +
         '<button class="btn sm" data-act="board-quote" data-n="' + esc(c.name) + '" data-brand="' + esc(brand) + '">Quote</button>' +
         (num ? '<a class="btn sm ghost" href="tel:' + esc(num) + '">Call</a>' : "") +
@@ -2937,7 +2939,11 @@ window.addEventListener("beforeunload", function (ev) {
     var clocs = [];
     leads.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
     clocs.sort();
-    var h = '<div class="empty" style="text-align:left;padding:0 0 10px">A <b>lead</b> is a customer who hasn’t won a single brand yet. Tap a brand to quote it; the moment one brand’s quote is marked <b>Won</b>, he moves to <b>Clients</b> automatically.</div>';
+    /* v6.9.217 - "quote made for any client, client should be auto added to leads". Every man
+       in the quote book is listed here FIRST, client or not, with the one-tap card for anyone
+       the pitch engine still cannot see. This is the screen he opens; this is where it goes. */
+    var h = quotedLeadsHtml();
+    h += '<div class="empty" style="text-align:left;padding:0 0 10px">A <b>lead</b> is a customer who hasn’t won a single brand yet. Tap a brand to quote it; the moment one brand’s quote is marked <b>Won</b>, he moves to <b>Clients</b> automatically.</div>';
     ensureCompactCss();
     if (cvMode() === "compact") {
       var cvL = function () { var q = cvQ(); return cvHtml("leads", leads.filter(function (c) { return cvMatch(c, q); })); };
@@ -9293,6 +9299,44 @@ function viewCatalogue() {
     });
     return { quotes: e.qn || 0, groups: groups, stage: site.stage || "" };
   }
+  /* ================== v6.9.217 - the same answer, keyed on the NAME ==================
+     leadSummary() takes a site row. Half the men on his book have no site row at all, and the
+     two screens he actually opens - the Leads tab and Brand follow-up - are lists of CLIENTS,
+     not of sites. So the same two numbers are indexed by name as well, once per paint, and any
+     card anywhere can print them. Reads only; writes nothing. */
+  var _lsnCache = null;
+  function leadSummaryIndex() {
+    if (_lsnCache) return _lsnCache;
+    var m = {};
+    function box(k) { return m[k] || (m[k] = { quotes: 0, seen: {}, groups: [] }); }
+    function add(k, g) { var b = box(k); if (g && !b.seen[g]) { b.seen[g] = 1; b.groups.push(g); } }
+    var gm = clientGroupMap();
+    Object.keys(gm).forEach(function (k) {
+      var e = gm[k];
+      box(k).quotes = e.qn || 0;
+      Object.keys(e.q || {}).forEach(function (g) { add(k, g); });   /* quoted = pitched */
+    });
+    (S.data.pitch || []).forEach(function (p) {                      /* pitched by hand as well */
+      if (!p || !p.brand) return;
+      if (String(p.status || "Not pitched") === "Not pitched") return;
+      var nm = String(p.clientName || "").trim().toLowerCase();
+      if (!nm) {                                   /* a board row that carries only a site id */
+        var s = siteById(p.siteId);
+        nm = s ? String(s.client || s.name || "").trim().toLowerCase() : "";
+      }
+      if (nm) add(nm, brandGroup(p.brand));
+    });
+    return (_lsnCache = m);
+  }
+  function leadSummaryName(name) {
+    return leadSummaryIndex()[String(name || "").trim().toLowerCase()] || { quotes: 0, groups: [] };
+  }
+  /* One line, written the one way, so it reads the same on every screen he opens. */
+  function leadSummaryLine(name) {
+    var s = leadSummaryName(name);
+    return 'Quotes: <b>' + (s.quotes || 0) + '</b> &middot; Pitched: <b>' +
+      esc((s.groups || []).join(", ") || "nothing yet") + '</b>';
+  }
   /* The brand GROUPS a client already has with us, for showing on screen. */
   function clientHasGroups(clientName) {
     var e = clientGroupMap()[String(clientName || "").trim().toLowerCase()];
@@ -9804,7 +9848,7 @@ function viewCatalogue() {
         target: String(n), detail: JSON.stringify({ rows: n, quotes: g.quotes.length, pitch: g.pitch.length, at: nowJF }), ip: ""
       }, true).catch(function () { return null; });
     } catch (e) { }
-    _pitchIdx = null; _cbgCache = null; _clStageCache = null;
+    _pitchIdx = null; _cbgCache = null; _clStageCache = null; _lsnCache = null;
     var left = (g.quotes.length + g.pitch.length) - n;
     toast(n + " record" + (n === 1 ? "" : "s") + " attached to their lead" +
       (left > 0 ? " — " + left + " more, press again." : "."));
@@ -14984,7 +15028,7 @@ function viewCatalogue() {
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
     _clDueCache = null; _clStageCache = null; _prfCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null;
-    _pitchIdx = null; _cbgCache = null;
+    _pitchIdx = null; _cbgCache = null; _lsnCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
     var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
