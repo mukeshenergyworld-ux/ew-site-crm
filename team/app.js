@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.215";
+  var APP_VERSION = "6.9.216";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -479,6 +479,10 @@
     var idx = -1;
     for (var k = 0; k < list.length; k++) { if (list[k] && ((row.id && list[k].id === row.id) || (row._lid && list[k]._lid === row._lid))) { idx = k; break; } }
     if (idx >= 0) Object.assign(list[idx], row); else { list.push(row); idx = list.length - 1; }
+    /* v6.9.216 - the both-ways pitch index is built once per paint. A pitch row written mid-paint
+       (marking a brand Won, or a quote stamping its brands) must invalidate it immediately, or the
+       very next read serves the row as it was a second ago. */
+    if (tab === "pitch") _pitchIdx = null;
     /* Send the FULL merged in-memory row, not just the handful of fields the caller passed. The
        backend writes the whole sheet row from whatever it receives - any column it is NOT sent is
        written blank - so a partial save would wipe the rest of the record (this is what blanked a
@@ -770,8 +774,86 @@ window.addEventListener("beforeunload", function (ev) {
   /* ---------------- pitch matrix ---------------- */
   function stageNo(site) { var i = STAGES2.indexOf((site || {}).stage); return i < 0 ? 0 : i + 1; }
   function siteById(id) { return S.data.sites.filter(function (x) { return x.id === id; })[0] || null; }
-  function pitchRow(siteId, brand) {
-    return S.data.pitch.filter(function (p) { return p.siteId === siteId && p.brand === brand; })[0] || null;
+  /* v6.9.216 - a pitch row reached BOTH ways. Until this version pitchRow() matched on siteId
+     alone while the client brand board wrote every one of its rows with siteId:"", so the two
+     halves of the app could not see each other's work: a client marked Won on four brands read
+     back as "Not pitched" on all fourteen. Nothing is migrated away here - the name join stays
+     forever, so a row written by any version of this app is still found. */
+  /* pitchRow is called inside site x rule loops on five screens. Reading BOTH joins with a
+     linear scan per call would trade one broken join for a slow app, so the two indexes are
+     built once and dropped whenever the data changes - the same shape as _bgCache. */
+  var _pitchIdx = null;
+  function pitchIndex() {
+    if (_pitchIdx) return _pitchIdx;
+    var bySite = {}, byName = {};
+    (S.data.pitch || []).forEach(function (p) {
+      var b = String(p.brand || "");
+      if (!b) return;
+      if (p.siteId) { var ks = p.siteId + "\u0000" + b; if (!bySite[ks]) bySite[ks] = p; }
+      var nm = String(p.clientName || "").trim().toLowerCase();
+      if (nm) { var kn = nm + "\u0000" + b; if (!byName[kn]) byName[kn] = p; }
+    });
+    _pitchIdx = { bySite: bySite, byName: byName };
+    return _pitchIdx;
+  }
+  function siteNameKey(siteId) {
+    var st = siteById(siteId);
+    return String((st && (st.client || st.name)) || "").trim().toLowerCase();
+  }
+  function pitchRow(siteId, brand, clientName) {
+    var ix = pitchIndex(), b = String(brand || "");
+    if (siteId) {
+      var hit = ix.bySite[siteId + "\u0000" + b];
+      if (hit) return hit;
+    }
+    var nm = String(clientName || "").trim().toLowerCase();
+    if (!nm && siteId) nm = siteNameKey(siteId);
+    if (!nm) return null;
+    return ix.byName[nm + "\u0000" + b] || null;
+  }
+  /* v6.9.216 - a quote IS a pitch. Every brand on a saved quote advances that brand's pitch row
+     to "Quoted", which is what lets a lead answer "how many quotes, and which brand was pitched".
+     It NEVER moves a row backwards: Won, Lost, Negotiating and Not applicable are outcomes a man
+     recorded by hand, and a fresh quote must not quietly undo them. Nothing is deleted. Nothing
+     is guessed - if the client has no lead in the book yet the row still carries his name, and
+     the name join keeps it readable until the lead is entered. */
+  function stampQuotedPitch(clientName, brands, qno) {
+    var cn = String(clientName || "").trim();
+    if (!cn || !brands || !brands.length) return;
+    var c = clientByName(cn) || {};
+    var st = siteForClient(cn);
+    var KEEP = { "Won": 1, "Lost": 1, "Negotiating": 1, "Not applicable": 1 };
+    brands.forEach(function (b) {
+      if (!b) return;
+      var p = clientPitch(cn, b) || {};
+      var cur = String(p.status || "");
+      if (KEEP[cur]) return;                                  /* his recorded outcome stands */
+      if (cur === "Quoted" && p.siteId && p.clientName) return; /* already stapled both ways */
+      save("pitch", {
+        id: p.id || "", createdBy: p.createdBy || S.user,
+        siteId: (p.siteId || (st && st.id) || ""), siteName: (p.siteName || (st && st.name) || ""),
+        clientId: c.id || "", clientName: cn, brand: b,
+        status: "Quoted", quoted: p.quoted || "", won: p.won || "",
+        lostTo: p.lostTo || "", note: p.note || (qno ? "Quoted on " + qno : "")
+      }, true);
+    });
+    _pitchIdx = null;
+  }
+  /* Every pitch row belonging to one site, by either join, deduped on brand. This is what
+     answers "which brand was pitched at this lead". */
+  function pitchRowsForSite(site) {
+    if (!site) return [];
+    var nm = String(site.client || site.name || "").trim().toLowerCase();
+    var seen = {}, out = [];
+    (S.data.pitch || []).forEach(function (p) {
+      var mine = (p.siteId && p.siteId === site.id) ||
+        (nm && String(p.clientName || "").trim().toLowerCase() === nm);
+      if (!mine) return;
+      var k = String(p.brand || "");
+      if (!k || seen[k]) return;
+      seen[k] = 1; out.push(p);
+    });
+    return out;
   }
 
   /* the whole point of the app: what closes when */
@@ -2563,9 +2645,16 @@ window.addEventListener("beforeunload", function (ev) {
     clientQuotes(name).forEach(function (q) {
       if (q.status === "Won") quoteBrands(q).forEach(function (b) { set[b] = 1; });
     });
-    /* manual per-brand wins (for old clients entered without a quote) */
+    /* manual per-brand wins (for old clients entered without a quote)
+       v6.9.216 - matched on a trimmed lowercased name, and also by the site join, so a win
+       recorded from the site side counts on the client side and the other way round. */
+    var wt = String(name || "").trim().toLowerCase();
+    var wsite = siteForClient(name);
     (S.data.pitch || []).forEach(function (p) {
-      if (String(p.clientName || "") === name && p.status === "Won" && p.brand) set[p.brand] = 1;
+      if (p.status !== "Won" || !p.brand) return;
+      var mine = String(p.clientName || "").trim().toLowerCase() === wt ||
+        (wsite && p.siteId && p.siteId === wsite.id);
+      if (mine) set[p.brand] = 1;
     });
     return Object.keys(set);
   }
@@ -9099,12 +9188,29 @@ function viewCatalogue() {
     var by = Number(rule.pitchBy) || 0;
     var out = [];
     S.data.sites.forEach(function (st) {
-      var p = S.data.pitch.filter(function (x) { return x.siteId === st.id && x.brand === brand; })[0];
+      /* v6.9.216 - by either join. Matching on siteId alone is exactly why a client with four
+         brands marked Won still read "Not pitched" on all fourteen and kept turning up as a
+         fresh lead: the client brand board writes its rows with the name, not the site. */
+      var p = pitchRow(st.id, brand, st.client || st.name);
       var status = (p && p.status) || "Not pitched";
+      /* v6.9.216 - and if there is no pitch row at all, the QUOTE BOOK answers. Every quote
+         written before this version was saved without a pitch row, so a man quoted last month
+         read "Not pitched" on the very brand he was quoted. The quote is the pitch. */
+      var lm = clientGroupMap()[String(st.client || st.name || "").trim().toLowerCase()];
+      var lg = lm && lm.q[brandGroup(brand)];
+      if (lg) {
+        if (!p && lg.won) status = "Won";
+        else if (!p && lg.lost && !lg.open) status = "Lost";
+        else if (status === "Not pitched" && lg.open) status = "Quoted";
+      }
       if (status === "Won" || status === "Lost" || status === "Not applicable") return;
+      /* A man who already buys from us belongs on the cross-sell list above, not in "new leads
+         - prospect sites". He was appearing in BOTH, which is why the same name read twice. */
+      if (lm && lm.buyer && clientByName(st.client || st.name)) return;
       var sn = stageNo(st);
       var win = sn === 0 ? "stage not set" : (sn > by ? "CLOSED" : (sn === by ? "CLOSES NOW" : "open till stage " + by));
-      out.push({ site: st, status: status, window: win, urgent: (sn === by || by - sn === 1) && sn > 0 });
+      out.push({ site: st, status: status, window: win, urgent: (sn === by || by - sn === 1) && sn > 0,
+        sum: leadSummary(st) });
     });
     out.sort(function (a, b) { return (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0); });
     return { rule: rule, list: out };
@@ -9115,11 +9221,91 @@ function viewCatalogue() {
     return [c.architect && "Arch: " + c.architect, c.plumber && "Plumber: " + c.plumber,
       c.builder && "Builder: " + c.builder, c.pmc && "PMC: " + c.pmc].filter(Boolean).join("  ·  ");
   }
+  /* ================== v6.9.216 - what a client ALREADY has with us ==================
+     The cross-sell list used to read the quote book and nothing else, so a man who bought a
+     brand on a challan, or whose brand was marked Won by hand on the client board, still came
+     up on the gold list for the very brand sitting in his house. Sanjeev Batra was offered
+     Huliot, Heliroma, Stellar and Lunos back - all four already Won.
+
+     It is built as ONE pass over the three tables, keyed on a trimmed lowercased name, and
+     cached for the paint. The old shape was fourteen brands x every client x three tables,
+     re-walked per brand button, which is why that screen crawled on a phone.
+
+     A LOST quote and a Lost pitch row deliberately do NOT count as "already has" - a lost brand
+     is exactly the one worth going back with. */
+  var _cbgCache = null;
+  function clientGroupMap() {
+    if (_cbgCache) return _cbgCache;
+    var m = {};
+    function ent(nm) {
+      var t = String(nm || "").trim().toLowerCase();
+      if (!t) return null;
+      return m[t] || (m[t] = { has: {}, buyer: false, qn: 0, q: {} });
+    }
+    function mark(e, brand) { var g = brandGroup(brand); if (g) e.has[g] = 1; }
+    /* His whole point: "a lead have how many quotes, which brand pitched". So the quote count
+       is carried per brand group, not just a yes/no - that is what a lead card prints. */
+    function qbox(e, g) { return e.q[g] || (e.q[g] = { n: 0, open: 0, won: 0, lost: 0 }); }
+    (S.data.quotes || []).forEach(function (q) {
+      var e = ent(q.client); if (!e) return;
+      e.buyer = true;                                    /* he is in the quote book at all */
+      e.qn++;
+      var st = String(q.status || "");
+      quoteBrands(q).forEach(function (b) {
+        var g = brandGroup(b); if (!g) return;
+        var box = qbox(e, g);
+        box.n++;
+        if (st === "Won") box.won++; else if (st === "Lost") box.lost++; else box.open++;
+        if (st !== "Lost") e.has[g] = 1;                 /* a lost quote deserves another try */
+      });
+    });
+    (S.data.challans || []).forEach(function (c) {
+      if (String(c.receiptReceived).toUpperCase() !== "Y") return;
+      var e = ent(c.customerName); if (!e) return;
+      e.buyer = true;                                    /* material delivered - a real buyer */
+      String(c.brand || "").split(/,\s*/).forEach(function (b) { b = b.trim(); if (b) mark(e, b); });
+    });
+    var OPEN = { "": 1, "Not pitched": 1, "Lost": 1 };
+    (S.data.pitch || []).forEach(function (p) {
+      var nm = p.clientName;
+      if (!nm && p.siteId) { var st = siteById(p.siteId); nm = st && (st.client || st.name); }
+      var e = ent(nm); if (!e) return;
+      var s = String(p.status || "");
+      if (s === "Won") e.buyer = true;
+      if (OPEN[s]) return;                               /* still open - he is a live target */
+      mark(e, p.brand);
+    });
+    _cbgCache = m;
+    return m;
+  }
+  /* v6.9.216 - what a lead card must be able to say out loud: how many quotes this man has,
+     and which brands have actually been pitched to him. Read by BOTH joins (site and name), so
+     it is right today, before any backfill, and still right after it. */
+  function leadSummary(site) {
+    if (!site) return { quotes: 0, groups: [], stage: "" };
+    var nm = String(site.client || site.name || "").trim();
+    var e = clientGroupMap()[nm.toLowerCase()] || { qn: 0, q: {} };
+    var seen = {}, groups = [];
+    function add(g) { if (g && !seen[g]) { seen[g] = 1; groups.push(g); } }
+    Object.keys(e.q || {}).forEach(add);                 /* pitched by having been quoted */
+    pitchRowsForSite(site).forEach(function (p) {        /* pitched by hand on the board */
+      if (String(p.status || "Not pitched") !== "Not pitched") add(brandGroup(p.brand));
+    });
+    return { quotes: e.qn || 0, groups: groups, stage: site.stage || "" };
+  }
+  /* The brand GROUPS a client already has with us, for showing on screen. */
+  function clientHasGroups(clientName) {
+    var e = clientGroupMap()[String(clientName || "").trim().toLowerCase()];
+    return e ? Object.keys(e.has) : [];
+  }
   /* Every brand this client has already been quoted (any live quote). */
   function clientQuotedBrands(clientName) {
     var set = {};
+    /* v6.9.216 - trimmed and lowercased. Byte-exact matching meant one trailing space in the
+       quote's client field hid that man's entire quoted history from every screen that asked. */
+    var t = String(clientName || "").trim().toLowerCase();
     (S.data.quotes || []).forEach(function (q) {
-      if (String(q.client) !== String(clientName) || String(q.status) === "Lost") return;
+      if (String(q.client || "").trim().toLowerCase() !== t || String(q.status) === "Lost") return;
       String(q.brand || "").split(",").forEach(function (b) { b = b.trim(); if (b) set[b] = 1; });
     });
     return Object.keys(set);
@@ -9321,11 +9507,11 @@ function viewCatalogue() {
     /* group-aware: a client who bought Huliot HT PRO is NOT a Huliot cross-sell target,
        and one who bought Lunos is not an Inair target. Works whether the caller passes a
        group name ("HULIOT") or a real catalogue brand ("Huliot HT PRO"). */
-    var g = brandGroup(brand);
+    var g = brandGroup(brand), map = clientGroupMap();
     return (S.data.clients || []).filter(function (c) {
-      var brands = clientQuotedBrands(c.name);
-      if (!brands.length) return false;   /* not a buyer yet -> a lead, not a cross-sell */
-      return !brands.some(function (b) { return brandGroup(b) === g; });
+      var e = map[String(c.name || "").trim().toLowerCase()];
+      if (!e || !e.buyer) return false;   /* not a buyer yet -> a lead, not a cross-sell */
+      return !e.has[g];                   /* v6.9.216 - quotes AND challans AND the brand board */
     });
   }
   /* Pending leads for a whole brand group. Rules and pitch rows stay keyed to the real
@@ -9348,8 +9534,389 @@ function viewCatalogue() {
     return { rule: rule || {}, list: list };
   }
 
+  /* ================== v6.9.216 — every quoted client is ON the Leads screen ==================
+     His words: "quote made for any client , client should be auto added to leads ,,, sanjeev
+     batra not shown why ?"
+
+     Both halves of that message were the same complaint, and he was right three times over.
+     Three separate things hid an already-quoted man from the Leads screen:
+
+       1. viewLeads() returned the brand buttons and STOPPED — `if (!S.leadBrand) return h`.
+          Until a brand was tapped the screen was blank, for everybody, not just for him.
+       2. Even after tapping, Leads never was a list of leads. It listed exactly two things:
+          clients MISSING the tapped brand, and prospect SITES that are NOT yet clients. A man
+          who is already a client and already Won falls out of both, by design.
+       3. A quote is saved with siteId:"" and siteName:"". The pitch engine reads SITES. So
+          quoting a man genuinely did not put him anywhere at all.
+
+     The fix is deliberately a READER first. This board invents no records: it reads the quote
+     book that already exists and shows the men in it, above the brand buttons, before anything
+     is tapped. Where the pitch engine still cannot see a man — because he has no site row — it
+     says so plainly and offers ONE tap, which the OWNER presses, which writes the site through
+     the stage question that already exists and is already proven. Draft and confirm. Nothing
+     is deleted, and nothing is written by this screen on its own. */
+
+  /* A quote is "waiting" unless it has been decided. Written as a refusal list rather than an
+     allow list on purpose: a status nobody thought of must land in the chase pile, never fall
+     silently out of it. */
+  function qOpen216(q) {
+    var s = String((q || {}).status || "").trim();
+    return s !== "Won" && s !== "Lost" && s !== "Cancelled" && s !== "Void";
+  }
+
+  /* One row per client who has ever been quoted, newest facts folded in. Honours the role
+     filter EXACTLY as the quote book does — a sales exec sees his own book and nobody else's,
+     and this screen must never be the place that leaks another man's client. */
+  function quotedLeads() {
+    var by = {}, out = [];
+    (S.data.quotes || []).forEach(function (q) {
+      var nm = String((q && q.client) || "").trim();
+      if (!nm) return;
+      if (!seesAllClients() && !isMineClient(nm)) return;
+      var k = nm.toLowerCase();
+      if (!by[k]) {
+        by[k] = { name: nm, quotes: [], brands: {}, open: 0, won: 0, lost: 0,
+                  last: "", lastQ: null, value: 0 };
+        out.push(by[k]);
+      }
+      var e = by[k];
+      e.quotes.push(q);
+      quoteBrands(q).forEach(function (b) { var g = brandGroup(b); if (g) e.brands[g] = 1; });
+      var st = String(q.status || "");
+      if (st === "Won") e.won++; else if (st === "Lost") e.lost++; else if (qOpen216(q)) e.open++;
+      var at = String(q.createdAt || "");
+      if (at >= e.last) { e.last = at; e.lastQ = q; e.value = Number(q.net) || 0; }
+    });
+    out.forEach(function (e) {
+      e.brandList = Object.keys(e.brands);
+      e.client = clientByName(e.name) || null;
+      e.site = siteForClient(e.name);
+      e.inBook = !!e.site;                 /* can the pitch engine see him at all? */
+      e.stage = clientStage(e.name) || "";
+      e.state = e.open ? "waiting" : (e.won ? "won" : "lost");
+      var ag = e.last ? -daysTo(e.last) : null;
+      e.days = (ag == null || ag < 0 || ag > 9000) ? null : ag;
+    });
+    /* Oldest first. The quote going cold is the one that needs the call today — a board sorted
+       newest-first shows you the man you already spoke to this morning. */
+    out.sort(function (a, b) { return String(a.last) < String(b.last) ? -1 : 1; });
+    return out;
+  }
+
+  /* Same three keys the quote search learned in 6.9.215 — a name, a phone however it is
+     written, or a quote number — so a man does not have to remember which box wants which. */
+  function quotedLeadHit(e, txt, dig) {
+    var c = e.client || {};
+    var hay = [e.name, e.brandList.join(" "), e.stage, c.area || "", c.location || "",
+               c.architect || "", c.plumber || "",
+               e.quotes.map(function (q) { return q.quoteNo; }).join(" ")].join(" ").toLowerCase();
+    if (txt && hay.indexOf(txt) > -1) return true;
+    if (dig.length >= 3) {
+      /* each number on its own — joining mobile and mobile2 first invents a match that
+         straddles the two and sends him to the wrong man */
+      if (phDigits(c.mobile || "").indexOf(dig) > -1) return true;
+      if (phDigits(c.mobile2 || "").indexOf(dig) > -1) return true;
+      for (var i = 0; i < e.quotes.length; i++) {
+        if (String(e.quotes[i].quoteNo || "").replace(/\D/g, "").indexOf(dig) > -1) return true;
+      }
+    }
+    return false;
+  }
+
+  function quotedLeadsShown() {
+    var list = quotedLeads();
+    var f = String(S.qlF || "waiting");
+    if (f !== "all") list = list.filter(function (e) { return e.state === f; });
+    var raw = String(S.ql || "").trim();
+    if (raw) {
+      var txt = raw.toLowerCase(), dig = phDigits(raw);
+      list = list.filter(function (e) { return quotedLeadHit(e, txt, dig); });
+    }
+    return list;
+  }
+
+  /* Everyone quoted who the pitch engine still cannot see. This is the number that explains
+     "I quoted him and he is nowhere" in one line. */
+  function quotedNotInBook() {
+    return quotedLeads().filter(function (e) { return !e.inBook; });
+  }
+
+  var QL_TABS216 = [["waiting", "Waiting to close"], ["won", "Won"], ["lost", "Lost"], ["all", "Everyone quoted"]];
+
+  function quotedLeadCard(e) {
+    var c = e.client || {};
+    var ph = c.mobile || c.mobile2 || "";
+    var where = [c.area || "", c.location || ""].filter(Boolean).join(", ");
+    var age = e.days == null ? "" : (e.days === 0 ? "today" : e.days === 1 ? "1 day ago" : e.days + " days ago");
+    var tone = e.state === "won" ? "#047857" : e.state === "lost" ? "#b91c1c" : "#b45309";
+    var bg = e.state === "won" ? "#ecfdf5" : e.state === "lost" ? "#fef2f2" : "#fffbeb";
+
+    var h = '<div class="card" style="padding:10px;margin-bottom:8px;border-left:3px solid ' + tone + '">';
+    h += '<div class="row" style="align-items:flex-start;gap:8px;flex-wrap:wrap">';
+    h += '<div class="grow" style="min-width:0">' +
+      '<div style="font-weight:800;font-size:13.5px;word-break:break-word">' + esc(e.name) + '</div>' +
+      (ph ? '<div style="font-size:11.5px;color:#64748b;white-space:nowrap">' + esc(ph) + '</div>' : "") +
+      (where ? '<div style="font-size:11.5px;color:#64748b;word-break:break-word">' + esc(where) + '</div>' : "") +
+      '</div>';
+    h += '<div style="font-size:11px;font-weight:800;color:' + tone + ';background:' + bg +
+      ';border-radius:999px;padding:3px 9px;white-space:nowrap">' +
+      (e.state === "won" ? "Won" : e.state === "lost" ? "Lost" : e.open + " open") + '</div>';
+    h += '</div>';
+
+    if (e.brandList.length) {
+      h += '<div style="margin-top:6px;font-size:11.5px;color:#334155;word-break:break-word">' +
+        '<b>Quoted:</b> ' + esc(e.brandList.join(", ")) + '</div>';
+    }
+    if (e.lastQ) {
+      h += '<div style="margin-top:3px;font-size:11.5px;color:#64748b;word-break:break-word">' +
+        esc(e.lastQ.quoteNo || "") + (e.value ? ' &middot; ' + money(e.value) : "") +
+        (age ? ' &middot; ' + esc(age) : "") + '</div>';
+    }
+
+    /* The stage is what the pitch engine ranks on, so a missing one is said out loud rather
+       than left as a blank the eye slides over. */
+    h += '<div style="margin-top:6px;font-size:11.5px">' +
+      (e.stage
+        ? '<span style="color:#047857"><b>Stage:</b> ' + esc(e.stage) + '</span>'
+        : '<span style="color:#b91c1c"><b>No stage recorded</b></span>') + '</div>';
+
+    h += '<div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap;justify-content:flex-end">';
+    if (!e.inBook) {
+      h += '<div class="grow" style="min-width:110px;font-size:11px;color:#b91c1c;line-height:1.35">' +
+        'Not in the lead book &mdash; the pitch engine cannot see him yet.</div>';
+      h += '<button class="btn sm" data-act="ql-add" data-n="' + esc(e.name) +
+        '" style="flex:1 1 auto;min-width:0;min-height:30px">Add to the lead book</button>';
+    }
+    /* cl-open takes an id, not a name. A quote naming somebody with no client row at all is
+       rare but possible (a name typed on an old row), and that man must still be visible here
+       rather than silently dropped — he just gets no Open button, because there is nothing to
+       open. Saying so beats a button that does nothing. */
+    if (c.id) {
+      h += '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) +
+        '" style="flex:0 0 auto;min-height:30px">Open client</button>';
+    } else {
+      h += '<div style="font-size:11px;color:#b91c1c;flex:0 0 auto">No client record</div>';
+    }
+    h += '</div></div>';
+    return h;
+  }
+
+  /* The one write this screen offers, and it is the OWNER who presses it. It reuses the stage
+     chips and the cl-stage-set handler that already write sites — no second way to write a
+     site, so there is no second way for it to be wrong. The only thing added is the sentence
+     saying what pressing a chip will do. */
+  function modalQuotedToLead(name) {
+    var cur = clientStage2(name);
+    var c = clientByName(name) || {};
+    return '<h2>Add to the lead book</h2>' +
+      '<p class="sub">' + esc(name) +
+      (c.area || c.location ? ' &middot; ' + esc([c.area, c.location].filter(Boolean).join(", ")) : "") +
+      '</p>' +
+      '<div class="empty" style="text-align:left;padding:0 0 8px;font-size:12.5px">' +
+      'He has been quoted, but he has no site in the lead book, so the pitch engine cannot see ' +
+      'him and he will never appear under a brand. Tapping a stage adds him &mdash; that one tap ' +
+      'is the whole thing, and nothing existing is changed or removed.</div>' +
+      '<div class="chips">' + STAGES2.map(function (s, i) {
+        return '<button type="button" class="chip ' + (cur === s ? "on" : "") +
+          '" data-act="cl-stage-set" data-n="' + esc(name) + '" data-s="' + esc(s) + '">' +
+          (i + 1) + '. ' + esc(s) + '</button>';
+      }).join("") + '</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button></div>';
+  }
+
+  function quotedLeadsBody() {
+    var list = quotedLeadsShown();
+    if (!list.length) {
+      var raw = String(S.ql || "").trim();
+      return '<div class="empty" style="padding:14px 0">' +
+        (raw ? 'Nothing in the quote book matches <b>' + esc(raw) + '</b>.'
+             : 'No quotes in this pile yet.') + '</div>';
+    }
+    var tot = quotedLeads().length;
+    var head = '<div class="sub" style="margin:0 0 8px">Showing ' + list.length + ' of ' + tot +
+      ' quoted client' + (tot === 1 ? "" : "s") +
+      (String(S.ql || "").trim() ? ' &middot; matching <b>' + esc(String(S.ql).trim()) + '</b>' : "") +
+      ' &middot; oldest first</div>';
+    return head + list.map(quotedLeadCard).join("");
+  }
+
+  /* ================== v6.9.216 - the backfill, and he presses it ==================
+     Every quote written before this version was saved with siteId:"" and every row on the
+     client brand board was written the same way, so the history in his sheet is real but
+     unstapled. This finds those rows and offers to staple them to the lead they obviously
+     belong to - matched on the client's own name, never on a guess.
+
+     Draft and confirm. Nothing here writes until he presses the button, nothing is deleted,
+     and a row whose name matches no lead is LISTED as unmatched rather than attached to the
+     nearest thing. It is idempotent: run it twice and the second run finds nothing. */
+  function joinGaps() {
+    var out = { quotes: [], pitch: [], orphans: [] };
+    (S.data.quotes || []).forEach(function (q) {
+      /* no id means the row has never reached the server, and save() would mint a NEW row
+         instead of patching this one - a duplicate. Those are left alone; they staple
+         themselves the next time they sync. */
+      if (!q || q.siteId || !q.id) return;
+      var nm = String(q.client || "").trim();
+      if (!nm) return;
+      var st = siteForClient(nm);
+      if (st) out.quotes.push({ row: q, site: st, name: nm, label: String(q.quoteNo || q.id || "") });
+      else out.orphans.push({ kind: "Quote", label: String(q.quoteNo || q.id || ""), name: nm });
+    });
+    (S.data.pitch || []).forEach(function (p) {
+      if (!p || !p.brand || !p.id) return;
+      var nm = String(p.clientName || "").trim();
+      if (!p.siteId) {
+        var st = nm ? siteForClient(nm) : null;
+        if (st) { out.pitch.push({ row: p, site: st, name: nm, label: String(p.brand) }); return; }
+        if (nm) out.orphans.push({ kind: "Brand", label: String(p.brand), name: nm });
+        return;
+      }
+      if (!nm) {                                   /* the other half: a site row with no name on it */
+        var s2 = siteById(p.siteId);
+        if (s2) out.pitch.push({ row: p, site: s2, name: String(s2.client || s2.name || ""), label: String(p.brand) });
+      }
+    });
+    return out;
+  }
+  var JOIN_BATCH216 = 100;   /* one press = at most this many saves, so a phone on 4G survives it */
+  function runJoinFix() {
+    var g = joinGaps(), n = 0;
+    g.quotes.forEach(function (x) {
+      if (n >= JOIN_BATCH216) return;
+      n++;
+      save("quotes", { id: x.row.id, siteId: x.site.id, siteName: x.site.name || x.name }, true);
+    });
+    g.pitch.forEach(function (x) {
+      if (n >= JOIN_BATCH216) return;
+      n++;
+      var c = clientByName(x.name) || {};
+      save("pitch", {
+        id: x.row.id, siteId: x.row.siteId || x.site.id,
+        siteName: x.row.siteName || x.site.name || x.name,
+        clientId: x.row.clientId || c.id || "", clientName: x.row.clientName || x.name
+      }, true);
+    });
+    try {
+      var nowJF = new Date().toISOString();
+      save("audit", {
+        id: "JF-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+        createdAt: nowJF, actor: S.user || "", action: "join:backfill",
+        target: String(n), detail: JSON.stringify({ rows: n, quotes: g.quotes.length, pitch: g.pitch.length, at: nowJF }), ip: ""
+      }, true).catch(function () { return null; });
+    } catch (e) { }
+    _pitchIdx = null; _cbgCache = null; _clStageCache = null;
+    var left = (g.quotes.length + g.pitch.length) - n;
+    toast(n + " record" + (n === 1 ? "" : "s") + " attached to their lead" +
+      (left > 0 ? " — " + left + " more, press again." : "."));
+    S.modal = null;
+    render();
+  }
+  function modalJoinFix() {
+    var g = joinGaps();
+    var tot = g.quotes.length + g.pitch.length;
+    var h = '<h2>Attach these to their lead</h2>' +
+      '<p class="sub">Nothing is deleted and nothing is overwritten &mdash; the only thing written ' +
+      'is the missing link between a record and the lead it already names.</p>';
+    if (!tot) {
+      h += '<div class="empty">Everything is already attached. Nothing to do.</div>';
+    } else {
+      h += '<div class="empty" style="text-align:left;padding:0 0 8px;font-size:12.5px">' +
+        '<b>' + tot + ' record' + (tot === 1 ? "" : "s") + '</b> will be attached' +
+        (tot > JOIN_BATCH216 ? ' (' + JOIN_BATCH216 + ' per press, so press again for the rest)' : "") +
+        '. Every one of them is matched on the client name written on the record itself.</div>';
+      var show = g.quotes.slice(0, 12).map(function (x) {
+        return '<div style="font-size:12px;padding:3px 0;border-bottom:1px solid #f1f5f9">' +
+          '<b>Quote ' + esc(x.label) + '</b> &rarr; ' + esc(x.site.name || x.name) + '</div>';
+      }).join("") + g.pitch.slice(0, 12).map(function (x) {
+        return '<div style="font-size:12px;padding:3px 0;border-bottom:1px solid #f1f5f9">' +
+          '<b>' + esc(x.label) + '</b> (' + esc(x.name) + ') &rarr; ' + esc(x.site.name || x.name) + '</div>';
+      }).join("");
+      h += show;
+      if (tot > 24) h += '<div class="sub" style="margin-top:6px">&hellip; and ' + (tot - 24) + ' more.</div>';
+    }
+    if (g.orphans.length) {
+      h += '<h3 style="margin:14px 0 6px;font-size:14px">Cannot be attached &mdash; no lead by that name (' +
+        g.orphans.length + ')</h3>' +
+        '<div class="empty" style="text-align:left;padding:0 0 8px;font-size:12.5px">These are listed, ' +
+        'not guessed at. Usually the name is spelt differently on the record than on the lead. Add the ' +
+        'man to the lead book, or correct the spelling, and press this again.</div>' +
+        g.orphans.slice(0, 15).map(function (x) {
+          return '<div style="font-size:12px;padding:3px 0;color:#b91c1c">' + esc(x.kind) + ' ' +
+            esc(x.label) + ' &mdash; ' + esc(x.name) + '</div>';
+        }).join("") +
+        (g.orphans.length > 15 ? '<div class="sub">&hellip; and ' + (g.orphans.length - 15) + ' more.</div>' : "");
+    }
+    h += '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      (tot ? '<button class="btn" data-act="ql-fix-go">Attach ' + Math.min(tot, JOIN_BATCH216) + ' now</button>' : "") +
+      '</div>';
+    return h;
+  }
+  /* The board itself. Drawn BEFORE the brand buttons and with no brand picked, because that is
+     the whole complaint: the screen used to be empty until something was tapped. */
+  function quotedLeadsHtml() {
+    var all = quotedLeads();
+    if (!all.length) return "";
+    var miss = all.filter(function (e) { return !e.inBook; }).length;
+    var f = String(S.qlF || "waiting");
+
+    var h = '<div style="margin-bottom:14px">';
+    h += '<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+      '<div class="grow" style="min-width:0;font-weight:800;font-size:14px">Quoted clients (' + all.length + ')</div>' +
+      '</div>';
+    h += '<div class="empty" style="text-align:left;padding:0 0 8px;font-size:12px">Every man you have quoted, whether or not he is a client yet. Oldest quote first — that is the one going cold.</div>';
+
+    if (miss) {
+      h += '<div class="row" style="align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px;' +
+        'border:1px solid #fecaca;background:#fef2f2;border-radius:10px;flex-wrap:wrap">' +
+        '<div class="grow" style="min-width:120px;font-size:12px"><b>' + miss +
+        ' quoted client' + (miss === 1 ? " is" : "s are") + ' not in the lead book.</b> ' +
+        'A quote does not create a site, and the pitch engine only reads sites — so ' +
+        (miss === 1 ? "he is" : "they are") + ' invisible to it. Add ' +
+        (miss === 1 ? "him" : "them") + ' below, one tap each.</div></div>';
+    }
+
+    /* v6.9.216 - the unstapled history, said out loud with one button. Admin only: it writes
+       across other people's records, so it is his press, not an executive's. */
+    if (seesAllClients()) {
+      var gaps216 = joinGaps();
+      var nGap = gaps216.quotes.length + gaps216.pitch.length;
+      if (nGap) {
+        h += '<div class="row" style="align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px;' +
+          'border:1px solid #fde68a;background:#fffbeb;border-radius:10px;flex-wrap:wrap">' +
+          '<div class="grow" style="min-width:120px;font-size:12px"><b>' + nGap +
+          ' record' + (nGap === 1 ? "" : "s") + ' not attached to their lead.</b> ' +
+          gaps216.quotes.length + ' quote' + (gaps216.quotes.length === 1 ? "" : "s") + ' and ' +
+          gaps216.pitch.length + ' brand record' + (gaps216.pitch.length === 1 ? "" : "s") +
+          ' name a client but carry no lead, so the lead cannot count them.</div>' +
+          '<button class="btn sm" data-act="ql-fix" style="min-height:30px">Show me</button></div>';
+      }
+    }
+
+    h += '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">' +
+      QL_TABS216.map(function (t) {
+        var n = all.filter(function (e) { return t[0] === "all" || e.state === t[0]; }).length;
+        return '<button class="btn sm ' + (f === t[0] ? "" : "ghost") + '" data-act="ql-f" data-f="' +
+          t[0] + '" style="min-height:30px">' + esc(t[1]) + ' (' + n + ')</button>';
+      }).join("") + '</div>';
+
+    h += '<div class="row" style="gap:6px;margin-bottom:8px">' +
+      '<input id="ql_q" class="grow" placeholder="Search name, phone or quote no." value="' +
+      esc(S.ql || "") + '" style="min-height:34px;min-width:0">' +
+      (String(S.ql || "").trim()
+        ? '<button class="btn sm ghost" data-act="ql-clear" style="min-height:34px">Clear</button>' : "") +
+      '</div>';
+
+    h += '<div id="ql_list">' + quotedLeadsBody() + '</div>';
+    h += '</div>';
+    return h;
+  }
+
   function viewLeads() {
-    var h = '<div class="empty" style="text-align:left;padding:0 0 12px">Pick a brand. <b>Cross-sell</b> = your clients who already buy other brands but not this one yet (with plumber, architect and stage) — the list to hand a visiting brand executive. <b>New leads</b> = prospect sites that are not yet your clients.</div>';
+    /* v6.9.216 - the quoted board goes FIRST and needs no brand. Until this version the whole
+       screen was blank until a brand was tapped, which is exactly why an already-quoted man
+       looked like he was missing from the app. */
+    var h = quotedLeadsHtml();
+    h += '<div class="empty" style="text-align:left;padding:0 0 12px">Pick a brand. <b>Cross-sell</b> = your clients who already buy other brands but not this one yet (with plumber, architect and stage) — the list to hand a visiting brand executive. <b>New leads</b> = prospect sites that are not yet your clients.</div>';
     if (S.leadBrand) S.leadBrand = brandGroup(S.leadBrand);   /* an old sub-brand pick still lands */
     h += '<div class="row" style="flex-wrap:wrap;gap:6px">' + brandGroupList().map(function (b) {
       var n = crossSellClients(b).length;
@@ -9376,7 +9943,7 @@ function viewCatalogue() {
     h += '<h3 style="margin:16px 0 8px;font-size:15px">Cross-sell &mdash; clients buying from you, not ' + esc(brand) + ' yet</h3>';
     if (!cross.length) h += '<div class="empty">No cross-sell clients for ' + esc(brand) + ' — everyone who buys from you already has it, or you have no clients on the book yet.</div>';
     cross.forEach(function (c) {
-      var brands = clientQuotedBrands(c.name);
+      var brands = clientHasGroups(c.name);   /* v6.9.216 - quotes + delivered + marked Won */
       var stg = clientStage(c.name);
       var partners = partnersFor(c.name);
       var seg = clientSegment(c);
@@ -9399,6 +9966,9 @@ function viewCatalogue() {
         h += '<div class="card"><h3>' + esc(x.site.name) + ' <span class="pill ' + cls + '">' + esc(x.window) + '</span></h3>' +
           '<div class="meta">' + esc(x.site.client || "") + (x.site.city ? ' &middot; ' + esc(x.site.city) : "") +
           '<br>Stage: <b>' + esc(x.site.stage || "-") + '</b> &middot; status: ' + esc(x.status) +
+          /* v6.9.216 - "a lead have how many quotes, which brand pitched" - printed, every time */
+          '<br>Quotes: <b>' + ((x.sum && x.sum.quotes) || 0) + '</b>' +
+          ' &middot; Pitched: <b>' + esc(((x.sum && x.sum.groups) || []).join(", ") || "nothing yet") + '</b>' +
           (x.site.owner ? '<br>Owner: ' + esc(x.site.owner) : "") +
           (x.site.mobile ? '<br>' + esc(x.site.mobile) : "") + '</div>' +
           '<div class="acts">' + (x.site.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.site.mobile) + '">Call</a>' : "") +
@@ -11440,10 +12010,17 @@ function viewCatalogue() {
   /* ---------------- client brand board ----------------
      Quoted = amber. Won = green. Lost = red, struck through, with the brand that beat us.
      Set by hand by the executive or a partner - the app does not guess a win. */
+  /* v6.9.216 - the mirror of pitchRow(). Matched on a trimmed, lowercased name (it used to be
+     byte-exact, so one trailing space hid a man's whole brand history), and falling through to
+     the site join so a row written from the site side is found from the client side too. */
   function clientPitch(clientName, brand) {
-    return S.data.pitch.filter(function (p) {
-      return String(p.clientName || "") === clientName && p.brand === brand;
-    })[0] || null;
+    var nm = String(clientName || "").trim().toLowerCase();
+    if (!nm) return null;
+    var ix = pitchIndex(), b = String(brand || "");
+    var hit = ix.byName[nm + "\u0000" + b];
+    if (hit) return hit;
+    var st = siteForClient(clientName);
+    return (st && ix.bySite[st.id + "\u0000" + b]) || null;
   }
 
   function brandChip(p) {
@@ -11489,9 +12066,15 @@ function viewCatalogue() {
   function saveBrandStatus(cn, brand, id, patch) {
     var c = clientByName(cn) || {};
     var p = clientPitch(cn, brand) || {};
+    /* v6.9.216 - stamp the site. This wrote siteId:"" from the day it was born, which is the
+       single reason a client's Won brands were invisible to the pitch engine and to the Leads
+       screen. If he has no site yet there is nothing honest to write, so it stays blank and the
+       name join carries it - it is never guessed at. */
+    var stB = siteForClient(cn);
     var row = {
       id: id || p.id || "", createdBy: p.createdBy || S.user,
-      siteId: "", siteName: "", clientId: c.id || "", clientName: cn, brand: brand,
+      siteId: (p.siteId || (stB && stB.id) || ""), siteName: (p.siteName || (stB && stB.name) || ""),
+      clientId: c.id || "", clientName: cn, brand: brand,
       status: p.status || "Not pitched", quoted: p.quoted || "", won: p.won || "",
       lostTo: p.lostTo || "", note: p.note || ""
     };
@@ -14401,6 +14984,7 @@ function viewCatalogue() {
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
     _clDueCache = null; _clStageCache = null; _prfCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null;
+    _pitchIdx = null; _cbgCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
     var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
@@ -14508,6 +15092,18 @@ function viewCatalogue() {
     /* v6.9.215 the quote book's own search. Same rule as the client list and the compact tree:
        repaint ONLY the list block, never the page, so the caret and the phone keyboard stay put
        while a ten-digit number is being typed one digit at a time. */
+    /* v6.9.216 the quoted board's own search - same rule again: repaint ONLY the list block,
+       never the page, so the caret and the phone keyboard stay put while a ten-digit number is
+       typed one digit at a time. */
+    var qli = el("ql_q");
+    if (qli) {
+      qli.addEventListener("input", function (e) {
+        S.ql = e.target.value;
+        var box = el("ql_list");
+        if (box) box.innerHTML = quotedLeadsBody();
+      });
+      qli.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
+    }
     var qqi = el("qq_q");
     if (qqi) {
       qqi.addEventListener("input", function (e) {
@@ -15285,6 +15881,12 @@ function viewCatalogue() {
     if (act === "cv-brands") { S.modal = modalClientBrands(t.getAttribute("data-n")); render(); return; }
     /* v6.9.211 - the construction stage, answered where it is asked. */
     if (act === "cl-stage") { S.modal = modalClientStage(t.getAttribute("data-n")); render(); return; }
+    /* v6.9.216 quoted board: filter, clear, and the owner-pressed add to the lead book */
+    if (act === "ql-f") { S.qlF = t.getAttribute("data-f") || "waiting"; render(); return; }
+    if (act === "ql-clear") { S.ql = ""; render(); return; }
+    if (act === "ql-add") { S.modal = modalQuotedToLead(t.getAttribute("data-n")); render(); return; }
+    if (act === "ql-fix") { S.modal = modalJoinFix(); render(); return; }
+    if (act === "ql-fix-go") { runJoinFix(); return; }
     if (act === "cl-stage-set") {
       var csn = t.getAttribute("data-n"), csv = t.getAttribute("data-s") || "";
       if (!csn || !csv) return;
@@ -15645,12 +16247,20 @@ function viewCatalogue() {
            is exactly what made "Save quote" feel like it did nothing. On a rare server refusal,
            save() undoes its row and toasts why, and we drop the user back on Review to retry. */
         var draft = z;
+        /* v6.9.216 - staple the quote to the lead. This wrote siteId:"" from the day it was
+           written, so a quoted man left no trace on his own lead: the Leads screen could not
+           count his quotes and the pitch engine could not see which brand had been shown to him.
+           Blank stays blank when he genuinely has no lead in the book - it is never invented. */
+        var qSite = siteForClient(z.client);
         var savePromise = save("quotes", {
           id: "", createdBy: S.user, quoteNo: qno, version: z.version || 1, parentId: z.parentId || "",
-          siteId: "", siteName: "", client: z.client, brand: savedBrands.join(", "),
+          siteId: (qSite && qSite.id) || "", siteName: (qSite && qSite.name) || "",
+          client: z.client, brand: savedBrands.join(", "),
           items: JSON.stringify(savedItems), gross: tot.gross, discountPct: blended,
           net: tot.net, gstAmt: tot.gst, total: tot.total, status: "Draft", validTill: "", notes: ""
         });
+        /* and the brands quoted become pitch rows on that same lead, in the same breath */
+        try { stampQuotedPitch(z.client, savedBrands, qno); } catch (e) { }
         S.qz = null;
         toast("Quote " + qno + " saved.");
         render();
@@ -17448,9 +18058,13 @@ function viewCatalogue() {
   function savePitch(brand, patch) {
     var site = siteById(S.siteId);
     if (!site) return;
-    var p = pitchRow(site.id, brand) || {};
+    var p = pitchRow(site.id, brand, site.client || site.name) || {};
     var row = {
-      id: p.id || "", createdBy: p.createdBy || S.user, siteId: site.id, siteName: site.name, brand: brand,
+      /* v6.9.216 - carry the client name as well as the site, so a row written from the site
+         side is findable from the client side. Both joins on every new row, always. */
+      id: p.id || "", createdBy: p.createdBy || S.user, siteId: site.id, siteName: site.name,
+      clientId: (clientByName(site.client || site.name) || {}).id || "",
+      clientName: site.client || site.name || "", brand: brand,
       status: p.status || "Not pitched", quoted: p.quoted || "", won: p.won || "", lostTo: p.lostTo || "", note: p.note || ""
     };
     Object.keys(patch).forEach(function (k) { row[k] = patch[k]; });
