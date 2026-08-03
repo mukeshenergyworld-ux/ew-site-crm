@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.214";
+  var APP_VERSION = "6.9.215";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4330,59 +4330,142 @@ window.addEventListener("beforeunload", function (ev) {
     return { gross: Math.round(gross), net: Math.round(net), gst: Math.round(gst), total: Math.round(net + gst) };
   }
 
-  function viewQuotes() {
-    if (S.qz) return viewQzWizard();
-    ensureCompactCss(); ensureQuoteCss();
-    var h = '<div class="row">' + cvSeg() + '<div class="grow"></div><button class="btn" data-act="qz-new">+ New quote</button></div>';
-    var list = S.data.quotes.slice().reverse();
-    if (!seesAllClients()) list = list.filter(function (q) { return isMineClient(q.client); });
-    if (!list.length) { h += '<div class="empty">No quotes yet. Every quote is versioned - revising keeps the old one.</div>'; return h; }
+  /* ================= THE QUOTE BOOK'S SEARCH (v6.9.215) ==========================
+     HIS WORDS: "in quote section also provide to search box , entering client name or phone
+     no or qouote no wil show all details".
+     A quote book only grows; it is never tidied and nothing is ever thrown out of it. Scrolling
+     that book to find the one quote a man is asking about while he waits on the phone is not
+     work, it is waiting. Three keys are accepted, because those are the three things a customer
+     actually gives on a call: his name, his number, or the number printed at the top of the
+     paper in his hand. */
 
-    ensurePickerCss();   /* exec band (.ch-exec) + sub-strip (.ch-client) styling */
-    /* quoteCardHtml is a hoisted declaration, so the compact tree can borrow it from here */
+  /* Both sides of a phone comparison are stripped to digits before they meet. A number is
+     written with spaces, dashes, brackets and +91 in a dozen different ways, and which of those
+     he happened to type must not decide whether he finds the quote. Three digits is the floor:
+     below that every quote in the book "matches" and the box has told him nothing. */
+  /* Every phone number - the one he types and the one on the client's card - comes through here
+     first. A number in this country is written +91 98123 45670, 098123 45670, 98123-45670 and
+     9812345670, and which of those a man happens to use must never decide whether he finds the
+     quote. The country code and a trunk 0 are dropped only when what remains is a real 10-digit
+     mobile, so a landline or a part-typed number is left exactly as it is. */
+  function phDigits(s) {
+    var d = String(s || "").replace(/\D/g, "");
+    if (d.length === 12 && d.indexOf("91") === 0) return d.slice(2);
+    if (d.length === 11 && d.charAt(0) === "0") return d.slice(1);
+    return d;
+  }
+
+  function quoteHit(q, txt, dig) {
+    var c = null; try { c = clientByName(q.client); } catch (e) { c = null; }
+    var hay = [q.quoteNo, q.client, q.brand, q.status, q.createdBy,
+               (c && c.area) || "", (c && c.location) || "",
+               (c && (c.ownedBy || c.createdBy)) || ""].join(" ").toLowerCase();
+    if (txt && hay.indexOf(txt) > -1) return true;
+    if (dig.length >= 3) {
+      /* each number on its own - joining mobile and mobile2 first would invent a match that
+         straddles the two, and send him to the wrong man's quote. */
+      if (phDigits((c && c.mobile) || "").indexOf(dig) > -1) return true;
+      if (phDigits((c && c.mobile2) || "").indexOf(dig) > -1) return true;
+      /* the quote number is a printed reference, not a phone - it is matched as it stands */
+      if (String(q.quoteNo || "").replace(/\D/g, "").indexOf(dig) > -1) return true;
+    }
+    return false;
+  }
+
+  function quoteAllList() {
+    var all = (S.data.quotes || []).slice().reverse();
+    if (!seesAllClients()) all = all.filter(function (q) { return isMineClient(q.client); });
+    return all;
+  }
+
+  /* The search NEVER widens what a man is allowed to see: it filters the list he already had.
+     A sales exec searching a number that belongs to somebody else's client finds nothing. */
+  function quoteSearchList() {
+    var all = quoteAllList();
+    var qq = String(S.qq || "").replace(/^\s+|\s+$/g, "");
+    if (!qq) return all;
+    var txt = qq.toLowerCase(), dig = phDigits(qq);
+    return all.filter(function (q) { return quoteHit(q, txt, dig); });
+  }
+
+  /* win/loss lens: Won, then Lost, then everything still open (Draft/Sent/Negotiating/Revised). */
+  var QCAT = ["Won", "Lost", "In play"];
+  var QCAT_COLOR = { "Won": "#047857", "Lost": "#b91c1c", "In play": "#0f766e" };
+  function qCatOf(q) { return q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "In play"); }
+
+  /* quoteCardHtml is a hoisted declaration, so the compact tree borrows the same card. */
+  function quoteCardHtml(q) {
+    /* v6.9.215 - the customer's own number, shown ONLY while a search is running. That is the
+       moment it earns its place: he searched a number, and this is what tells him he has the
+       right man. On a page he is merely scrolling it is one more thing in the way. */
+    var _ph = "";
+    if (String(S.qq || "").replace(/^\s+|\s+$/g, "")) {
+      var _c = null; try { _c = clientByName(q.client); } catch (e) { _c = null; }
+      _ph = String((_c && (_c.mobile || _c.mobile2)) || "");
+    }
+    /* Title + figures on the left; the action row sits top-right to use the empty space -
+       and WRAPS below on a narrow screen (phone/tablet) so nothing gets squeezed. */
+    return '<div class="card" style="padding:9px 13px;margin-bottom:8px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+      '<div style="flex:1 1 240px;min-width:0">' +
+      '<h3 style="margin:0 0 2px;font-size:13.5px">' + esc(q.quoteNo) + ' <span class="pill ' + (q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "teal")) + '">' + esc(q.status) + '</span>' +
+      (Number(q.version) > 1 ? ' <span class="pill">v' + esc(q.version) + '</span>' : "") + '</h3>' +
+      '<div class="meta" style="font-size:12px;line-height:1.5">' + esc(q.client) + ' &middot; ' + esc(q.brand) +
+      (_ph ? ' &middot; <span style="color:#0f766e;white-space:nowrap">' + esc(_ph) + '</span>' : "") +
+      '<br>net <b>' + money(q.net) + '</b> &middot; <b>' + money(q.total) + '</b> incl GST &middot; ' + esc(q.discountPct) + '% off ' + money(q.gross) +
+      ' <span style="color:#94a3b8">&middot; ' + esc(d10(q.createdAt)) + ' ' + esc(q.createdBy) + '</span></div>' +
+      '</div>' +
+      /* v6.9.215: flex:1 1 auto, not 0 0 auto. The comment above always SAID this row wraps on a
+         phone, but 0 0 auto forbade the box from shrinking, so it sat at its full one-line width
+         and pushed Revise clean off the right edge of a 320px screen instead. It shrinks now, and
+         only then can the flex-wrap on it actually do anything. */
+      '<div class="acts" style="margin:0;flex:1 1 auto;min-width:0;flex-wrap:wrap;justify-content:flex-end;gap:6px">' +
+      '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:5px 8px;font-size:12.5px">' + opts(QSTATUS, q.status) + '</select>' +
+      '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
+      '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
+      (q.status === "Won" ? '<button class="btn sm" data-act="q-challan" data-id="' + esc(q.id) + '">Make challan</button>' : "") +
+      /* v6.9.205 - every quote already marked Lost can still be answered, so the back
+         catalogue is fillable without a migration. The pill carries the SHORT label: the
+         full reason is 38 characters and would burst the acts row on a phone. */
+      (q.status === "Lost" ? (function () {
+        var _lr = lossOf(q.id);
+        return (_lr ? '<span class="pill Lost" title="' + esc(_lr.reason + (_lr.note ? " - " + _lr.note : "")) + '">' + esc(lossShort(_lr.reason)) + (_lr.lostTo ? ' &middot; ' + esc(_lr.lostTo) : "") + '</span>' : "") +
+          '<button class="btn sm' + (_lr ? " ghost" : "") + '" data-act="quote-lost" data-id="' + esc(q.id) + '">' + (_lr ? "Change reason" : "Why lost?") + '</button>';
+      })() : "") +
+      '<button class="btn sm ghost" data-act="qz-revise" data-id="' + esc(q.id) + '">Revise</button></div>' +
+      '</div></div>';
+  }
+
+  function quotesByOutcomeHtml(quotes) {
+    var byCat = { "Won": [], "Lost": [], "In play": [] };
+    quotes.forEach(function (q) { byCat[qCatOf(q)].push(q); });
+    var out = "";
+    QCAT.forEach(function (cat) {
+      if (!byCat[cat].length) return;
+      out += '<div class="ch-client" style="border-left-color:' + QCAT_COLOR[cat] + ';color:' + QCAT_COLOR[cat] + '">' + cat +
+        '<span class="sub" style="color:' + QCAT_COLOR[cat] + '">' + byCat[cat].length + '</span></div>';
+      byCat[cat].forEach(function (q) { out += quoteCardHtml(q); });
+    });
+    return out;
+  }
+
+  /* The list alone, so typing repaints THIS and never the page - the caret and the phone
+     keyboard stay exactly where they were. */
+  function quotesBodyHtml() {
+    var list = quoteSearchList();
+    var qq = String(S.qq || "").replace(/^\s+|\s+$/g, "");
+    if (!list.length) {
+      return '<div class="empty">Nothing in the quote book matches <b>' + esc(qq) + '</b>.' +
+        '<br><span class="meta">A client name, a phone number, or a quote number &mdash; any part of one is enough.</span></div>';
+    }
+    var h = "";
+    if (qq) {
+      /* a filtered book must never be mistaken for a shrunken one */
+      var tot = quoteAllList().length;
+      h += '<div class="meta" style="margin:0 0 7px;font-size:12.5px">Showing <b>' + list.length +
+        '</b> of ' + tot + ' quote' + (tot !== 1 ? "s" : "") + ' &middot; matching <b>' + esc(qq) + '</b></div>';
+    }
     if (cvMode() === "compact") return h + tidyBanner() + qvHtml(list, quoteCardHtml);
-    function quoteCardHtml(q) {
-      /* Title + figures on the left; the action row sits top-right to use the empty space -
-         and WRAPS below on a narrow screen (phone/tablet) so nothing gets squeezed. */
-      return '<div class="card" style="padding:9px 13px;margin-bottom:8px">' +
-        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
-        '<div style="flex:1 1 240px;min-width:0">' +
-        '<h3 style="margin:0 0 2px;font-size:13.5px">' + esc(q.quoteNo) + ' <span class="pill ' + (q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "teal")) + '">' + esc(q.status) + '</span>' +
-        (Number(q.version) > 1 ? ' <span class="pill">v' + esc(q.version) + '</span>' : "") + '</h3>' +
-        '<div class="meta" style="font-size:12px;line-height:1.5">' + esc(q.client) + ' &middot; ' + esc(q.brand) +
-        '<br>net <b>' + money(q.net) + '</b> &middot; <b>' + money(q.total) + '</b> incl GST &middot; ' + esc(q.discountPct) + '% off ' + money(q.gross) +
-        ' <span style="color:#94a3b8">&middot; ' + esc(d10(q.createdAt)) + ' ' + esc(q.createdBy) + '</span></div>' +
-        '</div>' +
-        '<div class="acts" style="margin:0;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end;gap:6px">' +
-        '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:5px 8px;font-size:12.5px">' + opts(QSTATUS, q.status) + '</select>' +
-        '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
-        '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
-        (q.status === "Won" ? '<button class="btn sm" data-act="q-challan" data-id="' + esc(q.id) + '">Make challan</button>' : "") +
-        /* v6.9.205 - every quote already marked Lost can still be answered, so the back
-           catalogue is fillable without a migration. The pill carries the SHORT label: the
-           full reason is 38 characters and would burst the acts row on a phone. */
-        (q.status === "Lost" ? (function () {
-          var _lr = lossOf(q.id);
-          return (_lr ? '<span class="pill Lost" title="' + esc(_lr.reason + (_lr.note ? " - " + _lr.note : "")) + '">' + esc(lossShort(_lr.reason)) + (_lr.lostTo ? ' &middot; ' + esc(_lr.lostTo) : "") + '</span>' : "") +
-            '<button class="btn sm' + (_lr ? " ghost" : "") + '" data-act="quote-lost" data-id="' + esc(q.id) + '">' + (_lr ? "Change reason" : "Why lost?") + '</button>';
-        })() : "") +
-        '<button class="btn sm ghost" data-act="qz-revise" data-id="' + esc(q.id) + '">Revise</button></div>' +
-        '</div></div>';
-    }
-    /* win/loss lens: Won, then Lost, then everything still open (Draft/Sent/Negotiating/Revised). */
-    var qCat = function (q) { return q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "In play"); };
-    var CAT = ["Won", "Lost", "In play"];
-    var catColor = { "Won": "#047857", "Lost": "#b91c1c", "In play": "#0f766e" };
-    function renderByOutcome(quotes) {
-      var byCat = { "Won": [], "Lost": [], "In play": [] };
-      quotes.forEach(function (q) { byCat[qCat(q)].push(q); });
-      CAT.forEach(function (cat) {
-        if (!byCat[cat].length) return;
-        h += '<div class="ch-client" style="border-left-color:' + catColor[cat] + ';color:' + catColor[cat] + '">' + cat +
-          '<span class="sub" style="color:' + catColor[cat] + '">' + byCat[cat].length + '</span></div>';
-        byCat[cat].forEach(function (q) { h += quoteCardHtml(q); });
-      });
-    }
 
     /* Admin / accounts read the quote book grouped by the sales executive who owns the client, and
        within each exec by outcome (Won / Lost / In play). A sales exec (list already filtered to
@@ -4406,11 +4489,26 @@ window.addEventListener("beforeunload", function (ev) {
         h += '<div class="ch-exec">' + esc(e) +
           '<span class="sub">' + qs.length + ' quote' + (qs.length !== 1 ? 's' : '') +
           ' &middot; ' + won + ' won &middot; ' + lost + ' lost</span></div>';
-        renderByOutcome(qs);
+        h += quotesByOutcomeHtml(qs);
       });
     } else {
-      renderByOutcome(list);
+      h += quotesByOutcomeHtml(list);
     }
+    return h;
+  }
+
+  function viewQuotes() {
+    if (S.qz) return viewQzWizard();
+    ensureCompactCss(); ensureQuoteCss();
+    ensurePickerCss();   /* exec band (.ch-exec) + sub-strip (.ch-client) styling */
+    var h = '<div class="row">' + cvSeg() + '<div class="grow"></div><button class="btn" data-act="qz-new">+ New quote</button></div>';
+    var all = quoteAllList();
+    if (!all.length) { h += '<div class="empty">No quotes yet. Every quote is versioned - revising keeps the old one.</div>'; return h; }
+
+    h += '<div class="row"><input class="grow" id="qq_q" autocomplete="off" placeholder="Search ' + all.length +
+      ' quote' + (all.length !== 1 ? "s" : "") + ' — client, phone or quote no..." value="' + esc(S.qq || "") + '"/>' +
+      (S.qq ? '<button class="btn sm ghost" data-act="qq-clear">Clear</button>' : '') + '</div>';
+    h += '<div id="qq_list">' + quotesBodyHtml() + '</div>';
     return h;
   }
 
@@ -10891,7 +10989,9 @@ function viewCatalogue() {
       ".cv-body{border-left:3px solid;margin:0 0 12px 9px;padding-left:10px}" +
       /* v6.9.183 the area peek strip that hangs off a CLOSED district */
       ".cv-peek{display:flex;flex-wrap:wrap;gap:5px;margin:-2px 0 10px 14px}" +
-      ".cv-pk{display:inline-flex;align-items:center;gap:5px;max-width:100%;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:999px;padding:3px 4px 3px 10px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3}" +
+      /* v6.9.215 min-height:26px. These colony chips are buttons - tapping one opens that district -
+         and they were drawing 23px tall, which is a thumb hitting the gap between two of them. */
+      ".cv-pk{display:inline-flex;align-items:center;gap:5px;max-width:100%;min-height:26px;box-sizing:border-box;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:999px;padding:3px 4px 3px 10px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3}" +
       ".cv-pk b{background:#f1f5f9;color:#0f172a;border-radius:999px;padding:1px 7px;font-size:10.5px;font-weight:800}" +
       ".cv-pk.un{border-color:#fcd34d;background:#fffbeb;color:#92400e}" +
       ".cv-pk.un b{background:#fde68a;color:#7c2d12}" +
@@ -10929,7 +11029,7 @@ function viewCatalogue() {
       ".cv-dist{font-size:13px;padding:10px;gap:7px}" +
       ".cv-body{margin-left:5px;padding-left:8px}" +
       ".cv-peek{margin-left:8px;gap:4px}" +
-      ".cv-pk{font-size:10.5px;padding:3px 3px 3px 9px}" +
+      ".cv-pk{font-size:10.5px;padding:3px 3px 3px 9px;min-height:26px}" +
       ".cv-pk b{font-size:10px;padding:1px 6px}" +
       ".cv-nm{flex-basis:100%}" +
       ".cv-duebar b{font-size:16px}" +
@@ -14405,6 +14505,18 @@ function viewCatalogue() {
       });
       clqi.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
     }
+    /* v6.9.215 the quote book's own search. Same rule as the client list and the compact tree:
+       repaint ONLY the list block, never the page, so the caret and the phone keyboard stay put
+       while a ten-digit number is being typed one digit at a time. */
+    var qqi = el("qq_q");
+    if (qqi) {
+      qqi.addEventListener("input", function (e) {
+        S.qq = e.target.value;
+        var box = el("qq_list");
+        if (box) box.innerHTML = quotesBodyHtml();
+      });
+      qqi.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
+    }
     /* quote builder code search: hold the text as it is typed (no re-render, so focus stays),
        and run the search on Enter. Not auto-focused - that would steal focus off the +/- taps. */
     var qzc = el("qz_code");
@@ -14693,7 +14805,7 @@ function viewCatalogue() {
       try { navBump(S.tab); } catch (e) { }
       /* follow him into whichever group he landed in, so the open band is always the useful one */
       try { var _ng = navGroupOf(S.tab); if (_ng && S.navGrp !== "ALL") navSetGrp(_ng); } catch (e) { }
-      S.q = ""; S.clq = ""; S.cvq = ""; render(); return;
+      S.q = ""; S.clq = ""; S.cvq = ""; S.qq = ""; render(); return;
     }
     if (act === "nav-grp") {
       var _g = t.getAttribute("data-g") || "";
@@ -15011,6 +15123,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "cl-qclear") { S.clq = ""; render(); return; }
+    if (act === "qq-clear") { S.qq = ""; render(); return; }
     if (act === "cv-qclear") { S.cvq = ""; render(); return; }
     if (act === "cl-new") {
       S.billDraft = []; S.clEditing = null; S.modal = modalClient(null); render(); return; }
