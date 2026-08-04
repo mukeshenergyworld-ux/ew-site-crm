@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.217";
+  var APP_VERSION = "6.9.218";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -138,6 +138,15 @@
       String(d.getDate()).padStart(2, "0");
   }
   function today() { return ymdLocal(new Date()); }
+  /* v6.9.218 - the MONTH a man in Panipat would name. toISOString() converts to UTC first, and
+     India is 5.5 hours AHEAD, so between midnight and 5:30am on the 1st of a month the app
+     called it LAST month - the payroll screen, the scorecard month list and the incentive
+     statement all opened on the wrong month, and nobody could see why. This reads the local
+     parts directly and never shifts. */
+  function ymLocal(d) {
+    if (!d || isNaN(d.getTime())) return "";
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  }
   /* v6.9.114: one canonical DISPLAY date - always DD/MM/YYYY (owner's format).
      Storage/compare stay ISO (today()/dstr); this is only for showing to a human. */
   function d10(v) {
@@ -1248,7 +1257,11 @@ window.addEventListener("beforeunload", function (ev) {
   /* payments joined the list in v6.9.209.  A payment entered twice used to be un-unpickable -
      there was no way for him to set the wrong one aside, and the ledger simply showed double the
      money.  Nothing is deleted here either: the row moves to S.cancelled and stays readable. */
-  var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return", payments: "Payment received" };
+  /* v6.9.218 - quotes and brand-board rows join the list. Adding a tab HERE is the whole change:
+     splitCancelled() physically lifts a cancelled row out of S.data[tab], so every screen that
+     reads quotes or the pitch board stops counting it at once, with no reader having to know
+     about cancelling at all. The row itself is untouched in the sheet and comes straight back. */
+  var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return", payments: "Payment received", quotes: "Quote", pitch: "Brand record" };
   /* Fixed list, same reasoning as the loss reasons: free text cannot be counted, and "mistake",
      "Mistake" and "wrong entry" are three rows and one reason. */
   var CANCEL_REASONS = [
@@ -1311,6 +1324,9 @@ window.addEventListener("beforeunload", function (ev) {
       S.data[tab] = keep;
       S.cancelled[tab] = gone;
     });
+    /* v6.9.218 - quotes and pitch rows can now move in and out of the live list, and both feed
+       per-paint indexes. Busting them here means no caller has to remember to. */
+    _pitchIdx = null; _cbgCache = null; _clStageCache = null; _lsnCache = null;
   }
 
   function cancelLabel(tab, r) {
@@ -1318,6 +1334,8 @@ window.addEventListener("beforeunload", function (ev) {
     if (tab === "challans") return String(r.challanNo || r.id || "");
     if (tab === "returns") return String(r.returnNo || r.id || "");
     if (tab === "payments") { try { return receiptNo(r); } catch (e) { return String(r.id || ""); } }
+    if (tab === "quotes") return String(r.quoteNo || r.id || "");
+    if (tab === "pitch") return String(r.brand || r.id || "");
     return String(r.name || r.id || "");
   }
   function cxValue(tab, r) {
@@ -1325,6 +1343,7 @@ window.addEventListener("beforeunload", function (ev) {
       if (tab === "challans") return challanNet(r);
       if (tab === "returns") return returnNet(r);
       if (tab === "payments") return Math.round(Number(r.amount) || 0);
+      if (tab === "quotes") return Math.round(Number(r.net) || 0);
     } catch (e) { }
     return 0;
   }
@@ -1334,6 +1353,10 @@ window.addEventListener("beforeunload", function (ev) {
     if (tab === "returns") return String(r.customerName || "") + (r.challanNo ? " · against " + r.challanNo : "");
     if (tab === "payments") return String(r.client || "") + " · " + money(r.amount) + " · " + String(r.mode || "") + " · " + fullDate(r.date);
     if (tab === "sites") return String(r.client || "") + (r.area ? " · " + r.area : "");
+    if (tab === "quotes") return String(r.client || "") + (r.brand ? " · " + r.brand : "") +
+      (Number(r.net) ? " · " + money(r.net) : "") + (r.status ? " · " + r.status : "");
+    if (tab === "pitch") return String(r.clientName || (siteById(r.siteId) || {}).client || "") +
+      (r.status ? " · " + r.status : "");
     return String(r.mobile || "") + (r.location ? " · " + r.location : "");
   }
 
@@ -1409,6 +1432,26 @@ window.addEventListener("beforeunload", function (ev) {
       }
     }
     return out;
+  }
+
+  /* v6.9.218 - the same audit row, written QUIETLY, for the tidy buttons that set aside a whole
+     batch at once. cxWrite() repaints and re-splits on every single record, which is right for one
+     press on one record and wrong for sixty. The caller does the split, the snapshot and the
+     repaint ONCE when the loop is done. */
+  function cxWriteQuiet(tab, id, row, reason, note) {
+    try {
+      save("audit", {
+        id: "", createdAt: new Date().toISOString(), actor: S.user, action: "rec:cancel",
+        target: String(CANCEL_TABS[tab] || tab) + " / " + cancelLabel(tab, row),
+        detail: JSON.stringify({
+          tab: tab, recId: String(id), label: cancelLabel(tab, row), sub: cancelSub(tab, row),
+          reason: String(reason || ""), note: String(note || ""), undo: false,
+          value: cxValue(tab, row),
+          client: String(row.customerName || row.client || row.clientName || row.name || "")
+        }), ip: ""
+      }, true).catch(function () { return null; });
+    } catch (e) { }
+    _cxCache = null;
   }
 
   /* One added audit row - the cancel and the bringing-back are the same write with a flag. */
@@ -2311,7 +2354,7 @@ window.addEventListener("beforeunload", function (ev) {
   }
 
   function viewPayroll() {
-    var month = S.q || new Date().toISOString().slice(0, 7);
+    var month = S.q || ymLocal(new Date());
     var h = '<div class="row"><input class="grow" id="q" type="month" value="' + esc(month) + '"/></div>';
     h += '<div class="empty" style="text-align:left;padding:0 0 12px">Salary vs what each engineer actually collected in ' + esc(month) + '.</div>';
     SVC_ENGINEERS.forEach(function (eng) {
@@ -2623,13 +2666,36 @@ window.addEventListener("beforeunload", function (ev) {
   /* A brand counts as WON if it has a Won quote OR a delivered challan (signed material
      receipt). And ANY delivered challan makes the customer a Client - so Clients seeds from
      real sales already made, even on challans that never recorded a brand. */
+  /* v6.9.218 - the brand also lives on the ITEM LINES, and on a challan raised from the quote
+     builder the header brand is often blank. Nine real delivered sales were reading as "never
+     won this brand" on the follow-up board because of it - material out of the godown, receipt
+     signed, and the board still showing the brand as never sold. This reads the lines the same
+     way the MONEY reads them (pricedLines): the line's own brand first, then the catalogue brand
+     for its code. Reads only, writes nothing. */
+  var _pcbCache = null;
+  function productBrandByCode(code) {
+    if (!_pcbCache) {
+      _pcbCache = {};
+      (PRODUCTS || []).forEach(function (p) {
+        if (!p || !p.code) return;
+        var b = realBrand(p);
+        if (b) _pcbCache[String(p.code)] = b;
+      });
+    }
+    return _pcbCache[String(code == null ? "" : code)] || "";
+  }
   function challanWonBrands(name) {
     var set = {}, t = String(name || "").trim().toLowerCase();
     (S.data.challans || []).forEach(function (c) {
-      if (String(c.customerName || "").trim().toLowerCase() === t &&
-        String(c.receiptReceived).toUpperCase() === "Y" && c.brand) {
-        String(c.brand).split(/,\s*/).forEach(function (b) { b = b.trim(); if (b) set[b] = 1; });
-      }
+      if (String(c.customerName || "").trim().toLowerCase() !== t) return;
+      if (String(c.receiptReceived).toUpperCase() !== "Y") return;
+      if (c.brand) String(c.brand).split(/,\s*/).forEach(function (b) { b = b.trim(); if (b) set[b] = 1; });
+      var lines = []; try { lines = JSON.parse(c.itemsJson || "[]"); } catch (e) { lines = []; }
+      (lines || []).forEach(function (i) {
+        if (!i) return;
+        var b2 = String(i.brand || productBrandByCode(i.code) || "").trim();
+        if (b2) set[b2] = 1;
+      });
     });
     return set;
   }
@@ -3239,7 +3305,19 @@ window.addEventListener("beforeunload", function (ev) {
   var PROOF_KEY = "ew_proof_v1", _prfBusy = false, _prfCache = null;
 
   function prfLoad() { try { var l = JSON.parse(localStorage.getItem(PROOF_KEY) || "[]"); return (l && l.length !== undefined && typeof l !== "string") ? l : []; } catch (e) { return []; } }
-  function prfStore(l) { try { localStorage.setItem(PROOF_KEY, JSON.stringify(l)); } catch (e) { } }
+  /* v6.9.218 - a full phone used to be swallowed here in silence. The receipt photo was never
+     queued, the queue count never went up, and the driver's paper receipt was gone with nobody
+     any the wiser. It now says so, out loud, on the screen. Note what is NOT at risk: the challan
+     is already marked received and the material is already booked in - it is only the photograph
+     that could not be held. Returns true/false so a caller can tell. */
+  function prfStore(l) {
+    try { localStorage.setItem(PROOF_KEY, JSON.stringify(l)); return true; }
+    catch (e) {
+      try { console.error("[EW] proof queue could not be saved - this device's storage is full", e); } catch (x) { }
+      try { toast("This phone's storage is full \u2014 the receipt photo was NOT saved. Free some space, then attach it again. The delivery itself is recorded."); } catch (x2) { }
+      return false;
+    }
+  }
   function prfPut(e) { var l = prfLoad().filter(function (x) { return x.pk !== e.pk; }); l.push(e); prfStore(l); }
   function prfDrop(pk) { prfStore(prfLoad().filter(function (x) { return x.pk !== pk; })); }
   function prfCount() { try { return prfLoad().length; } catch (e) { return 0; } }
@@ -6572,7 +6650,7 @@ function viewCatalogue() {
     var months = [];
     for (var i = 0; i < 12; i++) {
       var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-      months.push(d.toISOString().slice(0, 7));
+      months.push(ymLocal(d));
     }
     var h = '<div class="row">' +
       '<div><label>Executive</label><select id="rp_exec">' + opts(execs, (S.rpt && S.rpt.exec) || execs[0] || "") + '</select></div>' +
@@ -6655,7 +6733,7 @@ function viewCatalogue() {
     }).map(function (t2) { return t2.name; });
   }
   function scMonths() {
-    var out = []; for (var i = 0; i < 12; i++) { var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i); out.push(d.toISOString().slice(0, 7)); } return out;
+    var out = []; for (var i = 0; i < 12; i++) { var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i); out.push(ymLocal(d)); } return out;
   }
   function scMonLabel(m) { try { var d = new Date(m + "-01T00:00:00"); return d.toLocaleDateString("en-IN", { month: "long", year: "numeric" }); } catch (e) { return m; } }
   function scSalesFor(exec, month) {
@@ -6671,7 +6749,7 @@ function viewCatalogue() {
     var sales = scSalesFor(exec, month);
     /* sales target = the exec's own average of the previous 3 months (falls back to a floor) */
     var prev = 0, pn = 0;
-    for (var i = 1; i <= 3; i++) { var d = new Date(month + "-01T00:00:00"); d.setMonth(d.getMonth() - i); prev += scSalesFor(exec, d.toISOString().slice(0, 7)); pn++; }
+    for (var i = 1; i <= 3; i++) { var d = new Date(month + "-01T00:00:00"); d.setMonth(d.getMonth() - i); prev += scSalesFor(exec, ymLocal(d)); pn++; }
     var _tgt = kraTargetFor(exec);
     var salesTarget = Number(_tgt.sales) > 0 ? Number(_tgt.sales) : Math.max(Math.round(prev / (pn || 1)), SC_DEFAULTS.salesFloor);
     var collTarget = Number(_tgt.coll) > 0 ? Number(_tgt.coll) / 100 : SC_DEFAULTS.collTarget;
@@ -7685,7 +7763,7 @@ function viewCatalogue() {
     /* v6.9.138 — PART 4: monthly incentive statement (in-app view + PDF). */
     var _mset = {};
     b.rows.forEach(function (r) { var m = String(r.ymd || "").slice(0, 7); if (m) _mset[m] = 1; });
-    _mset[new Date().toISOString().slice(0, 7)] = 1;
+    _mset[ymLocal(new Date())] = 1;
     var _months = Object.keys(_mset).sort().reverse();
     var _ym = (S.pMonth && _mset[S.pMonth]) ? S.pMonth : _months[0];
     var _mrows = b.rows.filter(function (r) { return String(r.ymd || "").slice(0, 7) === _ym; })
@@ -9309,7 +9387,11 @@ function viewCatalogue() {
     if (_lsnCache) return _lsnCache;
     var m = {};
     function box(k) { return m[k] || (m[k] = { quotes: 0, seen: {}, groups: [] }); }
-    function add(k, g) { var b = box(k); if (g && !b.seen[g]) { b.seen[g] = 1; b.groups.push(g); } }
+    /* v6.9.218 - "Accessory" and "Net Price Items" are CATALOGUE buckets, not brands. They were
+       being printed on the Pitched line of every lead card as though a brand called Accessory had
+       been pitched, which made the line useless for deciding who to call. Same test the brand
+       board and the follow-up list have always used. */
+    function add(k, g) { if (!g || !isRealBrandName(g)) return; var b = box(k); if (!b.seen[g]) { b.seen[g] = 1; b.groups.push(g); } }
     var gm = clientGroupMap();
     Object.keys(gm).forEach(function (k) {
       var e = gm[k];
@@ -9822,6 +9904,106 @@ function viewCatalogue() {
     });
     return out;
   }
+  /* ================== v6.9.218 - the lead book, filled in one press ==================
+     Seventy-odd men have been quoted and are not in the lead book. A quote does not create a
+     site, and the pitch engine reads nothing but sites - so the quotes are real, the money is
+     real, and the board shows nothing at all for them. Until now the only way in was one tap per
+     man with the stage question standing in the doorway.
+
+     This creates the missing lead for each of them out of what is ALREADY written on his own
+     client record - his phone, his city, his architect, his plumber. The stage is copied if he
+     has one recorded anywhere (a site, a customer row, or the stage question he answered once)
+     and LEFT BLANK if he has not. A blank stage prints "No stage recorded" in red on his card and
+     puts him in the chase list, which is the truth. Guessing a stage would sit him on the wrong
+     pitch playbook, and a wrong playbook is worse than a red line.
+
+     Draft and confirm: the modal is the draft, the button is the confirm. Nothing is deleted,
+     nothing already written is overwritten, and it is idempotent - a man who has a site is
+     skipped, so a second press creates nothing. Admin only, because it writes rows carrying
+     other men's names. */
+  var SWEEP_BATCH218 = 60;
+  function leadSweep() {
+    var out = { ready: [], staged: 0, blank: 0 };
+    quotedNotInBook().forEach(function (e) {
+      var nm = String(e.name || "").trim();
+      if (!nm) return;
+      if (siteForClient(nm)) return;            /* belt and braces - he is already in the book */
+      var c = e.client || clientByName(nm) || {};
+      var stg = String(e.stage || clientStage2(nm) || "").trim();
+      if (stg) out.staged++; else out.blank++;
+      out.ready.push({
+        name: nm, stage: stg, quotes: (e.quotes || []).length,
+        mobile: c.mobile || c.mobile2 || "", city: c.location || "",
+        architect: c.architect || "", plumber: c.plumber || "", builder: c.builder || "",
+        owner: String((e.lastQ && (e.lastQ.owner || e.lastQ.createdBy)) || c.owner || S.user || "")
+      });
+    });
+    /* the man with the most quotes riding on him first - if a batch runs short, it is the
+       heaviest book that gets in */
+    out.ready.sort(function (a, b) { return b.quotes - a.quotes; });
+    return out;
+  }
+  function runLeadSweep() {
+    if (S.role !== "admin") { toast("Only admin can fill the lead book."); return; }
+    var g = leadSweep(), n = 0;
+    g.ready.forEach(function (x) {
+      if (n >= SWEEP_BATCH218) return;
+      n++;
+      save("sites", {
+        id: "", createdBy: S.user, name: x.name, client: x.name,
+        mobile: x.mobile, city: x.city, stage: x.stage, type: "Bungalow",
+        architect: x.architect, plumber: x.plumber, builder: x.builder,
+        owner: x.owner || S.user, status: "Active",
+        notes: "Created by the quoted-clients sweep - he was already quoted, so he belongs in the book."
+      }, true);
+    });
+    try {
+      var nowLS = new Date().toISOString();
+      save("audit", {
+        id: "LS-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+        createdAt: nowLS, actor: S.user || "", action: "lead:sweep",
+        target: String(n),
+        detail: JSON.stringify({ rows: n, waiting: g.ready.length, withStage: g.staged, noStage: g.blank, at: nowLS }), ip: ""
+      }, true).catch(function () { return null; });
+    } catch (e) { }
+    _pitchIdx = null; _cbgCache = null; _clStageCache = null; _lsnCache = null;
+    var left = g.ready.length - n;
+    toast(n + " lead" + (n === 1 ? "" : "s") + " added to the book" +
+      (left > 0 ? " \u2014 " + left + " more, press again." : ".") +
+      (g.blank ? " Press \u201cShow me\u201d again to staple their quotes on." : ""));
+    S.modal = null;
+    render();
+  }
+  function modalLeadSweep() {
+    var g = leadSweep();
+    var tot = g.ready.length;
+    var h = '<h2>Add these quoted men to the lead book</h2>' +
+      '<p class="sub">Every one of them has been quoted by your own team and none of them exists as a ' +
+      'lead, so the pitch board cannot see him at all. This creates the lead from his own client ' +
+      'record. Nothing is deleted and nothing already written is changed.</p>';
+    if (!tot) {
+      h += '<div class="empty">Every quoted client is already in the lead book. Nothing to do.</div>';
+    } else {
+      h += '<div class="empty" style="text-align:left;padding:0 0 8px;font-size:12.5px">' +
+        '<b>' + tot + ' lead' + (tot === 1 ? "" : "s") + '</b> will be created' +
+        (tot > SWEEP_BATCH218 ? ' (' + SWEEP_BATCH218 + ' per press, so press again for the rest)' : "") +
+        '. <b>' + g.staged + '</b> already have a stage recorded and it is copied across. <b>' + g.blank +
+        '</b> have none \u2014 those are left blank on purpose, so they show up in red and get asked, ' +
+        'rather than being put on a guessed-at pitch plan.</div>';
+      h += g.ready.slice(0, 15).map(function (x) {
+        return '<div style="font-size:12px;padding:3px 0;border-bottom:1px solid #f1f5f9">' +
+          '<b>' + esc(x.name) + '</b> &middot; ' + x.quotes + ' quote' + (x.quotes === 1 ? "" : "s") +
+          (x.city ? ' &middot; ' + esc(x.city) : '') +
+          ' &middot; ' + (x.stage ? '<span style="color:#0f766e">' + esc(x.stage) + '</span>'
+                                  : '<span style="color:#b91c1c">no stage yet</span>') + '</div>';
+      }).join("");
+      if (tot > 15) h += '<div class="sub" style="margin-top:6px">&hellip; and ' + (tot - 15) + ' more.</div>';
+    }
+    h += '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      (tot ? '<button class="btn" data-act="ql-sweep-go">Add ' + Math.min(tot, SWEEP_BATCH218) + ' to the book</button>' : "") +
+      '</div>';
+    return h;
+  }
   var JOIN_BATCH216 = 100;   /* one press = at most this many saves, so a phone on 4G survives it */
   function runJoinFix() {
     var g = joinGaps(), n = 0;
@@ -9916,7 +10098,11 @@ function viewCatalogue() {
         ' quoted client' + (miss === 1 ? " is" : "s are") + ' not in the lead book.</b> ' +
         'A quote does not create a site, and the pitch engine only reads sites — so ' +
         (miss === 1 ? "he is" : "they are") + ' invisible to it. Add ' +
-        (miss === 1 ? "him" : "them") + ' below, one tap each.</div></div>';
+        (miss === 1 ? "him" : "them") + ' below, one tap each' +
+        (seesAllClients() ? ' — or all of them in one press.' : '.') + '</div>' +
+        (seesAllClients()
+          ? '<button class="btn sm" data-act="ql-sweep" style="min-height:30px">Add all ' + miss + ' at once</button>'
+          : '') + '</div>';
     }
 
     /* v6.9.216 - the unstapled history, said out loud with one button. Admin only: it writes
@@ -10645,6 +10831,24 @@ function viewCatalogue() {
       '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="tab" data-tab="dups">Open duplicate check</button></div></div>';
   }
 
+  /* v6.9.218 - which one of a duplicated set is the REAL one. Never "the newest" by itself: the
+     row carrying an OUTCOME wins, because an outcome is information somebody typed and a blank is
+     not. A Won quote beats a Draft raised after it. Only when two rows say the same thing does
+     the newer one win. Nothing is deleted either way - the losers are SET ASIDE, which is the
+     same reversible mechanism the owner already uses on a challan, with a reason attached. */
+  var QSTR218 = { "Won": 6, "Lost": 5, "Negotiating": 4, "Sent": 3, "Revised": 2, "Draft": 1 };
+  function qStr218(s) { var k = String(s || ""); return QSTR218.hasOwnProperty(k) ? QSTR218[k] : 1; }
+  var PSTR218 = { "Won": 6, "Lost": 5, "Negotiating": 4, "Quoted": 3, "Pitched": 2, "Not applicable": 1, "Not pitched": 0 };
+  function pStr218(s) { var k = String(s || "Not pitched"); return PSTR218.hasOwnProperty(k) ? PSTR218[k] : 1; }
+  function dupPick218(rows, strength) {
+    var best = rows[0];
+    rows.forEach(function (r) {
+      var a = strength(r.status), b = strength(best.status);
+      if (a > b) { best = r; return; }
+      if (a === b && String(r.createdAt || "") > String(best.createdAt || "")) best = r;
+    });
+    return best;
+  }
   function healthScan() {
     var chs = S.data.challans || [];
     var byNo = {};
@@ -10683,8 +10887,46 @@ function viewCatalogue() {
         losers: rows.filter(function (r) { return r !== win; })
       });
     });
-    var total = dup.length + stuckDraft.length + stuckDisp.length + (unb.count ? 1 : 0) + neg.length + orphanDisc.length + dupDisc.length;
-    return { dup: dup, stuckDraft: stuckDraft, stuckDisp: stuckDisp, unb: unb, neg: neg, orphanDisc: orphanDisc, dupDisc: dupDisc, total: total };
+    /* v6.9.218 - the same quote number written on more than one row, and the same client+brand
+       written on the brand board more than once. Neither of these moves a single rupee, which is
+       exactly why nobody ever caught them: they quietly make the follow-up board count one man
+       twice and show a brand as pitched from two places at once. A row with NO id is left out of
+       this entirely - it has never reached the server, so there is nothing to set aside. */
+    var qgrp = {}, dupQuotes = [];
+    (S.data.quotes || []).forEach(function (q) {
+      if (!q || !q.id) return;
+      var qn = String(q.quoteNo || "").trim();
+      if (!qn) return;
+      (qgrp[qn] = qgrp[qn] || []).push(q);
+    });
+    Object.keys(qgrp).forEach(function (k) {
+      var rows = qgrp[k]; if (rows.length < 2) return;
+      var qwin = dupPick218(rows, qStr218);
+      dupQuotes.push({
+        no: k, client: rows[0].client || "", n: rows.length, win: qwin,
+        losers: rows.filter(function (r) { return r !== qwin; })
+      });
+    });
+    var pgrp = {}, dupPitch = [];
+    (S.data.pitch || []).forEach(function (p) {
+      if (!p || !p.id || !p.brand) return;
+      var pnm = String(p.clientName || "").trim().toLowerCase();
+      if (!pnm) { var ps = siteById(p.siteId); pnm = ps ? String(ps.client || ps.name || "").trim().toLowerCase() : ""; }
+      if (!pnm) return;
+      var pky = pnm + "||" + String(p.brand).trim().toLowerCase();
+      (pgrp[pky] = pgrp[pky] || []).push(p);
+    });
+    Object.keys(pgrp).forEach(function (k) {
+      var rows = pgrp[k]; if (rows.length < 2) return;
+      var pwin = dupPick218(rows, pStr218);
+      dupPitch.push({
+        client: rows[0].clientName || (siteById(rows[0].siteId) || {}).client || "",
+        brand: rows[0].brand, n: rows.length, win: pwin,
+        losers: rows.filter(function (r) { return r !== pwin; })
+      });
+    });
+    var total = dup.length + stuckDraft.length + stuckDisp.length + (unb.count ? 1 : 0) + neg.length + orphanDisc.length + dupDisc.length + dupQuotes.length + dupPitch.length;
+    return { dup: dup, stuckDraft: stuckDraft, stuckDisp: stuckDisp, unb: unb, neg: neg, orphanDisc: orphanDisc, dupDisc: dupDisc, dupQuotes: dupQuotes, dupPitch: dupPitch, total: total };
   }
   function viewHealth() {
     var s = healthScan();
@@ -10747,8 +10989,45 @@ function viewCatalogue() {
           ' <span style="color:#94a3b8">&middot; ' + x.losers.length + ' extra row(s) doing nothing</span></div>';
       }).join('') +
       ((s.dupDisc || []).length
-        ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="disc-tidy">Clear the extra rows</button></div>' +
+        ? (S.role === "admin"
+            ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="disc-tidy">Clear the extra rows</button></div>'
+            : '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Only the owner can tidy these \u2014 tell him and he will press it.</div>') +
           '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Nothing is deleted \u2014 the extra rows are emptied and stay in the sheet.</div>'
+        : ''));
+
+    /* v6.9.218 - the same quote number on two rows. The winner is named on screen BEFORE any
+       button is offered, so he can see which one the app would keep and disagree with it. */
+    h += section('Same quote number on more than one row', (s.dupQuotes || []).length, '#b45309',
+      (s.dupQuotes || []).map(function (x) {
+        var w = x.win || {};
+        return '<div class="meta" style="font-size:13px;padding:4px 0;border-top:1px solid #f1f5f9">' +
+          '<b>' + esc(x.no) + '</b> &middot; ' + esc(x.client || '') + ' \u2014 <b>' + x.n + ' rows</b><br>' +
+          '<span style="color:#0f766e">Keeping: ' + esc(String(w.status || 'Draft')) +
+          (Number(w.net) ? ' &middot; ' + money(w.net) : '') + ' &middot; ' + esc(d10(String(w.createdAt || '').slice(0, 10)) || '') + '</span>' +
+          ' <span style="color:#94a3b8">&middot; ' + x.losers.length + ' extra row(s)</span></div>';
+      }).join('') +
+      ((s.dupQuotes || []).length
+        ? (S.role === "admin"
+            ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="quote-tidy">Set the extra rows aside</button></div>'
+            : '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Only the owner can tidy these \u2014 tell him and he will press it.</div>') +
+          '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Nothing is deleted \u2014 the extra rows move to the set-aside list at the bottom of this screen and can be brought back any time.</div>'
+        : ''));
+
+    /* v6.9.218 - the same brand recorded twice for the same man on the pitch board. */
+    h += section('Same brand recorded twice for one client', (s.dupPitch || []).length, '#b45309',
+      (s.dupPitch || []).slice(0, 30).map(function (x) {
+        var w = x.win || {};
+        return '<div class="meta" style="font-size:13px;padding:4px 0;border-top:1px solid #f1f5f9">' +
+          '<b>' + esc(x.client || '(no name)') + '</b> &middot; ' + esc(x.brand || '') +
+          ' \u2014 <b>' + x.n + ' rows</b> <span style="color:#0f766e">&middot; keeping "' +
+          esc(String(w.status || 'Not pitched')) + '"</span></div>';
+      }).join('') +
+      ((s.dupPitch || []).length > 30 ? '<div class="meta" style="font-size:12px;color:#94a3b8">\u2026and ' + ((s.dupPitch || []).length - 30) + ' more</div>' : '') +
+      ((s.dupPitch || []).length
+        ? (S.role === "admin"
+            ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="pitch-tidy">Set the extra rows aside</button></div>'
+            : '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Only the owner can tidy these \u2014 tell him and he will press it.</div>') +
+          '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">The row kept is the one carrying the real outcome \u2014 a Won or a Lost always beats a blank. Nothing is deleted.</div>'
         : ''));
 
     /* Discounts pointing at a client that doesn't exist (the "in" class of error). */
@@ -15028,7 +15307,7 @@ function viewCatalogue() {
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
     _clDueCache = null; _clStageCache = null; _prfCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null;
-    _pitchIdx = null; _cbgCache = null; _lsnCache = null;
+    _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
     var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
@@ -15929,6 +16208,8 @@ function viewCatalogue() {
     if (act === "ql-f") { S.qlF = t.getAttribute("data-f") || "waiting"; render(); return; }
     if (act === "ql-clear") { S.ql = ""; render(); return; }
     if (act === "ql-add") { S.modal = modalQuotedToLead(t.getAttribute("data-n")); render(); return; }
+    if (act === "ql-sweep") { S.modal = modalLeadSweep(); render(); return; }
+    if (act === "ql-sweep-go") { runLeadSweep(); return; }
     if (act === "ql-fix") { S.modal = modalJoinFix(); render(); return; }
     if (act === "ql-fix-go") { runJoinFix(); return; }
     if (act === "cl-stage-set") {
@@ -16051,6 +16332,45 @@ function viewCatalogue() {
     if (act === "pend-backup") { exportPending(); return; }
     if (act === "disc-edit") { S.q = t.getAttribute("data-n"); render(); return; }
     if (act === "disc-back") { S.q = ""; render(); return; }
+    /* v6.9.218 - set aside the duplicate quote rows. Admin only, and it uses the SAME cancel
+       mechanism as a cancelled challan: an audit row per record, the row lifted out of the live
+       list, and a "Bring it back" button waiting at the bottom of this very screen. */
+    if (act === "quote-tidy") {
+      if (S.role !== "admin") { toast("Only admin can set records aside."); return; }
+      var dqT = (healthScan().dupQuotes || []);
+      if (!dqT.length) { toast("Nothing to tidy."); return; }
+      var qn218 = 0;
+      dqT.forEach(function (g) {
+        g.losers.forEach(function (r) {
+          if (!r || !r.id) return;
+          cxWriteQuiet("quotes", r.id, r, "Duplicate of another record",
+            "Same quote number as " + String(g.no || "") + " - set aside from the health check.");
+          qn218++;
+        });
+      });
+      _cxCache = null; splitCancelled();
+      try { snapSave(); } catch (e218a) { }
+      setTimeout(function () { render(); toast("Set aside " + qn218 + " duplicate quote row(s). Nothing was deleted \u2014 bring any of them back from the list at the bottom."); }, 200);
+      return;
+    }
+    if (act === "pitch-tidy") {
+      if (S.role !== "admin") { toast("Only admin can set records aside."); return; }
+      var dpT = (healthScan().dupPitch || []);
+      if (!dpT.length) { toast("Nothing to tidy."); return; }
+      var pn218 = 0;
+      dpT.forEach(function (g) {
+        g.losers.forEach(function (r) {
+          if (!r || !r.id) return;
+          cxWriteQuiet("pitch", r.id, r, "Duplicate of another record",
+            "Same brand already recorded for " + String(g.client || "") + " - set aside from the health check.");
+          pn218++;
+        });
+      });
+      _cxCache = null; splitCancelled();
+      try { snapSave(); } catch (e218b) { }
+      setTimeout(function () { render(); toast("Set aside " + pn218 + " duplicate brand row(s). Nothing was deleted."); }, 200);
+      return;
+    }
     if (act === "disc-tidy") {
       if (S.role !== "admin") { toast("Only admin can change discounts."); return; }
       var dupsT = (healthScan().dupDisc || []);
