@@ -9,7 +9,7 @@
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.218";
+  var APP_VERSION = "6.9.219";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18886,4 +18886,145 @@ function viewCatalogue() {
       if (bioSaved() && bioAvailable()) setTimeout(bioUnlock, 400);
     }
   })();
+
+  /* ====================== UPDATE WATCH (v6.9.219) ======================
+     Same provision as Saathi and the Visit app, so one button in the
+     Companion console refreshes every phone in the business - the team
+     app included. Nobody is rung to "please reinstall".
+
+     Where the version comes from: the companion Apps Script deployment,
+     whose address lives in the one shared file /ew-config.js. This file
+     loads that address itself, so index.html does not have to change.
+     If the address is not set yet, this whole block simply does nothing.
+
+     Two non-negotiables kept, exactly as everywhere else:
+       - nothing is deleted. Only the browser's own shell cache is thrown
+         away. The session, the journal, the offline queue and every
+         snapshot live in localStorage and are never touched.
+       - draft and confirm. Mid-work the app only offers a button; it
+         never reloads under a man who is typing. It refreshes by itself
+         only on a cold open, when nothing has been typed yet.
+     ------------------------------------------------------------------ */
+  var VKEY = "ew_team_ver_v1";
+  var VNEW = "", VBUSY = false, VGAS = "";
+
+  function verSeen() {
+    try { return JSON.parse(localStorage.getItem(VKEY) || "{}"); } catch (e) { return {}; }
+  }
+  function verPut(o) {
+    try { localStorage.setItem(VKEY, JSON.stringify(o)); } catch (e) { }
+  }
+
+  function verBarEl() {
+    var b = document.getElementById("ewVbar");
+    if (b) return b;
+    b = document.createElement("div");
+    b.id = "ewVbar";
+    b.setAttribute("role", "status");
+    b.setAttribute("aria-live", "polite");
+    b.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:9999;display:none;" +
+      "gap:10px;align-items:center;padding:10px 12px;background:#2F6E5F;color:#fff;" +
+      "font-size:13px;line-height:1.4;box-shadow:0 2px 10px rgba(0,0,0,.25)";
+    document.body.appendChild(b);
+    return b;
+  }
+
+  /* Throw away the shell and come back new. Business data is untouched. */
+  function verWipe(v) {
+    if (VBUSY) return;
+    VBUSY = true;
+    verPut({ have: (verSeen().have || ""), want: String(v || ""), at: (new Date()).getTime() });
+    var b = verBarEl();
+    b.innerHTML = "<div style='flex:1'>Naya version aa raha hai...</div>";
+    b.style.display = "flex";
+
+    var done = false;
+    var go = function () {
+      if (done) return; done = true;
+      location.replace(location.pathname + "?u=" + (new Date()).getTime());
+    };
+    var jobs = [];
+    try {
+      if (window.caches && caches.keys)
+        jobs.push(caches.keys().then(function (ks) {
+          return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+        }));
+    } catch (e) { }
+    try {
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations)
+        jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+          return Promise.all(rs.map(function (r) { return r.unregister(); }));
+        }));
+    } catch (e) { }
+    if (jobs.length) Promise.all(jobs).then(go, go); else go();
+    setTimeout(go, 2500);                 /* never hang on a stuck cache */
+  }
+  window.ewVerWipe = function () { verWipe(VNEW); };
+  window.ewVerHide = function () { var b = document.getElementById("ewVbar"); if (b) b.style.display = "none"; };
+
+  function verBar(v, note, force) {
+    VNEW = String(v || "");
+    var b = verBarEl();
+    var esc2 = function (x) {
+      return String(x == null ? "" : x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    };
+    b.innerHTML =
+      "<div style='flex:1;min-width:0'><b>Naya version aa gaya hai.</b> " +
+      esc2(note || "App ko ek baar refresh kar lein.") + "</div>" +
+      "<button onclick='ewVerWipe()' style='background:#fff;color:#2F6E5F;border:0;border-radius:8px;" +
+      "padding:8px 12px;font-weight:700;font-size:13px;min-height:34px'>Update karein</button>" +
+      (force ? "" :
+        "<button onclick='ewVerHide()' style='background:transparent;color:#DCEDE7;border:1px solid #6FA294;" +
+        "border-radius:8px;padding:8px 10px;font-size:13px;min-height:34px'>Baad mein</button>");
+    b.style.display = "flex";
+    if (force) setTimeout(function () { verWipe(VNEW); }, 6000);
+  }
+
+  /* cold = the app has only just been opened, so a reload costs nobody
+     anything and it is done silently. Otherwise we ask. */
+  function verCheck(r, cold) {
+    if (!r || !r.ver) return false;
+    var v = String(r.ver), st = verSeen();
+    if (st.want && st.want === v) {                     /* the refresh worked */
+      verPut({ have: v });
+      try { toast("App update ho gaya."); } catch (e) { }
+      return false;
+    }
+    if (!st.have) { verPut({ have: v }); return false; }  /* first run on this phone */
+    if (st.have === v) return false;                      /* already current */
+    /* a reload that did not take must never become a loop */
+    if (st.at && ((new Date()).getTime() - st.at) < 60000) { verBar(v, r.verNote, r.verForce); return false; }
+    if (cold) { verWipe(v); return true; }
+    verBar(v, r.verNote, r.verForce);
+    return false;
+  }
+
+  function verPoll(cold) {
+    if (!VGAS) return Promise.resolve(false);
+    return fetch(VGAS, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "ver", app: "CRM", build: APP_VERSION })
+    }).then(function (x) { return x.json(); })
+      .then(function (r) { return verCheck(r, !!cold); })
+      .catch(function () { return false; });
+  }
+  window.ewVerCheckNow = function () { return verPoll(false); };
+
+  (function verBoot() {
+    if (window.EW_GAS) { VGAS = window.EW_GAS; verPoll(true); return; }
+    var sc = document.createElement("script");
+    sc.src = "../ew-config.js";
+    sc.onload = function () {
+      VGAS = window.EW_GAS || "";
+      if (!VGAS) return;
+      verPoll(true);
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) verPoll(false);
+      });
+    };
+    sc.onerror = function () { };          /* no config file yet - stay quiet */
+    try { document.head.appendChild(sc); } catch (e) { }
+  })();
+
 })();
