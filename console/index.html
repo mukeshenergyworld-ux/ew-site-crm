@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F1E1C">
+<title>EW Console</title>
+<meta name="description" content="Energy World owner console - broadcast and people.">
+<link rel="icon" href="../icons/ew-192.png">
+<link rel="apple-touch-icon" href="../icons/ew-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="EW Console">
+<script src="../ew-config.js"></script>
+<style>
+:root{
+  --ink:#0F1E1C; --paper:#EFF1EC; --card:#FFFFFF; --line:#CBD1C7; --brass:#C08A3E;
+  --brass-dim:#8E6529; --green:#2F6E5F; --red:#9E4A32; --muted:#5C6B66; --r:8px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);overscroll-behavior-y:none;
+  font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+#app{max-width:560px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
+header{position:sticky;top:0;z-index:20;background:var(--ink);color:#fff;
+  padding:calc(11px + env(safe-area-inset-top)) 16px 11px;display:flex;align-items:center;gap:10px}
+header h1{font-size:16px;font-weight:600;margin:0}
+header .s{font-size:11px;opacity:.7;margin-top:2px}
+main{flex:1;padding:14px 14px 90px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px;margin-bottom:12px}
+label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0 0 6px}
+input,select,textarea{width:100%;font:inherit;font-size:16px;padding:10px 12px;
+  border:1px solid var(--line);border-radius:6px;background:#fff;min-height:44px;
+  -webkit-appearance:none;appearance:none;color:var(--ink)}
+textarea{min-height:100px;resize:vertical;line-height:1.45}
+.fld{margin-bottom:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button{font:inherit;font-size:14px;cursor:pointer;border-radius:6px;border:1px solid var(--line);
+  background:#fff;color:var(--ink);padding:0 14px;min-height:44px}
+button.pri{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600}
+button.brass{background:var(--brass);color:#2A1C05;border-color:var(--brass-dim);font-weight:600}
+button.warn{color:var(--red);border-color:#D8B3A6}
+button.wide{width:100%}
+button:active{transform:translateY(1px)}
+button[disabled]{opacity:.45}
+h2{font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+  color:var(--muted);margin:20px 0 9px}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:0;background:var(--ink);
+  position:sticky;top:0;z-index:19}
+.tabs button{background:none;border:0;color:#8FA29C;min-height:44px;border-radius:0;
+  font-size:13px;font-weight:600;letter-spacing:.4px}
+.tabs button.on{color:var(--brass);box-shadow:inset 0 -2px 0 var(--brass)}
+.row{display:flex;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+.row:last-child{border-bottom:0}
+.row .t{font-size:14px;font-weight:600;line-height:1.3}
+.row .s{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.45}
+.tag{display:inline-block;font-size:10px;letter-spacing:.7px;text-transform:uppercase;
+  padding:2px 7px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.tag.live{color:var(--green);border-color:#A9CBC1;background:#E4F0EB}
+.tag.draft{color:var(--brass-dim);border-color:#DCC98C;background:#F8F1DE}
+.tag.ended{color:var(--muted);background:#EDEFE9}
+.empty{text-align:center;padding:26px 14px;color:var(--muted);font-size:13px;line-height:1.6}
+.load{text-align:center;padding:70px 20px;color:var(--muted);font-size:13px}
+.note{font-size:11.5px;color:var(--muted);line-height:1.55}
+.prev{border:1px dashed var(--brass);border-radius:var(--r);padding:12px;background:#FCFBF6;
+  margin-top:4px}
+.prev h3{margin:6px 0 0;font-size:17px}
+.prev p{margin:6px 0 0;font-size:13px;line-height:1.5;white-space:pre-wrap}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:60;
+  background:var(--ink);color:#fff;font-size:13.5px;padding:11px 18px;border-radius:99px;
+  max-width:min(500px,92vw);text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.22)}
+.link{font-size:11px;font-family:ui-monospace,monospace;word-break:break-all;color:var(--green)}
+.warnbox{background:#F8F1DE;border:1px solid #DCC98C;border-radius:var(--r);padding:11px 13px;
+  font-size:12.5px;line-height:1.5;margin-bottom:12px}
+.okbox{background:#E4F0EB;border:1px solid #A9CBC1;border-radius:var(--r);padding:11px 13px;
+  font-size:13px;line-height:1.55;margin:10px 0}
+.pin{font-family:ui-monospace,monospace;font-size:19px;letter-spacing:3px;font-weight:700;
+  color:var(--ink)}
+.lnkb{background:none;border:none;color:var(--muted);font-size:12px;padding:8px 10px;
+  min-height:34px;cursor:pointer;text-decoration:underline;font-family:inherit}
+.tag.lock{color:var(--red);border-color:#D8B3A6;background:#F7E7E1}
+.tag.new{color:var(--brass-dim);border-color:#DCC98C;background:#F8F1DE}
+
+/* ---------------- the door ---------------- */
+#gate{position:fixed;inset:0;z-index:60;background:var(--ink);color:#E9EBE5;
+  display:none;overflow-y:auto;padding:calc(20px + env(safe-area-inset-top)) 20px 40px}
+#gate.on{display:block}
+.gwrap{max-width:340px;margin:0 auto}
+.gmark{width:54px;height:54px;border:2px solid var(--brass);border-radius:50%;
+  display:grid;place-items:center;font-size:20px;font-weight:700;
+  color:var(--brass);letter-spacing:1px;margin:6vh auto 18px}
+#gate h2{font-size:22px;font-weight:600;letter-spacing:.5px;margin:0 0 8px;text-align:center}
+#gate .lede{font-size:13px;line-height:1.65;color:#9FB0AA;text-align:center;margin:0 0 22px}
+#gate label{display:block;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;
+  color:#9FB0AA;margin:0 0 6px}
+#gate input{width:100%;font-size:16px;font-family:ui-monospace,monospace;letter-spacing:2px;
+  min-height:50px;padding:12px 14px;border:1px solid #35514B;border-radius:var(--r);
+  background:#162926;color:#E9EBE5;margin:0 0 16px}
+#gate input:focus{outline:none;border-color:var(--brass)}
+#gate button.go{width:100%;min-height:50px;font-size:15px;letter-spacing:1px;
+  text-transform:uppercase;font-weight:600;border:none;border-radius:var(--r);
+  background:var(--brass);color:#231705;cursor:pointer}
+#gate button.go[disabled]{opacity:.55}
+#gate .lnk{display:block;width:100%;background:none;border:none;color:#9FB0AA;
+  font-size:12.5px;margin-top:16px;min-height:38px;cursor:pointer;text-decoration:underline;
+  font-family:inherit}
+.gerr{background:#3A1F19;border:1px solid var(--red);color:#F0C7BB;font-size:12.5px;
+  line-height:1.6;padding:11px 13px;border-radius:var(--r);margin:0 0 16px}
+.gfoot{font-size:11px;color:#6F827C;text-align:center;margin-top:26px;line-height:1.7}
+#vbar{position:fixed;left:0;right:0;top:0;z-index:70;background:#2F6E5F;color:#F2F6F3;
+  display:none;gap:9px;align-items:center;
+  padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+  box-shadow:0 2px 10px rgba(0,0,0,.28)}
+#vbar.on{display:flex}
+#vbar .t{flex:1;min-width:0;font-size:12.5px;line-height:1.5}
+#vbar button{min-height:38px;padding:0 12px;font-size:13px;border-radius:4px;
+  border:1px solid #F2F6F3;background:#F2F6F3;color:#123028;cursor:pointer;flex:none;
+  font-family:inherit}
+#vbar button.x{background:none;color:#CFE0DA;border-color:#4E8B7C;padding:0 10px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div style="min-width:0"><h1>Energy World console</h1>
+      <div class="s" id="hSub">Broadcast &middot; log</div></div>
+    <div style="margin-left:auto;display:flex;gap:4px">
+      <button class="lnkb" style="color:#9FB0AA" onclick="renderPinChange(false)">PIN</button>
+      <button class="lnkb" style="color:#9FB0AA" onclick="signOut()">Sign out</button>
+    </div>
+  </header>
+  <div class="tabs" id="tabs"></div>
+  <main id="main"><div class="load">Khul raha hai...</div></main>
+</div>
+
+<div id="gate" role="dialog" aria-modal="true" aria-label="Sign in"></div>
+<div id="vbar" role="status" aria-live="polite"></div>
+
+<script>
+/* ------------------------------------------------------------------
+   Owner console.
+   Draft and confirm: writing a broadcast saves it as a draft.
+   Nothing reaches a single partner until you press Send.
+   Nothing is deleted here either - broadcasts end, links revoke.
+------------------------------------------------------------------ */
+var GAS = String((window.EW_GAS || '')).trim();
+
+/* ---- where the server lives -------------------------------------
+   Normally ew-config.js next to the app carries the one address.
+   If it is not there yet (a freshly downloaded file, a phone opening
+   the app before the config was uploaded), the app asks for it once
+   and remembers it on this phone. Nothing secret is stored: it is a
+   public web-app URL. The PIN still guards everything behind it. */
+var GKEY = 'ew_gas_url';
+function gasSaved(){ try { return String(localStorage.getItem(GKEY) || '').trim(); } catch(e){ return ''; } }
+function gasForget(){ try { localStorage.removeItem(GKEY); } catch(e){} location.replace(location.pathname); }
+function gasSet(){
+  var el = document.getElementById('gasUrl');
+  var n  = document.getElementById('gasNote');
+  var v  = String((el && el.value) || '').trim();
+  if (!n) return;
+  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(v)){
+    n.textContent = 'Yeh Apps Script ka link nahi lag raha. Link https://script.google.com/... se shuru aur /exec par khatam hona chahiye.';
+    return;
+  }
+  n.textContent = 'Server check kar rahe hain...';
+  fetch(v, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+             body: JSON.stringify({ action:'ping' }) })
+    .then(function(x){ return x.json(); })
+    .then(function(r){
+      if (!r || !r.ok) throw 0;
+      try { localStorage.setItem(GKEY, v); } catch(e){}
+      n.textContent = 'Server mil gaya. App khul raha hai...';
+      setTimeout(function(){ location.replace(location.pathname); }, 400);
+    })
+    .catch(function(){
+      n.textContent = 'Is link par server nahi mila. Apps Script deployment "Anyone" par set hai kya? Link dobara copy karke daalein.';
+    });
+}
+function gasAsk(){
+  var m = document.getElementById('main');
+  if (!m) return;
+  m.innerHTML =
+    '<div style="max-width:460px;margin:22px auto;padding:16px;border:1px solid rgba(128,128,128,.35);' +
+    'border-radius:14px;line-height:1.55">' +
+    '<div style="font-weight:700;font-size:16px;margin-bottom:6px">Server ka pata daalein</div>' +
+    '<div style="font-size:13px;opacity:.85;margin-bottom:12px">' +
+    'App abhi server se juda nahi hai. Apps Script deployment ka <b>/exec</b> link yahan ek baar paste ' +
+    'kar dein. Yeh sirf is phone par yaad rahega. Koi PIN ya data yahan nahi jaata.</div>' +
+    '<input id="gasUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" ' +
+    'placeholder="https://script.google.com/macros/s/.../exec" ' +
+    'style="width:100%;box-sizing:border-box;font-size:16px;padding:11px 12px;border-radius:10px;' +
+    'border:1px solid rgba(128,128,128,.5);background:transparent;color:inherit">' +
+    '<button onclick="gasSet()" style="margin-top:10px;width:100%;min-height:44px;font-size:15px;' +
+    'font-weight:700;border:0;border-radius:10px;background:#2F6E5F;color:#fff">Jodein</button>' +
+    '<div id="gasNote" style="font-size:12.5px;opacity:.85;margin-top:10px;min-height:18px"></div>' +
+    '<div style="font-size:12px;opacity:.7;margin-top:10px">' +
+    'Link kahan se milta hai: Apps Script &rarr; Deploy &rarr; Manage deployments &rarr; Web app URL.</div>' +
+    '</div>';
+}
+if (!GAS) GAS = gasSaved();
+var D = { casts:[], links:[], waiting:[], people:[], never:[], kinds:[], types:[], url:'' };
+var TAB = 'cast', EDIT = null;
+
+/* ---- who is signed in, kept on this machine only ----
+   Owner signs in the same way everyone else does: his mobile number and
+   his PIN. There is no console link any more. If this laptop is lost, the
+   PIN is still needed, and the PIN is not written down anywhere - not
+   here, not on the server. Only its lock is stored, never its key. ---- */
+var STORE = 'ew_console_auth_v1';
+var A = { mobile:'', pin:'' };
+try { var _a = JSON.parse(localStorage.getItem(STORE) || '{}');
+      A.mobile = _a.mobile || ''; A.pin = _a.pin || ''; } catch(e){}
+function authSave(){ try { localStorage.setItem(STORE, JSON.stringify(A)); } catch(e){} }
+function authClear(keepMobile){
+  var m = A.mobile; A.pin = ''; A.mobile = keepMobile ? m : '';
+  try { localStorage.removeItem(STORE); } catch(e){}
+}
+
+/* text/plain keeps this a simple request, so no CORS preflight - the same
+   trick the main CRM already uses to reach Apps Script from GitHub Pages. */
+function call(action, payload){
+  var body = { action: action, mobile: A.mobile, pin: A.pin,
+               build: BUILD, app: APPKEY };
+  if (payload) for (var k in payload) if (payload.hasOwnProperty(k)) body[k] = payload[k];
+  return fetch(GAS, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body)
+  }).then(function(r){ return r.json(); });
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function val(id){ var e=document.getElementById(id); return e?e.value.trim():''; }
+function toast(m){ var t=document.createElement('div'); t.className='toast'; t.textContent=m;
+  document.body.appendChild(t);
+  setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .4s';},2400);
+  setTimeout(function(){t.remove();},2900); }
+
+/* ============================ BROADCAST ============================ */
+function viewCast(){
+  var e = EDIT || { id:'', kind:(D.kinds[0]||'Update'), title:'', body:'', img:'', brand:'',
+                    link:'', till:'', audience:'ALL', cities:'ALL', pinned:false };
+  var h = '<div class="card">' +
+    '<div class="fld"><label>Kis tarah ki khabar</label><select id="kind">' +
+      D.kinds.map(function(k){ return '<option' + (e.kind===k?' selected':'') + '>' + esc(k) + '</option>'; }).join('') +
+    '</select></div>' +
+    '<div class="fld"><label>Heading</label>' +
+      '<input id="title" maxlength="120" placeholder="TECE concealed cistern - naya model" value="' + esc(e.title) + '"></div>' +
+    '<div class="fld"><label>Baat</label>' +
+      '<textarea id="body" maxlength="1200" placeholder="Saathiyon ke liye kya hai, kab tak hai, kya karna hai.">' + esc(e.body) + '</textarea></div>' +
+    '<div class="two">' +
+      '<div class="fld"><label>Brand</label><input id="brand" value="' + esc(e.brand) + '" placeholder="TECE"></div>' +
+      '<div class="fld"><label>Valid till</label><input id="till" type="date" value="' + esc(e.till) + '"></div>' +
+    '</div>' +
+    '<div class="fld"><label>Photo ka link</label>' +
+      '<input id="img" placeholder="https://... (Drive link ho to Anyone-with-link)" value="' + esc(e.img) + '"></div>' +
+    '<div class="two">' +
+      '<div class="fld"><label>Kis ko dikhe</label><select id="audience">' +
+        '<option value="ALL"' + (e.audience==='ALL'?' selected':'') + '>Sab partners</option>' +
+        D.types.map(function(t){ return '<option value="' + esc(t) + '"' +
+          (e.audience===t?' selected':'') + '>Sirf ' + esc(t) + '</option>'; }).join('') +
+      '</select></div>' +
+      '<div class="fld"><label>Shehar</label><input id="cities" value="' + esc(e.cities) + '" placeholder="ALL ya Panipat, Karnal"></div>' +
+    '</div>' +
+    '<div class="fld"><label><input type="checkbox" id="pinned" style="width:auto;min-height:0;margin-right:8px"' +
+      (e.pinned?' checked':'') + '>Upar chipka kar rakhein</label></div>' +
+    '<div class="two">' +
+      '<button class="pri" onclick="saveCast(0)">Draft save karein</button>' +
+      '<button onclick="clearEdit()">Naya</button>' +
+    '</div>' +
+    '<div class="note" style="margin-top:9px">Save karne se kisi ko kuch nahi jaata. ' +
+      'Bhejne ke liye neeche list mein <b>Bhejein</b> dabana padega.</div>' +
+  '</div>';
+
+  h += '<h2>Pehle ki khabrein</h2>';
+  h += D.casts.length ? D.casts.map(castRow).join('')
+     : '<div class="empty">Abhi tak koi broadcast nahi.</div>';
+  return h;
+}
+
+function castRow(c){
+  var tag = c.status==='Live' ? 'live' : c.status==='Ended' ? 'ended' : 'draft';
+  var lbl = c.status==='Live' ? 'Live' : c.status==='Ended' ? 'Band' : 'Draft';
+  return '<div class="card" style="padding:12px 14px">' +
+    '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">' +
+      '<span class="tag ' + tag + '">' + lbl + '</span>' +
+      '<span class="note">' + esc(c.kind) + ' &middot; ' + esc(c.on) + '</span>' +
+      '<span class="note" style="margin-left:auto">' + c.seen + ' ne dekha &middot; ' +
+        c.interested + ' ne haan ki</span>' +
+    '</div>' +
+    '<div class="t">' + esc(c.title) + '</div>' +
+    (c.body ? '<div class="s">' + esc(c.body).slice(0,140) + (c.body.length>140?'...':'') + '</div>' : '') +
+    '<div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap">' +
+      (c.status!=='Live'
+        ? '<button class="brass" onclick="sendCast(\'' + esc(c.id) + '\')">Bhejein</button>' : '') +
+      '<button onclick="editCast(\'' + esc(c.id) + '\')">Badlein</button>' +
+      (c.status==='Live'
+        ? '<button class="warn" onclick="endCast(\'' + esc(c.id) + '\')">Band karein</button>' : '') +
+    '</div></div>';
+}
+
+function collect(){
+  return { id: EDIT ? EDIT.id : '', kind: val('kind'), title: val('title'), body: val('body'),
+    img: val('img'), brand: val('brand'), till: val('till'),
+    audience: val('audience'), cities: val('cities') || 'ALL',
+    pinned: document.getElementById('pinned').checked };
+}
+function saveCast(){
+  var p = collect();
+  if (!p.title){ toast('Heading likhni zaroori hai.'); return; }
+  call('bcastSave', p).then(function(r){
+    if (r && r.ok){ toast('Draft save ho gaya. Ab bhej sakte hain.'); EDIT=null; reload(); }
+    else toast((r && r.err) || 'Save nahi hua.');
+  }).catch(function(){ toast('Network slow hai.'); });
+}
+function editCast(id){
+  EDIT = D.casts.filter(function(c){ return c.id===id; })[0] || null;
+  render(); window.scrollTo(0,0);
+}
+function clearEdit(){ EDIT = null; render(); window.scrollTo(0,0); }
+
+function sendCast(id){
+  var c = D.casts.filter(function(x){ return x.id===id; })[0];
+  if (!c) return;
+  var box = document.createElement('div');
+  box.className = 'card';
+  box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);' +
+    'z-index:70;max-width:min(460px,92vw);box-shadow:0 12px 40px rgba(0,0,0,.3)';
+  box.innerHTML = '<div class="warnbox">Yeh sab partners ke app par turant dikhne lagega. ' +
+    'Ek baar padh lein.</div>' +
+    '<div class="prev"><span class="tag">' + esc(c.kind) + '</span>' +
+    '<h3>' + esc(c.title) + '</h3>' +
+    (c.body ? '<p>' + esc(c.body) + '</p>' : '') + '</div>' +
+    '<div class="fld" style="margin-top:12px"><label>' +
+      '<input type="checkbox" id="tgAlso" checked style="width:auto;min-height:0;margin-right:8px">' +
+      'Telegram par bhi bhejein</label></div>' +
+    '<div class="two"><button class="brass" id="goSend">Haan, bhej dein</button>' +
+    '<button id="noSend">Abhi nahi</button></div>';
+  document.body.appendChild(box);
+  document.getElementById('noSend').onclick = function(){ box.remove(); };
+  document.getElementById('goSend').onclick = function(){
+    var tg = document.getElementById('tgAlso').checked;
+    box.remove();
+    call('bcastSend', { id:id, telegram:tg }).then(function(r){
+      if (r && r.ok) { toast('Live ho gaya. ' + r.reach + ' partners ko dikhega.'); reload(); }
+      else toast((r && r.err) || 'Nahi bheja ja saka.');
+    }).catch(function(){ toast('Network slow hai.'); });
+  };
+}
+
+function endCast(id){
+  call('bcastEnd', { id:id }).then(function(r){
+    if (r && r.ok){ toast('Band kar diya. Record wahin hai, mita nahi.'); reload(); }
+    else toast((r && r.err) || 'Nahi hua.');
+  }).catch(function(){ toast('Network slow hai.'); });
+}
+
+/* ============================== PEOPLE ==============================
+   This tab replaced the old Links tab. There is no link to guard any
+   more - a man signs in with his own number and his own PIN, so this
+   screen is about people, not URLs.
+
+   Nothing here deletes anybody. Blocking shuts the door and leaves the
+   row, the history and the points exactly where they were.
+------------------------------------------------------------------- */
+function kindLabel(k){
+  return k === 'PARTNER' ? 'Partner' : k === 'EXEC' ? 'Executive' :
+         k === 'OWNER' ? 'Owner' : String(k || '');
+}
+
+/* The newest build any phone has reported. Anyone below it is behind -
+   which usually just means he has not opened the app since the upload. */
+function newestBuild(){
+  var top = '';
+  (D.people || []).forEach(function(x){
+    if (x.build && x.build > top) top = x.build;
+  });
+  return top;
+}
+
+function personRow(p){
+  var tags = '<span class="tag">' + esc(kindLabel(p.kind)) + '</span>';
+  if (p.locked) tags += ' <span class="tag lock">Locked</span>';
+  if (!p.pinSet) tags += ' <span class="tag new">Pehla PIN</span>';
+  if (p.status && p.status !== 'Active') tags += ' <span class="tag lock">' + esc(p.status) + '</span>';
+  var newest = newestBuild();
+  if (p.build && newest && p.build !== newest) tags += ' <span class="tag lock">Purani build</span>';
+
+  var sub = esc(p.refId) + ' &middot; ' + esc(p.mobile || 'number nahi') + ' &middot; ' +
+    (p.logins ? p.logins + ' baar aaye &middot; ' + esc(p.last || '') : 'kabhi sign in nahi kiya') +
+    (p.build ? '<br>build ' + esc(p.build) : '');
+
+  var blocked = String(p.status || 'Active') !== 'Active';
+  var q = "'" + esc(p.kind) + "','" + esc(p.refId) + "','" +
+          esc(String(p.name || '').replace(/'/g, '')) + "'";
+
+  return '<div class="row"><div style="flex:1;min-width:0">' +
+    '<div class="t">' + esc(p.name || p.refId) + ' ' + tags + '</div>' +
+    '<div class="s">' + sub + '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap">' +
+      '<button onclick="resetPin(' + q + ')">PIN reset</button>' +
+      (blocked
+        ? '<button onclick="setBlock(' + q + ',0)">Wapas chalu</button>'
+        : '<button class="warn" onclick="setBlock(' + q + ',1)">Band karein</button>') +
+    '</div></div></div>';
+}
+
+function viewPeople(){
+  var q = (PQ || '').toLowerCase();
+  var list = D.people.filter(function(p){
+    if (PKIND && p.kind !== PKIND) return false;
+    if (!q) return true;
+    return (String(p.name || '') + ' ' + String(p.refId || '') + ' ' +
+            String(p.mobile || '')).toLowerCase().indexOf(q) >= 0;
+  });
+
+  var locked = D.people.filter(function(p){ return p.locked; }).length;
+
+  var h = '';
+  if (PMSG) h += '<div class="okbox">' + PMSG + '</div>';
+
+  h += '<div class="warnbox">Sign in ka tareeka: <b>username = mobile number</b>, ' +
+       '<b>pehla PIN = usi number ke aakhri 4 digit</b>. Partner ka number Associates ' +
+       'sheet mein badlein - naya number usi waqt chalne lagta hai aur uska PIN, ' +
+       'uske points aur uska poora hisaab uske saath chalte hain.</div>';
+
+  h += '<div class="card"><div class="fld"><label>Dhoondhein</label>' +
+    '<input id="pq" placeholder="Naam, ID ya number" value="' + esc(PQ) + '" ' +
+    'oninput="PQ=this.value;paintPeople(1)"></div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      ['', 'PARTNER', 'EXEC', 'OWNER'].map(function(k){
+        return '<button class="' + (PKIND === k ? 'pri' : '') + '" style="min-height:38px" ' +
+          'onclick="PKIND=\'' + k + '\';paintPeople()">' +
+          (k ? esc(kindLabel(k)) : 'Sab') + '</button>'; }).join('') +
+    '</div></div>';
+
+  h += '<h2>Sign in kar sakte hain (' + list.length + ')' +
+       (locked ? ' &middot; ' + locked + ' locked' : '') + '</h2>';
+  h += list.length
+     ? '<div class="card">' + list.slice(0, 120).map(personRow).join('') + '</div>' +
+       (list.length > 120 ? '<div class="note">Pehle 120 dikhaye. Naam likh kar dhoondhein.</div>' : '')
+     : '<div class="empty">Koi nahi mila.</div>';
+
+  /* the ones who have never come in - the real work list */
+  if (D.never.length){
+    h += '<h2>Kabhi sign in nahi kiya (' + D.never.length + ')</h2>';
+    h += '<div class="card">' + D.never.slice(0, 60).map(function(w){
+      return '<div class="row"><div style="flex:1;min-width:0">' +
+        '<div class="t">' + esc(w.name) + '</div>' +
+        '<div class="s">' + esc(w.refId) + (w.type ? ' &middot; ' + esc(w.type) : '') +
+          (w.city ? ' &middot; ' + esc(w.city) : '') + ' &middot; ' +
+          esc(w.mobile || 'number nahi') + '</div></div>' +
+        (w.mobile
+          ? '<button onclick="waInvite(\'' + esc(w.mobile) + '\',\'' +
+            esc(String(w.name || '').replace(/\'/g, '')) + '\')">Bulayein</button>'
+          : '<span class="note">number chahiye</span>') +
+        '</div>'; }).join('') + '</div>';
+    h += '<div class="note">Inka PIN pehle se taiyaar hai - unke number ke aakhri 4 digit. ' +
+         'Sirf app ka pata aur yeh baat bhejni hai.</div>';
+  }
+
+  /* adding an executive - partners are never added from here */
+  h += '<h2>Naya executive jodein</h2>';
+  h += '<div class="card">' +
+    '<div class="two"><div class="fld"><label>Naam</label>' +
+      '<input id="uName" placeholder="Poora naam"></div>' +
+    '<div class="fld"><label>Mobile</label>' +
+      '<input id="uMob" type="tel" inputmode="numeric" maxlength="10" placeholder="10 digit"></div></div>' +
+    '<div class="fld"><label>Kis tarah ka</label><select id="uKind">' +
+      '<option value="EXEC">Executive (Visit app)</option>' +
+      '<option value="OWNER">Owner (yeh console)</option></select></div>' +
+    '<button class="pri wide" onclick="addUser()">Sign in banayein</button>' +
+    '<div class="note" style="margin-top:9px">Partner yahan se nahi jud sakta. ' +
+      'Partner Associates sheet se aata hai aur wahin se aayega - taaki ek hi jagah ' +
+      'sach rahe.</div>' +
+    '<div id="uOut"></div></div>';
+
+  return h;
+}
+
+function paintPeople(keepFocus){
+  if (TAB !== 'people') return;
+  document.getElementById('main').innerHTML = viewPeople();
+  if (keepFocus){
+    var e = document.getElementById('pq');
+    if (e){ e.focus(); try { e.setSelectionRange(e.value.length, e.value.length); } catch(x){} }
+  }
+}
+
+function resetPin(kind, refId, name){
+  call('resetPin', { kind: kind, refId: refId, name: name }).then(function(r){
+    if (r && r.ok){
+      PMSG = esc(name || refId) + ' ka PIN reset ho gaya.<br>Naya PIN: ' +
+             '<span class="pin">' + esc(r.pin) + '</span><br>' +
+             '<span class="note">Yehi unke number ke aakhri 4 digit hain. ' +
+             'Agli baar sign in karke apna naya PIN chun lenge.</span>';
+      refreshPeople();
+    } else toast((r && r.err) || 'Reset nahi hua.');
+  }).catch(function(){ toast('Network slow hai.'); });
+}
+
+function setBlock(kind, refId, name, block){
+  call('userBlock', { kind: kind, refId: refId, block: !!block }).then(function(r){
+    if (r && r.ok){
+      PMSG = esc(name || refId) + (block
+        ? ' ka sign in band kar diya. Record, points aur hisaab sab waise ke waise hain.'
+        : ' ka sign in wapas chalu kar diya.');
+      refreshPeople();
+    } else toast((r && r.err) || 'Nahi hua.');
+  }).catch(function(){ toast('Network slow hai.'); });
+}
+
+function addUser(){
+  var p = { kind: val('uKind'), name: val('uName'), mobile: val('uMob') };
+  if (!p.name){ toast('Naam daalein.'); return; }
+  if (String(p.mobile).replace(/\D/g, '').length !== 10){ toast('Poora 10 digit mobile daalein.'); return; }
+  call('userAdd', p).then(function(r){
+    if (r && r.ok){
+      PMSG = esc(r.msg || 'Ban gaya.') + '<br><span class="note">ID ' + esc(r.refId) + '</span>';
+      refreshPeople();
+    } else toast((r && r.err) || 'Nahi bana.');
+  }).catch(function(){ toast('Network slow hai.'); });
+}
+
+function refreshPeople(){
+  return call('people').then(function(r){
+    if (r && r.ok){ D.people = r.people || []; D.never = r.never || []; }
+    paintPeople(); window.scrollTo(0, 0);
+    subline();
+  }).catch(function(){ paintPeople(); });
+}
+
+function waInvite(phone, name){
+  var msg = encodeURIComponent(
+    'Namaste ' + name + ' ji,\n\nEnergy World ka apna app - EW Saathi. ' +
+    'Ismein aapke points, naye product aur scheme sab dikhte hain.\n\n' +
+    (SAATHI_URL()) +
+    '\n\nUsername: aapka yahi mobile number\nPehli baar ka PIN: aapke number ke ' +
+    'aakhri 4 digit\n\nAndar jaate hi PIN badal lein. App ko phone ki home screen ' +
+    'par laga lein.\n\n- Energy World');
+  var num = String(phone || '').replace(/\D/g, '');
+  if (num.length === 10) num = '91' + num;
+  window.open('https://wa.me/' + num + '?text=' + msg, '_blank');
+}
+
+/* the Saathi app sits beside this one in the same site */
+function SAATHI_URL(){
+  try {
+    return location.origin + location.pathname.replace(/console\/?[^\/]*$/, 'saathi/');
+  } catch(e){ return 'https://mukeshenergyworld-ux.github.io/ew-site-crm/saathi/'; }
+}
+
+/* ============================ PUSH AN UPDATE ==========================
+   You upload a new version to GitHub, then you press one button here.
+   Every phone finds out the next time it is opened and refreshes itself.
+   No one has to be telephoned.
+
+   Draft and confirm, like everything else on this screen: the first
+   press only asks, the second press actually sends.
+--------------------------------------------------------------------- */
+var VMSG = '', VAPP = 'ALL', VFORCE = false, VARM = false;
+
+var VAPPS = [['ALL','Sab apps'],['SAATHI','Saathi'],['VISIT','Visit'],
+             ['CONSOLE','Console'],['CRM','Team CRM']];
+
+function verLabel(k){
+  for (var i=0;i<VAPPS.length;i++) if (VAPPS[i][0]===k) return VAPPS[i][1];
+  return k;
+}
+
+function viewUpd(){
+  var V = D.vers || {};
+  var h = '';
+  if (VMSG) h += '<div class="okbox">' + VMSG + '</div>';
+
+  h += '<div class="warnbox">Pehle nayi file GitHub par chadhayein. ' +
+       '<b>Uske baad</b> yeh button dabayein. Har phone agli baar app kholte hi ' +
+       'purana version phenk kar naya le lega - kisi ko phone karne ki zaroorat nahi.</div>';
+
+  h += '<h2>Abhi kaunsa version chal raha hai</h2><div class="card">';
+  VAPPS.forEach(function(a){
+    var v = V[a[0]] || {};
+    h += '<div class="row"><div style="flex:1;min-width:0">' +
+         '<div class="t">' + esc(a[1]) + '</div>' +
+         '<div class="s">' + esc(v.note || 'koi note nahi') +
+         (v.force ? ' &middot; <b>zaroori</b>' : '') + '</div></div>' +
+         '<div class="v mono">' + esc(v.ver || '-') + '</div></div>';
+  });
+  h += '</div>';
+  if (D.verOn) h += '<div class="note">Pichhli baar bheja: ' + esc(D.verOn) +
+                    (D.verBy ? ' &middot; ' + esc(D.verBy) : '') + '</div>';
+
+  h += '<h2>Naya update bhejein</h2><div class="card">';
+  h += '<div class="fld"><label>Kis app ko</label><select id="vApp" onchange="VAPP=this.value;VARM=false;paintUpd()">' +
+       VAPPS.map(function(a){
+         return '<option value="' + a[0] + '"' + (VAPP===a[0]?' selected':'') + '>' +
+                esc(a[1]) + '</option>'; }).join('') + '</select></div>';
+  h += '<div class="fld"><label>Ek line - kya badla (optional)</label>' +
+       '<input id="vNote" maxlength="120" placeholder="Jaise: hisaab tez hua"></div>';
+  h += '<label style="display:flex;gap:9px;align-items:center;font-size:13px;margin:2px 0 12px">' +
+       '<input type="checkbox" id="vForce" ' + (VFORCE?'checked':'') +
+       ' onchange="VFORCE=this.checked" style="width:20px;height:20px">' +
+       'Zaroori update - purana version chalne hi na de</label>';
+
+  h += VARM
+     ? '<div class="warnbox"><b>Pakka?</b> ' + esc(verLabel(VAPP)) +
+       ' ka har phone agli baar khulte hi refresh hoga.</div>' +
+       '<button class="pri wide" onclick="verSend()">Haan, update bhej dein</button>' +
+       '<button class="wide" style="margin-top:8px" onclick="VARM=false;paintUpd()">Rehne dein</button>'
+     : '<button class="pri wide" onclick="verArm()">Update bhejein</button>';
+  h += '<div class="note" style="margin-top:9px">Yeh sirf app ka dhaancha badalta hai. ' +
+       'Kisi ka data, PIN, points ya hisaab isse nahi chhoota.<br>' +
+       'Yeh console khud <b>App version ' + esc(BUILD) + '</b> par chal raha hai. ' +
+       '<button class="lnkb" style="font-size:11px;padding:2px 4px" onclick="verPoll(false)">Update check karein</button>' +
+       '</div></div>';
+
+  /* who is still behind - the reason this screen exists */
+  var live = (D.vers && D.vers.ALL && D.vers.ALL.ver) || '';
+  var builds = {}, known = 0;
+  (D.people || []).forEach(function(x){
+    if (!x.build) return;
+    known++; builds[x.build] = (builds[x.build] || 0) + 1;
+  });
+  var keys = Object.keys(builds).sort();
+  h += '<h2>Kis phone par kaunsi build (' + known + ')</h2>';
+  h += keys.length
+     ? '<div class="card">' + keys.map(function(k){
+         return '<div class="row"><div style="flex:1;min-width:0"><div class="t mono">' +
+           esc(k) + '</div></div><div class="v">' + builds[k] + ' phone</div></div>';
+       }).join('') + '</div>' +
+       '<div class="note">Sabse upar wali purani build hai. Jo log usi par atke hain ' +
+       'unhone abhi tak app khola hi nahi - update tabhi lagta hai jab app khulta hai.</div>'
+     : '<div class="empty">Abhi kisi phone ne apni build nahi batayi. ' +
+       'Ek baar sab sign in kar lein, phir yahan dikhne lagegi.</div>';
+
+  return h;
+}
+
+function paintUpd(){ if (TAB === 'upd') document.getElementById('main').innerHTML = viewUpd(); }
+
+function verArm(){
+  VMSG = '';
+  VAPP = val2('vApp') || VAPP;
+  VNOTE_HOLD = val('vNote');
+  VARM = true; paintUpd(); window.scrollTo(0, document.body.scrollHeight);
+}
+var VNOTE_HOLD = '';
+
+function verSend(){
+  VARM = false;
+  call('verPush', { app: VAPP, note: VNOTE_HOLD, force: VFORCE ? 'true' : 'false' })
+    .then(function(r){
+      if (!r || !r.ok){ VMSG = ''; toast((r && r.err) || 'Nahi bheja gaya.'); paintUpd(); return; }
+      VMSG = 'Update bhej diya - ' + esc(verLabel(r.app)) + ' &middot; version ' + esc(r.ver) +
+             '. Har phone agli baar khulte hi naya le lega.';
+      VNOTE_HOLD = '';
+      reload().then(paintUpd);
+      toast('Update bhej diya.');
+    })
+    .catch(function(){ toast('Network nahi mil raha.'); });
+}
+
+function val2(id){ var e = document.getElementById(id); return e ? e.value : ''; }
+
+/* =============================== SHELL =============================== */
+var PQ = '', PKIND = '', PMSG = '';
+
+function render(){
+  document.getElementById('tabs').innerHTML =
+    '<button class="' + (TAB==='cast'?'on':'') + '" onclick="go(\'cast\')">Broadcast</button>' +
+    '<button class="' + (TAB==='people'?'on':'') + '" onclick="go(\'people\')">Log</button>' +
+    '<button class="' + (TAB==='upd'?'on':'') + '" onclick="go(\'upd\')">Update</button>';
+  document.getElementById('main').innerHTML =
+    TAB==='cast' ? viewCast() : TAB==='upd' ? viewUpd() : viewPeople();
+}
+function go(t){ TAB=t; EDIT=null; PMSG=''; VMSG=''; render(); window.scrollTo(0,0); }
+
+function subline(){
+  var locked = D.people.filter(function(p){ return p.locked; }).length;
+  document.getElementById('hSub').textContent =
+    D.casts.length + ' broadcast · ' + D.people.length + ' log · ' +
+    D.never.length + ' baaki' + (locked ? ' · ' + locked + ' locked' : '');
+}
+
+function reload(){
+  return call('console').then(function(r){
+    if (r && r.ok){
+      D = r;
+      D.people = r.people || []; D.never = r.never || [];
+      subline(); render();
+    } else {
+      document.getElementById('main').innerHTML =
+        '<div class="empty">' + esc((r && r.err) || 'Nahi khula.') + '</div>';
+    }
+  });
+}
+
+/* ================================ SIGN IN ============================== */
+var GERR = '', PERR = '', PFORCE = false;
+
+function gate(show){ document.getElementById('gate').classList.toggle('on', !!show); }
+
+function renderGate(){
+  var g = document.getElementById('gate');
+  g.innerHTML = '<div class="gwrap">' +
+    '<div class="gmark">EW</div>' +
+    '<h2>Energy World console</h2>' +
+    '<p class="lede">Apna mobile number aur PIN daalein.<br>' +
+    'Yeh screen sirf owner ke liye hai.</p>' +
+    (GERR ? '<div class="gerr" role="alert">' + esc(GERR) + '</div>' : '') +
+    '<label for="gm">Mobile number</label>' +
+    '<input id="gm" type="tel" inputmode="numeric" autocomplete="username" ' +
+      'maxlength="10" placeholder="10 digit" value="' + esc(A.mobile) + '">' +
+    '<label for="gp">PIN</label>' +
+    '<input id="gp" type="password" inputmode="numeric" autocomplete="current-password" ' +
+      'maxlength="6" placeholder="4 se 6 digit">' +
+    '<button class="go" id="gbtn" onclick="doLogin()">Andar aayein</button>' +
+    '<div class="gfoot">Owner ka PIN yahan se reset nahi hota. ' +
+    'Agar bhool jaayein to Apps Script kholkar <b>issueOwnerLogin()</b> chala dein - ' +
+    'PIN wapas aapke number ke aakhri 4 digit ho jayega.<br>' +
+    'App version ' + BUILD + ' &middot; ' +
+    '<button class="lnkb" style="font-size:11px" onclick="verPoll(false)">Update check karein</button></div></div>';
+  gate(true);
+  var mi = document.getElementById('gm'), pi = document.getElementById('gp');
+  pi.addEventListener('keydown', function(e){ if (e.key === 'Enter') doLogin(); });
+  mi.addEventListener('keydown', function(e){ if (e.key === 'Enter') pi.focus(); });
+  try { (A.mobile ? pi : mi).focus(); } catch(e){}
+}
+
+function doLogin(){
+  var m = String(document.getElementById('gm').value || '').replace(/\D/g, '').slice(-10);
+  var p = String(document.getElementById('gp').value || '').replace(/\D/g, '');
+  if (m.length !== 10){ GERR = 'Poora 10 digit mobile number daalein.'; renderGate(); return; }
+  if (!p){ GERR = 'PIN daalein.'; renderGate(); return; }
+  var b = document.getElementById('gbtn');
+  b.disabled = true; b.textContent = 'Dekh rahe hain...';
+  A.mobile = m; A.pin = p;
+  call('login').then(function(r){
+    if (!r || !r.ok){
+      GERR = (r && r.err) || 'Sign in nahi ho paya.';
+      authClear(true); renderGate(); return;
+    }
+    if (r.kind !== 'OWNER'){
+      GERR = 'Yeh console sirf owner ke liye hai.';
+      authClear(true); renderGate(); return;
+    }
+    authSave(); GERR = ''; gate(false); landed(r);
+  }).catch(function(){
+    GERR = 'Network nahi mil raha. Dobara koshish karein.';
+    authClear(true); renderGate();
+  });
+}
+
+function signOut(){
+  authClear(true);
+  D = { casts:[], links:[], waiting:[], people:[], never:[], kinds:[], types:[], url:'' };
+  document.getElementById('main').innerHTML = '<div class="load">...</div>';
+  GERR = ''; renderGate();
+}
+
+function renderPinChange(forced){
+  PFORCE = !!forced;
+  var g = document.getElementById('gate');
+  g.innerHTML = '<div class="gwrap">' +
+    '<div class="gmark">EW</div>' +
+    '<h2>PIN badlein</h2>' +
+    '<p class="lede">' + (PFORCE
+      ? 'Pehli baar aaye hain. Apna naya PIN chun lein.'
+      : 'Naya PIN chun lein. 4 se 6 digit.') + '</p>' +
+    (PERR ? '<div class="gerr" role="alert">' + esc(PERR) + '</div>' : '') +
+    '<label for="p1">Naya PIN</label>' +
+    '<input id="p1" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">' +
+    '<label for="p2">Dobara likhein</label>' +
+    '<input id="p2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">' +
+    '<button class="go" id="pbtn" onclick="doPinChange()">PIN save karein</button>' +
+    (PFORCE ? '' : '<button class="lnk" onclick="gate(false)">Rehne dein</button>') +
+    '<div class="gfoot">PIN kahin likha nahi jaata. Sheet mein sirf uska taala rehta ' +
+    'hai, chaabi nahi.</div></div>';
+  gate(true);
+  var a = document.getElementById('p1'), b = document.getElementById('p2');
+  b.addEventListener('keydown', function(e){ if (e.key === 'Enter') doPinChange(); });
+  try { a.focus(); } catch(e){}
+}
+
+function doPinChange(){
+  var a = String(document.getElementById('p1').value || '').replace(/\D/g, '');
+  var b = String(document.getElementById('p2').value || '').replace(/\D/g, '');
+  if (!/^\d{4,6}$/.test(a)){ PERR = 'PIN 4 se 6 digit ka hona chahiye.'; renderPinChange(PFORCE); return; }
+  if (/^(\d)\1+$/.test(a)){ PERR = 'Ek hi digit baar baar mat rakhein.'; renderPinChange(PFORCE); return; }
+  if (a !== b){ PERR = 'Dono PIN alag hain. Dobara dekh lein.'; renderPinChange(PFORCE); return; }
+  var btn = document.getElementById('pbtn');
+  btn.disabled = true; btn.textContent = 'Save ho raha hai...';
+  call('changePin', { newPin: a }).then(function(r){
+    if (!r || !r.ok){ PERR = (r && r.err) || 'PIN save nahi hua.'; renderPinChange(PFORCE); return; }
+    A.pin = a; authSave(); PERR = ''; PFORCE = false;
+    gate(false); render(); toast('PIN badal gaya.');
+  }).catch(function(){ PERR = 'Network nahi mil raha.'; renderPinChange(PFORCE); });
+}
+
+
+/* ======================= UPDATE WATCH =================================
+   The problem this solves: you upload a new version and every phone is
+   still running the old one until somebody rings each man and tells him
+   to reinstall. Nobody is rung any more.
+
+   The server holds one version string. This phone remembers the last
+   version it actually ran. When the two disagree the app throws away its
+   own shell cache and comes back new - by itself if it is simply being
+   opened, and with a button if you are in the middle of something.
+
+   Nothing you have typed or queued is touched. The sign-in and the
+   offline queue live in localStorage and this never goes near them.
+--------------------------------------------------------------------- */
+var BUILD  = '2026.08.05-1';        /* which build of this file is running */
+var APPKEY = 'CONSOLE';
+var VKEY   = 'ew_console_ver_v1';
+var VNEW   = '', VBUSY = false;
+
+function verSeen(){ try { return JSON.parse(localStorage.getItem(VKEY) || '{}'); }
+                    catch(e){ return {}; } }
+function verPut(o){ try { localStorage.setItem(VKEY, JSON.stringify(o)); } catch(e){} }
+
+/* Wipe the shell and come back. The cache holds only the frame - the
+   HTML, the manifest, the icons. No business data lives there. */
+function verWipe(v){
+  if (VBUSY) return;
+  VBUSY = true;
+  verPut({ have: (verSeen().have || ''), want: String(v || ''), at: (new Date()).getTime() });
+  var b = document.getElementById('vbar');
+  if (b){ b.innerHTML = '<div class="t">Naya version aa raha hai...</div>'; b.classList.add('on'); }
+
+  var done = false;
+  var go = function(){
+    if (done) return; done = true;
+    location.replace(location.pathname + '?u=' + (new Date()).getTime());
+  };
+  var jobs = [];
+  try {
+    if (window.caches && caches.keys)
+      jobs.push(caches.keys().then(function(ks){
+        return Promise.all(ks.map(function(k){ return caches.delete(k); }));
+      }));
+  } catch(e){}
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations)
+      jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){
+        return Promise.all(rs.map(function(r){ return r.unregister(); }));
+      }));
+  } catch(e){}
+  if (jobs.length) Promise.all(jobs).then(go, go); else go();
+  setTimeout(go, 2500);                    /* never hang on a stuck cache */
+}
+
+function verBar(v, note, force){
+  VNEW = String(v || '');
+  var b = document.getElementById('vbar');
+  if (!b) return;
+  b.innerHTML = '<div class="t"><b>Naya version aa gaya hai.</b> ' +
+      esc(note || 'App ko ek baar refresh kar lein.') + '</div>' +
+      '<button onclick="verWipe(VNEW)">Update karein</button>' +
+      (force ? '' : '<button class="x" onclick="verHide()">Baad mein</button>');
+  b.classList.add('on');
+  if (force) setTimeout(function(){ verWipe(VNEW); }, 6000);
+}
+function verHide(){ var b = document.getElementById('vbar'); if (b) b.classList.remove('on'); }
+
+/* cold = the app has only just been opened, so a reload costs nobody
+   anything and we do it silently. Otherwise we ask. */
+function verCheck(r, cold){
+  if (!r || !r.ver) return false;
+  var v = String(r.ver), st = verSeen();
+  if (st.want && st.want === v){                     /* the refresh worked */
+    verPut({ have: v });
+  if (typeof toast === 'function') toast('App update ho gaya.');
+    return false;
+  }
+  if (!st.have){ verPut({ have: v }); return false; }   /* first run on this phone */
+  if (st.have === v) return false;                       /* already current */
+  /* a reload that did not take must never become a loop */
+  if (st.at && ((new Date()).getTime() - st.at) < 60000){ verBar(v, r.verNote, r.verForce); return false; }
+  if (cold){ verWipe(v); return true; }
+  verBar(v, r.verNote, r.verForce);
+  return false;
+}
+
+/* asked without a PIN, so a phone sitting on the sign-in screen with a
+   stale app can still fix itself */
+function verPoll(cold){
+  return call('ver', { app: APPKEY })
+    .then(function(r){ return verCheck(r, !!cold); })
+    .catch(function(){ return false; });
+}
+document.addEventListener('visibilitychange', function(){
+  if (!document.hidden) verPoll(false);
+});
+/* ================================ BOOT ================================ */
+function landed(r){
+  if (verCheck(r, true)) return;     /* new version - come back new */
+  D = r;
+  D.people = r.people || []; D.never = r.never || [];
+  subline(); render();
+  if (!r.pinSet) renderPinChange(true);
+}
+
+(function boot(){
+  if (!GAS){ gasAsk(); return; }
+  if (!A.mobile || !A.pin){ renderGate(); verPoll(true); return; }
+  call('login').then(function(r){
+    if (!r || !r.ok || r.kind !== 'OWNER'){
+      GERR = (r && r.err) || ''; authClear(true); renderGate(); return;
+    }
+    landed(r);
+  }).catch(function(){
+    document.getElementById('main').innerHTML =
+      '<div class="empty">Network nahi mil raha.<br><br>' +
+      '<button class="pri" onclick="location.reload()">Phir se</button></div>';
+  });
+})();
+</script>
+</body>
+</html>
