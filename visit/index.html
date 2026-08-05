@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12263F">
+<title>EW Visit</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="../icons/ewv-192.png">
+<link rel="apple-touch-icon" href="../icons/ewv-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="EW Visit">
+<meta name="description" content="Energy World executive visit log">
+<script src="../ew-config.js"></script>
+<style>
+:root{
+  --ink:#12263F; --ink-2:#1D3A5C; --paper:#F4F6F8; --card:#FFFFFF; --line:#D7DEE6;
+  --blue:#1F6FEB; --green:#177245; --amber:#B4690E; --red:#B3261E; --muted:#5E6C7A;
+  --r:10px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);overscroll-behavior-y:none;
+  font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+#app{max-width:520px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
+
+header{position:sticky;top:0;z-index:20;background:var(--ink);color:#fff;
+  padding:calc(11px + env(safe-area-inset-top)) 16px 11px;display:flex;
+  align-items:center;gap:11px}
+header h1{font-size:16px;font-weight:600;margin:0;letter-spacing:.2px}
+header .who{font-size:11.5px;opacity:.72;margin-top:2px}
+header .mark{width:32px;height:32px;border-radius:8px;background:#1D3A5C;display:grid;
+  place-items:center;font-size:12px;font-weight:700;letter-spacing:.5px;flex:none}
+header .q{margin-left:auto;font-size:11px;background:var(--amber);color:#fff;
+  padding:4px 9px;border-radius:99px;display:none}
+header .q.on{display:block}
+
+main{flex:1;padding:14px 14px 30px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px;margin-bottom:12px}
+label{display:block;font-size:12px;font-weight:600;color:var(--muted);
+  margin:0 0 6px;letter-spacing:.2px}
+label .req{color:var(--red)}
+input,select,textarea{width:100%;font:inherit;font-size:16px;padding:11px 12px;
+  border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);
+  min-height:46px;-webkit-appearance:none;appearance:none}
+textarea{min-height:78px;resize:vertical;line-height:1.45}
+input:focus,select,textarea:focus{outline:2px solid var(--blue);outline-offset:-1px}
+select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
+  linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 21px, calc(100% - 13px) 21px;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+.fld{margin-bottom:14px}
+.fld:last-child{margin-bottom:0}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chips button{font:inherit;font-size:13px;padding:0 13px;min-height:40px;border-radius:99px;
+  border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+.chips button.on{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600}
+.chips button:active{transform:translateY(1px)}
+
+button.act{width:100%;font:inherit;font-size:16px;font-weight:600;min-height:54px;
+  border-radius:var(--r);border:0;background:var(--green);color:#fff;cursor:pointer}
+button.act:active{transform:translateY(1px)}
+button.act[disabled]{opacity:.5}
+button.sec{background:#fff;color:var(--ink);border:1px solid var(--line);
+  font-weight:500;min-height:44px;font-size:14px}
+
+h2{font-size:13px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
+  color:var(--muted);margin:22px 0 9px}
+.v{display:flex;gap:11px;padding:11px 0;border-bottom:1px solid var(--line)}
+.v:last-child{border-bottom:0}
+.v .t{font-size:14px;font-weight:600;line-height:1.3}
+.v .s{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.4}
+.v .when{font-size:11px;color:var(--muted);white-space:nowrap;flex:none;text-align:right}
+.empty{text-align:center;padding:26px 14px;color:var(--muted);font-size:13px;line-height:1.6}
+.load{text-align:center;padding:70px 20px;color:var(--muted);font-size:13px}
+.note{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:7px}
+.gps{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:8px}
+.gps b{color:var(--green)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:60;
+  background:var(--ink);color:#fff;font-size:13.5px;padding:12px 18px;border-radius:99px;
+  max-width:min(460px,92vw);text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.22)}
+.err{background:#FDECEA;border:1px solid #F2B8B5;color:#8C1D18;font-size:13px;
+  padding:10px 12px;border-radius:8px;margin-bottom:12px}
+/* ---------------- sign in ---------------- */
+#gate{position:fixed;inset:0;z-index:60;background:var(--ink);color:#FFF;display:none;
+  overflow-y:auto;padding:calc(20px + env(safe-area-inset-top)) 20px 40px}
+#gate.on{display:block}
+.gwrap{max-width:340px;margin:0 auto}
+.gmark{width:54px;height:54px;border:2px solid #FFF;border-radius:50%;display:grid;
+  place-items:center;font-size:20px;font-weight:700;letter-spacing:1px;margin:6vh auto 18px}
+#gate h2{font-size:22px;font-weight:600;margin:0 0 8px;text-align:center;letter-spacing:.3px}
+#gate .lede{font-size:13px;line-height:1.65;color:#B6C6D6;text-align:center;margin:0 0 22px}
+#gate label{display:block;font-size:11px;letter-spacing:1.1px;text-transform:uppercase;
+  color:#B6C6D6;margin:0 0 6px}
+#gate input{width:100%;font-size:16px;letter-spacing:2px;min-height:50px;padding:12px 14px;
+  border:1px solid #3B5A7D;border-radius:var(--r);background:#1A3253;color:#FFF;margin:0 0 16px}
+#gate input:focus{outline:none;border-color:#7FB0F5}
+#gate button.go{width:100%;min-height:50px;font-size:15px;font-weight:600;border:none;
+  border-radius:var(--r);background:var(--blue);color:#FFF;cursor:pointer}
+#gate button.go[disabled]{opacity:.55}
+#gate .lnk{display:block;width:100%;background:none;border:none;color:#B6C6D6;font-size:12.5px;
+  margin-top:16px;min-height:38px;cursor:pointer;text-decoration:underline}
+.gerr{background:#4A1F1C;border:1px solid var(--red);color:#F6C9C4;font-size:12.5px;
+  line-height:1.6;padding:11px 13px;border-radius:var(--r);margin:0 0 16px}
+.gfoot{font-size:11px;color:#7E93A8;text-align:center;margin-top:26px;line-height:1.7}
+
+/* ---------------- save as an app ---------------- */
+#inst{position:fixed;left:0;right:0;bottom:0;z-index:55;background:var(--ink-2);color:#FFF;
+  border-top:1px solid #3B5A7D;display:none;gap:9px;align-items:center;
+  padding:12px 14px calc(12px + env(safe-area-inset-bottom))}
+#inst.on{display:flex}
+#inst .t{flex:1;min-width:0;font-size:12.5px;line-height:1.55}
+#inst button{min-height:38px;padding:0 13px;font-size:13px;border-radius:var(--r);
+  border:1px solid var(--blue);background:var(--blue);color:#FFF;cursor:pointer;flex:none}
+#inst button.x{background:none;color:#B6C6D6;border-color:#3B5A7D;padding:0 11px}
+.lnkb{background:none;border:none;color:var(--muted);font-size:12px;padding:8px 10px;
+  min-height:34px;cursor:pointer;text-decoration:underline;font-family:inherit}
+#vbar{position:fixed;left:0;right:0;top:0;z-index:70;background:#2F6E5F;color:#F2F6F3;
+  display:none;gap:9px;align-items:center;
+  padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+  box-shadow:0 2px 10px rgba(0,0,0,.28)}
+#vbar.on{display:flex}
+#vbar .t{flex:1;min-width:0;font-size:12.5px;line-height:1.5}
+#vbar button{min-height:38px;padding:0 12px;font-size:13px;border-radius:4px;
+  border:1px solid #F2F6F3;background:#F2F6F3;color:#123028;cursor:pointer;flex:none;
+  font-family:inherit}
+#vbar button.x{background:none;color:#CFE0DA;border-color:#4E8B7C;padding:0 10px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="mark">EW</div>
+    <div style="min-width:0">
+      <h1>Daily visit</h1>
+      <div class="who" id="hWho">...</div>
+    </div>
+    <div class="q" id="hQ"></div>
+  </header>
+  <main id="main"><div class="load">Khul raha hai...</div></main>
+</div>
+
+<div id="gate" role="dialog" aria-modal="true" aria-label="Sign in"></div>
+<div id="inst" role="region" aria-label="Save as app"></div>
+<div id="vbar" role="status" aria-live="polite"></div>
+
+<script>
+/* ------------------------------------------------------------------
+   EW Visit - executive app.
+   It records a visit. That is all it does, on purpose.
+   No money, no challan, no editing, no deleting.
+   Works with no signal: the visit queues on the phone and goes up
+   by itself the moment the network is back.
+------------------------------------------------------------------ */
+var GAS   = String((window.EW_GAS || '')).trim();
+
+/* ---- where the server lives -------------------------------------
+   Normally ew-config.js next to the app carries the one address.
+   If it is not there yet (a freshly downloaded file, a phone opening
+   the app before the config was uploaded), the app asks for it once
+   and remembers it on this phone. Nothing secret is stored: it is a
+   public web-app URL. The PIN still guards everything behind it. */
+var GKEY = 'ew_gas_url';
+function gasSaved(){ try { return String(localStorage.getItem(GKEY) || '').trim(); } catch(e){ return ''; } }
+function gasForget(){ try { localStorage.removeItem(GKEY); } catch(e){} location.replace(location.pathname); }
+function gasSet(){
+  var el = document.getElementById('gasUrl');
+  var n  = document.getElementById('gasNote');
+  var v  = String((el && el.value) || '').trim();
+  if (!n) return;
+  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(v)){
+    n.textContent = 'Yeh Apps Script ka link nahi lag raha. Link https://script.google.com/... se shuru aur /exec par khatam hona chahiye.';
+    return;
+  }
+  n.textContent = 'Server check kar rahe hain...';
+  fetch(v, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+             body: JSON.stringify({ action:'ping' }) })
+    .then(function(x){ return x.json(); })
+    .then(function(r){
+      if (!r || !r.ok) throw 0;
+      try { localStorage.setItem(GKEY, v); } catch(e){}
+      n.textContent = 'Server mil gaya. App khul raha hai...';
+      setTimeout(function(){ location.replace(location.pathname); }, 400);
+    })
+    .catch(function(){
+      n.textContent = 'Is link par server nahi mila. Apps Script deployment "Anyone" par set hai kya? Link dobara copy karke daalein.';
+    });
+}
+function gasAsk(){
+  var m = document.getElementById('main');
+  if (!m) return;
+  m.innerHTML =
+    '<div style="max-width:460px;margin:22px auto;padding:16px;border:1px solid rgba(128,128,128,.35);' +
+    'border-radius:14px;line-height:1.55">' +
+    '<div style="font-weight:700;font-size:16px;margin-bottom:6px">Server ka pata daalein</div>' +
+    '<div style="font-size:13px;opacity:.85;margin-bottom:12px">' +
+    'App abhi server se juda nahi hai. Apps Script deployment ka <b>/exec</b> link yahan ek baar paste ' +
+    'kar dein. Yeh sirf is phone par yaad rahega. Koi PIN ya data yahan nahi jaata.</div>' +
+    '<input id="gasUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" ' +
+    'placeholder="https://script.google.com/macros/s/.../exec" ' +
+    'style="width:100%;box-sizing:border-box;font-size:16px;padding:11px 12px;border-radius:10px;' +
+    'border:1px solid rgba(128,128,128,.5);background:transparent;color:inherit">' +
+    '<button onclick="gasSet()" style="margin-top:10px;width:100%;min-height:44px;font-size:15px;' +
+    'font-weight:700;border:0;border-radius:10px;background:#2F6E5F;color:#fff">Jodein</button>' +
+    '<div id="gasNote" style="font-size:12.5px;opacity:.85;margin-top:10px;min-height:18px"></div>' +
+    '<div style="font-size:12px;opacity:.7;margin-top:10px">' +
+    'Link kahan se milta hai: Apps Script &rarr; Deploy &rarr; Manage deployments &rarr; Web app URL.</div>' +
+    '</div>';
+}
+if (!GAS) GAS = gasSaved();
+var QKEY  = 'ew_visit_queue_v1';
+var ME = { name:'', id:'' };
+var VISITS = [], PARTIES = [];
+var F = { purpose:'', outcome:'', stage:'', partyType:'Client' };
+var GPS = null, BUSY = false;
+var CFG = { requireGps:false, photo:false, forcePin:false };
+
+var PURPOSE  = ['Naya pitch','Follow-up','Payment','Delivery check','Complaint','Courtesy'];
+var OUTCOME  = ['Interested','Quote maanga','Order mila','Baad mein','Abhi nahi','Sirf mila'];
+var STAGES   = ['','Excavation','Slab / sunken','Concealed rough-in','Wall & tiling',
+                'Fixture fitting','Systems & handover'];
+var PTYPES   = ['Client','Plumber','Architect','Builder','Dealer','Site'];
+
+/* ---- who is signed in, kept on this phone only ---- */
+var STORE = 'ew_visit_auth_v1';
+var A = { mobile:'', pin:'' };
+try { var _a = JSON.parse(localStorage.getItem(STORE) || '{}');
+      A.mobile = _a.mobile || ''; A.pin = _a.pin || ''; } catch(e){}
+function authSave(){ try { localStorage.setItem(STORE, JSON.stringify(A)); } catch(e){} }
+function authClear(keepMobile){
+  A.pin = ''; if (!keepMobile) A.mobile = '';
+  try { localStorage.removeItem(STORE); } catch(e){}
+}
+
+/* ---- transport ----
+   text/plain keeps this a "simple" request, so it goes straight out
+   with no preflight - the same trick the main CRM already uses. ---- */
+function call(action, payload){
+  var body = { action: action, mobile: A.mobile, pin: A.pin,
+               build: BUILD, app: APPKEY };
+  if (payload) for (var k in payload) if (payload.hasOwnProperty(k)) body[k] = payload[k];
+  return fetch(GAS, {
+    method: 'POST',
+    headers: { 'Content-Type':'text/plain;charset=utf-8' },
+    body: JSON.stringify(body)
+  }).then(function(r){ return r.json(); });
+}
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function toast(m){
+  var t=document.createElement('div'); t.className='toast'; t.textContent=m;
+  document.body.appendChild(t);
+  setTimeout(function(){ t.style.opacity='0'; t.style.transition='opacity .4s'; },2300);
+  setTimeout(function(){ t.remove(); },2800);
+}
+function val(id){ var e=document.getElementById(id); return e ? e.value.trim() : ''; }
+function today(){ var d=new Date(), p=function(n){return (n<10?'0':'')+n;};
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+
+/* ---------------- offline queue ---------------- */
+function queue(){ try { return JSON.parse(localStorage.getItem(QKEY) || '[]'); } catch(e){ return []; } }
+function setQueue(q){ try { localStorage.setItem(QKEY, JSON.stringify(q)); } catch(e){} paintQ(); }
+function paintQ(){
+  var n = queue().length, el = document.getElementById('hQ');
+  el.className = n ? 'q on' : 'q';
+  el.textContent = n ? (n + ' bheja nahi') : '';
+}
+function flushQueue(){
+  var q = queue();
+  if (!q.length) return Promise.resolve(0);
+  var item = q[0];
+  return call('visit', item).then(function(r){
+    if (r && r.ok){ q.shift(); setQueue(q); return flushQueue(); }
+    return 0;
+  }).catch(function(){ return 0; });
+}
+
+/* ---------------- gps, best effort ---------------- */
+function askGps(){
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(function(p){
+    GPS = { lat:+p.coords.latitude.toFixed(6), lng:+p.coords.longitude.toFixed(6) };
+    var el = document.getElementById('gps');
+    if (el) el.innerHTML = '<b>&#10003;</b> Location mil gayi';
+  }, function(){
+    var el = document.getElementById('gps');
+    if (el) el.textContent = 'Location nahi mili - koi baat nahi, visit phir bhi save hogi.';
+  }, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 });
+}
+
+/* ---------------- form ---------------- */
+function chips(name, list, cur){
+  return '<div class="chips">' + list.filter(function(x){ return x; }).map(function(x){
+    return '<button type="button" class="' + (cur===x?'on':'') +
+      '" onclick="pick(\'' + name + '\',\'' + esc(x).replace(/'/g,'') + '\')">' + esc(x) + '</button>';
+  }).join('') + '</div>';
+}
+function pick(k, v){ F[k] = (F[k]===v ? '' : v); render(true); }
+
+function render(keep){
+  var vals = keep ? {
+    party: val('party'), site: val('site'), next: val('next'),
+    nextDate: val('nextDate'), notes: val('notes')
+  } : { party:'', site:'', next:'', nextDate:'', notes:'' };
+
+  var h = '';
+  h += '<div class="card">' +
+    '<div class="fld"><label>Kiske paas gaye <span class="req">*</span></label>' +
+      '<input id="party" list="plist" autocomplete="off" placeholder="Naam likhein ya chunein" value="' + esc(vals.party) + '">' +
+      '<datalist id="plist">' + PARTIES.slice(0,600).map(function(p){
+        return '<option value="' + esc(p.n) + '">' + esc(p.t) + (p.c?' · '+esc(p.c):'') + '</option>'; }).join('') +
+      '</datalist></div>' +
+
+    '<div class="fld"><label>Kya hain</label>' + chips('partyType', PTYPES, F.partyType) + '</div>' +
+
+    '<div class="fld"><label>Site / jagah</label>' +
+      '<input id="site" autocomplete="off" placeholder="Colony, sector ya site ka naam" value="' + esc(vals.site) + '"></div>' +
+
+    '<div class="fld"><label>Kis liye gaye</label>' + chips('purpose', PURPOSE, F.purpose) + '</div>' +
+
+    '<div class="fld"><label>Site kis stage par hai</label>' +
+      '<select id="stageSel" onchange="F.stage=this.value">' +
+      STAGES.map(function(s){ return '<option value="' + esc(s) + '"' + (F.stage===s?' selected':'') + '>' +
+        (s || 'Pata nahi / lagu nahi') + '</option>'; }).join('') + '</select></div>' +
+
+    '<div class="fld"><label>Kya hua</label>' + chips('outcome', OUTCOME, F.outcome) + '</div>' +
+
+    '<div class="two">' +
+      '<div class="fld"><label>Agla kaam</label>' +
+        '<input id="next" placeholder="Quote bhejna hai" value="' + esc(vals.next) + '"></div>' +
+      '<div class="fld"><label>Kab tak</label>' +
+        '<input id="nextDate" type="date" value="' + esc(vals.nextDate) + '"></div>' +
+    '</div>' +
+
+    '<div class="fld"><label>Note</label>' +
+      '<textarea id="notes" placeholder="Jo yaad rakhna hai...">' + esc(vals.notes) + '</textarea></div>' +
+
+    '<div class="gps" id="gps">' + (GPS ? '<b>&#10003;</b> Location mil gayi' : 'Location dhoondh rahe hain...') + '</div>' +
+  '</div>';
+
+  h += '<button class="act" id="saveBtn" onclick="saveVisit()">Visit save karein</button>';
+  h += '<div class="note" style="text-align:center">Ek baar dabaiye. Network na ho to phone mein ruk jayegi aur apne aap chali jayegi.</div>';
+
+  h += '<h2>Aaj ke visits</h2>';
+  var t = today();
+  var mine = VISITS.slice(0, 12);
+  h += mine.length ? '<div class="card">' + mine.map(function(v){
+      return '<div class="v"><div style="flex:1;min-width:0">' +
+        '<div class="t">' + esc(v.party) + '</div>' +
+        '<div class="s">' + [v.site, v.purpose, v.outcome].filter(Boolean).map(esc).join(' · ') +
+        (v.next ? '<br>Agla: ' + esc(v.next) : '') + '</div></div>' +
+        '<div class="when">' + esc(v.date) + '</div></div>'; }).join('') + '</div>'
+    : '<div class="empty">Abhi tak koi visit record nahi hui.</div>';
+
+  h += '<div class="note" style="text-align:center;margin-top:18px">' +
+       '<button class="lnkb" onclick="renderPinChange(false)">PIN badlein</button>' +
+       '<span style="opacity:.4"> &middot; </span>' +
+       '<button class="lnkb" onclick="signOut()">Sign out</button>' +
+       '<div class="gfoot" style="margin-top:10px">App version ' + esc(BUILD) + ' &middot; ' +
+       '<button class="lnkb" style="font-size:11px" onclick="verPoll(false)">Update check karein</button></div></div>';
+
+  document.getElementById('main').innerHTML = h;
+  paintQ();
+  if (!GPS) askGps();
+}
+
+function saveVisit(){
+  if (BUSY) return;
+  var party = val('party');
+  if (!party){ toast('Kiske paas gaye - yeh likhna zaroori hai.');
+    var e=document.getElementById('party'); if(e) e.focus(); return; }
+
+  var rec = {
+    at: new Date().toISOString(),
+    party: party,
+    partyType: F.partyType || 'Client',
+    site: val('site'),
+    purpose: F.purpose,
+    outcome: F.outcome,
+    stage: F.stage,
+    next: val('next'),
+    nextDate: val('nextDate'),
+    notes: val('notes'),
+    lat: GPS ? GPS.lat : '',
+    lng: GPS ? GPS.lng : ''
+  };
+
+  BUSY = true;
+  var btn = document.getElementById('saveBtn');
+  if (btn){ btn.disabled = true; btn.textContent = 'Save ho raha hai...'; }
+
+  call('visit', rec).then(function(r){
+    BUSY = false;
+    if (r && r.ok){
+      toast(r.dup ? 'Yeh visit pehle hi save ho chuki hai.' : 'Visit save ho gayi. Shukriya.');
+      resetForm();
+      loadVisits();
+    } else {
+      hold(rec, (r && r.err) || 'Server ne mana kiya');
+    }
+  }).catch(function(){
+    BUSY = false;
+    hold(rec, '');
+  });
+}
+
+function hold(rec, why){
+  var q = queue(); q.push(rec); setQueue(q);
+  toast(why ? why : 'Network nahi hai. Phone mein rakh li, apne aap chali jayegi.');
+  resetForm();
+}
+
+function resetForm(){
+  F.purpose=''; F.outcome=''; F.stage=''; F.partyType='Client';
+  render(false);
+}
+
+function loadVisits(){
+  call('myvisits').then(function(r){
+    if (r && r.ok){ VISITS = r.visits || []; render(true); }
+  }).catch(function(){});
+}
+
+/* ---------------- sign in ---------------- */
+var GERR = '', PERR = '', PFORCE = false;
+
+function gate(show){ document.getElementById('gate').classList.toggle('on', !!show); }
+
+function renderGate(){
+  document.getElementById('gate').innerHTML = '<div class="gwrap">' +
+    '<div class="gmark">EW</div>' +
+    '<h2>EW Visit</h2>' +
+    '<p class="lede">Apna mobile number aur PIN daalein.<br>' +
+    'Pehli baar? PIN aapke number ke aakhri 4 digit hain.</p>' +
+    (GERR ? '<div class="gerr" role="alert">' + esc(GERR) + '</div>' : '') +
+    '<label for="gm">Mobile number</label>' +
+    '<input id="gm" type="tel" inputmode="numeric" autocomplete="username" maxlength="10" ' +
+      'placeholder="10 digit" value="' + esc(A.mobile) + '">' +
+    '<label for="gp">PIN</label>' +
+    '<input id="gp" type="password" inputmode="numeric" autocomplete="current-password" ' +
+      'maxlength="6" placeholder="4 se 6 digit">' +
+    '<button class="go" id="gbtn" onclick="doLogin()">Andar aayein</button>' +
+    '<button class="lnk" onclick="gateHelp()">PIN bhool gaye?</button>' +
+    '<div class="gfoot">Energy World<br>Number badla ho to office se update karwa lein.</div></div>';
+  gate(true);
+  var mi = document.getElementById('gm'), pi = document.getElementById('gp');
+  pi.addEventListener('keydown', function(e){ if (e.key === 'Enter') doLogin(); });
+  mi.addEventListener('keydown', function(e){ if (e.key === 'Enter') pi.focus(); });
+  try { (A.mobile ? pi : mi).focus(); } catch(e){}
+}
+
+function gateHelp(){
+  GERR = 'PIN office se reset hota hai. Admin ko bolein - reset karte hi PIN dobara ' +
+         'aapke number ke aakhri 4 digit ho jayega.';
+  renderGate();
+}
+
+function doLogin(){
+  var m = String(document.getElementById('gm').value || '').replace(/\D/g, '').slice(-10);
+  var p = String(document.getElementById('gp').value || '').replace(/\D/g, '');
+  if (m.length !== 10){ GERR = 'Poora 10 digit mobile number daalein.'; renderGate(); return; }
+  if (!p){ GERR = 'PIN daalein.'; renderGate(); return; }
+  var b = document.getElementById('gbtn'); b.disabled = true; b.textContent = 'Dekh rahe hain...';
+  A.mobile = m; A.pin = p;
+  call('login').then(function(r){
+    if (!r || !r.ok){ GERR = (r && r.err) || 'Sign in nahi ho paya.'; authClear(true); renderGate(); return; }
+    if (r.kind !== 'EXEC' && r.kind !== 'OWNER'){
+      GERR = 'Yeh app Energy World ke executives ke liye hai.';
+      authClear(true); renderGate(); return;
+    }
+    authSave(); GERR = ''; gate(false); landed(r);
+  }).catch(function(){
+    GERR = 'Network nahi mil raha. Dobara koshish karein.'; authClear(true); renderGate();
+  });
+}
+
+function signOut(){
+  if (queue().length){ toast(queue().length + ' visit abhi phone mein hai. Pehle bhej dein.'); return; }
+  authClear(true); VISITS = []; GERR = ''; renderGate();
+}
+
+function renderPinChange(forced){
+  PFORCE = !!forced;
+  document.getElementById('gate').innerHTML = '<div class="gwrap">' +
+    '<div class="gmark">EW</div>' +
+    '<h2>PIN badlein</h2>' +
+    '<p class="lede">' + (PFORCE
+      ? 'Pehli baar aaye hain. Apna naya PIN chun lein.'
+      : 'Naya PIN chun lein. 4 se 6 digit.') + '</p>' +
+    (PERR ? '<div class="gerr" role="alert">' + esc(PERR) + '</div>' : '') +
+    '<label for="p1">Naya PIN</label>' +
+    '<input id="p1" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">' +
+    '<label for="p2">Dobara likhein</label>' +
+    '<input id="p2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">' +
+    '<button class="go" id="pbtn" onclick="doPinChange()">PIN save karein</button>' +
+    (PFORCE ? '' : '<button class="lnk" onclick="gate(false)">Rehne dein</button>') +
+    '<div class="gfoot">PIN kahin likha nahi jaata. Sheet mein sirf uska taala rehta hai.</div></div>';
+  gate(true);
+  var b = document.getElementById('p2');
+  b.addEventListener('keydown', function(e){ if (e.key === 'Enter') doPinChange(); });
+  try { document.getElementById('p1').focus(); } catch(e){}
+}
+
+function doPinChange(){
+  var a = String(document.getElementById('p1').value || '').replace(/\D/g, '');
+  var b = String(document.getElementById('p2').value || '').replace(/\D/g, '');
+  if (!/^\d{4,6}$/.test(a)){ PERR = 'PIN 4 se 6 digit ka hona chahiye.'; renderPinChange(PFORCE); return; }
+  if (/^(\d)\1+$/.test(a)){ PERR = 'Ek hi digit baar baar mat rakhein.'; renderPinChange(PFORCE); return; }
+  if (a !== b){ PERR = 'Dono PIN alag hain.'; renderPinChange(PFORCE); return; }
+  var btn = document.getElementById('pbtn'); btn.disabled = true; btn.textContent = 'Save ho raha hai...';
+  call('changePin', { newPin: a }).then(function(r){
+    if (!r || !r.ok){ PERR = (r && r.err) || 'PIN save nahi hua.'; renderPinChange(PFORCE); return; }
+    A.pin = a; authSave(); PERR = ''; PFORCE = false;
+    gate(false); render(true); toast('PIN badal gaya.'); setTimeout(offerInstall, 900);
+  }).catch(function(){ PERR = 'Network nahi mil raha.'; renderPinChange(PFORCE); });
+}
+
+/* ---------------- save as an app ---------------- */
+var DEFER = null, IKEY = 'ew_visit_install_v1';
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault(); DEFER = e; if (ME.name) offerInstall();
+});
+window.addEventListener('appinstalled', function(){ DEFER = null; hideInstall(true); });
+
+function isStandalone(){
+  try { return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+               window.navigator.standalone === true; } catch(e){ return false; }
+}
+function isIos(){ return /iphone|ipad|ipod/i.test(navigator.userAgent || ''); }
+
+function offerInstall(){
+  if (isStandalone()) return;
+  var seen = ''; try { seen = localStorage.getItem(IKEY) || ''; } catch(e){}
+  if (seen === 'no') return;
+  if (!DEFER && !isIos()) return;
+  var bar = document.getElementById('inst');
+  bar.innerHTML = '<div class="t">' + (DEFER
+    ? '<b>Phone mein rakh lein.</b> Signal na ho tab bhi visit likhi jayegi.'
+    : '<b>Phone mein rakh lein.</b> Neeche <b>Share</b> dabayein, phir <b>Add to Home Screen</b>.')
+    + '</div>' + (DEFER ? '<button onclick="doInstall()">Rakh lein</button>' : '') +
+    '<button class="x" onclick="hideInstall()">Baad mein</button>';
+  bar.classList.add('on');
+}
+function doInstall(){
+  if (!DEFER) return;
+  try { DEFER.prompt(); } catch(e){}
+  if (DEFER.userChoice) DEFER.userChoice.then(function(){ DEFER = null; hideInstall(true); });
+  else { DEFER = null; hideInstall(true); }
+}
+function hideInstall(done){
+  document.getElementById('inst').classList.remove('on');
+  if (!done){ try { localStorage.setItem(IKEY, 'no'); } catch(e){} }
+}
+
+
+/* ======================= UPDATE WATCH =================================
+   The problem this solves: you upload a new version and every phone is
+   still running the old one until somebody rings each man and tells him
+   to reinstall. Nobody is rung any more.
+
+   The server holds one version string. This phone remembers the last
+   version it actually ran. When the two disagree the app throws away its
+   own shell cache and comes back new - by itself if it is simply being
+   opened, and with a button if you are in the middle of something.
+
+   Nothing you have typed or queued is touched. The sign-in and the
+   offline queue live in localStorage and this never goes near them.
+--------------------------------------------------------------------- */
+var BUILD  = '2026.08.05-1';        /* which build of this file is running */
+var APPKEY = 'VISIT';
+var VKEY   = 'ew_visit_ver_v1';
+var VNEW   = '', VBUSY = false;
+
+function verSeen(){ try { return JSON.parse(localStorage.getItem(VKEY) || '{}'); }
+                    catch(e){ return {}; } }
+function verPut(o){ try { localStorage.setItem(VKEY, JSON.stringify(o)); } catch(e){} }
+
+/* Wipe the shell and come back. The cache holds only the frame - the
+   HTML, the manifest, the icons. No business data lives there. */
+function verWipe(v){
+  if (VBUSY) return;
+  VBUSY = true;
+  verPut({ have: (verSeen().have || ''), want: String(v || ''), at: (new Date()).getTime() });
+  var b = document.getElementById('vbar');
+  if (b){ b.innerHTML = '<div class="t">Naya version aa raha hai...</div>'; b.classList.add('on'); }
+
+  var done = false;
+  var go = function(){
+    if (done) return; done = true;
+    location.replace(location.pathname + '?u=' + (new Date()).getTime());
+  };
+  var jobs = [];
+  try {
+    if (window.caches && caches.keys)
+      jobs.push(caches.keys().then(function(ks){
+        return Promise.all(ks.map(function(k){ return caches.delete(k); }));
+      }));
+  } catch(e){}
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations)
+      jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){
+        return Promise.all(rs.map(function(r){ return r.unregister(); }));
+      }));
+  } catch(e){}
+  if (jobs.length) Promise.all(jobs).then(go, go); else go();
+  setTimeout(go, 2500);                    /* never hang on a stuck cache */
+}
+
+function verBar(v, note, force){
+  VNEW = String(v || '');
+  var b = document.getElementById('vbar');
+  if (!b) return;
+  b.innerHTML = '<div class="t"><b>Naya version aa gaya hai.</b> ' +
+      esc(note || 'App ko ek baar refresh kar lein.') + '</div>' +
+      '<button onclick="verWipe(VNEW)">Update karein</button>' +
+      (force ? '' : '<button class="x" onclick="verHide()">Baad mein</button>');
+  b.classList.add('on');
+  if (force) setTimeout(function(){ verWipe(VNEW); }, 6000);
+}
+function verHide(){ var b = document.getElementById('vbar'); if (b) b.classList.remove('on'); }
+
+/* cold = the app has only just been opened, so a reload costs nobody
+   anything and we do it silently. Otherwise we ask. */
+function verCheck(r, cold){
+  if (!r || !r.ver) return false;
+  var v = String(r.ver), st = verSeen();
+  if (st.want && st.want === v){                     /* the refresh worked */
+    verPut({ have: v });
+  if (typeof toast === 'function') toast('App update ho gaya.');
+    return false;
+  }
+  if (!st.have){ verPut({ have: v }); return false; }   /* first run on this phone */
+  if (st.have === v) return false;                       /* already current */
+  /* a reload that did not take must never become a loop */
+  if (st.at && ((new Date()).getTime() - st.at) < 60000){ verBar(v, r.verNote, r.verForce); return false; }
+  if (cold){ verWipe(v); return true; }
+  verBar(v, r.verNote, r.verForce);
+  return false;
+}
+
+/* asked without a PIN, so a phone sitting on the sign-in screen with a
+   stale app can still fix itself */
+function verPoll(cold){
+  return call('ver', { app: APPKEY })
+    .then(function(r){ return verCheck(r, !!cold); })
+    .catch(function(){ return false; });
+}
+document.addEventListener('visibilitychange', function(){
+  if (!document.hidden) verPoll(false);
+});
+/* ---------------- boot ---------------- */
+function landed(r){
+  if (verCheck(r, true)) return;     /* new version - come back new */
+  ME.name = r.name || ''; ME.id = r.refId || '';
+  PARTIES = r.parties || []; VISITS = r.visits || [];
+  if (r.cfg){ for (var k in r.cfg) if (r.cfg.hasOwnProperty(k)) CFG[k] = r.cfg[k]; }
+  document.getElementById('hWho').textContent = ME.name || 'Energy World';
+  render(false);
+  flushQueue().then(function(){ paintQ(); });
+  if (!r.pinSet && CFG.forcePin){ renderPinChange(true); return; }
+  setTimeout(offerInstall, 900);
+}
+
+(function boot(){
+  if (!GAS){ gasAsk(); return; }
+  if ('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){});
+    });
+  }
+  window.addEventListener('online', function(){ flushQueue().then(paintQ); });
+
+  if (!A.mobile || !A.pin){ renderGate(); verPoll(true); return; }
+  call('login').then(function(r){
+    if (!r || !r.ok || (r.kind !== 'EXEC' && r.kind !== 'OWNER')){
+      GERR = (r && r.err) || ''; authClear(true); renderGate(); return;
+    }
+    landed(r);
+  }).catch(function(){
+    /* Signed in before, no network now. He can still write - that is
+       the whole point of the queue. Show him the form, not an error. */
+    document.getElementById('hWho').textContent = 'Offline';
+    render(false); paintQ();
+    toast('Network nahi hai. Visit phone mein ruk jayegi.');
+  });
+})();
+</script>
+</body>
+</html>
