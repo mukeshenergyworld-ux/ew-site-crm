@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F1E1C">
+<title>EW Saathi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="../icons/ew-192.png">
+<link rel="apple-touch-icon" href="../icons/ew-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Saathi">
+<meta name="description" content="Energy World partner app - points, rates and updates">
+<script src="../ew-config.js"></script>
+<style>
+:root{
+  --ink:#0F1E1C; --ink-2:#1B302C; --paper:#E9EBE5; --card:#F7F8F4; --line:#C9CEC4;
+  --brass:#C08A3E; --brass-dim:#8E6529; --verdigris:#2F6E5F; --rust:#9E4A32; --muted:#5C6B66;
+  --display:'Barlow Condensed',system-ui,sans-serif;
+  --body:'IBM Plex Sans',system-ui,sans-serif;
+  --data:'IBM Plex Mono',ui-monospace,monospace;
+  --r:4px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{background:var(--ink);font-family:var(--body);color:var(--ink);
+     -webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
+#app{max-width:460px;margin:0 auto;min-height:100dvh;background:var(--paper);
+     display:flex;flex-direction:column;position:relative}
+
+/* masthead */
+header{position:sticky;top:0;z-index:30;background:var(--ink);color:var(--paper);
+       padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;
+       align-items:center;gap:10px}
+header .mark{width:30px;height:30px;border:1.5px solid var(--brass);border-radius:50%;
+       display:grid;place-items:center;font-family:var(--display);font-size:15px;
+       color:var(--brass);letter-spacing:.5px;flex:none}
+header h1{font-family:var(--display);font-size:20px;font-weight:600;margin:0;
+       letter-spacing:.6px;text-transform:uppercase;line-height:1}
+header .who{font-size:11px;color:#9FB0AA;margin-top:2px;line-height:1}
+header .tier{margin-left:auto;font-family:var(--data);font-size:10px;
+       border:1px solid var(--brass-dim);color:var(--brass);padding:3px 7px;
+       border-radius:99px;text-transform:uppercase;letter-spacing:.8px;flex:none}
+
+main{flex:1;padding:14px 14px 96px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+      padding:14px;margin-bottom:12px}
+.eyebrow{font-family:var(--data);font-size:10px;letter-spacing:1.4px;
+      text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+h2.sec{font-family:var(--display);font-size:17px;font-weight:600;letter-spacing:.4px;
+      text-transform:uppercase;margin:20px 0 10px;color:var(--ink-2)}
+h2.sec:first-child{margin-top:4px}
+.mono{font-family:var(--data)}
+.mut{color:var(--muted)}
+.sm{font-size:12px}
+.xs{font-size:11px}
+
+/* gauge */
+.gauge{text-align:center;padding:6px 0 2px}
+.gauge svg{width:100%;max-width:280px;height:auto;display:block;margin:0 auto}
+.big{font-family:var(--display);font-size:46px;font-weight:700;line-height:.9;
+     color:var(--ink);letter-spacing:-.5px}
+.big small{font-family:var(--data);font-size:12px;font-weight:500;letter-spacing:1.4px;
+     color:var(--muted);display:block;margin-top:6px;text-transform:uppercase}
+.rupeeline{font-family:var(--data);font-size:12px;color:var(--muted);margin-top:6px}
+
+/* split stat */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+       border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-top:12px}
+.split>div{background:var(--card);padding:11px 12px}
+.split b{display:block;font-family:var(--data);font-size:19px;font-weight:600;color:var(--ink)}
+.split span{font-family:var(--data);font-size:9.5px;letter-spacing:1.2px;
+       text-transform:uppercase;color:var(--muted)}
+
+/* progress */
+.bar{height:5px;background:#DDE0D8;border-radius:99px;overflow:hidden;margin:10px 0 6px}
+.bar i{display:block;height:100%;background:var(--brass)}
+
+/* rows */
+.row{display:flex;gap:10px;align-items:flex-start;padding:11px 0;
+     border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .g{flex:1;min-width:0}
+.row .t{font-size:13.5px;font-weight:500;line-height:1.3}
+.row .s{font-size:11px;color:var(--muted);margin-top:3px;font-family:var(--data)}
+.row .v{font-family:var(--data);font-size:14px;font-weight:600;text-align:right;
+     white-space:nowrap;flex:none}
+.pill{display:inline-block;font-family:var(--data);font-size:9px;letter-spacing:.8px;
+     text-transform:uppercase;padding:2px 6px;border-radius:99px;border:1px solid;
+     vertical-align:1px}
+.p-hold{color:var(--rust);border-color:#D8B3A6;background:#F6E9E4}
+.p-clear{color:var(--verdigris);border-color:#A9CBC1;background:#E4F0EB}
+.p-paid{color:var(--muted);border-color:var(--line);background:#EDEFE9}
+.p-back{color:#7A5B00;border-color:#DCC98C;background:#F6EFD9}
+
+/* feed */
+.bc{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
+    margin-bottom:12px;overflow:hidden}
+.bc.new{border-color:var(--brass);box-shadow:0 0 0 1px var(--brass) inset}
+.bc .hd{display:flex;align-items:center;gap:8px;padding:10px 12px 0}
+.bc .kind{font-family:var(--data);font-size:9px;letter-spacing:1.1px;text-transform:uppercase;
+    padding:3px 7px;border-radius:99px;background:var(--ink);color:var(--paper)}
+.bc .kind.scheme{background:var(--brass-dim)}
+.bc .kind.product{background:var(--verdigris)}
+.bc .when{margin-left:auto;font-family:var(--data);font-size:10px;color:var(--muted)}
+.bc h3{font-family:var(--display);font-size:19px;font-weight:600;margin:8px 12px 0;
+    letter-spacing:.3px;line-height:1.15}
+.bc p{margin:7px 12px 0;font-size:13px;line-height:1.5;white-space:pre-wrap}
+.bc img{width:100%;display:block;margin-top:10px;background:#DDE0D8}
+.bc .ft{display:flex;gap:8px;padding:10px 12px 12px;align-items:center;flex-wrap:wrap}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--brass);flex:none}
+
+/* buttons */
+button{font-family:var(--body);font-size:13px;font-weight:500;cursor:pointer;
+    border-radius:var(--r);border:1px solid var(--line);background:var(--card);
+    color:var(--ink);padding:0 13px;min-height:38px;line-height:1}
+button.pri{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+button.brass{background:var(--brass);color:#2A1C05;border-color:var(--brass-dim);font-weight:600}
+button.ghost{background:transparent}
+button:active{transform:translateY(1px)}
+button[disabled]{opacity:.45}
+.wide{width:100%;justify-content:center}
+
+/* stages */
+.stg{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
+     margin-bottom:10px;overflow:hidden}
+.stg.now{border-color:var(--verdigris);box-shadow:0 0 0 1px var(--verdigris) inset}
+.stg .h{display:flex;gap:10px;align-items:baseline;padding:12px;cursor:pointer}
+.stg .no{font-family:var(--display);font-size:24px;font-weight:700;color:var(--brass);
+     line-height:.9;flex:none;width:30px}
+.stg .h b{font-size:14px;font-weight:600;display:block;line-height:1.25}
+.stg .h em{font-style:normal;font-family:var(--data);font-size:10.5px;color:var(--muted);
+     display:block;margin-top:3px}
+.stg .bd{padding:0 12px 12px 52px;display:none}
+.stg.open .bd{display:block}
+.say{border-left:2px solid var(--brass);padding:6px 0 6px 10px;margin:2px 0 10px;
+     font-size:13px;line-height:1.5;color:var(--ink-2)}
+.chip{display:inline-block;font-size:11.5px;font-family:var(--data);border:1px solid var(--line);
+     background:var(--paper);border-radius:99px;padding:4px 9px;margin:0 5px 5px 0}
+
+/* filters */
+.filters{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:4px;
+     scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.filters button{white-space:nowrap;min-height:32px;font-size:12px;padding:0 11px}
+.filters button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+/* nav */
+nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:460px;
+    background:var(--ink);display:grid;grid-template-columns:repeat(5,1fr);
+    padding-bottom:env(safe-area-inset-bottom);z-index:40;border-top:1px solid #2B4A44}
+nav button{background:none;border:0;color:#7F918B;padding:9px 2px 8px;min-height:54px;
+    display:flex;flex-direction:column;align-items:center;gap:4px;border-radius:0;
+    font-family:var(--data);font-size:9px;letter-spacing:.7px;text-transform:uppercase;
+    position:relative}
+nav button.on{color:var(--brass)}
+nav button svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6}
+nav .badge{position:absolute;top:6px;right:calc(50% - 17px);min-width:15px;height:15px;
+    border-radius:99px;background:var(--rust);color:#fff;font-size:9px;line-height:15px;
+    text-align:center;padding:0 3px;font-family:var(--data)}
+
+/* misc */
+.empty{text-align:center;padding:34px 16px;color:var(--muted);font-size:13px;line-height:1.6}
+.load{text-align:center;padding:60px 20px;color:var(--muted);font-family:var(--data);font-size:12px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:78px;z-index:60;
+    background:var(--ink);color:var(--paper);font-size:12.5px;padding:10px 16px;
+    border-radius:99px;max-width:min(420px,92vw);text-align:center;
+    box-shadow:0 6px 20px rgba(0,0,0,.28)}
+.hr{height:1px;background:var(--line);margin:14px 0}
+a{color:var(--verdigris)}
+.note{font-size:11.5px;line-height:1.55;color:var(--muted)}
+
+/* ---------------- sign in ---------------- */
+#gate{position:fixed;inset:0;z-index:60;background:var(--ink);color:var(--paper);
+  display:none;overflow-y:auto;padding:calc(20px + env(safe-area-inset-top)) 20px 40px}
+#gate.on{display:block}
+.gwrap{max-width:340px;margin:0 auto}
+.gmark{width:54px;height:54px;border:2px solid var(--brass);border-radius:50%;
+  display:grid;place-items:center;font-family:var(--display);font-size:22px;
+  color:var(--brass);letter-spacing:1px;margin:6vh auto 18px}
+#gate h2{font-family:var(--display);font-size:24px;font-weight:600;letter-spacing:.7px;
+  text-transform:uppercase;margin:0 0 8px;text-align:center}
+#gate .lede{font-size:13px;line-height:1.65;color:#9FB0AA;text-align:center;margin:0 0 22px}
+#gate label{display:block;font-family:var(--data);font-size:10px;letter-spacing:1.4px;
+  text-transform:uppercase;color:#9FB0AA;margin:0 0 6px}
+#gate input{width:100%;font-size:16px;font-family:var(--data);letter-spacing:2px;
+  min-height:50px;padding:12px 14px;border:1px solid #35514B;border-radius:var(--r);
+  background:#162926;color:var(--paper);margin:0 0 16px}
+#gate input:focus{outline:none;border-color:var(--brass)}
+#gate button.go{width:100%;min-height:50px;font-size:15px;font-family:var(--display);
+  letter-spacing:1.2px;text-transform:uppercase;font-weight:600;border:none;
+  border-radius:var(--r);background:var(--brass);color:#231705;cursor:pointer}
+#gate button.go[disabled]{opacity:.55}
+#gate .lnk{display:block;width:100%;background:none;border:none;color:#9FB0AA;
+  font-size:12.5px;font-family:var(--body);margin-top:16px;min-height:38px;
+  cursor:pointer;text-decoration:underline}
+.gerr{background:#3A1F19;border:1px solid var(--rust);color:#F0C7BB;font-size:12.5px;
+  line-height:1.6;padding:11px 13px;border-radius:var(--r);margin:0 0 16px}
+.gfoot{font-size:11px;color:#6F827C;text-align:center;margin-top:26px;line-height:1.7}
+
+/* ---------------- save as an app ---------------- */
+#inst{position:fixed;left:0;right:0;bottom:0;z-index:55;background:var(--ink-2);
+  color:var(--paper);border-top:1px solid var(--brass-dim);display:none;gap:9px;
+  align-items:center;padding:12px 14px calc(12px + env(safe-area-inset-bottom))}
+#inst.on{display:flex}
+#inst .t{flex:1;min-width:0;font-size:12.5px;line-height:1.55}
+#inst button{min-height:38px;padding:0 13px;font-size:13px;border-radius:var(--r);
+  border:1px solid var(--brass);background:var(--brass);color:#231705;cursor:pointer;flex:none}
+#inst button.x{background:none;color:#9FB0AA;border-color:#35514B;padding:0 11px}
+#vbar{position:fixed;left:0;right:0;top:0;z-index:70;background:#2F6E5F;color:#F2F6F3;
+  display:none;gap:9px;align-items:center;
+  padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+  box-shadow:0 2px 10px rgba(0,0,0,.28)}
+#vbar.on{display:flex}
+#vbar .t{flex:1;min-width:0;font-size:12.5px;line-height:1.5}
+#vbar button{min-height:38px;padding:0 12px;font-size:13px;border-radius:4px;
+  border:1px solid #F2F6F3;background:#F2F6F3;color:#123028;cursor:pointer;flex:none;
+  font-family:inherit}
+#vbar button.x{background:none;color:#CFE0DA;border-color:#4E8B7C;padding:0 10px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="mark">EW</div>
+    <div style="min-width:0">
+      <h1 id="hTitle">EW Saathi</h1>
+      <div class="who" id="hWho">...</div>
+    </div>
+    <div class="tier" id="hTier"></div>
+  </header>
+  <main id="main"><div class="load">Khul raha hai...</div></main>
+  <nav id="nav"></nav>
+</div>
+
+<div id="gate" role="dialog" aria-modal="true" aria-label="Sign in"></div>
+<div id="inst" role="region" aria-label="Save as app"></div>
+<div id="vbar" role="status" aria-live="polite"></div>
+
+<script>
+/* ------------------------------------------------------------------
+   EW Saathi - partner app, v3
+
+   Points are the headline. Rupees stay visible as the footnote,
+   because settlement happens in rupees and hiding that is a trick.
+
+   Sign in is the mobile number and a PIN, the same shape as the EW
+   team app: the number and the PIN ride on every request, so there
+   is no session to expire and nothing worth stealing off the phone
+   but the PIN he chose himself.
+
+   The number is not stored as his identity anywhere. The server
+   reads it live off the Associates sheet every single time. Change
+   his number there and the new one works that minute, the old one
+   stops, and his PIN, his points and his whole history follow him.
+
+   No secret, token, key or URL lives in this file. ew-config.js
+   carries the one address. The PIN is never written down - the
+   sheet keeps a salted hash of it and nothing else.
+------------------------------------------------------------------ */
+var GAS = String((window.EW_GAS || '')).trim();
+
+/* ---- where the server lives -------------------------------------
+   Normally ew-config.js next to the app carries the one address.
+   If it is not there yet (a freshly downloaded file, a phone opening
+   the app before the config was uploaded), the app asks for it once
+   and remembers it on this phone. Nothing secret is stored: it is a
+   public web-app URL. The PIN still guards everything behind it. */
+var GKEY = 'ew_gas_url';
+function gasSaved(){ try { return String(localStorage.getItem(GKEY) || '').trim(); } catch(e){ return ''; } }
+function gasForget(){ try { localStorage.removeItem(GKEY); } catch(e){} location.replace(location.pathname); }
+function gasSet(){
+  var el = document.getElementById('gasUrl');
+  var n  = document.getElementById('gasNote');
+  var v  = String((el && el.value) || '').trim();
+  if (!n) return;
+  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(v)){
+    n.textContent = 'Yeh Apps Script ka link nahi lag raha. Link https://script.google.com/... se shuru aur /exec par khatam hona chahiye.';
+    return;
+  }
+  n.textContent = 'Server check kar rahe hain...';
+  fetch(v, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+             body: JSON.stringify({ action:'ping' }) })
+    .then(function(x){ return x.json(); })
+    .then(function(r){
+      if (!r || !r.ok) throw 0;
+      try { localStorage.setItem(GKEY, v); } catch(e){}
+      n.textContent = 'Server mil gaya. App khul raha hai...';
+      setTimeout(function(){ location.replace(location.pathname); }, 400);
+    })
+    .catch(function(){
+      n.textContent = 'Is link par server nahi mila. Apps Script deployment "Anyone" par set hai kya? Link dobara copy karke daalein.';
+    });
+}
+function gasAsk(){
+  var m = document.getElementById('main');
+  if (!m) return;
+  m.innerHTML =
+    '<div style="max-width:460px;margin:22px auto;padding:16px;border:1px solid rgba(128,128,128,.35);' +
+    'border-radius:14px;line-height:1.55">' +
+    '<div style="font-weight:700;font-size:16px;margin-bottom:6px">Server ka pata daalein</div>' +
+    '<div style="font-size:13px;opacity:.85;margin-bottom:12px">' +
+    'App abhi server se juda nahi hai. Apps Script deployment ka <b>/exec</b> link yahan ek baar paste ' +
+    'kar dein. Yeh sirf is phone par yaad rahega. Koi PIN ya data yahan nahi jaata.</div>' +
+    '<input id="gasUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" ' +
+    'placeholder="https://script.google.com/macros/s/.../exec" ' +
+    'style="width:100%;box-sizing:border-box;font-size:16px;padding:11px 12px;border-radius:10px;' +
+    'border:1px solid rgba(128,128,128,.5);background:transparent;color:inherit">' +
+    '<button onclick="gasSet()" style="margin-top:10px;width:100%;min-height:44px;font-size:15px;' +
+    'font-weight:700;border:0;border-radius:10px;background:#2F6E5F;color:#fff">Jodein</button>' +
+    '<div id="gasNote" style="font-size:12.5px;opacity:.85;margin-top:10px;min-height:18px"></div>' +
+    '<div style="font-size:12px;opacity:.7;margin-top:10px">' +
+    'Link kahan se milta hai: Apps Script &rarr; Deploy &rarr; Manage deployments &rarr; Web app URL.</div>' +
+    '</div>';
+}
+if (!GAS) GAS = gasSaved();
+var D = { me:null, ledger:[], catalog:[], feed:[], stages:[], cfg:{} };
+var TAB = 'home', FILTER = 'all', CATTYPE = '';
+
+/* ---- who is signed in, kept on this phone only ---- */
+var STORE = 'ew_saathi_auth_v1';
+var A = { mobile:'', pin:'' };
+try { var _a = JSON.parse(localStorage.getItem(STORE) || '{}');
+      A.mobile = _a.mobile || ''; A.pin = _a.pin || ''; } catch(e){}
+function authSave(){ try { localStorage.setItem(STORE, JSON.stringify(A)); } catch(e){} }
+function authClear(keepMobile){
+  var m = A.mobile; A.pin = ''; if (!keepMobile) A.mobile = ''; else A.mobile = m;
+  try { localStorage.removeItem(STORE); } catch(e){}
+}
+
+/* ---- transport ----
+   text/plain keeps this a "simple" request, so the browser sends it
+   straight through with no preflight. That is the same trick the main
+   CRM already uses to talk to Apps Script from GitHub Pages. ---- */
+function call(action, payload){
+  var body = { action: action, mobile: A.mobile, pin: A.pin,
+               build: BUILD, app: APPKEY };
+  if (payload) for (var k in payload) if (payload.hasOwnProperty(k)) body[k] = payload[k];
+  return fetch(GAS, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body)
+  }).then(function(r){ return r.json(); });
+}
+
+/* ---- small helpers ---- */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function nfmt(n){ return Number(n||0).toLocaleString('en-IN'); }
+function inr(n){ return '₹' + nfmt(Math.round(Number(n)||0)); }
+function pts(n){ return nfmt(Math.round(Number(n)||0)); }
+function toast(m){
+  var t = document.createElement('div'); t.className='toast'; t.textContent=m;
+  document.body.appendChild(t);
+  setTimeout(function(){ t.style.opacity='0'; t.style.transition='opacity .4s'; }, 2000);
+  setTimeout(function(){ t.remove(); }, 2500);
+}
+
+/* ---- the gauge: how close to the next payout ---- */
+function gauge(clear, target){
+  var t = Math.max(1, Number(target)||1);
+  var pct = Math.max(0, Math.min(1, (Number(clear)||0) / t));
+  var ang = -90 + pct * 180;
+  var arcLen = Math.PI * 96;
+  return '' +
+  '<svg viewBox="0 0 280 152" role="img" aria-label="Points progress">' +
+    '<path d="M44 118 A96 96 0 0 1 236 118" fill="none" stroke="#DDE0D8" stroke-width="9" stroke-linecap="round"/>' +
+    '<path d="M44 118 A96 96 0 0 1 236 118" fill="none" stroke="#C08A3E" stroke-width="9" stroke-linecap="round" ' +
+      'stroke-dasharray="' + (arcLen*pct) + ' ' + arcLen + '"/>' +
+    '<g transform="rotate(' + ang + ' 140 118)">' +
+      '<line x1="140" y1="118" x2="140" y2="46" stroke="#0F1E1C" stroke-width="2.2" stroke-linecap="round"/>' +
+    '</g>' +
+    '<circle cx="140" cy="118" r="5" fill="#0F1E1C"/>' +
+    '<text x="44" y="140" font-family="IBM Plex Mono" font-size="9" fill="#5C6B66">0</text>' +
+    '<text x="236" y="140" font-family="IBM Plex Mono" font-size="9" fill="#5C6B66" text-anchor="end">' + pts(t) + '</text>' +
+  '</svg>';
+}
+
+/* ================================ HOME ================================ */
+function viewHome(){
+  var m = D.me || {}, cfg = D.cfg || {};
+  var unread = D.feed.filter(function(f){ return !f.seen; });
+  var need = Math.max(0, (m.nextThresholdPts||0) - (m.clearPts||0));
+  var h = '';
+
+  if (unread.length){
+    h += '<div class="card" style="border-color:var(--brass);padding:12px 14px">' +
+         '<div style="display:flex;gap:9px;align-items:center">' +
+         '<span class="dot"></span>' +
+         '<div class="sm" style="flex:1"><b>' + unread.length + ' nayi khabar</b> Energy World se</div>' +
+         '<button class="brass" onclick="go(\'feed\')">Dekhein</button></div></div>';
+  }
+
+  h += '<div class="card">' +
+       '<p class="eyebrow">Abhi milne layak</p>' +
+       '<div class="gauge">' + gauge(m.clearPts, m.nextThresholdPts) +
+       '<div class="big" style="margin-top:-14px">' + pts(m.clearPts) +
+       '<small>Points</small></div>';
+  if (cfg.showRupees) h += '<div class="rupeeline">= ' + inr(m.clear) + ' &middot; ' +
+       (m.mode==='CREDIT_NOTE' ? 'credit note ke roop mein' : 'UPI par') + '</div>';
+  h += '</div>';
+
+  h += '<div class="bar"><i style="width:' +
+       Math.min(100, ((m.clearPts||0)/Math.max(1,m.nextThresholdPts||1))*100) + '%"></i></div>';
+  h += need > 0
+     ? '<div class="xs mut">Agla settlement ' + pts(m.nextThresholdPts) +
+       ' points par. <b>' + pts(need) + ' points aur</b>.</div>'
+     : '<div class="xs" style="color:var(--verdigris)"><b>Settlement ke liye taiyaar.</b> Agli batch mein aa jayega.</div>';
+  h += '</div>';
+
+  h += '<div class="split">' +
+       '<div><b>' + pts(m.holdPts) + '</b><span>Hold mein</span></div>' +
+       '<div><b>' + pts(m.settledPts) + '</b><span>Mil chuka</span></div>' +
+       '<div><b>' + pts(m.lifetimePts) + '</b><span>Ab tak kul</span></div>' +
+       '<div><b>' + esc(m.tier || 'Standard') + '</b><span>Aapka darja</span></div>' +
+       '</div>';
+
+  if ((m.holdPts||0) > 0){
+    h += '<div class="note" style="margin-top:10px">Hold ka matlab maal gaya hai, par ' +
+         (m.holdDays||7) + ' din ka return window chal raha hai. Uske baad apne aap khul jaata hai.</div>';
+  }
+
+  h += '<h2 class="sec">Pichhla kaam</h2>';
+  var recent = D.ledger.slice(0, 6);
+  h += recent.length ? '<div class="card">' + recent.map(ledRow).join('') + '</div>'
+     : '<div class="empty">Abhi tak koi entry nahi.<br>Pehla challan aate hi yahan dikhega.</div>';
+  if (D.ledger.length > 6)
+    h += '<button class="wide ghost" onclick="go(\'account\')">Poora hisaab dekhein</button>';
+
+  return h;
+}
+
+function ledRow(l){
+  var cls = l.status==='hold' ? 'p-hold' : l.status==='clear' ? 'p-clear'
+          : l.status==='back' ? 'p-back' : 'p-paid';
+  var lbl = l.status==='hold' ? 'Hold' : l.status==='clear' ? 'Taiyaar'
+          : l.status==='back' ? 'Wapas' : 'Mila';
+  return '<div class="row"><div class="g">' +
+    '<div class="t">' + esc(l.product) + '</div>' +
+    '<div class="s">' + esc(l.date) + ' &middot; ' + esc(l.ch) + ' &middot; ' + l.qty + ' nos' +
+    (l.status==='hold' && l.releaseOn ? ' &middot; khulega ' + esc(l.releaseOn) : '') +
+    '</div></div><div class="v">' + (l.status==='back'?'-':'') + pts(Math.abs(l.pts)) +
+    '<div style="margin-top:4px"><span class="pill ' + cls + '">' + lbl + '</span></div></div></div>';
+}
+
+/* ================================ FEED ================================ */
+function viewFeed(){
+  if (!D.feed.length)
+    return '<div class="empty">Abhi koi nayi khabar nahi.<br>' +
+           'Naya product ya scheme aate hi yahan sabse pehle aapko dikhega.</div>';
+
+  var kinds = ['all'].concat(D.feed.map(function(f){ return f.kind; })
+    .filter(function(v,i,a){ return a.indexOf(v)===i; }));
+  var h = '<div class="filters">' + kinds.map(function(k){
+    return '<button class="' + (FILTER===k?'on':'') + '" onclick="setFilter(\'' + esc(k) + '\')">' +
+           (k==='all'?'Sab':esc(k)) + '</button>'; }).join('') + '</div>';
+
+  var list = D.feed.filter(function(f){ return FILTER==='all' || f.kind===FILTER; });
+  h += list.map(function(f){
+    var kc = /product/i.test(f.kind) ? 'product' : /scheme/i.test(f.kind) ? 'scheme' : '';
+    return '<div class="bc' + (f.seen?'':' new') + '" id="bc-' + esc(f.id) + '">' +
+      '<div class="hd"><span class="kind ' + kc + '">' + esc(f.kind) + '</span>' +
+      (f.brand ? '<span class="xs mut mono">' + esc(f.brand) + '</span>' : '') +
+      '<span class="when">' + esc(f.on) + '</span></div>' +
+      '<h3>' + esc(f.title) + '</h3>' +
+      (f.body ? '<p>' + esc(f.body) + '</p>' : '') +
+      (f.img ? '<img src="' + esc(f.img) + '" alt="" loading="lazy">' : '') +
+      (f.till ? '<p class="xs mut mono">Valid ' + esc(f.till) + ' tak</p>' : '') +
+      '<div class="ft">' +
+        '<button class="brass" onclick="ack(\'' + esc(f.id) + '\',\'INTERESTED\')">Mujhe chahiye</button>' +
+        '<button onclick="ack(\'' + esc(f.id) + '\',\'CALLBACK\')">Call karein</button>' +
+        (f.link ? '<a class="xs mono" href="' + esc(f.link) + '" target="_blank" rel="noopener">Detail</a>' : '') +
+      '</div></div>';
+  }).join('');
+  return h;
+}
+
+function ack(id, act){
+  call('ack', { id:id, act:act }).then(function(r){
+    if (r && r.ok){
+      toast(act==='CALLBACK' ? 'Theek hai, hum call karenge.' : 'Note kar liya. Team aapse baat karegi.');
+      var f = D.feed.filter(function(x){ return x.id===id; })[0];
+      if (f) f.seen = true;
+      var el = document.getElementById('bc-'+id); if (el) el.classList.remove('new');
+      paintNav();
+    } else toast('Network slow hai, phir try karein.');
+  }).catch(function(){ toast('Network slow hai, phir try karein.'); });
+}
+
+/* Mark everything on screen as seen, quietly, once the tab is opened. */
+function markFeedSeen(){
+  var unseen = D.feed.filter(function(f){ return !f.seen; });
+  if (!unseen.length) return;
+  unseen.forEach(function(f){
+    f.seen = true;
+    call('ack', { id:f.id, act:'SEEN' }).catch(function(){});
+  });
+  paintNav();
+}
+
+/* ============================== CATALOGUE ============================== */
+function viewCatalog(){
+  if (!D.catalog.length)
+    return '<div class="empty">Rate card abhi taiyaar ho raha hai.</div>';
+  var my = (D.me && D.me.type) || 'Plumber';
+  var h = '<div class="card" style="padding:12px 14px">' +
+    '<p class="eyebrow" style="margin-bottom:6px">Aapka rate card &middot; ' + esc(my) + '</p>' +
+    '<div class="note">Har piece par itne points. Challan deliver hone ke ' +
+    ((D.me&&D.me.holdDays)||7) + ' din baad khud khul jaate hain.' +
+    ((D.me&&D.me.tierMult>1) ? ' Aapke <b>' + esc(D.me.tier) + '</b> darje par ' +
+      Math.round((D.me.tierMult-1)*100) + '% extra lagta hai.' : '') +
+    '</div></div>';
+
+  h += D.catalog.map(function(g){
+    var items = g.items.filter(function(it){ return it.rates && (my in it.rates); });
+    if (!items.length) return '';
+    return '<h2 class="sec">' + esc(g.cat) + '</h2><div class="card">' +
+      items.map(function(it){
+        var v = it.rates[my];
+        return '<div class="row"><div class="g">' +
+          '<div class="t">' + esc(it.nm) + '</div>' +
+          '<div class="s">' + esc(it.brand) + ' &middot; ' + esc(it.code) + '</div>' +
+          '</div><div class="v">' +
+          (D.cfg.showRates
+            ? (it.basis==='PERCENT' ? v + '%' : pts(v) + '<div class="xs mut" style="font-weight:400">points</div>')
+            : '<span class="xs mut">-</span>') +
+          '</div></div>'; }).join('') + '</div>';
+  }).join('');
+  return h;
+}
+
+/* =============================== STAGES =============================== */
+function viewStages(){
+  var h = '<div class="card" style="padding:12px 14px">' +
+    '<p class="eyebrow" style="margin-bottom:6px">Site ke hisaab se baat</p>' +
+    '<div class="note">Har stage par kya bolna hai aur kya dikhana hai. ' +
+    'Sahi time par sahi cheez batayenge to client bhi khush, aapke points bhi.</div></div>';
+  h += D.stages.map(function(s, i){
+    return '<div class="stg' + (s.now?' now':'') + '" id="stg' + i + '">' +
+      '<div class="h" onclick="tog(' + i + ')">' +
+        '<div class="no">' + esc(s.no) + '</div>' +
+        '<div style="flex:1"><b>' + esc(s.t) + '</b><em>' + esc(s.when) + '</em></div>' +
+      '</div><div class="bd">' +
+        (s.say ? '<div class="say">&ldquo;' + esc(s.say) + '&rdquo;</div>' : '') +
+        (s.push||[]).map(function(p){ return '<span class="chip">' + esc(p) + '</span>'; }).join('') +
+        '<div style="margin-top:10px"><button class="ghost" onclick="wa(\'' +
+          esc(String(s.t).replace(/'/g,'')) + '\')">Energy World se poochein</button></div>' +
+      '</div></div>';
+  }).join('');
+  return h;
+}
+function tog(i){ var e = document.getElementById('stg'+i); if (e) e.classList.toggle('open'); }
+
+/* =============================== ACCOUNT =============================== */
+function viewAccount(){
+  var m = D.me || {};
+  var h = '<div class="card">' +
+    '<p class="eyebrow">Aapka khata</p>' +
+    kv('Naam', m.name) + kv('Firm', m.firm) + kv('ID', m.id, 1) +
+    kv('Type', m.type) + kv('Shehar', m.city) + kv('Darja', m.tier) +
+    kv('Settlement', m.mode==='CREDIT_NOTE' ? 'Credit note (purchase account par)' : 'UPI') +
+    (m.mode==='CREDIT_NOTE' ? '' : kv('UPI', m.upi || 'nahi diya', 1)) +
+    '</div>';
+
+  if (D.cfg.showRupees){
+    h += '<div class="split">' +
+      '<div><b>' + inr(m.clear) + '</b><span>Taiyaar</span></div>' +
+      '<div><b>' + inr(m.hold) + '</b><span>Hold</span></div>' +
+      '<div><b>' + inr(m.settled) + '</b><span>Mil chuka</span></div>' +
+      '<div><b>' + inr(m.fyGross) + '</b><span>Is saal</span></div></div>';
+    if (m.mode !== 'CREDIT_NOTE' && !m.pan){
+      h += '<div class="card" style="border-color:var(--rust);margin-top:12px">' +
+        '<div class="sm"><b>PAN abhi tak nahi mila.</b> PAN ke bina saal bhar ka ' +
+        'total limit paar karne par zyada TDS katta hai. Ek baar bhej dijiye.</div>' +
+        '<div style="margin-top:10px"><button class="pri" onclick="wa(\'PAN bhejna hai\')">PAN bhejein</button></div>' +
+        '</div>';
+    }
+  }
+
+  h += '<h2 class="sec">Poora hisaab</h2>';
+  h += D.ledger.length ? '<div class="card">' + D.ledger.map(ledRow).join('') + '</div>'
+     : '<div class="empty">Abhi koi entry nahi.</div>';
+  h += '<div style="margin:14px 0 4px"><button class="wide ghost" onclick="wa(\'Hisaab ke baare mein baat karni hai\')">' +
+       'Kuch galat lage to bataayein</button></div>';
+
+  /* The exchange rate, said plainly. He is owed the arithmetic, not a
+     number he has to take on faith. */
+  h += '<div class="card" style="margin-top:14px">' +
+       '<p class="eyebrow">Points ka hisaab</p>' +
+       '<div class="sm"><b>' + pts(D.cfg.ppr || 1) + ' points = ' + inr(1) + '</b><br>' +
+       '<span class="mut">Jo bhi banta hai wo points mein dikhta hai. Payment rupay mein ' +
+       'hoti hai, isliye rupay ka number bhi neeche dikhta rehta hai.</span></div></div>';
+
+  h += '<div class="split" style="margin-top:12px">' +
+       '<div style="padding:0"><button class="wide ghost" onclick="renderPinChange(false)" ' +
+       'style="min-height:44px">PIN badlein</button></div>' +
+       '<div style="padding:0"><button class="wide ghost" onclick="signOut()" ' +
+       'style="min-height:44px">Sign out</button></div></div>';
+  h += '<div class="note" style="text-align:center;margin-top:14px">' +
+       'Energy World &middot; Panipat &middot; Sonipat &middot; Karnal<br>' +
+       '<span class="mut">App version ' + esc(BUILD) + '</span> &middot; ' +
+       '<button class="lnkb" style="font-size:11px" onclick="verPoll(false)">Update check karein</button></div>';
+  return h;
+}
+
+function kv(k, v, mono){
+  if (!v && v !== 0) v = '-';
+  return '<div class="row" style="padding:8px 0"><div class="g"><div class="s" style="font-family:var(--body)">' +
+    esc(k) + '</div></div><div class="v' + (mono?' mono':'') +
+    '" style="font-weight:500;font-size:13px">' + esc(v) + '</div></div>';
+}
+
+function wa(topic){
+  var num = (D.cfg && D.cfg.help) || '';
+  var txt = encodeURIComponent('Namaste, ' + ((D.me&&D.me.name)||'') +
+    ' (' + ((D.me&&D.me.id)||'') + '). ' + (topic||'') );
+  if (!num){ toast('Number set nahi hai. Office ko call karein.'); return; }
+  window.open('https://wa.me/' + num + '?text=' + txt, '_blank');
+}
+
+/* ================================ SHELL ================================ */
+var TABS = [
+  ['home',    'Ghar',   'M3 11 12 3l9 8M5 10v10h14V10'],
+  ['feed',    'Naya',   'M4 5h16M4 12h16M4 19h10'],
+  ['catalog', 'Rate',   'M4 4h16v16H4zM8 9h8M8 13h8M8 17h5'],
+  ['stages',  'Stage',  'M3 20h18M6 20V10M12 20V4M18 20v-8'],
+  ['account', 'Hisaab', 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21c0-4 4-6 8-6s8 2 8 6']
+];
+
+function paintNav(){
+  var unread = D.feed.filter(function(f){ return !f.seen; }).length;
+  document.getElementById('nav').innerHTML = TABS.map(function(t){
+    return '<button class="' + (TAB===t[0]?'on':'') + '" onclick="go(\'' + t[0] + '\')" aria-label="' + t[1] + '">' +
+      '<svg viewBox="0 0 24 24"><path d="' + t[2] + '" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      t[1] + (t[0]==='feed' && unread ? '<span class="badge">' + unread + '</span>' : '') +
+    '</button>'; }).join('');
+}
+
+function render(){
+  var v = TAB==='home' ? viewHome() : TAB==='feed' ? viewFeed()
+        : TAB==='catalog' ? viewCatalog() : TAB==='stages' ? viewStages() : viewAccount();
+  document.getElementById('main').innerHTML = v;
+  paintNav();
+  window.scrollTo(0, 0);
+  if (TAB==='feed') setTimeout(markFeedSeen, 1200);
+}
+function go(t){ TAB = t; FILTER = 'all'; render(); }
+function setFilter(f){ FILTER = f; render(); }
+
+/* ================================ SIGN IN ============================== */
+var GERR = '', PERR = '', PFORCE = false;
+
+function gate(show){ document.getElementById('gate').classList.toggle('on', !!show); }
+
+function renderGate(){
+  var g = document.getElementById('gate');
+  g.innerHTML = '<div class="gwrap">' +
+    '<div class="gmark">EW</div>' +
+    '<h2>EW Saathi</h2>' +
+    '<p class="lede">Apna mobile number aur PIN daalein.<br>' +
+    'Pehli baar aa rahe hain? PIN aapke number ke aakhri 4 digit hain.</p>' +
+    (GERR ? '<div class="gerr" role="alert">' + esc(GERR) + '</div>' : '') +
+    '<label for="gm">Mobile number</label>' +
+    '<input id="gm" type="tel" inputmode="numeric" autocomplete="username" ' +
+      'maxlength="10" placeholder="10 digit" value="' + esc(A.mobile) + '">' +
+    '<label for="gp">PIN</label>' +
+    '<input id="gp" type="password" inputmode="numeric" autocomplete="current-password" ' +
+      'maxlength="6" placeholder="4 se 6 digit">' +
+    '<button class="go" id="gbtn" onclick="doLogin()">Andar aayein</button>' +
+    '<button class="lnk" onclick="gateHelp()">PIN bhool gaye?</button>' +
+    '<div class="gfoot">Energy World &middot; Panipat &middot; Sonipat &middot; Karnal<br>' +
+    'Aapka number badal gaya ho to pehle office mein badalwaayein - ' +
+    'naya number apne aap chalne lagega.</div></div>';
+  gate(true);
+  var mi = document.getElementById('gm'), pi = document.getElementById('gp');
+  pi.addEventListener('keydown', function(e){ if (e.key === 'Enter') doLogin(); });
+  mi.addEventListener('keydown', function(e){ if (e.key === 'Enter') pi.focus(); });
+  try { (A.mobile ? pi : mi).focus(); } catch(e){}
+}
+
+function gateHelp(){
+  GERR = 'PIN office se reset hota hai. Energy World office ko call karein - reset ' +
+         'karte hi PIN dobara aapke number ke aakhri 4 digit ho jayega, aur aapke ' +
+         'points waise ke waise rehte hain.';
+  renderGate();
+}
+
+function doLogin(){
+  var m = String(document.getElementById('gm').value || '').replace(/\D/g, '').slice(-10);
+  var p = String(document.getElementById('gp').value || '').replace(/\D/g, '');
+  if (m.length !== 10){ GERR = 'Poora 10 digit mobile number daalein.'; renderGate(); return; }
+  if (!p){ GERR = 'PIN daalein.'; renderGate(); return; }
+  var b = document.getElementById('gbtn');
+  b.disabled = true; b.textContent = 'Dekh rahe hain...';
+  A.mobile = m; A.pin = p;
+  call('login').then(function(r){
+    if (!r || !r.ok){
+      GERR = (r && r.err) || 'Sign in nahi ho paya.';
+      authClear(true); renderGate(); return;
+    }
+    if (r.kind !== 'PARTNER'){
+      GERR = 'Yeh app partners ke liye hai. Aapka account is app ka nahi hai.';
+      authClear(true); renderGate(); return;
+    }
+    authSave(); GERR = ''; gate(false); landed(r);
+  }).catch(function(){
+    GERR = 'Network nahi mil raha. Dobara koshish karein.';
+    authClear(true); renderGate();
+  });
+}
+
+function signOut(){
+  authClear(true); D.me = null; D.ledger = []; D.feed = [];
+  document.getElementById('main').innerHTML = '<div class="load">...</div>';
+  GERR = ''; renderGate();
+}
+
+/* ---- changing the PIN, in the app, by him ---- */
+function renderPinChange(forced){
+  PFORCE = !!forced;
+  var g = document.getElementById('gate');
+  g.innerHTML = '<div class="gwrap">' +
+    '<div class="gmark">EW</div>' +
+    '<h2>PIN badlein</h2>' +
+    '<p class="lede">' + (PFORCE
+      ? 'Pehli baar aaye hain. Apna naya PIN chun lein - iske baad sirf aap jaante hain.'
+      : 'Naya PIN chun lein. 4 se 6 digit.') + '</p>' +
+    (PERR ? '<div class="gerr" role="alert">' + esc(PERR) + '</div>' : '') +
+    '<label for="p1">Naya PIN</label>' +
+    '<input id="p1" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">' +
+    '<label for="p2">Dobara likhein</label>' +
+    '<input id="p2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">' +
+    '<button class="go" id="pbtn" onclick="doPinChange()">PIN save karein</button>' +
+    (PFORCE ? '' : '<button class="lnk" onclick="gate(false)">Rehne dein</button>') +
+    '<div class="gfoot">PIN kahin likha nahi jaata. Hamare paas sirf uska taala rehta ' +
+    'hai, chaabi nahi - isliye hum bhi aapka PIN dekh nahi sakte.</div></div>';
+  gate(true);
+  var a = document.getElementById('p1'), b = document.getElementById('p2');
+  b.addEventListener('keydown', function(e){ if (e.key === 'Enter') doPinChange(); });
+  try { a.focus(); } catch(e){}
+}
+
+function doPinChange(){
+  var a = String(document.getElementById('p1').value || '').replace(/\D/g, '');
+  var b = String(document.getElementById('p2').value || '').replace(/\D/g, '');
+  if (!/^\d{4,6}$/.test(a)){ PERR = 'PIN 4 se 6 digit ka hona chahiye.'; renderPinChange(PFORCE); return; }
+  if (/^(\d)\1+$/.test(a)){ PERR = 'Ek hi digit baar baar mat rakhein.'; renderPinChange(PFORCE); return; }
+  if (a !== b){ PERR = 'Dono PIN alag hain. Dobara dekh lein.'; renderPinChange(PFORCE); return; }
+  var btn = document.getElementById('pbtn');
+  btn.disabled = true; btn.textContent = 'Save ho raha hai...';
+  call('changePin', { newPin: a }).then(function(r){
+    if (!r || !r.ok){ PERR = (r && r.err) || 'PIN save nahi hua.'; renderPinChange(PFORCE); return; }
+    A.pin = a; authSave(); PERR = ''; PFORCE = false;
+    gate(false); render(); toast('PIN badal gaya.');
+    setTimeout(offerInstall, 900);
+  }).catch(function(){ PERR = 'Network nahi mil raha.'; renderPinChange(PFORCE); });
+}
+
+/* ================================ SAVE AS APP ========================== */
+var DEFER = null, IKEY = 'ew_saathi_install_v1';
+
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault(); DEFER = e;
+  if (D.me) offerInstall();
+});
+window.addEventListener('appinstalled', function(){ DEFER = null; hideInstall(true); });
+
+function isStandalone(){
+  try {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+           window.navigator.standalone === true;
+  } catch(e){ return false; }
+}
+function isIos(){ return /iphone|ipad|ipod/i.test(navigator.userAgent || ''); }
+
+function offerInstall(){
+  if (isStandalone()) return;
+  var seen = ''; try { seen = localStorage.getItem(IKEY) || ''; } catch(e){}
+  if (seen === 'no') return;
+  if (!DEFER && !isIos()) return;
+  var bar = document.getElementById('inst');
+  bar.innerHTML = '<div class="t">' + (DEFER
+    ? '<b>Phone mein rakh lein.</b> Phir har baar link kholna nahi padega.'
+    : '<b>Phone mein rakh lein.</b> Neeche <b>Share</b> dabayein, phir ' +
+      '<b>Add to Home Screen</b>.') + '</div>' +
+    (DEFER ? '<button onclick="doInstall()">Rakh lein</button>' : '') +
+    '<button class="x" onclick="hideInstall()">Baad mein</button>';
+  bar.classList.add('on');
+}
+function doInstall(){
+  if (!DEFER) return;
+  try { DEFER.prompt(); } catch(e){}
+  if (DEFER.userChoice) DEFER.userChoice.then(function(){ DEFER = null; hideInstall(true); });
+  else { DEFER = null; hideInstall(true); }
+}
+function hideInstall(done){
+  document.getElementById('inst').classList.remove('on');
+  if (!done){ try { localStorage.setItem(IKEY, 'no'); } catch(e){} }
+}
+
+
+/* ======================= UPDATE WATCH =================================
+   The problem this solves: you upload a new version and every phone is
+   still running the old one until somebody rings each man and tells him
+   to reinstall. Nobody is rung any more.
+
+   The server holds one version string. This phone remembers the last
+   version it actually ran. When the two disagree the app throws away its
+   own shell cache and comes back new - by itself if it is simply being
+   opened, and with a button if you are in the middle of something.
+
+   Nothing you have typed or queued is touched. The sign-in and the
+   offline queue live in localStorage and this never goes near them.
+--------------------------------------------------------------------- */
+var BUILD  = '2026.08.05-1';        /* which build of this file is running */
+var APPKEY = 'SAATHI';
+var VKEY   = 'ew_saathi_ver_v1';
+var VNEW   = '', VBUSY = false;
+
+function verSeen(){ try { return JSON.parse(localStorage.getItem(VKEY) || '{}'); }
+                    catch(e){ return {}; } }
+function verPut(o){ try { localStorage.setItem(VKEY, JSON.stringify(o)); } catch(e){} }
+
+/* Wipe the shell and come back. The cache holds only the frame - the
+   HTML, the manifest, the icons. No business data lives there. */
+function verWipe(v){
+  if (VBUSY) return;
+  VBUSY = true;
+  verPut({ have: (verSeen().have || ''), want: String(v || ''), at: (new Date()).getTime() });
+  var b = document.getElementById('vbar');
+  if (b){ b.innerHTML = '<div class="t">Naya version aa raha hai...</div>'; b.classList.add('on'); }
+
+  var done = false;
+  var go = function(){
+    if (done) return; done = true;
+    location.replace(location.pathname + '?u=' + (new Date()).getTime());
+  };
+  var jobs = [];
+  try {
+    if (window.caches && caches.keys)
+      jobs.push(caches.keys().then(function(ks){
+        return Promise.all(ks.map(function(k){ return caches.delete(k); }));
+      }));
+  } catch(e){}
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations)
+      jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){
+        return Promise.all(rs.map(function(r){ return r.unregister(); }));
+      }));
+  } catch(e){}
+  if (jobs.length) Promise.all(jobs).then(go, go); else go();
+  setTimeout(go, 2500);                    /* never hang on a stuck cache */
+}
+
+function verBar(v, note, force){
+  VNEW = String(v || '');
+  var b = document.getElementById('vbar');
+  if (!b) return;
+  b.innerHTML = '<div class="t"><b>Naya version aa gaya hai.</b> ' +
+      esc(note || 'App ko ek baar refresh kar lein.') + '</div>' +
+      '<button onclick="verWipe(VNEW)">Update karein</button>' +
+      (force ? '' : '<button class="x" onclick="verHide()">Baad mein</button>');
+  b.classList.add('on');
+  if (force) setTimeout(function(){ verWipe(VNEW); }, 6000);
+}
+function verHide(){ var b = document.getElementById('vbar'); if (b) b.classList.remove('on'); }
+
+/* cold = the app has only just been opened, so a reload costs nobody
+   anything and we do it silently. Otherwise we ask. */
+function verCheck(r, cold){
+  if (!r || !r.ver) return false;
+  var v = String(r.ver), st = verSeen();
+  if (st.want && st.want === v){                     /* the refresh worked */
+    verPut({ have: v });
+  if (typeof toast === 'function') toast('App update ho gaya.');
+    return false;
+  }
+  if (!st.have){ verPut({ have: v }); return false; }   /* first run on this phone */
+  if (st.have === v) return false;                       /* already current */
+  /* a reload that did not take must never become a loop */
+  if (st.at && ((new Date()).getTime() - st.at) < 60000){ verBar(v, r.verNote, r.verForce); return false; }
+  if (cold){ verWipe(v); return true; }
+  verBar(v, r.verNote, r.verForce);
+  return false;
+}
+
+/* asked without a PIN, so a phone sitting on the sign-in screen with a
+   stale app can still fix itself */
+function verPoll(cold){
+  return call('ver', { app: APPKEY })
+    .then(function(r){ return verCheck(r, !!cold); })
+    .catch(function(){ return false; });
+}
+document.addEventListener('visibilitychange', function(){
+  if (!document.hidden) verPoll(false);
+});
+/* ================================ BOOT ================================ */
+function landed(r){
+  if (verCheck(r, true)) return;     /* new version - come back new */
+  D.me = r.me || null; D.ledger = r.ledger || []; D.catalog = r.catalog || [];
+  D.feed = r.feed || []; D.stages = r.stages || []; D.cfg = r.cfg || {};
+  document.getElementById('hTitle').textContent = D.cfg.title || 'EW Saathi';
+  document.getElementById('hWho').textContent =
+    ((D.me && D.me.name) || r.name || '') +
+    (D.me && D.me.firm ? ' · ' + D.me.firm : '');
+  document.getElementById('hTier').textContent = (D.me && D.me.tier) || '';
+  render();
+  if (!r.pinSet && D.cfg.forcePin){ renderPinChange(true); return; }
+  setTimeout(offerInstall, 900);
+}
+
+(function boot(){
+  if (!GAS){ gasAsk(); return; }
+  if ('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){});
+    });
+  }
+  if (!A.mobile || !A.pin){ renderGate(); verPoll(true); return; }
+  call('login').then(function(r){
+    if (!r || !r.ok || r.kind !== 'PARTNER'){
+      GERR = (r && r.err) || ''; authClear(true); renderGate(); return;
+    }
+    landed(r);
+  }).catch(function(){
+    document.getElementById('main').innerHTML =
+      '<div class="empty">Network nahi mil raha.<br><br>' +
+      '<button class="pri" onclick="location.reload()">Phir se try karein</button></div>';
+  });
+})();
+</script>
+</body>
+</html>
