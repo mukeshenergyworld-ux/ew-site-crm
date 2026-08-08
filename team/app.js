@@ -7,9 +7,12 @@
   "use strict";
 
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
+  /* The companion server (EW Saathi / Visit / Console). Separate deployment, separate
+     spreadsheet-bound project - the CRM only ever POSTs to it, never reads its tabs. */
+  var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.219";
+  var APP_VERSION = "6.9.220";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7715,7 +7718,9 @@ function viewCatalogue() {
     h += '<div class="row">' + roles.map(function (r) {
       return '<button class="btn sm ' + (S.pRole === r ? "" : "ghost") + '" data-act="p-role" data-r="' + esc(r) + '">' + esc(r) + '</button>';
     }).join("") + '<button class="btn sm ' + (S.pRole ? "ghost" : "") + '" data-act="p-role" data-r="">All</button>' +
-      '<div class="grow"></div><button class="btn" data-act="as-new">+ New partner</button></div>';
+      '<div class="grow"></div>' +
+      '<button class="btn sm ghost" data-act="saathi-push" title="Send these figures to the EW Saathi app">Saathi ko bhejein</button>' +
+      '<button class="btn" data-act="as-new">+ New partner</button></div>';
 
     /* Leaderboard: rank partners by whichever metric matters right now. */
     var metric = S.pSort || "billed";
@@ -17540,6 +17545,66 @@ function viewCatalogue() {
     }
     if (act === "rad-wa") { waShareQuote(id); return; }
     if (act === "q-wa") { waShareQuote(id); return; }
+
+    /* SEND THESE FIGURES TO SAATHI
+       The number a plumber sees in his app has to be the number sitting on this
+       screen - not a second sum worked out somewhere else that drifts the first
+       time a rule changes here and not there. So the CRM does the arithmetic, as
+       it always has, and simply posts its own answer across.
+       Everything goes over as "on hold". A point turns into money when YOU pay it
+       out, not when a challan is raised, and an app should never promise a man
+       more than that. */
+    if (act === "saathi-push") {
+      if (!S.coMob) {
+        var m = window.prompt("Console ka mobile number (jo IncentiveConfig mein OWNER_MOBILE hai):", "");
+        if (!m) return;
+        S.coMob = String(m).replace(/\D/g, "").slice(-10);
+      }
+      if (!S.coPin) {
+        var pn = window.prompt("Console ka PIN:", "");
+        if (!pn) { S.coMob = ""; return; }
+        S.coPin = String(pn).trim();
+      }
+      var list = (S.data.associates || []).slice();
+      if (!list.length) { toast("Koi partner nahi mila."); return; }
+      toast("Saathi ko bhej raha hoon - " + list.length + " partner...");
+
+      var okN = 0, failN = 0, ptsN = 0, i = 0;
+      var step = function () {
+        if (i >= list.length) {
+          S.coPin = failN ? "" : S.coPin;
+          toast(okN + " partner bheje" + (failN ? ", " + failN + " reh gaye" : "") +
+                ". Kul " + ptsN + " point.");
+          return;
+        }
+        var a = list[i++];
+        var b = partnerBook(a.name);
+        var rows = (b.rows || []).filter(function (r) { return Number(r.inc) > 0; })
+          .map(function (r) {
+            return { ch: r.no, code: "", qty: "", amt: Number(r.inc) || 0,
+                     status: "Pending", date: r.ymd, client: r.client, brand: r.brand };
+          });
+        fetch(CO_GAS, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: "ledgerPush", mobile: S.coMob, pin: S.coPin,
+                                 assocId: a.id, name: a.name, rows: rows })
+        }).then(function (r) { return r.json(); }).then(function (r) {
+          if (r && r.ok) { okN++; ptsN += Number(r.points) || 0; }
+          else {
+            failN++;
+            /* a bad PIN would otherwise fail silently for every partner in turn */
+            if (r && r.err && /PIN|record mein nahi/i.test(r.err)) {
+              S.coPin = ""; S.coMob = ""; i = list.length;
+              toast("Ruk gaya: " + r.err);
+            }
+          }
+          setTimeout(step, 120);
+        })["catch"](function () { failN++; setTimeout(step, 300); });
+      };
+      step();
+      return;
+    }
 
     if (act === "as-new") { S.modal = modalAssociate(null); render(); return; }
     if (act === "as-open") {
