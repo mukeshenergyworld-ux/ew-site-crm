@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.226";
+  var APP_VERSION = "6.9.227";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4894,6 +4894,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="acts" style="margin:0;flex:1 1 auto;min-width:0;flex-wrap:wrap;justify-content:flex-end;gap:6px">' +
       '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:5px 8px;font-size:12.5px">' + opts(QSTATUS, q.status) + '</select>' +
       '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
+      '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal PDF</button>' +
       '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
       (q.status === "Won" ? '<button class="btn sm" data-act="q-challan" data-id="' + esc(q.id) + '">Make challan</button>' : "") +
       /* v6.9.205 - every quote already marked Lost can still be answered, so the back
@@ -6224,6 +6225,563 @@ function viewCatalogue() {
       return doc;
     });
   }
+
+  /* ================= PRESENTATION QUOTE (landscape proposal deck) =================
+     The customer-facing twin of quotePdf. Same quote, same lines - a different
+     document. Where the quotation is a priced table an engineer checks line by
+     line, this is what is put in front of the family: a cover, the rooms it
+     covers, a page for every product with its photograph and specification, and
+     the value at the end.
+
+     MRP only, deliberately. No discount column appears anywhere in this document -
+     the commercial number lives on the quotation, and the two go out together. */
+
+  /* The closing page prints these. Fill in what you have; anything left blank is
+     simply not printed, so a missing GSTIN never leaves a hole on the page. */
+  var FIRM = {
+    name: "Energy World",
+    tag: "Modern Plumbing Solution",
+    cities: "Panipat  |  Sonipat  |  Karnal",
+    address: "",
+    phone: "9466600611",
+    email: "",
+    gstin: "",
+    web: ""
+  };
+
+  /* A product photograph fills half a landscape page here, so the =w200 fetch the
+     quotation table uses would print soft. Pulled at =w900 and capped at 640px.
+     Deliberately a SEPARATE cache and dimension map: writing these into PIC_DIM
+     would hand the quotation table the wrong aspect ratio for every picture. */
+  var PIC_BIG = {}, PIC_BIG_DIM = {};
+  function loadPicBig(url) {
+    var raw = String(url || "");
+    var u = driveImg(raw, 900);
+    if (!u) return Promise.resolve(null);
+    if (PIC_BIG[raw] !== undefined) return Promise.resolve(PIC_BIG[raw]);
+    var fetched = api("imgB64", { url: u }).then(function (r) {
+      if (!r || !r.ok) { PIC_BIG[raw] = null; return null; }
+      return shrinkPic("data:" + r.mime + ";base64," + r.b64, 640, 0.78, false).then(function (pp) {
+        PIC_BIG[raw] = pp ? pp.src : null;
+        PIC_BIG_DIM[raw] = pp ? { w: pp.w, h: pp.h } : null;
+        return PIC_BIG[raw];
+      });
+    }).catch(function () { PIC_BIG[raw] = null; return null; });
+    /* one slow picture must never stop the whole deck - draw the page without it */
+    var timed = new Promise(function (res) { setTimeout(function () { res(null); }, 15000); });
+    return Promise.race([fetched, timed]);
+  }
+
+  /* Rooms, at MRP. qzRoomTotals() answers the same question after discount, for the
+     builder screen; this one is the customer's copy, so it stays at list price. */
+  function presRoomAgg(items) {
+    var map = {}, order = [];
+    (items || []).forEach(function (i) {
+      if (i.optional) return;
+      var pairs = [];
+      if (i.rq && typeof i.rq === "object") {
+        for (var k in i.rq) { var n = Number(i.rq[k]) || 0; if (String(k) && n > 0) pairs.push([String(k), n]); }
+      }
+      if (!pairs.length) pairs = [["", Number(i.qty) || 0]];
+      pairs.forEach(function (pr) {
+        if (!map[pr[0]]) { map[pr[0]] = { room: pr[0], qty: 0, mrp: 0, lines: [] }; order.push(pr[0]); }
+        var m = map[pr[0]];
+        m.qty += pr[1];
+        m.mrp += (Number(i.price) || 0) * pr[1];
+        m.lines.push(pr[1] + " x  " + (descLines(i.desc).title || i.code));
+      });
+    });
+    return order.map(function (r) { return map[r]; }).sort(function (a, b) {
+      if (!a.room) return 1;
+      if (!b.room) return -1;
+      return a.room < b.room ? -1 : (a.room > b.room ? 1 : 0);
+    });
+  }
+
+  function presCatAgg(items) {
+    var map = {}, order = [];
+    (items || []).forEach(function (i) {
+      if (i.optional) return;
+      var c = String(i.cat || "").trim() || "Other";
+      if (!map[c]) { map[c] = { cat: c, n: 0, qty: 0, mrp: 0, items: [] }; order.push(c); }
+      var m = map[c];
+      m.n++; m.qty += Number(i.qty) || 0;
+      m.mrp += (Number(i.price) || 0) * (Number(i.qty) || 0);
+      m.items.push(i);
+    });
+    return order.map(function (c) { return map[c]; });
+  }
+
+  function quotePresPdf(q) {
+    var items = [];
+    try { items = JSON.parse(q.items || "[]"); } catch (e) { items = []; }
+    var optl = items.filter(function (i) { return i.optional; });
+    var cats = presCatAgg(items);
+    var rooms = presRoomAgg(items);
+    var namedRooms = rooms.filter(function (r) { return r.room; });
+
+    /* every page that gets a photograph, in the order they are printed */
+    var seq = [];
+    cats.forEach(function (c) { c.items.forEach(function (i) { seq.push({ cat: c.cat, it: i, opt: 0 }); }); });
+    optl.forEach(function (i) { seq.push({ cat: "Options", it: i, opt: 1 }); });
+
+    return Promise.all([
+      loadLogo(),
+      Promise.all(seq.map(function (x) { return loadPicBig(x.it.pic); })),
+      logosReady()
+    ]).then(function (res) {
+      var logo = res[0], pics = res[1];
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+
+      var F = function (w) { doc.setFont(ppEmbed(doc), (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"); };
+      var col = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
+      var fill = function (c) { doc.setFillColor(c[0], c[1], c[2]); };
+      var draw = function (c) { doc.setDrawColor(c[0], c[1], c[2]); };
+      var R = function (n) { return "Rs. " + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      var T = function (x) { return pdfSafe(x); };
+      /* pdfSafe collapses runs of whitespace, so the text is cleaned BEFORE the
+         letters are spaced out - otherwise the word gap and the letter gap become
+         the same single space and "QUOTE NO." prints as "QUOTENO.". */
+      var SP = function (x) { return pdfSafe(x).toUpperCase().split("").join(" "); };
+
+      var INK = [17, 34, 45], DEEP = [11, 59, 54], MINT = [94, 234, 212], TEAL = [13, 118, 108],
+          SLATE = [51, 65, 85], GREY = [110, 125, 140], LINE = [226, 232, 240],
+          SOFT = [248, 250, 252], WHITE = [255, 255, 255], DIM = [130, 180, 173];
+      var W = 297, H = 210, L = 16, Rt = W - 16;
+
+      var cl = clientByName(q.client) || {};
+      var addr = [cl.address, cl.area, cl.location].filter(Boolean).map(String)
+        .reduce(function (acc, part) {
+          var seen = acc.join(", ").toLowerCase();
+          if (seen.indexOf(part.trim().toLowerCase()) < 0) acc.push(part.trim());
+          return acc;
+        }, []).join(", ");
+      var brands = [];
+      items.forEach(function (i) { var b = String(i.brand || "").trim(); if (b && brands.indexOf(b) < 0) brands.push(b); });
+      var VALID_DAYS = 30;
+      var vUntil = ymdLocal(new Date(Date.now() + VALID_DAYS * 86400000));
+      var grandMrp = items.reduce(function (a, i) {
+        return a + (i.optional ? 0 : (Number(i.price) || 0) * (Number(i.qty) || 0));
+      }, 0);
+
+      var darkPg = { 1: 1 };
+      function markDark() { darkPg[doc.internal.getNumberOfPages()] = 1; }
+
+      /* every content page wears the same 20mm band, so the deck reads as one document */
+      function newPage(kicker, title) {
+        doc.addPage("a4", "landscape");
+        fill(DEEP); doc.rect(0, 0, W, 20, "F");
+        fill(MINT); doc.rect(0, 20, W, 0.9, "F");
+        if (logo) { try { doc.addImage(logo, "JPEG", L, 4.4, 21, 11.2); } catch (e) { } }
+        col(MINT); F("bold"); doc.setFontSize(5.6);
+        doc.text(SP(kicker), L + 26, 9.2);
+        col(WHITE); F("bold"); doc.setFontSize(12);
+        doc.text(fitCell(doc, F, T(title), 150, 1, "bold", 12)[0], L + 26, 15.8);
+        col([150, 190, 184]); F("normal"); doc.setFontSize(6.6);
+        doc.text(fitCell(doc, F, T(q.client || ""), 90, 1, "normal", 6.6)[0], Rt, 12.6, { align: "right" });
+        return 32;
+      }
+
+      /* ---------------- 1. COVER ---------------- */
+      fill(DEEP); doc.rect(0, 0, W, H, "F");
+      fill(MINT); doc.rect(0, 0, W, 2.6, "F");
+      fill([8, 45, 42]); doc.rect(0, H - 40, W, 40, "F");
+
+      if (logo) { try { doc.addImage(logo, "JPEG", L, 20, 46, 24.5); } catch (e) { } }
+      col(MINT); F("bold"); doc.setFontSize(6.8);
+      doc.text(SP(FIRM.tag), L, 53);
+      col([140, 185, 178]); F("normal"); doc.setFontSize(6.2);
+      doc.text(T(FIRM.cities.toUpperCase()), L, 58.4);
+
+      col(MINT); F("bold"); doc.setFontSize(7.6);
+      doc.text("P R O P O S A L", L, 84);
+      col(WHITE); F("bold"); doc.setFontSize(29);
+      var nmLines = fitCell(doc, F, T(q.client || "-"), 200, 2, "bold", 29);
+      nmLines.forEach(function (ln, i) { doc.text(ln, L, 99 + i * 12.6); });
+      var cy = 99 + (nmLines.length - 1) * 12.6;
+      if (addr) {
+        col([150, 195, 188]); F("normal"); doc.setFontSize(9.4);
+        doc.text(fitCell(doc, F, T(addr), 200, 1, "normal", 9.4)[0], L, cy + 10);
+        cy += 10;
+      }
+      if (brands.length) {
+        draw([38, 94, 88]); doc.setLineWidth(0.5); doc.line(L, cy + 9, L + 56, cy + 9); doc.setLineWidth(0.2);
+        col(MINT); F("bold"); doc.setFontSize(12);
+        doc.text(fitCell(doc, F, T(brands.join("   ·   ").toUpperCase()), 200, 1, "bold", 12)[0], L, cy + 20);
+      }
+
+      var meta = [["QUOTE NO.", String(q.quoteNo || "")], ["DATE", today()],
+                  ["PREPARED BY", String(q.createdBy || "-")], ["VALID UNTIL", vUntil]];
+      meta.forEach(function (m, i) {
+        var x = L + i * 62;
+        col([110, 160, 153]); F("normal"); doc.setFontSize(5.6);
+        doc.text(SP(m[0]), x, H - 40 + 15);
+        col(WHITE); F("bold"); doc.setFontSize(10);
+        doc.text(fitCell(doc, F, T(m[1]), 58, 1, "bold", 10)[0], x, H - 40 + 23);
+      });
+
+      /* ---------------- 2. SCOPE ---------------- */
+      /* Cards, three to a row, packed by the tallest card in each row so a long room
+         never leaves a hole beside a short one. */
+      function cardPage(kicker, title, intro, cards) {
+        var y = newPage(kicker, title);
+        if (intro) {
+          col(GREY); F("normal"); doc.setFontSize(8);
+          doc.text(fitCell(doc, F, T(intro), Rt - L, 1, "normal", 8)[0], L, y);
+          y += 8;
+        }
+        var GAP = 6, CW = (Rt - L - GAP * 2) / 3, i = 0;
+        while (i < cards.length) {
+          var row = cards.slice(i, i + 3);
+          var rh = 0;
+          row.forEach(function (cd) { rh = Math.max(rh, 20 + cd.lines.length * 4.4 + 4); });
+          if (y + rh > H - 14) { y = newPage(kicker, title); }
+          row.forEach(function (cd, j) {
+            var x = L + j * (CW + GAP);
+            fill(SOFT); doc.roundedRect(x, y, CW, rh, 2, 2, "F");
+            draw(LINE); doc.setLineWidth(0.25); doc.roundedRect(x, y, CW, rh, 2, 2, "S"); doc.setLineWidth(0.2);
+            fill(MINT); doc.rect(x, y, 1.2, rh, "F");
+            col(INK); F("bold"); doc.setFontSize(9.2);
+            doc.text(fitCell(doc, F, T(cd.title), CW - 34, 1, "bold", 9.2)[0], x + 5, y + 7.6);
+            col(TEAL); F("bold"); doc.setFontSize(7.4);
+            doc.text(T(cd.right || ""), x + CW - 4, y + 7.6, { align: "right" });
+            if (cd.sub) {
+              col(GREY); F("normal"); doc.setFontSize(6.4);
+              doc.text(T(cd.sub), x + 5, y + 12.6);
+            }
+            col(SLATE); F("normal"); doc.setFontSize(7.2);
+            cd.lines.forEach(function (ln, k) {
+              doc.text(fitCell(doc, F, T(ln), CW - 9, 1, "normal", 7.2)[0], x + 5, y + 18.4 + k * 4.4);
+            });
+          });
+          y += rh + GAP; i += 3;
+        }
+        return y;
+      }
+
+      if (namedRooms.length) {
+        var loose = rooms.filter(function (r) { return !r.room; });
+        var cards = namedRooms.map(function (r) {
+          return { title: r.room, right: R(r.mrp), sub: r.qty + " pc", lines: r.lines.slice(0, 14) };
+        }).concat(loose.map(function (r) {
+          return { title: "Also included", right: R(r.mrp), sub: r.qty + " pc", lines: r.lines.slice(0, 14) };
+        }));
+        cardPage("Scope", "What this proposal covers",
+          namedRooms.length + (namedRooms.length === 1 ? " area" : " areas") +
+          "  ·  " + items.filter(function (i) { return !i.optional; }).length + " products  ·  value at MRP " + R(grandMrp), cards);
+      } else {
+        cardPage("Scope", "What this proposal covers",
+          cats.length + (cats.length === 1 ? " category" : " categories") +
+          "  ·  " + items.filter(function (i) { return !i.optional; }).length + " products  ·  value at MRP " + R(grandMrp),
+          cats.map(function (c) {
+            return {
+              title: c.cat, right: R(c.mrp), sub: c.qty + " pc",
+              lines: c.items.slice(0, 14).map(function (i) { return (i.qty || 0) + " x  " + (descLines(i.desc).title || i.code); })
+            };
+          }));
+      }
+
+      /* ---------------- 3. PRODUCTS, section by section ---------------- */
+      var lastCat = null, catIdx = 0;
+      seq.forEach(function (sq, idx) {
+        var i = sq.it, pic = pics[idx], dl = descLines(i.desc);
+
+        if (cats.length > 1 && sq.cat !== lastCat) {
+          lastCat = sq.cat;
+          var cInfo = null;
+          cats.forEach(function (c) { if (c.cat === sq.cat) cInfo = c; });
+          catIdx++;
+          doc.addPage("a4", "landscape"); markDark();
+          fill(DEEP); doc.rect(0, 0, W, H, "F");
+          fill(MINT); doc.rect(0, 0, W, 2.2, "F");
+          col([90, 150, 143]); F("bold"); doc.setFontSize(6.6);
+          doc.text("S E C T I O N   " + ("0" + catIdx).slice(-2), L, 42);
+          col(WHITE); F("bold"); doc.setFontSize(25);
+          fitCell(doc, F, T(String(sq.cat).toUpperCase()), 240, 2, "bold", 25)
+            .forEach(function (ln, k) { doc.text(ln, L, 60 + k * 11.5); });
+          draw([38, 94, 88]); doc.setLineWidth(0.5); doc.line(L, 88, L + 56, 88); doc.setLineWidth(0.2);
+          col(MINT); F("normal"); doc.setFontSize(9.6);
+          doc.text(sq.opt
+            ? "Alternatives shown for consideration - not added to the proposal value."
+            : T(cInfo.n + (cInfo.n === 1 ? " product" : " products") + "   ·   " + cInfo.qty + " pc   ·   " + R(cInfo.mrp) + " at MRP"), L, 100);
+          col([150, 195, 188]); F("normal"); doc.setFontSize(8.4);
+          (cInfo ? cInfo.items : []).slice(0, 10).forEach(function (x, k) {
+            doc.text(fitCell(doc, F, T(descLines(x.desc).title || x.code), 240, 1, "normal", 8.4)[0], L, 116 + k * 6.6);
+          });
+        }
+
+        var y = newPage(sq.opt ? "Option" : "Product", sq.cat);
+        var PX = L, PY = y, PW = 118, PH = H - y - 20;
+        fill([252, 253, 253]); doc.roundedRect(PX, PY, PW, PH, 3, 3, "F");
+        draw(LINE); doc.setLineWidth(0.25); doc.roundedRect(PX, PY, PW, PH, 3, 3, "S"); doc.setLineWidth(0.2);
+        if (pic) {
+          var d = PIC_BIG_DIM[String(i.pic || "")] || { w: 4, h: 3 };
+          var sc = Math.min((PW - 14) / d.w, (PH - 14) / d.h);
+          var iw = d.w * sc, ih = d.h * sc;
+          try { doc.addImage(pic, "JPEG", PX + (PW - iw) / 2, PY + (PH - ih) / 2, iw, ih); } catch (e) { }
+        } else {
+          col([203, 213, 225]); F("normal"); doc.setFontSize(8);
+          doc.text("Photograph not available", PX + PW / 2, PY + PH / 2, { align: "center" });
+        }
+
+        var X = PX + PW + 10, CW2 = Rt - X;
+        var byy = PY + PH - 26;
+        var ry = PY + 5;
+
+        col(TEAL); F("bold"); doc.setFontSize(6.8);
+        doc.text(T(String(i.brand || "").toUpperCase() + (i.code ? "     " + i.code : "")), X, ry);
+        ry += 9;
+
+        col(INK); F("bold"); doc.setFontSize(15);
+        var tl = fitCell(doc, F, T(dl.title || i.code), CW2, 3, "bold", 15);
+        tl.forEach(function (ln, k) { doc.text(ln, X, ry + k * 7.2); });
+        ry += (tl.length - 1) * 7.2 + 8;
+
+        /* which rooms this product is going into - the reason the deck exists */
+        var rms = [];
+        if (i.rq && typeof i.rq === "object") {
+          for (var rk in i.rq) {
+            var rn = Number(i.rq[rk]) || 0;
+            if (String(rk) && rn > 0) rms.push(rk + (rn > 1 ? " (" + rn + ")" : ""));
+          }
+          rms.sort();
+        }
+        if (rms.length) {
+          col(TEAL); F("bold"); doc.setFontSize(7);
+          var rml = fitCell(doc, F, T("FOR:  " + rms.join(",   ")), CW2, 2, "bold", 7);
+          rml.forEach(function (ln, k) { doc.text(ln, X, ry + k * 4.4); });
+          ry += (rml.length - 1) * 4.4 + 8;
+        }
+
+        var room = function (hh) { return ry + hh <= byy - 6; };
+        var sp = specLines(i.specs);
+        if (sp.length && room(12)) {
+          col([148, 163, 184]); F("bold"); doc.setFontSize(5.8);
+          doc.text("S P E C I F I C A T I O N S", X, ry); ry += 5.6;
+          for (var si = 0; si < sp.length; si++) {
+            if (!room(5.2)) break;
+            draw([241, 245, 249]); doc.setLineWidth(0.2);
+            doc.line(X, ry + 1.6, Rt, ry + 1.6);
+            if (sp[si].label) {
+              col(GREY); F("normal"); doc.setFontSize(7.2);
+              doc.text(fitCell(doc, F, T(sp[si].label), 38, 1, "normal", 7.2)[0], X, ry);
+              col(SLATE); F("normal"); doc.setFontSize(7.2);
+              doc.text(fitCell(doc, F, T(sp[si].value), CW2 - 42, 1, "normal", 7.2)[0], X + 42, ry);
+            } else {
+              col(SLATE); F("normal"); doc.setFontSize(7.2);
+              doc.text(fitCell(doc, F, T(sp[si].value), CW2, 1, "normal", 7.2)[0], X, ry);
+            }
+            ry += 5.2;
+          }
+          ry += 3;
+        }
+
+        if (dl.bullets.length && room(11)) {
+          col([148, 163, 184]); F("bold"); doc.setFontSize(5.8);
+          doc.text("K E Y   F E A T U R E S", X, ry); ry += 5.4;
+          for (var bi = 0; bi < dl.bullets.length; bi++) {
+            if (!room(5)) break;
+            col(MINT); F("bold"); doc.setFontSize(9); doc.text("\u00b7", X, ry - 0.4);
+            col(SLATE); F("normal"); doc.setFontSize(7.4);
+            var bl = fitCell(doc, F, T(dl.bullets[bi]), CW2 - 4, 2, "normal", 7.4);
+            bl.forEach(function (ln, k) { doc.text(ln, X + 4, ry + k * 4); });
+            ry += (bl.length - 1) * 4 + 5;
+          }
+        }
+
+        /* the price block is pinned to the foot of the panel, so every product page
+           carries its number in exactly the same place */
+        fill(DEEP); doc.roundedRect(X, byy, CW2, 26, 2.5, 2.5, "F");
+        col(DIM); F("normal"); doc.setFontSize(5.6);
+        doc.text("M R P", X + 6, byy + 8);
+        col(WHITE); F("bold"); doc.setFontSize(15.5);
+        doc.text(R(i.price), X + 6, byy + 17.4);
+        col(MINT); F("normal"); doc.setFontSize(6.6);
+        doc.text(T("per " + (i.unit || "No's")), X + 6, byy + 22.4);
+        col(DIM); F("normal"); doc.setFontSize(5.6);
+        doc.text(T("QTY  " + (Number(i.qty) || 0) + "  " + (i.unit || "")), Rt - 6, byy + 8, { align: "right" });
+        col(WHITE); F("bold"); doc.setFontSize(12.5);
+        doc.text(R((Number(i.price) || 0) * (Number(i.qty) || 0)), Rt - 6, byy + 17.4, { align: "right" });
+        if (sq.opt) {
+          col(MINT); F("normal"); doc.setFontSize(6);
+          doc.text("OPTION - not added to the total", Rt - 6, byy + 22.4, { align: "right" });
+        }
+      });
+
+      /* ---------------- 4. SUMMARY ---------------- */
+      var sy = newPage("Summary", "Proposal summary");
+      var twoUp = namedRooms.length > 0;
+      var CWs = twoUp ? 128 : (Rt - L);
+      var XA = L, XB = 155;
+
+      /* How much room the block below the tables needs: the total bar, the options
+         line if there is one, and the four notes. Everything above is measured
+         against this, so nothing is ever quietly pushed off the bottom edge. */
+      var TAIL = 20 + 6 + (optl.length ? 6 : 0) + 4 * 5 + 4;
+      var ROWMAX = H - 12 - TAIL;
+
+      function sumTable(x, w, head, rowsIn, y0) {
+        var yy = y0, shown = 0;
+        col([148, 163, 184]); F("bold"); doc.setFontSize(5.8);
+        doc.text(SP(head), x, yy); yy += 6;
+        draw(LINE); doc.setLineWidth(0.3); doc.line(x, yy - 3.4, x + w, yy - 3.4); doc.setLineWidth(0.2);
+        rowsIn.forEach(function (r) {
+          /* one line is held back for the "and N more" note, so a long list ends
+             honestly instead of just stopping */
+          var last = (shown === rowsIn.length - 1);
+          if (yy + 6.6 > ROWMAX && !last) return;
+          if (yy + 6.6 > ROWMAX) return;
+          shown++;
+          col(INK); F("normal"); doc.setFontSize(8.6);
+          doc.text(fitCell(doc, F, T(r[0]), w - 52, 1, "normal", 8.6)[0], x, yy);
+          col(GREY); F("normal"); doc.setFontSize(7);
+          doc.text(T(r[1]), x + w - 44, yy, { align: "right" });
+          col(INK); F("bold"); doc.setFontSize(8.6);
+          doc.text(T(r[2]), x + w, yy, { align: "right" });
+          draw([241, 245, 249]); doc.line(x, yy + 1.8, x + w, yy + 1.8);
+          yy += 6.6;
+        });
+        if (shown < rowsIn.length) {
+          var rest = rowsIn.slice(shown);
+          var restMrp = rest.reduce(function (a, r) { return a + (Number(r[3]) || 0); }, 0);
+          col([180, 83, 9]); F("bold"); doc.setFontSize(7);
+          doc.text(T("and " + rest.length + " more, listed in full on the scope pages"), x, yy);
+          col([180, 83, 9]); F("bold"); doc.setFontSize(7);
+          doc.text(R(restMrp), x + w, yy, { align: "right" });
+          yy += 6.6;
+        }
+        return yy;
+      }
+
+      var ya = sumTable(XA, CWs, "By category",
+        cats.map(function (c) { return [c.cat, c.qty + " pc", R(c.mrp), c.mrp]; }), sy);
+      var yb = ya;
+      if (twoUp) {
+        yb = sumTable(XB, Rt - XB, "By room",
+          rooms.map(function (r) { return [r.room || "Also included", r.qty + " pc", R(r.mrp), r.mrp]; }), sy);
+      }
+      var ys = Math.max(ya, yb) + 6;
+      if (ys > ROWMAX + 2) ys = ROWMAX + 2;
+
+      fill(DEEP); doc.roundedRect(L, ys, Rt - L, 20, 2.5, 2.5, "F");
+      col(MINT); F("bold"); doc.setFontSize(6.2);
+      doc.text("T O T A L   A T   M R P", L + 7, ys + 8.4);
+      col([150, 195, 188]); F("normal"); doc.setFontSize(6.4);
+      doc.text(T(items.filter(function (i) { return !i.optional; }).length + " products  ·  " +
+        items.reduce(function (a, i) { return a + (i.optional ? 0 : (Number(i.qty) || 0)); }, 0) + " pc"), L + 7, ys + 14.6);
+      col(WHITE); F("bold"); doc.setFontSize(19);
+      doc.text(R(grandMrp), Rt - 7, ys + 13.4, { align: "right" });
+
+      var ny = ys + 26;
+      if (optl.length) {
+        col([180, 83, 9]); F("bold"); doc.setFontSize(6.6);
+        doc.text(T("OPTIONS SHOWN SEPARATELY (not in the total): " +
+          optl.map(function (i) { return (descLines(i.desc).title || i.code) + " - " + R((Number(i.price) || 0) * (Number(i.qty) || 0)); }).join("   ·   ")),
+          L, ny);
+        ny += 6;
+      }
+      col(GREY); F("normal"); doc.setFontSize(7);
+      [
+        "GST is charged extra at the prevailing rate. Prices are Ex Works, Panipat.",
+        "Installation, transport, civil and carpentry work are not included unless stated in writing.",
+        "Product photographs are indicative; the model number is the basis of supply.",
+        "Project pricing is offered on the accompanying commercial quotation. This document shows MRP."
+      ].forEach(function (t2, k) {
+        if (ny + k * 5 > H - 12) return;
+        doc.text(T("·  " + t2), L, ny + k * 5);
+      });
+
+      /* ---------------- 5. NEXT STEPS + CONTACT ---------------- */
+      doc.addPage("a4", "landscape"); markDark();
+      fill(DEEP); doc.rect(0, 0, W, H, "F");
+      fill(MINT); doc.rect(0, 0, W, 2.6, "F");
+      if (logo) { try { doc.addImage(logo, "JPEG", L, 18, 40, 21); } catch (e) { } }
+
+      col(MINT); F("bold"); doc.setFontSize(7);
+      doc.text("N E X T   S T E P S", L, 58);
+      var steps = [
+        ["01", "Confirm the selection", "Tell us the models and the quantities you would like to proceed with. We can revise any item."],
+        ["02", "We issue the commercial quotation", "Your project pricing and applicable GST, against the same reference number."],
+        ["03", "Booking", "50% advance with the signed purchase order confirms the booking; the balance is payable before dispatch."]
+      ];
+      steps.forEach(function (st, k) {
+        var yy = 72 + k * 24;
+        col([60, 120, 113]); F("bold"); doc.setFontSize(17);
+        doc.text(st[0], L, yy + 4);
+        col(WHITE); F("bold"); doc.setFontSize(11);
+        doc.text(T(st[1]), L + 18, yy);
+        col([150, 195, 188]); F("normal"); doc.setFontSize(8);
+        fitCell(doc, F, T(st[2]), 140, 2, "normal", 8).forEach(function (ln, k2) {
+          doc.text(ln, L + 18, yy + 6.2 + k2 * 4.6);
+        });
+      });
+
+      var CX = 186;
+      draw([38, 94, 88]); doc.setLineWidth(0.4); doc.line(CX - 14, 58, CX - 14, 146); doc.setLineWidth(0.2);
+      col(MINT); F("bold"); doc.setFontSize(7);
+      doc.text("E N E R G Y   W O R L D", CX, 58);
+      var cyy = 70;
+      var me2 = (S.data.team || []).filter(function (t2) { return t2.name === q.createdBy; })[0] || {};
+      /* two entries = a plain line, three = a labelled field that disappears when blank */
+      var contact = [
+        [FIRM.tag, ""],
+        [FIRM.cities, ""],
+        [FIRM.address, ""],
+        ["Prepared by", (q.createdBy || "") + (me2.mobile ? "  ·  " + me2.mobile : ""), 1],
+        ["Phone", FIRM.phone, 1],
+        ["Email", FIRM.email, 1],
+        ["GSTIN", FIRM.gstin, 1],
+        ["Web", FIRM.web, 1]
+      ];
+      contact.forEach(function (row) {
+        /* row[0] with no row[1] is a plain line (the strapline, the cities).
+           A LABELLED row whose value is blank is skipped entirely - an empty
+           "GSTIN" heading on a customer document looks like a mistake. */
+        var lbl = row[0], val = String(row[1] || "").trim();
+        if (row.length > 2) {
+          if (!val) return;
+          col([100, 150, 143]); F("normal"); doc.setFontSize(6);
+          doc.text(SP(lbl), CX, cyy);
+          col(WHITE); F("bold"); doc.setFontSize(9);
+          doc.text(fitCell(doc, F, T(val), Rt - CX, 1, "bold", 9)[0], CX, cyy + 5.6);
+          cyy += 12.4;
+          return;
+        }
+        if (!String(lbl || "").trim()) return;
+        col([150, 195, 188]); F("normal"); doc.setFontSize(8.4);
+        doc.text(fitCell(doc, F, T(lbl), Rt - CX, 1, "normal", 8.4)[0], CX, cyy);
+        cyy += 6.4;
+      });
+
+      /* brand strip, the same marks the quotation carries */
+      var BW = 20, BH = 10.5, GP = 2.4, PERR = 12;
+      var stripW = PERR * BW + (PERR - 1) * GP;
+      var sx = (W - stripW) / 2, sy2 = H - 34;
+      col([90, 150, 143]); F("bold"); doc.setFontSize(5.6);
+      doc.text("A U T H O R I S E D   D I S T R I B U T O R   F O R", W / 2, sy2 - 5, { align: "center" });
+      PDF_LOGO_ORDER.forEach(function (n, k) {
+        var lg = logoFor(n);
+        var bx = sx + k * (BW + GP);
+        fill(WHITE); doc.roundedRect(bx, sy2, BW, BH, 1.4, 1.4, "F");
+        if (!lg || !lg.src) return;
+        var sc2 = Math.min((BW - 2.6) / lg.w, (BH - 2.6) / lg.h);
+        var iw2 = lg.w * sc2, ih2 = lg.h * sc2;
+        try { doc.addImage(lg.src, "JPEG", bx + (BW - iw2) / 2, sy2 + (BH - ih2) / 2, iw2, ih2); } catch (e) { }
+      });
+
+      /* ---------------- footers ---------------- */
+      var pages = doc.internal.getNumberOfPages();
+      for (var pg = 2; pg <= pages; pg++) {
+        doc.setPage(pg);
+        F("normal"); doc.setFontSize(6);
+        col(darkPg[pg] ? [90, 150, 143] : [150, 163, 175]);
+        doc.text(T(FIRM.name + "   |   " + FIRM.cities + "   |   " + String(q.quoteNo || "")), L, H - 7);
+        doc.text(pg + " / " + pages, Rt, H - 7, { align: "right" });
+      }
+      return doc;
+    });
+  }
+
 
   /* ---------------- site visits (check-in, not tracking) ---------------- */
   function siteVisits(siteId) {
@@ -13117,6 +13675,7 @@ function viewCatalogue() {
         (S.role === "admin" && q.createdBy ? ' &middot; ' + esc(q.createdBy) : '') + '</div>' +
         '<div class="acts">' +
         '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
+      '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal PDF</button>' +
         '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
         '<button class="btn sm ghost" data-act="rad-status" data-id="' + esc(q.id) + '" data-s="Won">Won</button>' +
         '<button class="btn sm ghost" data-act="rad-status" data-id="' + esc(q.id) + '" data-s="Lost">Lost</button>' +
@@ -16627,6 +17186,17 @@ function viewCatalogue() {
       if (!qd) return;
       toast("Building PDF...");
       quotePdf(qd).then(function (d) { d.save(String(qd.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf"); });
+      return;
+    }
+    /* the presentation deck - room by room, a page per product, MRP only */
+    if (act === "q-pres") {
+      var qp = S.data.quotes.filter(function (x) { return x.id === id; })[0];
+      if (!qp) return;
+      toast("Building the proposal - photographs take a moment...");
+      quotePresPdf(qp).then(function (d) {
+        d.save("Proposal_" + String(qp.client || "").replace(/[^\w]+/g, "_") + "_" +
+          String(qp.quoteNo || "").replace(/[^\w.-]/g, "_") + ".pdf");
+      }).catch(function (e) { console.warn("[pres]", e); toast("Could not build the proposal PDF."); });
       return;
     }
     if (act === "q-tg") {
