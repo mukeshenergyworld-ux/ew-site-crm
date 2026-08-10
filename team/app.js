@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.223";
+  var APP_VERSION = "6.9.224";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2448,6 +2448,12 @@ window.addEventListener("beforeunload", function (ev) {
     });
     var names = Object.keys(by).filter(function (k) { return by[k].bal > 0; })
       .sort(function (a, b) { return by[b].bal - by[a].bal; });
+    /* the Collections search box sits above both sub-screens, so it filters this one too */
+    var dq = String(S.payq || "").trim().toLowerCase();
+    if (dq) names = names.filter(function (k) {
+      var c = clientByName(k);
+      return c ? cvMatch(c, dq) : String(k).toLowerCase().indexOf(dq) > -1;
+    });
     var total = names.reduce(function (a, k) { return a + by[k].bal; }, 0);
     var h = '<div class="cards"><div class="stat ' + (total ? "alert" : "") + '"><div class="n">' + money(total) + '</div><div class="l">Total pending from clients</div></div>' +
       '<div class="stat"><div class="n">' + names.length + '</div><div class="l">Clients owing</div></div></div>';
@@ -8958,7 +8964,9 @@ function viewCatalogue() {
     return h;
   }
 
-  function viewPayments() {
+  /* Every client who has ever been billed, owed the most first. Built in one place
+     because both the screen and its search need exactly the same list. */
+  function payLedgerList() {
     var names = {};
     S.data.challans.forEach(function (c) { if (String(c.receiptReceived).toUpperCase() === "Y") names[c.customerName] = 1; });
     /* v6.9.209: a client whose only entry is a brought-forward balance, or who has paid us but has
@@ -8969,6 +8977,11 @@ function viewCatalogue() {
     var list = Object.keys(names).map(function (n) { return { name: n, l: clientLedger(n), age: payAge(n) }; })
       .sort(function (a, b) { return b.l.due - a.l.due; });
     if (!seesAllClients()) list = list.filter(function (x) { return isMineClient(x.name); });   /* a sales exec sees only the clients assigned to them */
+    return list;
+  }
+
+  function viewPayments() {
+    var list = payLedgerList();
     var totDue = list.reduce(function (a, x) { return a + x.l.due; }, 0);
     var h = '<div class="cards">' +
       '<div class="stat ' + (totDue > 0 ? "alert" : "") + '"><div class="n">' + money(totDue) + '</div><div class="l">DUE AMT &mdash; outstanding from clients</div></div>' +
@@ -8998,8 +9011,42 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="pay-csv">Download all payments (CSV)</button></div>';
     if (S.payHist) return h + payHistHtml();
 
+    /* v6.9.224 COLLECTIONS SEARCH.
+       This screen carries a card for every client who has ever been billed, and it is
+       sorted by who owes the most - which is right for chasing money and useless when
+       you already know whose ledger you want. The box finds him by name, phone, area,
+       plumber, architect or address.
+       Only the list block repaints as you type, never the page: on a phone a full
+       repaint drops the caret and shuts the keyboard halfway through a mobile number. */
+    h += '<div class="row" style="margin-bottom:8px">' +
+      '<input class="grow" id="pay_q" placeholder="Client dhoondein - naam, phone, area, plumber..." value="' + esc(S.payq || "") + '"/>' +
+      '<button class="btn sm ghost" id="pay_qc" data-act="pay-qclear" style="' + (S.payq ? "" : "display:none") + '">Clear</button></div>';
+
     h += '<div class="empty" style="text-align:left;padding:0 0 12px">Only challans with a <b>signed material receipt</b> enter the ledger. Freight appears here when the client bears it.</div>';
     if (!list.length) return h + '<div class="empty">Nothing delivered yet.</div>';
+    return h + '<div id="pay_list">' + payListHtml() + '</div>';
+  }
+
+  /* The ledger cards on their own, so the search can redraw just this block. */
+  function payListHtml() {
+    var list = payLedgerList();
+    var qq = String(S.payq || "").trim().toLowerCase();
+    if (qq) {
+      list = list.filter(function (x) {
+        var c = clientByName(x.name);
+        return c ? cvMatch(c, qq) : String(x.name).toLowerCase().indexOf(qq) > -1;
+      });
+    }
+    if (!list.length) {
+      return '<div class="empty">No client matches <b>' + esc(S.payq) + '</b>. ' +
+        'The search runs on name, phone, area, plumber, architect and address.</div>';
+    }
+    var h = "";
+    if (qq) {
+      var qDue = list.reduce(function (a, x) { return a + x.l.due; }, 0);
+      h += '<div class="meta" style="margin:-4px 0 8px">' + list.length + ' client(s) &middot; ' +
+        (qDue > 0 ? 'due ' + money(qDue) : 'nothing outstanding') + '</div>';
+    }
     list.forEach(function (x) {
       h += '<div class="card"><h3>' + esc(x.name) + creditPill(x.name) +
         (x.l.due > 0 ? ' ' + dueAmt(x.l.due) : ' <span class="pill Won">clear</span>') +
@@ -15581,6 +15628,20 @@ function viewCatalogue() {
       });
       cvqi.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
     }
+    /* v6.9.224 the Collections search. Same rule as the client list and the quote book:
+       repaint ONLY the list block, never the page, so the caret and the phone keyboard
+       stay put while a ten-digit number is typed one digit at a time. */
+    var payqi = el("pay_q");
+    if (payqi) {
+      payqi.addEventListener("input", function (e) {
+        S.payq = e.target.value;
+        var qc = el("pay_qc");
+        if (qc) qc.style.display = e.target.value ? "" : "none";
+        var box = el("pay_list");
+        if (box) box.innerHTML = payListHtml();
+      });
+      payqi.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
+    }
     var clqi = el("cl_q");
     if (clqi) {
       clqi.addEventListener("input", function (e) {
@@ -16028,6 +16089,7 @@ function viewCatalogue() {
     if (act === "pv-open")  { S.pvOpen = t.getAttribute("data-code") || ""; render(); return; }
     if (act === "pv-back")  { S.pvOpen = ""; render(); return; }
     if (act === "pv-more")  { S.pvMore = (S.pvMore || 60) + 60; render(); return; }
+    if (act === "pay-qclear") { S.payq = ""; render(); return; }
     if (act === "cat-reload") { toast("Reloading catalogue..."); loadCatalog().then(function () { toast(PRODUCTS.length + " products loaded."); renderBg(); }); return; }
 
     if (act === "nav-toggle") { S.navOpen = !S.navOpen; render(); return; }
