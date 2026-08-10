@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.229";
+  var APP_VERSION = "6.9.230";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4986,7 +4986,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="acts" style="margin:0;flex:1 1 auto;min-width:0;flex-wrap:wrap;justify-content:flex-end;gap:6px">' +
       '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:5px 8px;font-size:12.5px">' + opts(QSTATUS, q.status) + '</select>' +
       '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
-      '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal PDF</button>' +
+      '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal</button>' +
       '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
       (q.status === "Won" ? '<button class="btn sm" data-act="q-challan" data-id="' + esc(q.id) + '">Make challan</button>' : "") +
       /* v6.9.205 - every quote already marked Lost can still be answered, so the back
@@ -5120,6 +5120,92 @@ window.addEventListener("beforeunload", function (ev) {
       "Please let us know if we may proceed.\n\nThank you,\nEnergy World";
     var fname = String(wq.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf";
     waShareDoc(quotePdf(wq), fname, wnum, wmsg);
+  }
+
+  /* ---- SENDING THE PROPOSAL ----
+     The deck is the thing a customer forwards to his wife and to his architect,
+     so it leaves from the same screen it is built on. WhatsApp cannot carry a
+     file through a wa.me link, so the PDF is hosted and the link travels in the
+     message - the same route the quotation already uses. The architect, the
+     plumber and the builder on that site are already in the book, so each of them
+     is one press away. */
+  function presSummary(q) {
+    var items = [];
+    try { items = JSON.parse(q.items || "[]"); } catch (e) { items = []; }
+    var live = items.filter(function (i) { return !i.optional; });
+    var rooms = presRoomAgg(items).filter(function (r) { return r.room; });
+    return {
+      n: live.length,
+      pieces: live.reduce(function (a, i) { return a + (Number(i.qty) || 0); }, 0),
+      rooms: rooms.length,
+      mrp: live.reduce(function (a, i) { return a + (Number(i.price) || 0) * (Number(i.qty) || 0); }, 0)
+    };
+  }
+  function presFileName(q) {
+    return "Proposal_" + String(q.client || "").replace(/[^\w]+/g, "_") + "_" +
+      String(q.quoteNo || "").replace(/[^\w.-]/g, "_") + ".pdf";
+  }
+  function presMsg(q, role, name) {
+    var s2 = presSummary(q);
+    var to = (role && role !== "Client" && name) ? name : String(q.client || "");
+    var open = (role && role !== "Client")
+      ? "Sharing the proposal prepared for " + String(q.client || "") + "'s site."
+      : "Sharing your proposal from Energy World.";
+    return "Namaste " + to + ",\n\n" + open + "\n\n" +
+      s2.n + " product" + (s2.n === 1 ? "" : "s") +
+      (s2.rooms ? " across " + s2.rooms + " area" + (s2.rooms === 1 ? "" : "s") : "") +
+      ", with photographs and specifications.\n" +
+      "Reference " + String(q.quoteNo || "") + ".\n" +
+      "The figures shown are MRP - your project pricing is on the quotation." +
+      "\n\nRegards,\n" + (S.user || "Energy World") + "\nEnergy World, Panipat";
+  }
+  /* Who it went to, and when. A proposal sent to the architect is the single most
+     useful thing to know when the follow-up call is made a week later. */
+  function presLog(q, how) {
+    try {
+      save("audit", {
+        id: "", createdAt: new Date().toISOString(), actor: S.user || "",
+        action: "proposal:sent",
+        target: String(q.quoteNo || q.id) + " / " + String(q.client || "") + " / " + how
+      });
+    } catch (e) { }
+  }
+
+  function modalPresSend(id) {
+    var q = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
+    if (!q) {
+      return '<h2>Proposal</h2><p class="sub">That quote is not in the book.</p>' +
+        '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+    }
+    var s2 = presSummary(q);
+    var ppl = agContactsFor(q.client);
+    var row = 'style="justify-content:flex-start;text-align:left;width:100%"';
+    return '<h2>Send the proposal</h2>' +
+      '<p class="sub">' + esc(q.client) + ' &middot; ' + esc(q.quoteNo || "") + '</p>' +
+      '<div class="empty" style="text-align:left;padding:0 0 10px;font-size:12.5px">' +
+        '<b>' + s2.n + ' product' + (s2.n === 1 ? '' : 's') + ' &middot; ' + s2.pieces + ' pc &middot; ' +
+        (s2.rooms ? s2.rooms + ' area' + (s2.rooms === 1 ? '' : 's') : 'no rooms set') +
+        ' &middot; ' + esc(money(s2.mrp)) + ' at MRP</b><br>' +
+        'Cover, a brand introduction for every brand quoted, a page for each product with its ' +
+        'photograph and specification, and the summary at the end. It takes a few seconds to build.' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' +
+      ppl.map(function (pp) {
+        var num = String(pp.mobile || "").replace(/\D/g, "");
+        var has = num.length >= 10;
+        return '<button class="btn ' + (pp.role === "Client" ? "" : "ghost") + '"' +
+          (has ? '' : ' disabled') +
+          ' data-act="pres-wa" data-id="' + esc(q.id) + '" data-m="' + esc(num) + '"' +
+          ' data-n="' + esc(pp.name) + '" data-r="' + esc(pp.role) + '" ' + row + '>' +
+          'WhatsApp &rarr; ' + esc(pp.role) + ': ' + esc(pp.name) +
+          (has ? ' <span style="opacity:.65">&middot; ' + esc(num) + '</span>'
+               : ' <span style="opacity:.65">&middot; no number on file</span>') +
+          '</button>';
+      }).join("") +
+      '<button class="btn ghost" data-act="pres-tg" data-id="' + esc(q.id) + '" ' + row + '>Telegram &rarr; the team group</button>' +
+      '<button class="btn ghost" data-act="pres-dl" data-id="' + esc(q.id) + '" ' + row + '>Download it to this device</button>' +
+      '</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button></div>';
   }
 
   function viewQzWizard() {
@@ -6434,6 +6520,16 @@ function viewCatalogue() {
     }
     return null;
   }
+  /* "Accessory" and "Net Price Items" are heads under which allied items are
+     filed, not brands. brandBoard already keeps them off the lead cards; a
+     customer-facing proposal must not print them on the cover or give them an
+     introduction page either. */
+  function presRealBrand(b) {
+    var l = String(b || "").trim().toLowerCase();
+    if (!l) return false;
+    return l.indexOf("accessor") < 0 && l.indexOf("net price") < 0;
+  }
+
   function brandIntro(brand) {
     var r = brandRow(brand) || {};
     var pts = String(r.points || "").split(/\s*[|\n;]\s*/)
@@ -6510,7 +6606,7 @@ function viewCatalogue() {
     var introBrands = [];
     items.forEach(function (i) {
       var b = String(i.brand || "").trim();
-      if (!b) return;
+      if (!presRealBrand(b)) return;
       if (introBrands.some(function (x) { return x.brand === b; })) return;
       var bi = brandIntro(b);
       if (bi.has) introBrands.push(bi);
@@ -6550,7 +6646,10 @@ function viewCatalogue() {
           return acc;
         }, []).join(", ");
       var brands = [];
-      items.forEach(function (i) { var b = String(i.brand || "").trim(); if (b && brands.indexOf(b) < 0) brands.push(b); });
+      items.forEach(function (i) {
+        var b = String(i.brand || "").trim();
+        if (presRealBrand(b) && brands.indexOf(b) < 0) brands.push(b);
+      });
       var VALID_DAYS = 30;
       var vUntil = ymdLocal(new Date(Date.now() + VALID_DAYS * 86400000));
       var grandMrp = items.reduce(function (a, i) {
@@ -13993,7 +14092,7 @@ function viewCatalogue() {
         (S.role === "admin" && q.createdBy ? ' &middot; ' + esc(q.createdBy) : '') + '</div>' +
         '<div class="acts">' +
         '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
-      '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal PDF</button>' +
+      '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal</button>' +
         '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
         '<button class="btn sm ghost" data-act="rad-status" data-id="' + esc(q.id) + '" data-s="Won">Won</button>' +
         '<button class="btn sm ghost" data-act="rad-status" data-id="' + esc(q.id) + '" data-s="Lost">Lost</button>' +
@@ -14258,7 +14357,9 @@ function viewCatalogue() {
           client: q.client || "", siteName: q.client || "quotation",
           quoteNo: q.quoteNo || "", brandTxt: bt, qdate: q.updatedAt || q.createdAt || "",
           contacts: agContactsFor(q.client),
-          btns: [{ act: "qz-revise", attrs: { id: q.id }, label: "Revise it", ghost: 1 },
+          /* chasing with the same price list rarely moves anything; the proposal does */
+          btns: [{ act: "q-pres", attrs: { id: q.id }, label: "Send the proposal", ghost: 1 },
+                 { act: "qz-revise", attrs: { id: q.id }, label: "Revise it", ghost: 1 },
                  { act: "q-pdf", attrs: { id: q.id }, label: "Send PDF again", ghost: 1 }]
         }));
       });
@@ -17507,14 +17608,55 @@ function viewCatalogue() {
       return;
     }
     /* the presentation deck - room by room, a page per product, MRP only */
-    if (act === "q-pres") {
-      var qp = S.data.quotes.filter(function (x) { return x.id === id; })[0];
-      if (!qp) return;
+    if (act === "q-pres") { S.modal = modalPresSend(id); render(); return; }
+    if (act === "pres-dl") {
+      var qd2 = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
+      if (!qd2) return;
+      S.modal = null; render();
       toast("Building the proposal - photographs take a moment...");
-      quotePresPdf(qp).then(function (d) {
-        d.save("Proposal_" + String(qp.client || "").replace(/[^\w]+/g, "_") + "_" +
-          String(qp.quoteNo || "").replace(/[^\w.-]/g, "_") + ".pdf");
+      quotePresPdf(qd2).then(function (d) {
+        d.save(presFileName(qd2));
+        presLog(qd2, "downloaded");
       }).catch(function (e) { console.warn("[pres]", e); toast("Could not build the proposal PDF."); });
+      return;
+    }
+    if (act === "pres-wa") {
+      var qw2 = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
+      if (!qw2) return;
+      var wnum2 = String(t.getAttribute("data-m") || "").replace(/\D/g, "");
+      if (wnum2.length === 10) wnum2 = "91" + wnum2;
+      var wrole = t.getAttribute("data-r") || "Client";
+      var wname = t.getAttribute("data-n") || "";
+      /* the blank tab has to be opened inside this click or the browser blocks it,
+         so waShareDoc is called BEFORE the modal is torn down */
+      waShareDoc(quotePresPdf(qw2), presFileName(qw2), wnum2, presMsg(qw2, wrole, wname));
+      presLog(qw2, "WhatsApp to " + wrole + " " + wname);
+      S.modal = null; render();
+      return;
+    }
+    if (act === "pres-tg") {
+      var qg2 = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
+      if (!qg2) return;
+      var sg = presSummary(qg2);
+      t.disabled = true; t.textContent = "Building and sending...";
+      quotePresPdf(qg2).then(function (d) {
+        var b64 = d.output("datauristring").split(",")[1];
+        return api("tgSend", {
+          bot: "TG_QUOTES", pdfBase64: b64, filename: presFileName(qg2),
+          caption: "<b>Proposal " + String(qg2.quoteNo || "") + "</b>\n" + String(qg2.client || "") +
+            "\n" + sg.n + " products · " + sg.pieces + " pc" +
+            (sg.rooms ? " · " + sg.rooms + " areas" : "") +
+            "\n" + moneyAscii(sg.mrp) + " at MRP\nBy " + (S.user || "")
+        });
+      }).then(function (r) {
+        toast(r && r.ok ? "Proposal sent to Telegram." : "Telegram send failed - try WhatsApp or download.");
+        if (r && r.ok) presLog(qg2, "Telegram");
+        S.modal = null; render();
+      }).catch(function (e) {
+        console.warn("[pres-tg]", e);
+        toast("Could not send the proposal.");
+        S.modal = null; render();
+      });
       return;
     }
     if (act === "q-tg") {
