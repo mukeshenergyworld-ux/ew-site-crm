@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.222";
+  var APP_VERSION = "6.9.223";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -816,22 +816,20 @@ window.addEventListener("beforeunload", function (ev) {
   function prodTile(p) {
     var pic = p.pic ? driveImg(p.pic, 300) : "";
     var d = descLines(p.desc || p.family);
-    return '<div data-act="pv-open" data-code="' + esc(p.code) + '" style="cursor:pointer;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;display:flex;flex-direction:column">' +
-      '<div style="aspect-ratio:4/3;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden">' +
-      (pic ? '<img loading="lazy" src="' + esc(pic) + '" alt="" style="width:100%;height:100%;object-fit:contain"/>'
-           : '<span style="font-size:11px;color:#cbd5e1">no photo</span>') +
+    return '<div class="pv-t" data-act="pv-open" data-code="' + esc(p.code) + '" title="' + esc(d.title) + '">' +
+      '<div class="pv-i">' +
+      (pic ? '<img loading="lazy" src="' + esc(pic) + '" alt=""/>' : '<span>no photo</span>') +
       '</div>' +
-      '<div style="padding:8px 9px 10px;display:flex;flex-direction:column;gap:3px;flex:1">' +
-      '<div style="font-size:12.5px;line-height:1.32;font-weight:600;color:#0f172a;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + esc(d.title) + '</div>' +
-      '<div style="font-size:10.5px;color:#94a3b8">' + esc(p.code) + '</div>' +
-      '<div style="margin-top:auto;padding-top:4px;font-size:14px;font-weight:700;color:#0f766e">' + money(p.price) +
-      (p.unit ? ' <span style="font-size:10px;font-weight:400;color:#94a3b8">/ ' + esc(p.unit) + '</span>' : "") + '</div>' +
+      '<div class="pv-b">' +
+      '<div class="pv-n">' + esc(d.title) + '</div>' +
+      '<div class="pv-c">' + esc(p.code) + '</div>' +
+      '<div class="pv-p">' + money(p.price) +
+      (p.unit ? ' <i>/ ' + esc(p.unit) + '</i>' : "") + '</div>' +
       '</div></div>';
   }
 
   function prodGrid(list) {
-    return '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;margin-top:8px">' +
-      list.map(prodTile).join("") + '</div>';
+    return '<div class="pv-grid">' + list.map(prodTile).join("") + '</div>';
   }
 
   /* One product, opened out: the big picture, every feature line, and the price
@@ -915,7 +913,7 @@ window.addEventListener("beforeunload", function (ev) {
         h += '<h3 style="margin:16px 0 0;font-size:14px">' + esc(b) +
           ' <span class="pill teal">' + shelf.by[b].length + '</span>' +
           ' <button class="btn sm ghost" data-act="pv-brand" data-v="' + esc(b) + '">sab dekhein</button></h3>' +
-          prodGrid(shelf.by[b].slice(0, 4));
+          prodGrid(shelf.by[b].slice(0, 11));
       });
       return h;
     }
@@ -15445,7 +15443,27 @@ function viewCatalogue() {
       ".due-amt b{color:#b91c1c;font-size:12.5px;font-weight:800}" +
       ".due-amt.lg{padding:3px 12px 3px 4px}.due-amt.lg b{font-size:16px}" +
       ".due-amt.on{background:#dc2626;border-color:#dc2626}.due-amt.on .due-amt-k{background:#fff;color:#dc2626}.due-amt.on b{color:#fff}" +
-      "@media(max-width:560px){.due-amt b{font-size:12px}.due-amt.lg b{font-size:15px}}";
+      "@media(max-width:560px){.due-amt b{font-size:12px}.due-amt.lg b{font-size:15px}}" +
+      /* v6.9.223 PRODUCT CATALOGUE tiles.
+         main is capped at max-width:1100px with 16px padding, so the row a laptop
+         actually gets is 1068px wide. At an 88px minimum and an 8px gap that lands
+         eleven products per line instead of six - you see a whole family at once
+         rather than scrolling through it. A phone keeps larger tiles of its own
+         below, because three legible cards beat six unreadable ones. */
+      ".pv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin-top:8px}" +
+      ".pv-t{cursor:pointer;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#fff;display:flex;flex-direction:column}" +
+      ".pv-t:hover{border-color:#94a3b8}" +
+      ".pv-i{aspect-ratio:1/1;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden}" +
+      ".pv-i img{width:100%;height:100%;object-fit:contain}" +
+      ".pv-i span{font-size:9px;color:#cbd5e1}" +
+      ".pv-b{padding:5px 6px 7px;display:flex;flex-direction:column;gap:1px;flex:1}" +
+      ".pv-n{font-size:10.5px;line-height:1.25;font-weight:600;color:#0f172a;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}" +
+      ".pv-c{font-size:9px;color:#94a3b8}" +
+      ".pv-p{margin-top:auto;padding-top:2px;font-size:11.5px;font-weight:700;color:#0f766e;white-space:nowrap}" +
+      ".pv-p i{font-size:8.5px;font-weight:400;color:#94a3b8;font-style:normal}" +
+      "@media(max-width:560px){.pv-grid{grid-template-columns:repeat(auto-fill,minmax(112px,1fr))}" +
+      ".pv-n{font-size:11.5px}.pv-c{font-size:9.5px}.pv-p{font-size:12.5px}.pv-p i{font-size:9.5px}" +
+      ".pv-b{padding:6px 7px 8px}}";
     document.head.appendChild(s);
   }
   function renderCore() {
