@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.225";
+  var APP_VERSION = "6.9.226";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -26,6 +26,10 @@
   var keepScroll = false;
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
+  /* Bumped whenever a new column is read out of the catalogue. A cache written by
+     an older build is ignored rather than trusted, so nobody sits for a day with
+     a product list that is missing a field the screen now wants to show. */
+  var CAT_V = 2;
 
   var STAGES = ["Enquiry / Not started", "Foundation", "Structure / Slab", "Brickwork",
     "Concealed Plumbing", "Concealed Electrical", "Plastering", "Flooring / Tiling",
@@ -720,6 +724,10 @@ window.addEventListener("beforeunload", function (ev) {
         price: Number(String(row[6] || "0").replace(/[^0-9.]/g, "")) || 0,
         brand: String(row[8] || "").trim(),
         pic: driveImg(row[10]),
+        /* column L of the master catalogue. Written once per product, it then
+           appears on the Products screen and on every future quote. Blank is
+           fine - a product with no specs simply prints without the block. */
+        specs: String(row[11] || "").trim(),
         label: (code ? code + " - " : "") + desc
       });
     }
@@ -729,7 +737,7 @@ window.addEventListener("beforeunload", function (ev) {
   function loadCatalog() {
     try {
       var c = JSON.parse(localStorage.getItem(CAT_KEY) || "null");
-      if (c && c.at && (Date.now() - c.at < 86400000) && c.items && c.items.length) PRODUCTS = c.items;
+      if (c && c.v === CAT_V && c.at && (Date.now() - c.at < 86400000) && c.items && c.items.length) PRODUCTS = c.items;
     } catch (e) {}
     return fetch(GAS + "?action=catalog", { cache: "no-store" })
       .then(function (r) { return r.json(); })
@@ -738,7 +746,7 @@ window.addEventListener("beforeunload", function (ev) {
         if (items.length) {
           PRODUCTS = items;
           PRODLIST_HTML = null;
-          try { localStorage.setItem(CAT_KEY, JSON.stringify({ at: Date.now(), items: items })); } catch (e) {}
+          try { localStorage.setItem(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items })); } catch (e) {}
         }
       })
       .catch(function () {});
@@ -813,6 +821,24 @@ window.addEventListener("beforeunload", function (ev) {
     return out.sort(function (a, b) { return a.k.localeCompare(b.k); });
   }
 
+  /* SPECIFICATIONS.
+     One cell in the sheet, written the way a person would say it:
+       Bowl shape : D Shape | Flush system : Tornado (4.8 / 3 L) | Colour : White
+     Split on a bar or a new line, then on the FIRST colon only - so a size like
+     "380W x 540D" or a time like "6:30" on the right of the colon stays intact.
+     A part with no colon is kept as a plain line rather than thrown away. */
+  function specLines(raw) {
+    var t = String(raw || "").trim();
+    if (!t) return [];
+    return t.split(/\s*[|\n;]\s*/).map(function (part) {
+      var s2 = String(part).trim();
+      if (!s2) return null;
+      var c = s2.indexOf(":");
+      if (c < 0) return { label: "", value: s2 };
+      return { label: s2.slice(0, c).trim(), value: s2.slice(c + 1).trim() };
+    }).filter(Boolean);
+  }
+
   function prodTile(p) {
     var pic = p.pic ? driveImg(p.pic, 300) : "";
     var d = descLines(p.desc || p.family);
@@ -846,8 +872,19 @@ window.addEventListener("beforeunload", function (ev) {
       '<div style="font-size:22px;font-weight:700;color:#0f766e;margin:6px 0 2px">' + money(p.price) +
       (p.unit ? ' <span style="font-size:12px;font-weight:400;color:#94a3b8">/ ' + esc(p.unit) + '</span>' : "") + '</div>' +
       '<div class="meta" style="margin-bottom:8px">List price - discount alag se lagta hai.</div>';
+    var sp = specLines(p.specs);
+    if (sp.length) {
+      h += '<div style="font-size:10.5px;letter-spacing:.08em;color:#94a3b8;margin:12px 0 4px">SPECIFICATIONS</div>' +
+        '<div style="font-size:13px;line-height:1.6;color:#334155">' +
+        sp.map(function (x) {
+          return '<div style="display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #f8fafc">' +
+            (x.label ? '<span style="color:#94a3b8;min-width:120px">' + esc(x.label) + '</span>' : '') +
+            '<span>' + esc(x.value) + '</span></div>';
+        }).join("") + '</div>';
+    }
     if (d.bullets.length) {
-      h += '<ul style="margin:8px 0 10px;padding-left:18px;font-size:13px;line-height:1.6;color:#334155">' +
+      h += (sp.length ? '<div style="font-size:10.5px;letter-spacing:.08em;color:#94a3b8;margin:12px 0 4px">KEY FEATURES</div>' : '') +
+        '<ul style="margin:8px 0 10px;padding-left:18px;font-size:13px;line-height:1.6;color:#334155">' +
         d.bullets.map(function (b) { return '<li>' + esc(b) + '</li>'; }).join("") + '</ul>';
     }
     h += '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">' +
@@ -16931,7 +16968,8 @@ function viewCatalogue() {
         var qb2 = realBrand(p);
         var nrq = {}; nrq[String(S.qz.room || "")] = 1;
         S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: 1,
-                          pic: p.pic, unit: p.unit, brand: qb2, cat: p.cat || "", rq: nrq });
+                          pic: p.pic, unit: p.unit, brand: qb2, cat: p.cat || "",
+                          specs: p.specs || "", rq: nrq });
         S.qz.brandDiscs = S.qz.brandDiscs || {};
         if (qb2 && S.qz.brandDiscs[qb2] === undefined) S.qz.brandDiscs[qb2] = clientDiscount(S.qz.client, qb2);
       } else {
@@ -19148,7 +19186,8 @@ function viewCatalogue() {
         var qb = realBrand(p);
         var trq = {}; trq[String(S.qz.room || "")] = q;
         S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: q,
-                          pic: p.pic, unit: p.unit, brand: qb, cat: p.cat || "", rq: trq });
+                          pic: p.pic, unit: p.unit, brand: qb, cat: p.cat || "",
+                          specs: p.specs || "", rq: trq });
         S.qz.brandDiscs = S.qz.brandDiscs || {};
         if (qb && S.qz.brandDiscs[qb] === undefined) S.qz.brandDiscs[qb] = clientDiscount(S.qz.client, qb);
       }
