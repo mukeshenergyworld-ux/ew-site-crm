@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.220";
+  var APP_VERSION = "6.9.221";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -764,22 +764,176 @@ window.addEventListener("beforeunload", function (ev) {
     return PRODLIST_HTML;
   }
 
+  /* ---------------- PRODUCTS - the picture catalogue ----------------
+     Anyone on the team can open this and walk down to a price: brand, then
+     category, then family. A price you cannot find is a price nobody quotes,
+     so the whole screen is built for looking rather than for typing - the
+     search box is still there for when you already know the code.
+     Pictures are lazy-loaded: 800+ thumbnails on a phone would otherwise cost
+     a few MB of data before the first tap. */
+
+  /* The brand a product belongs to for browsing. Mapped brand wins; an unmapped
+     catalogue value still gets its own shelf rather than disappearing. */
+  function prodBrand(p) { return realBrand(p) || String(p.brand || "").trim() || "Other"; }
+
+  function prodShelf() {
+    var order = [], by = {};
+    PRODUCTS.forEach(function (p) {
+      var b = prodBrand(p);
+      if (!by[b]) { by[b] = []; order.push(b); }
+      by[b].push(p);
+    });
+    order.sort(function (a, b) { return by[b].length - by[a].length || a.localeCompare(b); });
+    return { order: order, by: by };
+  }
+
+  /* A chip row that cannot change what you see is only clutter, so it is drawn
+     when there is a real choice: two or more values, or one value plus some
+     products that carry none (where "all" and that one value differ). */
+  function prodChips(act, items, active, allLabel, someBlank) {
+    if (items.length < 2 && !(items.length === 1 && someBlank)) return "";
+    var h = '<div class="row" style="flex-wrap:wrap;gap:6px;margin:6px 0 2px">' +
+      '<button class="btn sm ' + (active ? "ghost" : "") + '" data-act="' + act + '" data-v="">' + allLabel + '</button>';
+    items.forEach(function (x) {
+      h += '<button class="btn sm ' + (active === x.k ? "" : "ghost") + '" data-act="' + act + '" data-v="' + esc(x.k) + '">' +
+        esc(x.k) + ' <span style="opacity:.6">' + x.n + '</span></button>';
+    });
+    return h + '</div>';
+  }
+
+  function prodCountBy(list, key) {
+    var seen = {}, out = [];
+    list.forEach(function (p) {
+      var v = String(p[key] || "").trim();
+      if (!v) return;
+      if (!seen[v]) { seen[v] = { k: v, n: 0 }; out.push(seen[v]); }
+      seen[v].n++;
+    });
+    return out.sort(function (a, b) { return a.k.localeCompare(b.k); });
+  }
+
+  function prodTile(p) {
+    var pic = p.pic ? driveImg(p.pic, 300) : "";
+    var d = descLines(p.desc || p.family);
+    return '<div data-act="pv-open" data-code="' + esc(p.code) + '" style="cursor:pointer;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;display:flex;flex-direction:column">' +
+      '<div style="aspect-ratio:1/1;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden">' +
+      (pic ? '<img loading="lazy" src="' + esc(pic) + '" alt="" style="width:100%;height:100%;object-fit:contain"/>'
+           : '<span style="font-size:11px;color:#cbd5e1">no photo</span>') +
+      '</div>' +
+      '<div style="padding:8px 9px 10px;display:flex;flex-direction:column;gap:3px;flex:1">' +
+      '<div style="font-size:12.5px;line-height:1.32;font-weight:600;color:#0f172a;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + esc(d.title) + '</div>' +
+      '<div style="font-size:10.5px;color:#94a3b8">' + esc(p.code) + '</div>' +
+      '<div style="margin-top:auto;padding-top:4px;font-size:14px;font-weight:700;color:#0f766e">' + money(p.price) +
+      (p.unit ? ' <span style="font-size:10px;font-weight:400;color:#94a3b8">/ ' + esc(p.unit) + '</span>' : "") + '</div>' +
+      '</div></div>';
+  }
+
+  function prodGrid(list) {
+    return '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;margin-top:8px">' +
+      list.map(prodTile).join("") + '</div>';
+  }
+
+  /* One product, opened out: the big picture, every feature line, and the price
+     in full. This is the screen someone reads out on the phone to a customer. */
+  function prodDetail(p) {
+    var pic = p.pic ? driveImg(p.pic, 700) : "";
+    var d = descLines(p.desc || p.family);
+    var rb = realBrand(p);
+    var h = '<div class="row"><button class="btn sm ghost" data-act="pv-back">&#8592; Wapas</button></div>' +
+      '<div class="card" style="padding:0;overflow:hidden">' +
+      (pic ? '<div style="background:#f8fafc;padding:14px;text-align:center"><img src="' + esc(pic) + '" alt="" style="max-width:100%;max-height:300px;object-fit:contain"/></div>' : "") +
+      '<div style="padding:14px 15px 16px">' +
+      '<h3 style="margin:0 0 4px;font-size:16px">' + esc(d.title) + '</h3>' +
+      '<div style="font-size:22px;font-weight:700;color:#0f766e;margin:6px 0 2px">' + money(p.price) +
+      (p.unit ? ' <span style="font-size:12px;font-weight:400;color:#94a3b8">/ ' + esc(p.unit) + '</span>' : "") + '</div>' +
+      '<div class="meta" style="margin-bottom:8px">List price - discount alag se lagta hai.</div>';
+    if (d.bullets.length) {
+      h += '<ul style="margin:8px 0 10px;padding-left:18px;font-size:13px;line-height:1.6;color:#334155">' +
+        d.bullets.map(function (b) { return '<li>' + esc(b) + '</li>'; }).join("") + '</ul>';
+    }
+    h += '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">' +
+      '<span class="pill">' + esc(p.code) + '</span>' +
+      (rb ? '<span class="pill teal">' + esc(rb) + '</span>' : (p.brand ? '<span class="pill">' + esc(p.brand) + '</span>' : "")) +
+      (p.cat ? '<span class="pill">' + esc(p.cat) + '</span>' : "") +
+      (p.family ? '<span class="pill">' + esc(p.family) + '</span>' : "") +
+      '</div></div></div>';
+    return h;
+  }
+
   function viewProducts() {
-    var q = S.q.toLowerCase();
-    var h = '<div class="row"><input class="grow" id="q" placeholder="Search ' + PRODUCTS.length + ' products by code, name or brand..." value="' + esc(S.q) + '"/>' +
-      '<button class="btn ghost" data-act="cat-reload">Reload</button></div>';
-    if (!q) return h + '<div class="empty">' + PRODUCTS.length + ' products loaded. Type to search.</div>';
-    var list = PRODUCTS.filter(function (p) {
-      return (p.code + " " + p.desc + " " + p.family + " " + p.brand + " " + p.cat).toLowerCase().indexOf(q) >= 0;
-    });
-    var shown = list.slice(0, 60);
-    if (!shown.length) return h + '<div class="empty">Nothing matches that.</div>';
-    h += '<div class="empty" style="padding:0 0 10px">' + list.length + ' match(es)' + (list.length > 60 ? ' - showing first 60' : '') + '</div>';
-    shown.forEach(function (p) {
-      h += '<div class="card"><h3>' + esc(p.desc || p.family) + ' <span class="pill teal">' + money(p.price) + '</span></h3>' +
-        '<div class="meta">' + esc(p.code) + (p.brand ? ' &middot; ' + esc(p.brand) : "") +
-        (p.unit ? ' &middot; ' + esc(p.unit) : "") + (p.cat ? '<br>' + esc(p.cat) : "") + '</div></div>';
-    });
+    var q = S.q.toLowerCase().trim();
+
+    /* when the prices were last pulled - "current price" means nothing without it */
+    var loadedAt = "";
+    try {
+      var c = JSON.parse(localStorage.getItem(CAT_KEY) || "null");
+      if (c && c.at) {
+        var dt = new Date(c.at);
+        loadedAt = ("0" + dt.getDate()).slice(-2) + " " +
+          ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][dt.getMonth()] + ", " +
+          ("0" + dt.getHours()).slice(-2) + ":" + ("0" + dt.getMinutes()).slice(-2);
+      }
+    } catch (e) {}
+
+    var h = '<div class="row"><input class="grow" id="q" placeholder="Code, naam, brand ya family se dhoondein..." value="' + esc(S.q) + '"/>' +
+      '<button class="btn ghost" data-act="cat-reload">Reload</button></div>' +
+      '<div class="meta" style="margin:-2px 0 6px">' + PRODUCTS.length + ' products' +
+      (loadedAt ? ' &middot; rate list ' + esc(loadedAt) + ' ko liya gaya' : "") + '</div>';
+
+    if (!PRODUCTS.length) return h + '<div class="empty">Catalogue abhi load nahi hua. Reload dabaiye.</div>';
+
+    /* an open product wins over everything else on the screen */
+    if (S.pvOpen) {
+      var one = PRODUCTS.filter(function (x) { return x.code === S.pvOpen; })[0];
+      if (one) return h + prodDetail(one);
+      S.pvOpen = "";
+    }
+
+    /* ---- search cuts straight through the shelves ---- */
+    if (q) {
+      var hits = PRODUCTS.filter(function (p) {
+        return (p.code + " " + p.desc + " " + p.family + " " + p.brand + " " + p.cat).toLowerCase().indexOf(q) >= 0;
+      });
+      if (!hits.length) return h + '<div class="empty">Kuch nahi mila.</div>';
+      var cap = S.pvMore || 60;
+      h += '<div class="meta">' + hits.length + ' mile' + (hits.length > cap ? ' - pehle ' + cap : "") + '</div>' +
+        prodGrid(hits.slice(0, cap));
+      if (hits.length > cap) h += '<div class="row" style="margin-top:10px"><button class="btn ghost grow" data-act="pv-more">Aur dikhayein</button></div>';
+      return h;
+    }
+
+    /* ---- browse: brand -> category -> family ---- */
+    var shelf = prodShelf();
+    h += prodChips("pv-brand", shelf.order.map(function (b) { return { k: b, n: shelf.by[b].length }; }),
+                   S.pvBrand || "", "Saare brand");
+
+    if (!S.pvBrand) {
+      h += '<div class="empty" style="text-align:left;padding:10px 0 2px">Brand chunein - phir category aur family.</div>';
+      /* a taste of each shelf so the screen is never blank */
+      shelf.order.slice(0, 6).forEach(function (b) {
+        h += '<h3 style="margin:16px 0 0;font-size:14px">' + esc(b) +
+          ' <span class="pill teal">' + shelf.by[b].length + '</span>' +
+          ' <button class="btn sm ghost" data-act="pv-brand" data-v="' + esc(b) + '">sab dekhein</button></h3>' +
+          prodGrid(shelf.by[b].slice(0, 4));
+      });
+      return h;
+    }
+
+    var list = shelf.by[S.pvBrand] || [];
+    h += prodChips("pv-cat", prodCountBy(list, "cat"), S.pvCat || "", "Saari category",
+                   list.some(function (p) { return !String(p.cat || "").trim(); }));
+    if (S.pvCat) list = list.filter(function (p) { return String(p.cat || "").trim() === S.pvCat; });
+
+    h += prodChips("pv-fam", prodCountBy(list, "family"), S.pvFam || "", "Saari family",
+                   list.some(function (p) { return !String(p.family || "").trim(); }));
+    if (S.pvFam) list = list.filter(function (p) { return String(p.family || "").trim() === S.pvFam; });
+
+    if (!list.length) return h + '<div class="empty">Is chunav mein koi product nahi.</div>';
+    list = list.slice().sort(function (a, b) { return String(a.desc).localeCompare(String(b.desc)); });
+    var cap2 = S.pvMore || 60;
+    h += '<div class="meta" style="margin-top:8px">' + list.length + ' product' + (list.length > cap2 ? ' - pehle ' + cap2 : "") + '</div>' +
+      prodGrid(list.slice(0, cap2));
+    if (list.length > cap2) h += '<div class="row" style="margin-top:10px"><button class="btn ghost grow" data-act="pv-more">Aur dikhayein</button></div>';
     return h;
   }
 
@@ -15849,6 +16003,12 @@ function viewCatalogue() {
     if (act === "coll-sub") { S.collSub = t.getAttribute("data-s"); render(); return; }
     if (act === "price-sub") { S.priceSub = t.getAttribute("data-s"); render(); return; }
     if (act === "pay-sub") { S.payHubSub = t.getAttribute("data-s"); render(); return; }
+    if (act === "pv-brand") { S.pvBrand = t.getAttribute("data-v") || ""; S.pvCat = ""; S.pvFam = ""; S.pvMore = 0; S.pvOpen = ""; render(); return; }
+    if (act === "pv-cat")   { S.pvCat = t.getAttribute("data-v") || ""; S.pvFam = ""; S.pvMore = 0; render(); return; }
+    if (act === "pv-fam")   { S.pvFam = t.getAttribute("data-v") || ""; S.pvMore = 0; render(); return; }
+    if (act === "pv-open")  { S.pvOpen = t.getAttribute("data-code") || ""; render(); return; }
+    if (act === "pv-back")  { S.pvOpen = ""; render(); return; }
+    if (act === "pv-more")  { S.pvMore = (S.pvMore || 60) + 60; render(); return; }
     if (act === "cat-reload") { toast("Reloading catalogue..."); loadCatalog().then(function () { toast(PRODUCTS.length + " products loaded."); renderBg(); }); return; }
 
     if (act === "nav-toggle") { S.navOpen = !S.navOpen; render(); return; }
