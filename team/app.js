@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.227";
+  var APP_VERSION = "6.9.229";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4788,6 +4788,98 @@ window.addEventListener("beforeunload", function (ev) {
     return order.map(function (k) { return by[k]; });
   }
 
+  /* ---- ROOM BY ROOM: the list of rooms this quote is built around ----
+     A room exists the moment it is named, before anything is put in it, so the
+     screen can be worked the way the job is: name Bathroom 1, add its WC, basin,
+     tap and health faucet, then Bathroom 2. A room that is still empty when the
+     quote is saved simply disappears - it was holding nothing. */
+  function qzRoomCmp(a, b) {
+    /* Bathroom 10 belongs after Bathroom 2, not between 1 and 2 */
+    var ra = /^(.*?)(\d+)\s*$/.exec(String(a || "")), rb = /^(.*?)(\d+)\s*$/.exec(String(b || ""));
+    if (ra && rb && ra[1].toLowerCase() === rb[1].toLowerCase()) return Number(ra[2]) - Number(rb[2]);
+    var la = String(a || "").toLowerCase(), lb = String(b || "").toLowerCase();
+    return la < lb ? -1 : (la > lb ? 1 : 0);
+  }
+  function qzRoomsDeclared(z) {
+    var seen = {}, out = [];
+    (z.rooms || []).forEach(function (r) {
+      r = String(r || "").trim();
+      if (r && !seen[r]) { seen[r] = 1; out.push(r); }
+    });
+    (z.items || []).forEach(function (i) {
+      qzRoomsOf(i).forEach(function (r) { if (!seen[r]) { seen[r] = 1; out.push(r); } });
+    });
+    out.sort(qzRoomCmp);
+    return out;
+  }
+  function qzRoomNextName(z, base) {
+    base = String(base || "Bathroom");
+    var have = {};
+    qzRoomsDeclared(z).forEach(function (r) { have[String(r).toLowerCase()] = 1; });
+    for (var n = 1; n < 200; n++) {
+      var nm = base + " " + n;
+      if (!have[nm.toLowerCase()]) return nm;
+    }
+    return base;
+  }
+  function qzRoomItems(z, room) {
+    var out = [];
+    (z.items || []).forEach(function (i) {
+      var n = Number(qzRq(i)[room] || 0);
+      if (n > 0) out.push({ it: i, qty: n });
+    });
+    return out;
+  }
+  function qzRoomRate(z, i) {
+    return Math.round(Number(i.price || 0) * (1 - (Number(lineDisc(i, z)) || 0) / 100));
+  }
+  function qzRoomValue(z, room) {
+    return qzRoomItems(z, room).reduce(function (a, x) {
+      return x.it.optional ? a : a + qzRoomRate(z, x.it) * x.qty;
+    }, 0);
+  }
+  function qzRoomRename(z, from, to) {
+    from = String(from || ""); to = String(to || "").trim();
+    if (!from || !to || from === to) return;
+    (z.items || []).forEach(function (i) {
+      var rq = qzRq(i);
+      if (!Number(rq[from] || 0)) return;
+      rq[to] = (Number(rq[to]) || 0) + (Number(rq[from]) || 0);
+      delete rq[from];
+      qzRqSync(i);
+    });
+    var seen = {};
+    z.rooms = (z.rooms || []).map(function (r) { return r === from ? to : r; })
+      .filter(function (r) { if (seen[r]) return false; seen[r] = 1; return true; });
+    if (z.rooms.indexOf(to) < 0) z.rooms.push(to);
+    if (z.room === from) z.room = to;
+  }
+  /* Bathroom 2 is usually Bathroom 1 again. Copy the whole selection across in
+     one press rather than picking the same four products a second time. */
+  function qzRoomCopy(z, from, to) {
+    if (!from || !to || from === to) return 0;
+    var n = 0;
+    (z.items || []).forEach(function (i) {
+      var q = Number(qzRq(i)[from] || 0);
+      if (q > 0) { qzRoomAdd(i, to, q); n++; }
+    });
+    z.rooms = z.rooms || [];
+    if (z.rooms.indexOf(to) < 0) z.rooms.push(to);
+    return n;
+  }
+  /* Removing a room never removes a product. The pieces move to the unassigned
+     bucket - still priced, still printed, simply with no room against them. */
+  function qzRoomClear(z, room) {
+    var moved = 0;
+    (z.items || []).forEach(function (i) {
+      var rq = qzRq(i), q = Number(rq[room] || 0);
+      if (q > 0) { rq[""] = (Number(rq[""]) || 0) + q; delete rq[room]; qzRqSync(i); moved += q; }
+    });
+    z.rooms = (z.rooms || []).filter(function (r) { return r !== room; });
+    if (z.room === room) z.room = "";
+    return moved;
+  }
+
   function qzTotals() {
     var gross = 0, net = 0;
     (S.qz.items || []).forEach(function (i) {
@@ -5104,26 +5196,74 @@ window.addEventListener("beforeunload", function (ev) {
         '<div class="grow"></div>' +
         '<button class="btn" data-act="qz-step" data-step="4">Discount (' + (z.items || []).length + ')</button></div>';
 
-      /* WHICH ROOM AM I QUOTING NOW?
-         Set it once and everything added next is filed under it. Change it and
-         carry on - the same model added again gains a second room rather than
-         becoming a second line, which is what keeps one basin in three bathrooms
-         reading as one product at qty 3. Leave it blank and the quote behaves
-         exactly as it always did. */
-      var qzKnown = qzRoomList(z);
+      /* BATHROOM BY BATHROOM.
+         Name the room, add its WC, basin, tap and health faucet, move to the next
+         one. The same model going into three bathrooms stays ONE line at qty 3
+         that remembers one piece in each - which is what lets six bathrooms print
+         as four product pages instead of six. Quoting with no rooms at all still
+         works exactly as it always did. */
+      var qzRooms = qzRoomsDeclared(z);
+      var qzSel = z.room || "";
+      var qzHere = qzSel ? qzRoomItems(z, qzSel) : [];
+      var qzPast = qzRoomList(z).filter(function (r) { return qzRooms.indexOf(r) < 0; });
+
       h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:10px 12px;margin:8px 0">' +
-        '<div class="row" style="gap:8px;align-items:center">' +
-        '<b style="font-size:13px;white-space:nowrap">Room / area</b>' +
-        '<input id="qz_room" class="grow" autocomplete="off" placeholder="Master Bathroom, PDR, Kitchen..." value="' + esc(z.room || "") + '" style="min-width:140px"/>' +
-        (z.room ? '<button class="btn sm ghost" data-act="qz-room-set" data-r="">Clear</button>' : '') +
-        '</div>' +
-        (qzKnown.length ? '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">' + qzKnown.map(function (r) {
-          return '<button class="btn sm ' + (z.room === r ? "" : "ghost") + '" data-act="qz-room-set" data-r="' + esc(r) + '">' + esc(r) + '</button>';
-        }).join("") + '</div>' : '') +
-        '<div class="meta" style="margin-top:6px">' + (z.room
-          ? 'Everything you add now is filed under <b>' + esc(z.room) + '</b>.'
-          : 'Optional. Name the room and every product added next is filed under it.') + '</div>' +
+        '<div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<b style="font-size:13px">Rooms</b>' +
+        '<button class="btn sm" data-act="qz-room-add">+ Bathroom</button>' +
+        '<button class="btn sm ghost" data-act="qz-room-new">+ Other room</button>' +
+        (qzSel ? '<button class="btn sm ghost" data-act="qz-room-set" data-r="">Quote without a room</button>' : '') +
         '</div>';
+
+      if (qzRooms.length) {
+        h += '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">' + qzRooms.map(function (r) {
+          var n = qzRoomItems(z, r).length, v = qzRoomValue(z, r);
+          return '<button class="btn sm ' + (qzSel === r ? "" : "ghost") + '" data-act="qz-room-set" data-r="' + esc(r) + '">' +
+            esc(r) + (n
+              ? ' <span style="opacity:.75">&middot; ' + n + ' item' + (n === 1 ? "" : "s") + ' &middot; ' + esc(money(v)) + '</span>'
+              : ' <span style="opacity:.55">&middot; empty</span>') + '</button>';
+        }).join("") + '</div>';
+      }
+      /* rooms this client had on an earlier quote - one tap to reuse the naming */
+      if (qzPast.length) {
+        h += '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center">' +
+          '<span class="meta">Used before:</span>' + qzPast.slice(0, 12).map(function (r) {
+            return '<button class="btn sm ghost" data-act="qz-room-set" data-r="' + esc(r) + '" style="opacity:.85">' + esc(r) + '</button>';
+          }).join("") + '</div>';
+      }
+
+      h += '<div style="margin-top:10px;border-top:1px solid #99f6e4;padding-top:8px">';
+      if (!qzSel) {
+        h += '<div class="meta">Press <b>+ Bathroom</b> and everything you add next is filed under it. ' +
+          'Nothing here is compulsory - a quote with no rooms prices and prints exactly as before.</div>';
+      } else {
+        h += '<div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">' +
+          '<b style="font-size:13px;color:#0f766e">Now quoting: ' + esc(qzSel) + '</b>' +
+          '<button class="btn sm ghost" data-act="qz-room-rename" data-r="' + esc(qzSel) + '">Rename</button>' +
+          (qzHere.length ? '<button class="btn sm ghost" data-act="qz-room-copy" data-r="' + esc(qzSel) + '">Copy to a new bathroom</button>' : '') +
+          '<button class="btn sm ghost" data-act="qz-room-clear" data-r="' + esc(qzSel) + '">Remove room</button>' +
+          '</div>';
+        if (qzHere.length) {
+          h += '<div style="margin-top:6px">' + qzHere.map(function (x) {
+            return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #ccfbf1;font-size:12.5px">' +
+              '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+              (x.it.cat ? '<b style="color:#0f766e">' + esc(x.it.cat) + '</b> &middot; ' : '') +
+              esc(descLines(x.it.desc).title || x.it.code) +
+              (x.it.optional ? ' <span style="color:#b45309">(option)</span>' : '') + '</span>' +
+              '<span style="white-space:nowrap;display:flex;align-items:center;gap:4px">' +
+              '<button class="btn sm ghost" data-act="qz-room-qty" data-code="' + esc(x.it.code) + '" data-d="-1">&minus;</button>' +
+              '<b style="min-width:18px;text-align:center">' + x.qty + '</b>' +
+              '<button class="btn sm ghost" data-act="qz-room-qty" data-code="' + esc(x.it.code) + '" data-d="1">+</button>' +
+              '<b style="margin-left:6px;min-width:74px;text-align:right">' + esc(money(qzRoomRate(z, x.it) * x.qty)) + '</b>' +
+              '</span></div>';
+          }).join("") +
+            '<div style="display:flex;justify-content:space-between;padding-top:6px;font-size:13px">' +
+            '<b>' + esc(qzSel) + ' total</b><b>' + esc(money(qzRoomValue(z, qzSel))) + '</b></div></div>';
+        } else {
+          h += '<div class="meta" style="margin-top:6px">Empty so far. Add the products for <b>' + esc(qzSel) + '</b> from the list below.</div>';
+        }
+      }
+      h += '</div></div>';
 
       /* One compact product row - reused by the family list and the code search below. */
       var qzProw = function (p) {
@@ -6254,22 +6394,63 @@ function viewCatalogue() {
      Deliberately a SEPARATE cache and dimension map: writing these into PIC_DIM
      would hand the quotation table the wrong aspect ratio for every picture. */
   var PIC_BIG = {}, PIC_BIG_DIM = {};
-  function loadPicBig(url) {
+  /* maxPx: 640 for a product photograph (half a page), 1200 for a brand slide that
+     fills the whole sheet. The cache is keyed by BOTH url and size, so asking for
+     the big one never hands the small one back. */
+  function loadPicBig(url, maxPx, quality) {
     var raw = String(url || "");
-    var u = driveImg(raw, 900);
+    maxPx = Number(maxPx) || 640;
+    var key = raw + "|" + maxPx;
+    var u = driveImg(raw, Math.round(maxPx * 1.4));
     if (!u) return Promise.resolve(null);
-    if (PIC_BIG[raw] !== undefined) return Promise.resolve(PIC_BIG[raw]);
+    if (PIC_BIG[key] !== undefined) return Promise.resolve(PIC_BIG[key]);
     var fetched = api("imgB64", { url: u }).then(function (r) {
-      if (!r || !r.ok) { PIC_BIG[raw] = null; return null; }
-      return shrinkPic("data:" + r.mime + ";base64," + r.b64, 640, 0.78, false).then(function (pp) {
-        PIC_BIG[raw] = pp ? pp.src : null;
-        PIC_BIG_DIM[raw] = pp ? { w: pp.w, h: pp.h } : null;
-        return PIC_BIG[raw];
+      if (!r || !r.ok) { PIC_BIG[key] = null; return null; }
+      return shrinkPic("data:" + r.mime + ";base64," + r.b64, maxPx, quality || 0.78, false).then(function (pp) {
+        PIC_BIG[key] = pp ? pp.src : null;
+        PIC_BIG_DIM[key] = pp ? { w: pp.w, h: pp.h } : null;
+        /* the product page looks its dimensions up by url alone */
+        if (maxPx === 640) PIC_BIG_DIM[raw] = PIC_BIG_DIM[key];
+        return PIC_BIG[key];
       });
-    }).catch(function () { PIC_BIG[raw] = null; return null; });
+    }).catch(function () { PIC_BIG[key] = null; return null; });
     /* one slow picture must never stop the whole deck - draw the page without it */
     var timed = new Promise(function (res) { setTimeout(function () { res(null); }, 15000); });
     return Promise.race([fetched, timed]);
+  }
+
+  /* ---- BRAND INTRODUCTION ----
+     One row per brand on the Logos tab already carries the mark. The same row now
+     carries the story: a headline, a paragraph, a few points, a photograph, and -
+     if you have had a slide designed - a finished full-page image that is used as
+     it is. A brand with nothing filled in simply gets no page, so the deck never
+     shows an empty introduction. */
+  function brandRow(brand) {
+    var k = normB(brand), rows = S.data.logos || [], i;
+    for (i = 0; i < rows.length; i++) if (normB(rows[i].brand) === k) return rows[i];
+    for (i = 0; i < rows.length; i++) {
+      var lk = normB(rows[i].brand);
+      if (lk && k && (lk.indexOf(k.slice(0, 5)) === 0 || k.indexOf(lk.slice(0, 5)) === 0)) return rows[i];
+    }
+    return null;
+  }
+  function brandIntro(brand) {
+    var r = brandRow(brand) || {};
+    var pts = String(r.points || "").split(/\s*[|\n;]\s*/)
+      .map(function (x) { return String(x).trim(); }).filter(Boolean);
+    var b = {
+      brand: String(brand || "").trim(),
+      headline: String(r.intro || "").trim(),
+      about: String(r.about || "").trim(),
+      points: pts,
+      photo: String(r.photo || "").trim(),
+      page: String(r.page || "").trim(),
+      since: String(r.since || "").trim(),
+      origin: String(r.origin || "").trim(),
+      web: String(r.web || "").trim()
+    };
+    b.has = !!(b.headline || b.about || b.points.length || b.photo || b.page);
+    return b;
   }
 
   /* Rooms, at MRP. qzRoomTotals() answers the same question after discount, for the
@@ -6325,12 +6506,24 @@ function viewCatalogue() {
     cats.forEach(function (c) { c.items.forEach(function (i) { seq.push({ cat: c.cat, it: i, opt: 0 }); }); });
     optl.forEach(function (i) { seq.push({ cat: "Options", it: i, opt: 1 }); });
 
+    /* one introduction per brand actually quoted, in the order the brands appear */
+    var introBrands = [];
+    items.forEach(function (i) {
+      var b = String(i.brand || "").trim();
+      if (!b) return;
+      if (introBrands.some(function (x) { return x.brand === b; })) return;
+      var bi = brandIntro(b);
+      if (bi.has) introBrands.push(bi);
+    });
+
     return Promise.all([
       loadLogo(),
       Promise.all(seq.map(function (x) { return loadPicBig(x.it.pic); })),
-      logosReady()
+      logosReady(),
+      Promise.all(introBrands.map(function (b) { return b.page ? loadPicBig(b.page, 1200, 0.72) : Promise.resolve(null); })),
+      Promise.all(introBrands.map(function (b) { return b.photo ? loadPicBig(b.photo, 700, 0.78) : Promise.resolve(null); }))
     ]).then(function (res) {
-      var logo = res[0], pics = res[1];
+      var logo = res[0], pics = res[1], introPages = res[3], introPhotos = res[4];
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
 
       var F = function (w) { doc.setFont(ppEmbed(doc), (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"); };
@@ -6410,6 +6603,23 @@ function viewCatalogue() {
         doc.text(fitCell(doc, F, T(brands.join("   ·   ").toUpperCase()), 200, 1, "bold", 12)[0], L, cy + 20);
       }
 
+      /* page one says who we are as well as who it is for: the mark, the cities,
+         and every brand we are the authorised distributor for */
+      var CBW = 19.4, CBH = 10.2, CGP = 2.2;
+      var cStripW = 12 * CBW + 11 * CGP;
+      var cSx = (W - cStripW) / 2, cSy = H - 56;
+      col([100, 160, 152]); F("bold"); doc.setFontSize(5.4);
+      doc.text(SP("Authorised distributor for"), W / 2, cSy - 4.6, { align: "center" });
+      PDF_LOGO_ORDER.forEach(function (n, k) {
+        var lg = logoFor(n);
+        var bx = cSx + k * (CBW + CGP);
+        fill(WHITE); doc.roundedRect(bx, cSy, CBW, CBH, 1.4, 1.4, "F");
+        if (!lg || !lg.src) return;
+        var scc = Math.min((CBW - 2.6) / lg.w, (CBH - 2.6) / lg.h);
+        var iwc = lg.w * scc, ihc = lg.h * scc;
+        try { doc.addImage(lg.src, "JPEG", bx + (CBW - iwc) / 2, cSy + (CBH - ihc) / 2, iwc, ihc); } catch (e) { }
+      });
+
       var meta = [["QUOTE NO.", String(q.quoteNo || "")], ["DATE", today()],
                   ["PREPARED BY", String(q.createdBy || "-")], ["VALID UNTIL", vUntil]];
       meta.forEach(function (m, i) {
@@ -6420,7 +6630,114 @@ function viewCatalogue() {
         doc.text(fitCell(doc, F, T(m[1]), 58, 1, "bold", 10)[0], x, H - 40 + 23);
       });
 
-      /* ---------------- 2. SCOPE ---------------- */
+      /* ---------------- 2. BRAND INTRODUCTIONS ----------------
+         A finished slide, if one has been designed, is placed on the page exactly
+         as supplied - no header, no footer, nothing drawn over it. Otherwise the
+         page is laid out here from the brand's own words. */
+      var bleedPg = {};
+      introBrands.forEach(function (bi, bidx) {
+        var pageImg = introPages[bidx], photo = introPhotos[bidx];
+
+        if (pageImg) {
+          doc.addPage("a4", "landscape");
+          bleedPg[doc.internal.getNumberOfPages()] = 1;
+          fill(WHITE); doc.rect(0, 0, W, H, "F");
+          var pd = PIC_BIG_DIM[bi.page + "|1200"] || { w: 297, h: 210 };
+          var psc = Math.min(W / pd.w, H / pd.h);
+          var pw = pd.w * psc, ph = pd.h * psc;
+          try { doc.addImage(pageImg, "JPEG", (W - pw) / 2, (H - ph) / 2, pw, ph); } catch (e) { }
+          return;
+        }
+
+        var by2 = newPage("Brand", bi.brand);
+        var lg2 = logoFor(bi.brand);
+        /* The right third is never left blank: the brand's own photograph if there
+           is one, otherwise a quiet panel carrying the mark and the plain facts. */
+        var PPX = L + 146, PPW = Rt - PPX, PPY = by2, PPH = H - by2 - 20;
+        var LEFTW = 134;
+        var yy2 = by2 + 4;
+
+        if (photo) {
+          fill(SOFT); doc.roundedRect(PPX, PPY, PPW, PPH, 3, 3, "F");
+          var fd = PIC_BIG_DIM[bi.photo + "|700"] || { w: 4, h: 3 };
+          var fsc = Math.min((PPW - 6) / fd.w, (PPH - 6) / fd.h);
+          var fw = fd.w * fsc, fh = fd.h * fsc;
+          try { doc.addImage(photo, "JPEG", PPX + (PPW - fw) / 2, PPY + (PPH - fh) / 2, fw, fh); } catch (e) { }
+          /* the mark sits small above the headline on the left */
+          if (lg2 && lg2.src) {
+            var lsc = Math.min(46 / lg2.w, 19 / lg2.h);
+            try { doc.addImage(lg2.src, "JPEG", L, yy2, lg2.w * lsc, lg2.h * lsc); } catch (e) { }
+            yy2 += lg2.h * lsc + 10;
+          }
+        } else {
+          fill(SOFT); doc.roundedRect(PPX, PPY, PPW, PPH, 3, 3, "F");
+          draw(LINE); doc.setLineWidth(0.25); doc.roundedRect(PPX, PPY, PPW, PPH, 3, 3, "S"); doc.setLineWidth(0.2);
+          fill(MINT); doc.rect(PPX, PPY, 1.4, PPH, "F");
+          if (lg2 && lg2.src) {
+            var bsc = Math.min((PPW - 34) / lg2.w, 40 / lg2.h);
+            var bw3 = lg2.w * bsc, bh3 = lg2.h * bsc;
+            try { doc.addImage(lg2.src, "JPEG", PPX + (PPW - bw3) / 2, PPY + 28, bw3, bh3); } catch (e) { }
+          } else {
+            col(INK); F("bold"); doc.setFontSize(20);
+            doc.text(T(bi.brand.toUpperCase()), PPX + PPW / 2, PPY + 46, { align: "center" });
+          }
+          var fy = PPY + 92;
+          [["Since", bi.since], ["Origin", bi.origin], ["Website", bi.web]].forEach(function (fx) {
+            if (!String(fx[1] || "").trim()) return;
+            col([148, 163, 184]); F("normal"); doc.setFontSize(5.6);
+            doc.text(SP(fx[0]), PPX + 10, fy);
+            col(SLATE); F("bold"); doc.setFontSize(8.6);
+            doc.text(fitCell(doc, F, T(fx[1]), PPW - 20, 1, "bold", 8.6)[0], PPX + 10, fy + 5.6);
+            fy += 13;
+          });
+        }
+
+        if (bi.headline) {
+          col(INK); F("bold"); doc.setFontSize(17);
+          var hd = fitCell(doc, F, T(bi.headline), LEFTW, 3, "bold", 17);
+          hd.forEach(function (ln, k) { doc.text(ln, L, yy2 + k * 8); });
+          yy2 += hd.length * 8 + 3;
+        } else {
+          col(INK); F("bold"); doc.setFontSize(17);
+          doc.text(T(bi.brand), L, yy2 + 6);
+          yy2 += 13;
+        }
+
+        var facts = [];
+        if (bi.since) facts.push("Since " + bi.since);
+        if (bi.origin) facts.push(bi.origin);
+        if (facts.length && photo) {
+          col(TEAL); F("bold"); doc.setFontSize(7.4);
+          doc.text(T(facts.join("   ·   ")), L, yy2 + 2);
+          yy2 += 8;
+        }
+        draw([204, 251, 241]); doc.setLineWidth(0.6);
+        doc.line(L, yy2 + 2, L + 42, yy2 + 2); doc.setLineWidth(0.2);
+        yy2 += 10;
+
+        if (bi.about) {
+          col(SLATE); F("normal"); doc.setFontSize(9);
+          var ab = fitCell(doc, F, T(bi.about), LEFTW, 10, "normal", 9);
+          ab.forEach(function (ln, k) { doc.text(ln, L, yy2 + k * 5.2); });
+          yy2 += ab.length * 5.2 + 6;
+        }
+
+        bi.points.forEach(function (pt) {
+          if (yy2 > H - 28) return;
+          col(MINT); F("bold"); doc.setFontSize(9); doc.text("·", L, yy2 - 0.4);
+          col(SLATE); F("normal"); doc.setFontSize(8.6);
+          var pl = fitCell(doc, F, T(pt), LEFTW - 5, 2, "normal", 8.6);
+          pl.forEach(function (ln, k) { doc.text(ln, L + 5, yy2 + k * 4.6); });
+          yy2 += pl.length * 4.6 + 2;
+        });
+
+        if (bi.web && photo) {
+          col(TEAL); F("bold"); doc.setFontSize(8);
+          doc.text(T(bi.web), L, Math.min(yy2 + 5, H - 24));
+        }
+      });
+
+      /* ---------------- 3. SCOPE ---------------- */
       /* Cards, three to a row, packed by the tallest card in each row so a long room
          never leaves a hole beside a short one. */
       function cardPage(kicker, title, intro, cards) {
@@ -6481,7 +6798,7 @@ function viewCatalogue() {
           }));
       }
 
-      /* ---------------- 3. PRODUCTS, section by section ---------------- */
+      /* ---------------- 4. PRODUCTS, section by section ---------------- */
       var lastCat = null, catIdx = 0;
       seq.forEach(function (sq, idx) {
         var i = sq.it, pic = pics[idx], dl = descLines(i.desc);
@@ -6608,7 +6925,7 @@ function viewCatalogue() {
         }
       });
 
-      /* ---------------- 4. SUMMARY ---------------- */
+      /* ---------------- 5. SUMMARY ---------------- */
       var sy = newPage("Summary", "Proposal summary");
       var twoUp = namedRooms.length > 0;
       var CWs = twoUp ? 128 : (Rt - L);
@@ -6691,7 +7008,7 @@ function viewCatalogue() {
         doc.text(T("·  " + t2), L, ny + k * 5);
       });
 
-      /* ---------------- 5. NEXT STEPS + CONTACT ---------------- */
+      /* ---------------- 6. NEXT STEPS + CONTACT ---------------- */
       doc.addPage("a4", "landscape"); markDark();
       fill(DEEP); doc.rect(0, 0, W, H, "F");
       fill(MINT); doc.rect(0, 0, W, 2.6, "F");
@@ -6772,6 +7089,7 @@ function viewCatalogue() {
       /* ---------------- footers ---------------- */
       var pages = doc.internal.getNumberOfPages();
       for (var pg = 2; pg <= pages; pg++) {
+        if (bleedPg[pg]) continue;   /* a supplied brand slide is printed untouched */
         doc.setPage(pg);
         F("normal"); doc.setFontSize(6);
         col(darkPg[pg] ? [90, 150, 143] : [150, 163, 175]);
@@ -17511,6 +17829,58 @@ function viewCatalogue() {
     }
     if (act === "qz-step") { S.qz.step = Number(t.getAttribute("data-step")); render(); return; }
     if (act === "qz-room-set") { S.qz.room = t.getAttribute("data-r") || ""; keepScroll = true; render(); return; }
+    if (act === "qz-room-add") {
+      var rnm = qzRoomNextName(S.qz, "Bathroom");
+      S.qz.rooms = S.qz.rooms || [];
+      S.qz.rooms.push(rnm);
+      S.qz.room = rnm;
+      keepScroll = true; render(); return;
+    }
+    if (act === "qz-room-new") {
+      var ask2 = window.prompt("Name the room\n\nMaster Bathroom, PDR, Kitchen, Terrace...", "");
+      if (ask2 === null) return;
+      var nm2 = String(ask2).trim();
+      if (!nm2) return;
+      S.qz.rooms = S.qz.rooms || [];
+      if (S.qz.rooms.indexOf(nm2) < 0) S.qz.rooms.push(nm2);
+      S.qz.room = nm2;
+      keepScroll = true; render(); return;
+    }
+    if (act === "qz-room-rename") {
+      var rOld = t.getAttribute("data-r") || "";
+      var ask3 = window.prompt("Rename this room\n\nEverything filed under it moves with the name.", rOld);
+      if (ask3 === null) return;
+      var nm3 = String(ask3).trim();
+      if (!nm3 || nm3 === rOld) return;
+      qzRoomRename(S.qz, rOld, nm3);
+      keepScroll = true; render(); return;
+    }
+    if (act === "qz-room-copy") {
+      var rFrom = t.getAttribute("data-r") || "";
+      var rTo = qzRoomNextName(S.qz, /^(.*?)\s*\d+\s*$/.test(rFrom) ? rFrom.replace(/\s*\d+\s*$/, "") : "Bathroom");
+      var moved = qzRoomCopy(S.qz, rFrom, rTo);
+      S.qz.room = rTo;
+      toast(moved ? rTo + " created with the same " + moved + " product" + (moved === 1 ? "" : "s") + "." : "Nothing to copy.");
+      keepScroll = true; render(); return;
+    }
+    if (act === "qz-room-clear") {
+      var rDel = t.getAttribute("data-r") || "";
+      var pcs = qzRoomClear(S.qz, rDel);
+      toast(pcs
+        ? rDel + " removed. Its " + pcs + " piece" + (pcs === 1 ? "" : "s") + " are still on the quote, now with no room set."
+        : rDel + " removed.");
+      keepScroll = true; render(); return;
+    }
+    /* +/- against the room that is open, from the room's own list */
+    if (act === "qz-room-qty") {
+      var rc = t.getAttribute("data-code");
+      var rItem = (S.qz.items || []).filter(function (x) { return x.code === rc; })[0];
+      if (!rItem || !S.qz.room) return;
+      qzRoomAdd(rItem, S.qz.room, Number(t.getAttribute("data-d")) || 0);
+      /* a line that has run out everywhere leaves the quote entirely */
+      if (!Number(rItem.qty)) S.qz.items = (S.qz.items || []).filter(function (x) { return x.code !== rc; });
+      keepScroll = true; render(); return;
+    }
     if (act === "qz-room-edit") {
       var rcode = t.getAttribute("data-code");
       var rit = (S.qz.items || []).filter(function (x) { return x.code === rcode; })[0];
