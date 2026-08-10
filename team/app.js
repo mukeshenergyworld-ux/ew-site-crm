@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.224";
+  var APP_VERSION = "6.9.225";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4651,6 +4651,106 @@ window.addEventListener("beforeunload", function (ev) {
 
   function uniRupee() { return true; }
 
+  /* ================= ROOMS ON A QUOTE LINE (v6.9.225) =========================
+     HIS WORDS: "for each washroom we can quote, and at last page show summary".
+
+     A quote for a house is not a flat list of goods - it is a set of rooms. And
+     the same model very often lands in three of them: one basin for the mother's
+     bathroom and one for each guest bathroom is one product three times, not
+     three products.
+
+     So a line keeps a small map of room -> quantity, and its qty is always the
+     sum of that map. LW630JW then appears ONCE at qty 3 and still knows which
+     three rooms it is for - which is exactly how a good proposal reads, and why
+     six bathrooms need four toilet pages rather than six.
+
+     A line with no room set keeps its quantity under the empty key and behaves
+     exactly as it always has, so every quote saved before today still opens,
+     prices and prints unchanged. */
+  function qzRq(i) {
+    if (!i.rq || typeof i.rq !== "object") { var m = {}; m[""] = Number(i.qty) || 0; i.rq = m; }
+    return i.rq;
+  }
+  function qzRqSum(i) { var rq = qzRq(i), n = 0; for (var k in rq) n += Number(rq[k]) || 0; return n; }
+  function qzRqSync(i) { i.qty = qzRqSum(i); return i.qty; }
+  /* the named rooms on a line, blank bucket excluded, in a stable order */
+  function qzRoomsOf(i) {
+    var rq = qzRq(i), out = [];
+    for (var k in rq) if (k && (Number(rq[k]) || 0) > 0) out.push(k);
+    return out.sort();
+  }
+  function qzRoomAdd(i, room, delta) {
+    var rq = qzRq(i), k = String(room || "");
+    rq[k] = Math.max(0, (Number(rq[k]) || 0) + delta);
+    if (!rq[k]) delete rq[k];
+    qzRqSync(i);
+  }
+  function qzRoomSet(i, room, qty) {
+    var rq = qzRq(i), k = String(room || "");
+    qty = Math.max(0, Math.floor(Number(qty) || 0));
+    if (qty) rq[k] = qty; else delete rq[k];
+    qzRqSync(i);
+  }
+  /* "Master Bathroom x2, PDR" - what the line is actually for */
+  function qzRoomLabel(i) {
+    var rq = qzRq(i), parts = [];
+    qzRoomsOf(i).forEach(function (r) {
+      var n = Number(rq[r]) || 0;
+      parts.push(r + (n > 1 ? " x" + n : ""));
+    });
+    var blank = Number(rq[""]) || 0;
+    if (blank) parts.push("no room x" + blank);
+    return parts.join(", ");
+  }
+  /* Rooms already used - this quote first, then this client's earlier quotes.
+     Nobody should have to type "Master Bathroom" twice in the same house. */
+  function qzRoomList(z) {
+    var seen = {}, out = [];
+    (z.items || []).forEach(function (i) {
+      qzRoomsOf(i).forEach(function (r) { if (!seen[r]) { seen[r] = 1; out.push(r); } });
+    });
+    var cl = String(z.client || "").trim().toLowerCase();
+    if (cl) {
+      (S.data.quotes || []).forEach(function (q) {
+        if (String(q.client || "").trim().toLowerCase() !== cl) return;
+        var its = [];
+        try { its = JSON.parse(q.items || "[]"); } catch (e) {}
+        its.forEach(function (i) {
+          var rq = (i && i.rq) || {};
+          for (var k in rq) if (k && !seen[k]) { seen[k] = 1; out.push(k); }
+        });
+      });
+    }
+    return out;
+  }
+  /* Room-wise money. A line's value is split across its rooms in proportion to
+     the quantity sitting in each, so the room totals always add back up to the
+     quote total - no room quietly carries someone else's basin. */
+  function qzRoomTotals(z) {
+    var by = {}, order = [];
+    (z.items || []).forEach(function (i) {
+      if (i.optional) return;
+      var d = lineDisc(i, z);
+      var rate = Math.round(i.price * (1 - (Number(d) || 0) / 100));
+      var rq = qzRq(i);
+      for (var k in rq) {
+        var n = Number(rq[k]) || 0;
+        if (!n) continue;
+        var key = k || " none";
+        if (!by[key]) { by[key] = { room: k, qty: 0, net: 0, lines: 0 }; order.push(key); }
+        by[key].qty += n;
+        by[key].net += rate * n;
+        by[key].lines++;
+      }
+    });
+    order.sort(function (a, b) {
+      if (a === " none") return 1;
+      if (b === " none") return -1;
+      return by[a].room.toLowerCase() < by[b].room.toLowerCase() ? -1 : 1;
+    });
+    return order.map(function (k) { return by[k]; });
+  }
+
   function qzTotals() {
     var gross = 0, net = 0;
     (S.qz.items || []).forEach(function (i) {
@@ -4966,6 +5066,27 @@ window.addEventListener("beforeunload", function (ev) {
         '<div class="grow"></div>' +
         '<button class="btn" data-act="qz-step" data-step="4">Discount (' + (z.items || []).length + ')</button></div>';
 
+      /* WHICH ROOM AM I QUOTING NOW?
+         Set it once and everything added next is filed under it. Change it and
+         carry on - the same model added again gains a second room rather than
+         becoming a second line, which is what keeps one basin in three bathrooms
+         reading as one product at qty 3. Leave it blank and the quote behaves
+         exactly as it always did. */
+      var qzKnown = qzRoomList(z);
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:10px 12px;margin:8px 0">' +
+        '<div class="row" style="gap:8px;align-items:center">' +
+        '<b style="font-size:13px;white-space:nowrap">Room / area</b>' +
+        '<input id="qz_room" class="grow" autocomplete="off" placeholder="Master Bathroom, PDR, Kitchen..." value="' + esc(z.room || "") + '" style="min-width:140px"/>' +
+        (z.room ? '<button class="btn sm ghost" data-act="qz-room-set" data-r="">Clear</button>' : '') +
+        '</div>' +
+        (qzKnown.length ? '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">' + qzKnown.map(function (r) {
+          return '<button class="btn sm ' + (z.room === r ? "" : "ghost") + '" data-act="qz-room-set" data-r="' + esc(r) + '">' + esc(r) + '</button>';
+        }).join("") + '</div>' : '') +
+        '<div class="meta" style="margin-top:6px">' + (z.room
+          ? 'Everything you add now is filed under <b>' + esc(z.room) + '</b>.'
+          : 'Optional. Name the room and every product added next is filed under it.') + '</div>' +
+        '</div>';
+
       /* One compact product row - reused by the family list and the code search below. */
       var qzProw = function (p) {
         var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
@@ -4973,10 +5094,14 @@ window.addEventListener("beforeunload", function (ev) {
           (p.pic ? '<img src="' + esc(p.pic) + '" loading="lazy"/>' : '<div class="noimg"></div>') +
           '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
           '<div class="pmeta">' + esc(p.code) + ' &middot; ' + money(p.price) + ' / ' + esc(p.unit) +
-          (p.brand && p.brand !== z.brand ? ' &middot; ' + esc(p.brand) : '') + '</div></div>' +
+          (p.brand && p.brand !== z.brand ? ' &middot; ' + esc(p.brand) : '') +
+          /* if this product is already in other rooms, say so - otherwise the box
+             reading "1" while the line really carries three looks like a bug */
+          (ex && qzRoomsOf(ex).length ? '<br><span style="color:#0f766e">' + esc(qzRoomLabel(ex)) + '</span>' : '') +
+          '</div></div>' +
           '<div class="pqty">' +
           '<button class="stp" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
-          '<input class="qz-q" data-code="' + esc(p.code) + '" inputmode="numeric" value="' + esc(ex ? ex.qty : "") + '" placeholder="0"/>' +
+          '<input class="qz-q" data-code="' + esc(p.code) + '" inputmode="numeric" value="' + esc(ex ? (z.room ? (qzRq(ex)[z.room] || "") : ex.qty) : "") + '" placeholder="0"/>' +
           '<button class="stp" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
           '</div></div>';
       };
@@ -5127,6 +5252,11 @@ window.addEventListener("beforeunload", function (ev) {
           '<td ' + tdL + '><div style="font-weight:600">' + esc(i.desc) +
             (opt ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-weight:700">Option</span>' : '') + '</div>' +
             '<div style="font-size:10px;color:#94a3b8">' + esc(i.code) + '</div>' +
+            '<div style="font-size:11px;margin-top:2px">' +
+              (qzRoomsOf(i).length
+                ? '<span style="color:#0f766e;font-weight:600">' + esc(qzRoomLabel(i)) + '</span>'
+                : '<span style="color:#b45309">No room set</span>') +
+              ' <button class="btn sm ghost" data-act="qz-room-edit" data-code="' + esc(i.code) + '" style="font-size:10px;padding:1px 6px">Room</button></div>' +
             '<button class="btn sm ghost" data-act="qz-opt" data-code="' + esc(i.code) + '" style="margin-top:3px;font-size:11px;padding:2px 8px">' + (opt ? '&#9745; Optional — not in total' : '&#9744; Mark as option') + '</button></td>' +
           '<td ' + tdR + '>' + i.qty + '</td>' +
           '<td ' + tdR + '>' + money(i.price) + '</td>' +
@@ -5139,6 +5269,20 @@ window.addEventListener("beforeunload", function (ev) {
         esc(b) + ' subtotal (gross ' + money(bt.gross) + ')</td>' +
         '<td style="' + TB + 'padding:6px 8px;text-align:right;background:#f8fafc"><b>' + money(bt.net) + '</b></td></tr>';
     });
+    /* ROOM-WISE SUMMARY. The table above is grouped by brand because that is how
+       the discount works; this is grouped the way the customer thinks. Both add
+       up to the same figure. */
+    var _rt = qzRoomTotals(z);
+    if (_rt.length && (_rt.length > 1 || _rt[0].room)) {
+      h += '<div class="card" style="margin-top:12px;border-color:#99f6e4"><h3 style="margin:0 0 6px;font-size:14px">Room-wise summary</h3>' +
+        _rt.map(function (r) {
+          return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:13px">' +
+            '<span>' + (r.room ? '<b>' + esc(r.room) + '</b>' : '<span style="color:#b45309">Not assigned to a room</span>') +
+            ' <span style="color:#94a3b8;font-size:11px">' + r.qty + ' pc</span></span>' +
+            '<b style="white-space:nowrap">' + money(r.net) + '</b></div>';
+        }).join("") +
+        '<div class="meta" style="margin-top:6px">After discount, option lines excluded. These add back up to the same total as the table above.</div></div>';
+    }
     var _optCount = (z.items || []).filter(function (i) { return i.optional; }).length;
     h += '</tbody>' + (z.noTotal ? '' : ('<tfoot>' +
       '<tr><td colspan="5" style="' + TB + 'padding:8px;text-align:right;font-weight:700;font-size:13px">Grand total (before GST)</td>' +
@@ -5698,8 +5842,21 @@ function viewCatalogue() {
         d = Number(d) || 0;
         var net = Math.round(i.price * (1 - d / 100));
         var _dl = descLines(i.desc);
+        /* the room reads as the first bullet, so an existing quote layout carries
+           it with no new column: "Master Bathroom, PDR" above the features */
+        var _rooms = [];
+        var _rq = (i && i.rq && typeof i.rq === "object") ? i.rq : null;
+        if (_rq) {
+          for (var _k in _rq) {
+            var _n = Number(_rq[_k]) || 0;
+            if (_k && _n > 0) _rooms.push(_k + (_n > 1 ? " x" + _n : ""));
+          }
+          _rooms.sort();
+        }
+        var _bul = _dl.bullets.map(function (b) { return pdfSafe(b); });
+        if (_rooms.length) _bul.unshift(pdfSafe("For: " + _rooms.join(", ")));
         return { title: pdfSafe(_dl.title) + (i.optional ? "   [OPTIONAL - NOT ADDED TO VALUE]" : ""),
-          bullets: _dl.bullets.map(function (b) { return pdfSafe(b); }),
+          bullets: _bul,
           code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[i.pic] || null,
           unit: i.unit || "No's", optional: i.optional ? 1 : 0,
           qty: i.qty, price: i.price, disc: d, net: net, total: net * i.qty };
@@ -15631,6 +15788,14 @@ function viewCatalogue() {
     /* v6.9.224 the Collections search. Same rule as the client list and the quote book:
        repaint ONLY the list block, never the page, so the caret and the phone keyboard
        stay put while a ten-digit number is typed one digit at a time. */
+    /* The room box holds what you type without repainting the page - a repaint on
+       every keystroke would drop the caret. Enter (or tapping a chip) commits it. */
+    var qzri = el("qz_room");
+    if (qzri) {
+      qzri.addEventListener("input", function (e) { if (S.qz) S.qz.room = e.target.value; });
+      qzri.addEventListener("keyup", function (e) { if (e.key === "Enter") { e.target.blur(); render(); } });
+      qzri.addEventListener("blur", function () { render(); });
+    }
     var payqi = el("pay_q");
     if (payqi) {
       payqi.addEventListener("input", function (e) {
@@ -16738,6 +16903,23 @@ function viewCatalogue() {
       render(); return;
     }
     if (act === "qz-step") { S.qz.step = Number(t.getAttribute("data-step")); render(); return; }
+    if (act === "qz-room-set") { S.qz.room = t.getAttribute("data-r") || ""; keepScroll = true; render(); return; }
+    if (act === "qz-room-edit") {
+      var rcode = t.getAttribute("data-code");
+      var rit = (S.qz.items || []).filter(function (x) { return x.code === rcode; })[0];
+      if (!rit) return;
+      var cur = qzRoomsOf(rit);
+      var ask = window.prompt("Which room is this line for?\n\nOne name puts the whole line in that room. Leave blank to clear.", cur.length === 1 ? cur[0] : "");
+      if (ask === null) return;
+      var nm = String(ask).trim();
+      /* the whole line moves - a line that needs splitting across rooms is built
+         room by room on the Products step, which is where the + button lives */
+      var mv = {}; mv[nm] = rit.qty;
+      rit.rq = mv;
+      qzRqSync(rit);
+      keepScroll = true;
+      render(); return;
+    }
     if (act === "qz-qty") {
       var code = t.getAttribute("data-code");
       var delta = Number(t.getAttribute("data-d"));
@@ -16747,11 +16929,15 @@ function viewCatalogue() {
       if (!it) {
         if (delta < 0) return;
         var qb2 = realBrand(p);
-        S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: 1, pic: p.pic, unit: p.unit, brand: qb2 });
+        var nrq = {}; nrq[String(S.qz.room || "")] = 1;
+        S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: 1,
+                          pic: p.pic, unit: p.unit, brand: qb2, cat: p.cat || "", rq: nrq });
         S.qz.brandDiscs = S.qz.brandDiscs || {};
         if (qb2 && S.qz.brandDiscs[qb2] === undefined) S.qz.brandDiscs[qb2] = clientDiscount(S.qz.client, qb2);
       } else {
-        it.qty += delta;
+        /* + and - act on the room you are working in, so the same model can be
+           built up room by room without ever becoming a second line */
+        qzRoomAdd(it, S.qz.room || "", delta);
         if (it.qty <= 0) S.qz.items = S.qz.items.filter(function (x) { return x.code !== code; });
       }
       keepScroll = true;
@@ -18951,10 +19137,18 @@ function viewCatalogue() {
       var code = t.getAttribute("data-code");
       var q = Number(t.value) || 0;
       var p = PRODUCTS.filter(function (x) { return x.code === code; })[0];
-      S.qz.items = S.qz.items.filter(function (x) { return x.code !== code; });
-      if (q > 0 && p) {
+      /* A typed quantity sets the figure for the room you are working in and
+         leaves the other rooms on that line alone - otherwise typing "2" for the
+         master bathroom would silently wipe the guest bathrooms off the line. */
+      var ex0 = S.qz.items.filter(function (x) { return x.code === code; })[0];
+      if (ex0) {
+        qzRoomSet(ex0, S.qz.room || "", q);
+        if (ex0.qty <= 0) S.qz.items = S.qz.items.filter(function (x) { return x.code !== code; });
+      } else if (q > 0 && p) {
         var qb = realBrand(p);
-        S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: q, pic: p.pic, unit: p.unit, brand: qb });
+        var trq = {}; trq[String(S.qz.room || "")] = q;
+        S.qz.items.push({ code: p.code, desc: p.desc, family: p.family, price: p.price, qty: q,
+                          pic: p.pic, unit: p.unit, brand: qb, cat: p.cat || "", rq: trq });
         S.qz.brandDiscs = S.qz.brandDiscs || {};
         if (qb && S.qz.brandDiscs[qb] === undefined) S.qz.brandDiscs[qb] = clientDiscount(S.qz.client, qb);
       }
