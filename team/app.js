@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.221";
+  var APP_VERSION = "6.9.222";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -790,9 +790,10 @@ window.addEventListener("beforeunload", function (ev) {
   /* A chip row that cannot change what you see is only clutter, so it is drawn
      when there is a real choice: two or more values, or one value plus some
      products that carry none (where "all" and that one value differ). */
-  function prodChips(act, items, active, allLabel, someBlank) {
+  function prodChips(act, items, active, allLabel, someBlank, rowLabel) {
     if (items.length < 2 && !(items.length === 1 && someBlank)) return "";
-    var h = '<div class="row" style="flex-wrap:wrap;gap:6px;margin:6px 0 2px">' +
+    var h = '<div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0 2px;align-items:center">' +
+      '<span style="font-size:11px;color:#94a3b8;min-width:56px">' + esc(rowLabel || "") + '</span>' +
       '<button class="btn sm ' + (active ? "ghost" : "") + '" data-act="' + act + '" data-v="">' + allLabel + '</button>';
     items.forEach(function (x) {
       h += '<button class="btn sm ' + (active === x.k ? "" : "ghost") + '" data-act="' + act + '" data-v="' + esc(x.k) + '">' +
@@ -816,7 +817,7 @@ window.addEventListener("beforeunload", function (ev) {
     var pic = p.pic ? driveImg(p.pic, 300) : "";
     var d = descLines(p.desc || p.family);
     return '<div data-act="pv-open" data-code="' + esc(p.code) + '" style="cursor:pointer;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;display:flex;flex-direction:column">' +
-      '<div style="aspect-ratio:1/1;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden">' +
+      '<div style="aspect-ratio:4/3;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden">' +
       (pic ? '<img loading="lazy" src="' + esc(pic) + '" alt="" style="width:100%;height:100%;object-fit:contain"/>'
            : '<span style="font-size:11px;color:#cbd5e1">no photo</span>') +
       '</div>' +
@@ -905,7 +906,7 @@ window.addEventListener("beforeunload", function (ev) {
     /* ---- browse: brand -> category -> family ---- */
     var shelf = prodShelf();
     h += prodChips("pv-brand", shelf.order.map(function (b) { return { k: b, n: shelf.by[b].length }; }),
-                   S.pvBrand || "", "Saare brand");
+                   S.pvBrand || "", "Saare brand", false, "Brand");
 
     if (!S.pvBrand) {
       h += '<div class="empty" style="text-align:left;padding:10px 0 2px">Brand chunein - phir category aur family.</div>';
@@ -921,11 +922,11 @@ window.addEventListener("beforeunload", function (ev) {
 
     var list = shelf.by[S.pvBrand] || [];
     h += prodChips("pv-cat", prodCountBy(list, "cat"), S.pvCat || "", "Saari category",
-                   list.some(function (p) { return !String(p.cat || "").trim(); }));
+                   list.some(function (p) { return !String(p.cat || "").trim(); }), "Category");
     if (S.pvCat) list = list.filter(function (p) { return String(p.cat || "").trim() === S.pvCat; });
 
     h += prodChips("pv-fam", prodCountBy(list, "family"), S.pvFam || "", "Saari family",
-                   list.some(function (p) { return !String(p.family || "").trim(); }));
+                   list.some(function (p) { return !String(p.family || "").trim(); }), "Family");
     if (S.pvFam) list = list.filter(function (p) { return String(p.family || "").trim() === S.pvFam; });
 
     if (!list.length) return h + '<div class="empty">Is chunav mein koi product nahi.</div>';
