@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.238";
+  var APP_VERSION = "6.9.239";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -10345,6 +10345,10 @@ function viewCatalogue() {
       '<div style="margin-top:8px;font-size:14px">Statement: <b>' + selCount + '</b> of ' + chs.length + ' challan(s) ticked &mdash; <b>' + money(selNet) + '</b>' + (S.billGst ? ' + GST ' + money(gst) + ' = <b>' + money(selNet + gst) + '</b>' : '') + '</div>' +
       '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:10px">' +
       '<button class="btn sm ' + (S.billGst ? '' : 'ghost') + '" data-act="bill-gst">' + (S.billGst ? 'GST 18% ✓' : 'Add GST 18%') + '</button>' +
+      /* v6.9.239 - one page per challan with the signed receipt printed under it */
+      '<button class="btn sm ' + (hisabPerPage() ? '' : 'ghost') + '" data-act="bill-perpage" ' +
+        'title="Give every ticked challan its own page in the PDF, with the signed receipt printed underneath it">' +
+        (hisabPerPage() ? '✓ One page per challan + receipt' : 'One page per challan + receipt') + '</button>' +
       '<button class="btn sm ghost" data-act="bill-selall" data-v="1">Tick all</button>' +
       '<button class="btn sm ghost" data-act="bill-selall" data-v="0">Untick all</button>' +
       '<div class="grow"></div>' +
@@ -10358,6 +10362,49 @@ function viewCatalogue() {
 
   /* The statement/hisab PDF: header, customer, then each TICKED challan priced out, a statement
      total (+ optional GST), and the running account ledger (billed to date, received, balance). */
+  /* ---- ONE PAGE PER CHALLAN, WITH ITS RECEIPT (v6.9.239) ----
+     Optional. Off by default, so the statement anyone already sends is unchanged.
+     Switched on, every ticked challan gets a page of its own: what was delivered, what it
+     came to, and underneath it the signed paper that came back - so one sheet answers the
+     whole question about one delivery and can be handed over on its own.
+     Remembered on this device, like the incentive statement's rate choice. */
+  function hisabPerPage() {
+    try {
+      if (S.billPerPage == null) S.billPerPage = localStorage.getItem("ew_hisab_perpage") === "1";
+    } catch (e) { if (S.billPerPage == null) S.billPerPage = false; }
+    return !!S.billPerPage;
+  }
+  /* Fit a picture inside a box without stretching it. Returns the drawn size in mm.
+     A picture whose size could not be read falls back to the box's own shape. */
+  function fitBox(w, h, maxW, maxH) {
+    w = Number(w) || 0; h = Number(h) || 0;
+    if (w <= 0 || h <= 0) return { w: maxW, h: maxH };
+    var k = Math.min(maxW / w, maxH / h);
+    return { w: Math.round(w * k * 100) / 100, h: Math.round(h * k * 100) / 100 };
+  }
+  /* Measure the receipt thumbnails before the PDF is built, because jsPDF needs real
+     dimensions and reading them is asynchronous. Only ever called in per-page mode, so the
+     ordinary statement is not slowed by a single millisecond. A picture that will not
+     decode simply resolves to nothing and its challan prints without one. */
+  function thumbSizes(list) {
+    return Promise.all((list || []).map(function (c) {
+      var r = chProofAny(c);
+      if (!r.thumb) return Promise.resolve(null);
+      return new Promise(function (res) {
+        try {
+          var im = new Image();
+          im.onload = function () { res({ id: c.id, w: im.naturalWidth || im.width, h: im.naturalHeight || im.height }); };
+          im.onerror = function () { res(null); };
+          im.src = "data:image/jpeg;base64," + r.thumb;
+        } catch (e) { res(null); }
+      });
+    })).then(function (rows) {
+      var m = {};
+      rows.forEach(function (x) { if (x && x.id) m[x.id] = { w: x.w, h: x.h }; });
+      return m;
+    });
+  }
+
   function hisabPdf(cl) {
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }));
     var sel = chs.filter(function (c) { return S.billSel[c.id] !== false; })
@@ -10370,7 +10417,8 @@ function viewCatalogue() {
        font. Embedding that font took several seconds and bloated the file to ~550KB, spiking
        memory enough to reload the tab (which is what signed people out). Helvetica builds the
        statement in a blink at ~30KB. The trade is the rupee symbol shows as "Rs." here. */
-    return Promise.resolve().then(function () {
+    var perPage = hisabPerPage();
+    return (perPage ? thumbSizes(sel) : Promise.resolve({})).then(function (TSZ) {
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
       var uni = false;
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
@@ -10402,9 +10450,78 @@ function viewCatalogue() {
         doc.text("NET", cN, y, { align: "right" }); doc.text("AMOUNT", cA, y, { align: "right" });
         y += 4.8;
       };
+      /* Any page after the first carries no banner, so in per-page mode - where a single
+         sheet may be torn off and handed over - it says whose account it belongs to. */
+      var pageMark = function () {
+        F("normal"); doc.setFontSize(7); doc.setTextColor(120, 130, 145);
+        doc.text("Statement of account  \u00b7  " + pdfSafe(String(cl)), L, 12);
+        doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.line(L, 14.5, R, 14.5);
+        doc.setTextColor(17, 34, 45);
+        return 22;
+      };
       var grand = 0, goodsGrand = 0;
-      sel.forEach(function (c) {
-        if (y > 262) { doc.addPage(); y = 20; }
+      /* THE RECEIPT BLOCK. Drawn under a challan's total in per-page mode: the signed paper
+         that came back, who signed it, when it was recorded, and where the full document
+         lives. When nothing was ever attached it says so in red rather than leaving a blank
+         space that reads like the paper is simply missing from this print. */
+      var receiptBlock = function (c) {
+        var r = chProofAny(c);
+        if (y + 56 > 282) { doc.addPage(); y = 20; }
+        y += 4;
+        doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3);
+        doc.line(L, y, R, y); y += 6;
+        F("bold"); doc.setFontSize(7.4); doc.setTextColor(13, 118, 108);
+        doc.text("SIGNED RECEIPT", L, y);
+        if (!r.has) {
+          F("normal"); doc.setFontSize(8.6); doc.setTextColor(185, 28, 28);
+          doc.text("No signed receipt has been attached for this delivery.", L, y + 6.5);
+          F("normal"); doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
+          doc.text("The delivery is recorded and counted in this account; only the paper is missing.", L, y + 11.5);
+          y += 17;
+          return;
+        }
+        var top = y + 4, drewH = 0;
+        if (r.thumb) {
+          var sz = TSZ[c.id] || null;
+          var box = fitBox(sz && sz.w, sz && sz.h, 46, 46);
+          try {
+            doc.addImage("data:image/jpeg;base64," + r.thumb, "JPEG", L, top, box.w, box.h);
+            doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3);
+            doc.rect(L, top, box.w, box.h);
+            drewH = box.h;
+          } catch (e) { drewH = 0; }
+        }
+        var tx = drewH ? L + 52 : L;
+        var ty = top + 5;
+        F("bold"); doc.setFontSize(9); doc.setTextColor(13, 118, 108);
+        doc.text("Received at site", tx, ty); ty += 5.5;
+        F("normal"); doc.setFontSize(8); doc.setTextColor(17, 34, 45);
+        if (r.by) { doc.text("Signed by: " + pdfSafe(String(r.by)), tx, ty); ty += 5; }
+        var p0 = challanProof(c.id);
+        if (p0 && p0.at) { doc.text("Recorded on: " + fullDate(String(p0.at).slice(0, 10)), tx, ty); ty += 5; }
+        doc.setFontSize(6.8); doc.setTextColor(120, 130, 145);
+        if (r.queued) {
+          doc.text("The full document is still uploading from the phone that took it.", tx, ty); ty += 4.4;
+        } else if (r.url) {
+          doc.text("Full delivery & receipt document:", tx, ty); ty += 3.8;
+          doc.setTextColor(13, 118, 108);
+          doc.splitTextToSize(String(r.url), R - tx).slice(0, 2).forEach(function (ln) { doc.text(ln, tx, ty); ty += 3.6; });
+        }
+        if (!drewH) {
+          doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
+          doc.text("(no photograph was stored with this receipt)", tx, ty); ty += 4;
+        }
+        y = Math.max(top + drewH, ty) + 4;
+      };
+      sel.forEach(function (c, ci) {
+        /* v6.9.239 - in per-page mode every challan starts on a clean sheet. The FIRST one
+           still sits below the dark banner on page one; only the added pages start at the
+           top of a bare sheet. */
+        if (perPage) {
+          if (ci) { doc.addPage(); y = pageMark(); }
+          else { y = HB + 9; }
+        }
+        else if (y > 262) { doc.addPage(); y = 20; }
         F("bold"); doc.setFontSize(8.6); doc.setTextColor(13, 118, 108);
         doc.text(String(c.challanNo) + "   ·   " + fullDate(c.createdAt), L, y);
         /* v6.9.119: if the challan carries a Site/project, print it right-aligned on the same
@@ -10447,12 +10564,14 @@ function viewCatalogue() {
         F("bold"); doc.setFontSize(8.2); doc.setTextColor(17, 34, 45);
         doc.text("Challan total", cN, tMid, { align: "right" }); doc.text(RS(chTotal), cA, tMid, { align: "right" });
         y = tbY + tbH + 3;
+        if (perPage) receiptBlock(c);
       });
       if (!sel.length) { doc.setFontSize(10); doc.setTextColor(120, 120, 120); doc.text("No challans selected.", L, y); y += 6; }
       /* v6.9.122: booked-in material returns printed in the body as "challan in reverse" blocks — a
          red header, each line a negative amount, then a Return total — so the statement itemises what
          came back, matching the HISAB screen. Shown for every Received return (not tied to the ticks). */
       var retList = clientReturns(cl).slice().sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+      if (perPage && retList.length) { doc.addPage(); y = pageMark(); }
       retList.forEach(function (r) {
         if (y > 258) { doc.addPage(); y = 20; }
         F("bold"); doc.setFontSize(8.6); doc.setTextColor(185, 28, 28);
@@ -10494,7 +10613,9 @@ function viewCatalogue() {
         doc.text("Return total", cN, rMid, { align: "right" }); doc.text("-" + RS(rsub), cA, rMid, { align: "right" });
         y = rbY + rbH + 3;
       });
-      if (y > 250) { doc.addPage(); y = 20; }
+      if (y > 250 || (perPage && sel.length)) {
+        doc.addPage(); y = perPage ? pageMark() : 20;
+      }
       var gst = S.billGst ? Math.round(grand * 0.18) : 0, paid = clientLedger(cl).paid;
       doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(L, y - 1, R, y - 1); doc.setLineWidth(0.2); y += 5;
       F("bold"); doc.setFontSize(11); doc.setTextColor(17, 34, 45);
@@ -18488,6 +18609,15 @@ function viewCatalogue() {
       var wnum = String(wc.mobile || "").replace(/\D/g, ""); if (wnum.length === 10) wnum = "91" + wnum;
       var wmsg = "Dear " + wcl + ",\n\nPlease find your Energy World statement (hisab) attached.\n\nThank you.\nEnergy World";
       waShareDoc(loadLogo().then(function () { return hisabPdf(wcl); }), wcl.replace(/[^\w.-]/g, "_") + "_hisab.pdf", wnum, wmsg);
+      return;
+    }
+    if (act === "bill-perpage") {
+      S.billPerPage = !hisabPerPage();
+      try { localStorage.setItem("ew_hisab_perpage", S.billPerPage ? "1" : "0"); } catch (e) {}
+      keepScroll = true; render();
+      toast(S.billPerPage
+        ? "The PDF will now give each ticked challan its own page, with its signed receipt under it."
+        : "Back to the running statement - all challans one after another.");
       return;
     }
     if (act === "bill-pdf") {
