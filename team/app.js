@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.237";
+  var APP_VERSION = "6.9.238";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -16291,6 +16291,10 @@ function viewCatalogue() {
     var sites = S.data.sites.map(function (x) { return x.name; });
     var picked = (z.items || []).slice().sort(function (a, b) { return (Number(b.qty) || 0) - (Number(a.qty) || 0); });
     var isEdit = !!(z && z.editId);
+    /* what is already in the manual-number box: what he typed before a repaint, or - when
+       editing - whatever was filed against this challan already */
+    var _mnPre = String((z && z.manualNo != null ? z.manualNo
+      : (isEdit ? manualNoFor({ id: z.editId, challanNo: z.editNo }) : "")) || "");
     return '<h2>' + (isEdit ? 'Edit challan ' + esc(z.editNo || "") : 'New delivery challan') + '</h2>' +
       '<p class="sub">The printed challan carries no prices and no pictures - it is a delivery note, not a quote.</p>' +
       (isEdit && z.editStatus === "Approved" ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#b45309">This challan is <b>Approved</b>. Saving a change sends it back to <b>Draft</b> so it must be approved again before dispatch - approval releases material and can\'t carry over to changed contents.</div>' : "") +
@@ -16298,12 +16302,25 @@ function viewCatalogue() {
       ((z && z.copyOf) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#1d4ed8">Copied from challan <b>' + esc(z.copyOf) + '</b> \u2014 same client, site and products. Check the quantities, then create. <b>The old challan is not changed</b>, and this becomes a new challan with its own number.</div>' : "") +
       '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, (z && z.loc) || LOCATIONS[0]) + '</select>' +
       strictClientField("m_client", (S.ch && S.ch.client) || "") +
+      /* v6.9.238 - THE PAPER BOOK'S NUMBER, IN RED (owner: "its important part").
+         It sits directly under the client and above the site, because that is the order
+         the man actually works in: whose challan, what number did I write on it, where is
+         it going. Red while it is empty and green the moment something is typed, so an
+         unfilled box is visible from across the room and a filled one stops shouting.
+         It is still OPTIONAL and still changes nothing about the app's own number, which
+         is reserved and printed exactly as before. */
+      '<div id="m_manual_box" style="border:2px solid ' + (_mnPre ? '#86efac' : '#f87171') + ';background:' +
+        (_mnPre ? '#f0fdf4' : '#fef2f2') + ';border-radius:10px;padding:10px 12px;margin:10px 0">' +
+        '<label id="m_manual_lab" for="m_manual" style="display:block;margin:0 0 5px;font-size:12px;font-weight:800;letter-spacing:.03em;color:' +
+          (_mnPre ? '#15803d' : '#b91c1c') + '">MANUAL CHALLAN NO &mdash; FROM THE PAPER BOOK</label>' +
+        '<input id="m_manual" inputmode="numeric" placeholder="e.g. 1247" value="' +
+          esc(_mnPre) + '" style="width:100%;font-size:17px;font-weight:800;letter-spacing:.04em;padding:11px 12px;border:2px solid ' +
+          (_mnPre ? '#86efac' : '#fca5a5') + ';border-radius:8px;background:#fff"/>' +
+        '<div id="m_manual_hint" style="margin-top:5px;font-size:11.5px;color:' + (_mnPre ? '#15803d' : '#b91c1c') + '">' +
+          (_mnPre ? 'Noted \u2014 this will print on the challan and show in hisab.'
+                  : 'Write the number from the hand-written book here. It prints on the challan and shows in hisab. Leave it blank only if there is no paper challan.') +
+        '</div></div>' +
       '<label>Site (optional)</label><input id="m_site" list="sitelist" placeholder="Site / project" value="' + esc((z && z.site) || "") + '"/>' +
-      /* v6.9.237 - the number from the paper book, while it is still being written by hand.
-         Optional, and it changes nothing about the app's own number, which is reserved and
-         printed exactly as before. */
-      '<label>Manual challan no <span style="font-weight:400;color:#94a3b8">(optional \u2014 the number in the paper book)</span></label>' +
-      '<input id="m_manual" placeholder="e.g. 1247" value="' + esc((z && z.manualNo != null ? z.manualNo : (isEdit ? manualNoFor({ id: z.editId, challanNo: z.editNo }) : "")) || "") + '"/>' +
       '<datalist id="sitelist">' + sites.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
       /* Material is going to this site today, so the man loading it knows the stage better than
          anyone. Confirm it here and the pitch board is right without a single extra visit. */
@@ -17442,6 +17459,29 @@ function viewCatalogue() {
        offer: overwrite it and the typed figure is what pays. Untick and the box hides;
        the rate is cleared when Save & back is pressed, not before. No repaint here, so
        nothing else on a half-filled screen is disturbed. */
+    /* v6.9.238 - the manual-challan box goes from red to green the moment a number is in
+       it, and back to red if it is cleared. The value is also held on S.ch as it is typed,
+       so tapping a brand or a product rebuilds the form with the box still filled AND still
+       the right colour - the picker repaints this form constantly. No render() here: a
+       repaint on every keystroke would throw the caret out of the box. */
+    var _mnBox = el("m_manual");
+    if (_mnBox) {
+      _mnBox.addEventListener("input", function () {
+        var v = String(_mnBox.value || "").trim();
+        if (S.ch) S.ch.manualNo = v;
+        var box = el("m_manual_box"), lab = el("m_manual_lab"), hint = el("m_manual_hint");
+        var on = !!v;
+        if (box) { box.style.borderColor = on ? "#86efac" : "#f87171"; box.style.background = on ? "#f0fdf4" : "#fef2f2"; }
+        _mnBox.style.borderColor = on ? "#86efac" : "#fca5a5";
+        if (lab) lab.style.color = on ? "#15803d" : "#b91c1c";
+        if (hint) {
+          hint.style.color = on ? "#15803d" : "#b91c1c";
+          hint.textContent = on
+            ? "Noted \u2014 this will print on the challan and show in hisab."
+            : "Write the number from the hand-written book here. It prints on the challan and shows in hisab. Leave it blank only if there is no paper challan.";
+        }
+      });
+    }
     Array.prototype.forEach.call(document.querySelectorAll("input.exon"), function (cb) {
       cb.addEventListener("change", function () {
         var k = cb.getAttribute("data-key") || "";
