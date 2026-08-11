@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.241";
+  var APP_VERSION = "6.9.242";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -10150,7 +10150,13 @@ function viewCatalogue() {
       outs.forEach(function (r) { agg.cur += r.ag.b.cur; agg.d30 += r.ag.b.d30; agg.d60 += r.ag.b.d60; agg.d90 += r.ag.b.d90; });
       var overdueTot = outs.reduce(function (a, r) { return a + (r.ag ? r.ag.overdue : 0); }, 0);
       oh += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3>DUE AMT &mdash; ' + money(totalDue) + ' across ' + outs.length + ' client(s)</h3>' +
-        '<div class="meta" style="font-size:13px">Grouped by sales executive &middot; net of pre-set discounts. Tap a client to open their hisab.</div></div>';
+        '<div class="meta" style="font-size:13px">Grouped by sales executive &middot; net of pre-set discounts. Tap a client to open their hisab.</div>' +
+        /* v6.9.242 - the collection app. A separate app on purpose: this screen is for
+           reading the account, that one is for working through the calls. */
+        '<div class="acts" style="margin-top:9px"><a class="btn sm" href="../collect/" target="_blank" rel="noopener" ' +
+          'style="background:#7f1d1d;border-color:#7f1d1d">&#9742; Open the Collection app</a>' +
+        '<span class="meta" style="align-self:center;font-size:11.5px">Who to ring today, what was promised, and record the money as it comes in.</span></div>' +
+        '</div>';
       /* Ageing strip: how the outstanding splits by how long it has been owed. 60+ days is money to
          chase hard. Buckets are 0-30 / 31-60 / 61-90 / 90+ days from delivery (payments clear oldest
          first). Tell me your credit terms and I can tune the "overdue" line to them. */
