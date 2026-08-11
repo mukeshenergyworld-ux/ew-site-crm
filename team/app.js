@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.233";
+  var APP_VERSION = "6.9.234";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2750,6 +2750,40 @@ window.addEventListener("beforeunload", function (ev) {
     var d = discRow(client, brand); if (!d) return 0;
     return Number(incMap(d)[String(role).toLowerCase()]) || 0;
   }
+  /* ---- THE SALES EXECUTIVE'S INCENTIVE, SET LIKE A PARTNER'S (v6.9.234) ----
+     Owner's instruction: a tick box, and when it is ticked it asks for a % exactly
+     as a partner's does. It is stored on the very same discount row, under the key
+     "exec", so one row still carries the brand discount and every incentive on it -
+     no new sheet column, no server change.
+     `execOn` keeps the tick itself, so a rate deliberately left at 0 stays ticked and
+     visible instead of quietly disappearing off the screen.
+     The brand rate card below is now only a SUGGESTION: ticking the box offers what
+     the card would pay at that discount, and whatever is typed is what actually pays.
+     Nobody is paid by a formula they cannot see. */
+  function execOnFor(client, brand) {
+    var d = discRow(client, brand); if (!d) return false;
+    var m = incMap(d);
+    return String(m.execOn) === "1" || Number(m.exec) > 0;
+  }
+  function execRateFor(client, brand) {
+    var d = discRow(client, brand); if (!d) return 0;
+    return Number(incMap(d).exec) || 0;
+  }
+  /* WHO earns it: the executive the client is assigned to. Every challan here is
+     entered by one person, so the challan's creator says nothing about who sold it -
+     the client's owner does, and every client carries one. */
+  function execForClient(name) {
+    var cl = clientByName(name) || {};
+    return String(cl.ownedBy || cl.createdBy || "").trim();
+  }
+  /* The executives who can earn: active sales staff. An admin who owns clients does
+     not pay himself an incentive, so he is not listed here. */
+  function execTeam() {
+    return (S.data.team || []).filter(function (u) {
+      return String(u.role || "").toLowerCase() === "sales" &&
+             String(u.active == null ? "Y" : u.active).toUpperCase() !== "N";
+    });
+  }
   /* ---- SALES EXECUTIVE INCENTIVE: the discount budget ----
      Each brand carries a STANDARD discount and a BASE rate. Sell at the standard
      and the executive earns the base. Every point of discount he does NOT give
@@ -2802,8 +2836,9 @@ window.addEventListener("beforeunload", function (ev) {
     var std = Number(r.stdDisc) || 0;
     var now = execRateAt(brand, disc), atStd = execRateAt(brand, std);
     var c = now > atStd ? "#15803d" : (now < atStd ? "#b45309" : "#0f766e");
-    return 'Sales executive: <b style="color:' + c + '">' + pctTxt(now) + ' of net</b>' +
-      '<span style="color:#94a3b8"> &middot; the standard ' + pctTxt(std) + ' off pays ' + pctTxt(atStd) + '</span>';
+    return '<span style="color:#94a3b8">Rate card suggests</span> <b style="color:' + c + '">' + pctTxt(now) + ' of net</b>' +
+      '<span style="color:#94a3b8"> at this discount &middot; the standard ' + pctTxt(std) + ' off would pay ' + pctTxt(atStd) +
+      '. Tick the box above to use it, or type your own.</span>';
   }
 
   /* Which roles a partner fills on a client (usually one). Drives who earns the incentive. */
@@ -9032,21 +9067,18 @@ function viewCatalogue() {
     });
   }
 
-  function partnerBook(name) {
-    var nm = String(name).trim().toLowerCase();
-    /* A partner earns on every client he is named on (as plumber / architect / builder / PMC),
-       at the rate set for THAT client and THAT brand - line by line, because one challan can
-       carry more than one brand. Incentive is paid ONLY where an explicit client-&-brand rate is
-       set (owner's decision: explicit-only, no default fallback). A registered sales RETURN
-       reverses the incentive on the returned goods at the same client/brand/role rate. Only
-       challans whose material receipt is in count as business. */
-    var myClients = (S.data.clients || []).filter(function (cl) { return clientRolesOf(cl, nm).length; });
+  /* ---- ONE ENGINE, TWO PAYEES (v6.9.234) ----
+     A partner and a sales executive differ in only two things: WHICH clients are his,
+     and WHAT rate applies. Everything after that is identical - a challan counts only
+     once its material receipt is in, incentive becomes payable only in proportion to
+     what the client has actually paid, and a booked-in material return reverses the
+     incentive on the goods that came back at the very same rate that earned it.
+     That shared half is written here ONCE, so the two can never drift apart and a
+     return can never be reversed for one and forgotten for the other. */
+  function incentiveBook(myClients, rateFor, payeeLower) {
     var billed = 0, earned = 0, returned = 0, reversed = 0, rows = [], clientNames = {};
-    var rateCB = function (roles, clName, br) {
-      var rate = 0; roles.forEach(function (role) { var r = incRate(clName, br, role); if (r > rate) rate = r; }); return rate;
-    };
     myClients.forEach(function (cl) {
-      var roles = clientRolesOf(cl, nm), clLower = String(cl.name).trim().toLowerCase();
+      var clLower = String(cl.name).trim().toLowerCase();
       var chs = dedupeChallans(S.data.challans.filter(function (c) {
         return String(c.customerName || "").trim().toLowerCase() === clLower &&
                String(c.receiptReceived).toUpperCase() === "Y";
@@ -9055,39 +9087,90 @@ function viewCatalogue() {
         var base = 0, inc = 0;
         pricedLines(c, c.customerName).forEach(function (x) {
           base += x.amt;
-          inc += x.amt * rateCB(roles, cl.name, x.brand || c.brand || "") / 100;
+          inc += x.amt * rateFor(cl, x.brand || c.brand || "") / 100;
         });
         billed += base; earned += inc; clientNames[c.customerName] = 1;
         rows.push({ no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
           ymd: String(c.createdAt || "").slice(0, 10),
-          amount: base, base: base, pct: base > 0 ? (inc / base * 100) : 0, inc: inc });
+          amount: base, base: base, pct: base > 0 ? (inc / base * 100) : 0, inc: inc, ret: false });
       });
-      /* reverse incentive only once a return is BOOKED IN at the godown (status "Received") —
-         symmetric with a sale, which counts only when its material receipt is in. A return that
-         is merely raised or in transit does not reverse anything yet. */
+      /* A MATERIAL RETURN IS A NEGATIVE CHALLAN. It reverses only once the goods are
+         booked in at the godown (status "Received") - symmetric with a sale, which
+         counts only when its receipt is in. A return merely raised or still in transit
+         reverses nothing yet.
+         v6.9.234: the reversal is now pushed into the book as its own line. It always
+         came off the totals, but it never appeared in the client-wise statement - so
+         the statement did not add up to the figure printed above it. Now it does. */
       (S.data.returns || []).filter(function (r) {
         return String(r.customerName || "").trim().toLowerCase() === clLower &&
                String(r.status || "").trim().toLowerCase() === "received";
       }).forEach(function (r) {
+        var rBase = 0, rInc = 0, rBrands = {};
         returnLines(r).forEach(function (x) {
-          var rev = x.amt * rateCB(roles, cl.name, x.brand) / 100;
-          returned += x.amt; reversed += rev; earned -= rev;
+          rBase += x.amt;
+          rInc += x.amt * rateFor(cl, x.brand) / 100;
+          if (x.brand) rBrands[x.brand] = 1;
         });
+        returned += rBase; reversed += rInc; earned -= rInc;
+        if (rBase > 0 || rInc !== 0) {
+          clientNames[cl.name] = 1;
+          rows.push({ no: r.returnNo || r.id || "RETURN", client: cl.name,
+            site: r.site || "", brand: Object.keys(rBrands).sort().join(", "),
+            ymd: String(r.createdAt || "").slice(0, 10),
+            amount: -rBase, base: -rBase, pct: rBase > 0 ? (rInc / rBase * 100) : 0,
+            inc: -rInc, ret: true });
+        }
       });
     });
-    /* payable follows the money in, not the invoice out */
+    /* payable follows the money in, not the invoice out. `billed` stays the gross value
+       of what went out on challans - deliberately NOT reduced by returns, because
+       changing that would quietly change how much is owed to everyone. */
     var collected = S.data.payments.filter(function (p) { return clientNames[p.client]; })
       .reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
     var ratio = billed > 0 ? Math.min(1, collected / billed) : 0;
     var payable = earned * ratio;
-    var paid = S.data.commpay.filter(function (p) { return String(p.associate).toLowerCase() === nm; })
+    var paid = S.data.commpay.filter(function (p) { return String(p.associate).toLowerCase() === payeeLower; })
       .reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
-    var sites = S.data.sites.filter(function (st) {
+    return { rows: rows, billed: billed, earned: earned, returned: returned, reversed: reversed,
+      collected: collected, ratio: ratio, payable: payable, paid: paid, pending: payable - paid, sites: [] };
+  }
+
+  function partnerBook(name) {
+    var nm = String(name).trim().toLowerCase();
+    /* A partner earns on every client he is NAMED on (as plumber / architect / builder /
+       PMC), at the rate set for THAT client and THAT brand - line by line, because one
+       challan can carry more than one brand. Incentive is paid ONLY where an explicit
+       client-&-brand rate is set (owner's decision: explicit-only, no default fallback). */
+    var myClients = (S.data.clients || []).filter(function (cl) { return clientRolesOf(cl, nm).length; });
+    var bk = incentiveBook(myClients, function (cl, br) {
+      var roles = clientRolesOf(cl, nm), rate = 0;
+      roles.forEach(function (role) { var r = incRate(cl.name, br, role); if (r > rate) rate = r; });
+      return rate;
+    }, nm);
+    bk.sites = S.data.sites.filter(function (st) {
       return [st.architect, st.plumber, st.builder, st.pmc].some(function (x) { return String(x || "").toLowerCase() === nm; });
     });
-    return { rows: rows, billed: billed, earned: earned, returned: returned, reversed: reversed,
-      collected: collected, ratio: ratio, payable: payable, paid: paid, pending: payable - paid, sites: sites };
+    return bk;
   }
+
+  /* ---- THE SALES EXECUTIVE'S BOOK ----
+     He earns on every client ASSIGNED to him, at the % ticked for that client and brand
+     on the discount screen. Same receipt rule, same collection rule, same reversal on a
+     return - the engine above is shared with the partners' so they cannot diverge. */
+  function execBook(name) {
+    var nm = String(name).trim().toLowerCase();
+    var myClients = (S.data.clients || []).filter(function (cl) {
+      return String(cl.ownedBy || cl.createdBy || "").trim().toLowerCase() === nm && nm;
+    });
+    var bk = incentiveBook(myClients, function (cl, br) { return execRateFor(cl.name, br); }, nm);
+    var mine = {};
+    myClients.forEach(function (cl) { mine[String(cl.name || "").trim().toLowerCase()] = 1; });
+    bk.sites = S.data.sites.filter(function (st) { return mine[String(st.client || "").trim().toLowerCase()]; });
+    bk.clientCount = myClients.length;
+    return bk;
+  }
+  /* The card, the statement and the payout modal serve both - this decides which book. */
+  function bookFor(name, kind) { return kind === "exec" ? execBook(name) : partnerBook(name); }
 
   function viewIncentives() {
     if (S.partner) return viewPartnerCard(S.partner);
@@ -9104,7 +9187,47 @@ function viewCatalogue() {
       '<div class="stat"><div class="n">' + money(tot.paid) + '</div><div class="l">Paid out</div></div>' +
       '<div class="stat ' + (tot.pending > 0 ? "alert" : "") + '"><div class="n">' + money(tot.pending) + '</div><div class="l">Still to pay</div></div>' +
       '</div>';
-    h += '<div class="empty" style="text-align:left;padding:0 0 12px">Incentive = net sale (post-discount, ex-GST) \u00d7 the rate set for that <b>client &amp; brand</b> on the discount screen, paid to whoever is that client\u2019s plumber / architect / builder / PMC. It only becomes <b>payable as the client pays</b>, and a challan counts only once its material receipt is in.</div>';
+    h += '<div class="empty" style="text-align:left;padding:0 0 12px">Incentive = net sale (post-discount, ex-GST) \u00d7 the rate set for that <b>client &amp; brand</b> on the discount screen, paid to whoever is that client\u2019s plumber / architect / builder / PMC. It only becomes <b>payable as the client pays</b>, and a challan counts only once its material receipt is in. A booked-in material return reverses it.</div>';
+
+    /* ---- SALES EXECUTIVES (v6.9.234) ----
+       Calculated by the same engine as the partners above, on the clients each one is
+       assigned to, at the % ticked for that client and brand. Shown here rather than on
+       a screen of its own so the whole incentive load of the business reads in one place. */
+    var _ex = execTeam();
+    if (_ex.length) {
+      var _exB = {}, _exT = { earned: 0, payable: 0, paid: 0, pending: 0 };
+      _ex.forEach(function (u) {
+        var eb = execBook(u.name); _exB[u.name] = eb;
+        _exT.earned += eb.earned; _exT.payable += eb.payable; _exT.paid += eb.paid; _exT.pending += eb.pending;
+      });
+      var _anyRate = _ex.some(function (u) { return Math.abs(_exB[u.name].earned) > 0.5; });
+      h += '<div class="card" style="border-color:#ddd6fe;background:#faf5ff">' +
+        '<h3 style="margin:0 0 4px">Sales executives <span class="pill" style="background:#ede9fe;color:#6d28d9">' + _ex.length + '</span></h3>' +
+        '<div class="meta" style="margin-bottom:8px">Each earns on the clients assigned to him, at the % ticked on the Discounts screen for that client and brand. Same rules as a partner: the receipt must be in, it becomes payable as the client pays, and a booked-in return reverses it.</div>';
+      if (!_anyRate) {
+        h += '<div class="meta" style="font-size:11.5px;color:#b45309;margin-bottom:8px">No executive rate is ticked on any client yet, so nothing is being calculated. Open <b>Discounts</b>, pick a client, tick <b>Sales executive incentive</b> on the brands you want and type the %.</div>';
+      }
+      h += '<div class="cards" style="margin-bottom:8px">' +
+        '<div class="stat"><div class="n">' + money(_exT.earned) + '</div><div class="l">Executive incentive earned</div></div>' +
+        '<div class="stat"><div class="n">' + money(_exT.payable) + '</div><div class="l">Payable</div></div>' +
+        '<div class="stat"><div class="n">' + money(_exT.paid) + '</div><div class="l">Paid out</div></div>' +
+        '<div class="stat ' + (_exT.pending > 0 ? "alert" : "") + '"><div class="n">' + money(_exT.pending) + '</div><div class="l">Still to pay</div></div>' +
+        '</div>';
+      _ex.slice().sort(function (x, y) { return _exB[y.name].earned - _exB[x.name].earned; }).forEach(function (u) {
+        var eb = _exB[u.name];
+        h += '<div style="border:1px solid #e9d5ff;border-radius:10px;background:#fff;padding:9px 10px;margin-bottom:6px">' +
+          '<div class="acts" style="align-items:center;margin:0">' +
+          '<div class="grow"><b>' + esc(u.name) + '</b>' +
+            ' <span class="pill" style="background:#ede9fe;color:#6d28d9">' + eb.clientCount + ' client' + (eb.clientCount === 1 ? '' : 's') + '</span>' +
+            (eb.reversed > 0 ? ' <span class="pill due">' + money(eb.reversed) + ' reversed</span>' : '') +
+            '<div class="pmeta" style="margin:2px 0 0">Drove ' + money(eb.billed) + ' &middot; earned <b style="color:#6d28d9">' + money(eb.earned) + '</b>' +
+            ' &middot; payable ' + money(eb.payable) + ' &middot; paid ' + money(eb.paid) + '</div></div>' +
+          '<button class="btn sm" data-act="p-open" data-k="exec" data-n="' + esc(u.name) + '">Open</button>' +
+          '</div></div>';
+      });
+      h += '</div>';
+    }
+
     var cold = coldPartners();
     if (cold.length) {
       h += '<div class="card" style="border-color:#fdba74;background:#fff7ed"><h3>Stay in touch <span class="pill soon">' + cold.length + '</span></h3>' +
@@ -9116,6 +9239,7 @@ function viewCatalogue() {
       });
       h += '</div>';
     }
+    h += '<h3 style="margin:16px 0 6px;font-size:15px">Partners</h3>';
     var roles = ["Plumber", "Architect", "Builder", "PMC", "Contractor", "Dealer", "Other"];
     h += '<div class="row">' + roles.map(function (r) {
       return '<button class="btn sm ' + (S.pRole === r ? "" : "ghost") + '" data-act="p-role" data-r="' + esc(r) + '">' + esc(r) + '</button>';
@@ -9178,6 +9302,17 @@ function viewCatalogue() {
       .filter(function (g) { return Math.round(g.inc) > 0; })
       .sort(function (x, y) { return y.inc - x.inc; });
   }
+  /* v6.9.234 - rate % or amount only. Remembered on this device, so whoever prints
+     statements does not re-pick it every time. Defaults to showing the rate. */
+  function stmtShowPct() {
+    try {
+      if (S.pShowPct == null) {
+        var v = localStorage.getItem("ew_stmt_pct");
+        S.pShowPct = (v === "0") ? false : true;
+      }
+    } catch (e) { if (S.pShowPct == null) S.pShowPct = true; }
+    return !!S.pShowPct;
+  }
   function partnerMonths(b) {
     var m = {};
     (b.rows || []).forEach(function (r) { var k = String(r.ymd || "").slice(0, 7); if (k) m[k] = 1; });
@@ -9186,11 +9321,19 @@ function viewCatalogue() {
   }
 
   function viewPartnerCard(name) {
-    var b = partnerBook(name);
-    var a = S.data.associates.filter(function (x) { return x.name === name; })[0] || {};
-    var h = '<div class="row"><button class="btn sm ghost" data-act="p-back">Back to partners</button></div>';
+    /* v6.9.234 - one card for a partner and for a sales executive. They differ only in
+       which book is read and what the sections are called; the statement, the reversal
+       lines and the payout record are the same for both. */
+    var kind = (S.pKind === "exec") ? "exec" : "partner";
+    var isX = kind === "exec";
+    var b = bookFor(name, kind);
+    var a = isX
+      ? ((S.data.team || []).filter(function (x) { return x.name === name; })[0] || {})
+      : (S.data.associates.filter(function (x) { return x.name === name; })[0] || {});
+    var h = '<div class="row"><button class="btn sm ghost" data-act="p-back">' +
+      (isX ? 'Back to incentives' : 'Back to partners') + '</button></div>';
     h += '<div class="cards">' +
-      '<div class="stat"><div class="n">' + b.sites.length + '</div><div class="l">Ongoing sites</div></div>' +
+      '<div class="stat"><div class="n">' + (isX ? b.clientCount : b.sites.length) + '</div><div class="l">' + (isX ? 'Clients assigned' : 'Ongoing sites') + '</div></div>' +
       '<div class="stat"><div class="n">' + money(b.earned) + '</div><div class="l">Incentive earned</div></div>' +
       '<div class="stat"><div class="n">' + money(b.paid) + '</div><div class="l">Paid</div></div>' +
       '<div class="stat ' + (b.pending > 0 ? "alert" : "") + '"><div class="n">' + money(b.pending) + '</div><div class="l">Pending</div></div>' +
@@ -9200,8 +9343,8 @@ function viewCatalogue() {
       'Billed ' + money(b.billed) + ' &middot; collected ' + money(b.collected) +
       ' (' + Math.round(b.ratio * 100) + '% in)' +
       (b.reversed > 0 ? '<br><span style="color:#dc2626">Returns: ' + money(b.returned) + ' came back &middot; ' + money(b.reversed) + ' incentive reversed</span>' : "") +
-      '<br><i>Incentive becomes payable only in proportion to what the client has actually paid. Sales returns reverse the incentive on the returned goods.</i></div>' +
-      '<div class="acts"><button class="btn sm" data-act="pay-out" data-n="' + esc(name) + '">Record payout</button></div></div>';
+      '<br><i>Incentive becomes payable only in proportion to what the client has actually paid. Booked-in material returns reverse the incentive on the goods that came back, at the same rate that earned it.</i></div>' +
+      '<div class="acts"><button class="btn sm" data-act="pay-out" data-k="' + kind + '" data-n="' + esc(name) + '">Record payout</button></div></div>';
 
     /* v6.9.231 - the statement, client by client. Only what was earned, foldable,
        and downloadable for one month or for everything. */
@@ -9220,9 +9363,17 @@ function viewCatalogue() {
       _months.map(function (m) {
         return '<option value="' + m + '"' + (m === _ym ? ' selected' : '') + '>' + monthLabel(m) + '</option>';
       }).join("") + '</select>' +
-      '<button class="btn sm" data-act="p-stmt-pdf" data-n="' + esc(name) + '" data-m="' + esc(_ym) + '">Download ' + esc(_ym === "ALL" ? "all months" : "this month") + '</button>' +
-      (_ym !== "ALL" ? '<button class="btn sm ghost" data-act="p-stmt-pdf" data-n="' + esc(name) + '" data-m="ALL">Download all months</button>' : "") +
-      (a.mobile ? '<button class="btn sm ghost" data-act="p-stmt-wa" data-n="' + esc(name) + '" data-m="' + esc(_ym) + '">WhatsApp</button>' : "") +
+      '<button class="btn sm" data-act="p-stmt-pdf" data-k="' + kind + '" data-n="' + esc(name) + '" data-m="' + esc(_ym) + '">Download ' + esc(_ym === "ALL" ? "all months" : "this month") + '</button>' +
+      (_ym !== "ALL" ? '<button class="btn sm ghost" data-act="p-stmt-pdf" data-k="' + kind + '" data-n="' + esc(name) + '" data-m="ALL">Download all months</button>' : "") +
+      (a.mobile ? '<button class="btn sm ghost" data-act="p-stmt-wa" data-k="' + kind + '" data-n="' + esc(name) + '" data-m="' + esc(_ym) + '">WhatsApp</button>' : "") +
+      '</div>' +
+      /* v6.9.234 - what the PDF shows. Some statements should carry the rate that was
+         agreed; some should carry only the money. The choice is made here and the PDF,
+         the WhatsApp copy and the table below all follow it. */
+      '<div class="row" style="margin:0 0 6px;flex-wrap:wrap;gap:6px;align-items:center">' +
+      '<span style="font-size:11.5px;color:#64748b">Statement shows:</span>' +
+      '<button class="btn sm ' + (stmtShowPct() ? '' : 'ghost') + '" data-act="p-pct" data-v="1">Rate % and amount</button>' +
+      '<button class="btn sm ' + (stmtShowPct() ? 'ghost' : '') + '" data-act="p-pct" data-v="0">Amount only</button>' +
       '</div>' +
       '<div class="meta" style="font-size:13px"><b>' + esc(_label) + ':</b> ' +
         _cRows.length + ' client' + (_cRows.length === 1 ? '' : 's') + ' earning &middot; drove ' + money(_mBilled) +
@@ -9247,12 +9398,14 @@ function viewCatalogue() {
           (open
             ? '<div style="padding:0 10px 8px"><table style="width:100%;border-collapse:collapse;font-size:11.5px">' +
               g.rows.map(function (r) {
-                return '<tr style="border-top:1px solid #f1f5f9">' +
+                /* a booked-in return is shown for what it is: a line that took money back */
+                return '<tr style="border-top:1px solid #f1f5f9' + (r.ret ? ';background:#fef2f2' : '') + '">' +
                   '<td style="padding:4px 2px;color:#64748b;white-space:nowrap">' + esc(dstr(r.ymd)) + '</td>' +
-                  '<td style="padding:4px 6px">' + esc(r.no || "") + (r.brand ? ' <span style="color:#94a3b8">' + esc(r.brand) + '</span>' : '') + '</td>' +
+                  '<td style="padding:4px 6px">' + (r.ret ? '<span style="color:#dc2626;font-weight:700">RETURN </span>' : '') +
+                    esc(r.no || "") + (r.brand ? ' <span style="color:#94a3b8">' + esc(r.brand) + '</span>' : '') + '</td>' +
                   '<td style="padding:4px 2px;text-align:right;color:#64748b;white-space:nowrap">' + money(r.base) + '</td>' +
-                  '<td style="padding:4px 2px;text-align:right;color:#94a3b8;white-space:nowrap">' + (Math.round(r.pct * 10) / 10) + '%</td>' +
-                  '<td style="padding:4px 2px;text-align:right;font-weight:700;color:#0f766e;white-space:nowrap">' + money(r.inc) + '</td></tr>';
+                  (stmtShowPct() ? '<td style="padding:4px 2px;text-align:right;color:#94a3b8;white-space:nowrap">' + (Math.round(r.pct * 10) / 10) + '%</td>' : '') +
+                  '<td style="padding:4px 2px;text-align:right;font-weight:700;color:' + (r.ret ? '#dc2626' : '#0f766e') + ';white-space:nowrap">' + money(r.inc) + '</td></tr>';
               }).join("") + '</table></div>'
             : "") +
           '</div>';
@@ -9263,7 +9416,8 @@ function viewCatalogue() {
 
     /* Projects under this partner — one architect / builder often runs several sites at once.
        List every one with its stage and live pitch count, and add more right here. */
-    h += '<div class="row" style="margin:20px 0 6px;align-items:center"><h3 style="margin:0;font-size:15px">Projects / sites under ' + esc(name) +
+    h += '<div class="row" style="margin:20px 0 6px;align-items:center"><h3 style="margin:0;font-size:15px">' +
+      (isX ? 'Sites of clients assigned to ' : 'Projects / sites under ') + esc(name) +
       ' <span class="pill teal">' + b.sites.length + '</span></h3><div class="grow"></div>' +
       (canSee("sites") ? '<button class="btn sm" data-act="p-newsite" data-n="' + esc(name) + '" data-role="' + esc(String(a.role || "").toLowerCase()) + '">+ New project</button>' : "") + '</div>';
     if (!b.sites.length) h += '<div class="empty">No sites linked yet. Add this partner’s running projects so each one can be tracked and pitched.</div>';
@@ -9323,8 +9477,8 @@ function viewCatalogue() {
       '<button class="btn ghost" data-act="close">Cancel</button></div>';
   }
 
-  function modalPayout(name) {
-    var b = partnerBook(name);
+  function modalPayout(name, kind) {
+    var b = bookFor(name, kind === "exec" ? "exec" : "partner");
     return '<h2>Record incentive payout</h2><p class="sub">' + esc(name) + '</p>' +
       '<div class="card"><div class="meta">Pending: <b>' + money(b.pending) + '</b><br>Earned ' + money(b.earned) +
       ', payable ' + money(b.payable) + ', already paid ' + money(b.paid) + '</div></div>' +
@@ -9352,16 +9506,17 @@ function viewCatalogue() {
         var win = discPick(discRowsFor(d.client, d.brand));
         if (win && win !== d) return;
         var cn0 = (clientByName(d.client) || {}).name || String(d.client || "").trim();
-        var s = agg[cn0] = agg[cn0] || { disc: [], plumber: [], architect: [], pmc: [], builder: [] };
+        var s = agg[cn0] = agg[cn0] || { disc: [], plumber: [], architect: [], pmc: [], builder: [], exec: [] };
         if (Number(d.pct) > 0) s.disc.push({ brand: d.brand, pct: d.pct });
         var im = incMap(d);
+        if (Number(im.exec) > 0) s.exec.push({ brand: d.brand, pct: Number(im.exec) });
         ["plumber", "architect", "pmc", "builder"].forEach(function (role) {
           var v = Number(im[role]) || 0;
           if (v > 0) s[role].push({ brand: d.brand, pct: v });
         });
       });
       var names = Object.keys(agg).filter(function (n) {
-        var s = agg[n]; return s.disc.length || s.plumber.length || s.architect.length || s.pmc.length || s.builder.length;
+        var s = agg[n]; return s.disc.length || s.plumber.length || s.architect.length || s.pmc.length || s.builder.length || s.exec.length;
       }).sort();
       h += '<div class="empty" style="text-align:left;padding:0 0 10px">Type a client above to set discounts, or tap one below to edit. Discounts feed the quote builder, each new challan and the billing screen. <b>Admin only</b>; edits apply to future challans, not past ones.</div>';
       h += '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:10px 12px"><div class="meta" style="font-size:11px;color:#92400e">🔒 Incentive figures are admin-only inside the app — but they also live in the CRM Google Sheet. Keep that sheet shared with as few Google accounts as possible (ideally just you) so partner rates stay private there too. Staff should work through the app, not the sheet.</div></div>';
@@ -9371,9 +9526,10 @@ function viewCatalogue() {
          reads it from here. */
       var ecBrands = brandList();
       h += '<div class="card"><h3 style="margin:0 0 4px">Sales executive rate card</h3>' +
-        '<div class="meta" style="margin-bottom:8px">One card for every executive. <b>Standard</b> is the discount you expect on that brand and <b>base</b> is what it pays. ' +
-        '<b>Per point</b> is how much the rate moves for each point of discount above or below the standard - so protecting price pays, and giving it away costs. ' +
-        'Leave <b>cap</b> blank and the rate is capped at three times the base. Blank base and per point = no executive incentive on that brand.</div>' +
+        '<div class="meta" style="margin-bottom:8px"><b>Optional, and only a suggestion.</b> What an executive is actually paid is the % you tick and type on each client &amp; brand below \u2014 the same way a partner\u2019s is set. ' +
+        'Fill this in and the app will <i>offer</i> that figure when you tick the box, so you are not working it out every time. ' +
+        '<b>Standard</b> is the discount you expect on that brand and <b>base</b> is what it pays; <b>per point</b> is how much the offer moves for each point of discount above or below the standard, so protecting price pays and giving it away costs. ' +
+        'Leave <b>cap</b> blank and it is capped at three times the base. Leave the whole row blank and nothing is suggested \u2014 you simply type the %.</div>' +
         '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:460px">' +
         '<tr style="color:#94a3b8;font-size:10.5px;letter-spacing:.04em">' +
         '<th style="text-align:left;padding:4px 6px">BRAND</th>' +
@@ -9408,6 +9564,10 @@ function viewCatalogue() {
         [["plumber", "Plumber", c.plumber], ["architect", "Architect", c.architect], ["pmc", "PMC", c.pmc], ["builder", "Builder", c.builder]].forEach(function (rm) {
           if (s[rm[0]].length) lines.push('<span style="color:#0d9488">' + rm[1] + (rm[2] ? ' (' + esc(rm[2]) + ')' : '') + ' incentive:</span> ' + fmtBW(s[rm[0]]));
         });
+        if (s.exec.length) {
+          var _eo = String(c.ownedBy || c.createdBy || "").trim();
+          lines.push('<span style="color:#7c3aed">Sales executive' + (_eo ? ' (' + esc(_eo) + ')' : '') + ' incentive:</span> ' + fmtBW(s.exec));
+        }
         h += '<div class="card"><h3>' + esc(n) + (c.location ? ' <span class="pill teal">' + esc(c.location) + '</span>' : '') + '</h3>' +
           '<div class="meta">' + lines.join('<br>') + '</div>' +
           '<div class="acts"><button class="btn sm ghost" data-act="disc-edit" data-n="' + esc(n) + '">Edit</button></div></div>';
@@ -9453,25 +9613,49 @@ function viewCatalogue() {
         return a + ((String(cObj[role] || "").trim() && Number(im[role])) || 0);
       }, 0);
       var dPct = Number(d && d.pct) || 0;
-      /* The executive's number sits with the partners' - all of it is the same
-         giveaway, and it moves as the discount box is typed in (see the .dsc
-         listener; the line is rebuilt in place so the caret never jumps). */
+      /* v6.9.234 - THE SALES EXECUTIVE, TICKED AND TYPED EXACTLY LIKE A PARTNER.
+         Tick the box and the % box appears beside it; untick and the rate is cleared
+         on save. The name shown is whoever this client is assigned to, so you can see
+         at the moment you set it who the money is going to. */
+      var _bkey = String(b).replace(/[^A-Za-z0-9]/g, "_");
+      var _eOn = execOnFor(cl, b);
+      var _eVal = execRateFor(cl, b);
+      var _eSug = execSet(b) ? execRateAt(b, dPct) : 0;
+      var _eWho = execForClient(cl);
+      var execRow = '<div class="acts" style="align-items:center;margin-top:6px">' +
+        '<label class="grow" style="font-size:12px;color:#7c3aed;display:flex;align-items:center;gap:7px;cursor:pointer">' +
+          '<input type="checkbox" class="exon" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" ' +
+            'data-sug="' + esc(_eSug) + '" data-key="' + _bkey + '"' + (_eOn ? ' checked' : '') +
+            ' style="width:16px;height:16px;flex:0 0 auto"/>' +
+          '<span>Sales executive incentive' +
+            (_eWho ? ' <span style="color:#94a3b8">(' + esc(_eWho) + ')</span>'
+                   : ' <span style="color:#b45309">(no executive assigned to this client)</span>') +
+          '</span></label>' +
+        '<span id="exw_' + _bkey + '" style="display:' + (_eOn ? 'flex' : 'none') + ';align-items:center;gap:6px">' +
+          '<input class="exip" id="exi_' + _bkey + '" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" ' +
+            'inputmode="decimal" value="' + esc(_eOn ? _eVal : "") + '" placeholder="0" style="width:78px;padding:7px 10px"/>' +
+          '<span class="pill">%</span></span></div>';
+      /* The rate card is a SUGGESTION now, not the payer. It moves as the discount box
+         is typed in (see the .dsc listener; the line is rebuilt in place so the caret
+         never jumps), and tells you what it would have paid at this discount. */
       var execLine = execSet(b)
-        ? '<div class="meta" id="exl_' + esc(b).replace(/[^A-Za-z0-9]/g, "_") + '" style="margin-top:6px;font-size:11.5px;border-top:1px solid #eef2f7;padding-top:6px">' +
+        ? '<div class="meta" id="exl_' + _bkey + '" style="margin-top:6px;font-size:11.5px;border-top:1px solid #eef2f7;padding-top:6px">' +
             execLineHtml(b, dPct) + '</div>'
         : "";
-      var loadLine = (totInc > 0 || execSet(b))
+      var _eLoad = _eOn ? (Number(_eVal) || 0) : 0;
+      var loadLine = (totInc > 0 || _eLoad > 0)
         ? '<div class="meta" style="margin-top:6px;font-size:11px;color:#64748b">Total incentive load: <b style="color:#b45309">' +
-            pf(totInc + execRateAt(b, dPct)) + ' of net</b>' +
-            (totInc > 0 ? ' <span style="color:#94a3b8">(partners ' + pf(totInc) + (execSet(b) ? ' + executive ' + pf(execRateAt(b, dPct)) : '') + ')</span>' : '') +
-            (dPct ? ' &middot; ≈ ' + pf((totInc + execRateAt(b, dPct)) * (1 - dPct / 100)) + ' of list, on top of the ' + pf(dPct) + ' discount' : "") + '</div>'
+            pf(totInc + _eLoad) + ' of net</b>' +
+            ' <span style="color:#94a3b8">(partners ' + pf(totInc) + (_eLoad > 0 ? ' + executive ' + pf(_eLoad) : '') + ')</span>' +
+            (dPct ? ' &middot; ≈ ' + pf((totInc + _eLoad) * (1 - dPct / 100)) + ' of list, on top of the ' + pf(dPct) + ' discount' : "") + '</div>'
         : "";
       h += '<div class="card"><h3>' + esc(b) + (d && Number(d.pct) ? ' <span class="pill teal">' + esc(d.pct) + '%</span>' : ' <span class="pill">not set</span>') + '</h3>' +
         '<div class="acts" style="align-items:center">' +
         '<span class="grow" style="font-size:12px;color:#334155">Brand discount</span>' +
-        '<input class="dsc" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-id="' + esc(d ? d.id : "") + '" inputmode="decimal" value="' + esc(d ? d.pct : "") + '" placeholder="0" style="width:78px;padding:7px 10px"/>' +
+        '<input class="dsc" id="exd_' + _bkey + '" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-id="' + esc(d ? d.id : "") + '" inputmode="decimal" value="' + esc(d ? d.pct : "") + '" placeholder="0" style="width:78px;padding:7px 10px"/>' +
         '<span class="pill">% off list</span></div>' +
         incRows +
+        execRow +
         execLine +
         loadLine +
         '</div>';
@@ -10765,9 +10949,17 @@ function viewCatalogue() {
   /* v6.9.138 \u2014 PART 4: monthly partner INCENTIVE STATEMENT PDF. One partner, one month: every
      incentive-earning challan (date, challan, client/brand, ex-GST base, rate, incentive) with the
      month subtotal, plus the partner's overall running position (earned / payable / paid / pending). */
-  function partnerStatementPdf(name, ym) {
-    var b = partnerBook(name);
-    var a = (S.data.associates.filter(function (x) { return x.name === name; })[0]) || {};
+  /* v6.9.234 - serves a partner and a sales executive, and shows either the rate and
+     the money or only the money. `showPct` false drops the RATE column entirely and the
+     remaining columns spread into the space, so it reads as a deliberate layout rather
+     than a gap where a number was removed. */
+  function partnerStatementPdf(name, ym, showPct, kind) {
+    var isX = kind === "exec";
+    var b = bookFor(name, isX ? "exec" : "partner");
+    if (showPct == null) showPct = true;
+    var a = isX
+      ? ((S.data.team || []).filter(function (x) { return x.name === name; })[0] || {})
+      : ((S.data.associates.filter(function (x) { return x.name === name; })[0]) || {});
     /* client by client, only what was earned - the same shape as the screen */
     var groups = partnerClientRows(b, ym);
     var mInc = groups.reduce(function (s, g) { return s + g.inc; }, 0);
@@ -10790,18 +10982,21 @@ function viewCatalogue() {
       doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(13);
       doc.text("INCENTIVE STATEMENT", Rt, 13, { align: "right" });
       F("normal"); doc.setFontSize(8); doc.setTextColor(160, 205, 199);
-      doc.text(name + (a.role ? "  (" + a.role + ")" : ""), Rt, 20, { align: "right" });
+      doc.text(name + (isX ? "  (sales executive)" : (a.role ? "  (" + a.role + ")" : "")), Rt, 20, { align: "right" });
       doc.text(perLabel, Rt, 25, { align: "right" });
       if (a.mobile) doc.text(String(a.mobile), Rt, 30, { align: "right" });
 
       y = 48;
       doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, Rt - L, 9, "F");
       doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6);
+      var Xn = showPct ? Rt - 58 : Rt - 50;      /* challan count */
+      var Xb = showPct ? Rt - 38 : Rt - 28;      /* ex-GST business */
+      var Xr = Rt - 22;                          /* rate, only when shown */
       doc.text("CLIENT", L + 2, y);
       doc.text("BRAND(S)", L + 62, y);
-      doc.text("CHALLANS", Rt - 58, y, { align: "right" });
-      doc.text("EX-GST", Rt - 38, y, { align: "right" });
-      doc.text("RATE", Rt - 22, y, { align: "right" });
+      doc.text("CHALLANS", Xn, y, { align: "right" });
+      doc.text("EX-GST", Xb, y, { align: "right" });
+      if (showPct) doc.text("RATE", Xr, y, { align: "right" });
       doc.text("INCENTIVE", Rt - 2, y, { align: "right" });
       y += 9;
       if (!groups.length) {
@@ -10816,9 +11011,12 @@ function viewCatalogue() {
         F("normal"); doc.setFontSize(6.4); doc.setTextColor(90, 100, 110);
         doc.text(doc.splitTextToSize(g.brandList.join(", "), 52)[0] || "-", L + 62, y);
         doc.setTextColor(17, 34, 45); doc.setFontSize(6.6);
-        doc.text(String(g.n), Rt - 58, y, { align: "right" });
-        doc.text(R2(g.base), Rt - 38, y, { align: "right" });
-        doc.text((Math.round(g.pct * 10) / 10) + "%", Rt - 22, y, { align: "right" });
+        /* a client whose figure is net of goods that came back says so, so nobody has to
+           work out why the number is smaller than the challans suggest */
+        var _hasRet = (g.rows || []).some(function (r) { return r.ret; });
+        doc.text(String(g.n) + (_hasRet ? " *" : ""), Xn, y, { align: "right" });
+        doc.text(R2(g.base), Xb, y, { align: "right" });
+        if (showPct) doc.text((Math.round(g.pct * 10) / 10) + "%", Xr, y, { align: "right" });
         F("bold"); doc.text(R2(g.inc), Rt - 2, y, { align: "right" });
         y += 7.4;
       });
@@ -10832,7 +11030,9 @@ function viewCatalogue() {
       y += 14;
       F("normal"); doc.setFontSize(6.4); doc.setTextColor(120, 130, 140);
       doc.text("On " + R2(mBase) + " of ex-GST business across " + groups.length +
-        (groups.length === 1 ? " client" : " clients") + ".", L, y);
+        (groups.length === 1 ? " client" : " clients") + "." +
+        (groups.some(function (g) { return (g.rows || []).some(function (r) { return r.ret; }); })
+          ? "   * net of material returned and booked in." : ""), L, y);
       y += 10;
 
       F("bold"); doc.setFontSize(8); doc.setTextColor(30, 41, 59);
@@ -10844,7 +11044,9 @@ function viewCatalogue() {
       });
 
       F("normal"); doc.setFontSize(6.2); doc.setTextColor(150, 163, 175);
-      doc.text(doc.splitTextToSize("Client-wise. Only clients where incentive was actually earned are listed. Incentive is the ex-GST (post-discount) net sale x the rate set for that client & brand. It becomes payable only in proportion to what the client has actually paid; sales returns reverse it.", Rt - L), L, 278);
+      doc.text(doc.splitTextToSize("Client-wise. Only clients where incentive was actually earned are listed. Incentive is the ex-GST (post-discount) net sale x the rate set for that client & brand" +
+        (isX ? ", on the clients assigned to this executive" : "") +
+        ". It becomes payable only in proportion to what the client has actually paid, and material returned and booked in at the godown reverses it at the same rate that earned it.", Rt - L), L, 278);
       doc.text("Energy World  |  Panipat \u00b7 Sonipat \u00b7 Karnal", L, 290);
       return doc;
     });
@@ -17035,6 +17237,33 @@ function viewCatalogue() {
         if (host) host.innerHTML = execLineHtml(b, inp.value);
       });
     });
+    /* v6.9.234 - tick the executive box and the % box appears beside it, pre-filled with
+       what the brand rate card would pay at the discount currently typed. It is only an
+       offer: overwrite it and the typed figure is what pays. Untick and the box hides;
+       the rate is cleared when Save & back is pressed, not before. No repaint here, so
+       nothing else on a half-filled screen is disturbed. */
+    Array.prototype.forEach.call(document.querySelectorAll("input.exon"), function (cb) {
+      cb.addEventListener("change", function () {
+        var k = cb.getAttribute("data-key") || "";
+        var wrap = el("exw_" + k), box = el("exi_" + k);
+        if (!wrap || !box) return;
+        if (cb.checked) {
+          wrap.style.display = "flex";
+          if (String(box.value || "").trim() === "") {
+            var d = el("exd_" + k);   /* the live discount box, if it is on screen */
+            var sug = Number(cb.getAttribute("data-sug")) || 0;
+            if (d) {
+              var b2 = cb.getAttribute("data-brand") || "";
+              if (execSet(b2)) sug = execRateAt(b2, d.value);
+            }
+            if (sug > 0) box.value = String(Math.round(sug * 100) / 100);
+          }
+          box.focus();
+        } else {
+          wrap.style.display = "none";
+        }
+      });
+    });
     var payqi = el("pay_q");
     if (payqi) {
       payqi.addEventListener("input", function (e) {
@@ -18165,6 +18394,18 @@ function viewCatalogue() {
         groups[k] = groups[k] || { client: cl, brand: br };
         (groups[k].inc = groups[k].inc || []).push({ role: String(el.getAttribute("data-role") || "").toLowerCase(), val: String(el.value || "").trim() });
       });
+      /* v6.9.234 - the sales executive's tick and %, carried in the same pass and onto
+         the same row as the partners'. */
+      document.querySelectorAll(".exon").forEach(function (el) {
+        var cl = el.getAttribute("data-client"), br = el.getAttribute("data-brand"), k = dkey(cl) + "||" + dkey(br);
+        groups[k] = groups[k] || { client: cl, brand: br };
+        groups[k].execOn = !!el.checked;
+      });
+      document.querySelectorAll(".exip").forEach(function (el) {
+        var cl = el.getAttribute("data-client"), br = el.getAttribute("data-brand"), k = dkey(cl) + "||" + dkey(br);
+        groups[k] = groups[k] || { client: cl, brand: br };
+        groups[k].execVal = String(el.value || "").trim();
+      });
       var saved = 0;
       Object.keys(groups).forEach(function (k) {
         var g = groups[k], exd = discRow(g.client, g.brand);
@@ -18173,6 +18414,14 @@ function viewCatalogue() {
         (g.inc || []).forEach(function (f) {
           if (f.val === "" || Number(f.val) === 0) { delete notes[f.role]; } else { notes[f.role] = Number(f.val) || 0; }
         });
+        if (g.execOn != null) {
+          if (!g.execOn) { delete notes.exec; delete notes.execOn; }
+          else {
+            var _exv = Number(g.execVal) || 0;
+            notes.execOn = 1;
+            if (_exv > 0) notes.exec = _exv; else delete notes.exec;
+          }
+        }
         var notesStr = Object.keys(notes).length ? JSON.stringify(notes) : "";
         var isEmpty = (pct === "" || pct === 0) && !notesStr;
         if (isEmpty && !exd) return;       // don't create a blank row for a brand never touched
@@ -18986,8 +19235,18 @@ function viewCatalogue() {
       toast(CANCEL_TABS[_cut] + " is back. Every count and total includes it again.");
       return;
     }
-    if (act === "p-open") { S.partner = t.getAttribute("data-n"); S.pMonth = ""; render(); return; }
-    if (act === "p-back") { S.partner = ""; S.pOpen = {}; render(); return; }
+    if (act === "p-open") {
+      S.partner = t.getAttribute("data-n");
+      S.pKind = (t.getAttribute("data-k") === "exec") ? "exec" : "";
+      S.pMonth = ""; S.pOpen = {}; render(); return;
+    }
+    if (act === "p-back") { S.partner = ""; S.pKind = ""; S.pOpen = {}; render(); return; }
+    /* v6.9.234 - rate % or amount only, for the screen, the PDF and the WhatsApp copy. */
+    if (act === "p-pct") {
+      S.pShowPct = t.getAttribute("data-v") !== "0";
+      try { localStorage.setItem("ew_stmt_pct", S.pShowPct ? "1" : "0"); } catch (e) {}
+      keepScroll = true; render(); return;
+    }
     if (act === "p-cli") {
       var _pc = t.getAttribute("data-n") || "";
       S.pOpen = S.pOpen || {};
@@ -18996,23 +19255,27 @@ function viewCatalogue() {
     }
     if (act === "p-stmt-pdf") {
       var _psn = t.getAttribute("data-n"), _psm = t.getAttribute("data-m") || S.pMonth;
+      var _psk = (t.getAttribute("data-k") === "exec") ? "exec" : "partner";
       toast("Building statement…");
-      loadLogo().then(function () { return partnerStatementPdf(_psn, _psm); })
+      loadLogo().then(function () { return partnerStatementPdf(_psn, _psm, stmtShowPct(), _psk); })
         .then(function (d) { d.save(String(_psn).replace(/[^\w.-]/g, "_") + "_incentive_" + _psm + ".pdf"); })
         .catch(function () { toast("Could not build the statement PDF."); });
       return;
     }
     if (act === "p-stmt-wa") {
       var _pwn = t.getAttribute("data-n"), _pwm = t.getAttribute("data-m") || S.pMonth;
-      var _pwa = (S.data.associates.filter(function (x) { return x.name === _pwn; })[0]) || {};
+      var _pwk = (t.getAttribute("data-k") === "exec") ? "exec" : "partner";
+      var _pwa = _pwk === "exec"
+        ? ((S.data.team || []).filter(function (x) { return x.name === _pwn; })[0] || {})
+        : ((S.data.associates.filter(function (x) { return x.name === _pwn; })[0]) || {});
       var _pwmsg = "Namaste " + _pwn + ", your Energy World incentive statement " +
         (_pwm === "ALL" ? "(all months)" : "for " + monthLabel(_pwm)) + " is attached.";
-      waShareDoc(loadLogo().then(function () { return partnerStatementPdf(_pwn, _pwm); }),
+      waShareDoc(loadLogo().then(function () { return partnerStatementPdf(_pwn, _pwm, stmtShowPct(), _pwk); }),
         String(_pwn).replace(/[^\w.-]/g, "_") + "_incentive_" + _pwm + ".pdf", _pwa.mobile, _pwmsg);
       return;
     }
 
-    if (act === "pay-out") { S.modal = modalPayout(t.getAttribute("data-n")); render(); return; }
+    if (act === "pay-out") { S.modal = modalPayout(t.getAttribute("data-n"), t.getAttribute("data-k")); render(); return; }
     if (act === "po-save" || act === "po-force") {
       var poRow;
       if (act === "po-force") { poRow = _poPend; _poPend = null; }
