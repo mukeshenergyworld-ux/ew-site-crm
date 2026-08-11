@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.235";
+  var APP_VERSION = "6.9.236";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3711,8 +3711,11 @@ window.addEventListener("beforeunload", function (ev) {
       'border-radius:5px;border:1px solid #cbd5e1;background:#fff;vertical-align:middle;' +
       'flex:0 0 auto"/>';
   }
-  function proofSeal(url, thumb, waiting, by) {
-    var img = proofThumbImg(thumb, 26);
+  function proofSeal(url, thumb, waiting, by, size) {
+    /* v6.9.236 - `size` is optional and defaults to the 26px chip, so every existing
+       caller draws exactly as it did. HISAB asks for a bigger one, because there the
+       point is to actually LOOK at the paper, not just know it exists. */
+    var img = proofThumbImg(thumb, size || 26);
     var tip = "Receipt received" + (by ? " - signed by " + by : "");
     if (waiting) {
       return '<span title="' + esc(tip) + ' - the document is on the phone it was made on and goes up on the next refresh." ' +
@@ -3733,14 +3736,35 @@ window.addEventListener("beforeunload", function (ev) {
       'text-decoration:none">' + body + ' <span style="opacity:.75">&#8599;</span></a>';
   }
 
+  /* v6.9.236 - ONE answer to "has the signed paper come back for this delivery", so the
+     challan list and the hisab can never disagree about it. Three states, and the middle
+     one matters most: a receipt sitting on the phone that took it, not yet on Drive, is a
+     receipt - offering "Attach" for it is how the same paper gets photographed twice. */
+  function chProofAny(c) {
+    var q = prfLoad().filter(function (x) { return x.chId === c.id; })[0];
+    if (q) return { has: true, queued: true, url: "", thumb: q.thumb || "", by: q.by || "" };
+    var p = challanProof(c.id);
+    if (!p) return { has: false, queued: false, url: "", thumb: "", by: "" };
+    return { has: true, queued: false, url: p.url || "", thumb: p.thumb || "", by: p.by || "" };
+  }
+  function proofSealFor(c, size) {
+    var r = chProofAny(c);
+    if (!r.has) return "";
+    return proofSeal(r.url, r.thumb, r.queued, r.by, size);
+  }
   function proofLink(c) {
     /* v6.9.212 - the queued copy carries its own thumbnail, so the picture of the paper is on the
        card the instant it is attached, long before Drive has heard of it. */
-    var q = prfLoad().filter(function (x) { return x.chId === c.id; })[0];
-    if (q) return ' &middot; ' + proofSeal("", q.thumb || "", true, q.by || "");
-    var p = challanProof(c.id);
-    if (!p) return "";
-    return ' &middot; ' + proofSeal(p.url || "", p.thumb || "", false, p.by || "");
+    var h = proofSealFor(c);
+    return h ? ' &middot; ' + h : "";
+  }
+  /* What a delivery with no paper behind it looks like. Red on purpose: hisab lists only
+     challans whose receipt is CONFIRMED, so material has gone out and nothing signed has
+     come back for it. That is the gap this is here to show. */
+  function noProofPill() {
+    return '<span style="display:inline-flex;align-items:center;gap:5px;background:#fef2f2;' +
+      'border:1px solid #fecaca;color:#b91c1c;border-radius:999px;padding:2px 9px;' +
+      'font-size:11px;font-weight:700">No receipt attached</span>';
   }
 
   /* ---- the lines of a delivery, as the receipt should show them ----
@@ -9890,13 +9914,21 @@ function viewCatalogue() {
      and typing the client's name again. The Deliveries tab is untouched - this is a
      second door into the very same two forms, opened with this client already filled in.
      Nothing is written until Create / Register is pressed, exactly as before. */
-  function hisabNewBar(cl) {
+  function hisabNewBar(cl, chs) {
     var canC = canSee("challans"), canR = canSee("returns");
     if (!canC && !canR) return "";
+    /* v6.9.236 - and how many of his deliveries have no signed paper behind them. Only
+       shown when there ARE some, so a client whose file is complete says nothing. */
+    var _miss = (chs || []).filter(function (c) { return !chProofAny(c).has; }).length;
+    var _tot = (chs || []).length;
     return '<div class="card" style="border-color:#bfdbfe;background:#eff6ff;padding:10px 12px">' +
       '<div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:8px">' +
       '<span class="grow" style="font-size:12.5px;color:#1e40af;min-width:140px">Raise the next one for <b>' + esc(cl) +
-        '</b> from here \u2014 the form opens with this client already filled in.</span>' +
+        '</b> from here \u2014 the form opens with this client already filled in.' +
+        (_miss ? '<br><span style="color:#b91c1c;font-weight:600">' + _miss + ' of ' + _tot +
+                 ' delivered challan' + (_tot === 1 ? '' : 's') + ' ' + (_miss === 1 ? 'has' : 'have') +
+                 ' no signed receipt attached.</span>' : '') +
+        '</span>' +
       (canC ? '<button class="btn sm" data-act="hisab-ch" data-n="' + esc(cl) + '">+ New challan</button>' : '') +
       (canR ? '<button class="btn sm ghost" data-act="hisab-rt" data-n="' + esc(cl) + '">+ Register return</button>' : '') +
       '</div></div>';
@@ -10017,9 +10049,9 @@ function viewCatalogue() {
        Added to h and not to one branch, because a man with an opening balance and no
        received challan yet is EXACTLY the man this question is about. */
     h += hisabAskCard(cl);
-    h += hisabNewBar(cl);
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }))
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+    h += hisabNewBar(cl, chs);
     if (!chs.length) {
       /* No receipt-confirmed challan yet. Still show the client if they carry an opening balance, a
          booked return, or a challan that's only approved/dispatched — so a case like "minus opening +
@@ -10099,6 +10131,7 @@ function viewCatalogue() {
             '<span style="display:inline-block;font-size:13px;font-weight:700;color:#0b3b36;background:#ecfdf5;border:1px solid #99f6e4;border-radius:999px;padding:3px 12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">' + esc(c.site) + '</span></div>'
         : '';
       var _chExp = !!(S.chExp && S.chExp[c.id]);
+      var _rc = chProofAny(c);
       var _ctbl = '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0">' +
         '<thead><tr style="background:#0b3b36;color:#fff">' +
         '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product</th>' +
@@ -10112,7 +10145,12 @@ function viewCatalogue() {
       h += '<div class="card" style="' + (sel ? '' : 'opacity:.5') + '">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
         '<h3 style="margin:0">' +
-        '<label style="cursor:pointer;font-size:15px"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label> <span class="pill teal">' + esc(d10(c.createdAt)) + '</span></h3>' +
+        '<label style="cursor:pointer;font-size:15px"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label> <span class="pill teal">' + esc(d10(c.createdAt)) + '</span>' +
+        /* v6.9.236 - the signed paper, or the fact that there isn't one. The thumbnail is
+           drawn bigger here than on the delivery list because in hisab you are checking the
+           document, not scanning a queue. Tap it to open the full one. */
+        ' <span style="display:inline-block;vertical-align:middle;margin-top:3px">' +
+          (_rc.has ? proofSeal(_rc.url, _rc.thumb, _rc.queued, _rc.by, 40) : noProofPill()) + '</span></h3>' +
         siteBlock +
         billBlock + '</div>' +
         '<div class="acts" style="align-items:center;margin-top:6px"><button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '">' + (_chExp ? '&#9662; Hide items' : '&#9656; Show ' + priced.length + ' item(s)') + '</button><div class="grow"></div><span style="font-size:13px;color:#334155">Total <b>' + money(chTotal) + '</b></span></div>' +
@@ -10123,6 +10161,12 @@ function viewCatalogue() {
           ? '<div class="acts" style="margin-top:6px;flex-wrap:wrap;gap:6px">' +
             (canSee("challans") ? '<button class="btn sm ghost" data-act="hisab-chcopy" data-id="' + esc(c.id) + '" title="Start a new challan with this client, site and the same products">&#8635; Copy to new challan</button>' : '') +
             (canSee("returns") ? '<button class="btn sm ghost" data-act="hisab-rtch" data-id="' + esc(c.id) + '" title="Book material coming back against this challan">&#8592; Return against this</button>' : '') +
+            /* v6.9.236 - no paper on file, so ask for it right here. Open to anyone who can
+               see the challan: the photo usually reaches whoever has the customer on WhatsApp,
+               not whoever loaded the tempo. Once one is attached this button is gone. */
+            (!_rc.has && canSee("challans")
+              ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" style="background:#b91c1c;border-color:#b91c1c" title="Photograph or upload the signed receipt for this delivery">&#128206; Attach receipt</button>'
+              : '') +
             '</div>'
           : '') +
         (_chExp ? _ctbl : '') + '</div>';
