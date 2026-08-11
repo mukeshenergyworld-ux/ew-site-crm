@@ -57,9 +57,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
 .acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
 .muted{color:#64748b;font-size:12px}
 .big{font-size:19px;font-weight:800;letter-spacing:-.02em}
-.sheet{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:60;display:flex;align-items:flex-end}
+/* cursor:pointer is not decoration here - iOS Safari will not deliver a tap on a
+   plain div to a listener bound on document without it, so without this the dark
+   area behind a sheet cannot be tapped to close it on an iPhone */
+.sheet{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:60;display:flex;align-items:flex-end;cursor:pointer}
 .sheet .inner{background:#fff;width:100%;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;
-  padding:16px 16px calc(env(safe-area-inset-bottom) + 20px);max-width:760px;margin:0 auto}
+  padding:16px 16px calc(env(safe-area-inset-bottom) + 20px);max-width:760px;margin:0 auto;
+  cursor:auto;-webkit-overflow-scrolling:touch}
+/* 92vh on iOS measures the window WITHOUT Safari's toolbars, so a tall sheet puts its
+   Save button underneath them. dvh measures what is actually visible. */
+@supports (height:100dvh){.sheet .inner{max-height:88dvh}}
 .sheet h2{margin:0 0 3px;font-size:17px}
 .empty{text-align:center;color:#64748b;padding:26px 14px;font-size:13.5px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;background:#0f172a;color:#fff;
@@ -80,10 +87,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
 </head>
 <body>
 <div id="root"></div>
-<!-- jsPDF, for the statement a customer can be sent on the spot. Loaded from the same
-     CDN the CRM uses. If it does not load (no signal), the button says so rather than
-     failing silently. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- v1.6 - jsPDF IS NO LONGER LOADED HERE.
+     It was a 356 KB classic script sitting immediately above the app, and a classic
+     script blocks every script after it. So on a phone the whole app waited for a
+     third-party CDN before a single line of it ran - and if that CDN was slow or
+     unreachable, which on mobile data it often is, the app never started at all and
+     the screen simply stayed white. That was the "it will not open on the iPhone".
+     It is now fetched the first time somebody actually builds a statement. See
+     ensurePdf() below. -->
 <script>
 (function () {
   "use strict";
@@ -112,7 +123,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.5.0";
+  var APP_VERSION = "1.6.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
   var SNAP = "ew_collect_snap";
@@ -175,14 +186,68 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     clearTimeout(_toastT); _toastT = setTimeout(function () { t.style.display = "none"; }, 3400);
   }
 
-  /* ---------- the server ---------- */
-  function api(action, extra) {
+  /* ---------- the server ----------
+     v1.6 - EVERY CALL NOW HAS A DEADLINE. Before this, a request that stalled - which
+     is the normal failure on a phone with one bar, or on a wifi that has associated but
+     is not actually passing traffic - simply never came back. It did not fail, so no
+     catch ran, so no message was shown and no retry was offered: the app sat on
+     "Opening…" for as long as the man was willing to look at it. That is not slowness,
+     it is a hang, and it is what "it does not open on the iPhone" actually was.
+     A stalled call is now abandoned and reported like any other failure. */
+  var API_TIMEOUT = 20000;
+  function api(action, extra, ms) {
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
-    return fetch(GAS, {
+    var ctrl = null, timer = null;
+    try { ctrl = new AbortController(); } catch (e) { ctrl = null; }
+    var opts = {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(body)
-    }).then(function (r) { return r.json(); });
+    };
+    if (ctrl) opts.signal = ctrl.signal;
+    var p = fetch(GAS, opts).then(function (r) { return r.json(); });
+    if (ctrl) {
+      timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, Number(ms) || API_TIMEOUT);
+      p = p.then(function (v) { clearTimeout(timer); return v; },
+                 function (e) { clearTimeout(timer); throw e; });
+    }
+    return p;
+  }
+
+  /* ---------- the statement builder, fetched only when it is wanted ----------
+     One download, cached in a promise, so the second statement of the day costs
+     nothing. Everything that needs it awaits this instead of assuming it is there. */
+  var _pdfP = null;
+  function ensurePdf() {
+    if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve(true);
+    if (_pdfP) return _pdfP;
+    _pdfP = new Promise(function (res, rej) {
+      var s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+      s.async = true;
+      s.onload = function () {
+        if (window.jspdf && window.jspdf.jsPDF) res(true);
+        else { _pdfP = null; rej(new Error("jspdf loaded but empty")); }
+      };
+      s.onerror = function () { _pdfP = null; rej(new Error("jspdf failed")); };
+      document.head.appendChild(s);
+    });
+    return _pdfP;
+  }
+
+  /* ---------- keep only what this app reads ----------
+     teamGet hands back the whole book - thirty tabs, about 680 KB - because it is the
+     CRM's endpoint and the CRM needs all of it. This app reads five of those tabs. The
+     rest (quotes, associates, pitch, sites, discounts, tools…) is roughly 400 KB that
+     is carried in memory, stringified into localStorage on every pull, and parsed back
+     out on every open, for nothing. It is dropped the moment it arrives. */
+  var KEEP = ["clients", "challans", "payments", "returns", "audit"];
+  function slimBook(r) {
+    if (!r || typeof r !== "object") return r;
+    var out = { ok: r.ok };
+    if (r.user) out.user = r.user;
+    KEEP.forEach(function (k) { if (r[k]) out[k] = r[k]; });
+    return out;
   }
 
   function num(v) {
@@ -1109,8 +1174,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   }
 
   function statementPdf(r) {
-    if (!window.jspdf || !window.jspdf.jsPDF) return Promise.reject(new Error("no jspdf"));
-    return loadLogo().then(function () {
+    /* v1.6 - the builder is fetched here, on the first statement of the day, instead of
+       being made a condition of the app starting at all */
+    return ensurePdf().then(loadLogo).then(function () {
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
       var F = function (w) { doc.setFont("helvetica", w === "bold" ? "bold" : "normal"); };
       var W = 210, L = 14, R = W - 14, HB = 26;
@@ -1198,7 +1264,6 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     var n = String(r.mobile || "").replace(/\D/g, "");
     if (!n) { toast("No mobile number on his record."); return; }
     if (n.length === 10) n = "91" + n;
-    if (!window.jspdf) { toast("The statement builder has not loaded — check your signal and try once more."); return; }
     var win = window.open("", "_blank");
     toast("Building his statement…");
     var msg = "Namaste " + r.name + ",\n\nAs requested, your Energy World statement of account as on " +
@@ -1221,11 +1286,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   }
   function downloadHisab(name) {
     var r = rowFor(name); if (!r) return;
-    if (!window.jspdf) { toast("The statement builder has not loaded — check your signal."); return; }
     toast("Building…");
     statementPdf(r).then(function (doc) {
       doc.save(String(r.name).replace(/[^\w.-]+/g, "_") + "_hisab.pdf");
-    }).catch(function () { toast("Could not build the statement."); });
+    }).catch(function () { toast("Could not build the statement — check your signal and try once more."); });
   }
 
   /* ================= NOTHING LEAVES WITHOUT BEING LOOKED AT =================
@@ -1470,6 +1534,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
 
     if (act === "login") { doLogin(); return; }
     if (act === "refresh") { pull(true); return; }
+    if (act === "reboot") { location.reload(); return; }
     if (act === "account") { S.sheet = sheetAccount(); render(); return; }
     if (act === "bio-go") { bioUnlock(); return; }
     if (act === "bio-on") { bioEnrol(); return; }
@@ -1655,7 +1720,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     if (loud) toast("Pulling the latest…");
     return api("teamGet").then(function (r) {
       S.busy = false;
-      if (r && r.ok) { S.data = r; S.syncAt = Date.now(); bust(); snapSave(); }
+      if (r && r.ok) { S.data = slimBook(r); S.syncAt = Date.now(); bust(); snapSave(); }
       else if (!S.data) { renderLogin("Could not read the book. Sign in again."); return; }
       render();
       if (loud) toast("Up to date.");
@@ -1680,29 +1745,98 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     pull(false);
   });
 
+  /* the only screen a phone that has never been signed in on will see, and it now
+     offers a way out instead of sitting there */
+  function openingScreen(msg) {
+    el("root").innerHTML = '<div class="login"><h1>Energy World</h1><p>Payment collection</p>' +
+      '<div class="empty" id="opmsg">' + esc(msg || "Opening…") + '</div>' +
+      '<div id="opretry"></div></div>';
+    setTimeout(function () {
+      var d = el("opretry");
+      if (!d || S.data) return;
+      d.innerHTML = '<button class="btn full gry" data-act="reboot">Taking too long — try again</button>';
+      var m = el("opmsg");
+      if (m) m.textContent = "Still waiting on the server…";
+    }, 6000);
+  }
+
+  /* ================= OPENING THE APP =================
+     v1.6 - REWRITTEN, AND THIS IS THE WHOLE OF WHY IT FELT SLOW.
+
+     What it used to do, in this order:
+       1. show "Opening…"
+       2. ask the server who you are          - one round trip, 2.4s of pure Apps Script
+                                                overhead before a byte of data is asked for
+       3. only then read the book             - a second round trip, plus ~680 KB
+       4. only then paint anything
+
+     So a man who had used the app yesterday, whose entire book was already sitting on
+     his phone, watched "Opening…" for the length of two Apps Script calls - five to six
+     seconds on a desk, twenty to forty on mobile data - to be shown figures the phone
+     had had the whole time. And if either call stalled, it never painted at all.
+
+     What it does now:
+       1. paint the book already on the phone, at once, before any network at all
+       2. ask who you are AND read the book together, not one after the other
+       3. swap the fresh book in underneath when it lands
+       4. if the server says this phone is no longer allowed, take the book off the
+          screen and ask for the PIN - so nothing is lost by showing it first */
   (function boot() {
     var sess = null;
     try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) {}
-    if (sess && sess.user && sess.pin) {
-      S.user = sess.user; S.pin = sess.pin; S.role = sess.role || "";
-      S.tab = "today";
-      el("root").innerHTML = '<div class="login"><h1>Energy World</h1><p>Payment collection</p>' +
-        '<div class="empty">Opening…</div></div>';
-      api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
-        if (!r || !r.ok) { S.pin = ""; try { localStorage.removeItem(STORE); } catch (e) {} renderLogin("Sign in again."); return; }
-        S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
-        if (["admin", "accounts", "sales"].indexOf(S.role) < 0) { S.pin = ""; renderLogin("This app is not open to you."); return; }
-        pull(false);
-      }).catch(function () {
-        /* offline, but this phone has been signed in before - show what it has */
-        if (snapLoad()) { S.data = snapLoad(); bust(); render(); toast("No signal — showing what was last pulled onto this phone."); }
-        else renderLogin("No signal. Try again when you are back online.");
-      });
-    } else {
+    if (!(sess && sess.user && sess.pin)) {
       renderLogin();
+      regSW();
+      return;
     }
-    if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} }
+
+    S.user = sess.user; S.pin = sess.pin; S.role = sess.role || "";
+    S.tab = "today";
+
+    var snap = snapLoad();
+    if (snap) { S.data = snap; bust(); S.busy = true; render(); }
+    else openingScreen();
+
+    var authP = api("teamAuth", { ua: navigator.userAgent });
+    var dataP = api("teamGet");
+    var refused = false;
+
+    authP.then(function (r) {
+      if (!r || !r.ok) {
+        refused = true; S.pin = ""; S.data = null;
+        try { localStorage.removeItem(STORE); } catch (e) {}
+        renderLogin("Sign in again.");
+        return;
+      }
+      S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+      if (["admin", "accounts", "sales"].indexOf(S.role) < 0) {
+        refused = true; S.pin = ""; S.data = null;
+        renderLogin("This app is not open to you.");
+        return;
+      }
+      try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: sess.pin, role: S.role })); } catch (e) {}
+      if (S.data) render();
+    }).catch(function () { /* handled with the data below */ });
+
+    dataP.then(function (r) {
+      if (refused) return;
+      S.busy = false;
+      if (r && r.ok) { S.data = slimBook(r); S.syncAt = Date.now(); bust(); snapSave(); render(); }
+      else if (!S.data) openingScreen("Could not read the book. Try again.");
+      else render();
+    }).catch(function () {
+      if (refused) return;
+      S.busy = false;
+      if (S.data) { render(); toast("No signal — showing what was last pulled onto this phone."); }
+      else openingScreen("No signal, and nothing saved on this phone yet.");
+    });
+
+    regSW();
   })();
+
+  function regSW() {
+    if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} }
+  }
 })();
 </script>
 </body>
