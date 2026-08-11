@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.230";
+  var APP_VERSION = "6.9.232";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2750,6 +2750,62 @@ window.addEventListener("beforeunload", function (ev) {
     var d = discRow(client, brand); if (!d) return 0;
     return Number(incMap(d)[String(role).toLowerCase()]) || 0;
   }
+  /* ---- SALES EXECUTIVE INCENTIVE: the discount budget ----
+     Each brand carries a STANDARD discount and a BASE rate. Sell at the standard
+     and the executive earns the base. Every point of discount he does NOT give
+     adds `share` points to his rate; every point he gives beyond the standard
+     takes the same away. So the discount screen answers the only question that
+     matters at that moment - what does this extra point actually cost.
+
+         rate% = base + share x (standard - given)
+
+     Worked: Huliot standard 45%, base 1.00%, share 0.10.
+         sells at 45%  ->  1.00%      (the expected job)
+         sells at 40%  ->  1.50%      (protected five points, earns half a point more)
+         sells at 50%  ->  0.50%      (gave five points away, earns half a point less)
+
+     Never below zero. Capped, because a zero-discount sale would otherwise pay a
+     fortune: the cap is whatever you put in the brand's cap column, and three
+     times the base if you leave it blank. Earned exactly like the partner's -
+     only on challans whose receipt is confirmed, scaled by what was collected. */
+  function execCard(brand) {
+    var k = normB(brand), rows = S.data.brands || [], i;
+    for (i = 0; i < rows.length; i++) if (normB(rows[i].brand) === k) return rows[i];
+    return null;
+  }
+  function execSet(brand) {
+    var r = execCard(brand);
+    if (!r) return false;
+    return (Number(r.execBase) || 0) > 0 || (Number(r.execShare) || 0) > 0;
+  }
+  function execRateAt(brand, disc) {
+    var r = execCard(brand);
+    if (!r) return 0;
+    var base = Number(r.execBase) || 0, share = Number(r.execShare) || 0;
+    if (base <= 0 && share <= 0) return 0;
+    var std = Number(r.stdDisc) || 0, d = Number(disc) || 0;
+    var rate = base + share * (std - d);
+    var cap = Number(r.execMax) || 0;
+    if (!cap) cap = base > 0 ? base * 3 : share * std;
+    if (rate > cap) rate = cap;
+    if (rate < 0) rate = 0;
+    return Math.round(rate * 10000) / 10000;
+  }
+  function execAmount(brand, disc, net) {
+    return Math.round((Number(net) || 0) * execRateAt(brand, disc) / 100);
+  }
+  function pctTxt(x) { return (Math.round((Number(x) || 0) * 100) / 100) + "%"; }
+  /* one line, rebuilt on every keystroke of the discount box - so no repaint */
+  function execLineHtml(brand, disc) {
+    if (!execSet(brand)) return "";
+    var r = execCard(brand) || {};
+    var std = Number(r.stdDisc) || 0;
+    var now = execRateAt(brand, disc), atStd = execRateAt(brand, std);
+    var c = now > atStd ? "#15803d" : (now < atStd ? "#b45309" : "#0f766e");
+    return 'Sales executive: <b style="color:' + c + '">' + pctTxt(now) + ' of net</b>' +
+      '<span style="color:#94a3b8"> &middot; the standard ' + pctTxt(std) + ' off pays ' + pctTxt(atStd) + '</span>';
+  }
+
   /* Which roles a partner fills on a client (usually one). Drives who earns the incentive. */
   function clientRolesOf(client, partnerLower) {
     var roles = [];
@@ -5442,7 +5498,14 @@ window.addEventListener("beforeunload", function (ev) {
           (lockDisc
             ? '<span class="pill teal" style="font-size:15px;padding:8px 12px;font-weight:700">' + esc(z.brandDiscs[b] || 0) + '% off list</span>'
             : '<input class="qz-bd" data-brand="' + esc(b) + '" inputmode="decimal" value="' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '" style="width:80px;padding:9px 10px;font-size:16px;font-weight:700"/>' +
-              '<span class="pill teal">% off list</span>') + '</div>';
+              '<span class="pill teal">% off list</span>') + '</div>' +
+          /* what this brand is worth to the person building the quote - his own
+             number, not anybody else's, and only once the rate card is set */
+          (execSet(b)
+            ? '<div class="pmeta" style="margin:2px 0 0 0;color:#0f766e">Your incentive on this brand: <b>' +
+                esc(money(execAmount(b, z.brandDiscs[b], bt.net))) + '</b> <span style="color:#94a3b8">&middot; ' +
+                esc(pctTxt(execRateAt(b, z.brandDiscs[b]))) + ' of net, on collection</span></div>'
+            : "");
       });
       h += (lockDisc ? '' : '<div class="acts" style="margin-top:12px"><button class="btn sm" data-act="qz-bd">Apply brand discounts</button></div>') + '</div>';
 
@@ -8747,10 +8810,15 @@ function viewCatalogue() {
         ' <span class="pill ' + (u.role === "admin" ? "teal" : "") + '">' + esc(u.role || "") + '</span>' +
         (inactive ? ' <span class="pill due">inactive</span>' : '') + '</h3>' +
         (u.mobile ? '<div class="meta">' + esc(u.mobile) + (u.office ? ' &middot; ' + esc(u.office) : '') +
-          (temp ? ' &middot; temp PIN would be <b>' + esc(temp) + '</b>' : '') + '</div>' : '') + '</div>' +
-        (u.id ? '<div style="display:flex;gap:6px;flex:0 0 auto">' +
-          (temp ? '<button class="btn sm act-billsend" data-act="tp-temp" data-id="' + esc(u.id) + '">Temp PIN</button>' : '') +
-          '<button class="btn sm act-reset" data-act="tp-reset" data-id="' + esc(u.id) + '">Reset PIN</button></div>'
+          (temp ? ' &middot; last 4 of mobile: <b>' + esc(temp) + '</b>' : '') + '</div>' : '') +
+        '<div class="meta" style="font-size:11px;color:#94a3b8">' +
+          (String(u.pinSet || "").toUpperCase() === "Y" ? 'PIN set' : 'no PIN - cannot sign in') + '</div></div>' +
+        (u.id ? '<div style="display:flex;gap:6px;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end">' +
+          /* v6.9.231 - the owner sets every PIN and therefore knows every PIN.
+             Nobody can change their own, so nothing is ever chosen behind his back. */
+          '<button class="btn sm" data-act="tp-setpin" data-id="' + esc(u.id) + '">Set PIN</button>' +
+          (temp ? '<button class="btn sm ghost act-billsend" data-act="tp-temp" data-id="' + esc(u.id) + '">Use last 4 of mobile</button>' : '') +
+          '<button class="btn sm ghost act-reset" data-act="tp-reset" data-id="' + esc(u.id) + '">Block sign-in</button></div>'
               : '<span class="meta" style="color:#94a3b8">no id — set in sheet</span>') +
         '</div></div>';
     });
@@ -9165,6 +9233,33 @@ function viewCatalogue() {
     return h;
   }
 
+  /* ---- THE OWNER SETS A PIN ----
+     He types the digits here, twice. They go straight to the server, are hashed
+     there, and are never written to a sheet column, never journalled, and never
+     put in this device's storage - which is why this one save does NOT go through
+     save() like everything else. */
+  function modalSetPin(id) {
+    var u = (S.data.team || []).filter(function (x) { return x.id === id; })[0];
+    if (!u) {
+      return '<h2>Set PIN</h2><p class="sub">That member is not in the list.</p>' +
+        '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+    }
+    return '<h2>Set a PIN for ' + esc(u.name) + '</h2>' +
+      '<p class="sub">' + esc(u.role || "") + (u.mobile ? ' &middot; ' + esc(u.mobile) : '') + '</p>' +
+      '<div class="empty" style="text-align:left;padding:0 0 10px;font-size:12.5px">' +
+        'You choose it, so you know it. ' + esc(u.name.split(" ")[0]) + ' cannot change it himself - ' +
+        'if he wants a different one, he asks you and you set it here. ' +
+        'Tell him the number over the phone; it is not written into the sheet.' +
+      '</div>' +
+      '<label>New PIN (4 to 8 digits)</label>' +
+      '<input id="sp1" type="password" inputmode="numeric" autocomplete="new-password" placeholder="e.g. 4417"/>' +
+      '<label>Type it again</label>' +
+      '<input id="sp2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="the same number"/>' +
+      '<div class="foot">' +
+      '<button class="btn" data-act="sp-save" data-id="' + esc(u.id) + '" data-n="' + esc(u.name) + '">Set the PIN</button>' +
+      '<button class="btn ghost" data-act="close">Cancel</button></div>';
+  }
+
   function modalPayout(name) {
     var b = partnerBook(name);
     return '<h2>Record incentive payout</h2><p class="sub">' + esc(name) + '</p>' +
@@ -9208,6 +9303,40 @@ function viewCatalogue() {
       h += '<div class="empty" style="text-align:left;padding:0 0 10px">Type a client above to set discounts, or tap one below to edit. Discounts feed the quote builder, each new challan and the billing screen. <b>Admin only</b>; edits apply to future challans, not past ones.</div>';
       h += '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:10px 12px"><div class="meta" style="font-size:11px;color:#92400e">🔒 Incentive figures are admin-only inside the app — but they also live in the CRM Google Sheet. Keep that sheet shared with as few Google accounts as possible (ideally just you) so partner rates stay private there too. Staff should work through the app, not the sheet.</div></div>';
       if (!names.length) return h + '<div class="empty">No client discounts set yet. Type a client above to set the first one.</div>';
+      /* THE EXECUTIVE RATE CARD. One card for the whole team, brand by brand, kept
+         on the Brands master. Set once; every quote and every discount screen
+         reads it from here. */
+      var ecBrands = brandList();
+      h += '<div class="card"><h3 style="margin:0 0 4px">Sales executive rate card</h3>' +
+        '<div class="meta" style="margin-bottom:8px">One card for every executive. <b>Standard</b> is the discount you expect on that brand and <b>base</b> is what it pays. ' +
+        '<b>Per point</b> is how much the rate moves for each point of discount above or below the standard - so protecting price pays, and giving it away costs. ' +
+        'Leave <b>cap</b> blank and the rate is capped at three times the base. Blank base and per point = no executive incentive on that brand.</div>' +
+        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:460px">' +
+        '<tr style="color:#94a3b8;font-size:10.5px;letter-spacing:.04em">' +
+        '<th style="text-align:left;padding:4px 6px">BRAND</th>' +
+        '<th style="padding:4px 6px">STANDARD %</th><th style="padding:4px 6px">BASE %</th>' +
+        '<th style="padding:4px 6px">PER POINT</th><th style="padding:4px 6px">CAP %</th>' +
+        '<th style="text-align:right;padding:4px 6px">AT STANDARD</th></tr>' +
+        ecBrands.map(function (b) {
+          var r = execCard(b) || {};
+          var box = function (f, v, ph) {
+            return '<input class="exc" data-b="' + esc(b) + '" data-f="' + f + '" inputmode="decimal" value="' +
+              esc(v == null ? "" : v) + '" placeholder="' + ph + '" style="width:64px;padding:5px 7px;text-align:center"/>';
+          };
+          return '<tr style="border-top:1px solid #f1f5f9">' +
+            '<td style="padding:5px 6px"><b>' + esc(b) + '</b></td>' +
+            '<td style="padding:5px 6px;text-align:center">' + box("stdDisc", r.stdDisc, "45") + '</td>' +
+            '<td style="padding:5px 6px;text-align:center">' + box("execBase", r.execBase, "1") + '</td>' +
+            '<td style="padding:5px 6px;text-align:center">' + box("execShare", r.execShare, "0.1") + '</td>' +
+            '<td style="padding:5px 6px;text-align:center">' + box("execMax", r.execMax, "-") + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;color:#0f766e"><b>' +
+              (execSet(b) ? esc(pctTxt(execRateAt(b, Number(r.stdDisc) || 0))) : '<span style="color:#cbd5e1">not set</span>') +
+            '</b></td></tr>';
+        }).join("") +
+        '</table></div>' +
+        '<div class="acts" style="margin-top:10px"><button class="btn sm" data-act="exc-save">&#10003; Save the rate card</button></div>' +
+        '</div>';
+
       h += '<h3 style="margin:6px 0 8px;font-size:14px">Clients with a discount / incentive set (' + names.length + ')</h3>';
       var fmtBW = function (arr) { return arr.map(function (x) { return esc(x.brand) + ' <b>' + esc(x.pct) + '%</b>'; }).join('  &middot;  '); };
       names.forEach(function (n) {
@@ -9261,8 +9390,18 @@ function viewCatalogue() {
         return a + ((String(cObj[role] || "").trim() && Number(im[role])) || 0);
       }, 0);
       var dPct = Number(d && d.pct) || 0;
-      var loadLine = totInc > 0
-        ? '<div class="meta" style="margin-top:8px;font-size:11px;color:#64748b;border-top:1px solid #eef2f7;padding-top:6px">Incentive load: <b style="color:#b45309">' + pf(totInc) + ' of net</b>' + (dPct ? ' &middot; ≈ ' + pf(totInc * (1 - dPct / 100)) + ' of list, on top of the ' + pf(dPct) + ' discount' : "") + '</div>'
+      /* The executive's number sits with the partners' - all of it is the same
+         giveaway, and it moves as the discount box is typed in (see the .dsc
+         listener; the line is rebuilt in place so the caret never jumps). */
+      var execLine = execSet(b)
+        ? '<div class="meta" id="exl_' + esc(b).replace(/[^A-Za-z0-9]/g, "_") + '" style="margin-top:6px;font-size:11.5px;border-top:1px solid #eef2f7;padding-top:6px">' +
+            execLineHtml(b, dPct) + '</div>'
+        : "";
+      var loadLine = (totInc > 0 || execSet(b))
+        ? '<div class="meta" style="margin-top:6px;font-size:11px;color:#64748b">Total incentive load: <b style="color:#b45309">' +
+            pf(totInc + execRateAt(b, dPct)) + ' of net</b>' +
+            (totInc > 0 ? ' <span style="color:#94a3b8">(partners ' + pf(totInc) + (execSet(b) ? ' + executive ' + pf(execRateAt(b, dPct)) : '') + ')</span>' : '') +
+            (dPct ? ' &middot; ≈ ' + pf((totInc + execRateAt(b, dPct)) * (1 - dPct / 100)) + ' of list, on top of the ' + pf(dPct) + ' discount' : "") + '</div>'
         : "";
       h += '<div class="card"><h3>' + esc(b) + (d && Number(d.pct) ? ' <span class="pill teal">' + esc(d.pct) + '%</span>' : ' <span class="pill">not set</span>') + '</h3>' +
         '<div class="acts" style="align-items:center">' +
@@ -9270,6 +9409,7 @@ function viewCatalogue() {
         '<input class="dsc" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-id="' + esc(d ? d.id : "") + '" inputmode="decimal" value="' + esc(d ? d.pct : "") + '" placeholder="0" style="width:78px;padding:7px 10px"/>' +
         '<span class="pill">% off list</span></div>' +
         incRows +
+        execLine +
         loadLine +
         '</div>';
     });
@@ -16722,7 +16862,10 @@ function viewCatalogue() {
         ? '<button class="btn sm ghost" data-act="bio-off">Face ID on</button>'
         : '<button class="btn sm ghost" data-act="bio-on">Enable Face ID</button>') : '') +
       '<button class="btn sm" data-act="app-refresh" title="Reload the app fresh — latest version and all updates">&#8635; Refresh</button>' +
-      '<button class="btn sm ghost" data-act="pin-change">PIN</button>' +
+      /* v6.9.231 - only the owner sets PINs, so the self-service button is his alone.
+         The server refuses the same thing for anyone else; this only hides a button
+         that would always have failed. */
+      (S.role === "admin" ? '<button class="btn sm ghost" data-act="pin-change">PIN</button>' : '') +
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
     var label = {};
@@ -16811,6 +16954,15 @@ function viewCatalogue() {
       qzri.addEventListener("keyup", function (e) { if (e.key === "Enter") { e.target.blur(); render(); } });
       qzri.addEventListener("blur", function () { render(); });
     }
+    /* Type 50 instead of 45 and the executive's line drops while you watch. Only
+       that one line is rewritten - the box you are typing in is never rebuilt. */
+    Array.prototype.forEach.call(document.querySelectorAll("input.dsc"), function (inp) {
+      inp.addEventListener("input", function () {
+        var b = inp.getAttribute("data-brand") || "";
+        var host = el("exl_" + b.replace(/[^A-Za-z0-9]/g, "_"));
+        if (host) host.innerHTML = execLineHtml(b, inp.value);
+      });
+    });
     var payqi = el("pay_q");
     if (payqi) {
       payqi.addEventListener("input", function (e) {
@@ -17062,13 +17214,41 @@ function viewCatalogue() {
       var u = (S.data.team || []).filter(function (x) { return x.id === id; })[0];
       if (!u) { toast("Team member not found."); return; }
       if (!u.id) { toast("This member has no id - reset in the sheet."); return; }
-      if (!window.confirm("Reset the PIN for " + u.name + "?\n\nTheir current PIN is cleared. The next time they open the app and enter their name, they will be asked to set a NEW PIN of their own. You will not see or set it.")) return;
+      if (!window.confirm("Block sign-in for " + u.name + "?\n\nTheir PIN is cleared, so they cannot sign in at all until you set a new one with the Set PIN button. Nothing else on their record changes and no work of theirs is touched.")) return;
       /* Clear pin + pinSet, forcing a fresh PIN at next login. Send the FULL known member row (not
          just the two fields) so that even if the backend ever wrote whole rows instead of merging
          fields, a reset could never blank someone's name / role / mobile. */
       save("team", Object.assign({}, u, { pin: "", pinSet: "N" }));
-      toast("PIN reset for " + u.name + " - they'll set a new one at next login.");
+      toast(u.name + " cannot sign in until you set a new PIN.");
       render();
+      return;
+    }
+    if (act === "tp-setpin") {
+      if (S.role !== "admin") { toast("Only the owner sets PINs."); return; }
+      S.modal = modalSetPin(id); render(); return;
+    }
+    if (act === "sp-save") {
+      if (S.role !== "admin") { toast("Only the owner sets PINs."); return; }
+      var _sp1 = val("sp1"), _sp2 = val("sp2");
+      var _spid = t.getAttribute("data-id"), _spn = t.getAttribute("data-n") || "";
+      if (!/^[0-9]{4,8}$/.test(_sp1)) { toast("A PIN is 4 to 8 digits."); return; }
+      if (_sp1 !== _sp2) { toast("The two numbers do not match."); return; }
+      var _spu = (S.data.team || []).filter(function (x) { return x.id === _spid; })[0];
+      if (!_spu) { toast("That member is not in the list."); return; }
+      t.disabled = true; t.textContent = "Setting...";
+      /* deliberately NOT save(): the digits must not enter the offline journal or
+         this device's snapshot. One direct call, then forget them. */
+      api("teamSave", { tab: "team", row: Object.assign({}, _spu, { pin: "", pinSet: "Y", setPin: _sp1 }) })
+        .then(function (r) {
+          if (!r || !r.ok) { t.disabled = false; t.textContent = "Set the PIN"; toast((r && r.error) || "Could not set it."); return; }
+          _spu.pinSet = "Y";
+          save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user || "",
+            action: "pin:set", target: _spn });
+          S.modal = null;
+          toast("PIN set for " + _spn + ". Tell him the number - he cannot change it himself.");
+          render();
+        })
+        .catch(function () { t.disabled = false; t.textContent = "Set the PIN"; toast("Network error. Try again."); });
       return;
     }
     if (act === "tp-temp") {
@@ -17863,6 +18043,36 @@ function viewCatalogue() {
         });
       });
       setTimeout(function () { render(); toast("Emptied " + cleared + " duplicate discount row(s). Nothing was deleted."); }, 200);
+      return;
+    }
+    /* The rate card is deliberately a SEPARATE save from the client discounts -
+       one is a company policy set once, the other is a client negotiation. */
+    if (act === "exc-save") {
+      var exBoxes = document.querySelectorAll("input.exc");
+      var exBy = {};
+      Array.prototype.forEach.call(exBoxes, function (inp) {
+        var b = inp.getAttribute("data-b") || "";
+        var f = inp.getAttribute("data-f") || "";
+        var v = String(inp.value || "").trim();
+        if (!b || !f) return;
+        exBy[b] = exBy[b] || {};
+        exBy[b][f] = v === "" ? "" : (Number(v) || 0);
+      });
+      var exN = 0;
+      Object.keys(exBy).forEach(function (b) {
+        var row = execCard(b);
+        if (!row || !row.id) return;            /* a brand with no master row is skipped, not invented */
+        var cur = exBy[b];
+        var same = ["stdDisc", "execBase", "execShare", "execMax"].every(function (f) {
+          return String(row[f] == null ? "" : row[f]) === String(cur[f] == null ? "" : cur[f]);
+        });
+        if (same) return;
+        exN++;
+        save("brands", { id: row.id, stdDisc: cur.stdDisc, execBase: cur.execBase,
+                         execShare: cur.execShare, execMax: cur.execMax }, true);
+      });
+      toast(exN ? "Rate card saved for " + exN + " brand" + (exN === 1 ? "" : "s") + "." : "Nothing changed on the rate card.");
+      render();
       return;
     }
     if (act === "disc-saveall") {
