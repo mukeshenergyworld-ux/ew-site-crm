@@ -108,7 +108,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.0.0";
+  var APP_VERSION = "1.0.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
   var SNAP = "ew_collect_snap";
@@ -885,6 +885,20 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       render(); toast("No signal — showing what was last pulled onto this phone.");
     });
   }
+
+  /* v1.0.1 - COMING BACK TO THE APP PULLS THE BOOK.
+     This is the app you leave constantly: you tap Call and talk for four minutes, or
+     you tap WhatsApp and come back. Without this the screen you return to is the
+     screen you left, which is exactly when a man records a payment twice or rings
+     someone who has already paid. Throttled to a minute so switching between two apps
+     does not hammer the server, and quiet - no toast - because he did not ask for it. */
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) return;
+    if (!S.user || !S.data) return;
+    if (S.sheet) return;                       /* never pull the ground from under an open form */
+    if (Date.now() - (S.syncAt || 0) < 60000) return;
+    pull(false);
+  });
 
   (function boot() {
     var sess = null;
