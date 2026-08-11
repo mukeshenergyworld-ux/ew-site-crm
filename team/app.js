@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.236";
+  var APP_VERSION = "6.9.237";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3692,6 +3692,69 @@ window.addEventListener("beforeunload", function (ev) {
     return m;
   }
   function challanProof(chId) { return chId ? (proofMap()[chId] || null) : null; }
+
+  /* ================= THE MANUAL CHALLAN NUMBER (v6.9.237) =========================
+     Challans are still written by hand in the paper book, and that book's number is the
+     one the customer's storeman, the driver and the accountant all quote. The app's own
+     number is NOT replaced - it is still reserved exactly as before, it is still the
+     challan's identity, and nothing about it changes. This is a second number recorded
+     BESIDE it so the paper and the screen can be matched.
+
+     WHERE IT IS KEPT. As an append-only row on the AUDIT sheet - the same channel the
+     delivery proofs use, and for the same reasons: no column is added to any tab, so no
+     backend change and no redeployment is needed for it to work, and an entry can be
+     corrected later without anything ever being overwritten (the newest row wins).
+     It is keyed by BOTH the challan's id and its number, because at the moment a new
+     challan is created the number is already known and the id has not come back yet. */
+  var _mnoCache = null;
+  function manualNoMap() {
+    if (_mnoCache) return _mnoCache;
+    var byId = {}, byNo = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "challan:manualno") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var v = String(d.no == null ? "" : d.no).trim();
+      var at = String(r.createdAt || "");
+      if (d.chId) { var a = byId[d.chId]; if (!a || at >= a.at) byId[d.chId] = { at: at, no: v }; }
+      if (d.chNo) { var b = byNo[d.chNo]; if (!b || at >= b.at) byNo[d.chNo] = { at: at, no: v }; }
+    });
+    _mnoCache = { byId: byId, byNo: byNo };
+    return _mnoCache;
+  }
+  /* By id first - it is the challan's real identity. By number second, which is what a
+     row written the instant the challan was created could carry. "" means none. */
+  function manualNoFor(c) {
+    if (!c) return "";
+    var m = manualNoMap();
+    var a = c.id ? m.byId[c.id] : null;
+    var b = c.challanNo ? m.byNo[String(c.challanNo)] : null;
+    var win = (a && b) ? (a.at >= b.at ? a : b) : (a || b);
+    return win ? String(win.no || "") : "";
+  }
+  /* The little grey chip that carries it, wherever a challan is shown. */
+  /* Writing it. An append-only audit row, exactly like a delivery proof: nothing is ever
+     overwritten, so a wrong number typed in a hurry is corrected by a newer row and the
+     old one stays on the sheet as the record of what was first entered. A blank clears it
+     (a row carrying an empty number wins by being newer) - it does not delete anything. */
+  function saveManualNo(chNo, chId, no, client) {
+    _mnoCache = null;
+    return save("audit", {
+      id: "M-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+      createdAt: new Date().toISOString(), actor: S.user || "",
+      action: "challan:manualno",
+      target: String(chNo || chId || "") + " / " + String(client || ""),
+      detail: JSON.stringify({ chNo: String(chNo || ""), chId: String(chId || ""), no: String(no == null ? "" : no).trim() })
+    });
+  }
+  function manualNoChip(c, small) {
+    var v = manualNoFor(c);
+    if (!v) return "";
+    return '<span title="The number written in the paper challan book" ' +
+      'style="display:inline-block;background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;' +
+      'border-radius:6px;padding:1px 7px;font-size:' + (small ? '10.5' : '11.5') + 'px;font-weight:700;' +
+      'vertical-align:middle">Book no ' + esc(v) + '</span>';
+  }
 
   /* Shown on the challan card. Three states, and the middle one matters most: a proof that was
      taken but has not reached Drive yet must LOOK different from no proof at all, or the man who
@@ -7680,11 +7743,20 @@ function viewCatalogue() {
       var drv = [c.driver, c.vehicle].filter(Boolean).join("  \u00b7  ");
       var drv2 = c.driverMobile ? String(c.driverMobile) : "";
 
+      /* v6.9.237 - the paper book's number, printed beside the app's own. The app number
+         stays exactly where it was and stays the challan's identity; this sits under it so
+         the sheet in the customer's hand matches the sheet in the book. */
+      var _mno = manualNoFor(c);
       function header() {
         dg(120); doc.setLineWidth(0.4); doc.line(L, 12, R, 12);
         g(0); F("bold"); doc.setFontSize(small ? 9 : 11);
         doc.text("DELIVERY CHALLAN", L, 10);
         doc.text(String(c.challanNo || ""), R, 10, { align: "right" });
+        if (_mno) {
+          g(90); F("normal"); doc.setFontSize(small ? 6 : 6.8);
+          doc.text("Book no " + _mno, R, (small ? 14.2 : 14.6), { align: "right" });
+          g(0);
+        }
         var y = 18;
         g(90); F("bold"); doc.setFontSize(5.6); doc.text("DELIVER TO", L, y);
         g(0); F("bold"); doc.setFontSize(small ? 8.6 : 10);
@@ -7714,7 +7786,7 @@ function viewCatalogue() {
         dg(120); doc.setLineWidth(0.4); doc.line(L, 12, R, 12);
         g(0); F("bold"); doc.setFontSize(8);
         doc.text("DELIVERY CHALLAN", L, 10);
-        doc.text(String(c.challanNo || ""), R, 10, { align: "right" });
+        doc.text(String(c.challanNo || "") + (_mno ? "   (book no " + _mno + ")" : ""), R, 10, { align: "right" });
         g(90); F("normal"); doc.setFontSize(6.4);
         doc.text(String(c.customerName || ""), L + 42, 10);
         dg(200); doc.setLineWidth(0.2); doc.line(L, 15, R, 15);
@@ -8705,7 +8777,7 @@ function viewCatalogue() {
   }
   /* m_stage is a hidden field written by the stage chips, not typed - it has to be kept too, or
      tapping a brand rebuilds the form and throws away the stage he just answered. */
-  var CH_FIELDS = ["m_loc", "m_client", "m_site", "m_assoc", "m_freight", "m_fto", "m_driver", "m_dmob", "m_veh", "m_disc", "m_discnote", "m_stage"];
+  var CH_FIELDS = ["m_loc", "m_client", "m_site", "m_assoc", "m_freight", "m_fto", "m_driver", "m_dmob", "m_veh", "m_disc", "m_discnote", "m_stage", "m_manual"];
   var RT_FIELDS = ["r_client", "r_site", "r_ch", "r_reason", "r_driver", "r_freight"];
 
   function modalReturn() {
@@ -8965,6 +9037,8 @@ function viewCatalogue() {
          line 2 - client · site · items/units · brand · bill state */
       var out = '<div class="card lc-compact">' +
         '<div class="lc-top"><div class="lc-id"><b>' + esc(c.challanNo) + '</b>' +
+        /* v6.9.237 - read-only, so a man hunting for "1247" from the paper book finds it here too */
+        (manualNoFor(c) ? ' ' + manualNoChip(c, true) : '') +
         ' <span class="pill ' + cls + '">' + esc(st) + '</span>' +
         (String(c.receiptReceived).toUpperCase() === "Y" ? ' <span class="pill Won">receipt in</span>' : "") +
         '</div>' +
@@ -9934,6 +10008,53 @@ function viewCatalogue() {
       '</div></div>';
   }
 
+  /* ---- WHAT IS OUT BUT NOT IN THE ACCOUNT YET (v6.9.237) ----
+     Owner's instruction: while checking a client's hisab, show any challan that has been
+     MADE but not APPROVED. The balance below counts only challans whose receipt is in, so
+     anything short of that is invisible in the money - and a challan sitting unapproved is
+     material nobody has released and a delivery nobody is chasing. It is drawn in RED for
+     exactly that reason; approved and dispatched ones sit under it in amber, because those
+     are moving.
+     Cancelled challans are lifted out of S.data entirely, so none can appear here. */
+  function hisabPendingCard(cl) {
+    var pend = (S.data.challans || []).filter(function (c) {
+      return c.customerName === cl && String(c.receiptReceived).toUpperCase() !== "Y";
+    });
+    if (!pend.length) return "";
+    var rank = { Draft: 0, Approved: 1, Dispatched: 2 };
+    pend.sort(function (a, b) {
+      var ra = rank[String(a.status)] == null ? 3 : rank[String(a.status)];
+      var rb = rank[String(b.status)] == null ? 3 : rank[String(b.status)];
+      return ra - rb || String(a.createdAt).localeCompare(String(b.createdAt));
+    });
+    var draft = pend.filter(function (c) { return String(c.status) === "Draft"; });
+    var h = '<div class="card" style="border-color:' + (draft.length ? '#fecaca' : '#fde68a') +
+      ';background:' + (draft.length ? '#fff5f5' : '#fffbeb') + '">' +
+      '<h3 style="margin:0 0 3px;font-size:14px">Not in the account yet &mdash; ' + pend.length + ' challan' + (pend.length === 1 ? '' : 's') +
+      (draft.length ? ' <span class="pill due" style="background:#fee2e2;color:#b91c1c">' + draft.length + ' NOT APPROVED</span>' : '') + '</h3>' +
+      '<div class="meta" style="font-size:12.5px">These do not count in the balance below, because the balance counts only deliveries whose <b>receipt is confirmed</b>.' +
+      (draft.length ? ' <b style="color:#b91c1c">A challan still on Draft has not been approved, so no material has been released against it.</b>' : '') +
+      '</div>';
+    pend.forEach(function (c) {
+      var st = String(c.status || "Draft");
+      var isD = st === "Draft";
+      h += '<div class="acts" style="align-items:center;flex-wrap:wrap;gap:6px;border-top:1px solid ' +
+        (isD ? '#fecaca' : '#fef3c7') + ';margin-top:6px;padding-top:6px">' +
+        '<div class="grow" style="min-width:150px"><b>' + esc(c.challanNo || "") + '</b>' +
+        (manualNoFor(c) ? ' ' + manualNoChip(c, true) : '') +
+        ' <span class="pill' + (isD ? ' due' : ' teal') + '"' + (isD ? ' style="background:#fee2e2;color:#b91c1c"' : '') + '>' +
+        (isD ? 'Not approved' : esc(st)) + '</span>' +
+        '<br><span style="font-size:11px;color:#64748b">' + esc(d10(c.createdAt)) +
+        (c.site ? ' &middot; ' + esc(c.site) : '') +
+        (c.amount ? ' &middot; ' + money(Number(c.amount) || 0) + ' at list' : '') + '</span></div>' +
+        (isD && canApprove() ? '<button class="btn sm act-approve" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Approved">Approve</button>' : '') +
+        (st === "Approved" && canApprove() ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : '') +
+        (st === "Dispatched" && (canSee("billing") || canSee("challans")) ? '<button class="btn sm act-receipt" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Receipt received</button>' : '') +
+        '</div>';
+    });
+    return h + '</div>';
+  }
+
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
     var cl = hisabResolve(S.q);
@@ -10052,15 +10173,20 @@ function viewCatalogue() {
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }))
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
     h += hisabNewBar(cl, chs);
+    h += hisabPendingCard(cl);
     if (!chs.length) {
       /* No receipt-confirmed challan yet. Still show the client if they carry an opening balance, a
          booked return, or a challan that's only approved/dispatched — so a case like "minus opening +
          a dispatched challan" is never a dead end, and the pending challan can be receipt-confirmed
          right from here (which then brings it into the account). */
       var _l0 = clientLedger(cl);
+      /* v6.9.237 - a DRAFT counts here now. A client whose only challan is sitting
+         unapproved used to read "no received challans" and nothing else, which is the very
+         case the owner asked to be able to see. The card itself is drawn above by
+         hisabPendingCard, so this list exists only to decide whether there is anything worth
+         showing at all. */
       var _pending = (S.data.challans || []).filter(function (c) {
-        return c.customerName === cl && String(c.receiptReceived).toUpperCase() !== "Y" &&
-          ["Approved", "Dispatched"].indexOf(String(c.status)) >= 0;
+        return c.customerName === cl && String(c.receiptReceived).toUpperCase() !== "Y";
       });
       if (!_l0.opening && !_pending.length && !(_l0.rets || []).length) {
         return h + '<div class="empty">No received challans for <b>' + esc(cl) + '</b> yet. A challan lands here automatically once its receipt is confirmed.</div>';
@@ -10075,16 +10201,9 @@ function viewCatalogue() {
           : 'Balance: <b style="color:#0d9488">' + money(_l0.due) + (_l0.due < -0.5 ? ' (in credit)' : '') + '</b>') + '</div>' +
         (canSee("payments") && _l0.due > 0 ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '">&#8377; Payment received</button></div>' : '') +
         '</div>';
-      if (_pending.length) {
-        _oh += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3 style="margin:0 0 3px;font-size:14px">Not in the account yet &mdash; ' + _pending.length + ' challan(s)</h3>' +
-          '<div class="meta" style="font-size:12.5px">Approved / dispatched, but the <b>receipt isn\'t confirmed</b>, so they don\'t count in the balance yet. Confirm receipt and they move into the ledger.</div>';
-        _pending.sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); }).forEach(function (c) {
-          _oh += '<div class="acts" style="align-items:center;border-top:1px solid #fef3c7;margin-top:6px;padding-top:6px"><div class="grow"><b>' + esc(c.challanNo) + '</b> <span class="pill teal">' + esc(String(c.status)) + '</span>' +
-            '<br><span style="font-size:11px;color:#64748b">' + esc(d10(c.createdAt)) + (c.site ? ' &middot; ' + esc(c.site) : '') + '</span></div>' +
-            (canSee("billing") ? '<button class="btn sm act-receipt" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Receipt received</button>' : '') + '</div>';
-        });
-        _oh += '</div>';
-      }
+      /* The "not in the account yet" card is drawn once, above, for BOTH branches
+         (see hisabPendingCard) - it used to exist only here, so a client WITH received
+         challans never saw his unapproved ones at all. */
       _oh += serviceLedgerCard(cl);
       return h + _oh;
     }
@@ -10145,7 +10264,9 @@ function viewCatalogue() {
       h += '<div class="card" style="' + (sel ? '' : 'opacity:.5') + '">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
         '<h3 style="margin:0">' +
-        '<label style="cursor:pointer;font-size:15px"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label> <span class="pill teal">' + esc(d10(c.createdAt)) + '</span>' +
+        '<label style="cursor:pointer;font-size:15px"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label>' +
+        (manualNoFor(c) ? ' ' + manualNoChip(c) : '') +
+        ' <span class="pill teal">' + esc(d10(c.createdAt)) + '</span>' +
         /* v6.9.236 - the signed paper, or the fact that there isn't one. The thumbnail is
            drawn bigger here than on the delivery list because in hisab you are checking the
            document, not scanning a queue. Tap it to open the full one. */
@@ -16178,6 +16299,11 @@ function viewCatalogue() {
       '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, (z && z.loc) || LOCATIONS[0]) + '</select>' +
       strictClientField("m_client", (S.ch && S.ch.client) || "") +
       '<label>Site (optional)</label><input id="m_site" list="sitelist" placeholder="Site / project" value="' + esc((z && z.site) || "") + '"/>' +
+      /* v6.9.237 - the number from the paper book, while it is still being written by hand.
+         Optional, and it changes nothing about the app's own number, which is reserved and
+         printed exactly as before. */
+      '<label>Manual challan no <span style="font-weight:400;color:#94a3b8">(optional \u2014 the number in the paper book)</span></label>' +
+      '<input id="m_manual" placeholder="e.g. 1247" value="' + esc((z && z.manualNo != null ? z.manualNo : (isEdit ? manualNoFor({ id: z.editId, challanNo: z.editNo }) : "")) || "") + '"/>' +
       '<datalist id="sitelist">' + sites.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
       /* Material is going to this site today, so the man loading it knows the stage better than
          anyone. Confirm it here and the pitch board is right without a single extra visit. */
@@ -17191,7 +17317,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _prfCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null;
+    _clDueCache = null; _clStageCache = null; _prfCache = null; _mnoCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
@@ -20308,6 +20434,7 @@ function viewCatalogue() {
       /* Read EVERY form field into plain vars NOW, before we close the modal. Once the modal is
          gone the inputs no longer exist, so any val() after this point would read blank. */
       var dName = val("m_driver"), dMob = val("m_dmob"), dVeh = val("m_veh");
+      var manualV = String(val("m_manual") || "").trim();
       var brandV = val("m_brand") || (S.ch && S.ch.brand) || "";
       var locV = val("m_loc"), freightV = val("m_freight") || 0, ftoV = val("m_fto");
       var discV = val("m_disc") || 0, discnoteV = val("m_discnote");
@@ -20366,6 +20493,10 @@ function viewCatalogue() {
           if (wasApproved) { ch.status = "Draft"; ch.approvedBy = ""; }
           return save("challans", ch).then(function (r) {
             if (!r) return;
+            /* only when it actually changed - an unchanged edit must not add a row every time */
+            if (manualV !== String(manualNoFor({ id: editId, challanNo: editNo }) || "")) {
+              saveManualNo(editNo, editId, manualV, cn);
+            }
             toast(wasApproved ? "Saved - back to Draft, approve again before dispatch." : "Challan " + editNo + " updated.");
             render();
           });
@@ -20403,7 +20534,11 @@ function viewCatalogue() {
         return save("challans", ch).then(function (r) {
           chSaved = true;
           if (!r) return;
-          toast("Challan " + no + " created - pending approval.");
+          /* v6.9.237 - the paper book's number, filed beside the challan. Written after the
+             challan itself, never before: the delivery is the thing that matters and it must
+             never be held up by a second write. */
+          if (manualV) saveManualNo(no, (r && r.id) || "", manualV, cn);
+          toast("Challan " + no + " created - pending approval." + (manualV ? " Book no " + manualV + " noted." : ""));
           /* first-challan setup prompt (admin can set it; others get a reminder to ask admin) */
           if (firstSetup) {
             if (canSee("discounts")) S.modal = modalFirstChallanSetup(cn);
