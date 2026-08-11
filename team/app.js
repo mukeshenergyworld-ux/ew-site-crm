@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.240";
+  var APP_VERSION = "6.9.241";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3873,11 +3873,43 @@ window.addEventListener("beforeunload", function (ev) {
      ONE document, not two (the owner's decision). The delivery challan and the receipt that came
      back from the site are printed as a single PDF, because that is the thing that actually gets
      sent to the customer on WhatsApp, and two files is two chances to send the wrong one. */
+  /* ---- A RETURN CARRIES A SIGNED RECEIPT TOO (v6.9.241) ----
+     Material coming back is the same event in reverse, and it deserves the same proof: a
+     photograph of the paper signed at the godown when the goods were counted in. Rather
+     than build a second machine, a return is presented to the EXISTING one as a
+     challan-shaped object. Everything downstream - the queue, the offline retry, the
+     hosted document, the audit row, the thumbnail on the card - is then literally the
+     same code, so the two can never drift apart.
+     `_isReturn` is the only thing that tells the document what to call itself. */
+  function retProofView(r) {
+    if (!r) return null;
+    return {
+      id: r.id, _isReturn: true,
+      challanNo: String(r.returnNo || ""),
+      againstNo: String(r.challanNo || ""),
+      reason: String(r.reason || ""),
+      customerName: r.customerName || "", site: r.site || "",
+      createdAt: r.createdAt || "", createdBy: r.createdBy || "",
+      approvedBy: r.receivedBy || "",
+      itemsJson: r.itemsJson || "[]", altJson: "",
+      driver: r.driver || "", vehicle: r.vehicle || "",
+      freight: r.freight || 0, freightTo: r.freightTo || ""
+    };
+  }
+  /* Either kind, by id. Used by the capture screen and by proofStart. */
+  function proofSubject(id) {
+    var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+    if (c) return c;
+    var r = (S.data.returns || []).filter(function (x) { return x.id === id; })[0];
+    return r ? retProofView(r) : null;
+  }
+
   function proofPdf(ch, prf, meta) {
     var rows = (prf.rows || []).slice();
     return Promise.all([loadLogo(), challanLogos()]).then(function (lres) {
       var LG = lres[1] || [];
-      return commPdfBase("DELIVERY CHALLAN & RECEIPT", ch, String(meta.at || "").slice(0, 10))
+      return commPdfBase(ch._isReturn ? "MATERIAL RETURN & GOODS-IN RECEIPT" : "DELIVERY CHALLAN & RECEIPT",
+        ch, String(meta.at || "").slice(0, 10))
         .then(function (b) { b.LG = LG; return b; });
     }).then(function (b) {
       var doc = b.doc, F = b.F, L = b.L, R = b.R, LOGOS = b.LG || [], y;
@@ -3913,12 +3945,13 @@ window.addEventListener("beforeunload", function (ev) {
         F("normal"); doc.setFontSize(9.2); doc.setTextColor(17, 34, 45);
         doc.text(doc.splitTextToSize(String(v || "-"), CW - 5)[0] || "-", x, yy + 5.8);
       };
-      fact("CHALLAN NO.", ch.challanNo, 0, 0);
-      fact("DELIVERED ON", fullDate(String(meta.at || "").slice(0, 10)), 1, 0);
-      fact("DRIVER / VEHICLE", String(ch.driver || "-") + (ch.vehicle ? " / " + ch.vehicle : ""), 2, 0);
-      fact("PREPARED BY", ch.createdBy, 0, 1);
-      fact("APPROVED BY", ch.approvedBy, 1, 1);
-      fact("RECEIVED AT SITE BY", meta.by, 2, 1);
+      var _isR = !!ch._isReturn;
+      fact(_isR ? "RETURN NO." : "CHALLAN NO.", ch.challanNo, 0, 0);
+      fact(_isR ? "BOOKED IN ON" : "DELIVERED ON", fullDate(String(meta.at || "").slice(0, 10)), 1, 0);
+      fact(_isR ? "PICKED UP BY" : "DRIVER / VEHICLE", String(ch.driver || "-") + (ch.vehicle ? " / " + ch.vehicle : ""), 2, 0);
+      fact(_isR ? "RAISED BY" : "PREPARED BY", ch.createdBy, 0, 1);
+      fact(_isR ? "AGAINST CHALLAN" : "APPROVED BY", _isR ? (ch.againstNo || "-") : ch.approvedBy, 1, 1);
+      fact(_isR ? "COUNTED IN AT GODOWN BY" : "RECEIVED AT SITE BY", meta.by, 2, 1);
       y += 40;
       F("normal"); doc.setFontSize(7.2); doc.setTextColor(120, 130, 145);
       doc.text("Receipt recorded by " + String(meta.actor || "-") + " on " +
@@ -3990,7 +4023,9 @@ window.addEventListener("beforeunload", function (ev) {
          worth more than a line that pretends. */
       if (y > 206) { doc.addPage(); y = 26; }
       F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
-      doc.text("RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, y);
+      doc.text(ch._isReturn
+        ? "THE ABOVE MATERIAL WAS RETURNED AND COUNTED IN AT THE GODOWN"
+        : "RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, y);
       y += 9;
       F("normal"); doc.setFontSize(11.5); doc.setTextColor(17, 34, 45);
       doc.text(String(meta.by || "\u2014"), L, y);
@@ -4016,7 +4051,8 @@ window.addEventListener("beforeunload", function (ev) {
         } catch (e) { }
         if (y + ih + 14 > 288) { doc.addPage(); y = 26; }
         F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
-        doc.text("THE RECEIPT AS IT CAME BACK FROM THE SITE", L, y);
+        doc.text(ch._isReturn ? "THE GOODS-IN RECEIPT AS IT WAS SIGNED AT THE GODOWN"
+                              : "THE RECEIPT AS IT CAME BACK FROM THE SITE", L, y);
         y += 5;
         var ix = L + (MAXW - iw) / 2;
         try {
@@ -4084,14 +4120,15 @@ window.addEventListener("beforeunload", function (ev) {
     var e = l[0];
     prfSend(e).then(function (ok) {
       _prfBusy = false;
-      if (ok) { _prfCache = null; toast("Delivery proof for " + e.no + " is up."); renderBg(); }
+      if (ok) { _prfCache = null; toast((e.isRet ? "Goods-in receipt for " : "Delivery proof for ") + e.no + " is up."); renderBg(); }
     }).catch(function () { _prfBusy = false; });
   }
 
   /* Called the instant the receipt is confirmed. Everything here runs BEHIND the receipt - the
      challan is already Received and the screen has already closed. */
   function proofStart(cid, prf) {
-    var ch = (S.data.challans || []).filter(function (x) { return x.id === cid; })[0];
+    /* v6.9.241 - a challan or a return; from here on the code does not care which */
+    var ch = proofSubject(cid);
     if (!ch) return;
     var at = new Date().toISOString();
     /* When the receipt is attached later - which is the normal case now - nobody re-types the
@@ -4115,15 +4152,15 @@ window.addEventListener("beforeunload", function (ev) {
         aid: "PF-" + stamp + "-" + rnd,
         chId: cid, no: String(ch.challanNo || ""), client: String(ch.customerName || ""),
         site: String(ch.site || ""), by: prf.by || "", at: at, geo: "", actor: S.user || "",
-        hasPhoto: !!prf.photo, hasSig: !!prf.sig, thumb: th,
-        fname: "DELIVERY-" + String(ch.challanNo || cid).replace(/[^\w.-]+/g, "-") + ".pdf",
+        hasPhoto: !!prf.photo, hasSig: !!prf.sig, thumb: th, isRet: !!ch._isReturn,
+        fname: (ch._isReturn ? "RETURN-" : "DELIVERY-") + String(ch.challanNo || cid).replace(/[^\w.-]+/g, "-") + ".pdf",
         b64: b64
       });
       _prfCache = null;
       prfFlush();
       renderBg();
     }).catch(function () {
-      toast("Could not build the delivery document — the receipt itself is safe.");
+      toast("Could not build the document — the receipt itself is safe.");
     });
   }
 
@@ -4134,22 +4171,30 @@ window.addEventListener("beforeunload", function (ev) {
      arrives an hour later, on WhatsApp, from a tempo driver. So it must be attachable afterwards,
      to any delivery, by anyone who can see it. */
   function modalProof(chId) {
-    var c = (S.data.challans || []).filter(function (x) { return x.id === chId; })[0] || {};
+    /* v6.9.241 - the same screen attaches a delivery receipt to a challan and a goods-in
+       receipt to a material return. Only the words change. */
+    var c = proofSubject(chId) || {};
+    var isR = !!c._isReturn;
     var have = challanProof(chId);
     var q = prfLoad().filter(function (x) { return x.chId === chId; })[0];
-    return '<h2>Attach the delivery receipt</h2>' +
+    return '<h2>' + (isR ? 'Attach the goods-in receipt' : 'Attach the delivery receipt') + '</h2>' +
       '<div class="meta" style="margin-bottom:8px"><b>' + esc(c.challanNo || "") + '</b> &middot; ' +
-      esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") + '</div>' +
-      (q ? '<div class="card" style="border-color:#fde68a;background:#fffbeb"><div class="meta">A receipt for this challan is still waiting to go up from this phone. It uploads on the next refresh. Nothing here is lost.</div></div>' : "") +
+      esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
+      (isR && c.againstNo ? ' &middot; against ' + esc(c.againstNo) : "") + '</div>' +
+      (q ? '<div class="card" style="border-color:#fde68a;background:#fffbeb"><div class="meta">A receipt for this ' + (isR ? 'return' : 'challan') + ' is still waiting to go up from this phone. It uploads on the next refresh. Nothing here is lost.</div></div>' : "") +
       /* v6.9.212 - if one is already on file, show it. */
       (have ? '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
         (have.thumb ? '<div style="margin-bottom:6px">' + proofThumbImg(have.thumb, 84) + '</div>' : "") +
-        '<div class="meta">A receipt is already on file for this delivery' +
+        '<div class="meta">A receipt is already on file for this ' + (isR ? 'return' : 'delivery') +
         (have.url ? ' \u2014 <a href="' + esc(have.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600">open it &#8599;</a>' : "") +
         '. Attaching another one makes it the current one. Nothing is deleted \u2014 the old one stays on the sheet.</div></div>' : "") +
       '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
-      '<div class="meta" style="margin-bottom:8px">Photograph the signed paper receipt, or pick the photo the driver sent you on WhatsApp. What comes out is <b>one document</b> \u2014 this challan and this receipt together \u2014 ready to send to the customer.</div>' +
-      '<label>Received at site by</label>' +
+      '<div class="meta" style="margin-bottom:8px">' +
+        (isR
+          ? 'Photograph the paper signed at the godown when the material was counted back in. What comes out is <b>one document</b> \u2014 this return and its goods-in receipt together \u2014 which settles later what came back and how much.'
+          : 'Photograph the signed paper receipt, or pick the photo the driver sent you on WhatsApp. What comes out is <b>one document</b> \u2014 this challan and this receipt together \u2014 ready to send to the customer.') +
+        '</div>' +
+      '<label>' + (isR ? 'Counted in at the godown by' : 'Received at site by') + '</label>' +
       '<input id="prf_by" value="' + esc((S.prf && S.prf.by) || "") + '" placeholder="Name of whoever signed it" autocomplete="off"/>' +
       '<label style="margin-top:8px">Photograph of the receipt</label>' +
       '<input type="file" id="prf_photo" accept="image/*" ' +
@@ -8736,7 +8781,8 @@ function viewCatalogue() {
       var cls = stt === "Received" ? "Won" : (stt === "Raised" ? "due" : "teal");
       var its = [];
       try { its = JSON.parse(r.itemsJson || "[]"); } catch (e) { }
-      h += '<div class="card"><h3>' + esc(r.returnNo) + ' <span class="pill ' + cls + '">' + esc(stt) + '</span></h3>' +
+      h += '<div class="card"><h3>' + esc(r.returnNo) + ' <span class="pill ' + cls + '">' + esc(stt) + '</span>' +
+        (chProofAny(r).has ? ' ' + proofSealFor(r) : '') + '</h3>' +
         '<div class="meta">' + esc(r.customerName || "") + (r.site ? ' &middot; ' + esc(r.site) : "") +
         (r.challanNo ? '<br>Against challan ' + esc(r.challanNo) : "") +
         '<br>' + its.map(function (i) { return esc(i.desc) + " x" + i.qty; }).join(", ") +
@@ -8747,6 +8793,9 @@ function viewCatalogue() {
         '<div class="acts">' +
         (stt === "Raised" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Picked up">Picked up</button>' : "") +
         (stt === "Picked up" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received">Received at godown</button>' : "") +
+        /* v6.9.241 - once the material is back in, the paper signed for it can be attached */
+        (stt === "Received" && !chProofAny(r).has
+          ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '">Attach goods-in receipt</button>' : "") +
         (S.role === "admin" ? '<button class="btn sm ghost" data-act="cx-open" data-tab="returns" data-id="' + esc(r.id) + '" style="color:#b91c1c">Cancel</button>' : "") +
         '</div></div>';
     });
@@ -10317,9 +10366,16 @@ function viewCatalogue() {
       h += '<div class="card" style="border-color:#fecaca;background:#fff7f7">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
         '<h3 style="margin:0">' + esc(r.returnNo) + ' <span class="pill due" style="background:#fee2e2;color:#b91c1c">Return</span> <span class="pill teal">' + esc(d10(r.createdAt)) + '</span>' +
-        (r.challanNo ? ' <span style="font-size:12px;color:#64748b">vs ' + esc(r.challanNo) + '</span>' : '') + '</h3>' +
+        (r.challanNo ? ' <span style="font-size:12px;color:#64748b">vs ' + esc(r.challanNo) + '</span>' : '') +
+        /* v6.9.241 - a return carries a signed goods-in receipt exactly as a delivery does */
+        ' <span style="display:inline-block;vertical-align:middle;margin-top:3px">' +
+          (chProofAny(r).has ? proofSealFor(r, 40) : noProofPill()) + '</span>' +
+        '</h3>' +
         rSite +
         '<div style="text-align:right;font-size:12px;color:#b91c1c;flex:0 0 auto">Credit to client<br><b>&minus;' + money(rSub) + '</b></div></div>' +
+        (!chProofAny(r).has && canSee("returns")
+          ? '<div class="acts" style="margin-top:6px"><button class="btn sm" data-act="ch-proof" data-id="' + esc(r.id) + '" style="background:#b91c1c;border-color:#b91c1c" title="Photograph the paper signed at the godown when this material was counted back in">&#128206; Attach goods-in receipt</button></div>'
+          : '') +
         '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #fecaca">' +
         '<thead><tr style="background:#7f1d1d;color:#fff">' +
         '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product returned</th>' +
@@ -10480,20 +10536,17 @@ function viewCatalogue() {
         F("bold"); doc.setFontSize(7.4); doc.setTextColor(isRet ? 185 : 13, isRet ? 28 : 118, isRet ? 28 : 108);
         doc.text(isRet ? "GOODS-IN RECEIPT" : "SIGNED RECEIPT", L, y);
         if (!r.has) {
-          /* A challan with no paper behind it is a real gap and is said in red. A RETURN has
-             no way yet of carrying one, so accusing it in red would be shouting at something
-             nobody can fix - it is stated plainly in grey instead. */
-          if (isRet) {
-            F("normal"); doc.setFontSize(7.6); doc.setTextColor(120, 130, 145);
-            doc.text("Booked in at the godown. No separate receipt document is kept for a return.", L, y + 6.5);
-            y += 12;
-          } else {
-            F("normal"); doc.setFontSize(8.6); doc.setTextColor(185, 28, 28);
-            doc.text("No signed receipt has been attached for this delivery.", L, y + 6.5);
-            F("normal"); doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
-            doc.text("The delivery is recorded and counted in this account; only the paper is missing.", L, y + 11.5);
-            y += 17;
-          }
+          /* v6.9.241 - a return can now carry its own signed paper, so a missing one is a
+             real gap on both sides and is said in red on both. */
+          F("normal"); doc.setFontSize(8.6); doc.setTextColor(185, 28, 28);
+          doc.text(isRet
+            ? "No signed goods-in receipt has been attached for this return."
+            : "No signed receipt has been attached for this delivery.", L, y + 6.5);
+          F("normal"); doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
+          doc.text(isRet
+            ? "The return is booked in and credited in this account; only the paper is missing."
+            : "The delivery is recorded and counted in this account; only the paper is missing.", L, y + 11.5);
+          y += 17;
           return;
         }
         var top = y + 4, drewH = 0;
@@ -10510,7 +10563,7 @@ function viewCatalogue() {
         var tx = drewH ? L + 52 : L;
         var ty = top + 5;
         F("bold"); doc.setFontSize(9); doc.setTextColor(isRet ? 185 : 13, isRet ? 28 : 118, isRet ? 28 : 108);
-        doc.text(isRet ? "Received back at the godown" : "Received at site", tx, ty); ty += 5.5;
+        doc.text(isRet ? "Counted in at the godown" : "Received at site", tx, ty); ty += 5.5;
         F("normal"); doc.setFontSize(8); doc.setTextColor(17, 34, 45);
         if (r.by) { doc.text("Signed by: " + pdfSafe(String(r.by)), tx, ty); ty += 5; }
         var p0 = challanProof(c.id);
