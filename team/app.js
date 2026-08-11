@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.243";
+  var APP_VERSION = "6.9.244";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -10008,6 +10008,49 @@ function viewCatalogue() {
   }
   /* Written as a statement of account, not a warning, because a man about to release sixty
      thousand rupees of material deserves the numbers rather than a red triangle. */
+  /* ---- WHAT THE COLLECTION APP KNOWS (v6.9.244) ----
+     Collection is not really enforced on the telephone. It is enforced here, at the one
+     moment the material has not left yet. The Collection app records every call and every
+     date a man names, as append-only audit rows; this reads them back so the person about
+     to release forty thousand rupees of pipe can see that the same man has already named
+     two dates and kept neither.
+     Read-only, cached per paint, and it costs nothing for a client who has never been
+     chased - there is simply nothing to find. */
+  var _colCache = null;
+  function collectHistory(name) {
+    if (!_colCache) {
+      _colCache = {};
+      (S.data.audit || []).forEach(function (r) {
+        if (!r || String(r.action || "") !== "collect:followup") return;
+        var d = {};
+        try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+        var k = String(d.client || "").trim().toLowerCase();
+        if (!k) return;
+        (_colCache[k] = _colCache[k] || []).push({
+          at: String(r.createdAt || ""), by: r.actor || "",
+          date: String(d.promised || ""), note: String(d.note || ""), outcome: String(d.outcome || "")
+        });
+      });
+      Object.keys(_colCache).forEach(function (k) {
+        _colCache[k].sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
+      });
+    }
+    var list = _colCache[String(name || "").trim().toLowerCase()] || [];
+    var t = today(), broken = 0, live = null;
+    var pays = (S.data.payments || []).filter(function (p) {
+      return String(p.client || "").trim().toLowerCase() === String(name || "").trim().toLowerCase();
+    }).map(function (p) { return String(p.date || p.createdAt || "").slice(0, 10); }).filter(Boolean);
+    list.forEach(function (f) {
+      if (!f.date) return;
+      var from = String(f.at).slice(0, 10), to = addDays(f.date, 3);
+      var paid = pays.some(function (p) { return p >= from && p <= to; });
+      if (paid) return;
+      if (f.date < t) broken++;
+      else if (!live || f.date < live.date) live = f;
+    });
+    return { calls: list.length, broken: broken, live: live, last: list[0] || null };
+  }
+
   function creditGateText(g, ch) {
     var L = [];
     L.push("CREDIT STOP - " + g.name);
@@ -10022,6 +10065,18 @@ function viewCatalogue() {
     L.push("Standing at his site if released . . " + moneyAscii(g.exposure));
     L.push(g.limit > 0 ? "His credit limit . . . . . . . . . . " + moneyAscii(g.limit)
                        : "No credit limit is set for him.");
+    /* v6.9.244 - and what he has actually been saying when he is rung */
+    var _ch = collectHistory(g.name);
+    if (_ch.calls) {
+      L.push("");
+      L.push("What he says when he is rung:");
+      if (_ch.broken > 0) {
+        L.push("  He has named " + _ch.broken + " date" + (_ch.broken === 1 ? "" : "s") + " and kept none of them.");
+      }
+      if (_ch.live) L.push("  He has now said " + fullDate(_ch.live.date) + ".");
+      if (_ch.last && _ch.last.note) L.push("  Last note: " + pdfSafe(_ch.last.note));
+      if (!_ch.broken && !_ch.live) L.push("  " + _ch.calls + " call" + (_ch.calls === 1 ? "" : "s") + " logged, no date named.");
+    }
     L.push("");
     L.push("Why you are being stopped: " + g.reasons.join(", and ") + ".");
     L.push("");
@@ -17561,7 +17616,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _prfCache = null; _mnoCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null;
+    _clDueCache = null; _clStageCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
