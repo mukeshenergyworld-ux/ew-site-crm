@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.234";
+  var APP_VERSION = "6.9.235";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8693,9 +8693,10 @@ function viewCatalogue() {
     }).map(function (c) { return c.challanNo; });
     return '<h2>Register material return</h2>' +
       '<p class="sub">Material coming back from a client. The original challan is not changed.</p>' +
+      ((z && z.challanNo) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#b91c1c">Against challan <b>' + esc(z.challanNo) + '</b>, opened from that client\u2019s hisab. Pick what is coming back and register it \u2014 the challan itself stays as it is.</div>' : "") +
       strictClientField("r_client", (S.rt && S.rt.client) || "") +
-      '<label>Site (optional)</label><input id="r_site" placeholder="Site / project"/>' +
-      '<label>Against challan (optional)</label><input id="r_ch" list="chlist" placeholder="Challan number"/>' +
+      '<label>Site (optional)</label><input id="r_site" placeholder="Site / project" value="' + esc((z && z.site) || "") + '"/>' +
+      '<label>Against challan (optional)</label><input id="r_ch" list="chlist" placeholder="Challan number" value="' + esc((z && z.challanNo) || "") + '"/>' +
       '<datalist id="chlist">' + chs.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
       '<label>Reason</label><select id="r_reason">' +
       opts(["Excess at site", "Damaged", "Wrong item supplied", "Client cancelled", "Other"], "Excess at site") + '</select>' +
@@ -9883,6 +9884,24 @@ function viewCatalogue() {
       money(ex - t.limit) + ' over limit</span>';
   }
 
+  /* ---- RAISE THE NEXT DELIVERY WHERE YOU CHECKED THE LAST ONE (v6.9.235) ----
+     Owner's instruction: while looking at a client's hisab you should be able to raise
+     the next challan, or book material coming back, without walking over to Deliveries
+     and typing the client's name again. The Deliveries tab is untouched - this is a
+     second door into the very same two forms, opened with this client already filled in.
+     Nothing is written until Create / Register is pressed, exactly as before. */
+  function hisabNewBar(cl) {
+    var canC = canSee("challans"), canR = canSee("returns");
+    if (!canC && !canR) return "";
+    return '<div class="card" style="border-color:#bfdbfe;background:#eff6ff;padding:10px 12px">' +
+      '<div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:8px">' +
+      '<span class="grow" style="font-size:12.5px;color:#1e40af;min-width:140px">Raise the next one for <b>' + esc(cl) +
+        '</b> from here \u2014 the form opens with this client already filled in.</span>' +
+      (canC ? '<button class="btn sm" data-act="hisab-ch" data-n="' + esc(cl) + '">+ New challan</button>' : '') +
+      (canR ? '<button class="btn sm ghost" data-act="hisab-rt" data-n="' + esc(cl) + '">+ Register return</button>' : '') +
+      '</div></div>';
+  }
+
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
     var cl = hisabResolve(S.q);
@@ -9998,6 +10017,7 @@ function viewCatalogue() {
        Added to h and not to one branch, because a man with an opening balance and no
        received challan yet is EXACTLY the man this question is about. */
     h += hisabAskCard(cl);
+    h += hisabNewBar(cl);
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }))
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
     if (!chs.length) {
@@ -10096,6 +10116,15 @@ function viewCatalogue() {
         siteBlock +
         billBlock + '</div>' +
         '<div class="acts" style="align-items:center;margin-top:6px"><button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '">' + (_chExp ? '&#9662; Hide items' : '&#9656; Show ' + priced.length + ' item(s)') + '</button><div class="grow"></div><span style="font-size:13px;color:#334155">Total <b>' + money(chTotal) + '</b></span></div>' +
+        /* v6.9.235 - the old challan you are looking at is the fastest way to raise the
+           next one. Copy repeats the same client, site and products into a NEW challan;
+           the old one is never touched. */
+        ((canSee("challans") || canSee("returns"))
+          ? '<div class="acts" style="margin-top:6px;flex-wrap:wrap;gap:6px">' +
+            (canSee("challans") ? '<button class="btn sm ghost" data-act="hisab-chcopy" data-id="' + esc(c.id) + '" title="Start a new challan with this client, site and the same products">&#8635; Copy to new challan</button>' : '') +
+            (canSee("returns") ? '<button class="btn sm ghost" data-act="hisab-rtch" data-id="' + esc(c.id) + '" title="Book material coming back against this challan">&#8592; Return against this</button>' : '') +
+            '</div>'
+          : '') +
         (_chExp ? _ctbl : '') + '</div>';
     });
     /* v6.9.121: booked-in material returns show here like a challan in reverse — a red card whose
@@ -16101,6 +16130,7 @@ function viewCatalogue() {
       '<p class="sub">The printed challan carries no prices and no pictures - it is a delivery note, not a quote.</p>' +
       (isEdit && z.editStatus === "Approved" ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#b45309">This challan is <b>Approved</b>. Saving a change sends it back to <b>Draft</b> so it must be approved again before dispatch - approval releases material and can\'t carry over to changed contents.</div>' : "") +
       ((z && z.fromQuote) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#0d9488">Pre-filled from quote <b>' + esc(z.fromQuote) + '</b> - review the products and discount, then create.</div>' : "") +
+      ((z && z.copyOf) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#1d4ed8">Copied from challan <b>' + esc(z.copyOf) + '</b> \u2014 same client, site and products. Check the quantities, then create. <b>The old challan is not changed</b>, and this becomes a new challan with its own number.</div>' : "") +
       '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, (z && z.loc) || LOCATIONS[0]) + '</select>' +
       strictClientField("m_client", (S.ch && S.ch.client) || "") +
       '<label>Site (optional)</label><input id="m_site" list="sitelist" placeholder="Site / project" value="' + esc((z && z.site) || "") + '"/>' +
@@ -19743,6 +19773,52 @@ function viewCatalogue() {
 
     if (act === "ch-new") {
       S.ch = { brand: "", family: "", items: [] }; S.modal = modalChallan(); render(); return; }
+    /* ---- v6.9.235: the two doors out of a client's hisab into the delivery forms ----
+       Same forms, same save path, same draft-and-confirm. Only the starting values differ. */
+    if (act === "hisab-ch" || act === "hisab-rt") {
+      var _hn = t.getAttribute("data-n") || "";
+      if (!clientByName(_hn)) { toast("That client is not in the client list."); return; }
+      var _hc = clientByName(_hn) || {};
+      if (act === "hisab-ch") {
+        if (!canSee("challans")) { toast("Challans are not open to you."); return; }
+        S.ch = { brand: "", family: "", items: [], client: _hn, loc: _hc.location || "" };
+        S.modal = modalChallan();
+      } else {
+        if (!canSee("returns")) { toast("Material returns are not open to you."); return; }
+        S.rt = { brand: "", family: "", items: [], client: _hn };
+        S.modal = modalReturn();
+      }
+      render(); return;
+    }
+    if (act === "hisab-chcopy" || act === "hisab-rtch") {
+      var _scid = t.getAttribute("data-id");
+      var _sc = (S.data.challans || []).filter(function (c) { return c.id === _scid; })[0];
+      if (!_sc) { toast("That challan is no longer in the book."); return; }
+      if (act === "hisab-rtch") {
+        if (!canSee("returns")) { toast("Material returns are not open to you."); return; }
+        S.rt = { brand: "", family: "", items: [], client: _sc.customerName,
+                 site: _sc.site || "", challanNo: _sc.challanNo || "" };
+        S.modal = modalReturn(); render(); return;
+      }
+      if (!canSee("challans")) { toast("Challans are not open to you."); return; }
+      /* Copy the LINES, never the identity: no id, no challan number, no approval, no
+         receipt. It is a fresh draft that happens to start with the same material. */
+      var _ci = []; try { _ci = JSON.parse(_sc.itemsJson || "[]"); } catch (e) { _ci = []; }
+      var _cc = clientByName(_sc.customerName) || {};
+      var _items = _ci.map(function (i) {
+        var _p = PRODUCTS.filter(function (pp) { return pp.code === i.code; })[0] || {};
+        return { code: i.code, desc: i.desc || _p.desc || i.code,
+                 unit: i.unit || _p.unit || "No's", qty: Number(i.qty) || 0 };
+      }).filter(function (i) { return i.code && i.qty > 0; });
+      S.ch = { brand: "", family: "", client: _sc.customerName, site: _sc.site || "",
+               loc: _sc.location || _cc.location || "", assoc: _sc.associate || "",
+               copyOf: _sc.challanNo || "", items: _items };
+      S.modal = modalChallan(); render();
+      toast(_items.length
+        ? ("Copied " + _items.length + " line(s) from " + (_sc.challanNo || "that challan") + " \u2014 nothing is saved until you press Create.")
+        : "That challan has no product lines to copy \u2014 the client and site are filled in.");
+      return;
+    }
     if (act === "li-add") {
       var box = el("m_lines");
       box.insertAdjacentHTML("beforeend", lineRow(box.children.length, "", "", ""));
