@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.239";
+  var APP_VERSION = "6.9.240";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -10354,7 +10354,9 @@ function viewCatalogue() {
       '<div class="grow"></div>' +
       (bal > 0 && canSee("payments") ? '<button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '">&#8377; Payment received</button>' : '') +
       '<button class="btn sm ghost" data-act="bill-wa">WhatsApp statement</button>' +
-      '<button class="btn sm ghost" data-act="bill-pdf">Download PDF</button>' +
+      '<button class="btn sm ghost" data-act="bill-pdf">Download PDF (ticked)</button>' +
+      /* v6.9.240 - everything, in date order, without touching the ticks */
+      '<button class="btn sm ghost" data-act="bill-pdf" data-all="1" title="Every received challan and every booked-in return, in date order, whatever is ticked">Download all</button>' +
       '</div></div>';
     h += serviceLedgerCard(cl);
     return h;
@@ -10405,9 +10407,12 @@ function viewCatalogue() {
     });
   }
 
-  function hisabPdf(cl) {
+  /* v6.9.240 - `all` ignores the ticks and takes every received challan, for the one-press
+     "download everything" the owner asked for. The ticks are not touched, so the screen is
+     exactly as he left it when the file has been made. */
+  function hisabPdf(cl, all) {
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }));
-    var sel = chs.filter(function (c) { return S.billSel[c.id] !== false; })
+    var sel = chs.filter(function (c) { return all || S.billSel[c.id] !== false; })
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
     var allNet = chs.reduce(function (a, c) { return a + pricedLines(c, cl).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
     /* The statement uses its OWN compact header (not the shared commPdfBase): a shorter band,
@@ -10418,7 +10423,9 @@ function viewCatalogue() {
        memory enough to reload the tab (which is what signed people out). Helvetica builds the
        statement in a blink at ~30KB. The trade is the rupee symbol shows as "Rs." here. */
     var perPage = hisabPerPage();
-    return (perPage ? thumbSizes(sel) : Promise.resolve({})).then(function (TSZ) {
+    /* returns travel in the same stream now, so their receipts are measured too */
+    var _measure = sel.concat(clientReturns(cl));
+    return (perPage ? thumbSizes(_measure) : Promise.resolve({})).then(function (TSZ) {
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
       var uni = false;
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
@@ -10464,20 +10471,29 @@ function viewCatalogue() {
          that came back, who signed it, when it was recorded, and where the full document
          lives. When nothing was ever attached it says so in red rather than leaving a blank
          space that reads like the paper is simply missing from this print. */
-      var receiptBlock = function (c) {
+      var receiptBlock = function (c, isRet) {
         var r = chProofAny(c);
         if (y + 56 > 282) { doc.addPage(); y = 20; }
         y += 4;
         doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3);
         doc.line(L, y, R, y); y += 6;
-        F("bold"); doc.setFontSize(7.4); doc.setTextColor(13, 118, 108);
-        doc.text("SIGNED RECEIPT", L, y);
+        F("bold"); doc.setFontSize(7.4); doc.setTextColor(isRet ? 185 : 13, isRet ? 28 : 118, isRet ? 28 : 108);
+        doc.text(isRet ? "GOODS-IN RECEIPT" : "SIGNED RECEIPT", L, y);
         if (!r.has) {
-          F("normal"); doc.setFontSize(8.6); doc.setTextColor(185, 28, 28);
-          doc.text("No signed receipt has been attached for this delivery.", L, y + 6.5);
-          F("normal"); doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
-          doc.text("The delivery is recorded and counted in this account; only the paper is missing.", L, y + 11.5);
-          y += 17;
+          /* A challan with no paper behind it is a real gap and is said in red. A RETURN has
+             no way yet of carrying one, so accusing it in red would be shouting at something
+             nobody can fix - it is stated plainly in grey instead. */
+          if (isRet) {
+            F("normal"); doc.setFontSize(7.6); doc.setTextColor(120, 130, 145);
+            doc.text("Booked in at the godown. No separate receipt document is kept for a return.", L, y + 6.5);
+            y += 12;
+          } else {
+            F("normal"); doc.setFontSize(8.6); doc.setTextColor(185, 28, 28);
+            doc.text("No signed receipt has been attached for this delivery.", L, y + 6.5);
+            F("normal"); doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
+            doc.text("The delivery is recorded and counted in this account; only the paper is missing.", L, y + 11.5);
+            y += 17;
+          }
           return;
         }
         var top = y + 4, drewH = 0;
@@ -10493,8 +10509,8 @@ function viewCatalogue() {
         }
         var tx = drewH ? L + 52 : L;
         var ty = top + 5;
-        F("bold"); doc.setFontSize(9); doc.setTextColor(13, 118, 108);
-        doc.text("Received at site", tx, ty); ty += 5.5;
+        F("bold"); doc.setFontSize(9); doc.setTextColor(isRet ? 185 : 13, isRet ? 28 : 118, isRet ? 28 : 108);
+        doc.text(isRet ? "Received back at the godown" : "Received at site", tx, ty); ty += 5.5;
         F("normal"); doc.setFontSize(8); doc.setTextColor(17, 34, 45);
         if (r.by) { doc.text("Signed by: " + pdfSafe(String(r.by)), tx, ty); ty += 5; }
         var p0 = challanProof(c.id);
@@ -10513,17 +10529,17 @@ function viewCatalogue() {
         }
         y = Math.max(top + drewH, ty) + 4;
       };
-      sel.forEach(function (c, ci) {
-        /* v6.9.239 - in per-page mode every challan starts on a clean sheet. The FIRST one
-           still sits below the dark banner on page one; only the added pages start at the
-           top of a bare sheet. */
-        if (perPage) {
-          if (ci) { doc.addPage(); y = pageMark(); }
-          else { y = HB + 9; }
-        }
-        else if (y > 262) { doc.addPage(); y = 20; }
+      /* ================= ONE STREAM, IN THE ORDER THINGS HAPPENED (v6.9.240) ==========
+         Owner's instruction: a material return is not an appendix to the account, it is an
+         event in it. Challans and booked-in returns are now merged and printed in DATE
+         order, the return still in red exactly as before, and in per-page mode a return
+         gets a page and a receipt block of its own like any delivery. */
+      var drawChallan = function (c) {
         F("bold"); doc.setFontSize(8.6); doc.setTextColor(13, 118, 108);
-        doc.text(String(c.challanNo) + "   ·   " + fullDate(c.createdAt), L, y);
+        /* v6.9.240 - the paper book's number prints beside the app's own */
+        var _bk = manualNoFor(c);
+        doc.text(String(c.challanNo) + (_bk ? "   \u00b7   Book no " + pdfSafe(String(_bk)) : "") +
+          "   \u00b7   " + fullDate(c.createdAt), L, y);
         /* v6.9.119: if the challan carries a Site/project, print it right-aligned on the same
            header line so the statement shows which site each challan belongs to. */
         if (c.site && String(c.site).trim()) {
@@ -10557,25 +10573,21 @@ function viewCatalogue() {
           doc.text(RS(frt), cA, y, { align: "right" }); y += 4.4;
         }
         grand += chTotal; goodsGrand += sub;
-        /* Challan total in a shaded band, text VERTICALLY CENTERED in the band (was sitting at
-           the top of the row). */
+        /* Challan total in a shaded band, text VERTICALLY CENTERED in the band. */
         var tbY = y - 3.4, tbH = 6.4, tMid = tbY + tbH / 2 + 1.35;
         doc.setFillColor(241, 245, 249); doc.rect(L, tbY, R - L, tbH, "F");
         F("bold"); doc.setFontSize(8.2); doc.setTextColor(17, 34, 45);
         doc.text("Challan total", cN, tMid, { align: "right" }); doc.text(RS(chTotal), cA, tMid, { align: "right" });
         y = tbY + tbH + 3;
-        if (perPage) receiptBlock(c);
-      });
-      if (!sel.length) { doc.setFontSize(10); doc.setTextColor(120, 120, 120); doc.text("No challans selected.", L, y); y += 6; }
-      /* v6.9.122: booked-in material returns printed in the body as "challan in reverse" blocks — a
-         red header, each line a negative amount, then a Return total — so the statement itemises what
-         came back, matching the HISAB screen. Shown for every Received return (not tied to the ticks). */
-      var retList = clientReturns(cl).slice().sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
-      if (perPage && retList.length) { doc.addPage(); y = pageMark(); }
-      retList.forEach(function (r) {
-        if (y > 258) { doc.addPage(); y = 20; }
+      };
+
+      /* v6.9.122: a booked-in return printed as a challan in reverse - a red header, every
+         line a negative amount, then a Return total. */
+      var drawReturn = function (r) {
         F("bold"); doc.setFontSize(8.6); doc.setTextColor(185, 28, 28);
-        doc.text("RETURN  " + String(r.returnNo) + "   ·   " + fullDate(r.createdAt), L, y);
+        doc.text("RETURN  " + String(r.returnNo) +
+          (r.challanNo ? "   \u00b7   against " + String(r.challanNo) : "") +
+          "   \u00b7   " + fullDate(r.createdAt), L, y);
         if (r.site && String(r.site).trim()) {
           F("normal"); doc.setFontSize(7.6); doc.setTextColor(150, 110, 110);
           doc.text("Site: " + pdfSafe(String(r.site).trim()), R, y, { align: "right" });
@@ -10612,8 +10624,31 @@ function viewCatalogue() {
         F("bold"); doc.setFontSize(8.2); doc.setTextColor(185, 28, 28);
         doc.text("Return total", cN, rMid, { align: "right" }); doc.text("-" + RS(rsub), cA, rMid, { align: "right" });
         y = rbY + rbH + 3;
+      };
+
+      /* Booked-in returns ("Received" only), which now travel in the same stream as the
+         challans instead of being appended after them. */
+      var retList = clientReturns(cl).slice();
+      if (!sel.length && !retList.length) {
+        doc.setFontSize(10); doc.setTextColor(120, 120, 120);
+        doc.text("No challans selected.", L, y); y += 6;
+      }
+      var stream = sel.map(function (c) { return { t: "C", d: String(c.createdAt || ""), c: c }; })
+        .concat(retList.map(function (r) { return { t: "R", d: String(r.createdAt || ""), r: r }; }))
+        .sort(function (a, b) { return a.d.localeCompare(b.d); });
+
+      stream.forEach(function (it, i) {
+        /* in per-page mode each entry starts on a clean sheet. The FIRST one still sits
+           below the dark banner on page one; only the added pages start at the top. */
+        if (perPage) {
+          if (i) { doc.addPage(); y = pageMark(); }
+          else { y = HB + 9; }
+        }
+        else if (y > 262) { doc.addPage(); y = 20; }
+        if (it.t === "C") { drawChallan(it.c); if (perPage) receiptBlock(it.c, false); }
+        else { drawReturn(it.r); if (perPage) receiptBlock(it.r, true); }
       });
-      if (y > 250 || (perPage && sel.length)) {
+      if (y > 250 || (perPage && stream.length)) {
         doc.addPage(); y = perPage ? pageMark() : 20;
       }
       var gst = S.billGst ? Math.round(grand * 0.18) : 0, paid = clientLedger(cl).paid;
@@ -18621,8 +18656,12 @@ function viewCatalogue() {
       return;
     }
     if (act === "bill-pdf") {
-      var pcl = hisabResolve(S.q); toast("Building PDF...");
-      loadLogo().then(function () { return hisabPdf(pcl); }).then(function (d) { d.save(pcl.replace(/[^\w.-]/g, "_") + "_hisab.pdf"); }).catch(function () { toast("Could not build the PDF."); });
+      var pcl = hisabResolve(S.q);
+      var pAll = t.getAttribute("data-all") === "1";
+      toast(pAll ? "Building the full hisab..." : "Building PDF...");
+      loadLogo().then(function () { return hisabPdf(pcl, pAll); })
+        .then(function (d) { d.save(pcl.replace(/[^\w.-]/g, "_") + "_hisab" + (pAll ? "_all" : "") + ".pdf"); })
+        .catch(function () { toast("Could not build the PDF."); });
       return;
     }
     if (act === "backup-copy") {
