@@ -1,0 +1,16 @@
+{
+  "name": "Energy World — Collection",
+  "short_name": "EW Collection",
+  "description": "Payment follow-up for Energy World: who owes what, who promised when, and what was said last time.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f1f5f9",
+  "theme_color": "#7f1d1d",
+  "icons": [
+    { "src": "../icons/ew-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "../icons/ew-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "../icons/ew-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

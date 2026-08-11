@@ -1,0 +1,915 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#7f1d1d"/>
+<title>Energy World — Collection</title>
+<link rel="manifest" href="manifest.webmanifest"/>
+<link rel="apple-touch-icon" href="../icons/ew-180.png"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:#f1f5f9;color:#0f172a;padding-bottom:env(safe-area-inset-bottom)}
+a{color:#0f766e}
+.wrap{max-width:760px;margin:0 auto;padding:0 12px 90px}
+.top{background:#7f1d1d;color:#fff;padding:calc(env(safe-area-inset-top) + 12px) 14px 12px;position:sticky;top:0;z-index:20;
+  box-shadow:0 2px 10px rgba(0,0,0,.15)}
+.top .t1{display:flex;align-items:center;gap:10px}
+.top h1{margin:0;font-size:16px;font-weight:800;letter-spacing:.02em;flex:1}
+.top .who{font-size:11.5px;color:#fecaca}
+.btn{appearance:none;border:1px solid #7f1d1d;background:#7f1d1d;color:#fff;border-radius:9px;
+  padding:9px 13px;font-size:13.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn:active{transform:translateY(1px)}
+.btn.ghost{background:#fff;color:#7f1d1d}
+.btn.sm{padding:6px 10px;font-size:12.5px;border-radius:8px}
+.btn.grn{background:#0f766e;border-color:#0f766e;color:#fff}
+.btn.gry{background:#fff;border-color:#cbd5e1;color:#334155}
+.btn.full{width:100%;justify-content:center;padding:12px;font-size:15px}
+.btn[disabled]{opacity:.55}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:12px 13px;margin:10px 0;
+  box-shadow:0 1px 2px rgba(15,23,42,.05)}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.stat{flex:1 1 46%;min-width:150px;background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:11px 13px}
+.stat .n{font-size:21px;font-weight:800;letter-spacing:-.02em}
+.stat .l{font-size:11.5px;color:#64748b;margin-top:2px}
+.stat.bad .n{color:#b91c1c}
+.stat.good .n{color:#0f766e}
+.chips{display:flex;gap:7px;overflow-x:auto;padding:4px 0 8px;-webkit-overflow-scrolling:touch}
+.chip{white-space:nowrap;border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:999px;
+  padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer;flex:0 0 auto}
+.chip.on{background:#7f1d1d;border-color:#7f1d1d;color:#fff}
+.chip .c{opacity:.7;font-weight:600}
+input,select,textarea{width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:9px;
+  font-size:16px;font-family:inherit;background:#fff;color:#0f172a}
+label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4px}
+.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;
+  background:#f1f5f9;color:#475569;vertical-align:middle}
+.pill.red{background:#fee2e2;color:#b91c1c}
+.pill.amb{background:#fef3c7;color:#92400e}
+.pill.grn{background:#ccfbf1;color:#0f766e}
+.pill.blu{background:#dbeafe;color:#1d4ed8}
+.row{display:flex;gap:8px;align-items:center}
+.grow{flex:1;min-width:0}
+.acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+.muted{color:#64748b;font-size:12px}
+.big{font-size:19px;font-weight:800;letter-spacing:-.02em}
+.sheet{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:60;display:flex;align-items:flex-end}
+.sheet .inner{background:#fff;width:100%;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;
+  padding:16px 16px calc(env(safe-area-inset-bottom) + 20px);max-width:760px;margin:0 auto}
+.sheet h2{margin:0 0 3px;font-size:17px}
+.empty{text-align:center;color:#64748b;padding:26px 14px;font-size:13.5px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;background:#0f172a;color:#fff;
+  padding:11px 16px;border-radius:10px;font-size:13.5px;z-index:99;max-width:88%;box-shadow:0 6px 18px rgba(0,0,0,.3)}
+.login{max-width:340px;margin:9vh auto;background:#fff;border-radius:16px;padding:26px 22px;
+  box-shadow:0 10px 30px rgba(15,23,42,.14)}
+.login h1{margin:0 0 3px;font-size:19px;text-align:center}
+.login p{margin:0 0 16px;text-align:center;color:#64748b;font-size:13px}
+.bar{height:7px;border-radius:4px;background:#f1f5f9;overflow:hidden;margin-top:7px}
+.bar i{display:block;height:100%;background:#b91c1c}
+.sync{font-size:11px;color:#fecaca}
+.nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #e2e8f0;display:flex;z-index:30;
+  padding-bottom:env(safe-area-inset-bottom)}
+.nav button{flex:1;border:0;background:none;padding:9px 4px 10px;font-size:11px;font-weight:700;color:#94a3b8;cursor:pointer}
+.nav button.on{color:#7f1d1d}
+.nav button b{display:block;font-size:16px;line-height:1.25}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function () {
+  "use strict";
+  /* ==========================================================================
+     ENERGY WORLD - PAYMENT COLLECTION
+     A separate app, on purpose. The CRM does everything; this does one thing, so
+     the man who opens it in the morning is looking at exactly one question:
+     WHO DO I RING TODAY, AND WHAT DO I SAY.
+
+     It signs in with the same name and PIN as the Team CRM and talks to the same
+     server, so there is no second list of users, no second password to forget,
+     and no second copy of the money that can drift out of step. Nothing about the
+     CRM is changed by this app existing.
+
+     WHAT IT WRITES. Two things only:
+       - a PAYMENT, onto the same Payments sheet the CRM writes to, in the same
+         shape, so a receipt entered here is indistinguishable from one entered there;
+       - a FOLLOW-UP (a call, and the date he promised), as an append-only row on
+         the AUDIT sheet - the channel the delivery proofs already use. No column is
+         added to any tab, so no backend change and no redeployment were needed, and
+         a note can be corrected later without anything ever being overwritten.
+
+     WHO CAN DO WHAT. Admin and accounts see every client and may write. A sales
+     executive sees only the clients assigned to him and may not write - he can
+     still ring and send a reminder, because that is his job; recording money is not.
+     Anyone else is refused at the door.
+     ========================================================================== */
+
+  var APP_VERSION = "1.0.0";
+  var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
+  var STORE = "ew_collect_session";
+  var SNAP = "ew_collect_snap";
+  var CREDIT_DAYS = 30;                 /* the owner's terms: 30 days from delivery */
+  var CRM_URL = "../team/";
+
+  var S = { user: "", pin: "", role: "", data: null, tab: "list", filter: "all",
+            q: "", open: "", sheet: null, busy: false, syncAt: 0 };
+
+  /* ---------- tiny helpers ---------- */
+  function el(id) { return document.getElementById(id); }
+  function val(id) { var e = el(id); return e ? String(e.value || "").trim() : ""; }
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function money(n) {
+    var v = Math.round(Number(n) || 0), neg = v < 0;
+    return (neg ? "-" : "") + "₹" + Math.abs(v).toLocaleString("en-IN");
+  }
+  /* Lakhs, because that is how the amounts in this business are actually spoken. */
+  function shortMoney(n) {
+    var v = Math.round(Number(n) || 0), a = Math.abs(v), s = v < 0 ? "-" : "";
+    if (a >= 10000000) return s + "₹" + (a / 10000000).toFixed(2) + " Cr";
+    if (a >= 100000) return s + "₹" + (a / 100000).toFixed(2) + " L";
+    return money(v);
+  }
+  function today() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function addDays(ymd, n) {
+    var d = new Date(ymd + "T00:00:00");
+    d.setDate(d.getDate() + n);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function dstr(ymd) {
+    if (!ymd) return "";
+    var p = String(ymd).slice(0, 10).split("-");
+    if (p.length !== 3) return String(ymd);
+    return Number(p[2]) + " " + (MON[Number(p[1]) - 1] || "") + " " + p[0];
+  }
+  /* "41 days" is a number. "6 weeks" is a feeling. The man on the phone needs the feeling. */
+  function ageWords(d) {
+    if (d == null || d < 0) return "";
+    if (d === 0) return "today";
+    if (d === 1) return "1 day";
+    if (d < 31) return d + " days";
+    if (d < 62) return "over a month";
+    if (d < 365) return Math.floor(d / 30) + " months";
+    return "over a year";
+  }
+  var _toastT = null;
+  function toast(m) {
+    var t = el("toast");
+    if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "toast"; document.body.appendChild(t); }
+    t.textContent = m; t.style.display = "block";
+    clearTimeout(_toastT); _toastT = setTimeout(function () { t.style.display = "none"; }, 3400);
+  }
+
+  /* ---------- the server ---------- */
+  function api(action, extra) {
+    var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
+    return fetch(GAS, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json(); });
+  }
+
+  function num(v) {
+    if (typeof v === "number") return isFinite(v) ? v : 0;
+    var t = String(v == null ? "" : v).replace(/[^0-9.\-]/g, "");
+    var n = Number(t);
+    return isFinite(n) ? n : 0;
+  }
+  function d10(v) { return String(v == null ? "" : v).slice(0, 10); }
+  function daysBetween(from, to) {
+    if (!from || !to) return 0;
+    var a = Date.parse(from + "T00:00:00Z"), b = Date.parse(to + "T00:00:00Z");
+    if (!isFinite(a) || !isFinite(b)) return 0;
+    return Math.round((b - a) / 86400000);
+  }
+  function lower(s) { return String(s == null ? "" : s).trim().toLowerCase(); }
+
+  /* Net (post-discount) goods value of a challan, from the discount frozen on each
+     line when it was created. Mirrors the CRM's pricedLines exactly. */
+  function challanNet(c) {
+    var items = [];
+    try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+    var goods = items.reduce(function (s, i) {
+      var rate = num(i.rate), qty = num(i.qty);
+      var disc = (i.disc != null && i.disc !== "") ? num(i.disc) : 0;
+      return s + qty * Math.round(rate * (1 - disc / 100));
+    }, 0);
+    var freight = String(c.freightTo) === "Client" ? num(c.freight) : 0;
+    return goods + freight;
+  }
+
+  /* Value a booked-in return at the client's net price. The app is handed a
+     priced list by the caller when it has one; otherwise the stored amount. */
+  function returnNet(r, priceLine) {
+    var items = [];
+    try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { items = []; }
+    return items.reduce(function (s, i) {
+      return s + (priceLine ? priceLine(i, r) : 0);
+    }, 0);
+  }
+
+  /* Two challans carrying the same number are one challan. Defence against the
+     double-billing that has bitten this book before: the later row wins. */
+  function dedupe(list) {
+    var seen = {};
+    (list || []).slice().sort(function (a, b) {
+      return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+    }).forEach(function (c) { seen[String(c.challanNo || c.id)] = c; });
+    return Object.keys(seen).map(function (k) { return seen[k]; });
+  }
+
+  /* ---- ONE CLIENT'S POSITION ----
+     Returns everything the screen and the reminder need, and nothing it does not. */
+  function clientDue(opts) {
+    var client = opts.client || {};
+    var challans = dedupe((opts.challans || []).filter(function (c) {
+      return lower(c.customerName) === lower(client.name) &&
+             String(c.receiptReceived || "").toUpperCase() === "Y";
+    })).sort(function (a, b) { return d10(a.createdAt).localeCompare(d10(b.createdAt)); });
+
+    var payments = (opts.payments || []).filter(function (p) {
+      return lower(p.client) === lower(client.name);
+    }).sort(function (a, b) { return d10(a.date || a.createdAt).localeCompare(d10(b.date || b.createdAt)); });
+
+    var returns = (opts.returns || []).filter(function (r) {
+      return lower(r.customerName) === lower(client.name) &&
+             lower(r.status) === "received";
+    });
+
+    var today = opts.today;
+    var terms = num(opts.creditDays) || 30;
+
+    var opening = num(client.openingAmt);
+    var billed = challans.reduce(function (s, c) { return s + challanNet(c); }, 0);
+    var credited = returns.reduce(function (s, r) { return s + num(opts.returnValue ? opts.returnValue(r) : 0); }, 0);
+    var paid = payments.reduce(function (s, p) { return s + num(p.amount); }, 0);
+    var due = Math.round(opening + billed - credited - paid);
+
+    /* ---- FIFO: what the money that came in has already settled ----
+       The opening balance is the oldest thing he owes, so it is cleared first.
+       Returns credit the newest unpaid deliveries (goods came back, so the most
+       recent invoice is the one reduced) - that is deliberate: crediting the
+       oldest would make an old debt look settled when it is not. */
+    var pot = paid;
+    var openLeft = opening;
+    if (pot > 0) { var t0 = Math.min(pot, openLeft); openLeft -= t0; pot -= t0; }
+
+    var credit = credited;
+    var lines = challans.map(function (c) {
+      return { no: c.challanNo || "", ymd: d10(c.createdAt), amount: challanNet(c), left: challanNet(c), site: c.site || "" };
+    });
+    for (var i = lines.length - 1; i >= 0 && credit > 0; i--) {
+      var t1 = Math.min(credit, lines[i].left); lines[i].left -= t1; credit -= t1;
+    }
+    for (var j = 0; j < lines.length && pot > 0; j++) {
+      var t2 = Math.min(pot, lines[j].left); lines[j].left -= t2; pot -= t2;
+    }
+
+    var unpaid = lines.filter(function (l) { return l.left > 0.5; });
+    var oldest = unpaid.length ? unpaid[0].ymd : "";
+    var ageDays = oldest ? daysBetween(oldest, today) : 0;
+    /* how much of what he still owes is past the agreed term */
+    var overdue = unpaid.reduce(function (s, l) {
+      return s + (daysBetween(l.ymd, today) > terms ? l.left : 0);
+    }, 0);
+    /* An old-book balance is past due by definition - it predates the app - but it
+       carries no date, so it is reported on its own rather than given a false age. */
+    openLeft = Math.round(openLeft);
+
+    var lastPay = payments.length ? d10(payments[payments.length - 1].date || payments[payments.length - 1].createdAt) : "";
+
+    return {
+      name: client.name || "",
+      mobile: String(client.mobile || "").replace(/[^\d+]/g, ""),
+      owner: String(client.ownedBy || client.createdBy || "").trim(),
+      due: due,
+      billed: Math.round(billed), paid: Math.round(paid),
+      credited: Math.round(credited),
+      opening: Math.round(opening), oldBook: openLeft,
+      overdue: Math.round(overdue),
+      oldestUnpaid: oldest,
+      ageDays: ageDays,
+      lastPay: lastPay,
+      daysSincePay: lastPay ? daysBetween(lastPay, today) : -1,
+      challans: challans.length,
+      unpaid: unpaid
+    };
+  }
+
+  /* ---- WHO TO RING FIRST ----
+     Not simply the largest debt. A big sum a week old is a normal trade credit;
+     a smaller one four months old, with a promise already broken, is the money
+     that never comes back. The score is deliberately simple enough to explain to
+     the man being asked to make the calls. */
+  function chaseScore(row, today) {
+    var s = 0;
+    s += (row.overdue || 0) / 1000;                 /* every 1000 past term */
+    s += (row.oldBook || 0) / 1000;                 /* old-book money is past term by definition */
+    if (row.ageDays > 90) s *= 2.0;
+    else if (row.ageDays > 60) s *= 1.6;
+    else if (row.ageDays > 30) s *= 1.25;
+    if (row.promise) {
+      if (row.promise.date && row.promise.date < today) s *= 1.8;   /* he said a date and it passed */
+      else if (row.promise.date === today) s *= 1.5;                /* he said today */
+      else s *= 0.35;                                               /* a live promise - leave him be */
+    }
+    if (row.daysSincePay < 0 && row.due > 0) s *= 1.3;              /* never paid us anything */
+    return Math.round(s * 100) / 100;
+  }
+
+  /* Which bucket a client falls in, for the filter chips. One bucket each - the
+     first that fits, most urgent first, so no client is counted twice. */
+  function bucketOf(row, today) {
+    if (row.promise && row.promise.date) {
+      if (row.promise.date < today) return "broken";
+      if (row.promise.date === today) return "today";
+      return "promised";
+    }
+    if (row.oldBook > 0.5) return "oldbook";
+    if (row.overdue > 0.5) return "overdue";
+    return "current";
+  }
+
+  /* ---------- follow-ups: the call, and the date he promised ----------
+     Append-only audit rows, exactly like the delivery proofs. The newest row for a
+     client is his current position; every earlier one stays on the sheet as the
+     record of what was said before, which is the whole point when a man has
+     promised three times already. */
+  var _fuCache = null;
+  function followMap() {
+    if (_fuCache) return _fuCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "collect:followup") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var k = String(d.client || "").trim().toLowerCase();
+      if (!k) return;
+      var row = { at: String(r.createdAt || ""), by: r.actor || d.by || "",
+                  date: String(d.promised || ""), note: String(d.note || ""),
+                  outcome: String(d.outcome || "") };
+      (m[k] = m[k] || []).push(row);
+    });
+    Object.keys(m).forEach(function (k) {
+      m[k].sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
+    });
+    _fuCache = m;
+    return _fuCache;
+  }
+  function followFor(name) { return followMap()[String(name || "").trim().toLowerCase()] || []; }
+  function promiseFor(name) {
+    var l = followFor(name);
+    for (var i = 0; i < l.length; i++) if (l[i].date) return l[i];
+    return null;
+  }
+  function saveFollow(client, promised, note, outcome) {
+    _fuCache = null;
+    return api("teamSave", { tab: "audit", row: {
+      id: "F-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+      createdAt: new Date().toISOString(), actor: S.user || "",
+      action: "collect:followup", target: String(client || ""),
+      detail: JSON.stringify({ client: String(client || ""), promised: String(promised || ""),
+                               note: String(note || ""), outcome: String(outcome || ""), by: S.user || "" })
+    } });
+  }
+
+  /* ---------- the book, computed once per paint ---------- */
+  var _rowsCache = null;
+  function rows() {
+    if (_rowsCache) return _rowsCache;
+    var d = S.data || {};
+    var t = today();
+    /* a return is valued at the client's net price; the CRM prices it from the
+       catalogue, which this app does not carry, so the stored amount is used and
+       a return with no amount is worth nothing rather than a guess */
+    var retVal = function (r) { return EWnum(r.amount); };
+    var mine = (d.clients || []).filter(function (c) { return String(c.name || "").trim(); });
+    if (!seesAll()) {
+      var me = String(S.user || "").trim().toLowerCase();
+      mine = mine.filter(function (c) {
+        return String(c.ownedBy || c.createdBy || "").trim().toLowerCase() === me;
+      });
+    }
+    var out = mine.map(function (c) {
+      var r = clientDue({ client: c, challans: d.challans || [], payments: d.payments || [],
+                          returns: d.returns || [], today: t, creditDays: CREDIT_DAYS,
+                          returnValue: retVal });
+      r.promise = promiseFor(c.name);
+      r.follows = followFor(c.name).length;
+      r.bucket = bucketOf(r, t);
+      r.score = chaseScore(r, t);
+      return r;
+    }).filter(function (r) { return r.due > 500; });
+    out.sort(function (a, b) { return b.score - a.score || b.due - a.due; });
+    _rowsCache = out;
+    return out;
+  }
+  function EWnum(v) {
+    if (typeof v === "number") return isFinite(v) ? v : 0;
+    var n = Number(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
+    return isFinite(n) ? n : 0;
+  }
+  function seesAll() { return S.role === "admin" || S.role === "accounts"; }
+  function canWrite() { return seesAll(); }
+  function rowFor(name) {
+    var k = String(name || "").trim().toLowerCase();
+    return rows().filter(function (r) { return String(r.name).trim().toLowerCase() === k; })[0] || null;
+  }
+
+  var BUCKETS = [
+    ["all", "Everyone"],
+    ["today", "Promised today"],
+    ["broken", "Promise broken"],
+    ["overdue", "Past 30 days"],
+    ["oldbook", "Old book"],
+    ["promised", "Promised later"],
+    ["current", "Within terms"]
+  ];
+  function filtered() {
+    var list = rows(), f = S.filter, q = String(S.q || "").trim().toLowerCase();
+    if (f && f !== "all") list = list.filter(function (r) { return r.bucket === f; });
+    if (q) list = list.filter(function (r) { return String(r.name).toLowerCase().indexOf(q) >= 0; });
+    return list;
+  }
+
+  /* ================= SCREENS ================= */
+
+  function renderLogin(err) {
+    el("root").innerHTML =
+      '<div class="login">' +
+      '<h1>Energy World</h1>' +
+      '<p>Payment collection</p>' +
+      (err ? '<div class="pill red" style="display:block;text-align:center;padding:8px;margin-bottom:10px">' + esc(err) + '</div>' : '') +
+      '<label>Your name</label><input id="ln" autocomplete="username" placeholder="e.g. Vivek Verma" value="' + esc(S.user) + '"/>' +
+      '<label>Your PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Your Team CRM PIN"/>' +
+      '<div style="height:16px"></div>' +
+      '<button class="btn full" data-act="login">Sign in</button>' +
+      '<div class="muted" style="text-align:center;margin-top:14px">The same name and PIN as the Team CRM.<br>v' + APP_VERSION + '</div>' +
+      '</div>';
+    var lp = el("lp");
+    if (lp) lp.addEventListener("keyup", function (e) { if (e.key === "Enter") doLogin(); });
+  }
+
+  function header() {
+    var n = S.busy ? "syncing…" : (S.syncAt ? "updated " + new Date(S.syncAt).toTimeString().slice(0, 5) : "");
+    return '<div class="top"><div class="t1">' +
+      '<h1>Collection</h1>' +
+      '<div style="text-align:right"><div class="who">' + esc(S.user) + ' · ' + esc(S.role) +
+        (canWrite() ? '' : ' · view only') + '</div>' +
+      '<div class="sync">' + esc(n) + '</div></div>' +
+      '<button class="btn sm ghost" data-act="refresh" title="Pull the latest">&#8635;</button>' +
+      '</div></div>';
+  }
+
+  function statTiles() {
+    var l = rows(), t = today();
+    var tot = l.reduce(function (a, r) { return a + r.due; }, 0);
+    var over = l.reduce(function (a, r) { return a + r.overdue + r.oldBook; }, 0);
+    var due2day = l.filter(function (r) { return r.promise && r.promise.date === t; });
+    var broken = l.filter(function (r) { return r.promise && r.promise.date && r.promise.date < t; });
+    var promised = due2day.reduce(function (a, r) { return a + r.due; }, 0);
+    return '<div class="stats">' +
+      '<div class="stat bad"><div class="n">' + shortMoney(tot) + '</div><div class="l">Outstanding · ' + l.length + ' client' + (l.length === 1 ? '' : 's') + '</div></div>' +
+      '<div class="stat bad"><div class="n">' + shortMoney(over) + '</div><div class="l">Past ' + CREDIT_DAYS + ' days, or old book</div>' +
+        '<div class="bar"><i style="width:' + (tot > 0 ? Math.min(100, Math.round(over / tot * 100)) : 0) + '%"></i></div></div>' +
+      '<div class="stat good"><div class="n">' + shortMoney(promised) + '</div><div class="l">Promised for today · ' + due2day.length + '</div></div>' +
+      '<div class="stat ' + (broken.length ? 'bad' : '') + '"><div class="n">' + broken.length + '</div><div class="l">Promise already broken</div></div>' +
+      '</div>';
+  }
+
+  function chips() {
+    var l = rows(), c = {};
+    l.forEach(function (r) { c[r.bucket] = (c[r.bucket] || 0) + 1; });
+    return '<div class="chips">' + BUCKETS.map(function (b) {
+      var n = b[0] === "all" ? l.length : (c[b[0]] || 0);
+      if (!n && b[0] !== "all") return "";
+      return '<button class="chip' + (S.filter === b[0] ? ' on' : '') + '" data-act="filter" data-f="' + b[0] + '">' +
+        esc(b[1]) + ' <span class="c">' + n + '</span></button>';
+    }).join("") + '</div>';
+  }
+
+  function promiseLine(r, t) {
+    if (!r.promise || !r.promise.date) return "";
+    var p = r.promise;
+    if (p.date < t) return '<span class="pill red">Said ' + esc(dstr(p.date)) + ' — that day has passed</span>';
+    if (p.date === t) return '<span class="pill amb">Promised TODAY</span>';
+    return '<span class="pill blu">Promised ' + esc(dstr(p.date)) + '</span>';
+  }
+
+  function clientCard(r, t) {
+    var open = S.open === r.name;
+    var tone = (r.overdue > 0 || r.oldBook > 0) ? '#b91c1c' : '#0f172a';
+    return '<div class="card" style="padding:0;overflow:hidden">' +
+      '<div data-act="open" data-n="' + esc(r.name) + '" style="padding:11px 13px;cursor:pointer">' +
+      '<div class="row"><div class="grow">' +
+        '<div style="font-weight:800;font-size:14.5px">' + esc(r.name) + '</div>' +
+        '<div class="muted" style="margin-top:2px">' +
+          (r.oldestUnpaid ? 'Oldest unpaid ' + esc(ageWords(r.ageDays)) : 'No dated delivery') +
+          (r.oldBook > 0 ? ' · <b style="color:#b91c1c">' + money(r.oldBook) + ' old book</b>' : '') +
+          (r.lastPay ? ' · paid ' + esc(dstr(r.lastPay)) : ' · <b style="color:#b91c1c">never paid</b>') +
+        '</div>' +
+        '<div style="margin-top:5px">' + promiseLine(r, t) +
+          (r.owner ? ' <span class="pill">' + esc(r.owner) + '</span>' : '') + '</div>' +
+      '</div>' +
+      '<div style="text-align:right"><div class="big" style="color:' + tone + '">' + money(r.due) + '</div>' +
+        (r.overdue > 0 ? '<div class="muted" style="color:#b91c1c">' + money(r.overdue) + ' past term</div>' : '') +
+      '</div></div></div>' +
+      (open ? clientBody(r, t) : '') +
+      '</div>';
+  }
+
+  function clientBody(r, t) {
+    var h = '<div style="border-top:1px solid #e2e8f0;padding:11px 13px;background:#fafafa">';
+    h += '<div class="muted" style="margin-bottom:8px">' +
+      'Billed ' + money(r.billed + r.opening) + ' · received ' + money(r.paid) +
+      (r.credited > 0 ? ' · returns ' + money(r.credited) : '') +
+      ' · <b>' + r.challans + ' delivery' + (r.challans === 1 ? '' : ' notes') + '</b></div>';
+
+    if (r.unpaid && r.unpaid.length) {
+      h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:9px">' +
+        r.unpaid.slice(0, 6).map(function (u) {
+          var d = EWdays(u.ymd, t), late = d > CREDIT_DAYS;
+          return '<div class="row" style="padding:7px 10px;border-bottom:1px solid #f1f5f9">' +
+            '<div class="grow"><b style="font-size:12.5px">' + esc(u.no) + '</b>' +
+            '<div class="muted">' + esc(dstr(u.ymd)) + ' · ' + esc(ageWords(d)) + (late ? ' <b style="color:#b91c1c">past term</b>' : '') + '</div></div>' +
+            '<div style="font-weight:700;color:' + (late ? '#b91c1c' : '#0f172a') + '">' + money(u.left) + '</div></div>';
+        }).join("") +
+        (r.unpaid.length > 6 ? '<div class="muted" style="padding:7px 10px">and ' + (r.unpaid.length - 6) + ' more</div>' : '') +
+        '</div>';
+    }
+    if (r.oldBook > 0) {
+      h += '<div class="muted" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:8px 10px;margin-bottom:9px;color:#9a3412">' +
+        '<b>' + money(r.oldBook) + '</b> is brought forward from the old paper books. It carries no date, so it cannot be aged — but it is the oldest money he owes.</div>';
+    }
+
+    var fl = followFor(r.name);
+    if (fl.length) {
+      h += '<div style="margin-bottom:9px"><div class="muted" style="font-weight:700;margin-bottom:4px">What was said before</div>' +
+        fl.slice(0, 4).map(function (f) {
+          return '<div class="muted" style="padding:5px 0;border-top:1px solid #e2e8f0">' +
+            esc(dstr(String(f.at).slice(0, 10))) + ' · ' + esc(f.by || "") +
+            (f.date ? ' — said <b>' + esc(dstr(f.date)) + '</b>' : '') +
+            (f.outcome ? ' · ' + esc(f.outcome) : '') +
+            (f.note ? '<br><i>' + esc(f.note) + '</i>' : '') + '</div>';
+        }).join("") +
+        (fl.length > 4 ? '<div class="muted" style="padding-top:5px">and ' + (fl.length - 4) + ' earlier</div>' : '') +
+        '</div>';
+    }
+
+    h += '<div class="acts">' +
+      (r.mobile ? '<a class="btn sm grn" href="tel:' + esc(r.mobile) + '">Call</a>' : '') +
+      (r.mobile ? '<button class="btn sm gry" data-act="wa" data-n="' + esc(r.name) + '">WhatsApp reminder</button>' : '') +
+      (canWrite() ? '<button class="btn sm" data-act="log" data-n="' + esc(r.name) + '">Log the call</button>' : '') +
+      (canWrite() ? '<button class="btn sm grn" data-act="pay" data-n="' + esc(r.name) + '">Payment received</button>' : '') +
+      '</div>';
+    if (!canWrite()) {
+      h += '<div class="muted" style="margin-top:7px">You can ring and remind. Recording money and promises is done by the office.</div>';
+    }
+    return h + '</div>';
+  }
+
+  function EWdays(a, b) { return daysBetween(a, b); }
+
+  function viewList() {
+    var t = today(), list = filtered();
+    var h = statTiles() + chips() +
+      '<div class="row" style="margin:2px 0 8px"><input id="q" placeholder="Find a client…" value="' + esc(S.q) + '"/></div>';
+    if (!list.length) {
+      h += '<div class="empty">' + (S.q ? 'Nobody by that name owes anything.' :
+        (S.filter === "all" ? 'Nothing outstanding. Every client is settled.' : 'Nobody in this list right now.')) + '</div>';
+      return h;
+    }
+    var sum = list.reduce(function (a, r) { return a + r.due; }, 0);
+    h += '<div class="muted" style="margin:0 2px 4px">' + list.length + ' client' + (list.length === 1 ? '' : 's') +
+      ' · ' + money(sum) + ' — hardest first</div>';
+    h += list.map(function (r) { return clientCard(r, t); }).join("");
+    return h;
+  }
+
+  /* Today's calling list: the ones who said today, the ones who broke a promise,
+     and then the worst of the rest. Deliberately short - a list of sixty is a list
+     nobody works through. */
+  function viewToday() {
+    var t = today(), l = rows();
+    var said = l.filter(function (r) { return r.promise && r.promise.date === t; });
+    var broke = l.filter(function (r) { return r.promise && r.promise.date && r.promise.date < t; });
+    var rest = l.filter(function (r) { return said.indexOf(r) < 0 && broke.indexOf(r) < 0; }).slice(0, 8);
+    var h = '<div class="card" style="background:#7f1d1d;color:#fff;border-color:#7f1d1d">' +
+      '<div style="font-size:13px;opacity:.85">' + esc(dstr(t)) + '</div>' +
+      '<div style="font-size:17px;font-weight:800;margin-top:2px">' +
+      (said.length + broke.length ? (said.length + broke.length) + ' to ring on a promise' : 'No promises outstanding today') + '</div>' +
+      '<div style="font-size:12.5px;opacity:.9;margin-top:3px">then the ' + rest.length + ' worst of the rest — ' +
+      money(said.concat(broke).concat(rest).reduce(function (a, r) { return a + r.due; }, 0)) + ' in all</div></div>';
+    var sec = function (title, arr, note) {
+      if (!arr.length) return "";
+      return '<div class="muted" style="font-weight:700;margin:14px 2px 2px">' + esc(title) +
+        (note ? ' <span style="font-weight:400">— ' + esc(note) + '</span>' : '') + '</div>' +
+        arr.map(function (r) { return clientCard(r, t); }).join("");
+    };
+    h += sec("He said today", said, "ring him and record what happens");
+    h += sec("The day he named has passed", broke, "these are the ones that slip");
+    h += sec("Worst of the rest", rest, "most money, longest overdue");
+    if (!said.length && !broke.length && !rest.length) h += '<div class="empty">Nothing to chase. Everything is settled.</div>';
+    return h;
+  }
+
+  /* ================= THE TWO THINGS THIS APP WRITES ================= */
+
+  function sheetPay(name) {
+    var r = rowFor(name); if (!r) return "";
+    return '<h2>Payment received</h2>' +
+      '<div class="muted" style="margin-bottom:10px">' + esc(name) + ' · owes <b>' + money(r.due) + '</b></div>' +
+      '<label>Amount received</label>' +
+      '<input id="pi_amt" inputmode="numeric" placeholder="e.g. 50000" style="font-size:20px;font-weight:800"/>' +
+      '<div class="acts" style="margin-top:6px">' +
+        '<button class="btn sm gry" data-act="pi-full" data-v="' + r.due + '">Full ' + money(r.due) + '</button>' +
+        (r.overdue > 0 ? '<button class="btn sm gry" data-act="pi-full" data-v="' + r.overdue + '">Overdue only ' + money(r.overdue) + '</button>' : '') +
+        (r.oldBook > 0 ? '<button class="btn sm gry" data-act="pi-full" data-v="' + r.oldBook + '">Old book ' + money(r.oldBook) + '</button>' : '') +
+      '</div>' +
+      '<label>Date the money came in</label><input id="pi_date" type="date" value="' + today() + '" max="' + today() + '"/>' +
+      '<label>How</label><select id="pi_mode">' +
+        ["Bank transfer", "Cheque", "Cash", "UPI", "Adjustment"].map(function (m) {
+          return '<option' + (m === "Bank transfer" ? ' selected' : '') + '>' + m + '</option>';
+        }).join("") + '</select>' +
+      '<label>Reference (cheque no, UTR — optional)</label><input id="pi_ref" placeholder="optional"/>' +
+      '<div class="muted" style="margin:12px 0 0">This is written to the same Payments book the CRM uses. It will show in his hisab straight away.</div>' +
+      '<div class="acts" style="margin-top:14px">' +
+      '<button class="btn grn" data-act="pi-save" data-n="' + esc(name) + '">Record it</button>' +
+      '<button class="btn gry" data-act="close">Cancel</button></div>';
+  }
+
+  function sheetLog(name) {
+    var r = rowFor(name); if (!r) return "";
+    var p = r.promise;
+    return '<h2>Log the call</h2>' +
+      '<div class="muted" style="margin-bottom:10px">' + esc(name) + ' · owes <b>' + money(r.due) + '</b>' +
+      (p && p.date ? ' · last said <b>' + esc(dstr(p.date)) + '</b>' : '') + '</div>' +
+      '<label>How did it go?</label><select id="fu_out">' +
+        ["Promised a date", "Asked to call back", "No answer", "Disputes the amount", "Refused", "Part payment agreed"]
+          .map(function (m) { return '<option>' + m + '</option>'; }).join("") + '</select>' +
+      '<label>When did he say he would pay?</label>' +
+      '<input id="fu_date" type="date" value="" min="' + today() + '"/>' +
+      '<div class="acts" style="margin-top:6px">' +
+        '<button class="btn sm gry" data-act="fu-day" data-d="0">Today</button>' +
+        '<button class="btn sm gry" data-act="fu-day" data-d="1">Tomorrow</button>' +
+        '<button class="btn sm gry" data-act="fu-day" data-d="7">In a week</button>' +
+        '<button class="btn sm gry" data-act="fu-day" data-d="15">In 15 days</button>' +
+      '</div>' +
+      '<label>What was actually said (optional)</label>' +
+      '<textarea id="fu_note" rows="3" placeholder="e.g. site payment stuck, will clear after his own bill on the 20th"></textarea>' +
+      '<div class="muted" style="margin:12px 0 0">Leave the date blank if he named none. He comes back to the top of the list on the day he said — and if that day passes, he comes back marked.</div>' +
+      '<div class="acts" style="margin-top:14px">' +
+      '<button class="btn" data-act="fu-save" data-n="' + esc(name) + '">Save the call</button>' +
+      '<button class="btn gry" data-act="close">Cancel</button></div>';
+  }
+
+  /* The reminder. Written to be read by a customer, not by us: what he owes, since
+     when, and one clear ask. No threat, no lecture - this is a man we want to sell
+     to again next month. */
+  function waText(r) {
+    var lines = [];
+    lines.push("Namaste " + r.name + ",");
+    lines.push("");
+    lines.push("Energy World account update:");
+    lines.push("Outstanding: " + money(r.due).replace("₹", "Rs "));
+    if (r.oldestUnpaid) lines.push("Oldest pending delivery: " + dstr(r.oldestUnpaid) + " (" + ageWords(r.ageDays) + ")");
+    if (r.lastPay) lines.push("Last payment received: " + dstr(r.lastPay));
+    lines.push("");
+    if (r.promise && r.promise.date && r.promise.date < today()) {
+      lines.push("You had kindly indicated " + dstr(r.promise.date) + ". Could you please let us know the revised date?");
+    } else {
+      lines.push("Kindly arrange the payment at your convenience, or let us know a date that suits you.");
+    }
+    lines.push("");
+    lines.push("Thank you for your business.");
+    lines.push("Energy World  |  Panipat · Sonipat · Karnal");
+    return lines.join("\n");
+  }
+  function waSend(name) {
+    var r = rowFor(name); if (!r) return;
+    var n = String(r.mobile || "").replace(/\D/g, "");
+    if (!n) { toast("No mobile number on his record."); return; }
+    if (n.length === 10) n = "91" + n;
+    /* opened inside the click, or the phone blocks it */
+    window.open("https://wa.me/" + n + "?text=" + encodeURIComponent(waText(r)), "_blank");
+  }
+
+  /* ================= PAINT AND PRESS ================= */
+
+  function render() {
+    var body = S.tab === "today" ? viewToday() : viewList();
+    el("root").innerHTML = header() +
+      '<div class="wrap">' + body + '</div>' +
+      '<div class="nav">' +
+        '<button class="' + (S.tab === "today" ? "on" : "") + '" data-act="tab" data-t="today"><b>&#9742;</b>Today\'s calls</button>' +
+        '<button class="' + (S.tab === "list" ? "on" : "") + '" data-act="tab" data-t="list"><b>&#8377;</b>Everyone</button>' +
+        '<button data-act="crm"><b>&#8599;</b>Open CRM</button>' +
+      '</div>' +
+      (S.sheet ? '<div class="sheet" data-act="close-bg"><div class="inner" data-stop="1">' + S.sheet + '</div></div>' : '');
+    var q = el("q");
+    if (q) {
+      q.addEventListener("input", function (e) { S.q = e.target.value; repaintList(); });
+      q.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
+    }
+  }
+  /* the search box repaints only the list under it, so the caret and the phone
+     keyboard stay put while a name is typed one letter at a time */
+  function repaintList() {
+    var w = document.querySelector(".wrap");
+    if (!w) return render();
+    var q = el("q"), pos = q ? q.selectionStart : null, v = q ? q.value : "";
+    w.innerHTML = S.tab === "today" ? viewToday() : viewList();
+    var q2 = el("q");
+    if (q2) {
+      q2.value = v;
+      try { q2.setSelectionRange(pos, pos); } catch (e) {}
+      q2.focus();
+      q2.addEventListener("input", function (e) { S.q = e.target.value; repaintList(); });
+      q2.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
+    }
+  }
+
+  function bust() { _rowsCache = null; _fuCache = null; }
+
+  document.addEventListener("click", function (ev) {
+    var t = ev.target.closest("[data-act]");
+    if (!t) return;
+    var act = t.getAttribute("data-act");
+    if (act === "close-bg" && ev.target.closest("[data-stop]")) return;
+
+    if (act === "login") { doLogin(); return; }
+    if (act === "refresh") { pull(true); return; }
+    if (act === "crm") { window.open(CRM_URL, "_blank"); return; }
+    if (act === "tab") { S.tab = t.getAttribute("data-t"); S.open = ""; render(); return; }
+    if (act === "filter") { S.filter = t.getAttribute("data-f"); S.open = ""; render(); return; }
+    if (act === "open") {
+      var n = t.getAttribute("data-n");
+      S.open = (S.open === n) ? "" : n;
+      repaintList(); return;
+    }
+    if (act === "close" || act === "close-bg") { S.sheet = null; render(); return; }
+    if (act === "wa") { waSend(t.getAttribute("data-n")); return; }
+    if (act === "pay") {
+      if (!canWrite()) { toast("Recording money is done by the office."); return; }
+      S.sheet = sheetPay(t.getAttribute("data-n")); render(); return;
+    }
+    if (act === "log") {
+      if (!canWrite()) { toast("Recording a promise is done by the office."); return; }
+      S.sheet = sheetLog(t.getAttribute("data-n")); render(); return;
+    }
+    if (act === "pi-full") { var a = el("pi_amt"); if (a) { a.value = t.getAttribute("data-v"); a.focus(); } return; }
+    if (act === "fu-day") {
+      var d = el("fu_date");
+      if (d) d.value = addDays(today(), Number(t.getAttribute("data-d")) || 0);
+      return;
+    }
+
+    if (act === "pi-save") {
+      if (!canWrite()) { toast("Recording money is done by the office."); return; }
+      var name = t.getAttribute("data-n");
+      var amt = Math.round(EWnum(val("pi_amt")));
+      if (!(amt > 0)) { toast("Enter the amount received."); return; }
+      var dt = val("pi_date");
+      if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(dt)) { toast("Pick the date this money came in."); return; }
+      if (dt > today()) { toast("That date has not arrived yet — check it once."); return; }
+      /* THE SAME MAN, THE SAME DAY, THE SAME AMOUNT. In this trade that is nearly always
+         a double tap or something already in the book, so we stop and ask rather than
+         quietly writing a second receipt for money that came in once. */
+      var twin = ((S.data && S.data.payments) || []).filter(function (x) {
+        return String(x.client || "").trim().toLowerCase() === String(name).trim().toLowerCase() &&
+          String(x.date || "").slice(0, 10) === dt &&
+          Math.round(EWnum(x.amount)) === amt;
+      })[0];
+      if (twin && !t.getAttribute("data-force")) {
+        t.setAttribute("data-force", "1");
+        t.textContent = "Yes — a second, separate payment";
+        toast(money(amt) + " from " + name + " on " + dstr(dt) + " is already in the book. Press again only if this is a different payment.");
+        return;
+      }
+      t.disabled = true; t.textContent = "Recording…";
+      var row = {
+        id: "P-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+        createdBy: S.user, siteId: "", siteName: "",
+        client: name, date: dt, amount: amt, mode: val("pi_mode"), ref: val("pi_ref"),
+        notes: "Entered in the collection app"
+      };
+      api("teamSave", { tab: "payments", row: row }).then(function (r) {
+        if (!r || !r.ok) { t.disabled = false; t.textContent = "Record it"; toast((r && r.error) || "The server refused it. Nothing was recorded."); return; }
+        (S.data.payments = S.data.payments || []).push(r.row || row);
+        bust(); S.sheet = null; render();
+        toast(money(amt) + " recorded against " + name + ".");
+      }).catch(function () {
+        t.disabled = false; t.textContent = "Record it";
+        toast("No signal — nothing was recorded. Try again when you are back online.");
+      });
+      return;
+    }
+
+    if (act === "fu-save") {
+      if (!canWrite()) { toast("Recording a promise is done by the office."); return; }
+      var cn = t.getAttribute("data-n");
+      var pd = val("fu_date");
+      if (pd && pd < today()) { toast("A promised date cannot be in the past."); return; }
+      t.disabled = true; t.textContent = "Saving…";
+      saveFollow(cn, pd, val("fu_note"), val("fu_out")).then(function (r) {
+        if (!r || !r.ok) { t.disabled = false; t.textContent = "Save the call"; toast("The server refused it. Nothing was saved."); return; }
+        (S.data.audit = S.data.audit || []).push(r.row);
+        bust(); S.sheet = null; render();
+        toast(pd ? cn + " will come back up on " + dstr(pd) + "." : "Call noted against " + cn + ".");
+      }).catch(function () {
+        t.disabled = false; t.textContent = "Save the call";
+        toast("No signal — the call was not saved. Try again.");
+      });
+      return;
+    }
+  });
+
+  /* ================= COMING AND GOING ================= */
+
+  function doLogin() {
+    var name = val("ln"), pin = val("lp");
+    if (!name) { renderLogin("Enter your name."); return; }
+    if (!pin) { renderLogin("Enter your PIN."); return; }
+    S.user = name; S.pin = pin;
+    api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
+      if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
+      S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+      if (["admin", "accounts", "sales"].indexOf(S.role) < 0) {
+        S.pin = ""; S.role = "";
+        renderLogin("This app is for the office and the sales team. Ask the owner if you need it.");
+        return;
+      }
+      try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: pin, role: S.role })); } catch (e) {}
+      S.tab = "today";
+      pull(false);
+    }).catch(function () { S.pin = ""; renderLogin("Network error. Try again."); });
+  }
+
+  function snapSave() { try { localStorage.setItem(SNAP + "_" + S.user, JSON.stringify({ at: Date.now(), d: S.data })); } catch (e) {} }
+  function snapLoad() {
+    try {
+      var o = JSON.parse(localStorage.getItem(SNAP + "_" + S.user) || "null");
+      return o && o.d ? o.d : null;
+    } catch (e) { return null; }
+  }
+
+  /* Paint the last known book straight away, then let the fresh one land underneath.
+     A man standing in a godown on 4G should not watch a spinner to find out who owes him. */
+  function pull(loud) {
+    var snap = snapLoad();
+    if (snap && !S.data) { S.data = snap; bust(); render(); }
+    S.busy = true;
+    if (S.data) render();
+    if (loud) toast("Pulling the latest…");
+    return api("teamGet").then(function (r) {
+      S.busy = false;
+      if (r && r.ok) { S.data = r; S.syncAt = Date.now(); bust(); snapSave(); }
+      else if (!S.data) { renderLogin("Could not read the book. Sign in again."); return; }
+      render();
+      if (loud) toast("Up to date.");
+    }).catch(function () {
+      S.busy = false;
+      if (!S.data) { renderLogin("No signal, and nothing saved on this phone yet."); return; }
+      render(); toast("No signal — showing what was last pulled onto this phone.");
+    });
+  }
+
+  (function boot() {
+    var sess = null;
+    try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) {}
+    if (sess && sess.user && sess.pin) {
+      S.user = sess.user; S.pin = sess.pin; S.role = sess.role || "";
+      S.tab = "today";
+      el("root").innerHTML = '<div class="login"><h1>Energy World</h1><p>Payment collection</p>' +
+        '<div class="empty">Opening…</div></div>';
+      api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
+        if (!r || !r.ok) { S.pin = ""; try { localStorage.removeItem(STORE); } catch (e) {} renderLogin("Sign in again."); return; }
+        S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+        if (["admin", "accounts", "sales"].indexOf(S.role) < 0) { S.pin = ""; renderLogin("This app is not open to you."); return; }
+        pull(false);
+      }).catch(function () {
+        /* offline, but this phone has been signed in before - show what it has */
+        if (snapLoad()) { S.data = snapLoad(); bust(); render(); toast("No signal — showing what was last pulled onto this phone."); }
+        else renderLogin("No signal. Try again when you are back online.");
+      });
+    } else {
+      renderLogin();
+    }
+    if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} }
+  })();
+})();
+</script>
+</body>
+</html>
