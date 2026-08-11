@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.242";
+  var APP_VERSION = "6.9.243";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -544,6 +544,18 @@ window.addEventListener("beforeunload", function (ev) {
   var stuck = false; try { stuck = pendCount() > 0; } catch (e) { }
   if (typeof S !== "undefined" && S && (S.pending > 0 || stuck)) { ev.preventDefault(); ev.returnValue = ""; }
 });
+
+  /* v6.9.243 - COMING BACK TO THE APP PULLS THE BOOK.
+     Until now nothing in this app polled on its own: it re-synced after a save and on
+     Refresh, and that was all. So a payment recorded in the Collection app - or by
+     anybody else on another phone - did not appear here until someone pressed something.
+     Switching back to this tab now counts as pressing something. quietSync carries its
+     own 20-second throttle and refuses outright while a save is still in flight, so this
+     cannot start a stampede and cannot race a save. */
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) return;
+    try { if (S && S.user && S.data) quietSync(); } catch (e) {}
+  });
 
   /* background re-sync, at most once every 20s, never blocks the screen */
   var syncAt = 0, syncing = false;
