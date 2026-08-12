@@ -123,7 +123,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.6.0";
+  var APP_VERSION = "1.6.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
   var SNAP = "ew_collect_snap";
@@ -249,6 +249,18 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     KEEP.forEach(function (k) { if (r[k]) out[k] = r[k]; });
     return out;
   }
+
+  /* v1.6.1 - ASK FOR ONLY THOSE FIVE, TOO.
+     Trimming on arrival stopped this app carrying 400 KB it never reads, but the 400 KB
+     still came down the wire. This asks the server not to send it. Apps Script ignores a
+     field it does not know, so until the backend is taught the word "only" this changes
+     nothing at all and cannot break anything - and the day it is taught, every pull
+     halves on its own with no new version of this app needing to go out. */
+  function getBook() { return api("teamGet", { only: KEEP }); }
+
+  /* A reply with no client list in it is not an empty book, it is a broken reply. Wiping
+     a man's screen on the strength of one is how a morning gets lost. */
+  function usableBook(r) { return !!(r && r.ok && r.clients && r.clients.length); }
 
   function num(v) {
     if (typeof v === "number") return isFinite(v) ? v : 0;
@@ -1718,10 +1730,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     S.busy = true;
     if (S.data) render();
     if (loud) toast("Pulling the latest…");
-    return api("teamGet").then(function (r) {
+    return getBook().then(function (r) {
       S.busy = false;
-      if (r && r.ok) { S.data = slimBook(r); S.syncAt = Date.now(); bust(); snapSave(); }
+      if (usableBook(r)) { S.data = slimBook(r); S.syncAt = Date.now(); bust(); snapSave(); }
       else if (!S.data) { renderLogin("Could not read the book. Sign in again."); return; }
+      else if (loud) { render(); toast("The server sent nothing usable — keeping what is on this phone."); return; }
       render();
       if (loud) toast("Up to date.");
     }).catch(function () {
@@ -1798,7 +1811,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     else openingScreen();
 
     var authP = api("teamAuth", { ua: navigator.userAgent });
-    var dataP = api("teamGet");
+    var dataP = getBook();
     var refused = false;
 
     authP.then(function (r) {
@@ -1821,7 +1834,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     dataP.then(function (r) {
       if (refused) return;
       S.busy = false;
-      if (r && r.ok) { S.data = slimBook(r); S.syncAt = Date.now(); bust(); snapSave(); render(); }
+      if (usableBook(r)) { S.data = slimBook(r); S.syncAt = Date.now(); bust(); snapSave(); render(); }
       else if (!S.data) openingScreen("Could not read the book. Try again.");
       else render();
     }).catch(function () {
