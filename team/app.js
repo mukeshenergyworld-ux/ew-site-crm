@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.244";
+  var APP_VERSION = "6.9.245";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -16437,11 +16437,22 @@ function viewCatalogue() {
       /* Compact lead/client cards: one header line (name+pills left, PL/AR badges + Call/Edit
          right), one scrollable brand line. PL/AR badge: green = named (with phone), red = fill. */
       ".card.lc-compact{padding:8px 12px;margin-bottom:6px}" +
-      ".lc-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}" +
-      ".lc-id{display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 240px;overflow:hidden}" +
-      ".lc-id b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
-      ".lc-right{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}" +
-      ".pl-badge{font-size:11px;font-weight:700;border-radius:999px;padding:4px 9px;white-space:nowrap;border:0}" +
+      ".lc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap}" +
+      /* v6.9.245 - THE NAME IS NOT A PILL. It used to sit in a single non-wrapping row
+         with every pill on the card - location, segment, WON count, stage, phone, the
+         money, the old-hisab flag - inside a box with overflow:hidden. So the more a
+         client had against his name, the less of his name you could read: the busiest
+         men on the book showed as "A...", "Sand..." or, on the worst card, nothing at
+         all. Exactly backwards. The pills now WRAP onto a second line and the name
+         keeps a floor it can never be pushed below. */
+      ".lc-id{display:flex;align-items:center;gap:5px;min-width:0;flex:1 1 320px;flex-wrap:wrap;overflow:visible}" +
+      ".lc-id b{font-size:13.5px;flex:0 1 auto;min-width:170px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+      /* a shade smaller than free-standing pills, so more of them fit before wrapping */
+      ".lc-id .pill,.lc-id .bs{font-size:10.5px;padding:2px 7px;white-space:nowrap;line-height:1.5}" +
+      ".lc-right{display:flex;align-items:center;gap:5px;flex:0 0 auto;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}" +
+      ".pl-badge{font-size:10.5px;font-weight:700;border-radius:999px;padding:3px 8px;white-space:nowrap;border:0}" +
+      /* on a phone the name gets the first line to itself - there is no width to share */
+      "@media(max-width:700px){.lc-id b{min-width:100%;flex:1 1 100%}}" +
       ".pl-ok{background:#dcfce7;color:#15803d}" +
       ".pl-miss{background:#fee2e2;color:#b91c1c;cursor:pointer}" +
       ".pl-miss:hover{background:#fecaca}";
