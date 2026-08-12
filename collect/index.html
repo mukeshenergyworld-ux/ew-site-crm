@@ -123,7 +123,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.6.1";
+  var APP_VERSION = "1.7.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
   var SNAP = "ew_collect_snap";
@@ -845,10 +845,45 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       '<div class="muted" style="margin-top:7px">Tap a name to work only his list.</div></div>';
   }
 
+  /* ---------- THE SEARCH BOX, ON EVERY TAB ----------
+     v1.7 - it used to live only on "Everyone". So a man on Today's calls who wanted one
+     particular name had to work out which tab it lived on first, and a name that is not
+     on today's list, or has no old-book balance, could not be found from those tabs at
+     all. It is the same box everywhere now, and it searches the WHOLE book rather than
+     the list underneath it - if you can remember his name you can reach him from
+     wherever you are standing. Type a name or any part of a phone number. */
+  function searchBox() {
+    return '<div class="row" style="margin:2px 0 8px">' +
+      '<input id="q" class="grow" placeholder="Find any client — name or phone…" value="' + esc(S.q) + '"/>' +
+      (S.q ? '<button class="btn sm gry" data-act="qclear">Clear</button>' : '') +
+      '</div>';
+  }
+  /* Searching looks past the filter chips and past which tab you are on, on purpose. */
+  function searchHits() {
+    var q = String(S.q || "").trim().toLowerCase();
+    if (!q) return null;
+    var digits = q.replace(/\D/g, "");
+    return rows().filter(function (r) {
+      if (String(r.name).toLowerCase().indexOf(q) >= 0) return true;
+      return !!(digits && String(r.mobile || "").indexOf(digits) >= 0);
+    });
+  }
+  function viewSearch() {
+    var t = today(), list = searchHits();
+    var h = searchBox();
+    if (!list.length) {
+      return h + '<div class="empty">Nobody by that name or number owes anything.<br>' +
+        'This searches every client in the book, not just the list you were on.</div>';
+    }
+    var sum = list.reduce(function (a, r) { return a + r.due; }, 0);
+    h += '<div class="muted" style="margin:0 2px 6px">' + list.length + ' match' + (list.length === 1 ? '' : 'es') +
+      ' · ' + money(sum) + ' — searched every client, not just this tab</div>';
+    return h + list.map(function (r) { return clientCard(r, t); }).join("");
+  }
+
   function viewList() {
     var t = today(), list = filtered();
-    var h = statTiles() + execBlock() + chips() +
-      '<div class="row" style="margin:2px 0 8px"><input id="q" placeholder="Find a client…" value="' + esc(S.q) + '"/></div>';
+    var h = statTiles() + execBlock() + chips() + searchBox();
     if (!list.length) {
       h += '<div class="empty">' + (S.q ? 'Nobody by that name owes anything.' :
         (S.filter === "all" ? 'Nothing outstanding. Every client is settled.' : 'Nobody in this list right now.')) + '</div>';
@@ -867,9 +902,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   function viewToday() {
     var t = today(), l = rows();
     var said = l.filter(function (r) { return r.promise && r.promise.date === t; });
+    var _h0 = searchBox();
     var broke = l.filter(function (r) { return r.promise && r.promise.date && r.promise.date < t; });
     var rest = l.filter(function (r) { return said.indexOf(r) < 0 && broke.indexOf(r) < 0; }).slice(0, 8);
-    var h = '<div class="card" style="background:#7f1d1d;color:#fff;border-color:#7f1d1d">' +
+    var h = _h0 + '<div class="card" style="background:#7f1d1d;color:#fff;border-color:#7f1d1d">' +
       '<div style="font-size:13px;opacity:.85">' + esc(dstr(t)) + '</div>' +
       '<div style="font-size:17px;font-weight:800;margin-top:2px">' +
       (said.length + broke.length ? (said.length + broke.length) + ' to ring on a promise' : 'No promises outstanding today') + '</div>' +
@@ -897,7 +933,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     var untouched = list.filter(function (r) { return r.ob.state === "none"; }).length;
     var pct = list.length ? Math.round(agreedRows.length / list.length * 100) : 0;
 
-    var h = '<div class="card" style="background:#7f1d1d;color:#fff;border-color:#7f1d1d">' +
+    var h = searchBox() + '<div class="card" style="background:#7f1d1d;color:#fff;border-color:#7f1d1d">' +
       '<div style="font-size:17px;font-weight:800">' + shortMoney(tot) + ' from the old books</div>' +
       '<div style="font-size:12.5px;opacity:.9;margin-top:3px">' + list.length + ' client' + (list.length === 1 ? '' : 's') +
       ' carrying a balance brought forward from the paper ledgers. It has no date, so it can never be aged — ' +
@@ -1502,10 +1538,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
 
   /* ================= PAINT AND PRESS ================= */
 
+  /* One place decides what is under the header, so the full paint and the
+     one-letter-at-a-time repaint can never disagree about which screen you are on. */
+  function bodyHtml() {
+    if (S.q) return viewSearch();
+    return S.tab === "today" ? viewToday() : (S.tab === "oldbook" ? viewOldBook() : viewList());
+  }
+
   function render() {
-    var body = S.tab === "today" ? viewToday() : (S.tab === "oldbook" ? viewOldBook() : viewList());
     el("root").innerHTML = header() +
-      '<div class="wrap">' + body + '</div>' +
+      '<div class="wrap">' + bodyHtml() + '</div>' +
       '<div class="nav">' +
         '<button class="' + (S.tab === "today" ? "on" : "") + '" data-act="tab" data-t="today"><b>&#9742;</b>Today\'s calls</button>' +
         '<button class="' + (S.tab === "list" ? "on" : "") + '" data-act="tab" data-t="list"><b>&#8377;</b>Everyone</button>' +
@@ -1525,10 +1567,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     var w = document.querySelector(".wrap");
     if (!w) return render();
     var q = el("q"), pos = q ? q.selectionStart : null, v = q ? q.value : "";
-    w.innerHTML = S.tab === "today" ? viewToday() : (S.tab === "oldbook" ? viewOldBook() : viewList());
+    w.innerHTML = bodyHtml();
     var q2 = el("q");
     if (q2) {
-      q2.value = v;
+      if (q2.value !== v) q2.value = v;
       try { q2.setSelectionRange(pos, pos); } catch (e) {}
       q2.focus();
       q2.addEventListener("input", function (e) { S.q = e.target.value; repaintList(); });
@@ -1547,13 +1589,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     if (act === "login") { doLogin(); return; }
     if (act === "refresh") { pull(true); return; }
     if (act === "reboot") { location.reload(); return; }
+    if (act === "qclear") { S.q = ""; render(); return; }
     if (act === "account") { S.sheet = sheetAccount(); render(); return; }
     if (act === "bio-go") { bioUnlock(); return; }
     if (act === "bio-on") { bioEnrol(); return; }
     if (act === "bio-off") { bioForget(); return; }
     if (act === "signout") { signOut(); return; }
     if (act === "crm") { window.open(CRM_URL, "_blank"); return; }
-    if (act === "tab") { S.tab = t.getAttribute("data-t"); S.open = ""; render(); return; }
+    /* tapping a tab means "show me that list" - so a search left in the box is cleared,
+       otherwise the tab appears not to respond at all */
+    if (act === "tab") { S.tab = t.getAttribute("data-t"); S.open = ""; S.q = ""; render(); return; }
     if (act === "filter") { S.filter = t.getAttribute("data-f"); S.open = ""; render(); return; }
     if (act === "exec") { S.exec = t.getAttribute("data-n") || ""; S.open = ""; render(); return; }
     if (act === "open") {
