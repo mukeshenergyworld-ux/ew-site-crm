@@ -1,0 +1,1486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#0f766e"/>
+<title>Energy World — Challan</title>
+<link rel="manifest" href="manifest.webmanifest"/>
+<link rel="apple-touch-icon" href="../icons/ew-180.png"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<style>
+/* Teal, not the collection app's maroon, so a man never mistakes one for the other.
+   Everything here is sized for a hand in a godown: bigger type, bigger targets. */
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{font:15.5px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:#f1f5f9;color:#0f172a;padding-bottom:env(safe-area-inset-bottom)}
+a{color:#0f766e}
+.wrap{max-width:760px;margin:0 auto;padding:0 12px 96px}
+.top{background:#0f766e;color:#fff;padding:calc(env(safe-area-inset-top) + 12px) 14px 12px;position:sticky;top:0;z-index:20;
+  box-shadow:0 2px 10px rgba(0,0,0,.15)}
+.top .t1{display:flex;align-items:center;gap:10px}
+.top h1{margin:0;font-size:16px;font-weight:800;letter-spacing:.02em;flex:1}
+.top .who{font-size:11.5px;color:#ccfbf1}
+.sync{font-size:11px;color:#ccfbf1}
+.btn{appearance:none;border:1px solid #0f766e;background:#0f766e;color:#fff;border-radius:10px;
+  padding:11px 15px;font-size:14.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+  min-height:44px;justify-content:center}
+.btn:active{transform:translateY(1px)}
+.btn.ghost{background:#fff;color:#0f766e}
+.btn.sm{padding:7px 11px;font-size:13px;border-radius:9px;min-height:36px}
+.btn.gry{background:#fff;border-color:#cbd5e1;color:#334155}
+.btn.red{background:#b91c1c;border-color:#b91c1c;color:#fff}
+.btn.amb{background:#b45309;border-color:#b45309;color:#fff}
+.btn.full{width:100%;padding:14px;font-size:16px}
+.btn[disabled]{opacity:.55}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:12px 13px;margin:10px 0;
+  box-shadow:0 1px 2px rgba(15,23,42,.05)}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.stat{flex:1 1 46%;min-width:150px;background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:11px 13px}
+.stat .n{font-size:22px;font-weight:800;letter-spacing:-.02em}
+.stat .l{font-size:11.5px;color:#64748b;margin-top:2px}
+.stat.bad .n{color:#b91c1c}
+.stat.good .n{color:#0f766e}
+input,select,textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;
+  font-size:16px;font-family:inherit;background:#fff;color:#0f172a}
+label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:520px){.grid2{grid-template-columns:1fr}}
+.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;
+  background:#f1f5f9;color:#475569;vertical-align:middle;white-space:nowrap}
+.pill.red{background:#fee2e2;color:#b91c1c}
+.pill.amb{background:#fef3c7;color:#92400e}
+.pill.grn{background:#ccfbf1;color:#0f766e}
+.pill.blu{background:#dbeafe;color:#1d4ed8}
+.row{display:flex;gap:8px;align-items:center}
+.grow{flex:1;min-width:0}
+.acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+.muted{color:#64748b;font-size:12.5px}
+.big{font-size:19px;font-weight:800;letter-spacing:-.02em}
+.sheet{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:60;display:flex;align-items:flex-end;cursor:pointer}
+.sheet .inner{background:#fff;width:100%;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;
+  padding:16px 16px calc(env(safe-area-inset-bottom) + 20px);max-width:760px;margin:0 auto;cursor:auto;
+  -webkit-overflow-scrolling:touch}
+@supports (height:100dvh){.sheet .inner{max-height:88dvh}}
+.sheet h2{margin:0 0 3px;font-size:17px}
+.empty{text-align:center;color:#64748b;padding:26px 14px;font-size:13.5px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:26px;background:#0f172a;color:#fff;
+  padding:11px 16px;border-radius:10px;font-size:13.5px;z-index:99;max-width:88%;box-shadow:0 6px 18px rgba(0,0,0,.3)}
+.login{max-width:340px;margin:9vh auto;background:#fff;border-radius:16px;padding:26px 22px;
+  box-shadow:0 10px 30px rgba(15,23,42,.14)}
+.login h1{margin:0 0 3px;font-size:19px;text-align:center}
+.login p{margin:0 0 16px;text-align:center;color:#64748b;font-size:13px}
+.nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #e2e8f0;display:flex;z-index:30;
+  padding-bottom:env(safe-area-inset-bottom)}
+.nav button{flex:1;border:0;background:none;padding:9px 4px 10px;font-size:11px;font-weight:700;color:#94a3b8;cursor:pointer}
+.nav button.on{color:#0f766e}
+.nav button b{display:block;font-size:17px;line-height:1.25}
+.nav button .cnt{display:inline-block;background:#b91c1c;color:#fff;border-radius:999px;padding:0 6px;font-size:10px;margin-left:3px}
+/* the picker: brand, then category, then product - one level at a time */
+.crumb{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.crumb .c{background:#ccfbf1;color:#0f766e;border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:700;cursor:pointer}
+.tile{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#fff;border:1px solid #e2e8f0;
+  border-radius:12px;padding:11px 12px;margin-bottom:7px;cursor:pointer;font-size:14.5px;font-weight:700;color:#0f172a;min-height:52px}
+.tile .sub{font-size:11.5px;font-weight:600;color:#64748b;display:block;margin-top:2px}
+.tile img{width:44px;height:44px;object-fit:contain;border-radius:8px;background:#f8fafc;flex:0 0 auto}
+.step{display:flex;align-items:center;gap:8px}
+.step button{width:42px;height:42px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;font-size:20px;font-weight:800;cursor:pointer}
+.step input{width:74px;text-align:center;font-weight:800}
+.line{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid #f1f5f9}
+.mano{border:2px solid #b91c1c!important;background:#fef2f2!important;font-weight:800}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<!-- Nothing third-party is loaded here. The PDF builder is fetched the first time a
+     challan is actually printed, never at start-up: this app has to open in a godown
+     with one bar of signal. -->
+<script>
+(function () {
+  "use strict";
+  /* ==========================================================================
+     ENERGY WORLD - CHALLAN & MATERIAL RETURN
+     A separate app for the godown and the accounts desk, because the CRM does forty
+     things and these two men do two. Everything on this screen is either sending
+     material out or taking material back in.
+
+     IT IS THE SAME BOOK. Same name and PIN as the Team CRM, same server, same
+     Challans and Returns sheets, in exactly the same row shape and with exactly the
+     same numbering - a challan made here is indistinguishable from one made in the
+     CRM, and the CRM is not changed in any way by this app existing.
+
+     WHO DOES WHAT (the owner's rule).
+       GODOWN  makes the challan, registers the return, attaches the signed receipt.
+               What he makes is a DRAFT. It is not a delivery yet.
+       ACCOUNTS approves it. Only then does it count against the client's account.
+       ADMIN   may do either.
+     Two pairs of eyes on every delivery. Nothing here can delete anything, ever:
+     an approval is a row added, not a row changed.
+     ========================================================================== */
+
+  var APP_VERSION = "1.0.0";
+  var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
+  var STORE = "ew_challan_session";
+  var SNAP  = "ew_challan_snap";
+  var BIO_KEY = "ew_challan_bio";
+  var CAT_KEY = "ew_team_catalog";      /* shared with the CRM on purpose - same catalogue */
+  var CAT_V = 2;
+  var CRM_URL = "../team/";
+
+  var PRODUCTS = [];
+  var S = { user:"", pin:"", role:"", data:null, tab:"make", q:"", sheet:null, busy:false,
+            syncAt:0, ch:null, rt:null, pick:null, open:"" };
+
+  /* ---------- tiny helpers ---------- */
+  function el(id) { return document.getElementById(id); }
+  function val(id) { var e = el(id); return e ? String(e.value || "").trim() : ""; }
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+  }
+  function num(v) {
+    if (typeof v === "number") return isFinite(v) ? v : 0;
+    var n = Number(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
+    return isFinite(n) ? n : 0;
+  }
+  function money(n) { return "₹" + Math.round(num(n)).toLocaleString("en-IN"); }
+  function lower(s) { return String(s == null ? "" : s).trim().toLowerCase(); }
+  function today() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
+  function d10(v) { return String(v == null ? "" : v).slice(0,10); }
+  var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  function dstr(ymd) {
+    if (!ymd) return "";
+    var p = String(ymd).slice(0,10).split("-");
+    if (p.length !== 3) return String(ymd);
+    return Number(p[2]) + " " + (MON[Number(p[1])-1] || "") + " " + p[0];
+  }
+  var _toastT = null;
+  function toast(m) {
+    var t = el("toast");
+    if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "toast"; document.body.appendChild(t); }
+    t.textContent = m; t.style.display = "block";
+    clearTimeout(_toastT); _toastT = setTimeout(function () { t.style.display = "none"; }, 3600);
+  }
+
+  /* ---------- the server ----------
+     Every call has a deadline. A request that stalls on one bar of signal used to be
+     indistinguishable from one still working, and a man in a godown would stand there
+     watching a disabled button. It fails, and says so, instead. */
+  var API_TIMEOUT = 25000;
+  function api(action, extra, ms) {
+    var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
+    var ctrl = null, timer = null;
+    try { ctrl = new AbortController(); } catch (e) { ctrl = null; }
+    var opts = { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body: JSON.stringify(body) };
+    if (ctrl) opts.signal = ctrl.signal;
+    var p = fetch(GAS, opts).then(function (r) { return r.json(); });
+    if (ctrl) {
+      timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, Number(ms) || API_TIMEOUT);
+      p = p.then(function (v) { clearTimeout(timer); return v; }, function (e) { clearTimeout(timer); throw e; });
+    }
+    return p;
+  }
+  function saveRow(tab, row) { return api("teamSave", { tab: tab, row: row }); }
+
+  /* Only the tabs this app reads. The backend honours "only" as of V93, so the rest of
+     the book - quotes, pitch, payments, tools - never comes down the wire at all. */
+  var KEEP = ["clients","challans","returns","sites","drivers","discounts","brandmap","brands","associates","audit"];
+  function slimBook(r) {
+    if (!r || typeof r !== "object") return r;
+    var out = { ok: r.ok };
+    if (r.user) out.user = r.user;
+    KEEP.forEach(function (k) { if (r[k]) out[k] = r[k]; });
+    return out;
+  }
+  function getBook() { return api("teamGet", { only: KEEP }); }
+  function usableBook(r) { return !!(r && r.ok && r.clients && r.clients.length); }
+
+  /* ---------- the PDF builder, only when a challan is actually printed ---------- */
+  var _pdfP = null;
+  function ensurePdf() {
+    if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve(true);
+    if (_pdfP) return _pdfP;
+    _pdfP = new Promise(function (res, rej) {
+      var s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+      s.async = true;
+      s.onload = function () {
+        if (window.jspdf && window.jspdf.jsPDF) res(true); else { _pdfP = null; rej(new Error("empty")); }
+      };
+      s.onerror = function () { _pdfP = null; rej(new Error("failed")); };
+      document.head.appendChild(s);
+    });
+    return _pdfP;
+  }
+
+  /* ---------- the catalogue ----------
+     Exactly the CRM's parser and exactly the CRM's cache key, so the two apps share one
+     copy on the device and a product added in either is seen by both. */
+  function driveImg(u, size) {
+    u = String(u || "").trim();
+    if (!u) return "";
+    var m = u.match(/\/d\/([A-Za-z0-9_\-]{20,})/) || u.match(/[?&]id=([A-Za-z0-9_\-]{20,})/);
+    if (!m) return u;
+    return "https://lh3.googleusercontent.com/d/" + m[1] + "=w" + (size || 200);
+  }
+  function parseCatalog(rows) {
+    var head = -1, i, r;
+    for (i = 0; i < rows.length && i < 10; i++) {
+      r = (rows[i] || []).map(function (x) { return String(x || "").toLowerCase().trim(); });
+      if (r.indexOf("product code") >= 0) { head = i; break; }
+    }
+    if (head < 0) return [];
+    var out = [];
+    for (i = head + 1; i < rows.length; i++) {
+      var row = rows[i] || [];
+      var code = String(row[1] || "").trim();
+      var desc = String(row[3] || row[2] || "").trim();
+      if (!code && !desc) continue;
+      out.push({
+        code: code, family: String(row[2] || "").trim(), desc: desc,
+        cat: String(row[4] || "").trim(), unit: String(row[5] || "").trim(),
+        price: num(row[6]), brand: String(row[8] || "").trim(),
+        pic: driveImg(row[10]), specs: String(row[11] || "").trim(),
+        label: (code ? code + " - " : "") + desc
+      });
+    }
+    return out;
+  }
+  function loadCatalog() {
+    try {
+      var c = JSON.parse(localStorage.getItem(CAT_KEY) || "null");
+      if (c && c.v === CAT_V && c.items && c.items.length) PRODUCTS = c.items;
+    } catch (e) {}
+    var fresh = false;
+    try {
+      var c2 = JSON.parse(localStorage.getItem(CAT_KEY) || "null");
+      fresh = !!(c2 && c2.at && (Date.now() - c2.at < 86400000));
+    } catch (e) {}
+    if (fresh && PRODUCTS.length) return Promise.resolve(PRODUCTS);   /* 222 KB not worth re-reading */
+    return fetch(GAS + "?action=catalog", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (rows) {
+        var items = parseCatalog(rows);
+        if (items.length) {
+          PRODUCTS = items;
+          try { localStorage.setItem(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items })); } catch (e) {}
+        }
+        return PRODUCTS;
+      })
+      .catch(function () { return PRODUCTS; });
+  }
+
+  /* ---------- who may do what ---------- */
+  var ALLOWED = ["admin","accounts","godown"];
+  function canMake()    { return ["admin","accounts","godown"].indexOf(S.role) >= 0; }
+  /* the owner's rule: the man who makes it is not the man who passes it */
+  function canApprove() { return ["admin","accounts"].indexOf(S.role) >= 0; }
+
+  /* ---------- the book, read ---------- */
+  function clients() { return (S.data && S.data.clients) || []; }
+  function clientByName(n) {
+    var k = lower(n);
+    return clients().filter(function (c) { return lower(c.name) === k; })[0] || null;
+  }
+  function challans() { return (S.data && S.data.challans) || []; }
+  function returns()  { return (S.data && S.data.returns) || []; }
+  function sitesFor(n) {
+    var k = lower(n);
+    return ((S.data && S.data.sites) || []).filter(function (s) { return lower(s.client) === k; });
+  }
+  function chStatus(c) { return String((c && c.status) || "Draft"); }
+  function isDraft(c)  { return chStatus(c) === "Draft"; }
+  function pendingApproval() {
+    return challans().filter(isDraft).sort(function (a, b) {
+      return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+    });
+  }
+
+  /* the client's frozen brand discount, read the CRM's way */
+  function discRowsFor(client, brand) {
+    var ck = lower(client), bk = lower(brand);
+    return ((S.data && S.data.discounts) || []).filter(function (d) {
+      return lower(d.client) === ck && (!bk || lower(d.brand) === bk || !String(d.brand || "").trim());
+    });
+  }
+  function clientDiscount(client, brand) {
+    var rows = discRowsFor(client, brand);
+    /* an exact brand row beats a blank-brand catch-all, the same order the CRM picks in */
+    var exact = rows.filter(function (d) { return lower(d.brand) === lower(brand); })[0];
+    var d = exact || rows[0];
+    return d ? num(d.pct) : 0;
+  }
+  function realBrand(p) {
+    var m = ((S.data && S.data.brandmap) || []).filter(function (x) { return String(x.catalogValue) === String(p.brand); })[0];
+    return (m && m.brand) ? m.brand : "";
+  }
+
+  /* ---------- the paper book's own number ----------
+     Append-only audit rows, the same channel the CRM writes to, so a number entered
+     here shows on the challan and in HISAB there. Newest row wins; nothing is ever
+     overwritten, so a correction keeps the history of what was written before. */
+  var _mnCache = null;
+  function manualNoMap() {
+    if (_mnCache) return _mnCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "challan:manualno") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var k = String(d.challanNo || d.chNo || "").trim();
+      var at = String(r.createdAt || "");
+      if (!k) return;
+      if (!m[k] || at >= m[k].at) m[k] = { at: at, no: String(d.no || d.manualNo || "").trim() };
+    });
+    _mnCache = m;
+    return m;
+  }
+  function manualNoFor(c) {
+    var hit = manualNoMap()[String((c && c.challanNo) || "").trim()];
+    return hit ? hit.no : "";
+  }
+  function saveManualNo(chNo, chId, no, client) {
+    _mnCache = null;
+    return saveRow("audit", {
+      id: "MN-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+      createdAt: new Date().toISOString(), actor: S.user || "",
+      action: "challan:manualno", target: String(chNo || ""),
+      detail: JSON.stringify({ challanNo: String(chNo || ""), challanId: String(chId || ""),
+                               no: String(no || ""), client: String(client || ""), by: S.user || "" })
+    });
+  }
+
+  /* ---------- the signed receipt ----------
+     Same audit channel the CRM's delivery proofs already use, so a photo attached in the
+     godown appears on the same challan in the CRM's HISAB with no server change at all. */
+  /* THE KEY IS chId, NOT THE CHALLAN NUMBER. This is the CRM's own convention and it must
+     be matched exactly, or a receipt attached in the godown would be invisible in HISAB and
+     the CRM's proofs would be invisible here. A return is keyed the same way, by its own row
+     id, which is why one action covers both. */
+  var _proofCache = null;
+  function proofMap() {
+    if (_proofCache) return _proofCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "challan:proof") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.chId) return;
+      var prev = m[d.chId];
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[d.chId] = { at: r.createdAt || "", by: d.by || "", url: d.url || "",
+                      actor: r.actor || "", photo: !!d.photo, thumb: String(d.thumb || "") };
+      }
+    });
+    _proofCache = m;
+    return m;
+  }
+  function proofFor(rec) {
+    var id = (rec && rec.id) ? rec.id : rec;
+    return proofMap()[String(id || "").trim()] || null;
+  }
+  function saveProof(rec, url, thumb) {
+    _proofCache = null;
+    var isRet = !!rec.returnNo;
+    var no = String(rec.challanNo || rec.returnNo || "");
+    return saveRow("audit", {
+      id: "PF-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+      createdAt: new Date().toISOString(), actor: S.user || "",
+      action: "challan:proof",
+      target: no + " / " + String(rec.customerName || ""),
+      detail: JSON.stringify({
+        chId: String(rec.id || ""), no: no, client: String(rec.customerName || ""),
+        site: String(rec.site || ""), by: S.user || "", geo: "", url: String(url || ""),
+        at: new Date().toISOString(), photo: true, sig: false,
+        thumb: String(thumb || ""), kind: isRet ? "return" : "challan"
+      }), ip: ""
+    });
+  }
+  /* Deliveries with nothing signed against them. This is the list that stops an argument
+     three months later, so it is a screen of its own rather than a footnote. */
+  function missingReceipts() {
+    return challans().filter(function (c) {
+      return String(c.receiptReceived || "").toUpperCase() !== "Y" && !proofFor(c);
+    }).sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
+  }
+
+  function bust() { _mnCache = null; _proofCache = null; }
+
+  function chLines(c) {
+    try { var l = JSON.parse((c && c.itemsJson) || "[]"); return Array.isArray(l) ? l : []; } catch (e) { return []; }
+  }
+  function chValue(c) {
+    return chLines(c).reduce(function (a, l) {
+      var d = num(l.disc);
+      return a + num(l.qty) * Math.round(num(l.rate) * (1 - d / 100));
+    }, 0) + (String(c.freightTo) === "Client" ? num(c.freight) : 0);
+  }
+  /* ================= THE PRODUCT PICKER =================
+     One level at a time, exactly as the CRM does it, because that is what the godown
+     already knows: BRAND, then that brand's CATEGORY, then the products with their
+     picture and a +/- stepper. The picture is there to stop the wrong 110 mm fitting
+     going on the lorry; it never reaches the printed challan.
+     Tap a crumb to go back up a level. */
+
+  function brandsInStock() {
+    var live = {};
+    PRODUCTS.forEach(function (p) { var b = realBrand(p) || String(p.brand || "").trim(); if (b) live[b] = (live[b] || 0) + 1; });
+    return Object.keys(live).sort().map(function (b) { return { name: b, n: live[b] }; });
+  }
+  function brandOf(p) { return realBrand(p) || String(p.brand || "").trim(); }
+  function catsIn(brand) {
+    var m = {};
+    PRODUCTS.forEach(function (p) {
+      if (brandOf(p) !== brand) return;
+      var c = String(p.cat || "").trim() || "Other";
+      m[c] = (m[c] || 0) + 1;
+    });
+    return Object.keys(m).sort().map(function (c) { return { name: c, n: m[c] }; });
+  }
+  function prodsIn(brand, cat) {
+    return PRODUCTS.filter(function (p) {
+      return brandOf(p) === brand && (String(p.cat || "").trim() || "Other") === cat;
+    }).sort(function (a, b) { return String(a.desc).localeCompare(String(b.desc)); });
+  }
+
+  /* the basket the picker is filling - the challan builder or the return builder */
+  function basket() { return S.pick && S.pick.into === "rt" ? (S.rt && S.rt.items) : (S.ch && S.ch.items); }
+  function qtyOf(code) {
+    var b = basket() || [];
+    var hit = b.filter(function (l) { return l.code === code; })[0];
+    return hit ? num(hit.qty) : 0;
+  }
+
+  function pickerHtml() {
+    var p = S.pick || {};
+    var h = '<div class="crumb">' +
+      '<span class="c" data-act="pk-lvl" data-l="brand">Brand' + (p.brand ? ': ' + esc(p.brand) : '') + '</span>' +
+      (p.brand ? '<span class="c" data-act="pk-lvl" data-l="cat">Category' + (p.cat ? ': ' + esc(p.cat) : '') + '</span>' : '') +
+      '</div>';
+
+    if (!p.brand) {
+      var bl = brandsInStock();
+      if (!bl.length) return h + '<div class="empty">The catalogue has not loaded yet. Pull the latest and try again.</div>';
+      h += bl.map(function (b) {
+        return '<button class="tile" data-act="pk-brand" data-b="' + esc(b.name) + '">' +
+          '<div class="grow">' + esc(b.name) + '<span class="sub">' + b.n + ' product' + (b.n === 1 ? '' : 's') + '</span></div>' +
+          '<span class="pill">&#8250;</span></button>';
+      }).join("");
+      return h;
+    }
+    if (!p.cat) {
+      h += catsIn(p.brand).map(function (c) {
+        return '<button class="tile" data-act="pk-cat" data-c="' + esc(c.name) + '">' +
+          '<div class="grow">' + esc(c.name) + '<span class="sub">' + c.n + ' product' + (c.n === 1 ? '' : 's') + '</span></div>' +
+          '<span class="pill">&#8250;</span></button>';
+      }).join("");
+      return h;
+    }
+    var list = prodsIn(p.brand, p.cat);
+    var q = lower(p.q || "");
+    if (q) list = list.filter(function (x) { return lower(x.label).indexOf(q) >= 0; });
+    h += '<div class="row" style="margin-bottom:8px"><input id="pk_q" class="grow" placeholder="Narrow this list…" value="' + esc(p.q || "") + '"/></div>';
+    if (!list.length) return h + '<div class="empty">Nothing here by that name.</div>';
+    h += list.map(function (x) {
+      var have = qtyOf(x.code);
+      return '<div class="card" style="padding:9px 11px;margin:7px 0">' +
+        '<div class="row">' +
+          (x.pic ? '<img src="' + esc(x.pic) + '" alt="" style="width:46px;height:46px;object-fit:contain;border-radius:8px;background:#f8fafc"/>' : '') +
+          '<div class="grow">' +
+            '<div style="font-weight:800;font-size:14px">' + esc(x.desc) + '</div>' +
+            '<div class="muted">' + esc(x.code) + (x.unit ? ' · ' + esc(x.unit) : '') + ' · ' + money(x.price) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="step" style="margin-top:8px">' +
+          '<button data-act="pk-minus" data-code="' + esc(x.code) + '">&minus;</button>' +
+          '<input class="pk-qty" data-code="' + esc(x.code) + '" inputmode="decimal" value="' + (have || "") + '" placeholder="0"/>' +
+          '<button data-act="pk-plus" data-code="' + esc(x.code) + '">+</button>' +
+          (have ? '<span class="pill grn" style="margin-left:6px">in the challan</span>' : '') +
+        '</div></div>';
+    }).join("");
+    return h;
+  }
+
+  function sheetPicker() {
+    var n = (basket() || []).length;
+    return '<h2>Add material</h2>' +
+      '<div class="muted" style="margin-bottom:10px">' + n + ' line' + (n === 1 ? '' : 's') + ' so far. Set a quantity and it is in — no separate Add button.</div>' +
+      '<div id="pk_body">' + pickerHtml() + '</div>' +
+      '<div class="acts" style="margin-top:14px"><button class="btn full" data-act="close">Done</button></div>';
+  }
+
+  /* Setting a quantity IS adding the line - there is no second button to forget. A
+     quantity of zero takes it out again. */
+  function setQty(code, q) {
+    var into = S.pick && S.pick.into === "rt" ? "rt" : "ch";
+    var holder = into === "rt" ? S.rt : S.ch;
+    if (!holder) return;
+    holder.items = holder.items || [];
+    var prod = PRODUCTS.filter(function (x) { return x.code === code; })[0];
+    if (!prod) return;
+    var qn = num(q);
+    var i, hit = -1;
+    for (i = 0; i < holder.items.length; i++) if (holder.items[i].code === code) { hit = i; break; }
+    if (qn <= 0) { if (hit >= 0) holder.items.splice(hit, 1); return; }
+    var line = { code: prod.code, desc: prod.desc, unit: prod.unit, qty: qn, rate: prod.price,
+                 brand: brandOf(prod), disc: "" };
+    if (hit >= 0) holder.items[hit] = Object.assign({}, holder.items[hit], { qty: qn }); else holder.items.push(line);
+  }
+  /* ================= SCREENS ================= */
+
+  function renderLogin(err) {
+    el("root").innerHTML =
+      '<div class="login"><h1>Energy World</h1><p>Challan &amp; material return</p>' +
+      (err ? '<div class="pill red" style="display:block;text-align:center;padding:8px;margin-bottom:10px">' + esc(err) + '</div>' : '') +
+      (bioSaved()
+        ? '<button class="btn full" data-act="bio-go" style="margin-bottom:6px">&#128274; Unlock with Face ID / fingerprint</button>' +
+          '<div class="muted" style="text-align:center;margin-bottom:14px">or sign in with your PIN</div>'
+        : '') +
+      '<label>Your name</label><input id="ln" autocomplete="username" placeholder="e.g. Gautam" value="' + esc(S.user) + '"/>' +
+      '<label>Your PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Your Team CRM PIN"/>' +
+      '<div style="height:16px"></div>' +
+      '<button class="btn full" data-act="login">Sign in</button>' +
+      '<div class="muted" style="text-align:center;margin-top:14px">The same name and PIN as the Team CRM.<br>v' + APP_VERSION + '</div></div>';
+    var lp = el("lp");
+    if (lp) lp.addEventListener("keyup", function (e) { if (e.key === "Enter") doLogin(); });
+  }
+
+  function header() {
+    var n = S.busy ? "syncing…" : (S.syncAt ? "updated " + new Date(S.syncAt).toTimeString().slice(0,5) : "");
+    return '<div class="top"><div class="t1">' +
+      '<h1>Challan</h1>' +
+      '<div style="text-align:right"><div class="who">' + esc(S.user) + ' · ' + esc(S.role) +
+        (canApprove() ? '' : ' · makes, does not approve') + '</div>' +
+      '<div class="sync">' + esc(n) + '</div></div>' +
+      '<button class="btn sm ghost" data-act="refresh" title="Pull the latest">&#8635;</button>' +
+      '<button class="btn sm ghost" data-act="account" title="This phone">&#9776;</button>' +
+      '</div></div>';
+  }
+
+  /* ---------- 1. MAKE A CHALLAN ---------- */
+  function viewMake() {
+    var z = S.ch;
+    if (!z) {
+      var mine = challans().filter(function (c) { return lower(c.createdBy) === lower(S.user); }).slice(0, 6);
+      return '<div class="card" style="background:#0f766e;color:#fff;border-color:#0f766e">' +
+        '<div style="font-size:17px;font-weight:800">Send material out</div>' +
+        '<div style="font-size:12.5px;opacity:.9;margin-top:3px">Pick the client, add the material, write the book number. It saves as a <b>draft</b> — the accounts desk passes it before it counts against his account.</div></div>' +
+        '<button class="btn full" data-act="ch-new" style="margin:12px 0">+ New challan</button>' +
+        statBar() +
+        (mine.length ? '<div class="muted" style="font-weight:700;margin:16px 2px 4px">The last few you made</div>' +
+          mine.map(chRow).join("") : '');
+    }
+    var cl = clientByName(z.client) || {};
+    var lines = z.items || [];
+    var goods = lines.reduce(function (a, l) {
+      var d = l.disc === "" || l.disc == null ? clientDiscount(z.client, l.brand) : num(l.disc);
+      return a + num(l.qty) * Math.round(num(l.rate) * (1 - d / 100));
+    }, 0);
+    var h = '<div class="row" style="margin:6px 0 10px"><button class="btn sm gry" data-act="ch-cancel">&#8592; Back</button>' +
+      '<div class="grow" style="font-weight:800;font-size:16px">New challan</div></div>';
+
+    h += '<div class="card"><label>Client</label>' +
+      '<input id="m_client" list="cl_list" placeholder="Start typing his name…" value="' + esc(z.client || "") + '" data-live="client"/>' +
+      '<datalist id="cl_list">' + clients().map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>' +
+      (z.client && !cl.name ? '<div class="pill red" style="margin-top:6px">Not a registered client. Register him in the CRM first, so his discount applies.</div>' : '') +
+      (cl.name ? '<div class="muted" style="margin-top:5px">' + esc(cl.location || "") +
+        (cl.mobile ? ' · ' + esc(cl.mobile) : '') + '</div>' : '') +
+      '<label>Site</label>' +
+      '<input id="m_site" list="st_list" placeholder="Which site is it going to?" value="' + esc(z.site || "") + '"/>' +
+      '<datalist id="st_list">' + sitesFor(z.client).map(function (s) { return '<option value="' + esc(s.name) + '"></option>'; }).join("") + '</datalist>' +
+      '</div>';
+
+    h += '<div class="card"><div class="row"><div class="grow" style="font-weight:800">Material</div>' +
+      '<button class="btn sm" data-act="pk-open" data-into="ch">+ Add material</button></div>';
+    if (!lines.length) {
+      h += '<div class="empty" style="padding:16px 8px">Nothing on this challan yet.</div>';
+    } else {
+      h += lines.map(function (l, i) {
+        var d = l.disc === "" || l.disc == null ? clientDiscount(z.client, l.brand) : num(l.disc);
+        var net = num(l.qty) * Math.round(num(l.rate) * (1 - d / 100));
+        return '<div class="line"><div class="grow">' +
+          '<div style="font-weight:700;font-size:13.5px">' + esc(l.desc) + '</div>' +
+          '<div class="muted">' + esc(l.code) + ' · ' + num(l.qty) + ' ' + esc(l.unit || "") +
+            ' × ' + money(l.rate) + (d ? ' &minus;' + d + '%' : '') + '</div></div>' +
+          '<div style="font-weight:800;white-space:nowrap">' + money(net) + '</div>' +
+          '<button class="btn sm gry" data-act="ln-del" data-i="' + i + '">&times;</button></div>';
+      }).join("");
+      h += '<div class="row" style="margin-top:9px"><div class="grow muted">' + lines.length + ' line' + (lines.length === 1 ? '' : 's') + '</div>' +
+        '<div class="big">' + money(goods) + '</div></div>';
+    }
+    h += '</div>';
+
+    h += '<div class="card"><div class="grid2">' +
+      '<div><label>Freight</label><input id="m_freight" inputmode="decimal" value="' + esc(z.freight || "") + '"/></div>' +
+      '<div><label>Freight borne by</label><select id="m_fto">' +
+        ['Energy World','Client'].map(function (o) { return '<option' + (String(z.fto || "Energy World") === o ? ' selected' : '') + '>' + o + '</option>'; }).join("") +
+      '</select></div></div>' +
+      '<div class="grid2">' +
+      '<div><label>Driver</label><input id="m_driver" list="dv_list" value="' + esc(z.driver || "") + '"/>' +
+      '<datalist id="dv_list">' + ((S.data && S.data.drivers) || []).map(function (d) { return '<option value="' + esc(d.name) + '"></option>'; }).join("") + '</datalist></div>' +
+      '<div><label>Vehicle</label><input id="m_veh" value="' + esc(z.veh || "") + '"/></div>' +
+      '</div>' +
+      /* the owner's instruction: this is the important part, so it is impossible to miss */
+      '<label style="color:#b91c1c">BOOK (MANUAL) CHALLAN NUMBER</label>' +
+      '<input id="m_manual" class="mano" placeholder="The number on the paper book" value="' + esc(z.manual || "") + '"/>' +
+      '<div class="muted" style="margin-top:4px">Leave it blank if there is no paper copy. The app\'s own number is generated either way.</div>' +
+      '</div>';
+
+    h += '<button class="btn full" data-act="ch-save" style="margin:14px 0 6px">Create the challan</button>' +
+      '<div class="muted" style="text-align:center;margin-bottom:10px">It is saved as a <b>draft</b>. ' +
+      (canApprove() ? 'You can pass it yourself on the Approve screen.' : 'The accounts desk passes it.') + '</div>';
+    return h;
+  }
+
+  function statBar() {
+    var p = pendingApproval().length, m = missingReceipts().length;
+    return '<div class="stats">' +
+      '<div class="stat ' + (p ? 'bad' : 'good') + '"><div class="n">' + p + '</div><div class="l">Waiting to be passed</div></div>' +
+      '<div class="stat ' + (m ? 'bad' : 'good') + '"><div class="n">' + m + '</div><div class="l">No signed receipt yet</div></div>' +
+      '</div>';
+  }
+
+  function chRow(c) {
+    var mn = manualNoFor(c), pf = proofFor(c), st = chStatus(c);
+    return '<div class="card" style="padding:11px 12px">' +
+      '<div class="row"><div class="grow">' +
+        '<div style="font-weight:800;font-size:14.5px">' + esc(c.customerName || "-") + '</div>' +
+        '<div class="muted" style="margin-top:2px">' + esc(c.challanNo || "") +
+          (mn ? ' · <b style="color:#b91c1c">Book ' + esc(mn) + '</b>' : '') +
+          ' · ' + esc(dstr(d10(c.createdAt))) + (c.site ? ' · ' + esc(c.site) : '') + '</div>' +
+        '<div style="margin-top:5px">' +
+          (st === "Draft" ? '<span class="pill red">Not passed yet</span>' : '<span class="pill grn">' + esc(st) + '</span>') +
+          (pf ? ' <span class="pill grn">Receipt attached</span>'
+              : ' <span class="pill amb">No receipt</span>') +
+        '</div></div>' +
+        '<div style="text-align:right"><div class="big">' + money(chValue(c)) + '</div>' +
+        '<div class="muted">' + chLines(c).length + ' line' + (chLines(c).length === 1 ? '' : 's') + '</div></div>' +
+      '</div>' +
+      '<div class="acts">' +
+        '<button class="btn sm gry" data-act="ch-pdf" data-no="' + esc(c.challanNo) + '">Challan PDF</button>' +
+        '<button class="btn sm gry" data-act="ch-wa" data-no="' + esc(c.challanNo) + '">Send on WhatsApp</button>' +
+        (pf ? '<a class="btn sm gry" href="' + esc(pf.url) + '" target="_blank" rel="noopener">See receipt</a>'
+            : '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(c.id) + '">Attach receipt</button>') +
+        (st === "Draft" && canApprove() ? '<button class="btn sm" data-act="ch-approve" data-no="' + esc(c.challanNo) + '">Pass it</button>' : '') +
+      '</div></div>';
+  }
+
+  /* ---------- 2. MATERIAL RETURN ---------- */
+  function viewReturn() {
+    var z = S.rt;
+    if (!z) {
+      var last = returns().slice().sort(function (a, b) {
+        return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+      }).slice(0, 6);
+      return '<div class="card" style="background:#b45309;color:#fff;border-color:#b45309">' +
+        '<div style="font-size:17px;font-weight:800">Take material back in</div>' +
+        '<div style="font-size:12.5px;opacity:.92;margin-top:3px">Goods coming back off a site. It carries a signed goods-in receipt exactly the way a delivery does — that piece of paper is what settles the argument later.</div></div>' +
+        '<button class="btn full amb" data-act="rt-new" style="margin:12px 0">+ Register a return</button>' +
+        (last.length ? '<div class="muted" style="font-weight:700;margin:16px 2px 4px">The last few returns</div>' +
+          last.map(rtRow).join("") : '<div class="empty">No returns on the book yet.</div>');
+    }
+    var lines = z.items || [];
+    var tot = lines.reduce(function (a, l) { return a + num(l.qty) * num(l.rate); }, 0);
+    var h = '<div class="row" style="margin:6px 0 10px"><button class="btn sm gry" data-act="rt-cancel">&#8592; Back</button>' +
+      '<div class="grow" style="font-weight:800;font-size:16px">Material return</div></div>';
+    h += '<div class="card"><label>Client</label>' +
+      '<input id="r_client" list="cl_list2" placeholder="Whose material is coming back?" value="' + esc(z.client || "") + '" data-live="rclient"/>' +
+      '<datalist id="cl_list2">' + clients().map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>' +
+      '<div class="grid2"><div><label>Site</label><input id="r_site" value="' + esc(z.site || "") + '"/></div>' +
+      '<div><label>Against challan no</label><input id="r_ch" placeholder="If you know it" value="' + esc(z.against || "") + '"/></div></div>' +
+      '<label>Why is it coming back?</label><input id="r_reason" placeholder="Extra material, wrong size, damaged…" value="' + esc(z.reason || "") + '"/>' +
+      '</div>';
+    h += '<div class="card"><div class="row"><div class="grow" style="font-weight:800">Material coming back</div>' +
+      '<button class="btn sm amb" data-act="pk-open" data-into="rt">+ Add material</button></div>';
+    if (!lines.length) h += '<div class="empty" style="padding:16px 8px">Nothing added yet.</div>';
+    else {
+      h += lines.map(function (l, i) {
+        return '<div class="line"><div class="grow">' +
+          '<div style="font-weight:700;font-size:13.5px">' + esc(l.desc) + '</div>' +
+          '<div class="muted">' + esc(l.code) + ' · ' + num(l.qty) + ' ' + esc(l.unit || "") + ' × ' + money(l.rate) + '</div></div>' +
+          '<div style="font-weight:800;white-space:nowrap">' + money(num(l.qty) * num(l.rate)) + '</div>' +
+          '<button class="btn sm gry" data-act="rln-del" data-i="' + i + '">&times;</button></div>';
+      }).join("");
+      h += '<div class="row" style="margin-top:9px"><div class="grow muted">' + lines.length + ' line' + (lines.length === 1 ? '' : 's') + '</div>' +
+        '<div class="big">' + money(tot) + '</div></div>';
+    }
+    h += '</div>';
+    h += '<div class="card"><div class="grid2">' +
+      '<div><label>Driver who brought it</label><input id="r_driver" list="dv_list2" value="' + esc(z.driver || "") + '"/>' +
+      '<datalist id="dv_list2">' + ((S.data && S.data.drivers) || []).map(function (d) { return '<option value="' + esc(d.name) + '"></option>'; }).join("") + '</datalist></div>' +
+      '<div><label>Freight</label><input id="r_freight" inputmode="decimal" value="' + esc(z.freight || "") + '"/></div>' +
+      '</div></div>';
+    h += '<button class="btn full amb" data-act="rt-save" style="margin:14px 0 6px">Register the return</button>' +
+      '<div class="muted" style="text-align:center;margin-bottom:10px">Attach the signed goods-in receipt straight after — the button appears on the return.</div>';
+    return h;
+  }
+
+  function rtRow(r) {
+    var pf = proofFor(r);
+    var items = (function () { try { var l = JSON.parse(r.itemsJson || "[]"); return Array.isArray(l) ? l : []; } catch (e) { return []; } })();
+    var tot = items.reduce(function (a, l) { return a + num(l.qty) * num(l.rate); }, 0);
+    return '<div class="card" style="padding:11px 12px">' +
+      '<div class="row"><div class="grow">' +
+        '<div style="font-weight:800;font-size:14.5px">' + esc(r.customerName || "-") + '</div>' +
+        '<div class="muted" style="margin-top:2px">' + esc(r.returnNo || "") + ' · ' + esc(dstr(d10(r.createdAt))) +
+          (r.againstNo || r.challanNo ? ' · against ' + esc(r.againstNo || r.challanNo) : '') + '</div>' +
+        '<div style="margin-top:5px"><span class="pill amb">' + esc(r.status || "Raised") + '</span>' +
+          (pf ? ' <span class="pill grn">Goods-in receipt attached</span>' : ' <span class="pill red">No goods-in receipt</span>') + '</div>' +
+      '</div><div style="text-align:right"><div class="big">' + money(tot) + '</div></div></div>' +
+      '<div class="acts">' +
+        (pf ? '<a class="btn sm gry" href="' + esc(pf.url) + '" target="_blank" rel="noopener">See receipt</a>'
+            : '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(r.id) + '">Attach goods-in receipt</button>') +
+      '</div></div>';
+  }
+
+  /* ---------- 3. THE APPROVAL QUEUE ---------- */
+  function viewApprove() {
+    var list = pendingApproval();
+    var h = '<div class="card" style="background:#0f766e;color:#fff;border-color:#0f766e">' +
+      '<div style="font-size:17px;font-weight:800">' + list.length + ' waiting to be passed</div>' +
+      '<div style="font-size:12.5px;opacity:.92;margin-top:3px">' +
+      (canApprove()
+        ? 'Read it, then pass it. Only a passed challan counts against the client’s account. Nothing is deleted here — passing adds a stamp, it does not change what the godown wrote.'
+        : 'You can see what is waiting, but the accounts desk passes it. That is deliberate: the man who makes a challan is not the man who passes it.') +
+      '</div></div>';
+    if (!list.length) return h + '<div class="empty">Nothing waiting. Every challan on the book has been passed.</div>';
+    var val2 = list.reduce(function (a, c) { return a + chValue(c); }, 0);
+    h += '<div class="muted" style="margin:10px 2px 4px">' + money(val2) + ' of material, oldest first</div>';
+    return h + list.slice().reverse().map(chRow).join("");
+  }
+
+  /* ---------- 4. THE RECEIPTS WORKLIST ---------- */
+  function viewReceipts() {
+    var list = missingReceipts();
+    var h = '<div class="card" style="background:#b45309;color:#fff;border-color:#b45309">' +
+      '<div style="font-size:17px;font-weight:800">' + list.length + ' with nothing signed against them</div>' +
+      '<div style="font-size:12.5px;opacity:.92;margin-top:3px">A delivery with no signed paper is a delivery you cannot prove three months later, when he says he never got it. Photograph the signed challan and it is attached to this record for good.</div></div>';
+    if (!list.length) return h + '<div class="empty">Every delivery has its receipt. Nothing to chase.</div>';
+    return h + list.map(chRow).join("");
+  }
+
+  /* ---------- the account screen ---------- */
+  function sheetAccount() {
+    var on = !!bioSaved();
+    return '<h2>This phone</h2>' +
+      '<div class="muted" style="margin-bottom:10px">Signed in as <b>' + esc(S.user) + '</b> · ' + esc(S.role) + '</div>' +
+      '<div class="card" style="margin-top:0"><div style="font-weight:700">What you may do</div>' +
+        '<div class="muted">' + (canMake() ? 'Make challans and register returns. ' : '') +
+        (canApprove() ? 'Pass challans made by the godown.' : 'Passing a challan is done by the accounts desk.') + '</div></div>' +
+      '<div class="card" style="border-color:' + (on ? '#99f6e4' : '#e2e8f0') + ';background:' + (on ? '#f0fdfa' : '#fff') + '">' +
+        '<div style="font-weight:700">Face ID / fingerprint ' + (on ? '<span class="pill grn">on</span>' : '<span class="pill">off</span>') + '</div>' +
+        '<div class="muted">' + (bioAvailable()
+          ? 'The phone’s own lock in front of the app. Your fingerprint never leaves this phone.'
+          : 'This phone or browser cannot do it. Your PIN still works.') + '</div>' +
+        (bioAvailable() ? '<div class="acts">' + (on
+          ? '<button class="btn sm gry" data-act="bio-off">Turn it off</button>'
+          : '<button class="btn sm" data-act="bio-on">Turn it on</button>') + '</div>' : '') +
+      '</div>' +
+      '<div class="acts" style="margin-top:12px"><button class="btn gry" data-act="close">Close</button>' +
+      '<div class="grow"></div>' +
+      '<button class="btn red" data-act="signout">Sign out</button></div>';
+  }
+  /* ================= THE CHALLAN ON PAPER =================
+     A delivery document, not a quotation: no prices and no pictures. Prices live in the
+     ledger, not in the driver's hand. This mirrors the CRM's own challan print. */
+
+  function chalPdf(c) {
+    return ensurePdf().then(function () {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var W = 210, L = 14, R = W - 14;
+      var F = function (w) { doc.setFont("helvetica", w === "bold" ? "bold" : "normal"); };
+
+      doc.setFillColor(15, 118, 110); doc.rect(0, 0, W, 26, "F");
+      doc.setTextColor(255); F("bold"); doc.setFontSize(15);
+      doc.text("ENERGY WORLD", L, 12);
+      F(); doc.setFontSize(8.5);
+      doc.text("Panipat  |  Sonipat  |  Karnal", L, 18);
+      F("bold"); doc.setFontSize(12);
+      doc.text("DELIVERY CHALLAN", R, 12, { align: "right" });
+      F(); doc.setFontSize(9);
+      doc.text(String(c.challanNo || ""), R, 18, { align: "right" });
+
+      doc.setTextColor(15, 23, 42);
+      var y = 36;
+      var mn = manualNoFor(c);
+      var fact = function (k, v, bold) {
+        F(); doc.setFontSize(8); doc.setTextColor(100, 116, 139);
+        doc.text(String(k).toUpperCase(), L, y);
+        doc.setTextColor(15, 23, 42); F(bold ? "bold" : "normal"); doc.setFontSize(10.5);
+        doc.text(String(v == null || v === "" ? "-" : v), L + 42, y);
+        y += 7;
+      };
+      fact("Client", c.customerName, 1);
+      if (c.site) fact("Site", c.site);
+      fact("Date", dstr(d10(c.createdAt)));
+      if (mn) fact("Book no", mn, 1);
+      if (c.driver) fact("Driver", String(c.driver) + (c.vehicle ? " / " + c.vehicle : ""));
+      fact("Status", chStatus(c));
+
+      y += 3;
+      doc.setDrawColor(226, 232, 240); doc.line(L, y, R, y); y += 7;
+      F("bold"); doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+      doc.text("MATERIAL", L, y);
+      doc.text("QTY", R - 22, y, { align: "right" });
+      doc.text("UNIT", R, y, { align: "right" });
+      y += 3; doc.line(L, y, R, y); y += 6;
+      doc.setTextColor(15, 23, 42);
+
+      chLines(c).forEach(function (l) {
+        if (y > 262) { doc.addPage(); y = 22; }
+        F(); doc.setFontSize(10);
+        var name = doc.splitTextToSize(String(l.desc || l.code || ""), R - L - 46);
+        doc.text(name, L, y);
+        F("bold");
+        doc.text(String(num(l.qty)), R - 22, y, { align: "right" });
+        F(); doc.setFontSize(9);
+        doc.text(String(l.unit || ""), R, y, { align: "right" });
+        doc.setFontSize(7.5); doc.setTextColor(148, 163, 184);
+        doc.text(String(l.code || ""), L, y + 3.6);
+        doc.setTextColor(15, 23, 42);
+        y += Math.max(9, name.length * 4.6 + 4.6);
+      });
+
+      if (y > 232) { doc.addPage(); y = 22; }
+      y += 6; doc.setDrawColor(226, 232, 240); doc.line(L, y, R, y); y += 8;
+      F(); doc.setFontSize(8.5); doc.setTextColor(100, 116, 139);
+      doc.text("Received the above material in good order and condition.", L, y);
+      y += 20;
+      doc.setDrawColor(148, 163, 184);
+      doc.line(L, y, L + 60, y); doc.line(R - 60, y, R, y);
+      doc.setFontSize(8);
+      doc.text("Receiver's signature", L, y + 4.5);
+      doc.text("For Energy World", R - 60, y + 4.5);
+      return doc;
+    });
+  }
+
+  function chalFile(c) { return String(c.challanNo || "challan").replace(/[^\w.-]+/g, "_") + ".pdf"; }
+
+  function downloadChalan(no) {
+    var c = challans().filter(function (x) { return String(x.challanNo) === String(no); })[0];
+    if (!c) return;
+    toast("Building…");
+    chalPdf(c).then(function (doc) { doc.save(chalFile(c)); })
+      .catch(function () { toast("Could not build it — check your signal and try once more."); });
+  }
+
+  /* ---- CHECK BEFORE SENDING ----
+     The owner's rule, and it applies here as much as to a statement: a challan sent to the
+     wrong man cannot be called back. Who it is going to, and exactly what he gets. */
+  function sheetSendChalan(no) {
+    var c = challans().filter(function (x) { return String(x.challanNo) === String(no); })[0];
+    if (!c) return "";
+    var cl = clientByName(c.customerName) || {};
+    var mob = String(cl.mobile || "").replace(/\D/g, "");
+    var shown = mob.length === 10 ? mob.slice(0, 5) + " " + mob.slice(5) : (mob || "no number on his record");
+    return '<h2>Send the challan</h2>' +
+      '<div class="muted" style="margin-bottom:10px">Check it before it goes. A message to a customer cannot be called back.</div>' +
+      '<div class="card" style="border-color:#fed7aa;background:#fff7ed;margin-top:0">' +
+        '<div class="muted" style="font-weight:700;color:#9a3412">Going to</div>' +
+        '<div style="font-size:16px;font-weight:800;margin-top:2px">' + esc(c.customerName) + '</div>' +
+        '<div style="font-size:19px;font-weight:800;letter-spacing:.04em;color:#9a3412;margin-top:2px">' + esc(shown) + '</div>' +
+      '</div>' +
+      '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+        '<div class="row"><div class="grow"><div style="font-weight:700">' + esc(c.challanNo) + '</div>' +
+        '<div class="muted">' + chLines(c).length + ' line' + (chLines(c).length === 1 ? '' : 's') +
+          (c.site ? ' · ' + esc(c.site) : '') + ' · ' + esc(chStatus(c)) + '</div></div>' +
+        '<button class="btn sm gry" data-act="ch-pdf" data-no="' + esc(c.challanNo) + '">Open it first</button></div>' +
+        (isDraft(c) ? '<div class="pill red" style="margin-top:8px">This challan has not been passed yet.</div>' : '') +
+      '</div>' +
+      '<label>Exactly what he will receive</label>' +
+      '<div style="white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;' +
+        'padding:11px 12px;font-size:12.5px;max-height:200px;overflow:auto">' + esc(chalText(c)) + '</div>' +
+      '<div class="acts" style="margin-top:14px">' +
+      (mob ? '<button class="btn" data-act="ch-wa-go" data-no="' + esc(c.challanNo) + '">Send it</button>' : '<span class="pill red">No number to send to</span>') +
+      '<button class="btn gry" data-act="close">Cancel</button></div>' +
+      '<div class="muted" style="margin-top:8px">WhatsApp opens with this message ready. You still press send there.</div>';
+  }
+
+  function chalText(c) {
+    var mn = manualNoFor(c);
+    var l = [];
+    l.push("Namaste " + String(c.customerName || "") + ",");
+    l.push("");
+    l.push("Energy World — delivery challan " + String(c.challanNo || "") + (mn ? " (book no " + mn + ")" : "") + ".");
+    if (c.site) l.push("Site: " + c.site);
+    l.push("Date: " + dstr(d10(c.createdAt)));
+    l.push("Items: " + chLines(c).length);
+    l.push("");
+    l.push("The challan is attached below. Kindly check the material against it and let us know at once if anything does not agree.");
+    l.push("");
+    l.push("Thank you.");
+    l.push("Energy World  |  Panipat · Sonipat · Karnal");
+    return l.join("\n");
+  }
+
+  function waSendChalan(no) {
+    var c = challans().filter(function (x) { return String(x.challanNo) === String(no); })[0];
+    if (!c) return;
+    var cl = clientByName(c.customerName) || {};
+    var n = String(cl.mobile || "").replace(/\D/g, "");
+    if (!n) { toast("No mobile number on his record."); return; }
+    if (n.length === 10) n = "91" + n;
+    var win = window.open("", "_blank");        /* opened inside the tap or the phone blocks it */
+    toast("Building the challan…");
+    var msg = chalText(c);
+    chalPdf(c).then(function (doc) {
+      var b64 = doc.output("datauristring").split(",")[1];
+      return api("pdfHost", { pdfBase64: b64, filename: chalFile(c) }).then(function (h) {
+        var link = (h && h.ok && h.url) ? h.url : "";
+        var wa = "https://wa.me/" + n + "?text=" + encodeURIComponent(msg + (link ? "\n\nChallan:\n" + link : ""));
+        if (win && !win.closed) win.location = wa; else window.open(wa, "_blank");
+        if (!link) { doc.save(chalFile(c)); toast("Could not host it — WhatsApp opened, challan downloaded to attach."); }
+      });
+    }).catch(function () {
+      try { if (win && !win.closed) win.location = "https://wa.me/" + n + "?text=" + encodeURIComponent(msg); } catch (e) {}
+      toast("Could not build the challan. WhatsApp opened with the details.");
+    });
+  }
+
+  /* ================= THE SIGNED RECEIPT =================
+     Photograph the signed paper, shrink it so it goes up on one bar of signal, wrap it in a
+     one-page PDF and file it against the record. The audit row is written in the CRM's own
+     shape, keyed by the record's id, so the same receipt appears on the same challan in
+     HISAB with no server change at all. */
+  function shrink(dataUrl, maxPx, quality) {
+    return new Promise(function (res, rej) {
+      var img = new Image();
+      img.onload = function () {
+        var w = img.width, h = img.height, m = Math.max(w, h);
+        if (m > maxPx) { w = Math.round(w * maxPx / m); h = Math.round(h * maxPx / m); }
+        var cv = document.createElement("canvas");
+        cv.width = w; cv.height = h;
+        cv.getContext("2d").drawImage(img, 0, 0, w, h);
+        res({ url: cv.toDataURL("image/jpeg", quality || 0.72), w: w, h: h });
+      };
+      img.onerror = function () { rej(new Error("bad image")); };
+      img.src = dataUrl;
+    });
+  }
+
+  function attachReceipt(rec, dataUrl) {
+    toast("Filing the receipt…");
+    return shrink(dataUrl, 1600, 0.72).then(function (big) {
+      return shrink(dataUrl, 220, 0.55).then(function (small) {
+        return ensurePdf().then(function () {
+          var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+          var W = 210, L = 12, no = String(rec.challanNo || rec.returnNo || "");
+          doc.setFillColor(15, 118, 110); doc.rect(0, 0, W, 20, "F");
+          doc.setTextColor(255); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+          doc.text("SIGNED RECEIPT — " + no, L, 13);
+          doc.setTextColor(15, 23, 42); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+          doc.text(String(rec.customerName || "") + (rec.site ? " · " + rec.site : ""), L, 27);
+          doc.text("Photographed by " + String(S.user || "") + " on " + dstr(today()), L, 33);
+          var maxW = W - L * 2, maxH = 240;
+          var sc = Math.min(maxW / big.w, maxH / big.h);
+          doc.addImage(big.url, "JPEG", L, 38, big.w * sc, big.h * sc);
+          var b64 = doc.output("datauristring").split(",")[1];
+          return api("pdfHost", { pdfBase64: b64, filename: no.replace(/[^\w.-]+/g, "_") + "_receipt.pdf" })
+            .then(function (h) {
+              if (!h || !h.ok || !h.url) throw new Error("host failed");
+              return saveProof(rec, h.url, small.url).then(function (r) {
+                if (!r || !r.ok) throw new Error("audit failed");
+                (S.data.audit = S.data.audit || []).push(r.row);
+                bust();
+                toast("Receipt filed against " + no + ".");
+                render();
+              });
+            });
+        });
+      });
+    }).catch(function () {
+      toast("Could not file the receipt. Nothing was changed — try again when the signal is better.");
+    });
+  }
+  /* ================= FACE ID / FINGERPRINT =================
+     The same thing the CRM and the collection app do, and the same honesty about what it
+     is: the phone's own biometric unlocks a PIN that is ALREADY stored on that phone. The
+     fingerprint never leaves the device. The server still authenticates with the PIN. */
+  function bioAvailable() {
+    return !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
+  }
+  function bioSaved() {
+    try { return JSON.parse(localStorage.getItem(BIO_KEY) || "null"); } catch (e) { return null; }
+  }
+  function randBytes(n) { var a = new Uint8Array(n); crypto.getRandomValues(a); return a; }
+  function b64u(buf) {
+    var b = new Uint8Array(buf), s2 = "";
+    for (var i = 0; i < b.length; i++) s2 += String.fromCharCode(b[i]);
+    return btoa(s2).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function fromB64u(str) {
+    var s2 = String(str).replace(/-/g, "+").replace(/_/g, "/");
+    var bin = atob(s2), a = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+    return a;
+  }
+  function bioEnrol() {
+    if (!bioAvailable()) { toast("This phone has no Face ID or fingerprint the browser can use."); return; }
+    if (!S.user || !S.pin) { toast("Sign in first, then turn it on."); return; }
+    navigator.credentials.create({
+      publicKey: {
+        challenge: randBytes(32), rp: { name: "Energy World Challan" },
+        user: { id: randBytes(16), name: S.user, displayName: S.user },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+        timeout: 60000, attestation: "none"
+      }
+    }).then(function (cred) {
+      localStorage.setItem(BIO_KEY, JSON.stringify({ id: b64u(cred.rawId), user: S.user, pin: S.pin }));
+      toast("Face ID / fingerprint enabled on this phone.");
+      S.sheet = sheetAccount(); render();
+    }).catch(function () { toast("Could not enable it. Your PIN still works."); });
+  }
+  function bioUnlock() {
+    var saved = bioSaved();
+    if (!saved) return;
+    navigator.credentials.get({
+      publicKey: { challenge: randBytes(32), allowCredentials: [{ type: "public-key", id: fromB64u(saved.id) }],
+                   userVerification: "required", timeout: 60000 }
+    }).then(function () {
+      S.user = saved.user; S.pin = saved.pin;
+      return api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
+        if (!r || !r.ok) {
+          try { localStorage.removeItem(BIO_KEY); } catch (e) {}
+          S.pin = ""; renderLogin("That saved sign-in is no longer valid. Use your PIN."); return;
+        }
+        S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+        if (ALLOWED.indexOf(S.role) < 0) { S.pin = ""; renderLogin("This app is for the godown and the accounts desk."); return; }
+        try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: saved.pin, role: S.role })); } catch (e) {}
+        pull(false);
+      });
+    }).catch(function () { toast("That did not match. Use your PIN."); });
+  }
+  function bioForget() {
+    try { localStorage.removeItem(BIO_KEY); } catch (e) {}
+    toast("Face ID / fingerprint removed from this phone.");
+    S.sheet = sheetAccount(); render();
+  }
+  function signOut() {
+    try { localStorage.removeItem(STORE); } catch (e) {}
+    try { localStorage.removeItem(BIO_KEY); } catch (e) {}
+    try { localStorage.removeItem(SNAP + "_" + S.user); } catch (e) {}
+    S.user = ""; S.pin = ""; S.role = ""; S.data = null; S.sheet = null; S.ch = null; S.rt = null;
+    renderLogin("Signed out on this phone.");
+  }
+
+  /* ================= PAINT AND PRESS ================= */
+
+  function bodyHtml() {
+    if (S.tab === "return")  return viewReturn();
+    if (S.tab === "approve") return viewApprove();
+    if (S.tab === "receipt") return viewReceipts();
+    return viewMake();
+  }
+
+  function navBtn(t, icon, label, count) {
+    return '<button class="' + (S.tab === t ? "on" : "") + '" data-act="tab" data-t="' + t + '">' +
+      '<b>' + icon + '</b>' + label + (count ? '<span class="cnt">' + count + '</span>' : '') + '</button>';
+  }
+
+  function render() {
+    var p = S.data ? pendingApproval().length : 0;
+    var m = S.data ? missingReceipts().length : 0;
+    el("root").innerHTML = header() +
+      '<div class="wrap">' + bodyHtml() + '</div>' +
+      '<div class="nav">' +
+        navBtn("make",    "&#128230;", "Challan", 0) +
+        navBtn("return",  "&#8630;",   "Return", 0) +
+        navBtn("approve", "&#10003;",  "Approve", p) +
+        navBtn("receipt", "&#128247;", "Receipts", m) +
+        '<button data-act="crm"><b>&#8599;</b>CRM</button>' +
+      '</div>' +
+      (S.sheet ? '<div class="sheet" data-act="close-bg"><div class="inner" data-stop="1">' + S.sheet + '</div></div>' : '');
+    wireInputs();
+  }
+
+  /* The builder is a live form: what is typed has to survive the next repaint, because a
+     repaint happens every time a line is added. Everything is read back into S on input. */
+  function wireInputs() {
+    var keep = [["m_client","client"],["m_site","site"],["m_freight","freight"],["m_veh","veh"],
+                ["m_driver","driver"],["m_manual","manual"]];
+    keep.forEach(function (pair) {
+      var e = el(pair[0]);
+      if (!e) return;
+      e.addEventListener("input", function () {
+        if (!S.ch) return;
+        S.ch[pair[1]] = e.value;
+        /* the client's own site list and discount only appear once he is picked */
+        if (pair[1] === "client" && clientByName(e.value)) repaint();
+      });
+    });
+    var fto = el("m_fto");
+    if (fto) fto.addEventListener("change", function () { if (S.ch) S.ch.fto = fto.value; });
+
+    [["r_client","client"],["r_site","site"],["r_ch","against"],["r_reason","reason"],
+     ["r_driver","driver"],["r_freight","freight"]].forEach(function (pair) {
+      var e = el(pair[0]);
+      if (!e) return;
+      e.addEventListener("input", function () { if (S.rt) S.rt[pair[1]] = e.value; });
+    });
+
+    var pq = el("pk_q");
+    if (pq) pq.addEventListener("input", function () { S.pick.q = pq.value; repaintPicker(pq); });
+    Array.prototype.forEach.call(document.querySelectorAll(".pk-qty"), function (i) {
+      i.addEventListener("change", function () { setQty(i.getAttribute("data-code"), i.value); repaintPicker(null); });
+    });
+  }
+
+  /* repaint just the body, so the keyboard and the caret stay where they are */
+  function repaint() {
+    var w = document.querySelector(".wrap");
+    if (!w) return render();
+    var a = document.activeElement, id = a && a.id, pos = null;
+    try { pos = a && a.selectionStart; } catch (e) {}
+    w.innerHTML = bodyHtml();
+    wireInputs();
+    if (id) {
+      var back = el(id);
+      if (back) { back.focus(); try { back.setSelectionRange(pos, pos); } catch (e) {} }
+    }
+  }
+  function repaintPicker(focusEl) {
+    var body = el("pk_body");
+    if (!body) return render();
+    var v = focusEl ? focusEl.value : null, pos = null;
+    try { pos = focusEl && focusEl.selectionStart; } catch (e) {}
+    body.innerHTML = pickerHtml();
+    wireInputs();
+    if (focusEl) {
+      var q = el("pk_q");
+      if (q) { q.value = v; q.focus(); try { q.setSelectionRange(pos, pos); } catch (e) {} }
+    }
+  }
+
+  /* ---------- the hidden camera input, made once ---------- */
+  var _rcTarget = null;
+  function pickPhoto(rec) {
+    _rcTarget = rec;
+    var inp = el("rc_file");
+    if (!inp) {
+      inp = document.createElement("input");
+      inp.type = "file"; inp.accept = "image/*"; inp.capture = "environment";
+      inp.id = "rc_file"; inp.style.display = "none";
+      document.body.appendChild(inp);
+      inp.addEventListener("change", function () {
+        var f = inp.files && inp.files[0];
+        inp.value = "";
+        if (!f || !_rcTarget) return;
+        var rd = new FileReader();
+        rd.onload = function () { attachReceipt(_rcTarget, String(rd.result)); };
+        rd.onerror = function () { toast("Could not read that photo."); };
+        rd.readAsDataURL(f);
+      });
+    }
+    inp.click();
+  }
+
+  document.addEventListener("click", function (ev) {
+    var t = ev.target.closest("[data-act]");
+    if (!t) return;
+    var act = t.getAttribute("data-act");
+    if (act === "close-bg" && ev.target.closest("[data-stop]")) return;
+
+    if (act === "login")   { doLogin(); return; }
+    if (act === "refresh") { pull(true); return; }
+    if (act === "reboot")  { location.reload(); return; }
+    if (act === "account") { S.sheet = sheetAccount(); render(); return; }
+    if (act === "bio-go")  { bioUnlock(); return; }
+    if (act === "bio-on")  { bioEnrol(); return; }
+    if (act === "bio-off") { bioForget(); return; }
+    if (act === "signout") { signOut(); return; }
+    if (act === "crm")     { window.open(CRM_URL, "_blank"); return; }
+    if (act === "close" || act === "close-bg") { S.sheet = null; render(); return; }
+    if (act === "tab")     { S.tab = t.getAttribute("data-t"); S.sheet = null; render(); return; }
+
+    /* ---- the challan builder ---- */
+    if (act === "ch-new") {
+      if (!canMake()) { toast("Making a challan is done by the godown or the office."); return; }
+      S.ch = { client:"", site:"", items:[], freight:"", fto:"Energy World", driver:"", veh:"", manual:"" };
+      render(); return;
+    }
+    if (act === "ch-cancel") { S.ch = null; render(); return; }
+    if (act === "ln-del")  { if (S.ch) S.ch.items.splice(Number(t.getAttribute("data-i")), 1); repaint(); return; }
+    if (act === "rln-del") { if (S.rt) S.rt.items.splice(Number(t.getAttribute("data-i")), 1); repaint(); return; }
+
+    /* ---- the picker ---- */
+    if (act === "pk-open") {
+      S.pick = { into: t.getAttribute("data-into"), brand:"", cat:"", q:"" };
+      S.sheet = sheetPicker(); render(); return;
+    }
+    if (act === "pk-brand") { S.pick.brand = t.getAttribute("data-b"); S.pick.cat = ""; S.pick.q = ""; repaintPicker(null); return; }
+    if (act === "pk-cat")   { S.pick.cat = t.getAttribute("data-c"); S.pick.q = ""; repaintPicker(null); return; }
+    if (act === "pk-lvl") {
+      var l = t.getAttribute("data-l");
+      if (l === "brand") { S.pick.brand = ""; S.pick.cat = ""; } else { S.pick.cat = ""; }
+      S.pick.q = ""; repaintPicker(null); return;
+    }
+    if (act === "pk-plus" || act === "pk-minus") {
+      var code = t.getAttribute("data-code");
+      var now = qtyOf(code);
+      setQty(code, act === "pk-plus" ? now + 1 : Math.max(0, now - 1));
+      repaintPicker(null); return;
+    }
+
+    /* ---- save the challan ----
+       Same row shape, same numbering endpoint and the same frozen discount as the CRM, so a
+       challan made in the godown is indistinguishable from one made at the desk. */
+    if (act === "ch-save") {
+      if (!canMake()) { toast("Making a challan is done by the godown or the office."); return; }
+      var z = S.ch || {};
+      var cObj = clientByName(z.client);
+      if (!cObj) { toast("Pick a registered client from the list."); return; }
+      var lines = (z.items || []);
+      if (!lines.length) { toast("Add at least one product."); return; }
+      lines = lines.map(function (l) {
+        var d = (l.disc != null && l.disc !== "") ? num(l.disc) : clientDiscount(cObj.name, l.brand);
+        return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(l.rate), brand:l.brand, disc:d };
+      });
+      var amount = lines.reduce(function (a, l) { return a + l.qty * l.rate; }, 0);
+      var siteObj = sitesFor(cObj.name).filter(function (s) { return s.name === z.site; })[0] || {};
+      var manualV = String(z.manual || "").trim();
+      t.disabled = true; t.textContent = "Creating…";
+      var reset = function () { t.disabled = false; t.textContent = "Create the challan"; };
+
+      api("challanNo", { client: cObj.shortName || cObj.name }).then(function (n) {
+        var no = (n && n.challanNo) ||
+          (String(cObj.name).toUpperCase().slice(0, 6) + "/" + today().slice(8) + "/001");
+        var ch = {
+          id: "", createdBy: S.user, challanNo: no,
+          customerId: cObj.id || "", customerName: cObj.name,
+          siteId: siteObj.id || "", site: z.site || "",
+          brand: (lines[0] && lines[0].brand) || "", location: cObj.location || "",
+          items: lines.map(function (l) { return l.desc + " x" + l.qty; }).join(", "),
+          itemsJson: JSON.stringify(lines), amount: amount,
+          freight: num(z.freight), freightTo: z.fto || "Energy World",
+          discAmt: 0, discNote: "",
+          driver: z.driver || "", driverId: "", driverMobile: "", vehicle: z.veh || "",
+          associate: "", commissionSet: "N", status: "Draft", receiptReceived: "N"
+        };
+        return saveRow("challans", ch).then(function (r) {
+          if (!r || !r.ok) { reset(); toast((r && r.error) || "The server refused it. Nothing was saved."); return; }
+          var saved = r.row || ch;
+          (S.data.challans = S.data.challans || []).push(saved);
+          /* the paper book's number goes after the delivery, never before it */
+          var after = function () {
+            bust(); S.ch = null; S.tab = "make"; render();
+            toast("Challan " + no + " created — waiting to be passed." + (manualV ? " Book no " + manualV + "." : ""));
+          };
+          if (!manualV) { after(); return; }
+          return saveManualNo(no, saved.id || "", manualV, cObj.name).then(function (mr) {
+            if (mr && mr.ok && mr.row) (S.data.audit = S.data.audit || []).push(mr.row);
+            after();
+          }).catch(after);
+        });
+      }).catch(function () {
+        reset();
+        toast("Could not reach the server. Nothing was saved — your challan is still on screen, press Create again.");
+      });
+      return;
+    }
+
+    /* ---- the return builder ---- */
+    if (act === "rt-new") {
+      if (!canMake()) { toast("Registering a return is done by the godown or the office."); return; }
+      S.rt = { client:"", site:"", against:"", reason:"", items:[], driver:"", freight:"" };
+      render(); return;
+    }
+    if (act === "rt-cancel") { S.rt = null; render(); return; }
+    if (act === "rt-save") {
+      if (!canMake()) { toast("Registering a return is done by the godown or the office."); return; }
+      var rz = S.rt || {};
+      var rc = clientByName(rz.client);
+      if (!rc) { toast("Pick a registered client from the list."); return; }
+      if (!(rz.items || []).length) { toast("Add at least one product."); return; }
+      t.disabled = true; t.textContent = "Registering…";
+      var rreset = function () { t.disabled = false; t.textContent = "Register the return"; };
+      api("returnNo", { client: rc.shortName || rc.name }).then(function (n) {
+        var rno = (n && n.returnNo) ||
+          (String(rc.name).toUpperCase().slice(0, 6) + "/" + today().slice(8) + "/R01");
+        var row = {
+          id: "", createdBy: S.user, returnNo: rno,
+          customerId: rc.id || "", customerName: rc.name,
+          site: rz.site || "", challanNo: rz.against || "",
+          itemsJson: JSON.stringify(rz.items.map(function (l) {
+            return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(l.rate), brand:l.brand };
+          })),
+          reason: rz.reason || "", status: "Raised",
+          driver: rz.driver || "", driverMobile: "", vehicle: "",
+          freight: num(rz.freight), freightTo: "Energy World"
+        };
+        return saveRow("returns", row).then(function (r) {
+          if (!r || !r.ok) { rreset(); toast((r && r.error) || "The server refused it. Nothing was saved."); return; }
+          (S.data.returns = S.data.returns || []).push(r.row || row);
+          bust(); S.rt = null; S.tab = "return"; render();
+          toast("Return " + rno + " registered. Attach the goods-in receipt now.");
+        });
+      }).catch(function () { rreset(); toast("Could not reach the server. Nothing was saved."); });
+      return;
+    }
+
+    /* ---- pass a challan ----
+       An approval is an added stamp. What the godown wrote is never altered. */
+    if (act === "ch-approve") {
+      if (!canApprove()) { toast("Passing a challan is done by the accounts desk."); return; }
+      var no2 = t.getAttribute("data-no");
+      var c2 = challans().filter(function (x) { return String(x.challanNo) === String(no2); })[0];
+      if (!c2) return;
+      t.disabled = true; t.textContent = "Passing…";
+      saveRow("challans", Object.assign({}, c2, {
+        status: "Approved", approvedBy: S.user, approvedAt: new Date().toISOString()
+      })).then(function (r) {
+        if (!r || !r.ok) { t.disabled = false; t.textContent = "Pass it"; toast("The server refused it. Nothing changed."); return; }
+        c2.status = "Approved"; c2.approvedBy = S.user; c2.approvedAt = new Date().toISOString();
+        render(); toast(no2 + " passed.");
+      }).catch(function () {
+        t.disabled = false; t.textContent = "Pass it";
+        toast("No signal — nothing was changed. Try again.");
+      });
+      return;
+    }
+
+    /* ---- printing and sending ---- */
+    if (act === "ch-pdf")   { downloadChalan(t.getAttribute("data-no")); return; }
+    if (act === "ch-wa")    { S.sheet = sheetSendChalan(t.getAttribute("data-no")); render(); return; }
+    if (act === "ch-wa-go") { var g = t.getAttribute("data-no"); S.sheet = null; render(); waSendChalan(g); return; }
+
+    /* ---- the signed receipt ---- */
+    if (act === "rc-attach") {
+      var rid = t.getAttribute("data-id");
+      var rec = challans().filter(function (x) { return String(x.id) === String(rid); })[0] ||
+                returns().filter(function (x) { return String(x.id) === String(rid); })[0];
+      if (!rec) { toast("Could not find that record — pull the latest and try again."); return; }
+      pickPhoto(rec); return;
+    }
+  });
+
+  /* ================= COMING AND GOING ================= */
+
+  function doLogin() {
+    var name = val("ln"), pin = val("lp");
+    if (!name) { renderLogin("Enter your name."); return; }
+    if (!pin)  { renderLogin("Enter your PIN."); return; }
+    S.user = name; S.pin = pin;
+    api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
+      if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
+      S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+      if (ALLOWED.indexOf(S.role) < 0) {
+        S.pin = ""; S.role = "";
+        renderLogin("This app is for the godown and the accounts desk. Ask the owner if you need it.");
+        return;
+      }
+      try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: pin, role: S.role })); } catch (e) {}
+      pull(false);
+    }).catch(function () { S.pin = ""; renderLogin("Network error. Try again."); });
+  }
+
+  function snapSave() {
+    try { localStorage.setItem(SNAP + "_" + S.user, JSON.stringify({ at: Date.now(), d: S.data })); } catch (e) {}
+  }
+  function snapLoad() {
+    try {
+      var o = JSON.parse(localStorage.getItem(SNAP + "_" + S.user) || "null");
+      return o && o.d ? o.d : null;
+    } catch (e) { return null; }
+  }
+
+  function pull(loud) {
+    var snap = snapLoad();
+    if (snap && !S.data) { S.data = snap; bust(); render(); }
+    S.busy = true;
+    if (S.data) render();
+    if (loud) toast("Pulling the latest…");
+    return Promise.all([getBook(), loadCatalog()]).then(function (arr) {
+      var r = arr[0];
+      S.busy = false;
+      if (usableBook(r)) { S.data = slimBook(r); S.syncAt = Date.now(); bust(); snapSave(); }
+      else if (!S.data) { renderLogin("Could not read the book. Sign in again."); return; }
+      render();
+      if (loud) toast("Up to date.");
+    }).catch(function () {
+      S.busy = false;
+      if (!S.data) { renderLogin("No signal, and nothing saved on this phone yet."); return; }
+      render(); toast("No signal — showing what was last pulled onto this phone.");
+    });
+  }
+
+  /* This is an app you leave constantly - you photograph a receipt, you ring the driver.
+     Coming back to it pulls the book, so two men in the same godown never work from two
+     different pictures of it. Never while a form is open. */
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) return;
+    if (!S.user || !S.data) return;
+    if (S.sheet || S.ch || S.rt) return;
+    if (Date.now() - (S.syncAt || 0) < 60000) return;
+    pull(false);
+  });
+
+  function openingScreen(msg) {
+    el("root").innerHTML = '<div class="login"><h1>Energy World</h1><p>Challan &amp; material return</p>' +
+      '<div class="empty" id="opmsg">' + esc(msg || "Opening…") + '</div><div id="opretry"></div></div>';
+    setTimeout(function () {
+      var d = el("opretry");
+      if (!d || S.data) return;
+      d.innerHTML = '<button class="btn full gry" data-act="reboot">Taking too long — try again</button>';
+    }, 6000);
+  }
+
+  (function boot() {
+    var sess = null;
+    try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) {}
+    if (!(sess && sess.user && sess.pin)) { renderLogin(); regSW(); return; }
+
+    S.user = sess.user; S.pin = sess.pin; S.role = sess.role || "";
+    var snap = snapLoad();
+    if (snap) { S.data = snap; bust(); S.busy = true; render(); } else openingScreen();
+
+    var authP = api("teamAuth", { ua: navigator.userAgent });
+    var dataP = getBook();
+    var refused = false;
+    loadCatalog();
+
+    authP.then(function (r) {
+      if (!r || !r.ok) {
+        refused = true; S.pin = ""; S.data = null;
+        try { localStorage.removeItem(STORE); } catch (e) {}
+        renderLogin("Sign in again."); return;
+      }
+      S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+      if (ALLOWED.indexOf(S.role) < 0) {
+        refused = true; S.pin = ""; S.data = null;
+        renderLogin("This app is for the godown and the accounts desk."); return;
+      }
+      try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: sess.pin, role: S.role })); } catch (e) {}
+      if (S.data) render();
+    }).catch(function () {});
+
+    dataP.then(function (r) {
+      if (refused) return;
+      S.busy = false;
+      if (usableBook(r)) { S.data = slimBook(r); S.syncAt = Date.now(); bust(); snapSave(); render(); }
+      else if (!S.data) openingScreen("Could not read the book. Try again.");
+      else render();
+    }).catch(function () {
+      if (refused) return;
+      S.busy = false;
+      if (S.data) { render(); toast("No signal — showing what was last pulled onto this phone."); }
+      else openingScreen("No signal, and nothing saved on this phone yet.");
+    });
+
+    regSW();
+  })();
+
+  function regSW() {
+    if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} }
+  }
+})();
+</script>
+</body>
+</html>
