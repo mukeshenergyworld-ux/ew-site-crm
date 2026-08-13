@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.252";
+  var APP_VERSION = "6.9.253";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17031,24 +17031,26 @@ function viewCatalogue() {
       ((z && z.copyOf) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#1d4ed8">Copied from challan <b>' + esc(z.copyOf) + '</b> \u2014 same client, site and products. Check the quantities, then create. <b>The old challan is not changed</b>, and this becomes a new challan with its own number.</div>' : "") +
       '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, (z && z.loc) || LOCATIONS[0]) + '</select>' +
       strictClientField("m_client", (S.ch && S.ch.client) || "") +
-      /* v6.9.238 - THE PAPER BOOK'S NUMBER, IN RED (owner: "its important part").
-         It sits directly under the client and above the site, because that is the order
-         the man actually works in: whose challan, what number did I write on it, where is
-         it going. Red while it is empty and green the moment something is typed, so an
-         unfilled box is visible from across the room and a filled one stops shouting.
-         It is still OPTIONAL and still changes nothing about the app's own number, which
-         is reserved and printed exactly as before. */
-      '<div id="m_manual_box" style="border:2px solid ' + (_mnPre ? '#86efac' : '#f87171') + ';background:' +
-        (_mnPre ? '#f0fdf4' : '#fef2f2') + ';border-radius:10px;padding:10px 12px;margin:10px 0">' +
-        '<label id="m_manual_lab" for="m_manual" style="display:block;margin:0 0 5px;font-size:12px;font-weight:800;letter-spacing:.03em;color:' +
-          (_mnPre ? '#15803d' : '#b91c1c') + '">MANUAL CHALLAN NO &mdash; FROM THE PAPER BOOK</label>' +
-        '<input id="m_manual" inputmode="numeric" placeholder="e.g. 1247" value="' +
-          esc(_mnPre) + '" style="width:100%;font-size:17px;font-weight:800;letter-spacing:.04em;padding:11px 12px;border:2px solid ' +
-          (_mnPre ? '#86efac' : '#fca5a5') + ';border-radius:8px;background:#fff"/>' +
-        '<div id="m_manual_hint" style="margin-top:5px;font-size:11.5px;color:' + (_mnPre ? '#15803d' : '#b91c1c') + '">' +
-          (_mnPre ? 'Noted \u2014 this will print on the challan and show in hisab.'
-                  : 'Write the number from the hand-written book here. It prints on the challan and shows in hisab. Leave it blank only if there is no paper challan.') +
-        '</div></div>' +
+      /* v6.9.253 - SMALL, AND IN THE CORNER.
+         It shouted for a reason once: in v6.9.238 every challan was still being written in
+         the paper book first, and a blank box had to be visible from across the room. That
+         is no longer the working life of this form - his words: "as if chllan will be made
+         from app only, this box will be lesser required". So it keeps its whole job and
+         loses its whole size: one narrow field pushed right, no red block, no paragraph of
+         explanation, and the green tick when it holds something. Still OPTIONAL, still
+         printed on the challan, still shown in hisab, still nothing to do with the app's
+         own number. Only the shouting is gone. */
+      '<div id="m_manual_box" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:10px 0">' +
+        '<label id="m_manual_lab" for="m_manual" style="margin:0;font-size:11.5px;font-weight:700;color:' +
+          (_mnPre ? '#15803d' : '#94a3b8') + '">Book no</label>' +
+        '<input id="m_manual" inputmode="numeric" placeholder="1247" value="' +
+          esc(_mnPre) + '" title="The number written in the paper challan book - optional" ' +
+          'style="width:104px;flex:0 0 auto;text-align:center;font-size:14px;font-weight:800;letter-spacing:.03em;' +
+          'padding:7px 8px;border:1px solid ' + (_mnPre ? '#86efac' : '#cbd5e1') + ';border-radius:8px;background:' +
+          (_mnPre ? '#f0fdf4' : '#fff') + '"/>' +
+        '<span id="m_manual_hint" style="font-size:12px;width:14px;color:#15803d">' +
+          (_mnPre ? '&#10003;' : '') + '</span>' +
+      '</div>' +
       strictSiteField("m_site", (S.ch && S.ch.client) || "", (z && z.site) || "", "Site (optional)") +
       /* Material is going to this site today, so the man loading it knows the stage better than
          anyone. Confirm it here and the pitch board is right without a single extra visit. */
@@ -18187,8 +18189,7 @@ function viewCatalogue() {
        offer: overwrite it and the typed figure is what pays. Untick and the box hides;
        the rate is cleared when Save & back is pressed, not before. No repaint here, so
        nothing else on a half-filled screen is disturbed. */
-    /* v6.9.238 - the manual-challan box goes from red to green the moment a number is in
-       it, and back to red if it is cleared. The value is also held on S.ch as it is typed,
+    /* The manual-challan box. The value is held on S.ch as it is typed,
        so tapping a brand or a product rebuilds the form with the box still filled AND still
        the right colour - the picker repaints this form constantly. No render() here: a
        repaint on every keystroke would throw the caret out of the box. */
@@ -18197,17 +18198,14 @@ function viewCatalogue() {
       _mnBox.addEventListener("input", function () {
         var v = String(_mnBox.value || "").trim();
         if (S.ch) S.ch.manualNo = v;
-        var box = el("m_manual_box"), lab = el("m_manual_lab"), hint = el("m_manual_hint");
+        /* v6.9.253 - a tick when it holds something, nothing when it does not. The old
+           red-block-goes-green dance belonged to the big box and went with it. */
+        var lab = el("m_manual_lab"), hint = el("m_manual_hint");
         var on = !!v;
-        if (box) { box.style.borderColor = on ? "#86efac" : "#f87171"; box.style.background = on ? "#f0fdf4" : "#fef2f2"; }
-        _mnBox.style.borderColor = on ? "#86efac" : "#fca5a5";
-        if (lab) lab.style.color = on ? "#15803d" : "#b91c1c";
-        if (hint) {
-          hint.style.color = on ? "#15803d" : "#b91c1c";
-          hint.textContent = on
-            ? "Noted \u2014 this will print on the challan and show in hisab."
-            : "Write the number from the hand-written book here. It prints on the challan and shows in hisab. Leave it blank only if there is no paper challan.";
-        }
+        _mnBox.style.borderColor = on ? "#86efac" : "#cbd5e1";
+        _mnBox.style.background = on ? "#f0fdf4" : "#fff";
+        if (lab) lab.style.color = on ? "#15803d" : "#94a3b8";
+        if (hint) hint.innerHTML = on ? "&#10003;" : "";
       });
     }
     Array.prototype.forEach.call(document.querySelectorAll("input.exon"), function (cb) {
