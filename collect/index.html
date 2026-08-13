@@ -123,7 +123,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.7.1";
+  var APP_VERSION = "1.7.2";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
   var SNAP = "ew_collect_snap";
@@ -1895,6 +1895,64 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   function regSW() {
     if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} }
   }
+})();
+</script>
+<script>
+/* ---------------------------------------------------------------------------
+   THE ICON NAG — one time, on the phone that needs it.
+   The three apps used to share one Energy World leaf, so a man tapped the wrong
+   one. They have their own pictures and names now — but a phone copies the icon
+   into the home-screen shortcut on the day it is added and never looks again.
+   Apple gives no way to change that from here; it has to be removed and re-added
+   once. So the app tells the person holding it, rather than the owner having to
+   tell five people. Shown only to someone who OPENED IT FROM THE HOME SCREEN —
+   that is exactly the person with the old icon — once, and never again.
+   --------------------------------------------------------------------------- */
+(function () {
+  "use strict";
+  var KEY = "ew_icon_nag_v1";
+  try { if (localStorage.getItem(KEY)) return; } catch (e) { return; }
+
+  var standalone = false;
+  try {
+    standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+                 window.navigator.standalone === true;
+  } catch (e) {}
+  if (!standalone) return;              /* in a browser tab there is no icon to fix */
+
+  function show() {
+    if (document.getElementById("ew_nag")) return;
+    var d = document.createElement("div");
+    d.id = "ew_nag";
+    d.setAttribute("style",
+      "position:fixed;left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom) + 68px);z-index:9999;" +
+      "background:#fff7ed;border:1px solid #fdba74;border-radius:13px;padding:13px 15px;" +
+      "box-shadow:0 8px 24px rgba(15,23,42,.18);font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;" +
+      "color:#7c2d12;max-width:700px;margin:0 auto");
+    d.innerHTML =
+      '<div style="font-weight:800;margin-bottom:4px">This app has its own icon now</div>' +
+      '<div>The picture on your home screen is still the old one — a phone keeps the icon from the day ' +
+      'you added it. To fix it once: <b>press and hold the icon &rarr; Remove from Home Screen</b>, then open ' +
+      '<b>energyworld apps</b> in the browser and <b>Add to Home Screen</b> again. You stay signed in.</div>' +
+      '<div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap">' +
+        '<button id="ew_nag_open" style="appearance:none;border:1px solid #b45309;background:#b45309;color:#fff;' +
+          'border-radius:9px;padding:9px 13px;font-size:13px;font-weight:700;cursor:pointer">Open the apps page</button>' +
+        '<button id="ew_nag_ok" style="appearance:none;border:1px solid #fdba74;background:#fff;color:#7c2d12;' +
+          'border-radius:9px;padding:9px 13px;font-size:13px;font-weight:700;cursor:pointer">Got it</button>' +
+      '</div>';
+    document.body.appendChild(d);
+    var done = function () {
+      try { localStorage.setItem(KEY, "1"); } catch (e) {}
+      if (d.parentNode) d.parentNode.removeChild(d);
+    };
+    document.getElementById("ew_nag_ok").addEventListener("click", done);
+    document.getElementById("ew_nag_open").addEventListener("click", function () {
+      try { window.open("../apps/", "_blank"); } catch (e) {}
+      done();
+    });
+  }
+  /* after the app has painted, so it is never the first thing on a cold start */
+  setTimeout(show, 2500);
 })();
 </script>
 </body>
