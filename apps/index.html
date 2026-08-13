@@ -8,97 +8,83 @@
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
-body{font:15.5px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+body{font:15.5px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   background:#f1f5f9;color:#0f172a}
-.wrap{max-width:680px;margin:0 auto;padding:0 14px 60px}
+.wrap{max-width:660px;margin:0 auto;padding:0 14px 60px}
 .top{background:#0f766e;color:#fff;padding:calc(env(safe-area-inset-top) + 22px) 16px 20px}
-.top h1{margin:0;font-size:20px;font-weight:800;letter-spacing:.01em}
-.top p{margin:5px 0 0;font-size:13px;opacity:.9;max-width:640px}
-.top .in{max-width:680px;margin:0 auto}
-h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin:26px 2px 8px}
-.app{display:flex;align-items:center;gap:13px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;
-  padding:13px 14px;margin-bottom:10px;text-decoration:none;color:inherit;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+.top .in{max-width:660px;margin:0 auto}
+.top h1{margin:0;font-size:20px;font-weight:800}
+.top p{margin:6px 0 0;font-size:13px;opacity:.92}
+h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:#64748b;margin:24px 2px 8px;font-weight:800}
+.app{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;
+  padding:12px 14px;margin-bottom:10px;text-decoration:none;color:inherit;box-shadow:0 1px 2px rgba(15,23,42,.05)}
 .app:active{transform:translateY(1px)}
-.ic{width:52px;height:52px;border-radius:13px;flex:0 0 auto;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;color:#fff;font-weight:800;text-align:center;line-height:1.05}
-.ic .a{font-size:7px;letter-spacing:.06em;opacity:.85}
-.ic .b{font-size:12px;letter-spacing:.02em}
-.nm{font-weight:800;font-size:15.5px}
-.who{font-size:12px;color:#64748b;margin-top:1px}
-.go{margin-left:auto;font-size:20px;color:#94a3b8;flex:0 0 auto}
-.note{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:13px;padding:13px 15px;
-  font-size:13px;margin:22px 0}
+/* the REAL icon file, so this page can never disagree with what lands on the home screen */
+.app img{width:54px;height:54px;border-radius:13px;flex:0 0 auto;display:block;background:#f1f5f9}
+.txt{flex:1;min-width:0}
+.nm{display:block;font-weight:800;font-size:16px;line-height:1.25}
+.who{display:block;font-size:12.5px;color:#64748b;margin-top:2px}
+.go{font-size:22px;color:#cbd5e1;flex:0 0 auto}
+.note{background:#fff7ed;border:1px solid #fed7aa;color:#7c2d12;border-radius:13px;padding:13px 15px;
+  font-size:13px;margin:24px 0 0}
 .note b{display:block;margin-bottom:3px}
-.foot{color:#94a3b8;font-size:11.5px;text-align:center;margin-top:30px}
+.foot{color:#94a3b8;font-size:11.5px;text-align:center;margin-top:26px}
 </style>
 </head>
 <body>
 <div class="top"><div class="in">
   <h1>Energy World — all the apps</h1>
-  <p>Open this page on the phone, tap the app, then use the browser's <b>Add to Home Screen</b>.
-     Every one of them signs in with the same name and PIN as the CRM.</p>
+  <p>Open this page on the phone, tap an app, then use the browser's <b>Add to Home Screen</b>.
+     They all sign in with the same name and PIN.</p>
 </div></div>
 <div class="wrap">
 
   <h2>Every day</h2>
+  <a class="app" href="../team/"><img src="../team/icon-192.png" alt=""/>
+    <span class="txt"><span class="nm">EW CRM</span>
+    <span class="who">The whole book — clients, quotes, sites, hisab, service, incentives</span></span>
+    <span class="go">&#8250;</span></a>
 
-  <a class="app" href="../team/">
-    <span class="ic" style="background:#0f766e"><span class="a">ENERGY WORLD</span><span class="b">CRM</span></span>
-    <span><span class="nm">EW CRM</span><span class="who">The whole book — clients, quotes, sites, hisab, service, incentives</span></span>
-    <span class="go">&#8250;</span>
-  </a>
+  <a class="app" href="../challan/"><img src="../challan/icon-192.png" alt=""/>
+    <span class="txt"><span class="nm">EW Challan</span>
+    <span class="who">Godown &amp; accounts — material out, material back, the signed receipt</span></span>
+    <span class="go">&#8250;</span></a>
 
-  <a class="app" href="../challan/">
-    <span class="ic" style="background:#1d4ed8"><span class="a">ENERGY WORLD</span><span class="b">CHALLAN</span></span>
-    <span><span class="nm">EW Challan</span><span class="who">Godown &amp; accounts — send material out, take it back in, file the signed receipt</span></span>
-    <span class="go">&#8250;</span>
-  </a>
-
-  <a class="app" href="../collect/">
-    <span class="ic" style="background:#7f1d1d"><span class="a">ENERGY WORLD</span><span class="b">PAYMENT</span></span>
-    <span><span class="nm">EW Payment</span><span class="who">Admin &amp; accounts — who to ring today, what was promised, money as it comes in</span></span>
-    <span class="go">&#8250;</span>
-  </a>
+  <a class="app" href="../collect/"><img src="../collect/icon-192.png" alt=""/>
+    <span class="txt"><span class="nm">EW Payment</span>
+    <span class="who">Admin &amp; accounts — who to ring today, and the money as it comes in</span></span>
+    <span class="go">&#8250;</span></a>
 
   <h2>On the road</h2>
+  <a class="app" href="../visit/"><img src="../visit/icon-192.png" alt=""/>
+    <span class="txt"><span class="nm">EW Visit</span>
+    <span class="who">Sales executives — log a site visit from the site</span></span>
+    <span class="go">&#8250;</span></a>
 
-  <a class="app" href="../visit/">
-    <span class="ic" style="background:#0e7490"><span class="a">ENERGY WORLD</span><span class="b">VISIT</span></span>
-    <span><span class="nm">EW Visit</span><span class="who">Sales executives — log a site visit from the site</span></span>
-    <span class="go">&#8250;</span>
-  </a>
-
-  <a class="app" href="../saathi/">
-    <span class="ic" style="background:#b45309"><span class="a">ENERGY WORLD</span><span class="b">SAATHI</span></span>
-    <span><span class="nm">EW Saathi</span><span class="who">Plumbers &amp; architects — the partner app</span></span>
-    <span class="go">&#8250;</span>
-  </a>
+  <a class="app" href="../saathi/"><img src="../saathi/icon-192.png" alt=""/>
+    <span class="txt"><span class="nm">EW Saathi</span>
+    <span class="who">Plumbers &amp; architects — the partner app</span></span>
+    <span class="go">&#8250;</span></a>
 
   <h2>Office</h2>
-
-  <a class="app" href="../console/">
-    <span class="ic" style="background:#334155"><span class="a">ENERGY WORLD</span><span class="b">CONSOLE</span></span>
-    <span><span class="nm">EW Console</span><span class="who">Admin — the back office</span></span>
-    <span class="go">&#8250;</span>
-  </a>
+  <a class="app" href="../console/"><img src="../console/icon-192.png" alt=""/>
+    <span class="txt"><span class="nm">EW Console</span>
+    <span class="who">Admin — the back office</span></span>
+    <span class="go">&#8250;</span></a>
 
   <h2>For customers</h2>
-
-  <a class="app" href="../complaint/">
-    <span class="ic" style="background:#be123c"><span class="a">ENERGY WORLD</span><span class="b">HELP</span></span>
-    <span><span class="nm">Register a complaint</span><span class="who">Send this one to customers — no sign-in needed</span></span>
-    <span class="go">&#8250;</span>
-  </a>
+  <a class="app" href="../complaint/"><img src="../complaint/icon-192.png" alt=""/>
+    <span class="txt"><span class="nm">EW Service</span>
+    <span class="who">Register a complaint — send this one to customers, no sign-in</span></span>
+    <span class="go">&#8250;</span></a>
 
   <div class="note">
     <b>The icon on a phone never updates by itself.</b>
     When you tap Add to Home Screen the phone copies the picture and the name at that moment and
-    never looks again. If an app is already on the home screen with the old leaf, press and hold it,
-    remove it, open it here and add it once more. You stay signed in — that lives in the browser,
-    not in the shortcut.
+    never looks again. If an app is already on a home screen with the old picture: press and hold it,
+    remove it, then add it again from here. You stay signed in.
   </div>
-
-  <div class="foot">energyworld · all apps share one book and one PIN</div>
+  <div class="foot">seven apps · one book · one PIN</div>
 </div>
 </body>
 </html>
