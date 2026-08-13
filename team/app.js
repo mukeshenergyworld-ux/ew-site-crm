@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.245";
+  var APP_VERSION = "6.9.246";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -762,6 +762,53 @@ window.addEventListener("beforeunload", function (ev) {
         }
       })
       .catch(function () {});
+  }
+
+  /* ---- v6.9.246: SAVING ONE PRODUCT SHOULD COST ONE ROUND TRIP ----
+     Adding a product used to do two slow things in a row: write the row, and then call
+     loadCatalog(), which re-downloads the ENTIRE master catalogue - 1,041 products, about
+     324 KB - through Apps Script. On a phone that is the difference between a few seconds
+     and half a minute of staring at a disabled "Saving..." button.
+     The row that comes back is the row we just sent, so it is patched into the catalogue in
+     memory and into the cache on this device. The server stays the source of truth: the
+     cache's own timestamp is left alone, so the next ordinary refresh still re-reads
+     everything at its usual hour and any edit made elsewhere lands then. */
+  function catalogPatch(f) {
+    var at = 0;
+    try { at = (JSON.parse(localStorage.getItem(CAT_KEY) || "null") || {}).at || 0; } catch (e) {}
+    var hit = -1, i;
+    for (i = 0; i < PRODUCTS.length; i++) {
+      if (String(PRODUCTS[i].code || "").trim() === String(f.code || "").trim()) { hit = i; break; }
+    }
+    var item = {
+      code: String(f.code || "").trim(),
+      family: String(f.family || "").trim(),
+      desc: String(f.desc || "").trim(),
+      cat: String(f.category || "").trim(),
+      unit: String(f.unit || "").trim(),
+      price: Number(String(f.price || "0").replace(/[^0-9.]/g, "")) || 0,
+      brand: String(f.masterBrand || "").trim(),
+      pic: driveImg(f.pic),
+      /* specs are written on the Products screen, never on this form - keep what is there */
+      specs: hit >= 0 ? (PRODUCTS[hit].specs || "") : "",
+      label: (String(f.code || "").trim() ? String(f.code).trim() + " - " : "") + String(f.desc || "").trim()
+    };
+    if (hit >= 0) PRODUCTS[hit] = item; else PRODUCTS.push(item);
+    PRODLIST_HTML = null;
+    try {
+      localStorage.setItem(CAT_KEY, JSON.stringify({ v: CAT_V, at: at || Date.now(), items: PRODUCTS }));
+    } catch (e) {}
+    return item;
+  }
+  function catalogForget(code) {
+    var at = 0;
+    try { at = (JSON.parse(localStorage.getItem(CAT_KEY) || "null") || {}).at || 0; } catch (e) {}
+    var c = String(code || "").trim();
+    PRODUCTS = PRODUCTS.filter(function (x) { return String(x.code || "").trim() !== c; });
+    PRODLIST_HTML = null;
+    try {
+      localStorage.setItem(CAT_KEY, JSON.stringify({ v: CAT_V, at: at || Date.now(), items: PRODUCTS }));
+    } catch (e) {}
   }
 
   function findProduct(text) {
@@ -3460,10 +3507,12 @@ window.addEventListener("beforeunload", function (ev) {
     var all = S.data.clients.filter(function (c) { return isClient(c.name); });
     if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });   /* a sales exec sees only clients assigned to them */
     var list = all.filter(function (c) { return !loc || c.location === loc; });
+    if (S.clNoSite) list = list.filter(function (c) { return !siteForClient(c.name); });   /* v6.9.246 */
     if (qq) list = list.filter(function (c) { return cvMatch(c, qq); });
     if (!list.length) return '<div class="empty">' + (qq
       ? 'No client matches <b>' + esc(S.clq) + '</b>. Search runs on name, phone, area, plumber, architect and address.'
-      : (loc ? 'No clients in ' + esc(loc) + ' yet.' : 'No clients yet. A lead becomes a client here the moment one of his quotes is marked Won.')) + '</div>';
+      : (S.clNoSite ? 'Every client here has a site. Nothing hidden from the pitch board.'
+      : (loc ? 'No clients in ' + esc(loc) + ' yet.' : 'No clients yet. A lead becomes a client here the moment one of his quotes is marked Won.'))) + '</div>';
 
     function clientCardHtml(c) {
       var won = clientWonCount(c.name);
@@ -3484,6 +3533,10 @@ window.addEventListener("beforeunload", function (ev) {
           /* v6.9.211 - tapping this used to open the whole client form. It now opens the stage
              chips on their own and writes the answer the moment one is tapped. */
           : ' <span class="pill" data-act="cl-stage" data-n="' + esc(c.name) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer" title="No construction stage recorded - tap to answer it here">Stage ?</span>') +
+        /* v6.9.246 - no site at all is a bigger hole than a missing stage: the stage lives ON
+           the site, so without one he is on no selling screen whatsoever. Tap to add it. */
+        (siteForClient(c.name) ? "" :
+          ' <span class="pill" data-act="cl-addsite" data-n="' + esc(c.name) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer;font-weight:800" title="This client has no site, so the pitch board and the brand leads cannot see him at all - tap to add one">+ Add site</span>') +
         (c.mobile ? ' <span style="color:#94a3b8;font-size:12px;white-space:nowrap">' + esc(c.mobile) + '</span>' : "") +
         /* The money sits right beside the phone number on purpose: the number you would call and the
            reason you would call him, read as one line. */
@@ -3564,6 +3617,31 @@ window.addEventListener("beforeunload", function (ev) {
     h += '<div class="row">' + clocs.map(function (l) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") + '</div>';
+    /* ---- v6.9.246: NO SITE YET ----
+       A client and a site are two different records, and the stage - the thing that decides
+       what he can be sold today - lives on the SITE. Every selling screen in this app reads
+       sites: the pitch board, "what to pitch stage by stage", the brand leads, the window
+       that closes today. So a client with no site is invisible to all of them. He is still
+       in this list and still in HISAB, which is exactly why it goes unnoticed: he looks
+       present, and he is, but nobody can be told what to sell him.
+       This chip is simply that list, so it can be worked. Adding a site is one tap from the
+       card - the form opens already filled in from his client record. Nothing is deleted,
+       nothing is changed until the site is saved. */
+    var noSiteList = all.filter(function (c) { return !siteForClient(c.name); });
+    if (noSiteList.length) {
+      var nsMoney = noSiteList.reduce(function (a, c) { return a + (clientDue(c.name) > 0.5 ? clientDue(c.name) : 0); }, 0);
+      h += '<div class="row" style="margin-top:6px">' +
+        '<button class="btn sm ' + (S.clNoSite ? "" : "ghost") + '" data-act="cl-nosite"' +
+          (S.clNoSite ? '' : ' style="border-color:#b91c1c;color:#b91c1c"') + '>' +
+          'No site yet <b>' + noSiteList.length + '</b></button>' +
+        (S.clNoSite
+          ? '<button class="btn sm ghost" data-act="cl-nosite-off">Show all</button>'
+          : '') +
+        '<div class="muted" style="font-size:11.5px;margin-left:8px;align-self:center">' +
+          'Invisible to the pitch board and the brand leads' +
+          (nsMoney > 0.5 ? ' \u2014 <b style="color:#b91c1c">' + money(nsMoney) + '</b> owing between them' : '') +
+        '</div></div>';
+    }
     h += tidyBanner();
 
     ensurePickerCss();   /* the exec band (.ch-exec) styling lives with the picker CSS */
@@ -18342,15 +18420,22 @@ function viewCatalogue() {
       var pc = val("p_code");
       if (!pc) { toast("Product code is required."); return; }
       t.disabled = true; t.textContent = "Saving...";
-      api("catalogSave", { product: {
+      var pForm = {
         code: pc, desc: val("p_desc"), family: val("p_fam"), category: val("p_cat"),
         unit: val("p_unit"), price: val("p_price"), masterBrand: val("p_mb"),
         subBrand: "", hsn: "", pic: val("p_pic")
-      } }).then(function (r) {
-        if (!r || !r.ok) { toast((r && r.error) || "Save failed."); return; }
+      };
+      /* the button must always come back, whatever the server does */
+      var pReset = function () { t.disabled = false; t.textContent = "Save"; };
+      api("catalogSave", { product: pForm }).then(function (r) {
+        if (!r || !r.ok) { pReset(); toast((r && r.error) || "Save failed. Nothing was written."); return; }
+        catalogPatch(pForm);              /* v6.9.246 - no full re-download */
         S.modal = null;
         toast(r.created ? "Product added." : "Product updated.");
-        loadCatalog().then(function () { renderBg(); });
+        renderBg();
+      }).catch(function () {
+        pReset();
+        toast("No signal \u2014 the product was not saved. Try again.");
       });
       return;
     }
@@ -18359,14 +18444,31 @@ function viewCatalogue() {
       if (!window.confirm("Remove " + code + " from the master price list?")) return;
       api("catalogDelete", { code: code }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Delete failed."); return; }
+        catalogForget(code);              /* v6.9.246 - no full re-download */
         toast("Removed from catalogue.");
-        loadCatalog().then(function () { renderBg(); });
-      });
+        renderBg();
+      }).catch(function () { toast("No signal \u2014 nothing was removed."); });
       return;
     }
 
     if (act === "geo-filter") { S.geoOnly = !S.geoOnly; render(); return; }
     if (act === "cl-loc") { S.q = t.getAttribute("data-loc"); render(); return; }
+    /* v6.9.246 - the no-site worklist */
+    if (act === "cl-nosite") { S.clNoSite = !S.clNoSite; render(); return; }
+    if (act === "cl-nosite-off") { S.clNoSite = false; render(); return; }
+    /* Open the site form already filled in from his client record, so putting a man back on
+       the pitch board is one tap and one answer: what stage is he at. Nothing is written
+       until Save is pressed. */
+    if (act === "cl-addsite") {
+      var asC = clientByName(t.getAttribute("data-n")) || {};
+      S.modal = modalSite({
+        name: asC.name || "", client: asC.name || "", mobile: asC.mobile || "",
+        city: asC.location || "", architect: asC.architect || "", plumber: asC.plumber || "",
+        builder: asC.builder || "", owner: asC.ownedBy || asC.createdBy || "",
+        notes: asC.notes || ""
+      });
+      render(); return;
+    }
 
     /* ---- area registration (v6.9.177) ---- */
     if (act === "area-pick") {
