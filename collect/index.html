@@ -123,7 +123,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.7.0";
+  var APP_VERSION = "1.7.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
   var SNAP = "ew_collect_snap";
@@ -676,7 +676,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   function header() {
     var n = S.busy ? "syncing…" : (S.syncAt ? "updated " + new Date(S.syncAt).toTimeString().slice(0, 5) : "");
     return '<div class="top"><div class="t1">' +
-      '<h1>Collection</h1>' +
+      '<h1>Payment</h1>' +
       '<div style="text-align:right"><div class="who">' + esc(S.user) + ' · ' + esc(S.role) +
         (canWrite() ? '' : ' · view only') + '</div>' +
       '<div class="sync">' + esc(n) + '</div></div>' +

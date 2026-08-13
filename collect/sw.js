@@ -2,7 +2,7 @@
    THE BOOK IS NEVER CACHED HERE - money must not be served stale by a service
    worker the user cannot see. The app keeps its own snapshot in localStorage and
    says out loud when it is showing it. */
-var CACHE = "ew-collect-v170";
+var CACHE = "ew-collect-v171";
 var SHELL = ["./", "./index.html", "./manifest.webmanifest"];
 
 self.addEventListener("install", function (e) {
