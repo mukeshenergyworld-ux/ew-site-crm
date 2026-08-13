@@ -120,7 +120,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.0.0";
+  var APP_VERSION = "1.1.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
   var SNAP  = "ew_challan_snap";
@@ -130,7 +130,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   var CRM_URL = "../team/";
 
   var PRODUCTS = [];
-  var S = { user:"", pin:"", role:"", data:null, tab:"make", q:"", sheet:null, busy:false,
+  var S = { user:"", pin:"", role:"", data:null, tab:"make", q:"", allTime:false, sheet:null, busy:false,
             syncAt:0, ch:null, rt:null, pick:null, open:"" };
 
   /* ---------- tiny helpers ---------- */
@@ -296,10 +296,53 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
   function chStatus(c) { return String((c && c.status) || "Draft"); }
   function isDraft(c)  { return chStatus(c) === "Draft"; }
-  function pendingApproval() {
-    return challans().filter(isDraft).sort(function (a, b) {
+
+  /* ---------- HOW FAR BACK THE SCREENS LOOK ----------
+     v1.1 - The working screens show the last 60 days. That is not a limit on the book: every
+     challan ever made is still here, reachable by name, by challan number or by book number
+     from the search box, and a "show everything" button appears the moment something older
+     than 60 days is actually waiting. It exists so that in two years the godown is not
+     scrolling past a thousand settled deliveries to find this morning's.
+     Today the whole book is 81 challans over 24 days, so the button will not even appear. */
+  var WINDOW_DAYS = 60;
+  function ageDays(c) {
+    var t = Date.parse(d10(c && c.createdAt) + "T00:00:00Z");
+    return isFinite(t) ? Math.round((Date.now() - t) / 86400000) : 0;
+  }
+  function recent(c) { return S.allTime || ageDays(c) <= WINDOW_DAYS; }
+  function newestFirst(list) {
+    return list.slice().sort(function (a, b) {
       return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
     });
+  }
+  function pendingApproval(all) {
+    return newestFirst(challans().filter(function (c) { return isDraft(c) && (all || recent(c)); }));
+  }
+  /* how many are being held back by the window, so the button can say so honestly */
+  function olderCount(list) {
+    if (S.allTime) return 0;
+    return list.filter(function (c) { return ageDays(c) > WINDOW_DAYS; }).length;
+  }
+  function showAllBar(n, what) {
+    if (!n) return "";
+    return '<div class="row" style="margin:8px 2px">' +
+      '<button class="btn sm gry" data-act="alltime">Show everything &mdash; ' + n + ' older ' + what + '</button>' +
+      '</div>';
+  }
+
+  /* ---------- FINDING AN OLD ONE ----------
+     By client, by our challan number, or by the number written in the paper book - which is
+     the one the godown actually remembers. Searching always looks at the whole book, however
+     far back it goes, and ignores the 60-day window entirely. */
+  function searchHits() {
+    var q = lower(S.q || "");
+    if (!q) return null;
+    return newestFirst(challans().filter(function (c) {
+      return lower(c.customerName).indexOf(q) >= 0 ||
+             lower(c.challanNo).indexOf(q) >= 0 ||
+             lower(c.site).indexOf(q) >= 0 ||
+             lower(manualNoFor(c)).indexOf(q) >= 0;
+    }));
   }
 
   /* the client's frozen brand discount, read the CRM's way */
@@ -563,15 +606,40 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       '</div></div>';
   }
 
+  /* The one box that reaches the whole book, on every screen. A godown remembers the number
+     written in the paper book, not ours - so it searches that too. */
+  function searchBox() {
+    return '<div class="row" style="margin:2px 0 10px">' +
+      '<input id="q" class="grow" placeholder="Find any challan \u2014 client, challan no, book no\u2026" value="' + esc(S.q || "") + '"/>' +
+      (S.q ? '<button class="btn sm gry" data-act="qclear">Clear</button>' : '') + '</div>';
+  }
+  function viewSearch() {
+    var list = searchHits();
+    var h = searchBox();
+    if (!list.length) {
+      return h + '<div class="empty">Nothing by that name or number.<br>' +
+        'This searches every challan ever made, not just the last sixty days.</div>';
+    }
+    h += '<div class="muted" style="margin:0 2px 6px">' + list.length + ' match' + (list.length === 1 ? '' : 'es') +
+      ' \u2014 searched the whole book, however far back it goes</div>';
+    return h + list.map(chRow).join("");
+  }
+
   /* ---------- 1. MAKE A CHALLAN ---------- */
   function viewMake() {
     var z = S.ch;
     if (!z) {
-      var mine = challans().filter(function (c) { return lower(c.createdBy) === lower(S.user); }).slice(0, 6);
+      /* v1.1 - THE NEWEST six, not the first six in the sheet. This read slice(0,6) off the
+         list in the order the server hands it back, which is oldest first - so the strip
+         headed "the last few you made" was showing a man his six OLDEST challans. */
+      var mine = newestFirst(challans().filter(function (c) {
+        return lower(c.createdBy) === lower(S.user);
+      })).slice(0, 6);
       return '<div class="card" style="background:#0f766e;color:#fff;border-color:#0f766e">' +
         '<div style="font-size:17px;font-weight:800">Send material out</div>' +
         '<div style="font-size:12.5px;opacity:.9;margin-top:3px">Pick the client, add the material, write the book number. It saves as a <b>draft</b> — the accounts desk passes it before it counts against his account.</div></div>' +
         '<button class="btn full" data-act="ch-new" style="margin:12px 0">+ New challan</button>' +
+        searchBox() +
         statBar() +
         (mine.length ? '<div class="muted" style="font-weight:700;margin:16px 2px 4px">The last few you made</div>' +
           mine.map(chRow).join("") : '');
@@ -675,15 +743,15 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function viewReturn() {
     var z = S.rt;
     if (!z) {
-      var last = returns().slice().sort(function (a, b) {
-        return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
-      }).slice(0, 6);
+      var allRt = newestFirst(returns());
+      var last = allRt.slice(0, 12);
       return '<div class="card" style="background:#b45309;color:#fff;border-color:#b45309">' +
         '<div style="font-size:17px;font-weight:800">Take material back in</div>' +
         '<div style="font-size:12.5px;opacity:.92;margin-top:3px">Goods coming back off a site. It carries a signed goods-in receipt exactly the way a delivery does — that piece of paper is what settles the argument later.</div></div>' +
         '<button class="btn full amb" data-act="rt-new" style="margin:12px 0">+ Register a return</button>' +
-        (last.length ? '<div class="muted" style="font-weight:700;margin:16px 2px 4px">The last few returns</div>' +
-          last.map(rtRow).join("") : '<div class="empty">No returns on the book yet.</div>');
+        (last.length ? '<div class="muted" style="font-weight:700;margin:16px 2px 4px">' +
+          (allRt.length > last.length ? 'The last 12 of ' + allRt.length + ' returns' : 'Every return on the book') +
+          '</div>' + last.map(rtRow).join("") : '<div class="empty">No returns on the book yet.</div>');
     }
     var lines = z.items || [];
     var tot = lines.reduce(function (a, l) { return a + num(l.qty) * num(l.rate); }, 0);
@@ -742,14 +810,18 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   /* ---------- 3. THE APPROVAL QUEUE ---------- */
   function viewApprove() {
     var list = pendingApproval();
-    var h = '<div class="card" style="background:#0f766e;color:#fff;border-color:#0f766e">' +
+    var hidden = olderCount(pendingApproval(true));
+    var h = searchBox() +
+      '<div class="card" style="background:#0f766e;color:#fff;border-color:#0f766e">' +
       '<div style="font-size:17px;font-weight:800">' + list.length + ' waiting to be passed</div>' +
       '<div style="font-size:12.5px;opacity:.92;margin-top:3px">' +
       (canApprove()
         ? 'Read it, then pass it. Only a passed challan counts against the client’s account. Nothing is deleted here — passing adds a stamp, it does not change what the godown wrote.'
         : 'You can see what is waiting, but the accounts desk passes it. That is deliberate: the man who makes a challan is not the man who passes it.') +
       '</div></div>';
-    if (!list.length) return h + '<div class="empty">Nothing waiting. Every challan on the book has been passed.</div>';
+    h += showAllBar(hidden, 'than 60 days');
+    if (!list.length) return h + '<div class="empty">Nothing waiting' +
+      (hidden ? ' in the last 60 days.' : '. Every challan on the book has been passed.') + '</div>';
     var val2 = list.reduce(function (a, c) { return a + chValue(c); }, 0);
     h += '<div class="muted" style="margin:10px 2px 4px">' + money(val2) + ' of material, oldest first</div>';
     return h + list.slice().reverse().map(chRow).join("");
@@ -757,11 +829,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
   /* ---------- 4. THE RECEIPTS WORKLIST ---------- */
   function viewReceipts() {
-    var list = missingReceipts();
-    var h = '<div class="card" style="background:#b45309;color:#fff;border-color:#b45309">' +
+    var all = missingReceipts();
+    var list = all.filter(recent);
+    var hidden = olderCount(all);
+    var h = searchBox() +
+      '<div class="card" style="background:#b45309;color:#fff;border-color:#b45309">' +
       '<div style="font-size:17px;font-weight:800">' + list.length + ' with nothing signed against them</div>' +
       '<div style="font-size:12.5px;opacity:.92;margin-top:3px">A delivery with no signed paper is a delivery you cannot prove three months later, when he says he never got it. Photograph the signed challan and it is attached to this record for good.</div></div>';
-    if (!list.length) return h + '<div class="empty">Every delivery has its receipt. Nothing to chase.</div>';
+    h += showAllBar(hidden, 'than 60 days');
+    if (!list.length) return h + '<div class="empty">Every delivery has its receipt' +
+      (hidden ? ' in the last 60 days.' : '. Nothing to chase.') + '</div>';
     return h + list.map(chRow).join("");
   }
 
@@ -1074,6 +1151,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   /* ================= PAINT AND PRESS ================= */
 
   function bodyHtml() {
+    /* a search reaches past whichever screen you are standing on, and past the 60-day window */
+    if (S.q && !S.ch && !S.rt) return viewSearch();
     if (S.tab === "return")  return viewReturn();
     if (S.tab === "approve") return viewApprove();
     if (S.tab === "receipt") return viewReceipts();
@@ -1087,7 +1166,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
   function render() {
     var p = S.data ? pendingApproval().length : 0;
-    var m = S.data ? missingReceipts().length : 0;
+    var m = S.data ? missingReceipts().filter(recent).length : 0;   /* agrees with the list it opens */
     el("root").innerHTML = header() +
       '<div class="wrap">' + bodyHtml() + '</div>' +
       '<div class="nav">' +
@@ -1126,6 +1205,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       e.addEventListener("input", function () { if (S.rt) S.rt[pair[1]] = e.value; });
     });
 
+    var q = el("q");
+    if (q) {
+      q.addEventListener("input", function () { S.q = q.value; repaint(); });
+      q.addEventListener("keyup", function (e) { if (e.key === "Enter") q.blur(); });
+    }
     var pq = el("pk_q");
     if (pq) pq.addEventListener("input", function () { S.pick.q = pq.value; repaintPicker(pq); });
     Array.prototype.forEach.call(document.querySelectorAll(".pk-qty"), function (i) {
@@ -1198,7 +1282,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (act === "signout") { signOut(); return; }
     if (act === "crm")     { window.open(CRM_URL, "_blank"); return; }
     if (act === "close" || act === "close-bg") { S.sheet = null; render(); return; }
-    if (act === "tab")     { S.tab = t.getAttribute("data-t"); S.sheet = null; render(); return; }
+    /* tapping a tab means "show me that list", so a search left in the box is cleared */
+    if (act === "tab")     { S.tab = t.getAttribute("data-t"); S.sheet = null; S.q = ""; S.allTime = false; render(); return; }
+    if (act === "qclear")  { S.q = ""; render(); return; }
+    if (act === "alltime") { S.allTime = true; render(); return; }
 
     /* ---- the challan builder ---- */
     if (act === "ch-new") {
