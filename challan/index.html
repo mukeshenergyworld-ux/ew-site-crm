@@ -125,7 +125,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.3.0";
+  var APP_VERSION = "1.4.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
   var SNAP  = "ew_challan_snap";
@@ -904,11 +904,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       '<div><label>Freight borne by</label><select id="m_fto">' +
         ['Energy World','Client'].map(function (o) { return '<option' + (String(z.fto || "Energy World") === o ? ' selected' : '') + '>' + o + '</option>'; }).join("") +
       '</select></div></div>' +
-      '<div class="grid2">' +
-      '<div><label>Driver</label><input id="m_driver" list="dv_list" value="' + esc(z.driver || "") + '"/>' +
-      '<datalist id="dv_list">' + ((S.data && S.data.drivers) || []).map(function (d) { return '<option value="' + esc(d.name) + '"></option>'; }).join("") + '</datalist></div>' +
-      '<div><label>Vehicle</label><input id="m_veh" value="' + esc(z.veh || "") + '"/></div>' +
-      '</div>' +
+      driverPicker(z) +
       /* the owner's instruction: this is the important part, so it is impossible to miss */
       '<label style="color:#b91c1c">BOOK (MANUAL) CHALLAN NUMBER</label>' +
       '<input id="m_manual" class="mano" placeholder="The number on the paper book" value="' + esc(z.manual || "") + '"/>' +
@@ -918,6 +914,41 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     h += '<button class="btn full" data-act="ch-save" style="margin:14px 0 6px">Create the challan</button>' +
       '<div class="muted" style="text-align:center;margin-bottom:10px">It is saved as a <b>draft</b>. ' +
       (canApprove() ? 'You can pass it yourself on the Approve screen.' : 'The accounts desk passes it.') + '</div>';
+    return h;
+  }
+
+  /* ---------- THE DRIVER, AND HIS LORRY ----------
+     v1.4 - the owner's rule: if it is already on the book, it is picked, not typed. A driver
+     typed as free text can never be totalled, so freight per driver becomes guesswork, and
+     "Ramesh", "ramesh" and "Ramesh ji" become three men. Picking him fills in his vehicle and
+     his mobile from his own record. The lorry can still be overridden for the day he is in a
+     different one - that is a real thing that happens - but it starts from his own. */
+  function driverPicker(z, pfx) {
+    var p = pfx || "m";
+    var list = ((S.data && S.data.drivers) || []).filter(function (d) { return String(d.name || "").trim(); });
+    var picked = list.filter(function (d) { return lower(d.name) === lower(z.driver); })[0];
+    var h = '<label>' + (p === "r" ? 'Driver who brought it back' : 'Driver') + '</label>';
+    if (!list.length) {
+      return h + '<div class="pill amb" style="display:block;padding:9px">No drivers on the book yet — ' +
+        'add them in the CRM once and they will be here to pick from.</div>';
+    }
+    h += '<div class="row" style="flex-wrap:wrap;gap:6px">' +
+      list.map(function (d) {
+        return '<button class="btn sm ' + (lower(d.name) === lower(z.driver) ? '' : 'gry') +
+          '" data-act="dv-pick" data-p="' + p + '" data-n="' + esc(d.name) + '">' + esc(d.name) + '</button>';
+      }).join("") +
+      (z.driver ? '<button class="btn sm gry" data-act="dv-pick" data-p="' + p + '" data-n="">None</button>' : '') +
+      '</div>';
+    if (picked) {
+      h += '<div class="muted" style="margin-top:6px">' +
+        (picked.mobile ? esc(picked.mobile) + ' · ' : '') +
+        '<b>' + esc(z.veh || picked.vehicle || "no vehicle on his record") + '</b></div>';
+      if (p === "m") {
+        h += '<label>Vehicle today</label>' +
+          '<input id="m_veh" placeholder="' + esc(picked.vehicle || "vehicle number") + '" value="' + esc(z.veh || "") + '"/>' +
+          '<div class="muted" style="margin-top:3px">Leave it blank and his own lorry is used. Fill it only if he is in a different one today.</div>';
+      }
+    }
     return h;
   }
 
@@ -996,11 +1027,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         '<div class="big">' + money(tot) + '</div></div>';
     }
     h += '</div>';
-    h += '<div class="card"><div class="grid2">' +
-      '<div><label>Driver who brought it</label><input id="r_driver" list="dv_list2" value="' + esc(z.driver || "") + '"/>' +
-      '<datalist id="dv_list2">' + ((S.data && S.data.drivers) || []).map(function (d) { return '<option value="' + esc(d.name) + '"></option>'; }).join("") + '</datalist></div>' +
-      '<div><label>Freight</label><input id="r_freight" inputmode="decimal" value="' + esc(z.freight || "") + '"/></div>' +
-      '</div></div>';
+    h += '<div class="card">' + driverPicker(z, "r") +
+      '<label>Freight</label><input id="r_freight" inputmode="decimal" value="' + esc(z.freight || "") + '"/>' +
+      '</div>';
     h += '<button class="btn full amb" data-act="rt-save" style="margin:14px 0 6px">Register the return</button>' +
       '<div class="muted" style="text-align:center;margin-bottom:10px">Attach the signed goods-in receipt straight after — the button appears on the return.</div>';
     return h;
@@ -1403,7 +1432,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      repaint happens every time a line is added. Everything is read back into S on input. */
   function wireInputs() {
     var keep = [["m_site","site"],["m_freight","freight"],["m_veh","veh"],
-                ["m_driver","driver"],["m_manual","manual"],["m_cq","cq"]];
+                ["m_manual","manual"],["m_cq","cq"]];
     keep.forEach(function (pair) {
       var e = el(pair[0]);
       if (!e) return;
@@ -1418,7 +1447,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (fto) fto.addEventListener("change", function () { if (S.ch) S.ch.fto = fto.value; });
 
     [["r_client","client"],["r_site","site"],["r_ch","against"],["r_reason","reason"],
-     ["r_driver","driver"],["r_freight","freight"]].forEach(function (pair) {
+     ["r_freight","freight"]].forEach(function (pair) {
       var e = el(pair[0]);
       if (!e) return;
       e.addEventListener("input", function () { if (S.rt) S.rt[pair[1]] = e.value; });
@@ -1521,6 +1550,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (act === "cp-pick")   { S.ch.client = t.getAttribute("data-n"); S.ch.site = ""; repaint(); return; }
     if (act === "cp-site")   { S.ch.site = t.getAttribute("data-s"); repaint(); return; }
     if (act === "cp-change") { S.ch.client = ""; S.ch.site = ""; S.ch.cq = ""; repaint(); return; }
+    if (act === "dv-pick") {
+      var holder = t.getAttribute("data-p") === "r" ? S.rt : S.ch;
+      if (holder) { holder.driver = t.getAttribute("data-n") || ""; holder.veh = ""; }
+      repaint(); return;
+    }
     if (act === "ch-cancel") { S.ch = null; render(); return; }
     if (act === "ln-del")  { if (S.ch) S.ch.items.splice(Number(t.getAttribute("data-i")), 1); repaint(); return; }
     if (act === "rln-del") { if (S.rt) S.rt.items.splice(Number(t.getAttribute("data-i")), 1); repaint(); return; }
@@ -1561,6 +1595,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       var amount = lines.reduce(function (a, l) { return a + l.qty * l.rate; }, 0);
       var siteObj = sitesFor(cObj.name).filter(function (s) { return s.name === z.site; })[0] || {};
       var manualV = String(z.manual || "").trim();
+      /* the driver comes off his own record, so freight per driver can actually be totalled */
+      var dRec = ((S.data && S.data.drivers) || []).filter(function (d) {
+        return lower(d.name) === lower(z.driver);
+      })[0] || {};
       t.disabled = true; t.textContent = "Creating…";
       var reset = function () { t.disabled = false; t.textContent = "Create the challan"; };
 
@@ -1576,7 +1614,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           itemsJson: JSON.stringify(lines), amount: amount,
           freight: num(z.freight), freightTo: z.fto || "Energy World",
           discAmt: 0, discNote: "",
-          driver: z.driver || "", driverId: "", driverMobile: "", vehicle: z.veh || "",
+          driver: dRec.name || "", driverId: dRec.id || "", driverMobile: dRec.mobile || "",
+          vehicle: z.veh || dRec.vehicle || "",
           associate: "", commissionSet: "N", status: "Draft", receiptReceived: "N"
         };
         return saveRow("challans", ch).then(function (r) {
@@ -1615,6 +1654,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       if (!rc) { toast("Pick a registered client from the list."); return; }
       if (!(rz.items || []).length) { toast("Add at least one product."); return; }
       t.disabled = true; t.textContent = "Registering…";
+      var rDrv = ((S.data && S.data.drivers) || []).filter(function (d) {
+        return lower(d.name) === lower(rz.driver);
+      })[0] || {};
       var rreset = function () { t.disabled = false; t.textContent = "Register the return"; };
       api("returnNo", { client: rc.shortName || rc.name }).then(function (n) {
         var rno = (n && n.returnNo) ||
@@ -1627,7 +1669,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
             return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(l.rate), brand:l.brand };
           })),
           reason: rz.reason || "", status: "Raised",
-          driver: rz.driver || "", driverMobile: "", vehicle: "",
+          driver: rDrv.name || "", driverMobile: rDrv.mobile || "", vehicle: rDrv.vehicle || "",
           freight: num(rz.freight), freightTo: "Energy World"
         };
         return saveRow("returns", row).then(function (r) {
