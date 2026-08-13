@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.247";
+  var APP_VERSION = "6.9.248";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17723,7 +17723,7 @@ function viewCatalogue() {
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
       '<img src="' + LOGO + '" alt="EW" onerror="this.style.display=\'none\'"/>' +
-      '<div><b style="font-size:15px">Energy World</b><div style="font-size:12px;color:#64748b">Team workspace <span style="color:#94a3b8">&middot; v' + APP_VERSION + '</span></div></div>' +
+      '<div><b style="font-size:15px">Energy World</b><div style="font-size:12px;color:#64748b">CRM <span style="color:#94a3b8">&middot; v' + APP_VERSION + '</span></div></div>' +
       '<input id="gq" placeholder="Search anything — quote, challan, product, client, partner…" value="' + esc(S.gq || "") + '" autocomplete="off" ' +
       'style="flex:1;min-width:110px;max-width:380px;margin:0 14px;padding:9px 14px;border:1px solid #cbd5e1;border-radius:20px;font-size:14px;outline:none;background:#fff"/>' +
       '<div class="who"><b>' + esc(S.user) + '</b><span class="pill teal">' + esc(S.role) + '</span>' +
