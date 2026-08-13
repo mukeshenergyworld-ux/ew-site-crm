@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.246";
+  var APP_VERSION = "6.9.247";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9104,11 +9104,19 @@ function viewCatalogue() {
 
   function viewChallans() {
     ensurePickerCss();   /* stage-action colours + picker styles must exist on the list view too */
+    /* v6.9.247 - the challan app. A separate app on purpose: this screen is the whole delivery
+       book for someone who also does forty other things; that one is two jobs and nothing else,
+       for the godown and the accounts desk. Same book, same numbering, same sheets. */
+    var chAppLink = '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+      '<div class="acts" style="margin:0"><a class="btn sm" href="../challan/" target="_blank" rel="noopener" ' +
+        'style="background:#0f766e;border-color:#0f766e">&#128230; Open the Challan app</a>' +
+      '<span class="meta" style="align-self:center;font-size:11.5px">Make a challan, register a return, ' +
+        'photograph the signed receipt. Godown makes it, accounts passes it.</span></div></div>';
     var list = S.data.challans.slice().reverse();
     /* ONLY sales is owner-scoped; godown must see every challan to dispatch/receipt them. */
     if (S.role === "sales") list = list.filter(function (c) { return isMineClient(c.customerName); });
     var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
-    var h = '<div class="cards">' +
+    var h = chAppLink + '<div class="cards">' +
       '<div class="stat ' + (by("Draft") ? "alert" : "") + '"><div class="n">' + by("Draft") + '</div><div class="l">Awaiting approval</div></div>' +
       '<div class="stat"><div class="n">' + by("Approved") + '</div><div class="l">Approved, to dispatch</div></div>' +
       '<div class="stat"><div class="n">' + by("Dispatched") + '</div><div class="l">Awaiting receipt</div></div>' +
