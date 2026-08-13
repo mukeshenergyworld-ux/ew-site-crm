@@ -126,7 +126,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.4.1";
+  var APP_VERSION = "1.6.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
   var SNAP  = "ew_challan_snap";
@@ -344,6 +344,55 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
   function challans() { return (S.data && S.data.challans) || []; }
   function returns()  { return (S.data && S.data.returns) || []; }
+  /* ---------- THE DRIVER REGISTER ----------
+     v1.6 - THE REGISTER WAS EMPTY. Not thin: empty. Zero drivers on the book, and not one
+     of the 81 challans carried a driver name or a lorry number. The field existed and had
+     never once been filled, because the only way onto the register was the CRM, and the man
+     who knows the driver is standing in the godown with this app open. So the register is
+     added to from here now.
+
+     WHY THE TYPE MATTERS (the owner's reason, recorded so it is not lost): freight is to be
+     worked out per driver from what actually went out on the receipt, and a tempo, a Chhota
+     Hathi and a full lorry do not cost the same for the same load. Without the type on his
+     record that calculation can never be more than a guess.
+
+     WHERE THE TYPE IS KEPT. On the driver's own row as `vehicleType`. The Drivers sheet may
+     not carry that header yet - it has no rows at all, so there is nothing to read it from -
+     and the backend writes a row from what it is sent, ignoring anything it has no column
+     for. So the type is ALSO filed as an append-only audit row, the same channel the manual
+     challan number and the delivery proofs use. It works today either way, and the day the
+     column is added it simply starts winning. Nothing has to be migrated. */
+  var VEHICLE_TYPES = ["Bike", "Auto / Tempo", "Chhota Hathi", "Pickup", "Truck", "Tractor-trolley", "Other"];
+  var _dtCache = null;
+  function driverTypeMap() {
+    if (_dtCache) return _dtCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "driver:type") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var k = lower(d.name); if (!k) return;
+      var prev = m[k];
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[k] = { at: r.createdAt || "", type: String(d.vehicleType || "") };
+      }
+    });
+    _dtCache = m;
+    return _dtCache;
+  }
+  /* the column on his row wins if it is there at all; the audit row is the fallback */
+  function driverType(d) {
+    if (!d) return "";
+    var onRow = String(d.vehicleType || "").trim();
+    if (onRow) return onRow;
+    var a = driverTypeMap()[lower(d.name)];
+    return (a && a.type) || "";
+  }
+  function driverByName(n) {
+    var t = lower(n);
+    return ((S.data && S.data.drivers) || []).filter(function (d) { return lower(d.name) === t; })[0] || null;
+  }
+
   function sitesFor(n) {
     var k = lower(n);
     return ((S.data && S.data.sites) || []).filter(function (s) { return lower(s.client) === k; });
@@ -546,7 +595,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     }).sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
   }
 
-  function bust() { _mnCache = null; _proofCache = null; }
+  function bust() { _mnCache = null; _proofCache = null; _dtCache = null; }
 
   function chLines(c) {
     try { var l = JSON.parse((c && c.itemsJson) || "[]"); return Array.isArray(l) ? l : []; } catch (e) { return []; }
@@ -782,9 +831,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      v1.3 - district, then area, then the name. A free-text box over 118 clients meant
      spelling a man's name exactly as somebody else once typed it; this asks the two
      questions the godown already knows the answer to and leaves a handful of names. */
-  function clientPicker(z, cl) {
+  function clientPicker(z, cl, pfx) {
+    var p = pfx || "m";
     if (cl && cl.name) {
-      var st = sitesFor(cl.name);
       return '<div class="card">' +
         '<div class="row"><div class="grow">' +
           '<div class="muted" style="font-weight:700">Client</div>' +
@@ -795,15 +844,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
             (cl.plumber ? '<br>PL ' + esc(cl.plumber) : '') +
             (cl.architect ? (cl.plumber ? ' · ' : '<br>') + 'AR ' + esc(cl.architect) : '') +
           '</div>' +
-        '</div><button class="btn sm gry" data-act="cp-change">Change</button></div>' +
-        '<label>Site</label>' +
-        '<input id="m_site" list="st_list" placeholder="' +
-          (st.length ? 'Pick his site, or type a new one' : 'Which site is it going to?') + '" value="' + esc(z.site || "") + '"/>' +
-        '<datalist id="st_list">' + st.map(function (x) { return '<option value="' + esc(x.name) + '"></option>'; }).join("") + '</datalist>' +
-        (st.length ? '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:7px">' +
-          st.slice(0, 6).map(function (x) {
-            return '<button class="btn sm ' + (z.site === x.name ? '' : 'gry') + '" data-act="cp-site" data-s="' + esc(x.name) + '">' + esc(x.name) + '</button>';
-          }).join("") + '</div>' : '') +
+        '</div><button class="btn sm gry" data-act="cp-change" data-p="' + p + '">Change</button></div>' +
+        sitePicker(z, cl, p) +
         '</div>';
     }
 
@@ -812,7 +854,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     h2 += '<div class="muted" style="font-size:11.5px;margin-bottom:4px">1 · District</div>' +
       '<div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">' +
       ds.map(function (d) {
-        return '<button class="btn sm ' + (z.dist === d.name ? '' : 'gry') + '" data-act="cp-dist" data-d="' + esc(d.name) + '">' +
+        return '<button class="btn sm ' + (z.dist === d.name ? '' : 'gry') + '" data-act="cp-dist" data-p="' + p + '" data-d="' + esc(d.name) + '">' +
           esc(d.name) + ' <b style="opacity:.7">' + d.n + '</b></button>';
       }).join("") + '</div>';
 
@@ -821,21 +863,21 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     var as = areasIn(z.dist);
     h2 += '<div class="muted" style="font-size:11.5px;margin-bottom:4px">2 · Area in ' + esc(z.dist) + '</div>' +
       '<div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">' +
-      '<button class="btn sm ' + (z.area ? 'gry' : '') + '" data-act="cp-area" data-a="">All of ' + esc(z.dist) + '</button>' +
+      '<button class="btn sm ' + (z.area ? 'gry' : '') + '" data-act="cp-area" data-p="' + p + '" data-a="">All of ' + esc(z.dist) + '</button>' +
       as.map(function (a) {
-        return '<button class="btn sm ' + (z.area === a.name ? '' : 'gry') + '" data-act="cp-area" data-a="' + esc(a.name) + '">' +
+        return '<button class="btn sm ' + (z.area === a.name ? '' : 'gry') + '" data-act="cp-area" data-p="' + p + '" data-a="' + esc(a.name) + '">' +
           esc(a.name) + ' <b style="opacity:.7">' + a.n + '</b></button>';
       }).join("") + '</div>';
 
     var list = clientsIn(z.dist, z.area, z.cq);
     h2 += '<div class="muted" style="font-size:11.5px;margin-bottom:4px">3 · His name &mdash; type the first letters</div>' +
-      '<input id="m_cq" placeholder="e.g. rak, or rk for Rakesh Kumar" value="' + esc(z.cq || "") + '"/>';
+      '<input id="' + p + '_cq" placeholder="e.g. rak, or rk for Rakesh Kumar" value="' + esc(z.cq || "") + '"/>';
     if (!list.length) {
       h2 += '<div class="empty" style="padding:14px 8px">Nobody here by that name.<br>' +
         'A new man has to be registered in the CRM first, so his discount is set before his first delivery.</div>';
     } else {
       h2 += '<div style="margin-top:8px">' + list.slice(0, 40).map(function (c) {
-        return '<button class="tile" data-act="cp-pick" data-n="' + esc(c.name) + '">' +
+        return '<button class="tile" data-act="cp-pick" data-p="' + p + '" data-n="' + esc(c.name) + '">' +
           '<div class="grow">' + esc(c.name) +
           '<span class="sub">' + esc([c.area, c.mobile].filter(Boolean).join(" · ") || "no area, no mobile") + '</span></div>' +
           '<span class="pill">&#8250;</span></button>';
@@ -844,6 +886,90 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       '</div>';
     }
     return h2 + '</div>';
+  }
+
+  /* ---------- WHICH SITE ----------
+     v1.5 - the owner's rule reaches the site. A site typed by hand is how one project
+     quietly becomes three - "Ansal", "ansal plots", "Ansal I Blk" - and from then on his
+     hisab, his pitch board and his delivery history are each looking at a different
+     place. His own sites are buttons. A genuinely new site is still possible, because a
+     man does start a new project, but it takes a deliberate press so it is never the
+     lazy path. */
+  function sitePicker(z, cl, pfx) {
+    var p = pfx || "m";
+    var st = sitesFor((cl && cl.name) || "");
+    var h = '<label>Site</label>';
+    if (z.siteNew) {
+      return h +
+        '<input id="' + p + '_site" placeholder="The new site or project" value="' + esc(z.site || "") + '"/>' +
+        '<div class="row" style="margin-top:7px">' +
+          '<button class="btn sm gry" data-act="cp-sitenew" data-p="' + p + '" data-off="1">' +
+          (st.length ? '&#8592; Back to his sites' : 'Clear it') + '</button></div>';
+    }
+    if (!st.length) {
+      return h +
+        '<div class="pill amb" style="display:block;padding:9px;text-align:left">' +
+          'No site on his record yet.</div>' +
+        '<div class="row" style="margin-top:7px">' +
+          '<button class="btn sm gry" data-act="cp-sitenew" data-p="' + p + '">+ A new site</button></div>';
+    }
+    h += '<div class="row" style="flex-wrap:wrap;gap:6px">' +
+      st.map(function (x) {
+        return '<button class="btn sm ' + (z.site === x.name ? '' : 'gry') +
+          '" data-act="cp-site" data-p="' + p + '" data-s="' + esc(x.name) + '">' + esc(x.name) + '</button>';
+      }).join("") +
+      '<button class="btn sm ' + (z.site ? 'gry' : '') + '" data-act="cp-site" data-p="' + p + '" data-s="">None</button>' +
+      '<button class="btn sm gry" data-act="cp-sitenew" data-p="' + p + '">+ A new site</button>' +
+      '</div>';
+    return h;
+  }
+
+  /* ---------- WHICH DELIVERY IS IT COMING BACK OFF ----------
+     v1.5 - it used to be a box asking for a challan number "if you know it", which meant
+     it was usually blank or wrong, and a return that cannot be tied to its delivery cannot
+     be checked against what actually went out. His last deliveries are buttons, newest
+     first, each showing the paper book number too because that is the one the godown
+     reads off the challan in his hand. */
+  function againstPicker(z, cl) {
+    var mine = challans().filter(function (c) { return lower(c.customerName) === lower(cl && cl.name); });
+    var list = newestFirst(mine).slice(0, 12);
+    var h = '<label>Against which delivery?</label>';
+    if (!list.length) {
+      return h + '<div class="pill amb" style="display:block;padding:9px;text-align:left">' +
+        'Nothing has gone out to him on this app yet.</div>';
+    }
+    h += '<div class="row" style="flex-wrap:wrap;gap:6px">' +
+      list.map(function (c) {
+        var mn = manualNoFor(c);
+        return '<button class="btn sm ' + (z.against === c.challanNo ? '' : 'gry') +
+          '" data-act="rt-against" data-n="' + esc(c.challanNo) + '">' + esc(c.challanNo) +
+          (mn ? ' <b style="opacity:.75">B' + esc(mn) + '</b>' : '') + '</button>';
+      }).join("") +
+      '<button class="btn sm ' + (z.against ? 'gry' : '') + '" data-act="rt-against" data-n="">Not sure</button>' +
+      '</div>' +
+      (mine.length > list.length ? '<div class="muted" style="margin-top:5px">His last 12 of ' + mine.length + '.</div>' : '');
+    return h;
+  }
+
+  /* Why it came back. Five answers cover almost everything, and a picked one can be
+     counted later - "damaged" across a month is a number worth having. Anything else is
+     still typeable, deliberately, because the sixth reason always exists. */
+  var RT_REASONS = ["Extra material", "Wrong size", "Damaged", "Not required", "Wrong item sent"];
+  function reasonPicker(z) {
+    var known = RT_REASONS.indexOf(z.reason) >= 0;
+    var h = '<label>Why is it coming back?</label>' +
+      '<div class="row" style="flex-wrap:wrap;gap:6px">' +
+      RT_REASONS.map(function (r) {
+        return '<button class="btn sm ' + (z.reason === r ? '' : 'gry') +
+          '" data-act="rt-reason" data-n="' + esc(r) + '">' + esc(r) + '</button>';
+      }).join("") +
+      '<button class="btn sm ' + (z.reasonOther ? '' : 'gry') + '" data-act="rt-reason" data-n="" data-other="1">Something else</button>' +
+      '</div>';
+    if (z.reasonOther) {
+      h += '<input id="r_reason" placeholder="In a few words" value="' +
+        esc(known ? "" : (z.reason || "")) + '" style="margin-top:7px"/>';
+    }
+    return h;
   }
 
   function viewMake() {
@@ -903,7 +1029,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     h += '<div class="card"><div class="grid2">' +
       '<div><label>Freight</label><input id="m_freight" inputmode="decimal" value="' + esc(z.freight || "") + '"/></div>' +
       '<div><label>Freight borne by</label><select id="m_fto">' +
-        ['Energy World','Client'].map(function (o) { return '<option' + (String(z.fto || "Energy World") === o ? ' selected' : '') + '>' + o + '</option>'; }).join("") +
+        /* v1.6 - his words: "Client will be by defult in rare case its to be borne by
+           Energy World". Client is first AND is what an untouched form saves. */
+        ['Client','Energy World'].map(function (o) { return '<option' + (String(z.fto || "Client") === o ? ' selected' : '') + '>' + o + '</option>'; }).join("") +
       '</select></div></div>' +
       driverPicker(z) +
       /* the owner's instruction: this is the important part, so it is impossible to miss */
@@ -930,8 +1058,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     var picked = list.filter(function (d) { return lower(d.name) === lower(z.driver); })[0];
     var h = '<label>' + (p === "r" ? 'Driver who brought it back' : 'Driver') + '</label>';
     if (!list.length) {
-      return h + '<div class="pill amb" style="display:block;padding:9px">No drivers on the book yet — ' +
-        'add them in the CRM once and they will be here to pick from.</div>';
+      return h + '<div class="pill amb" style="display:block;padding:9px;text-align:left">' +
+        'No drivers on the register yet.</div>' +
+        '<div class="row" style="margin-top:7px">' +
+        '<button class="btn sm" data-act="dv-new" data-p="' + p + '">+ Add a driver</button></div>';
     }
     h += '<div class="row" style="flex-wrap:wrap;gap:6px">' +
       list.map(function (d) {
@@ -939,11 +1069,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           '" data-act="dv-pick" data-p="' + p + '" data-n="' + esc(d.name) + '">' + esc(d.name) + '</button>';
       }).join("") +
       (z.driver ? '<button class="btn sm gry" data-act="dv-pick" data-p="' + p + '" data-n="">None</button>' : '') +
+      '<button class="btn sm gry" data-act="dv-new" data-p="' + p + '">+ New driver</button>' +
       '</div>';
     if (picked) {
+      var _dt = driverType(picked);
       h += '<div class="muted" style="margin-top:6px">' +
         (picked.mobile ? esc(picked.mobile) + ' · ' : '') +
-        '<b>' + esc(z.veh || picked.vehicle || "no vehicle on his record") + '</b></div>';
+        '<b>' + esc(z.veh || picked.vehicle || "no vehicle on his record") + '</b>' +
+        (_dt ? ' · ' + esc(_dt) : ' · <b style="color:#b45309">vehicle type not set</b>') + '</div>';
       if (p === "m") {
         h += '<label>Vehicle today</label>' +
           '<input id="m_veh" placeholder="' + esc(picked.vehicle || "vehicle number") + '" value="' + esc(z.veh || "") + '"/>' +
@@ -951,6 +1084,33 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       }
     }
     return h;
+  }
+
+  /* The whole register entry, on one sheet, in the order the godown actually knows it:
+     his name, his number, the lorry he came in, and what kind of lorry it is. */
+  function sheetDriverNew(pfx) {
+    var d = S.dnew || {};
+    return '<h2>Add a driver</h2>' +
+      '<div class="muted" style="margin-bottom:10px">He goes on the register once, and after ' +
+      'that he is a button on every challan &mdash; his number and his lorry filling themselves in.</div>' +
+      '<label>Name</label>' +
+      '<input id="dn_name" placeholder="As everybody calls him" value="' + esc(d.name || "") + '"/>' +
+      '<label>Mobile</label>' +
+      '<input id="dn_mob" inputmode="numeric" placeholder="10 digits" value="' + esc(d.mobile || "") + '"/>' +
+      '<label>Vehicle number</label>' +
+      '<input id="dn_veh" placeholder="HR-06-AB-1234" value="' + esc(d.vehicle || "") + '"/>' +
+      '<label>Vehicle type</label>' +
+      '<div class="row" style="flex-wrap:wrap;gap:6px">' +
+      VEHICLE_TYPES.map(function (t) {
+        return '<button class="btn sm ' + (d.vtype === t ? '' : 'gry') +
+          '" data-act="dn-type" data-t="' + esc(t) + '">' + esc(t) + '</button>';
+      }).join("") + '</div>' +
+      '<div class="muted" style="margin-top:6px">The type is what lets the freight be worked out ' +
+      'per driver later &mdash; a tempo and a full lorry do not cost the same for the same load.</div>' +
+      '<div class="row" style="margin-top:16px;gap:8px">' +
+        '<button class="btn gry grow" data-act="close">Cancel</button>' +
+        '<button class="btn grow" data-act="dn-save" data-p="' + esc(pfx || "m") + '">Add him</button>' +
+      '</div>';
   }
 
   function statBar() {
@@ -1006,13 +1166,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     var tot = lines.reduce(function (a, l) { return a + num(l.qty) * num(l.rate); }, 0);
     var h = '<div class="row" style="margin:6px 0 10px"><button class="btn sm gry" data-act="rt-cancel">&#8592; Back</button>' +
       '<div class="grow" style="font-weight:800;font-size:16px">Material return</div></div>';
-    h += '<div class="card"><label>Client</label>' +
-      '<input id="r_client" list="cl_list2" placeholder="Whose material is coming back?" value="' + esc(z.client || "") + '" data-live="rclient"/>' +
-      '<datalist id="cl_list2">' + clients().map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>' +
-      '<div class="grid2"><div><label>Site</label><input id="r_site" value="' + esc(z.site || "") + '"/></div>' +
-      '<div><label>Against challan no</label><input id="r_ch" placeholder="If you know it" value="' + esc(z.against || "") + '"/></div></div>' +
-      '<label>Why is it coming back?</label><input id="r_reason" placeholder="Extra material, wrong size, damaged…" value="' + esc(z.reason || "") + '"/>' +
-      '</div>';
+    /* v1.5 - the very same district -> area -> name walk the delivery form uses. It was
+       a free-text box with a datalist behind it, which is a box: 118 names, and a return
+       filed against "Vidhur sharma" is a return filed against nobody. */
+    var rcl = clientByName(z.client) || {};
+    h += clientPicker(z, rcl, "r");
+    if (rcl && rcl.name) {
+      h += '<div class="card">' + againstPicker(z, rcl) + reasonPicker(z) + '</div>';
+    }
     h += '<div class="card"><div class="row"><div class="grow" style="font-weight:800">Material coming back</div>' +
       '<button class="btn sm amb" data-act="pk-open" data-into="rt">+ Add material</button></div>';
     if (!lines.length) h += '<div class="empty" style="padding:16px 8px">Nothing added yet.</div>';
@@ -1444,15 +1605,26 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         if (pair[1] === "cq") repaint();
       });
     });
+    /* the add-a-driver sheet: what is typed has to survive the repaint a type button causes */
+    [["dn_name","name"],["dn_mob","mobile"],["dn_veh","vehicle"]].forEach(function (pair) {
+      var e = el(pair[0]);
+      if (!e) return;
+      e.addEventListener("input", function () { S.dnew = S.dnew || {}; S.dnew[pair[1]] = e.value; });
+    });
     var fto = el("m_fto");
     if (fto) fto.addEventListener("change", function () { if (S.ch) S.ch.fto = fto.value; });
 
-    [["r_client","client"],["r_site","site"],["r_ch","against"],["r_reason","reason"],
-     ["r_freight","freight"]].forEach(function (pair) {
+    /* v1.5 - r_client and r_ch are gone: the client and the delivery are picked now, so
+       there is nothing left to read back from a box. r_site only exists while somebody is
+       deliberately entering a NEW site, r_reason only while the reason is "something else",
+       and r_cq is the type-a-few-letters box inside the name walk. */
+    [["r_site","site"],["r_reason","reason"],["r_freight","freight"]].forEach(function (pair) {
       var e = el(pair[0]);
       if (!e) return;
       e.addEventListener("input", function () { if (S.rt) S.rt[pair[1]] = e.value; });
     });
+    var rcq = el("r_cq");
+    if (rcq) rcq.addEventListener("input", function () { if (S.rt) { S.rt.cq = rcq.value; repaint(); } });
 
     var q = el("q");
     if (q) {
@@ -1541,16 +1713,81 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     /* ---- the challan builder ---- */
     if (act === "ch-new") {
       if (!canMake()) { toast("Making a challan is done by the godown or the office."); return; }
-      S.ch = { client:"", site:"", items:[], freight:"", fto:"Energy World", driver:"", veh:"", manual:"",
-               dist:"", area:"", cq:"" };
+      S.ch = { client:"", site:"", siteNew:false, items:[], freight:"", fto:"Client",
+               driver:"", veh:"", manual:"", dist:"", area:"", cq:"" };
       render(); return;
     }
     /* the district -> area -> name walk */
-    if (act === "cp-dist")   { S.ch.dist = t.getAttribute("data-d"); S.ch.area = ""; S.ch.cq = ""; repaint(); return; }
-    if (act === "cp-area")   { S.ch.area = t.getAttribute("data-a") || ""; S.ch.cq = ""; repaint(); return; }
-    if (act === "cp-pick")   { S.ch.client = t.getAttribute("data-n"); S.ch.site = ""; repaint(); return; }
-    if (act === "cp-site")   { S.ch.site = t.getAttribute("data-s"); repaint(); return; }
-    if (act === "cp-change") { S.ch.client = ""; S.ch.site = ""; S.ch.cq = ""; repaint(); return; }
+    /* v1.5 - one walk, two forms. data-p says which builder is on screen; without it the
+       return form would have driven the delivery form's draft, which is how a return
+       silently rewrites a challan that is still being typed. */
+    function pickHolder(el) { return el.getAttribute("data-p") === "r" ? S.rt : S.ch; }
+    if (act === "cp-dist")   { var hD = pickHolder(t); if (hD) { hD.dist = t.getAttribute("data-d"); hD.area = ""; hD.cq = ""; } repaint(); return; }
+    if (act === "cp-area")   { var hA = pickHolder(t); if (hA) { hA.area = t.getAttribute("data-a") || ""; hA.cq = ""; } repaint(); return; }
+    if (act === "cp-pick")   { var hP = pickHolder(t); if (hP) { hP.client = t.getAttribute("data-n"); hP.site = ""; hP.siteNew = false; hP.against = ""; } repaint(); return; }
+    if (act === "cp-site")   { var hS = pickHolder(t); if (hS) { hS.site = t.getAttribute("data-s"); hS.siteNew = false; } repaint(); return; }
+    if (act === "cp-sitenew"){ var hN = pickHolder(t); if (hN) { hN.siteNew = !t.getAttribute("data-off"); hN.site = ""; } repaint(); return; }
+    if (act === "cp-change") { var hC = pickHolder(t); if (hC) { hC.client = ""; hC.site = ""; hC.siteNew = false; hC.cq = ""; hC.against = ""; } repaint(); return; }
+    if (act === "rt-against"){ if (S.rt) S.rt.against = t.getAttribute("data-n") || ""; repaint(); return; }
+    if (act === "rt-reason") {
+      if (S.rt) {
+        var rn = t.getAttribute("data-n") || "";
+        if (t.getAttribute("data-other")) { S.rt.reasonOther = true; S.rt.reason = ""; }
+        else { S.rt.reasonOther = false; S.rt.reason = rn; }
+      }
+      repaint(); return;
+    }
+    if (act === "dv-new") {
+      if (!canMake()) { toast("The register is added to by the godown or the office."); return; }
+      S.dnew = { p: t.getAttribute("data-p") || "m", name:"", mobile:"", vehicle:"", vtype:"" };
+      S.sheet = sheetDriverNew(S.dnew.p); render(); return;
+    }
+    if (act === "dn-type") {
+      S.dnew = S.dnew || {};
+      var _vt = t.getAttribute("data-t") || "";
+      S.dnew.vtype = (S.dnew.vtype === _vt ? "" : _vt);
+      S.sheet = sheetDriverNew(S.dnew.p || "m"); render(); return;
+    }
+    if (act === "dn-save") {
+      var dn = S.dnew || {};
+      /* read the boxes directly too - the last keystroke before a tap can beat the listener */
+      var nName = String((el("dn_name") || {}).value || dn.name || "").trim();
+      var nMob  = String((el("dn_mob")  || {}).value || dn.mobile || "").replace(/\D/g, "");
+      var nVeh  = String((el("dn_veh")  || {}).value || dn.vehicle || "").trim().toUpperCase();
+      if (!nName) { toast("His name, at least."); return; }
+      if (nMob && nMob.length !== 10) { toast("A mobile is 10 digits, or leave it blank."); return; }
+      if (driverByName(nName)) { toast(nName + " is already on the register."); return; }
+      var pfx = t.getAttribute("data-p") || dn.p || "m";
+      t.disabled = true; t.textContent = "Adding…";
+      var row = { id: "", name: nName, mobile: nMob, vehicle: nVeh,
+                  vehicleType: dn.vtype || "", defaultFare: "" };
+      saveRow("drivers", row).then(function (r) {
+        if (!r || !r.ok) {
+          t.disabled = false; t.textContent = "Add him";
+          toast((r && r.error) || "The server refused it. He was not added.");
+          return;
+        }
+        (S.data.drivers = S.data.drivers || []).push(r.row || row);
+        /* the type, filed where no column is needed - see driverTypeMap() */
+        if (dn.vtype) {
+          saveRow("audit", {
+            id: "", createdAt: new Date().toISOString(), actor: S.user || "",
+            action: "driver:type", target: nName,
+            detail: JSON.stringify({ name: nName, vehicleType: dn.vtype, vehicle: nVeh })
+          }).then(function () { _dtCache = null; });
+          _dtCache = null;
+        }
+        /* he is added because somebody needs him NOW, so he is picked straight away */
+        var holder = pfx === "r" ? S.rt : S.ch;
+        if (holder) { holder.driver = nName; holder.veh = ""; }
+        S.dnew = null; S.sheet = null; bust(); render();
+        toast(nName + " is on the register" + (nVeh ? " with " + nVeh : "") + ", and picked.");
+      }).catch(function () {
+        t.disabled = false; t.textContent = "Add him";
+        toast("Could not reach the server. He was not added.");
+      });
+      return;
+    }
     if (act === "dv-pick") {
       var holder = t.getAttribute("data-p") === "r" ? S.rt : S.ch;
       if (holder) { holder.driver = t.getAttribute("data-n") || ""; holder.veh = ""; }
@@ -1613,7 +1850,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           brand: (lines[0] && lines[0].brand) || "", location: cObj.location || "",
           items: lines.map(function (l) { return l.desc + " x" + l.qty; }).join(", "),
           itemsJson: JSON.stringify(lines), amount: amount,
-          freight: num(z.freight), freightTo: z.fto || "Energy World",
+          freight: num(z.freight), freightTo: z.fto || "Client",
           discAmt: 0, discNote: "",
           driver: dRec.name || "", driverId: dRec.id || "", driverMobile: dRec.mobile || "",
           vehicle: z.veh || dRec.vehicle || "",
@@ -1644,7 +1881,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     /* ---- the return builder ---- */
     if (act === "rt-new") {
       if (!canMake()) { toast("Registering a return is done by the godown or the office."); return; }
-      S.rt = { client:"", site:"", against:"", reason:"", items:[], driver:"", freight:"" };
+      S.rt = { client:"", site:"", siteNew:false, against:"", reason:"", reasonOther:false,
+               items:[], driver:"", freight:"", dist:"", area:"", cq:"" };
       render(); return;
     }
     if (act === "rt-cancel") { S.rt = null; render(); return; }
@@ -1665,7 +1903,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         var row = {
           id: "", createdBy: S.user, returnNo: rno,
           customerId: rc.id || "", customerName: rc.name,
-          site: rz.site || "", challanNo: rz.against || "",
+          site: rz.site || "", siteId: (sitesFor(rc.name).filter(function (s) { return s.name === rz.site; })[0] || {}).id || "",
+          challanNo: rz.against || "",
           itemsJson: JSON.stringify(rz.items.map(function (l) {
             return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(l.rate), brand:l.brand };
           })),
