@@ -90,6 +90,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .step input{width:74px;text-align:center;font-weight:800}
 .line{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid #f1f5f9}
 .mano{border:2px solid #b91c1c!important;background:#fef2f2!important;font-weight:800}
+/* executive bands: a solid teal strip per man, tap to open or shut */
+.exec{margin:14px 0 4px;padding:11px 13px;background:#0f766e;color:#fff;border-radius:11px;font-weight:700;
+  font-size:14.5px;display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer}
+.exec .sub{font-size:11.5px;font-weight:600;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:999px;white-space:nowrap}
+.exec .car{font-size:13px;opacity:.85}
 </style>
 </head>
 <body>
@@ -120,7 +125,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.2.0";
+  var APP_VERSION = "1.3.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
   var SNAP  = "ew_challan_snap";
@@ -281,6 +286,54 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function canMake()    { return ["admin","accounts","godown"].indexOf(S.role) >= 0; }
   /* the owner's rule: the man who makes it is not the man who passes it */
   function canApprove() { return ["admin","accounts"].indexOf(S.role) >= 0; }
+  /* v1.3 - and the signed paper is filed by the office, not by the man who loaded the
+     lorry. A receipt is the proof that settles an argument; it should not be attachable
+     by the person it would exonerate. */
+  function canProof()   { return ["admin","accounts"].indexOf(S.role) >= 0; }
+
+  /* ---------- WHERE THE CLIENT IS ----------
+     District first, then the area inside it, then his name. That is how the godown thinks
+     about a delivery - which town, which colony, which man - and it turns a list of 118
+     names into three short taps. A client with no area still has a home: "(area not set)",
+     so nobody is unreachable because a field was left blank. */
+  var NO_AREA = "(area not set)";
+  function districts() {
+    var m = {};
+    clients().forEach(function (c) {
+      var d = String(c.location || "").trim();
+      if (d) m[d] = (m[d] || 0) + 1;
+    });
+    return Object.keys(m).sort().map(function (k) { return { name: k, n: m[k] }; });
+  }
+  function areasIn(dist) {
+    var m = {};
+    clients().forEach(function (c) {
+      if (dist && String(c.location || "").trim() !== dist) return;
+      var a = String(c.area || "").trim() || NO_AREA;
+      m[a] = (m[a] || 0) + 1;
+    });
+    return Object.keys(m).sort(function (a, b) {
+      if (a === NO_AREA) return 1;
+      if (b === NO_AREA) return -1;
+      return a.localeCompare(b);
+    }).map(function (k) { return { name: k, n: m[k] }; });
+  }
+  function clientsIn(dist, area, q) {
+    var qq = lower(q || "");
+    return clients().filter(function (c) {
+      if (dist && String(c.location || "").trim() !== dist) return false;
+      if (area) {
+        var a = String(c.area || "").trim() || NO_AREA;
+        if (a !== area) return false;
+      }
+      if (!qq) return true;
+      /* initials as well as the start of the name: "rk" finds "Rakesh - Ansal I Block" */
+      var nm = lower(c.name);
+      if (nm.indexOf(qq) >= 0) return true;
+      var initials = nm.split(/[^a-z0-9]+/).filter(Boolean).map(function (w) { return w[0]; }).join("");
+      return initials.indexOf(qq) === 0;
+    }).sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
+  }
 
   /* ---------- the book, read ---------- */
   function clients() { return (S.data && S.data.clients) || []; }
@@ -328,6 +381,45 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return '<div class="row" style="margin:8px 2px">' +
       '<button class="btn sm gry" data-act="alltime">Show everything &mdash; ' + n + ' older ' + what + '</button>' +
       '</div>';
+  }
+
+  /* ---------- WHOSE CLIENT IS IT ----------
+     v1.3 - challans grouped by the sales executive the CLIENT belongs to, not by whoever
+     typed the challan. Every challan on this book was typed by one man, so grouping by the
+     typist put all 81 in one heap; grouping by whose client it is is the split that means
+     something - it is how the CRM reads the book, and how the owner asks about it.
+     The bands remember what was left open, so a man who works one executive's deliveries
+     is not re-opening the same band every morning. */
+  function execOf(c) {
+    var cl = clientByName(c && c.customerName);
+    return String((cl && (cl.ownedBy || cl.createdBy)) || "").trim() || "Unassigned";
+  }
+  var OPEN_KEY = "ew_challan_openbands";
+  function bandsOpen() {
+    try { return JSON.parse(localStorage.getItem(OPEN_KEY) || "{}") || {}; } catch (e) { return {}; }
+  }
+  function bandIsOpen(name) {
+    var m = bandsOpen();
+    /* first time through, everything is open - nobody should have to discover a tap */
+    return m[name] === undefined ? true : !!m[name];
+  }
+  function bandToggle(name) {
+    var m = bandsOpen();
+    m[name] = !bandIsOpen(name);
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify(m)); } catch (e) {}
+  }
+  function byExec(list) {
+    var g = {}, order = [];
+    list.forEach(function (c) {
+      var e = execOf(c);
+      if (!g[e]) { g[e] = []; order.push(e); }
+      g[e].push(c);
+    });
+    return order.sort(function (a, b) {
+      var va = g[b].reduce(function (x, c) { return x + chValue(c); }, 0);
+      var vb = g[a].reduce(function (x, c) { return x + chValue(c); }, 0);
+      return va - vb;
+    }).map(function (e) { return { name: e, list: g[e] }; });
   }
 
   /* ---------- FINDING AN OLD ONE ----------
@@ -659,6 +751,100 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       }).join("") + '</div>';
   }
 
+  /* Challans laid out executive by executive, each band openable. One place builds it, so
+     the delivery book, the approval queue and the receipts list all read the same way. */
+  function execBands(list) {
+    var groups = byExec(list);
+    if (groups.length < 2) return list.map(chRow).join("");
+    return groups.map(function (g) {
+      var open = bandIsOpen(g.name);
+      var val = g.list.reduce(function (a, c) { return a + chValue(c); }, 0);
+      var noRc = g.list.filter(function (c) {
+        return String(c.receiptReceived || "").toUpperCase() !== "Y" && !proofFor(c);
+      }).length;
+      var draft = g.list.filter(isDraft).length;
+      return '<div class="exec" data-act="band" data-n="' + esc(g.name) + '">' +
+          '<span class="car">' + (open ? '&#9662;' : '&#9656;') + '</span>' +
+          '<div class="grow">' + esc(g.name) +
+            '<div style="font-size:11.5px;font-weight:600;opacity:.9">' +
+              g.list.length + ' challan' + (g.list.length === 1 ? '' : 's') + ' · ' + money(val) +
+              (draft ? ' · ' + draft + ' not passed' : '') +
+              (noRc ? ' · ' + noRc + ' no receipt' : '') +
+            '</div></div>' +
+          '<span class="sub">' + (open ? 'hide' : 'show') + '</span>' +
+        '</div>' +
+        (open ? g.list.map(chRow).join("") : '');
+    }).join("");
+  }
+
+  /* ---------- WHO IS IT FOR ----------
+     v1.3 - district, then area, then the name. A free-text box over 118 clients meant
+     spelling a man's name exactly as somebody else once typed it; this asks the two
+     questions the godown already knows the answer to and leaves a handful of names. */
+  function clientPicker(z, cl) {
+    if (cl && cl.name) {
+      var st = sitesFor(cl.name);
+      return '<div class="card">' +
+        '<div class="row"><div class="grow">' +
+          '<div class="muted" style="font-weight:700">Client</div>' +
+          '<div style="font-size:17px;font-weight:800;margin-top:1px">' + esc(cl.name) + '</div>' +
+          '<div class="muted" style="margin-top:3px">' +
+            esc([cl.location, cl.area].filter(Boolean).join(" · ")) +
+            (cl.mobile ? ' · ' + esc(cl.mobile) : ' · <b style="color:#b91c1c">no mobile on his record</b>') +
+            (cl.plumber ? '<br>PL ' + esc(cl.plumber) : '') +
+            (cl.architect ? (cl.plumber ? ' · ' : '<br>') + 'AR ' + esc(cl.architect) : '') +
+          '</div>' +
+        '</div><button class="btn sm gry" data-act="cp-change">Change</button></div>' +
+        '<label>Site</label>' +
+        '<input id="m_site" list="st_list" placeholder="' +
+          (st.length ? 'Pick his site, or type a new one' : 'Which site is it going to?') + '" value="' + esc(z.site || "") + '"/>' +
+        '<datalist id="st_list">' + st.map(function (x) { return '<option value="' + esc(x.name) + '"></option>'; }).join("") + '</datalist>' +
+        (st.length ? '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:7px">' +
+          st.slice(0, 6).map(function (x) {
+            return '<button class="btn sm ' + (z.site === x.name ? '' : 'gry') + '" data-act="cp-site" data-s="' + esc(x.name) + '">' + esc(x.name) + '</button>';
+          }).join("") + '</div>' : '') +
+        '</div>';
+    }
+
+    var h2 = '<div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Who is it for?</div>';
+    var ds = districts();
+    h2 += '<div class="muted" style="font-size:11.5px;margin-bottom:4px">1 · District</div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">' +
+      ds.map(function (d) {
+        return '<button class="btn sm ' + (z.dist === d.name ? '' : 'gry') + '" data-act="cp-dist" data-d="' + esc(d.name) + '">' +
+          esc(d.name) + ' <b style="opacity:.7">' + d.n + '</b></button>';
+      }).join("") + '</div>';
+
+    if (!z.dist) return h2 + '<div class="muted">Pick the district and the areas will follow.</div></div>';
+
+    var as = areasIn(z.dist);
+    h2 += '<div class="muted" style="font-size:11.5px;margin-bottom:4px">2 · Area in ' + esc(z.dist) + '</div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">' +
+      '<button class="btn sm ' + (z.area ? 'gry' : '') + '" data-act="cp-area" data-a="">All of ' + esc(z.dist) + '</button>' +
+      as.map(function (a) {
+        return '<button class="btn sm ' + (z.area === a.name ? '' : 'gry') + '" data-act="cp-area" data-a="' + esc(a.name) + '">' +
+          esc(a.name) + ' <b style="opacity:.7">' + a.n + '</b></button>';
+      }).join("") + '</div>';
+
+    var list = clientsIn(z.dist, z.area, z.cq);
+    h2 += '<div class="muted" style="font-size:11.5px;margin-bottom:4px">3 · His name &mdash; type the first letters</div>' +
+      '<input id="m_cq" placeholder="e.g. rak, or rk for Rakesh Kumar" value="' + esc(z.cq || "") + '"/>';
+    if (!list.length) {
+      h2 += '<div class="empty" style="padding:14px 8px">Nobody here by that name.<br>' +
+        'A new man has to be registered in the CRM first, so his discount is set before his first delivery.</div>';
+    } else {
+      h2 += '<div style="margin-top:8px">' + list.slice(0, 40).map(function (c) {
+        return '<button class="tile" data-act="cp-pick" data-n="' + esc(c.name) + '">' +
+          '<div class="grow">' + esc(c.name) +
+          '<span class="sub">' + esc([c.area, c.mobile].filter(Boolean).join(" · ") || "no area, no mobile") + '</span></div>' +
+          '<span class="pill">&#8250;</span></button>';
+      }).join("") +
+      (list.length > 40 ? '<div class="muted">and ' + (list.length - 40) + ' more &mdash; type another letter</div>' : '') +
+      '</div>';
+    }
+    return h2 + '</div>';
+  }
+
   function viewMake() {
     var z = S.ch;
     if (!z) {
@@ -679,7 +865,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       h += '<div class="muted" style="font-weight:700;margin:8px 2px 4px">' +
         list.length + ' challan' + (list.length === 1 ? '' : 's') + ' · ' + money(val3) +
         ' · newest first</div>';
-      h += list.map(chRow).join("");
+      h += execBands(list);
       return h + showAllBar(hidden, 'than 60 days');
     }
     var cl = clientByName(z.client) || {};
@@ -691,16 +877,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     var h = '<div class="row" style="margin:6px 0 10px"><button class="btn sm gry" data-act="ch-cancel">&#8592; Back</button>' +
       '<div class="grow" style="font-weight:800;font-size:16px">New challan</div></div>';
 
-    h += '<div class="card"><label>Client</label>' +
-      '<input id="m_client" list="cl_list" placeholder="Start typing his name…" value="' + esc(z.client || "") + '" data-live="client"/>' +
-      '<datalist id="cl_list">' + clients().map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>' +
-      (z.client && !cl.name ? '<div class="pill red" style="margin-top:6px">Not a registered client. Register him in the CRM first, so his discount applies.</div>' : '') +
-      (cl.name ? '<div class="muted" style="margin-top:5px">' + esc(cl.location || "") +
-        (cl.mobile ? ' · ' + esc(cl.mobile) : '') + '</div>' : '') +
-      '<label>Site</label>' +
-      '<input id="m_site" list="st_list" placeholder="Which site is it going to?" value="' + esc(z.site || "") + '"/>' +
-      '<datalist id="st_list">' + sitesFor(z.client).map(function (s) { return '<option value="' + esc(s.name) + '"></option>'; }).join("") + '</datalist>' +
-      '</div>';
+    h += clientPicker(z, cl);
 
     h += '<div class="card"><div class="row"><div class="grow" style="font-weight:800">Material</div>' +
       '<button class="btn sm" data-act="pk-open" data-into="ch">+ Add material</button></div>';
@@ -772,7 +949,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         '<button class="btn sm gry" data-act="ch-pdf" data-no="' + esc(c.challanNo) + '">Challan PDF</button>' +
         '<button class="btn sm gry" data-act="ch-wa" data-no="' + esc(c.challanNo) + '">Send on WhatsApp</button>' +
         (pf ? '<a class="btn sm gry" href="' + esc(pf.url) + '" target="_blank" rel="noopener">See receipt</a>'
-            : '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(c.id) + '">Attach receipt</button>') +
+            : (canProof()
+               ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(c.id) + '">Attach receipt</button>'
+               : '<span class="pill amb">Receipt is attached by the office</span>')) +
         (st === "Draft" && canApprove() ? '<button class="btn sm" data-act="ch-approve" data-no="' + esc(c.challanNo) + '">Pass it</button>' : '') +
       '</div></div>';
   }
@@ -841,7 +1020,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       '</div><div style="text-align:right"><div class="big">' + money(tot) + '</div></div></div>' +
       '<div class="acts">' +
         (pf ? '<a class="btn sm gry" href="' + esc(pf.url) + '" target="_blank" rel="noopener">See receipt</a>'
-            : '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(r.id) + '">Attach goods-in receipt</button>') +
+            : (canProof()
+               ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(r.id) + '">Attach goods-in receipt</button>'
+               : '<span class="pill amb">Receipt is attached by the office</span>')) +
       '</div></div>';
   }
 
@@ -862,7 +1043,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       (hidden ? ' in the last 60 days.' : '. Every challan on the book has been passed.') + '</div>';
     var val2 = list.reduce(function (a, c) { return a + chValue(c); }, 0);
     h += '<div class="muted" style="margin:10px 2px 4px">' + money(val2) + ' of material, oldest first</div>';
-    return h + list.slice().reverse().map(chRow).join("");
+    return h + execBands(list.slice().reverse());
   }
 
   /* ---------- 4. THE RECEIPTS WORKLIST ---------- */
@@ -877,7 +1058,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     h += showAllBar(hidden, 'than 60 days');
     if (!list.length) return h + '<div class="empty">Every delivery has its receipt' +
       (hidden ? ' in the last 60 days.' : '. Nothing to chase.') + '</div>';
-    return h + list.map(chRow).join("");
+    return h + execBands(list);
   }
 
   /* ---------- the account screen ---------- */
@@ -1221,16 +1402,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   /* The builder is a live form: what is typed has to survive the next repaint, because a
      repaint happens every time a line is added. Everything is read back into S on input. */
   function wireInputs() {
-    var keep = [["m_client","client"],["m_site","site"],["m_freight","freight"],["m_veh","veh"],
-                ["m_driver","driver"],["m_manual","manual"]];
+    var keep = [["m_site","site"],["m_freight","freight"],["m_veh","veh"],
+                ["m_driver","driver"],["m_manual","manual"],["m_cq","cq"]];
     keep.forEach(function (pair) {
       var e = el(pair[0]);
       if (!e) return;
       e.addEventListener("input", function () {
         if (!S.ch) return;
         S.ch[pair[1]] = e.value;
-        /* the client's own site list and discount only appear once he is picked */
-        if (pair[1] === "client" && clientByName(e.value)) repaint();
+        /* the name list narrows as he types; nothing else needs a repaint */
+        if (pair[1] === "cq") repaint();
       });
     });
     var fto = el("m_fto");
@@ -1324,14 +1505,22 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (act === "tab")     { S.tab = t.getAttribute("data-t"); S.sheet = null; S.q = ""; S.allTime = false; render(); return; }
     if (act === "qclear")  { S.q = ""; render(); return; }
     if (act === "ch-filter") { S.chFilter = t.getAttribute("data-f"); render(); return; }
+    if (act === "band")    { bandToggle(t.getAttribute("data-n")); render(); return; }
     if (act === "alltime") { S.allTime = true; render(); return; }
 
     /* ---- the challan builder ---- */
     if (act === "ch-new") {
       if (!canMake()) { toast("Making a challan is done by the godown or the office."); return; }
-      S.ch = { client:"", site:"", items:[], freight:"", fto:"Energy World", driver:"", veh:"", manual:"" };
+      S.ch = { client:"", site:"", items:[], freight:"", fto:"Energy World", driver:"", veh:"", manual:"",
+               dist:"", area:"", cq:"" };
       render(); return;
     }
+    /* the district -> area -> name walk */
+    if (act === "cp-dist")   { S.ch.dist = t.getAttribute("data-d"); S.ch.area = ""; S.ch.cq = ""; repaint(); return; }
+    if (act === "cp-area")   { S.ch.area = t.getAttribute("data-a") || ""; S.ch.cq = ""; repaint(); return; }
+    if (act === "cp-pick")   { S.ch.client = t.getAttribute("data-n"); S.ch.site = ""; repaint(); return; }
+    if (act === "cp-site")   { S.ch.site = t.getAttribute("data-s"); repaint(); return; }
+    if (act === "cp-change") { S.ch.client = ""; S.ch.site = ""; S.ch.cq = ""; repaint(); return; }
     if (act === "ch-cancel") { S.ch = null; render(); return; }
     if (act === "ln-del")  { if (S.ch) S.ch.items.splice(Number(t.getAttribute("data-i")), 1); repaint(); return; }
     if (act === "rln-del") { if (S.rt) S.rt.items.splice(Number(t.getAttribute("data-i")), 1); repaint(); return; }
@@ -1362,7 +1551,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       if (!canMake()) { toast("Making a challan is done by the godown or the office."); return; }
       var z = S.ch || {};
       var cObj = clientByName(z.client);
-      if (!cObj) { toast("Pick a registered client from the list."); return; }
+      if (!cObj) { toast("Pick the client first \u2014 district, then area, then his name."); return; }
       var lines = (z.items || []);
       if (!lines.length) { toast("Add at least one product."); return; }
       lines = lines.map(function (l) {
@@ -1479,6 +1668,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
     /* ---- the signed receipt ---- */
     if (act === "rc-attach") {
+      if (!canProof()) { toast("The signed receipt is filed by the office, not the godown."); return; }
       var rid = t.getAttribute("data-id");
       var rec = challans().filter(function (x) { return String(x.id) === String(rid); })[0] ||
                 returns().filter(function (x) { return String(x.id) === String(rid); })[0];
