@@ -131,6 +131,18 @@ h2{font-size:13px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
   border:1px solid #F2F6F3;background:#F2F6F3;color:#123028;cursor:pointer;flex:none;
   font-family:inherit}
 #vbar button.x{background:none;color:#CFE0DA;border-color:#4E8B7C;padding:0 10px}
+/* the party picker: a filter, a list of real names, and the chosen man as a card */
+.plist{margin-top:8px;max-height:270px;overflow:auto;-webkit-overflow-scrolling:touch}
+.pitem{display:block;width:100%;text-align:left;background:#fff;border:1px solid #dfe6e3;
+  border-radius:10px;padding:10px 12px;margin-bottom:6px;cursor:pointer;min-height:48px}
+.pitem .pn{display:block;font-weight:700;font-size:15px;color:#123}
+.pitem .ps{display:block;font-size:12px;color:#6b7a77;margin-top:1px}
+.pcard{display:flex;align-items:center;gap:10px;background:#eef6f3;border:1px solid #bcd9d0;
+  border-radius:11px;padding:11px 12px}
+.pcard .pn{font-weight:800;font-size:16px;color:#123}
+.pcard .ps{font-size:12px;color:#4a6b62;margin-top:1px}
+.pchg{flex:0 0 auto;background:#fff;border:1px solid #bcd9d0;color:#2F6E5F;border-radius:9px;
+  padding:8px 12px;font-weight:700;font-size:13px;cursor:pointer;min-height:40px}
 </style>
 </head>
 <body>
@@ -175,21 +187,21 @@ function gasSet(){
   var v  = String((el && el.value) || '').trim();
   if (!n) return;
   if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(v)){
-    n.textContent = 'Yeh Apps Script ka link nahi lag raha. Link https://script.google.com/... se shuru aur /exec par khatam hona chahiye.';
+    n.textContent = 'That does not look like an Apps Script link. It should start https://script.google.com/... and end in /exec.';
     return;
   }
-  n.textContent = 'Server check kar rahe hain...';
+  n.textContent = 'Checking the server...';
   fetch(v, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
              body: JSON.stringify({ action:'ping' }) })
     .then(function(x){ return x.json(); })
     .then(function(r){
       if (!r || !r.ok) throw 0;
       try { localStorage.setItem(GKEY, v); } catch(e){}
-      n.textContent = 'Server mil gaya. App khul raha hai...';
+      n.textContent = 'Server found. Opening...';
       setTimeout(function(){ location.replace(location.pathname); }, 400);
     })
     .catch(function(){
-      n.textContent = 'Is link par server nahi mila. Apps Script deployment "Anyone" par set hai kya? Link dobara copy karke daalein.';
+      n.textContent = 'No server at that link. Is the Apps Script deployment set to "Anyone"? Copy the link again.';
     });
 }
 function gasAsk(){
@@ -200,29 +212,30 @@ function gasAsk(){
     'border-radius:14px;line-height:1.55">' +
     '<div style="font-weight:700;font-size:16px;margin-bottom:6px">Server ka pata daalein</div>' +
     '<div style="font-size:13px;opacity:.85;margin-bottom:12px">' +
-    'App abhi server se juda nahi hai. Apps Script deployment ka <b>/exec</b> link yahan ek baar paste ' +
-    'kar dein. Yeh sirf is phone par yaad rahega. Koi PIN ya data yahan nahi jaata.</div>' +
+    'This app is not joined to the server yet. Paste the Apps Script deployment <b>/exec</b> link here once ' +
+    'and it is remembered on this phone only. No PIN and no data goes anywhere from here.</div>' +
     '<input id="gasUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" ' +
     'placeholder="https://script.google.com/macros/s/.../exec" ' +
     'style="width:100%;box-sizing:border-box;font-size:16px;padding:11px 12px;border-radius:10px;' +
     'border:1px solid rgba(128,128,128,.5);background:transparent;color:inherit">' +
     '<button onclick="gasSet()" style="margin-top:10px;width:100%;min-height:44px;font-size:15px;' +
-    'font-weight:700;border:0;border-radius:10px;background:#2F6E5F;color:#fff">Jodein</button>' +
+    'font-weight:700;border:0;border-radius:10px;background:#2F6E5F;color:#fff">Join</button>' +
     '<div id="gasNote" style="font-size:12.5px;opacity:.85;margin-top:10px;min-height:18px"></div>' +
     '<div style="font-size:12px;opacity:.7;margin-top:10px">' +
-    'Link kahan se milta hai: Apps Script &rarr; Deploy &rarr; Manage deployments &rarr; Web app URL.</div>' +
+    'Where the link comes from: Apps Script &rarr; Deploy &rarr; Manage deployments &rarr; Web app URL.</div>' +
     '</div>';
 }
 if (!GAS) GAS = gasSaved();
 var QKEY  = 'ew_visit_queue_v1';
 var ME = { name:'', id:'' };
 var VISITS = [], PARTIES = [];
-var F = { purpose:'', outcome:'', stage:'', partyType:'Client' };
+var F = { purpose:'', outcome:'', stage:'', partyType:'Client',
+            party:'', pq:'', site:'', siteNew:false };
 var GPS = null, BUSY = false;
 var CFG = { requireGps:false, photo:false, forcePin:false };
 
-var PURPOSE  = ['Naya pitch','Follow-up','Payment','Delivery check','Complaint','Courtesy'];
-var OUTCOME  = ['Interested','Quote maanga','Order mila','Baad mein','Abhi nahi','Sirf mila'];
+var PURPOSE  = ['New pitch','Follow-up','Payment','Delivery check','Complaint','Courtesy'];
+var OUTCOME  = ['Interested','Asked for a quote','Got the order','Later','Not now','Just met'];
 var STAGES   = ['','Excavation','Slab / sunken','Concealed rough-in','Wall & tiling',
                 'Fixture fitting','Systems & handover'];
 var PTYPES   = ['Client','Plumber','Architect','Builder','Dealer','Site'];
@@ -270,7 +283,7 @@ function setQueue(q){ try { localStorage.setItem(QKEY, JSON.stringify(q)); } cat
 function paintQ(){
   var n = queue().length, el = document.getElementById('hQ');
   el.className = n ? 'q on' : 'q';
-  el.textContent = n ? (n + ' bheja nahi') : '';
+  el.textContent = n ? (n + ' not sent') : '';
 }
 function flushQueue(){
   var q = queue();
@@ -288,10 +301,10 @@ function askGps(){
   navigator.geolocation.getCurrentPosition(function(p){
     GPS = { lat:+p.coords.latitude.toFixed(6), lng:+p.coords.longitude.toFixed(6) };
     var el = document.getElementById('gps');
-    if (el) el.innerHTML = '<b>&#10003;</b> Location mil gayi';
+    if (el) el.innerHTML = '<b>&#10003;</b> Location found';
   }, function(){
     var el = document.getElementById('gps');
-    if (el) el.textContent = 'Location nahi mili - koi baat nahi, visit phir bhi save hogi.';
+    if (el) el.textContent = 'No location - never mind, the visit still saves.';
   }, { enableHighAccuracy:true, timeout:8000, maximumAge:60000 });
 }
 
@@ -304,67 +317,177 @@ function chips(name, list, cur){
 }
 function pick(k, v){ F[k] = (F[k]===v ? '' : v); render(true); }
 
+/* ---------------- WHO HE WENT TO ----------------
+   The owner's standing rule: if it is already on the book, it is picked, not typed.
+   This was a box with a datalist behind it, and a datalist is only a suggestion - so a
+   visit could be, and was, logged against "Rakesh ansal" when the book says
+   "Rakesh - Ansal I Block". Those two are different men as far as every screen that
+   counts anything is concerned: the pitch board, his follow-ups, his stage.
+   Now the box only FILTERS. What gets saved is always a name off the register.
+   Initials work - "rk" finds Rakesh Kumar - because that is how a man searches when
+   he is standing outside a gate with one hand free. */
+function lc(s){ return String(s == null ? '' : s).trim().toLowerCase(); }
+function partyMatches(q){
+  var t = lc(q);
+  if (!t) return PARTIES.slice(0, 40);
+  var starts = [], has = [], ini = [];
+  for (var i = 0; i < PARTIES.length; i++){
+    var p = PARTIES[i], n = lc(p.n);
+    if (n.indexOf(t) === 0) { starts.push(p); continue; }
+    if (n.indexOf(t) >= 0) { has.push(p); continue; }
+    var letters = n.split(/[^a-z0-9]+/).filter(Boolean).map(function(w){ return w.charAt(0); }).join('');
+    if (letters.indexOf(t) === 0) ini.push(p);
+  }
+  return starts.concat(has, ini).slice(0, 40);
+}
+function partyByName(n){
+  var t = lc(n);
+  for (var i = 0; i < PARTIES.length; i++) if (lc(PARTIES[i].n) === t) return PARTIES[i];
+  return null;
+}
+function partyPick(n){
+  F.party = n; F.pq = ''; F.site = ''; F.siteNew = false;
+  var p = partyByName(n);
+  if (p && p.t) F.partyType = p.t;      /* his type comes off his own record */
+  render(true);
+}
+function partyClear(){ F.party = ''; F.pq = ''; F.site = ''; F.siteNew = false; render(true); }
+function partyQ(v){ F.pq = v; render(true); }
+
+function partyPicker(){
+  if (F.party){
+    var p = partyByName(F.party) || {};
+    return '<div class="fld"><label>Who did you go to <span class="req">*</span></label>' +
+      '<div class="pcard">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div class="pn">' + esc(F.party) + '</div>' +
+          '<div class="ps">' + esc([p.t, p.c].filter(Boolean).join(' · ') || 'on the register') + '</div>' +
+        '</div>' +
+        '<button type="button" class="pchg" onclick="partyClear()">Change</button>' +
+      '</div></div>';
+  }
+  var list = partyMatches(F.pq);
+  var h2 = '<div class="fld"><label>Who did you go to <span class="req">*</span></label>' +
+    '<input id="pq" autocomplete="off" placeholder="Type the first few letters" value="' + esc(F.pq) + '" ' +
+      'oninput="partyQ(this.value)">';
+  if (!PARTIES.length){
+    return h2 + '<div class="note">The register has not reached this phone yet. Pull down to refresh.</div></div>';
+  }
+  if (!list.length){
+    return h2 + '<div class="note">Nobody on the register by that name. ' +
+      'A new client or partner is registered in the CRM first.</div></div>';
+  }
+  h2 += '<div class="plist">' + list.map(function(p){
+    return '<button type="button" class="pitem" onclick="partyPick(\'' +
+      esc(p.n).replace(/'/g, "&#39;") + '\')">' +
+      '<span class="pn">' + esc(p.n) + '</span>' +
+      '<span class="ps">' + esc([p.t, p.c].filter(Boolean).join(' · ')) + '</span></button>';
+  }).join('') + '</div>';
+  return h2 + '</div>';
+}
+
+/* ---------------- WHICH SITE ----------------
+   The sites he has already logged against this party, off his own visit history. Typed
+   by hand a site becomes three spellings and the stage question stops meaning anything.
+   A genuinely new site is still possible - it has to be - but it takes a press. */
+function sitesSeen(party){
+  var t = lc(party), out = [], seen = {};
+  for (var i = 0; i < VISITS.length; i++){
+    var v = VISITS[i];
+    if (lc(v.party) !== t) continue;
+    var s = String(v.site || '').trim();
+    if (!s || seen[lc(s)]) continue;
+    seen[lc(s)] = 1; out.push(s);
+  }
+  return out.slice(0, 8);
+}
+function sitePick(s){ F.site = s; F.siteNew = false; render(true); }
+function siteNew(on){ F.siteNew = !!on; F.site = ''; render(true); }
+function sitePicker(){
+  var lab = '<div class="fld"><label>Site</label>';
+  if (!F.party) return lab + '<div class="note">Pick who you went to first.</div></div>';
+  if (F.siteNew){
+    return lab + '<input id="site" autocomplete="off" placeholder="The site or colony" value="' + esc(F.site) + '">' +
+      '<div class="chips" style="margin-top:7px"><button type="button" onclick="siteNew(false)">&#8592; Back</button></div></div>';
+  }
+  var st = sitesSeen(F.party);
+  if (!st.length){
+    return lab + '<input id="site" autocomplete="off" placeholder="The site or colony" value="' + esc(F.site) + '">' +
+      '<div class="note">First visit logged to him, so there is nothing to pick from yet.</div></div>';
+  }
+  return lab + '<div class="chips">' +
+    st.map(function(s){
+      return '<button type="button" class="' + (F.site === s ? 'on' : '') + '" onclick="sitePick(\'' +
+        esc(s).replace(/'/g, "&#39;") + '\')">' + esc(s) + '</button>';
+    }).join('') +
+    '<button type="button" onclick="siteNew(true)">+ A new site</button></div></div>';
+}
+
 function render(keep){
+  /* party and site are picked, so they live in F and survive a repaint on their own.
+     The site box only exists while a genuinely new one is being typed - read it back
+     first, or pressing a chip would throw away what was half typed. */
+  if (keep){
+    var _sb = document.getElementById('site');
+    if (_sb) F.site = _sb.value;
+    var _pq = document.getElementById('pq');
+    if (_pq) F.pq = _pq.value;
+  }
   var vals = keep ? {
-    party: val('party'), site: val('site'), next: val('next'),
-    nextDate: val('nextDate'), notes: val('notes')
-  } : { party:'', site:'', next:'', nextDate:'', notes:'' };
+    next: val('next'), nextDate: val('nextDate'), notes: val('notes')
+  } : { next:'', nextDate:'', notes:'' };
+  if (!keep){ F.party = ''; F.pq = ''; F.site = ''; F.siteNew = false; }
 
   var h = '';
   h += '<div class="card">' +
-    '<div class="fld"><label>Kiske paas gaye <span class="req">*</span></label>' +
-      '<input id="party" list="plist" autocomplete="off" placeholder="Naam likhein ya chunein" value="' + esc(vals.party) + '">' +
-      '<datalist id="plist">' + PARTIES.slice(0,600).map(function(p){
-        return '<option value="' + esc(p.n) + '">' + esc(p.t) + (p.c?' · '+esc(p.c):'') + '</option>'; }).join('') +
-      '</datalist></div>' +
+    partyPicker() +
 
-    '<div class="fld"><label>Kya hain</label>' + chips('partyType', PTYPES, F.partyType) + '</div>' +
+    '<div class="fld"><label>What is he</label>' + chips('partyType', PTYPES, F.partyType) + '</div>' +
 
-    '<div class="fld"><label>Site / jagah</label>' +
-      '<input id="site" autocomplete="off" placeholder="Colony, sector ya site ka naam" value="' + esc(vals.site) + '"></div>' +
+    sitePicker() +
 
-    '<div class="fld"><label>Kis liye gaye</label>' + chips('purpose', PURPOSE, F.purpose) + '</div>' +
+    '<div class="fld"><label>Why you went</label>' + chips('purpose', PURPOSE, F.purpose) + '</div>' +
 
-    '<div class="fld"><label>Site kis stage par hai</label>' +
+    '<div class="fld"><label>What stage the site is at</label>' +
       '<select id="stageSel" onchange="F.stage=this.value">' +
       STAGES.map(function(s){ return '<option value="' + esc(s) + '"' + (F.stage===s?' selected':'') + '>' +
-        (s || 'Pata nahi / lagu nahi') + '</option>'; }).join('') + '</select></div>' +
+        (s || 'Not known / does not apply') + '</option>'; }).join('') + '</select></div>' +
 
-    '<div class="fld"><label>Kya hua</label>' + chips('outcome', OUTCOME, F.outcome) + '</div>' +
+    '<div class="fld"><label>What happened</label>' + chips('outcome', OUTCOME, F.outcome) + '</div>' +
 
     '<div class="two">' +
-      '<div class="fld"><label>Agla kaam</label>' +
-        '<input id="next" placeholder="Quote bhejna hai" value="' + esc(vals.next) + '"></div>' +
-      '<div class="fld"><label>Kab tak</label>' +
+      '<div class="fld"><label>Next step</label>' +
+        '<input id="next" placeholder="Send the quote" value="' + esc(vals.next) + '"></div>' +
+      '<div class="fld"><label>By when</label>' +
         '<input id="nextDate" type="date" value="' + esc(vals.nextDate) + '"></div>' +
     '</div>' +
 
     '<div class="fld"><label>Note</label>' +
-      '<textarea id="notes" placeholder="Jo yaad rakhna hai...">' + esc(vals.notes) + '</textarea></div>' +
+      '<textarea id="notes" placeholder="Anything worth remembering">' + esc(vals.notes) + '</textarea></div>' +
 
-    '<div class="gps" id="gps">' + (GPS ? '<b>&#10003;</b> Location mil gayi' : 'Location dhoondh rahe hain...') + '</div>' +
+    '<div class="gps" id="gps">' + (GPS ? '<b>&#10003;</b> Location found' : 'Looking for the location...') + '</div>' +
   '</div>';
 
-  h += '<button class="act" id="saveBtn" onclick="saveVisit()">Visit save karein</button>';
-  h += '<div class="note" style="text-align:center">Ek baar dabaiye. Network na ho to phone mein ruk jayegi aur apne aap chali jayegi.</div>';
+  h += '<button class="act" id="saveBtn" onclick="saveVisit()">Save the visit</button>';
+  h += '<div class="note" style="text-align:center">Press it once. With no signal it waits on the phone and goes up on its own.</div>';
 
-  h += '<h2>Aaj ke visits</h2>';
+  h += '<h2>Recent visits</h2>';
   var t = today();
   var mine = VISITS.slice(0, 12);
   h += mine.length ? '<div class="card">' + mine.map(function(v){
       return '<div class="v"><div style="flex:1;min-width:0">' +
         '<div class="t">' + esc(v.party) + '</div>' +
         '<div class="s">' + [v.site, v.purpose, v.outcome].filter(Boolean).map(esc).join(' · ') +
-        (v.next ? '<br>Agla: ' + esc(v.next) : '') + '</div></div>' +
+        (v.next ? '<br>Next: ' + esc(v.next) : '') + '</div></div>' +
         '<div class="when">' + esc(v.date) + '</div></div>'; }).join('') + '</div>'
-    : '<div class="empty">Abhi tak koi visit record nahi hui.</div>';
+    : '<div class="empty">No visit logged yet.</div>';
 
   h += '<div class="note" style="text-align:center;margin-top:18px">' +
-       '<button class="lnkb" onclick="renderPinChange(false)">PIN badlein</button>' +
+       '<button class="lnkb" onclick="renderPinChange(false)">Change PIN</button>' +
        '<span style="opacity:.4"> &middot; </span>' +
        '<button class="lnkb" onclick="signOut()">Sign out</button>' +
        '<div class="gfoot" style="margin-top:10px">App version ' + esc(BUILD) + ' &middot; ' +
-       '<button class="lnkb" style="font-size:11px" onclick="verPoll(false)">Update check karein</button></div></div>';
+       '<button class="lnkb" style="font-size:11px" onclick="verPoll(false)">Check for an update</button></div></div>';
 
   document.getElementById('main').innerHTML = h;
   paintQ();
@@ -373,15 +496,20 @@ function render(keep){
 
 function saveVisit(){
   if (BUSY) return;
-  var party = val('party');
-  if (!party){ toast('Kiske paas gaye - yeh likhna zaroori hai.');
-    var e=document.getElementById('party'); if(e) e.focus(); return; }
+  var party = F.party;
+  if (!party){ toast('Pick who you went to - it is the one thing this cannot be saved without.');
+    var e=document.getElementById('pq'); if(e) e.focus(); return; }
+  /* the register is the only source of a name. If the phone somehow holds one that is no
+     longer on it, say so rather than filing a visit against a man nobody can find. */
+  if (PARTIES.length && !partyByName(party)){
+    toast('That name is not on the register any more. Pick him again.');
+    partyClear(); return; }
 
   var rec = {
     at: new Date().toISOString(),
     party: party,
     partyType: F.partyType || 'Client',
-    site: val('site'),
+    site: (function(){ var e = document.getElementById('site'); return e ? e.value : F.site; })(),
     purpose: F.purpose,
     outcome: F.outcome,
     stage: F.stage,
@@ -394,12 +522,12 @@ function saveVisit(){
 
   BUSY = true;
   var btn = document.getElementById('saveBtn');
-  if (btn){ btn.disabled = true; btn.textContent = 'Save ho raha hai...'; }
+  if (btn){ btn.disabled = true; btn.textContent = 'Saving...'; }
 
   call('visit', rec).then(function(r){
     BUSY = false;
     if (r && r.ok){
-      toast(r.dup ? 'Yeh visit pehle hi save ho chuki hai.' : 'Visit save ho gayi. Shukriya.');
+      toast(r.dup ? 'This visit was already saved.' : 'Visit saved. Thank you.');
       resetForm();
       loadVisits();
     } else {
@@ -413,7 +541,7 @@ function saveVisit(){
 
 function hold(rec, why){
   var q = queue(); q.push(rec); setQueue(q);
-  toast(why ? why : 'Network nahi hai. Phone mein rakh li, apne aap chali jayegi.');
+  toast(why ? why : 'No signal. It is held on the phone and goes up on its own.');
   resetForm();
 }
 
@@ -438,7 +566,7 @@ function renderGate(){
     '<div class="gmark">EW</div>' +
     '<h2>EW Visit</h2>' +
     '<p class="lede">Apna mobile number aur PIN daalein.<br>' +
-    'Pehli baar? PIN aapke number ke aakhri 4 digit hain.</p>' +
+    'First time? Your PIN is the last 4 digits of your number.</p>' +
     (GERR ? '<div class="gerr" role="alert">' + esc(GERR) + '</div>' : '') +
     '<label for="gm">Mobile number</label>' +
     '<input id="gm" type="tel" inputmode="numeric" autocomplete="username" maxlength="10" ' +
@@ -457,8 +585,8 @@ function renderGate(){
 }
 
 function gateHelp(){
-  GERR = 'PIN office se reset hota hai. Admin ko bolein - reset karte hi PIN dobara ' +
-         'aapke number ke aakhri 4 digit ho jayega.';
+  GERR = 'The office resets a PIN. Ask an admin - once it is reset the PIN goes back to ' +
+         'the last 4 digits of your number.';
   renderGate();
 }
 
@@ -467,22 +595,22 @@ function doLogin(){
   var p = String(document.getElementById('gp').value || '').replace(/\D/g, '');
   if (m.length !== 10){ GERR = 'Poora 10 digit mobile number daalein.'; renderGate(); return; }
   if (!p){ GERR = 'PIN daalein.'; renderGate(); return; }
-  var b = document.getElementById('gbtn'); b.disabled = true; b.textContent = 'Dekh rahe hain...';
+  var b = document.getElementById('gbtn'); b.disabled = true; b.textContent = 'Checking...';
   A.mobile = m; A.pin = p;
   call('login').then(function(r){
-    if (!r || !r.ok){ GERR = (r && r.err) || 'Sign in nahi ho paya.'; authClear(true); renderGate(); return; }
+    if (!r || !r.ok){ GERR = (r && r.err) || 'Could not sign in.'; authClear(true); renderGate(); return; }
     if (r.kind !== 'EXEC' && r.kind !== 'OWNER'){
-      GERR = 'Yeh app Energy World ke executives ke liye hai.';
+      GERR = 'This app is for Energy World executives.';
       authClear(true); renderGate(); return;
     }
     authSave(); GERR = ''; gate(false); landed(r);
   }).catch(function(){
-    GERR = 'Network nahi mil raha. Dobara koshish karein.'; authClear(true); renderGate();
+    GERR = 'No signal. Try again.'; authClear(true); renderGate();
   });
 }
 
 function signOut(){
-  if (queue().length){ toast(queue().length + ' visit abhi phone mein hai. Pehle bhej dein.'); return; }
+  if (queue().length){ toast(queue().length + ' visit is still on this phone. Send it first.'); return; }
   authClear(true); VISITS = []; GERR = ''; renderGate();
 }
 
@@ -490,18 +618,18 @@ function renderPinChange(forced){
   PFORCE = !!forced;
   document.getElementById('gate').innerHTML = '<div class="gwrap">' +
     '<div class="gmark">EW</div>' +
-    '<h2>PIN badlein</h2>' +
+    '<h2>Change the PIN</h2>' +
     '<p class="lede">' + (PFORCE
-      ? 'Pehli baar aaye hain. Apna naya PIN chun lein.'
+      ? 'First time here. Choose your own PIN.'
       : 'Naya PIN chun lein. 4 se 6 digit.') + '</p>' +
     (PERR ? '<div class="gerr" role="alert">' + esc(PERR) + '</div>' : '') +
     '<label for="p1">Naya PIN</label>' +
     '<input id="p1" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">' +
-    '<label for="p2">Dobara likhein</label>' +
+    '<label for="p2">Type it again</label>' +
     '<input id="p2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">' +
-    '<button class="go" id="pbtn" onclick="doPinChange()">PIN save karein</button>' +
+    '<button class="go" id="pbtn" onclick="doPinChange()">Save the PIN</button>' +
     (PFORCE ? '' : '<button class="lnk" onclick="gate(false)">Rehne dein</button>') +
-    '<div class="gfoot">PIN kahin likha nahi jaata. Sheet mein sirf uska taala rehta hai.</div></div>';
+    '<div class="gfoot">The PIN is never written down anywhere. Only its lock is kept on the sheet.</div></div>';
   gate(true);
   var b = document.getElementById('p2');
   b.addEventListener('keydown', function(e){ if (e.key === 'Enter') doPinChange(); });
@@ -513,13 +641,13 @@ function doPinChange(){
   var b = String(document.getElementById('p2').value || '').replace(/\D/g, '');
   if (!/^\d{4,6}$/.test(a)){ PERR = 'PIN 4 se 6 digit ka hona chahiye.'; renderPinChange(PFORCE); return; }
   if (/^(\d)\1+$/.test(a)){ PERR = 'Ek hi digit baar baar mat rakhein.'; renderPinChange(PFORCE); return; }
-  if (a !== b){ PERR = 'Dono PIN alag hain.'; renderPinChange(PFORCE); return; }
-  var btn = document.getElementById('pbtn'); btn.disabled = true; btn.textContent = 'Save ho raha hai...';
+  if (a !== b){ PERR = 'The two PINs are different.'; renderPinChange(PFORCE); return; }
+  var btn = document.getElementById('pbtn'); btn.disabled = true; btn.textContent = 'Saving...';
   call('changePin', { newPin: a }).then(function(r){
-    if (!r || !r.ok){ PERR = (r && r.err) || 'PIN save nahi hua.'; renderPinChange(PFORCE); return; }
+    if (!r || !r.ok){ PERR = (r && r.err) || 'The PIN was not saved.'; renderPinChange(PFORCE); return; }
     A.pin = a; authSave(); PERR = ''; PFORCE = false;
-    gate(false); render(true); toast('PIN badal gaya.'); setTimeout(offerInstall, 900);
-  }).catch(function(){ PERR = 'Network nahi mil raha.'; renderPinChange(PFORCE); });
+    gate(false); render(true); toast('The PIN is changed.'); setTimeout(offerInstall, 900);
+  }).catch(function(){ PERR = 'No signal.'; renderPinChange(PFORCE); });
 }
 
 /* ---------------- save as an app ---------------- */
@@ -542,7 +670,7 @@ function offerInstall(){
   if (!DEFER && !isIos()) return;
   var bar = document.getElementById('inst');
   bar.innerHTML = '<div class="t">' + (DEFER
-    ? '<b>Phone mein rakh lein.</b> Signal na ho tab bhi visit likhi jayegi.'
+    ? '<b>Keep it on the phone.</b> A visit still writes with no signal.'
     : '<b>Phone mein rakh lein.</b> Neeche <b>Share</b> dabayein, phir <b>Add to Home Screen</b>.')
     + '</div>' + (DEFER ? '<button onclick="doInstall()">Rakh lein</button>' : '') +
     '<button class="x" onclick="hideInstall()">Baad mein</button>';
@@ -589,7 +717,7 @@ function verWipe(v){
   VBUSY = true;
   verPut({ have: (verSeen().have || ''), want: String(v || ''), at: (new Date()).getTime() });
   var b = document.getElementById('vbar');
-  if (b){ b.innerHTML = '<div class="t">Naya version aa raha hai...</div>'; b.classList.add('on'); }
+  if (b){ b.innerHTML = '<div class="t">A new version is coming...</div>'; b.classList.add('on'); }
 
   var done = false;
   var go = function(){
@@ -617,9 +745,9 @@ function verBar(v, note, force){
   VNEW = String(v || '');
   var b = document.getElementById('vbar');
   if (!b) return;
-  b.innerHTML = '<div class="t"><b>Naya version aa gaya hai.</b> ' +
+  b.innerHTML = '<div class="t"><b>A new version is out.</b> ' +
       esc(note || 'App ko ek baar refresh kar lein.') + '</div>' +
-      '<button onclick="verWipe(VNEW)">Update karein</button>' +
+      '<button onclick="verWipe(VNEW)">Update</button>' +
       (force ? '' : '<button class="x" onclick="verHide()">Baad mein</button>');
   b.classList.add('on');
   if (force) setTimeout(function(){ verWipe(VNEW); }, 6000);
@@ -633,7 +761,7 @@ function verCheck(r, cold){
   var v = String(r.ver), st = verSeen();
   if (st.want && st.want === v){                     /* the refresh worked */
     verPut({ have: v });
-  if (typeof toast === 'function') toast('App update ho gaya.');
+  if (typeof toast === 'function') toast('The app is updated.');
     return false;
   }
   if (!st.have){ verPut({ have: v }); return false; }   /* first run on this phone */
@@ -688,7 +816,7 @@ function landed(r){
        the whole point of the queue. Show him the form, not an error. */
     document.getElementById('hWho').textContent = 'Offline';
     render(false); paintQ();
-    toast('Network nahi hai. Visit phone mein ruk jayegi.');
+    toast('No signal. The visit waits on the phone.');
   });
 })();
 </script>
