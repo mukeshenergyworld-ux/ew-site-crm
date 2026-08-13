@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.250";
+  var APP_VERSION = "6.9.252";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -118,7 +118,7 @@
     scan: null,
     pr: null,
     oc: null,
-    clBack: null,
+    clBack: null, dvBack: null, dnew: null,
     billDraft: null,
     clEditing: null,
     rpt: null,
@@ -4836,6 +4836,199 @@ window.addEventListener("beforeunload", function (ev) {
       '<div id="' + id + '_flash">' + presetFlashHtml(sel) + '</div>';
   }
 
+  /* ================= PICKED, NEVER TYPED (v6.9.251) =========================
+     HIS STANDING RULE, in his words: "on every all , everywhere ,, all things to be
+     prefixed , to be selected from dropdown only / be it , client name , phone no ,
+     driver name , vehile no auto fill with driver name".
+
+     The client and the referring partner were already dropdowns. These are the three
+     that were still boxes, and each one costs real money when it is typed:
+
+     THE SITE. Typed by hand, one project quietly becomes three - "Ansal", "ansal plots",
+     "Ansal I Blk" - and from that day his hisab, his pitch board and his delivery history
+     are each looking at a different place. A datalist did not stop it: a datalist is a
+     suggestion, and a suggestion is exactly what a man in a hurry ignores.
+
+     THE DRIVER. A driver typed as free text can never be totalled, so freight per driver
+     is guesswork, and "Ramesh", "ramesh" and "Ramesh ji" become three men on the book.
+     Worse, the app already knew how to fill in his lorry and his number from his own
+     record - but only if the name matched exactly, so a single typo silently left both
+     blank and nobody noticed until the return came back.
+
+     A GENUINELY NEW SITE is still possible, because a man does start a new project. It
+     takes choosing "+ A new site", which opens a box. Deliberate, so it is never the
+     lazy path, and never an accident. */
+  /* ---------- THE DRIVER REGISTER (v6.9.252) ----------
+     A dropdown with nothing in it is worse than a box, and on 13 Aug the register held
+     ZERO drivers - not one of the 81 challans carried a driver name or a lorry number.
+     The field had existed for months and had never once been filled. So both apps can now
+     add to the register from exactly where the man is standing when he needs it.
+
+     THE VEHICLE TYPE is asked for because of what it is for (his reason, recorded here so
+     it survives): freight is to be worked out per driver from what actually went out on the
+     receipt, and a tempo, a Chhota Hathi and a full lorry do not cost the same for the same
+     load. Without the type on his record that sum can only ever be a guess.
+
+     The Drivers sheet may not carry a vehicleType column yet - it has no rows at all, so
+     there is nothing to read one from, and the backend writes a row from what it is sent and
+     drops anything it has no column for. So the type is ALSO filed as an append-only audit
+     row, the same channel the manual challan number and the delivery proofs use. It works
+     today either way, and the day the column appears it simply starts winning. */
+  var VEHICLE_TYPES = ["Bike", "Auto / Tempo", "Chhota Hathi", "Pickup", "Truck", "Tractor-trolley", "Other"];
+  var _dtCache = null;
+  function driverTypeMap() {
+    if (_dtCache) return _dtCache;
+    var m = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "driver:type") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var k = dkey(d.name); if (!k) return;
+      var prev = m[k];
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[k] = { at: r.createdAt || "", type: String(d.vehicleType || "") };
+      }
+    });
+    _dtCache = m;
+    return _dtCache;
+  }
+  function driverType(d) {
+    if (!d) return "";
+    var onRow = String(d.vehicleType || "").trim();
+    if (onRow) return onRow;
+    var a = driverTypeMap()[dkey(d.name)];
+    return (a && a.type) || "";
+  }
+  function driverByNameC(n) {
+    var t = dkey(n);
+    return (S.data.drivers || []).filter(function (d) { return dkey(d.name) === t; })[0] || null;
+  }
+  /* The form. Deliberately small - four answers, and the fourth is buttons. */
+  function modalDriverNew() {
+    var d = S.dnew || {};
+    return '<h2>Add a driver to the register</h2>' +
+      '<p class="sub">He goes on once, and after that he is a name to pick on every challan &mdash; ' +
+      'his number and his lorry filling themselves in.</p>' +
+      '<label>Name <span style="color:#ef4444">*</span></label>' +
+      '<input id="dn_name" placeholder="As everybody calls him" value="' + esc(d.name || "") + '"/>' +
+      '<label>Mobile</label>' +
+      '<input id="dn_mob" inputmode="numeric" placeholder="10 digits" value="' + esc(d.mobile || "") + '"/>' +
+      '<label>Vehicle number</label>' +
+      '<input id="dn_veh" placeholder="HR-06-AB-1234" value="' + esc(d.vehicle || "") + '"/>' +
+      '<label>Vehicle type</label>' +
+      '<div class="row" style="flex-wrap:wrap;gap:6px">' +
+      VEHICLE_TYPES.map(function (t2) {
+        return '<button class="btn sm ' + (d.vtype === t2 ? '' : 'ghost') +
+          '" data-act="dn-type" data-t="' + esc(t2) + '">' + esc(t2) + '</button>';
+      }).join("") + '</div>' +
+      '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:6px">' +
+      'The type is what lets the freight be worked out per driver later &mdash; a tempo and a full ' +
+      'lorry do not cost the same for the same load.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="dn-cancel">Cancel</button>' +
+      '<button class="btn" data-act="dn-save">Add him</button></div>';
+  }
+
+  function sitesOfClient(name) {
+    var t = dkey(name);
+    if (!t) return [];
+    return (S.data.sites || []).filter(function (x) { return dkey(x.client) === t; })
+      .sort(function (a, b) { return String(a.name || "").localeCompare(String(b.name || "")); });
+  }
+  var SITE_NEW = "__newsite__";
+  /* `id` is the same id the save handler already reads with val(id), so nothing downstream
+     changes. When "+ A new site" is chosen, the change handler swaps this select for a box
+     carrying the very same id - so val(id) keeps working either way. */
+  function strictSiteField(id, clientName, value, label) {
+    return '<div id="' + esc(id) + '_box">' + strictSiteFieldInner(id, clientName, value, label) + '</div>';
+  }
+  function strictSiteFieldInner(id, clientName, value, label) {
+    var list = sitesOfClient(clientName);
+    var cur = String(value || "");
+    var known = list.some(function (x) { return x.name === cur; });
+    var lab = '<label>' + (label || "Site") + '</label>';
+    if (!clientName) {
+      return lab + '<select id="' + esc(id) + '" disabled style="background:#f1f5f9;color:#94a3b8">' +
+        '<option value="">Pick the client first</option></select>';
+    }
+    if (!list.length) {
+      /* nothing on his record - so the only honest offer is a new one, and it is offered
+         plainly rather than pretending there is a list to choose from */
+      return lab +
+        '<input id="' + esc(id) + '" placeholder="No site on his record yet - name this one" value="' + esc(cur) + '"/>' +
+        '<div class="meta" style="font-size:11px;color:#94a3b8;margin-top:2px">' +
+        'He has no site registered yet. What is typed here is filed with the challan.</div>';
+    }
+    return lab + '<select id="' + esc(id) + '">' +
+      '<option value="">&mdash; No site &mdash;</option>' +
+      (cur && !known ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + ' (not on his record)</option>' : '') +
+      list.map(function (x) {
+        return '<option value="' + esc(x.name) + '"' + (x.name === cur ? ' selected' : '') + '>' + esc(x.name) + '</option>';
+      }).join("") +
+      '<option value="' + SITE_NEW + '">+ A new site&hellip;</option>' +
+      '</select>' +
+      '<div class="meta" style="font-size:11px;color:#94a3b8;margin-top:2px">' +
+      'His registered sites. Choose <b>+ A new site</b> only for a project he has genuinely just started.</div>';
+  }
+  /* The driver, from the register. Picking him is what makes the existing cascade fire, so
+     his lorry and his number fill themselves in - which is what he asked for. */
+  function strictDriverField(id, value, label) {
+    var list = (S.data.drivers || []).filter(function (d) { return String(d.name || "").trim(); })
+      .sort(function (a, b) { return String(a.name || "").localeCompare(String(b.name || "")); });
+    var cur = String(value || "");
+    var known = list.some(function (d) { return d.name === cur; });
+    var lab = '<label>' + (label || "Driver") + '</label>';
+    var addBtn = '<button class="btn sm ghost" data-act="dv-inline" data-for="' + esc(id) + '">+ New driver</button>';
+    if (!list.length) {
+      return lab +
+        '<div class="row"><select class="grow" id="' + esc(id) + '" disabled style="background:#f1f5f9;color:#94a3b8">' +
+        '<option value="">Nobody on the register yet</option></select>' + addBtn + '</div>' +
+        '<div class="meta" style="font-size:11px;color:#b45309;margin-top:2px">' +
+        'The driver register is empty. Tap <b>+ New driver</b> once and he is there for every challan after this.</div>';
+    }
+    return lab + '<div class="row"><select class="grow" id="' + esc(id) + '">' +
+      '<option value="">&mdash; No driver &mdash;</option>' +
+      (cur && !known ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + ' (not on the register)</option>' : '') +
+      list.map(function (d) {
+        var vt = driverType(d);
+        return '<option value="' + esc(d.name) + '"' + (d.name === cur ? ' selected' : '') + '>' + esc(d.name) +
+          (d.vehicle ? ' · ' + esc(d.vehicle) : '') + (vt ? ' · ' + esc(vt) : '') + '</option>';
+      }).join("") + '</select>' + addBtn + '</div>';
+  }
+  /* Which delivery a return is coming back off. It was a box asking for a challan number,
+     which meant it was usually blank or wrong - and a return that cannot be tied to its
+     delivery cannot be checked against what actually went out. His own deliveries only,
+     newest first, each carrying the paper book number because that is the one the godown
+     reads off the challan in his hand. */
+  function strictAgainstField(id, clientName, value) {
+    return '<div id="' + esc(id) + '_box">' + strictAgainstFieldInner(id, clientName, value) + '</div>';
+  }
+  function strictAgainstFieldInner(id, clientName, value) {
+    var cur = String(value || "");
+    var lab = '<label>Against which delivery (optional)</label>';
+    if (!clientName) {
+      return lab + '<select id="' + esc(id) + '" disabled style="background:#f1f5f9;color:#94a3b8">' +
+        '<option value="">Pick the client first</option></select>';
+    }
+    var t = dkey(clientName);
+    var mine = (S.data.challans || []).filter(function (c) {
+      return dkey(c.customerName) === t && ["Dispatched", "Received"].indexOf(String(c.status)) >= 0;
+    }).sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
+    if (!mine.length) {
+      return lab + '<select id="' + esc(id) + '" disabled style="background:#f1f5f9;color:#94a3b8">' +
+        '<option value="">Nothing has gone out to him yet</option></select>';
+    }
+    var known = mine.some(function (c) { return c.challanNo === cur; });
+    return lab + '<select id="' + esc(id) + '">' +
+      '<option value="">&mdash; Not sure &mdash;</option>' +
+      (cur && !known ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>' : '') +
+      mine.map(function (c) {
+        var mn = manualNoFor(c);
+        return '<option value="' + esc(c.challanNo) + '"' + (c.challanNo === cur ? ' selected' : '') + '>' +
+          esc(c.challanNo) + (mn ? ' (book ' + esc(mn) + ')' : '') +
+          (c.createdAt ? ' · ' + esc(String(c.createdAt).slice(0, 10)) : '') + '</option>';
+      }).join("") + '</select>';
+  }
+
   /* The reassuring "flash": show the client's pre-set brand discounts right on the challan form, so
      the user SEES the bargain that will be frozen onto every line at billing time. */
   function presetFlashHtml(name) {
@@ -9083,26 +9276,19 @@ function viewCatalogue() {
     if (!S.rt) S.rt = { brand: "", family: "", items: [] };
     var z = S.rt;
     var clients = S.data.clients.map(function (x) { return x.name; });
-    var chs = (S.data.challans || []).filter(function (c) {
-      return ["Dispatched", "Received"].indexOf(String(c.status)) >= 0;
-    }).map(function (c) { return c.challanNo; });
     return '<h2>Register material return</h2>' +
       '<p class="sub">Material coming back from a client. The original challan is not changed.</p>' +
       ((z && z.challanNo) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#b91c1c">Against challan <b>' + esc(z.challanNo) + '</b>, opened from that client\u2019s hisab. Pick what is coming back and register it \u2014 the challan itself stays as it is.</div>' : "") +
       strictClientField("r_client", (S.rt && S.rt.client) || "") +
-      '<label>Site (optional)</label><input id="r_site" placeholder="Site / project" value="' + esc((z && z.site) || "") + '"/>' +
-      '<label>Against challan (optional)</label><input id="r_ch" list="chlist" placeholder="Challan number" value="' + esc((z && z.challanNo) || "") + '"/>' +
-      '<datalist id="chlist">' + chs.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      strictSiteField("r_site", (S.rt && S.rt.client) || "", (z && z.site) || "", "Site (optional)") +
+      strictAgainstField("r_ch", (S.rt && S.rt.client) || "", (z && z.challanNo) || "") +
       '<label>Reason</label><select id="r_reason">' +
       opts(["Excess at site", "Damaged", "Wrong item supplied", "Client cancelled", "Other"], "Excess at site") + '</select>' +
       '<h3 style="margin:14px 0 4px;font-size:14px">Material coming back ' +
       '<span class="pill teal">' + (z.items || []).length + ' picked</span></h3>' +
       rtPicker() +
       '<div class="grid2" style="margin-top:10px">' +
-      '<div><label>Pickup driver</label><input id="r_driver" list="driverlist2" placeholder="Driver name"/>' +
-      '<datalist id="driverlist2">' + (S.data.drivers || []).map(function (d) {
-        return '<option value="' + esc(d.name) + '"></option>';
-      }).join("") + '</datalist></div>' +
+      '<div>' + strictDriverField("r_driver", (z && z.driver) || "", "Pickup driver") + '</div>' +
       '<div><label>Freight on the return</label><input id="r_freight" inputmode="numeric" value="0"/></div>' +
       '</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
@@ -16832,7 +17018,6 @@ function viewCatalogue() {
     if (!S.ch) S.ch = { brand: "", family: "", items: [] };
     var z = S.ch;
     var clients = S.data.clients.map(function (x) { return x.name; });
-    var sites = S.data.sites.map(function (x) { return x.name; });
     var picked = (z.items || []).slice().sort(function (a, b) { return (Number(b.qty) || 0) - (Number(a.qty) || 0); });
     var isEdit = !!(z && z.editId);
     /* what is already in the manual-number box: what he typed before a repaint, or - when
@@ -16864,8 +17049,7 @@ function viewCatalogue() {
           (_mnPre ? 'Noted \u2014 this will print on the challan and show in hisab.'
                   : 'Write the number from the hand-written book here. It prints on the challan and shows in hisab. Leave it blank only if there is no paper challan.') +
         '</div></div>' +
-      '<label>Site (optional)</label><input id="m_site" list="sitelist" placeholder="Site / project" value="' + esc((z && z.site) || "") + '"/>' +
-      '<datalist id="sitelist">' + sites.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      strictSiteField("m_site", (S.ch && S.ch.client) || "", (z && z.site) || "", "Site (optional)") +
       /* Material is going to this site today, so the man loading it knows the stage better than
          anyone. Confirm it here and the pitch board is right without a single extra visit. */
       stageChips("m_stage", clientStage((S.ch && S.ch.client) || ""), "Stage of the site this is going to") +
@@ -16910,13 +17094,13 @@ function viewCatalogue() {
       '<div><label>Why (optional)</label><input id="m_discnote" placeholder="bargained on site" value="' + esc((z && z.discnote) || "") + '"' + (canSetPricing() ? '' : ' readonly') + '/></div>' +
       '</div>' +
       '<div class="grid2" style="margin-top:6px">' +
-      '<div><label>Driver</label><input id="m_driver" list="driverlist" placeholder="Driver name" value="' + esc((z && z.driver) || "") + '"/>' +
-      '<datalist id="driverlist">' + (S.data.drivers || []).map(function (d) {
-        return '<option value="' + esc(d.name) + '"></option>';
-      }).join("") + '</datalist></div>' +
-      '<div><label>Driver mobile</label><input id="m_dmob" inputmode="numeric" placeholder="10 digits" value="' + esc((z && z.dmob) || "") + '"/></div>' +
+      '<div>' + strictDriverField("m_driver", (z && z.driver) || "") + '</div>' +
+      /* v6.9.251 - his number comes off his own record the moment he is picked. It stays
+         editable, because a man does answer a different phone, but it is never the thing
+         somebody has to remember and type. */
+      '<div><label>Driver mobile</label><input id="m_dmob" inputmode="numeric" placeholder="fills in from his record" value="' + esc((z && z.dmob) || "") + '"/></div>' +
       '</div>' +
-      '<label>Vehicle number</label><input id="m_veh" placeholder="HR-06-AB-1234" value="' + esc((z && z.veh) || "") + '"/>' +
+      '<label>Vehicle number</label><input id="m_veh" placeholder="fills in from the driver - change it only if he is in a different lorry today" value="' + esc((z && z.veh) || "") + '"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="ch-save" data-stagebtn="' + (isEdit ? 'Save changes' : 'Create challan') + '">' +
       (clientStage((S.ch && S.ch.client) || "")
@@ -17878,7 +18062,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null;
+    _clDueCache = null; _clStageCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
     if (!S.pin) { renderLogin(); return; }
@@ -18118,6 +18302,14 @@ function viewCatalogue() {
       elc.addEventListener("change", function (e) {
         if (S[pair[1]]) S[pair[1]].client = e.target.value;
         var fl = el(pair[0] + "_flash"); if (fl) fl.innerHTML = presetFlashHtml(e.target.value);
+        /* v6.9.251 - a different client has different sites and different deliveries. Rebuild
+           both from him, or the boxes go on offering the previous man's - and a challan filed
+           against another client's site is worse than one filed against none. */
+        var _pfx = pair[0].split("_")[0];
+        var _sb = el(_pfx + "_site_box");
+        if (_sb) _sb.innerHTML = strictSiteFieldInner(_pfx + "_site", e.target.value, "", "Site (optional)");
+        var _ab = el(_pfx + "_ch_box");
+        if (_ab) _ab.innerHTML = strictAgainstFieldInner(_pfx + "_ch", e.target.value, "");
         /* a different client means a different site - repaint the stage question for him */
         var sb = el("m_stage_box");
         if (sb) sb.outerHTML = stageChips("m_stage", clientStage(e.target.value), "Stage of the site this is going to");
@@ -20976,6 +21168,74 @@ function viewCatalogue() {
       S.modal = modalClient(S.clEditing || null); render(); restoreSnapshot(keepD);
       return;
     }
+    /* v6.9.252 - "+ New driver", built on the very same come-back-to-where-you-were
+       machinery that "+ Register new" already uses for a client. Registering a driver must
+       never cost a man the challan he has half built. */
+    if (act === "dv-inline") {
+      var dFor = t.getAttribute("data-for");
+      var dBack = { forId: dFor };
+      if (dFor === "m_driver") { dBack.modal = "challan"; dBack.keep = keepSnapshot(CH_FIELDS); }
+      else if (dFor === "r_driver") { dBack.modal = "return"; dBack.keep = keepSnapshot(RT_FIELDS); }
+      S.dvBack = dBack;
+      S.dnew = { name: "", mobile: "", vehicle: "", vtype: "" };
+      S.modal = modalDriverNew();
+      render();
+      return;
+    }
+    if (act === "dn-type") {
+      /* hold what is typed - repainting the form to light a button must not empty it */
+      S.dnew = S.dnew || {};
+      S.dnew.name = val("dn_name"); S.dnew.mobile = val("dn_mob"); S.dnew.vehicle = val("dn_veh");
+      var vt = t.getAttribute("data-t") || "";
+      S.dnew.vtype = (S.dnew.vtype === vt ? "" : vt);
+      S.modal = modalDriverNew(); render(); return;
+    }
+    if (act === "dn-cancel") {
+      var cb = S.dvBack; S.dvBack = null; S.dnew = null;
+      if (cb && cb.modal === "challan") { S.modal = modalChallan(); render(); restoreSnapshot(cb.keep); return; }
+      if (cb && cb.modal === "return")  { S.modal = modalReturn();  render(); restoreSnapshot(cb.keep); return; }
+      S.modal = null; render(); return;
+    }
+    if (act === "dn-save") {
+      var dnName = String(val("dn_name") || "").trim();
+      var dnMob  = String(val("dn_mob") || "").replace(/\D/g, "");
+      var dnVeh  = String(val("dn_veh") || "").trim().toUpperCase();
+      var dnType = (S.dnew && S.dnew.vtype) || "";
+      if (!dnName) { toast("His name, at least."); return; }
+      if (dnMob && dnMob.length !== 10) { toast("A mobile is 10 digits, or leave it blank."); return; }
+      if (driverByNameC(dnName)) { toast(dnName + " is already on the register."); return; }
+      var dBack2 = S.dvBack;
+      S.dvBack = null; S.dnew = null;
+      _dtCache = null;
+      save("drivers", { id: "", name: dnName, mobile: dnMob, vehicle: dnVeh,
+                        vehicleType: dnType, defaultFare: "" });
+      /* the type, filed where no sheet column is needed - see driverTypeMap() */
+      if (dnType) {
+        save("audit", {
+          id: "DT-" + Date.now() + "-" + Math.floor(Math.random() * 100000),
+          createdAt: new Date().toISOString(), actor: S.user || "",
+          action: "driver:type", target: dnName,
+          detail: JSON.stringify({ name: dnName, vehicleType: dnType, vehicle: dnVeh })
+        }, true);
+      }
+      toast(dnName + " is on the register" + (dnVeh ? " with " + dnVeh : "") + ".");
+      if (dBack2) {
+        if (dBack2.keep) dBack2.keep[dBack2.forId] = dnName;
+        if (dBack2.modal === "challan") { if (S.ch) S.ch.driver = dnName; S.modal = modalChallan(); }
+        else if (dBack2.modal === "return") { if (S.rt) S.rt.driver = dnName; S.modal = modalReturn(); }
+        render();
+        restoreSnapshot(dBack2.keep);
+        /* he was added because somebody needs him NOW, so fill his lorry and number in */
+        if (el(dBack2.forId)) {
+          if (dBack2.forId === "m_driver") {
+            if (el("m_dmob")) el("m_dmob").value = dnMob;
+            if (el("m_veh")) el("m_veh").value = dnVeh;
+          }
+        }
+        return;
+      }
+      S.modal = null; render(); return;
+    }
     if (act === "cl-inline") {
       S.billDraft = []; S.clEditing = null;
       var forId = t.getAttribute("data-for");
@@ -21565,6 +21825,35 @@ function viewCatalogue() {
       return;
     }
 
+    /* v6.9.251 - "+ A new site" swaps the dropdown for a box carrying the SAME id, so
+       every save handler downstream still reads it with val("m_site") and nothing else
+       had to change. Choosing it is deliberate; there is no way to reach the box by
+       accident, which is the whole point. */
+    if ((t.id === "m_site" || t.id === "r_site") && t.value === SITE_NEW) {
+      var _sid = t.id;
+      var _box = document.createElement("input");
+      _box.id = _sid; _box.value = "";
+      _box.placeholder = "The new site or project";
+      var _par = t.parentNode;
+      t.removeAttribute("id");
+      _par.insertBefore(_box, t);
+      t.style.display = "none";
+      var _note = document.createElement("div");
+      _note.className = "meta";
+      _note.style.cssText = "font-size:11px;color:#b45309;margin-top:2px";
+      _note.innerHTML = "A new site for this client. It is filed with the challan exactly as typed.";
+      _par.insertBefore(_note, t.nextSibling);
+      if (_box.focus) _box.focus();
+      return;
+    }
+    /* the return's pickup driver fills his lorry and number in too */
+    if (t.id === "r_driver") {
+      var rdd = (S.data.drivers || []).filter(function (x) {
+        return dkey(x.name) === dkey(t.value);
+      })[0];
+      if (rdd && el("r_freight") && !Number(val("r_freight"))) el("r_freight").value = rdd.defaultFare || "";
+      return;
+    }
     /* pick a known driver and his number, vehicle and usual fare fill themselves in */
     if (t.id === "m_driver") {
       var dd = (S.data.drivers || []).filter(function (x) {
@@ -21574,6 +21863,12 @@ function viewCatalogue() {
         if (el("m_dmob")) el("m_dmob").value = dd.mobile || "";
         if (el("m_veh")) el("m_veh").value = dd.vehicle || "";
         if (el("m_freight") && !Number(val("m_freight"))) el("m_freight").value = dd.defaultFare || "";
+      } else if (!String(t.value || "").trim()) {
+        /* v6.9.251 - unpicking him clears his lorry and his number. Without this the
+           previous driver's vehicle stayed in the box and went out on the next challan
+           against a man who was never in it. */
+        if (el("m_dmob")) el("m_dmob").value = "";
+        if (el("m_veh")) el("m_veh").value = "";
       }
       return;
     }
