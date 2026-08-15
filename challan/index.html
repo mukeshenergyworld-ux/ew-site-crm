@@ -67,8 +67,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 @supports (height:100dvh){.sheet .inner{max-height:88dvh}}
 .sheet h2{margin:0 0 3px;font-size:17px}
 .empty{text-align:center;color:#64748b;padding:26px 14px;font-size:13.5px}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:26px;background:#0f172a;color:#fff;
-  padding:11px 16px;border-radius:10px;font-size:13.5px;z-index:99;max-width:88%;box-shadow:0 6px 18px rgba(0,0,0,.3)}
+/* the toast sits ABOVE whatever is already at the bottom - the tab bar, and the
+   icon card when it is up. --ew-bottom is measured, not guessed. See bottomFurniture(). */
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom) + var(--ew-bottom,0px));transition:bottom .16s ease;background:#0f172a;color:#fff;
+  padding:11px 16px;border-radius:10px;font-size:13.5px;z-index:100000;max-width:88%;box-shadow:0 6px 18px rgba(0,0,0,.3)}
 .login{max-width:340px;margin:9vh auto;background:#fff;border-radius:16px;padding:26px 22px;
   box-shadow:0 10px 30px rgba(15,23,42,.14)}
 .login h1{margin:0 0 3px;font-size:19px;text-align:center}
@@ -132,7 +134,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.6.1";
+  var APP_VERSION = "1.6.2";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
   var SNAP  = "ew_challan_snap";
@@ -173,7 +175,59 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return Number(p[2]) + " " + (MON[Number(p[1])-1] || "") + " " + p[0];
   }
   var _toastT = null;
+  /* ============ WHAT IS AT THE BOTTOM OF THE SCREEN ============
+     HIS WORDS, about the CRM but true here too: "progress notification in black backgroud
+     always not visible as its behind that red border".
+
+     On this app the furniture is the tab bar, always there, and the icon card when it is
+     showing. The toast was pinned a fixed number of pixels off the bottom edge, which put
+     it straight over the tab bar - over the very buttons a man is reaching for, and behind
+     the card whenever that was up. Nothing knew about anything else.
+
+     `--ew-bottom` carries how much of the bottom edge is already taken, MEASURED off the
+     real elements rather than guessed: the tab bar is taller on a phone with a home
+     indicator, and a guess would be wrong on exactly the phones this is used on. */
+  var _bfIds = ["ew_nag", "ew_sync_banner"];
+  function bottomFurniture() {
+    var vh = 0, h = 0;
+    try { vh = window.innerHeight || 0; } catch (e) { return 0; }
+    function upFrom(node) {
+      if (!node) return 0;
+      try { var r = node.getBoundingClientRect(); return r && r.height ? Math.ceil(vh - r.top) : 0; }
+      catch (e) { return 0; }
+    }
+    for (var i = 0; i < _bfIds.length; i++) h = Math.max(h, upFrom(document.getElementById(_bfIds[i])));
+    /* the tab bar is furniture too - a toast over the tab bar hides the button being pressed */
+    h = Math.max(h, upFrom(document.querySelector(".nav")));
+    return h > 0 ? h : 0;
+  }
+  function syncBottomVar() {
+    try { document.documentElement.style.setProperty("--ew-bottom", bottomFurniture() + "px"); } catch (e) {}
+  }
+  var _bfWatch = false;
+  function watchBottom() {
+    if (_bfWatch) return;
+    _bfWatch = true;
+    try {
+      window.addEventListener("resize", syncBottomVar);
+      window.addEventListener("orientationchange", function () { setTimeout(syncBottomVar, 250); });
+    } catch (e) {}
+    try {
+      if (window.ResizeObserver && window.MutationObserver) {
+        var ro = new ResizeObserver(function () { syncBottomVar(); });
+        var attach = function () {
+          var nodes = [document.querySelector(".nav")];
+          for (var i = 0; i < _bfIds.length; i++) nodes.push(document.getElementById(_bfIds[i]));
+          nodes.forEach(function (n) { if (n && !n.__ewRo) { n.__ewRo = 1; ro.observe(n); } });
+        };
+        attach();
+        new MutationObserver(function () { attach(); syncBottomVar(); })
+          .observe(document.body, { childList: true, subtree: true });
+      }
+    } catch (e) {}
+  }
   function toast(m) {
+    watchBottom(); syncBottomVar();
     var t = el("toast");
     if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "toast"; document.body.appendChild(t); }
     t.textContent = m; t.style.display = "block";
