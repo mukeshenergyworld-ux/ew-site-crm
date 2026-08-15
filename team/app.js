@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.269";
+  var APP_VERSION = "6.9.270";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -775,7 +775,9 @@
           (e.thumb ? proofThumbImg(e.thumb, 38) : "") +
           '<div class="grow" style="font-size:12.5px"><b>' + esc(e.no || "") + '</b> &middot; ' + esc(e.client || "") +
           '<div style="font-size:11px;margin-top:2px;color:' + (e.err ? '#b91c1c' : '#92400e') + '">' +
-          (e.err ? 'Last try: ' + esc(String(e.err).slice(0, 90)) + (e.tries ? ' (' + e.tries + ' tries)' : '') +
+          ((_prfUp && _prfUp.pk === e.pk)
+             ? '<b style="color:#0f766e">Uploading… ' + _prfUp.pct + '% of ' + _prfUp.kb + ' KB</b>'
+             : e.err ? 'Last try: ' + esc(String(e.err).slice(0, 90)) + (e.tries ? ' (' + e.tries + ' tries)' : '') +
                      (prfDue(e) ? '' : ' \u00b7 next try in ' + Math.max(1, Math.round((prfWait(e) - (Date.now() - e.lastTry)) / 60000)) + ' min')
                  : 'Waiting to upload…') +
           '</div></div>' +
@@ -4485,7 +4487,19 @@ window.addEventListener("beforeunload", function (ev) {
     });
     return true;
   }
-  function prfPut(e) { var l = prfLoad().filter(function (x) { return x.pk !== e.pk; }); l.push(e); prfStore(l); }
+  /* v6.9.270 - ONE RECEIPT, ONE CARD. This de-duplicated on `pk`, which is minted fresh on
+     every attach - the identical fault the record journal had until v6.9.264. His screen showed
+     DR1193/150826/001 twice, 616 KB each, 29 tries and 27 tries: one signed paper, photographed
+     once, occupying two slots in a queue that was already struggling. Same challan and same kind
+     means the same receipt; the newer one wins. */
+  function prfPut(e) {
+    var l = prfLoad().filter(function (x) {
+      if (x.pk === e.pk) return false;
+      if (x.chId && e.chId && String(x.chId) === String(e.chId) && !x.isRet === !e.isRet) return false;
+      return true;
+    });
+    l.push(e); prfStore(l);
+  }
   function prfDrop(pk) { prfStore(prfLoad().filter(function (x) { return x.pk !== pk; })); }
   /* v6.9.265 - prfSend used to end `.catch(function () { return false; })`. The reason a
      receipt would not go up was thrown away at the moment it was learned, so the chip on the
@@ -5212,8 +5226,55 @@ window.addEventListener("beforeunload", function (ev) {
   }
 
   /* ---- pushing it up ---- */
+  /* ================= UPLOAD IT WITH XHR, NOT fetch (v6.9.270) =================
+     Every one of his seven fails with "Load failed" - the browser's network layer refusing
+     outright - and not with our own "timed out after 90s". Small calls on the same machine work
+     perfectly: the app loads, saves and syncs. So the body size is the only variable, and
+     WebKit's fetch has a long history of failing large request bodies with exactly this message.
+
+     XMLHttpRequest takes a different path through the network stack, and it reports upload
+     progress - so instead of a dead screen for ninety seconds he can see whether anything is
+     moving at all, which is the difference between "it is slow" and "it is refused".
+
+     Deliberately narrow: only pdfHost goes this way. Every other call keeps the fetch path and
+     all of its v6.9.260 deadline machinery, because none of them carries a body worth worrying
+     about. */
+  var _prfUp = null;                     /* {pk, pct, kb} while a document is going up */
+  function prfPost(e) {
+    var body = JSON.stringify({ action: "pdfHost", user: S.user, pin: S.pin,
+                                pdfBase64: e.b64, filename: e.fname });
+    return new Promise(function (res, rej) {
+      var xhr;
+      try { xhr = new XMLHttpRequest(); } catch (x) { return rej(new Error("no XMLHttpRequest")); }
+      var kb = Math.round(body.length / 1024), done = false;
+      var finish = function (fn, v) { if (done) return; done = true; _prfUp = null; fn(v); };
+      xhr.open("POST", GAS, true);
+      xhr.timeout = 240000;
+      try { xhr.setRequestHeader("Content-Type", "text/plain;charset=utf-8"); } catch (x) {}
+      if (xhr.upload) {
+        xhr.upload.onprogress = function (ev) {
+          if (!ev.lengthComputable) return;
+          _prfUp = { pk: e.pk, pct: Math.round(ev.loaded / ev.total * 100), kb: kb };
+          try { renderBg(); } catch (x) {}
+        };
+      }
+      xhr.onload = function () {
+        var j = null;
+        try { j = JSON.parse(xhr.responseText); } catch (x) { j = null; }
+        if (j) return finish(res, j);
+        finish(rej, new Error("the server sent something that is not JSON (HTTP " + xhr.status + ")"));
+      };
+      xhr.onerror = function () {
+        finish(rej, new Error("the connection refused a " + kb + " KB upload (" +
+          (xhr.status ? "HTTP " + xhr.status : "no response") + ")"));
+      };
+      xhr.ontimeout = function () { finish(rej, new Error("timed out after 240s at " + kb + " KB")); };
+      xhr.onabort = function () { finish(rej, new Error("upload cancelled")); };
+      try { xhr.send(body); } catch (x) { finish(rej, new Error("could not start the upload: " + x.message)); }
+    });
+  }
   function prfSend(e) {
-    return api("pdfHost", { pdfBase64: e.b64, filename: e.fname }).then(function (r) {
+    return prfPost(e).then(function (r) {
       if (!r || !r.ok || !r.url) {
         prfMark(e.pk, (r && r.error) ? String(r.error) : "the server did not return a link for the document");
         return false;
@@ -5266,15 +5327,58 @@ window.addEventListener("beforeunload", function (ev) {
      photograph of handwriting would be a poor way to win an argument three months later. And
      the step only happens after two honest failures at the current size, so a receipt on a good
      line is never degraded at all. */
+  /* ================= THE DOCUMENT STILL CONTAINS ITS PHOTOGRAPH (v6.9.270) =========
+     v6.9.269 could rebuild a receipt smaller only when the source photograph had been stored
+     beside it, which the ones already stuck on his Mac predate - so the fix helped every future
+     receipt and none of the seven he actually had.
+
+     But it does not need to be stored: a jsPDF document embeds the JPEG whole and unmodified, so
+     it can be read straight back out of the bytes. Verified before writing this - a receipt built
+     from an 1800x2400 photograph carried its JPEG at byte 2406, all 1,202 KB of it recovered and
+     decoded back to 1800x2400, byte for byte.
+
+     A JPEG starts FF D8 FF and ends FF D9. Scanning for the first start and the LAST end is
+     right for these documents because there is exactly one photograph in a receipt; if a future
+     document ever carries two, this returns the pair as one blob, the re-encode fails, and the
+     receipt is left exactly as it was - which is the safe direction. */
+  function prfPhotoFromPdf(b64) {
+    try {
+      var bin = atob(String(b64 || ""));
+      var n = bin.length, i, start = -1, end = -1;
+      for (i = 0; i < n - 2; i++) {
+        if (bin.charCodeAt(i) === 0xFF && bin.charCodeAt(i + 1) === 0xD8 && bin.charCodeAt(i + 2) === 0xFF) { start = i; break; }
+      }
+      if (start < 0) return "";
+      for (i = n - 2; i > start; i--) {
+        if (bin.charCodeAt(i) === 0xFF && bin.charCodeAt(i + 1) === 0xD9) { end = i + 2; break; }
+      }
+      if (end <= start) return "";
+      if (end - start < 4096) return "";            /* too small to be a page - not worth it */
+      return btoa(bin.slice(start, end));
+    } catch (e) { return ""; }
+  }
+  /* the source for a rebuild: the one we stored if we have it, else the one inside the document */
+  function prfSourcePhoto(e) {
+    if (e && e.photo) return String(e.photo);
+    return prfPhotoFromPdf(e && e.b64);
+  }
+
   var PRF_STEPS = [{ w: 900, q: 0.50 }, { w: 675, q: 0.45 }, { w: 520, q: 0.42 }, { w: 400, q: 0.40 }];
   /* WHEN a receipt should be made smaller, kept apart from the rendering so it can be reasoned
      about and tested on its own. Two honest failures at the current size, a stored source
      photograph to rebuild from, and a smaller size left to go to. Nothing else. */
   function prfShouldShrink(e) {
-    if (!e || !e.photo) return false;                       /* nothing to rebuild from */
+    /* v6.9.270 - the photograph can be recovered from the document, so this is no longer
+       limited to receipts queued since v6.9.269. The seven already on his Mac qualify. */
+    if (!e || !prfSourcePhoto(e)) return false;             /* nothing to rebuild from */
     var done = Number(e.shrinks || 0);
     if (!PRF_STEPS[done + 1]) return false;                 /* already as small as we go */
-    return Number(e.tries || 0) >= 2 * (done + 1);          /* two honest failures per step */
+    /* v6.9.270 - a REFUSAL is not a timeout. "the connection refused a 933 KB upload" is a
+       settled fact about this size on this line, and trying the identical bytes a second time
+       to be polite about it just wastes another minute. A timeout might be a passing bad
+       moment, so that still wants two before we degrade anything. */
+    var hard = /refused a \d+ KB upload/.test(String((e && e.err) || ""));
+    return Number(e.tries || 0) >= (hard ? 1 : 2) * (done + 1);
   }
   function prfReencode(b64, step) {
     return new Promise(function (res) {
@@ -5306,13 +5410,14 @@ window.addEventListener("beforeunload", function (ev) {
   }
   function prfShrinkInner(pk) {
     var e = prfLoad().filter(function (x) { return x.pk === pk; })[0];
-    if (!e || !e.photo) return Promise.resolve(false);
+    var src = prfSourcePhoto(e);
+    if (!e || !src) return Promise.resolve(false);
     var n = Number(e.shrinks || 0) + 1;
     var step = PRF_STEPS[n];
     if (!step) return Promise.resolve(false);           /* already as small as we go */
     var ch = proofSubject(e.chId);
     if (!ch) return Promise.resolve(false);
-    return prfReencode(e.photo, step).then(function (small) {
+    return prfReencode(src, step).then(function (small) {
       if (!small) return false;
       return proofPdf(ch, { rows: proofRows(ch), photo: small, sig: "" },
                       { by: e.by || "", at: e.at || "", geo: "", actor: e.actor || "" })
@@ -5406,7 +5511,15 @@ window.addEventListener("beforeunload", function (ev) {
         var now = prfLoad().filter(function (x) { return x.pk === e.pk; })[0];
         if (prfShouldShrink(now)) {
           return prfShrink(e.pk).then(function (did) {
-            if (did) { renderBg(); toast("That receipt was too big for this line \u2014 made smaller, trying again."); }
+            if (did) {
+              renderBg();
+              toast("Too big for this connection \u2014 made smaller, trying again now.");
+              /* v6.9.270 - retry it in THIS sweep rather than in eight minutes. A document that
+                 will not go at 1 MB should be tried at 100 KB within the same minute, not over
+                 the next half hour. The guard above caps the loop, and each step is strictly
+                 smaller, so this cannot run away. */
+              plan.splice(i, 0, e);
+            }
             step();
           }).catch(function () { step(); });
         }
