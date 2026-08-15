@@ -138,7 +138,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.8.0";
+  var APP_VERSION = "1.9.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
   var SNAP  = "ew_challan_snap";
@@ -2058,7 +2058,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         var d = (l.disc != null && l.disc !== "") ? num(l.disc) : clientDiscount(cObj.name, l.brand);
         return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(l.rate), brand:l.brand, disc:d };
       });
-      var amount = lines.reduce(function (a, l) { return a + l.qty * l.rate; }, 0);
+      /* v1.9.0 - the saved amount is what the screens show, computed by the SAME function.
+         It used to be qty x rate with discAmt hardcoded to 0, so the book recorded the list
+         price of a delivery the app was billing at a discount. */
+      var gross = lines.reduce(function (a, l) { return a + num(l.qty) * num(l.rate); }, 0);
+      var amount = chValue({ itemsJson: JSON.stringify(lines),
+                             freight: num(z.freight), freightTo: z.fto || "Client" });
+      var discAmt = Math.max(0, Math.round(gross +
+        (String(z.fto || "Client") === "Client" ? num(z.freight) : 0) - amount));
       var siteObj = sitesFor(cObj.name).filter(function (s) { return s.name === z.site; })[0] || {};
       var manualV = String(z.manual || "").trim();
       /* the driver comes off his own record, so freight per driver can actually be totalled */
@@ -2068,15 +2075,26 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       t.disabled = true; t.textContent = "Creating…";
       var reset = function () { t.disabled = false; t.textContent = "Create the challan"; };
 
-      api("challanNo", { client: cObj.shortName || cObj.name }).then(function (n) {
-        var no = (n && n.challanNo) ||
-          (String(cObj.name).toUpperCase().slice(0, 6) + "/" + today().slice(8) + "/001");
+      /* ===== v1.9.0 - ONE ID AND ONE NUMBER PER DELIVERY, NOT PER PRESS =====
+         v1.8.0 minted the stable id inside this callback, so every retry made a fresh one and
+         the upsert it was written for could never fire. It also called challanNo again and ate
+         another number from the series. Both are now decided once, on the first press, and kept
+         on S.ch - so ten presses on a bad line are one id, one number, one row. */
+      S.ch.mintId = S.ch.mintId || ("L-" + Date.now() + "-" + Math.floor(Math.random() * 1000000));
+      var _mintId = S.ch.mintId;
+      var numP = S.ch.mintNo
+        ? Promise.resolve({ challanNo: S.ch.mintNo })
+        : api("challanNo", { client: cObj.shortName || cObj.name });
+      numP.then(function (n) {
+        /* v1.9.0 - NEVER mint a number on this phone. The old fallback ended in a literal "001"
+           with only the day-of-month for a date, so two challans for one client on one day both
+           became RAKESH/15/001 - and approve, PDF and WhatsApp all look a challan up by NUMBER
+           and take the first match. Passing the second one passed the first. */
+        var no = (n && n.challanNo) || "";
+        if (!no) { reset(); toast("The server did not give a challan number. Nothing was saved \u2014 try again."); return; }
+        S.ch.mintNo = no;
         var ch = {
-          /* v1.8.0 - a STABLE client-minted id, exactly as the CRM has done since v6.9.124. With
-             id:"" the server mints a fresh one on every delivery, so a save whose reply was lost
-             and then retried appended a SECOND row for one delivery. With an id, the same
-             delivery upserts onto the same row however many times it arrives. */
-          id: "L-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+          id: _mintId,
           createdBy: S.user, challanNo: no,
           customerId: cObj.id || "", customerName: cObj.name,
           siteId: siteObj.id || "", site: z.site || "",
@@ -2084,7 +2102,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           items: lines.map(function (l) { return l.desc + " x" + l.qty; }).join(", "),
           itemsJson: JSON.stringify(lines), amount: amount,
           freight: num(z.freight), freightTo: z.fto || "Client",
-          discAmt: 0, discNote: "",
+          discAmt: discAmt, discNote: discAmt ? "line discounts as quoted" : "",
           driver: dRec.name || "", driverId: dRec.id || "", driverMobile: dRec.mobile || "",
           vehicle: z.veh || dRec.vehicle || "",
           associate: "", commissionSet: "N", status: "Draft", receiptReceived: "N"
@@ -2099,10 +2117,19 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
             toast("Challan " + no + " created — waiting to be passed." + (manualV ? " Book no " + manualV + "." : ""));
           };
           if (!manualV) { after(); return; }
+          /* v1.9.0 - it used to call after() on all three paths, so a book number that never
+             saved was still read out in the toast. Three weeks later a storeman rings quoting
+             a number that exists nowhere in the system. */
           return saveManualNo(no, saved.id || "", manualV, cObj.name).then(function (mr) {
-            if (mr && mr.ok && mr.row) (S.data.audit = S.data.audit || []).push(mr.row);
-            after();
-          }).catch(after);
+            if (mr && mr.ok && mr.row) { (S.data.audit = S.data.audit || []).push(mr.row); after(); return; }
+            bust(); S.ch = null; S.tab = "make"; render();
+            toast("Challan " + no + " created \u2014 but book no " + manualV +
+                  " did NOT save. Open the challan and add it again.");
+          }).catch(function () {
+            bust(); S.ch = null; S.tab = "make"; render();
+            toast("Challan " + no + " created \u2014 but book no " + manualV +
+                  " did NOT save. Open the challan and add it again.");
+          });
         });
       }).catch(function () {
         reset();
