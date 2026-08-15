@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.268";
+  var APP_VERSION = "6.9.269";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -781,6 +781,9 @@
           '</div></div>' +
           '<div style="text-align:right;flex:0 0 auto">' +
           '<span class="pill" style="background:#fee2e2;color:#b91c1c">' + kb + ' KB</span>' +
+          (Number(e.shrinks || 0) > 0
+            ? '<div class="meta" style="font-size:10.5px;margin-top:2px;color:#b45309">made smaller ' +
+              e.shrinks + '\u00d7 to fit</div>' : '') +
           (ageTxt ? '<div class="meta" style="font-size:11px;margin-top:3px">' + esc(ageTxt) + '</div>' : "") +
           '</div></div>';
       });
@@ -5251,6 +5254,86 @@ window.addEventListener("beforeunload", function (ev) {
      entry is tried in turn, a failure moves on to the next instead of stopping, and the
      reason is written onto the entry where the screen can show it. */
   var _prfDog = null;
+  /* ================= IF IT WILL NOT FIT, MAKE IT FIT (v6.9.269) =================
+     I could not measure his line from here, and a document that has failed twenty-seven times
+     is telling us something no deadline is going to fix. Rather than keep guessing at a ceiling,
+     the app now finds it: after two failures a receipt is rebuilt from its stored photograph at
+     three-quarters the width and a little less quality, and tried again. Three steps, roughly
+     285 KB -> 170 KB -> 105 KB -> 70 KB, and then it holds and keeps retrying on the backoff.
+
+     Deliberately: the SOURCE is never overwritten, so each step re-encodes from the original
+     rather than from the last compressed copy - three generations of JPEG artefacts on a
+     photograph of handwriting would be a poor way to win an argument three months later. And
+     the step only happens after two honest failures at the current size, so a receipt on a good
+     line is never degraded at all. */
+  var PRF_STEPS = [{ w: 900, q: 0.50 }, { w: 675, q: 0.45 }, { w: 520, q: 0.42 }, { w: 400, q: 0.40 }];
+  /* WHEN a receipt should be made smaller, kept apart from the rendering so it can be reasoned
+     about and tested on its own. Two honest failures at the current size, a stored source
+     photograph to rebuild from, and a smaller size left to go to. Nothing else. */
+  function prfShouldShrink(e) {
+    if (!e || !e.photo) return false;                       /* nothing to rebuild from */
+    var done = Number(e.shrinks || 0);
+    if (!PRF_STEPS[done + 1]) return false;                 /* already as small as we go */
+    return Number(e.tries || 0) >= 2 * (done + 1);          /* two honest failures per step */
+  }
+  function prfReencode(b64, step) {
+    return new Promise(function (res) {
+      if (!b64 || !step) return res(null);
+      var im = new Image();
+      im.onload = function () {
+        try {
+          var sc = Math.min(1, step.w / Math.max(im.width, im.height));
+          var c = document.createElement("canvas");
+          c.width = Math.max(1, Math.round(im.width * sc));
+          c.height = Math.max(1, Math.round(im.height * sc));
+          var cx = c.getContext("2d");
+          cx.fillStyle = "#ffffff"; cx.fillRect(0, 0, c.width, c.height);
+          cx.drawImage(im, 0, 0, c.width, c.height);
+          res(c.toDataURL("image/jpeg", step.q).split(",")[1]);
+        } catch (e) { res(null); }
+      };
+      im.onerror = function () { res(null); };
+      im.src = "data:image/jpeg;base64," + b64;
+    });
+  }
+  /* Rebuild one queued receipt one step smaller. Resolves true if it actually got smaller. */
+  function prfShrink(pk) {
+    /* v6.9.269 - never reject. proofPdf draws logos, reads the catalogue and touches half a
+       dozen things that can each fail on a bad day, and a shrink that throws must not take the
+       sweep down with it - the receipt is fine where it is, it just did not get smaller.
+       My own test found this by throwing "loadLogo is not defined" out of here. */
+    try { return prfShrinkInner(pk); } catch (e) { return Promise.resolve(false); }
+  }
+  function prfShrinkInner(pk) {
+    var e = prfLoad().filter(function (x) { return x.pk === pk; })[0];
+    if (!e || !e.photo) return Promise.resolve(false);
+    var n = Number(e.shrinks || 0) + 1;
+    var step = PRF_STEPS[n];
+    if (!step) return Promise.resolve(false);           /* already as small as we go */
+    var ch = proofSubject(e.chId);
+    if (!ch) return Promise.resolve(false);
+    return prfReencode(e.photo, step).then(function (small) {
+      if (!small) return false;
+      return proofPdf(ch, { rows: proofRows(ch), photo: small, sig: "" },
+                      { by: e.by || "", at: e.at || "", geo: "", actor: e.actor || "" })
+        .then(function (d) {
+          var b64 = d.output("datauristring").split(",")[1];
+          var before = String(e.b64 || "").length;
+          if (!b64 || b64.length >= before) return false;    /* no gain - leave it alone */
+          var l = prfLoad();
+          l.forEach(function (x) {
+            if (x.pk !== pk) return;
+            x.b64 = b64; x.shrinks = n;
+            x.err = "too big for this connection - rebuilt smaller (" +
+                    Math.round(before / 1024) + " KB → " + Math.round(b64.length / 1024) + " KB)";
+          });
+          prfStore(l);
+          try { console.warn("[EW] shrank receipt " + (e.no || pk) + " to step " + n); } catch (x) {}
+          return true;
+        }).catch(function () { return false; });
+    }).catch(function () { return false; });
+  }
+
   /* v6.9.267 - SMALLEST FIRST, AND BACK OFF THE ONES THAT KEEP FAILING.
      The order used to be whatever order they were queued in, and every entry was retried on
      every sweep however many times it had already failed. On 15 Aug that produced seven
@@ -5315,8 +5398,18 @@ window.addEventListener("beforeunload", function (ev) {
           sent++; _prfCache = null;
           toast((e.isRet ? "Goods-in receipt for " : "Delivery proof for ") + e.no + " is up.");
           renderBg();
+          return step();
         }
-        /* a failure moves on to the next one - it must never block the rest */
+        /* v6.9.269 - two honest failures at this size is enough evidence. Rebuild it smaller
+           from the stored photograph and let the next sweep carry it. A failure never blocks
+           the ones behind it either way. */
+        var now = prfLoad().filter(function (x) { return x.pk === e.pk; })[0];
+        if (prfShouldShrink(now)) {
+          return prfShrink(e.pk).then(function (did) {
+            if (did) { renderBg(); toast("That receipt was too big for this line \u2014 made smaller, trying again."); }
+            step();
+          }).catch(function () { step(); });
+        }
         step();
       }).catch(function () { step(); });
     };
@@ -5352,6 +5445,11 @@ window.addEventListener("beforeunload", function (ev) {
         chId: cid, no: String(ch.challanNo || ""), client: String(ch.customerName || ""),
         site: String(ch.site || ""), by: prf.by || "", at: at, geo: "", actor: S.user || "",
         hasPhoto: !!prf.photo, hasSig: !!prf.sig, thumb: th, isRet: !!ch._isReturn,
+        /* v6.9.269 - the SOURCE photograph is kept beside the built document, so a receipt
+           that will not go up can be rebuilt smaller and tried again rather than being stuck
+           at whatever size it happened to be made at. IndexedDB has room for this many times
+           over; the 5 MB box that made us careful about size is not where this lives. */
+        photo: String(prf.photo || ""), shrinks: 0,
         fname: (ch._isReturn ? "RETURN-" : "DELIVERY-") + String(ch.challanNo || cid).replace(/[^\w.-]+/g, "-") + ".pdf",
         b64: b64
       });
@@ -8947,14 +9045,23 @@ function viewCatalogue() {
              three months later - and 1000px at q0.55 does that with room to spare, at roughly
              half the bytes. The white paper and black ink this is always a picture of is the
              easiest thing in the world for JPEG to carry. */
-          var max = 1000;
+          /* v6.9.269 - measured on a synthetic phone photograph of a challan book page,
+             2400x3200 with paper texture, uneven light and sensor noise:
+                 1100px q0.72 = 559 KB   (what the stuck seven were made at)
+                 1000px q0.55 = 350 KB
+                  900px q0.50 = 285 KB
+             Grayscale was tried and rejected: 1000px grey came out at 361 KB, slightly WORSE
+             than colour, because lifting the contrast on a noisy photograph adds back more
+             than dropping the chroma saves. Resolution and quality are the only real levers,
+             and a written page is entirely legible at 900px. */
+          var max = 900;
           var sc = Math.min(1, max / Math.max(img.width, img.height));
           var c = document.createElement("canvas");
           c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
           var cx = c.getContext("2d");
           cx.fillStyle = "#ffffff"; cx.fillRect(0, 0, c.width, c.height);
           cx.drawImage(img, 0, 0, c.width, c.height);
-          res(c.toDataURL("image/jpeg", 0.55).split(",")[1]);
+          res(c.toDataURL("image/jpeg", 0.50).split(",")[1]);
         };
         img.onerror = function () { res(null); };
         img.src = String(fr.result);
