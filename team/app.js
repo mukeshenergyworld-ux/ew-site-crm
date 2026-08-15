@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.266";
+  var APP_VERSION = "6.9.267";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -347,7 +347,13 @@
        challan save took longer than 30s while competing with thirteen logo downloads, so the
        app said "timed out" about a row that was on the sheet. */
     teamSave: 60000,
-    teamGet: 60000, catalog: 60000, pdfHost: 90000, tgSend: 60000,
+    /* v6.9.267 - pdfHost was 90s. A receipt PDF is ~1.3 MB on the wire; on a domestic uplink
+       of about 150 kbps that is ~70s of upload before the server has even started, so the
+       deadline was firing seconds before the transfer completed - and firing means starting
+       again from zero. Measured against the live backend from a good line, a 1 MB payload
+       answers in 8.9s, so 240s costs nothing when the line is good and is the difference
+       between finishing and never finishing when it is not. */
+    teamGet: 60000, catalog: 60000, pdfHost: 240000, tgSend: 60000,
     search: 45000, historicChallan: 45000
   };
   function api(action, extra, ms) {
@@ -652,7 +658,7 @@
       toast("Retrying...");
       retryPending();
       _prfBusy = false; if (_prfDog) { clearTimeout(_prfDog); _prfDog = null; }
-      try { prfFlush(); } catch (e) {}
+      try { prfFlush(true); } catch (e) {}
     };
     var bk = document.getElementById("ew_backup_btn"); if (bk) bk.onclick = exportPending;
     /* measured AFTER the text is in, because the text is what decides whether it wraps */
@@ -722,8 +728,11 @@
       _pendPoll = setTimeout(function () {
         if (S.tab !== "pending") return;
         if (online && pendCount()) retryPending();
-        if (online && prfCount()) { try { prfFlush(); } catch (e) {} }
-        if (!online || (!pendCount() && !prfCount())) renderBg();
+        /* v6.9.267 - this used to call prfFlush() every 8 seconds, which is how a screen
+           left open for three hours kept a domestic uplink permanently saturated with
+           1 MB retries and never let one finish. The records are small and can poll; the
+           documents go up when the ticker's backoff says so, or when he presses the button. */
+        renderBg();
       }, 8000);
     }
     var statusPill = online
@@ -750,7 +759,10 @@
         '<div class="meta" style="font-size:13px;color:#7f1d1d">These documents exist <b>only here</b>. Nobody on another phone or browser can see them, and clearing this browser would lose them. ' +
         mb + ' MB waiting.</div>' +
         '<div class="acts" style="margin-top:10px;flex-wrap:wrap;gap:8px">' +
-        '<button class="btn" data-act="prf-push">⬆ Upload receipts now</button></div>';
+        '<button class="btn" data-act="prf-push">⬆ Upload receipts now</button>' +
+        '<button class="btn ghost" data-act="prf-download">⬇ Save all to this computer</button></div>' +
+        '<div class="meta" style="font-size:12px;margin-top:8px;color:#7f1d1d">Saving them here does not' +
+        ' remove them from the queue \u2014 it just means they are no longer only in this browser.</div>';
       prf.forEach(function (e) {
         var ageTxt = "";
         if (e.at) {
@@ -763,7 +775,8 @@
           (e.thumb ? proofThumbImg(e.thumb, 38) : "") +
           '<div class="grow" style="font-size:12.5px"><b>' + esc(e.no || "") + '</b> &middot; ' + esc(e.client || "") +
           '<div style="font-size:11px;margin-top:2px;color:' + (e.err ? '#b91c1c' : '#92400e') + '">' +
-          (e.err ? 'Last try: ' + esc(String(e.err).slice(0, 90)) + (e.tries ? ' (' + e.tries + ' tries)' : '')
+          (e.err ? 'Last try: ' + esc(String(e.err).slice(0, 90)) + (e.tries ? ' (' + e.tries + ' tries)' : '') +
+                     (prfDue(e) ? '' : ' \u00b7 next try in ' + Math.max(1, Math.round((prfWait(e) - (Date.now() - e.lastTry)) / 60000)) + ' min')
                  : 'Waiting to upload…') +
           '</div></div>' +
           '<div style="text-align:right;flex:0 0 auto">' +
@@ -5238,15 +5251,49 @@ window.addEventListener("beforeunload", function (ev) {
      entry is tried in turn, a failure moves on to the next instead of stopping, and the
      reason is written onto the entry where the screen can show it. */
   var _prfDog = null;
-  function prfFlush() {
+  /* v6.9.267 - SMALLEST FIRST, AND BACK OFF THE ONES THAT KEEP FAILING.
+     The order used to be whatever order they were queued in, and every entry was retried on
+     every sweep however many times it had already failed. On 15 Aug that produced seven
+     documents of 616-1095 KB each being re-uploaded together, seventeen to twenty-seven times,
+     on a domestic uplink - which is not a queue draining, it is a queue jamming itself. The
+     record journal has doubled its gap after each failure since v6.9.261; the receipt queue
+     never got the same treatment.
+
+     Smallest first matters more than it looks: every document that gets through frees the line
+     for the next one, and a man watching the screen sees the count fall instead of staring at
+     seven items that never move. Pressing the button ignores the backoff entirely - never make
+     somebody wait out a delay he can see. */
+  function prfWait(e) {
+    var n = Number(e && e.tries) || 0;
+    if (!n || !e.lastTry) return 0;
+    return Math.min(8, Math.pow(2, n - 1)) * 60000;    /* 1, 2, 4, 8 minutes, capped */
+  }
+  function prfDue(e, force) {
+    if (force) return true;
+    if (!e || !e.lastTry) return true;
+    return (Date.now() - e.lastTry) >= prfWait(e);
+  }
+  function prfOrder(l, force) {
+    return (l || []).filter(function (e) { return prfDue(e, force); })
+      .sort(function (a, b) { return String(a.b64 || "").length - String(b.b64 || "").length; });
+  }
+  function prfFlush(force) {
     if (_prfBusy) return;
-    if (!prfLoad().length) return;
+    if (!prfOrder(prfLoad(), force).length) return;
     if (navigator && navigator.onLine === false) return;
     _prfBusy = true;
     /* the same belt as retryPending: a send that somehow never settles must not freeze the
        receipt queue for the rest of the session */
     if (_prfDog) clearTimeout(_prfDog);
-    _prfDog = setTimeout(function () { _prfBusy = false; _prfDog = null; }, 600000);
+    _prfDog = setTimeout(function () { _prfBusy = false; _prfDog = null; }, 900000);
+    /* v6.9.267 - THE PLAN IS DECIDED ONCE.
+       My first cut of this recomputed the (filtered, re-sorted) list inside the loop while a
+       plain index walked it. The moment an entry failed it dropped out of the list - it is no
+       longer due - so the list shortened under the cursor and the next entry was skipped
+       entirely. My own tests caught it: with four documents and one refusal, only three were
+       ever attempted. Snapshot the order at the start, walk that, and check against storage
+       before each send in case another sweep got there first. */
+    var plan = prfOrder(prfLoad(), force);
     var i = 0, sent = 0, guard = 0;
     var stop = function () {
       _prfBusy = false;
@@ -5258,20 +5305,20 @@ window.addEventListener("beforeunload", function (ev) {
     };
     var step = function () {
       if (guard++ > 200) return stop();       /* belt: never spin */
-      var l2 = prfLoad();
-      if (i >= l2.length) return stop();
-      var e = l2[i];
-      prfSend(e).then(function (ok) {
+      if (i >= plan.length) return stop();
+      var e = plan[i++];
+      /* still there? another sweep, or the button, may have sent it while this one queued */
+      var live = prfLoad().filter(function (x) { return x.pk === e.pk; })[0];
+      if (!live) return step();
+      prfSend(live).then(function (ok) {
         if (ok) {
           sent++; _prfCache = null;
           toast((e.isRet ? "Goods-in receipt for " : "Delivery proof for ") + e.no + " is up.");
           renderBg();
-          /* it was dropped from the list, so the next one has slid into this position */
-        } else {
-          i++;                                 /* skip past it - it must not block the rest */
         }
+        /* a failure moves on to the next one - it must never block the rest */
         step();
-      }).catch(function () { i++; step(); });
+      }).catch(function () { step(); });
     };
     step();
   }
@@ -8894,12 +8941,20 @@ function viewCatalogue() {
       fr.onload = function () {
         var img = new Image();
         img.onload = function () {
-          var max = 1100;
+          /* v6.9.267 - 1100px at q0.72 produced receipt documents of 600 KB to 1.1 MB, which
+             is what could not be uploaded from a site on a weak line. What this photograph has
+             to do is show a signed page of a challan book legibly enough to settle an argument
+             three months later - and 1000px at q0.55 does that with room to spare, at roughly
+             half the bytes. The white paper and black ink this is always a picture of is the
+             easiest thing in the world for JPEG to carry. */
+          var max = 1000;
           var sc = Math.min(1, max / Math.max(img.width, img.height));
           var c = document.createElement("canvas");
           c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
-          c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-          res(c.toDataURL("image/jpeg", 0.72).split(",")[1]);
+          var cx = c.getContext("2d");
+          cx.fillStyle = "#ffffff"; cx.fillRect(0, 0, c.width, c.height);
+          cx.drawImage(img, 0, 0, c.width, c.height);
+          res(c.toDataURL("image/jpeg", 0.55).split(",")[1]);
         };
         img.onerror = function () { res(null); };
         img.src = String(fr.result);
@@ -20470,7 +20525,40 @@ function viewCatalogue() {
       if (!pendCount()) { toast("Nothing pending — all uploaded."); return; }
       if (typeof navigator !== "undefined" && "onLine" in navigator && !navigator.onLine) { toast("You're offline — it will upload automatically when the connection is back."); return; }
       toast("Uploading pending work…"); flushNow(); retryPending();
-      try { prfFlush(); } catch (e) {}
+      try { prfFlush(true); } catch (e) {}
+      return;
+    }
+    /* v6.9.267 - THE DOCUMENTS ARE THE LEAST REPLACEABLE THING HERE.
+       A signed delivery receipt is a photograph of a piece of paper that exists nowhere else.
+       While the uploading sorts itself out, this puts every queued document on the computer's
+       own disk in one press, so clearing the browser can no longer lose them. It does NOT
+       clear the queue - they still go up, and the audit row is still what makes them findable
+       from the app. This is a safety net, not a substitute. */
+    if (act === "prf-download") {
+      var dl = prfLoad();
+      if (!dl.length) { toast("Nothing waiting."); return; }
+      toast("Saving " + dl.length + " document(s) to this computer…");
+      var di = 0;
+      var one = function () {
+        if (di >= dl.length) { toast("Saved " + dl.length + " receipt(s). They are still queued to upload."); return; }
+        var e = dl[di++];
+        try {
+          var bin = atob(String(e.b64 || ""));
+          var arr = new Uint8Array(bin.length);
+          for (var k = 0; k < bin.length; k++) arr[k] = bin.charCodeAt(k);
+          var url = URL.createObjectURL(new Blob([arr], { type: "application/pdf" }));
+          var a = document.createElement("a");
+          a.href = url;
+          a.download = String(e.fname || ("receipt-" + (e.no || di) + ".pdf")).replace(/[^\w.-]+/g, "-");
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          setTimeout(function () { try { URL.revokeObjectURL(url); } catch (x) {} }, 20000);
+        } catch (x) {
+          try { console.error("[EW] could not save " + (e.no || ""), x); } catch (y) {}
+        }
+        /* a browser will refuse a burst of downloads - space them out */
+        setTimeout(one, 700);
+      };
+      one();
       return;
     }
     /* v6.9.265 - push the receipt documents on their own, without waiting for anything else */
@@ -20478,7 +20566,7 @@ function viewCatalogue() {
       toast("Uploading " + prfCount() + " receipt document(s)\u2026 these are big files, give it a minute.");
       _prfBusy = false;                 /* a fresh press is always a fresh start */
       if (_prfDog) { clearTimeout(_prfDog); _prfDog = null; }
-      try { prfFlush(); } catch (e) {}
+      try { prfFlush(true); } catch (e) {}
       return;
     }
     /* v6.9.261 - it used to just call refresh(), which tells you nothing: if the pull
