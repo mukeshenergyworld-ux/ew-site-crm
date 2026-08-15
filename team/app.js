@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.263";
+  var APP_VERSION = "6.9.264";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -341,6 +341,12 @@
      recovery journal was built to handle. */
   var API_MS = 30000;
   var API_MS_BY_ACTION = {
+    /* v6.9.264 - teamSave was on the 30s default while teamGet had 60 and pdfHost had 90.
+       That is backwards: pulling the book again is free, and a save that is abandoned turns
+       into a man re-typing a challan the server has already written. Measured 15 Aug: a
+       challan save took longer than 30s while competing with thirteen logo downloads, so the
+       app said "timed out" about a row that was on the sheet. */
+    teamSave: 60000,
     teamGet: 60000, catalog: 60000, pdfHost: 90000, tgSend: 60000,
     search: 45000, historicChallan: 45000
   };
@@ -416,7 +422,22 @@
     S.pendCount = l.length; syncBanner();
   }
   function pendCount() { return pendLoad().length; }
-  function pendPut(pk, tab, row) { var l = pendLoad().filter(function (x) { return x.pk !== pk; }); l.push({ pk: pk, tab: tab, row: row, at: Date.now(), err: "" }); pendStore(l); }
+  /* v6.9.264 - ONE RECORD, ONE CARD.
+     `pk` is minted fresh on every save, so saving the same challan twice - which is what a
+     man does when the app tells him it did not save - put TWO entries in the journal for one
+     record. He photographed exactly that: two cards, both DR1193/150826/001, one "timed out
+     after 30s" and one "waiting". natEq() already knows two rows with the same challanNo are
+     the same challan; it simply was not being asked. The newest version of a record replaces
+     the older one - which is right, since save() journals the whole merged row, so the newer
+     entry contains everything the older one did. */
+  function pendPut(pk, tab, row) {
+    var l = pendLoad().filter(function (x) {
+      if (x.pk === pk) return false;
+      if (x.tab === tab && natEq(x.row, row)) return false;
+      return true;
+    });
+    l.push({ pk: pk, tab: tab, row: row, at: Date.now(), err: "" }); pendStore(l);
+  }
   function pendMark(pk, err) { var l = pendLoad(); l.forEach(function (x) { if (x.pk === pk) x.err = err; }); pendStore(l); }
   function pendDrop(pk) { pendStore(pendLoad().filter(function (x) { return x.pk !== pk; })); }
   function natEq(a, b) {
@@ -428,6 +449,66 @@
     if (b.name) return a.name === b.name && (a.mobile || "") === (b.mobile || "");
     return false;
   }
+  /* ================= A TIMEOUT IS NOT A FAILURE (v6.9.264) =================
+     15 Aug. He saved a challan for Dr Danish. Apps Script wrote the row - it is on the sheet,
+     DR1193/150826/001, 09:14:47Z - and took more than 30 seconds to say so. The client's
+     deadline fired first, the journal recorded "timed out after 30s", and from that moment
+     the app insisted the challan was not saved. Nothing could ever change its mind: the only
+     thing that cleared a journal entry was a teamSave reply, and the reply was the thing that
+     had been lost. So it would have said "not yet saved" for ever, and he saved it again.
+
+     The fix is to CHECK rather than assume. Every fresh pull from the server is an
+     opportunity: if the row we were trying to save is already up there, field for field, then
+     the save landed and the journal entry is finished with.
+
+     Deliberately exact, and deliberately biased towards keeping. Every field we sent must
+     already match what the server holds. If ANYTHING differs - a later edit that genuinely
+     has not landed, a number stored as text, a date formatted differently - the entry is
+     KEPT and retried. The worst this can do is retry a save that did not need retrying, and
+     a retry is an upsert by id, which costs a round trip and changes nothing. It can never
+     drop work the server does not already have. */
+  function pendLanded(e, srv) {
+    if (!srv || !e || !e.row) return false;
+    var keys = Object.keys(e.row);
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (k.charAt(0) === "_") continue;                    /* local-only, never sent */
+      if (k === "updatedAt" || k === "syncedAt") continue;  /* the server's own stamp */
+      var a = e.row[k], b = srv[k];
+      if (a === null || a === undefined) a = "";
+      if (b === null || b === undefined) b = "";
+      if (typeof a === "object" || typeof b === "object") {
+        var ja = "", jb = "";
+        try { ja = JSON.stringify(a); jb = JSON.stringify(b); } catch (x) { return false; }
+        if (ja !== jb) return false;
+      } else if (String(a).trim() !== String(b).trim()) return false;
+    }
+    return true;
+  }
+  /* Call this with S.data holding a FRESH SERVER PULL and before applyPending() has overlaid
+     the journal back on top of it - otherwise every entry would match itself. */
+  function reconcilePending() {
+    var l = pendLoad();
+    if (!l.length || !S.data) return 0;
+    var keep = [], gone = 0;
+    l.forEach(function (e) {
+      var arr = (S.data[e.tab] || []), srv = null;
+      for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { srv = arr[j]; break; } }
+      if (srv && pendLanded(e, srv)) { gone++; return; }
+      keep.push(e);
+    });
+    if (gone) {
+      pendStore(keep);
+      try { console.warn("[EW] " + gone + " journaled record(s) were already on the server - cleared"); } catch (x) { }
+      try {
+        toast(gone === 1
+          ? "1 record that looked unsaved was already on the server — cleared."
+          : gone + " records that looked unsaved were already on the server — cleared.");
+      } catch (x) { }
+    }
+    return gone;
+  }
+
   /* re-overlay unsynced records on top of a fresh server pull, so a background sync can never
      erase something that has not been confirmed saved yet */
   function applyPending() {
@@ -506,7 +587,11 @@
     setTimeout(function () {
       var after = pendCount() + prfCount();
       if (after < before) { _flushFails = 0; _flushSkip = 0; }
-      else { _flushFails = Math.min(_flushFails + 1, 4); _flushSkip = Math.pow(2, _flushFails) - 1; }
+      /* v6.9.264 - the cap was 4, which is 15 skipped ticks: a record could sit untouched for
+       eleven minutes on a phone showing "Online". Three is about five minutes, which is long
+       enough to stop hammering a server that is refusing and short enough that nobody stares
+       at a stale queue wondering whether the app has given up. */
+    else { _flushFails = Math.min(_flushFails + 1, 3); _flushSkip = Math.pow(2, _flushFails) - 1; }
     }, 8000);
   }
   /* pressing a button is a fresh start - never make a man wait out a backoff he can see */
@@ -793,7 +878,7 @@ window.addEventListener("beforeunload", function (ev) {
     syncing = true;
     api("teamGet").then(function (r) {
       syncing = false; syncAt = Date.now();
-      if (r && r.ok) { S.data = r; applyPending(); applyConfirmed(); splitCancelled(); snapSave(); renderBg(); }
+      if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); splitCancelled(); snapSave(); renderBg(); }
       if (pendCount()) retryPending();
     }).catch(function () { syncing = false; });
   }
@@ -991,7 +1076,7 @@ window.addEventListener("beforeunload", function (ev) {
     return api("teamGet").then(function (r) {
       S.busy = false;
       syncAt = Date.now();
-      if (r && r.ok) { S.data = r; applyPending(); applyConfirmed(); splitCancelled(); snapSave(); }
+      if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); splitCancelled(); snapSave(); }
       render(); syncBanner();
       if (pendCount()) retryPending();
       try { prfFlush(); } catch (e) { }          /* delivery proofs taken out of signal */
@@ -20134,10 +20219,15 @@ function viewCatalogue() {
       api("teamAuth", { ua: navigator.userAgent }, 20000).then(function (r) {
         var ms = Date.now() - t0;
         if (r && r.ok) {
-          toast("Server answered in " + (ms / 1000).toFixed(1) + "s and knows you. " +
-                (pendCount() ? "Pushing " + pendCount() + " record(s) now." : "Nothing is waiting."));
-          if (pendCount()) retryPending();
-          refresh();
+          /* v6.9.264 - pull the book FIRST. Anything in the queue that is already on the
+             server is cleared by reconcilePending() inside refresh(), so the button does not
+             re-send records that landed and merely lost their answer. Only what is genuinely
+             still missing is pushed. */
+          toast("Server answered in " + (ms / 1000).toFixed(1) + "s and knows you. Checking what is already saved\u2026");
+          refresh().then(function () {
+            if (pendCount()) { toast("Pushing " + pendCount() + " record(s) now."); retryPending(); }
+            else toast("Nothing is waiting \u2014 everything is on the server.");
+          });
         } else {
           toast("Server answered in " + (ms / 1000).toFixed(1) + "s but refused: " +
                 String((r && r.error) || "no reason given"));
@@ -23285,7 +23375,7 @@ function viewCatalogue() {
             return;
           }
           syncAt = Date.now();
-          S.data = d; applyPending(); applyConfirmed(); splitCancelled(); snapSave();
+          S.data = d; reconcilePending(); applyPending(); applyConfirmed(); splitCancelled(); snapSave();
           render(); syncBanner();
           if (pendCount()) retryPending();
           try { prfFlush(); } catch (e) { }
