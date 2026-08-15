@@ -363,7 +363,15 @@ function partyPick(n){
   render(true);
 }
 function partyClear(){ F.party = ''; F.pq = ''; F.site = ''; F.siteNew = false; render(true); }
-function partyQ(v){ F.pq = v; render(true); }
+/* 15 Aug 2026 - repaint the LIST, not the page. render() replaces all of #main, so the input
+   being typed into was destroyed and recreated on every character: the keyboard closed, and a
+   fresh high-accuracy GPS request fired each time. Now only the results move. */
+function partyQ(v){
+  F.pq = v;
+  var box = document.querySelector('.plist');
+  if (!box) { render(true); return; }
+  box.outerHTML = partyList();
+}
 
 function partyPicker(){
   if (F.party){
@@ -388,14 +396,27 @@ function partyPicker(){
     return h2 + '<div class="note">Nobody on the register by that name. ' +
       'A new client or partner is registered in the CRM first.</div></div>';
   }
-  h2 += '<div class="plist">' + list.map(function(p){
-    return '<button type="button" class="pitem" onclick="partyPick(\'' +
-      esc(p.n).replace(/'/g, "&#39;") + '\')">' +
-      '<span class="pn">' + esc(p.n) + '</span>' +
-      '<span class="ps">' + esc([p.t, p.c].filter(Boolean).join(' · ')) + '</span></button>';
-  }).join('') + '</div>';
+  h2 += partyList();
   return h2 + '</div>';
 }
+/* 15 Aug 2026 - the results, on their own, so typing can repaint THEM instead of the page.
+   Also: the name goes in a data attribute and one delegated listener reads it, rather than
+   being pasted into an onclick string. esc() escapes & first, so the &#39; that was inserted
+   for an apostrophe afterwards reached the parser raw and compiled to a syntax error - a party
+   called M/s D'Souza rendered perfectly and could never be tapped, and since the box only
+   filters and never accepts typed input, a visit to him could not be logged at all. */
+function partyList(){
+  var list = partyMatches(F.pq);
+  return '<div class="plist">' + list.map(function(p){
+    return '<button type="button" class="pitem" data-pn="' + esc(p.n) + '">' +
+      '<span class="pn">' + esc(p.n) + '</span>' +
+      '<span class="ps">' + esc([p.t, p.c].filter(Boolean).join(' \u00b7 ')) + '</span></button>';
+  }).join('') + '</div>';
+}
+document.addEventListener('click', function(ev){
+  var b = ev.target && ev.target.closest ? ev.target.closest('.pitem') : null;
+  if (b && b.getAttribute('data-pn') != null) partyPick(b.getAttribute('data-pn'));
+});
 
 /* ---------------- WHICH SITE ----------------
    The sites he has already logged against this party, off his own visit history. Typed
@@ -502,7 +523,9 @@ function render(keep){
 
   document.getElementById('main').innerHTML = h;
   paintQ();
-  if (!GPS) askGps();
+  /* 15 Aug 2026 - askGps() used to live here, so every repaint - including one per keystroke in
+     the party search - fired a fresh enableHighAccuracy request. It is asked once when the app
+     lands and once per visit, which is where a location actually belongs. */
 }
 
 function saveVisit(){
@@ -558,6 +581,10 @@ function hold(rec, why){
 
 function resetForm(){
   F.purpose=''; F.outcome=''; F.stage=''; F.partyType='Client';
+  /* 15 Aug 2026 - GPS was a module-level var captured ONCE per session, so the fix taken outside
+     Ansal at 9am was stamped on the Sector 25 visit at 11:40 and the Karnal one at 4pm. That is
+     worse than no location: it manufactures evidence of where a man was. A fresh fix per visit. */
+  GPS = null; askGps();
   render(false);
 }
 
@@ -796,6 +823,7 @@ document.addEventListener('visibilitychange', function(){
 });
 /* ---------------- boot ---------------- */
 function landed(r){
+  if (!GPS) askGps();          /* asked once on arrival, not once per keystroke */
   if (verCheck(r, true)) return;     /* new version - come back new */
   ME.name = r.name || ''; ME.id = r.refId || '';
   PARTIES = r.parties || []; VISITS = r.visits || [];
