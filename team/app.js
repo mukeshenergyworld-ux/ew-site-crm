@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.256";
+  var APP_VERSION = "6.9.257";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -334,7 +334,7 @@
     try { localStorage.setItem(PEND_KEY, JSON.stringify(l)); S.pendQuota = false; }
     catch (e) {
       S.pendQuota = true;
-      try { console.error("[EW] recovery journal could not be written - device storage is full", e); } catch (x) { }
+      try { console.error("[EW] recovery journal could not be written - this site's 5MB box is full, not the phone", e); } catch (x) { }
       if (!_quotaTold) { _quotaTold = true; try { toast("This device is out of storage - unsaved work can no longer be kept safe offline. Please refresh while you have signal."); } catch (x) { } }
     }
     S.pendCount = l.length; syncBanner();
@@ -670,6 +670,161 @@ window.addEventListener("beforeunload", function (ev) {
   /* The server round-trip is ~2s on a good connection and worse on 4G at a site. Rather
      than stare at a spinner, paint the last known data straight away and let the fresh
      copy land underneath. The snapshot is per user, so nobody sees another role's data. */
+  /* ================= THE BIG BOX (v6.9.257) =========================
+     HIS REPORT: attaching a receipt says "phone storage is full".
+
+     IT WAS NOT THE PHONE. localStorage is capped at about 5 MB PER SITE, and it has nothing
+     to do with free space on the device. Worse, every one of these apps lives on the same
+     site - team/, challan/ and collect/ are folders, not origins - so all three share ONE
+     5 MB box. Measured on the owner's phone on 15 Aug:
+
+         CRM snapshot        1,463 KB
+         Challan snapshot      939 KB
+         Catalogue             649 KB
+         Payment snapshot      625 KB
+         Brand logos           573 KB
+         38 other keys         154 KB
+         -----------------------------
+         total               4,403 KB   of about 5,120 KB
+
+     88% full before a single receipt is queued. A receipt PDF carrying a photograph of the
+     signed paper needs 400 KB - 1 MB in that box (localStorage counts UTF-16, so every
+     base64 character costs two bytes). It did not fit, the browser refused, and the app
+     said "storage is full" - sending everybody off to delete photos, which could not
+     possibly help.
+
+     INDEXEDDB IS THE SAME PHONE AND THE SAME BROWSER, with about 10 GB of quota instead of
+     5 MB. That is the whole fix. No server change, nothing new to install.
+
+     HOW IT IS DONE WITHOUT REWRITING THE APP. Every existing call site reads and writes a
+     JSON STRING synchronously. So the string interface is kept exactly: `bigGet` returns
+     from an in-memory mirror, `bigSet` updates the mirror at once and writes to IndexedDB
+     behind it. Nothing downstream became async, and nothing had to be re-tested for order.
+
+     THE ONE PLACE THAT IS NOT OPTIMISTIC is the receipt queue. A catalogue is a cache and
+     can be re-fetched; a photograph of a signed delivery cannot. So its localStorage copy
+     is deleted only AFTER IndexedDB confirms the write, and if this browser has no
+     IndexedDB at all the old 5 MB box is still used exactly as before. */
+  var IDB_NAME = "ew_store", IDB_STORE = "kv", _idbP = null;
+  function idbOpen() {
+    if (_idbP) return _idbP;
+    _idbP = new Promise(function (res) {
+      var done = false, fin = function (v) { if (!done) { done = true; res(v); } };
+      try {
+        if (!window.indexedDB) return fin(null);
+        var rq = indexedDB.open(IDB_NAME, 1);
+        rq.onupgradeneeded = function () {
+          try { rq.result.createObjectStore(IDB_STORE); } catch (e) {}
+        };
+        rq.onsuccess = function () { fin(rq.result); };
+        rq.onerror = function () { fin(null); };
+        rq.onblocked = function () { fin(null); };
+        /* Safari in private mode can leave open() hanging forever. The app must never wait
+           on storage to start - it falls back to localStorage and carries on. */
+        setTimeout(function () { fin(null); }, 2500);
+      } catch (e) { fin(null); }
+    });
+    return _idbP;
+  }
+  function idbGet(k) {
+    return idbOpen().then(function (db) {
+      if (!db) return null;
+      return new Promise(function (res) {
+        try {
+          var r = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(k);
+          r.onsuccess = function () { res(r.result === undefined ? null : r.result); };
+          r.onerror = function () { res(null); };
+        } catch (e) { res(null); }
+      });
+    }).catch(function () { return null; });
+  }
+  function idbSet(k, v) {
+    return idbOpen().then(function (db) {
+      if (!db) return false;
+      return new Promise(function (res) {
+        try {
+          var t = db.transaction(IDB_STORE, "readwrite");
+          t.objectStore(IDB_STORE).put(v, k);
+          t.oncomplete = function () { res(true); };
+          t.onerror = function () { res(false); };
+          t.onabort = function () { res(false); };
+        } catch (e) { res(false); }
+      });
+    }).catch(function () { return false; });
+  }
+  function idbDel(k) {
+    return idbOpen().then(function (db) {
+      if (!db) return false;
+      return new Promise(function (res) {
+        try {
+          var t = db.transaction(IDB_STORE, "readwrite");
+          t.objectStore(IDB_STORE).delete(k);
+          t.oncomplete = function () { res(true); };
+          t.onerror = function () { res(false); };
+        } catch (e) { res(false); }
+      });
+    }).catch(function () { return false; });
+  }
+
+  var _big = {};                 /* key -> the JSON string, mirrored in memory */
+  function bigGet(k) {
+    if (Object.prototype.hasOwnProperty.call(_big, k)) return _big[k];
+    /* not preloaded yet, or this browser has no IndexedDB - the old box is still the truth */
+    try { return localStorage.getItem(k); } catch (e) { return null; }
+  }
+  /* A cache. Written to IndexedDB and dropped from localStorage without waiting - if it is
+     ever lost it is re-fetched, and the space it was holding is what we are here for. */
+  function bigSet(k, v) {
+    _big[k] = v;
+    idbSet(k, v).then(function (ok) {
+      if (ok) { try { localStorage.removeItem(k); } catch (e) {} return; }
+      try { localStorage.setItem(k, v); } catch (e) {}   /* no IndexedDB - behave as before */
+    });
+    return true;
+  }
+  function bigDel(k) {
+    delete _big[k];
+    idbDel(k);
+    try { localStorage.removeItem(k); } catch (e) {}
+  }
+  /* Read every big key into memory once, before the first paint, and bring across whatever
+     the old box is still holding. Migration is one-way and only ever ADDS: the localStorage
+     copy is dropped after IndexedDB has it, never before. */
+  var BIG_KEYS = ["ew_team_catalog", "ew_logos_v2", "ew_proof_v1"];
+  function bigPreload(extra) {
+    var keys = BIG_KEYS.concat(extra || []);
+    return Promise.all(keys.map(function (k) {
+      return idbGet(k).then(function (v) {
+        var legacy = null;
+        try { legacy = localStorage.getItem(k); } catch (e) {}
+        if (v == null && legacy != null) {
+          /* first run after this version - move it across, then reclaim the space */
+          _big[k] = legacy;
+          return idbSet(k, legacy).then(function (ok) {
+            if (ok) { try { localStorage.removeItem(k); } catch (e) {} }
+          });
+        }
+        if (v != null) {
+          _big[k] = v;
+          /* a stale duplicate left in the old box is pure waste - IndexedDB is the truth now */
+          if (legacy != null) { try { localStorage.removeItem(k); } catch (e) {} }
+        }
+        return null;
+      });
+    })).catch(function () { return null; });
+  }
+  /* What the 5 MB box is actually holding, so this is never a mystery again. */
+  function lsBytes() {
+    var n = 0;
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        n += (k.length + String(localStorage.getItem(k) || "").length) * 2;
+      }
+    } catch (e) {}
+    return n;
+  }
+
   function snapKey() { return "ew_snap_" + (S.user || "x"); }
   function snapSave() {
     try {
@@ -685,16 +840,16 @@ window.addEventListener("beforeunload", function (ev) {
           d[k] = (d[k] || []).concat(S.cancelled[k]);
         });
       }
-      localStorage.setItem(snapKey(), JSON.stringify({ at: Date.now(), d: d }));
+      bigSet(snapKey(), JSON.stringify({ at: Date.now(), d: d }));
       S.snapQuota = false;
     } catch (e) {
       S.snapQuota = true;   /* v6.9.207: offline copy is now stale - say so rather than pretend */
-      try { console.error("[EW] offline copy could not be written - device storage is full", e); } catch (x) { }
+      try { console.error("[EW] offline copy could not be written - this site's storage box is full, not the phone", e); } catch (x) { }
     }
   }
   function snapLoad() {
     try {
-      var t = JSON.parse(localStorage.getItem(snapKey()) || "null");
+      var t = JSON.parse(bigGet(snapKey()) || "null");
       return (t && t.d) ? t.d : null;
     } catch (e) { return null; }
   }
@@ -845,7 +1000,7 @@ window.addEventListener("beforeunload", function (ev) {
 
   function loadCatalog() {
     try {
-      var c = JSON.parse(localStorage.getItem(CAT_KEY) || "null");
+      var c = JSON.parse(bigGet(CAT_KEY) || "null");
       if (c && c.v === CAT_V && c.at && (Date.now() - c.at < 86400000) && c.items && c.items.length) PRODUCTS = c.items;
     } catch (e) {}
     return fetch(GAS + "?action=catalog", { cache: "no-store" })
@@ -855,7 +1010,7 @@ window.addEventListener("beforeunload", function (ev) {
         if (items.length) {
           PRODUCTS = items;
           PRODLIST_HTML = null;
-          try { localStorage.setItem(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items })); } catch (e) {}
+          bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items }));
         }
       })
       .catch(function () {});
@@ -872,7 +1027,7 @@ window.addEventListener("beforeunload", function (ev) {
      everything at its usual hour and any edit made elsewhere lands then. */
   function catalogPatch(f) {
     var at = 0;
-    try { at = (JSON.parse(localStorage.getItem(CAT_KEY) || "null") || {}).at || 0; } catch (e) {}
+    try { at = (JSON.parse(bigGet(CAT_KEY) || "null") || {}).at || 0; } catch (e) {}
     var hit = -1, i;
     for (i = 0; i < PRODUCTS.length; i++) {
       if (String(PRODUCTS[i].code || "").trim() === String(f.code || "").trim()) { hit = i; break; }
@@ -892,20 +1047,16 @@ window.addEventListener("beforeunload", function (ev) {
     };
     if (hit >= 0) PRODUCTS[hit] = item; else PRODUCTS.push(item);
     PRODLIST_HTML = null;
-    try {
-      localStorage.setItem(CAT_KEY, JSON.stringify({ v: CAT_V, at: at || Date.now(), items: PRODUCTS }));
-    } catch (e) {}
+    bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: at || Date.now(), items: PRODUCTS }));
     return item;
   }
   function catalogForget(code) {
     var at = 0;
-    try { at = (JSON.parse(localStorage.getItem(CAT_KEY) || "null") || {}).at || 0; } catch (e) {}
+    try { at = (JSON.parse(bigGet(CAT_KEY) || "null") || {}).at || 0; } catch (e) {}
     var c = String(code || "").trim();
     PRODUCTS = PRODUCTS.filter(function (x) { return String(x.code || "").trim() !== c; });
     PRODLIST_HTML = null;
-    try {
-      localStorage.setItem(CAT_KEY, JSON.stringify({ v: CAT_V, at: at || Date.now(), items: PRODUCTS }));
-    } catch (e) {}
+    bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: at || Date.now(), items: PRODUCTS }));
   }
 
   function findProduct(text) {
@@ -1058,7 +1209,7 @@ window.addEventListener("beforeunload", function (ev) {
     /* when the prices were last pulled - "current price" means nothing without it */
     var loadedAt = "";
     try {
-      var c = JSON.parse(localStorage.getItem(CAT_KEY) || "null");
+      var c = JSON.parse(bigGet(CAT_KEY) || "null");
       if (c && c.at) {
         var dt = new Date(c.at);
         loadedAt = ("0" + dt.getDate()).slice(-2) + " " +
@@ -3992,19 +4143,36 @@ window.addEventListener("beforeunload", function (ev) {
 
   var PROOF_KEY = "ew_proof_v1", _prfBusy = false, _prfCache = null;
 
-  function prfLoad() { try { var l = JSON.parse(localStorage.getItem(PROOF_KEY) || "[]"); return (l && l.length !== undefined && typeof l !== "string") ? l : []; } catch (e) { return []; } }
+  function prfLoad() { try { var l = JSON.parse(bigGet(PROOF_KEY) || "[]"); return (l && l.length !== undefined && typeof l !== "string") ? l : []; } catch (e) { return []; } }
   /* v6.9.218 - a full phone used to be swallowed here in silence. The receipt photo was never
      queued, the queue count never went up, and the driver's paper receipt was gone with nobody
      any the wiser. It now says so, out loud, on the screen. Note what is NOT at risk: the challan
      is already marked received and the material is already booked in - it is only the photograph
      that could not be held. Returns true/false so a caller can tell. */
   function prfStore(l) {
-    try { localStorage.setItem(PROOF_KEY, JSON.stringify(l)); return true; }
-    catch (e) {
-      try { console.error("[EW] proof queue could not be saved - this device's storage is full", e); } catch (x) { }
-      try { toast("This phone's storage is full \u2014 the receipt photo was NOT saved. Free some space, then attach it again. The delivery itself is recorded."); } catch (x2) { }
-      return false;
-    }
+    var str = JSON.stringify(l);
+    /* the mirror first, so the card says "receipt on this phone" the instant it is taken -
+       whatever the disk does next */
+    _big[PROOF_KEY] = str;
+    idbSet(PROOF_KEY, str).then(function (ok) {
+      /* IndexedDB has it - now, and only now, give the 5 MB box its space back */
+      if (ok) { try { localStorage.removeItem(PROOF_KEY); } catch (e) {} return; }
+      /* No IndexedDB on this browser. Fall back to exactly the old behaviour, including
+         the honest failure: a photograph of a signed delivery is not something to lose
+         quietly. The message no longer blames the phone's storage, because that was never
+         what was full - it is this site's own 5 MB box, and deleting photos never helped. */
+      try { localStorage.setItem(PROOF_KEY, str); }
+      catch (e) {
+        delete _big[PROOF_KEY];      /* do not report it saved when it is not */
+        try { console.error("[EW] receipt queue could not be stored", e); } catch (x) {}
+        try {
+          toast("This app's storage is full — the receipt photo was NOT saved. " +
+                "Open Health check and clear the offline copy, then attach it again. " +
+                "The delivery itself is recorded.");
+        } catch (x2) {}
+      }
+    });
+    return true;
   }
   function prfPut(e) { var l = prfLoad().filter(function (x) { return x.pk !== e.pk; }); l.push(e); prfStore(l); }
   function prfDrop(pk) { prfStore(prfLoad().filter(function (x) { return x.pk !== pk; })); }
@@ -6927,11 +7095,11 @@ function viewCatalogue() {
      printing the real logos. */
   var LOGO_STORE = "ew_logos_v2";
   function saveLogoCache() {
-    try { if (Object.keys(LOGO_PICS).length) localStorage.setItem(LOGO_STORE, JSON.stringify({ at: Date.now(), pics: LOGO_PICS })); } catch (e) { }
+    try { if (Object.keys(LOGO_PICS).length) bigSet(LOGO_STORE, JSON.stringify({ at: Date.now(), pics: LOGO_PICS })); } catch (e) { }
   }
   function restoreLogoCache() {
     try {
-      var c = JSON.parse(localStorage.getItem(LOGO_STORE) || "null");
+      var c = JSON.parse(bigGet(LOGO_STORE) || "null");
       if (c && c.pics && Object.keys(c.pics).length) { LOGO_PICS = c.pics; return true; }
     } catch (e) { }
     return false;
@@ -14009,6 +14177,35 @@ function viewCatalogue() {
                : '<div style="margin-top:8px;font-weight:700;color:#0f766e">✓ All clear — nothing unusual found.</div>') +
       '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="health-refresh">Re-scan</button></div></div>';
 
+    /* v6.9.257 - THE STORAGE READOUT. "phone storage is full" cost a day of everybody
+       deleting photographs off phones that had plenty of room, because nothing anywhere
+       said what was actually full. It says so now, in numbers, on a screen he already
+       opens when something is wrong. */
+    h += (function () {
+      var used = lsBytes(), cap = 5 * 1024 * 1024;
+      var pct = Math.min(100, Math.round(used / cap * 100));
+      var big = Object.keys(_big).length;
+      var tight = pct >= 75;
+      return '<div class="card" style="border-color:' + (tight ? '#fdba74' : '#e2e8f0') +
+        ';background:' + (tight ? '#fff7ed' : '#fff') + '">' +
+        '<h3 style="margin:0 0 2px">Storage on this device</h3>' +
+        '<div style="font-weight:800;font-size:15px;color:' + (tight ? '#b45309' : '#0f766e') + '">' +
+          Math.round(used / 1024) + ' KB of about 5,120 KB used <span class="pill">' + pct + '%</span></div>' +
+        '<div class="bar" style="margin-top:6px"><i style="width:' + pct + '%;background:' +
+          (tight ? '#b45309' : '#0f766e') + '"></i></div>' +
+        '<div class="meta" style="margin-top:6px">This is the browser\u2019s <b>5 MB box for this website</b>, ' +
+        'not the phone\u2019s free space \u2014 deleting photos or apps does nothing for it. All three ' +
+        'apps (CRM, Challan, Payment) share it, because they are folders on one site.</div>' +
+        '<div class="meta" style="margin-top:5px;color:' + (big ? '#0f766e' : '#b45309') + '">' +
+        (big
+          ? '\u2713 The heavy things \u2014 receipts waiting to upload, the catalogue, the brand logos and ' +
+            'the offline copy \u2014 are in the big store now (' + big + ' item' + (big === 1 ? '' : 's') +
+            '), which holds gigabytes. A receipt can no longer run out of room here.'
+          : 'This browser has no big store, so everything is squeezed into the 5 MB box. ' +
+            'If a receipt refuses to attach, pull down to refresh and try again.') + '</div>' +
+        '</div>';
+    })();
+
     var section = function (title, count, color, body) {
       if (!count) return '';
       return '<div class="card"><h3>' + esc(title) + ' <span class="pill due" style="background:' + color + '22;color:' + color + '">' + count + '</span></h3>' + body + '</div>';
@@ -14265,7 +14462,7 @@ function viewCatalogue() {
       S.user = saved.user; S.pin = saved.pin;
       api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
         if (!r || !r.ok) { localStorage.removeItem(BIO_KEY);
-      try { localStorage.removeItem(snapKey()); } catch (e) { } S.pin = ""; renderLogin("Saved sign-in no longer valid."); return; }
+      try { bigDel(snapKey()); } catch (e) { } S.pin = ""; renderLogin("Saved sign-in no longer valid."); return; }
         S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
         S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
         loadCatalog(); refresh();
@@ -14275,7 +14472,7 @@ function viewCatalogue() {
 
   function bioForget() {
     localStorage.removeItem(BIO_KEY);
-      try { localStorage.removeItem(snapKey()); } catch (e) { }
+      try { bigDel(snapKey()); } catch (e) { }
     toast("Biometric unlock removed from this device.");
     render();
   }
@@ -22688,6 +22885,13 @@ function viewCatalogue() {
   (function boot() {
     var sess = null;
     try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) {}
+    /* v6.9.257 - the offline copy now lives in IndexedDB, so it has to be in memory before
+       the warm paint or the app would open on a holding screen instead of the book. This is
+       a local read of a few tens of milliseconds, against a boot that already waits on two
+       network calls - and it gives up after 2.5s rather than ever blocking the app. */
+    bigPreload(sess && sess.user ? ["ew_snap_" + sess.user] : []).then(function () { boot2(sess); });
+  })();
+  function boot2(sess) {
     if (sess && sess.pin && sess.user) {
       S.pin = sess.pin; S.user = sess.user;
     // Warm start: the data is already on this device and was role-filtered by the
@@ -22731,7 +22935,7 @@ function viewCatalogue() {
       renderLogin();
       if (bioSaved() && bioAvailable()) setTimeout(bioUnlock, 400);
     }
-  })();
+  }
 
   /* ====================== UPDATE WATCH (v6.9.219) ======================
      Same provision as Saathi and the Visit app, so one button in the
