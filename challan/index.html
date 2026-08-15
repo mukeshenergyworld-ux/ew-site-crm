@@ -92,11 +92,15 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .step button{width:42px;height:42px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;font-size:20px;font-weight:800;cursor:pointer}
 .step input{width:74px;text-align:center;font-weight:800}
 .line{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid #f1f5f9}
-/* v1.6.1 - the paper book number: one narrow field pushed to the right */
+/* v1.6.1 - the paper book number: one narrow field pushed to the right.
+   v1.7.1 - his words: "show book no as Manual Challan No , in red highlighted , box sixze
+   is ok". The red lives on the LABEL and stays there - it is how the field is found, not a
+   warning that it is empty. The box keeps its size and does the empty/filled work itself. */
 .bookno{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:11px 0 2px}
-.bookno label{margin:0;font-size:11.5px;font-weight:700;color:#94a3b8}
+.bookno label{margin:0;font-size:11px;font-weight:800;letter-spacing:.02em;color:#b91c1c;
+  background:#fee2e2;border:1px solid #fecaca;border-radius:6px;padding:3px 8px;white-space:nowrap}
 .bookno input{width:104px;flex:0 0 auto;text-align:center;font-size:14px;font-weight:800;
-  letter-spacing:.03em;padding:8px;border:1px solid #cbd5e1;border-radius:8px}
+  letter-spacing:.03em;padding:8px;border:1px solid #fca5a5;border-radius:8px}
 .bookno input.has{border-color:#86efac;background:#f0fdf4}
 .bookno span{width:14px;font-size:12px;color:#15803d}
 /* executive bands: a solid teal strip per man, tap to open or shut */
@@ -134,7 +138,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.7.0";
+  var APP_VERSION = "1.7.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
   var SNAP  = "ew_challan_snap";
@@ -1200,7 +1204,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
          written in the paper book first; now they are made here, so it keeps its job and
          loses its size. Optional, printed on the challan, shown in hisab - just quiet. */
       '<div class="bookno">' +
-        '<label for="m_manual">Book no</label>' +
+        '<label for="m_manual">Manual Challan No</label>' +
         '<input id="m_manual" class="' + (z.manual ? 'has' : '') + '" inputmode="numeric" placeholder="1247" ' +
           'title="The number in the paper challan book - optional" value="' + esc(z.manual || "") + '"/>' +
         '<span>' + (z.manual ? '&#10003;' : '') + '</span>' +
