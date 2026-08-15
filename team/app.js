@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.264";
+  var APP_VERSION = "6.9.265";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -608,7 +608,10 @@
   }
 
   function syncBanner() {
-    var n = pendLoad().length, el = document.getElementById("ew_sync_banner");
+    /* v6.9.265 - receipts were not counted here at all. Four signed deliveries sat on one Mac
+       for two days and this banner, the app's one loud voice, said nothing. */
+    var _pn = pendLoad().length, _rn = prfCount();
+    var n = _pn + _rn, el = document.getElementById("ew_sync_banner");
     if (!n) {
       if (el && el.parentNode) el.parentNode.removeChild(el);
       syncBottomVar();                       /* gone - give the room back to the toasts */
@@ -632,11 +635,25 @@
       ageTxt = dAge <= 0 ? "today" : dAge + " day" + (dAge > 1 ? "s" : "") + " old";
     }
     var lastErr = first.err ? String(first.err).slice(0, 90) : "not tried yet";
-    el.innerHTML = "⚠ " + n + " record(s) not yet saved — kept safe on this device. " +
+    if (!_pn && _rn) {
+      /* records are all up; it is the documents that are stuck */
+      var _r0 = prfLoad()[0] || {};
+      lbl = "receipt " + String(_r0.no || "");
+      lastErr = _r0.err ? String(_r0.err).slice(0, 90) : "not tried yet";
+      ageTxt = "";
+    }
+    el.innerHTML = "⚠ " + n + " item(s) not yet on the server — kept safe on this device" +
+      (_rn ? " (" + _rn + " signed receipt" + (_rn > 1 ? "s" : "") + ")" : "") + ". " +
       '<span style="font-weight:400;font-size:12px">' + esc(lbl) + (ageTxt ? " · " + ageTxt : "") + ' · last try: “' + esc(lastErr) + '”</span> ' +
       '<button id="ew_retry_btn" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Retry now</button>' +
       '<button id="ew_backup_btn" style="background:#fde68a;color:#7c2d12;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Save a copy</button>';
-    var b = document.getElementById("ew_retry_btn"); if (b) b.onclick = function () { toast("Retrying..."); retryPending(); };
+    var b = document.getElementById("ew_retry_btn");
+    if (b) b.onclick = function () {
+      toast("Retrying...");
+      retryPending();
+      _prfBusy = false; if (_prfDog) { clearTimeout(_prfDog); _prfDog = null; }
+      try { prfFlush(); } catch (e) {}
+    };
     var bk = document.getElementById("ew_backup_btn"); if (bk) bk.onclick = exportPending;
     /* measured AFTER the text is in, because the text is what decides whether it wraps */
     syncBottomVar();
@@ -701,19 +718,68 @@
     /* While this tab is open and items are waiting, keep it lively: re-check every 8s and, if we are
        online, quietly retry the queue so the list drains in front of the user. */
     if (_pendPoll) { clearTimeout(_pendPoll); _pendPoll = null; }
-    if (list.length) {
+    if (list.length || prfCount()) {
       _pendPoll = setTimeout(function () {
         if (S.tab !== "pending") return;
-        if (online && pendCount()) retryPending(); else renderBg();
+        if (online && pendCount()) retryPending();
+        if (online && prfCount()) { try { prfFlush(); } catch (e) {} }
+        if (!online || (!pendCount() && !prfCount())) renderBg();
       }, 8000);
     }
     var statusPill = online
       ? '<span class="pill teal" style="background:#dcfce7;color:#166534">● Online</span>'
       : '<span class="pill due" style="background:#fef3c7;color:#92400e">● Offline — will upload when back online</span>';
+    /* v6.9.265 - RECEIPTS BELONG ON THIS SCREEN.
+       Until now this page listed the record journal and nothing else, so four signed receipts
+       stuck on a Mac for two days were invisible here - the only sign of them anywhere was a
+       calm amber "uploading" chip on the challan card. A receipt is a photograph of a signed
+       delivery: it is the LEAST replaceable thing this app holds, and it was the one queue
+       with no screen of its own. */
+    var prf = prfLoad().slice().sort(function (a, b) { return (a.lastTry || 0) - (b.lastTry || 0); });
+    var totalWaiting = list.length + prf.length;
+
     var h = '<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
-      '<div><h2 style="margin:0">Pending upload' + (list.length ? ' <span style="color:#b91c1c">(' + list.length + ')</span>' : '') + '</h2>' +
+      '<div><h2 style="margin:0">Pending upload' + (totalWaiting ? ' <span style="color:#b91c1c">(' + totalWaiting + ')</span>' : '') + '</h2>' +
       '<div class="meta" style="font-size:13px">Work saved on this phone/computer that has not reached the server yet.</div></div>' +
       '<div style="text-align:right">' + statusPill + '</div></div>';
+
+    if (prf.length) {
+      var mb = (prfBytes() / 1048576).toFixed(1);
+      h += '<div class="card" style="border-color:#fecaca;background:#fef2f2">' +
+        '<h3 style="margin:0 0 4px;font-size:14px;color:#b91c1c">Signed receipts still on this device (' + prf.length + ')</h3>' +
+        '<div class="meta" style="font-size:13px;color:#7f1d1d">These documents exist <b>only here</b>. Nobody on another phone or browser can see them, and clearing this browser would lose them. ' +
+        mb + ' MB waiting.</div>' +
+        '<div class="acts" style="margin-top:10px;flex-wrap:wrap;gap:8px">' +
+        '<button class="btn" data-act="prf-push">⬆ Upload receipts now</button></div>';
+      prf.forEach(function (e) {
+        var ageTxt = "";
+        if (e.at) {
+          var mins = Math.floor((Date.now() - new Date(e.at).getTime()) / 60000);
+          if (mins >= 0) ageTxt = mins < 1 ? "just now" : mins < 60 ? mins + " min ago" :
+            mins < 1440 ? Math.floor(mins / 60) + " hr ago" : Math.floor(mins / 1440) + " day(s) ago";
+        }
+        var kb = Math.round(String(e.b64 || "").length / 1024);
+        h += '<div class="row" style="align-items:center;border-top:1px solid #fecaca;padding:7px 0;gap:8px">' +
+          (e.thumb ? proofThumbImg(e.thumb, 38) : "") +
+          '<div class="grow" style="font-size:12.5px"><b>' + esc(e.no || "") + '</b> &middot; ' + esc(e.client || "") +
+          '<div style="font-size:11px;margin-top:2px;color:' + (e.err ? '#b91c1c' : '#92400e') + '">' +
+          (e.err ? 'Last try: ' + esc(String(e.err).slice(0, 90)) + (e.tries ? ' (' + e.tries + ' tries)' : '')
+                 : 'Waiting to upload…') +
+          '</div></div>' +
+          '<div style="text-align:right;flex:0 0 auto">' +
+          '<span class="pill" style="background:#fee2e2;color:#b91c1c">' + kb + ' KB</span>' +
+          (ageTxt ? '<div class="meta" style="font-size:11px;margin-top:3px">' + esc(ageTxt) + '</div>' : "") +
+          '</div></div>';
+      });
+      h += '</div>';
+    }
+
+    if (!list.length && prf.length) {
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+        '<div class="meta" style="font-size:13.5px;color:#0f766e">Every <b>record</b> is uploaded — only the receipt documents above are still waiting.</div>' +
+        '<div class="acts" style="justify-content:center;margin-top:10px"><button class="btn sm ghost" data-act="pend-refresh">Check now</button></div></div>';
+      return h;
+    }
 
     if (!list.length) {
       h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;text-align:center;padding:26px">' +
@@ -4405,6 +4471,24 @@ window.addEventListener("beforeunload", function (ev) {
   }
   function prfPut(e) { var l = prfLoad().filter(function (x) { return x.pk !== e.pk; }); l.push(e); prfStore(l); }
   function prfDrop(pk) { prfStore(prfLoad().filter(function (x) { return x.pk !== pk; })); }
+  /* v6.9.265 - prfSend used to end `.catch(function () { return false; })`. The reason a
+     receipt would not go up was thrown away at the moment it was learned, so the chip on the
+     challan could only ever say a calm "uploading" - for two days, in his case. It is kept
+     now, with a count of how many times it has been tried. */
+  function prfMark(pk, err) {
+    var l = prfLoad();
+    l.forEach(function (x) {
+      if (x.pk !== pk) return;
+      x.err = String(err || "").slice(0, 140);
+      x.tries = (x.tries || 0) + 1;
+      x.lastTry = Date.now();
+    });
+    prfStore(l);
+  }
+  function prfFailed() { return prfLoad().filter(function (x) { return !!x.err; }).length; }
+  function prfBytes() {
+    return prfLoad().reduce(function (a, x) { return a + String(x.b64 || "").length; }, 0);
+  }
   function prfCount() { try { return prfLoad().length; } catch (e) { return 0; } }
 
   /* v6.9.210: THERE IS NO GPS ANY MORE, and that is deliberate, not a regression.
@@ -4787,6 +4871,16 @@ window.addEventListener("beforeunload", function (ev) {
     var img = proofThumbImg(thumb, size || 26);
     var tip = "Receipt received" + (by ? " - signed by " + by : "");
     if (waiting) {
+      /* v6.9.265 - "uploading" is only true while it is still going up. Four of his receipts
+         wore that calm amber word for two days while the document sat on one Mac and the
+         server had never heard of it. If the last attempt failed, say so, in red. */
+      var _pf = (waiting && waiting.err) ? String(waiting.err) : "";
+      if (_pf) {
+        return '<span title="' + esc(tip + " - NOT uploaded. Last try: " + _pf) + '" ' +
+          'style="display:inline-flex;align-items:center;gap:5px;background:#fef2f2;border:1px solid #fecaca;' +
+          'color:#b91c1c;border-radius:999px;padding:2px 8px 2px 3px;font-size:11px;font-weight:700">' +
+          (img || '') + '<span>Receipt \u2713 &middot; NOT uploaded</span></span>';
+      }
       return '<span title="' + esc(tip) + ' - the document is on the phone it was made on and goes up on the next refresh." ' +
         'style="display:inline-flex;align-items:center;gap:5px;background:#fffbeb;border:1px solid #fde68a;' +
         'color:#92400e;border-radius:999px;padding:2px 8px 2px 3px;font-size:11px;font-weight:700">' +
@@ -4811,7 +4905,12 @@ window.addEventListener("beforeunload", function (ev) {
      receipt - offering "Attach" for it is how the same paper gets photographed twice. */
   function chProofAny(c) {
     var q = prfLoad().filter(function (x) { return x.chId === c.id; })[0];
-    if (q) return { has: true, queued: true, url: "", thumb: q.thumb || "", by: q.by || "" };
+    /* v6.9.265 - `queued` carries the entry's last failure now, so proofSeal can tell the
+       difference between "on its way" and "has been refused four times". Anything that only
+       tests it for truthiness is unaffected: an object with an err is still truthy, and a
+       queued entry that has never failed still gets a plain true. */
+    if (q) return { has: true, queued: q.err ? { err: q.err, tries: q.tries || 0 } : true,
+                    url: "", thumb: q.thumb || "", by: q.by || "" };
     var p = challanProof(c.id);
     if (!p) return { has: false, queued: false, url: "", thumb: "", by: "" };
     return { has: true, queued: false, url: p.url || "", thumb: p.thumb || "", by: p.by || "" };
@@ -5099,7 +5198,10 @@ window.addEventListener("beforeunload", function (ev) {
   /* ---- pushing it up ---- */
   function prfSend(e) {
     return api("pdfHost", { pdfBase64: e.b64, filename: e.fname }).then(function (r) {
-      if (!r || !r.ok || !r.url) return false;
+      if (!r || !r.ok || !r.url) {
+        prfMark(e.pk, (r && r.error) ? String(r.error) : "the server did not return a link for the document");
+        return false;
+      }
       /* The audit id is minted ONCE, when the proof is queued, and reused on every retry - so a
          proof that takes three attempts still leaves exactly one row on the sheet. */
       return save("audit", {
@@ -5112,22 +5214,66 @@ window.addEventListener("beforeunload", function (ev) {
           thumb: String(e.thumb || "")
         }), ip: ""
       }, true).then(function () { prfDrop(e.pk); return true; });
-    }).catch(function () { return false; });
+    }).catch(function (err) {
+      /* v6.9.265 - say what happened. A receipt that will not upload is a signed piece of
+         paper living on one machine; the man holding it deserves to know why. */
+      prfMark(e.pk, (err && err.message) ? String(err.message) : "no answer from the server");
+      return false;
+    });
   }
 
-  /* One at a time, on refresh. Not a burst: a man who confirmed four receipts in a basement is
-     coming back into signal with four PDFs, and firing them together is how you get four
-     timeouts instead of one success. */
+  /* ================= DRAIN THE WHOLE QUEUE (v6.9.265) =================
+     ONE AT A TIME is right, and that part is kept: a man who confirmed four receipts in a
+     basement is coming back into signal with four PDFs, and firing them together is how you
+     get four timeouts instead of one success.
+
+     ONLY THE FIRST ONE was wrong. The old code took l[0], sent it, and stopped. If l[0]
+     failed it was put back and tried again on the next tick, for ever, and the three behind
+     it were never attempted at all. On 15 Aug that is exactly what he was looking at: four
+     receipts showing "uploading", the newest proof row on the server dated 13 Aug, and one
+     stuck document at the head of the queue holding up the other three.
+
+     The record journal was given this same treatment in v6.9.260 - "one stuck record must
+     never block the queue behind it". The receipt queue never got it. It has it now: every
+     entry is tried in turn, a failure moves on to the next instead of stopping, and the
+     reason is written onto the entry where the screen can show it. */
+  var _prfDog = null;
   function prfFlush() {
     if (_prfBusy) return;
-    var l = prfLoad();
-    if (!l.length) return;
+    if (!prfLoad().length) return;
+    if (navigator && navigator.onLine === false) return;
     _prfBusy = true;
-    var e = l[0];
-    prfSend(e).then(function (ok) {
+    /* the same belt as retryPending: a send that somehow never settles must not freeze the
+       receipt queue for the rest of the session */
+    if (_prfDog) clearTimeout(_prfDog);
+    _prfDog = setTimeout(function () { _prfBusy = false; _prfDog = null; }, 600000);
+    var i = 0, sent = 0, guard = 0;
+    var stop = function () {
       _prfBusy = false;
-      if (ok) { _prfCache = null; toast((e.isRet ? "Goods-in receipt for " : "Delivery proof for ") + e.no + " is up."); renderBg(); }
-    }).catch(function () { _prfBusy = false; });
+      if (_prfDog) { clearTimeout(_prfDog); _prfDog = null; }
+      if (sent) { _prfCache = null; }
+      renderBg(); syncBanner();
+      if (sent && !prfCount()) toast("All receipts are up.");
+      else if (sent) toast(sent + " receipt(s) up. " + prfCount() + " still held — the Pending upload screen shows why.");
+    };
+    var step = function () {
+      if (guard++ > 200) return stop();       /* belt: never spin */
+      var l2 = prfLoad();
+      if (i >= l2.length) return stop();
+      var e = l2[i];
+      prfSend(e).then(function (ok) {
+        if (ok) {
+          sent++; _prfCache = null;
+          toast((e.isRet ? "Goods-in receipt for " : "Delivery proof for ") + e.no + " is up.");
+          renderBg();
+          /* it was dropped from the list, so the next one has slid into this position */
+        } else {
+          i++;                                 /* skip past it - it must not block the rest */
+        }
+        step();
+      }).catch(function () { i++; step(); });
+    };
+    step();
   }
 
   /* Called the instant the receipt is confirmed. Everything here runs BEHIND the receipt - the
@@ -20207,7 +20353,17 @@ function viewCatalogue() {
     if (act === "pend-retry") {
       if (!pendCount()) { toast("Nothing pending — all uploaded."); return; }
       if (typeof navigator !== "undefined" && "onLine" in navigator && !navigator.onLine) { toast("You're offline — it will upload automatically when the connection is back."); return; }
-      toast("Uploading pending work…"); flushNow(); retryPending(); return;
+      toast("Uploading pending work…"); flushNow(); retryPending();
+      try { prfFlush(); } catch (e) {}
+      return;
+    }
+    /* v6.9.265 - push the receipt documents on their own, without waiting for anything else */
+    if (act === "prf-push") {
+      toast("Uploading " + prfCount() + " receipt document(s)\u2026 these are big files, give it a minute.");
+      _prfBusy = false;                 /* a fresh press is always a fresh start */
+      if (_prfDog) { clearTimeout(_prfDog); _prfDog = null; }
+      try { prfFlush(); } catch (e) {}
+      return;
     }
     /* v6.9.261 - it used to just call refresh(), which tells you nothing: if the pull
        worked you learned that the pull worked, and if it did not you got the same silence
