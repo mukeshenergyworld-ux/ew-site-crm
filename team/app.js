@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.259";
+  var APP_VERSION = "6.9.260";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -310,13 +310,65 @@
       (tab === "pitch" && (t.indexOf("sites") >= 0 || t.indexOf("leads") >= 0));
   }
 
-  function api(action, extra) {
+  /* ================= EVERY CALL HAS A DEADLINE (v6.9.260) =================
+     HIS REPORT: "uploading taking very long time".
+
+     It was not slow. It was STOPPED. api() had no deadline of any kind:
+
+         fetch(GAS, {...}).then(r => r.json())
+
+     A request that stalls - which is the ordinary failure on a phone with one bar, on a
+     wifi that has associated but passes no traffic, or when Apps Script is having a bad
+     minute - does not fail. It simply never comes back. The promise neither resolves nor
+     rejects, and everything waiting on it waits for ever:
+
+       * save() never finishes, so S.pending stays above zero
+       * the journal entry is never marked with an error, so the card reads
+         "Waiting to upload..." with no reason - exactly what he photographed
+       * quietSync() refuses to run at all while S.pending is non-zero, so the whole app
+         stops syncing
+       * worst of all, retryPending() sets _retrying = true and drives the queue one record
+         at a time. If that one call hangs, step() is never called again and _retrying is
+         never cleared - so the ENTIRE queue is frozen for the rest of the session.
+
+     One stalled request could therefore stop every upload on the device until the app was
+     closed and reopened. The same fault was found and fixed in the Payment app in v1.6; the
+     CRM never got it.
+
+     The deadlines are per action, because these calls are not alike: pulling the whole book
+     or hosting a PDF is genuinely big, while saving one row is not. A call that passes its
+     deadline now FAILS - loudly, in the journal, with a reason - which is the thing the
+     recovery journal was built to handle. */
+  var API_MS = 30000;
+  var API_MS_BY_ACTION = {
+    teamGet: 60000, catalog: 60000, pdfHost: 90000, tgSend: 60000,
+    search: 45000, historicChallan: 45000
+  };
+  function api(action, extra, ms) {
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
-    return fetch(GAS, {
+    var limit = ms || API_MS_BY_ACTION[action] || API_MS;
+    var ctl = null, timer = null;
+    try { if (window.AbortController) ctl = new AbortController(); } catch (e) { ctl = null; }
+    var opt = {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(body)
-    }).then(function (r) { return r.json(); });
+    };
+    if (ctl) opt.signal = ctl.signal;
+    var done = function () { if (timer) { clearTimeout(timer); timer = null; } };
+    return new Promise(function (res, rej) {
+      /* belt and braces: abort the request AND settle the promise. On a browser with no
+         AbortController the fetch is left to finish into the void, but nothing waits on it. */
+      timer = setTimeout(function () {
+        timer = null;
+        try { if (ctl) ctl.abort(); } catch (e) {}
+        rej(new Error("timed out after " + Math.round(limit / 1000) + "s"));
+      }, limit);
+      fetch(GAS, opt)
+        .then(function (r) { return r.json(); })
+        .then(function (j) { done(); res(j); })
+        .catch(function (e) { done(); rej(e); });
+    });
   }
 
   /* ---------- bulletproof saving ----------
@@ -325,7 +377,7 @@
      recovery JOURNAL on this device first. If the server confirms it, the journal entry clears.
      If it fails, the record STAYS on screen and in the journal, a red banner shows, and it is
      retried automatically - and again the next time the app opens. Data cannot silently disappear. */
-  var PEND_KEY = "ew_pending_v1", _pkSeq = 0, _retrying = false;
+  var PEND_KEY = "ew_pending_v1", _pkSeq = 0, _retrying = false, _retryDog = null;
   function pendLoad() { try { return JSON.parse(localStorage.getItem(PEND_KEY) || "[]") || []; } catch (e) { return []; } }
   /* v6.9.207: if the device is out of storage the recovery journal silently stopped working -
      S.pendCount still claimed a queue that storage did not hold. Now it says so, once, loudly. */
@@ -369,11 +421,19 @@
     if (_retrying) return;
     if (!pendLoad().length) return;
     _retrying = true;
+    /* v6.9.260 - a watchdog on the flag itself. Before the deadline above, a single hung
+       call left _retrying stuck true and NOTHING in the queue was ever tried again for the
+       rest of the session. Two belts: every call now fails by itself, and if the loop is
+       somehow still not finished long after the longest possible call, the flag is released
+       so the next attempt can run. */
+    if (_retryDog) clearTimeout(_retryDog);
+    _retryDog = setTimeout(function () { _retrying = false; _retryDog = null; }, 180000);
     var okCount = 0, i = 0;
     var step = function () {
       var l2 = pendLoad();
       if (i >= l2.length) {
         _retrying = false;
+        if (_retryDog) { clearTimeout(_retryDog); _retryDog = null; }
         renderBg();
         if (!pendCount()) toast("All pending records are now saved.");
         else if (okCount) toast(okCount + " saved. " + pendCount() + " still held — the banner shows the server's reason.");
@@ -391,6 +451,33 @@
     };
     step();
   }
+  /* ================= IT NOW REALLY DOES RETRY BY ITSELF (v6.9.260) =========
+     The banner has always said the records "will upload by themselves when the connection
+     is good". That was not true: retryPending() ran only when somebody pressed Retry, when
+     the browser fired an `online` event, on boot, or on a refresh. A challan saved on a bad
+     connection could therefore sit in the journal untouched for hours with the app open and
+     the signal back - which is what "taking very long time" actually was.
+
+     A quiet tick, every 45 seconds, and again the moment the app is looked at. It does
+     nothing at all when the queue is empty, so it costs nothing on a normal day. */
+  var _flushTick = null;
+  function flushSoon() {
+    if (!pendCount() && !prfCount()) return;
+    if (navigator && navigator.onLine === false) return;
+    try { retryPending(); } catch (e) {}
+    try { prfFlush(); } catch (e) {}
+  }
+  function startFlushTicker() {
+    if (_flushTick) return;
+    _flushTick = setInterval(flushSoon, 45000);
+    try {
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) flushSoon();
+      });
+      window.addEventListener("online", flushSoon);
+    } catch (e) {}
+  }
+
   function syncBanner() {
     var n = pendLoad().length, el = document.getElementById("ew_sync_banner");
     if (!n) {
@@ -23003,6 +23090,7 @@ function viewCatalogue() {
     bigPreload(sess && sess.user ? ["ew_snap_" + sess.user] : []).then(function () { boot2(sess); });
   })();
   function boot2(sess) {
+    try { startFlushTicker(); } catch (e) {}
     if (sess && sess.pin && sess.user) {
       S.pin = sess.pin; S.user = sess.user;
     // Warm start: the data is already on this device and was role-filtered by the
