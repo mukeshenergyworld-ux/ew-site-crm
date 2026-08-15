@@ -138,7 +138,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.7.1";
+  var APP_VERSION = "1.8.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
   var SNAP  = "ew_challan_snap";
@@ -702,7 +702,15 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       id: "MN-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
       createdAt: new Date().toISOString(), actor: S.user || "",
       action: "challan:manualno", target: String(chNo || ""),
-      detail: JSON.stringify({ challanNo: String(chNo || ""), challanId: String(chId || ""),
+      /* v1.8.0 - chNo and chId are the names the CRM's manualNoMap actually reads:
+             if (d.chId) byId[d.chId] = ...;  if (d.chNo) byNo[d.chNo] = ...
+         This app wrote challanNo/challanId, so NEITHER branch ever ran and every book number
+         typed in the godown since v1.6.1 was invisible at the desk - which is exactly when it is
+         needed, because the customer's storeman rings quoting the book number and nothing else.
+         The old names are kept alongside so this app's own reader, and any row already written,
+         still resolve. */
+      detail: JSON.stringify({ chNo: String(chNo || ""), chId: String(chId || ""),
+        challanNo: String(chNo || ""), challanId: String(chId || ""),
                                no: String(no || ""), client: String(client || ""), by: S.user || "" })
     });
   }
@@ -753,11 +761,46 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       }), ip: ""
     });
   }
+  /* ================= A RECEIPT MEANS THE DELIVERY WAS RECEIVED (v1.8.0) =========
+     Filing the signed paper used to write an audit row and nothing else. `receiptReceived` was
+     never set, so the money code - which keys on exactly that field, in the CRM, in HISAB and in
+     the Payment app - never counted the delivery. Meanwhile missingReceipts() below cleared on
+     the PROOF, so the challan also left the one list that would have caught it. Signed for,
+     complete, and on nobody's screen.
+
+     challanMove is the CRM's own endpoint for this transition, so the server owns it and only
+     the status moves - no stale full-row write. If it fails the challan stays exactly as it was
+     and the receipt is still filed; the delivery simply keeps showing as awaiting its receipt,
+     which is the honest state and the one that gets it looked at again. */
+  function markReceived(rec) {
+    if (!rec || !rec.id || rec.returnNo) return Promise.resolve(null);   /* returns book in separately */
+    if (String(rec.receiptReceived || "").toUpperCase() === "Y") return Promise.resolve(null);
+    return api("challanMove", { id: rec.id, to: "Received" }).then(function (r) {
+      if (!r || !r.ok) return r;
+      rec.status = "Received"; rec.receiptReceived = "Y";
+      var arr = (S.data && S.data.challans) || [];
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i] && arr[i].id === rec.id) { arr[i].status = "Received"; arr[i].receiptReceived = "Y"; break; }
+      }
+      bust();
+      return r;
+    });
+  }
+
   /* Deliveries with nothing signed against them. This is the list that stops an argument
-     three months later, so it is a screen of its own rather than a footnote. */
+     three months later, so it is a screen of its own rather than a footnote.
+     v1.8.0 - it asks receiptReceived FIRST and the proof only as a secondary signal, so a
+     delivery whose paper is filed but whose flag never moved cannot slip off this list. */
   function missingReceipts() {
     return challans().filter(function (c) {
-      return String(c.receiptReceived || "").toUpperCase() !== "Y" && !proofFor(c);
+      /* v1.8.0 - the AND was the whole trouble. A challan whose paper was filed but whose
+         receiptReceived never moved satisfied !proofFor(c) === false and so dropped OFF this
+         list - the one list that would have caught it - while every money screen still ignored
+         it for want of the flag. The flag is now the only question asked. Filing a receipt sets
+         it (markReceived), so this changes nothing for anything filed from v1.8.0 on; what it
+         does is surface every delivery filed BEFORE it, which is exactly the backlog that needs
+         looking at. */
+      return String(c.receiptReceived || "").toUpperCase() !== "Y";
     }).sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
   }
 
@@ -951,7 +994,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     var list = challans().filter(recent);
     if (kind === "draft")   return list.filter(isDraft);
     if (kind === "noproof") return list.filter(function (c) {
-      return String(c.receiptReceived || "").toUpperCase() !== "Y" && !proofFor(c);
+      return String(c.receiptReceived || "").toUpperCase() !== "Y";
     });
     if (kind === "mine")    return list.filter(function (c) { return lower(c.createdBy) === lower(S.user); });
     return list;
@@ -976,7 +1019,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       var open = bandIsOpen(g.name);
       var val = g.list.reduce(function (a, c) { return a + chValue(c); }, 0);
       var noRc = g.list.filter(function (c) {
-        return String(c.receiptReceived || "").toUpperCase() !== "Y" && !proofFor(c);
+        return String(c.receiptReceived || "").toUpperCase() !== "Y";
       }).length;
       var draft = g.list.filter(isDraft).length;
       return '<div class="exec" data-act="band" data-n="' + esc(g.name) + '">' +
@@ -1647,8 +1690,22 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
                 if (!r || !r.ok) throw new Error("audit failed");
                 (S.data.audit = S.data.audit || []).push(r.row);
                 bust();
-                toast("Receipt filed against " + no + ".");
-                render();
+                /* v1.8.0 - AND MARK THE DELIVERY RECEIVED. Filing the paper without this left
+                   the challan signed for and billed by nobody: HISAB, the client's dues, the
+                   Payment app's chase list and the partner's incentive all count a delivery on
+                   receiptReceived === "Y" and on nothing else. */
+                return markReceived(rec).then(function (mv) {
+                  var okMv = !mv || mv.ok;
+                  render();
+                  toast(okMv
+                    ? "Receipt filed against " + no + " \u2014 delivery marked received."
+                    : "Receipt filed against " + no + ", but it could not be marked received. " +
+                      "Pull down to refresh and try again, or set it in the CRM.");
+                }).catch(function () {
+                  render();
+                  toast("Receipt filed against " + no + ", but it could not be marked received \u2014 " +
+                        "so it is not billed yet. Refresh and try again.");
+                });
               });
             });
         });
@@ -2015,7 +2072,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         var no = (n && n.challanNo) ||
           (String(cObj.name).toUpperCase().slice(0, 6) + "/" + today().slice(8) + "/001");
         var ch = {
-          id: "", createdBy: S.user, challanNo: no,
+          /* v1.8.0 - a STABLE client-minted id, exactly as the CRM has done since v6.9.124. With
+             id:"" the server mints a fresh one on every delivery, so a save whose reply was lost
+             and then retried appended a SECOND row for one delivery. With an id, the same
+             delivery upserts onto the same row however many times it arrives. */
+          id: "L-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+          createdBy: S.user, challanNo: no,
           customerId: cObj.id || "", customerName: cObj.name,
           siteId: siteObj.id || "", site: z.site || "",
           brand: (lines[0] && lines[0].brand) || "", location: cObj.location || "",
@@ -2044,7 +2106,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         });
       }).catch(function () {
         reset();
-        toast("Could not reach the server. Nothing was saved — your challan is still on screen, press Create again.");
+        /* v1.8.0 - do not claim to know. This catch covers BOTH the number call and the save,
+           and Apps Script routinely writes the row and then takes longer than the deadline to say
+           so - the CRM logged exactly that on 15 Aug, a challan that had saved on the first
+           attempt while the app insisted for ten minutes that it had not. Pressing Create again
+           on a save that actually landed used to reserve a second number and write a second row.
+           It cannot any more (the id is stable), but the message should still tell the truth. */
+        toast("No answer from the server. It may still have saved \u2014 pull down to refresh and " +
+              "check before creating it again. Your challan is still on screen.");
       });
       return;
     }
@@ -2100,13 +2169,30 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       var no2 = t.getAttribute("data-no");
       var c2 = challans().filter(function (x) { return String(x.challanNo) === String(no2); })[0];
       if (!c2) return;
+      /* v1.8.0 - THROUGH challanMove, AND ASK FOR THE PIN.
+         Two faults in one line. The old code sent the WHOLE row back from whatever this tab
+         happened to be holding - and this app has no polling, only a 60s-throttled refresh on
+         refocus that is skipped while a sheet is open, so a tab left on the accounts desk never
+         refreshes. Passing a challan at 10:35 would upload the 10:00 copy and silently revert a
+         receipt the owner confirmed at 10:20, dropping that money off his hisab with nobody told.
+         And because it went through teamSave rather than challanMove, the server's own PIN check
+         on an approval never ran either.
+
+         The CRM asks for the PIN again at exactly this moment and says why: approving releases
+         real material, and it is not a formality. A phone in a pocket in the godown should not be
+         able to do it with one tap. */
+      var pin2 = window.prompt("Enter your PIN to PASS this challan\n\n" + no2 + " — " +
+        String(c2.customerName || "") + "\n\nThis releases material. It is not a formality.");
+      if (!pin2) { toast("Nothing was passed."); return; }
       t.disabled = true; t.textContent = "Passing…";
-      saveRow("challans", Object.assign({}, c2, {
-        status: "Approved", approvedBy: S.user, approvedAt: new Date().toISOString()
-      })).then(function (r) {
-        if (!r || !r.ok) { t.disabled = false; t.textContent = "Pass it"; toast("The server refused it. Nothing changed."); return; }
-        c2.status = "Approved"; c2.approvedBy = S.user; c2.approvedAt = new Date().toISOString();
-        render(); toast(no2 + " passed.");
+      api("challanMove", { id: c2.id, to: "Approved", approvePin: pin2 }).then(function (r) {
+        if (!r || !r.ok) {
+          t.disabled = false; t.textContent = "Pass it";
+          toast((r && r.error) || "The server refused it. Nothing changed.");
+          return;
+        }
+        c2.status = "Approved"; c2.approvedBy = (r && r.by) || S.user; c2.approvedAt = new Date().toISOString();
+        bust(); render(); toast(no2 + " passed.");
       }).catch(function () {
         t.disabled = false; t.textContent = "Pass it";
         toast("No signal — nothing was changed. Try again.");
