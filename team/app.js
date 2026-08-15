@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.270";
+  var APP_VERSION = "6.9.271";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -762,7 +762,17 @@
         '<button class="btn" data-act="prf-push">⬆ Upload receipts now</button>' +
         '<button class="btn ghost" data-act="prf-download">⬇ Save all to this computer</button></div>' +
         '<div class="meta" style="font-size:12px;margin-top:8px;color:#7f1d1d">Saving them here does not' +
-        ' remove them from the queue \u2014 it just means they are no longer only in this browser.</div>';
+        ' remove them from the queue \u2014 it just means they are no longer only in this browser.</div>' +
+        /* v6.9.271 - measured: the same Mac, the same wifi and the same endpoint sends a 1.3 MB
+           document in about nine seconds from Chrome. If they will not go from here, the browser
+           is the difference, and there is now a way through that does not depend on fixing it. */
+        (prfFailed() >= 2
+          ? '<div class="meta" style="font-size:12px;margin-top:6px;color:#7f1d1d;border-top:1px dashed #fecaca;padding-top:7px">' +
+            '<b>If they keep failing from this browser:</b> save them here, then open this app in a ' +
+            'different browser on the same computer, go to a delivery and press <b>Attach</b> \u2014 ' +
+            'the file picker now takes one of these saved receipt PDFs as if it were the original ' +
+            'photograph. Same document, same record, and it goes up at today\u2019s smaller size.</div>'
+          : '');
       prf.forEach(function (e) {
         var ageTxt = "";
         if (e.at) {
@@ -5607,10 +5617,15 @@ window.addEventListener("beforeunload", function (ev) {
       '<label>' + (isR ? 'Counted in at the godown by' : 'Received at site by') + '</label>' +
       '<input id="prf_by" value="' + esc((S.prf && S.prf.by) || "") + '" placeholder="Name of whoever signed it" autocomplete="off"/>' +
       '<label style="margin-top:8px">Photograph of the receipt</label>' +
-      '<input type="file" id="prf_photo" accept="image/*" ' +
+      /* v6.9.271 - a saved receipt PDF is accepted here as well as a photograph. The
+         photograph can be read back out of a built document (v6.9.270), so picking one of the
+         PDFs saved by "Save all to this computer" is exactly equivalent to picking the original
+         photo - it goes through the same shrink and the same queue. That is what lets a receipt
+         stuck in one browser be sent from another. */
+      '<input type="file" id="prf_photo" accept="image/*,application/pdf,.pdf" ' +
       'style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
       '<div id="prf_photo_note" class="meta" style="margin-top:4px;color:' + ((S.prf && S.prf.photo) ? "#0f766e" : "#94a3b8") + '">' +
-      ((S.prf && S.prf.photo) ? "Photo attached." : "Camera or gallery \u2014 whichever one the photo is in.") + '</div>' +
+      ((S.prf && S.prf.photo) ? "Photo attached." : "A photo from the camera or gallery \u2014 or a receipt PDF saved from this app.") + '</div>' +
       '</div>' +
       '<div class="foot"><button class="btn ghost" data-act="prf-cancel">Cancel</button>' +
       '<button class="btn" data-act="prf-save">Attach receipt</button></div>';
@@ -19899,13 +19914,36 @@ function viewCatalogue() {
         var f = e.target.files && e.target.files[0];
         var note = el("prf_photo_note");
         if (!f) return;
-        if (note) { note.textContent = "Shrinking the photo\u2026"; note.style.color = "#94a3b8"; }
-        shrinkPhoto(f).then(function (b64) {
+        /* v6.9.271 - the same field now takes a receipt PDF this app made earlier. The
+           photograph is lifted straight back out of it and from that point on nothing else in
+           the flow knows the difference: same shrink, same queue, same document rebuilt at
+           today's smaller size. */
+        var isPdf = /pdf$/i.test(String(f.type || "")) || /\.pdf$/i.test(String(f.name || ""));
+        if (note) { note.textContent = isPdf ? "Reading the saved receipt…" : "Shrinking the photo…"; note.style.color = "#94a3b8"; }
+        var got = isPdf
+          ? fileB64(f).then(function (b64) {
+              var ph = prfPhotoFromPdf(b64);
+              if (!ph) return null;
+              /* re-encode it at today's size, exactly as a fresh photograph would be */
+              return prfReencode(ph, PRF_STEPS[0]);
+            })
+          : shrinkPhoto(f);
+        got.then(function (b64) {
           if (S.prf) S.prf.photo = b64 || "";
           var n3 = el("prf_photo_note");
           if (!n3) return;
-          if (b64) { n3.textContent = "Photo attached."; n3.style.color = "#0f766e"; }
-          else { n3.textContent = "That file could not be read \u2014 try picking it again."; n3.style.color = "#b45309"; }
+          if (b64) {
+            n3.textContent = isPdf ? "Receipt read from the saved file." : "Photo attached.";
+            n3.style.color = "#0f766e";
+          } else {
+            n3.textContent = isPdf
+              ? "That PDF has no photograph in it — pick the original photo instead."
+              : "That file could not be read — try picking it again.";
+            n3.style.color = "#b45309";
+          }
+        }).catch(function () {
+          var n4 = el("prf_photo_note");
+          if (n4) { n4.textContent = "That file could not be read — try picking it again."; n4.style.color = "#b45309"; }
         });
       });
     }
