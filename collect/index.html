@@ -126,7 +126,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.7.3";
+  var APP_VERSION = "1.8.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
   var SNAP = "ew_collect_snap";
@@ -233,6 +233,108 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       }
     } catch (e) {}
   }
+  /* ================= THE BIG BOX ==================================
+     localStorage is capped at about 5 MB PER SITE, and team/, challan/ and collect/ are
+     FOLDERS ON ONE SITE - so all three apps share a single 5 MB box between them. Measured
+     on the owner's phone on 15 Aug it held 4,403 KB before a single receipt was queued,
+     which is why attaching one said "phone storage is full". The phone was never full.
+
+     IndexedDB is the same phone and the same browser with about 10 GB instead of 5 MB.
+     The string interface is kept exactly as it was, so no call site downstream became
+     async: bigGet reads an in-memory mirror, bigSet updates it at once and writes behind. */
+  var IDB_NAME = "ew_store", IDB_STORE = "kv", _idbP = null;
+  function idbOpen() {
+    if (_idbP) return _idbP;
+    _idbP = new Promise(function (res) {
+      var done = false, fin = function (v) { if (!done) { done = true; res(v); } };
+      try {
+        if (!window.indexedDB) return fin(null);
+        var rq = indexedDB.open(IDB_NAME, 1);
+        rq.onupgradeneeded = function () { try { rq.result.createObjectStore(IDB_STORE); } catch (e) {} };
+        rq.onsuccess = function () { fin(rq.result); };
+        rq.onerror = function () { fin(null); };
+        rq.onblocked = function () { fin(null); };
+        /* Safari in private mode can leave open() hanging. Never wait on storage to start. */
+        setTimeout(function () { fin(null); }, 2500);
+      } catch (e) { fin(null); }
+    });
+    return _idbP;
+  }
+  function idbGet(k) {
+    return idbOpen().then(function (db) {
+      if (!db) return null;
+      return new Promise(function (res) {
+        try {
+          var r = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(k);
+          r.onsuccess = function () { res(r.result === undefined ? null : r.result); };
+          r.onerror = function () { res(null); };
+        } catch (e) { res(null); }
+      });
+    }).catch(function () { return null; });
+  }
+  function idbSet(k, v) {
+    return idbOpen().then(function (db) {
+      if (!db) return false;
+      return new Promise(function (res) {
+        try {
+          var t = db.transaction(IDB_STORE, "readwrite");
+          t.objectStore(IDB_STORE).put(v, k);
+          t.oncomplete = function () { res(true); };
+          t.onerror = function () { res(false); };
+          t.onabort = function () { res(false); };
+        } catch (e) { res(false); }
+      });
+    }).catch(function () { return false; });
+  }
+  function idbDel(k) {
+    return idbOpen().then(function (db) {
+      if (!db) return false;
+      return new Promise(function (res) {
+        try {
+          var t = db.transaction(IDB_STORE, "readwrite");
+          t.objectStore(IDB_STORE).delete(k);
+          t.oncomplete = function () { res(true); };
+          t.onerror = function () { res(false); };
+        } catch (e) { res(false); }
+      });
+    }).catch(function () { return false; });
+  }
+  var _big = {};
+  function bigGet(k) {
+    if (Object.prototype.hasOwnProperty.call(_big, k)) return _big[k];
+    try { return localStorage.getItem(k); } catch (e) { return null; }
+  }
+  function bigSet(k, v) {
+    _big[k] = v;
+    idbSet(k, v).then(function (ok) {
+      if (ok) { try { localStorage.removeItem(k); } catch (e) {} return; }
+      try { localStorage.setItem(k, v); } catch (e) {}   /* no IndexedDB - as before */
+    });
+    return true;
+  }
+  function bigDel(k) { delete _big[k]; idbDel(k); try { localStorage.removeItem(k); } catch (e) {} }
+  /* Read into memory before the first paint, and bring across whatever the old box holds.
+     One-way, and it only ever adds: the localStorage copy goes after IndexedDB has it. */
+  function bigPreload(keys) {
+    return Promise.all((keys || []).map(function (k) {
+      return idbGet(k).then(function (v) {
+        var legacy = null;
+        try { legacy = localStorage.getItem(k); } catch (e) {}
+        if (v == null && legacy != null) {
+          _big[k] = legacy;
+          return idbSet(k, legacy).then(function (ok) {
+            if (ok) { try { localStorage.removeItem(k); } catch (e) {} }
+          });
+        }
+        if (v != null) {
+          _big[k] = v;
+          if (legacy != null) { try { localStorage.removeItem(k); } catch (e) {} }
+        }
+        return null;
+      });
+    })).catch(function () { return null; });
+  }
+
   function toast(m) {
     watchBottom(); syncBottomVar();
     var t = el("toast");
@@ -1557,7 +1659,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   function signOut() {
     try { localStorage.removeItem(STORE); } catch (e) {}
     try { localStorage.removeItem(BIO_KEY); } catch (e) {}
-    try { localStorage.removeItem(SNAP + "_" + S.user); } catch (e) {}
+    try { bigDel(SNAP + "_" + S.user); } catch (e) {}
     S.user = ""; S.pin = ""; S.role = ""; S.data = null; S.sheet = null;
     renderLogin("Signed out on this phone.");
   }
@@ -1814,10 +1916,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     }).catch(function () { S.pin = ""; renderLogin("Network error. Try again."); });
   }
 
-  function snapSave() { try { localStorage.setItem(SNAP + "_" + S.user, JSON.stringify({ at: Date.now(), d: S.data })); } catch (e) {} }
+  function snapSave() { bigSet(SNAP + "_" + S.user, JSON.stringify({ at: Date.now(), d: S.data })); }
   function snapLoad() {
     try {
-      var o = JSON.parse(localStorage.getItem(SNAP + "_" + S.user) || "null");
+      var o = JSON.parse(bigGet(SNAP + "_" + S.user) || "null");
       return o && o.d ? o.d : null;
     } catch (e) { return null; }
   }
@@ -1905,7 +2007,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
 
     S.user = sess.user; S.pin = sess.pin; S.role = sess.role || "";
     S.tab = "today";
+    /* v1.8 - the offline copy lives in the big store now, so it has to be in memory before
+       the warm paint or the app would open on a holding screen instead of the book. A local
+       read of tens of milliseconds against a boot that already waits on two network calls,
+       and it gives up after 2.5s rather than ever blocking. */
+    bigPreload([SNAP + "_" + S.user]).then(function () { boot2(sess); });
+  })();
 
+  function boot2(sess) {
     var snap = snapLoad();
     if (snap) { S.data = snap; bust(); S.busy = true; render(); }
     else openingScreen();
@@ -1945,7 +2054,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     });
 
     regSW();
-  })();
+  }
 
   function regSW() {
     if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} }
