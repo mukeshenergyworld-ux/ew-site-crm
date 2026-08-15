@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.272";
+  var APP_VERSION = "6.9.273";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18487,10 +18487,31 @@ function viewCatalogue() {
     }
 
     /* brand chosen — a breadcrumb bar; tap a crumb's × to go back a level */
+    /* v6.9.273 - AND AN EXPLICIT WAY TO ADD SOMETHING FROM ANOTHER BRAND.
+       Clearing the brand crumb has always returned to the list of brands without disturbing a
+       single picked line - ch-brandclear touches brand and family and never items. But a small ×
+       on a crumb reads as "undo", not as "add something else", and on a challan raised from a
+       quote every other word on the screen says this delivery IS the quote. So a man fitting a
+       LEO booster that needs two elbows and a union had no reason to believe he could put them on
+       the same challan, and good reason to fear that pressing × would throw the pump away.
+       Same action, said out loud, and only once there is something to protect. */
+    var _anyPicked = ((z.items || []).length > 0);
+    var _keepMsg = "Goes back to the list of brands. Everything already picked stays on the challan.";
     var bar = '<div class="ew-pickbar">' +
-      '<button class="ew-crumb" data-act="ch-brandclear"><span class="tag">Brand</span> ' + esc(z.brand) + ' <span class="cx">&#10005;</span></button>' +
-      (z.family ? '<button class="ew-crumb" data-act="ch-famclear"><span class="tag">Category</span> ' + esc(z.family) + ' <span class="cx">&#10005;</span></button>' : '') +
-      '</div>';
+      '<button class="ew-crumb" data-act="ch-brandclear" title="' + esc(_keepMsg) + '">' +
+      '<span class="tag">Brand</span> ' + esc(z.brand) + ' <span class="cx">&#10005;</span></button>' +
+      (z.family ? '<button class="ew-crumb" data-act="ch-famclear" title="Goes back to this brand’s categories. Nothing picked is lost."><span class="tag">Category</span> ' + esc(z.family) + ' <span class="cx">&#10005;</span></button>' : '') +
+      (_anyPicked
+        ? '<button class="ew-crumb" data-act="ch-brandclear" title="' + esc(_keepMsg) + '" ' +
+          'style="border-color:#99f6e4;background:#f0fdfa;color:#0f766e;font-weight:700">' +
+          '+ Add from another brand</button>'
+        : '') +
+      '</div>' +
+      (_anyPicked
+        ? '<div class="meta" style="font-size:11.5px;margin:3px 2px 0;color:#64748b">' +
+          'Fittings, elbows, valves — anything the job needs can go on the same challan. ' +
+          'The ' + (z.items || []).length + ' line(s) already picked stay where they are.</div>'
+        : '');
 
     /* STEP 2 — brand but no category: show ONLY that brand's categories */
     if (!z.family) {
@@ -18597,7 +18618,11 @@ function viewCatalogue() {
     return '<h2>' + (isEdit ? 'Edit challan ' + esc(z.editNo || "") : 'New delivery challan') + '</h2>' +
       '<p class="sub">The printed challan carries no prices and no pictures - it is a delivery note, not a quote.</p>' +
       (isEdit && z.editStatus === "Approved" ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#b45309">This challan is <b>Approved</b>. Saving a change sends it back to <b>Draft</b> so it must be approved again before dispatch - approval releases material and can\'t carry over to changed contents.</div>' : "") +
-      ((z && z.fromQuote) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#0d9488">Pre-filled from quote <b>' + esc(z.fromQuote) + '</b> - review the products and discount, then create.</div>' : "") +
+      ((z && z.fromQuote) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#0d9488">Pre-filled from quote <b>' + esc(z.fromQuote) + '</b> - review the products and discount, then create.' +
+        /* v6.9.273 - the quote is a starting point, not a cage. Fitting a quoted pump usually
+           needs elbows, a union, a valve; they belong on the delivery that carries them and they
+           do not belong on a quote the customer has already accepted. */
+        '<br><span style="color:#0f766e">You can add anything else this job needs \u2014 fittings, valves, extra pipe. It goes on this challan only; the quote is not changed.</span></div>' : "") +
       ((z && z.copyOf) ? '<div class="empty" style="text-align:left;padding:0 0 10px;color:#1d4ed8">Copied from challan <b>' + esc(z.copyOf) + '</b> \u2014 same client, site and products. Check the quantities, then create. <b>The old challan is not changed</b>, and this becomes a new challan with its own number.</div>' : "") +
       '<label>Location</label><select id="m_loc">' + opts(LOCATIONS, (z && z.loc) || LOCATIONS[0]) + '</select>' +
       strictClientField("m_client", (S.ch && S.ch.client) || "") +
@@ -18637,7 +18662,10 @@ function viewCatalogue() {
       partnerAnyOptions((z && z.assoc) || "") + '</select>' +
 
       '<h3 style="margin:14px 0 4px;font-size:14px">Products ' +
-      '<span class="pill teal">' + picked.length + ' picked</span></h3>' +
+      '<span class="pill teal">' + picked.length + ' picked</span>' +
+      /* v6.9.273 - as many brands as the job needs, on one challan */
+      (picked.length ? '<span class="meta" style="font-weight:400;font-size:11.5px;margin-left:8px;color:#64748b">from any brand \u2014 add as many as the job needs</span>' : '') +
+      '</h3>' +
       chPicker() +
       (picked.length
         ? '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e2e8f0">' +
