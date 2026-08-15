@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.261";
+  var APP_VERSION = "6.9.262";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -23183,13 +23183,64 @@ function viewCatalogue() {
         render();
       }
     }
-      api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
-        if (r && r.ok) {
-          S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
-          if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return; }
-          S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
-          loadCatalog(); refresh();
-        } else { S.pin = ""; renderLogin(); }
+      /* ================= PART 1: BOTH CALLS AT ONCE (v6.9.262) =================
+         MEASURED, 15 Aug, three times on a good line: an Apps Script round trip costs
+         2.12s, 2.27s, 2.43s - to send nothing and receive forty bytes. That is fixed
+         overhead. It is the same whether the reply is 40 bytes or the whole book (the
+         224 KB catalogue took 2.99s: 2.2s of overhead and 0.8s of actual data).
+
+         So the expensive thing is the NUMBER of calls, not their size. And this boot made
+         them one after the other: ask who you are, wait 2.2s, and only then ask for the
+         book, wait another 2.2s+. Nothing about the second call depended on the answer to
+         the first - the server checks the PIN on the book request too.
+
+         They go out together now. A cold start waits for the slower of the two instead of
+         the sum of both: about 2.4s instead of about 4.6s. The Payment and Challan apps
+         have done this since v1.6; the CRM never got it.
+
+         Deliberately Promise-then rather than a race: the book is only applied once we know
+         who is asking, so a device that has just been de-authorised can never paint fresh
+         data for a second before the login screen replaces it. The saved snapshot is already
+         on screen by this point, so nothing is lost by that caution. */
+      var authP = api("teamAuth", { ua: navigator.userAgent });
+      /* fired NOW, in parallel. Caught here so a failed book never turns into an
+         unhandled rejection that also fails the sign-in. */
+      var dataP = api("teamGet").catch(function (e) { return { __err: (e && e.message) || "no answer" }; });
+
+      authP.then(function (r) {
+        if (!r || !r.ok) {
+          /* v6.9.262 - the server says this device is no longer allowed. Until now the boot
+             only blanked the PIN in memory: the saved sign-in and the whole cached book
+             stayed on the phone, so a man taken off the team still had the firm's clients,
+             challans and dues sitting in his browser. The Payment and Challan apps have
+             cleared both since v1.6; the CRM never did. */
+          S.pin = ""; S.data = null; S.warmStart = false;
+          try { localStorage.removeItem(STORE); } catch (e) {}
+          try { bigDel(snapKey()); } catch (e) {}
+          renderLogin("Sign in again.");
+          return null;
+        }
+        S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
+        if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return null; }
+        S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
+        loadCatalog();
+        return dataP.then(function (d) {
+          S.busy = false;
+          if (!d || d.__err || !d.ok) {
+            /* signed in, but the book did not arrive. Whatever was already painted stays -
+               this is exactly the case the saved snapshot exists for. */
+            if (!S.warmStart) toast("Signed in, but the book did not load: " +
+              String((d && (d.__err || d.error)) || "no answer") + ". Pull down to refresh.");
+            render(); syncBanner();
+            return;
+          }
+          syncAt = Date.now();
+          S.data = d; applyPending(); applyConfirmed(); splitCancelled(); snapSave();
+          render(); syncBanner();
+          if (pendCount()) retryPending();
+          try { prfFlush(); } catch (e) { }
+          try { maybePartnerNag(); } catch (e) { }
+        });
       }).catch(function () {
         /* Network error on boot. If we already painted a valid warm session (this device's own
            role-filtered data), DON'T sign the user out - they're just offline or the network
