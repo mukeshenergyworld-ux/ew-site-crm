@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.257";
+  var APP_VERSION = "6.9.258";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17608,13 +17608,20 @@ function viewCatalogue() {
          explanation, and the green tick when it holds something. Still OPTIONAL, still
          printed on the challan, still shown in hisab, still nothing to do with the app's
          own number. Only the shouting is gone. */
+      /* v6.9.258 - HIS WORDS: "show book no as Manual Challan No , in red highlighted ,
+         box sixze is ok". So the name is the one he uses for it, the label is a red chip
+         that catches the eye from across a form, and the box itself is exactly the size it
+         was - small, in the corner. The red is on the LABEL, permanently: it is how the
+         field is found, not a warning about being empty. The box's own colour still does
+         the empty/filled work, green with a tick once a number is in it. */
       '<div id="m_manual_box" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:10px 0">' +
-        '<label id="m_manual_lab" for="m_manual" style="margin:0;font-size:11.5px;font-weight:700;color:' +
-          (_mnPre ? '#15803d' : '#94a3b8') + '">Book no</label>' +
+        '<label id="m_manual_lab" for="m_manual" style="margin:0;font-size:11px;font-weight:800;' +
+          'letter-spacing:.02em;color:#b91c1c;background:#fee2e2;border:1px solid #fecaca;' +
+          'border-radius:6px;padding:3px 8px;white-space:nowrap">Manual Challan No</label>' +
         '<input id="m_manual" inputmode="numeric" placeholder="1247" value="' +
           esc(_mnPre) + '" title="The number written in the paper challan book - optional" ' +
           'style="width:104px;flex:0 0 auto;text-align:center;font-size:14px;font-weight:800;letter-spacing:.03em;' +
-          'padding:7px 8px;border:1px solid ' + (_mnPre ? '#86efac' : '#cbd5e1') + ';border-radius:8px;background:' +
+          'padding:7px 8px;border:1px solid ' + (_mnPre ? '#86efac' : '#fca5a5') + ';border-radius:8px;background:' +
           (_mnPre ? '#f0fdf4' : '#fff') + '"/>' +
         '<span id="m_manual_hint" style="font-size:12px;width:14px;color:#15803d">' +
           (_mnPre ? '&#10003;' : '') + '</span>' +
@@ -18766,13 +18773,12 @@ function viewCatalogue() {
       _mnBox.addEventListener("input", function () {
         var v = String(_mnBox.value || "").trim();
         if (S.ch) S.ch.manualNo = v;
-        /* v6.9.253 - a tick when it holds something, nothing when it does not. The old
-           red-block-goes-green dance belonged to the big box and went with it. */
-        var lab = el("m_manual_lab"), hint = el("m_manual_hint");
+        /* v6.9.258 - the label stays red whatever happens: it is the marker for the
+           field, not a complaint about it being empty. Only the box and the tick move. */
+        var hint = el("m_manual_hint");
         var on = !!v;
-        _mnBox.style.borderColor = on ? "#86efac" : "#cbd5e1";
+        _mnBox.style.borderColor = on ? "#86efac" : "#fca5a5";
         _mnBox.style.background = on ? "#f0fdf4" : "#fff";
-        if (lab) lab.style.color = on ? "#15803d" : "#94a3b8";
         if (hint) hint.innerHTML = on ? "&#10003;" : "";
       });
     }
