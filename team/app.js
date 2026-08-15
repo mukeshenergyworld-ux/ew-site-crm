@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.258";
+  var APP_VERSION = "6.9.259";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4377,14 +4377,60 @@ window.addEventListener("beforeunload", function (ev) {
     return !!at && at.slice(0, 10) < HISAB_STAMP_FROM;
   }
   function inHisab(c) { return !!hisabStamp(c) || hisabPreExisting(c); }
+  /* v6.9.259 - DOES THIS DELIVERY ACTUALLY COUNT IN HISAB?
+     Found the hard way on 15 Aug. Challan PUNIT8708/150826/001 - Punit Jain, Rs 686 - carried
+     an "in hisab" pill while sitting at Dispatched with receiptReceived = N. So the card said
+     the money was on his account and hisabOutstanding(), which counts receiptReceived = "Y"
+     and nothing else, disagreed. A screen that lies about money is worse than no screen.
+
+     HOW IT HAPPENED. The ADD TO HISAB button is drawn only when canAddToHisab() says so, but
+     the two HANDLERS behind it checked the role and the receipt and never the status. The
+     "mark received" path flips the row on the phone at once and confirms with the server
+     behind - so for a few seconds the challan really did read Received, the stamp was written
+     in that window, and when the server call failed the next refresh put Dispatched back. The
+     stamp stayed. Gating the button was never enough; the rule has to be enforced where the
+     row is written.
+
+     This is now the ONE test, and it is deliberately the same line hisabOutstanding() uses,
+     so the pill and the money can never disagree again. */
+  function hisabCounts(c) {
+    return String((c && c.receiptReceived) || "").toUpperCase() === "Y";
+  }
+  /* A stamp on a delivery that is not counted. Nothing is auto-corrected: the fix is to mark
+     the delivery received, which is a decision about goods, not about a pill. */
+  function hisabStampedNotCounted() {
+    return (S.data.challans || []).filter(function (c) {
+      return !!hisabStamp(c) && !hisabCounts(c);
+    });
+  }
+  function hisabMismatchCard() {
+    var list = hisabStampedNotCounted();
+    if (!list.length) return "";
+    var tot = list.reduce(function (a, c) { return a + (Number(c.amount) || 0); }, 0);
+    return '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
+      '<h3 style="margin:0 0 2px">' + list.length + ' delivery' + (list.length === 1 ? '' : 'ies') +
+      ' stamped for hisab but not actually counted</h3>' +
+      '<div class="meta" style="color:#7f1d1d">' + money(tot) + ' in all. These carry an ADD TO HISAB ' +
+      'stamp, but the delivery itself was never marked <b>received</b> — and hisab counts a ' +
+      'delivery only when it is. So this money is <b>not on the client’s account</b>. Marking it ' +
+      'received puts it there; nothing else is needed.</div>' +
+      list.slice(0, 10).map(function (c) {
+        return '<div class="acts" style="align-items:center;margin-top:9px"><div class="grow">' +
+          '<b>' + esc(c.challanNo || "") + '</b> <span class="pill due">' + esc(c.status || "") + '</span>' +
+          '<br><span style="font-size:11.5px;color:#7f1d1d">' + esc(c.customerName || "") +
+          ' &middot; ' + money(c.amount) + ' &middot; not on his hisab</span></div>' +
+          '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button>' +
+          '</div>';
+      }).join("") + '</div>';
+  }
   /* Admin only, on a delivery marked Received, and only once the signed paper is actually
      on file - the whole point is that he is looking at the receipt when he presses it. A
      receipt still sitting on the phone that took it counts: it is a receipt. */
   function canAddToHisab(c) {
     if (!c || S.role !== "admin") return false;
     if (inHisab(c)) return false;
-    if (String(c.status || "") !== "Received" &&
-        String(c.receiptReceived || "").toUpperCase() !== "Y") return false;
+    /* v6.9.259 - the money's own rule, not a looser one that happened to agree most days */
+    if (!hisabCounts(c)) return false;
     return chProofAny(c).has;
   }
   /* A delivery that is waiting for the owner's eye: received, paper in, not stamped. */
@@ -4416,6 +4462,15 @@ window.addEventListener("beforeunload", function (ev) {
   function hisabStampPill(c) {
     var st = hisabStamp(c);
     if (!st) return "";
+    /* v6.9.259 - a stamp is not the same thing as being counted. If the delivery was never
+       marked received the money is NOT on his account, and the card says exactly that
+       instead of a green tick that is not true. */
+    if (!hisabCounts(c)) {
+      return ' <span class="pill" style="background:#fee2e2;color:#b91c1c" ' +
+        'title="Stamped by ' + esc(st.by || "") + ', but this delivery was never marked received - ' +
+        'so hisab does not count it. Mark it received to put the money on his account.">' +
+        'stamped &mdash; NOT in hisab</span>';
+    }
     return ' <span class="pill Won" title="Added to hisab by ' + esc(st.by || "") +
       (st.at ? ' on ' + esc(String(st.at).slice(0, 10)) : "") + '">in hisab</span>';
   }
@@ -10016,6 +10071,7 @@ function viewCatalogue() {
           '<div class="meta" style="font-size:13.5px;color:#7c2d12"><b>' + money(_unb.val) + '</b> in <b>' + _unb.count + '</b> delivered challan(s) not billed yet — raise the bills so nothing slips on GST.</div></div>';
       }
     }
+    h += hisabMismatchCard();
     h += '<div class="row">' +
       (S.role === "admin" ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
       '<button class="btn sm ghost" data-act="prf-list">Delivery receipts</button>' +
@@ -10036,7 +10092,11 @@ function viewCatalogue() {
         (st === "Draft" && canApprove() ? '<button class="btn sm act-approve" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Approved">Approve</button>' : "") +
         (st === "Approved" && canApprove() ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : "") +
         ((st === "Draft" || st === "Approved") && canApprove() ? '<button class="btn sm ghost" data-act="ch-edit" data-id="' + esc(c.id) + '">Edit</button>' : "") +
-        (st === "Dispatched" ? '<button class="btn sm act-receipt" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Receipt received</button>' : "") +
+        /* v6.9.259 - it used to read "Receipt received", the same words as the seal that
+           appears once the PHOTO is attached. So a man who had just attached the photo saw a
+           button apparently asking for it again. They are different things: the seal is the
+           paper, this is the delivery's status - and the status is what hisab counts. */
+        (st === "Dispatched" ? '<button class="btn sm act-receipt" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button>' : "") +
         /* Billing on a received challan. Accounts/admin enter it directly here (add or edit), so a
            delivered challan can be tied to its invoice number - the basis for tallying stock later.
            Other roles keep the hand-off ("Send for billing") that puts it in the accounts queue. */
@@ -11141,7 +11201,9 @@ function viewCatalogue() {
         (c.amount ? ' &middot; ' + money(Number(c.amount) || 0) + ' at list' : '') + '</span></div>' +
         (isD && canApprove() ? '<button class="btn sm act-approve" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Approved">Approve</button>' : '') +
         (st === "Approved" && canApprove() ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : '') +
-        (st === "Dispatched" && (canSee("billing") || canSee("challans")) ? '<button class="btn sm act-receipt" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Receipt received</button>' : '') +
+        /* v6.9.259 - renamed here too. This is the delivery's STATUS, not the photograph -
+           and it was the same words as the seal that appears once the photo is attached. */
+        (st === "Dispatched" && (canSee("billing") || canSee("challans")) ? '<button class="btn sm act-receipt" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button>' : '') +
         '</div>';
     });
     return h + '</div>';
@@ -21197,6 +21259,13 @@ function viewCatalogue() {
       if (!_hc) { toast("That challan is not on this device yet - pull down to refresh."); return; }
       if (S.role !== "admin") { toast("Only the owner adds a delivery to hisab."); return; }
       if (!chProofAny(_hc).has) { toast("Attach the signed receipt first - there is nothing to check yet."); return; }
+      /* v6.9.259 - the button is drawn from canAddToHisab(), but a button is not a rule.
+         This is the same test, made where the writing actually happens. */
+      if (!hisabCounts(_hc)) {
+        toast("Mark " + (_hc.challanNo || "this delivery") + " as received first \u2014 until then " +
+              "hisab does not count it, and a stamp would say otherwise.");
+        return;
+      }
       S.modal = modalAddToHisab(_hid); render(); return;
     }
     if (act === "hsb-confirm") {
@@ -21204,6 +21273,12 @@ function viewCatalogue() {
       var hc = (S.data.challans || []).filter(function (x) { return x.id === hid; })[0];
       if (!hc) { toast("That challan is not on this device yet - pull down to refresh."); return; }
       if (S.role !== "admin") { toast("Only the owner adds a delivery to hisab."); return; }
+      /* checked again at the moment of writing: the status can change between opening this
+         screen and pressing the button, and that is exactly how the bad stamp got written */
+      if (!hisabCounts(hc)) {
+        toast("Mark " + (hc.challanNo || "this delivery") + " as received first \u2014 nothing was stamped.");
+        S.modal = null; render(); return;
+      }
       var hmiss = hisabBrandsMissingDisc(hc);
       var hpct = {}, hnon = {};
       document.querySelectorAll(".hsb-pct").forEach(function (el) {
@@ -22212,7 +22287,19 @@ function viewCatalogue() {
       /* Behind the receipt, never in front of it: the material has arrived whether or not Drive
          is reachable, so the challan says so immediately and the proof follows on its own. */
       if (prf.by || prf.photo || prf.sig) { try { proofStart(cid, prf); } catch (e) { } }
-      var fail = function () { toast("Saved on your device - server sync failed, it will retry on next refresh."); quietSync(); };
+      /* v6.9.259 - IT SAID IT WOULD RETRY, AND IT DID NOT.
+         The move went up as a bare api() call, which is neither journaled nor repeated. So
+         when it failed the row read Received on this phone and Dispatched on the server, and
+         the next quiet pull put Dispatched back with nobody told. The delivery was silently
+         un-received - and on 15 Aug that is what left Rs 686 off Punit Jain's hisab while the
+         card claimed it was on. It is journaled now, through the same save() that protects
+         every other record on this app, so it really does keep trying. */
+      var fail = function () {
+        if (ch4) { try { save("challans", ch4); } catch (e) {} }
+        toast("Marked received on this device \u2014 the server has not confirmed it yet. " +
+              "It is saved and will keep trying.");
+        quietSync();
+      };
       (changed.length ? api("challanAlter", { id: cid, alterations: changed }) : Promise.resolve({ ok: true }))
         .then(function (r) {
           if (!r || !r.ok) { fail(); return; }
@@ -22339,6 +22426,24 @@ function viewCatalogue() {
       /* Behind the screen, never in front of it. The document is built on this phone and queued;
          it goes up on its own and survives being closed, exactly like the older proof queue. */
       try { proofStart(pcid, { by: pby, photo: pph, sig: "", rows: null }); } catch (e) { }
+      /* v6.9.259 - the photograph of a signed receipt IS the evidence the goods arrived, but
+         attaching it never moved the delivery's status - so the money stayed off the client's
+         hisab and nothing said so. It is offered here, with the consequence spelled out in
+         rupees, rather than assumed either way: a return, or a receipt filed for the record on
+         something already received, must not be moved by accident. */
+      var _pc = (S.data.challans || []).filter(function (x) { return x.id === pcid; })[0];
+      if (_pc && !hisabCounts(_pc) && String(_pc.status || "") === "Dispatched") {
+        setTimeout(function () {
+          if (window.confirm(
+            "The receipt is attached to " + (_pc.challanNo || "this delivery") + ".\n\n" +
+            "It is still marked DISPATCHED, so hisab does not count it \u2014 " +
+            money(_pc.amount) + " is not on " + (_pc.customerName || "his") + " account.\n\n" +
+            "Mark it received now?")) {
+            S.alt = { id: pcid, rows: null, by: pby, photo: "", sig: "" };
+            S.modal = modalAlter(); render();
+          }
+        }, 400);
+      }
       return;
     }
     /* Sending a delivery to the customer. If the combined document is already hosted we send THAT
