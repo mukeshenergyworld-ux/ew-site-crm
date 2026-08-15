@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.274";
+  var APP_VERSION = "6.9.275";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5081,13 +5081,17 @@ window.addEventListener("beforeunload", function (ev) {
 
   function proofPdf(ch, prf, meta) {
     var rows = (prf.rows || []).slice();
-    return Promise.all([loadLogo(), challanLogos()]).then(function (lres) {
-      var LG = lres[1] || [];
+    /* v6.9.275 - challanLogos() is no longer called here. Besides the 277 KB it added to every
+       receipt, it also meant building a receipt could trigger the whole brand-logo fetch on a
+       device whose cache was cold - thirteen Apps Script calls, at the exact moment somebody is
+       standing at a site trying to file a piece of paper. */
+    return Promise.all([loadLogo()]).then(function (lres) {
+      var LG = [];
       return commPdfBase(ch._isReturn ? "MATERIAL RETURN & GOODS-IN RECEIPT" : "DELIVERY CHALLAN & RECEIPT",
         ch, String(meta.at || "").slice(0, 10))
         .then(function (b) { b.LG = LG; return b; });
     }).then(function (b) {
-      var doc = b.doc, F = b.F, L = b.L, R = b.R, LOGOS = b.LG || [], y;
+      var doc = b.doc, F = b.F, L = b.L, R = b.R, y;   /* v6.9.275 - no LOGOS on a receipt */
 
       b.y = 46;
       var yc = commCustomerBlock(b, ch);
@@ -5237,25 +5241,25 @@ window.addEventListener("beforeunload", function (ev) {
         } catch (e) { }
       }
 
-      /* Whose paper this is. Same strip as the challan carries. */
+      /* ================= NO LOGO STRIP ON A RECEIPT (v6.9.275) =================
+         MEASURED on 15 Aug, on the machine that could not upload:
+             the photograph, at today's 900px q0.50 ....... 182 KB
+             the 13-logo strip ............................ 277 KB
+             this PDF without the strip ................... 187 KB
+             this PDF with it ............................. 444 KB
+         The strip was 58% of a signed receipt. That is why the auto-shrink looked broken - it
+         squeezed the photograph three times and moved 892 KB to 880 KB, because it was
+         compressing the smaller half of the document and could not touch the bigger one.
+
+         And it never belonged here. "AUTH. DISTRIBUTOR FOR" is a selling strip: it belongs on a
+         quotation and on the printed challan the customer is handed, documents whose job is to
+         say who we are. This document's job is to prove that a named person signed for named
+         quantities on a named day. Nobody has ever needed to know which brands we distribute
+         while reading that - and the challan PDF that travelled with the lorry carried the strip
+         already.
+
+         The quote PDF, the proposal deck, the price list and the challan itself all keep it. */
       if (y > 256) { doc.addPage(); y = 26; }
-      var lok = LOGOS.filter(function (l) { return l && l.src; });
-      if (lok.length) {
-        F("bold"); doc.setFontSize(6.2); doc.setTextColor(120, 130, 145);
-        doc.text("AUTH. DISTRIBUTOR FOR", L, y);
-        y += 3;
-        var GP = 1.6, BW = ((R - L) - GP * (lok.length - 1)) / lok.length, BH = 8;
-        lok.forEach(function (lg, i3) {
-          var bx = L + i3 * (BW + GP);
-          doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.2); doc.rect(bx, y, BW, BH, "S");
-          try {
-            var sc = Math.min((BW - 1.2) / lg.w, (BH - 1.2) / lg.h);
-            var lw = lg.w * sc, lh = lg.h * sc;
-            doc.addImage(lg.src, "JPEG", bx + (BW - lw) / 2, y + (BH - lh) / 2, lw, lh);
-          } catch (e) { }
-        });
-        y += BH + 7;
-      }
       F("normal"); doc.setFontSize(7.2); doc.setTextColor(120, 130, 145);
       doc.splitTextToSize("This is one document: the delivery challan and the receipt that came back from the site, " +
         "kept together and stored unaltered. The quantities shown as received are what the person named above confirmed.",
