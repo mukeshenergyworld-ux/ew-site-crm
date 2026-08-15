@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.277";
+  var APP_VERSION = "6.9.278";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -801,7 +801,9 @@
           '<span class="pill" style="background:#fee2e2;color:#b91c1c">' + kb + ' KB</span>' +
           (Number(e.shrinks || 0) > 0
             ? '<div class="meta" style="font-size:10.5px;margin-top:2px;color:#b45309">made smaller ' +
-              e.shrinks + '\u00d7 to fit</div>' : '') +
+              e.shrinks + '\u00d7 to fit' +
+              (e.jpg ? ' \u00b7 now the photograph alone, without the document around it' : '') +
+              '</div>' : '') +
           /* v6.9.272 - the only case in which letting the local copy go is safe */
           (prfOnServer(e)
             ? '<div style="margin-top:5px"><button class="btn sm ghost" data-act="prf-clear" data-pk="' +
@@ -5414,7 +5416,15 @@ window.addEventListener("beforeunload", function (ev) {
     return prfPhotoFromPdf(e && e.b64);
   }
 
-  var PRF_STEPS = [{ w: 900, q: 0.50 }, { w: 675, q: 0.45 }, { w: 520, q: 0.42 }, { w: 400, q: 0.40 }];
+  var PRF_STEPS = [{ w: 900, q: 0.50 }, { w: 675, q: 0.45 }, { w: 520, q: 0.42 }, { w: 400, q: 0.40 },
+    /* v6.9.278 - THE LAST RESORT: the photograph on its own, as a JPEG.
+       Every step above is still a PDF - header, the line-by-line table, the sign-off, and the
+       photograph. If all four have been refused, then the objection is not to the size of the
+       picture but to the size of the request, and there is one more thing that can come out:
+       the document around it. About 150 KB, a fifth of what has been failing, and a shape
+       nothing has ever objected to. pdfHost takes it - verified, a 245 KB JPEG hosted in 5.4s.
+       The evidence was always the photograph. */
+    { w: 900, q: 0.55, jpg: true }];
   /* ================= WHICH RECIPE BUILT THIS DOCUMENT (v6.9.276) =================
      Bump this whenever proofPdf's composition changes in a way that changes the size.
        1 = up to v6.9.274: the receipt carried the 13-logo distributor strip, 277 KB of it
@@ -5487,18 +5497,34 @@ window.addEventListener("beforeunload", function (ev) {
     if (!ch) return Promise.resolve(false);
     return prfReencode(src, step).then(function (small) {
       if (!small) return false;
-      return proofPdf(ch, { rows: proofRows(ch), photo: small, sig: "" },
-                      { by: e.by || "", at: e.at || "", geo: "", actor: e.actor || "" })
-        .then(function (d) {
-          var b64 = d.output("datauristring").split(",")[1];
+      /* v6.9.278 - the last step sends the photograph itself. No jsPDF, no table, no logos -
+         just the picture of the signed paper, which is the part that settles an argument. */
+      var made = step.jpg
+        ? Promise.resolve({ b64: small, jpg: true })
+        : proofPdf(ch, { rows: proofRows(ch), photo: small, sig: "" },
+                   { by: e.by || "", at: e.at || "", geo: "", actor: e.actor || "" })
+            .then(function (d) { return { b64: d.output("datauristring").split(",")[1], jpg: false }; });
+      return made
+        .then(function (out) {
+          var b64 = out.b64;
           var before = String(e.b64 || "").length;
-          if (!b64 || b64.length >= before) return false;    /* no gain - leave it alone */
+          if (!b64) return false;
+          /* the photograph-only step is allowed through even if the arithmetic is close: it is
+             a different KIND of request, which is the entire point of it */
+          if (!out.jpg && b64.length >= before) return false;   /* no gain - leave it alone */
           var l = prfLoad();
           l.forEach(function (x) {
             if (x.pk !== pk) return;
             x.b64 = b64; x.shrinks = n;
             x.build = PRF_BUILD;                    /* v6.9.276 - built with today's recipe */
-            x.err = (o.same ? "rebuilt at the smaller layout (" : "too big for this connection - rebuilt smaller (") +
+            /* v6.9.278 - and if what is queued is now a bare photograph, say so, and name the
+               file for what it is so nobody opens a .pdf and finds a JPEG. */
+            x.jpg = !!out.jpg;
+            if (out.jpg) x.fname = String(x.fname || "receipt").replace(/\.pdf$/i, "") + "-photo.jpg";
+            x.err = (out.jpg
+                      ? "sent as the photograph alone, without the document ("
+                      : o.same ? "rebuilt at the smaller layout ("
+                      : "too big for this connection - rebuilt smaller (") +
                     Math.round(before / 1024) + " KB → " + Math.round(b64.length / 1024) + " KB)";
           });
           prfStore(l);
