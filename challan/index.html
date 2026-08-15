@@ -99,7 +99,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .bookno{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:11px 0 2px}
 .bookno label{margin:0;font-size:11px;font-weight:800;letter-spacing:.02em;color:#b91c1c;
   background:#fee2e2;border:1px solid #fecaca;border-radius:6px;padding:3px 8px;white-space:nowrap}
-.bookno input{width:104px;flex:0 0 auto;text-align:center;font-size:14px;font-weight:800;
+/* 16px, not 14. Below 16px iOS zooms the whole page on focus and never zooms back out,
+   and this is the one field the godown types by hand on every single challan. */
+.bookno input{width:104px;flex:0 0 auto;text-align:center;font-size:16px;font-weight:800;
   letter-spacing:.03em;padding:8px;border:1px solid #fca5a5;border-radius:8px}
 .bookno input.has{border-color:#86efac;background:#f0fdf4}
 .bookno span{width:14px;font-size:12px;color:#15803d}
@@ -138,7 +140,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.9.0";
+  var APP_VERSION = "1.9.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
   var SNAP  = "ew_challan_snap";
@@ -806,14 +808,32 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
   function bust() { _mnCache = null; _proofCache = null; _dtCache = null; }
 
+  /* v1.9.1 - remembered on the record itself. chRow() calls chLines three times per card and
+     byExec()'s sort comparator calls chValue O(n log n) times, each re-running JSON.parse over
+     the same string - on every letter typed into the search box. The cache hangs off the row, so
+     it dies with the row when a pull replaces the book. */
   function chLines(c) {
-    try { var l = JSON.parse((c && c.itemsJson) || "[]"); return Array.isArray(l) ? l : []; } catch (e) { return []; }
+    if (!c) return [];
+    if (c.__lines) return c.__lines;
+    var l;
+    try { l = JSON.parse(c.itemsJson || "[]"); } catch (e) { l = []; }
+    if (!Array.isArray(l)) l = [];
+    try { Object.defineProperty(c, "__lines", { value: l, enumerable: false, configurable: true }); }
+    catch (e) { return l; }
+    return l;
   }
   function chValue(c) {
-    return chLines(c).reduce(function (a, l) {
+    if (!c) return 0;
+    if (c.__value !== undefined) return c.__value;
+    var v = chLines(c).reduce(function (a, l) {
       var d = num(l.disc);
       return a + num(l.qty) * Math.round(num(l.rate) * (1 - d / 100));
     }, 0) + (String(c.freightTo) === "Client" ? num(c.freight) : 0);
+    /* NOT enumerable: these rows are stringified into the offline snapshot and posted back to the
+       server, and a cache must never travel with the data it describes. */
+    try { Object.defineProperty(c, "__value", { value: v, enumerable: false, configurable: true }); }
+    catch (e) {}
+    return v;
   }
   /* ================= THE PRODUCT PICKER =================
      One level at a time, exactly as the CRM does it, because that is what the godown
