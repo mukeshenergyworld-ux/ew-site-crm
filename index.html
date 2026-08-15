@@ -5,30 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <title>Energy World</title>
 <meta name="robots" content="noindex,nofollow"/>
-<!--
-  15 Aug 2026 - THIS PAGE REPLACED THE OLD v35 CRM.
-
-  What was here before, and why it is gone:
-
-    * index.html + app.v35.js served the 2025 CRM as this site's landing page. Its
-      attemptLogin() read the typed password into state and never compared it to anything -
-      picking a name and pressing Enter signed you in, as admin. The screen printed the
-      defaults it was not checking ("Admin = admin123 / Sales = ew2024").
-    * The same file carried four live Telegram bot tokens in plain text - loginCode,
-      challanGen, dispatch and complaint - in a public repository. Those four have been
-      revoked through @BotFather.
-    * It also fetched index.html from raw.githubusercontent.com at run time and eval()'d
-      whatever came back, at the root of the origin where every app keeps its session.
-    * complaint.html posted each customer's name, phone, email and address straight from
-      the customer's own browser to a Telegram group, using a token the customer could read.
-
-  The live apps are unaffected: they are in team/, challan/, collect/, saathi/, visit/,
-  console/ and complaint/, they authenticate against Apps Script on every call, and none of
-  them holds a secret in client code.
-
-  The old files remain in git history. History is not a security boundary - the tokens are
-  recoverable from any old commit, which is why they were revoked rather than merely deleted.
--->
+<!-- The 2025 CRM that used to be served here is gone; this page sends you to the apps.
+     What was wrong with it, and what was done about it, is written up in the project docs -
+     not on a page anybody can read. -->
 <style>
   html,body{height:100%;margin:0}
   body{display:flex;align-items:center;justify-content:center;

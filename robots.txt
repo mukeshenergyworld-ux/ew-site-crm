@@ -1,0 +1,6 @@
+# Energy World. The complaint form is meant to be found by customers.
+# Nothing else here is for the public, and none of it is a security boundary -
+# every app authenticates on the server on every call.
+User-agent: *
+Allow: /complaint/
+Disallow: /
