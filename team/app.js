@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.253";
+  var APP_VERSION = "6.9.254";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -195,11 +195,101 @@
       .replace(/\s+/g, " ").trim();
   }
 
+  /* ============ WHAT IS AT THE BOTTOM OF THE SCREEN (v6.9.254) ============
+     HIS WORDS: "progress notification in black backgroud always not visible as its behind
+     that red border".
+
+     Three separate things are pinned to the bottom edge and none of them knew the others
+     existed: the red "records not yet saved" banner, the amber "your icon is out of date"
+     card, and every toast. The banner is the tallest and drew last, so it covered the
+     toast - and the toast is the ONLY place this app ever says whether what you just
+     pressed actually worked. A man pressed Save, saw a red warning about something else
+     entirely, and had no way to know whether his challan had gone.
+
+     THE RULE, in one place so it cannot drift again: nothing pinned to the bottom may hide
+     anything else pinned to the bottom. `--ew-bottom` carries how much of the bottom edge
+     is already taken, MEASURED off the real elements rather than guessed from a constant -
+     the banner wraps to two lines on a narrow phone, and a guess would be wrong in exactly
+     the case that matters. Toasts sit above it, and above each other. */
+  var _bfIds = ["ew_sync_banner", "ew_nag"];
+  function bottomFurniture() {
+    var vh = 0, h = 0;
+    try { vh = window.innerHeight || 0; } catch (e) { return 0; }
+    for (var i = 0; i < _bfIds.length; i++) {
+      var e = document.getElementById(_bfIds[i]);
+      if (!e) continue;
+      var r = null;
+      try { r = e.getBoundingClientRect(); } catch (x) { continue; }
+      /* measured from the BOTTOM edge upwards, so a card floating above a nav bar is
+         handled by the same line as one flush against the edge */
+      if (r && r.height) h = Math.max(h, Math.ceil(vh - r.top));
+    }
+    return h > 0 ? h : 0;
+  }
+  var _toasts = [];
+  function toastReflow() {
+    var off = 0;
+    for (var i = _toasts.length - 1; i >= 0; i--) {
+      var t = _toasts[i];
+      if (!t || !t.parentNode) continue;
+      try { t.style.setProperty("--ew-toast-off", off + "px"); } catch (e) {}
+      off += (t.offsetHeight || 40) + 8;
+    }
+  }
+  function syncBottomVar() {
+    try { document.documentElement.style.setProperty("--ew-bottom", bottomFurniture() + "px"); } catch (e) {}
+    toastReflow();
+  }
+  try { window.__ewBottomSync = syncBottomVar; } catch (e) {}
+  function ensureToastCss() {
+    if (document.getElementById("ew_toast_css")) return;
+    var st = document.createElement("style");
+    st.id = "ew_toast_css";
+    /* !important because the shell page already pins .toast, and this has to win from
+       app.js. The z-index sits above the banner so that even if a measurement is ever
+       wrong the message is still the thing on top - readable beats tidy. */
+    st.textContent =
+      ".toast{bottom:calc(18px + env(safe-area-inset-bottom) + var(--ew-bottom,0px) + var(--ew-toast-off,0px))!important;" +
+      "z-index:100000!important;transition:bottom .16s ease}";
+    (document.head || document.documentElement).appendChild(st);
+  }
+  var _bfWatch = false;
+  function watchBottom() {
+    if (_bfWatch) return;
+    _bfWatch = true;
+    try {
+      window.addEventListener("resize", syncBottomVar);
+      window.addEventListener("orientationchange", function () { setTimeout(syncBottomVar, 250); });
+    } catch (e) {}
+    /* a banner that rewraps to a second line has to push the toast with it, and it
+       rewraps without firing any event at all */
+    try {
+      if (window.ResizeObserver && window.MutationObserver) {
+        var ro = new ResizeObserver(function () { syncBottomVar(); });
+        var attach = function () {
+          for (var i = 0; i < _bfIds.length; i++) {
+            var e = document.getElementById(_bfIds[i]);
+            if (e && !e.__ewRo) { e.__ewRo = 1; ro.observe(e); }
+          }
+        };
+        attach();
+        new MutationObserver(function () { attach(); syncBottomVar(); })
+          .observe(document.body, { childList: true });
+      }
+    } catch (e) {}
+  }
   function toast(msg) {
+    ensureToastCss(); watchBottom();
     var t = document.createElement("div");
     t.className = "toast"; t.textContent = msg;
     document.body.appendChild(t);
-    setTimeout(function () { t.remove(); }, 2600);
+    _toasts.push(t);
+    syncBottomVar();
+    setTimeout(function () {
+      if (t.parentNode) t.remove();
+      _toasts = _toasts.filter(function (x) { return x !== t; });
+      toastReflow();
+    }, 2600);
   }
 
   var ROLE_TABS = {
@@ -303,12 +393,17 @@
   }
   function syncBanner() {
     var n = pendLoad().length, el = document.getElementById("ew_sync_banner");
-    if (!n) { if (el && el.parentNode) el.parentNode.removeChild(el); return; }
+    if (!n) {
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+      syncBottomVar();                       /* gone - give the room back to the toasts */
+      return;
+    }
     if (!el) {
       el = document.createElement("div"); el.id = "ew_sync_banner";
-      el.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:99998;background:#b91c1c;color:#fff;padding:10px 14px;font:600 13px system-ui,sans-serif;display:flex;align-items:center;gap:12px;justify-content:center;box-shadow:0 -2px 10px rgba(0,0,0,.25)";
+      el.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:99998;background:#b91c1c;color:#fff;padding:10px 14px;font:600 13px system-ui,sans-serif;display:flex;align-items:center;gap:10px;justify-content:center;flex-wrap:wrap;box-shadow:0 -2px 10px rgba(0,0,0,.25)";
       document.body.appendChild(el);
     }
+    ensureToastCss(); watchBottom();
     /* v6.9.113: the banner now ALWAYS names the stuck record, its age and the last
        failure — including plain "network error" — so it is never a silent mystery. */
     var l0 = pendLoad(), first = l0[0] || {}, r0 = first.row || {};
@@ -327,6 +422,8 @@
       '<button id="ew_backup_btn" style="background:#fde68a;color:#7c2d12;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Save a copy</button>';
     var b = document.getElementById("ew_retry_btn"); if (b) b.onclick = function () { toast("Retrying..."); retryPending(); };
     var bk = document.getElementById("ew_backup_btn"); if (bk) bk.onclick = exportPending;
+    /* measured AFTER the text is in, because the text is what decides whether it wraps */
+    syncBottomVar();
   }
 
   /* Off-device backup of the unsynced journal. Shows the full records in a selectable box with a
@@ -1170,6 +1267,8 @@ window.addEventListener("beforeunload", function (ev) {
       });
       h += '</div>';
     }
+    h += orphanSiteCard();
+    h += leadVsSiteNote();
     h += '<div class="row"><input class="grow" id="q" placeholder="Search sites..." value="' + esc(S.q) + '"/>' +
       '<button class="btn" data-act="site-new">+ New site</button></div>';
     if (!list.length) h += '<div class="empty">No sites yet. A site is a project - the 14 brands get tracked against it.</div>';
@@ -1899,13 +1998,80 @@ window.addEventListener("beforeunload", function (ev) {
         : "") +
       '</div>';
   }
+  /* ================= A LEAD IS A PERSON, A SITE IS A BUILDING (v6.9.254) =========
+     HIS QUESTION: "under leads there is no option to enter new, new entry only under
+     sites tab / whats difference between both , make me clear".
+
+     It was a fair question, and the app had never answered it anywhere. Worse, the site
+     form's Client was a free-text box, so the two could be confused in a way that left no
+     trace: on 15 Aug a site called "PreetPal Singh" was created with the client typed as
+     "PreetPal Singh" - and because no such customer existed, he appeared nowhere in Leads,
+     nowhere in Clients, and was never asked for an area or an address. Nothing was lost;
+     he was simply filed as a building rather than a man.
+
+     Two fixes, and they are the same fix: say what each thing is, and make it impossible
+     to name a client on a site who is not on the book. */
+  function leadVsSiteNote() {
+    return '<div class="empty" style="text-align:left;padding:0 0 10px">' +
+      'A <b>lead is a person</b> — his name, mobile, district, area, address, his plumber and ' +
+      'architect. He becomes a <b>client</b> by himself the moment one brand’s quote is marked ' +
+      '<b>Won</b>. A <b>site is a building</b> — it belongs to a person and carries the ' +
+      '<b>construction stage</b>, which is what decides the pitch. One man can have three sites; ' +
+      'a site cannot exist without a man.</div>';
+  }
+  function siteVsLeadNote() {
+    return '<div class="empty" style="text-align:left;padding:0 0 10px">' +
+      'A <b>site is a building</b> — a project with a construction stage. It belongs to a ' +
+      'customer who must already be on the book. Entering a new <b>person</b> is done under ' +
+      '<b>Leads</b>, with <b>+ New lead</b> — that is the form that asks for his area and ' +
+      'address.</div>';
+  }
+  /* Sites whose client is not a registered customer. Two of 76 today, and each one is a
+     man nobody can quote, chase or bill. */
+  function orphanSites() {
+    var known = {};
+    (S.data.clients || []).forEach(function (c) { known[dkey(c.name)] = 1; });
+    return (S.data.sites || []).filter(function (x) {
+      if (String(x.status || "") === "Cancelled") return false;
+      var c = dkey(x.client);
+      return !c || !known[c];
+    });
+  }
+  function orphanSiteCard() {
+    var list = orphanSites();
+    if (!list.length) return "";
+    return '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
+      '<h3 style="margin:0 0 2px">' + list.length + ' site' + (list.length === 1 ? '' : 's') +
+      ' with nobody behind ' + (list.length === 1 ? 'it' : 'them') + '</h3>' +
+      '<div class="meta" style="color:#7f1d1d">A site belongs to a customer. These name somebody ' +
+      'who is not on the book, so he cannot be quoted, chased or billed — and he will never ' +
+      'appear under Leads. Register him and the site joins up with him.</div>' +
+      list.slice(0, 12).map(function (x) {
+        return '<div class="acts" style="align-items:center;margin-top:9px"><div class="grow">' +
+          '<b>' + esc(x.name || "(no name)") + '</b>' +
+          (x.city ? ' <span style="color:#94a3b8;font-size:11px">' + esc(x.city) + '</span>' : '') +
+          '<br><span style="font-size:11.5px;color:#7f1d1d">client written as <b>' +
+          esc(x.client || "(blank)") + '</b>' + (x.mobile ? ' · ' + esc(x.mobile) : '') + '</span></div>' +
+          '<button class="btn sm" data-act="site-tolead" data-id="' + esc(x.id) + '">Register him as a lead</button>' +
+          '</div>';
+      }).join("") +
+      (list.length > 12 ? '<div class="meta" style="margin-top:8px">and ' + (list.length - 12) + ' more</div>' : '') +
+      '</div>';
+  }
+  var SITE_FIELDS = ["s_name", "s_client", "s_mobile", "s_stage", "s_city", "s_type",
+                     "s_arch", "s_plumb", "s_build", "s_owner", "s_notes"];
+
   function modalSite(x) {
     x = x || {};
+    try { S.siteEditing = x.id || ""; } catch (e) {}
     return '<h2>' + (x.id ? "Edit site" : "New site") + '</h2>' +
       '<p class="sub">The stage drives everything. Keep it current.</p>' +
+      (x.id ? '' : siteVsLeadNote()) +
       '<label>Site / project name</label><input id="s_name" value="' + esc(x.name) + '"/>' +
-      '<div class="grid2"><div><label>Client</label><input id="s_client" value="' + esc(x.client) + '"/></div>' +
-      '<div><label>Mobile</label><input id="s_mobile" inputmode="numeric" value="' + esc(x.mobile) + '"/></div></div>' +
+      /* v6.9.254 - picked, never typed. A site typed against a name nobody has a record
+         for is a building with no owner, and that is exactly how PreetPal Singh vanished. */
+      strictClientField("s_client", x.client) +
+      '<label>Mobile</label><input id="s_mobile" inputmode="numeric" value="' + esc(x.mobile) + '"/>' +
       '<label>Current construction stage</label><select id="s_stage">' + opts(STAGES2, x.stage || STAGES2[0]) + '</select>' +
       '<div class="grid2"><div><label>City</label><input id="s_city" value="' + esc(x.city) + '"/></div>' +
       '<div><label>Type</label><select id="s_type">' + opts(["Bungalow","Apartment","Villa Project","Commercial","Hotel","Hospital","Other"], x.type || "Bungalow") + '</select></div></div>' +
@@ -3358,20 +3524,25 @@ window.addEventListener("beforeunload", function (ev) {
        in the quote book is listed here FIRST, client or not, with the one-tap card for anyone
        the pitch engine still cannot see. This is the screen he opens; this is where it goes. */
     var h = quotedLeadsHtml();
-    h += '<div class="empty" style="text-align:left;padding:0 0 10px">A <b>lead</b> is a customer who hasn’t won a single brand yet. Tap a brand to quote it; the moment one brand’s quote is marked <b>Won</b>, he moves to <b>Clients</b> automatically.</div>';
+    /* v6.9.254 - THE BUTTON GOES FIRST. His words: "under leads there is no option to
+       enter new, new entry only under sites tab". It was there, at the far right of the
+       district-chip row - which wraps, so with a dozen districts it landed several lines
+       below the fold on a phone and might as well not have existed. A thing you do every
+       day does not belong at the end of a row that grows. */
+    h += '<div class="row" style="margin-bottom:6px"><button class="btn" data-act="cl-new" ' +
+      'style="font-size:15px;padding:11px 16px">+ New lead</button>' +
+      '<div class="grow"></div>' + cvSeg() + '</div>';
+    h += leadVsSiteNote();
     ensureCompactCss();
     if (cvMode() === "compact") {
       var cvL = function () { var q = cvQ(); return cvHtml("leads", leads.filter(function (c) { return cvMatch(c, q); })); };
-      return h + '<div class="row" style="margin-bottom:8px">' + cvSeg() + '<div class="grow"></div>' +
-        '<button class="btn" data-act="cl-new">+ New lead</button></div>' +
-        cvSearchRow(leads.length, leads.length === 1 ? "lead" : "leads", cvL) +
+      return h + cvSearchRow(leads.length, leads.length === 1 ? "lead" : "leads", cvL) +
         tidyBanner() + '<div id="cv_list">' + cvL() + '</div>';
     }
-    h += '<div class="row" style="margin-bottom:8px">' + cvSeg() + '<div class="grow"></div></div>';
     h += '<div class="row">' + clocs.map(function (l) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") +
-      '<div class="grow"></div><button class="btn" data-act="cl-new">+ New lead</button></div>';
+      '</div>';
     h += tidyBanner();
     /* The owner's standing rule now lives ON each card as PL/AR badges (red = enter detail),
        so no separate "names missing" card here - the weekly reminder modal still fires. */
@@ -19046,7 +19217,8 @@ function viewCatalogue() {
           if (back) {
             S.clBack = null;
             if (back.keep) back.keep[back.forId] = r.name;
-            if (back.modal === "challan") { if (S.ch) S.ch.client = r.name; S.modal = modalChallan(); }
+            if (back.modal === "site") { S.modal = modalSite(back.siteId ? (siteById(back.siteId) || null) : null); }
+            else if (back.modal === "challan") { if (S.ch) S.ch.client = r.name; S.modal = modalChallan(); }
             else if (back.modal === "return") { if (S.rt) S.rt.client = r.name; S.modal = modalReturn(); }
             else if (back.modal === "old") { if (S.oc) S.oc.client = r.name; S.modal = modalOldChallan(); }
             render();
@@ -20035,7 +20207,31 @@ function viewCatalogue() {
       return;
     }
 
-    if (act === "site-new") { S.modal = modalSite(null); render(); return; }
+    if (act === "site-new") { S.siteEditing = ""; S.modal = modalSite(null); render(); return; }
+    /* v6.9.254 - one tap turns a building with nobody behind it into a real lead, with his
+       name, his number and his city already filled in. It opens the ordinary lead form
+       rather than writing anything by itself, so the area and the address are asked for -
+       which is the whole reason he was missing from Leads in the first place. */
+    if (act === "site-tolead") {
+      var os = siteById(t.getAttribute("data-id"));
+      if (!os) { toast("That site is not on this device - pull down to refresh."); return; }
+      var oname = String(os.client || os.name || "").trim();
+      if (!oname) { toast("That site names nobody at all - open it and say whose it is."); return; }
+      if (clientByName(oname)) { toast(oname + " is already on the book."); return; }
+      var ocity = String(os.city || "").trim();
+      /* the city box on a site is free text and has had addresses typed into it, so only
+         offer it as the district when it really is one - otherwise it becomes the address */
+      var isDist = locations().some(function (l) { return dkey(l) === dkey(ocity); });
+      S.billDraft = []; S.clEditing = null; S.clBack = null;
+      S.modal = modalClient({
+        name: oname, mobile: os.mobile || "", location: isDist ? ocity : "",
+        address: isDist ? "" : ocity, architect: os.architect || "", plumber: os.plumber || "",
+        builder: os.builder || "", stage: os.stage || "", ownedBy: os.owner || S.user
+      });
+      render();
+      toast("Filled in from the site. Add his area, then Save.");
+      return;
+    }
     /* New project pre-linked to a partner (from the partner card): seed their name into the field
        matching their role so a builder/architect running several sites adds each in one tap. */
     if (act === "p-newsite") {
@@ -21239,6 +21435,7 @@ function viewCatalogue() {
       var forId = t.getAttribute("data-for");
       var back = { forId: forId };
       if (forId === "m_client") { back.modal = "challan"; back.keep = keepSnapshot(CH_FIELDS); }
+      else if (forId === "s_client") { back.modal = "site"; back.keep = keepSnapshot(SITE_FIELDS); back.siteId = S.siteEditing || ""; }
       else if (forId === "r_client") { back.modal = "return"; back.keep = keepSnapshot(RT_FIELDS); }
       else if (forId === "o_client") { back.modal = "old"; back.keep = keepSnapshot(OC_FIELDS); }
       S.clBack = back;
@@ -22460,9 +22657,12 @@ function viewCatalogue() {
           'border-radius:9px;padding:9px 13px;font-size:13px;font-weight:700;cursor:pointer">Got it</button>' +
       '</div>';
     document.body.appendChild(d);
+    /* it is pinned to the bottom as well, so the toasts have to know about it */
+    try { window.__ewBottomSync && window.__ewBottomSync(); } catch (e) {}
     var done = function () {
       try { localStorage.setItem(KEY, "1"); } catch (e) {}
       if (d.parentNode) d.parentNode.removeChild(d);
+      try { window.__ewBottomSync && window.__ewBottomSync(); } catch (e) {}
     };
     document.getElementById("ew_nag_ok").addEventListener("click", done);
     document.getElementById("ew_nag_open").addEventListener("click", function () {
