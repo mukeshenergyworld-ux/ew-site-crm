@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.285";
+  var APP_VERSION = "6.9.286";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -13039,6 +13039,46 @@ function viewCatalogue() {
       doc.text(l3, R, 22.2, { align: "right" });
       doc.setTextColor(17, 34, 45);
       var y = HB + 9;
+
+      /* ================= WHERE THE ACCOUNT STANDS (v6.9.286) =================
+         The statement is the one document the customer actually reads, and it used to open with
+         a wall of line items and only say whether he was nearly settled or barely started on the
+         very last page. One bar, before anything else. The figures are the same ones the summary
+         at the foot prints - computed here from the same functions, not recomputed differently -
+         so the picture and the total can never disagree.
+         Colour never carries a number here: every segment is labelled. */
+      var _hl = clientLedger(cl);
+      var _hPaid = Math.max(0, Math.round(_hl.paid || 0));
+      var _hRet = Math.max(0, Math.round(clientReturns(cl).reduce(function (a, r) { return a + returnNet(r); }, 0)));
+      var _hOwed = Math.round(clientOpening(cl) + allNet - _hPaid - _hRet);
+      var _hTot = _hPaid + _hRet + Math.max(0, _hOwed);
+      if (_hTot > 0) {
+        var segs = [
+          { lab: "Received", v: _hPaid, ink: [0, 131, 0], white: true },
+          { lab: "Returned", v: _hRet, ink: [42, 120, 214], white: true },
+          { lab: _hOwed > 0 ? "Still due" : "In credit", v: Math.max(0, _hOwed), ink: [227, 73, 72], white: true }
+        ].filter(function (g) { return g.v > 0; });
+        var BW = R - L, GAPX = 0.6, BH = 8;
+        var avail = BW - GAPX * Math.max(0, segs.length - 1), cx = L;
+        segs.forEach(function (g) {
+          var w = Math.max(2, avail * (g.v / _hTot));
+          doc.setFillColor(g.ink[0], g.ink[1], g.ink[2]);
+          doc.rect(cx, y, w, BH, "F");
+          if (w >= 26) {
+            F("bold"); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
+            doc.text(g.lab + "  " + RS(g.v), cx + w / 2, y + 5.4, { align: "center" });
+          }
+          cx += w + GAPX;
+        });
+        y += BH + 4.5;
+        /* and the same three in words underneath, for the segments too narrow to label and for
+           anyone reading a photocopy */
+        F("normal"); doc.setFontSize(6.8); doc.setTextColor(110, 120, 132);
+        doc.text(segs.map(function (g) { return g.lab + " " + RS(g.v); }).join("     \u00b7     ") +
+                 (_hOwed < 0 ? "     \u00b7     account is ahead by " + RS(-_hOwed) : ""), L, y);
+        y += 7;
+      }
+
       /* Columns pulled a touch inside the right margin so AMOUNT never rides the page edge. */
       var cA = R - 2, cN = R - 27, cD = R - 49, cR = R - 68, cQ = R - 87;
       var sX = L + 1, pX = L + 7, prodW = cQ - pX - 5;
