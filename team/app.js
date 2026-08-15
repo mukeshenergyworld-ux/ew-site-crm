@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.275";
+  var APP_VERSION = "6.9.276";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -806,6 +806,13 @@
           (prfOnServer(e)
             ? '<div style="margin-top:5px"><button class="btn sm ghost" data-act="prf-clear" data-pk="' +
               esc(e.pk) + '" style="color:#0f766e;border-color:#99f6e4">Remove from this device</button></div>'
+            /* v6.9.276 - a stuck receipt should never need somebody to ask what to do about it.
+               This rebuilds it from its own photograph at today's layout and starts the size
+               ladder again from the top. */
+            : (e.err && prfSourcePhoto(e))
+            ? '<div style="margin-top:5px"><button class="btn sm ghost" data-act="prf-rebuild" data-pk="' +
+              esc(e.pk) + '" title="Rebuild this document from its photograph at the smallest current layout, then try again">' +
+              'Rebuild smaller and retry</button></div>'
             : '') +
           (ageTxt ? '<div class="meta" style="font-size:11px;margin-top:3px">' + esc(ageTxt) + '</div>' : "") +
           '</div></div>';
@@ -5408,6 +5415,18 @@ window.addEventListener("beforeunload", function (ev) {
   }
 
   var PRF_STEPS = [{ w: 900, q: 0.50 }, { w: 675, q: 0.45 }, { w: 520, q: 0.42 }, { w: 400, q: 0.40 }];
+  /* ================= WHICH RECIPE BUILT THIS DOCUMENT (v6.9.276) =================
+     Bump this whenever proofPdf's composition changes in a way that changes the size.
+       1 = up to v6.9.274: the receipt carried the 13-logo distributor strip, 277 KB of it
+       2 = v6.9.275 on:    no strip; a receipt is the photograph, the table and the sign-off
+     A queued document remembers the recipe it was made with. When the recipe moves ahead of it,
+     it earns exactly ONE rebuild at its current size - which is what a document has no other way
+     to ask for. His 880 KB receipt had already used all three shrink steps, so nothing could
+     ever have offered it the 277 KB the new recipe would have saved. */
+  var PRF_BUILD = 2;
+  function prfStale(e) {
+    return !!(e && prfSourcePhoto(e) && Number(e.build || 1) < PRF_BUILD);
+  }
   /* WHEN a receipt should be made smaller, kept apart from the rendering so it can be reasoned
      about and tested on its own. Two honest failures at the current size, a stored source
      photograph to rebuild from, and a smaller size left to go to. Nothing else. */
@@ -5445,20 +5464,25 @@ window.addEventListener("beforeunload", function (ev) {
     });
   }
   /* Rebuild one queued receipt one step smaller. Resolves true if it actually got smaller. */
-  function prfShrink(pk) {
+  function prfShrink(pk, opts) {
     /* v6.9.269 - never reject. proofPdf draws logos, reads the catalogue and touches half a
        dozen things that can each fail on a bad day, and a shrink that throws must not take the
        sweep down with it - the receipt is fine where it is, it just did not get smaller.
        My own test found this by throwing "loadLogo is not defined" out of here. */
-    try { return prfShrinkInner(pk); } catch (e) { return Promise.resolve(false); }
+    try { return prfShrinkInner(pk, opts); } catch (e) { return Promise.resolve(false); }
   }
-  function prfShrinkInner(pk) {
+  function prfShrinkInner(pk, opts) {
+    var o = opts || {};
     var e = prfLoad().filter(function (x) { return x.pk === pk; })[0];
     var src = prfSourcePhoto(e);
     if (!e || !src) return Promise.resolve(false);
-    var n = Number(e.shrinks || 0) + 1;
-    var step = PRF_STEPS[n];
-    if (!step) return Promise.resolve(false);           /* already as small as we go */
+    /* v6.9.276 - three ways to rebuild, all of them ending in the same place:
+         step down    - the ladder, after a failure at the current size
+         same size    - the recipe moved ahead of this document (PRF_BUILD)
+         from scratch - he pressed the button, so start the ladder again at the top */
+    var n = o.restart ? 0 : (o.same ? Number(e.shrinks || 0) : Number(e.shrinks || 0) + 1);
+    var step = PRF_STEPS[n] || PRF_STEPS[PRF_STEPS.length - 1];
+    if (!step) return Promise.resolve(false);
     var ch = proofSubject(e.chId);
     if (!ch) return Promise.resolve(false);
     return prfReencode(src, step).then(function (small) {
@@ -5473,7 +5497,8 @@ window.addEventListener("beforeunload", function (ev) {
           l.forEach(function (x) {
             if (x.pk !== pk) return;
             x.b64 = b64; x.shrinks = n;
-            x.err = "too big for this connection - rebuilt smaller (" +
+            x.build = PRF_BUILD;                    /* v6.9.276 - built with today's recipe */
+            x.err = (o.same ? "rebuilt at the smaller layout (" : "too big for this connection - rebuilt smaller (") +
                     Math.round(before / 1024) + " KB → " + Math.round(b64.length / 1024) + " KB)";
           });
           prfStore(l);
@@ -5553,6 +5578,16 @@ window.addEventListener("beforeunload", function (ev) {
            from the stored photograph and let the next sweep carry it. A failure never blocks
            the ones behind it either way. */
         var now = prfLoad().filter(function (x) { return x.pk === e.pk; })[0];
+        /* v6.9.276 - a document built by an older recipe gets rebuilt at its CURRENT size
+           first. That is free size - v6.9.275 took 277 KB of logos off every receipt - and it
+           is the only thing on offer once the shrink ladder is exhausted, which is exactly
+           where his 880 KB receipt was stuck. */
+        if (prfStale(now)) {
+          return prfShrink(e.pk, { same: true }).then(function (did) {
+            if (did) { renderBg(); toast("Rebuilt at the smaller layout — trying again now."); plan.splice(i, 0, e); }
+            step();
+          }).catch(function () { step(); });
+        }
         if (prfShouldShrink(now)) {
           return prfShrink(e.pk).then(function (did) {
             if (did) {
@@ -5606,7 +5641,7 @@ window.addEventListener("beforeunload", function (ev) {
            that will not go up can be rebuilt smaller and tried again rather than being stuck
            at whatever size it happened to be made at. IndexedDB has room for this many times
            over; the 5 MB box that made us careful about size is not where this lives. */
-        photo: String(prf.photo || ""), shrinks: 0,
+        photo: String(prf.photo || ""), shrinks: 0, build: PRF_BUILD,
         fname: (ch._isReturn ? "RETURN-" : "DELIVERY-") + String(ch.challanNo || cid).replace(/[^\w.-]+/g, "-") + ".pdf",
         b64: b64
       });
@@ -21073,6 +21108,24 @@ function viewCatalogue() {
     /* v6.9.272 - letting go of a local copy the server already has. Never a plain delete: the
        button only exists on a receipt prfOnServer() vouches for, and the confirm names the
        challan and says where the document now lives. */
+    /* v6.9.276 - rebuild one stuck receipt at today's layout and push it now */
+    if (act === "prf-rebuild") {
+      var bpk = t.getAttribute("data-pk");
+      var be = prfLoad().filter(function (x) { return x.pk === bpk; })[0];
+      if (!be) { toast("That one is already gone."); renderBg(); return; }
+      if (!prfSourcePhoto(be)) { toast("This one carries no photograph to rebuild from \u2014 save it to the computer and attach it again."); return; }
+      toast("Rebuilding " + (be.no || "the receipt") + " at the smallest layout\u2026");
+      prfShrink(bpk, { restart: true }).then(function (did) {
+        var after = prfLoad().filter(function (x) { return x.pk === bpk; })[0] || {};
+        toast(did
+          ? "Rebuilt: " + Math.round(String(after.b64 || "").length / 1024) + " KB. Sending it now."
+          : "It could not be made any smaller. Sending it as it is.");
+        renderBg();
+        _prfBusy = false; if (_prfDog) { clearTimeout(_prfDog); _prfDog = null; }
+        try { prfFlush(true); } catch (e) {}
+      });
+      return;
+    }
     if (act === "prf-clear") {
       var cpk = t.getAttribute("data-pk");
       var ce = prfLoad().filter(function (x) { return x.pk === cpk; })[0];
