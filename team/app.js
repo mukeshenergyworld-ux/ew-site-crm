@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.284";
+  var APP_VERSION = "6.9.285";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4177,17 +4177,26 @@ window.addEventListener("beforeunload", function (ev) {
   }
   function bfCsv(brand) {
     var rows = bfRows(brand), n = bfCounts(rows);
-    var out = [["Brand", "Status", "Name", "Client or lead", "Where", "Mobile", "Executive",
+    var head = ["Brand", "Status", "Name", "Client or lead", "Where", "Mobile", "Executive",
                 "Quotes for this brand", "Last quote", "Last quote value", "Quotes in total",
-                "Brands pitched", "Brands won"]];
+                "Brands pitched", "Brands won"];
+    var out = [head.map(function (h) { return { v: h, s: XL.HEAD }; })];
     rows.forEach(function (r) {
-      out.push([brand, BF_LABEL[r.st] || r.st, r.name, r.kind, r.where, r.mobile, r.owner,
+      /* the fill AND the word - so it reads on a black-and-white printer and for anyone who
+         cannot separate red from green */
+      out.push([brand, { v: BF_LABEL[r.st] || r.st, s: XL_STATUS[r.st] || XL.PLAIN },
+                r.name, r.kind, r.where, r.mobile, r.owner,
                 r.qn, r.lastAt, r.lastVal || "", r.allQ, r.pitched, r.wonAll]);
     });
     out.push([]);
-    out.push(["Won", n.won, "Quoted", n.live, "Yet to quote", n.none, "Lost", n.lost,
-              "Not required", n.nr, "Total", rows.length, ""]);
-    dlCsv("Brand_" + String(brand).replace(/[^\w.-]/g, "_") + "_followup_" + today() + ".csv", out);
+    out.push([{ v: "Won", s: XL.BAND }, { v: n.won, s: XL.BAND },
+              { v: "Quoted", s: XL.BAND }, { v: n.live, s: XL.BAND },
+              { v: "Yet to quote", s: XL.BAND }, { v: n.none, s: XL.BAND },
+              { v: "Lost", s: XL.BAND }, { v: n.lost, s: XL.BAND },
+              { v: "Not required", s: XL.BAND }, { v: n.nr, s: XL.BAND },
+              { v: "Total", s: XL.BAND }, { v: rows.length, s: XL.BAND }, { v: "", s: XL.BAND }]);
+    dlXlsx("Brand_" + String(brand).replace(/[^\w.-]/g, "_") + "_followup_" + today() + ".xlsx",
+           String(brand).slice(0, 28), out, [14, 20, 30, 13, 26, 14, 16, 11, 12, 14, 11, 26, 26]);
   }
   function bfAllCsv() {
     var brands = brandGroupList().filter(function (g) { return isRealBrandName(g); });
@@ -4203,12 +4212,16 @@ window.addEventListener("beforeunload", function (ev) {
       if (b.wonN !== a.wonN) return b.wonN - a.wonN;
       return String(a.c.name || "").localeCompare(String(b.c.name || ""));
     });
-    var out = [["Name", "Client or lead", "Where", "Mobile", "Executive", "Brands won"].concat(brands)];
+    var out = [["Name", "Client or lead", "Where", "Mobile", "Executive", "Brands won"]
+      .concat(brands).map(function (h) { return { v: h, s: XL.HEAD }; })];
     mat.forEach(function (x) {
       out.push([String(x.c.name || ""), isClient(x.c.name) ? "Client" : "Lead",
                 [x.c.area, x.c.location].filter(Boolean).join(", "),
                 String(x.c.mobile || ""), String(x.c.ownedBy || ""), x.wonN]
-        .concat(x.cells.map(function (v) { return BF_SHORT[v] || v; })));
+        .concat(x.cells.map(function (v) {
+          /* every brand cell is filled AND labelled, so the eye finds the gaps down a column */
+          return { v: BF_SHORT[v] || v, s: XL_STATUS[v] || XL.PLAIN };
+        })));
     });
     var tally = function (want) {
       return brands.map(function (b, i) {
@@ -4216,12 +4229,17 @@ window.addEventListener("beforeunload", function (ev) {
       });
     };
     out.push([]);
-    out.push(["Won", "", "", "", "", ""].concat(tally("won")));
-    out.push(["Quoted", "", "", "", "", ""].concat(tally("live")));
-    out.push(["Yet to quote", "", "", "", "", ""].concat(tally("none")));
-    out.push(["Lost", "", "", "", "", ""].concat(tally("lost")));
-    out.push(["Not required", "", "", "", "", ""].concat(tally("nr")));
-    dlCsv("Brand_followup_every_brand_" + today() + ".csv", out);
+    var foot = function (label, key) {
+      return [{ v: label, s: XL_STATUS[key] }, "", "", "", "", ""]
+        .concat(tally(key).map(function (v) { return { v: v, s: XL.BAND }; }));
+    };
+    out.push(foot("Won", "won"));
+    out.push(foot("Quoted", "live"));
+    out.push(foot("Yet to quote", "none"));
+    out.push(foot("Lost", "lost"));
+    out.push(foot("Not required", "nr"));
+    dlXlsx("Brand_followup_every_brand_" + today() + ".xlsx", "Every brand", out,
+           [30, 13, 26, 14, 16, 11].concat(brands.map(function () { return 12; })));
   }
   function bfPdf(brand) {
     var rows = bfRows(brand), n = bfCounts(rows);
@@ -13395,6 +13413,194 @@ function viewCatalogue() {
      CSV, not PDF, because CSV is what opens in Excel and what an accountant can pull into Tally -
      and every field is quoted, so a client name with a comma in it cannot shift the columns. */
   function csvCell(v) { return '"' + String(v === undefined || v === null ? "" : v).replace(/"/g, '""') + '"'; }
+  /* ================= A REAL EXCEL FILE, WITH COLOUR (v6.9.285) =================
+     A .csv is plain text: there is nothing in the format that can carry a fill, which is why
+     every sheet this app has ever produced has been white. An .xlsx is a ZIP of small XML parts,
+     and a STORED (undeflated) ZIP needs nothing but a CRC32 - so this is about a hundred lines
+     and no library. SheetJS's free build cannot style cells at all; ExcelJS can, and costs a
+     quarter of a megabyte over 4G for a button pressed twice a week.
+
+     Styles are a fixed, tiny set - the same five validated colours as the PDF, so the sheet and
+     the print mean the same thing. Every coloured cell also carries the WORD, so the file still
+     reads in black and white. */
+  var XL_CRC = null;
+  function xlCrc32(buf) {
+    if (!XL_CRC) {
+      XL_CRC = new Int32Array(256);
+      for (var n = 0; n < 256; n++) {
+        var c = n;
+        for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        XL_CRC[n] = c;
+      }
+    }
+    var crc = -1;
+    for (var i = 0; i < buf.length; i++) crc = (crc >>> 8) ^ XL_CRC[(crc ^ buf[i]) & 0xFF];
+    return (crc ^ -1) >>> 0;
+  }
+  function xlBytes(str) {
+    if (window.TextEncoder) return new TextEncoder().encode(str);
+    var out = [], i, c;                       /* the old-Safari path */
+    for (i = 0; i < str.length; i++) {
+      c = str.charCodeAt(i);
+      if (c < 128) out.push(c);
+      else if (c < 2048) out.push(192 | (c >> 6), 128 | (c & 63));
+      else out.push(224 | (c >> 12), 128 | ((c >> 6) & 63), 128 | (c & 63));
+    }
+    return new Uint8Array(out);
+  }
+  /* STORE-only zip. No compression: an xlsx of a few hundred rows is tens of kilobytes either
+     way, and deflate would mean shipping a deflate. */
+  function xlZip(files) {
+    var parts = [], central = [], offset = 0;
+    var u16 = function (n) { return [n & 255, (n >> 8) & 255]; };
+    var u32 = function (n) { return [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255]; };
+    files.forEach(function (f) {
+      var nm = xlBytes(f.name), data = xlBytes(f.data), crc = xlCrc32(data);
+      var local = [].concat([80, 75, 3, 4], u16(20), u16(0), u16(0), u16(0), u16(0),
+                            u32(crc), u32(data.length), u32(data.length),
+                            u16(nm.length), u16(0));
+      parts.push(new Uint8Array(local), nm, data);
+      central.push([].concat([80, 75, 1, 2], u16(20), u16(20), u16(0), u16(0), u16(0), u16(0),
+                             u32(crc), u32(data.length), u32(data.length),
+                             u16(nm.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset)),
+                   nm);
+      offset += local.length + nm.length + data.length;
+    });
+    var cdir = [], cLen = 0;
+    for (var i = 0; i < central.length; i += 2) {
+      var h = new Uint8Array(central[i]);
+      cdir.push(h, central[i + 1]);
+      cLen += h.length + central[i + 1].length;
+    }
+    cdir.push(new Uint8Array([].concat([80, 75, 5, 6], u16(0), u16(0),
+                             u16(files.length), u16(files.length), u32(cLen), u32(offset), u16(0))));
+    var all = parts.concat(cdir), total = 0;
+    all.forEach(function (p) { total += p.length; });
+    var out = new Uint8Array(total), at = 0;
+    all.forEach(function (p) { out.set(p, at); at += p.length; });
+    return out;
+  }
+  function xlEsc(v) {
+    return String(v == null ? "" : v)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/\x00-\x08\x0B\x0C\x0E-\x1F/g, "");
+  }
+  function xlCol(n) {                            /* 0 -> A, 26 -> AA */
+    var s2 = "";
+    n = n + 1;
+    while (n > 0) { var r = (n - 1) % 26; s2 = String.fromCharCode(65 + r) + s2; n = (n - 1 - r) / 26; }
+    return s2;
+  }
+  /* style ids, in the order they are written into cellXfs below */
+  var XL = { PLAIN: 0, HEAD: 1, WON: 2, LIVE: 3, NONE: 4, LOST: 5, NR: 6, BOLD: 7, BAND: 8 };
+  var XL_STATUS = { won: XL.WON, live: XL.LIVE, none: XL.NONE, lost: XL.LOST, nr: XL.NR };
+  function xlStyles() {
+    var solid = function (hex) {
+      return '<fill><patternFill patternType="solid"><fgColor rgb="FF' + hex +
+             '"/><bgColor indexed="64"/></patternFill></fill>';
+    };
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<fonts count="3">' +
+        '<font><sz val="11"/><name val="Calibri"/></font>' +
+        '<font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font>' +
+        '<font><b/><color rgb="FF11222D"/><sz val="11"/><name val="Calibri"/></font>' +
+      '</fonts>' +
+      '<fills count="9">' +
+        '<fill><patternFill patternType="none"/></fill>' +
+        '<fill><patternFill patternType="gray125"/></fill>' +
+        solid("1E293B") + solid("008300") + solid("EDA100") +
+        solid("2A78D6") + solid("E34948") + solid("9AA3AD") + solid("F1F5F9") +
+      '</fills>' +
+      '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+      '<cellXfs count="9">' +
+        '<xf xfId="0" numFmtId="0" fontId="0" fillId="0" borderId="0"/>' +
+        '<xf xfId="0" fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1"/>' +
+        '<xf xfId="0" fontId="1" fillId="3" borderId="0" applyFont="1" applyFill="1"/>' +
+        '<xf xfId="0" fontId="2" fillId="4" borderId="0" applyFont="1" applyFill="1"/>' +
+        '<xf xfId="0" fontId="1" fillId="5" borderId="0" applyFont="1" applyFill="1"/>' +
+        '<xf xfId="0" fontId="1" fillId="6" borderId="0" applyFont="1" applyFill="1"/>' +
+        '<xf xfId="0" fontId="2" fillId="7" borderId="0" applyFont="1" applyFill="1"/>' +
+        '<xf xfId="0" fontId="2" fillId="0" borderId="0" applyFont="1"/>' +
+        '<xf xfId="0" fontId="2" fillId="8" borderId="0" applyFont="1" applyFill="1"/>' +
+      '</cellXfs>' +
+      /* openpyxl warns "workbook contains no default style" without this, and Excel is stricter
+         than openpyxl - a repair prompt on first open is exactly the thing that would make him
+         stop trusting the file. */
+      '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+      '</styleSheet>';
+  }
+  /* rows: array of arrays. A cell is a plain value, or { v: value, s: styleId }. */
+  function xlSheet(rows, cols, freezeTop) {
+    var body = (rows || []).map(function (row, r) {
+      var cells = (row || []).map(function (cell, c) {
+        var o = (cell && typeof cell === "object" && !(cell instanceof Date)) ? cell : { v: cell };
+        var v = o.v, st = o.s ? ' s="' + o.s + '"' : "";
+        var ref = xlCol(c) + (r + 1);
+        if (v === null || v === undefined || v === "") return '<c r="' + ref + '"' + st + '/>';
+        if (typeof v === "number" && isFinite(v)) return '<c r="' + ref + '"' + st + '><v>' + v + '</v></c>';
+        return '<c r="' + ref + '"' + st + ' t="inlineStr"><is><t xml:space="preserve">' +
+               xlEsc(v) + '</t></is></c>';
+      }).join("");
+      return '<row r="' + (r + 1) + '">' + cells + '</row>';
+    }).join("");
+    var colXml = (cols && cols.length)
+      ? '<cols>' + cols.map(function (w, i) {
+          return '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>';
+        }).join("") + '</cols>'
+      : "";
+    var view = freezeTop
+      ? '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" ' +
+        'activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+      : "";
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      view + colXml + '<sheetData>' + body + '</sheetData></worksheet>';
+  }
+  function xlBook(sheetName, rows, cols) {
+    var NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    return xlZip([
+      { name: "[Content_Types].xml", data:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+        '<Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+        '</Types>' },
+      { name: "_rels/.rels", data:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="' + NS + '/officeDocument" Target="xl/workbook.xml"/>' +
+        '</Relationships>' },
+      { name: "xl/workbook.xml", data:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+        'xmlns:r="' + NS + '"><sheets><sheet name="' + xlEsc(String(sheetName).slice(0, 31)) +
+        '" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+      { name: "xl/_rels/workbook.xml.rels", data:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="' + NS + '/worksheet" Target="worksheets/sheet1.xml"/>' +
+        '<Relationship Id="rId2" Type="' + NS + '/styles" Target="styles.xml"/>' +
+        '</Relationships>' },
+      { name: "xl/styles.xml", data: xlStyles() },
+      { name: "xl/worksheets/sheet1.xml", data: xlSheet(rows, cols, true) }
+    ]);
+  }
+  function dlXlsx(name, sheetName, rows, cols) {
+    try {
+      var blob = new Blob([xlBook(sheetName, rows, cols)],
+        { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      var url = URL.createObjectURL(blob), a = document.createElement("a");
+      a.href = url; a.download = name; a.style.display = "none";
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch (e) { } }, 2000);
+      toast("Downloaded " + name);
+    } catch (e) { toast("Could not build the file on this device."); }
+  }
   function dlCsv(name, rows) {
     try {
       var body = rows.map(function (r) { return r.map(csvCell).join(","); }).join("\r\n");
