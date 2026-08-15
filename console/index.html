@@ -235,6 +235,50 @@ function call(action, payload){
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function val(id){ var e=document.getElementById(id); return e?e.value.trim():''; }
+/* ============ ASK BEFORE THE DANGEROUS ONES (15 Aug 2026) ============
+   There was no confirm anywhere in this file - the one modal that existed was hand-rolled with
+   duplicate ids and no backdrop. One dialog, used by everything that cannot be undone. It names
+   what will happen, it scopes its own lookups to its own node, it scrolls when the body is long,
+   and Escape or the backdrop closes it. */
+var EWMODAL = null;
+function ewAsk(opts) {
+  if (EWMODAL) return;                       /* never two at once - that was the inert-modal bug */
+  var o = opts || {};
+  var back = document.createElement('div');
+  back.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:69';
+  var box = document.createElement('div');
+  box.className = 'card';
+  box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);' +
+    'z-index:70;width:min(460px,92vw);max-height:85dvh;overflow-y:auto;' +
+    'box-shadow:0 12px 40px rgba(0,0,0,.3)';
+  box.innerHTML = (o.warn ? '<div class="warnbox">' + o.warn + '</div>' : '') +
+    (o.body || '') +
+    '<div class="two" style="margin-top:12px">' +
+    '<button class="' + (o.danger ? 'warn' : 'brass') + '" data-go>' + (o.yes || 'Haan') + '</button>' +
+    '<button data-no>' + (o.no || 'Abhi nahi') + '</button></div>';
+  var close = function () {
+    if (!EWMODAL) return;
+    EWMODAL = null;
+    try { document.removeEventListener('keydown', onKey); } catch (e) {}
+    try { back.remove(); box.remove(); } catch (e) {}
+  };
+  var onKey = function (e) { if (e.key === 'Escape') close(); };
+  document.body.appendChild(back);
+  document.body.appendChild(box);
+  EWMODAL = box;
+  /* scoped to THIS node, never getElementById - that is what made a second modal inert */
+  box.querySelector('[data-no]').onclick = close;
+  back.onclick = close;
+  document.addEventListener('keydown', onKey);
+  box.querySelector('[data-go]').onclick = function () {
+    var extra = {};
+    var cb = box.querySelector('[data-opt]');
+    if (cb) extra.opt = cb.checked;
+    close();
+    if (o.onYes) o.onYes(extra);
+  };
+  box.scrollTop = 0;
+}
 function toast(m){ var t=document.createElement('div'); t.className='toast'; t.textContent=m;
   document.body.appendChild(t);
   setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .4s';},2400);
@@ -295,8 +339,12 @@ function castRow(c){
     '<div class="t">' + esc(c.title) + '</div>' +
     (c.body ? '<div class="s">' + esc(c.body).slice(0,140) + (c.body.length>140?'...':'') + '</div>' : '') +
     '<div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap">' +
-      (c.status!=='Live'
-        ? '<button class="brass" onclick="sendCast(\'' + esc(c.id) + '\')">Bhejein</button>' : '') +
+      /* 15 Aug 2026 - status !== 'Live' included ENDED, so last month's expired scheme kept a
+         live send button and could go out again to every partner with Telegram on by default.
+         An ended one can still be re-sent, but it says so and the modal names the expiry. */
+      (c.status==='Live' ? ''
+        : '<button class="' + (c.status==='Ended' ? '' : 'brass') + '" onclick="sendCast(\'' +
+          esc(c.id) + '\')">' + (c.status==='Ended' ? 'Phir se bhejein' : 'Bhejein') + '</button>') +
       '<button onclick="editCast(\'' + esc(c.id) + '\')">Badlein</button>' +
       (c.status==='Live'
         ? '<button class="warn" onclick="endCast(\'' + esc(c.id) + '\')">Band karein</button>' : '') +
@@ -326,32 +374,35 @@ function clearEdit(){ EDIT = null; render(); window.scrollTo(0,0); }
 function sendCast(id){
   var c = D.casts.filter(function(x){ return x.id===id; })[0];
   if (!c) return;
-  var box = document.createElement('div');
-  box.className = 'card';
-  box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);' +
-    'z-index:70;max-width:min(460px,92vw);box-shadow:0 12px 40px rgba(0,0,0,.3)';
-  box.innerHTML = '<div class="warnbox">Yeh sab partners ke app par turant dikhne lagega. ' +
-    'Ek baar padh lein.</div>' +
-    '<div class="prev"><span class="tag">' + esc(c.kind) + '</span>' +
-    '<h3>' + esc(c.title) + '</h3>' +
-    (c.body ? '<p>' + esc(c.body) + '</p>' : '') + '</div>' +
-    '<div class="fld" style="margin-top:12px"><label>' +
-      '<input type="checkbox" id="tgAlso" checked style="width:auto;min-height:0;margin-right:8px">' +
-      'Telegram par bhi bhejein</label></div>' +
-    '<div class="two"><button class="brass" id="goSend">Haan, bhej dein</button>' +
-    '<button id="noSend">Abhi nahi</button></div>';
-  document.body.appendChild(box);
-  document.getElementById('noSend').onclick = function(){ box.remove(); };
-  document.getElementById('goSend').onclick = function(){
-    var tg = document.getElementById('tgAlso').checked;
-    box.remove();
-    call('bcastSend', { id:id, telegram:tg }).then(function(r){
-      if (r && r.ok) { toast('Live ho gaya. ' + r.reach + ' partners ko dikhega.'); reload(); }
-      else toast((r && r.err) || 'Nahi bheja ja saka.');
-    }).catch(function(){ toast('Network slow hai.'); });
-  };
+  /* 15 Aug 2026 - this was a hand-rolled box using getElementById for ids it had just created,
+     so opening a second one bound the handlers to the FIRST box's buttons and left the visible
+     one inert and undismissable. It also had no backdrop and no max-height, so a 1200-character
+     body pushed both buttons off the bottom of a phone with no way to scroll to them. */
+  var expired = c.till && String(c.till) < (new Date()).toISOString().slice(0,10);
+  ewAsk({
+    warn: 'Yeh sab partners ke app par turant dikhne lagega. Ek baar padh lein.' +
+          (expired ? '<br><b>Dhyaan dein:</b> is offer ki taareekh (' + esc(c.till) +
+                     ') nikal chuki hai.' : ''),
+    body: '<div class="prev"><span class="tag">' + esc(c.kind) + '</span>' +
+      '<h3>' + esc(c.title) + '</h3>' +
+      (c.body ? '<p>' + esc(c.body) + '</p>' : '') + '</div>' +
+      '<div class="fld" style="margin-top:12px"><label>' +
+      '<input type="checkbox" data-opt checked style="width:auto;min-height:0;margin-right:8px">' +
+      'Telegram par bhi bhejein</label></div>',
+    yes: 'Haan, bhej dein',
+    onYes: function(x){
+      call('bcastSend', { id:id, telegram: !!x.opt }).then(function(r){
+        if (r && r.ok) {
+          /* r.reach may be absent; "undefined partners ko dikhega" is not a message */
+          toast(r.reach != null ? 'Live ho gaya. ' + r.reach + ' partners ko dikhega.'
+                                : 'Live ho gaya.');
+          reload();
+        }
+        else toast((r && r.err) || 'Nahi bheja ja saka.');
+      }).catch(function(){ toast('Network slow hai.'); });
+    }
+  });
 }
-
 function endCast(id){
   call('bcastEnd', { id:id }).then(function(r){
     if (r && r.ok){ toast('Band kar diya. Record wahin hai, mita nahi.'); reload(); }
@@ -402,7 +453,7 @@ function personRow(p){
     '<div class="t">' + esc(p.name || p.refId) + ' ' + tags + '</div>' +
     '<div class="s">' + sub + '</div>' +
     '<div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap">' +
-      '<button onclick="resetPin(' + q + ')">PIN reset</button>' +
+      '<button onclick="askResetPin(' + q + ')">PIN reset</button>' +
       (blocked
         ? '<button onclick="setBlock(' + q + ',0)">Wapas chalu</button>'
         : '<button class="warn" onclick="setBlock(' + q + ',1)">Band karein</button>') +
@@ -430,7 +481,7 @@ function viewPeople(){
 
   h += '<div class="card"><div class="fld"><label>Dhoondhein</label>' +
     '<input id="pq" placeholder="Naam, ID ya number" value="' + esc(PQ) + '" ' +
-    'oninput="PQ=this.value;paintPeople(1)"></div>' +
+    'oninput="pqType(this.value)"></div>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
       ['', 'PARTNER', 'EXEC', 'OWNER'].map(function(k){
         return '<button class="' + (PKIND === k ? 'pri' : '') + '" style="min-height:38px" ' +
@@ -491,6 +542,29 @@ function paintPeople(keepFocus){
   }
 }
 
+/* 15 Aug 2026 - it was one tap, eight pixels from "Band karein", in a list of a hundred and
+   twenty people, on a phone. It throws away a PIN the partner chose and replaces it with the
+   last four digits of the number printed on the same row. Ask, and name him. */
+/* 15 Aug 2026 - every keystroke rebuilt up to 120 person rows plus the whole add-exec form,
+   then forced the caret to the end of the field - so going back to fix a typo mid-word threw
+   the cursor to the end. Wait until the typing stops. */
+var PQT = null;
+function pqType(v){
+  PQ = v;
+  if (PQT) clearTimeout(PQT);
+  PQT = setTimeout(function(){ PQT = null; paintPeople(1); }, 180);
+}
+function askResetPin(kind, refId, name){
+  ewAsk({
+    danger: true,
+    warn: '<b>' + esc(name || refId) + '</b> ka PIN reset karein?',
+    body: '<div class="note">Unka chuna hua PIN chala jayega aur wapas nahi aayega. ' +
+          'Naya PIN unke number ke aakhri 4 digit ho jayega - jab tak woh dobara sign in ' +
+          'karke apna PIN nahi chunte, koi bhi unka khaata khol sakta hai.</div>',
+    yes: 'Haan, reset karein',
+    onYes: function(){ resetPin(kind, refId, name); }
+  });
+}
 function resetPin(kind, refId, name){
   call('resetPin', { kind: kind, refId: refId, name: name }).then(function(r){
     if (r && r.ok){
@@ -608,7 +682,14 @@ function viewUpd(){
 
   h += VARM
      ? '<div class="warnbox"><b>Pakka?</b> ' + esc(verLabel(VAPP)) +
-       ' ka har phone agli baar khulte hi refresh hoga.</div>' +
+       ' ka har phone agli baar khulte hi refresh hoga.' +
+       /* 15 Aug 2026 - say the word "force". The old text promised a refresh and never
+          mentioned that old versions would be BLOCKED from running, which is the part that
+          cannot be undone from this screen. */
+       (VFORCE ? '<br><b>Zaroori update:</b> purana version chalega hi nahi. ' +
+                 'Agar naya build kharab hua to har phone atak jayega - yahan se wapas nahi ' +
+                 'ho sakta, theek file GitHub par daal kar dobara bhejni padegi.' : '') +
+       '</div>' +
        '<button class="pri wide" onclick="verSend()">Haan, update bhej dein</button>' +
        '<button class="wide" style="margin-top:8px" onclick="VARM=false;paintUpd()">Rehne dein</button>'
      : '<button class="pri wide" onclick="verArm()">Update bhejein</button>';
@@ -652,7 +733,11 @@ var VNOTE_HOLD = '';
 
 function verSend(){
   VARM = false;
-  call('verPush', { app: VAPP, note: VNOTE_HOLD, force: VFORCE ? 'true' : 'false' })
+  var forced = VFORCE;
+  /* 15 Aug 2026 - VFORCE was never reset. Push one urgent update with it ticked, switch the
+     dropdown to another app for a routine note, and it silently shipped forced again. */
+  VFORCE = false;
+  call('verPush', { app: VAPP, note: VNOTE_HOLD, force: forced ? 'true' : 'false' })
     .then(function(r){
       if (!r || !r.ok){ VMSG = ''; toast((r && r.err) || 'Nahi bheja gaya.'); paintUpd(); return; }
       VMSG = 'Update bhej diya - ' + esc(verLabel(r.app)) + ' &middot; version ' + esc(r.ver) +
@@ -841,13 +926,20 @@ function verWipe(v){
   var jobs = [];
   try {
     if (window.caches && caches.keys)
+      /* 15 Aug 2026 - this deleted EVERY cache on the origin. The console has no service worker
+         of its own, so it was destroying only the other apps' - the Saathi, Visit, Challan,
+         Collect and CRM shells that let those apps open in a basement - and forcing a 1.5 MB
+         re-download of the CRM. Nothing of the console's own was ever in there. */
       jobs.push(caches.keys().then(function(ks){
-        return Promise.all(ks.map(function(k){ return caches.delete(k); }));
+        return Promise.all(ks.filter(function(k){ return /console/i.test(k); })
+                            .map(function(k){ return caches.delete(k); }));
       }));
   } catch(e){}
   try {
     if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations)
+      /* likewise: only this app's registration, if it ever has one */
       jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){
+        rs = rs.filter(function(r){ return /\/console\//.test((r && r.scope) || ''); });
         return Promise.all(rs.map(function(r){ return r.unregister(); }));
       }));
   } catch(e){}
