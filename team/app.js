@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.271";
+  var APP_VERSION = "6.9.272";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -760,7 +760,11 @@
         mb + ' MB waiting.</div>' +
         '<div class="acts" style="margin-top:10px;flex-wrap:wrap;gap:8px">' +
         '<button class="btn" data-act="prf-push">⬆ Upload receipts now</button>' +
-        '<button class="btn ghost" data-act="prf-download">⬇ Save all to this computer</button></div>' +
+        '<button class="btn ghost" data-act="prf-download">⬇ Save all to this computer</button>' +
+        (prfSafeCount()
+          ? '<button class="btn ghost" data-act="prf-clearsafe" style="color:#0f766e;border-color:#99f6e4">' +
+            '✓ Clear the ' + prfSafeCount() + ' already on the server</button>'
+          : '') + '</div>' +
         '<div class="meta" style="font-size:12px;margin-top:8px;color:#7f1d1d">Saving them here does not' +
         ' remove them from the queue \u2014 it just means they are no longer only in this browser.</div>' +
         /* v6.9.271 - measured: the same Mac, the same wifi and the same endpoint sends a 1.3 MB
@@ -785,7 +789,9 @@
           (e.thumb ? proofThumbImg(e.thumb, 38) : "") +
           '<div class="grow" style="font-size:12.5px"><b>' + esc(e.no || "") + '</b> &middot; ' + esc(e.client || "") +
           '<div style="font-size:11px;margin-top:2px;color:' + (e.err ? '#b91c1c' : '#92400e') + '">' +
-          ((_prfUp && _prfUp.pk === e.pk)
+          (prfOnServer(e)
+             ? '<b style="color:#0f766e">\u2713 This receipt is already on the server \u2014 the copy here is a spare.</b>'
+             : (_prfUp && _prfUp.pk === e.pk)
              ? '<b style="color:#0f766e">Uploading… ' + _prfUp.pct + '% of ' + _prfUp.kb + ' KB</b>'
              : e.err ? 'Last try: ' + esc(String(e.err).slice(0, 90)) + (e.tries ? ' (' + e.tries + ' tries)' : '') +
                      (prfDue(e) ? '' : ' \u00b7 next try in ' + Math.max(1, Math.round((prfWait(e) - (Date.now() - e.lastTry)) / 60000)) + ' min')
@@ -796,6 +802,11 @@
           (Number(e.shrinks || 0) > 0
             ? '<div class="meta" style="font-size:10.5px;margin-top:2px;color:#b45309">made smaller ' +
               e.shrinks + '\u00d7 to fit</div>' : '') +
+          /* v6.9.272 - the only case in which letting the local copy go is safe */
+          (prfOnServer(e)
+            ? '<div style="margin-top:5px"><button class="btn sm ghost" data-act="prf-clear" data-pk="' +
+              esc(e.pk) + '" style="color:#0f766e;border-color:#99f6e4">Remove from this device</button></div>'
+            : '') +
           (ageTxt ? '<div class="meta" style="font-size:11px;margin-top:3px">' + esc(ageTxt) + '</div>' : "") +
           '</div></div>';
       });
@@ -4526,6 +4537,25 @@ window.addEventListener("beforeunload", function (ev) {
     prfStore(l);
   }
   function prfFailed() { return prfLoad().filter(function (x) { return !!x.err; }).length; }
+  /* ================= WHEN A QUEUED RECEIPT IS SAFE TO LET GO (v6.9.272) =========
+     A queued receipt is a photograph of a signed delivery held on one device. There is no
+     Delete button on this app anywhere, and putting one here would make losing such a document
+     a single mis-tap.
+
+     There is exactly one condition under which the local copy is not the only copy: the server
+     already holds a proof row for that same challan, carrying a real link to a hosted document.
+     Then the thing on this device is a duplicate of something filed, and keeping it only means
+     a red banner nagging about work that is done. That - and nothing weaker - is what unlocks
+     the button. `challanProof` reads the audit rows, so this is the server's own answer, not a
+     local flag we set ourselves. */
+  function prfOnServer(e) {
+    if (!e || !e.chId) return null;
+    var p = challanProof(e.chId);
+    return (p && p.url) ? p : null;
+  }
+  function prfSafeCount() {
+    return prfLoad().filter(function (e) { return !!prfOnServer(e); }).length;
+  }
   function prfBytes() {
     return prfLoad().reduce(function (a, x) { return a + String(x.b64 || "").length; }, 0);
   }
@@ -20906,6 +20936,33 @@ function viewCatalogue() {
        own disk in one press, so clearing the browser can no longer lose them. It does NOT
        clear the queue - they still go up, and the audit row is still what makes them findable
        from the app. This is a safety net, not a substitute. */
+    /* v6.9.272 - letting go of a local copy the server already has. Never a plain delete: the
+       button only exists on a receipt prfOnServer() vouches for, and the confirm names the
+       challan and says where the document now lives. */
+    if (act === "prf-clear") {
+      var cpk = t.getAttribute("data-pk");
+      var ce = prfLoad().filter(function (x) { return x.pk === cpk; })[0];
+      if (!ce) { toast("That one is already gone."); renderBg(); return; }
+      var cp = prfOnServer(ce);
+      if (!cp) { toast("Not yet \\u2014 that receipt is not on the server, so this device is holding the only copy."); return; }
+      if (!window.confirm("Remove the copy of " + (ce.no || "this receipt") + " held on this device?\n\n" +
+        "The signed document itself stays on the server and on the challan \\u2014 this only clears " +
+        "the upload queue on this computer.")) return;
+      prfDrop(cpk); _prfCache = null; renderBg(); syncBanner();
+      toast("Cleared. The receipt is still on " + (ce.no || "the challan") + ".");
+      return;
+    }
+    if (act === "prf-clearsafe") {
+      var safe = prfLoad().filter(function (x) { return !!prfOnServer(x); });
+      if (!safe.length) { toast("None of them are on the server yet \\u2014 nothing is safe to clear."); return; }
+      if (!window.confirm(safe.length + " receipt(s) are already filed on the server. Clear those copies " +
+        "from this device?\n\n" + safe.map(function (x) { return "\\u2022 " + (x.no || "?"); }).join("\n") +
+        "\n\nThe documents themselves stay on their challans. Anything NOT yet on the server is left alone.")) return;
+      safe.forEach(function (x) { prfDrop(x.pk); });
+      _prfCache = null; renderBg(); syncBanner();
+      toast("Cleared " + safe.length + ". " + (prfCount() ? prfCount() + " still waiting to upload." : "Nothing left waiting."));
+      return;
+    }
     if (act === "line-test") { runLineTest(); return; }
     if (act === "prf-download") {
       var dl = prfLoad();
