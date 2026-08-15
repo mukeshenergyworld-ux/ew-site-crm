@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.262";
+  var APP_VERSION = "6.9.263";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1129,22 +1129,35 @@ window.addEventListener("beforeunload", function (ev) {
     return out;
   }
 
-  function loadCatalog() {
+  /* v6.9.263 - MEASURED: a warm boot pulled the catalogue TWICE. The warm paint calls
+     loadCatalog(), and then the teamAuth reply calls it again a few seconds later - 224 KB
+     and about 3s of Apps Script, thrown away. Neither call is wrong on its own, so rather
+     than remove one, the function itself now refuses to re-download something it already
+     has. The Reload catalogue button passes force and is unaffected. */
+  var _catAt = 0, _catP = null;
+  function loadCatalog(force) {
+    if (!force) {
+      if (_catP) return _catP;                                  /* one already in the air */
+      if (_catAt && Date.now() - _catAt < 300000) return Promise.resolve();
+    }
     try {
       var c = JSON.parse(bigGet(CAT_KEY) || "null");
       if (c && c.v === CAT_V && c.at && (Date.now() - c.at < 86400000) && c.items && c.items.length) PRODUCTS = c.items;
     } catch (e) {}
-    return fetch(GAS + "?action=catalog", { cache: "no-store" })
+    _catP = fetch(GAS + "?action=catalog", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (rows) {
         var items = parseCatalog(rows);
         if (items.length) {
           PRODUCTS = items;
           PRODLIST_HTML = null;
+          _catAt = Date.now();
           bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items }));
         }
+        _catP = null;
       })
-      .catch(function () {});
+      .catch(function () { _catP = null; });
+    return _catP;
   }
 
   /* ---- v6.9.246: SAVING ONE PRODUCT SHOULD COST ONE ROUND TRIP ----
@@ -7325,14 +7338,29 @@ function viewCatalogue() {
     };
     var missing = list.filter(function (l) { return wanted(l.brand) && !LOGO_PICS[normB(l.brand)]; });
     if (!missing.length) { LOGO_READY = Promise.resolve(true); return LOGO_READY; }
-    LOGO_READY = Promise.all(missing.map(function (l) {
+    /* v6.9.263 - THREE AT A TIME, NOT THIRTEEN.
+       Promise.all over thirteen logos fires thirteen Apps Script calls in the same
+       millisecond. Measured on his phone: each took 2.7-3.8s, and the sign-in and the book,
+       which went out a hundred milliseconds later, were pushed from the 2.2s they cost on
+       their own to 4.3s and 4.5s - because they were queued behind the pictures. A phone
+       opens six connections to a host and Apps Script serves one user's requests a few at a
+       time; asking for thirteen does not make thirteen arrive, it makes everything late.
+       Three in flight is enough to keep the line busy and leaves room for the work that
+       matters. On a warm device none of this runs at all - see restoreLogoCache in boot. */
+    var LOGO_LANES = 3, _li = 0;
+    function lane() {
+      if (_li >= missing.length) return Promise.resolve(null);
+      var l = missing[_li++];
       return loadPic(l.url, true).then(function (src) {
-        if (!src) return null;
-        var d = PIC_DIM[l.url] || { w: 100, h: 40 };
-        LOGO_PICS[normB(l.brand)] = { src: src, w: d.w, h: d.h };
-        return true;
-      }).catch(function () { return null; });
-    })).then(function (r) { saveLogoCache(); return r; });
+        if (src) {
+          var d = PIC_DIM[l.url] || { w: 100, h: 40 };
+          LOGO_PICS[normB(l.brand)] = { src: src, w: d.w, h: d.h };
+        }
+      }).catch(function () { }).then(lane);
+    }
+    var lanes = [];
+    for (var q = 0; q < Math.min(LOGO_LANES, missing.length); q++) lanes.push(lane());
+    LOGO_READY = Promise.all(lanes).then(function (r) { saveLogoCache(); return r; });
     return LOGO_READY;
   }
   function preloadLogos() { logosReady(); }
@@ -18834,7 +18862,15 @@ function viewCatalogue() {
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
     _clDueCache = null; _clStageCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
-    if (!LOGO_PRE && S.data.logos && S.data.logos.length) { LOGO_PRE = 1; preloadLogos(); }
+    /* v6.9.263 - warming the logo cache is for the NEXT quote PDF, never for this paint;
+       nothing on screen waits on it. Started from the paint it competed with teamAuth and
+       teamGet for the same connections. Four seconds later the boot is done and the line is
+       idle, which is the right moment to fill a cache. quotePdf still calls logosReady()
+       directly and still waits on it, so a PDF asked for sooner is not affected. */
+    if (!LOGO_PRE && S.data.logos && S.data.logos.length) {
+      LOGO_PRE = 1;
+      setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
+    }
     if (!S.pin) { renderLogin(); return; }
     var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
     var tabs = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
@@ -19499,7 +19535,7 @@ function viewCatalogue() {
     if (act === "pv-back")  { S.pvOpen = ""; render(); return; }
     if (act === "pv-more")  { S.pvMore = (S.pvMore || 60) + 60; render(); return; }
     if (act === "pay-qclear") { S.payq = ""; render(); return; }
-    if (act === "cat-reload") { toast("Reloading catalogue..."); loadCatalog().then(function () { toast(PRODUCTS.length + " products loaded."); renderBg(); }); return; }
+    if (act === "cat-reload") { toast("Reloading catalogue..."); loadCatalog(true).then(function () { toast(PRODUCTS.length + " products loaded."); renderBg(); }); return; }
 
     if (act === "nav-toggle") { S.navOpen = !S.navOpen; render(); return; }
     if (act === "nav-close") { S.navOpen = false; render(); return; }
@@ -23155,7 +23191,21 @@ function viewCatalogue() {
        the warm paint or the app would open on a holding screen instead of the book. This is
        a local read of a few tens of milliseconds, against a boot that already waits on two
        network calls - and it gives up after 2.5s rather than ever blocking the app. */
-    bigPreload(sess && sess.user ? ["ew_snap_" + sess.user] : []).then(function () { boot2(sess); });
+    bigPreload(sess && sess.user ? ["ew_snap_" + sess.user] : []).then(function () {
+      /* v6.9.263 - THE REGRESSION THAT COST THIRTEEN CALLS A BOOT.
+         restoreLogoCache() is also called at eval time, near its own definition, which is
+         where it has always been. That worked while the cache lived in localStorage: a
+         synchronous read, available the instant the script ran. v6.9.257 moved it to
+         IndexedDB, which is asynchronous and is not open yet at eval time - so bigGet()
+         found nothing in _big, fell back to a localStorage key that v6.9.257 had itself
+         deleted, and returned null. Every boot since has re-downloaded all thirteen brand
+         logos through Apps Script, on a device that already had all thirteen.
+         Verified on his phone: IndexedDB held ew_logos_v2, 278 KB, thirteen brands, and the
+         app fetched every one of them again anyway.
+         This is the first moment the cache can actually be read. */
+      try { restoreLogoCache(); } catch (e) { }
+      boot2(sess);
+    });
   })();
   function boot2(sess) {
     try { startFlushTicker(); } catch (e) {}
