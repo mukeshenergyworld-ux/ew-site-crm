@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.283";
+  var APP_VERSION = "6.9.284";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4098,8 +4098,44 @@ window.addEventListener("beforeunload", function (ev) {
   var BF_LABEL = { won: "Won", live: "Quoted \u2014 in play", none: "Yet to quote",
                    lost: "Lost", nr: "Not required" };
   var BF_SHORT = { won: "Won", live: "Quoted", none: "-", lost: "Lost", nr: "NR" };
-  var BF_INK = { won: [13, 118, 108], live: [180, 83, 9], none: [30, 64, 175],
-                 lost: [185, 28, 28], nr: [120, 130, 145] };
+  /* ================= THE FIVE COLOURS (v6.9.284) =================
+     Validated, not chosen by eye. The five I first picked failed the one pair that matters:
+     lost against quoted measured 9.1 under NORMAL vision (floor is 15) and 4.9 under
+     deuteranopia - two states that mean opposite things about a customer, that a person with
+     perfect sight could not reliably separate at a glance. Two others read as grey.
+     These five measure 20.8 at worst under normal vision. Red against green is 7.2 under
+     protanopia, which is allowed only with a second channel - so every use here prints the WORD
+     as well as the colour, and the bar segments are separated by a real gap. That is also what
+     makes it survive a black-and-white printer. */
+  var BF_INK = { won:  [0, 131, 0],       /* #008300 */
+                 live: [237, 161, 0],     /* #eda100 */
+                 none: [42, 120, 214],    /* #2a78d6  - the opportunity, and what he is hunting */
+                 lost: [227, 73, 72],     /* #e34948 */
+                 nr:   [154, 163, 173] }; /* #9aa3ad  - achromatic on purpose: recessive */
+  /* one bar that answers "is this brand worth a week" without reading a row */
+  function bfBar(doc, x, y, w, h, counts, total) {
+    if (!(total > 0)) return;
+    var GAP = 0.6, cursor = x;
+    BF_ORDER.forEach(function (k, i) {
+      var n = counts[k] || 0;
+      if (!n) return;
+      var segs = BF_ORDER.filter(function (kk) { return (counts[kk] || 0) > 0; }).length;
+      var avail = w - GAP * Math.max(0, segs - 1);
+      var seg = Math.max(1.4, avail * (n / total));
+      var ink = BF_INK[k];
+      doc.setFillColor(ink[0], ink[1], ink[2]);
+      doc.rect(cursor, y, seg, h, "F");
+      /* the count INSIDE the segment when it fits - a direct label, so the colour is never the
+         only thing carrying the number */
+      if (seg >= 9) {
+        doc.setTextColor(k === "live" || k === "nr" ? 17 : 255, k === "live" || k === "nr" ? 34 : 255,
+                         k === "live" || k === "nr" ? 45 : 255);
+        doc.setFontSize(7.4);
+        doc.text(String(n), cursor + seg / 2, y + h / 2 + 2.4, { align: "center" });
+      }
+      cursor += seg + GAP;
+    });
+  }
   function bfScope() {
     var custs = S.data.clients || [];
     /* an executive downloads his own book, the office downloads all of it - the same rule the
@@ -4205,18 +4241,27 @@ window.addEventListener("beforeunload", function (ev) {
         y = 34;
       };
       band();
-      /* the count first, because that is the decision: is this brand worth a week */
+      /* v6.9.284 - the shape of the brand, before any of the names. The bar is the decision;
+         the legend under it is the detail. */
+      F("bold"); doc.setFontSize(9); doc.setTextColor(17, 34, 45);
+      doc.text("Where " + pdfSafe(String(brand)) + " stands", L, y);
+      y += 4;
+      bfBar(doc, L, y, R - L, 9, n, rows.length);
+      y += 15;
       var CW = (R - L) / 5;
-      doc.setFillColor(240, 253, 250); doc.rect(L, y - 4.5, R - L, 17, "F");
-      doc.setDrawColor(153, 246, 228); doc.setLineWidth(0.3); doc.rect(L, y - 4.5, R - L, 17);
       BF_ORDER.forEach(function (k, i) {
-        var x = L + 3 + i * CW, ink = BF_INK[k];
-        F("bold"); doc.setFontSize(6.8); doc.setTextColor(ink[0], ink[1], ink[2]);
-        doc.text(String(BF_LABEL[k]).toUpperCase(), x, y);
-        F("bold"); doc.setFontSize(13); doc.setTextColor(17, 34, 45);
-        doc.text(String(n[k] || 0), x, y + 8);
+        var x = L + i * CW, ink = BF_INK[k];
+        doc.setFillColor(ink[0], ink[1], ink[2]);
+        doc.rect(x, y - 2.6, 3, 3, "F");                     /* the swatch */
+        F("bold"); doc.setFontSize(6.6); doc.setTextColor(90, 100, 112);
+        doc.text(String(BF_LABEL[k]).toUpperCase(), x + 4.4, y);
+        F("bold"); doc.setFontSize(12); doc.setTextColor(17, 34, 45);
+        doc.text(String(n[k] || 0), x + 4.4, y + 7);
+        F("normal"); doc.setFontSize(6.4); doc.setTextColor(140, 150, 162);
+        doc.text(rows.length ? Math.round((n[k] || 0) / rows.length * 100) + "%" : "0%",
+                 x + 4.4 + doc.getTextWidth(String(n[k] || 0)) + 2, y + 7);
       });
-      y += 24;
+      y += 18;
       var head = function () {
         doc.setFillColor(30, 41, 59); doc.rect(L, y - 5, R - L, 8, "F");
         F("bold"); doc.setFontSize(6.8); doc.setTextColor(255, 255, 255);
@@ -4239,15 +4284,27 @@ window.addEventListener("beforeunload", function (ev) {
         if (!grp.length) return;
         brk(24);
         var ink = BF_INK[k];
-        F("bold"); doc.setFontSize(9.5); doc.setTextColor(ink[0], ink[1], ink[2]);
-        doc.text(BF_LABEL[k] + "  \u00b7  " + grp.length, L, y);
-        y += 3;
+        /* v6.9.284 - a filled chip, not just coloured text: at 9.5pt a coloured word is hard to
+           place against four others, a filled block is not. The word is inside it either way. */
+        var lab = BF_LABEL[k] + "  \u00b7  " + grp.length;
+        F("bold"); doc.setFontSize(8.6);
+        var cw = doc.getTextWidth(lab) + 7;
+        doc.setFillColor(ink[0], ink[1], ink[2]);
+        doc.roundedRect(L, y - 4.4, cw, 6.6, 1.4, 1.4, "F");
+        doc.setTextColor(k === "live" || k === "nr" ? 17 : 255, k === "live" || k === "nr" ? 34 : 255,
+                         k === "live" || k === "nr" ? 45 : 255);
+        doc.text(lab, L + 3.5, y);
+        y += 5.4;
         doc.setDrawColor(ink[0], ink[1], ink[2]); doc.setLineWidth(0.5); doc.line(L, y, R, y);
         y += 7;
         head();
         grp.forEach(function (r, i) {
           if (brk(7)) head();
           if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4, R - L, 6.4, "F"); }
+          /* a rule down the left in the section's colour, so the eye can jump straight to the
+             block it wants without reading the headings */
+          doc.setFillColor(ink[0], ink[1], ink[2]);
+          doc.rect(L - 2.6, y - 4, 1.2, 6.4, "F");
           F("normal"); doc.setFontSize(7.2); doc.setTextColor(120, 130, 145);
           doc.text(String(i + 1), L + 2, y);
           F("bold"); doc.setFontSize(8); doc.setTextColor(17, 34, 45);
