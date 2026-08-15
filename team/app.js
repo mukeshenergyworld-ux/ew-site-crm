@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.279";
+  var APP_VERSION = "6.9.280";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5603,6 +5603,23 @@ window.addEventListener("beforeunload", function (ev) {
       /* still there? another sweep, or the button, may have sent it while this one queued */
       var live = prfLoad().filter(function (x) { return x.pk === e.pk; })[0];
       if (!live) return step();
+      /* ===== v6.9.280 - RESTORE FIRST, THEN SEND =====
+         In .279 this ran only after a send failed, which was correct while the failures were
+         real. Now that the transport works there is no failure to hang it on, so the queue
+         posted his receipt exactly as the old theory had left it: a 103 KB photograph with the
+         document stripped off. Anything cut down under that theory is put back to full size
+         first - once, because prfShrink stamps build = PRF_BUILD - and then sent. */
+      var cutDown = prfStale(live) && (Number(live.shrinks || 0) > 0 || !!live.jpg);
+      if (cutDown) {
+        return prfShrink(e.pk, { restart: true }).then(function (did) {
+          if (did) { renderBg(); toast("Putting " + (e.no || "the receipt") + " back to full size first\u2026"); }
+          send(prfLoad().filter(function (x) { return x.pk === e.pk; })[0] || live);
+        }).catch(function () { send(live); });
+      }
+      return send(live);
+    };
+    var send = function (live) {
+      var e = live;
       prfSend(live).then(function (ok) {
         if (ok) {
           sent++; _prfCache = null;
