@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.281";
+  var APP_VERSION = "6.9.282";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -12639,22 +12639,52 @@ function viewCatalogue() {
      Cached by URL for the session: he will export the same statement two or three times while
      deciding what to tick, and the second export should be instant. */
   var RCPT_IMG = {};
+  /* What Google actually answers, measured on his own receipts:
+       a receipt PDF   -> lh3 .../d/<id>=w1400 renders page one as 1024 x 1448. Good.
+       a receipt JPEG  -> the same URL can 404, because the preview is generated lazily and for a
+                          file filed an hour ago it does not exist yet. But .../uc?export=download
+                          returns the file itself - 103 KB, and it is already an image.
+     So: the rendering first (a PDF has no other way in), then the file itself. */
+  function rcptMime(b64, given) {
+    var g = String(given || "").toLowerCase();
+    if (g.indexOf("image/") === 0) return g;
+    /* the raw endpoint says application/octet-stream, so read the bytes rather than believe it */
+    var head = String(b64 || "").slice(0, 12);
+    if (head.indexOf("/9j/") === 0) return "image/jpeg";
+    if (head.indexOf("iVBORw0KGgo") === 0) return "image/png";
+    return "";                       /* JVBERi0 = a PDF, and no <img> can draw one */
+  }
+  function rcptUrls(u) {
+    var out = [driveImg(u, 1400)];
+    var m = String(u || "").match(/\/d\/([A-Za-z0-9_\-]{20,})/) ||
+            String(u || "").match(/[?&]id=([A-Za-z0-9_\-]{20,})/);
+    if (m) out.push("https://drive.google.com/uc?export=download&id=" + m[1]);
+    return out;
+  }
   function receiptImage(c) {
     var r = chProofAny(c);
     if (!r.has || !r.url) return Promise.resolve(null);
     var key = String(r.url);
     if (RCPT_IMG[key] !== undefined) return Promise.resolve(RCPT_IMG[key]);
-    return api("imgB64", { url: driveImg(key, 1400) }, 90000).then(function (x) {
-      if (!x || !x.ok || !x.b64) { RCPT_IMG[key] = null; return null; }
-      /* re-encode once: the raw thumbnail is a 1024 px PNG on some files, and twenty of those
-         make a statement nobody can send on WhatsApp */
-      return shrinkPic("data:" + (x.mime || "image/jpeg") + ";base64," + x.b64, 1400, 0.72)
-        .then(function (p) {
-          RCPT_IMG[key] = p ? { src: p.src, w: p.w, h: p.h } : null;
+    var tries = rcptUrls(key);
+    var attempt = function (n) {
+      if (n >= tries.length) { RCPT_IMG[key] = null; return Promise.resolve(null); }
+      return api("imgB64", { url: tries[n] }, 90000).then(function (x) {
+        if (!x || !x.ok || !x.b64) return attempt(n + 1);
+        var mime = rcptMime(x.b64, x.mime);
+        if (!mime) return attempt(n + 1);
+        /* re-encode once: a rendering can come back as a 1024px PNG, and twenty of those make a
+           statement nobody can send */
+        return shrinkPic("data:" + mime + ";base64," + x.b64, 1400, 0.72).then(function (p) {
+          if (!p) return attempt(n + 1);
+          RCPT_IMG[key] = { src: p.src, w: p.w, h: p.h };
           return RCPT_IMG[key];
         });
-    }).catch(function () { RCPT_IMG[key] = null; return null; });
+      }).catch(function () { return attempt(n + 1); });
+    };
+    return attempt(0);
   }
+
   function receiptImages(list, note) {
     var q = (list || []).filter(function (c) { var r = chProofAny(c); return r.has && r.url; });
     var out = {}, i = 0, done = 0;
