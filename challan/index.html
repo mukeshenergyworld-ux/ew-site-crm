@@ -69,6 +69,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .empty{text-align:center;color:#64748b;padding:26px 14px;font-size:13.5px}
 /* the toast sits ABOVE whatever is already at the bottom - the tab bar, and the
    icon card when it is up. --ew-bottom is measured, not guessed. See bottomFurniture(). */
+#ew_sync_banner{position:fixed;left:0;right:0;bottom:var(--ew-nav,56px);z-index:29;
+  background:#9a3412;color:#fff;padding:8px 12px calc(8px);font-size:12.5px;box-shadow:0 -4px 14px rgba(0,0,0,.12)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom) + var(--ew-bottom,0px));transition:bottom .16s ease;background:#0f172a;color:#fff;
   padding:11px 16px;border-radius:10px;font-size:13.5px;z-index:100000;max-width:88%;box-shadow:0 6px 18px rgba(0,0,0,.3)}
 .login{max-width:340px;margin:9vh auto;background:#fff;border-radius:16px;padding:26px 22px;
@@ -140,7 +142,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.9.1";
+  var APP_VERSION = "1.10.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
   var SNAP  = "ew_challan_snap";
@@ -209,6 +211,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
   function syncBottomVar() {
     try { document.documentElement.style.setProperty("--ew-bottom", bottomFurniture() + "px"); } catch (e) {}
+    /* v1.10.0 - the held-work bar sits ON the tab bar, so it has to know how tall the tab
+       bar actually is. Measured, not guessed: it is taller on a phone with a home
+       indicator, which is most of the phones this runs on. */
+    try {
+      var nav = document.querySelector(".nav"), nh = 0;
+      if (nav) { var r = nav.getBoundingClientRect(); nh = r && r.height ? Math.ceil(r.height) : 0; }
+      document.documentElement.style.setProperty("--ew-nav", (nh || 56) + "px");
+    } catch (e) {}
   }
   var _bfWatch = false;
   function watchBottom() {
@@ -303,13 +313,23 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (Object.prototype.hasOwnProperty.call(_big, k)) return _big[k];
     try { return localStorage.getItem(k); } catch (e) { return null; }
   }
-  function bigSet(k, v) {
+  function bigSet(k, v) { bigSetX(k, v); return true; }
+  /* v1.10.0 - THE SAME WRITE, BUT IT ANSWERS.
+     bigSet returned true whatever happened: the IndexedDB write is behind a promise and the
+     localStorage fallback swallows its own exception. That was tolerable while the big box
+     only ever held a CACHE - a catalogue that fails to store is re-fetched tomorrow and
+     nobody is worse off. The write journal below is not a cache. It is the only copy of a
+     challan a man typed in a basement, and if it did not store, he has to be told NOW, while
+     he is still standing there and can write it in the paper book - not in three days when
+     somebody notices the delivery is on no screen. */
+  function bigSetX(k, v) {
     _big[k] = v;
-    idbSet(k, v).then(function (ok) {
-      if (ok) { try { localStorage.removeItem(k); } catch (e) {} return; }
-      try { localStorage.setItem(k, v); } catch (e) {}   /* no IndexedDB - as before */
+    return idbSet(k, v).then(function (ok) {
+      if (ok) { try { localStorage.removeItem(k); } catch (e) {} return true; }
+      try { localStorage.setItem(k, v); return true; } catch (e) { return false; }
+    }).catch(function () {
+      try { localStorage.setItem(k, v); return true; } catch (e) { return false; }
     });
-    return true;
   }
   function bigDel(k) { delete _big[k]; idbDel(k); try { localStorage.removeItem(k); } catch (e) {} }
   /* Read into memory before the first paint, and bring across whatever the old box holds.
@@ -347,20 +367,412 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      indistinguishable from one still working, and a man in a godown would stand there
      watching a disabled button. It fails, and says so, instead. */
   var API_TIMEOUT = 25000;
+  /* ================= WHY THESE MESSAGES CHANGED (v1.10.0) =================
+     THIS WAS FOUND BY LOOKING AT IT. The held-work bar was built to show the reason a record
+     has not gone up, the app was loaded in a browser with the connection cut, and the bar
+     read: "Failed to fetch". That is the browser talking to a programmer. The man reading it
+     is standing in a godown deciding whether to write the challan in the paper book.
+
+     Worse, it was often not even true. Three faults, all invisible until the reason was put
+     on a screen where somebody would read it:
+
+       1. A TIMEOUT SAID THE USER DID IT. On the deadline this called ctrl.abort(), and the
+          browser rejects an aborted fetch with "The user aborted a request." Nobody aborted
+          anything. The one failure a man can act on - the line is too slow, try again by the
+          window - was reported as something he had done.
+       2. r.json() ON A REPLY THAT IS NOT JSON. A /exec POST is a 302 to
+          script.googleusercontent.com, and when that lands on a Google sign-in page (wrong
+          account on that browser, a stale cookie) or a quota page, what comes back is HTML
+          with HTTP 200. r.json() throws "Unexpected token '<'". The CRM spent eight releases
+          blaming a healthy connection for exactly this before it read the body as text first.
+       3. NO DEADLINE AT ALL WITHOUT AbortController. The timer was only ever armed inside
+          `if (ctrl)`. On a browser without it, the very stall this function's comment says it
+          fixed could still hang for ever. The promise now settles on the deadline whether or
+          not the request itself can be cancelled.
+
+     And ONE FLAT 25s FOR EVERY CALL was wrong in both directions. Saving one row and pushing
+     a 1.3 MB receipt PDF are not the same call. The CRM measured a challan save taking longer
+     than 30s while competing with logo downloads, and a receipt PDF needing ~70s of upload
+     alone on a domestic uplink - so a 25s deadline was firing seconds before the transfer
+     finished, and firing means starting again from zero. A deadline that is too short does
+     not protect anybody; it just turns a slow save into an abandoned one. */
+  var API_MS_BY_ACTION = {
+    teamSave: 60000, teamGet: 60000, catalog: 60000, pdfHost: 240000,
+    challanNo: 30000, returnNo: 30000, challanMove: 45000
+  };
   function api(action, extra, ms) {
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
+    var limit = Number(ms) || API_MS_BY_ACTION[action] || API_TIMEOUT;
     var ctrl = null, timer = null;
-    try { ctrl = new AbortController(); } catch (e) { ctrl = null; }
+    try { if (window.AbortController) ctrl = new AbortController(); } catch (e) { ctrl = null; }
     var opts = { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body: JSON.stringify(body) };
     if (ctrl) opts.signal = ctrl.signal;
-    var p = fetch(GAS, opts).then(function (r) { return r.json(); });
-    if (ctrl) {
-      timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, Number(ms) || API_TIMEOUT);
-      p = p.then(function (v) { clearTimeout(timer); return v; }, function (e) { clearTimeout(timer); throw e; });
-    }
-    return p;
+    var done = function () { if (timer) { clearTimeout(timer); timer = null; } };
+    return new Promise(function (res, rej) {
+      /* belt and braces: cancel the request if we can, and settle the promise either way */
+      timer = setTimeout(function () {
+        timer = null;
+        try { if (ctrl) ctrl.abort(); } catch (e) {}
+        rej(new Error("no answer in " + Math.round(limit / 1000) + "s"));
+      }, limit);
+      fetch(GAS, opts)
+        .then(function (r) {
+          return r.text().then(function (txt) {
+            var j = null;
+            try { j = JSON.parse(txt); } catch (e) { j = null; }
+            if (j) return j;
+            var head = String(txt || "").replace(/\s+/g, " ").slice(0, 60);
+            if (/<html|<!doctype/i.test(txt) && /sign in|signin|accounts\.google/i.test(txt)) {
+              throw new Error("the server asked this browser to sign in to Google");
+            }
+            if (/quota|exceeded|too many/i.test(txt)) throw new Error("Google Apps Script quota reached");
+            throw new Error("the server sent something that is not JSON (HTTP " + r.status +
+                            (head ? ", starts: " + head : "") + ")");
+          });
+        })
+        .then(function (j) { done(); res(j); })
+        .catch(function (e) {
+          done();
+          var msg = (e && e.message) ? String(e.message) : "";
+          /* the browser's own words, turned into the firm's */
+          if (/aborted|AbortError/i.test(msg) && /abort/i.test(msg)) msg = "no answer in " + Math.round(limit / 1000) + "s";
+          else if (/failed to fetch|networkerror|load failed/i.test(msg)) msg = "no signal \u2014 the phone could not reach the server";
+          rej(new Error(msg || "no answer from the server"));
+        });
+    });
   }
-  function saveRow(tab, row) { return api("teamSave", { tab: tab, row: row }); }
+  /* ================= THE WRITE JOURNAL (v1.10.0) ==========================
+     WHAT WAS WRONG. This app had no offline write path of any kind. saveRow was a bare
+     fetch: if it failed, the promise rejected, a toast said so, and the challan existed
+     nowhere but in the tab's memory. Close the app, or let the phone discard it - which is
+     exactly what a phone does to a backgrounded tab when it wants the memory - and a
+     delivery that has already left the godown is gone. Measured against v1.9.1: a save
+     rejected by the network wrote ZERO bytes to any store on the device.
+
+     A godown basement is where this app is used and where there is no signal. So the one
+     place the app must never lose work is the one place it always did.
+
+     WHAT IT DOES NOW. Every row write goes into a journal on this device FIRST, and only
+     then to the server. A confirmed save clears its entry. An unconfirmed one stays, is
+     shown, and is retried - now, on reconnect, on every foregrounding, and on the next
+     boot. This is a port of the CRM's recovery journal, which earned every one of its parts
+     the hard way, so the parts are kept rather than re-derived:
+
+       * ONE RECORD, ONE ENTRY. Saving twice because the app said it failed must not put two
+         entries in the journal (CRM v6.9.264 - he photographed exactly that).
+       * A TIMEOUT IS NOT A FAILURE. Apps Script routinely writes the row and then takes
+         longer than the deadline to say so. Every fresh pull is checked: if the server
+         already holds what we sent, field for field, the entry is finished with. Biased
+         towards keeping - the worst a wrong guess can do is retry a save that did not need
+         it, which is an upsert by id and changes nothing (CRM v6.9.264).
+       * ONE STUCK RECORD MUST NEVER BLOCK THE QUEUE. The loop steps past a refusal (CRM).
+       * A WATCHDOG ON THE FLAG. One hung call once froze an entire session's queue because
+         the "already flushing" flag was never cleared (CRM v6.9.260).
+       * BACK OFF. A record the server keeps refusing was retried every 45s for ever, which
+         achieves nothing and costs the phone its battery (CRM v6.9.261).
+
+     WHAT IS DELIBERATELY NOT IN IT.
+
+       * AN APPROVAL IS NEVER JOURNALLED. Queuing one would mean keeping an approval PIN on
+         the device to replay it with. PINs live in the TeamUsers tab and in the man's head,
+         nowhere else, and passing a challan releases real material. Approving needs signal,
+         and the app says so.
+       * THE RECEIPT PDF STILL NEEDS SIGNAL. Hosting the document is a 1.3 MB upload, not a
+         row; the CRM took ten releases to make that queue safe and a half-port would be
+         worse than none. What IS journalled is everything after the upload - the proof row
+         and the received flag - so the old window where the PDF was hosted and then the
+         audit row was lost is closed.
+
+     WHERE IT LIVES. The big box (IndexedDB), not localStorage. team/, challan/ and collect/
+     are folders on one site and so share a single 5 MB localStorage box between them, which
+     was measured 88% full on the owner's phone before anything was queued. The CRM's
+     journal is in that box and has a whole release about running out of it. This one is not. */
+  var JRN_KEY = "ew_challan_journal_v1";
+  var _jrnSeq = 0, _jrnTold = false, _flushing = false, _flushDog = null;
+  var _flushFails = 0, _flushSkip = 0, _flushTick = null;
+
+  function jrnLoad() {
+    try { var l = JSON.parse(bigGet(JRN_KEY) || "[]"); return Array.isArray(l) ? l : []; }
+    catch (e) { return []; }
+  }
+  function jrnCount() { return jrnLoad().length; }
+  function jrnStore(l) {
+    S.jrnCount = l.length;
+    bigSetX(JRN_KEY, JSON.stringify(l)).then(function (ok) {
+      S.jrnDurable = !!ok;
+      /* Told once, loudly, and only when it is actually true. A man who cannot be promised
+         his work is safe must hear it while he can still write it in the book. */
+      if (!ok && l.length && !_jrnTold) {
+        _jrnTold = true;
+        try { toast("This phone will not keep unsent work — write it in the paper book too, and refresh where there is signal."); } catch (e) {}
+      }
+      jrnPaint();
+    });
+    jrnPaint();
+  }
+  /* Two rows are the same record if any natural key matches. _lid is this app's own key,
+     minted for rows the sheet numbers itself (a driver, an audit line), so those dedupe too. */
+  function natEq(a, b) {
+    if (!a || !b) return false;
+    if (b._lid && a._lid === b._lid) return true;
+    if (b.id && a.id === b.id) return true;
+    if (b.challanNo && a.challanNo) return a.challanNo === b.challanNo;
+    if (b.returnNo && a.returnNo) return a.returnNo === b.returnNo;
+    return false;
+  }
+  function jrnPut(e) {
+    var l = jrnLoad().filter(function (x) {
+      if (x.pk === e.pk) return false;
+      if (e.kind === "row" && x.kind === "row" && x.tab === e.tab && natEq(x.row, e.row)) return false;
+      if (e.kind === "move" && x.kind === "move" && x.id === e.id) return false;
+      return true;
+    });
+    l.push(e); jrnStore(l); return e;
+  }
+  function jrnMark(pk, err) {
+    var l = jrnLoad();
+    l.forEach(function (x) { if (x.pk === pk) { x.err = String(err || "").slice(0, 140); x.tries = (x.tries || 0) + 1; } });
+    jrnStore(l);
+  }
+  function jrnPatch(pk, fields) {
+    var l = jrnLoad();
+    l.forEach(function (x) { if (x.pk === pk) Object.assign(x, fields); });
+    jrnStore(l);
+  }
+  function jrnDrop(pk) { jrnStore(jrnLoad().filter(function (x) { return x.pk !== pk; })); }
+  function jrnFor(rec) {
+    if (!rec) return null;
+    var l = jrnLoad();
+    for (var i = 0; i < l.length; i++) {
+      if (l[i].kind === "row" && natEq(l[i].row, rec)) return l[i];
+    }
+    return null;
+  }
+  function jrnMoveFor(id) {
+    var l = jrnLoad();
+    for (var i = 0; i < l.length; i++) if (l[i].kind === "move" && String(l[i].id) === String(id)) return l[i];
+    return null;
+  }
+
+  /* Did this entry already land? Deliberately exact and deliberately biased towards keeping:
+     every field we sent must already match what the server holds. If ANYTHING differs the
+     entry is kept and retried. It can never drop work the server does not have. */
+  function jrnLanded(e, srv) {
+    if (!srv || !e || !e.row) return false;
+    var keys = Object.keys(e.row);
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (k.charAt(0) === "_") continue;                     /* local only, never sent */
+      if (k === "updatedAt" || k === "syncedAt") continue;   /* the server's own stamp */
+      var a = e.row[k], b = srv[k];
+      if (a === null || a === undefined) a = "";
+      if (b === null || b === undefined) b = "";
+      if (typeof a === "object" || typeof b === "object") {
+        var ja = "", jb = "";
+        try { ja = JSON.stringify(a); jb = JSON.stringify(b); } catch (x) { return false; }
+        if (ja !== jb) return false;
+      } else if (String(a).trim() !== String(b).trim()) return false;
+    }
+    return true;
+  }
+  /* Call with S.data holding a FRESH SERVER PULL and BEFORE applyJournal has overlaid the
+     journal back on top of it - otherwise every entry would match itself and the journal
+     would clear itself on the first pull, which is the opposite of the point. */
+  function jrnReconcile() {
+    var l = jrnLoad();
+    if (!l.length || !S.data) return 0;
+    var keep = [], gone = 0;
+    l.forEach(function (e) {
+      if (e.kind === "move") {
+        var ch = (S.data.challans || []).filter(function (x) { return x && String(x.id) === String(e.id); })[0];
+        if (ch && String(ch.status || "") === e.to) { gone++; return; }
+        keep.push(e); return;
+      }
+      var arr = (S.data[e.tab] || []), srv = null;
+      for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { srv = arr[j]; break; } }
+      if (srv && jrnLanded(e, srv)) { gone++; return; }
+      keep.push(e);
+    });
+    if (gone) {
+      jrnStore(keep);
+      try { toast(gone === 1
+        ? "1 record that looked unsent was already on the server — cleared."
+        : gone + " records that looked unsent were already on the server — cleared."); } catch (e) {}
+    }
+    return gone;
+  }
+  /* Re-lay unsent rows on top of a fresh pull, so a background sync can never rub out work
+     the server has not confirmed. A held challan stays on his screen where he can see it. */
+  function applyJournal() {
+    if (!S.data) return;
+    jrnLoad().forEach(function (e) {
+      if (e.kind !== "row") return;
+      var arr = (S.data[e.tab] = S.data[e.tab] || []), found = false;
+      for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { found = true; break; } }
+      if (!found) arr.push(e.row);
+    });
+    bust();
+  }
+
+  /* One entry, out to the server. A challan or a return held without its number draws one
+     HERE, at the moment it can, and the drawn number is written back into the journal before
+     the save is attempted - so a save that then fails can never draw a second number and eat
+     the series. That is v1.9.0's lesson, applied to the offline path. */
+  function jrnSend(e) {
+    if (e.kind === "move") return api("challanMove", { id: e.id, to: e.to });
+    var pre = Promise.resolve(null);
+    var needNo = (e.tab === "challans" && !String(e.row.challanNo || "").trim()) ||
+                 (e.tab === "returns"  && !String(e.row.returnNo  || "").trim());
+    if (needNo) {
+      if (!e.noFor) return Promise.resolve({ ok: false, error: "no client on this record to draw a number for" });
+      var act = e.tab === "challans" ? "challanNo" : "returnNo";
+      var fld = e.tab === "challans" ? "challanNo" : "returnNo";
+      pre = api(act, { client: e.noFor }).then(function (n) {
+        var no = (n && n[fld]) || "";
+        if (!no) throw new Error("the server did not give a number");
+        e.row[fld] = no;
+        jrnPatch(e.pk, { row: e.row });
+        return no;
+      });
+    }
+    return pre.then(function () {
+      var payload = Object.assign({}, e.row);
+      delete payload._lid;
+      return api("teamSave", { tab: e.tab, row: payload });
+    });
+  }
+
+  function jrnFlush() {
+    if (_flushing) return;
+    var l0 = jrnLoad();
+    if (!l0.length) return;
+    _flushing = true;
+    /* Two belts. Every call has its own deadline, and if the loop is somehow still not
+       finished long after the longest possible call, the flag is released anyway - a hung
+       call once froze a whole session's queue. */
+    if (_flushDog) clearTimeout(_flushDog);
+    _flushDog = setTimeout(function () { _flushing = false; _flushDog = null; }, 180000);
+    var okCount = 0, i = 0;
+    var stop = function () {
+      _flushing = false;
+      if (_flushDog) { clearTimeout(_flushDog); _flushDog = null; }
+      try { render(); } catch (e) {}
+      if (!jrnCount()) { if (okCount) toast("Everything held on this phone is now saved."); }
+      else if (okCount) toast(okCount + " saved. " + jrnCount() + " still held — the bar shows the reason.");
+    };
+    var step = function () {
+      var l = jrnLoad();
+      if (i >= l.length) { stop(); return; }
+      var e = l[i];
+      jrnSend(e).then(function (r) {
+        if (r && r.ok) {
+          if (e.kind === "row") {
+            var arr = (S.data && S.data[e.tab]) || [];
+            for (var j = 0; j < arr.length; j++) {
+              if (arr[j] && natEq(arr[j], e.row)) { Object.assign(arr[j], r.row || e.row); break; }
+            }
+          } else if (e.kind === "move" && S.data) {
+            var cs = S.data.challans || [];
+            for (var k = 0; k < cs.length; k++) {
+              if (cs[k] && String(cs[k].id) === String(e.id)) {
+                cs[k].status = e.to;
+                if (e.to === "Received") cs[k].receiptReceived = "Y";
+                break;
+              }
+            }
+          }
+          bust(); jrnDrop(e.pk); okCount++;   /* the list shifted left - same index is the next one */
+        } else {
+          jrnMark(e.pk, (r && r.error) || "the server refused it"); i++;
+        }
+        step();
+      }).catch(function (err) {
+        /* The real reason, kept. "network error" for everything is how a healthy connection
+           came to be blamed for a timeout in the CRM for eight releases. */
+        jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
+        i++; step();
+      });
+    };
+    step();
+  }
+
+  function flushSoon() {
+    if (!jrnCount()) { _flushFails = 0; _flushSkip = 0; return; }
+    try { if (navigator && navigator.onLine === false) return; } catch (e) {}
+    if (_flushSkip > 0) { _flushSkip--; return; }
+    var before = jrnCount();
+    try { jrnFlush(); } catch (e) {}
+    setTimeout(function () {
+      if (jrnCount() < before) { _flushFails = 0; _flushSkip = 0; }
+      else { _flushFails = Math.min(_flushFails + 1, 3); _flushSkip = Math.pow(2, _flushFails) - 1; }
+    }, 8000);
+  }
+  /* Pressing a button is a fresh start - never make a man wait out a backoff he can see. */
+  function flushNow() { _flushFails = 0; _flushSkip = 0; flushSoon(); }
+  function startFlushTicker() {
+    if (_flushTick) return;
+    _flushTick = setInterval(flushSoon, 45000);
+    try {
+      document.addEventListener("visibilitychange", function () { if (!document.hidden) flushSoon(); });
+      window.addEventListener("online", flushSoon);
+    } catch (e) {}
+    flushSoon();
+  }
+
+  /* ---- the bar that says so ----
+     Sits above the tab bar and is registered furniture (ew_sync_banner is already in the
+     bottom-edge watcher), so the toast lifts over it instead of hiding behind it. */
+  function jrnPaint() {
+    var host = document.getElementById("ew_sync_banner");
+    if (!host) return;
+    var l = jrnLoad();
+    var wrap = document.querySelector(".wrap");
+    if (!l.length) {
+      host.style.display = "none"; host.innerHTML = "";
+      if (wrap) wrap.style.paddingBottom = "";
+      return;
+    }
+    /* the bar would otherwise cover the bottom of the list, and the bottom of the list is
+       where this morning's challan is */
+    if (wrap) wrap.style.paddingBottom = "150px";
+    var err = "";
+    for (var i = 0; i < l.length; i++) if (l[i].err) { err = l[i].err; break; }
+    host.style.display = "block";
+    host.innerHTML =
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-weight:800">' + l.length + ' ' + (l.length === 1 ? "record is" : "records are") +
+            ' held on this phone' + (S.jrnDurable === false ? ' <span style="opacity:.85">(and this phone will not keep them)</span>' : '') + '</div>' +
+          '<div style="opacity:.9;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
+            esc(err || "They will go up by themselves when there is signal.") + '</div>' +
+        '</div>' +
+        '<button class="btn sm" data-act="jrn-retry" style="background:#fff;color:#7c2d12;flex:none">Try now</button>' +
+      '</div>';
+  }
+
+  function saveRow(tab, row, opts) {
+    /* v1.10.0 - JOURNAL FIRST, THEN THE SERVER. Never the other way round: the whole point
+       is that the record survives this tab being discarded one second after the tap.
+       This never rejects. It resolves { ok, row, held } - held meaning it is safe on the
+       device but the server has not confirmed it, which is a different thing from saved and
+       a different thing from lost, and every caller now says which of the three it is. */
+    opts = opts || {};
+    var r2 = Object.assign({}, row);
+    if (!String(r2.id || "").trim() && !r2._lid) r2._lid = "L-" + Date.now() + "-" + (++_jrnSeq) + "-" + Math.floor(Math.random() * 1000000);
+    var e = jrnPut({ pk: "P-" + Date.now() + "-" + (++_jrnSeq), kind: "row", tab: tab, row: r2,
+                     noFor: opts.noFor || "", by: S.user || "", at: Date.now(), err: "", tries: 0 });
+    return jrnSend(e).then(function (r) {
+      if (r && r.ok) { jrnDrop(e.pk); return { ok: true, row: r.row || r2, held: false }; }
+      jrnMark(e.pk, (r && r.error) || "the server refused it");
+      return { ok: true, row: e.row, held: true, err: (r && r.error) || "the server refused it" };
+    }).catch(function (err) {
+      jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
+      return { ok: true, row: e.row, held: true, err: (err && err.message) || "no answer from the server" };
+    });
+  }
+  /* The raw call, for the two things that must not be queued: an approval (it would mean
+     keeping a PIN on the device) and anything that is not a row. */
+  function saveRaw(tab, row) { return api("teamSave", { tab: tab, row: row }); }
 
   /* Only the tabs this app reads. The backend honours "only" as of V93, so the rest of
      the book - quotes, pitch, payments, tools - never comes down the wire at all. */
@@ -511,6 +923,21 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return clients().filter(function (c) { return lower(c.name) === k; })[0] || null;
   }
   function challans() { return (S.data && S.data.challans) || []; }
+  /* v1.10.0 - FIND A CHALLAN BY EITHER KEY. Every screen looked one up by its challan
+     NUMBER, which was fine while a challan could not exist without one. A challan written
+     with no signal has an id and no number until it uploads, and a lookup by "" would
+     return whichever numberless challan happened to be first - so the buttons on one card
+     would act on another. The id is tried first and is unique by construction. */
+  function chFind(key) {
+    var k = String(key == null ? "" : key).trim();
+    if (!k) return null;
+    var a = challans(), i;
+    for (i = 0; i < a.length; i++) if (a[i] && String(a[i].id) === k) return a[i];
+    for (i = 0; i < a.length; i++) if (a[i] && String(a[i].challanNo) === k) return a[i];
+    return null;
+  }
+  /* Still on this phone, not yet on the server. */
+  function chHeld(c) { return !!jrnFor(c); }
   function returns()  { return (S.data && S.data.returns) || []; }
   /* ---------- THE DRIVER REGISTER ----------
      v1.6 - THE REGISTER WAS EMPTY. Not thin: empty. Zero drivers on the book, and not one
@@ -686,16 +1113,25 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       if (!r || String(r.action || "") !== "challan:manualno") return;
       var d = {};
       try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
-      var k = String(d.challanNo || d.chNo || "").trim();
       var at = String(r.createdAt || "");
-      if (!k) return;
-      if (!m[k] || at >= m[k].at) m[k] = { at: at, no: String(d.no || d.manualNo || "").trim() };
+      /* v1.10.0 - KEYED BY THE ID TOO. A challan written with no signal has no challan
+         number yet, so a book number filed against it could only ever be keyed by "" and
+         would be orphaned - and the book number is the one thing the customer's storeman
+         quotes down the phone. The id is minted on this device and never changes, so it is
+         the key that always exists. Both are indexed, so every row already on the sheet
+         still resolves by number exactly as before. */
+      [String(d.chId || d.challanId || "").trim(), String(d.challanNo || d.chNo || "").trim()]
+        .forEach(function (k) {
+          if (!k) return;
+          if (!m[k] || at >= m[k].at) m[k] = { at: at, no: String(d.no || d.manualNo || "").trim() };
+        });
     });
     _mnCache = m;
     return m;
   }
   function manualNoFor(c) {
-    var hit = manualNoMap()[String((c && c.challanNo) || "").trim()];
+    var m = manualNoMap();
+    var hit = m[String((c && c.id) || "").trim()] || m[String((c && c.challanNo) || "").trim()];
     return hit ? hit.no : "";
   }
   function saveManualNo(chNo, chId, no, client) {
@@ -777,8 +1213,35 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function markReceived(rec) {
     if (!rec || !rec.id || rec.returnNo) return Promise.resolve(null);   /* returns book in separately */
     if (String(rec.receiptReceived || "").toUpperCase() === "Y") return Promise.resolve(null);
-    return api("challanMove", { id: rec.id, to: "Received" }).then(function (r) {
-      if (!r || !r.ok) return r;
+    /* ================= A RECEIPT IS NOT AN APPROVAL (v1.10.0) ==================
+       v1.8.0 made filing the paper mark the delivery received, which closed a real billing
+       leak. It sent the challan to Received WHATEVER its status was - including Draft.
+
+       So a challan nobody had passed could be moved straight to Received by attaching a
+       photograph. Approving is the one action this app deliberately makes expensive: it
+       re-asks for the PIN and tells the man "This releases material. It is not a formality."
+       Attaching a photograph asked for nothing and skipped the whole step, and the challan
+       then showed as Received having never been passed - so the approval queue, which is
+       the record of who authorised material leaving the godown, simply never saw it.
+
+       Measured against v1.9.1: a Draft challan, one attached receipt, no PIN asked for,
+       no approvePin sent, and status Draft -> Received.
+
+       The receipt still files - that paper is the thing that settles an argument and must
+       never be refused. It is only the promotion that is refused, and the man is told
+       which step is missing. */
+    if (isDraft(rec)) {
+      return Promise.resolve({ ok: false, blocked: true,
+        error: "this challan has not been passed yet" });
+    }
+    /* v1.10.0 - and the move is journalled, so the window v1.8.0 left open is closed: the
+       PDF was hosted and the proof row written, and then this call could still be lost, and
+       nothing retried it. No PIN is carried - Received needs none, and an approval is never
+       queued for exactly that reason. */
+    var e = jrnPut({ pk: "P-" + Date.now() + "-" + (++_jrnSeq), kind: "move", id: rec.id,
+                     to: "Received", by: S.user || "", at: Date.now(), err: "", tries: 0 });
+    var land = function (r) {
+      jrnDrop(e.pk);
       rec.status = "Received"; rec.receiptReceived = "Y";
       var arr = (S.data && S.data.challans) || [];
       for (var i = 0; i < arr.length; i++) {
@@ -786,6 +1249,18 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       }
       bust();
       return r;
+    };
+    return jrnSend(e).then(function (r) {
+      if (r && r.ok) return land(r);
+      jrnMark(e.pk, (r && r.error) || "the server refused it");
+      /* NOT marked locally. The flag is what every money screen counts a delivery on, and
+         missingReceipts() asks the flag and only the flag - so setting it here would drop
+         the delivery off the one list that catches this, for a move that has not happened.
+         It stays on the list until the server says otherwise. */
+      return { ok: false, held: true, error: (r && r.error) || "the server refused it" };
+    }).catch(function (err) {
+      jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
+      return { ok: false, held: true, error: (err && err.message) || "no answer from the server" };
     });
   }
 
@@ -1356,14 +1831,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
   function chRow(c) {
-    var mn = manualNoFor(c), pf = proofFor(c), st = chStatus(c);
+    var mn = manualNoFor(c), pf = proofFor(c), st = chStatus(c), held = chHeld(c);
     return '<div class="card" style="padding:11px 12px">' +
       '<div class="row"><div class="grow">' +
         '<div style="font-weight:800;font-size:14.5px">' + esc(c.customerName || "-") + '</div>' +
-        '<div class="muted" style="margin-top:2px">' + esc(c.challanNo || "") +
+        '<div class="muted" style="margin-top:2px">' +
+          esc(c.challanNo || (held ? "Its number comes when it uploads" : "")) +
           (mn ? ' · <b style="color:#b91c1c">Book ' + esc(mn) + '</b>' : '') +
           ' · ' + esc(dstr(d10(c.createdAt))) + (c.site ? ' · ' + esc(c.site) : '') + '</div>' +
         '<div style="margin-top:5px">' +
+          (held ? '<span class="pill amb">Held on this phone</span> ' : '') +
           (st === "Draft" ? '<span class="pill red">Not passed yet</span>' : '<span class="pill grn">' + esc(st) + '</span>') +
           (pf ? ' <span class="pill grn">Receipt attached</span>'
               : ' <span class="pill amb">No receipt</span>') +
@@ -1372,13 +1849,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         '<div class="muted">' + chLines(c).length + ' line' + (chLines(c).length === 1 ? '' : 's') + '</div></div>' +
       '</div>' +
       '<div class="acts">' +
-        '<button class="btn sm gry" data-act="ch-pdf" data-no="' + esc(c.challanNo) + '">Challan PDF</button>' +
-        '<button class="btn sm gry" data-act="ch-wa" data-no="' + esc(c.challanNo) + '">Send on WhatsApp</button>' +
+        '<button class="btn sm gry" data-act="ch-pdf" data-no="' + esc(c.id || c.challanNo) + '">Challan PDF</button>' +
+        '<button class="btn sm gry" data-act="ch-wa" data-no="' + esc(c.id || c.challanNo) + '">Send on WhatsApp</button>' +
         (pf ? '<a class="btn sm gry" href="' + esc(pf.url) + '" target="_blank" rel="noopener">See receipt</a>'
             : (canProof()
                ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(c.id) + '">Attach receipt</button>'
                : '<span class="pill amb">Receipt is attached by the office</span>')) +
-        (st === "Draft" && canApprove() ? '<button class="btn sm" data-act="ch-approve" data-no="' + esc(c.challanNo) + '">Pass it</button>' : '') +
+        (st === "Draft" && canApprove()
+          ? (held ? '<span class="pill amb">Cannot be passed until it uploads</span>'
+                  : '<button class="btn sm" data-act="ch-approve" data-no="' + esc(c.id || c.challanNo) + '">Pass it</button>')
+          : '') +
       '</div></div>';
   }
 
@@ -1585,7 +2065,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function chalFile(c) { return String(c.challanNo || "challan").replace(/[^\w.-]+/g, "_") + ".pdf"; }
 
   function downloadChalan(no) {
-    var c = challans().filter(function (x) { return String(x.challanNo) === String(no); })[0];
+    var c = chFind(no);
     if (!c) return;
     toast("Building…");
     chalPdf(c).then(function (doc) { doc.save(chalFile(c)); })
@@ -1596,7 +2076,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      The owner's rule, and it applies here as much as to a statement: a challan sent to the
      wrong man cannot be called back. Who it is going to, and exactly what he gets. */
   function sheetSendChalan(no) {
-    var c = challans().filter(function (x) { return String(x.challanNo) === String(no); })[0];
+    var c = chFind(no);
     if (!c) return "";
     var cl = clientByName(c.customerName) || {};
     var mob = String(cl.mobile || "").replace(/\D/g, "");
@@ -1612,14 +2092,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         '<div class="row"><div class="grow"><div style="font-weight:700">' + esc(c.challanNo) + '</div>' +
         '<div class="muted">' + chLines(c).length + ' line' + (chLines(c).length === 1 ? '' : 's') +
           (c.site ? ' · ' + esc(c.site) : '') + ' · ' + esc(chStatus(c)) + '</div></div>' +
-        '<button class="btn sm gry" data-act="ch-pdf" data-no="' + esc(c.challanNo) + '">Open it first</button></div>' +
+        '<button class="btn sm gry" data-act="ch-pdf" data-no="' + esc(c.id || c.challanNo) + '">Open it first</button></div>' +
         (isDraft(c) ? '<div class="pill red" style="margin-top:8px">This challan has not been passed yet.</div>' : '') +
       '</div>' +
       '<label>Exactly what he will receive</label>' +
       '<div style="white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;' +
         'padding:11px 12px;font-size:12.5px;max-height:200px;overflow:auto">' + esc(chalText(c)) + '</div>' +
       '<div class="acts" style="margin-top:14px">' +
-      (mob ? '<button class="btn" data-act="ch-wa-go" data-no="' + esc(c.challanNo) + '">Send it</button>' : '<span class="pill red">No number to send to</span>') +
+      (mob ? '<button class="btn" data-act="ch-wa-go" data-no="' + esc(c.id || c.challanNo) + '">Send it</button>' : '<span class="pill red">No number to send to</span>') +
       '<button class="btn gry" data-act="close">Cancel</button></div>' +
       '<div class="muted" style="margin-top:8px">WhatsApp opens with this message ready. You still press send there.</div>';
   }
@@ -1642,7 +2122,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
   function waSendChalan(no) {
-    var c = challans().filter(function (x) { return String(x.challanNo) === String(no); })[0];
+    var c = chFind(no);
     if (!c) return;
     var cl = clientByName(c.customerName) || {};
     var n = String(cl.mobile || "").replace(/\D/g, "");
@@ -1714,16 +2194,22 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
                    the challan signed for and billed by nobody: HISAB, the client's dues, the
                    Payment app's chase list and the partner's incentive all count a delivery on
                    receiptReceived === "Y" and on nothing else. */
+                /* v1.10.0 - three outcomes, and they are not the same thing. Saying one
+                   sentence for all three is how "it could not be marked received" came to
+                   cover both a passing network fault and a challan nobody had approved. */
                 return markReceived(rec).then(function (mv) {
-                  var okMv = !mv || mv.ok;
                   render();
-                  toast(okMv
-                    ? "Receipt filed against " + no + " \u2014 delivery marked received."
-                    : "Receipt filed against " + no + ", but it could not be marked received. " +
-                      "Pull down to refresh and try again, or set it in the CRM.");
+                  if (!mv || mv.ok) { toast("Receipt filed against " + no + " \u2014 delivery marked received."); return; }
+                  if (mv.blocked) {
+                    toast("Receipt filed against " + no + ". It is NOT marked received, because " +
+                          "this challan has not been passed yet \u2014 pass it first.");
+                    return;
+                  }
+                  toast("Receipt filed against " + no + ". Marking it received is held on this phone " +
+                        "and goes up by itself; until it does it stays on the no-receipt list.");
                 }).catch(function () {
                   render();
-                  toast("Receipt filed against " + no + ", but it could not be marked received \u2014 " +
+                  toast("Receipt filed against " + no + ", but marking it received failed \u2014 " +
                         "so it is not billed yet. Refresh and try again.");
                 });
               });
@@ -1834,8 +2320,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         navBtn("receipt", "&#128247;", "Receipts", m) +
         '<button data-act="crm"><b>&#8599;</b>CRM</button>' +
       '</div>' +
+      '<div id="ew_sync_banner" style="display:none"></div>' +
       (S.sheet ? '<div class="sheet" data-act="close-bg"><div class="inner" data-stop="1">' + S.sheet + '</div></div>' : '');
     wireInputs();
+    jrnPaint(); syncBottomVar();
   }
 
   /* The builder is a live form: what is typed has to survive the next repaint, because a
@@ -2007,19 +2495,18 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       if (driverByName(nName)) { toast(nName + " is already on the register."); return; }
       var pfx = t.getAttribute("data-p") || dn.p || "m";
       t.disabled = true; t.textContent = "Adding…";
-      var row = { id: "", name: nName, mobile: nMob, vehicle: nVeh,
+      /* v1.10.0 - a key of his own, for the same reason a challan has one: this row is
+         journalled now, and replaying a row with no id appends a second driver. */
+      var row = { id: "D-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+                  name: nName, mobile: nMob, vehicle: nVeh,
                   vehicleType: dn.vtype || "", defaultFare: "" };
       saveRow("drivers", row).then(function (r) {
-        if (!r || !r.ok) {
-          t.disabled = false; t.textContent = "Add him";
-          toast((r && r.error) || "The server refused it. He was not added.");
-          return;
-        }
         (S.data.drivers = S.data.drivers || []).push(r.row || row);
         /* the type, filed where no column is needed - see driverTypeMap() */
         if (dn.vtype) {
           saveRow("audit", {
-            id: "", createdAt: new Date().toISOString(), actor: S.user || "",
+            id: "DT-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+            createdAt: new Date().toISOString(), actor: S.user || "",
             action: "driver:type", target: nName,
             detail: JSON.stringify({ name: nName, vehicleType: dn.vtype, vehicle: nVeh })
           }).then(function () { _dtCache = null; });
@@ -2029,10 +2516,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         var holder = pfx === "r" ? S.rt : S.ch;
         if (holder) { holder.driver = nName; holder.veh = ""; }
         S.dnew = null; S.sheet = null; bust(); render();
-        toast(nName + " is on the register" + (nVeh ? " with " + nVeh : "") + ", and picked.");
+        toast(nName + " is on the register" + (nVeh ? " with " + nVeh : "") + ", and picked." +
+              (r.held ? " Held on this phone until there is signal." : ""));
       }).catch(function () {
         t.disabled = false; t.textContent = "Add him";
-        toast("Could not reach the server. He was not added.");
+        toast("Could not add him. Try again.");
       });
       return;
     }
@@ -2041,6 +2529,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       if (holder) { holder.driver = t.getAttribute("data-n") || ""; holder.veh = ""; }
       repaint(); return;
     }
+    if (act === "jrn-retry") { flushNow(); toast("Trying now\u2026"); return; }
     if (act === "ch-cancel") { S.ch = null; render(); return; }
     if (act === "ln-del")  { if (S.ch) S.ch.items.splice(Number(t.getAttribute("data-i")), 1); repaint(); return; }
     if (act === "rln-del") { if (S.rt) S.rt.items.splice(Number(t.getAttribute("data-i")), 1); repaint(); return; }
@@ -2102,17 +2591,34 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
          on S.ch - so ten presses on a bad line are one id, one number, one row. */
       S.ch.mintId = S.ch.mintId || ("L-" + Date.now() + "-" + Math.floor(Math.random() * 1000000));
       var _mintId = S.ch.mintId;
+      var _noFor = cObj.shortName || cObj.name;
+      /* ===== v1.10.0 - A CHALLAN CAN NOW BE WRITTEN IN A BASEMENT =====
+         The number comes from the server, and v1.9.0 banned minting one here for good
+         reason: the old fallback produced RAKESH/15/001 for every challan a client had in
+         one day, and approve, PDF and WhatsApp all take the FIRST match by number - so
+         passing the second one passed the first. That ban stands.
+
+         What changes is what happens when the server cannot be asked at all. The delivery
+         is real, the lorry is loading, and the man is standing in a basement. So the
+         challan is KEPT - with its stable id and with no number - and the number is drawn
+         once, later, at the moment the journal can reach the server. Until then the app
+         says it has no number rather than inventing one. The paper book number he types is
+         filed against the id, so the delivery is traceable from the first minute. */
       var numP = S.ch.mintNo
         ? Promise.resolve({ challanNo: S.ch.mintNo })
-        : api("challanNo", { client: cObj.shortName || cObj.name });
+        : api("challanNo", { client: _noFor }).catch(function () { return { challanNo: "", _held: true }; });
       numP.then(function (n) {
         /* v1.9.0 - NEVER mint a number on this phone. The old fallback ended in a literal "001"
            with only the day-of-month for a date, so two challans for one client on one day both
            became RAKESH/15/001 - and approve, PDF and WhatsApp all look a challan up by NUMBER
            and take the first match. Passing the second one passed the first. */
         var no = (n && n.challanNo) || "";
-        if (!no) { reset(); toast("The server did not give a challan number. Nothing was saved \u2014 try again."); return; }
-        S.ch.mintNo = no;
+        var _held = !!(n && n._held);
+        /* The server ANSWERED and gave no number is a refusal, and still stops here. The
+           server could not be ASKED is a basement, and is held. They are not the same thing
+           and they must not read the same. */
+        if (!no && !_held) { reset(); toast("The server did not give a challan number. Nothing was saved \u2014 try again."); return; }
+        if (no) S.ch.mintNo = no;
         var ch = {
           id: _mintId,
           createdBy: S.user, challanNo: no,
@@ -2127,29 +2633,30 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           vehicle: z.veh || dRec.vehicle || "",
           associate: "", commissionSet: "N", status: "Draft", receiptReceived: "N"
         };
-        return saveRow("challans", ch).then(function (r) {
-          if (!r || !r.ok) { reset(); toast((r && r.error) || "The server refused it. Nothing was saved."); return; }
+        return saveRow("challans", ch, { noFor: _noFor }).then(function (r) {
           var saved = r.row || ch;
           (S.data.challans = S.data.challans || []).push(saved);
+          var shown = String(saved.challanNo || no || "");
           /* the paper book's number goes after the delivery, never before it */
           var after = function () {
             bust(); S.ch = null; S.tab = "make"; render();
-            toast("Challan " + no + " created — waiting to be passed." + (manualV ? " Book no " + manualV + "." : ""));
+            toast(r.held
+              ? "Challan saved on this phone" + (shown ? " (" + shown + ")" : " \u2014 its number comes when it uploads") +
+                ". It goes up by itself when there is signal." + (manualV ? " Book no " + manualV + "." : "")
+              : "Challan " + shown + " created \u2014 waiting to be passed." + (manualV ? " Book no " + manualV + "." : ""));
           };
           if (!manualV) { after(); return; }
           /* v1.9.0 - it used to call after() on all three paths, so a book number that never
              saved was still read out in the toast. Three weeks later a storeman rings quoting
              a number that exists nowhere in the system. */
-          return saveManualNo(no, saved.id || "", manualV, cObj.name).then(function (mr) {
-            if (mr && mr.ok && mr.row) { (S.data.audit = S.data.audit || []).push(mr.row); after(); return; }
-            bust(); S.ch = null; S.tab = "make"; render();
-            toast("Challan " + no + " created \u2014 but book no " + manualV +
-                  " did NOT save. Open the challan and add it again.");
-          }).catch(function () {
-            bust(); S.ch = null; S.tab = "make"; render();
-            toast("Challan " + no + " created \u2014 but book no " + manualV +
-                  " did NOT save. Open the challan and add it again.");
-          });
+          /* v1.10.0 - the book number is journalled too, so the branch that used to say
+             "it did NOT save, open the challan and add it again" no longer exists: there is
+             no longer a way for it to be lost, only a way for it to be waiting. It is filed
+             against the challan's id, so it holds even before the challan has a number. */
+          return saveManualNo(shown, saved.id || "", manualV, cObj.name).then(function (mr) {
+            if (mr && mr.row) (S.data.audit = S.data.audit || []).push(mr.row);
+            after();
+          }).catch(function () { after(); });
         });
       }).catch(function () {
         reset();
@@ -2184,11 +2691,29 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         return lower(d.name) === lower(rz.driver);
       })[0] || {};
       var rreset = function () { t.disabled = false; t.textContent = "Register the return"; };
-      api("returnNo", { client: rc.shortName || rc.name }).then(function (n) {
-        var rno = (n && n.returnNo) ||
-          (String(rc.name).toUpperCase().slice(0, 6) + "/" + today().slice(8) + "/R01");
+      /* ===== v1.10.0 - THE THREE FIXES CHALLANS GOT, FINALLY APPLIED TO RETURNS =====
+         1. A STABLE ID. This row went up with id: "" - so a save whose reply was lost and
+            was then pressed again appended a SECOND return. That is the billing-leak shape
+            v1.8.0 fixed for challans, and it was never carried across. The id is minted
+            once, on the first press, and kept on S.rt, so ten presses are one row.
+         2. ONE NUMBER, NOT ONE PER PRESS. returnNo was called again on every press, eating
+            another number from the series each time.
+         3. NO INVENTED NUMBER. The fallback built RAKESH/15/R01 out of the client's name and
+            the day of the month, so two returns for one client on one day collided - exactly
+            the fault v1.9.0 removed from challans, still sitting here. It is gone. With no
+            signal the return is HELD and the server numbers it when it uploads. */
+      S.rt.mintId = S.rt.mintId || ("L-" + Date.now() + "-" + Math.floor(Math.random() * 1000000));
+      var _rMintId = S.rt.mintId, _rNoFor = rc.shortName || rc.name;
+      var rNumP = S.rt.mintNo
+        ? Promise.resolve({ returnNo: S.rt.mintNo })
+        : api("returnNo", { client: _rNoFor }).catch(function () { return { returnNo: "", _held: true }; });
+      rNumP.then(function (n) {
+        var rno = (n && n.returnNo) || "";
+        var _rHeld = !!(n && n._held);
+        if (!rno && !_rHeld) { rreset(); toast("The server did not give a return number. Nothing was saved \u2014 try again."); return; }
+        if (rno) S.rt.mintNo = rno;
         var row = {
-          id: "", createdBy: S.user, returnNo: rno,
+          id: _rMintId, createdBy: S.user, returnNo: rno,
           customerId: rc.id || "", customerName: rc.name,
           site: rz.site || "", siteId: (sitesFor(rc.name).filter(function (s) { return s.name === rz.site; })[0] || {}).id || "",
           challanNo: rz.against || "",
@@ -2199,13 +2724,19 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           driver: rDrv.name || "", driverMobile: rDrv.mobile || "", vehicle: rDrv.vehicle || "",
           freight: num(rz.freight), freightTo: "Energy World"
         };
-        return saveRow("returns", row).then(function (r) {
-          if (!r || !r.ok) { rreset(); toast((r && r.error) || "The server refused it. Nothing was saved."); return; }
-          (S.data.returns = S.data.returns || []).push(r.row || row);
+        return saveRow("returns", row, { noFor: _rNoFor }).then(function (r) {
+          var savedR = r.row || row;
+          (S.data.returns = S.data.returns || []).push(savedR);
           bust(); S.rt = null; S.tab = "return"; render();
-          toast("Return " + rno + " registered. Attach the goods-in receipt now.");
+          toast(r.held
+            ? "Return saved on this phone" + (savedR.returnNo ? " (" + savedR.returnNo + ")" : " \u2014 its number comes when it uploads") +
+              ". It goes up by itself when there is signal."
+            : "Return " + savedR.returnNo + " registered. Attach the goods-in receipt now.");
         });
-      }).catch(function () { rreset(); toast("Could not reach the server. Nothing was saved."); });
+      }).catch(function (err) {
+        rreset();
+        toast("Could not register the return: " + ((err && err.message) || "no answer from the server") + ".");
+      });
       return;
     }
 
@@ -2214,8 +2745,15 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (act === "ch-approve") {
       if (!canApprove()) { toast("Passing a challan is done by the accounts desk."); return; }
       var no2 = t.getAttribute("data-no");
-      var c2 = challans().filter(function (x) { return String(x.challanNo) === String(no2); })[0];
+      var c2 = chFind(no2);
       if (!c2) return;
+      /* v1.10.0 - a challan still held on this phone has no row on the server to move, and
+         an approval is the one thing this app will not queue: replaying it later would mean
+         keeping his PIN on the device to replay it with. */
+      if (chHeld(c2)) {
+        toast("This challan is still held on this phone. It has to go up before it can be passed.");
+        return;
+      }
       /* v1.8.0 - THROUGH challanMove, AND ASK FOR THE PIN.
          Two faults in one line. The old code sent the WHOLE row back from whatever this tab
          happened to be holding - and this app has no polling, only a 60s-throttled refresh on
@@ -2228,7 +2766,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
          The CRM asks for the PIN again at exactly this moment and says why: approving releases
          real material, and it is not a formality. A phone in a pocket in the godown should not be
          able to do it with one tap. */
-      var pin2 = window.prompt("Enter your PIN to PASS this challan\n\n" + no2 + " — " +
+      var pin2 = window.prompt("Enter your PIN to PASS this challan\n\n" + String(c2.challanNo || "") + " — " +
         String(c2.customerName || "") + "\n\nThis releases material. It is not a formality.");
       if (!pin2) { toast("Nothing was passed."); return; }
       t.disabled = true; t.textContent = "Passing…";
@@ -2239,7 +2777,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           return;
         }
         c2.status = "Approved"; c2.approvedBy = (r && r.by) || S.user; c2.approvedAt = new Date().toISOString();
-        bust(); render(); toast(no2 + " passed.");
+        bust(); render(); toast(String(c2.challanNo || "The challan") + " passed.");
       }).catch(function () {
         t.disabled = false; t.textContent = "Pass it";
         toast("No signal — nothing was changed. Try again.");
@@ -2279,6 +2817,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         return;
       }
       try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: pin, role: S.role })); } catch (e) {}
+      startFlushTicker();
       pull(false);
     }).catch(function () { S.pin = ""; renderLogin("Network error. Try again."); });
   }
@@ -2295,20 +2834,36 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
   function pull(loud) {
     var snap = snapLoad();
-    if (snap && !S.data) { S.data = snap; bust(); render(); }
+    if (snap && !S.data) { S.data = snap; applyJournal(); render(); }
     S.busy = true;
     if (S.data) render();
     if (loud) toast("Pulling the latest…");
     return Promise.all([getBook(), loadCatalog()]).then(function (arr) {
       var r = arr[0];
       S.busy = false;
-      if (usableBook(r)) { S.data = slimBook(r); S.syncAt = Date.now(); bust(); snapSave(); }
+      if (usableBook(r)) {
+        S.data = slimBook(r); S.syncAt = Date.now(); bust();
+        /* v1.10.0 - THE ORDER MATTERS AND IT IS NOT INTERCHANGEABLE.
+           jrnReconcile reads a FRESH server pull to decide which held records the server
+           already has. applyJournal then lays the rest back on top. Do them the other way
+           round and every entry matches the copy of itself the overlay just added, so the
+           journal clears itself on the first pull - the exact opposite of the point of
+           having one. */
+        jrnReconcile(); applyJournal();
+        snapSave(); flushSoon();
+      }
       else if (!S.data) { renderLogin("Could not read the book. Sign in again."); return; }
       render();
       if (loud) toast("Up to date.");
     }).catch(function () {
       S.busy = false;
-      if (!S.data) { renderLogin("No signal, and nothing saved on this phone yet."); return; }
+      if (!S.data) {
+        /* v1.10.0 - do not say nothing is saved when something is. */
+        renderLogin(jrnCount()
+          ? jrnCount() + " record(s) are held safe on this phone, but the book has never been pulled onto it. Sign in where there is signal."
+          : "No signal, and nothing saved on this phone yet.");
+        return;
+      }
       render(); toast("No signal — showing what was last pulled onto this phone.");
     });
   }
@@ -2344,12 +2899,17 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
        the warm paint or the app would open on a holding screen instead of the book. A local
        read of tens of milliseconds against a boot that already waits on two network calls,
        and it gives up after 2.5s rather than ever blocking. */
-    bigPreload([SNAP + "_" + S.user, CAT_KEY]).then(function () { boot2(sess); });
+    /* v1.10.0 - JRN_KEY IS IN THIS LIST OR THE JOURNAL DOES NOT EXIST.
+       bigSet removes the localStorage copy the moment IndexedDB has it, and bigGet only
+       reads IndexedDB through the _big mirror. A journal key left out of the preload would
+       therefore read back EMPTY on the very boot it was written for - the app would open
+       having quietly forgotten the challan it promised to keep. */
+    bigPreload([SNAP + "_" + S.user, CAT_KEY, JRN_KEY]).then(function () { boot2(sess); });
   })();
 
   function boot2(sess) {
     var snap = snapLoad();
-    if (snap) { S.data = snap; bust(); S.busy = true; render(); } else openingScreen();
+    if (snap) { S.data = snap; applyJournal(); S.busy = true; render(); } else openingScreen();
 
     var authP = api("teamAuth", { ua: navigator.userAgent });
     var dataP = getBook();
@@ -2374,16 +2934,26 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     dataP.then(function (r) {
       if (refused) return;
       S.busy = false;
-      if (usableBook(r)) { S.data = slimBook(r); S.syncAt = Date.now(); bust(); snapSave(); render(); }
+      if (usableBook(r)) {
+        S.data = slimBook(r); S.syncAt = Date.now(); bust();
+        jrnReconcile(); applyJournal();      /* reconcile first - see pull() */
+        snapSave(); render(); flushSoon();
+      }
       else if (!S.data) openingScreen("Could not read the book. Try again.");
       else render();
     }).catch(function () {
       if (refused) return;
       S.busy = false;
       if (S.data) { render(); toast("No signal — showing what was last pulled onto this phone."); }
-      else openingScreen("No signal, and nothing saved on this phone yet.");
+      else openingScreen(jrnCount()
+        ? jrnCount() + " record(s) are held safe on this phone and go up when there is signal. The book itself has never been pulled onto this phone."
+        : "No signal, and nothing saved on this phone yet.");
     });
 
+    /* v1.10.0 - the journal starts working the moment the app opens, whether or not the
+       book came down. A challan typed yesterday in a basement goes up on today's first
+       open, with nobody pressing anything. */
+    startFlushTicker();
     regSW();
   }
 
