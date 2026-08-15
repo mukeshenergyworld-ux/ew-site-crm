@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.280";
+  var APP_VERSION = "6.9.281";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5103,7 +5103,7 @@ window.addEventListener("beforeunload", function (ev) {
     }).then(function (b) {
       var doc = b.doc, F = b.F, L = b.L, R = b.R, y;   /* v6.9.275 - no LOGOS on a receipt */
 
-      b.y = 46;
+      b.y = 43;                          /* v6.9.281 - 3 mm off the top, straight to the picture */
       var yc = commCustomerBlock(b, ch);
 
       /* Where it went. Assembled exactly the way the challan does it, so a part that is already
@@ -5124,15 +5124,16 @@ window.addEventListener("beforeunload", function (ev) {
       /* The facts of the delivery, in a tinted band so the eye lands on them first. Six of them,
          two rows of three: what was sent, when it went, who carried it - then who wrote it, who
          released it, and who signed for it. */
-      doc.setFillColor(240, 253, 250); doc.rect(L, y - 5, R - L, 36, "F");
-      doc.setDrawColor(153, 246, 228); doc.setLineWidth(0.3); doc.rect(L, y - 5, R - L, 36);
+      /* v6.9.281 - 27 mm instead of 36. Same six facts, same sizes, less air between them. */
+      doc.setFillColor(240, 253, 250); doc.rect(L, y - 4.5, R - L, 27, "F");
+      doc.setDrawColor(153, 246, 228); doc.setLineWidth(0.3); doc.rect(L, y - 4.5, R - L, 27);
       var CW = (R - L) / 3;
       var fact = function (lab, v, col, row) {
-        var x = L + 3 + col * CW, yy = y + row * 15;
+        var x = L + 3 + col * CW, yy = y + row * 11.6;
         F("bold"); doc.setFontSize(7.2); doc.setTextColor(13, 118, 108);
         doc.text(lab, x, yy);
         F("normal"); doc.setFontSize(9.2); doc.setTextColor(17, 34, 45);
-        doc.text(doc.splitTextToSize(String(v || "-"), CW - 5)[0] || "-", x, yy + 5.8);
+        doc.text(doc.splitTextToSize(String(v || "-"), CW - 5)[0] || "-", x, yy + 5.4);
       };
       var _isR = !!ch._isReturn;
       fact(_isR ? "RETURN NO." : "CHALLAN NO.", ch.challanNo, 0, 0);
@@ -5141,11 +5142,10 @@ window.addEventListener("beforeunload", function (ev) {
       fact(_isR ? "RAISED BY" : "PREPARED BY", ch.createdBy, 0, 1);
       fact(_isR ? "AGAINST CHALLAN" : "APPROVED BY", _isR ? (ch.againstNo || "-") : ch.approvedBy, 1, 1);
       fact(_isR ? "COUNTED IN AT GODOWN BY" : "RECEIVED AT SITE BY", meta.by, 2, 1);
-      y += 40;
-      F("normal"); doc.setFontSize(7.2); doc.setTextColor(120, 130, 145);
-      doc.text("Receipt recorded by " + String(meta.actor || "-") + " on " +
-        fullDate(String(meta.at || "").slice(0, 10)) + " at " + String(meta.at || "").slice(11, 16) + " hrs", L, y);
-      y += 9;
+      /* v6.9.281 - who recorded it and when is provenance, not a headline. It is printed in the
+         closing note at the foot of the sheet, where provenance belongs, and the 9 mm it used to
+         occupy here goes to the photograph. */
+      y += 31;
 
       /* The material. The header repeats on every page, because a second sheet with no column
          names is a sheet somebody reads the wrong way round in an argument. */
@@ -5169,7 +5169,7 @@ window.addEventListener("beforeunload", function (ev) {
         var note = String(r.note || "");
         doc.setFontSize(8.4);
         var dl = doc.splitTextToSize(String(r.desc || ""), DESCW).slice(0, 2);
-        var need = 7 + (dl.length > 1 ? 4.2 : 0) + (note ? 4.2 : 0);
+        var need = 6.3 + (dl.length > 1 ? 4 : 0) + (note ? 4 : 0);   /* v6.9.281 */
         if (y + need > 265) { doc.addPage(); y = 24; tableHead(); }
         if (i2 % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, R - L, need - 0.6, "F"); }
         var diff = Number(r.now) - Number(r.was);
@@ -5195,59 +5195,104 @@ window.addEventListener("beforeunload", function (ev) {
       });
       doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.3); doc.line(L, y - 1, R, y - 1);
       y += 6;
-      F("normal"); doc.setFontSize(8);
-      if (shortLines || excessLines) {
-        doc.setTextColor(180, 83, 9);
-        doc.text((shortLines ? shortLines + " line(s) came up short. " : "") +
-          (excessLines ? excessLines + " line(s) came in over. " : "") +
-          "The reason is written against each one.", L, y);
-      } else {
-        doc.setTextColor(13, 118, 108);
-        doc.text("Every line arrived in full.", L, y);
+      /* v6.9.281 - how the lines came in is one sentence, and it now shares its row with the
+         sign-off instead of taking a line of its own. Eight more millimetres for the picture. */
+      var tally = (shortLines || excessLines)
+        ? ((shortLines ? shortLines + " line(s) came up short. " : "") +
+           (excessLines ? excessLines + " line(s) came in over. " : "") +
+           "The reason is written against each one.")
+        : "Every line arrived in full.";
+      var tallyColour = function () {
+        if (shortLines || excessLines) doc.setTextColor(180, 83, 9); else doc.setTextColor(13, 118, 108);
+      };
+      if (!prf.photo) {
+        F("normal"); doc.setFontSize(8); tallyColour();
+        doc.text(tally, L, y);
+        y += 8;
       }
-      y += 11;
 
-      /* The sign-off. Two ruled lines, because on most deliveries the signature is on the paper
-         in the photograph below and not on this sheet - and a blank line that says so honestly is
-         worth more than a line that pretends. */
-      if (y > 206) { doc.addPage(); y = 26; }
-      F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
-      doc.text(ch._isReturn
-        ? "THE ABOVE MATERIAL WAS RETURNED AND COUNTED IN AT THE GODOWN"
-        : "RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, y);
-      y += 9;
-      F("normal"); doc.setFontSize(11.5); doc.setTextColor(17, 34, 45);
-      doc.text(String(meta.by || "\u2014"), L, y);
-      if (prf.sig) { try { doc.addImage(prf.sig, "PNG", L + 66, y - 7, 50, 19); } catch (e) { } }
-      doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.4);
-      doc.line(L, y + 15, L + 58, y + 15);
-      doc.line(L + 66, y + 15, L + 124, y + 15);
-      F("normal"); doc.setFontSize(7.2); doc.setTextColor(100, 116, 139);
-      doc.text("Name of the receiver", L, y + 19);
-      doc.text(prf.sig ? "Signature" : "Signature is on the paper receipt below", L + 66, y + 19);
-      y += 28;
+      /* ================= THE SIGN-OFF (v6.9.281) =================
+         Two ruled lines used to be drawn here, 37 mm of them, one of which was labelled
+         "Signature is on the paper receipt below" - a place to sign, on a document that says the
+         signing already happened on the paper in the picture underneath. That is 37 mm spent on
+         a formality, and it is exactly the 37 mm that pushed the evidence onto a second sheet.
+
+         So: when there is a photograph, this is one line - who received it, and where his hand
+         actually is. When there is NO photograph the ruled block is the only place a signature
+         could ever go, so it is kept in full, unchanged. */
+      if (prf.photo) {
+        if (y > 250) { doc.addPage(); y = 26; }
+        F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
+        var lead = ch._isReturn
+          ? "RETURNED AND COUNTED IN AT THE GODOWN BY \u2014"
+          : "RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION \u2014";
+        doc.text(lead, L, y);
+        /* MEASURE the sentence rather than guess where it ends. The first cut put the name at a
+           fixed L + 84 and it printed straight through the dash. */
+        var nameX = L + doc.getTextWidth(lead) + 2.5;
+        F("normal"); doc.setFontSize(11); doc.setTextColor(17, 34, 45);
+        doc.text(String(meta.by || "\u2014"), nameX, y);
+        if (prf.sig) { try { doc.addImage(prf.sig, "PNG", R - 46, y - 6, 44, 16); } catch (e) { } }
+        else {
+          F("normal"); doc.setFontSize(7.6); tallyColour();
+          doc.text(tally, R, y, { align: "right" });
+        }
+        y += 9;
+      } else {
+        if (y > 206) { doc.addPage(); y = 26; }
+        F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
+        doc.text(ch._isReturn
+          ? "THE ABOVE MATERIAL WAS RETURNED AND COUNTED IN AT THE GODOWN"
+          : "RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, y);
+        y += 9;
+        F("normal"); doc.setFontSize(11.5); doc.setTextColor(17, 34, 45);
+        doc.text(String(meta.by || "\u2014"), L, y);
+        if (prf.sig) { try { doc.addImage(prf.sig, "PNG", L + 66, y - 7, 50, 19); } catch (e) { } }
+        doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.4);
+        doc.line(L, y + 15, L + 58, y + 15);
+        doc.line(L + 66, y + 15, L + 124, y + 15);
+        F("normal"); doc.setFontSize(7.2); doc.setTextColor(100, 116, 139);
+        doc.text("Name of the receiver", L, y + 19);
+        doc.text("Signature", L + 66, y + 19);
+        y += 28;
+      }
 
       /* The photograph of the paper. Drawn to its own shape, not stretched into a fixed box - a
          receipt squashed out of proportion is a receipt somebody argues about. */
       if (prf.photo) {
-        var MAXW = R - L, MAXH = 214, iw = MAXW, ih = 150;
+        /* ================= FIT IT TO THE ROOM THAT IS LEFT (v6.9.281) =================
+           This used to scale the picture to a fixed 214 mm and then ask whether it fitted. It
+           never did - 214 mm is three quarters of an A4 page - so the photograph took a sheet of
+           its own every single time, however short the delivery. Now the height is whatever the
+           page has left after the paperwork, and the width follows the picture's own shape. */
+        var MAXW = R - L, PW = 3, PH = 4;
         try {
           var ip = doc.getImageProperties("data:image/jpeg;base64," + prf.photo);
-          if (ip && ip.width && ip.height) {
-            var sc = Math.min(MAXW / ip.width, MAXH / ip.height);
-            iw = ip.width * sc; ih = ip.height * sc;
-          }
+          if (ip && ip.width && ip.height) { PW = ip.width; PH = ip.height; }
         } catch (e) { }
-        if (y + ih + 14 > 288) { doc.addPage(); y = 26; }
+        /* FOOT is the closing note's own room: three lines at 3.8 mm plus a bottom margin.
+           MEASURED with 12: the picture fitted, then the note tipped onto a second page - which
+           is the same wasted sheet, just with four lines of small print on it instead of a
+           photograph. */
+        var BOT = 286, FOOT = 15, CAP = 5.5;
+        var fitTo = function (h) {
+          var sc = Math.min(MAXW / PW, h / PH);
+          return { w: PW * sc, h: PH * sc };
+        };
+        var box = fitTo(BOT - FOOT - y - CAP);
+        /* Under 78 mm the handwriting on a delivery slip stops being readable, and an
+           unreadable receipt is not evidence. That is the ONLY thing that still earns a second
+           sheet - not a constant, and not the length of the item list on its own. */
+        if (box.h < 78) { doc.addPage(); y = 26; box = fitTo(Math.min(214, BOT - FOOT - y - CAP)); }
         F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
         doc.text(ch._isReturn ? "THE GOODS-IN RECEIPT AS IT WAS SIGNED AT THE GODOWN"
                               : "THE RECEIPT AS IT CAME BACK FROM THE SITE", L, y);
-        y += 5;
-        var ix = L + (MAXW - iw) / 2;
+        y += CAP;
+        var ix = L + (MAXW - box.w) / 2;
         try {
-          doc.addImage("data:image/jpeg;base64," + prf.photo, "JPEG", ix, y, iw, ih);
-          doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(ix, y, iw, ih);
-          y += ih + 7;
+          doc.addImage("data:image/jpeg;base64," + prf.photo, "JPEG", ix, y, box.w, box.h);
+          doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(ix, y, box.w, box.h);
+          y += box.h + 5.5;
         } catch (e) { }
       }
 
@@ -5269,11 +5314,13 @@ window.addEventListener("beforeunload", function (ev) {
          already.
 
          The quote PDF, the proposal deck, the price list and the challan itself all keep it. */
-      if (y > 256) { doc.addPage(); y = 26; }
-      F("normal"); doc.setFontSize(7.2); doc.setTextColor(120, 130, 145);
-      doc.splitTextToSize("This is one document: the delivery challan and the receipt that came back from the site, " +
+      if (y > 277) { doc.addPage(); y = 26; }
+      F("normal"); doc.setFontSize(7); doc.setTextColor(120, 130, 145);
+      doc.splitTextToSize("Recorded by " + String(meta.actor || "-") + " on " +
+        fullDate(String(meta.at || "").slice(0, 10)) + " at " + String(meta.at || "").slice(11, 16) +
+        " hrs. This is one document: the delivery challan and the receipt that came back from the site, " +
         "kept together and stored unaltered. The quantities shown as received are what the person named above confirmed.",
-        R - L).forEach(function (ln) { doc.text(ln, L, y); y += 4; });
+        R - L).forEach(function (ln) { doc.text(ln, L, y); y += 3.8; });
 
       return doc;
     });
@@ -12526,6 +12573,10 @@ function viewCatalogue() {
       '<button class="btn sm ' + (hisabPerPage() ? '' : 'ghost') + '" data-act="bill-perpage" ' +
         'title="Give every ticked challan its own page in the PDF, with the signed receipt printed underneath it">' +
         (hisabPerPage() ? '✓ One page per challan + receipt' : 'One page per challan + receipt') + '</button>' +
+      /* v6.9.281 - the signed receipts, attached to the end of the PDF in challan order */
+      '<button class="btn sm ' + (hisabReceipts() ? '' : 'ghost') + '" data-act="bill-receipts" ' +
+        'title="Add the signed receipt of every ticked challan to the end of the PDF, one per page, in challan order - so the client can print the statement and the proof together">' +
+        (hisabReceipts() ? '\u2713 Receipts attached' : 'Attach signed receipts') + '</button>' +
       '<button class="btn sm ghost" data-act="bill-selall" data-v="1">Tick all</button>' +
       '<button class="btn sm ghost" data-act="bill-selall" data-v="0">Untick all</button>' +
       '<div class="grow"></div>' +
@@ -12547,6 +12598,17 @@ function viewCatalogue() {
      came to, and underneath it the signed paper that came back - so one sheet answers the
      whole question about one delivery and can be handed over on its own.
      Remembered on this device, like the incentive statement's rate choice. */
+  /* ---- ATTACH THE SIGNED RECEIPTS (v6.9.281) ----
+     Off by default: the statement most clients get should stay one short document. Switched on,
+     every ticked challan's signed receipt is added at the END, one per page, in the same order
+     the challans appear above - so a client who prints the PDF gets the account and the proof of
+     every delivery in one run, in the sequence he can follow. */
+  function hisabReceipts() {
+    try {
+      if (S.billRcpt == null) S.billRcpt = localStorage.getItem("ew_hisab_receipts") === "1";
+    } catch (e) { if (S.billRcpt == null) S.billRcpt = false; }
+    return !!S.billRcpt;
+  }
   function hisabPerPage() {
     try {
       if (S.billPerPage == null) S.billPerPage = localStorage.getItem("ew_hisab_perpage") === "1";
@@ -12565,6 +12627,50 @@ function viewCatalogue() {
      dimensions and reading them is asynchronous. Only ever called in per-page mode, so the
      ordinary statement is not slowed by a single millisecond. A picture that will not
      decode simply resolves to nothing and its challan prints without one. */
+  /* ================= THE SIGNED RECEIPTS, FOR THE STATEMENT (v6.9.281) =================
+     MEASURED on his own Drive before this was written: lh3.googleusercontent.com/d/<id>=w1400
+     returns 1024 x 1448 for a receipt PDF - Drive renders PDFs to images, and 1024 px is its
+     ceiling. A whole A4 page at about 124 dpi: it prints legibly. So no new backend action is
+     needed. imgB64 already fetches a Drive URL server-side; it is how the brand logos arrive.
+
+     Three at a time, like the logo lanes. A nine-challan statement is then three waits instead
+     of nine, and each one is an Apps Script round trip of a couple of seconds.
+
+     Cached by URL for the session: he will export the same statement two or three times while
+     deciding what to tick, and the second export should be instant. */
+  var RCPT_IMG = {};
+  function receiptImage(c) {
+    var r = chProofAny(c);
+    if (!r.has || !r.url) return Promise.resolve(null);
+    var key = String(r.url);
+    if (RCPT_IMG[key] !== undefined) return Promise.resolve(RCPT_IMG[key]);
+    return api("imgB64", { url: driveImg(key, 1400) }, 90000).then(function (x) {
+      if (!x || !x.ok || !x.b64) { RCPT_IMG[key] = null; return null; }
+      /* re-encode once: the raw thumbnail is a 1024 px PNG on some files, and twenty of those
+         make a statement nobody can send on WhatsApp */
+      return shrinkPic("data:" + (x.mime || "image/jpeg") + ";base64," + x.b64, 1400, 0.72)
+        .then(function (p) {
+          RCPT_IMG[key] = p ? { src: p.src, w: p.w, h: p.h } : null;
+          return RCPT_IMG[key];
+        });
+    }).catch(function () { RCPT_IMG[key] = null; return null; });
+  }
+  function receiptImages(list, note) {
+    var q = (list || []).filter(function (c) { var r = chProofAny(c); return r.has && r.url; });
+    var out = {}, i = 0, done = 0;
+    if (!q.length) return Promise.resolve(out);
+    var lane = function () {
+      if (i >= q.length) return Promise.resolve();
+      var c = q[i++];
+      return receiptImage(c).then(function (img) {
+        if (img) out[c.id] = img;
+        done++;
+        if (note) { try { note(done, q.length); } catch (e) { } }
+        return lane();
+      });
+    };
+    return Promise.all([lane(), lane(), lane()]).then(function () { return out; });
+  }
   function thumbSizes(list) {
     return Promise.all((list || []).map(function (c) {
       var r = chProofAny(c);
@@ -12602,7 +12708,15 @@ function viewCatalogue() {
     var perPage = hisabPerPage();
     /* returns travel in the same stream now, so their receipts are measured too */
     var _measure = sel.concat(clientReturns(cl));
-    return (perPage ? thumbSizes(_measure) : Promise.resolve({})).then(function (TSZ) {
+    /* v6.9.281 - and their full-size receipts, if they are being attached */
+    var withRcpt = hisabReceipts();
+    return Promise.all([
+      perPage ? thumbSizes(_measure) : Promise.resolve({}),
+      withRcpt ? receiptImages(_measure, function (d, tt) {
+        if (d < tt) toast("Fetching receipt " + d + " of " + tt + "\u2026");
+      }) : Promise.resolve({})
+    ]).then(function (_pre) {
+      var TSZ = _pre[0], RIMG = _pre[1];
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
       var uni = false;
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
@@ -12870,6 +12984,58 @@ function viewCatalogue() {
       }
       doc.setFontSize(6.6); doc.setTextColor(150, 163, 175); F("normal");
       doc.text("Energy World  |  Panipat · Sonipat · Karnal    |    Statement of account, not a tax invoice.", L, 291);
+
+      /* ================= THE SIGNED RECEIPTS, ATTACHED (v6.9.281) =================
+         In `stream` order, which is the order the challans are listed above - so page 4 of the
+         attachments answers the fourth line of the statement, and a client reading down the
+         account can turn straight to the paper for any of it. */
+      if (withRcpt) {
+        var rq = stream.filter(function (it) { return !!RIMG[(it.t === "C" ? it.c : it.r).id]; });
+        rq.forEach(function (it, ri) {
+          var rc = it.t === "C" ? it.c : it.r, img = RIMG[rc.id];
+          doc.addPage();
+          doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 14, "F");
+          F("bold"); doc.setFontSize(8.6); doc.setTextColor(255, 255, 255);
+          doc.text((it.t === "R" ? "GOODS-IN RECEIPT   " : "SIGNED RECEIPT   ") +
+                   pdfSafe(String(rc.challanNo || rc.returnNo || "")), L, 9);
+          F("normal"); doc.setFontSize(7.2); doc.setTextColor(160, 205, 199);
+          doc.text(pdfSafe(String(cl)) + "   \u00b7   " + fullDate(String(rc.createdAt || "").slice(0, 10)) +
+                   "   \u00b7   " + (ri + 1) + " of " + rq.length, R, 9, { align: "right" });
+          var rbox = fitBox(img.w, img.h, R - L, 262);
+          var rx = L + ((R - L) - rbox.w) / 2;
+          try {
+            doc.addImage(img.src, "JPEG", rx, 20, rbox.w, rbox.h);
+            doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(rx, 20, rbox.w, rbox.h);
+          } catch (e) { }
+          F("normal"); doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
+          doc.text("Attached to the statement of " + pdfSafe(String(cl)) +
+                   ". This is the receipt held on file, reproduced unaltered.", L, 291);
+        });
+        /* A receipt that is on file but would not come down is NOT left as a silent gap. One
+           was, in testing: a JPEG uploaded an hour earlier whose thumbnail Drive had not
+           rendered yet. Better to name it than to let somebody count the pages and wonder. */
+        var rmiss = stream.filter(function (it) {
+          var mc = it.t === "C" ? it.c : it.r;
+          return chProofAny(mc).has && !RIMG[mc.id];
+        });
+        if (rmiss.length) {
+          doc.addPage();
+          F("bold"); doc.setFontSize(10); doc.setTextColor(180, 83, 9);
+          doc.text("On file, but not attached to this copy", L, 24);
+          F("normal"); doc.setFontSize(8.4); doc.setTextColor(100, 116, 139);
+          doc.text("These receipts are held and can be produced. They could not be fetched while this " +
+                   "PDF was made \u2014 usually because the document was filed only minutes ago.", L, 31);
+          var my = 41;
+          rmiss.forEach(function (it) {
+            var mc = it.t === "C" ? it.c : it.r;
+            if (my > 280) { doc.addPage(); my = 24; }
+            F("normal"); doc.setFontSize(9); doc.setTextColor(17, 34, 45);
+            doc.text(pdfSafe(String(mc.challanNo || mc.returnNo || "")) + "   \u00b7   " +
+                     fullDate(String(mc.createdAt || "").slice(0, 10)), L, my);
+            my += 6;
+          });
+        }
+      }
       return doc;
     });
   }
@@ -21151,10 +21317,21 @@ function viewCatalogue() {
         : "Back to the running statement - all challans one after another.");
       return;
     }
+    if (act === "bill-receipts") {
+      S.billRcpt = !hisabReceipts();
+      try { localStorage.setItem("ew_hisab_receipts", S.billRcpt ? "1" : "0"); } catch (e) { }
+      keepScroll = true; render();
+      toast(S.billRcpt
+        ? "The signed receipts will be added at the end of the PDF, in challan order. Each one takes a second or two to fetch."
+        : "Back to the statement on its own \u2014 no receipts attached.");
+      return;
+    }
     if (act === "bill-pdf") {
       var pcl = hisabResolve(S.q);
       var pAll = t.getAttribute("data-all") === "1";
-      toast(pAll ? "Building the full hisab..." : "Building PDF...");
+      toast(hisabReceipts()
+        ? "Building the PDF and fetching the signed receipts\u2026"
+        : (pAll ? "Building the full hisab..." : "Building PDF..."));
       loadLogo().then(function () { return hisabPdf(pcl, pAll); })
         .then(function (d) { d.save(pcl.replace(/[^\w.-]/g, "_") + "_hisab" + (pAll ? "_all" : "") + ".pdf"); })
         .catch(function () { toast("Could not build the PDF."); });
