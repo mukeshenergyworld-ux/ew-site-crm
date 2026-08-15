@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.267";
+  var APP_VERSION = "6.9.268";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14791,6 +14791,118 @@ function viewCatalogue() {
     var total = dup.length + stuckDraft.length + stuckDisp.length + (unb.count ? 1 : 0) + neg.length + orphanDisc.length + dupDisc.length + dupQuotes.length + dupPitch.length;
     return { dup: dup, stuckDraft: stuckDraft, stuckDisp: stuckDisp, unb: unb, neg: neg, orphanDisc: orphanDisc, dupDisc: dupDisc, dupQuotes: dupQuotes, dupPitch: dupPitch, total: total };
   }
+  /* ================= HOW BIG A THING CAN THIS LINE ACTUALLY SEND? (v6.9.268) =========
+     Seven signed receipts would not upload from one Mac. Measured from a good line against the
+     same live endpoint, pdfHost answered a 40 KB payload in 6.2s and a 1,333 KB payload in 8.9s
+     - so the server is healthy and the fault is on the path between that machine and Google.
+
+     Two very different faults look identical from a distance:
+       * a SLOW line, where a bigger deadline eventually wins;
+       * a SIZE CEILING - a proxy, a filtering router, or Safari refusing a large body - where
+         no deadline will ever help and the only answer is to send less.
+     Guessing between them costs a day each time. This measures it, on the machine that has the
+     problem, in about half a minute.
+
+     It uploads real bytes to the real endpoint, so the four files it leaves behind are named
+     EW-LINE-TEST-...-delete-me and can be thrown away from Drive whenever. Deliberately
+     smallest-first, and it stops at the first failure - there is no point sending 1.5 MB up a
+     line that could not manage 750 KB, and on a bad line that would take four more minutes. */
+  var _lineTest = null;
+  function lineTestPayload(kb) {
+    var head = "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
+               "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
+               "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n";
+    var tail = "trailer<</Root 1 0 R>>\n%%EOF\n";
+    var n = Math.max(0, kb * 1024 - head.length - tail.length - 2);
+    var pad = "%";
+    /* build the padding by doubling - a 1.5 MB string one character at a time is slow enough
+       to be noticeable on a phone */
+    var unit = "DDDDDDDDDDDDDDDD";
+    while (pad.length < n) pad += unit.length > (n - pad.length) ? unit.slice(0, n - pad.length) : unit;
+    try { return btoa(head + pad + "\n" + tail); } catch (e) { return ""; }
+  }
+  function runLineTest() {
+    if (_lineTest && _lineTest.running) return;
+    var sizes = [50, 250, 750, 1500];
+    _lineTest = { running: true, rows: [], at: Date.now() };
+    renderBg();
+    var i = 0;
+    var next = function () {
+      if (i >= sizes.length) { _lineTest.running = false; renderBg(); return; }
+      var kb = sizes[i++];
+      var b64 = lineTestPayload(kb);
+      if (!b64) { _lineTest.rows.push({ kb: kb, ok: false, ms: 0, why: "could not build the test payload" });
+                  _lineTest.running = false; renderBg(); return; }
+      var t0 = Date.now();
+      _lineTest.now = kb; renderBg();
+      api("pdfHost", { pdfBase64: b64, filename: "EW-LINE-TEST-" + kb + "KB-delete-me.pdf" }, 240000)
+        .then(function (r) {
+          var okk = !!(r && r.ok && r.url);
+          _lineTest.rows.push({ kb: kb, wireKB: Math.round(b64.length / 1024), ok: okk,
+            ms: Date.now() - t0, why: okk ? "" : String((r && r.error) || "the server gave no link") });
+          _lineTest.now = 0;
+          if (!okk) { _lineTest.running = false; renderBg(); return; }   /* no point going bigger */
+          next();
+        })
+        .catch(function (e) {
+          _lineTest.rows.push({ kb: kb, wireKB: Math.round(b64.length / 1024), ok: false,
+            ms: Date.now() - t0, why: String((e && e.message) || "no answer") });
+          _lineTest.now = 0; _lineTest.running = false; renderBg();
+        });
+    };
+    next();
+  }
+  function lineTestCard() {
+    var t = _lineTest;
+    var h = '<div class="card" style="border-color:#bfdbfe;background:#eff6ff">' +
+      '<h3 style="margin:0 0 4px;font-size:14px;color:#1e40af">How big a file can this connection send?</h3>' +
+      '<div class="meta" style="font-size:13px;color:#1e3a8a">A signed receipt is a few hundred KB. ' +
+      'If the big ones fail and the small ones pass, the line has a size limit and no amount of ' +
+      'waiting will help — the documents have to be made smaller. This sends real files and times them.</div>';
+    if (!t) {
+      h += '<div class="acts" style="margin-top:10px"><button class="btn sm" data-act="line-test">Test this connection</button></div>';
+      return h + '</div>';
+    }
+    h += '<div style="margin-top:10px">';
+    t.rows.forEach(function (r) {
+      h += '<div class="row" style="border-top:1px solid #bfdbfe;padding:6px 0;align-items:center">' +
+        '<div class="grow" style="font-size:13px"><b>' + r.kb + ' KB</b>' +
+        (r.wireKB ? ' <span class="meta" style="font-size:11px">(' + r.wireKB + ' KB on the wire)</span>' : '') +
+        (r.ok ? '' : '<div style="color:#b91c1c;font-size:11.5px;margin-top:2px">' + esc(r.why) + '</div>') +
+        '</div><div style="text-align:right;flex:0 0 auto">' +
+        (r.ok ? '<span class="pill teal" style="background:#dcfce7;color:#166534">went up in ' + (r.ms / 1000).toFixed(1) + 's</span>'
+              : '<span class="pill due" style="background:#fee2e2;color:#b91c1c">failed after ' + (r.ms / 1000).toFixed(1) + 's</span>') +
+        '</div></div>';
+    });
+    if (t.running) {
+      h += '<div class="meta" style="margin-top:8px;color:#1e40af">Sending ' + (t.now || "") + ' KB… give it a moment.</div>';
+    } else {
+      var good = t.rows.filter(function (r) { return r.ok; });
+      var bad = t.rows.filter(function (r) { return !r.ok; });
+      var biggest = good.length ? good[good.length - 1].kb : 0;
+      h += '<div style="margin-top:10px;padding:9px 11px;border-radius:9px;background:#fff;border:1px solid #bfdbfe;font-size:13px">';
+      if (!bad.length) {
+        h += '<b style="color:#0f766e">This connection can send everything, up to 1.5 MB.</b> ' +
+             'So a receipt that will not upload is not being stopped by size — tell me and I will look further.';
+      } else if (!good.length) {
+        h += '<b style="color:#b91c1c">Even a 50 KB file will not go up from here.</b> ' +
+             'That is not a size problem, it is the connection itself or the sign-in. Try another network before anything else.';
+      } else {
+        h += '<b style="color:#b45309">This connection tops out between ' + biggest + ' KB and ' + bad[0].kb + ' KB.</b> ';
+        h += 'A receipt made from today on is about ' + PROOF_TARGET_KB + ' KB, so ';
+        h += (PROOF_TARGET_KB <= biggest
+          ? 'new ones will go up from here. The older, larger ones will not — they are saved on this computer, and re-attaching them from the original photograph will make them small enough.'
+          : 'even a new one is too big for this line. Tell me this number and I will make them smaller still.');
+      }
+      h += '</div>';
+      h += '<div class="acts" style="margin-top:9px"><button class="btn sm ghost" data-act="line-test">Run it again</button></div>';
+    }
+    return h + '</div></div>';
+  }
+  /* what a receipt now weighs, so the advice above is a real comparison and not a guess:
+     a 1000px q0.55 photograph of a written page measures ~245 KB, plus the PDF's own frame */
+  var PROOF_TARGET_KB = 280;
+
   function viewHealth() {
     var s = healthScan();
     var h = '<div class="card" style="' + (s.total ? 'border-color:#fed7aa;background:#fff7ed' : 'border-color:#99f6e4;background:#f0fdfa') + '">' +
@@ -14799,6 +14911,8 @@ function viewCatalogue() {
       (s.total ? '<div style="margin-top:8px;font-weight:700;color:#b45309">' + s.total + ' area(s) need a look</div>'
                : '<div style="margin-top:8px;font-weight:700;color:#0f766e">✓ All clear — nothing unusual found.</div>') +
       '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="health-refresh">Re-scan</button></div></div>';
+
+    h += lineTestCard();
 
     /* v6.9.257 - THE STORAGE READOUT. "phone storage is full" cost a day of everybody
        deleting photographs off phones that had plenty of room, because nothing anywhere
@@ -20534,6 +20648,7 @@ function viewCatalogue() {
        own disk in one press, so clearing the browser can no longer lose them. It does NOT
        clear the queue - they still go up, and the audit row is still what makes them findable
        from the app. This is a safety net, not a substitute. */
+    if (act === "line-test") { runLineTest(); return; }
     if (act === "prf-download") {
       var dl = prfLoad();
       if (!dl.length) { toast("Nothing waiting."); return; }
