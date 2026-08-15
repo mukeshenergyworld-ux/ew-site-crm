@@ -72,6 +72,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
 .empty{text-align:center;color:#64748b;padding:26px 14px;font-size:13.5px}
 /* the toast sits ABOVE whatever is already at the bottom - the tab bar, and the
    icon card when it is up. --ew-bottom is measured, not guessed. See bottomFurniture(). */
+#ew_sync_banner{position:fixed;left:0;right:0;bottom:var(--ew-nav,56px);z-index:29;
+  background:#9a3412;color:#fff;padding:8px 12px;font-size:12.5px;box-shadow:0 -4px 14px rgba(0,0,0,.12)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom) + var(--ew-bottom,0px));transition:bottom .16s ease;background:#0f172a;color:#fff;
   padding:11px 16px;border-radius:10px;font-size:13.5px;z-index:100000;max-width:88%;box-shadow:0 6px 18px rgba(0,0,0,.3)}
 .login{max-width:340px;margin:9vh auto;background:#fff;border-radius:16px;padding:26px 22px;
@@ -126,7 +128,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.9.1";
+  var APP_VERSION = "1.10.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
   var SNAP = "ew_collect_snap";
@@ -210,6 +212,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   }
   function syncBottomVar() {
     try { document.documentElement.style.setProperty("--ew-bottom", bottomFurniture() + "px"); } catch (e) {}
+    /* v1.10.0 - the held-work bar sits ON the tab bar, so it has to know how tall the tab bar
+       actually is. Measured, not guessed: it is taller on a phone with a home indicator. */
+    try {
+      var nav = document.querySelector(".nav"), nh = 0;
+      if (nav) { var r = nav.getBoundingClientRect(); nh = r && r.height ? Math.ceil(r.height) : 0; }
+      document.documentElement.style.setProperty("--ew-nav", (nh || 56) + "px");
+    } catch (e) {}
   }
   var _bfWatch = false;
   function watchBottom() {
@@ -304,13 +313,22 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     if (Object.prototype.hasOwnProperty.call(_big, k)) return _big[k];
     try { return localStorage.getItem(k); } catch (e) { return null; }
   }
-  function bigSet(k, v) {
+  function bigSet(k, v) { bigSetX(k, v); return true; }
+  /* v1.10.0 - THE SAME WRITE, BUT IT ANSWERS.
+     bigSet returned true whatever happened: the IndexedDB write is behind a promise and the
+     localStorage fallback swallows its own exception. That was fine while the big box held
+     only a snapshot of the book - a cache that fails to store is re-pulled and nobody is
+     worse off. The journal below is not a cache. It is the only record of money a man has
+     already taken, and if it did not store he has to be told while he is still standing in
+     front of the customer. */
+  function bigSetX(k, v) {
     _big[k] = v;
-    idbSet(k, v).then(function (ok) {
-      if (ok) { try { localStorage.removeItem(k); } catch (e) {} return; }
-      try { localStorage.setItem(k, v); } catch (e) {}   /* no IndexedDB - as before */
+    return idbSet(k, v).then(function (ok) {
+      if (ok) { try { localStorage.removeItem(k); } catch (e) {} return true; }
+      try { localStorage.setItem(k, v); return true; } catch (e) { return false; }
+    }).catch(function () {
+      try { localStorage.setItem(k, v); return true; } catch (e) { return false; }
     });
-    return true;
   }
   function bigDel(k) { delete _big[k]; idbDel(k); try { localStorage.removeItem(k); } catch (e) {} }
   /* Read into memory before the first paint, and bring across whatever the old box holds.
@@ -352,23 +370,68 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      it is a hang, and it is what "it does not open on the iPhone" actually was.
      A stalled call is now abandoned and reported like any other failure. */
   var API_TIMEOUT = 20000;
+  /* ================= WHY THESE MESSAGES CHANGED (v1.10.0) =================
+     The same three faults found in the Challan app when its held-work bar was finally put on
+     a screen where somebody would read it. They were invisible here for the same reason: the
+     reason a write failed was never shown to anyone.
+
+       1. A TIMEOUT SAID THE USER DID IT. On the deadline this called ctrl.abort(), and the
+          browser rejects an aborted fetch with "The user aborted a request." Nobody aborted
+          anything - and this app's own recovery code then matched that message with
+          /timed out|abort/ to decide whether to doubt itself, so its one piece of honesty
+          was resting on a browser's wording.
+       2. r.json() ON A REPLY THAT IS NOT JSON. A /exec POST is a 302 to
+          script.googleusercontent.com; a Google sign-in page or a quota page comes back as
+          HTML with HTTP 200 and r.json() throws "Unexpected token '<'". Read as text first.
+       3. NO DEADLINE AT ALL WITHOUT AbortController. The timer was armed only inside
+          if (ctrl), so on a browser without it a hung request never settled and the Record it
+          button stayed disabled for ever.
+
+     And one flat 20s for every call was the shortest deadline in the estate - shorter than
+     the CRM's measured 30s+ for a save under load, and far shorter than a receipt PDF needs. */
+  var API_MS_BY_ACTION = { teamSave: 60000, teamGet: 60000, pdfHost: 240000, tgSend: 60000 };
   function api(action, extra, ms) {
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
+    var limit = Number(ms) || API_MS_BY_ACTION[action] || API_TIMEOUT;
     var ctrl = null, timer = null;
-    try { ctrl = new AbortController(); } catch (e) { ctrl = null; }
+    try { if (window.AbortController) ctrl = new AbortController(); } catch (e) { ctrl = null; }
     var opts = {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(body)
     };
     if (ctrl) opts.signal = ctrl.signal;
-    var p = fetch(GAS, opts).then(function (r) { return r.json(); });
-    if (ctrl) {
-      timer = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, Number(ms) || API_TIMEOUT);
-      p = p.then(function (v) { clearTimeout(timer); return v; },
-                 function (e) { clearTimeout(timer); throw e; });
-    }
-    return p;
+    var done = function () { if (timer) { clearTimeout(timer); timer = null; } };
+    return new Promise(function (res, rej) {
+      timer = setTimeout(function () {
+        timer = null;
+        try { if (ctrl) ctrl.abort(); } catch (e) {}
+        rej(new Error("no answer in " + Math.round(limit / 1000) + "s"));
+      }, limit);
+      fetch(GAS, opts)
+        .then(function (r) {
+          return r.text().then(function (txt) {
+            var j = null;
+            try { j = JSON.parse(txt); } catch (e) { j = null; }
+            if (j) return j;
+            var head = String(txt || "").replace(/\s+/g, " ").slice(0, 60);
+            if (/<html|<!doctype/i.test(txt) && /sign in|signin|accounts\.google/i.test(txt)) {
+              throw new Error("the server asked this browser to sign in to Google");
+            }
+            if (/quota|exceeded|too many/i.test(txt)) throw new Error("Google Apps Script quota reached");
+            throw new Error("the server sent something that is not JSON (HTTP " + r.status +
+                            (head ? ", starts: " + head : "") + ")");
+          });
+        })
+        .then(function (j) { done(); res(j); })
+        .catch(function (e) {
+          done();
+          var msg = (e && e.message) ? String(e.message) : "";
+          if (/abort/i.test(msg)) msg = "no answer in " + Math.round(limit / 1000) + "s";
+          else if (/failed to fetch|networkerror|load failed/i.test(msg)) msg = "no signal \u2014 the phone could not reach the server";
+          rej(new Error(msg || "no answer from the server"));
+        });
+    });
   }
 
   /* ---------- the statement builder, fetched only when it is wanted ----------
@@ -414,6 +477,246 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      nothing at all and cannot break anything - and the day it is taught, every pull
      halves on its own with no new version of this app needing to go out. */
   function getBook() { return api("teamGet", { only: KEEP }); }
+
+  /* ================= THE WRITE JOURNAL (v1.10.0) ==========================
+     WHAT WAS WRONG. This app had no offline write path at all. All three of its writes - a
+     payment, a follow-up call, an old-book note - were bare fetches, and a bare fetch that
+     fails leaves nothing behind. Measured against v1.9.1: a write rejected by the network
+     wrote ZERO bytes to any store on the device.
+
+     This is the app that records money that has already changed hands. A man takes five
+     lakh in a basement, the write fails, and the only record of it was in a browser tab.
+
+     WHAT IT DOES NOW. Every write goes into a journal on this device FIRST and only then to
+     the server. A confirmed save clears its entry; an unconfirmed one stays, is shown, and
+     is retried on reconnect, on every foregrounding, on a 45-second tick with backoff, and
+     on the next boot. This is the journal shipped in Challan v1.10.0, which is itself the
+     CRM's, so the parts that were earned the hard way are kept rather than re-derived: one
+     record one entry; a timeout is not a failure, so a fresh pull clears entries the server
+     already holds; one stuck record never blocks the queue; a watchdog on the flushing flag;
+     backoff on repeated refusal; the server's real reason kept verbatim.
+
+     IT IS SIMPLER HERE, AND THAT IS WORTH SAYING. Challan had to hold a challan with no
+     number, because the number comes from the server. Nothing in this app is numbered by the
+     server - a payment, a follow-up and an old-book note all carry a client-minted id
+     already - so a safe replay is just an upsert by that id. There is no held-with-no-number
+     state to design, and no approval to refuse to queue.
+
+     WHAT IT FIXES BEYOND THE OBVIOUS. v1.9.0 records that the twin-check - same man, same
+     day, same amount - "could not catch it because the payment that had landed was never in
+     local state". It is now: applyJournal lays every held payment back into S.data.payments
+     on each pull, so the check that stops a second receipt for one payment can finally see
+     the payment it is meant to stop. */
+  var JRN_KEY = "ew_collect_journal_v1";
+  var _jrnSeq = 0, _jrnTold = false, _flushing = false, _flushDog = null;
+  var _flushFails = 0, _flushSkip = 0, _flushTick = null;
+
+  function jrnLoad() {
+    try { var l = JSON.parse(bigGet(JRN_KEY) || "[]"); return Array.isArray(l) ? l : []; }
+    catch (e) { return []; }
+  }
+  function jrnCount() { return jrnLoad().length; }
+  function jrnStore(l) {
+    S.jrnCount = l.length;
+    bigSetX(JRN_KEY, JSON.stringify(l)).then(function (ok) {
+      S.jrnDurable = !!ok;
+      if (!ok && l.length && !_jrnTold) {
+        _jrnTold = true;
+        try { toast("This phone will not keep unsent work — write the receipt in the book too, and open the app again where there is signal."); } catch (e) {}
+      }
+      jrnPaint();
+    });
+    jrnPaint();
+  }
+  /* Every row this app writes carries an id of its own, so identity is never in doubt. */
+  function natEq(a, b) { return !!(a && b && b.id && a.id === b.id); }
+  function jrnPut(e) {
+    var l = jrnLoad().filter(function (x) {
+      if (x.pk === e.pk) return false;
+      if (x.tab === e.tab && natEq(x.row, e.row)) return false;
+      return true;
+    });
+    l.push(e); jrnStore(l); return e;
+  }
+  function jrnMark(pk, err) {
+    var l = jrnLoad();
+    l.forEach(function (x) { if (x.pk === pk) { x.err = String(err || "").slice(0, 140); x.tries = (x.tries || 0) + 1; } });
+    jrnStore(l);
+  }
+  function jrnDrop(pk) { jrnStore(jrnLoad().filter(function (x) { return x.pk !== pk; })); }
+  function jrnFor(rec) {
+    var l = jrnLoad();
+    for (var i = 0; i < l.length; i++) if (natEq(l[i].row, rec)) return l[i];
+    return null;
+  }
+  /* how much money is sitting on this phone and not yet on the sheet */
+  function jrnHeldMoney() {
+    return jrnLoad().reduce(function (a, e) {
+      return a + (e.tab === "payments" ? EWnum(e.row && e.row.amount) : 0);
+    }, 0);
+  }
+
+  /* Did it already land? Deliberately exact and deliberately biased towards keeping: every
+     field we sent must already match what the server holds. If ANYTHING differs the entry is
+     kept and retried, and a retry is an upsert by id, so it can never double-write. */
+  function jrnLanded(e, srv) {
+    if (!srv || !e || !e.row) return false;
+    var keys = Object.keys(e.row);
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (k.charAt(0) === "_") continue;
+      if (k === "updatedAt" || k === "syncedAt") continue;
+      var a = e.row[k], b = srv[k];
+      if (a === null || a === undefined) a = "";
+      if (b === null || b === undefined) b = "";
+      if (typeof a === "object" || typeof b === "object") {
+        var ja = "", jb = "";
+        try { ja = JSON.stringify(a); jb = JSON.stringify(b); } catch (x) { return false; }
+        if (ja !== jb) return false;
+      } else if (String(a).trim() !== String(b).trim()) return false;
+    }
+    return true;
+  }
+  /* Call with S.data holding a FRESH SERVER PULL and BEFORE applyJournal has laid the
+     journal back on top - otherwise every entry matches the copy of itself the overlay just
+     added, and the journal clears itself on the first pull. */
+  function jrnReconcile() {
+    var l = jrnLoad();
+    if (!l.length || !S.data) return 0;
+    var keep = [], gone = 0;
+    l.forEach(function (e) {
+      var arr = (S.data[e.tab] || []), srv = null;
+      for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { srv = arr[j]; break; } }
+      if (srv && jrnLanded(e, srv)) { gone++; return; }
+      keep.push(e);
+    });
+    if (gone) {
+      jrnStore(keep);
+      try { toast(gone === 1
+        ? "1 record that looked unsent was already on the server — cleared."
+        : gone + " records that looked unsent were already on the server — cleared."); } catch (e) {}
+    }
+    return gone;
+  }
+  /* Lay unsent rows back on top of a fresh pull. Two reasons, and the second is the one that
+     matters: a background sync can never rub out work the server has not confirmed, AND the
+     twin-check can see a held payment, which is precisely what v1.9.0 said it could not. */
+  function applyJournal() {
+    if (!S.data) return;
+    jrnLoad().forEach(function (e) {
+      var arr = (S.data[e.tab] = S.data[e.tab] || []), found = false;
+      for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { found = true; break; } }
+      if (!found) arr.push(e.row);
+    });
+    bust();
+  }
+
+  function jrnFlush() {
+    if (_flushing) return;
+    if (!jrnLoad().length) return;
+    _flushing = true;
+    if (_flushDog) clearTimeout(_flushDog);
+    _flushDog = setTimeout(function () { _flushing = false; _flushDog = null; }, 180000);
+    var okCount = 0, i = 0;
+    var stop = function () {
+      _flushing = false;
+      if (_flushDog) { clearTimeout(_flushDog); _flushDog = null; }
+      try { render(); } catch (e) {}
+      if (!jrnCount()) { if (okCount) toast("Everything held on this phone is now on the sheet."); }
+      else if (okCount) toast(okCount + " sent. " + jrnCount() + " still held — the bar shows the reason.");
+    };
+    var step = function () {
+      var l = jrnLoad();
+      if (i >= l.length) { stop(); return; }
+      var e = l[i];
+      api("teamSave", { tab: e.tab, row: e.row }).then(function (r) {
+        if (r && r.ok) {
+          var arr = (S.data && S.data[e.tab]) || [];
+          for (var j = 0; j < arr.length; j++) {
+            if (arr[j] && natEq(arr[j], e.row)) { Object.assign(arr[j], r.row || e.row); break; }
+          }
+          bust(); jrnDrop(e.pk); okCount++;   /* the list shifted left - same index is the next */
+        } else { jrnMark(e.pk, (r && r.error) || "the server refused it"); i++; }
+        step();
+      }).catch(function (err) {
+        jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
+        i++; step();
+      });
+    };
+    step();
+  }
+
+  function flushSoon() {
+    if (!jrnCount()) { _flushFails = 0; _flushSkip = 0; return; }
+    try { if (navigator && navigator.onLine === false) return; } catch (e) {}
+    if (_flushSkip > 0) { _flushSkip--; return; }
+    var before = jrnCount();
+    try { jrnFlush(); } catch (e) {}
+    setTimeout(function () {
+      if (jrnCount() < before) { _flushFails = 0; _flushSkip = 0; }
+      else { _flushFails = Math.min(_flushFails + 1, 3); _flushSkip = Math.pow(2, _flushFails) - 1; }
+    }, 8000);
+  }
+  /* pressing a button is a fresh start - never make a man wait out a backoff he can see */
+  function flushNow() { _flushFails = 0; _flushSkip = 0; flushSoon(); }
+  function startFlushTicker() {
+    if (_flushTick) return;
+    _flushTick = setInterval(flushSoon, 45000);
+    try {
+      document.addEventListener("visibilitychange", function () { if (!document.hidden) flushSoon(); });
+      window.addEventListener("online", flushSoon);
+    } catch (e) {}
+    flushSoon();
+  }
+
+  /* ---- the bar that says so ----
+     It names the MONEY, not just a count. "2 records held" is a developer's sentence; the
+     accounts desk needs to know that six lakh is sitting on a phone and not on the sheet. */
+  function jrnPaint() {
+    var host = document.getElementById("ew_sync_banner");
+    if (!host) return;
+    var l = jrnLoad(), wrap = document.querySelector(".wrap");
+    if (!l.length) {
+      host.style.display = "none"; host.innerHTML = "";
+      if (wrap) wrap.style.paddingBottom = "";
+      return;
+    }
+    if (wrap) wrap.style.paddingBottom = "150px";
+    var err = "", i;
+    for (i = 0; i < l.length; i++) if (l[i].err) { err = l[i].err; break; }
+    var cash = jrnHeldMoney();
+    host.style.display = "block";
+    host.innerHTML =
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-weight:800">' +
+            (cash > 0 ? money(cash) + " held on this phone" : l.length + " " + (l.length === 1 ? "record is" : "records are") + " held on this phone") +
+            (S.jrnDurable === false ? ' <span style="opacity:.85">(and this phone will not keep it)</span>' : '') +
+          '</div>' +
+          '<div style="opacity:.9;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
+            esc(err || "It goes onto the sheet by itself when there is signal.") + '</div>' +
+        '</div>' +
+        '<button class="btn sm" data-act="jrn-retry" style="background:#fff;color:#7c2d12;flex:none">Try now</button>' +
+      '</div>';
+  }
+
+  function saveRow(tab, row) {
+    /* v1.10.0 - JOURNAL FIRST, THEN THE SERVER. Never the other way round: the point is that
+       the record survives this tab being discarded one second after the tap.
+       This never rejects. It resolves { ok, row, held } - held meaning it is safe on the
+       device but the server has not confirmed it. Saved, held and lost are three different
+       things, and where money is concerned every caller has to say which one it is. */
+    var e = jrnPut({ pk: "J-" + Date.now() + "-" + (++_jrnSeq), tab: tab, row: row,
+                     by: S.user || "", at: Date.now(), err: "", tries: 0 });
+    return api("teamSave", { tab: tab, row: row }).then(function (r) {
+      if (r && r.ok) { jrnDrop(e.pk); return { ok: true, row: r.row || row, held: false }; }
+      jrnMark(e.pk, (r && r.error) || "the server refused it");
+      return { ok: true, row: row, held: true, err: (r && r.error) || "the server refused it" };
+    }).catch(function (err) {
+      jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
+      return { ok: true, row: row, held: true, err: (err && err.message) || "no answer from the server" };
+    });
+  }
 
   /* A reply with no client list in it is not an empty book, it is a broken reply. Wiping
      a man's screen on the strength of one is how a morning gets lost. */
@@ -685,13 +988,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   }
   function saveFollow(client, promised, note, outcome) {
     _fuCache = null;
-    return api("teamSave", { tab: "audit", row: {
+    return saveRow("audit", {
       id: "F-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
       createdAt: new Date().toISOString(), actor: S.user || "",
       action: "collect:followup", target: String(client || ""),
       detail: JSON.stringify({ client: String(client || ""), promised: String(promised || ""),
                                note: String(note || ""), outcome: String(outcome || ""), by: S.user || "" })
-    } });
+    });
   }
 
   /* ---------- the book, computed once per paint ---------- */
@@ -832,13 +1135,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   function obFor(name) { return obMap()[String(name || "").trim().toLowerCase()] || { state: "none", agreed: 0, note: "", at: "", by: "" }; }
   function saveOldBook(client, state, agreed, note) {
     _obCache = null;
-    return api("teamSave", { tab: "audit", row: {
+    return saveRow("audit", {
       id: "OB-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
       createdAt: new Date().toISOString(), actor: S.user || "",
       action: "collect:oldbook", target: String(client || ""),
       detail: JSON.stringify({ client: String(client || ""), state: String(state || "none"),
                                agreed: EWnum(agreed), note: String(note || ""), by: S.user || "" })
-    } });
+    });
   }
   function oldBookRows() {
     return rows().filter(function (r) { return r.oldBook > 0.5; })
@@ -1391,7 +1694,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     /* sending the figure IS taking it up - but never downgrading an answer already given */
     if (canWrite() && ["agreed", "disputed"].indexOf(obFor(r.name).state) < 0) {
       saveOldBook(r.name, "sent", 0, "").then(function (x) {
-        if (x && x.ok) { (S.data.audit = S.data.audit || []).push(x.row); bust(); render(); }
+        if (x && x.row) { (S.data.audit = S.data.audit || []).push(x.row); bust(); render(); }
       }).catch(function () {});
     }
   }
@@ -1799,12 +2102,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         '<button class="' + (S.tab === "oldbook" ? "on" : "") + '" data-act="tab" data-t="oldbook"><b>&#128220;</b>Old book</button>' +
         '<button data-act="crm"><b>&#8599;</b>Open CRM</button>' +
       '</div>' +
+      '<div id="ew_sync_banner" style="display:none"></div>' +
       (S.sheet ? '<div class="sheet" data-act="close-bg"><div class="inner" data-stop="1">' + S.sheet + '</div></div>' : '');
     var q = el("q");
     if (q) {
       q.addEventListener("input", function (e) { S.q = e.target.value; repaintList(true); });
       q.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
     }
+    jrnPaint(); syncBottomVar();
   }
   /* the search box repaints only the list under it, so the caret and the phone
      keyboard stay put while a name is typed one letter at a time */
@@ -1888,13 +2193,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       var obn = t.getAttribute("data-n");
       t.disabled = true; t.textContent = "Saving…";
       saveOldBook(obn, val("ob_state"), EWnum(val("ob_amt")), val("ob_note")).then(function (r) {
-        if (!r || !r.ok) { t.disabled = false; t.textContent = "Save"; toast("The server refused it. Nothing was saved."); return; }
         (S.data.audit = S.data.audit || []).push(r.row);
         bust(); S.sheet = null; render();
-        toast(obn + " — " + obLabel(val("ob_state")) + ".");
+        toast(obn + " — " + obLabel(val("ob_state")) + "." +
+              (r.held ? " Held on this phone until there is signal." : ""));
       }).catch(function () {
         t.disabled = false; t.textContent = "Save";
-        toast("No signal — nothing was saved. Try again.");
+        toast("Could not save it. Try again.");
       });
       return;
     }
@@ -1928,6 +2233,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       if (!canWrite()) { toast("Recording a promise is done by the office."); return; }
       S.sheet = sheetLog(t.getAttribute("data-n")); render(); return;
     }
+    if (act === "jrn-retry") { flushNow(); toast("Trying now\u2026"); return; }
     if (act === "pi-full") { var a = el("pi_amt"); if (a) { a.value = t.getAttribute("data-v"); a.focus(); } return; }
     if (act === "fu-day") {
       var d = el("fu_date");
@@ -1964,8 +2270,26 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         client: name, date: dt, amount: amt, mode: val("pi_mode"), ref: val("pi_ref"),
         notes: "Entered in the collection app"
       };
-      api("teamSave", { tab: "payments", row: row }).then(function (r) {
-        if (!r || !r.ok) { t.disabled = false; t.textContent = "Record it"; toast((r && r.error) || "The server refused it. Nothing was recorded."); return; }
+      /* ===== v1.10.0 - THE MONEY IS RECORDED THE MOMENT HE TAPS =====
+         What this replaces is worth writing down, because it was good code solving the wrong
+         problem. v1.9.0 stopped the app claiming "nothing was recorded" after a timeout, and
+         instead re-pulled the whole book to find out whether the payment had landed. That was
+         the honest thing to do with the tools it had. But it only worked if the app stayed
+         open and the pull succeeded, and it could not help at all with the case that actually
+         loses money: no signal, so the pull cannot happen either. It also still asserted
+         "nothing was recorded" on any failure that was not a timeout - and a connection
+         dropped AFTER the POST was delivered rejects with "Failed to fetch", not a timeout.
+         So the one sentence a man must be able to trust was sometimes false.
+
+         The journal makes the whole question go away. The payment is on the device before the
+         request is made, a replay is an upsert by the id it already carries, so a double-write
+         is not possible, and there is nothing left to anxiously check. The twin-check keeps
+         working and now works better: applyJournal lays held payments back into
+         S.data.payments, so it can finally see the payment v1.9.0 said it could not.
+
+         And the receipt is shown either way. Whether the sheet has caught up is Energy World's
+         problem; the customer handed over money and is owed his confirmation now. */
+      saveRow("payments", row).then(function (r) {
         (S.data.payments = S.data.payments || []).push(r.row || row);
         bust();
         /* v1.1 - the receipt, straight away. The customer gets his confirmation without
@@ -1973,33 +2297,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         var after = rowFor(name);
         S.sheet = sheetReceipt(name, amt, val("pi_mode") || row.mode, dt, after ? after.due : 0);
         render();
-        toast(money(amt) + " recorded against " + name + ".");
-      }).catch(function (e) {
-        t.disabled = false; t.textContent = "Record it";
-        /* v1.9.0 - THIS USED TO SAY "nothing was recorded". It did not know that.
-           api() gives up at 20 seconds; Apps Script under load takes longer than that, and
-           giving up listening is not the same as the server refusing. The old wording invited
-           a second press, and the twin-check could not catch it because the payment that had
-           landed was never in local state. Two receipts for one payment.
-           So: say what is true, fetch the book, and let the twin-check do its job. */
-        var slow = /timed out|abort/i.test(String((e && e.message) || ""));
-        if (!slow) { toast("No signal — nothing was recorded. Try again when you are back online."); return; }
-        toast("The server did not answer in time. It may still have saved — fetching the book to check.");
-        pull(false).then(function () {
-          bust();
-          var seen = ((S.data && S.data.payments) || []).some(function (x) {
-            return String(x.client || "").trim().toLowerCase() === String(name).trim().toLowerCase() &&
-              String(x.date || "").slice(0, 10) === dt && Math.round(EWnum(x.amount)) === amt;
-          });
-          if (seen) {
-            S.sheet = null; render();
-            toast(money(amt) + " DID save. It is in the book — do not enter it again.");
-          } else {
-            toast("It did not save. Press Record it once more.");
-          }
-        }).catch(function () {
-          toast("Could not reach the book. Check before entering it again — it may have saved.");
-        });
+        toast(r.held
+          ? money(amt) + " recorded against " + name + ", and held on this phone until there is " +
+            "signal. His receipt is ready now."
+          : money(amt) + " recorded against " + name + ".");
       });
       return;
     }
@@ -2011,13 +2312,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       if (pd && pd < today()) { toast("A promised date cannot be in the past."); return; }
       t.disabled = true; t.textContent = "Saving…";
       saveFollow(cn, pd, val("fu_note"), val("fu_out")).then(function (r) {
-        if (!r || !r.ok) { t.disabled = false; t.textContent = "Save the call"; toast("The server refused it. Nothing was saved."); return; }
         (S.data.audit = S.data.audit || []).push(r.row);
         bust(); S.sheet = null; render();
-        toast(pd ? cn + " will come back up on " + dstr(pd) + "." : "Call noted against " + cn + ".");
+        toast((pd ? cn + " will come back up on " + dstr(pd) + "." : "Call noted against " + cn + ".") +
+              (r.held ? " Held on this phone until there is signal." : ""));
       }).catch(function () {
         t.disabled = false; t.textContent = "Save the call";
-        toast("No signal — the call was not saved. Try again.");
+        toast("Could not note the call. Try again.");
       });
       return;
     }
@@ -2039,6 +2340,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         return;
       }
       try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: pin, role: S.role })); } catch (e) {}
+      startFlushTicker();
       S.tab = "today";
       pull(false);
     }).catch(function () { S.pin = ""; renderLogin("Network error. Try again."); });
@@ -2056,20 +2358,35 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      A man standing in a godown on 4G should not watch a spinner to find out who owes him. */
   function pull(loud) {
     var snap = snapLoad();
-    if (snap && !S.data) { S.data = snap; bust(); render(); }
+    if (snap && !S.data) { S.data = snap; applyJournal(); render(); }
     S.busy = true;
     if (S.data) render();
     if (loud) toast("Pulling the latest…");
     return getBook().then(function (r) {
       S.busy = false;
-      if (usableBook(r)) { S.data = slimBook(r); S.syncAt = Date.now(); bust(); snapSave(); }
+      if (usableBook(r)) {
+        S.data = slimBook(r); S.syncAt = Date.now(); bust();
+        /* v1.10.0 - THE ORDER MATTERS AND IT IS NOT INTERCHANGEABLE.
+           jrnReconcile reads a FRESH server pull to decide which held records the server
+           already has. applyJournal then lays the rest back on top. Do them the other way
+           round and every entry matches the copy of itself the overlay just added, so the
+           journal clears itself on the first pull. */
+        jrnReconcile(); applyJournal();
+        snapSave(); flushSoon();
+      }
       else if (!S.data) { renderLogin("Could not read the book. Sign in again."); return; }
       else if (loud) { render(); toast("The server sent nothing usable — keeping what is on this phone."); return; }
       render();
       if (loud) toast("Up to date.");
     }).catch(function () {
       S.busy = false;
-      if (!S.data) { renderLogin("No signal, and nothing saved on this phone yet."); return; }
+      if (!S.data) {
+        /* v1.10.0 - never say nothing is saved when money is. */
+        renderLogin(jrnCount()
+          ? jrnCount() + " record(s) are held safe on this phone, but the book has never been pulled onto it. Sign in where there is signal."
+          : "No signal, and nothing saved on this phone yet.");
+        return;
+      }
       render(); toast("No signal — showing what was last pulled onto this phone.");
     });
   }
@@ -2143,12 +2460,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
        the warm paint or the app would open on a holding screen instead of the book. A local
        read of tens of milliseconds against a boot that already waits on two network calls,
        and it gives up after 2.5s rather than ever blocking. */
-    bigPreload([SNAP + "_" + S.user]).then(function () { boot2(sess); });
+    /* v1.10.0 - JRN_KEY IS IN THIS LIST OR THE JOURNAL DOES NOT EXIST. bigSet removes the
+       localStorage copy the moment IndexedDB has it, and bigGet only reads IndexedDB through
+       the _big mirror - so a journal key left out of the preload reads back EMPTY on exactly
+       the boot it was written for. */
+    bigPreload([SNAP + "_" + S.user, JRN_KEY]).then(function () { boot2(sess); });
   })();
 
   function boot2(sess) {
     var snap = snapLoad();
-    if (snap) { S.data = snap; bust(); S.busy = true; render(); }
+    if (snap) { S.data = snap; applyJournal(); S.busy = true; render(); }
     else openingScreen();
 
     var authP = api("teamAuth", { ua: navigator.userAgent });
@@ -2175,16 +2496,25 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     dataP.then(function (r) {
       if (refused) return;
       S.busy = false;
-      if (usableBook(r)) { S.data = slimBook(r); S.syncAt = Date.now(); bust(); snapSave(); render(); }
+      if (usableBook(r)) {
+        S.data = slimBook(r); S.syncAt = Date.now(); bust();
+        jrnReconcile(); applyJournal();      /* reconcile first - see pull() */
+        snapSave(); render(); flushSoon();
+      }
       else if (!S.data) openingScreen("Could not read the book. Try again.");
       else render();
     }).catch(function () {
       if (refused) return;
       S.busy = false;
       if (S.data) { render(); toast("No signal — showing what was last pulled onto this phone."); }
-      else openingScreen("No signal, and nothing saved on this phone yet.");
+      else openingScreen(jrnCount()
+        ? jrnCount() + " record(s) are held safe on this phone and go onto the sheet when there is signal. The book itself has never been pulled onto this phone."
+        : "No signal, and nothing saved on this phone yet.");
     });
 
+    /* v1.10.0 - the journal starts working the moment the app opens, whether or not the book
+       came down. A payment taken yesterday in a basement goes up on today's first open. */
+    startFlushTicker();
     regSW();
   }
 
