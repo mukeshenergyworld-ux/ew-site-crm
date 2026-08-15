@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.260";
+  var APP_VERSION = "6.9.261";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -364,8 +364,32 @@
         try { if (ctl) ctl.abort(); } catch (e) {}
         rej(new Error("timed out after " + Math.round(limit / 1000) + "s"));
       }, limit);
+      /* v6.9.261 - READ IT AS TEXT, THEN PARSE.
+         r.json() throws a bare SyntaxError when the reply is not JSON, and every catch
+         downstream turned that into the word "network error" - which is how a perfectly
+         healthy connection came to be blamed. Apps Script does not always answer with JSON:
+         a /exec POST is a 302 to script.googleusercontent.com, and when that redirect lands
+         on a Google sign-in page (wrong account signed in on that browser, or a stale
+         cookie) or on a quota / script-error page, what comes back is HTML with HTTP 200.
+         The old code called that a network problem. It is not - it is the server saying
+         something, and the something is worth reading. */
       fetch(GAS, opt)
-        .then(function (r) { return r.json(); })
+        .then(function (r) {
+          return r.text().then(function (txt) {
+            var j = null;
+            try { j = JSON.parse(txt); } catch (e) { j = null; }
+            if (j) return j;
+            var head = String(txt || "").replace(/\s+/g, " ").slice(0, 60);
+            if (/<html|<!doctype/i.test(txt) && /sign in|signin|accounts\.google/i.test(txt)) {
+              throw new Error("the server asked this browser to sign in to Google (HTTP " + r.status + ")");
+            }
+            if (/quota|exceeded|too many/i.test(txt)) {
+              throw new Error("Google Apps Script quota reached (HTTP " + r.status + ")");
+            }
+            throw new Error("server sent something that is not JSON (HTTP " + r.status +
+                            (head ? ", starts: " + head : "") + ")");
+          });
+        })
         .then(function (j) { done(); res(j); })
         .catch(function (e) { done(); rej(e); });
     });
@@ -447,7 +471,13 @@
           pendDrop(e.pk); okCount++;          /* list shifted left — same index now holds the next record */
         } else { pendMark(e.pk, (r && r.error) || "server refused"); i++; }
         step();
-      }).catch(function () { pendMark(e.pk, "network error"); i++; step(); });
+      }).catch(function (err) {
+        /* v6.9.261 - it used to write the words "network error" whatever had happened, so
+           the timeout, the not-JSON reply and a genuine dead connection all read the same
+           and none of them could be acted on. The real reason is kept now. */
+        pendMark(e.pk, (err && err.message) ? String(err.message).slice(0, 120) : "no answer from the server");
+        i++; step();
+      });
     };
     step();
   }
@@ -461,12 +491,26 @@
      A quiet tick, every 45 seconds, and again the moment the app is looked at. It does
      nothing at all when the queue is empty, so it costs nothing on a normal day. */
   var _flushTick = null;
+  var _flushFails = 0, _flushSkip = 0;
   function flushSoon() {
-    if (!pendCount() && !prfCount()) return;
+    if (!pendCount() && !prfCount()) { _flushFails = 0; _flushSkip = 0; return; }
     if (navigator && navigator.onLine === false) return;
+    /* v6.9.261 - back off. A record the server keeps refusing was being retried every 45
+       seconds for ever, which achieves nothing and costs the phone its battery and its
+       data. After each failed sweep the gap doubles - 45s, 90s, 3m, 6m - up to about ten
+       minutes, and it resets the moment anything succeeds or he presses the button. */
+    if (_flushSkip > 0) { _flushSkip--; return; }
+    var before = pendCount() + prfCount();
     try { retryPending(); } catch (e) {}
     try { prfFlush(); } catch (e) {}
+    setTimeout(function () {
+      var after = pendCount() + prfCount();
+      if (after < before) { _flushFails = 0; _flushSkip = 0; }
+      else { _flushFails = Math.min(_flushFails + 1, 4); _flushSkip = Math.pow(2, _flushFails) - 1; }
+    }, 8000);
   }
+  /* pressing a button is a fresh start - never make a man wait out a backoff he can see */
+  function flushNow() { _flushFails = 0; _flushSkip = 0; flushSoon(); }
   function startFlushTicker() {
     if (_flushTick) return;
     _flushTick = setInterval(flushSoon, 45000);
@@ -715,7 +759,7 @@
       if (!S.pending) quietSync();
       return r.row;
     }).catch(function (e) {
-      done(); pendMark(pk, (e && e.message) ? e.message : "network error");
+      done(); pendMark(pk, (e && e.message) ? String(e.message).slice(0, 120) : "no answer from the server");
       toast("Not synced yet - kept safe on this device, will retry.");
       if (!quiet) renderBg(); else syncBanner();
       return row;                     // KEEP the record - never discard
@@ -20042,9 +20086,33 @@ function viewCatalogue() {
     if (act === "pend-retry") {
       if (!pendCount()) { toast("Nothing pending — all uploaded."); return; }
       if (typeof navigator !== "undefined" && "onLine" in navigator && !navigator.onLine) { toast("You're offline — it will upload automatically when the connection is back."); return; }
-      toast("Uploading pending work…"); retryPending(); return;
+      toast("Uploading pending work…"); flushNow(); retryPending(); return;
     }
-    if (act === "pend-refresh") { toast("Checking…"); refresh(); return; }
+    /* v6.9.261 - it used to just call refresh(), which tells you nothing: if the pull
+       worked you learned that the pull worked, and if it did not you got the same silence
+       as before. It now MEASURES - one small round trip, timed - and says what came back,
+       so "still very slow" can be answered with a number instead of a guess. */
+    if (act === "pend-refresh") {
+      toast("Checking the connection…");
+      var t0 = Date.now();
+      api("teamAuth", { ua: navigator.userAgent }, 20000).then(function (r) {
+        var ms = Date.now() - t0;
+        if (r && r.ok) {
+          toast("Server answered in " + (ms / 1000).toFixed(1) + "s and knows you. " +
+                (pendCount() ? "Pushing " + pendCount() + " record(s) now." : "Nothing is waiting."));
+          if (pendCount()) retryPending();
+          refresh();
+        } else {
+          toast("Server answered in " + (ms / 1000).toFixed(1) + "s but refused: " +
+                String((r && r.error) || "no reason given"));
+        }
+      }).catch(function (e) {
+        var ms = Date.now() - t0;
+        toast("No usable answer after " + (ms / 1000).toFixed(1) + "s — " +
+              String((e && e.message) || "no reason given"));
+      });
+      return;
+    }
     if (act === "health-refresh") { toast("Re-scanning…"); refresh(); return; }
     if (act === "pend-backup") { exportPending(); return; }
     if (act === "disc-edit") { S.q = t.getAttribute("data-n"); render(); return; }
