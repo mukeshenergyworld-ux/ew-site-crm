@@ -126,7 +126,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.8.0";
+  var APP_VERSION = "1.9.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
   var SNAP = "ew_collect_snap";
@@ -448,14 +448,72 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     return goods + freight;
   }
 
-  /* Value a booked-in return at the client's net price. The app is handed a
-     priced list by the caller when it has one; otherwise the stored amount. */
-  function returnNet(r, priceLine) {
+  /* ============ WHAT A RETURNED ITEM IS WORTH (v1.9.0) ============
+     The old answer was r.amount, and r.amount does not exist - the CRM has never written an
+     amount onto a return row. So every return in this app was credited at zero while the CRM's
+     hisab credited it in full, and the two balances for the same client drifted apart by the
+     value of everything he had ever sent back.
+
+     A return line is priced the way the CRM prices it, and where it cannot be priced it is said
+     so rather than counted as nothing:
+       1. the line's own frozen rate and discount, if the return carried them
+       2. the line on the challan it is booked AGAINST - what this client was actually charged
+       3. the same code on his newest received delivery
+       4. otherwise UNPRICED - not zero */
+  function rnLines(r) {
     var items = [];
     try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { items = []; }
-    return items.reduce(function (s, i) {
-      return s + (priceLine ? priceLine(i, r) : 0);
-    }, 0);
+    return items.filter(Boolean);
+  }
+  function rnNet(rate, disc, qty) {
+    return num(qty) * Math.round(num(rate) * (1 - num(disc) / 100));
+  }
+  /* the challan lines this client was charged, newest first, so a lookup finds the most recent
+     price for a code before an older one */
+  function rnSourceLines(r, allChallans) {
+    var k = lower(r.customerName);
+    var his = (allChallans || []).filter(function (c) {
+      return lower(c.customerName) === k && String(c.receiptReceived || "").toUpperCase() === "Y";
+    }).sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
+    var against = String(r.challanNo || "").trim();
+    if (against) {
+      var first = his.filter(function (c) { return String(c.challanNo || "").trim() === against; });
+      var rest = his.filter(function (c) { return String(c.challanNo || "").trim() !== against; });
+      his = first.concat(rest);       /* the challan it is booked against is asked first */
+    }
+    return his;
+  }
+  function rnPriceOf(item, r, allChallans) {
+    if (item.rate != null && item.rate !== "" && num(item.rate) > 0) {
+      return { amt: rnNet(item.rate, item.disc, item.qty), src: "frozen" };
+    }
+    var code = String(item.code == null ? "" : item.code).trim();
+    if (code) {
+      var src = rnSourceLines(r, allChallans);
+      for (var i = 0; i < src.length; i++) {
+        var lines = [];
+        try { lines = JSON.parse(src[i].itemsJson || "[]"); } catch (e) { lines = []; }
+        for (var j = 0; j < (lines || []).length; j++) {
+          var L = lines[j];
+          if (!L || String(L.code == null ? "" : L.code).trim() !== code) continue;
+          if (!(num(L.rate) > 0)) continue;
+          return { amt: rnNet(L.rate, L.disc, item.qty),
+                   src: String(src[i].challanNo || "").trim() === String(r.challanNo || "").trim()
+                        ? "against" : "delivered" };
+        }
+      }
+    }
+    return { amt: 0, src: "" };        /* unpriced - NOT zero, and the caller must say so */
+  }
+  /* {amt, unpriced} - amt is what can honestly be credited, unpriced is how many lines could not
+     be valued at all. A return with unpriced lines is shown flagged, never silently short. */
+  function returnNet(r, allChallans) {
+    var amt = 0, unpriced = 0;
+    rnLines(r).forEach(function (i) {
+      var p = rnPriceOf(i, r, allChallans);
+      if (p.src) amt += p.amt; else unpriced++;
+    });
+    return { amt: Math.round(amt), unpriced: unpriced };
   }
 
   /* Two challans carrying the same number are one challan. Defence against the
@@ -637,10 +695,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     if (_rowsCache) return _rowsCache;
     var d = S.data || {};
     var t = today();
-    /* a return is valued at the client's net price; the CRM prices it from the
-       catalogue, which this app does not carry, so the stored amount is used and
-       a return with no amount is worth nothing rather than a guess */
-    var retVal = function (r) { return EWnum(r.amount); };
+    /* v1.9.0 - priced from the challan the material came out on, not from an r.amount column
+       that has never existed. See returnNet. */
+    var _ch = d.challans || [];
+    var retVal = function (r) { return returnNet(r, _ch).amt; };
     var mine = (d.clients || []).filter(function (c) { return String(c.name || "").trim(); });
     if (!seesAll()) {
       var me = String(S.user || "").trim().toLowerCase();
@@ -672,6 +730,20 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   function rowFor(name) {
     var k = String(name || "").trim().toLowerCase();
     return rows().filter(function (r) { return String(r.name).trim().toLowerCase() === k; })[0] || null;
+  }
+  /* v1.9.0 - rows() is the CHASE list: it holds anyone who owes more than 500, which is right
+     for a list of people to ring and wrong for looking somebody up. The moment a man settles in
+     full he leaves it, and the receipt screen - which read his mobile off that row - then told
+     the man who had just cleared his account that he had no number on record and no receipt
+     could be sent to him. His number was in the clients book the whole time. */
+  function anyClient(name) {
+    var k = String(name || "").trim().toLowerCase();
+    return rowFor(name) ||
+      ((S.data && S.data.clients) || []).filter(function (c) {
+        return String(c.name || "").trim().toLowerCase() === k;
+      }).map(function (c) {
+        return { name: c.name, mobile: c.mobile || "", due: 0, oldBook: 0, lines: [], settled: true };
+      })[0] || null;
   }
 
   var BUCKETS = [
@@ -1267,7 +1339,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      at the end of it. This is the thing at the end of it: the customer gets his
      confirmation without asking, and the man entering it sees his work leave the building. */
   function sheetReceipt(name, amt, mode, dt, bal) {
-    var r = rowFor(name) || {};
+    var r = anyClient(name) || {};
     return '<h2>Recorded</h2>' +
       '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;margin-top:4px">' +
       '<div style="font-size:20px;font-weight:800;color:#0f766e">' + money(amt) + '</div>' +
@@ -1314,7 +1386,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     }
   }
   function rcWaGo(name, amt, mode, dt, bal) {
-    var r = rowFor(name) || {};
+    var r = anyClient(name) || {};
     var n = String(r.mobile || "").replace(/\D/g, "");
     if (!n) { toast("No mobile number on his record."); return; }
     if (n.length === 10) n = "91" + n;
@@ -1365,8 +1437,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       return String(r.customerName || "").trim().toLowerCase() === k &&
              String(r.status || "").trim().toLowerCase() === "received";
     }).forEach(function (r) {
+      /* v1.9.0 - the same pricing the balance uses, so the statement and the figure above it
+         can never disagree. An unpriceable line is named on the row, not buried. */
+      var _rv = returnNet(r, d.challans || []);
       out.push({ ymd: d10(r.createdAt), what: "Material returned " + (r.returnNo || ""),
-                 extra: r.challanNo ? "against " + r.challanNo : "", debit: 0, credit: EWnum(r.amount) });
+                 extra: [r.challanNo ? "against " + r.challanNo : "",
+                         _rv.unpriced ? _rv.unpriced + " item(s) not priced - ask the office" : ""]
+                        .filter(Boolean).join(" \u00b7 "),
+                 debit: 0, credit: _rv.amt });
     });
     (d.payments || []).filter(function (p) {
       return String(p.client || "").trim().toLowerCase() === k;
@@ -1869,9 +1947,32 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         S.sheet = sheetReceipt(name, amt, val("pi_mode") || row.mode, dt, after ? after.due : 0);
         render();
         toast(money(amt) + " recorded against " + name + ".");
-      }).catch(function () {
+      }).catch(function (e) {
         t.disabled = false; t.textContent = "Record it";
-        toast("No signal — nothing was recorded. Try again when you are back online.");
+        /* v1.9.0 - THIS USED TO SAY "nothing was recorded". It did not know that.
+           api() gives up at 20 seconds; Apps Script under load takes longer than that, and
+           giving up listening is not the same as the server refusing. The old wording invited
+           a second press, and the twin-check could not catch it because the payment that had
+           landed was never in local state. Two receipts for one payment.
+           So: say what is true, fetch the book, and let the twin-check do its job. */
+        var slow = /timed out|abort/i.test(String((e && e.message) || ""));
+        if (!slow) { toast("No signal — nothing was recorded. Try again when you are back online."); return; }
+        toast("The server did not answer in time. It may still have saved — fetching the book to check.");
+        pull(false).then(function () {
+          bust();
+          var seen = ((S.data && S.data.payments) || []).some(function (x) {
+            return String(x.client || "").trim().toLowerCase() === String(name).trim().toLowerCase() &&
+              String(x.date || "").slice(0, 10) === dt && Math.round(EWnum(x.amount)) === amt;
+          });
+          if (seen) {
+            S.sheet = null; render();
+            toast(money(amt) + " DID save. It is in the book — do not enter it again.");
+          } else {
+            toast("It did not save. Press Record it once more.");
+          }
+        }).catch(function () {
+          toast("Could not reach the book. Check before entering it again — it may have saved.");
+        });
       });
       return;
     }
