@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.276";
+  var APP_VERSION = "6.9.277";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -11753,20 +11753,30 @@ function viewCatalogue() {
   function chDiscGap(c) {
     var cl = c && c.customerName;
     var items = []; try { items = JSON.parse((c && c.itemsJson) || "[]"); } catch (e) { items = []; }
-    var lines = [], was = 0, now = 0;
+    var lines = [], skipped = [], was = 0, now = 0;
     items.forEach(function (i) {
       var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0;
       var brand = i.brand || realBrand((PRODUCTS.filter(function (p) { return p.code === i.code; })[0]) || {}) || (c && c.brand) || "";
       var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : 0;
       var preset = clientDiscount(cl, brand);
+      /* v6.9.277 - IS THIS RATE AN MRP AT ALL?
+         Until v6.9.277 a challan raised from a quote stored the NET as its rate and disc 0 -
+         71,561 became a 37,927 "rate" with no discount recorded. Applying a preset to that
+         takes the same 47% off twice and bills 20,101 for a 71,561 pump. So a line is only
+         re-priceable when its stored rate really is the catalogue list price. Anything else is
+         reported separately and never touched. */
+      var list = Number((PRODUCTS.filter(function (p) { return p.code === i.code; })[0] || {}).price) || 0;
+      var isMrp = !list || Math.abs(list - rate) <= 1;      /* unknown code: leave it be */
       was += qty * Math.round(rate * (1 - frozen / 100));
-      now += qty * Math.round(rate * (1 - (preset > frozen ? preset : frozen) / 100));
-      if (preset > frozen) {
+      now += qty * Math.round(rate * (1 - ((preset > frozen && isMrp) ? preset : frozen) / 100));
+      if (preset > frozen && !isMrp) {
+        skipped.push({ code: i.code, desc: i.desc || i.code || "", rate: rate, list: list });
+      } else if (preset > frozen) {
         lines.push({ code: i.code, desc: i.desc || i.code || "", brand: brand,
                      frozen: frozen, preset: preset, qty: qty, rate: rate });
       }
     });
-    return { lines: lines, n: lines.length, was: was, now: now, diff: was - now };
+    return { lines: lines, skipped: skipped, n: lines.length, was: was, now: now, diff: was - now };
   }
   /* Rewrite this challan's lines at the preset now in force. Deliberately narrow: it raises a
      discount to the preset and never lowers one, and it touches nothing but disc. */
@@ -11777,8 +11787,12 @@ function viewCatalogue() {
       var brand = i.brand || realBrand((PRODUCTS.filter(function (p) { return p.code === i.code; })[0]) || {}) || (c && c.brand) || "";
       var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : 0;
       var preset = clientDiscount(cl, brand);
+      /* v6.9.277 - the same guard. A rate that is not the list price is a net figure, and a
+         percentage applied to a net figure discounts what has already been discounted. */
+      var list = Number((PRODUCTS.filter(function (p) { return p.code === i.code; })[0] || {}).price) || 0;
+      var isMrp = !list || Math.abs(list - (Number(i.rate) || 0)) <= 1;
       var out = Object.assign({}, i);
-      if (preset > frozen) out.disc = preset;
+      if (preset > frozen && isMrp) out.disc = preset;
       return out;
     });
   }
@@ -11793,6 +11807,16 @@ function viewCatalogue() {
       '’s preset is now ' + g.lines.map(function (l) { return l.preset + '%'; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(" / ") +
       '. Billed ' + money(g.was) + ', would be ' + money(g.now) +
       ' — <b>' + money(g.diff) + '</b> less.' +
+      /* v6.9.277 - and name the lines this will deliberately not touch */
+      ((g.skipped && g.skipped.length)
+        ? '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #fed7aa">' +
+          '<b>' + g.skipped.length + ' line(s) left alone</b> — ' +
+          g.skipped.map(function (x) { return esc(x.desc); }).join(", ") +
+          '. The rate stored on ' + (g.skipped.length > 1 ? 'those lines is' : 'that line is') +
+          ' already a discounted price, not the list price' +
+          (g.skipped[0].list ? ' (' + money(g.skipped[0].rate) + ' stored, list is ' + money(g.skipped[0].list) + ')' : '') +
+          ', so taking the preset off it again would discount it twice.</div>'
+        : '') +
       '<div class="acts" style="margin-top:7px"><button class="btn sm" data-act="ch-reprice" data-id="' +
       esc(c.id) + '">Re-price at the preset</button></div></div>';
   }
@@ -20467,10 +20491,19 @@ function viewCatalogue() {
       var rc0 = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
       if (!rc0) { toast("Not found."); return; }
       var g0 = chDiscGap(rc0);
-      if (!g0.n) { toast("Nothing to change — this challan already carries the preset."); return; }
+      if (!g0.n) {
+        toast((g0.skipped && g0.skipped.length)
+          ? "Nothing safe to change — those lines already store a discounted price, not the list price."
+          : "Nothing to change — this challan already carries the preset.");
+        return;
+      }
       if (!window.confirm(
         "Re-price " + (rc0.challanNo || "this challan") + " at " + rc0.customerName + "’s preset discount?\n\n" +
         g0.lines.map(function (l) { return "• " + l.desc + ": " + l.frozen + "% → " + l.preset + "%"; }).join("\n") +
+        ((g0.skipped && g0.skipped.length)
+          ? "\n\nLeft alone (already priced net, not at list):\n" +
+            g0.skipped.map(function (x) { return "• " + x.desc; }).join("\n")
+          : "") +
         "\n\nBilled now: " + money(g0.was) + "\nAfter: " + money(g0.now) +
         "\n\nThat is " + money(g0.diff) + " off what this client owes. Nothing else on the challan changes.")) return;
       var newItems = chRepriced(rc0);
@@ -21578,18 +21611,27 @@ function viewCatalogue() {
       if (!wqc) return;
       var qcits = [];
       try { qcits = JSON.parse(wqc.items || "[]"); } catch (e) { }
-      /* Bill the NET the client agreed to: bake each line's discount into its unit rate
-         (challan.amount = sum(qty x rate) is what the ledger bills; the separate discAmt
-         field isn't subtracted anywhere). This also makes any future return credit the
-         actual per-unit price paid. Effective disc = per-line override, else brand disc. */
+      /* v6.9.277 - CARRY THE LIST PRICE AND THE DISCOUNT, NOT THE NET.
+         This used to multiply the agreed discount into the unit rate and record disc 0:
+             netRate = round(price * (1 - d/100));  return { ..., rate: netRate };
+         So 71,561 less the 47% agreed with Pritpaul Singh became a 37,927 "rate" matching
+         nothing in the catalogue, and the discount he had given vanished from the record. The
+         customer could not see what he had been allowed, a return against the line credited a
+         price that existed nowhere, and - once v6.9.274 added re-pricing - the app offered to
+         take the same 47% off a second time.
+
+         The billed money does not change by a rupee: challanNet is
+         qty x round(rate x (1 - disc/100)), which is the identical arithmetic, just kept as two
+         honest numbers instead of one misleading one. It also makes `amount` the gross, which
+         is what the rest of the app already assumes - the deliveries screen prints
+         money(c.amount) + " at list". */
       S.ch = {
         brand: String(wqc.brand || "").split(",")[0].trim(),
         family: "", client: wqc.client, fromQuote: wqc.quoteNo, disc: 0,
         items: qcits.map(function (i) {
           var d = (i.disc !== "" && i.disc != null) ? Number(i.disc) : (Number(i.bd) || 0);
-          var netRate = Math.round(Number(i.price || 0) * (1 - (Number(d) || 0) / 100));
           return { code: i.code, desc: i.desc, unit: i.unit || "No's",
-            qty: Number(i.qty) || 1, rate: netRate };
+            qty: Number(i.qty) || 1, rate: Number(i.price || 0), disc: Number(d) || 0 };
         })
       };
       S.modal = modalChallan(); render(); return;
