@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.278";
+  var APP_VERSION = "6.9.279";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -792,7 +792,8 @@
           (prfOnServer(e)
              ? '<b style="color:#0f766e">\u2713 This receipt is already on the server \u2014 the copy here is a spare.</b>'
              : (_prfUp && _prfUp.pk === e.pk)
-             ? '<b style="color:#0f766e">Uploading… ' + _prfUp.pct + '% of ' + _prfUp.kb + ' KB</b>'
+             ? '<b style="color:#0f766e">Uploading ' + _prfUp.kb + ' KB\u2026 ' +
+               Math.max(1, Math.round((Date.now() - _prfUp.t0) / 1000)) + 's</b>'
              : e.err ? 'Last try: ' + esc(String(e.err).slice(0, 90)) + (e.tries ? ' (' + e.tries + ' tries)' : '') +
                      (prfDue(e) ? '' : ' \u00b7 next try in ' + Math.max(1, Math.round((prfWait(e) - (Date.now() - e.lastTry)) / 60000)) + ' min')
                  : 'Waiting to upload…') +
@@ -813,8 +814,8 @@
                ladder again from the top. */
             : (e.err && prfSourcePhoto(e))
             ? '<div style="margin-top:5px"><button class="btn sm ghost" data-act="prf-rebuild" data-pk="' +
-              esc(e.pk) + '" title="Rebuild this document from its photograph at the smallest current layout, then try again">' +
-              'Rebuild smaller and retry</button></div>'
+              esc(e.pk) + '" title="Rebuild this document from its own photograph at full size, then try again">' +
+              'Rebuild and retry</button></div>'
             : '') +
           (ageTxt ? '<div class="meta" style="font-size:11px;margin-top:3px">' + esc(ageTxt) + '</div>' : "") +
           '</div></div>';
@@ -5292,40 +5293,40 @@ window.addEventListener("beforeunload", function (ev) {
      Deliberately narrow: only pdfHost goes this way. Every other call keeps the fetch path and
      all of its v6.9.260 deadline machinery, because none of them carries a body worth worrying
      about. */
-  var _prfUp = null;                     /* {pk, pct, kb} while a document is going up */
+  var _prfUp = null;                     /* {pk, kb, t0} while a document is going up */
+  var _prfTick = null;                   /* v6.9.279 - ticks the seconds while it is in flight */
+  /* ============ v6.9.279 - SEND IT THE WAY EVERYTHING ELSE IS SENT ============
+     v6.9.270 gave this one call its own XMLHttpRequest so it could show a percentage. That
+     percentage is what broke it. XMLHttpRequest's send() sets the CORS-preflight flag if the
+     upload object has any registered event listener, so the moment xhr.upload.onprogress
+     existed, every receipt POST began with an OPTIONS request to the Apps Script /exec URL.
+     Apps Script does not answer OPTIONS with CORS headers. The preflight failed, onerror fired
+     with status 0 before one byte of the body left the machine, and the card reported "the
+     connection refused a 103 KB upload (no response)".
+
+     It was not refused. It was never sent.
+
+     Measured today from inside the dock app that has been failing, over api() below:
+     50 KB -> 6.6s, 250 KB -> 6.3s, 750 KB -> 7.7s, 1500 KB (2000 KB on the wire) -> 9.4s.
+     So the line carries twenty times the failing receipt without complaint.
+
+     There is no byte-level progress to be had here - any upload listener brings the preflight
+     back - so the card counts seconds. Nobody ever needed the percentage; they needed the
+     receipt to arrive. */
   function prfPost(e) {
-    var body = JSON.stringify({ action: "pdfHost", user: S.user, pin: S.pin,
-                                pdfBase64: e.b64, filename: e.fname });
-    return new Promise(function (res, rej) {
-      var xhr;
-      try { xhr = new XMLHttpRequest(); } catch (x) { return rej(new Error("no XMLHttpRequest")); }
-      var kb = Math.round(body.length / 1024), done = false;
-      var finish = function (fn, v) { if (done) return; done = true; _prfUp = null; fn(v); };
-      xhr.open("POST", GAS, true);
-      xhr.timeout = 240000;
-      try { xhr.setRequestHeader("Content-Type", "text/plain;charset=utf-8"); } catch (x) {}
-      if (xhr.upload) {
-        xhr.upload.onprogress = function (ev) {
-          if (!ev.lengthComputable) return;
-          _prfUp = { pk: e.pk, pct: Math.round(ev.loaded / ev.total * 100), kb: kb };
-          try { renderBg(); } catch (x) {}
-        };
-      }
-      xhr.onload = function () {
-        var j = null;
-        try { j = JSON.parse(xhr.responseText); } catch (x) { j = null; }
-        if (j) return finish(res, j);
-        finish(rej, new Error("the server sent something that is not JSON (HTTP " + xhr.status + ")"));
-      };
-      xhr.onerror = function () {
-        finish(rej, new Error("the connection refused a " + kb + " KB upload (" +
-          (xhr.status ? "HTTP " + xhr.status : "no response") + ")"));
-      };
-      xhr.ontimeout = function () { finish(rej, new Error("timed out after 240s at " + kb + " KB")); };
-      xhr.onabort = function () { finish(rej, new Error("upload cancelled")); };
-      try { xhr.send(body); } catch (x) { finish(rej, new Error("could not start the upload: " + x.message)); }
-    });
+    var kb = Math.round(String(e.b64 || "").length / 1024);
+    _prfUp = { pk: e.pk, kb: kb, t0: Date.now() };
+    if (_prfTick) clearInterval(_prfTick);
+    _prfTick = setInterval(function () { try { renderBg(); } catch (x) {} }, 1000);
+    var clear = function () {
+      _prfUp = null;
+      if (_prfTick) { clearInterval(_prfTick); _prfTick = null; }
+    };
+    return api("pdfHost", { pdfBase64: e.b64, filename: e.fname }, 240000)
+      .then(function (j) { clear(); return j; },
+            function (err) { clear(); throw err; });
   }
+
   function prfSend(e) {
     return prfPost(e).then(function (r) {
       if (!r || !r.ok || !r.url) {
@@ -5432,8 +5433,11 @@ window.addEventListener("beforeunload", function (ev) {
      A queued document remembers the recipe it was made with. When the recipe moves ahead of it,
      it earns exactly ONE rebuild at its current size - which is what a document has no other way
      to ask for. His 880 KB receipt had already used all three shrink steps, so nothing could
-     ever have offered it the 277 KB the new recipe would have saved. */
-  var PRF_BUILD = 2;
+     ever have offered it the 277 KB the new recipe would have saved.
+       3 = v6.9.279 on:    the transport is fixed, so nothing needs to be small any more. Every
+                           document that was ground down under the old theory - his was cut to a
+                           103 KB bare photograph, four steps down - is rebuilt at full size. */
+  var PRF_BUILD = 3;
   function prfStale(e) {
     return !!(e && prfSourcePhoto(e) && Number(e.build || 1) < PRF_BUILD);
   }
@@ -5511,7 +5515,9 @@ window.addEventListener("beforeunload", function (ev) {
           if (!b64) return false;
           /* the photograph-only step is allowed through even if the arithmetic is close: it is
              a different KIND of request, which is the entire point of it */
-          if (!out.jpg && b64.length >= before) return false;   /* no gain - leave it alone */
+          /* v6.9.279 - a restart is allowed to get BIGGER. That is the whole point of it now:
+             the ladder was climbed down for a reason that turned out not to exist. */
+          if (!out.jpg && !o.restart && b64.length >= before) return false;   /* no gain */
           var l = prfLoad();
           l.forEach(function (x) {
             if (x.pk !== pk) return;
@@ -5521,8 +5527,12 @@ window.addEventListener("beforeunload", function (ev) {
                file for what it is so nobody opens a .pdf and finds a JPEG. */
             x.jpg = !!out.jpg;
             if (out.jpg) x.fname = String(x.fname || "receipt").replace(/\.pdf$/i, "") + "-photo.jpg";
+            /* v6.9.279 - and coming back UP, it is a document again, so it is a .pdf again */
+            else x.fname = String(x.fname || "receipt").replace(/-photo\.jpg$/i, ".pdf");
+            if (o.restart) { x.tries = 0; x.lastTry = 0; }   /* the failures were not its fault */
             x.err = (out.jpg
                       ? "sent as the photograph alone, without the document ("
+                      : o.restart ? "rebuilt at full size - the size was never the problem ("
                       : o.same ? "rebuilt at the smaller layout ("
                       : "too big for this connection - rebuilt smaller (") +
                     Math.round(before / 1024) + " KB → " + Math.round(b64.length / 1024) + " KB)";
@@ -5609,8 +5619,16 @@ window.addEventListener("beforeunload", function (ev) {
            is the only thing on offer once the shrink ladder is exhausted, which is exactly
            where his 880 KB receipt was stuck. */
         if (prfStale(now)) {
-          return prfShrink(e.pk, { same: true }).then(function (did) {
-            if (did) { renderBg(); toast("Rebuilt at the smaller layout — trying again now."); plan.splice(i, 0, e); }
+          /* v6.9.279 - a document that was cut down by the old theory is put back the way it
+             was meant to be. One that was never cut is simply re-stamped at today's layout. */
+          var wasCut = Number((now && now.shrinks) || 0) > 0 || !!(now && now.jpg);
+          return prfShrink(e.pk, wasCut ? { restart: true } : { same: true }).then(function (did) {
+            if (did) {
+              renderBg();
+              toast(wasCut ? "Rebuilt at full size — the size was never the problem. Sending it now."
+                           : "Rebuilt at the smaller layout — trying again now.");
+              plan.splice(i, 0, e);
+            }
             step();
           }).catch(function () { step(); });
         }
@@ -21173,12 +21191,12 @@ function viewCatalogue() {
       var be = prfLoad().filter(function (x) { return x.pk === bpk; })[0];
       if (!be) { toast("That one is already gone."); renderBg(); return; }
       if (!prfSourcePhoto(be)) { toast("This one carries no photograph to rebuild from \u2014 save it to the computer and attach it again."); return; }
-      toast("Rebuilding " + (be.no || "the receipt") + " at the smallest layout\u2026");
+      toast("Rebuilding " + (be.no || "the receipt") + " at full size\u2026");
       prfShrink(bpk, { restart: true }).then(function (did) {
         var after = prfLoad().filter(function (x) { return x.pk === bpk; })[0] || {};
         toast(did
           ? "Rebuilt: " + Math.round(String(after.b64 || "").length / 1024) + " KB. Sending it now."
-          : "It could not be made any smaller. Sending it as it is.");
+          : "It could not be rebuilt. Sending it as it is.");
         renderBg();
         _prfBusy = false; if (_prfDog) { clearTimeout(_prfDog); _prfDog = null; }
         try { prfFlush(true); } catch (e) {}
