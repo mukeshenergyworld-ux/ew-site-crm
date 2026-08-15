@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.265";
+  var APP_VERSION = "6.9.266";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9761,7 +9761,7 @@ function viewCatalogue() {
       if (scOwnerOf(nm) !== exec) return;
       var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === nm && String(c.receiptReceived).toUpperCase() === "Y"; }));
       var net = chs.reduce(function (a, c) { return a + pricedLines(c, nm).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
-      var cl = clientByName(nm) || {}, opening = Number(cl.openingAmt) || 0;
+      var cl = clientByName(nm) || {}, opening = nAmt(cl.openingAmt);   /* v6.9.266 */
       var l = clientLedger(nm), ret = clientReturns(nm).reduce(function (a, r) { return a + returnNet(r); }, 0);
       billed += net + opening; paid += (l.paid || 0);
       var d0 = net + opening - (l.paid || 0) - ret; if (d0 > 0.5) due += d0;
@@ -10626,20 +10626,84 @@ function viewCatalogue() {
      product, less that client's brand discount) so its incentive can be reversed on the same
      basis the sale earned it. Return items store only code + qty, so the brand and list price
      come from the product catalogue. */
+  /* v6.9.266 - A RETURN IS WORTH WHAT IT WAS BILLED AT, NOT WHAT IT COSTS TODAY.
+     A challan line freezes its rate and its discount the moment the challan is created, on
+     purpose: "so billing reads a value that never changes even if an admin edits the pre-set
+     later (edit affects only future challans)". returnLines() ignored every bit of that and
+     re-derived the credit from PRODUCTS and clientDiscount() as they stand at the moment
+     somebody happens to open the screen. Two ways that goes wrong, both real:
+
+       * 100 pcs billed at a frozen 500 less 10% = 45,000. A +12% revision lifts the catalogue
+         to 560. 20 pcs come back: the client is credited 20 x round(560 x 0.9) = 10,080
+         against the 9,000 he was actually charged - 1,080 given away, and the partner's
+         incentive clawed back on the inflated figure.
+       * A delivery billed with no discount set, then a discount written afterwards - which is
+         exactly what ADD TO HISAB does - re-values the return downwards and short-changes the
+         client instead.
+
+     The challan remembers. So the return asks the challan: the against-challan first (the
+     return form already records its number), and failing that the newest receipt-confirmed
+     delivery of that code to that client. The catalogue is the last resort only, and a line
+     priced that way is flagged `est` so the card and the statement can say so rather than
+     print a confident wrong number. */
+  function retSourceLine(r, code) {
+    var want = String(code || "").trim();
+    if (!want) return null;
+    var clk = dkey(r && r.customerName);
+    var pick = function (arr) {
+      for (var i = 0; i < arr.length; i++) {
+        var items = [];
+        try { items = JSON.parse(arr[i].itemsJson || "[]"); } catch (e) { items = []; }
+        for (var j = 0; j < items.length; j++) {
+          var li = items[j];
+          if (String(li.code || "").trim() === want && li.rate != null && li.rate !== "") return li;
+        }
+      }
+      return null;
+    };
+    var mine = (S.data.challans || []).filter(function (c) { return dkey(c.customerName) === clk; });
+    var no = String((r && r.challanNo) || "").trim();
+    if (no) {
+      var hit = pick(mine.filter(function (c) { return String(c.challanNo || "").trim() === no; }));
+      if (hit) return hit;
+    }
+    /* "- Not sure -" is an allowed answer on the return form, and plenty of legacy returns
+       carry no challan number at all. The newest delivery of that code that the client
+       actually signed for is the honest next-best source of the price he was charged. */
+    return pick(mine.filter(function (c) { return String(c.receiptReceived).toUpperCase() === "Y"; })
+      .sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); }));
+  }
   function returnLines(r) {
     var items = []; try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { items = []; }
     var cl = r.customerName;
     return items.map(function (it) {
       var p = PRODUCTS.filter(function (pp) { return pp.code === it.code; })[0] || {};
       var brand = it.brand || realBrand(p) || p.brand || "";
-      var disc = clientDiscount(cl, brand);
-      var rate = Number(p.price) || 0;
+      var rate, disc, est = false;
+      if (it.rate != null && it.rate !== "") {
+        /* frozen on the return itself (newer rows) */
+        rate = Number(it.rate) || 0;
+        disc = (it.disc != null && it.disc !== "") ? Number(it.disc) : clientDiscount(cl, brand);
+      } else {
+        var src = retSourceLine(r, it.code);
+        if (src) {
+          rate = Number(src.rate) || 0;
+          disc = (src.disc != null && src.disc !== "") ? Number(src.disc) : clientDiscount(cl, src.brand || brand);
+          if (!brand) brand = src.brand || brand;
+        } else {
+          rate = Number(p.price) || 0;
+          disc = clientDiscount(cl, brand);
+          est = true;
+        }
+      }
       var netRate = Math.round(rate * (1 - disc / 100));
       var qty = Number(it.qty) || 0;
       /* desc/code/rate/disc/dr added for the HISAB return card; incentive code only reads brand/qty/amt. */
-      return { brand: brand, qty: qty, amt: qty * netRate, desc: it.desc || p.desc || it.code || "", code: it.code, rate: rate, disc: disc, dr: netRate };
+      return { brand: brand, qty: qty, amt: qty * netRate, desc: it.desc || p.desc || it.code || "", code: it.code, rate: rate, disc: disc, dr: netRate, est: est };
     });
   }
+  /* how many lines of this return could not be traced to a delivery - the screen says so */
+  function returnEstCount(r) { return returnLines(r).filter(function (x) { return x.est; }).length; }
   /* Net (post-discount) value of a booked-in return — a credit against the client's ledger. */
   function returnNet(r) { return returnLines(r).reduce(function (s, x) { return s + x.amt; }, 0); }
   /* Returns for a client that are BOOKED IN at the godown (status "Received") — these are the ones
@@ -10663,12 +10727,28 @@ function viewCatalogue() {
      return can never be reversed for one and forgotten for the other. */
   function incentiveBook(myClients, rateFor, payeeLower) {
     var billed = 0, earned = 0, returned = 0, reversed = 0, rows = [], clientNames = {};
+    /* v6.9.266 - ONE CLIENT, ONE PASS.
+       myClients is a list of client RECORDS, but the challans below are fetched by NAME. The
+       duplicate radar deliberately allows two rows to keep the same name ("Different people -
+       keep separate"), and when it does, the same challans were walked twice and the partner's
+       book doubled. Collapse the list to one entry per name before anything is counted. */
+    var _seenCl = {};
+    myClients = (myClients || []).filter(function (cl) {
+      var k = dkey(cl && cl.name);
+      if (!k || _seenCl[k]) return false;
+      _seenCl[k] = 1; return true;
+    });
+    /* v6.9.266 - the basis the RATIO is taken against, built exactly the way clientLedger
+       builds what a client owes: opening + net goods + client freight - returns. See the note
+       where the ratio is computed. */
+    var payBase = 0, collected = 0;
     myClients.forEach(function (cl) {
-      var clLower = String(cl.name).trim().toLowerCase();
+      var clLower = dkey(cl.name);
       var chs = dedupeChallans(S.data.challans.filter(function (c) {
-        return String(c.customerName || "").trim().toLowerCase() === clLower &&
+        return dkey(c.customerName) === clLower &&
                String(c.receiptReceived).toUpperCase() === "Y";
       }));
+      var clBilled = 0, clFreight = 0, clReturned = 0;
       chs.forEach(function (c) {
         var base = 0, inc = 0;
         pricedLines(c, c.customerName).forEach(function (x) {
@@ -10676,6 +10756,7 @@ function viewCatalogue() {
           inc += x.amt * rateFor(cl, x.brand || c.brand || "") / 100;
         });
         billed += base; earned += inc; clientNames[c.customerName] = 1;
+        clBilled += base; clFreight += chFreight(c);
         rows.push({ no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
           ymd: String(c.createdAt || "").slice(0, 10),
           amount: base, base: base, pct: base > 0 ? (inc / base * 100) : 0, inc: inc, ret: false });
@@ -10688,7 +10769,7 @@ function viewCatalogue() {
          came off the totals, but it never appeared in the client-wise statement - so
          the statement did not add up to the figure printed above it. Now it does. */
       (S.data.returns || []).filter(function (r) {
-        return String(r.customerName || "").trim().toLowerCase() === clLower &&
+        return dkey(r.customerName) === clLower &&
                String(r.status || "").trim().toLowerCase() === "received";
       }).forEach(function (r) {
         var rBase = 0, rInc = 0, rBrands = {};
@@ -10698,6 +10779,7 @@ function viewCatalogue() {
           if (x.brand) rBrands[x.brand] = 1;
         });
         returned += rBase; reversed += rInc; earned -= rInc;
+        clReturned += rBase;
         if (rBase > 0 || rInc !== 0) {
           clientNames[cl.name] = 1;
           rows.push({ no: r.returnNo || r.id || "RETURN", client: cl.name,
@@ -10707,18 +10789,37 @@ function viewCatalogue() {
             inc: -rInc, ret: true });
         }
       });
+      /* v6.9.266 - THE RATIO NOW COMPARES LIKE WITH LIKE.
+         It used to divide every payment the client had EVER made by the ex-GST goods value of
+         his receipt-confirmed challans, and clamp the result to 1. Two clients' worth of
+         nonsense came out of that:
+
+           * A client carrying 4,00,000 of pre-app opening debt takes one new 1,00,000
+             delivery. He pays 4,00,000, which clears only the old debt - the new delivery is
+             0% paid and still shows 1,00,000 due in HISAB. The old sum was
+             min(1, 400000/100000) = 1, so the partner was paid in FULL on a delivery for
+             which nothing had been received.
+           * A client takes 5,00,000, returns 1,00,000, and settles the rest. `earned` was
+             reduced by the reversal but `billed` was not, so the ratio stuck at
+             400000/500000 = 0.8 and the architect was permanently 20% short with no further
+             payment able to lift it.
+
+         The basis is now the same expression clientLedger uses for what the man owes -
+         opening + net goods + client freight - returns - and the numerator is his payments
+         matched by the same name rule. Fully settled therefore means ratio 1, and money that
+         cleared an old balance no longer releases incentive on new goods.
+         `billed` itself is untouched: it is still the gross value of what went out, because
+         it is what the screens report and changing it would quietly change every figure. */
+      collected += (S.data.payments || []).filter(function (p) { return dkey(p.client) === clLower; })
+        .reduce(function (a, p) { return a + nAmt(p.amount); }, 0);
+      payBase += clientOpening(cl.name) + clBilled + clFreight - clReturned;
     });
-    /* payable follows the money in, not the invoice out. `billed` stays the gross value
-       of what went out on challans - deliberately NOT reduced by returns, because
-       changing that would quietly change how much is owed to everyone. */
-    var collected = S.data.payments.filter(function (p) { return clientNames[p.client]; })
-      .reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
-    var ratio = billed > 0 ? Math.min(1, collected / billed) : 0;
+    var ratio = payBase > 0 ? Math.min(1, collected / payBase) : 0;
     var payable = earned * ratio;
     var paid = S.data.commpay.filter(function (p) { return String(p.associate).toLowerCase() === payeeLower; })
       .reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
     return { rows: rows, billed: billed, earned: earned, returned: returned, reversed: reversed,
-      collected: collected, ratio: ratio, payable: payable, paid: paid, pending: payable - paid, sites: [] };
+      collected: collected, payBase: payBase, ratio: ratio, payable: payable, paid: paid, pending: payable - paid, sites: [] };
   }
 
   function partnerBook(name) {
@@ -10867,8 +10968,12 @@ function viewCatalogue() {
     var by = {}, order = [];
     (b.rows || []).forEach(function (r) {
       if (ym && ym !== "ALL" && String(r.ymd || "").slice(0, 7) !== ym) return;
-      var k = String(r.client || "").trim() || "(no client)";
-      if (!by[k]) { by[k] = { client: k, base: 0, inc: 0, n: 0, brands: {}, rows: [] }; order.push(k); }
+      /* v6.9.266 - group on the name RULE, not the raw spelling. A sale files under the
+         challan's spelling and a reversal under the client master's; when those differed the
+         return landed in a group of its own, which was always negative and therefore always
+         dropped by the filter below. */
+      var k = dkey(r.client) || "(no client)";
+      if (!by[k]) { by[k] = { client: String(r.client || "").trim() || "(no client)", base: 0, inc: 0, n: 0, brands: {}, rows: [] }; order.push(k); }
       var g = by[k];
       g.base += Number(r.base) || 0;
       g.inc += Number(r.inc) || 0;
@@ -10884,8 +10989,11 @@ function viewCatalogue() {
       return g;
     })
       /* ONLY EARNED. A client that drove business but carries no rate on any of its
-         brands earns nothing, and a statement is not the place to explain that. */
-      .filter(function (g) { return Math.round(g.inc) > 0; })
+         brands earns nothing, and a statement is not the place to explain that.
+         v6.9.266 - but a REVERSAL is not "nothing earned", it is money coming back off the
+         book, and dropping it made the statement disagree with the total printed above it.
+         A month in which a client only returned goods now prints its minus line. */
+      .filter(function (g) { return Math.round(g.inc) !== 0 || g.rows.some(function (r) { return r.ret; }); })
       .sort(function (x, y) { return y.inc - x.inc; });
   }
   /* v6.9.234 - rate % or amount only. Remembered on this device, so whoever prints
@@ -11283,7 +11391,7 @@ function viewCatalogue() {
     /* v6.9.114 / v6.9.149: a client with an opening balance shows in HISAB immediately — no need to
        wait for the first received challan. Opening can be a DEBIT (they owe) or a CREDIT/advance
        (minus), so include any NON-ZERO opening, not only positive. */
-    (S.data.clients || []).forEach(function (c) { if ((Number(c.openingAmt) || 0) !== 0) add(c.name); });
+    (S.data.clients || []).forEach(function (c) { if (nAmt(c.openingAmt) !== 0) add(c.name); });   /* v6.9.266 */
     (S.data.payments || []).forEach(function (p) { add(p.client); });
     return out.sort();
   }
@@ -11308,6 +11416,14 @@ function viewCatalogue() {
     var n = Number(t);
     return isFinite(n) ? n : 0;
   }
+  /* v6.9.266 - ONE READER FOR THE OPENING BALANCE.
+     v6.9.209 established that this field is typed by hand and lands in the sheet as TEXT, and
+     wrote nAmt() to read it: "a man who types '1,500' or 'Rs 1500' used to have it read back as
+     Number('1,500') = NaN = 0". Four call sites were never converted - the scorecard, the HISAB
+     client list, hisabOutstanding, and the statement PDF - so the Payments screen and the HISAB
+     screen disagreed by the whole opening balance, and the statement the customer was SENT was
+     the one that had lost it. There is one reader now and every site uses it. */
+  function clientOpening(name) { return nAmt((clientByName(name) || {}).openingAmt); }
   function chFreight(c) { return String(c.freightTo) === "Client" ? nAmt(c.freight) : 0; }
   /* Net (post-discount, ex-GST) goods value of a challan - the basis for dues and incentive.
      Freight is NOT part of it (freight is a pass-through cost, not a sale). */
@@ -11329,7 +11445,7 @@ function viewCatalogue() {
       var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === nm && String(c.receiptReceived).toUpperCase() === "Y"; }));
       var net = chs.reduce(function (a, c) { return a + pricedLines(c, nm).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
       var paid = clientLedger(nm).paid, cl = clientByName(nm) || {};
-      var opening = Number(cl.openingAmt) || 0;
+      var opening = nAmt(cl.openingAmt);   /* v6.9.266 - was Number(), which is NaN on "1,48,000" */
       /* v6.9.121: booked-in material returns credit the client, so they come off the outstanding
          here too — keeping the overview total in step with each client's HISAB balance. */
       var returned = clientReturns(nm).reduce(function (a, r) { return a + returnNet(r); }, 0);
@@ -12213,7 +12329,7 @@ function viewCatalogue() {
         F("normal"); doc.setFontSize(9.5); doc.text("GST @ 18%", cN, y, { align: "right" }); doc.text(RS(gst), cA, y, { align: "right" }); y += 5.5;
         F("bold"); doc.setFontSize(11); doc.text("Total incl. GST", cN, y, { align: "right" }); doc.text(RS(grand + gst), cA, y, { align: "right" }); y += 6;
       }
-      var opening = Number((clientByName(cl) || {}).openingAmt) || 0;
+      var opening = clientOpening(cl);   /* v6.9.266 - the STATEMENT the customer is sent */
       /* v6.9.121: booked-in material returns are a credit against the account, so the statement
          balance matches the HISAB screen. */
       var retTot = clientReturns(cl).reduce(function (a, r) { return a + returnNet(r); }, 0);
