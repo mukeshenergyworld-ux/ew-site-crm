@@ -180,6 +180,17 @@ var GAS   = String((window.EW_GAS || '')).trim();
    public web-app URL. The PIN still guards everything behind it. */
 var GKEY = 'ew_gas_url';
 function gasSaved(){ try { return String(localStorage.getItem(GKEY) || '').trim(); } catch(e){ return ''; } }
+
+/* 15 Aug 2026 - REMEMBER THE ADDRESS. ew-config.js is deliberately never cached, so that a
+   change to the server address is live at once. But nothing ever kept a copy, so an installed
+   app opened with no signal found window.EW_GAS undefined and asked a field executive to paste
+   an Apps Script URL - in a basement, with the offline queue sitting right there unreachable.
+   Keep the last address that was actually served, and fall back to it only when the config did
+   not load at all. */
+try {
+  if (window.EW_GAS) localStorage.setItem(GKEY, String(window.EW_GAS).trim());
+  else if (!GAS) GAS = gasSaved();
+} catch (e) {}
 function gasForget(){ try { localStorage.removeItem(GKEY); } catch(e){} location.replace(location.pathname); }
 function gasSet(){
   var el = document.getElementById('gasUrl');
