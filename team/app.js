@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.254";
+  var APP_VERSION = "6.9.255";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3090,6 +3090,70 @@ window.addEventListener("beforeunload", function (ev) {
       .filter(function (b) { return String(b.active).toUpperCase() !== "N" && (live[b.brand] || isRealBrandName(b.brand)); })
       .map(function (b) { return b.brand; });
   }
+  /* ============ A REAL BRAND PARKED IN A BUCKET (v6.9.255) ============
+     HIS REPORT: "LEO is not shown as a brand, when making quote and adding brand".
+
+     He was right, and nothing was broken - it was filed wrong, twice over:
+
+       catalogue     3 products, Master Brand column = "LEO PUMP"
+                     (LEO Booster 0.5HP / 1.0HP / 1.25HP, Rs 56,835 - 83,987)
+       BrandMap      row M15:  "LEO PUMP"  ->  "Net Price Items"
+       Brands        no row for LEO at all
+
+     "Net Price Items" is a CATCH-ALL, not a brand - it is in NON_BRANDS below precisely
+     so it never gets pitched or followed up. So those three pumps were reachable only by
+     digging into a bucket named after a pricing rule, and the word LEO appeared on no
+     screen in the app. A brand you actually distribute cannot live in the miscellaneous
+     drawer: it gets no discount line, no incentive, no follow-up, and no quote.
+
+     This finds every catalogue value that carries products but is parked in a bucket or
+     mapped to nothing, and offers the one tap that promotes it to a real brand - which is
+     two writes: a Brands row, and the BrandMap row repointed at it. Deliberately a button
+     rather than something done automatically: "Drain Chambers" and "CPVC Pipes" are ALSO
+     parked in buckets and belong there. Only a human knows which is a manufacturer. */
+  function bucketedBrands() {
+    if (!PRODUCTS || !PRODUCTS.length) return [];
+    var cnt = {};
+    PRODUCTS.forEach(function (p) {
+      var v = String(p.brand == null ? "" : p.brand).trim();
+      if (v) cnt[v] = (cnt[v] || 0) + 1;
+    });
+    var mapped = {};
+    (S.data.brandmap || []).forEach(function (m) { mapped[String(m.catalogValue)] = m; });
+    var known = {};
+    (S.data.brands || []).forEach(function (b) { known[dkey(b.brand)] = 1; });
+    var out = [];
+    Object.keys(cnt).forEach(function (cv) {
+      var m = mapped[cv];
+      var to = m ? String(m.brand || "").trim() : "";
+      /* already a real brand of its own, and on the brand list - nothing to do */
+      if (to && isRealBrandName(to) && known[dkey(to)]) return;
+      /* the bucket is named the same as the catalogue value and IS a bucket - leave it */
+      out.push({ catalogValue: cv, n: cnt[cv], to: to, hasRow: !!m,
+                 why: !m ? "not mapped to anything" : (!to ? "mapped to nothing" :
+                      (!isRealBrandName(to) ? "parked in " + to : "mapped to " + to + ", which is not on the brand list")) });
+    });
+    return out.sort(function (a, b) { return b.n - a.n; });
+  }
+  function bucketedBrandCard() {
+    var list = bucketedBrands();
+    if (!list.length) return "";
+    return '<div class="card" style="border-color:#fdba74;background:#fff7ed">' +
+      '<h3 style="margin:0 0 2px">' + list.length + ' catalogue group' + (list.length === 1 ? '' : 's') +
+      ' not set up as a brand</h3>' +
+      '<div class="meta" style="color:#7c2d12">These carry products but are filed in a catch-all, so they ' +
+      'never appear when a quote asks you to pick a brand, and they get no discount line, no incentive ' +
+      'and no follow-up. Some of these are genuinely groups &mdash; pipes, drains, accessories &mdash; ' +
+      'and belong where they are. Promote only the ones that are real brands you sell.</div>' +
+      list.map(function (x) {
+        return '<div class="acts" style="align-items:center;margin-top:9px"><div class="grow">' +
+          '<b>' + esc(x.catalogValue) + '</b> <span class="pill">' + x.n + ' product' + (x.n === 1 ? '' : 's') + '</span>' +
+          '<br><span style="font-size:11.5px;color:#7c2d12">' + esc(x.why) + '</span></div>' +
+          '<button class="btn sm" data-act="brand-promote" data-cv="' + esc(x.catalogValue) + '">Make it a brand</button>' +
+          '</div>';
+      }).join("") + '</div>';
+  }
+
   /* Catalogue buckets that are NOT real brands and must never appear in brand follow-ups. */
   var NON_BRANDS = ["accessory", "accessories", "net price items", "net price item", "net price", "misc", "miscellaneous"];
   function isRealBrandName(name) {
@@ -6097,6 +6161,55 @@ window.addEventListener("beforeunload", function (ev) {
       h += '<div class="empty" style="text-align:left;padding:0 0 12px">Quoting for <b>' + esc(z.client) + '</b>. Pick a brand.</div>';
       var unmapped = S.data.brandmap.filter(function (m) { return !m.brand; }).length;
       if (unmapped) h += '<div class="empty" style="text-align:left;padding:0 0 12px"><b>' + unmapped + ' catalogue value(s) are not mapped to a brand yet</b> - those products cannot be quoted. A partner can fix this under Catalogue.</div>';
+      /* v6.9.255 - HIS WORDS: "show search bar also while making quote, so to search any
+         brand and product and add". This is the step he gets stuck on, and it was the one
+         step with no search at all - the code search only appeared AFTER a brand had been
+         picked, which is no use when the brand is the thing you cannot find. It looks at
+         the whole catalogue: code, description, category, family, and the catalogue's own
+         Master Brand value. So LEO is found by typing LEO, whatever bucket it is filed in. */
+      h += '<div class="row" style="margin:0 0 10px">' +
+        '<input id="qz_bq" class="grow" autocomplete="off" placeholder="Search any brand or product — e.g. LEO, booster, 110mm" value="' + esc(z.bq || "") + '"/>' +
+        '<button class="btn sm" data-act="qz-bq-go">Search</button>' +
+        (z.bq ? ' <button class="btn sm ghost" data-act="qz-bq-clear">Clear</button>' : '') + '</div>';
+
+      var bq = String(z.bq || "").trim().toLowerCase();
+      if (bq) {
+        var pHits = PRODUCTS.filter(function (p) {
+          return (String(p.code || "") + " " + String(p.desc || "") + " " + String(p.cat || "") + " " +
+                  String(p.family || "") + " " + String(p.brand || "")).toLowerCase().indexOf(bq) > -1;
+        });
+        /* group the hits by the brand they will actually be quoted under, so one tap opens
+           the right brand with the search still in hand */
+        var grp = {}, order = [];
+        pHits.forEach(function (p) {
+          var rb = realBrand(p) || String(p.brand || "").trim() || "(not mapped)";
+          if (!grp[rb]) { grp[rb] = []; order.push(rb); }
+          grp[rb].push(p);
+        });
+        h += '<div class="empty" style="text-align:left;padding:0 0 10px">' +
+          (pHits.length
+            ? '<b>' + pHits.length + '</b> product' + (pHits.length === 1 ? '' : 's') + ' match “' + esc(z.bq) + '”' +
+              (order.length > 1 ? ', across ' + order.length + ' brands' : '') + '. Open the brand to add them.'
+            : 'Nothing in the catalogue matches “' + esc(z.bq) + '”. Try a shorter word.') + '</div>';
+        order.forEach(function (rb) {
+          var ps = grp[rb], real = (brandList().indexOf(rb) >= 0);
+          var dq = real ? clientDiscount(z.client, rb) : 0;
+          h += '<div class="card"><h3>' + esc(rb) + ' <span class="pill">' + ps.length + ' match' + (ps.length === 1 ? '' : 'es') + '</span>' +
+            (dq ? ' <span class="pill teal">' + dq + '% preset</span>' : "") +
+            (real ? '' : ' <span class="pill" style="background:#fef3c7;color:#92400e">not on your brand list</span>') + '</h3>' +
+            '<div class="meta">' + ps.slice(0, 5).map(function (p) {
+              return esc(descLines(p.desc).title || p.code) + ' &middot; ' + esc(money(p.price));
+            }).join('<br>') + (ps.length > 5 ? '<br>and ' + (ps.length - 5) + ' more' : '') + '</div>' +
+            '<div class="acts">' +
+            (real
+              ? '<button class="btn sm" data-act="qz-brand" data-brand="' + esc(rb) + '" data-q="' + esc(z.bq) + '">Open ' + esc(rb) + '</button>'
+              : '<button class="btn sm" data-act="brand-promote" data-cv="' + esc(String(ps[0].brand || "")) + '">Make ' + esc(String(ps[0].brand || rb)) + ' a brand</button>') +
+            '</div></div>';
+        });
+        return h;
+      }
+
+      h += bucketedBrandCard();
       brandList().forEach(function (b) {
         var n = brandProducts(b).length;
         var d = clientDiscount(z.client, b);
@@ -6207,15 +6320,18 @@ window.addEventListener("beforeunload", function (ev) {
          through the family chips. A code is unique across the catalogue, so this looks at
          every product - adding a hit from another brand just starts that brand in the quote. */
       h += '<div class="row" style="margin:8px 0 2px">' +
-        '<input id="qz_code" class="grow" autocomplete="off" placeholder="Search by product code" value="' + esc(z.codeq || "") + '"/>' +
+        '<input id="qz_code" class="grow" autocomplete="off" placeholder="Search any product — code, name, category or brand" value="' + esc(z.codeq || "") + '"/>' +
         '<button class="btn sm" data-act="qz-code-go">Find</button>' +
         (z.codeq ? ' <button class="btn sm ghost" data-act="qz-code-clear">Clear</button>' : '') + '</div>';
 
       if (z.codeq && String(z.codeq).trim()) {
         var qc = String(z.codeq).trim().toLowerCase();
+        /* v6.9.255 - the same fields as the brand-step search, so a word that finds a
+           product on one screen finds it on the other. It used to be code and name only,
+           so "LEO" or "booster" found nothing here either. */
         var hits = PRODUCTS.filter(function (p) {
-          return String(p.code || "").toLowerCase().indexOf(qc) > -1 ||
-            String(p.desc || "").toLowerCase().indexOf(qc) > -1;
+          return (String(p.code || "") + " " + String(p.desc || "") + " " + String(p.cat || "") + " " +
+                  String(p.family || "") + " " + String(p.brand || "")).toLowerCase().indexOf(qc) > -1;
         }).slice(0, 40);
         h += '<div class="plist">';
         if (!hits.length) h += '<div class="empty">No product matches "' + esc(z.codeq) + '".</div>';
@@ -6576,6 +6692,8 @@ async function priceListPdf(brands) {
 function viewCatalogue() {
     var q = S.q.toLowerCase();
     var unmapped = S.data.brandmap.filter(function (m) { return !m.brand; });
+    /* v6.9.255 - "not mapped at all" was already flagged here; "mapped into a bucket" was
+       not, and that is the one that hid LEO for months. */
     var h = '<div class="empty" style="text-align:left;padding:0 0 14px"><b>Brand mapping.</b> The catalogue\'s Master Brand column mixes real brands with categories. Map each value to one of your brands - quotes, pitch matrix and incentives all key off this.</div>';
     if (unmapped.length) h += '<div class="card" style="border-color:#fecdd3"><h3><span class="pill due">' + unmapped.length + ' unmapped</span></h3><div class="meta">Products under these values cannot be quoted until mapped.</div></div>';
     var brandOpts = S.data.brands.map(function (b) { return b.brand; });
@@ -6599,8 +6717,12 @@ function viewCatalogue() {
         (S.rmPreview.sample || []).map(function (x) { return esc(x); }).join("<br>") + '</div>' : "") +
       '</div>';
 
-    h += '<h3 style="margin:24px 0 10px;font-size:15px">Brands</h3>' +
-      '<div class="row"><div class="grow"></div><button class="btn sm" data-act="br-new">+ Add brand</button></div>';
+    h += '<h3 style="margin:24px 0 10px;font-size:15px">Brands</h3>';
+    /* v6.9.255 - the flag belongs here most of all: this is the screen where it is fixed
+       properly. "Not mapped at all" was already surfaced; "mapped into a bucket" was not,
+       and that is the one that hid LEO. */
+    h += bucketedBrandCard();
+    h += '<div class="row"><div class="grow"></div><button class="btn sm" data-act="br-new">+ Add brand</button></div>';
     S.data.brands.forEach(function (b) {
       var prods = brandProducts(b.brand);
       var n = prods.length;
@@ -18452,6 +18574,13 @@ function viewCatalogue() {
       qzc.addEventListener("input", function (e) { if (S.qz) S.qz.codeq = e.target.value; });
       qzc.addEventListener("keyup", function (e) { if (e.key === "Enter") render(); });
     }
+    /* the brand-step search, same rule: hold it as it is typed so focus is never torn out
+       from under a thumb, and run it on Enter */
+    var qzb = el("qz_bq");
+    if (qzb) {
+      qzb.addEventListener("input", function (e) { if (S.qz) S.qz.bq = e.target.value; });
+      qzb.addEventListener("keyup", function (e) { if (e.key === "Enter") render(); });
+    }
     /* top-bar global search: hold the text, run on Enter, results open in a modal */
     var gqi = el("gq");
     if (gqi) {
@@ -19663,16 +19792,54 @@ function viewCatalogue() {
       var qst = String(S.qz.stage !== undefined ? S.qz.stage : (clientStage(c1.name) || "")).trim();
       if (qst) saveClientStage(c1.name, qst, { mobile: c1.mobile, city: c1.location });
       else toast("Quoting without a stage \u2014 he stays on the Stage missing list.");
-      S.qz.step = 2; render(); return;
+      S.qz.bq = ""; S.qz.step = 2; render(); return;
     }
     if (act === "qz-brand") {
       var bch = t.getAttribute("data-brand");
       S.qz.brand = bch;
       S.qz.brandDiscs = S.qz.brandDiscs || {};
       if (S.qz.brandDiscs[bch] === undefined) S.qz.brandDiscs[bch] = clientDiscount(S.qz.client, bch);
-      S.qz.family = ""; S.qz.codeq = ""; S.qz.step = 3; render(); return;
+      /* v6.9.255 - a brand opened FROM a search keeps the search, so the products he was
+         looking at are the products in front of him rather than a category list to re-hunt */
+      S.qz.family = ""; S.qz.codeq = String(t.getAttribute("data-q") || "");
+      S.qz.step = 3; render(); return;
     }
     if (act === "qz-fam") { S.qz.family = t.getAttribute("data-fam"); S.qz.codeq = ""; render(); return; }
+    if (act === "qz-bq-go") { var bqb = el("qz_bq"); if (bqb && S.qz) S.qz.bq = bqb.value; render(); return; }
+    if (act === "qz-bq-clear") { if (S.qz) S.qz.bq = ""; render(); return; }
+    /* v6.9.255 - promote a catalogue group to a real brand. TWO writes, in order: the
+       Brands row first, then the BrandMap row repointed at it - so there is never a moment
+       where the map names a brand that does not exist. Nothing is deleted and no product is
+       touched; the products simply start resolving to a brand instead of a bucket. */
+    if (act === "brand-promote") {
+      if (!canSee("catalogue") && S.role !== "admin") { toast("A partner sets up a brand."); return; }
+      var cv = String(t.getAttribute("data-cv") || "").trim();
+      if (!cv) return;
+      var nice = cv.replace(/\s*(pumps?|items?)\s*$/i, "").replace(/\s+/g, " ").trim() || cv;
+      var ask = window.prompt(
+        "Make \"" + cv + "\" a brand of its own.\n\n" +
+        "Its products stop sitting in the miscellaneous drawer and start appearing when a quote " +
+        "asks for a brand. You can then set its discount and incentive like any other.\n\n" +
+        "Name it:", nice);
+      if (ask === null) return;
+      var bn = String(ask).trim();
+      if (!bn) { toast("A brand needs a name."); return; }
+      var exB = (S.data.brands || []).filter(function (b) { return dkey(b.brand) === dkey(bn); })[0];
+      var mRow = (S.data.brandmap || []).filter(function (m) { return String(m.catalogValue) === cv; })[0];
+      var after = function () {
+        if (mRow) {
+          mRow.brand = bn;
+          save("brandmap", mRow);
+        } else {
+          save("brandmap", { id: "", catalogValue: cv, brand: bn, count: "" });
+        }
+        toast(bn + " is a brand now — set its discount under Discounts.");
+        render();
+      };
+      if (exB) { after(); return; }
+      save("brands", { id: "", brand: bn, active: "Y" }).then(function (r) { if (r) after(); });
+      return;
+    }
     if (act === "qz-code-go") { var qcb = el("qz_code"); if (qcb && S.qz) S.qz.codeq = qcb.value; render(); return; }
     if (act === "qz-code-clear") { if (S.qz) S.qz.codeq = ""; render(); return; }
     if (act === "qz-gst") { if (S.qz) S.qz.gst = !S.qz.gst; render(); return; }
