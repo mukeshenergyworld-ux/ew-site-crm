@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.273";
+  var APP_VERSION = "6.9.274";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -11700,6 +11700,64 @@ function viewCatalogue() {
     priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
     return priced;
   }
+  /* ================= PRICED BEFORE THE DISCOUNT EXISTED (v6.9.274) =================
+     A challan freezes each line's discount when it is created, on purpose: editing a preset must
+     never rewrite a bill already given to a customer. But the FIRST challan for a client is
+     created before that client has any preset at all - the app asks for one only after the
+     challan is saved - so every line freezes at 0, and pricedLines then prefers the frozen 0 for
+     ever. The prompt that exists to make pricing right from challan #1 could not affect challan
+     #1. PRITPAUL16/150826/001 is the case in hand: six lines, all 0%, 46,293.
+
+     This finds the gap and says so. It reports a line ONLY where the preset now in force is
+     LARGER than what was frozen - a smaller preset means the discount was deliberately better on
+     the day, and nothing here will ever quietly take that away. */
+  function chDiscGap(c) {
+    var cl = c && c.customerName;
+    var items = []; try { items = JSON.parse((c && c.itemsJson) || "[]"); } catch (e) { items = []; }
+    var lines = [], was = 0, now = 0;
+    items.forEach(function (i) {
+      var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0;
+      var brand = i.brand || realBrand((PRODUCTS.filter(function (p) { return p.code === i.code; })[0]) || {}) || (c && c.brand) || "";
+      var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : 0;
+      var preset = clientDiscount(cl, brand);
+      was += qty * Math.round(rate * (1 - frozen / 100));
+      now += qty * Math.round(rate * (1 - (preset > frozen ? preset : frozen) / 100));
+      if (preset > frozen) {
+        lines.push({ code: i.code, desc: i.desc || i.code || "", brand: brand,
+                     frozen: frozen, preset: preset, qty: qty, rate: rate });
+      }
+    });
+    return { lines: lines, n: lines.length, was: was, now: now, diff: was - now };
+  }
+  /* Rewrite this challan's lines at the preset now in force. Deliberately narrow: it raises a
+     discount to the preset and never lowers one, and it touches nothing but disc. */
+  function chRepriced(c) {
+    var cl = c && c.customerName;
+    var items = []; try { items = JSON.parse((c && c.itemsJson) || "[]"); } catch (e) { items = []; }
+    return items.map(function (i) {
+      var brand = i.brand || realBrand((PRODUCTS.filter(function (p) { return p.code === i.code; })[0]) || {}) || (c && c.brand) || "";
+      var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : 0;
+      var preset = clientDiscount(cl, brand);
+      var out = Object.assign({}, i);
+      if (preset > frozen) out.disc = preset;
+      return out;
+    });
+  }
+  function discGapCard(c) {
+    if (!c || S.role !== "admin") return "";
+    var g = chDiscGap(c);
+    if (!g.n) return "";
+    return '<div style="margin-top:7px;padding:8px 11px;border-radius:9px;background:#fff7ed;' +
+      'border:1px solid #fed7aa;font-size:12.5px;color:#7c2d12">' +
+      '<b>Priced before this client had a discount.</b> ' + g.n + ' line(s) are frozen at ' +
+      (g.lines[0].frozen ? g.lines[0].frozen + '%' : '0%') + ' where ' + esc(c.customerName) +
+      '’s preset is now ' + g.lines.map(function (l) { return l.preset + '%'; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(" / ") +
+      '. Billed ' + money(g.was) + ', would be ' + money(g.now) +
+      ' — <b>' + money(g.diff) + '</b> less.' +
+      '<div class="acts" style="margin-top:7px"><button class="btn sm" data-act="ch-reprice" data-id="' +
+      esc(c.id) + '">Re-price at the preset</button></div></div>';
+  }
+
   /* Distinct customer names that actually have a received challan (these are the billable clients). */
   function hisabClientNames() {
     var seen = {}, out = [];
@@ -12246,7 +12304,9 @@ function viewCatalogue() {
         (frt > 0 ? '<tr style="background:#fffbeb;border-top:1px dashed #e2e8f0"><td colspan="6" style="padding:5px 6px;text-align:right;color:#92400e">Freight' + (c.driver ? ' (' + esc(c.driver) + ')' : '') + '</td><td style="padding:5px 6px;text-align:right;font-weight:700;color:#92400e">' + money(frt) + '</td></tr>' : '') +
         '</tbody>' +
         '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total</td>' +
-        '<td style="padding:6px;text-align:right;font-weight:800">' + money(chTotal) + '</td></tr></tfoot></table></div>';
+        '<td style="padding:6px;text-align:right;font-weight:800">' + money(chTotal) + '</td></tr></tfoot></table></div>' +
+        /* v6.9.274 - and say so when the frozen discount is behind the preset */
+        discGapCard(c);
       h += '<div class="card" style="' + (sel ? '' : 'opacity:.5') + '">' +
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
         '<h3 style="margin:0">' +
@@ -18599,9 +18659,20 @@ function viewCatalogue() {
   /* v6.9.131: shown right after a client's first challan is created. Routes to the Discounts screen for
      that client, where BOTH the pre-set brand discount and the partner (plumber/architect) incentive rate
      are configured. */
+  /* v6.9.274 - the honest version. This prompt used to imply that setting a discount now would
+     price the challan just created; it cannot, because that challan's lines were frozen a second
+     ago at 0. It says so, and points at the button that does put it right. */
   function modalFirstChallanSetup(cn) {
     return '<h2>First delivery to ' + esc(cn) + '</h2>' +
-      '<p class="sub">Set this client’s <b>pre-set discount structure</b> and their <b>partner incentive</b> now, so every challan is priced right and the plumber / architect incentive is correct from the very first delivery — not fixed up afterwards.</p>' +
+      '<p class="sub">Set this client’s <b>pre-set discount structure</b> and their <b>partner incentive</b> now, so every challan from here on is priced right and the plumber / architect incentive is correct.</p>' +
+      /* v6.9.274 - and be honest about the one it cannot fix. The challan just created froze its
+         line discounts a second ago, before this preset existed; nothing set here reaches back
+         into it. Saying "priced right from the very first delivery", as this did, is how a man
+         ends up with a 46,293 challan at 0% and no idea why. */
+      '<p class="sub" style="color:#7c2d12;background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:8px 11px">' +
+      'The challan you have just made is <b>not</b> covered by this — its prices were fixed the moment it was created. ' +
+      'Once the discount is set, open this client in <b>HISAB</b>: that challan will offer <b>Re-price at the preset</b>, ' +
+      'and will show you exactly what it changes before you agree to it.</p>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Later</button>' +
       '<button class="btn" data-act="fcs-setup" data-cl="' + esc(cn) + '">Set discount &amp; incentive</button></div>';
   }
@@ -20348,6 +20419,37 @@ function viewCatalogue() {
       S.modal = null;
       if (canSee("discounts")) { S.tab = "discounts"; S.q = _fcl; }
       render(); return;
+    }
+    /* v6.9.274 - put right a challan that was priced before its client had a discount. Never
+       silent and never automatic: the confirm names every line, the old total and the new one,
+       and it only ever raises a discount to the preset. */
+    if (act === "ch-reprice") {
+      if (S.role !== "admin") { toast("Re-pricing a challan is a partner's decision."); return; }
+      var rc0 = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      if (!rc0) { toast("Not found."); return; }
+      var g0 = chDiscGap(rc0);
+      if (!g0.n) { toast("Nothing to change — this challan already carries the preset."); return; }
+      if (!window.confirm(
+        "Re-price " + (rc0.challanNo || "this challan") + " at " + rc0.customerName + "’s preset discount?\n\n" +
+        g0.lines.map(function (l) { return "• " + l.desc + ": " + l.frozen + "% → " + l.preset + "%"; }).join("\n") +
+        "\n\nBilled now: " + money(g0.was) + "\nAfter: " + money(g0.now) +
+        "\n\nThat is " + money(g0.diff) + " off what this client owes. Nothing else on the challan changes.")) return;
+      var newItems = chRepriced(rc0);
+      save("challans", Object.assign({}, rc0, {
+        itemsJson: JSON.stringify(newItems),
+        amount: newItems.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0)
+      })).then(function () {
+        save("audit", {
+          id: "RP-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+          createdAt: new Date().toISOString(), actor: S.user, action: "challan:reprice",
+          target: (rc0.challanNo || "") + " / " + (rc0.customerName || ""),
+          detail: JSON.stringify({ chId: rc0.id, no: rc0.challanNo, was: g0.was, now: g0.now,
+            lines: g0.lines.map(function (l) { return { code: l.code, from: l.frozen, to: l.preset }; }) }), ip: ""
+        }, true);
+        toast(rc0.challanNo + " re-priced — " + money(g0.diff) + " off " + rc0.customerName + "’s account.");
+        renderBg();
+      });
+      return;
     }
     if (act === "ch-hisab") {
       /* v6.9.126: jump from a client's challan group straight into their full HISAB ledger. */
@@ -23301,6 +23403,10 @@ function viewCatalogue() {
           toast("Challan " + no + " created - pending approval." + (manualV ? " Book no " + manualV + " noted." : ""));
           /* first-challan setup prompt (admin can set it; others get a reminder to ask admin) */
           if (firstSetup) {
+            /* v6.9.274 - this challan's lines are ALREADY frozen at 0, because the preset is
+               being asked for only now. Setting one will not reach back into it. The HISAB card
+               for this challan carries a "Re-price at the preset" button for exactly that, and
+               the prompt below now says so instead of implying the pricing is taken care of. */
             if (canSee("discounts")) S.modal = modalFirstChallanSetup(cn);
             else toast("First delivery to " + cn + " — ask a partner to set their discount & incentive.");
           }
