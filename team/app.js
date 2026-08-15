@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.282";
+  var APP_VERSION = "6.9.283";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4089,6 +4089,189 @@ window.addEventListener("beforeunload", function (ev) {
      Every customer is chased brand by brand. A lead shows under every brand until he wins one
      (then he becomes a Client but still shows under the brands he hasn't bought - cross-sell). A
      brand drops off a customer's list only when it is marked Won, Lost or Not required (reason). */
+  /* ================= THE FOLLOW-UP LIST, TO CARRY (v6.9.283) =================
+     The screen shows what is open. These downloads show the whole brand: won, quoted, and - the
+     one worth the trip - never yet shown it. Same states as the board, same definition of "won"
+     (a Won quote OR a delivered challan with a signed receipt), so the paper and the screen can
+     never disagree. */
+  var BF_ORDER = ["won", "live", "none", "lost", "nr"];
+  var BF_LABEL = { won: "Won", live: "Quoted \u2014 in play", none: "Yet to quote",
+                   lost: "Lost", nr: "Not required" };
+  var BF_SHORT = { won: "Won", live: "Quoted", none: "-", lost: "Lost", nr: "NR" };
+  var BF_INK = { won: [13, 118, 108], live: [180, 83, 9], none: [30, 64, 175],
+                 lost: [185, 28, 28], nr: [120, 130, 145] };
+  function bfScope() {
+    var custs = S.data.clients || [];
+    /* an executive downloads his own book, the office downloads all of it - the same rule the
+       board on screen already follows */
+    if (!seesAllClients()) custs = custs.filter(function (c) { return isMineClient(c.name); });
+    return custs;
+  }
+  function bfRows(brand) {
+    return bfScope().map(function (c) {
+      var qs = clientQuotes(c.name).filter(function (q) { return quoteBrands(q).indexOf(brand) >= 0; });
+      var last = qs.slice().sort(function (a, b) {
+        return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+      })[0];
+      var sum = leadSummaryName(c.name);
+      return {
+        name: String(c.name || ""),
+        kind: isClient(c.name) ? "Client" : "Lead",
+        where: [c.area, c.location].filter(Boolean).join(", "),
+        mobile: String(c.mobile || ""),
+        owner: String(c.ownedBy || ""),
+        st: clientGroupState(c.name, brand),
+        qn: qs.length,
+        lastAt: last ? String(last.createdAt || "").slice(0, 10) : "",
+        lastVal: last ? Math.round(Number(last.total) || 0) : 0,
+        allQ: Number(sum.quotes) || 0,
+        pitched: (sum.groups || []).join(" / "),
+        wonAll: clientWonBrands(c.name).join(" / ")
+      };
+    }).sort(function (a, b) {
+      var d = BF_ORDER.indexOf(a.st) - BF_ORDER.indexOf(b.st);
+      if (d) return d;
+      return a.name.localeCompare(b.name);
+    });
+  }
+  function bfCounts(rows) {
+    var m = {}; BF_ORDER.forEach(function (k) { m[k] = 0; });
+    (rows || []).forEach(function (r) { m[r.st] = (m[r.st] || 0) + 1; });
+    return m;
+  }
+  function bfCsv(brand) {
+    var rows = bfRows(brand), n = bfCounts(rows);
+    var out = [["Brand", "Status", "Name", "Client or lead", "Where", "Mobile", "Executive",
+                "Quotes for this brand", "Last quote", "Last quote value", "Quotes in total",
+                "Brands pitched", "Brands won"]];
+    rows.forEach(function (r) {
+      out.push([brand, BF_LABEL[r.st] || r.st, r.name, r.kind, r.where, r.mobile, r.owner,
+                r.qn, r.lastAt, r.lastVal || "", r.allQ, r.pitched, r.wonAll]);
+    });
+    out.push([]);
+    out.push(["Won", n.won, "Quoted", n.live, "Yet to quote", n.none, "Lost", n.lost,
+              "Not required", n.nr, "Total", rows.length, ""]);
+    dlCsv("Brand_" + String(brand).replace(/[^\w.-]/g, "_") + "_followup_" + today() + ".csv", out);
+  }
+  function bfAllCsv() {
+    var brands = brandGroupList().filter(function (g) { return isRealBrandName(g); });
+    var custs = bfScope();
+    /* the matrix is built ONCE. clientGroupState reads every challan and every quote for the
+       name it is given, so asking it again for a tally row at the foot would be the same work
+       three times over on a phone. */
+    var mat = custs.map(function (c) {
+      return { c: c, cells: brands.map(function (b) { return clientGroupState(c.name, b); }) };
+    });
+    mat.forEach(function (x) { x.wonN = x.cells.filter(function (v) { return v === "won"; }).length; });
+    mat.sort(function (a, b) {
+      if (b.wonN !== a.wonN) return b.wonN - a.wonN;
+      return String(a.c.name || "").localeCompare(String(b.c.name || ""));
+    });
+    var out = [["Name", "Client or lead", "Where", "Mobile", "Executive", "Brands won"].concat(brands)];
+    mat.forEach(function (x) {
+      out.push([String(x.c.name || ""), isClient(x.c.name) ? "Client" : "Lead",
+                [x.c.area, x.c.location].filter(Boolean).join(", "),
+                String(x.c.mobile || ""), String(x.c.ownedBy || ""), x.wonN]
+        .concat(x.cells.map(function (v) { return BF_SHORT[v] || v; })));
+    });
+    var tally = function (want) {
+      return brands.map(function (b, i) {
+        return mat.filter(function (x) { return x.cells[i] === want; }).length;
+      });
+    };
+    out.push([]);
+    out.push(["Won", "", "", "", "", ""].concat(tally("won")));
+    out.push(["Quoted", "", "", "", "", ""].concat(tally("live")));
+    out.push(["Yet to quote", "", "", "", "", ""].concat(tally("none")));
+    out.push(["Lost", "", "", "", "", ""].concat(tally("lost")));
+    out.push(["Not required", "", "", "", "", ""].concat(tally("nr")));
+    dlCsv("Brand_followup_every_brand_" + today() + ".csv", out);
+  }
+  function bfPdf(brand) {
+    var rows = bfRows(brand), n = bfCounts(rows);
+    return loadLogo().then(function () {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var F = function (w) { doc.setFont(ppEmbed(doc), (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"); };
+      var W = 210, L = 14, R = W - 14, y = 0;
+      var band = function () {
+        doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 25, "F");
+        doc.setFillColor(94, 234, 212); doc.rect(0, 25, W, 1, "F");
+        if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 5, 25, 13); } catch (e) { } }
+        F("bold"); doc.setFontSize(13.5); doc.setTextColor(255, 255, 255);
+        doc.text(pdfSafe(String(brand).toUpperCase()) + " \u2014 FOLLOW-UP", R, 12, { align: "right" });
+        F("normal"); doc.setFontSize(7.6); doc.setTextColor(160, 205, 199);
+        doc.text("Energy World \u00b7 " + fullDate(today()) + " \u00b7 " + rows.length + " names \u00b7 " +
+                 (seesAllClients() ? "whole book" : pdfSafe(String(S.user || "your book"))), R, 19, { align: "right" });
+        y = 34;
+      };
+      band();
+      /* the count first, because that is the decision: is this brand worth a week */
+      var CW = (R - L) / 5;
+      doc.setFillColor(240, 253, 250); doc.rect(L, y - 4.5, R - L, 17, "F");
+      doc.setDrawColor(153, 246, 228); doc.setLineWidth(0.3); doc.rect(L, y - 4.5, R - L, 17);
+      BF_ORDER.forEach(function (k, i) {
+        var x = L + 3 + i * CW, ink = BF_INK[k];
+        F("bold"); doc.setFontSize(6.8); doc.setTextColor(ink[0], ink[1], ink[2]);
+        doc.text(String(BF_LABEL[k]).toUpperCase(), x, y);
+        F("bold"); doc.setFontSize(13); doc.setTextColor(17, 34, 45);
+        doc.text(String(n[k] || 0), x, y + 8);
+      });
+      y += 24;
+      var head = function () {
+        doc.setFillColor(30, 41, 59); doc.rect(L, y - 5, R - L, 8, "F");
+        F("bold"); doc.setFontSize(6.8); doc.setTextColor(255, 255, 255);
+        doc.text("#", L + 2, y);
+        doc.text("NAME", L + 8, y);
+        doc.text("WHERE", L + 72, y);
+        doc.text("MOBILE", L + 110, y);
+        /* MEASURED on the render: "02/07/2026  Rs.1,20,000" is ~34 mm at 7.2 pt, and with QUOTES
+           at R-26 the count printed straight through the date. The count moves left. */
+        doc.text("QUOTES", R - 44, y, { align: "right" });
+        doc.text("LAST QUOTE", R - 2, y, { align: "right" });
+        y += 7.5;
+      };
+      var brk = function (need) {
+        if (y + (need || 7) < 285) return false;
+        doc.addPage(); y = 20; return true;
+      };
+      BF_ORDER.forEach(function (k) {
+        var grp = rows.filter(function (r) { return r.st === k; });
+        if (!grp.length) return;
+        brk(24);
+        var ink = BF_INK[k];
+        F("bold"); doc.setFontSize(9.5); doc.setTextColor(ink[0], ink[1], ink[2]);
+        doc.text(BF_LABEL[k] + "  \u00b7  " + grp.length, L, y);
+        y += 3;
+        doc.setDrawColor(ink[0], ink[1], ink[2]); doc.setLineWidth(0.5); doc.line(L, y, R, y);
+        y += 7;
+        head();
+        grp.forEach(function (r, i) {
+          if (brk(7)) head();
+          if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4, R - L, 6.4, "F"); }
+          F("normal"); doc.setFontSize(7.2); doc.setTextColor(120, 130, 145);
+          doc.text(String(i + 1), L + 2, y);
+          F("bold"); doc.setFontSize(8); doc.setTextColor(17, 34, 45);
+          doc.text(doc.splitTextToSize(pdfSafe(r.name) + (r.kind === "Lead" ? "  (lead)" : ""), 62)[0] || "", L + 8, y);
+          F("normal"); doc.setFontSize(7.2); doc.setTextColor(100, 116, 139);
+          doc.text(doc.splitTextToSize(pdfSafe(r.where), 36)[0] || "", L + 72, y);
+          doc.text(doc.splitTextToSize(pdfSafe(r.mobile), 20)[0] || "", L + 110, y);
+          doc.setTextColor(17, 34, 45);
+          doc.text(String(r.qn || 0), R - 44, y, { align: "right" });
+          doc.text(r.lastAt ? fullDate(r.lastAt) + (r.lastVal ? "  Rs." + r.lastVal.toLocaleString("en-IN") : "") : "\u2014",
+                   R - 2, y, { align: "right" });
+          y += 6.4;
+        });
+        y += 6;
+      });
+      brk(14);
+      F("normal"); doc.setFontSize(6.8); doc.setTextColor(150, 163, 175);
+      doc.splitTextToSize("Won means a Won quote or a delivered challan with a signed receipt. " +
+        "Yet to quote means this name has never been shown " + pdfSafe(String(brand)) + " at all \u2014 " +
+        "that is the list worth the trip. Energy World \u00b7 Panipat \u00b7 Sonipat \u00b7 Karnal.",
+        R - L).forEach(function (ln) { doc.text(ln, L, y); y += 3.6; });
+      return doc;
+    });
+  }
   function viewBrandFollow() {
     var brands = brandGroupList().filter(function (g) { return isRealBrandName(g); });
     if (!brands.length) return '<div class="empty">No brands set up yet.</div>';
@@ -4120,6 +4303,20 @@ window.addEventListener("beforeunload", function (ev) {
       var n = openByBrand[b].length;
       return '<button class="btn sm ' + (b === brand ? "" : "ghost") + '" data-act="bf-brand" data-brand="' + esc(b) + '">' + esc(b) + (n ? ' <b>' + n + '</b>' : '') + '</button>';
     }).join("") + '</div>';
+    /* v6.9.283 - carry the whole brand out of the office, not just what is open */
+    h += '<div class="acts" style="flex-wrap:wrap;gap:8px;margin:10px 0 4px">' +
+      '<button class="btn sm" data-act="bf-pdf" data-brand="' + esc(brand) + '" ' +
+        'title="Every name for this brand on paper - won, quoted, and never yet shown it - grouped and counted">' +
+        'PDF \u2014 ' + esc(brand) + '</button>' +
+      '<button class="btn sm ghost" data-act="bf-csv" data-brand="' + esc(brand) + '" ' +
+        'title="The same list as a spreadsheet, one row per name, opens in Excel">' +
+        'Excel \u2014 ' + esc(brand) + '</button>' +
+      '<button class="btn sm ghost" data-act="bf-all" ' +
+        'title="Every brand side by side, one row per name - Won, Quoted, or a dash for never shown">' +
+        'Excel \u2014 every brand</button>' +
+      '</div>' +
+      '<div class="meta" style="margin:0 0 10px">The downloads are the <b>whole</b> brand \u2014 who has bought it, ' +
+      'who is quoted and still open, and who has never been shown it \u2014 not only the open names below.</div>';
     h += '<div class="cards"><div class="stat ' + (listOpen.length ? "alert" : "") + '"><div class="n">' + listOpen.length + '</div><div class="l">' +
       (wantClient ? 'Clients to cross-sell' : 'Leads to chase') + ' &middot; ' + esc(brand) + '</div></div></div>';
     var rowH = function (x) {
@@ -21293,6 +21490,22 @@ function viewCatalogue() {
       if (why === null) return;
       saveBrandStatus(nrn, nrb, "", { status: "Not required", note: why });
       S.modal = null; toast(nrb + " marked Not required."); render(); return;
+    }
+    if (act === "bf-pdf") {
+      var _bfb = t.getAttribute("data-brand") || S.bf;
+      toast("Building the " + _bfb + " follow-up list\u2026");
+      bfPdf(_bfb).then(function (d) {
+        d.save("Brand_" + String(_bfb).replace(/[^\w.-]/g, "_") + "_followup_" + today() + ".pdf");
+      }).catch(function () { toast("Could not build the PDF."); });
+      return;
+    }
+    if (act === "bf-csv") { bfCsv(t.getAttribute("data-brand") || S.bf); return; }
+    if (act === "bf-all") {
+      toast("Building every brand\u2026");
+      /* let the toast paint before the matrix runs - it is the one download that touches every
+         client against every brand */
+      setTimeout(function () { try { bfAllCsv(); } catch (e) { toast("Could not build that file."); } }, 40);
+      return;
     }
     if (act === "bf-brand") { S.bf = t.getAttribute("data-brand"); render(); return; }
     if (act === "bf-mode") { S.bfMode = t.getAttribute("data-m") === "client" ? "client" : "lead"; render(); return; }
