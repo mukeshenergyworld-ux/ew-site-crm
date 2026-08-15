@@ -333,7 +333,14 @@ document.getElementById('seg').addEventListener('click', function(e){
 
 /* ---- Phone: digits only ---- */
 document.getElementById('phone').addEventListener('input', function(){
-  this.value = this.value.replace(/\D/g,'').slice(0,10);
+  /* 15 Aug 2026 - autofill supplies "+91 94666 00611". Stripping non-digits gives
+     919466600611 and slicing the FIRST ten gives 9194666006, which passes the length check -
+     so the complaint was filed against a number that does not exist, on the only channel
+     anybody could ring back on. Drop the country code and the trunk 0 first. */
+  var d = this.value.replace(/\D/g,'');
+  if (d.length > 10 && d.slice(0,2) === '91') d = d.slice(2);
+  if (d.length > 10 && d.charAt(0) === '0') d = d.slice(1);
+  this.value = d.slice(0,10);
 });
 
 /* ---- Clear error on input ---- */
@@ -368,6 +375,61 @@ function validate(){
   return ok;
 }
 
+/* ============ WHAT ACTUALLY HAPPENED TO THIS COMPLAINT (15 Aug 2026) ============
+   The old catch block showed the green tick and a reference number when the POST had FAILED,
+   on the reasoning - written in the comment - that "GAS ret/queue handles delivery". There is
+   no queue: this file had no localStorage, no sessionStorage, no IndexedDB, while every sibling
+   app has a dozen. So the complaint was destroyed and the customer walked away holding a number
+   nobody had ever seen.
+   And the success path never read the reply either, so a quota page or a Google sign-in page -
+   the exact thing the CRM was hardened against - counted as success.
+   Now: read the answer, keep a copy when it fails, retry it later, and never claim more than
+   is true. */
+var CQ_KEY = 'ew_complaint_queue_v1';
+function cqLoad(){ try { return JSON.parse(localStorage.getItem(CQ_KEY) || '[]'); } catch(e){ return []; } }
+function cqSave(l){ try { localStorage.setItem(CQ_KEY, JSON.stringify(l.slice(-20))); } catch(e){} }
+function cqPush(p){ var l = cqLoad(); l.push(p); cqSave(l); }
+
+function sendComplaint(payload){
+  if (!GAS_URL) return Promise.resolve({ ok:true, ref: payload.ref, demo:true });
+  var ctl = null;
+  try { if (window.AbortController) ctl = new AbortController(); } catch(e){}
+  var opt = { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+              body: JSON.stringify(payload) };
+  if (ctl) opt.signal = ctl.signal;
+  return new Promise(function(res, rej){
+    /* a wifi that associates but passes no traffic never rejects - it hangs, and the button
+       span for ever with no way out but a reload, which loses everything typed */
+    var timer = setTimeout(function(){
+      try { if (ctl) ctl.abort(); } catch(e){}
+      rej(new Error('timeout'));
+    }, 30000);
+    fetch(GAS_URL, opt).then(function(r){
+      return r.text().then(function(txt){
+        clearTimeout(timer);
+        var j = null;
+        try { j = JSON.parse(txt); } catch(e){ j = null; }
+        if (j && j.ok) return res(j);
+        /* not JSON, or ok:false - either way this did NOT land as a complaint */
+        rej(new Error(j && j.error ? j.error : 'server'));
+      });
+    }).catch(function(e){ clearTimeout(timer); rej(e); });
+  });
+}
+
+function cqFlush(){
+  var l = cqLoad();
+  if (!l.length) return;
+  var next = l[0];
+  sendComplaint(next).then(function(){
+    var rest = cqLoad(); rest.shift(); cqSave(rest);
+    cqFlush();
+  }).catch(function(){ /* still no luck - it stays on the phone */ });
+}
+window.addEventListener('online', cqFlush);
+document.addEventListener('visibilitychange', function(){ if (!document.hidden) cqFlush(); });
+setTimeout(cqFlush, 2500);
+
 document.getElementById('cForm').addEventListener('submit', async function(e){
   e.preventDefault();
   if(!validate()) return;
@@ -391,25 +453,38 @@ document.getElementById('cForm').addEventListener('submit', async function(e){
   };
 
   try{
-    if(GAS_URL){
-      // GAS Web Apps accept simple POST; use text/plain to avoid CORS preflight
-      await fetch(GAS_URL, {
-        method:'POST',
-        headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body: JSON.stringify(payload)
-      });
-    } else {
-      await new Promise(function(r){ setTimeout(r, 900); }); // demo delay
-    }
-    showTicket(ref, payload);
+    var r = await sendComplaint(payload);
+    /* the phone's own reference is 900 values a day - about a 39% chance two customers on a
+       thirty-complaint day hold the same one. Use the server's if it sends one. */
+    showTicket((r && r.ref) || ref, payload);
   }catch(err){
-    // Even if the network hiccups, we still give the customer their ref,
-    // because the form validated locally. GAS ret/queue handles delivery.
-    showTicket(ref, payload);
+    cqPush(payload);
+    showFailed(payload, String((err && err.message) || ''));
   }finally{
     btn.classList.remove('loading'); btn.disabled = false;
   }
 });
+
+/* Not a tick, and not a reference number he can quote at somebody. What is true: it is saved on
+   this phone, it will go on its own when there is signal, and here is how to reach us NOW. */
+function showFailed(p, why){
+  var t = document.getElementById('ticketView');
+  var head = document.getElementById('refNo');
+  if (head) head.textContent = 'Not sent yet';
+  var box = document.getElementById('ticketSummary');
+  if (box) box.innerHTML =
+    '<b style="color:#b91c1c">Aapki shikayat abhi humein nahi pahunchi.</b><br>' +
+    'It is saved on this phone and will go by itself as soon as you have signal \u2014 ' +
+    'keep this page or the app open for a moment.<br><br>' +
+    'Turant baat karni ho to: <b><a href="tel:+919466600611" style="color:#0d5c56">' +
+    '+91 94666 00611</a></b><br>' +
+    '<span style="font-size:12px;color:#64748b">' + esc(p.category) + ' \u00b7 ' + esc(p.name) +
+    (why ? ' \u00b7 (' + esc(why) + ')' : '') + '</span>';
+  document.getElementById('formView').style.display = 'none';
+  t.classList.add('show');
+  try { t.setAttribute('tabindex','-1'); t.focus(); } catch(e){}
+  window.scrollTo({top:0, behavior:'smooth'});
+}
 
 function showTicket(ref, p){
   document.getElementById('refNo').textContent = ref;
