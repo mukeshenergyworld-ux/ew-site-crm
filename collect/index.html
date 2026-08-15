@@ -126,7 +126,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.9.0";
+  var APP_VERSION = "1.9.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
   var SNAP = "ew_collect_snap";
@@ -672,7 +672,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     _fuCache = m;
     return _fuCache;
   }
-  function followFor(name) { return followMap()[String(name || "").trim().toLowerCase()] || []; }
+  function followFor(name) {
+    var k = String(name || "").trim().toLowerCase();
+    if (_flCache[k] === undefined) _flCache[k] = followForRaw(name);
+    return _flCache[k];
+  }
+  function followForRaw(name) { return followMap()[String(name || "").trim().toLowerCase()] || []; }
   function promiseFor(name) {
     var l = followFor(name);
     for (var i = 0; i < l.length; i++) if (l[i].date) return l[i];
@@ -852,6 +857,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Three days of grace on purpose: a cheque posted on the day he said is a promise kept.
      Nothing is shown until he has made at least two, because one is not a habit. */
   function promiseRecord(name) {
+    var k = String(name || "").trim().toLowerCase();
+    if (_pmCache[k] === undefined) _pmCache[k] = promiseRecordRaw(name);
+    return _pmCache[k];
+  }
+  function promiseRecordRaw(name) {
     var fl = followFor(name).filter(function (f) { return f.date && f.kind === "promise"; });
     if (!fl.length) return null;
     var pays = ((S.data && S.data.payments) || []).filter(function (p) {
@@ -1792,13 +1802,18 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       (S.sheet ? '<div class="sheet" data-act="close-bg"><div class="inner" data-stop="1">' + S.sheet + '</div></div>' : '');
     var q = el("q");
     if (q) {
-      q.addEventListener("input", function (e) { S.q = e.target.value; repaintList(); });
+      q.addEventListener("input", function (e) { S.q = e.target.value; repaintList(true); });
       q.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
     }
   }
   /* the search box repaints only the list under it, so the caret and the phone
      keyboard stay put while a name is typed one letter at a time */
-  function repaintList() {
+  /* v1.9.1 - refocus ONLY when the repaint came from the search box.
+     repaintList() is called from three places: the search input, where the focus must be kept,
+     and opening or closing a client card, where it must not. It refocused unconditionally, so
+     every single tap on a card threw the keyboard up over the Payment received and Call buttons
+     the tap was aiming at, and jumped the page. */
+  function repaintList(keepFocus) {
     var w = document.querySelector(".wrap");
     if (!w) return render();
     var q = el("q"), pos = q ? q.selectionStart : null, v = q ? q.value : "";
@@ -1806,14 +1821,20 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     var q2 = el("q");
     if (q2) {
       if (q2.value !== v) q2.value = v;
-      try { q2.setSelectionRange(pos, pos); } catch (e) {}
-      q2.focus();
-      q2.addEventListener("input", function (e) { S.q = e.target.value; repaintList(); });
+      if (keepFocus) {
+        try { q2.setSelectionRange(pos, pos); } catch (e) {}
+        q2.focus();
+      }
+      q2.addEventListener("input", function (e) { S.q = e.target.value; repaintList(true); });
       q2.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
     }
   }
 
-  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; }
+  /* v1.9.1 - promiseRecord() and followFor() each filter the whole payments/followups
+     array, and clientCard() calls them three times per visible client - on every letter typed
+     into the search box. Memoised into the same cache bust() already clears. */
+  var _pmCache = {}, _flCache = {};
+  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; }
 
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest("[data-act]");
@@ -1822,7 +1843,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     if (act === "close-bg" && ev.target.closest("[data-stop]")) return;
 
     if (act === "login") { doLogin(); return; }
-    if (act === "refresh") { pull(true); return; }
+    if (act === "refresh") {
+      /* v1.9.1 - S.sheet is a static string captured when the form opened, and pull() calls
+         render(), which rewrites it. Tapping the arrow above an open 'Log the call' silently
+         wiped three lines of notes. visibilitychange has always guarded this; the button did not. */
+      if (S.sheet) { toast("Finish or close this first \u2014 refreshing would clear what you have typed."); return; }
+      pull(true); return;
+    }
     if (act === "reboot") { location.reload(); return; }
     if (act === "qclear") { S.q = ""; render(); return; }
     if (act === "account") { S.sheet = sheetAccount(); render(); return; }
@@ -2057,7 +2084,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     if (document.hidden) return;
     if (!S.user || !S.data) return;
     if (S.sheet) return;                       /* never pull the ground from under an open form */
-    if (Date.now() - (S.syncAt || 0) < 60000) return;
+    /* v1.9.1 - was 60 seconds. This is the app you leave for every phone call, so thirty
+       calls a day was thirty pulls of the WHOLE book - about 680 KB each - for data that changes
+       a few times a day. Ten minutes, and the arrow is right there for anyone who wants it now.
+       When the backend learns `since:` this can come back down to nothing. */
+    if (Date.now() - (S.syncAt || 0) < 600000) return;
     pull(false);
   });
 
