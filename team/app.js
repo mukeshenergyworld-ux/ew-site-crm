@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.255";
+  var APP_VERSION = "6.9.256";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3135,6 +3135,79 @@ window.addEventListener("beforeunload", function (ev) {
     });
     return out.sort(function (a, b) { return b.n - a.n; });
   }
+  /* ============ A BRAND CARRYING NO PRODUCTS (v6.9.256) ============
+     HIS WORDS: "warn to delete or edit if any brand have zero product".
+
+     A brand with an empty catalogue is not automatically a mistake - brandList() keeps it
+     on purpose so a brand you distribute can be given a discount, an incentive and a
+     follow-up before its price list is typed in. That is a real and deliberate state.
+
+     But it is ALSO what a mis-mapping looks like from the other side. LEO was invisible
+     because its products were parked in a bucket; the mirror image is a brand sitting on
+     the list with nothing under it because its catalogue value points somewhere else, or
+     because the name on the Brands row does not match the name in the map. From the brand
+     list those two look identical, and nothing said which was which.
+
+     So: warn, name what is at stake, and offer both ways out. Never decide for him.
+     Deliberately NOT hidden once dismissed - an empty brand is a standing question, and a
+     nag that can be dismissed is a nag that gets dismissed. */
+  function emptyBrands() {
+    if (!PRODUCTS || !PRODUCTS.length) return [];      /* catalogue not down yet - not an alarm */
+    var used = function (tab, field, name) {
+      var t = dkey(name), n = 0;
+      (S.data[tab] || []).forEach(function (r) { if (dkey(r[field]) === t) n++; });
+      return n;
+    };
+    return (S.data.brands || []).filter(function (b) {
+      return String(b.brand || "").trim() && !brandProducts(b.brand).length;
+    }).map(function (b) {
+      return {
+        id: b.id, brand: b.brand, active: String(b.active || "Y").toUpperCase() !== "N",
+        quotes: used("quotes", "brand", b.brand),
+        challans: used("challans", "brand", b.brand),
+        discounts: used("discounts", "brand", b.brand),
+        pitch: used("pitch", "brand", b.brand)
+      };
+    });
+  }
+  /* Whether removing it would take something real with it. */
+  function emptyBrandTies(x) {
+    var t = [];
+    if (x.quotes) t.push(x.quotes + " quote" + (x.quotes === 1 ? "" : "s"));
+    if (x.challans) t.push(x.challans + " challan" + (x.challans === 1 ? "" : "s"));
+    if (x.discounts) t.push(x.discounts + " discount line" + (x.discounts === 1 ? "" : "s"));
+    if (x.pitch) t.push("pitched to " + x.pitch + " client" + (x.pitch === 1 ? "" : "s"));
+    return t;
+  }
+  function emptyBrandCard() {
+    var list = emptyBrands();
+    if (!list.length) return "";
+    return '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
+      '<h3 style="margin:0 0 2px">' + list.length + ' brand' + (list.length === 1 ? '' : 's') +
+      ' with no products</h3>' +
+      '<div class="meta" style="color:#7f1d1d">Nothing in the catalogue maps to ' +
+      (list.length === 1 ? 'it' : 'them') + ', so ' + (list.length === 1 ? 'it shows' : 'they show') +
+      ' as an empty brand when quoting. Two reasons this happens, and they need opposite fixes: ' +
+      'either the catalogue value points somewhere else &mdash; <b>Edit</b> and check the name, ' +
+      'or fix the mapping under Catalogue &mdash; or the brand is genuinely finished with, in ' +
+      'which case <b>Remove</b> it. A brand you sell but have not priced yet is fine to leave: ' +
+      'it can still carry a discount and be followed up.</div>' +
+      list.map(function (x) {
+        var ties = emptyBrandTies(x);
+        return '<div class="acts" style="align-items:center;margin-top:9px"><div class="grow">' +
+          '<b>' + esc(x.brand) + '</b>' +
+          (x.active ? '' : ' <span class="pill">inactive</span>') +
+          '<br><span style="font-size:11.5px;color:' + (ties.length ? '#7c2d12' : '#7f1d1d') + '">' +
+          (ties.length
+            ? 'In use: ' + esc(ties.join(", ")) + ' &mdash; removing it loses that history'
+            : 'Not used anywhere &mdash; no quote, no challan, no discount, never pitched') +
+          '</span></div>' +
+          '<button class="btn sm" data-act="br-open" data-id="' + esc(x.id) + '">Edit</button>' +
+          '<button class="btn sm ghost" data-act="br-del" data-id="' + esc(x.id) + '" style="color:#b91c1c">Remove</button>' +
+          '</div>';
+      }).join("") + '</div>';
+  }
+
   function bucketedBrandCard() {
     var list = bucketedBrands();
     if (!list.length) return "";
@@ -6210,6 +6283,7 @@ window.addEventListener("beforeunload", function (ev) {
       }
 
       h += bucketedBrandCard();
+      h += emptyBrandCard();
       brandList().forEach(function (b) {
         var n = brandProducts(b).length;
         var d = clientDiscount(z.client, b);
@@ -6721,6 +6795,7 @@ function viewCatalogue() {
     /* v6.9.255 - the flag belongs here most of all: this is the screen where it is fixed
        properly. "Not mapped at all" was already surfaced; "mapped into a bucket" was not,
        and that is the one that hid LEO. */
+    h += emptyBrandCard();
     h += bucketedBrandCard();
     h += '<div class="row"><div class="grow"></div><button class="btn sm" data-act="br-new">+ Add brand</button></div>';
     S.data.brands.forEach(function (b) {
@@ -6731,6 +6806,9 @@ function viewCatalogue() {
         '<span style="display:inline-block;width:15px;color:#94a3b8">' + (bopen ? '&#9662;' : '&#9656;') + '</span>' +
         esc(b.brand) + ' <span class="pill' + (n ? " teal" : " due") + '">' + n + ' products</span>' +
         (String(b.active).toUpperCase() === "N" ? ' <span class="pill">inactive</span>' : "") +
+        /* v6.9.256 - on the row itself as well as in the card above, so it is seen while
+           scrolling and not only when the card at the top is read */
+        (n ? "" : ' <span class="pill" style="background:#fee2e2;color:#b91c1c">nothing mapped</span>') +
         (n ? ' <span style="font-weight:400;color:#94a3b8;font-size:12px">' + (bopen ? 'hide' : 'tap to view') + '</span>' : '') + '</h3>' +
         '<div class="meta">' + esc(b.notes || "") + '</div>' +
         (bopen ? ('<div style="margin-top:6px;border-top:1px solid #f1f5f9;padding-top:6px">' +
@@ -19068,8 +19146,24 @@ function viewCatalogue() {
       var bb = S.data.brands.filter(function (b) { return b.id === id; })[0];
       if (!bb) return;
       if (brandProducts(bb.brand).length) { toast("That brand still has products mapped to it."); return; }
+      /* v6.9.256 - it used to go on one tap with no question asked. An empty brand can
+         still be carrying a discount line, a pitch history and old quotes, and none of
+         that is obvious from the row. Say what goes with it, in words, first. */
+      var _eb = emptyBrands().filter(function (x) { return x.id === id; })[0];
+      var _ties = _eb ? emptyBrandTies(_eb) : [];
+      var _msg = "Remove the brand \"" + bb.brand + "\"?\n\n";
+      _msg += _ties.length
+        ? "It is still in use: " + _ties.join(", ") + ".\n\n" +
+          "Those records keep the name written on them and are NOT touched, but the brand " +
+          "stops being offered when quoting, and its discount and follow-up go with it.\n\n" +
+          "If the real problem is that its products are mapped elsewhere, press Cancel and " +
+          "use Edit instead."
+        : "It carries no products and is used nowhere - no quote, no challan, no discount, " +
+          "never pitched. Nothing is lost.";
+      if (!window.confirm(_msg)) return;
       api("teamDelete", { tab: "brands", id: id }).then(function (r) {
-        if (r && r.ok) { toast("Brand removed."); refresh(); } else { toast((r && r.error) || "Could not remove."); }
+        if (r && r.ok) { toast("Brand \"" + bb.brand + "\" removed."); refresh(); }
+        else { toast((r && r.error) || "Could not remove."); }
       });
       return;
     }
