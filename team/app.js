@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.286";
+  var APP_VERSION = "6.9.287";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4054,7 +4054,12 @@ window.addEventListener("beforeunload", function (ev) {
     var base = compact
       ? "display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:10px;font-size:11px;margin:0 4px 0 0;border:1px solid;cursor:pointer;flex:0 0 auto;"
       : "display:inline-flex;align-items:center;gap:4px;padding:6px 11px;border-radius:14px;font-size:12px;margin:0 6px 6px 0;border:1px solid;cursor:pointer;";
-    return (compact
+    /* v6.9.287 - one way in for a man who buys several brands already. Only on the full
+       board: the compact card strip is one scrolling line and has no room for it. */
+    var bulk = compact ? "" :
+      '<div style="margin-top:8px"><button class="btn sm ghost" data-act="bb-open" data-n="' +
+      esc(name) + '">Mark several brands\u2026</button></div>';
+    return bulk + (compact
       ? '<div style="margin-top:6px;display:flex;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px">'
       : '<div style="margin-top:8px;display:flex;flex-wrap:wrap">') + brands.map(function (b) {
       var st = clientGroupState(name, b), sty, inner;
@@ -4083,6 +4088,141 @@ window.addEventListener("beforeunload", function (ev) {
       (pstat && pstat !== "Not pitched" ? '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(name) + '" data-brand="' + esc(brand) + '" data-s="">Clear</button>' : "") +
       '</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button></div>';
+  }
+
+  /* ================= MARK SEVERAL BRANDS AT ONCE (v6.9.287) =================
+     HIS REPORT: "if we are entering old client as lead, then show option to mark multiple
+     brand as won in one shot and save - now it's only marking one brand."
+
+     He is right, and the app already knew it. modalBrandAction says, in its own words,
+     "Or just record the outcome - for an old client or a verbal deal (no quote made)."
+     That is exactly this job. But it does ONE brand: tap the chip, open the modal, mark it,
+     the modal closes, tap the next chip. A man who already buys six brands off you is six
+     round trips - and the New customer form has no brand field at all, so he cannot be
+     entered complete in the first place.
+
+     WHAT THIS WRITES. Nothing new. Each ticked brand goes through saveBrandStatus(), the
+     same call the single-brand button makes, producing the same pitch row. Six ticks are six
+     rows, and every one of them is journalled by save() the instant it is called - before any
+     network - so the batch is safe on the device the moment he presses Save, and the sync
+     banner drains it. A half-sent batch is held and retried, never lost.
+
+     WHY IT EXPANDS A GROUP INSTEAD OF FILLING IT IN. The boards roll 19 catalogue brands into
+     14 groups, and resolveBrand() refuses to guess which sub-brand is meant - "the sub-brand
+     carries the rate and the discount". A bulk list that quietly marked every member of
+     HULIOT when he meant plain Huliot pipe would park HT PRO and ULTRA SILENT too, and a
+     parked brand is one nobody chases again. So a group with more than one member is shown
+     opened, with its members as their own ticks. Nine of the fourteen are single and stay one
+     tap. Nothing is guessed and nothing is buried.
+
+     WHY "NOT REQUIRED" IS IN THE SAME PASS. For an old client he knows two things in the same
+     breath: what the man already buys, and what he will never need. Not required is the only
+     outcome that drops a brand off the chase list WITH a reason, so recording both together
+     is what makes the follow-up list correct that same evening rather than next month. */
+  function bbInit(name) {
+    S.bb = { name: name, sel: {}, note: "" };
+    return S.bb;
+  }
+  /* Every tickable line: single-member groups collapse to one row, multi-member groups open. */
+  function bbLines() {
+    var out = [];
+    brandGroupList().forEach(function (g) {
+      var l = String(g).toLowerCase();
+      if (l.indexOf("accessor") > -1 || l.indexOf("net price") > -1) return;  /* allied heads, not brands */
+      var mem = groupMembers(g);
+      if (mem.length <= 1) { out.push({ head: "", brand: mem[0] || g, label: g }); return; }
+      out.push({ head: g, brand: "", label: g });
+      mem.forEach(function (m) { out.push({ head: "", brand: m, label: m, sub: 1 }); });
+    });
+    return out;
+  }
+  var BB_NEXT = { "": "won", "won": "nr", "nr": "" };
+  var BB_FACE = {
+    "":    { t: "–",  s: "background:#fff;color:#94a3b8;border-color:#e2e8f0" },
+    "won": { t: "Won",     s: "background:#047857;color:#fff;border-color:#047857" },
+    "nr":  { t: "Not req", s: "background:#f1f5f9;color:#64748b;border-color:#cbd5e1" }
+  };
+  function bbCount(sel) {
+    var n = { won: 0, nr: 0 };
+    Object.keys(sel || {}).forEach(function (b) { if (n[sel[b]] !== undefined) n[sel[b]]++; });
+    return n;
+  }
+  function bbSummaryText(sel) {
+    var n = bbCount(sel);
+    if (!n.won && !n.nr) return "Nothing ticked yet — tap a brand once for Won, twice for Not required.";
+    var bits = [];
+    if (n.won) bits.push(n.won + " Won");
+    if (n.nr) bits.push(n.nr + " Not required");
+    return "Will write " + bits.join(" and ") + ".";
+  }
+  /* The control. Deliberately NOT re-rendered when a tick changes - the customer form it sits
+     inside may be half typed, and a repaint would throw that away. The handler paints the one
+     button it was given and updates the summary line in place. */
+  function brandBulkHtml(name) {
+    var bb = S.bb && S.bb.name === name ? S.bb : bbInit(name);
+    var lines = bbLines();
+    if (!lines.length) return "";
+    var h = '<div id="bb_wrap" style="border:1.5px solid #99f6e4;background:#f0fdfa;border-radius:12px;padding:11px 12px;margin:12px 0">' +
+      '<div style="font-size:12px;font-weight:800;color:#0f766e;text-transform:uppercase;letter-spacing:.4px">' +
+      'Brands he already buys</div>' +
+      '<div class="meta" style="margin:3px 0 9px">Tap once for <b>Won</b>, again for <b>Not required</b>, ' +
+      'again to clear. Leave a brand alone and nothing about it changes.</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+    lines.forEach(function (ln) {
+      if (ln.head) {
+        h += '<div style="flex:0 0 100%;font-size:11px;font-weight:800;color:#0f766e;margin:6px 0 0">' +
+             esc(ln.head) + ' <span style="font-weight:600;opacity:.7">— pick the exact one</span></div>';
+        return;
+      }
+      var cur = bb.sel[ln.brand] || "";
+      var f = BB_FACE[cur];
+      var was = clientBrandState(name, ln.brand);
+      h += '<button type="button" data-act="bb-tog" data-brand="' + esc(ln.brand) + '"' +
+        ' style="' + (ln.sub ? "margin-left:10px;" : "") +
+        'display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:12px;' +
+        'font-size:12.5px;font-weight:600;border:1.5px solid;cursor:pointer;' + f.s + '">' +
+        esc(ln.label) +
+        '<span data-bbface="1" style="font-size:10.5px;font-weight:800;opacity:.85">' + f.t + '</span>' +
+        (was === "won" ? '<span style="font-size:10px;opacity:.8">already</span>' : '') +
+        '</button>';
+    });
+    h += '</div>' +
+      '<label style="margin-top:10px">Why not required (optional, applies to the Not required ones)</label>' +
+      '<input id="bb_note" placeholder="e.g. already has it, competitor tied up, not in scope" value="' + esc(bb.note) + '"/>' +
+      '<div id="bb_sum" class="meta" style="margin-top:7px;font-weight:700;color:#0f766e">' +
+      esc(bbSummaryText(bb.sel)) + '</div></div>';
+    return h;
+  }
+  /* Write the ticked rows. Each save() journals synchronously before any network, so the whole
+     batch is safe on this device the moment this returns - the banner drains the rest. */
+  function bbApply(name) {
+    var bb = S.bb && S.bb.name === name ? S.bb : null;
+    if (!bb) return { won: 0, nr: 0 };
+    var note = "";
+    try { note = val("bb_note") || bb.note || ""; } catch (e) { note = bb.note || ""; }
+    var n = { won: 0, nr: 0 };
+    Object.keys(bb.sel).forEach(function (b) {
+      var v = bb.sel[b];
+      if (v === "won") { saveBrandStatus(name, b, "", { status: "Won" }); n.won++; }
+      else if (v === "nr") { saveBrandStatus(name, b, "", { status: "Not required", note: note }); n.nr++; }
+    });
+    S.bb = null;
+    return n;
+  }
+  function bbToast(name, n) {
+    if (!n.won && !n.nr) return "";
+    var bits = [];
+    if (n.won) bits.push(n.won + " brand" + (n.won === 1 ? "" : "s") + " marked Won");
+    if (n.nr) bits.push(n.nr + " marked Not required");
+    return name + " — " + bits.join(", ") + (n.won ? " — moved to Clients" : "") + ".";
+  }
+  function modalBrandBulk(name) {
+    bbInit(name);
+    return '<h2>Mark several brands</h2>' +
+      '<p class="sub">' + esc(name) + ' &middot; for an old client or a verbal deal — no quote needed.</p>' +
+      brandBulkHtml(name) +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="bb-save" data-n="' + esc(name) + '">Save</button></div>';
   }
 
   /* ---------- BRAND-WISE FOLLOW-UP ----------
@@ -19213,6 +19353,10 @@ function viewCatalogue() {
 
   function modalCustomer(c) {
     c = c || {};
+    /* v6.9.287 - the tick list is built for the name this form is about. On a NEW customer
+       there is no name yet, so it is keyed on "" and re-keyed at save time; on an edit it
+       shows what is already recorded against him. */
+    bbInit(c.name || "");
     return '<h2>' + (c.id ? "Edit customer" : "New customer") + '</h2>' +
       '<p class="sub">Site and stage drive what you pitch next.</p>' +
       '<label>Name</label><input id="m_name" value="' + esc(c.name) + '"/>' +
@@ -19230,6 +19374,9 @@ function viewCatalogue() {
       /* v6.9.212 - grouped by trade, not one flat run of every partner on the book. */
       '<label>Referred by (partner)</label><select id="m_assoc">' + partnerAnyOptions(c.associate) + '</select>' +
       '<label>Notes</label><textarea id="m_notes">' + esc(c.notes) + '</textarea>' +
+      /* v6.9.287 - an old client being entered as a lead can be recorded complete in one
+         save: who he is, and which brands he already buys. */
+      brandBulkHtml(c.name || "") +
       '<div class="foot">' +
       '<button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="cust-save" data-id="' + esc(c.id || "") + '">Save</button>' +
@@ -21776,6 +21923,33 @@ function viewCatalogue() {
       if (bmb === null) return;             /* group with several sub-brands - picker shown */
       S.modal = modalBrandAction(bmn, bmb); render(); return;
     }
+    if (act === "bb-open") { S.modal = modalBrandBulk(t.getAttribute("data-n")); render(); return; }
+    if (act === "bb-tog") {
+      /* v6.9.287 - NO render() here, on purpose. This control sits inside the New customer
+         form, and a repaint would tear down every field he has half typed. The one button
+         that was tapped is repainted in place and the summary line rewritten. */
+      var bbb = t.getAttribute("data-brand");
+      if (!S.bb) bbInit("");
+      var cur = S.bb.sel[bbb] || "";
+      var nxt = BB_NEXT[cur] || "";
+      S.bb.sel[bbb] = nxt;
+      var face = BB_FACE[nxt];
+      try {
+        t.setAttribute("style", t.getAttribute("style").replace(/background:[^;]*;color:[^;]*;border-color:[^;]*/, face.s));
+        var fe = t.querySelector('[data-bbface]');
+        if (fe) fe.textContent = face.t;
+        var sum = el("bb_sum");
+        if (sum) sum.textContent = bbSummaryText(S.bb.sel);
+      } catch (e) {}
+      return;
+    }
+    if (act === "bb-save") {
+      var bbn = t.getAttribute("data-n") || (S.bb && S.bb.name) || "";
+      if (!bbn) { toast("No client on this list."); return; }
+      var bn = bbApply(bbn);
+      if (!bn.won && !bn.nr) { toast("Nothing was ticked."); return; }
+      S.modal = null; toast(bbToast(bbn, bn)); render(); return;
+    }
     if (act === "board-status") {
       var stn = t.getAttribute("data-n"), stv = t.getAttribute("data-s") || "Not pitched";
       var stb = resolveBrand(stn, t.getAttribute("data-brand"), "board-status", ' data-s="' + esc(stv) + '"');
@@ -23465,11 +23639,24 @@ function viewCatalogue() {
     if (act === "cust-save") {
       var name = val("m_name");
       if (!name) { toast("Name is required."); return; }
+      /* v6.9.287 - the brand ticks were keyed on whatever the form opened with, which on a NEW
+         customer is "". Re-key them onto the name he actually typed BEFORE writing, or every
+         pitch row would be filed against an empty client name and belong to nobody. */
+      var bbSel = (S.bb && S.bb.sel) || {};
+      var bbNote = "";
+      try { bbNote = val("bb_note"); } catch (e) { bbNote = ""; }
+      S.bb = { name: name, sel: bbSel, note: bbNote };
       save("customers", {
         id: id || "", createdBy: S.user, name: name, mobile: val("m_mobile"), city: val("m_city"),
         address: val("m_address"), site: val("m_site"), type: val("m_type"), stage: val("m_stage"),
         associate: val("m_assoc"), status: val("m_status"), notes: val("m_notes")
-      }).then(function (r) { if (r) closeAck(_gClick, "Customer saved."); });
+      }).then(function (r) {
+        if (!r) return;
+        /* the brands go after the customer, never before: a pitch row for a man who is not on
+           the book yet is a row nobody can find */
+        var n = bbApply(name);
+        closeAck(_gClick, "Customer saved." + (n.won || n.nr ? " " + bbToast(name, n) : ""));
+      });
       return;
     }
 
