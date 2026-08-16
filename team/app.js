@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.291";
+  var APP_VERSION = "6.9.292";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -927,6 +927,60 @@
     if (back) { try { console.warn("[EW] put back " + back + " confirmed row(s) a re-sync had not caught up with"); } catch (x) { } }
   }
 
+  /* ---- v6.9.292 · THE MOVE REGISTER ----
+     HIS REPORT: "once i clicked on approve with passcode, for some seconds it shows dispatch
+     then suddenly again comes back to approve, then again approve with passcode shows dispatch
+     to click."
+
+     MEASURED, not guessed. Approving is optimistic on purpose - the row is flipped to Approved
+     and redrawn instantly, and the PIN is validated behind it. That part is right. What was
+     missing is that the two guards protecting a SAVE from a racing re-sync do not cover a MOVE:
+
+       * quietSync() refuses to run while `S.pending` is non-zero - but S.pending is incremented
+         only by save(), and challanMove() does not go through save(). So a move has no guard at
+         all, and quietSync fires straight through the middle of one.
+       * applyConfirmed() puts back rows the incoming copy is MISSING. A just-approved challan is
+         not missing from that copy - it is present and STALE, still reading Draft. So the
+         confirmed register looked at it and correctly did nothing.
+
+     So: approve, flip to Approved, button becomes Dispatch. Two seconds later teamGet answers
+     from a copy of the sheet taken before the move landed, `S.data = r` replaces everything, and
+     the row is Draft again. The button goes back to Approve, and he types his PIN a second time
+     for material that was already released once. That is the one thing this app is most careful
+     about, so it is worth fixing properly rather than by lengthening a timer.
+
+     TWO GUARDS, MIRRORING THE ONES SAVES ALREADY HAVE, and both strictly additive:
+
+       1. `_moving` counts moves in flight, and quietSync waits, exactly as it does for a save.
+       2. every server-CONFIRMED move is remembered for five minutes and re-applied after any
+          wholesale replacement of S.data - but ONLY FORWARDS. The remembered status is written
+          back only when the incoming copy is EARLIER in CH_FLOW. If the server has caught up, or
+          somebody else has moved the challan further on, or its status is not in CH_FLOW at all
+          (a cancelled challan), the memory is dropped and the server wins. It can therefore never
+          drag a challan backwards and never resurrect one that was cancelled. */
+  var _moving = 0, _moved = {}, MOVED_TTL = 300000;
+  function chMoveRemember(id, to, by) { _moved[String(id)] = { to: to, by: by || "", at: Date.now() }; }
+  function chMoveForget(id) { delete _moved[String(id)]; }
+  function applyMoves() {
+    if (!S.data) return;
+    var now = Date.now(), fixed = 0, arr = S.data.challans || [];
+    Object.keys(_moved).forEach(function (id) {
+      var m = _moved[id];
+      if (now - m.at > MOVED_TTL) { delete _moved[id]; return; }
+      var row = null;
+      for (var i = 0; i < arr.length; i++) { if (arr[i] && String(arr[i].id) === id) { row = arr[i]; break; } }
+      if (!row) return;                                  /* missing entirely - applyConfirmed's job */
+      var want = CH_FLOW.indexOf(String(m.to || ""));
+      var have = CH_FLOW.indexOf(String(row.status || ""));
+      if (want < 0 || have < 0) { delete _moved[id]; return; }   /* cancelled/unknown - server wins */
+      if (have >= want) { delete _moved[id]; return; }           /* caught up, or moved further on */
+      row.status = m.to;                                          /* forward only, never back */
+      if (m.by && !row.approvedBy) row.approvedBy = m.by;
+      fixed++;
+    });
+    if (fixed) { try { console.warn("[EW] re-applied " + fixed + " confirmed challan move(s) a re-sync had not caught up with"); } catch (x) { } }
+  }
+
   function save(tab, row, quiet) {
     /* v6.9.124 — DUPLICATE FIX: every NEW row (no server id yet) is given a STABLE client-generated
        id that IS sent to the server. The backend upserts by id, so if a create is ever delivered
@@ -1010,10 +1064,11 @@ window.addEventListener("beforeunload", function (ev) {
   function quietSync() {
     if (syncing || Date.now() - syncAt < 20000) return;
     if (S.pending) return;              /* v6.9.207: never pull while a save is still in flight */
+    if (_moving) return;                /* v6.9.292: nor while a challan move is - same reason */
     syncing = true;
     api("teamGet").then(function (r) {
       syncing = false; syncAt = Date.now();
-      if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); splitCancelled(); snapSave(); renderBg(); }
+      if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); splitCancelled(); snapSave(); renderBg(); }
       if (pendCount()) retryPending();
     }).catch(function () { syncing = false; });
   }
@@ -1207,11 +1262,11 @@ window.addEventListener("beforeunload", function (ev) {
 
   function refresh() {
     var snap = snapLoad();
-    if (snap && snap.ok) { S.data = snap; applyPending(); applyConfirmed(); splitCancelled(); S.busy = false; render(); }
+    if (snap && snap.ok) { S.data = snap; applyPending(); applyConfirmed(); applyMoves(); splitCancelled(); S.busy = false; render(); }
     return api("teamGet").then(function (r) {
       S.busy = false;
       syncAt = Date.now();
-      if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); splitCancelled(); snapSave(); }
+      if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); splitCancelled(); snapSave(); }
       render(); syncBanner();
       if (pendCount()) retryPending();
       try { prfFlush(); } catch (e) { }          /* delivery proofs taken out of signal */
@@ -24801,14 +24856,21 @@ function viewCatalogue() {
         else { toast("Dispatched."); }
         render();
         S.chMoving[id] = true;
+        _moving++;                       /* v6.9.292 - quietSync waits while this is in flight */
+        var _mdone = function () { if (_moving > 0) _moving--; };
         var revert = function (msg) {
           ch2.status = prevStatus; ch2.approvedBy = prevBy;
+          chMoveForget(id);              /* it did not happen - nothing to re-apply */
           toast(msg || ("Could not " + (to === "Approved" ? "approve" : "dispatch") + " - reverted."));
           render();
         };
         api("challanMove", { id: id, to: to, approvePin: pin }).then(function (r) {
-          S.chMoving[id] = false;
+          S.chMoving[id] = false; _mdone();
           if (!r || !r.ok) { revert(r && r.error); return; }
+          /* v6.9.292 - the server has confirmed it. Remember it, so a teamGet answering from a
+             copy taken before this write cannot put the row back to Draft and make him type his
+             PIN again for material already released. */
+          chMoveRemember(id, to, r.by || S.user);
           if (to === "Approved") { ch2.approvedBy = r.by || S.user; render(); return; }
           /* Notify the dispatch bot AT MOST ONCE per challan. Even if an earlier attempt looked like
              it failed and the user dispatched again, the bot gets exactly one copy. Set the guard
@@ -24825,7 +24887,7 @@ function viewCatalogue() {
               else { toast("Dispatched — but the Telegram message didn't go. Download the PDF and send it manually."); }
             })
             .catch(function () { toast("Dispatched — Telegram send failed. Download the PDF and send it manually."); });
-        }).catch(function () { S.chMoving[id] = false; revert("Network error - reverted."); });
+        }).catch(function () { S.chMoving[id] = false; _mdone(); revert("Network error - reverted."); });
         return;
       }
       /* SNAPPY: flip instantly, validate in the background, revert on refusal (no full refresh). */
@@ -24835,9 +24897,13 @@ function viewCatalogue() {
       else if (to === "Dispatched") { toast("Dispatched."); }
       else { toast("Updated."); }
       render();
-      var revert2 = function (msg) { ch2.status = prevS2; ch2.receiptReceived = prevR2; toast(msg || "Could not update - reverted."); render(); };
+      _moving++;                        /* v6.9.292 - same guard on the Received / other moves */
+      var _m2done = function () { if (_moving > 0) _moving--; };
+      var revert2 = function (msg) { ch2.status = prevS2; ch2.receiptReceived = prevR2; chMoveForget(id); toast(msg || "Could not update - reverted."); render(); };
       api("challanMove", { id: id, to: to }).then(function (r) {
+        _m2done();
         if (!r || !r.ok) { revert2(r && r.error); return; }
+        chMoveRemember(id, to, r.by || "");
         if (to === "Approved") { ch2.approvedBy = r.by; render(); }
         else if (to === "Dispatched") {
           sendChallanPdf(ch2, "TG_DISPATCH",
@@ -24846,7 +24912,7 @@ function viewCatalogue() {
             "\nApproved by <b>" + (ch2.approvedBy || "-") + "</b>", ch2.approvedBy || "")
             .then(function (tg) { toast(tg && tg.ok ? "Sent to dispatch bot." : "Dispatch send failed."); });
         }
-      }).catch(function () { revert2("Network error - reverted."); });
+      }).catch(function () { _m2done(); revert2("Network error - reverted."); });
       return;
     }
 
@@ -25479,6 +25545,11 @@ function viewCatalogue() {
            payment he just entered enters it again. */
         try { applyPending(); } catch (e) { }
         applyConfirmed();
+        /* v6.9.292 - a no-op on a warm start, because the move register is in memory and this is
+           a fresh page load. It is here so the rule holds without exception: every place that
+           replaces S.data runs BOTH registers. The next person to add a pull site copies a line
+           that is already complete, instead of half of one. */
+        applyMoves();
         splitCancelled();
         S.warmStart = true;
         loadCatalog();
@@ -25537,7 +25608,7 @@ function viewCatalogue() {
             return;
           }
           syncAt = Date.now();
-          S.data = d; reconcilePending(); applyPending(); applyConfirmed(); splitCancelled(); snapSave();
+          S.data = d; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); splitCancelled(); snapSave();
           render(); syncBanner();
           if (pendCount()) retryPending();
           try { prfFlush(); } catch (e) { }
