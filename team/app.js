@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.288";
+  var APP_VERSION = "6.9.289";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4216,6 +4216,35 @@ window.addEventListener("beforeunload", function (ev) {
     if (n.nr) bits.push(n.nr + " marked Not required");
     return name + " — " + bits.join(", ") + (n.won ? " — moved to Clients" : "") + ".";
   }
+  /* ================= A CHALLAN IS FOR A CLIENT (v6.9.289) =================
+     HIS RULE: "a challan only to be allowed for a client only, not for any lead."
+
+     It is a good rule and the app was already most of the way to it — isClient() has always
+     been derived, never a field somebody sets:
+
+         isClient(name) = has a Won brand  OR  has taken a delivery
+
+     So nobody who has ever been delivered to is affected by this: they are already a client
+     by the second half of that test. What it stops is material leaving the godown against a
+     name that has never bought anything and has no brand marked — which is exactly the case
+     where nobody has decided he is a customer yet.
+
+     THE WAY OUT IS ONE TAP, and it has to be, or this is just a locked door. He becomes a
+     client the moment one brand is Won, so the button opens the brand tick list for him. His
+     half-built challan is untouched while he does it — S.ch is not cleared, only the modal on
+     top of it changes — so saving the brands drops him straight back into the challan he was
+     writing, lines and all. */
+  function modalNotYetClient(name) {
+    return '<h2>' + esc(name) + ' is not a client yet</h2>' +
+      '<p class="sub">Material does not leave the godown against a lead.</p>' +
+      '<div class="empty" style="text-align:left;padding:10px 0">He becomes a client the moment ' +
+      'one brand is marked <b>Won</b> — nothing else has to change, and nothing is re-typed. ' +
+      'Mark what he is actually buying and you come straight back to this challan.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="bb-open" data-n="' + esc(name) + '" data-back="challan">' +
+      'Mark the brands he buys</button></div>';
+  }
+
   function modalBrandBulk(name) {
     bbInit(name);
     return '<h2>Mark several brands</h2>' +
@@ -21944,7 +21973,12 @@ function viewCatalogue() {
       if (bmb === null) return;             /* group with several sub-brands - picker shown */
       S.modal = modalBrandAction(bmn, bmb); render(); return;
     }
-    if (act === "bb-open") { S.modal = modalBrandBulk(t.getAttribute("data-n")); render(); return; }
+    if (act === "bb-open") {
+      /* v6.9.289 - remember the form underneath, so marking a brand does not cost him the
+         challan he had already typed. S.ch is never touched; only the modal on top changes. */
+      S.bbBack = t.getAttribute("data-back") || "";
+      S.modal = modalBrandBulk(t.getAttribute("data-n")); render(); return;
+    }
     if (act === "bb-tog") {
       /* v6.9.287 - NO render() here, on purpose. This control sits inside the New customer
          form, and a repaint would tear down every field he has half typed. The one button
@@ -21969,7 +22003,14 @@ function viewCatalogue() {
       if (!bbn) { toast("No client on this list."); return; }
       var bn = bbApply(bbn);
       if (!bn.won && !bn.nr) { toast("Nothing was ticked."); return; }
-      S.modal = null; toast(bbToast(bbn, bn)); render(); return;
+      toast(bbToast(bbn, bn));
+      /* v6.9.289 - straight back into the challan he was writing, with his lines intact. */
+      if (S.bbBack === "challan") {
+        S.bbBack = "";
+        if (!bn.won) { S.modal = null; toast("He is still not a client — a brand has to be Won."); render(); return; }
+        S.modal = modalChallan(); render(); return;
+      }
+      S.modal = null; render(); return;
     }
     if (act === "board-status") {
       var stn = t.getAttribute("data-n"), stv = t.getAttribute("data-s") || "Not pitched";
@@ -24350,6 +24391,10 @@ function viewCatalogue() {
       var cn = val("m_client");
       if (!cn) { toast("Pick a registered client from the list, or tap + Register new."); return; }
       if (!clientByName(cn)) { toast("“" + cn + "” isn’t a registered client — register it first so the preset discount applies."); return; }
+      /* v6.9.289 - and being ON the book is not the same as being a client. See
+         modalNotYetClient(). Anyone already delivered to passes this by the second half of
+         isClient(), so no existing customer is stopped. */
+      if (!isClient(cn)) { S.modal = modalNotYetClient(cn); render(); return; }
       var lines = (S.ch && S.ch.items) || [];
       if (!lines.length) { toast("Pick at least one product."); return; }
       var cObj = clientByName(cn) || {};
