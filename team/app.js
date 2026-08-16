@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.290";
+  var APP_VERSION = "6.9.291";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -6905,7 +6905,30 @@ window.addEventListener("beforeunload", function (ev) {
     });
     drows.sort(function (a, b) { return String(a.brand || "").localeCompare(String(b.brand || "")); });
     if (!drows.length) {
-      return '<div class="meta" style="font-size:12px;color:#b45309;margin-top:6px">No preset discount set for this client — set one under <b>Discounts</b> if this client should get one.</div>';
+      /* ================= A DOOR, NOT A WORD (v6.9.291) =================
+         HIS REPORT: "show here option to click and redirected to preset discount."
+
+         Checked before changing anything: this line has been plain bold text, never a link,
+         for at least twelve releases back to 6.9.279. Nothing removed it - it was never there.
+         It should have been: naming a screen a man cannot reach from where he is standing is
+         a dead end, and he is standing in the middle of a half-written challan.
+
+         It only appears for somebody who can actually open that screen - Discounts is admin
+         only, and a button that lands on a tab the role cannot see is worse than the word.
+
+         HIS CHALLAN IS NOT LOST. S.ch holds the draft and nothing on this path clears it: the
+         modal closes, the tab changes, and the lines he picked are still in memory. The
+         Discounts screen then carries a button that puts him back in the challan exactly as he
+         left it. */
+      var _pdMsg = 'No preset discount set for this client — ';
+      var _pdEnd = ' if this client should get one.';
+      return '<div class="meta" style="font-size:12px;color:#b45309;margin-top:6px">' + _pdMsg +
+        (canSee("discounts")
+          ? '<button class="btn sm" data-act="disc-jump" data-n="' + esc(c.name) + '"' +
+            ' style="min-height:24px;padding:2px 9px;font-size:11.5px;vertical-align:baseline">' +
+            'set one under Discounts</button>'
+          : 'set one under <b>Discounts</b>') +
+        _pdEnd + '</div>';
     }
     return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;margin-top:8px;padding:10px 12px">' +
       '<h3 style="margin:0;font-size:13px">Preset discount for ' + esc(c.name) + ' — applied automatically at billing</h3>' +
@@ -12166,6 +12189,15 @@ function viewCatalogue() {
     var cl = S.q;
     var h = '<div class="row"><input class="grow" id="q" placeholder="Type a client to set their brand discounts..." list="dclients" value="' + esc(S.q) + '"/></div>' +
       '<datalist id="dclients">' + S.data.clients.map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>';
+    /* v6.9.291 - he came here mid-challan. Say so, and give him the way back. */
+    if (S.discBack && S.discBack.n) {
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px;margin-top:8px">' +
+        '<button class="btn sm" data-act="disc-back">&larr; Back to the challan for ' + esc(S.discBack.n) + '</button>' +
+        (S.discBack.hadCh
+          ? '<div class="meta" style="margin-top:5px">The lines you had already picked are still there — nothing was lost.</div>'
+          : '') +
+        '</div>';
+    }
     if (!cl) {
       /* one client per card, and under the name a brand-wise line for the discount and for
          EACH partner role that has an incentive on at least one brand. A role with no incentive
@@ -21384,6 +21416,22 @@ function viewCatalogue() {
       /* follow him into whichever group he landed in, so the open band is always the useful one */
       try { var _ng = navGroupOf(S.tab); if (_ng && S.navGrp !== "ALL") navSetGrp(_ng); } catch (e) { }
       S.q = ""; S.clq = ""; S.cvq = ""; S.qq = ""; render(); return;
+    }
+    if (act === "disc-jump") {
+      /* v6.9.291 - the tab action clears S.q, which is the very thing the Discounts screen
+         filters on, so this does not go through it. Set the tab and the filter together. */
+      S.discBack = { n: t.getAttribute("data-n") || "", tab: S.tab, hadCh: !!(S.ch && (S.ch.items || []).length) };
+      S.modal = null;
+      S.tab = "discounts";
+      S.q = S.discBack.n;
+      render(); return;
+    }
+    if (act === "disc-back") {
+      var _db = S.discBack || {};
+      S.discBack = null;
+      S.tab = _db.tab || "challans"; S.q = "";
+      if (_db.hadCh) S.modal = modalChallan();
+      render(); return;
     }
     if (act === "nav-grp") {
       var _g = t.getAttribute("data-g") || "";
