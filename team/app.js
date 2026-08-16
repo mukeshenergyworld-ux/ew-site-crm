@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.289";
+  var APP_VERSION = "6.9.290";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -292,11 +292,31 @@
     }, 2600);
   }
 
+  /* ================= SITE IS OFF THE MENU (v6.9.290) =================
+     HIS INSTRUCTION, given twice: "remove site option from everywhere, it is very confusing…
+     it is only to make things confusing, remove it."
+
+     Only admin and sales ever had it; accounts, godown and service never did. It is gone from
+     both, so the Sites screen is unreachable and the word is off his navigation.
+
+     NOTHING IS DELETED. Every site row stays on the sheet, siteForClient() still resolves, the
+     stage still works (it is keyed on the PERSON as a client:stage audit row, and has been
+     since v6.9.211 - sites were only ever a fallback source), the Visit app is untouched, and
+     every challan already written keeps its siteId. Putting the tab back is one word in this
+     list.
+
+     WHAT WENT WITH IT, said plainly rather than discovered later: "Set location" lived on that
+     screen, and the Visit app checks a logged visit against a site's saved location. 82 sites
+     had never had one set, so that check was already not running for them. If he ever wants
+     geo-checked visits back, the screen is still here and one word restores it.
+
+     canSee("pitch") is granted on `sites` OR `leads`. Both roles keep `leads`, so the pitch
+     board is unaffected - checked, not assumed. */
   var ROLE_TABS = {
-    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","dups","stock","brief"],
+    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","dups","stock","brief"],
     accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","dups","stock"],
     godown:   ["dash","returns","tools","challans","products","stock"],
-    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","sites","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products","dups","brief"],
+    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products","dups","brief"],
     service:  ["dash","tools","service","spares","dues","followups","products"]
   };
   function canSee(tab) {
@@ -4162,13 +4182,58 @@ window.addEventListener("beforeunload", function (ev) {
     var bb = S.bb && S.bb.name === name ? S.bb : bbInit(name);
     var lines = bbLines();
     if (!lines.length) return "";
+
+    /* ============ A SETTLED BRAND IS NOT A QUESTION (v6.9.290) ============
+       HIS REPORT: "when lead turned to client I have marked brands a won, now in client
+       section again asking same thing - what a mess it is."
+
+       He is right and this was my fault. v6.9.288 showed every brand as an unanswered tick
+       with the word "already" tacked on the end of the ones that were Won, and a summary line
+       underneath reading "Nothing ticked yet". So a man who had just marked six brands opened
+       the client again and was asked the same six questions, with the app insisting nothing
+       had been answered. Of course it read as a mess.
+
+       An answered question is not asked twice. Brands already Won, or already Not required,
+       are lifted out of the grid and stated as fact on one line. The grid holds only what is
+       genuinely still open. If nothing is open, the whole control says so and offers nothing
+       to tap. */
+    var settledWon = [], settledNr = [], open = [];
+    lines.forEach(function (ln) {
+      if (ln.head) { open.push(ln); return; }
+      var was = clientBrandState(name, ln.brand);
+      if (was === "won") { settledWon.push(ln.label); return; }
+      if (was === "nr") { settledNr.push(ln.label); return; }
+      open.push(ln);
+    });
+    /* a group heading whose every member turned out to be settled would head an empty run */
+    open = open.filter(function (ln, i) {
+      if (!ln.head) return true;
+      for (var j = i + 1; j < open.length; j++) {
+        if (open[j].head) return false;
+        if (open[j].sub) return true;
+      }
+      return false;
+    });
+    var anyOpen = open.some(function (ln) { return !ln.head; });
+
     var h = '<div id="bb_wrap" style="border:1.5px solid #99f6e4;background:#f0fdfa;border-radius:12px;padding:11px 12px;margin:12px 0">' +
       '<div style="font-size:12px;font-weight:800;color:#0f766e;text-transform:uppercase;letter-spacing:.4px">' +
-      'Brands he already buys</div>' +
-      '<div class="meta" style="margin:3px 0 9px">Tap once for <b>Won</b>, again for <b>Not required</b>, ' +
+      (settledWon.length ? 'Anything else he buys?' : 'Brands he already buys') + '</div>';
+    if (settledWon.length) {
+      h += '<div class="meta" style="margin:5px 0 2px"><b style="color:#047857">Already Won \u2014 ' +
+        esc(settledWon.join(", ")) + '</b>. Recorded, not asked again.</div>';
+    }
+    if (settledNr.length) {
+      h += '<div class="meta" style="margin:2px 0"><b>Not required \u2014 ' + esc(settledNr.join(", ")) + '</b>.</div>';
+    }
+    if (!anyOpen) {
+      h += '<div class="meta" style="margin:8px 0 0">Every brand is settled for him. Nothing to answer here.</div></div>';
+      return h;
+    }
+    h += '<div class="meta" style="margin:6px 0 9px">Tap once for <b>Won</b>, again for <b>Not required</b>, ' +
       'again to clear. Leave a brand alone and nothing about it changes.</div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:6px">';
-    lines.forEach(function (ln) {
+    open.forEach(function (ln) {
       if (ln.head) {
         h += '<div style="flex:0 0 100%;font-size:11px;font-weight:800;color:#0f766e;margin:6px 0 0">' +
              esc(ln.head) + ' <span style="font-weight:600;opacity:.7">— pick the exact one</span></div>';
@@ -4176,14 +4241,12 @@ window.addEventListener("beforeunload", function (ev) {
       }
       var cur = bb.sel[ln.brand] || "";
       var f = BB_FACE[cur];
-      var was = clientBrandState(name, ln.brand);
       h += '<button type="button" data-act="bb-tog" data-brand="' + esc(ln.brand) + '"' +
         ' style="' + (ln.sub ? "margin-left:10px;" : "") +
         'display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:12px;' +
         'font-size:12.5px;font-weight:600;border:1.5px solid;cursor:pointer;' + f.s + '">' +
         esc(ln.label) +
         '<span data-bbface="1" style="font-size:10.5px;font-weight:800;opacity:.85">' + f.t + '</span>' +
-        (was === "won" ? '<span style="font-size:10px;opacity:.8">already</span>' : '') +
         '</button>';
     });
     h += '</div>' +
@@ -19729,7 +19792,11 @@ function viewCatalogue() {
         '<span id="m_manual_hint" style="font-size:12px;width:14px;color:#15803d">' +
           (_mnPre ? '&#10003;' : '') + '</span>' +
       '</div>' +
-      strictSiteField("m_site", (S.ch && S.ch.client) || "", (z && z.site) || "", "Site (optional)") +
+      /* v6.9.290 - the challan no longer asks which site. It was optional, it was blank on
+         nearly every challan, and it is the word he asked to stop seeing. The field is kept in
+         the DOM as a hidden input so every handler downstream still reads it with val("m_site")
+         and the saved row is shaped exactly as before. */
+      '<input type="hidden" id="m_site" value="' + esc((z && z.site) || "") + '"/>' +
       /* Material is going to this site today, so the man loading it knows the stage better than
          anyone. Confirm it here and the pitch board is right without a single extra visit. */
       stageChips("m_stage", clientStage((S.ch && S.ch.client) || ""), "Stage of the site this is going to") +
