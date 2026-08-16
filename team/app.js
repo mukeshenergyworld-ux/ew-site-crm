@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.293";
+  var APP_VERSION = "6.9.294";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4363,6 +4363,43 @@ window.addEventListener("beforeunload", function (ev) {
       'Mark the brands he buys</button></div>';
   }
 
+  /* ================= ASKED ONCE, WHEN THE RECORD IS MADE (v6.9.294) =================
+     HIS REPORT: "brand mark won while creating lead, its again asking when opening client in
+     hisab for attaching old hisab sheet - same problem corrected earlier not properly solved."
+
+     He is right that it was not properly solved. v6.9.290 stopped the list re-asking about
+     brands that were already SETTLED - which was a real fault and is fixed - but it left the
+     whole block sitting on the client form. And that form is not only opened to edit brands.
+     "Attach the old hisab" on the HISAB screen opens the very same modalClient(), so a man
+     who went to attach a statement PDF was met with a brand question he had already answered
+     when he created the lead. Any brand still genuinely open still drew a grid, so it still
+     read as being asked again.
+
+     THE QUESTION BELONGS TO THE MOMENT THE RECORD IS CREATED. That is the case he asked for -
+     entering an old client as a lead and recording what he already buys, in one save. Every
+     other visit to this form is somebody doing something else: attaching a hisab, fixing a
+     district, setting a credit limit. Those get one quiet line stating where the brands stand,
+     and a button for the rare case where changing them IS the errand. */
+  function brandBulkSummaryHtml(name) {
+    var won = [], nr = [];
+    bbLines().forEach(function (ln) {
+      if (ln.head || !ln.brand) return;
+      var st = clientBrandState(name, ln.brand);
+      if (st === "won") won.push(ln.label);
+      else if (st === "nr") nr.push(ln.label);
+    });
+    var line = won.length
+      ? '<b style="color:#047857">' + won.length + ' Won</b> — ' + esc(won.join(", ")) +
+        (nr.length ? ' · ' + nr.length + ' not required' : '')
+      : (nr.length ? nr.length + ' marked not required, none won yet' : 'No brands recorded against him yet');
+    return '<div style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:10px;padding:9px 11px;margin:12px 0">' +
+      '<div class="row" style="gap:8px;align-items:center">' +
+        '<div class="meta" style="flex:1;min-width:0;font-size:12.5px">Brands: ' + line + '</div>' +
+        '<button class="btn sm ghost" data-act="bb-open" data-n="' + esc(name) + '" data-back="client"' +
+        ' style="flex:0 0 auto;min-height:28px">Change</button>' +
+      '</div></div>';
+  }
+
   function modalBrandBulk(name) {
     bbInit(name);
     return '<h2>Mark several brands</h2>' +
@@ -7174,7 +7211,10 @@ window.addEventListener("beforeunload", function (ev) {
 
   function modalClient(c) {
     c = c || {};
-    bbInit(c.name || "");          /* v6.9.288 - fresh ticks for the name this form is about */
+    /* v6.9.294 - only a NEW record carries the tick list, so only a new record needs the state.
+       On an edit S.bb is cleared, which is also what stops cl-save writing anything: bbApply
+       has nothing to apply. */
+    if (c.id) S.bb = null; else bbInit("");
     var names = function (role) {
       var seen = {}, out = [];
       S.data.clients.forEach(function (x) { if (x[role] && !seen[x[role]]) { seen[x[role]] = 1; out.push(x[role]); } });
@@ -7292,10 +7332,12 @@ window.addEventListener("beforeunload", function (ev) {
       '<input id="c_billgst" placeholder="GSTIN (optional)" style="width:150px"/>' +
       '<button class="btn sm ghost" data-act="bill-add">Add</button></div>' +
       /* v6.9.288 - HIS ASK, on the form that opens. An old client entered here is recorded
-         complete in one save: who he is, and which brands he already buys. The ticks are
-         keyed on the name the form opened with - "" for a new one - and cl-save re-keys them
-         onto the name he actually typed before a single pitch row is written. */
-      brandBulkHtml(c.name || "") +
+         complete in one save: who he is, and which brands he already buys.
+         v6.9.294 - but ONLY when the record is being created. On an edit this form is nearly
+         always open for something else entirely - attaching an old hisab, fixing a district,
+         setting a credit limit - and a question already answered has no business interrupting
+         that. See brandBulkSummaryHtml(). */
+      (c.id ? brandBulkSummaryHtml(c.name || "") : brandBulkHtml(c.name || "")) +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       /* v6.9.186: the same honesty the stage question already had. Nothing is blocked - a man
          standing at a site can still save a name and a number in four seconds - but the button
@@ -22333,6 +22375,18 @@ function viewCatalogue() {
         S.bbBack = "";
         if (!bn.won) { S.modal = null; toast("He is still not a client — a brand has to be Won."); render(); return; }
         S.modal = modalChallan(); render(); return;
+      }
+      /* v6.9.294 - and back to the client form he opened it from, rebuilt the way cl-open
+         builds it so the billing rows he may have been editing are not lost. */
+      if (S.bbBack === "client") {
+        S.bbBack = "";
+        var _bc = clientByName(bbn);
+        if (_bc) {
+          S.clEditing = _bc;
+          try { S.billDraft = JSON.parse(_bc.billingJson || "[]"); } catch (e) { S.billDraft = []; }
+          S.modal = modalClient(_bc);
+        } else { S.modal = null; }
+        render(); return;
       }
       S.modal = null; render(); return;
     }
