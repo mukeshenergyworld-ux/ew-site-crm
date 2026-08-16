@@ -142,7 +142,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.10.0";
+  var APP_VERSION = "1.11.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
   var SNAP  = "ew_challan_snap";
@@ -776,7 +776,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
   /* Only the tabs this app reads. The backend honours "only" as of V93, so the rest of
      the book - quotes, pitch, payments, tools - never comes down the wire at all. */
-  var KEEP = ["clients","challans","returns","sites","drivers","discounts","brandmap","brands","associates","audit"];
+  /* v1.11.0 - "pitch" is new here, and it is not free: it is one row per client per brand,
+     so it makes every pull bigger. It is pulled because without it this app cannot tell a
+     lead from a client, and the rule the owner set is that material does not leave the godown
+     against a lead. Cheaper signals were considered and none of them works: a man with no
+     challans and no Won brand is precisely the case being stopped, so the challans this app
+     already holds cannot answer it alone. If the pull ever gets heavy, the fix is a `since:`
+     cursor on the backend, not dropping this tab. */
+  var KEEP = ["clients","challans","returns","sites","drivers","discounts","brandmap","brands","associates","audit","pitch"];
   function slimBook(r) {
     if (!r || typeof r !== "object") return r;
     var out = { ok: r.ok };
@@ -923,6 +930,30 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return clients().filter(function (c) { return lower(c.name) === k; })[0] || null;
   }
   function challans() { return (S.data && S.data.challans) || []; }
+  /* ================= A CHALLAN IS FOR A CLIENT (v1.11.0) =================
+     The owner's rule, and the same test the CRM uses: a man is a client when one brand is
+     marked Won, or when he has already taken a delivery. Anyone this godown has ever loaded
+     a lorry for passes on the second half, so no existing customer is stopped by this.
+
+     WHAT THE GODOWN MUST NOT DO IS DECIDE IT. Marking a brand Won is the office saying this
+     man is a customer now - it moves him onto the hisab, the dues list and the partner's
+     incentive. A man standing at the counter with material on a trolley is the worst possible
+     place for that decision, so this app refuses and names who to ring. It does not offer a
+     way to mark it here, on purpose. */
+  function isClientC(name) {
+    var t = String(name || "").trim().toLowerCase();
+    if (!t) return false;
+    var ch = challans();
+    for (var i = 0; i < ch.length; i++) {
+      if (ch[i] && String(ch[i].customerName || "").trim().toLowerCase() === t) return true;
+    }
+    var pt = (S.data && S.data.pitch) || [];
+    for (var j = 0; j < pt.length; j++) {
+      if (pt[j] && String(pt[j].status || "") === "Won" &&
+          String(pt[j].clientName || "").trim().toLowerCase() === t) return true;
+    }
+    return false;
+  }
   /* v1.10.0 - FIND A CHALLAN BY EITHER KEY. Every screen looked one up by its challan
      NUMBER, which was fine while a challan could not exist without one. A challan written
      with no signal has an id and no number until it uploads, and a lookup by "" would
@@ -2561,6 +2592,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       var z = S.ch || {};
       var cObj = clientByName(z.client);
       if (!cObj) { toast("Pick the client first \u2014 district, then area, then his name."); return; }
+      /* v1.11.0 - see isClientC(). Refused here, and the message names the step and the
+         people who can take it, rather than leaving a man guessing at the counter. */
+      if (!isClientC(cObj.name)) {
+        toast(cObj.name + " is not a client yet \u2014 no delivery has ever gone to him and no " +
+              "brand is marked Won. The office marks a brand Won in the CRM, then this challan " +
+              "can be written.");
+        return;
+      }
       var lines = (z.items || []);
       if (!lines.length) { toast("Add at least one product."); return; }
       lines = lines.map(function (l) {
