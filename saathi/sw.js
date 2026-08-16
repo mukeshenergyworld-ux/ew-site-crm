@@ -10,7 +10,7 @@
    The cache only speaks when the network does not, so a man standing
    in a basement still sees the app instead of the browser's error.
 ------------------------------------------------------------------ */
-var CACHE = 'ew-saathi-v1';
+var CACHE = 'ew-saathi-v2';
 
 /* ===== A DEADLINE ON THE NETWORK (15 Aug 2026) =====
    This worker was network-first with no timeout. The comment above is right that the cache

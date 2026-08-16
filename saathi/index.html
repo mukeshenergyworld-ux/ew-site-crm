@@ -360,8 +360,19 @@ function call(action, payload){
 }
 
 /* ---- small helpers ---- */
-function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){
-  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+/* 16 Aug 2026 - the apostrophe is escaped now. Read the note above the click handler below
+   before assuming this was the fix: it makes esc() correct for an ATTRIBUTE VALUE, which is
+   what data-* attributes are. It does NOT make anything safe inside a JS string, because the
+   browser turns &#39; back into ' before it parses the JS. */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+/* A LINK IS NOT TEXT. esc() is an HTML escape, not a URL check, so a broadcast whose link the
+   server sends as javascript:... was written straight into href and ran on tap. Only http and
+   https survive; anything else returns "" and the caller drops the link entirely. */
+function safeUrl(u){
+  var v = String(u==null?'':u).trim();
+  return /^https?:\/\//i.test(v) ? v : '';
+}
 function nfmt(n){ return Number(n||0).toLocaleString('en-IN'); }
 function inr(n){ return '₹' + nfmt(Math.round(Number(n)||0)); }
 function pts(n){ return nfmt(Math.round(Number(n)||0)); }
@@ -468,7 +479,7 @@ function viewFeed(){
   var kinds = ['all'].concat(D.feed.map(function(f){ return f.kind; })
     .filter(function(v,i,a){ return a.indexOf(v)===i; }));
   var h = '<div class="filters">' + kinds.map(function(k){
-    return '<button class="' + (FILTER===k?'on':'') + '" onclick="setFilter(\'' + esc(k) + '\')">' +
+    return '<button class="' + (FILTER===k?'on':'') + '" data-act="filter" data-k="' + esc(k) + '">' +
            (k==='all'?'Sab':esc(k)) + '</button>'; }).join('') + '</div>';
 
   var list = D.feed.filter(function(f){ return FILTER==='all' || f.kind===FILTER; });
@@ -480,12 +491,12 @@ function viewFeed(){
       '<span class="when">' + esc(f.on) + '</span></div>' +
       '<h3>' + esc(f.title) + '</h3>' +
       (f.body ? '<p>' + esc(f.body) + '</p>' : '') +
-      (f.img ? '<img src="' + esc(f.img) + '" alt="" loading="lazy">' : '') +
+      (safeUrl(f.img) ? '<img src="' + esc(safeUrl(f.img)) + '" alt="" loading="lazy">' : '') +
       (f.till ? '<p class="xs mut mono">Valid ' + esc(f.till) + ' tak</p>' : '') +
       '<div class="ft">' +
-        '<button class="brass" onclick="ack(\'' + esc(f.id) + '\',\'INTERESTED\')">Mujhe chahiye</button>' +
-        '<button onclick="ack(\'' + esc(f.id) + '\',\'CALLBACK\')">Call karein</button>' +
-        (f.link ? '<a class="xs mono" href="' + esc(f.link) + '" target="_blank" rel="noopener">Detail</a>' : '') +
+        '<button class="brass" data-act="ack" data-id="' + esc(f.id) + '" data-w="INTERESTED">Mujhe chahiye</button>' +
+        '<button data-act="ack" data-id="' + esc(f.id) + '" data-w="CALLBACK">Call karein</button>' +
+        (safeUrl(f.link) ? '<a class="xs mono" href="' + esc(safeUrl(f.link)) + '" target="_blank" rel="noopener">Detail</a>' : '') +
       '</div></div>';
   }).join('');
   return h;
@@ -559,8 +570,11 @@ function viewStages(){
       '</div><div class="bd">' +
         (s.say ? '<div class="say">&ldquo;' + esc(s.say) + '&rdquo;</div>' : '') +
         (s.push||[]).map(function(p){ return '<span class="chip">' + esc(p) + '</span>'; }).join('') +
-        '<div style="margin-top:10px"><button class="ghost" onclick="wa(\'' +
-          esc(String(s.t).replace(/'/g,'')) + '\')">Energy World se poochein</button></div>' +
+        /* 16 Aug 2026 - this used to strip apostrophes out of the stage title with
+           .replace(/'/g,'') to stop them breaking the handler. That is deleting the man's
+           text to protect the code. The title goes through whole now. */
+        '<div style="margin-top:10px"><button class="ghost" data-act="wa" data-msg="' +
+          esc(s.t) + '">Energy World se poochein</button></div>' +
       '</div></div>';
   }).join('');
   return h;
@@ -662,6 +676,47 @@ function render(){
 }
 function go(t){ TAB = t; FILTER = 'all'; render(); }
 function setFilter(f){ FILTER = f; render(); }
+
+/* ================= DATA STOPS BEING CODE (16 Aug 2026) =================
+   MEASURED, on the real viewFeed(), with a broadcast whose kind was Diwali'25:
+
+     onclick="setFilter('Diwali'25')"
+
+   That is not valid JavaScript. The apostrophe closed the string literal, so the handler
+   would not compile - and it is the FILTER ROW, which is on the feed of every partner the
+   broadcast went to, not just whoever it was about. One apostrophe typed into the console
+   and nobody in the field can use their feed.
+
+   Driven again with a broadcast id of  x'),alert(document.cookie),ack('y  the handler became
+
+     onclick="ack('x'),alert(document.cookie),ack('y','INTERESTED')"
+
+   which DOES compile. So it is not a crash; it runs, on every partner's phone, with whatever
+   that phone has in localStorage - including his stored PIN. esc() had stopped the double
+   quote, so the attribute could never be broken out of. It never needed to be: the JS string
+   inside it was already open.
+
+   WHY ESCAPING THE APOSTROPHE IS NOT THE FIX, and this is the part worth remembering.
+   The browser decodes HTML entities in an attribute BEFORE handing the value to the JS
+   parser. Write &#39; and the parser still sees '. There is no HTML escape that makes data
+   safe inside a JS string literal. The only fix is for the data to stop being code.
+
+   So values go into data-* attributes, where they are inert text, and one delegated listener
+   reads them back with getAttribute - which returns a string and never parses anything. This
+   is the pattern the CRM, Challan and Collection apps already use (data-act). Saathi is the
+   app used by people outside the firm, so it is the one that most needed it.
+
+   The inline handlers that carry no server data - go('feed'), signOut(), verPoll() - are left
+   alone deliberately: they are literals written in this file, and changing them would be a
+   larger diff for no gain. */
+document.addEventListener('click', function(e){
+  var t = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
+  if (!t) return;
+  var a = t.getAttribute('data-act');
+  if (a === 'filter'){ setFilter(t.getAttribute('data-k') || 'all'); return; }
+  if (a === 'ack'){ ack(t.getAttribute('data-id') || '', t.getAttribute('data-w') || ''); return; }
+  if (a === 'wa'){ wa(t.getAttribute('data-msg') || ''); return; }
+});
 
 /* ================================ SIGN IN ============================== */
 var GERR = '', PERR = '', PFORCE = false;
@@ -828,7 +883,7 @@ function hideInstall(done){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.08.05-1';        /* which build of this file is running */
+var BUILD  = '2026.08.16-1';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
