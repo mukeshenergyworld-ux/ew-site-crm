@@ -142,7 +142,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.11.0";
+  var APP_VERSION = "1.12.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
   var SNAP  = "ew_challan_snap";
@@ -748,6 +748,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         '</div>' +
         '<button class="btn sm" data-act="jrn-retry" style="background:#fff;color:#7c2d12;flex:none">Try now</button>' +
       '</div>';
+  }
+
+  /* v1.12.0 - open the missing-details sheet from anywhere that needed one and did not have it */
+  function dtAsk(name) {
+    if (!canMake()) { toast("Adding these is done by the godown or the office."); return; }
+    S.sheet = sheetDetails(name); render();
   }
 
   function saveRow(tab, row, opts) {
@@ -1566,6 +1572,62 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      v1.3 - district, then area, then the name. A free-text box over 118 clients meant
      spelling a man's name exactly as somebody else once typed it; this asks the two
      questions the godown already knows the answer to and leaves a handful of names. */
+  /* ================= ASKED WHERE THE CUSTOMER IS STANDING (v1.12.0) =================
+     HIS INSTRUCTION: "also ask to enter mobile no and other details in payments and challan
+     app, because team mostly use that apps."
+
+     This is the better moment than the CRM. A challan is written with the man in front of you,
+     or his driver at the counter - which is when a mobile number costs one question to get.
+     The card already SHOWED what was missing ("no mobile on his record", in red) and gave
+     nobody anywhere to put it.
+
+     ALL THREE ARE ASKED HERE, unlike the Payment app, because this app pulls the `associates`
+     tab and so has a real partner register to pick from. A free-typed plumber that matches no
+     partner is worse than a blank one - it looks answered and joins to nothing. */
+  var CH_GAPS = [
+    { k: "mobile",    label: "Mobile",    role: "" },
+    { k: "plumber",   label: "Plumber",   role: "plumber" },
+    { k: "architect", label: "Architect", role: "architect" }
+  ];
+  function chGaps(cl) {
+    if (!cl) return [];
+    return CH_GAPS.filter(function (f) { return !String(cl[f.k] || "").trim(); });
+  }
+  function partnersOfRole(role) {
+    var out = [];
+    ((S.data && S.data.associates) || []).forEach(function (a) {
+      if (!a || !a.name) return;
+      if (String(a.role || "").trim().toLowerCase() !== role) return;
+      if (out.indexOf(a.name) < 0) out.push(a.name);
+    });
+    return out.sort();
+  }
+  function sheetDetails(name) {
+    var cl = clientByName(name) || {};
+    var gaps = chGaps(cl);
+    if (!gaps.length) return '<h2>' + esc(name) + '</h2><div class="muted">Nothing missing.</div>' +
+      '<div class="acts" style="margin-top:14px"><button class="btn gry grow" data-act="close">Close</button></div>';
+    var h = '<h2>What is missing</h2>' +
+      '<div class="muted" style="margin-bottom:10px">' + esc(cl.name || name) +
+      ' — ask him now, while he is here. Only what is blank is shown.</div>';
+    gaps.forEach(function (f) {
+      h += '<label>' + esc(f.label) + '</label>';
+      if (!f.role) { h += '<input id="dt_mobile" inputmode="numeric" placeholder="10 digits" value=""/>'; return; }
+      var list = partnersOfRole(f.role);
+      h += '<select id="dt_' + f.k + '"><option value="">— not known —</option>' +
+        list.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join("") +
+        '</select>' +
+        (list.length ? '' : '<div class="muted" style="font-size:11.5px">Nobody on the partner register yet — the office adds them in the CRM.</div>');
+    });
+    h += '<div class="muted" style="margin:10px 0 0">Saved against him everywhere — the CRM, ' +
+      'the payment app and this one all read the same record.</div>' +
+      '<div class="acts" style="margin-top:14px">' +
+        '<button class="btn gry grow" data-act="close">Cancel</button>' +
+        '<button class="btn grow" data-act="dt-save" data-n="' + esc(cl.name || name) + '">Save</button>' +
+      '</div>';
+    return h;
+  }
+
   function clientPicker(z, cl, pfx) {
     var p = pfx || "m";
     if (cl && cl.name) {
@@ -1580,6 +1642,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
             (cl.architect ? (cl.plumber ? ' · ' : '<br>') + 'AR ' + esc(cl.architect) : '') +
           '</div>' +
         '</div><button class="btn sm gry" data-act="cp-change" data-p="' + p + '">Change</button></div>' +
+        /* v1.12.0 - the card already said what was missing; now it can be answered here */
+        (chGaps(cl).length
+          ? '<div style="margin-top:8px"><button class="btn sm amb" data-act="dt-ask" data-n="' + esc(cl.name) + '">' +
+            'Add his ' + esc(chGaps(cl).map(function (f) { return f.label.toLowerCase(); }).join(", ")) +
+            '</button></div>'
+          : '') +
         sitePicker(z, cl, p) +
         '</div>';
     }
@@ -2157,7 +2225,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (!c) return;
     var cl = clientByName(c.customerName) || {};
     var n = String(cl.mobile || "").replace(/\D/g, "");
-    if (!n) { toast("No mobile number on his record."); return; }
+    if (!n) { dtAsk(c.customerName); return; }
     if (n.length === 10) n = "91" + n;
     var win = window.open("", "_blank");        /* opened inside the tap or the phone blocks it */
     toast("Building the challan…");
@@ -2560,7 +2628,48 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       if (holder) { holder.driver = t.getAttribute("data-n") || ""; holder.veh = ""; }
       repaint(); return;
     }
-    if (act === "jrn-retry") { flushNow(); toast("Trying now\u2026"); return; }
+    if (act === "dt-ask") { dtAsk(t.getAttribute("data-n")); return; }
+    if (act === "dt-save") {
+      var dn = t.getAttribute("data-n");
+      var dc = clientByName(dn);
+      if (!dc || !dc.id) { toast("Could not find him on the book."); return; }
+      var dm = String(val("dt_mobile") || "").replace(/\D/g, "");
+      var dp = val("dt_plumber"), da = val("dt_architect");
+      if (!dm && !dp && !da) { toast("Nothing entered."); return; }
+      if (dm && dm.length !== 10) { toast("A mobile is 10 digits, or leave it blank."); return; }
+      /* THE WHOLE ROW, NOT A PATCH. saveRow() sends exactly what it is given and the backend
+         writes the whole sheet row from that - any column not sent is written BLANK. A patch
+         here would save his mobile and wipe his address, credit limit and billing profiles.
+         The CRM carries the same warning next to its own save; it has happened once already. */
+      var drow = Object.assign({}, dc);
+      if (dm) drow.mobile = dm;
+      if (dp) drow.plumber = dp;
+      if (da) drow.architect = da;
+      saveRow("clients", drow).then(function (r) {
+        Object.assign(dc, drow);                        /* on his screen at once */
+        /* and the site rows, which carry their own copy - only where theirs is blank, so a
+           site that genuinely has a different plumber on it is never overwritten */
+        var touched = 0;
+        ((S.data && S.data.sites) || []).forEach(function (st) {
+          if (String(st.client || "").trim().toLowerCase() !== String(dc.name).trim().toLowerCase()) return;
+          var srow = Object.assign({}, st), hit = false;
+          if (dm && !String(st.mobile || "").trim()) { srow.mobile = dm; hit = true; }
+          if (dp && !String(st.plumber || "").trim()) { srow.plumber = dp; hit = true; }
+          if (da && !String(st.architect || "").trim()) { srow.architect = da; hit = true; }
+          if (hit) { Object.assign(st, srow); saveRow("sites", srow); touched++; }
+        });
+        bust(); S.sheet = null; render();
+        var said = [];
+        if (dm) said.push("mobile");
+        if (dp) said.push("plumber");
+        if (da) said.push("architect");
+        toast(dc.name + " — " + said.join(", ") + " saved" +
+              (touched ? " and copied onto " + touched + " site record" + (touched === 1 ? "" : "s") : "") +
+              (r.held ? ", held on this phone until there is signal" : "") + ".");
+      });
+      return;
+    }
+    if (act === "jrn-retry") { flushNow(); toast("Trying now…"); return; }
     if (act === "ch-cancel") { S.ch = null; render(); return; }
     if (act === "ln-del")  { if (S.ch) S.ch.items.splice(Number(t.getAttribute("data-i")), 1); repaint(); return; }
     if (act === "rln-del") { if (S.rt) S.rt.items.splice(Number(t.getAttribute("data-i")), 1); repaint(); return; }
