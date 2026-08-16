@@ -128,7 +128,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.10.0";
+  var APP_VERSION = "1.11.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
   var SNAP = "ew_collect_snap";
@@ -698,6 +698,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         '</div>' +
         '<button class="btn sm" data-act="jrn-retry" style="background:#fff;color:#7c2d12;flex:none">Try now</button>' +
       '</div>';
+  }
+
+  /* v1.11.0 - open the number sheet from anywhere that needed a number and did not have one */
+  function mbAsk(name) {
+    if (!canWrite()) { toast("Adding a number is done by the office."); return; }
+    S.sheet = sheetMobile(name); render();
   }
 
   function saveRow(tab, row) {
@@ -1341,7 +1347,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         'style="display:inline-flex;align-items:center;gap:8px;background:#ecfdf5;border:1px solid #99f6e4;' +
         'border-radius:10px;padding:8px 12px;text-decoration:none;color:#0f766e;font-weight:800;font-size:16px;letter-spacing:.04em">' +
         '&#9742; ' + esc(r.mobile.length === 10 ? r.mobile.slice(0,5) + " " + r.mobile.slice(5) : r.mobile) + '</a></div>'
-      : '<div style="margin-bottom:9px"><span class="pill red">No mobile number on his record \u2014 he cannot be rung or sent anything</span></div>';
+      : '<div style="margin-bottom:9px"><span class="pill red">No mobile number on his record \u2014 he cannot be rung or sent anything</span>' +
+        (canWrite() ? ' <button class="btn sm" data-act="mb-ask" data-n="' + esc(r.name) + '" style="margin-left:6px">Add his mobile</button>' : '') +
+        '</div>';
     h += '<div class="acts">' +
       (r.mobile ? '<a class="btn sm grn" href="tel:' + esc(r.mobile) + '">Call</a>' : '') +
       (r.mobile ? '<button class="btn sm gry" data-act="wa" data-n="' + esc(r.name) + '">WhatsApp reminder</button>' : '') +
@@ -1621,13 +1629,47 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   function waSend(name) {
     var r = rowFor(name); if (!r) return;
     var n = String(r.mobile || "").replace(/\D/g, "");
-    if (!n) { toast("No mobile number on his record."); return; }
+    if (!n) { mbAsk(name); return; }
     if (n.length === 10) n = "91" + n;
     /* opened inside the click, or the phone blocks it */
     window.open("https://wa.me/" + n + "?text=" + encodeURIComponent(waText(r)), "_blank");
   }
 
   /* ---- recording what he said about the old balance ---- */
+  /* ================= A DEAD END BECOMES A DOOR (v1.11.0) =================
+     HIS INSTRUCTION: "also ask to enter mobile no and other details in payments and challan
+     app, because team mostly use that apps."
+
+     He is right about where the work happens. This app said "No mobile number on his record"
+     in FIVE places - once as a red pill on his card and four times as a toast when somebody
+     tried to ring, WhatsApp or send a hisab - and every one of them was a dead end. The man
+     holding the phone is looking straight at the customer's name, very often WITH the customer
+     on the line, which is the one moment the number is easiest to get. And then the app gave
+     him nowhere to put it.
+
+     ONLY THE MOBILE IS ASKED FOR HERE, deliberately. The CRM also chases plumber and architect,
+     but this app does not pull the `associates` tab, so it has no partner register to pick
+     from and would be inviting a free-typed name that matches nobody. The Challan app does
+     pull it, and asks for all three. Asking for what you cannot record properly is worse than
+     not asking.
+
+     It is written through saveRow(), so it is journalled like everything else here: entered in
+     a basement, held on the phone, on the sheet by itself when there is signal. */
+  function sheetMobile(name) {
+    var c = anyClient(name) || {};
+    return '<h2>His mobile</h2>' +
+      '<div class="muted" style="margin-bottom:10px">' + esc(name) +
+      ' has no number on his record, so he cannot be rung, chased or sent his hisab.</div>' +
+      '<label>Mobile</label>' +
+      '<input id="mb_no" inputmode="numeric" placeholder="10 digits" value="' + esc(c.mobile || "") + '"/>' +
+      '<div class="muted" style="margin:10px 0 0">Saved against him everywhere — the CRM, the ' +
+      'challan app and this one all read the same record.</div>' +
+      '<div class="acts" style="margin-top:14px">' +
+        '<button class="btn gry grow" data-act="close">Cancel</button>' +
+        '<button class="btn grow" data-act="mb-save" data-n="' + esc(name) + '">Save the number</button>' +
+      '</div>';
+  }
+
   function sheetOldBook(name) {
     var r = rowFor(name); if (!r) return "";
     var ob = obFor(name);
@@ -1688,7 +1730,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   function obWaGo(name) {
     var r = rowFor(name); if (!r) return;
     var n = String(r.mobile || "").replace(/\D/g, "");
-    if (!n) { toast("No mobile number on his record."); return; }
+    if (!n) { mbAsk(name); return; }
     if (n.length === 10) n = "91" + n;
     window.open("https://wa.me/" + n + "?text=" + encodeURIComponent(obText(r)), "_blank");
     /* sending the figure IS taking it up - but never downgrading an answer already given */
@@ -1701,7 +1743,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   function rcWaGo(name, amt, mode, dt, bal) {
     var r = anyClient(name) || {};
     var n = String(r.mobile || "").replace(/\D/g, "");
-    if (!n) { toast("No mobile number on his record."); return; }
+    if (!n) { mbAsk(name); return; }
     if (n.length === 10) n = "91" + n;
     window.open("https://wa.me/" + n + "?text=" + encodeURIComponent(receiptText(name, amt, mode, dt, bal)), "_blank");
   }
@@ -1858,7 +1900,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   function sendHisab(name) {
     var r = rowFor(name); if (!r) return;
     var n = String(r.mobile || "").replace(/\D/g, "");
-    if (!n) { toast("No mobile number on his record."); return; }
+    if (!n) { mbAsk(name); return; }
     if (n.length === 10) n = "91" + n;
     var win = window.open("", "_blank");
     toast("Building his statement…");
@@ -2233,7 +2275,32 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       if (!canWrite()) { toast("Recording a promise is done by the office."); return; }
       S.sheet = sheetLog(t.getAttribute("data-n")); render(); return;
     }
-    if (act === "jrn-retry") { flushNow(); toast("Trying now\u2026"); return; }
+    if (act === "mb-ask") { mbAsk(t.getAttribute("data-n")); return; }
+    if (act === "mb-save") {
+      var mbn = t.getAttribute("data-n");
+      var mbc = anyClient(mbn);
+      if (!mbc || !mbc.id) { toast("Could not find him on the book."); return; }
+      var mb = String(val("mb_no") || "").replace(/\D/g, "");
+      if (mb.length !== 10) { toast("A mobile is 10 digits."); return; }
+      /* ================= SEND THE WHOLE ROW, NOT A PATCH =================
+         This app's saveRow() sends exactly what it is given - unlike the CRM's save(), which
+         merges into the copy already in memory first. And the backend WRITES THE WHOLE SHEET
+         ROW FROM WHAT IT RECEIVES: any column not sent is written BLANK. The CRM carries that
+         warning next to its own save, with the note that a partial write once blanked a team
+         member's name during a PIN reset.
+
+         So a three-field patch here would have saved his mobile and wiped his address, credit
+         limit, opening balance and billing profiles. The full in-memory row goes up with the
+         one field changed, which is safe whether the backend merges or overwrites. */
+      var mbRow = Object.assign({}, mbc, { mobile: mb });
+      saveRow("clients", mbRow).then(function (r) {
+        mbc.mobile = mb;                                   /* on his screen at once */
+        bust(); S.sheet = null; render();
+        toast(mbc.name + " — " + mb + " saved" + (r.held ? ", held on this phone until there is signal" : "") + ".");
+      });
+      return;
+    }
+    if (act === "jrn-retry") { flushNow(); toast("Trying now…"); return; }
     if (act === "pi-full") { var a = el("pi_amt"); if (a) { a.value = t.getAttribute("data-v"); a.focus(); } return; }
     if (act === "fu-day") {
       var d = el("fu_date");

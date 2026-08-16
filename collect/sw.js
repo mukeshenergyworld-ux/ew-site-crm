@@ -2,7 +2,7 @@
    THE BOOK IS NEVER CACHED HERE - money must not be served stale by a service
    worker the user cannot see. The app keeps its own snapshot in localStorage and
    says out loud when it is showing it. */
-var CACHE = "ew-collect-v1100";
+var CACHE = "ew-collect-v1110";
 
 /* ===== A DEADLINE ON THE NETWORK (15 Aug 2026) =====
    This worker was network-first with no timeout, and so were the other four. The comment above
