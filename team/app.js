@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.292";
+  var APP_VERSION = "6.9.293";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4870,6 +4870,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });   /* a sales exec sees only clients assigned to them */
     var list = all.filter(function (c) { return !loc || c.location === loc; });
     if (S.clNoSite) list = list.filter(function (c) { return !siteForClient(c.name); });   /* v6.9.246 */
+    if (S.clNoMob) list = list.filter(function (c) { return clGaps(c).length > 0; });      /* v6.9.293 */
     if (qq) list = list.filter(function (c) { return cvMatch(c, qq); });
     if (!list.length) return '<div class="empty">' + (qq
       ? 'No client matches <b>' + esc(S.clq) + '</b>. Search runs on name, phone, area, plumber, architect and address.'
@@ -4989,6 +4990,19 @@ window.addEventListener("beforeunload", function (ev) {
        This chip is simply that list, so it can be worked. Adding a site is one tap from the
        card - the form opens already filled in from his client record. Nothing is deleted,
        nothing is changed until the site is saved. */
+    /* v6.9.293 - the same shape as the No site chip beside it, for the three details a record
+       cannot work without. */
+    var gapL = all.filter(function (c) { return clGaps(c).length > 0; });
+    if (gapL.length) {
+      h += '<div class="row" style="margin-top:6px">' +
+        '<button class="btn sm ' + (S.clNoMob ? "" : "ghost") + '" data-act="cl-nomob"' +
+          (S.clNoMob ? '' : ' style="border-color:#b45309;color:#b45309"') + '>' +
+          'Missing details <b>' + gapL.length + '</b></button>' +
+        (S.clNoMob ? '<button class="btn sm ghost" data-act="cl-nomob-off">Show all</button>' : '') +
+        '<div class="muted" style="font-size:11.5px;margin-left:8px;align-self:center">' +
+          'No mobile, plumber or architect — he cannot be rung and cannot be pitched to' +
+        '</div></div>';
+    }
     var noSiteList = all.filter(function (c) { return !siteForClient(c.name); });
     if (noSiteList.length) {
       var nsMoney = noSiteList.reduce(function (a, c) { return a + (clientDue(c.name) > 0.5 ? clientDue(c.name) : 0); }, 0);
@@ -10189,6 +10203,68 @@ function viewCatalogue() {
      and accounts see every client; a sales exec sees only the clients assigned to them, and through
      them every related quote / challan / hisab, so they can chase payment and follow up. */
   function seesAllClients() { return S.role === "admin" || S.role === "accounts"; }
+  /* ================= THE THREE THINGS A RECORD CANNOT WORK WITHOUT (v6.9.293) =====
+     HIS INSTRUCTION: "if a lead or client entered without mobile no, ask / flash the lead
+     owner to enter it, and after entering auto update it everywhere required" - and then:
+     "same as with Plumber and arch detail to be entered."
+
+     WHY THESE THREE AND NOT EVERY BLANK FIELD. A record missing one of these cannot do the
+     job it exists for:
+
+       * NO MOBILE - he cannot be rung, the collection app cannot chase him, a quote and a
+         receipt cannot be sent, and the WhatsApp button on his card is dead.
+       * NO PLUMBER, NO ARCHITECT - these are the men who decide what goes into the building.
+         The whole pitch engine and every partner incentive hangs off knowing who they are.
+
+     Everything else on the form is genuinely optional and is left alone. A nag that fires on
+     an empty Notes box teaches people to ignore nags.
+
+     IT DOES NOT BLOCK THE SAVE. That is deliberate and matches v6.9.186's rule: a man standing
+     at a site can still put a name and a number down in four seconds. It tells him what is
+     missing, puts the record on a list, and shows that list to the person whose book it is on
+     - every time they open Today. */
+  var GAP_FIELDS = [
+    { k: "mobile",    label: "Mobile",    why: "he cannot be rung, chased or sent a receipt" },
+    { k: "plumber",   label: "Plumber",   why: "the man who decides what goes into the building" },
+    { k: "architect", label: "Architect", why: "the other man who decides" }
+  ];
+  function clGaps(c) {
+    if (!c) return [];
+    return GAP_FIELDS.filter(function (f) { return !String(c[f.k] || "").trim(); });
+  }
+  /* Scoped to the person looking, exactly as every other list here is: a sales executive is
+     shown his own book and nobody else's. */
+  function gapList() {
+    return (S.data.clients || []).filter(function (c) {
+      if (!c || !String(c.name || "").trim()) return false;
+      if (!isMineClient(c.name)) return false;
+      return clGaps(c).length > 0;
+    });
+  }
+  function gapWords(c) {
+    return clGaps(c).map(function (f) { return f.label.toLowerCase(); }).join(", ");
+  }
+  /* Only the missing fields. Showing the whole client form again is what makes people close
+     it - he has already filled that form once and does not want to read it a second time. */
+  function modalGaps(name) {
+    var c = clientByName(name) || {};
+    var gaps = clGaps(c);
+    if (!gaps.length) return '<h2>' + esc(name) + '</h2><p class="sub">Nothing missing.</p>' +
+      '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var h = '<h2>' + esc(c.name || name) + '</h2>' +
+      '<p class="sub">Only what is missing. Everything else on his record is left alone.</p>';
+    gaps.forEach(function (f) {
+      h += '<label>' + esc(f.label) + ' <span style="font-weight:500;color:#94a3b8">— ' + esc(f.why) + '</span></label>';
+      if (f.k === "mobile") h += '<input id="gp_mobile" inputmode="numeric" placeholder="10 digits" value=""/>';
+      else h += partnerSelect("gp_" + f.k, f.k, "", false);
+    });
+    h += '<div class="meta" style="margin-top:9px">Saved against him and copied onto his site ' +
+      'records too, so nothing has to be typed twice.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
+      '<button class="btn" data-act="gap-save" data-n="' + esc(c.name || name) + '">Save</button></div>';
+    return h;
+  }
+
   function clientOwner(name) {
     var cl = clientByName(name) || {};
     return String(cl.ownedBy || cl.createdBy || "").trim().toLowerCase();
@@ -18838,6 +18914,22 @@ function viewCatalogue() {
         (chase.length > 10 ? '<span class="meta" style="font-size:11.5px;align-self:center">+ ' + (chase.length - 10) + ' more</span>' : '') +
         '</div></div>';
     }
+    /* v6.9.293 - and the three details a record cannot work without, on the same screen and
+       in the same voice. His own book only: gapList() is already scoped by isMineClient. */
+    var gaps = gapList();
+    if (gaps.length) {
+      h += '<div style="border-top:1px solid #fed7aa;background:#fff7ed;margin:8px -12px -12px;padding:9px 12px;border-radius:0 0 12px 12px">' +
+        '<div style="font-weight:700;font-size:13px;color:#b45309">Details missing (' + gaps.length + ')</div>' +
+        '<div class="meta" style="font-size:12px;margin-bottom:5px">No mobile, plumber or architect ' +
+        '\u2014 one tap each, and it is copied onto his sites too.</div>' +
+        '<div class="acts" style="flex-wrap:wrap;gap:5px">' +
+        gaps.slice(0, 10).map(function (c) {
+          return '<button class="btn sm" data-act="gap-open" data-n="' + esc(c.name) + '">' +
+            esc(c.name) + ' <span style="opacity:.75;font-weight:500">' + esc(gapWords(c)) + '</span></button>';
+        }).join("") +
+        (gaps.length > 10 ? '<span class="meta" style="font-size:11.5px;align-self:center">+ ' + (gaps.length - 10) + ' more</span>' : '') +
+        '</div></div>';
+    }
     return h + '</div>';
   }
 
@@ -21761,6 +21853,59 @@ function viewCatalogue() {
     if (act === "geo-filter") { S.geoOnly = !S.geoOnly; render(); return; }
     if (act === "cl-loc") { S.q = t.getAttribute("data-loc"); render(); return; }
     /* v6.9.246 - the no-site worklist */
+    if (act === "gap-open") { S.modal = modalGaps(t.getAttribute("data-n")); render(); return; }
+    if (act === "gap-save") {
+      var gn = t.getAttribute("data-n");
+      var gc = clientByName(gn);
+      if (!gc) { toast("Could not find that client."); return; }
+      /* read every field BEFORE anything re-renders - creating a partner repaints the app, and
+         a value read afterwards comes back empty. The same trap that once ate mobile2. */
+      var gm = String(val("gp_mobile") || "").replace(/\D/g, "");
+      var gp = val("gp_plumber"), ga = val("gp_architect");
+      if (!gm && !gp && !ga) { toast("Nothing entered."); return; }
+      if (gm && gm.length !== 10) { toast("A mobile is 10 digits, or leave it blank for now."); return; }
+      var patch = { id: gc.id };
+      if (gm) patch.mobile = gm;
+      if (gp) patch.plumber = gp;
+      if (ga) patch.architect = ga;
+      /* anyone named here who is not yet a partner is created first, exactly as the client
+         form does it - no double entry, and no dangling name */
+      Promise.all([
+        ensurePartner(gp, "Plumber", gc.location, gc.area),
+        ensurePartner(ga, "Architect", gc.location, gc.area)
+      ]).then(function () {
+        /* save() merges into the row already in memory and sends the WHOLE merged row, so a
+           three-field patch can only ever change those three and can never blank the rest. */
+        return save("clients", patch);
+      }).then(function () {
+        /* ---- and everywhere else the same fact is held ----
+           A site row carries its own copy of the mobile, plumber and architect - that is how
+           it was built, so a site created before this answer has them blank. Fill only the
+           blanks: a site that genuinely has a DIFFERENT plumber on it is not overwritten. */
+        var sites = (S.data.sites || []).filter(function (x) {
+          return String(x.client || "").trim().toLowerCase() === String(gc.name).trim().toLowerCase();
+        });
+        var touched = 0;
+        sites.forEach(function (st) {
+          var sp = { id: st.id };
+          if (gm && !String(st.mobile || "").trim()) sp.mobile = gm;
+          if (gp && !String(st.plumber || "").trim()) sp.plumber = gp;
+          if (ga && !String(st.architect || "").trim()) sp.architect = ga;
+          if (Object.keys(sp).length > 1) { save("sites", sp); touched++; }
+        });
+        _clStageCache = null;
+        S.modal = null; render();
+        var said = [];
+        if (gm) said.push("mobile");
+        if (gp) said.push("plumber");
+        if (ga) said.push("architect");
+        toast(gc.name + " — " + said.join(", ") + " saved" +
+              (touched ? " and copied onto " + touched + " site record" + (touched === 1 ? "" : "s") : "") + ".");
+      }).catch(function () { toast("Could not save that. It is kept on this device and will retry."); });
+      return;
+    }
+    if (act === "cl-nomob") { S.clNoMob = !S.clNoMob; render(); return; }
+    if (act === "cl-nomob-off") { S.clNoMob = false; render(); return; }
     if (act === "cl-nosite") { S.clNoSite = !S.clNoSite; render(); return; }
     if (act === "cl-nosite-off") { S.clNoSite = false; render(); return; }
     /* Open the site form already filled in from his client record, so putting a man back on
@@ -21995,6 +22140,15 @@ function viewCatalogue() {
           /* v6.9.186: say it once, plainly, and name the screen that fixes it. A record with no
              district cannot be put on anybody's round, and one with no colony is why the tree
              carries amber chips. */
+          /* v6.9.293 - name what is missing at the moment he saves, and name the list it
+             lands on, so it is not a surprise a week later. */
+          try {
+            var _g = clGaps(clientByName(r.name) || {});
+            if (_g.length) {
+              toast("Saved without " + _g.map(function (x) { return x.label.toLowerCase(); }).join(", ") +
+                    " \u2014 he is on the Details missing list on Today.");
+            }
+          } catch (e) {}
           if (!f.loc) toast("Saved without a district \u2014 tap Set district & area to place him.");
           else if (!f.ar) toast("Saved without a colony \u2014 tap Set district & area to place him.");
           if (S.qz && S.qz.step === 1) { S.qz.client = r.name; S.qz.clientObj = r; }
