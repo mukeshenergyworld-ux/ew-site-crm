@@ -12,7 +12,7 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.287";
+  var APP_VERSION = "6.9.288";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -6990,6 +6990,7 @@ window.addEventListener("beforeunload", function (ev) {
 
   function modalClient(c) {
     c = c || {};
+    bbInit(c.name || "");          /* v6.9.288 - fresh ticks for the name this form is about */
     var names = function (role) {
       var seen = {}, out = [];
       S.data.clients.forEach(function (x) { if (x[role] && !seen[x[role]]) { seen[x[role]] = 1; out.push(x[role]); } });
@@ -7106,6 +7107,11 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="row"><input class="grow" id="c_billname" placeholder="Name on the bill"/>' +
       '<input id="c_billgst" placeholder="GSTIN (optional)" style="width:150px"/>' +
       '<button class="btn sm ghost" data-act="bill-add">Add</button></div>' +
+      /* v6.9.288 - HIS ASK, on the form that opens. An old client entered here is recorded
+         complete in one save: who he is, and which brands he already buys. The ticks are
+         keyed on the name the form opened with - "" for a new one - and cl-save re-keys them
+         onto the name he actually typed before a single pitch row is written. */
+      brandBulkHtml(c.name || "") +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       /* v6.9.186: the same honesty the stage question already had. Nothing is blocked - a man
          standing at a site can still save a name and a number in four seconds - but the button
@@ -19351,12 +19357,18 @@ function viewCatalogue() {
     }).join("");
   }
 
+  /* ================= THIS FORM IS NOT REACHABLE (v6.9.288) =================
+     `customers` is an early-version register that `clients` replaced. Counted in this file:
+     S.data.clients is read in 43 places, S.data.customers in 6 - and "customers" is in NO
+     role's tab list (admin, accounts, godown, sales, service - checked, none), so
+     viewCustomers() cannot be opened by anybody.
+
+     v6.9.287 put the brand tick list here. That was wrong: it landed on a screen nobody can
+     reach. It lives on modalClient() now, which is the form `+ New client` actually opens.
+     This one is left exactly as it was rather than deleted - nothing is ever deleted here,
+     and the followups tab still joins to customers by id. */
   function modalCustomer(c) {
     c = c || {};
-    /* v6.9.287 - the tick list is built for the name this form is about. On a NEW customer
-       there is no name yet, so it is keyed on "" and re-keyed at save time; on an edit it
-       shows what is already recorded against him. */
-    bbInit(c.name || "");
     return '<h2>' + (c.id ? "Edit customer" : "New customer") + '</h2>' +
       '<p class="sub">Site and stage drive what you pitch next.</p>' +
       '<label>Name</label><input id="m_name" value="' + esc(c.name) + '"/>' +
@@ -19374,9 +19386,6 @@ function viewCatalogue() {
       /* v6.9.212 - grouped by trade, not one flat run of every partner on the book. */
       '<label>Referred by (partner)</label><select id="m_assoc">' + partnerAnyOptions(c.associate) + '</select>' +
       '<label>Notes</label><textarea id="m_notes">' + esc(c.notes) + '</textarea>' +
-      /* v6.9.287 - an old client being entered as a lead can be recorded complete in one
-         save: who he is, and which brands he already buys. */
-      brandBulkHtml(c.name || "") +
       '<div class="foot">' +
       '<button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="cust-save" data-id="' + esc(c.id || "") + '">Save</button>' +
@@ -21694,6 +21703,10 @@ function viewCatalogue() {
     if (act === "cl-save") {
       var cn = val("c_name");
       if (!cn) { toast("Client name is required."); return; }
+      /* v6.9.288 - READ THE REASON BOX HERE, with every other field. This form closes the
+         instant the button is pressed and creating a partner re-renders it, so anything read
+         afterwards comes back empty - the same trap that once ate mobile2. */
+      try { if (S.bb) S.bb.note = val("bb_note") || S.bb.note || ""; } catch (e) {}
       /* READ EVERY FIELD FIRST. Creating a partner re-renders the app, which rebuilds
          this modal - anything read afterwards comes back empty. That bug ate mobile2. */
       /* NEVER read a field that isn't on the form as "" — that blanks it on save (the backend
@@ -21765,6 +21778,14 @@ function viewCatalogue() {
         }).then(function (r) {
           if (!r) return;
           toast("Client saved as " + r.shortName + ".");
+          /* v6.9.288 - the brands he already buys, written AFTER the client and under the
+             name the server actually recorded, never before and never under "". Each is the
+             same saveBrandStatus() the one-brand button uses, so each is journalled. */
+          try {
+            S.bb = { name: r.name, sel: (S.bb && S.bb.sel) || {}, note: (S.bb && S.bb.note) || "" };
+            var _bn = bbApply(r.name);
+            if (_bn.won || _bn.nr) toast(bbToast(r.name, _bn));
+          } catch (e) {}
           /* The stage answer becomes a site, so the pitch board and the agent can see him.
              Never blocks the client save - if it fails the client is still safely written. */
           if (f.stage) {
@@ -23639,24 +23660,11 @@ function viewCatalogue() {
     if (act === "cust-save") {
       var name = val("m_name");
       if (!name) { toast("Name is required."); return; }
-      /* v6.9.287 - the brand ticks were keyed on whatever the form opened with, which on a NEW
-         customer is "". Re-key them onto the name he actually typed BEFORE writing, or every
-         pitch row would be filed against an empty client name and belong to nobody. */
-      var bbSel = (S.bb && S.bb.sel) || {};
-      var bbNote = "";
-      try { bbNote = val("bb_note"); } catch (e) { bbNote = ""; }
-      S.bb = { name: name, sel: bbSel, note: bbNote };
       save("customers", {
         id: id || "", createdBy: S.user, name: name, mobile: val("m_mobile"), city: val("m_city"),
         address: val("m_address"), site: val("m_site"), type: val("m_type"), stage: val("m_stage"),
         associate: val("m_assoc"), status: val("m_status"), notes: val("m_notes")
-      }).then(function (r) {
-        if (!r) return;
-        /* the brands go after the customer, never before: a pitch row for a man who is not on
-           the book yet is a row nobody can find */
-        var n = bbApply(name);
-        closeAck(_gClick, "Customer saved." + (n.won || n.nr ? " " + bbToast(name, n) : ""));
-      });
+      }).then(function (r) { if (r) closeAck(_gClick, "Customer saved."); });
       return;
     }
 
