@@ -194,6 +194,9 @@ select{
       <h1>Energy World</h1>
       <p>Panipat · Sonipat · Karnal — Support</p>
     </div>
+    <button id="hRef" type="button" title="Load this page fresh"
+      style="margin-left:auto;background:rgba(0,0,0,.06);color:inherit;border:0;border-radius:10px;
+             width:34px;height:34px;font-size:16px;line-height:1;cursor:pointer">&#8635;</button>
   </div>
 </div>
 
@@ -521,6 +524,29 @@ document.getElementById('againBtn').addEventListener('click', function(){
   document.getElementById('formView').style.display = 'block';
   window.scrollTo({top:0, behavior:'smooth'});
 });
+</script>
+<script>
+/* ---- REFRESH, WITH THE ONE GUARD THAT MATTERS HERE (17 Aug 2026) ----
+   "Give refresh button to all apps." This one is different from the six behind a PIN: the
+   person using it is a CUSTOMER, typing his complaint once, and he will not type it again.
+   A refresh that threw that away would be worse than no button at all. So it refuses the
+   moment anything has been entered, and says why. Untouched, it simply comes back fresh. */
+(function () {
+  var b = document.getElementById('hRef');
+  if (!b) return;
+  b.addEventListener('click', function () {
+    var typed = false;
+    try {
+      var f = document.querySelectorAll('#cForm input, #cForm textarea, #cForm select');
+      for (var i = 0; i < f.length; i++) { if (String(f[i].value || '').trim()) { typed = true; break; } }
+    } catch (e) {}
+    if (typed) {
+      alert('You have already started typing. Send the complaint first — reloading now would clear it.');
+      return;
+    }
+    location.replace(location.pathname + '?u=' + (new Date()).getTime());
+  });
+})();
 </script>
 </body>
 </html>
