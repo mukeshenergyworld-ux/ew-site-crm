@@ -12,7 +12,107 @@
   var CO_GAS = "https://script.google.com/macros/s/AKfycbxXTOOJNJL3uQyuf7z81sSkFCVVXvt8MPuWHb5H8G09PFsCt-I-7esIDJ-tvuT1AP0A/exec";
   var LOGO = "../assets/logo.jpg";
   var STORE = "ew_team_session";
-  var APP_VERSION = "6.9.294";
+
+  /* ==EW-CORE:BEGIN== built by tools/build_core.py — do not edit here, edit core/ew-core.js == */
+/* ==EWCORE:idb== The IndexedDB door. */
+  function idbOpen() {
+    if (_idbP) return _idbP;
+    _idbP = new Promise(function (res) {
+      var done = false, fin = function (v) { if (!done) { done = true; res(v); } };
+      try {
+        if (!window.indexedDB) return fin(null);
+        var rq = indexedDB.open(IDB_NAME, 1);
+        rq.onupgradeneeded = function () {
+          try { rq.result.createObjectStore(IDB_STORE); } catch (e) {}
+        };
+        rq.onsuccess = function () { fin(rq.result); };
+        rq.onerror = function () { fin(null); };
+        rq.onblocked = function () { fin(null); };
+        /* Safari in private mode can leave open() hanging forever. The app must never wait
+           on storage to start - it falls back to localStorage and carries on. */
+        setTimeout(function () { fin(null); }, 2500);
+      } catch (e) { fin(null); }
+    });
+    return _idbP;
+  }
+  function idbSet(k, v) {
+    return idbOpen().then(function (db) {
+      if (!db) return false;
+      return new Promise(function (res) {
+        try {
+          var t = db.transaction(IDB_STORE, "readwrite");
+          t.objectStore(IDB_STORE).put(v, k);
+          t.oncomplete = function () { res(true); };
+          t.onerror = function () { res(false); };
+          t.onabort = function () { res(false); };
+        } catch (e) { res(false); }
+      });
+    }).catch(function () { return false; });
+  }
+  function idbGet(k) {
+    return idbOpen().then(function (db) {
+      if (!db) return null;
+      return new Promise(function (res) {
+        try {
+          var r = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(k);
+          r.onsuccess = function () { res(r.result === undefined ? null : r.result); };
+          r.onerror = function () { res(null); };
+        } catch (e) { res(null); }
+      });
+    }).catch(function () { return null; });
+  }
+  function idbDel(k) {
+    return idbOpen().then(function (db) {
+      if (!db) return false;
+      return new Promise(function (res) {
+        try {
+          var t = db.transaction(IDB_STORE, "readwrite");
+          t.objectStore(IDB_STORE).delete(k);
+          t.oncomplete = function () { res(true); };
+          t.onerror = function () { res(false); };
+        } catch (e) { res(false); }
+      });
+    }).catch(function () { return false; });
+  }
+/* ==EWCORE:idb:END== */
+/* ==EWCORE:webauthn== Face ID / fingerprint plumbing. No PIN passes through any of it. */
+  function b64u(buf) {
+    var b = new Uint8Array(buf), s2 = "";
+    for (var i = 0; i < b.length; i++) s2 += String.fromCharCode(b[i]);
+    return btoa(s2).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function randBytes(n) {
+    var a = new Uint8Array(n); crypto.getRandomValues(a); return a;
+  }
+  function bioSaved() {
+    try { return JSON.parse(localStorage.getItem(BIO_KEY) || "null"); } catch (e) { return null; }
+  }
+  function bioAvailable() {
+    return !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
+  }
+/* ==EWCORE:webauthn:END== */
+/* ==EWCORE:drive== Google Drive picture links, repaired to the one form that renders. */
+  /* Normalise any Google-Drive image link to the one lh3 form that actually
+     renders inside an <img>: https://lh3.googleusercontent.com/d/{ID}=w200
+     The catalogue's "Pic" column mixes two shapes -
+       .../d/{ID}=w200            -> works (thumbnail)
+       .../d/{ID}/view?usp=w200   -> a Drive *viewer* path, NOT an image -> broken ?
+     Grundfos, CPVC, CISTERN, LEO and many Accessory rows were all in the broken
+     /view form (verified by load-testing: /view => ERROR, =w200 => loads).
+     We repair every Drive link to =w200 here, so on-screen thumbnails, the
+     catalogue, the price-list PDF and the quotation PDF all get a loadable URL,
+     and any future /view paste self-heals. Non-Drive URLs pass through unchanged. */
+  function driveImg(u, size) {
+    u = String(u || "").trim();
+    if (!u) return "";
+    var m = u.match(/\/d\/([A-Za-z0-9_\-]{20,})/) || u.match(/[?&]id=([A-Za-z0-9_\-]{20,})/);
+    if (!m) return u;
+    return "https://lh3.googleusercontent.com/d/" + m[1] + "=w" + (size || 200);
+  }
+/* ==EWCORE:drive:END== */
+  /* ==EW-CORE:END== */
+
+  var APP_VERSION = "6.9.300";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -367,6 +467,10 @@
        challan save took longer than 30s while competing with thirteen logo downloads, so the
        app said "timed out" about a row that was on the sheet. */
     teamSave: 60000,
+    /* v6.9.295 - teamAuth sat on the 30s default while teamGet had 60. Backwards: a slow book
+       pull costs a wait, a login that gives up costs a man his morning. Apps Script wakes cold
+       each morning and this login queues behind whatever another phone has in flight. */
+    teamAuth: 45000,
     /* v6.9.267 - pdfHost was 90s. A receipt PDF is ~1.3 MB on the wire; on a domestic uplink
        of about 150 kbps that is ~70s of upload before the server has even started, so the
        deadline was firing seconds before the transfer completed - and firing means starting
@@ -1112,65 +1216,7 @@ window.addEventListener("beforeunload", function (ev) {
      is deleted only AFTER IndexedDB confirms the write, and if this browser has no
      IndexedDB at all the old 5 MB box is still used exactly as before. */
   var IDB_NAME = "ew_store", IDB_STORE = "kv", _idbP = null;
-  function idbOpen() {
-    if (_idbP) return _idbP;
-    _idbP = new Promise(function (res) {
-      var done = false, fin = function (v) { if (!done) { done = true; res(v); } };
-      try {
-        if (!window.indexedDB) return fin(null);
-        var rq = indexedDB.open(IDB_NAME, 1);
-        rq.onupgradeneeded = function () {
-          try { rq.result.createObjectStore(IDB_STORE); } catch (e) {}
-        };
-        rq.onsuccess = function () { fin(rq.result); };
-        rq.onerror = function () { fin(null); };
-        rq.onblocked = function () { fin(null); };
-        /* Safari in private mode can leave open() hanging forever. The app must never wait
-           on storage to start - it falls back to localStorage and carries on. */
-        setTimeout(function () { fin(null); }, 2500);
-      } catch (e) { fin(null); }
-    });
-    return _idbP;
-  }
-  function idbGet(k) {
-    return idbOpen().then(function (db) {
-      if (!db) return null;
-      return new Promise(function (res) {
-        try {
-          var r = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(k);
-          r.onsuccess = function () { res(r.result === undefined ? null : r.result); };
-          r.onerror = function () { res(null); };
-        } catch (e) { res(null); }
-      });
-    }).catch(function () { return null; });
-  }
-  function idbSet(k, v) {
-    return idbOpen().then(function (db) {
-      if (!db) return false;
-      return new Promise(function (res) {
-        try {
-          var t = db.transaction(IDB_STORE, "readwrite");
-          t.objectStore(IDB_STORE).put(v, k);
-          t.oncomplete = function () { res(true); };
-          t.onerror = function () { res(false); };
-          t.onabort = function () { res(false); };
-        } catch (e) { res(false); }
-      });
-    }).catch(function () { return false; });
-  }
-  function idbDel(k) {
-    return idbOpen().then(function (db) {
-      if (!db) return false;
-      return new Promise(function (res) {
-        try {
-          var t = db.transaction(IDB_STORE, "readwrite");
-          t.objectStore(IDB_STORE).delete(k);
-          t.oncomplete = function () { res(true); };
-          t.onerror = function () { res(false); };
-        } catch (e) { res(false); }
-      });
-    }).catch(function () { return false; });
-  }
+
 
   var _big = {};                 /* key -> the JSON string, mirrored in memory */
   function bigGet(k) {
@@ -1354,23 +1400,134 @@ window.addEventListener("beforeunload", function (ev) {
   function segOf(clientName) { return clientSegment(clientByName(clientName) || {}); }
 
   /* ---------------- product catalog (live from the Sheet) ---------------- */
-  /* Normalise any Google-Drive image link to the one lh3 form that actually
-     renders inside an <img>: https://lh3.googleusercontent.com/d/{ID}=w200
-     The catalogue's "Pic" column mixes two shapes -
-       .../d/{ID}=w200            -> works (thumbnail)
-       .../d/{ID}/view?usp=w200   -> a Drive *viewer* path, NOT an image -> broken ?
-     Grundfos, CPVC, CISTERN, LEO and many Accessory rows were all in the broken
-     /view form (verified by load-testing: /view => ERROR, =w200 => loads).
-     We repair every Drive link to =w200 here, so on-screen thumbnails, the
-     catalogue, the price-list PDF and the quotation PDF all get a loadable URL,
-     and any future /view paste self-heals. Non-Drive URLs pass through unchanged. */
-  function driveImg(u, size) {
+
+
+  /* ============ A BLANK SQUARE SAID TWO DIFFERENT THINGS (v6.9.296) ============
+     Asked from the quote screen, 17 Aug: "while searching product, not showing product
+     pics?" - and the honest answer was that NOBODY could tell, from that screen or from a
+     screenshot of it. Four product lists rendered
+
+         p.pic ? <img src=...>  :  <div class="noimg"></div>
+
+     and `.noimg` is a plain grey square. So a product the catalogue simply has no
+     photograph for, and a photograph whose link is broken, looked exactly the same - an
+     empty box. One of those is nothing to fix and the other is a bad cell in the sheet,
+     and the screen refused to say which. (The Products CARD has said "no photo" since it
+     was written; the LISTS never did.)
+
+     Now each says what it is. A missing photograph reads "no photo"; a link that will not
+     load reads "photo won't load" and carries the failing URL in its tooltip, so the row
+     can be found and fixed in the catalogue.
+
+     WHY A CAPTURED EVENT AND NOT onerror="". An inline handler would mean building
+     executable text around a URL that came from a spreadsheet - which is exactly the hole
+     that broke Saathi (a broadcast title with an apostrophe, 16 Aug). `error` does not
+     bubble, but it does CAPTURE, so one listener on the document catches every thumbnail in
+     the app and no data ever becomes code. */
+  /* WHY A PICTURE DOES NOT SHOW - and the three answers need three different actions.
+     Reported 17 Aug: a picture URL entered as
+        https://in.rsdelivers.com/product/rs-pro/...
+     which is a PRODUCT PAGE, not an image. A browser asked to draw a web page inside an
+     <img> draws nothing at all, and the blank square said nothing about why - so the one
+     person who could fix it had no way to know there was anything to fix.
+
+     Deliberately permissive: plenty of real image links carry no file extension, so this
+     never REFUSES to load anything. It only chooses the wording once a load has already
+     failed, and warns while he is typing, where the fix is one paste away. */
+  function picProblem(u) {
     u = String(u || "").trim();
     if (!u) return "";
-    var m = u.match(/\/d\/([A-Za-z0-9_\-]{20,})/) || u.match(/[?&]id=([A-Za-z0-9_\-]{20,})/);
-    if (!m) return u;
-    return "https://lh3.googleusercontent.com/d/" + m[1] + "=w" + (size || 200);
+    if (/^data:image\//i.test(u)) return "";
+    if (/googleusercontent\.com\/d\/|drive\.google\.com|\/d\/[A-Za-z0-9_\-]{20,}/.test(u)) return "";
+    if (/\.(jpe?g|png|gif|webp|bmp|svg|avif)(\?|#|$)/i.test(u)) return "";
+    if (/^https?:\/\//i.test(u)) return "page";
+    return "odd";
   }
+  var PIC_HINT = {
+    page: "That link opens a web PAGE, not a picture. Open the page, right-click the photo, " +
+          "choose “Copy image address”, and paste that instead — or put the photo in " +
+          "Drive and paste the Drive link.",
+    odd:  "That does not look like a link at all. Paste the full address, starting https://"
+  };
+
+  /* ============ SEE IT, RATHER THAN FIND OUT LATER (v6.9.298) ============
+     He sent a Drive link on 17 Aug and asked for it to be put on two products. driveImg()
+     already repairs a /view link, so pasting it works - but there is one thing that silently
+     defeats it and cannot be seen from the sheet, from the link, or from anywhere else until
+     somebody opens a quote weeks later: THE DRIVE FILE MUST BE SHARED. A file left on
+     "Restricted" returns nothing to the app, and the cell goes blank exactly as if the link
+     were wrong.
+
+     So the form now DRAWS the picture while he is typing, at the address the app will really
+     use. If it appears, it is right - link, shape and sharing, all three, proved by the only
+     test that counts. If it does not, the line underneath says which of the three it was. */
+  function picPreviewHtml(u) {
+    u = String(u || "").trim();
+    if (!u) return '<div class="meta" style="color:#94a3b8">No picture yet. Paste a link above and it will appear here.</div>';
+    var fixed = driveImg(u, 220);
+    return '<div style="display:flex;gap:10px;align-items:flex-start">' +
+      '<div style="width:76px;height:76px;flex:0 0 76px;border:1px solid #e2e8f0;border-radius:10px;' +
+           'background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden">' +
+        '<img data-picprev="1" src="' + esc(fixed) + '" alt="" ' +
+             'style="max-width:100%;max-height:100%;object-fit:contain"/>' +
+      '</div>' +
+      '<div class="meta" id="p_pic_say" style="font-size:11.5px;line-height:1.5;min-width:0;word-break:break-word">' +
+        (fixed !== u ? 'Drive link repaired. The app will use:<br><span style="color:#0f766e">' + esc(fixed) + '</span>'
+                     : 'The app will use this address as it is.') +
+      '</div></div>';
+  }
+
+  function picCell(p) {
+    return (p && p.pic)
+      ? '<img data-pic="1" src="' + esc(p.pic) + '" loading="lazy" alt=""/>'
+      : '<div class="noimg">no<br>photo</div>';
+  }
+  document.addEventListener("error", function (ev) {
+    var t = ev && ev.target;
+    if (!t || t.tagName !== "IMG" || !t.getAttribute) return;
+    /* the preview on the product form explains itself in words, in place */
+    if (t.getAttribute("data-picprev")) {
+      var say = document.getElementById("p_pic_say");
+      if (say) {
+        var src = t.getAttribute("src") || "";
+        say.style.color = "#b45309";
+        say.innerHTML = /googleusercontent\.com\/d\//.test(src)
+          /* A Drive link of the right shape that will not load is almost always a file left
+             on Restricted. Nothing in the sheet or in the link shows this - it is the one
+             cause that is invisible from everywhere except here. */
+          ? "<b>This Drive file is not shared.</b> Open it in Drive \u2192 <b>Share</b> \u2192 " +
+            "General access \u2192 <b>Anyone with the link</b> \u2192 Viewer. Then paste it again."
+          : (PIC_HINT[picProblem(src)] || "That address did not load a picture.");
+      }
+      try { t.style.display = "none"; } catch (e) {}
+      return;
+    }
+    if (!t.getAttribute("data-pic")) return;
+    var d = document.createElement("div");
+    d.className = "noimg bad";
+    var why = picProblem(t.getAttribute("src") || "");
+    d.innerHTML = why === "page" ? "link is<br>a page" : "photo<br>won’t load";
+    d.title = (PIC_HINT[why] ? PIC_HINT[why] + "\n\n" : "") + (t.getAttribute("src") || "");
+    try { if (t.parentNode) t.parentNode.replaceChild(d, t); } catch (e) {}
+  }, true);
+
+  /* Checked as he types, not only when the row is saved - a warning that arrives after he has
+     moved on is a warning he will not act on. Delegated, so it survives every repaint, and it
+     never blocks the save: it is advice, and he may well know better than the check. */
+  var _picT = null;
+  document.addEventListener("input", function (ev) {
+    var t = ev && ev.target;
+    if (!t || t.id !== "p_pic") return;
+    var h = document.getElementById("p_pic_hint");
+    if (h) h.textContent = PIC_HINT[picProblem(t.value)] || "";
+    /* redraw after he stops typing, not on every keystroke - otherwise a pasted 80-character
+       link fires eighty image loads on its way in */
+    clearTimeout(_picT);
+    _picT = setTimeout(function () {
+      var pv = document.getElementById("p_pic_prev");
+      if (pv) pv.innerHTML = picPreviewHtml(t.value);
+    }, 450);
+  });
 
   function parseCatalog(rows) {
     var head = -1, i, r;
@@ -3658,7 +3815,8 @@ window.addEventListener("beforeunload", function (ev) {
        Accessory / Net-price buckets only appear when they actually carry products. */
     return S.data.brands
       .filter(function (b) { return String(b.active).toUpperCase() !== "N" && (live[b.brand] || isRealBrandName(b.brand)); })
-      .map(function (b) { return b.brand; });
+      .map(function (b) { return b.brand; })
+      .sort(alpha);                     /* v6.9.300 - was sheet-row order */
   }
   /* ============ A REAL BRAND PARKED IN A BUCKET (v6.9.255) ============
      HIS REPORT: "LEO is not shown as a brand, when making quote and adding brand".
@@ -3808,17 +3966,47 @@ window.addEventListener("beforeunload", function (ev) {
   function followBrandList() {
     return S.data.brands
       .filter(function (b) { return String(b.active).toUpperCase() !== "N" && isRealBrandName(b.brand); })
-      .map(function (b) { return b.brand; });
+      .map(function (b) { return b.brand; })
+      .sort(alpha);
   }
   function brandProducts(brand) {
     return PRODUCTS.filter(function (p) { return realBrand(p) === brand; });
   }
+  /* ============ ONE FAMILY, HOWEVER IT WAS TYPED (v6.9.297) ============
+     Reported 17 Aug with a screenshot: two products entered under SS Elbow showed as TWO
+     chips - "SS ELBOW 1" and "SS Elbow 1" - because the two catalogue rows spell the family
+     differently. They are the same family. A man typing a row into a spreadsheet cannot be
+     expected to match the capitalisation of a row he typed weeks ago, and the app splitting
+     his catalogue over it is the app's fault, not his.
+
+     Grouped on a NORMALISED key - trimmed, case-folded, runs of whitespace collapsed - and
+     the chip is labelled with whichever spelling the most products use, so one odd row
+     cannot rename a family. NOTHING IS EDITED: his sheet keeps both spellings exactly as he
+     typed them. This only changes how they are gathered on screen.
+
+     FOUR pickers compare families, not the three that were obvious - the quote wizard, the
+     return picker, the challan picker and the other-charge picker. The patch script asserted
+     three and refused to write until all four were found. */
+  function famKey(x) { return String(x == null ? "" : x).replace(/\s+/g, " ").trim().toLowerCase(); }
+  function famSame(a, b) { return famKey(a) === famKey(b); }
+
   function familyList(brand) {
-    var seen = {}, out = [];
+    var byKey = {};
     brandProducts(brand).forEach(function (p) {
-      if (p.family && !seen[p.family]) { seen[p.family] = 1; out.push(p.family); }
+      if (!p.family) return;
+      var k = famKey(p.family);
+      if (!k) return;
+      if (!byKey[k]) byKey[k] = {};
+      byKey[k][p.family] = (byKey[k][p.family] || 0) + 1;
     });
-    return out.sort();
+    return Object.keys(byKey).map(function (k) {
+      var sp = byKey[k];
+      /* the spelling the most rows use; a tie goes to the first alphabetically, so the label
+         is stable between reloads rather than depending on the order rows came back in */
+      return Object.keys(sp).sort(function (a, b) {
+        return (sp[b] - sp[a]) || (a < b ? -1 : a > b ? 1 : 0);
+      })[0];
+    }).sort(function (a, b) { return famKey(a) < famKey(b) ? -1 : famKey(a) > famKey(b) ? 1 : 0; });
   }
 
   /* ---- per-brand quote helpers ----
@@ -3973,6 +4161,24 @@ window.addEventListener("beforeunload", function (ev) {
      not 19. So the boards and the brand pickers roll the catalogue up into groups, while
      the quote builder, discount screen, stock and incentives keep the real sub-brand.
      A brand matching no rule keeps its own name, so a new brand is never silently hidden. */
+  /* ============ EVERYTHING IN ORDER (v6.9.300) ============
+     Asked for on 17 Aug: "manage everything alphabatically, like brand name... that will look
+     more professional." He is right, and the reason it was not is simply that each list grew
+     up in whatever order its sheet rows or its author happened to be in.
+
+     NATURAL order, not plain A-Z. Plain sorting puts "SS ELBOW 15" after "SS ELBOW 100"
+     because it compares "1" against "1" and then "5" against "0" - which is exactly the sort
+     of thing that looks wrong to a man who knows his own catalogue. localeCompare with
+     numeric:true reads the digits as numbers, so 15 comes before 22 comes before 100.
+
+     Case is ignored too ("sensitivity: base"), so SS ELBOW and SS Elbow file together - the
+     same rule that already merges them into one family. */
+  function alpha(a, b) {
+    return String(a == null ? "" : a).localeCompare(String(b == null ? "" : b),
+      undefined, { numeric: true, sensitivity: "base" });
+  }
+  function alphaBy(f) { return function (x, y) { return alpha(f(x), f(y)); }; }
+
   var BRAND_GROUP_ORDER = ["HULIOT", "HELIROMA", "FIMA", "TOTO", "STELLAR", "GRUNDFOS",
     "PENTAIR", "GREEN HEAT", "GEBERIT", "INAIR", "OYSTER", "MEA", "IONCARE", "ADANI"];
   var BRAND_GROUP_RULES = [
@@ -4020,7 +4226,9 @@ window.addEventListener("beforeunload", function (ev) {
     _bgCache = { order: order, byGroup: byGroup };
     return _bgCache;
   }
-  function brandGroupList() { return brandGroupIndex().order; }
+  /* v6.9.300 - BRAND_GROUP_ORDER is still what decides which groups EXIST and how brands map
+     into them; only the order they are SHOWN in is now alphabetical. */
+  function brandGroupList() { return brandGroupIndex().order.slice().sort(alpha); }
   function groupMembers(g) { return brandGroupIndex().byGroup[g] || []; }
   /* A group is only as parked as its best member: won > live > lost > untouched, and
      "not required" shows only when EVERY sub-brand in the group is marked so. */
@@ -8067,7 +8275,7 @@ window.addEventListener("beforeunload", function (ev) {
       var qzProw = function (p) {
         var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
         return '<div class="prow ' + (ex ? "picked" : "") + '">' +
-          (p.pic ? '<img src="' + esc(p.pic) + '" loading="lazy"/>' : '<div class="noimg"></div>') +
+          picCell(p) +
           '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
           '<div class="pmeta">' + esc(p.code) + ' &middot; ' + money(p.price) + ' / ' + esc(p.unit) +
           (p.brand && p.brand !== z.brand ? ' &middot; ' + esc(p.brand) : '') +
@@ -8114,8 +8322,8 @@ window.addEventListener("beforeunload", function (ev) {
       /* families as small horizontal chips, not a vertical wall of cards */
       var fams = familyList(z.brand);
       h += '<div class="chips">' + fams.map(function (f) {
-        var n = brandProducts(z.brand).filter(function (p) { return p.family === f; }).length;
-        return '<button class="chip ' + (z.family === f ? "on" : "") + '" data-act="qz-fam" data-fam="' + esc(f) + '">' +
+        var n = brandProducts(z.brand).filter(function (p) { return famSame(p.family, f); }).length;
+        return '<button class="chip ' + (famSame(z.family, f) ? "on" : "") + '" data-act="qz-fam" data-fam="' + esc(f) + '">' +
           esc(f) + ' <b>' + n + '</b></button>';
       }).join("") + '</div>';
 
@@ -8123,7 +8331,7 @@ window.addEventListener("beforeunload", function (ev) {
 
       /* compact product rows: pic, name, price, stepper - all on one line */
       h += '<div class="plist">';
-      brandProducts(z.brand).filter(function (p) { return p.family === z.family; }).forEach(function (p) {
+      brandProducts(z.brand).filter(function (p) { return famSame(p.family, z.family); }).forEach(function (p) {
         h += qzProw(p);
       });
       h += '</div>';
@@ -8462,7 +8670,7 @@ function viewCatalogue() {
        not, and that is the one that hid LEO for months. */
     var h = '<div class="empty" style="text-align:left;padding:0 0 14px"><b>Brand mapping.</b> The catalogue\'s Master Brand column mixes real brands with categories. Map each value to one of your brands - quotes, pitch matrix and incentives all key off this.</div>';
     if (unmapped.length) h += '<div class="card" style="border-color:#fecdd3"><h3><span class="pill due">' + unmapped.length + ' unmapped</span></h3><div class="meta">Products under these values cannot be quoted until mapped.</div></div>';
-    var brandOpts = S.data.brands.map(function (b) { return b.brand; });
+    var brandOpts = S.data.brands.map(function (b) { return b.brand; }).sort(alpha);
     S.data.brandmap.forEach(function (m) {
       h += '<div class="card"><h3>' + esc(m.catalogValue) + ' <span class="pill">' + esc(m.count) + ' products</span>' +
         (m.brand ? ' <span class="pill Won">' + esc(m.brand) + '</span>' : ' <span class="pill due">unmapped</span>') + '</h3>' +
@@ -8476,7 +8684,7 @@ function viewCatalogue() {
       '<div class="grid2" style="margin-top:8px">' +
       '<div><label>Code starts with</label><input id="rm_code" placeholder="e.g. MW1"/></div>' +
       '<div><label>Family starts with</label><input id="rm_fam" placeholder="e.g. HR"/></div></div>' +
-      '<label>Move them to</label><select id="rm_to">' + opts([""].concat(S.data.brands.map(function (b) { return b.brand; })), "") + '</select>' +
+      '<label>Move them to</label><select id="rm_to">' + opts([""].concat(S.data.brands.map(function (b) { return b.brand; }).sort(alpha)), "") + '</select>' +
       '<div class="acts"><button class="btn ghost" data-act="rm-preview">Preview</button>' +
       '<button class="btn" data-act="rm-apply">Move products</button></div>' +
       (S.rmPreview ? '<div class="meta" style="margin-top:8px"><b>' + esc(S.rmPreview.matched) + ' product(s) match:</b><br>' +
@@ -8558,6 +8766,9 @@ function viewCatalogue() {
       '<div><label>Category</label><input id="p_cat" value="' + esc(p.cat) + '"/></div></div>' +
       '<datalist id="mblist">' + mapVals.map(function (m) { return '<option value="' + esc(m) + '"></option>'; }).join("") + '</datalist>' +
       '<label>Picture URL</label><input id="p_pic" value="' + esc(p.pic) + '"/>' +
+      '<div id="p_pic_hint" style="font-size:11.5px;line-height:1.45;margin:4px 2px 0;color:#b45309">' +
+        esc(PIC_HINT[picProblem(p.pic)] || "") + '</div>' +
+      '<div id="p_pic_prev" style="margin:8px 2px 0">' + picPreviewHtml(p.pic) + '</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="cat-save">Save product</button></div>';
   }
@@ -10787,7 +10998,7 @@ function viewCatalogue() {
       '<label>Brand</label><select id="pr_brand">' +
       opts([""].concat((S.data.brands || []).filter(function (b) {
         return String(b.active || "Y").toUpperCase() !== "N";
-      }).map(function (b) { return b.brand; })), z.brand) + '</select>' +
+      }).map(function (b) { return b.brand; }).sort(alpha)), z.brand) + '</select>' +
       '<div class="grid2">' +
       '<div><label>Increase across the brand (%)</label><input id="pr_pct" inputmode="decimal" placeholder="6"/></div>' +
       '<div><label>Effective from</label><input id="pr_from" type="date" value="' + today() + '"/></div>' +
@@ -11461,15 +11672,15 @@ function viewCatalogue() {
     }).join("") + '</div>';
     if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
     h += '<div class="chips">' + familyList(z.brand).map(function (f) {
-      var n = brandProducts(z.brand).filter(function (p) { return p.family === f; }).length;
-      return '<button class="chip ' + (z.family === f ? "on" : "") + '" data-act="rt-fam" data-fam="' + esc(f) + '">' + esc(f) + ' <b>' + n + '</b></button>';
+      var n = brandProducts(z.brand).filter(function (p) { return famSame(p.family, f); }).length;
+      return '<button class="chip ' + (famSame(z.family, f) ? "on" : "") + '" data-act="rt-fam" data-fam="' + esc(f) + '">' + esc(f) + ' <b>' + n + '</b></button>';
     }).join("") + '</div>';
     if (!z.family) return h + '<div class="empty">Pick a family above.</div>';
     h += '<div class="plist">';
-    brandProducts(z.brand).filter(function (p) { return p.family === z.family; }).forEach(function (p) {
+    brandProducts(z.brand).filter(function (p) { return famSame(p.family, z.family); }).forEach(function (p) {
       var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
       h += '<div class="prow ' + (ex ? "picked" : "") + '">' +
-        (p.pic ? '<img src="' + esc(p.pic) + '" loading="lazy"/>' : '<div class="noimg"></div>') +
+        picCell(p) +
         '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
         '<div class="pmeta">' + esc(p.code) + ' &middot; ' + esc(p.unit) + '</div></div>' +
         '<div class="pqty">' +
@@ -16734,20 +16945,7 @@ function viewCatalogue() {
      system, and I am not going to pretend otherwise. */
   var BIO_KEY = "ew_team_bio";
 
-  function bioAvailable() {
-    return !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
-  }
-  function bioSaved() {
-    try { return JSON.parse(localStorage.getItem(BIO_KEY) || "null"); } catch (e) { return null; }
-  }
-  function randBytes(n) {
-    var a = new Uint8Array(n); crypto.getRandomValues(a); return a;
-  }
-  function b64u(buf) {
-    var b = new Uint8Array(buf), s2 = "";
-    for (var i = 0; i < b.length; i++) s2 += String.fromCharCode(b[i]);
-    return btoa(s2).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  }
+
   function fromB64u(str) {
     var s2 = String(str).replace(/-/g, "+").replace(/_/g, "/");
     var bin = atob(s2);
@@ -18029,6 +18227,9 @@ function viewCatalogue() {
   function modalSearchResults() {
     var r = S.sres || {};
     var HH = 'style="margin:14px 0 8px;font-size:14px"';
+    /* v6.9.299 - .prow / .noimg live in the picker stylesheet, which this modal never
+       needed before it carried a thumbnail. Without this the picture would be full width. */
+    ensurePickerCss();
     var h = '<h2>Search &mdash; &ldquo;' + esc(r.q || S.gq || "") + '&rdquo;</h2>';
     var counts = (r.clients || []).length + (r.quotes || []).length + (r.challans || []).length +
       (r.sites || []).length + (r.products || []).length + (r.partners || []).length;
@@ -18068,8 +18269,18 @@ function viewCatalogue() {
 
     if ((r.products || []).length) h += '<h3 ' + HH + '>Products</h3>';
     (r.products || []).forEach(function (p) {
-      h += '<div class="card"><h3>' + esc(p.desc || p.family) + ' <span class="pill teal">' + money(p.price) + '</span></h3>' +
-        '<div class="meta">' + esc(p.code) + (p.brand ? ' &middot; ' + esc(p.brand) : "") + (p.unit ? ' &middot; ' + esc(p.unit) : "") + '</div></div>';
+      /* v6.9.299 - the master search showed a product with no picture, while the quote
+         picker beside it showed one. The same product, two screens, two answers. It uses the
+         SAME picCell as every other list, so a photograph that appears in one appears in all
+         of them - and a missing or broken one says which it is here too, rather than being
+         the only screen in the app that stays quiet about it. */
+      h += '<div class="card"><div class="plist"><div class="prow" style="border:0;padding:0">' +
+        picCell(p) +
+        '<div class="pinfo"><h3 style="margin:0">' + esc(p.desc || p.family) +
+          ' <span class="pill teal">' + money(p.price) + '</span></h3>' +
+        '<div class="meta">' + esc(p.code) + (p.brand ? ' &middot; ' + esc(p.brand) : "") +
+          (p.unit ? ' &middot; ' + esc(p.unit) : "") + '</div></div>' +
+        '</div></div></div>';
     });
 
     if ((r.partners || []).length) h += '<h3 ' + HH + '>Partners</h3>';
@@ -18137,7 +18348,7 @@ function viewCatalogue() {
       '<img class="logo" src="' + LOGO + '" alt="Energy World" onerror="this.style.display=\'none\'"/>' +
       '<h1>Energy World - Team</h1>' +
       '<p>Your own name and your own PIN. Never share them.</p>' +
-      (err ? '<div class="pill due" style="display:block;text-align:center;padding:8px">' + esc(err) + '</div>' : '') +
+      (err ? '<div class="loginmsg">' + esc(err) + '</div>' : '') +
       '<label for="ln">Your name</label>' +
       '<input id="ln" placeholder="e.g. Vivek Verma" autocomplete="username"/>' +
       '<label for="lp">Your PIN</label>' +
@@ -18155,12 +18366,57 @@ function viewCatalogue() {
     if (n) n.addEventListener("keydown", function (e) { if (e.key === "Enter") doLogin(); });
   }
 
+  /* ================= WHY THE LOGIN FAILED (v6.9.295) =====================
+     Six places in this file said "Network error" for faults that are not network faults at
+     all. api() has known the difference since v6.9.261 - it reads the reply as TEXT and works
+     out whether Google asked for a sign-in, spent the quota, or answered with an HTML error
+     page - and then every login threw that away and printed two words. A man at the counter
+     could not tell us which of five things he had. Reported from the godown 17 Aug against
+     the Challan app; the same swallow was here, and in Collection. */
+  function loginWhy(e) {
+    var m = (e && e.message) ? String(e.message) : "";
+    /* this api() re-throws the browser's own words, so translate those too */
+    if (/failed to fetch|networkerror|load failed/i.test(m))
+      return "No signal - this device could not reach the server. Check the connection, then try again.";
+    if (/timed out after/i.test(m))
+      return "The server did not answer within " + (m.replace(/[^0-9]/g, "") || "45") +
+             " seconds. It is usually busy, not down - try once more.";
+    if (/sign in to Google/i.test(m))
+      return "The server asked this browser to sign in to Google. Either the wrong Google " +
+             "account is signed in here, or the script needs republishing. " + m;
+    if (/quota/i.test(m))
+      return "Google has stopped the script for today (quota reached). Nobody can sign in " +
+             "until it resets. " + m;
+    if (/not JSON/i.test(m))
+      return "The server answered with something the app cannot read - this is the server " +
+             "talking, not the connection. Read out this line: " + m;
+    return m || "Could not sign in. Try again.";
+  }
+  /* One retry, and only for the fault that fails in MILLISECONDS - a radio that dropped the
+     packet. A timeout is deliberately NOT retried: measured in a real browser 17 Aug, retrying
+     a 45s deadline made the man stare at "Signing in..." for 91 seconds before being told
+     anything at all. That is worse than the fault. He is told at 45s, the message says trying
+     again is worth it, and HE decides whether to wait again - which is the difference between
+     waiting and being made to wait. A refusal is never retried: the server answered. */
+  function authOnce(left) {
+    return api("teamAuth", { ua: navigator.userAgent }).catch(function (e) {
+      var m = (e && e.message) ? String(e.message) : "";
+      if (left > 0 && /failed to fetch|networkerror|load failed/i.test(m)) {
+        return new Promise(function (r) { setTimeout(r, 1500); })
+          .then(function () { return authOnce(left - 1); });
+      }
+      throw e;
+    });
+  }
+
   function doLogin() {
     var pin = val("lp"), name = val("ln");
     if (!name) { renderLogin("Enter your name."); return; }
     if (!pin) { renderLogin("Enter your PIN."); return; }
     S.user = name; S.pin = pin;
-    api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
+    var _sb = el("root") && el("root").querySelector('[data-act="login"], #loginBtn');
+    if (_sb) { _sb.disabled = true; _sb.textContent = "Signing in..."; }
+    authOnce(1).then(function (r) {
       if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
       S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
       try { localStorage.setItem(STORE, JSON.stringify({ pin: pin, user: S.user, role: S.role, pinSet: S.pinSet })); } catch (e) {}
@@ -18168,7 +18424,7 @@ function viewCatalogue() {
       S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
       loadCatalog();
       refresh();
-    }).catch(function () { S.pin = ""; renderLogin("Network error. Try again."); });
+    }).catch(function (e) { S.pin = ""; renderLogin(loginWhy(e)); });
   }
 
   function renderPinChange(err) {
@@ -18176,7 +18432,7 @@ function viewCatalogue() {
       '<div class="login-wrap"><div class="login">' +
       '<h1>Set your own PIN</h1>' +
       '<p>You are signed in with a temporary PIN. Choose a private one before you continue - nobody else should know it.</p>' +
-      (err ? '<div class="pill due" style="display:block;text-align:center;padding:8px">' + esc(err) + '</div>' : '') +
+      (err ? '<div class="loginmsg">' + esc(err) + '</div>' : '') +
       '<label>New PIN (4-8 digits)</label><input id="np1" type="password" inputmode="numeric"/>' +
       '<label>Repeat new PIN</label><input id="np2" type="password" inputmode="numeric"/>' +
       '<div style="height:18px"></div>' +
@@ -19770,6 +20026,9 @@ function viewCatalogue() {
          the base CSS was showing a full-width photo. Override to a compact 54px thumbnail. */
       ".plist .prow{display:flex!important;align-items:center;gap:10px;padding:6px 2px;border-bottom:1px solid #eef2f7}" +
       ".plist .prow img,.plist .prow .noimg{width:54px!important;height:54px!important;min-width:54px;max-width:54px;object-fit:contain;border-radius:8px;background:#f8fafc;flex:0 0 54px}" +
+      /* v6.9.296 - the placeholder has to be able to SAY which of the two it is */
+      ".noimg{display:flex!important;align-items:center;justify-content:center;text-align:center;font-size:9px;line-height:1.15;font-weight:600;color:#cbd5e1;letter-spacing:.01em}" +
+      ".noimg.bad{color:#b45309;background:#fffbeb;border:1px solid #fde68a}" +
       ".plist .prow .pinfo{flex:1 1 auto;min-width:0}" +
       ".plist .prow .pname{font-size:13.5px;font-weight:600;line-height:1.25}" +
       ".plist .prow .pmeta{font-size:11.5px;color:#94a3b8}" +
@@ -19867,17 +20126,17 @@ function viewCatalogue() {
       var fams = familyList(z.brand);
       return bar + '<div class="ew-picklabel"><span class="step">2</span>Tap a category in ' + esc(z.brand) + ' &middot; ' + fams.length + '</div>' +
         '<div class="ew-pickgrid">' + fams.map(function (f) {
-          var n = brandProducts(z.brand).filter(function (p) { return p.family === f; }).length;
+          var n = brandProducts(z.brand).filter(function (p) { return famSame(p.family, f); }).length;
           return '<button class="ew-pickbtn cat" data-act="ch-fam" data-fam="' + esc(f) + '">' + esc(f) + ' <span class="cnt">' + n + '</span></button>';
         }).join("") + '</div>';
     }
 
     /* STEP 3 — products in the chosen brand+category */
     var h = bar + '<div class="ew-picklabel"><span class="step">3</span>Set quantities</div><div class="plist">';
-    brandProducts(z.brand).filter(function (p) { return p.family === z.family; }).forEach(function (p) {
+    brandProducts(z.brand).filter(function (p) { return famSame(p.family, z.family); }).forEach(function (p) {
       var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
       h += '<div class="prow ' + (ex ? "picked" : "") + '">' +
-        (p.pic ? '<img src="' + esc(p.pic) + '" loading="lazy"/>' : '<div class="noimg"></div>') +
+        picCell(p) +
         '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
         '<div class="pmeta">' + esc(p.code) + ' &middot; ' + esc(p.unit) + '</div></div>' +
         '<div class="pqty">' +
@@ -19926,14 +20185,14 @@ function viewCatalogue() {
     }).join("") + '</div>';
     if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
     h += '<div class="chips">' + familyList(z.brand).map(function (f) {
-      return '<button class="chip ' + (z.family === f ? "on" : "") + '" data-act="oc-fam" data-fam="' + esc(f) + '">' + esc(f) + '</button>';
+      return '<button class="chip ' + (famSame(z.family, f) ? "on" : "") + '" data-act="oc-fam" data-fam="' + esc(f) + '">' + esc(f) + '</button>';
     }).join("") + '</div>';
     if (!z.family) return h + '<div class="empty">Pick a family above.</div>';
     h += '<div class="plist">';
-    brandProducts(z.brand).filter(function (p) { return p.family === z.family; }).forEach(function (p) {
+    brandProducts(z.brand).filter(function (p) { return famSame(p.family, z.family); }).forEach(function (p) {
       var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
       h += '<div class="prow ' + (ex ? "picked" : "") + '">' +
-        (p.pic ? '<img src="' + esc(p.pic) + '" loading="lazy"/>' : '<div class="noimg"></div>') +
+        picCell(p) +
         '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
         '<div class="pmeta">' + esc(p.code) + ' &middot; ' + money(p.price) + '</div></div>' +
         '<div class="pqty">' +
@@ -20876,9 +21135,18 @@ function viewCatalogue() {
     var h = '<div class="nvsix"><span class="grp">Your six</span>' +
       six.map(function (k) { return navBtn(k, label); }).join("") + '</div>';
 
+    /* v6.9.300 - the groups themselves, and the tabs inside each, both alphabetical. The
+       tabs sort on the LABEL a man reads, never on the internal key: "billing" is HISAB on
+       screen, and sorting by the key would file it under B where nobody would look. */
+    var GROUPS = NAV_GROUPS.slice().sort(alphaBy(function (g) { return g[0]; }));
+    var itemsOf = function (g) {
+      return g[1].filter(function (k) { return canSee(k) && label[k]; })
+                 .sort(alphaBy(function (k) { return label[k]; }));
+    };
+
     h += '<div class="nvrow">';
-    NAV_GROUPS.forEach(function (g) {
-      var items = g[1].filter(function (k) { return canSee(k) && label[k]; });
+    GROUPS.forEach(function (g) {
+      var items = itemsOf(g);
       if (!items.length) return;
       var on = (open === "ALL" || open === g[0]);
       h += '<button class="nvg' + (on ? ' on' : '') + '" data-act="nav-grp" data-g="' + g[0] + '">' +
@@ -20888,9 +21156,9 @@ function viewCatalogue() {
       'title="Show every tab at once, the way it used to look">All</button></div>';
 
     if (open) {
-      NAV_GROUPS.forEach(function (g) {
+      GROUPS.forEach(function (g) {
         if (open !== "ALL" && open !== g[0]) return;
-        var items = g[1].filter(function (k) { return canSee(k) && label[k]; });
+        var items = itemsOf(g);
         if (!items.length) return;
         h += '<div class="nvitems"><span class="grp">' + g[0] + '</span>' +
           items.map(function (k) { return navBtn(k, label); }).join("") + '</div>';
@@ -21529,7 +21797,10 @@ function viewCatalogue() {
           toast("PIN set for " + _spn + ". Tell him the number - he cannot change it himself.");
           render();
         })
-        .catch(function () { t.disabled = false; t.textContent = "Set the PIN"; toast("Network error. Try again."); });
+        /* v6.9.295 - this said "Network error" too. It matters more here than anywhere: Apps
+           Script often writes the row and then takes too long to say so, and a man told
+           "network error" sets the PIN a second time. Say which fault it was. */
+        .catch(function (e) { t.disabled = false; t.textContent = "Set the PIN"; toast(loginWhy(e)); });
       return;
     }
     if (act === "tp-temp") {
@@ -25822,13 +26093,13 @@ function viewCatalogue() {
           try { prfFlush(); } catch (e) { }
           try { maybePartnerNag(); } catch (e) { }
         });
-      }).catch(function () {
+      }).catch(function (e) {
         /* Network error on boot. If we already painted a valid warm session (this device's own
            role-filtered data), DON'T sign the user out - they're just offline or the network
            hiccupped, e.g. right after a heavy PDF reloaded the tab. Signing out here was what
            booted people to the login screen after downloading a statement. */
         if (S.warmStart) { toast("Offline - working from saved data."); loadCatalog(); }
-        else { S.pin = ""; renderLogin("Network error."); }
+        else { S.pin = ""; renderLogin(loginWhy(e)); }
       });
     } else {
       renderLogin();

@@ -3,7 +3,7 @@
 // app is that a change reaches the team on their next open. A cache-first shell broke
 // that once already - CSS changes never arrived. Only icons and fonts are cache-first.
 // API calls are NEVER cached: stale business data is worse than slow business data.
-var CACHE = "ew-team-v4";
+var CACHE = "ew-team-v9";
 
 /* ===== A DEADLINE ON THE NETWORK (15 Aug 2026) =====
    This worker was network-first with no timeout, and so were the other four. The comment above
@@ -52,7 +52,14 @@ self.addEventListener("install", function (e) {
 
 self.addEventListener("activate", function (e) {
   e.waitUntil(caches.keys().then(function (ks) {
-    return Promise.all(ks.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); }));
+    /* THIS DELETED EVERY CACHE ON THE ORIGIN (fixed 17 Aug 2026). All seven Energy World apps
+       are served from one github.io origin, so they share ONE cache store. Every update of any
+       one app was therefore wiping the shells of the other six - which then opened to a white
+       screen the next time a phone was somewhere with no signal, and got blamed for it. An
+       app may only ever clear its OWN older versions. */
+    return Promise.all(ks.filter(function (k) {
+      return k !== CACHE && k.indexOf("ew-team-") === 0;
+    }).map(function (k) { return caches.delete(k); }));
   }).then(function () { return self.clients.claim(); }));
 });
 

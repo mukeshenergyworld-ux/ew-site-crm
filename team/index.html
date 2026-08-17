@@ -99,6 +99,12 @@
   .card .meta{font-size:13px;color:var(--muted);line-height:1.55}
   .card .acts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
   .pill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#f1f5f9;color:var(--muted)}
+  /* THE LOGIN BANNER IS A SENTENCE, NOT A CHIP (17 Aug 2026). It borrowed .pill, sized and
+     shaped for a status chip in a list row. Once the login started explaining WHICH fault it
+     hit, that shape ran the explanation off the edge of a phone. Its own class. */
+  .loginmsg{display:block;white-space:normal;word-break:break-word;text-align:left;
+    line-height:1.45;font-size:13.5px;font-weight:600;padding:10px 12px;border-radius:12px;
+    margin:0 0 12px;background:#fef3c7;color:#92400e}
   .pill.Hot{background:#fee2e2;color:#b91c1c}
   .pill.Warm{background:#fef3c7;color:#b45309}
   .pill.Cold{background:#e0f2fe;color:#0369a1}
