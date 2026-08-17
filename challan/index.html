@@ -52,6 +52,15 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;
   background:#f1f5f9;color:#475569;vertical-align:middle;white-space:nowrap}
 .pill.red{background:#fee2e2;color:#b91c1c}
+/* THE LOGIN BANNER IS A SENTENCE, NOT A CHIP (17 Aug 2026). It borrowed .pill, which carries
+   white-space:nowrap because a status chip inside a list row must never wrap. On the login
+   screen that ran the message straight off the right edge of the phone - so the release that
+   made the app explain itself shipped an explanation nobody could read. Measured in a real
+   browser at 390px before this rule existed. Its own class, so status chips keep theirs. */
+.loginmsg{display:block;white-space:normal;word-break:break-word;text-align:left;
+  line-height:1.45;font-size:13.5px;font-weight:600;padding:10px 12px;border-radius:12px;
+  margin:0 0 12px;background:#fee2e2;color:#b91c1c}
+
 .pill.amb{background:#fef3c7;color:#92400e}
 .pill.grn{background:#ccfbf1;color:#0f766e}
 .pill.blu{background:#dbeafe;color:#1d4ed8}
@@ -142,9 +151,298 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.12.0";
+  var APP_VERSION = "1.17.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
+
+  /* ==EW-CORE:BEGIN== built by tools/build_core.py — do not edit here, edit core/ew-core.js == */
+/* ==EWCORE:idb== The IndexedDB door. */
+  function idbOpen() {
+    if (_idbP) return _idbP;
+    _idbP = new Promise(function (res) {
+      var done = false, fin = function (v) { if (!done) { done = true; res(v); } };
+      try {
+        if (!window.indexedDB) return fin(null);
+        var rq = indexedDB.open(IDB_NAME, 1);
+        rq.onupgradeneeded = function () {
+          try { rq.result.createObjectStore(IDB_STORE); } catch (e) {}
+        };
+        rq.onsuccess = function () { fin(rq.result); };
+        rq.onerror = function () { fin(null); };
+        rq.onblocked = function () { fin(null); };
+        /* Safari in private mode can leave open() hanging forever. The app must never wait
+           on storage to start - it falls back to localStorage and carries on. */
+        setTimeout(function () { fin(null); }, 2500);
+      } catch (e) { fin(null); }
+    });
+    return _idbP;
+  }
+  function idbSet(k, v) {
+    return idbOpen().then(function (db) {
+      if (!db) return false;
+      return new Promise(function (res) {
+        try {
+          var t = db.transaction(IDB_STORE, "readwrite");
+          t.objectStore(IDB_STORE).put(v, k);
+          t.oncomplete = function () { res(true); };
+          t.onerror = function () { res(false); };
+          t.onabort = function () { res(false); };
+        } catch (e) { res(false); }
+      });
+    }).catch(function () { return false; });
+  }
+  function idbGet(k) {
+    return idbOpen().then(function (db) {
+      if (!db) return null;
+      return new Promise(function (res) {
+        try {
+          var r = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(k);
+          r.onsuccess = function () { res(r.result === undefined ? null : r.result); };
+          r.onerror = function () { res(null); };
+        } catch (e) { res(null); }
+      });
+    }).catch(function () { return null; });
+  }
+  function idbDel(k) {
+    return idbOpen().then(function (db) {
+      if (!db) return false;
+      return new Promise(function (res) {
+        try {
+          var t = db.transaction(IDB_STORE, "readwrite");
+          t.objectStore(IDB_STORE).delete(k);
+          t.oncomplete = function () { res(true); };
+          t.onerror = function () { res(false); };
+        } catch (e) { res(false); }
+      });
+    }).catch(function () { return false; });
+  }
+/* ==EWCORE:idb:END== */
+/* ==EWCORE:bigbox== The big box: what will not fit in the shared 5 MB of localStorage. */
+  function bigGet(k) {
+    if (Object.prototype.hasOwnProperty.call(_big, k)) return _big[k];
+    try { return localStorage.getItem(k); } catch (e) { return null; }
+  }
+  function bigDel(k) { delete _big[k]; idbDel(k); try { localStorage.removeItem(k); } catch (e) {} }
+  /* v1.10.0 - THE SAME WRITE, BUT IT ANSWERS.
+     bigSet returned true whatever happened: the IndexedDB write is behind a promise and the
+     localStorage fallback swallows its own exception. That was tolerable while the big box
+     only ever held a CACHE - a catalogue that fails to store is re-fetched tomorrow and
+     nobody is worse off. The write journal below is not a cache. It is the only copy of a
+     challan a man typed in a basement, and if it did not store, he has to be told NOW, while
+     he is still standing there and can write it in the paper book - not in three days when
+     somebody notices the delivery is on no screen. */
+  function bigSetX(k, v) {
+    _big[k] = v;
+    return idbSet(k, v).then(function (ok) {
+      if (ok) { try { localStorage.removeItem(k); } catch (e) {} return true; }
+      try { localStorage.setItem(k, v); return true; } catch (e) { return false; }
+    }).catch(function () {
+      try { localStorage.setItem(k, v); return true; } catch (e) { return false; }
+    });
+  }
+/* ==EWCORE:bigbox:END== */
+/* ==EWCORE:webauthn== Face ID / fingerprint plumbing. No PIN passes through any of it. */
+  function b64u(buf) {
+    var b = new Uint8Array(buf), s2 = "";
+    for (var i = 0; i < b.length; i++) s2 += String.fromCharCode(b[i]);
+    return btoa(s2).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function randBytes(n) {
+    var a = new Uint8Array(n); crypto.getRandomValues(a); return a;
+  }
+  function bioSaved() {
+    try { return JSON.parse(localStorage.getItem(BIO_KEY) || "null"); } catch (e) { return null; }
+  }
+  function bioAvailable() {
+    return !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
+  }
+/* ==EWCORE:webauthn:END== */
+/* ==EWCORE:tiny== The three-line helpers every app rewrote. */
+  /* ---------- tiny helpers ---------- */
+  function el(id) { return document.getElementById(id); }
+  function lower(s) { return String(s == null ? "" : s).trim().toLowerCase(); }
+  /* Pressing a button is a fresh start - never make a man wait out a backoff he can see. */
+  function flushNow() { _flushFails = 0; _flushSkip = 0; flushSoon(); }
+/* ==EWCORE:tiny:END== */
+/* ==EWCORE:drive== Google Drive picture links, repaired to the one form that renders. */
+  /* Normalise any Google-Drive image link to the one lh3 form that actually
+     renders inside an <img>: https://lh3.googleusercontent.com/d/{ID}=w200
+     The catalogue's "Pic" column mixes two shapes -
+       .../d/{ID}=w200            -> works (thumbnail)
+       .../d/{ID}/view?usp=w200   -> a Drive *viewer* path, NOT an image -> broken ?
+     Grundfos, CPVC, CISTERN, LEO and many Accessory rows were all in the broken
+     /view form (verified by load-testing: /view => ERROR, =w200 => loads).
+     We repair every Drive link to =w200 here, so on-screen thumbnails, the
+     catalogue, the price-list PDF and the quotation PDF all get a loadable URL,
+     and any future /view paste self-heals. Non-Drive URLs pass through unchanged. */
+  function driveImg(u, size) {
+    u = String(u || "").trim();
+    if (!u) return "";
+    var m = u.match(/\/d\/([A-Za-z0-9_\-]{20,})/) || u.match(/[?&]id=([A-Za-z0-9_\-]{20,})/);
+    if (!m) return u;
+    return "https://lh3.googleusercontent.com/d/" + m[1] + "=w" + (size || 200);
+  }
+/* ==EWCORE:drive:END== */
+/* ==EWCORE:crash== The app may not die silently. Found the hard way, 17 Aug. */
+  /* THE ONE HONEST TEST OF "did the app draw itself". The header exists only after a real
+     paint, so it cannot be fooled by data merely arriving. S.data could be, and was. */
+  function painted() {
+    try { return !!document.querySelector(".top"); } catch (e) { return false; }
+  }
+  function crashPut(where, e) {
+    var o = { at: Date.now(), where: where || "", ver: APP_VERSION, user: S.user || "",
+              msg: (e && e.message) ? String(e.message) : String(e),
+              stack: String((e && e.stack) || "").split("\n").slice(0, 4).join(" | ") };
+    try { localStorage.setItem(CRASH_KEY, JSON.stringify(o)); } catch (x) {}
+    return o;
+  }
+  function crashLast() {
+    try { return JSON.parse(localStorage.getItem(CRASH_KEY) || "null"); } catch (e) { return null; }
+  }
+  /* Anything that reaches the top, from anywhere, at any time. If the app never painted, the
+     screen is dead anyway and is replaced. If it DID paint, he may be half way through a
+     challan - so it says so in a toast and leaves his typing exactly where it is. */
+  function crashHandle(where, e) {
+    var o = crashPut(where, e);
+    if (painted()) { try { toast("Something on that screen could not be drawn — tap ↻. (" + o.msg + ")"); } catch (x) {} }
+    else crashScreen(o);
+  }
+/* ==EWCORE:crash:END== */
+/* ==EWCORE:refresh== One tap: the latest book AND the latest build. */
+  /* ============ WHAT THE REFRESH BUTTON IS ACTUALLY FOR (17 Aug 2026) ============
+     Two different jobs hide behind one arrow, and this app only ever did the first:
+
+       1. pull the book again  — it did this;
+       2. come back on the NEW BUILD if one has been put up — it did not, and no screen in
+          this app did. A release went up and every phone kept running the old one until
+          somebody was rung and told to reinstall.
+
+     WHERE THE VERSION COMES FROM. This app's own file on GitHub Pages, fetched past the
+     browser cache, with APP_VERSION read straight out of it. Not the backend: that costs
+     Apps Script quota on every tap, it is often the very thing that is down when a man
+     reaches for this button, and it can disagree with what is actually served. The file
+     cannot disagree with itself.
+
+     AND IT NEVER RELOADS UNDER A MAN WHO IS TYPING. If a form is open it says so and does
+     nothing at all — Collection learned that in v1.9.1, when the arrow above an open "Log
+     the call" silently ate three lines of notes. */
+  function liveVersion() {
+    return fetch("index.html?v=" + Date.now(), { cache: "reload" })
+      .then(function (r) { return r.text(); })
+      .then(function (t) { return (t.match(/APP_VERSION\s*=\s*"([\d.]+)"/) || [])[1] || ""; })
+      .catch(function () { return ""; });      /* no signal is not a new version */
+  }
+  function refreshNow(loud) {
+    pull(true);
+    liveVersion().then(function (v) {
+      if (!v || v === APP_VERSION) { if (loud) toast("This is the latest version (v" + APP_VERSION + ")."); return; }
+      S.newVer = v;
+      try { render(); } catch (e) {}
+      toast("Version " + v + " is ready — tap Update above.");
+    });
+  }
+  /* Only this app's shell, and only this app's worker. All seven apps share one github.io
+     origin, so a blanket wipe here takes the other six down with it. */
+  function updateNow(prefix) {
+    var jobs = [];
+    try {
+      if (window.caches && caches.keys) jobs.push(caches.keys().then(function (ks) {
+        return Promise.all(ks.filter(function (k) { return k.indexOf(prefix) === 0; })
+                             .map(function (k) { return caches.delete(k); }));
+      }));
+    } catch (e) {}
+    var go = function () { location.replace(location.pathname + "?u=" + Date.now()); };
+    if (jobs.length) Promise.all(jobs).then(go, go); else go();
+    setTimeout(go, 2500);                      /* never hang on a stuck cache */
+  }
+  function newVerBar() {
+    if (!S.newVer) return "";
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#0f766e;' +
+      'color:#fff;font-size:12.5px;font-weight:600">' +
+      '<span style="flex:1">Version ' + esc(S.newVer) + ' is ready. You are on ' + esc(APP_VERSION) + '.</span>' +
+      '<button class="btn sm" data-act="ver-go" style="background:#fff;color:#0f766e;border-color:#fff">Update</button>' +
+            /* .btn.ghost sets a WHITE background, so on this teal band "Later" was white on white -
+         invisible. Seen in a screenshot of the real thing, not in the markup. */
+      '<button class="btn sm ghost" data-act="ver-later" style="background:transparent;color:#fff;' +
+        'border-color:rgba(255,255,255,.55)">Later</button>' +
+      '</div>';
+  }
+/* ==EWCORE:refresh:END== */
+/* ==EWCORE:book== Pulling the book, and saying so when it comes back unusable. */
+  function usableBook(r) { return !!(r && r.ok && r.clients && r.clients.length); }
+  function bookSay(r) {
+    if (!r || typeof r !== "object") return "the server sent nothing at all";
+    var tabs = Object.keys(r).filter(function (k) { return Array.isArray(r[k]); });
+    return "server answered ok=" + String(r.ok) +
+      ", clients=" + ((r.clients && r.clients.length) || 0) +
+      ", tabs=[" + tabs.join(",") + "]" +
+      (r.error ? ", error=" + String(r.error) : "");
+  }
+  function getBook() {
+    return api("teamGet", { only: KEEP }).then(function (r) {
+      if (usableBook(r)) { BOOKSAY = ""; return r; }
+      BOOKSAY = bookSay(r);
+      /* the narrow ask came back unusable - try it the way the CRM does, which works */
+      return api("teamGet").then(function (r2) {
+        if (usableBook(r2)) {
+          BOOKSAY = "";
+          try { toast("The short list did not come back — pulled the whole book instead."); } catch (e) {}
+          return r2;
+        }
+        BOOKSAY = "asked for the named tabs: " + BOOKSAY + " — then asked for everything: " + bookSay(r2);
+        return r2;
+      }).catch(function () { return r; });
+    });
+  }
+  function slimBook(r) {
+    if (!r || typeof r !== "object") return r;
+    var out = { ok: r.ok };
+    if (r.user) out.user = r.user;
+    KEEP.forEach(function (k) { if (r[k]) out[k] = r[k]; });
+    return out;
+  }
+/* ==EWCORE:book:END== */
+/* ==EWCORE:journal== The write journal's shared parts. */
+  function jrnLoad() {
+    try { var l = JSON.parse(bigGet(JRN_KEY) || "[]"); return Array.isArray(l) ? l : []; }
+    catch (e) { return []; }
+  }
+  function jrnCount() { return jrnLoad().length; }
+  /* Did this entry already land? Deliberately exact and deliberately biased towards keeping:
+     every field we sent must already match what the server holds. If ANYTHING differs the
+     entry is kept and retried. It can never drop work the server does not have. */
+  function jrnLanded(e, srv) {
+    if (!srv || !e || !e.row) return false;
+    var keys = Object.keys(e.row);
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (k.charAt(0) === "_") continue;                     /* local only, never sent */
+      if (k === "updatedAt" || k === "syncedAt") continue;   /* the server's own stamp */
+      var a = e.row[k], b = srv[k];
+      if (a === null || a === undefined) a = "";
+      if (b === null || b === undefined) b = "";
+      if (typeof a === "object" || typeof b === "object") {
+        var ja = "", jb = "";
+        try { ja = JSON.stringify(a); jb = JSON.stringify(b); } catch (x) { return false; }
+        if (ja !== jb) return false;
+      } else if (String(a).trim() !== String(b).trim()) return false;
+    }
+    return true;
+  }
+  function jrnMark(pk, err) {
+    var l = jrnLoad();
+    l.forEach(function (x) { if (x.pk === pk) { x.err = String(err || "").slice(0, 140); x.tries = (x.tries || 0) + 1; } });
+    jrnStore(l);
+  }
+  function jrnDrop(pk) { jrnStore(jrnLoad().filter(function (x) { return x.pk !== pk; })); }
+/* ==EWCORE:journal:END== */
+/* ==EWCORE:sw== Registering the service worker. */
+  function regSW() {
+    if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} }
+  }
+/* ==EWCORE:sw:END== */
+  /* ==EW-CORE:END== */
+
   var SNAP  = "ew_challan_snap";
   var BIO_KEY = "ew_challan_bio";
   var CAT_KEY = "ew_team_catalog";      /* shared with the CRM on purpose - same catalogue */
@@ -155,8 +453,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   var S = { user:"", pin:"", role:"", data:null, tab:"make", q:"", allTime:false, chFilter:"all", sheet:null, busy:false,
             syncAt:0, ch:null, rt:null, pick:null, open:"" };
 
-  /* ---------- tiny helpers ---------- */
-  function el(id) { return document.getElementById(id); }
+
   function val(id) { var e = el(id); return e ? String(e.value || "").trim() : ""; }
   function esc(s) {
     return String(s == null ? "" : s)
@@ -169,7 +466,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return isFinite(n) ? n : 0;
   }
   function money(n) { return "₹" + Math.round(num(n)).toLocaleString("en-IN"); }
-  function lower(s) { return String(s == null ? "" : s).trim().toLowerCase(); }
+
   function today() {
     var d = new Date();
     return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
@@ -252,86 +549,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      The string interface is kept exactly as it was, so no call site downstream became
      async: bigGet reads an in-memory mirror, bigSet updates it at once and writes behind. */
   var IDB_NAME = "ew_store", IDB_STORE = "kv", _idbP = null;
-  function idbOpen() {
-    if (_idbP) return _idbP;
-    _idbP = new Promise(function (res) {
-      var done = false, fin = function (v) { if (!done) { done = true; res(v); } };
-      try {
-        if (!window.indexedDB) return fin(null);
-        var rq = indexedDB.open(IDB_NAME, 1);
-        rq.onupgradeneeded = function () { try { rq.result.createObjectStore(IDB_STORE); } catch (e) {} };
-        rq.onsuccess = function () { fin(rq.result); };
-        rq.onerror = function () { fin(null); };
-        rq.onblocked = function () { fin(null); };
-        /* Safari in private mode can leave open() hanging. Never wait on storage to start. */
-        setTimeout(function () { fin(null); }, 2500);
-      } catch (e) { fin(null); }
-    });
-    return _idbP;
-  }
-  function idbGet(k) {
-    return idbOpen().then(function (db) {
-      if (!db) return null;
-      return new Promise(function (res) {
-        try {
-          var r = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(k);
-          r.onsuccess = function () { res(r.result === undefined ? null : r.result); };
-          r.onerror = function () { res(null); };
-        } catch (e) { res(null); }
-      });
-    }).catch(function () { return null; });
-  }
-  function idbSet(k, v) {
-    return idbOpen().then(function (db) {
-      if (!db) return false;
-      return new Promise(function (res) {
-        try {
-          var t = db.transaction(IDB_STORE, "readwrite");
-          t.objectStore(IDB_STORE).put(v, k);
-          t.oncomplete = function () { res(true); };
-          t.onerror = function () { res(false); };
-          t.onabort = function () { res(false); };
-        } catch (e) { res(false); }
-      });
-    }).catch(function () { return false; });
-  }
-  function idbDel(k) {
-    return idbOpen().then(function (db) {
-      if (!db) return false;
-      return new Promise(function (res) {
-        try {
-          var t = db.transaction(IDB_STORE, "readwrite");
-          t.objectStore(IDB_STORE).delete(k);
-          t.oncomplete = function () { res(true); };
-          t.onerror = function () { res(false); };
-        } catch (e) { res(false); }
-      });
-    }).catch(function () { return false; });
-  }
+
+
   var _big = {};
-  function bigGet(k) {
-    if (Object.prototype.hasOwnProperty.call(_big, k)) return _big[k];
-    try { return localStorage.getItem(k); } catch (e) { return null; }
-  }
+
   function bigSet(k, v) { bigSetX(k, v); return true; }
-  /* v1.10.0 - THE SAME WRITE, BUT IT ANSWERS.
-     bigSet returned true whatever happened: the IndexedDB write is behind a promise and the
-     localStorage fallback swallows its own exception. That was tolerable while the big box
-     only ever held a CACHE - a catalogue that fails to store is re-fetched tomorrow and
-     nobody is worse off. The write journal below is not a cache. It is the only copy of a
-     challan a man typed in a basement, and if it did not store, he has to be told NOW, while
-     he is still standing there and can write it in the paper book - not in three days when
-     somebody notices the delivery is on no screen. */
-  function bigSetX(k, v) {
-    _big[k] = v;
-    return idbSet(k, v).then(function (ok) {
-      if (ok) { try { localStorage.removeItem(k); } catch (e) {} return true; }
-      try { localStorage.setItem(k, v); return true; } catch (e) { return false; }
-    }).catch(function () {
-      try { localStorage.setItem(k, v); return true; } catch (e) { return false; }
-    });
-  }
-  function bigDel(k) { delete _big[k]; idbDel(k); try { localStorage.removeItem(k); } catch (e) {} }
+
+
   /* Read into memory before the first paint, and bring across whatever the old box holds.
      One-way, and it only ever adds: the localStorage copy goes after IndexedDB has it. */
   function bigPreload(keys) {
@@ -398,7 +622,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      not protect anybody; it just turns a slow save into an abandoned one. */
   var API_MS_BY_ACTION = {
     teamSave: 60000, teamGet: 60000, catalog: 60000, pdfHost: 240000,
-    challanNo: 30000, returnNo: 30000, challanMove: 45000
+    challanNo: 30000, returnNo: 30000, challanMove: 45000,
+    /* v1.13.0 - teamAuth was on the 25s default while pulling the whole book had 60. That is
+       backwards. A slow book pull costs a wait; a login that gives up costs a man his shift -
+       he cannot work around it, cannot see anything, and has nothing to tell anyone except
+       four words that named no fault. Apps Script wakes cold in the morning, and this login
+       queues behind whatever teamGet another phone already has in flight. 45s. */
+    teamAuth: 45000
   };
   function api(action, extra, ms) {
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
@@ -491,11 +721,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   var _jrnSeq = 0, _jrnTold = false, _flushing = false, _flushDog = null;
   var _flushFails = 0, _flushSkip = 0, _flushTick = null;
 
-  function jrnLoad() {
-    try { var l = JSON.parse(bigGet(JRN_KEY) || "[]"); return Array.isArray(l) ? l : []; }
-    catch (e) { return []; }
-  }
-  function jrnCount() { return jrnLoad().length; }
+
   function jrnStore(l) {
     S.jrnCount = l.length;
     bigSetX(JRN_KEY, JSON.stringify(l)).then(function (ok) {
@@ -529,17 +755,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     });
     l.push(e); jrnStore(l); return e;
   }
-  function jrnMark(pk, err) {
-    var l = jrnLoad();
-    l.forEach(function (x) { if (x.pk === pk) { x.err = String(err || "").slice(0, 140); x.tries = (x.tries || 0) + 1; } });
-    jrnStore(l);
-  }
+
   function jrnPatch(pk, fields) {
     var l = jrnLoad();
     l.forEach(function (x) { if (x.pk === pk) Object.assign(x, fields); });
     jrnStore(l);
   }
-  function jrnDrop(pk) { jrnStore(jrnLoad().filter(function (x) { return x.pk !== pk; })); }
+
   function jrnFor(rec) {
     if (!rec) return null;
     var l = jrnLoad();
@@ -554,27 +776,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return null;
   }
 
-  /* Did this entry already land? Deliberately exact and deliberately biased towards keeping:
-     every field we sent must already match what the server holds. If ANYTHING differs the
-     entry is kept and retried. It can never drop work the server does not have. */
-  function jrnLanded(e, srv) {
-    if (!srv || !e || !e.row) return false;
-    var keys = Object.keys(e.row);
-    for (var i = 0; i < keys.length; i++) {
-      var k = keys[i];
-      if (k.charAt(0) === "_") continue;                     /* local only, never sent */
-      if (k === "updatedAt" || k === "syncedAt") continue;   /* the server's own stamp */
-      var a = e.row[k], b = srv[k];
-      if (a === null || a === undefined) a = "";
-      if (b === null || b === undefined) b = "";
-      if (typeof a === "object" || typeof b === "object") {
-        var ja = "", jb = "";
-        try { ja = JSON.stringify(a); jb = JSON.stringify(b); } catch (x) { return false; }
-        if (ja !== jb) return false;
-      } else if (String(a).trim() !== String(b).trim()) return false;
-    }
-    return true;
-  }
+
   /* Call with S.data holding a FRESH SERVER PULL and BEFORE applyJournal has overlaid the
      journal back on top of it - otherwise every entry would match itself and the journal
      would clear itself on the first pull, which is the opposite of the point. */
@@ -707,8 +909,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       else { _flushFails = Math.min(_flushFails + 1, 3); _flushSkip = Math.pow(2, _flushFails) - 1; }
     }, 8000);
   }
-  /* Pressing a button is a fresh start - never make a man wait out a backoff he can see. */
-  function flushNow() { _flushFails = 0; _flushSkip = 0; flushSoon(); }
+
   function startFlushTicker() {
     if (_flushTick) return;
     _flushTick = setInterval(flushSoon, 45000);
@@ -790,15 +991,35 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      already holds cannot answer it alone. If the pull ever gets heavy, the fix is a `since:`
      cursor on the backend, not dropping this tab. */
   var KEEP = ["clients","challans","returns","sites","drivers","discounts","brandmap","brands","associates","audit","pitch"];
-  function slimBook(r) {
-    if (!r || typeof r !== "object") return r;
-    var out = { ok: r.ok };
-    if (r.user) out.user = r.user;
-    KEEP.forEach(function (k) { if (r[k]) out[k] = r[k]; });
-    return out;
-  }
-  function getBook() { return api("teamGet", { only: KEEP }); }
-  function usableBook(r) { return !!(r && r.ok && r.clients && r.clients.length); }
+
+  /* ============ WHEN THE BOOK COMES BACK UNUSABLE (17 Aug 2026) ============
+     Reported from the counter: "Could not read the book. Try again." - and those six words
+     were, once again, everything the app was willing to say. The server had ANSWERED (a
+     refusal or a dead line takes a different branch entirely); it simply sent something this
+     app could not use, and the screen would not say what.
+
+     THE SPLIT THAT MATTERS. This app asks for named tabs:
+
+         api("teamGet", { only: KEEP })
+
+     The CRM asks for the whole book with NO `only` at all - and the CRM was working at the
+     same moment, on the same backend, on the same phone. So the fault lies on the `only`
+     path, not with the server being down and not with his sign-in.
+
+     TWO THINGS FOLLOW, and neither of them guesses:
+
+     1. SAY WHAT CAME BACK. ok, how many clients, and which tabs actually arrived. That one
+        line turns "try again" into something a man can read out and somebody can act on.
+     2. FALL BACK TO THE CALL THAT WORKS. If the narrow ask returns an unusable book, ask
+        again the way the CRM does - everything, no `only`. It costs one extra call on a path
+        that had already failed, it cannot make a working case worse because it is only ever
+        reached when the book is ALREADY unusable, and it gets the godown working today
+        rather than after the backend is opened up.
+
+     The narrow ask is kept and tried first: it exists because this phone does not need the
+     whole book and a godown basement does not need the bytes. */
+  var BOOKSAY = "";
+
 
   /* ---------- the PDF builder, only when a challan is actually printed ---------- */
   var _pdfP = null;
@@ -818,16 +1039,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return _pdfP;
   }
 
-  /* ---------- the catalogue ----------
-     Exactly the CRM's parser and exactly the CRM's cache key, so the two apps share one
-     copy on the device and a product added in either is seen by both. */
-  function driveImg(u, size) {
-    u = String(u || "").trim();
-    if (!u) return "";
-    var m = u.match(/\/d\/([A-Za-z0-9_\-]{20,})/) || u.match(/[?&]id=([A-Za-z0-9_\-]{20,})/);
-    if (!m) return u;
-    return "https://lh3.googleusercontent.com/d/" + m[1] + "=w" + (size || 200);
-  }
+
   function parseCatalog(rows) {
     var head = -1, i, r;
     for (i = 0; i < rows.length && i < 10; i++) {
@@ -891,13 +1103,21 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      names into three short taps. A client with no area still has a home: "(area not set)",
      so nobody is unreachable because a field was left blank. */
   var NO_AREA = "(area not set)";
+  /* v17 Aug - NATURAL order everywhere a list is shown. A plain .sort() puts "Sector 15"
+     after "Sector 100" because it compares text, and that looks wrong to a man who knows his
+     own districts. numeric:true reads the digits as numbers; sensitivity:"base" files
+     differently-capitalised spellings of the same name together. */
+  function alpha(a, b) {
+    return String(a == null ? "" : a).localeCompare(String(b == null ? "" : b),
+      undefined, { numeric: true, sensitivity: "base" });
+  }
   function districts() {
     var m = {};
     clients().forEach(function (c) {
       var d = String(c.location || "").trim();
       if (d) m[d] = (m[d] || 0) + 1;
     });
-    return Object.keys(m).sort().map(function (k) { return { name: k, n: m[k] }; });
+    return Object.keys(m).sort(alpha).map(function (k) { return { name: k, n: m[k] }; });
   }
   function areasIn(dist) {
     var m = {};
@@ -1367,7 +1587,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       var c = String(p.cat || "").trim() || "Other";
       m[c] = (m[c] || 0) + 1;
     });
-    return Object.keys(m).sort().map(function (c) { return { name: c, n: m[c] }; });
+    return Object.keys(m).sort(alpha).map(function (c) { return { name: c, n: m[c] }; });
   }
   function prodsIn(brand, cat) {
     return PRODUCTS.filter(function (p) {
@@ -1463,7 +1683,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function renderLogin(err) {
     el("root").innerHTML =
       '<div class="login"><h1>Energy World</h1><p>Challan &amp; material return</p>' +
-      (err ? '<div class="pill red" style="display:block;text-align:center;padding:8px;margin-bottom:10px">' + esc(err) + '</div>' : '') +
+      (err ? '<div class="loginmsg">' + esc(err) + '</div>' : '') +
       (bioSaved()
         ? '<button class="btn full" data-act="bio-go" style="margin-bottom:6px">&#128274; Unlock with Face ID / fingerprint</button>' +
           '<div class="muted" style="text-align:center;margin-bottom:14px">or sign in with your PIN</div>'
@@ -1477,14 +1697,15 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (lp) lp.addEventListener("keyup", function (e) { if (e.key === "Enter") doLogin(); });
   }
 
+
   function header() {
     var n = S.busy ? "syncing…" : (S.syncAt ? "updated " + new Date(S.syncAt).toTimeString().slice(0,5) : "");
-    return '<div class="top"><div class="t1">' +
+    return '<div class="top">' + newVerBar() + '<div class="t1">' +
       '<h1>Challan</h1>' +
       '<div style="text-align:right"><div class="who">' + esc(S.user) + ' · ' + esc(S.role) +
         (canApprove() ? '' : ' · makes, does not approve') + '</div>' +
       '<div class="sync">' + esc(n) + '</div></div>' +
-      '<button class="btn sm ghost" data-act="refresh" title="Pull the latest">&#8635;</button>' +
+      '<button class="btn sm ghost" data-act="refresh" title="Pull the latest, and get the new version if one is up">&#8635;</button>' +
       '<button class="btn sm ghost" data-act="account" title="This phone">&#9776;</button>' +
       '</div></div>';
   }
@@ -2319,22 +2540,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       toast("Could not file the receipt. Nothing was changed — try again when the signal is better.");
     });
   }
-  /* ================= FACE ID / FINGERPRINT =================
-     The same thing the CRM and the collection app do, and the same honesty about what it
-     is: the phone's own biometric unlocks a PIN that is ALREADY stored on that phone. The
-     fingerprint never leaves the device. The server still authenticates with the PIN. */
-  function bioAvailable() {
-    return !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
-  }
-  function bioSaved() {
-    try { return JSON.parse(localStorage.getItem(BIO_KEY) || "null"); } catch (e) { return null; }
-  }
-  function randBytes(n) { var a = new Uint8Array(n); crypto.getRandomValues(a); return a; }
-  function b64u(buf) {
-    var b = new Uint8Array(buf), s2 = "";
-    for (var i = 0; i < b.length; i++) s2 += String.fromCharCode(b[i]);
-    return btoa(s2).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  }
+
+
   function fromB64u(str) {
     var s2 = String(str).replace(/-/g, "+").replace(/_/g, "/");
     var bin = atob(s2), a = new Uint8Array(bin.length);
@@ -2366,14 +2573,20 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
                    userVerification: "required", timeout: 60000 }
     }).then(function () {
       S.user = saved.user; S.pin = saved.pin;
-      return api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
+      /* v1.13.0 - this api call used to fall through to the outer catch, so a dropped packet
+         told the man his fingerprint did not match. It matched. Give it its own catch. */
+      return authOnce(1).catch(function (e) {
+        S.pin = ""; renderLogin(loginWhy(e)); return null;
+      }).then(function (r) {
+        if (r === null) return;
         if (!r || !r.ok) {
           try { localStorage.removeItem(BIO_KEY); } catch (e) {}
           S.pin = ""; renderLogin("That saved sign-in is no longer valid. Use your PIN."); return;
         }
         S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
-        if (ALLOWED.indexOf(S.role) < 0) { S.pin = ""; renderLogin("This app is for the godown and the accounts desk."); return; }
+        if (ALLOWED.indexOf(S.role) < 0) { S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = ""; return; }
         try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: saved.pin, role: S.role })); } catch (e) {}
+        startFlushTicker();
         pull(false);
       });
     }).catch(function () { toast("That did not match. Use your PIN."); });
@@ -2407,7 +2620,73 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       '<b>' + icon + '</b>' + label + (count ? '<span class="cnt">' + count + '</span>' : '') + '</button>';
   }
 
+  /* ================= WHEN THE PAINT ITSELF DIES (v1.14.0) =================
+     REPORTED 17 Aug, with a screenshot: the app stuck on "Opening..." with no button at all.
+     Reproduced here exactly, and the mechanism is worth writing down, because three separate
+     things had to conspire and every one of them looked reasonable on its own.
+
+       1. The book had ALREADY arrived. S.data is set on the line before the paint, so by the
+          time render() ran the app believed it had everything.
+       2. Something inside render() threw. The throw went into nothing - no screen, no store,
+          nothing anybody could read out over the phone.
+       3. boot's own catch then calls render() AGAIN, which throws again, unhandled.
+       4. And openingScreen's "Taking too long - try again" button is suppressed when S.data
+          is set. Which, by then, it was. So the one escape hatch the app had was closed by
+          the very failure it existed for.
+
+     A man was left staring at one word, with no way forward and nothing to tell anybody. That
+     is the same fault as this morning's "Network error. Try again.": the app destroying the
+     evidence needed to fix it. So the fix is the same shape - CATCH it, SHOW it, KEEP it.
+
+     Nothing is deleted by any of this. The journal, the snapshot and the session are never
+     touched; only the screen is replaced, and only when there was no screen left to lose. */
+  var CRASH_KEY = "ew_challan_crash_v1";
+
+
+  function crashScreen(o) {
+    o = o || {};
+    var held = 0; try { held = jrnCount(); } catch (e) {}
+    try {
+      el("root").innerHTML =
+        '<div class="login"><h1>Energy World</h1><p>Challan &amp; material return</p>' +
+        '<div class="loginmsg">This app could not draw its screen. Nothing has been lost — ' +
+        (held ? 'the ' + held + ' record(s) held on this phone are still here, and still go up.'
+              : 'nothing was waiting to go up.') +
+        '</div>' +
+        '<div class="muted" style="font-size:12px;line-height:1.5;margin:0 0 14px;word-break:break-word;' +
+             'background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px">' +
+          '<b>Read this out and it can be fixed:</b><br>' +
+          esc(o.msg || "no message") + '<br>' +
+          '<span style="color:#94a3b8">v' + esc(o.ver || APP_VERSION) + ' · ' + esc(o.where || "") +
+          (o.user ? ' · ' + esc(o.user) : '') + '</span></div>' +
+        '<button class="btn full" data-act="crash-retry">Try again</button>' +
+        '<div style="height:8px"></div>' +
+        '<button class="btn full ghost" data-act="crash-fresh">Get the latest version</button>' +
+        '<div class="muted" style="text-align:center;margin-top:14px">If it keeps happening, ' +
+        'show this screen to the office. v' + APP_VERSION + '</div></div>';
+    } catch (e) {
+      /* even the crash screen can fail if the document is in a bad way - then say the one
+         thing that always works, in the plainest markup there is */
+      try { document.body.innerHTML = '<div style="font:15px system-ui;padding:24px">' +
+        'Energy World could not open. Close the app and open it again.</div>'; } catch (x) {}
+    }
+  }
+
+
+  window.addEventListener("error", function (ev) {
+    crashHandle("error", (ev && ev.error) || new Error((ev && ev.message) || "unknown"));
+  });
+  window.addEventListener("unhandledrejection", function (ev) {
+    crashHandle("promise", (ev && ev.reason) || new Error("unknown"));
+  });
+
+  /* One wrapper, so all 38 call sites are covered without any of them remembering to be. */
   function render() {
+    try { renderBody(); }
+    catch (e) { crashHandle("render", e); }
+  }
+
+  function renderBody() {
     var p = S.data ? pendingApproval().length : 0;
     var m = S.data ? missingReceipts().filter(recent).length : 0;   /* agrees with the list it opens */
     el("root").innerHTML = header() +
@@ -2529,8 +2808,34 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (act === "close-bg" && ev.target.closest("[data-stop]")) return;
 
     if (act === "login")   { doLogin(); return; }
-    if (act === "refresh") { pull(true); return; }
+    if (act === "refresh") {
+      /* v1.15.0 - Collection has guarded this since v1.9.1 and this app never did. pull()
+         calls render(), which rewrites the open sheet from scratch, so the arrow above a
+         half-typed challan threw the lot away without a word. */
+      if (S.sheet || S.ch || S.rt) {
+        toast("Finish or close this first \u2014 refreshing would clear what you have typed."); return;
+      }
+      refreshNow(true); return;
+    }
+    if (act === "ver-go")    { updateNow("ew-challan-"); return; }
+    if (act === "ver-later") { S.newVer = ""; render(); return; }
     if (act === "reboot")  { location.reload(); return; }
+    if (act === "crash-retry") { location.replace(location.pathname + "?u=" + Date.now()); return; }
+    if (act === "crash-fresh") {
+      /* only THIS app's shell, and only this app's worker. All seven apps share one origin,
+         so a blanket wipe here would take the other six down with it. */
+      var jobs = [];
+      try {
+        if (window.caches && caches.keys) jobs.push(caches.keys().then(function (ks) {
+          return Promise.all(ks.filter(function (k) { return k.indexOf("ew-challan-") === 0; })
+                               .map(function (k) { return caches.delete(k); }));
+        }));
+      } catch (e) {}
+      var go = function () { location.replace(location.pathname + "?u=" + Date.now()); };
+      if (jobs.length) Promise.all(jobs).then(go, go); else go();
+      setTimeout(go, 2500);                    /* never hang on a stuck cache */
+      return;
+    }
     if (act === "account") { S.sheet = sheetAccount(); render(); return; }
     if (act === "bio-go")  { bioUnlock(); return; }
     if (act === "bio-on")  { bioEnrol(); return; }
@@ -2951,23 +3256,80 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
   /* ================= COMING AND GOING ================= */
 
+  /* ================= WHY THE LOGIN FAILED (v1.13.0) ======================
+     Every failure below used to read "Network error. Try again." - four words covering five
+     completely different faults: no signal, a server too slow to answer, a deployment that
+     wants a Google sign-in, a spent quota, and a server answering with something that is not
+     JSON at all. Only one of those five is fixed by trying again, and the man at the counter
+     could not tell us which one he had. api() already works out the difference. This stops
+     throwing it away. Reported 17 Aug from the godown - one man, no way to tell why. */
+  /* v1.13.0 - A REFUSAL MUST NAME THE ROLE IT REFUSED. This said only "This app is for the
+     godown and the accounts desk", which tells the owner nothing: he cannot see whether the
+     man was refused because he is on sales, or because the name did not match a row at all.
+     Access to this app follows the CRM role and nothing else, so the role is the whole answer
+     - print it. (Showing a man his own role is no leak: the CRM header shows it on every
+     screen.) Asked for on 17 Aug as "give challan app access to Manoj". */
+  function notForYou(name, role) {
+    return (name ? name + ", you are signed in as " : "You are signed in as ") +
+      "\u201c" + (role || "no role set") + "\u201d. " +
+      "The Challan app is for admin, accounts and godown only. Ask the owner to change your " +
+      "role in the team sheet \u2014 nothing else controls it.";
+  }
+
+  function loginWhy(e) {
+    var m = (e && e.message) ? String(e.message) : "";
+    if (/no signal/i.test(m))
+      return "No signal \u2014 this phone could not reach the server. Check the data connection, then try again.";
+    if (/no answer in/i.test(m))
+      return "The server did not answer within " + (m.replace(/[^0-9]/g, "") || "45") +
+             " seconds. It is usually busy, not down \u2014 try once more.";
+    if (/sign in to Google/i.test(m))
+      return "The server asked this phone to sign in to Google. The app\u2019s address needs " +
+             "republishing \u2014 tell the owner, nobody can sign in until then.";
+    if (/quota/i.test(m))
+      return "Google has stopped the server for today (quota reached). Tell the owner.";
+    if (/not JSON/i.test(m))
+      return "The server answered with something the app cannot read. Tell the owner and read " +
+             "out this line: " + m;
+    return m || "Could not sign in. Try again.";
+  }
+
+  /* One retry, and only for the fault that fails in MILLISECONDS - a radio that dropped the
+     packet. A timeout is deliberately NOT retried: measured in a real browser 17 Aug, retrying
+     a 45s deadline made the man stare at "Signing in..." for 91 seconds before being told
+     anything at all. That is worse than the fault. He is told at 45s, the message says trying
+     again is worth it, and HE decides whether to wait again - which is the difference between
+     waiting and being made to wait. A refusal is never retried: the server answered. */
+  function authOnce(left) {
+    return api("teamAuth", { ua: navigator.userAgent }).catch(function (e) {
+      var m = (e && e.message) ? String(e.message) : "";
+      if (left > 0 && /no signal/i.test(m)) {
+        return new Promise(function (r) { setTimeout(r, 1500); })
+          .then(function () { return authOnce(left - 1); });
+      }
+      throw e;
+    });
+  }
+
   function doLogin() {
     var name = val("ln"), pin = val("lp");
     if (!name) { renderLogin("Enter your name."); return; }
     if (!pin)  { renderLogin("Enter your PIN."); return; }
     S.user = name; S.pin = pin;
-    api("teamAuth", { ua: navigator.userAgent }).then(function (r) {
+    renderLogin("");
+    var _sb = el("root") && el("root").querySelector('[data-act="login"]');
+    if (_sb) { _sb.disabled = true; _sb.textContent = "Signing in\u2026"; }
+    authOnce(1).then(function (r) {
       if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
       S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
       if (ALLOWED.indexOf(S.role) < 0) {
-        S.pin = ""; S.role = "";
-        renderLogin("This app is for the godown and the accounts desk. Ask the owner if you need it.");
+        S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = "";
         return;
       }
       try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: pin, role: S.role })); } catch (e) {}
       startFlushTicker();
       pull(false);
-    }).catch(function () { S.pin = ""; renderLogin("Network error. Try again."); });
+    }).catch(function (e) { S.pin = ""; renderLogin(loginWhy(e)); });
   }
 
   function snapSave() {
@@ -3000,7 +3362,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         jrnReconcile(); applyJournal();
         snapSave(); flushSoon();
       }
-      else if (!S.data) { renderLogin("Could not read the book. Sign in again."); return; }
+      else if (!S.data) { renderLogin("Could not read the book. " +
+        (BOOKSAY ? BOOKSAY + " \u2014 read this out to the office." : "Sign in again.")); return; }
       render();
       if (loud) toast("Up to date.");
     }).catch(function () {
@@ -3032,7 +3395,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       '<div class="empty" id="opmsg">' + esc(msg || "Opening…") + '</div><div id="opretry"></div></div>';
     setTimeout(function () {
       var d = el("opretry");
-      if (!d || S.data) return;
+      /* v1.14.0 - this read `if (!d || S.data) return;`. S.data is set one line BEFORE the
+         paint, so a paint that died left this button suppressed - the escape hatch closed by
+         the very failure it was there for. Ask whether the app actually DREW itself, which
+         only a real paint can make true. */
+      if (!d || painted()) return;
       d.innerHTML = '<button class="btn full gry" data-act="reboot">Taking too long — try again</button>';
     }, 6000);
   }
@@ -3073,7 +3440,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
       if (ALLOWED.indexOf(S.role) < 0) {
         refused = true; S.pin = ""; S.data = null;
-        renderLogin("This app is for the godown and the accounts desk."); return;
+        renderLogin(notForYou(S.user, S.role)); S.role = ""; return;
       }
       try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: sess.pin, role: S.role })); } catch (e) {}
       if (S.data) render();
@@ -3087,12 +3454,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         jrnReconcile(); applyJournal();      /* reconcile first - see pull() */
         snapSave(); render(); flushSoon();
       }
-      else if (!S.data) openingScreen("Could not read the book. Try again.");
+      else if (!S.data) openingScreen("Could not read the book. " +
+        (BOOKSAY ? BOOKSAY + " \u2014 read this out to the office." : "Try again."));
       else render();
     }).catch(function () {
       if (refused) return;
       S.busy = false;
-      if (S.data) { render(); toast("No signal — showing what was last pulled onto this phone."); }
+      if (S.data) { render(); if (painted()) toast("No signal — showing what was last pulled onto this phone."); }
       else openingScreen(jrnCount()
         ? jrnCount() + " record(s) are held safe on this phone and go up when there is signal. The book itself has never been pulled onto this phone."
         : "No signal, and nothing saved on this phone yet.");
@@ -3105,9 +3473,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     regSW();
   }
 
-  function regSW() {
-    if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} }
-  }
+
 })();
 </script>
 <script>

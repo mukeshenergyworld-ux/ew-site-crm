@@ -1,7 +1,7 @@
 /* The shell is cached so the app opens instantly in a godown basement.
    THE BOOK IS NEVER CACHED HERE - a challan must not be served stale by a service worker
    the user cannot see. The app keeps its own snapshot and says out loud when it shows it. */
-var CACHE = "ew-challan-v1120";
+var CACHE = "ew-challan-v1170";
 
 /* ===== A DEADLINE ON THE NETWORK (15 Aug 2026) =====
    This worker was network-first with no timeout, and so were the other four. The comment above
@@ -51,7 +51,15 @@ self.addEventListener("install", function (e) {
 });
 self.addEventListener("activate", function (e) {
   e.waitUntil(caches.keys().then(function (ks) {
-    return Promise.all(ks.map(function (k) { return k === CACHE ? null : caches.delete(k); }));
+    /* v1.13.0 - THIS USED TO DELETE EVERY CACHE ON THE ORIGIN. All seven apps are served from
+       one github.io origin, so they share one cache store: each Challan update was quietly
+       wiping the Collection app's shell, and Saathi's, and the CRM's. Those apps then opened
+       to a white screen on the next basement with no signal - blamed on them, caused by this.
+       Only ever clear our own old versions. */
+    return Promise.all(ks.map(function (k) {
+      if (k === CACHE) return null;
+      return k.indexOf("ew-challan-") === 0 ? caches.delete(k) : null;
+    }));
   }).then(function () { return self.clients.claim(); }));
 });
 self.addEventListener("fetch", function (e) {
