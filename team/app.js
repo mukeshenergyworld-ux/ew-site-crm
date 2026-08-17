@@ -15,6 +15,7 @@
 
   /* ==EW-CORE:BEGIN== built by tools/build_core.py — do not edit here, edit core/ew-core.js == */
 /* ==EWCORE:idb== The IndexedDB door. */
+/* ==EWCORE:idb== The IndexedDB door. */
   function idbOpen() {
     if (_idbP) return _idbP;
     _idbP = new Promise(function (res) {
@@ -75,6 +76,7 @@
     }).catch(function () { return false; });
   }
 /* ==EWCORE:idb:END== */
+/* ==EWCORE:webauthn== Face ID / fingerprint plumbing. No PIN passes through any of it. */
 /* ==EWCORE:webauthn== Face ID / fingerprint plumbing. No PIN passes through any of it. */
   function b64u(buf) {
     var b = new Uint8Array(buf), s2 = "";
