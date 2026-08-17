@@ -233,6 +233,9 @@ a{color:var(--verdigris)}
       <div class="who" id="hWho">...</div>
     </div>
     <div class="tier" id="hTier"></div>
+    <button id="hRef" onclick="ewRefresh()" title="Naya data aur naya version"
+      style="margin-left:auto;flex:0 0 auto;background:rgba(255,255,255,.18);color:#fff;border:0;
+             border-radius:10px;width:36px;height:36px;font-size:17px;line-height:1;cursor:pointer">&#8635;</button>
   </header>
   <main id="main"><div class="load">Khul raha hai...</div></main>
   <nav id="nav"></nav>
@@ -870,6 +873,51 @@ function hideInstall(done){
 }
 
 
+
+/* ================= THE REFRESH BUTTON (17 Aug 2026) =================
+   Asked for plainly: "give refresh button to all apps." This app had none — only a small
+   text link buried at the bottom that asked the BACKEND for a version, and no way at all to
+   pull the data again short of closing the app.
+
+   One button, two jobs:
+     1. pull everything again, so the screen is current;
+     2. come back on the NEW BUILD if one has been put up.
+
+   WHERE THE VERSION COMES FROM. This app's own file, fetched past the browser cache, with
+   BUILD read straight out of it. Not the backend — that costs Apps Script quota on every
+   tap, it is often the very thing that is down when a man reaches for this button, and it
+   can disagree with what is actually being served. The file cannot disagree with itself.
+   The old backend poll is left exactly where it was; this is a second, cheaper opinion that
+   works when the first one cannot answer.
+
+   A tap that finds nothing new SAYS so — silence reads as a button that did not work. And a
+   new build is never applied under him: verBar() offers it, he decides. */
+var REFBUSY = false;
+function liveBuild(){
+  return fetch('index.html?v=' + (new Date()).getTime(), { cache: 'reload' })
+    .then(function(r){ return r.text(); })
+    .then(function(t){ return (t.match(/BUILD\s*=\s*'([^']+)'/) || [])[1] || ''; })
+    .catch(function(){ return ''; });          /* no signal is not a new version */
+}
+function refSay(m){ try { if (typeof toast === 'function') toast(m); } catch(e){} }
+function ewRefresh(){
+  if (REFBUSY) return;
+  REFBUSY = true;
+  var b = document.getElementById('hRef');
+  if (b) { b.disabled = true; b.style.opacity = '.5'; }
+  var done = function(){ REFBUSY = false; if (b) { b.disabled = false; b.style.opacity = ''; } };
+  var ver = function(){
+    return liveBuild().then(function(v){
+      if (v && v !== BUILD) verBar(v, 'Naya version aa gaya hai.');
+      else refSay('Sab kuch update hai (' + BUILD + ').');
+    });
+  };
+  call('login').then(function(r){
+    if (r && r.ok) { try { landed(r); } catch(e){} }
+    else refSay('Phir se sign in karein.');
+  }).catch(function(){ refSay('Network nahi mila. Baad mein try karein.'); }).then(ver).then(done, done);
+}
+
 /* ======================= UPDATE WATCH =================================
    The problem this solves: you upload a new version and every phone is
    still running the old one until somebody rings each man and tells him
@@ -883,7 +931,7 @@ function hideInstall(done){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.08.16-1';        /* which build of this file is running */
+var BUILD  = '2026.08.17-1';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -909,14 +957,24 @@ function verWipe(v){
   var jobs = [];
   try {
     if (window.caches && caches.keys)
+      /* 17 Aug 2026 - this deleted EVERY cache on the origin. All seven Energy World apps
+         are served from one github.io origin and share ONE cache store, so this app's update
+         was wiping the other six apps' shells - which then opened to a white screen the next
+         time a phone had no signal, and got blamed for it. */
       jobs.push(caches.keys().then(function(ks){
-        return Promise.all(ks.map(function(k){ return caches.delete(k); }));
+        return Promise.all(ks.filter(function(k){ return k.indexOf('ew-saathi-') === 0; })
+                            .map(function(k){ return caches.delete(k); }));
       }));
   } catch(e){}
   try {
     if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations)
+      /* getRegistrations() returns EVERY worker on the origin, not just ours - so this
+         was unregistering the Challan and Collection workers too. Ours is the one whose
+         scope this page sits inside. */
       jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){
-        return Promise.all(rs.map(function(r){ return r.unregister(); }));
+        return Promise.all(rs.filter(function(r){
+          try { return location.href.indexOf(r.scope) === 0; } catch(e){ return false; }
+        }).map(function(r){ return r.unregister(); }));
       }));
   } catch(e){}
   if (jobs.length) Promise.all(jobs).then(go, go); else go();
