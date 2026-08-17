@@ -2,7 +2,7 @@
    THE BOOK IS NEVER CACHED HERE - money must not be served stale by a service
    worker the user cannot see. The app keeps its own snapshot in localStorage and
    says out loud when it is showing it. */
-var CACHE = "ew-collect-v1110";
+var CACHE = "ew-collect-v1140";
 
 /* ===== A DEADLINE ON THE NETWORK (15 Aug 2026) =====
    This worker was network-first with no timeout, and so were the other four. The comment above
@@ -55,7 +55,13 @@ self.addEventListener("install", function (e) {
 
 self.addEventListener("activate", function (e) {
   e.waitUntil(caches.keys().then(function (ks) {
-    return Promise.all(ks.map(function (k) { return k === CACHE ? null : caches.delete(k); }));
+    /* v1.12.0 - this deleted EVERY cache on the origin. All seven apps share one github.io
+       origin and therefore one cache store, so each Collection update was wiping the Challan
+       app's shell, and Saathi's, and the CRM's. Only clear our own old versions. */
+    return Promise.all(ks.map(function (k) {
+      if (k === CACHE) return null;
+      return k.indexOf("ew-collect-") === 0 ? caches.delete(k) : null;
+    }));
   }).then(function () { return self.clients.claim(); }));
 });
 
