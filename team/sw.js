@@ -3,7 +3,7 @@
 // app is that a change reaches the team on their next open. A cache-first shell broke
 // that once already - CSS changes never arrived. Only icons and fonts are cache-first.
 // API calls are NEVER cached: stale business data is worse than slow business data.
-var CACHE = "ew-team-v9";
+var CACHE = "ew-team-v10";
 
 /* ===== A DEADLINE ON THE NETWORK (15 Aug 2026) =====
    This worker was network-first with no timeout, and so were the other four. The comment above

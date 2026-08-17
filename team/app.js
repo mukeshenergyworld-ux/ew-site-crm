@@ -112,7 +112,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.300";
+  var APP_VERSION = "6.9.301";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4948,11 +4948,44 @@ window.addEventListener("beforeunload", function (ev) {
 
   /* Leads = customers with zero Won brands. Enter leads here; a brand tap starts its quote. */
   function viewLeadBoard() {
-    var loc = S.q;
+    /* ============ A LEAD THAT WAS THERE ALL ALONG (v6.9.301) ============
+       REPORTED 17 Aug: "i have entered Ar Manish Lead, it showing nowhere, re-entering
+       saying its already there." Both halves were true, and neither was a save fault - the
+       row was on the sheet, added that same day. It was this screen that would not show it.
+
+       S.q IS SHARED BY EVERY VIEW. Each one renders its own <input id="q"> and they all write
+       the same S.q. This board then read it as a DISTRICT and filtered on
+       `c.location === S.q`, so:
+
+         * a district chip tapped days ago stayed on, and a new lead in another town was
+           invisible - his is in Karnal;
+         * and any text left in any other screen's search box matched no district at all, so
+           the board went completely empty.
+
+       Either way the screen showed nothing and said nothing, so the only reasonable
+       conclusion was that the lead had not saved. He entered it again. The app said it was
+       already there. Both messages were correct and together they were unusable.
+
+       NOW: a value that IS one of his districts still filters by district, exactly as before.
+       Anything else is treated as what it plainly is - a search for a man - and matched
+       against name, mobile, area and address. And an empty board always says WHY it is empty
+       and offers one tap to clear it. */
+    var rawQ = String(S.q || "").trim();
     var leads = S.data.clients.filter(function (c) { return !isClient(c.name); });
+    var allLocs = [];
+    leads.forEach(function (c) { if (c.location && allLocs.indexOf(c.location) < 0) allLocs.push(c.location); });
+    var isDistrict = !!rawQ && allLocs.some(function (l) { return String(l).toLowerCase() === rawQ.toLowerCase(); });
+    var loc = isDistrict ? rawQ : "";
+    var textQ = (!isDistrict && rawQ) ? rawQ.toLowerCase() : "";
     /* a sales exec's lead board holds ONLY their own leads (assigned to them, or entered by them) */
     if (!seesAllClients()) leads = leads.filter(function (c) { return isMineClient(c.name); });
-    var shown = leads.filter(function (c) { return !loc || c.location === loc; });
+    var shown = leads.filter(function (c) {
+      if (loc && c.location !== loc) return false;
+      if (!textQ) return true;
+      return (String(c.name || "") + " " + String(c.mobile || "") + " " + String(c.mobile2 || "") + " " +
+              String(c.area || "") + " " + String(c.address || "") + " " + String(c.location || ""))
+             .toLowerCase().indexOf(textQ) > -1;
+    });
     var clocs = [];
     leads.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
     clocs.sort();
@@ -4976,10 +5009,37 @@ window.addEventListener("beforeunload", function (ev) {
         tidyBanner() + '<div id="cv_list">' + cvL() + '</div>';
     }
     h += '<div class="row">' + clocs.map(function (l) {
-      return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
-    }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") +
-      '</div>';
+      return '<button class="btn sm ' + (loc === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
+    }).join("") + (clocs.length ? '<button class="btn sm ' + (rawQ ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") +
+      '</div>' +
+      /* v6.9.301 - say out loud that a filter is on. A highlighted chip among twenty is not
+         something a man notices when he is looking for a name he just typed in. */
+      (rawQ ? '<div class="meta" style="margin:4px 2px 0">Showing ' + shown.length + ' of ' +
+        leads.length + ' \u2014 filtered by <b>' + esc(rawQ) + '</b>. ' +
+        '<button class="btn sm ghost" data-act="cl-loc" data-loc="">Clear</button></div>' : "");
     h += tidyBanner();
+    /* v6.9.301 - AN EMPTY LIST MUST SAY WHY IT IS EMPTY. Silence here is what made a lead
+       that had saved perfectly look like a lead that had not. */
+    if (!shown.length && leads.length) {
+      h += '<div class="card" style="border-color:#fbbf24;background:#fffbeb">' +
+        '<h3 style="margin:0">Nothing shown \u2014 but you have ' + leads.length + ' lead' +
+          (leads.length === 1 ? '' : 's') + '</h3>' +
+        '<div class="meta" style="margin-top:4px">This board is filtered by ' +
+          (loc ? '<b>' + esc(loc) + '</b>, and no lead there matches'
+               : '<b>' + esc(rawQ) + '</b>, and no lead matches that') + '.</div>' +
+        '<div class="acts" style="margin-top:10px">' +
+        '<button class="btn" data-act="cl-loc" data-loc="">Show all ' + leads.length + '</button></div></div>';
+    }
+    else if (!leads.length && (S.data.clients || []).length) {
+      /* every name on the book has a brand marked Won, so nobody is a "lead" any more.
+         Without this the board is blank and looks broken. */
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+        '<h3 style="margin:0">No leads \u2014 everyone on your book is a client</h3>' +
+        '<div class="meta" style="margin-top:4px">A name moves out of Leads the moment one of ' +
+        'its brands is marked <b>Won</b>. Look under <b>Clients</b>.</div>' +
+        '<div class="acts" style="margin-top:10px">' +
+        '<button class="btn" data-act="tab" data-tab="clients">Open Clients</button></div></div>';
+    }
     /* The owner's standing rule now lives ON each card as PL/AR badges (red = enter detail),
        so no separate "names missing" card here - the weekly reminder modal still fires. */
     var aging = agingLeads();
