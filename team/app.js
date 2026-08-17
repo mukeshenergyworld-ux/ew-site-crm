@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.301";
+  var APP_VERSION = "6.9.303";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -268,6 +268,38 @@
   function dstr(d) { return d ? String(d).slice(0, 10) : ""; }
   /* Incentive is a division (amount / 1.18 * rate), so it lands on fractions of a paisa.
      Nobody pays a plumber 84.7 paise - round to the rupee everywhere money is shown. */
+  /* ---------------------------------------------------------------------------
+     QUANTITY IS NOT ALWAYS A WHOLE NUMBER  (v6.9.303)
+
+     "like nut washer sometimes we have to enter 1.5 or 0.5, its not accepting."
+
+     Two separate things were stopping him, and fixing either one alone would have
+     left it still broken:
+
+       1. Every quantity in this app was pushed through Math.floor. 1.5 silently
+          became 1. 0.5 became 0 - and a zero quantity DELETES the line, so the
+          product he had just picked vanished off the screen with no message at
+          all. That is the worst kind of fault: the app disagreed with him and
+          did not say so.
+       2. The boxes carried inputmode="numeric", which on an iPhone opens the
+          plain 0-9 keypad WITH NO DECIMAL POINT. Even with the code fixed he
+          could not have typed the dot. The Challan app already used
+          inputmode="decimal" - the CRM never did.
+
+     qnum() is now the single gate every typed quantity passes through. It takes a
+     fraction, refuses a negative, and rounds to 3 places so 0.1 + 0.2 can never be
+     stored as 0.30000000000000004 and print as that on a customer's quote. */
+  function qnum(v) {
+    var raw = String(v == null ? "" : v);
+    /* a minus is a slip, not a quantity. Stripping it would turn "-2" into 2 and send
+       two of something out of the godown on a typo, so it is read as nothing. */
+    if (raw.indexOf("-") >= 0) return 0;
+    var n = Number(raw.replace(/[^0-9.]/g, ""));
+    if (!isFinite(n) || n <= 0) return 0;
+    return Math.round(n * 1000) / 1000;
+  }
+  /* 2 prints as "2" and 1.5 as "1.5" - never "2.000". Used wherever a quantity is shown. */
+  function qShow(v) { return String(Math.round((Number(v) || 0) * 1000) / 1000); }
   function money(n) { return "\u20B9" + Math.round(Number(n) || 0).toLocaleString("en-IN"); }
   function moneyAscii(n) { return "Rs. " + Math.round(Number(n) || 0).toLocaleString("en-IN"); }
   /* v6.9.181: money we are OWED is labelled DUE AMT, in caps, right beside the figure and
@@ -2909,7 +2941,7 @@ window.addEventListener("beforeunload", function (ev) {
     var rows = commItemsOf(ch).filter(function (x) { return !(x.i.comm && x.i.comm.date); }).map(function (x) {
       var wm = x.cat.months;
       return '<div class="acts" style="align-items:center;margin:6px 0"><div class="grow"><b>' + esc(x.i.desc) + '</b>' +
-        '<br><span style="font-size:11px;color:#94a3b8">' + esc(x.cat.label) + ' &middot; qty ' + esc(x.i.qty || 1) + '</span></div>' +
+        '<br><span style="font-size:11px;color:#94a3b8">' + esc(x.cat.label) + ' &middot; qty ' + esc(qShow(x.i.qty || 1)) + '</span></div>' +
         '<input class="cm-sn" data-idx="' + x.idx + '" placeholder="serial no." value="' + esc((x.i.comm && x.i.comm.sn) || "") + '" style="width:120px;padding:6px 8px;font-size:13px;font-family:ui-monospace,monospace"/>' +
         '<input class="cm-wm" data-idx="' + x.idx + '" inputmode="numeric" value="' + esc(wm) + '" style="width:60px;padding:6px 8px;font-size:13px"/>' +
         '<span style="font-size:12px;color:#64748b">months</span></div>';
@@ -2972,7 +3004,7 @@ window.addEventListener("beforeunload", function (ev) {
         if (idx % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, R - L, _rh, "F"); }
         doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(9);
         doc.text(doc.splitTextToSize(String(x.i.desc || ""), 120)[0], L + 3, y);
-        doc.text(String(x.i.qty || 1), R - 40, y, { align: "right" });
+        doc.text(qShow(x.i.qty || 1), R - 40, y, { align: "right" });
         doc.text(((x.i.comm && x.i.comm.wm) || x.cat.months) + " months", R - 3, y, { align: "right" });
         /* the serial sits under the product name, in the customer's own copy */
         if (_sn) { doc.setFontSize(7.6); doc.setTextColor(100, 116, 139); doc.text("Serial no: " + _sn, L + 3, y + 4); }
@@ -3252,7 +3284,7 @@ window.addEventListener("beforeunload", function (ev) {
         ' <span class="pill ' + w.k + '">' + esc(w.t) + '</span>' +
         (am.stage ? ' <span class="pill ' + amcPillClass(am.stage) + '" title="AMC ' + esc(am.how === "moved" ? ("moved" + (am.by ? " by " + am.by : "")) : am.how) + '">AMC ' + esc(am.stage) + '</span>' : "") +
         '</h3>' +
-        '<div class="meta"><b>' + esc(u.product) + '</b> &middot; ' + esc(u.model) + (u.qty > 1 ? ' &middot; qty ' + esc(u.qty) : "") + '<br>' +
+        '<div class="meta"><b>' + esc(u.product) + '</b> &middot; ' + esc(u.model) + (Number(u.qty) !== 1 ? ' &middot; qty ' + esc(qShow(u.qty)) : "") + '<br>' +
         (u.sn
           ? 'Serial <b style="color:#0f766e;font-family:ui-monospace,monospace">' + esc(u.sn) + '</b>'
           : '<span class="pill due">no serial number</span>') +
@@ -3630,7 +3662,7 @@ window.addEventListener("beforeunload", function (ev) {
   function spareRow(i) {
     return '<div class="lineitem" data-row="' + i + '">' +
       '<input class="sv-d" list="sparelist" placeholder="Spare part" value=""/>' +
-      '<input class="sv-q" inputmode="numeric" placeholder="Qty" value=""/>' +
+      '<input class="sv-q" inputmode="decimal" placeholder="Qty" value=""/>' +
       '<input class="sv-r" inputmode="decimal" placeholder="Rate" value=""/>' +
       '<button class="x" data-act="sv-del">&times;</button></div>';
   }
@@ -3890,7 +3922,7 @@ window.addEventListener("beforeunload", function (ev) {
     };
     return (S.data.brands || []).filter(function (b) {
       return String(b.brand || "").trim() && !brandProducts(b.brand).length;
-    }).map(function (b) {
+    }).slice().sort(alphaBy(function (b) { return b.brand; })).map(function (b) {
       return {
         id: b.id, brand: b.brand, active: String(b.active || "Y").toUpperCase() !== "N",
         quotes: used("quotes", "brand", b.brand),
@@ -4042,8 +4074,13 @@ window.addEventListener("beforeunload", function (ev) {
       var b = i.brand || brandByCode(i.code) || "";
       if (b !== brand) return;
       if (i.optional) return;   /* option lines excluded from the brand subtotal too */
-      gross += i.qty * i.price;
-      net += Math.round(i.price * (1 - (lineDisc(i, z)) / 100)) * i.qty; n++;
+      /* v6.9.303: the LINE is rounded to the rupee, and every total is the sum of
+         rounded lines. With whole quantities this is exactly what it always did
+         (a rounded unit rate times a whole number is already whole). With 1.5 it is
+         what stops the screen, the brand sub-total and the printed PDF drifting a
+         rupee apart from each other on the same quote. */
+      gross += Math.round(i.qty * i.price);
+      net += Math.round(Math.round(i.price * (1 - (lineDisc(i, z)) / 100)) * i.qty); n++;
     });
     return { gross: Math.round(gross), net: Math.round(net), count: n };
   }
@@ -5589,10 +5626,37 @@ window.addEventListener("beforeunload", function (ev) {
   function manualNoChip(c, small) {
     var v = manualNoFor(c);
     if (!v) return "";
-    return '<span title="The number written in the paper challan book" ' +
+    /* v6.9.303: this was a plain <span>. It is now the same chip drawn as a button, so a
+       number typed wrong in a hurry can be corrected from the card it is wrong on. Nothing
+       is overwritten - saveManualNo appends, and the newest row wins. */
+    return '<button data-act="ch-bookno" data-id="' + esc(c.id || "") + '" ' +
+      'data-no="' + esc(c.challanNo || "") + '" data-cl="' + esc(c.customerName || "") + '" ' +
+      'title="From the paper challan book. Tap to correct it." ' +
       'style="display:inline-block;background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;' +
       'border-radius:6px;padding:1px 7px;font-size:' + (small ? '10.5' : '11.5') + 'px;font-weight:700;' +
-      'vertical-align:middle">Book no ' + esc(v) + '</span>';
+      'vertical-align:middle;cursor:pointer;font-family:inherit;line-height:1.45">Book no ' + esc(v) + '</button>';
+  }
+  /* ---------------------------------------------------------------------------
+     "if sometimes forgot to enter old book no, show option to enter here"  (v6.9.303)
+
+     The paper book number is typed on the challan form, and if it is missed there it
+     was missed for good - the chip simply did not appear and there was no way in.
+     His screenshot showed it exactly: challan 001 carrying "Book no CH41-6/8/26" and
+     002, right underneath it, carrying nothing at all and offering nothing.
+
+     So where the chip is absent there is now a dashed "+ Book no" in its place. It
+     writes the same append-only audit row the challan form writes, from the same
+     function, so a number added three days later is indistinguishable from one typed
+     at the counter - and the one typed first is still on the sheet either way. */
+  function manualNoCell(c, small) {
+    var v = manualNoFor(c);
+    if (v) return ' ' + manualNoChip(c, small);
+    return ' <button data-act="ch-bookno" data-id="' + esc(c.id || "") + '" ' +
+      'data-no="' + esc(c.challanNo || "") + '" data-cl="' + esc(c.customerName || "") + '" ' +
+      'title="No paper book number was entered for this challan. Add it here." ' +
+      'style="display:inline-block;background:#fff;border:1px dashed #cbd5e1;color:#94a3b8;' +
+      'border-radius:6px;padding:1px 7px;font-size:' + (small ? '10.5' : '11.5') + 'px;font-weight:700;' +
+      'vertical-align:middle;cursor:pointer;font-family:inherit;line-height:1.45">+ Book no</button>';
   }
 
   /* ================= ADD TO HISAB (v6.9.250) ==============================
@@ -6881,9 +6945,9 @@ window.addEventListener("beforeunload", function (ev) {
       var col = diff === 0 ? "#94a3b8" : (diff < 0 ? "#dc2626" : "#0d9488");
       h += '<tr style="border-top:1px solid #e2e8f0">' +
         '<td style="padding:5px 4px">' + esc(r.desc) + '<br><span style="color:#94a3b8;font-size:10px">' + esc(r.code) + '</span></td>' +
-        '<td style="color:#94a3b8">' + r.was + '</td>' +
-        '<td><input id="alt_q' + i + '" inputmode="numeric" value="' + r.now + '" style="width:56px;padding:4px" data-act="alt-q" data-i="' + i + '"/>' +
-        '<div style="font-size:10px;color:' + col + '">' + (diff === 0 ? "full" : (diff > 0 ? "+" + diff + " excess" : diff + " short")) + '</div></td>' +
+        '<td style="color:#94a3b8">' + qShow(r.was) + '</td>' +
+        '<td><input id="alt_q' + i + '" inputmode="decimal" value="' + qShow(r.now) + '" style="width:56px;padding:4px" data-act="alt-q" data-i="' + i + '"/>' +
+        '<div style="font-size:10px;color:' + col + '">' + (diff === 0 ? "full" : (diff > 0 ? "+" + qShow(diff) + " excess" : "-" + qShow(-diff) + " short")) + '</div></td>' +
         '<td><input id="alt_n' + i + '" value="' + esc(r.note) + '" placeholder="reason" style="width:100%;padding:4px"/></td>' +
         '</tr>';
     });
@@ -6914,7 +6978,7 @@ window.addEventListener("beforeunload", function (ev) {
       '</div>' +
       '<label style="margin-top:10px">Add a product that was NOT on the challan</label>' +
       '<div class="row"><input class="grow" id="alt_add" list="prodlist" placeholder="Product code or name"/>' +
-      '<input id="alt_addq" inputmode="numeric" placeholder="Qty" style="width:70px"/>' +
+      '<input id="alt_addq" inputmode="decimal" placeholder="Qty" style="width:70px"/>' +
       '<button class="btn sm ghost" data-act="alt-add">Add</button></div>' + prodDatalist() +
       '<div class="foot"><button class="btn ghost" data-act="alt-cancel">Cancel</button>' +
       '<button class="btn" data-act="alt-save">Confirm receipt</button></div>';
@@ -7168,7 +7232,8 @@ window.addEventListener("beforeunload", function (ev) {
     var t = dkey(name);
     if (!t) return [];
     return (S.data.sites || []).filter(function (x) { return dkey(x.client) === t; })
-      .sort(function (a, b) { return String(a.name || "").localeCompare(String(b.name || "")); });
+      /* v6.9.303 - was a plain localeCompare, which files "Tempo 10" before "Tempo 9" */
+      .sort(alphaBy(function (d) { return d.name; }));
   }
   var SITE_NEW = "__newsite__";
   /* `id` is the same id the save handler already reads with val(id), so nothing downstream
@@ -7209,7 +7274,8 @@ window.addEventListener("beforeunload", function (ev) {
      his lorry and his number fill themselves in - which is what he asked for. */
   function strictDriverField(id, value, label) {
     var list = (S.data.drivers || []).filter(function (d) { return String(d.name || "").trim(); })
-      .sort(function (a, b) { return String(a.name || "").localeCompare(String(b.name || "")); });
+      /* v6.9.303 - was a plain localeCompare, which files "Tempo 10" before "Tempo 9" */
+      .sort(alphaBy(function (d) { return d.name; }));
     var cur = String(value || "");
     var known = list.some(function (d) { return d.name === cur; });
     var lab = '<label>' + (label || "Driver") + '</label>';
@@ -7489,7 +7555,7 @@ window.addEventListener("beforeunload", function (ev) {
       var seen = {}, out = [];
       S.data.clients.forEach(function (x) { if (x[role] && !seen[x[role]]) { seen[x[role]] = 1; out.push(x[role]); } });
       S.data.associates.forEach(function (a) { if (a.name && !seen[a.name]) { seen[a.name] = 1; out.push(a.name); } });
-      return out;
+      return out.sort(alpha);          /* v6.9.303 - a datalist nobody can scan is a datalist nobody uses */
     };
     var dl = function (id, role) {
       return '<datalist id="' + id + '">' + names(role).map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>';
@@ -7640,7 +7706,9 @@ window.addEventListener("beforeunload", function (ev) {
     if (!i.rq || typeof i.rq !== "object") { var m = {}; m[""] = Number(i.qty) || 0; i.rq = m; }
     return i.rq;
   }
-  function qzRqSum(i) { var rq = qzRq(i), n = 0; for (var k in rq) n += Number(rq[k]) || 0; return n; }
+  /* v6.9.303: rounded, because the parts are now fractions - three lots of 0.1 must
+     total 0.3 on the quote, not 0.30000000000000004. */
+  function qzRqSum(i) { var rq = qzRq(i), n = 0; for (var k in rq) n += Number(rq[k]) || 0; return Math.round(n * 1000) / 1000; }
   function qzRqSync(i) { i.qty = qzRqSum(i); return i.qty; }
   /* the named rooms on a line, blank bucket excluded, in a stable order */
   function qzRoomsOf(i) {
@@ -7650,13 +7718,17 @@ window.addEventListener("beforeunload", function (ev) {
   }
   function qzRoomAdd(i, room, delta) {
     var rq = qzRq(i), k = String(room || "");
-    rq[k] = Math.max(0, (Number(rq[k]) || 0) + delta);
+    /* v6.9.303: rounded - the + and - buttons step by one, but the figure they are
+       stepping may now be 1.5, and 1.5 + 1 must be 2.5 exactly. */
+    rq[k] = Math.max(0, Math.round(((Number(rq[k]) || 0) + delta) * 1000) / 1000);
     if (!rq[k]) delete rq[k];
     qzRqSync(i);
   }
   function qzRoomSet(i, room, qty) {
     var rq = qzRq(i), k = String(room || "");
-    qty = Math.max(0, Math.floor(Number(qty) || 0));
+    /* v6.9.303: was Math.floor - 0.5 kg of nut washer became 0, and a 0 deletes the
+       line. He picked the product, typed the weight, and watched it disappear. */
+    qty = qnum(qty);
     if (qty) rq[k] = qty; else delete rq[k];
     qzRqSync(i);
   }
@@ -7665,7 +7737,9 @@ window.addEventListener("beforeunload", function (ev) {
     var rq = qzRq(i), parts = [];
     qzRoomsOf(i).forEach(function (r) {
       var n = Number(rq[r]) || 0;
-      parts.push(r + (n > 1 ? " x" + n : ""));
+      /* v6.9.303: was n > 1, which printed "Master Bathroom" for a 0.5 line and hid
+         the half entirely. Anything that is not exactly one now says how many. */
+      parts.push(r + (n !== 1 ? " x" + qShow(n) : ""));
     });
     var blank = Number(rq[""]) || 0;
     if (blank) parts.push("no room x" + blank);
@@ -7767,7 +7841,7 @@ window.addEventListener("beforeunload", function (ev) {
   }
   function qzRoomValue(z, room) {
     return qzRoomItems(z, room).reduce(function (a, x) {
-      return x.it.optional ? a : a + qzRoomRate(z, x.it) * x.qty;
+      return x.it.optional ? a : a + Math.round(qzRoomRate(z, x.it) * x.qty);   /* v6.9.303 */
     }, 0);
   }
   function qzRoomRename(z, from, to) {
@@ -7817,10 +7891,15 @@ window.addEventListener("beforeunload", function (ev) {
     (S.qz.items || []).forEach(function (i) {
       if (i.optional) return;   /* alternative option lines are shown but never summed */
       var d = lineDisc(i, S.qz);
-      gross += i.qty * i.price;
       /* round per line (discounted unit rate x qty) so the on-screen total, the
-         per-brand subtotals and the printed PDF all reconcile to the same figure. */
-      net += Math.round(i.price * (1 - (Number(d) || 0) / 100)) * i.qty;
+         per-brand subtotals and the printed PDF all reconcile to the same figure.
+         /* v6.9.303: the LINE is rounded to the rupee, and every total is the sum of
+         rounded lines. With whole quantities this is exactly what it always did
+         (a rounded unit rate times a whole number is already whole). With 1.5 it is
+         what stops the screen, the brand sub-total and the printed PDF drifting a
+         rupee apart from each other on the same quote. */
+      gross += Math.round(i.qty * i.price);
+      net += Math.round(Math.round(i.price * (1 - (Number(d) || 0) / 100)) * i.qty);
     });
     var gst = net * GST;
     return { gross: Math.round(gross), net: Math.round(net), gst: Math.round(gst), total: Math.round(net + gst) };
@@ -8068,9 +8147,9 @@ window.addEventListener("beforeunload", function (ev) {
     var rooms = presRoomAgg(items).filter(function (r) { return r.room; });
     return {
       n: live.length,
-      pieces: live.reduce(function (a, i) { return a + (Number(i.qty) || 0); }, 0),
+      pieces: Math.round(live.reduce(function (a, i) { return a + (Number(i.qty) || 0); }, 0) * 1000) / 1000,
       rooms: rooms.length,
-      mrp: live.reduce(function (a, i) { return a + (Number(i.price) || 0) * (Number(i.qty) || 0); }, 0)
+      mrp: live.reduce(function (a, i) { return a + Math.round((Number(i.price) || 0) * (Number(i.qty) || 0)); }, 0)
     };
   }
   function presFileName(q) {
@@ -8320,9 +8399,9 @@ window.addEventListener("beforeunload", function (ev) {
               (x.it.optional ? ' <span style="color:#b45309">(option)</span>' : '') + '</span>' +
               '<span style="white-space:nowrap;display:flex;align-items:center;gap:4px">' +
               '<button class="btn sm ghost" data-act="qz-room-qty" data-code="' + esc(x.it.code) + '" data-d="-1">&minus;</button>' +
-              '<b style="min-width:18px;text-align:center">' + x.qty + '</b>' +
+              '<b style="min-width:18px;text-align:center">' + qShow(x.qty) + '</b>' +
               '<button class="btn sm ghost" data-act="qz-room-qty" data-code="' + esc(x.it.code) + '" data-d="1">+</button>' +
-              '<b style="margin-left:6px;min-width:74px;text-align:right">' + esc(money(qzRoomRate(z, x.it) * x.qty)) + '</b>' +
+              '<b style="margin-left:6px;min-width:74px;text-align:right">' + esc(money(Math.round(qzRoomRate(z, x.it) * x.qty))) + '</b>' +
               '</span></div>';
           }).join("") +
             '<div style="display:flex;justify-content:space-between;padding-top:6px;font-size:13px">' +
@@ -8347,7 +8426,7 @@ window.addEventListener("beforeunload", function (ev) {
           '</div></div>' +
           '<div class="pqty">' +
           '<button class="stp" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
-          '<input class="qz-q" data-code="' + esc(p.code) + '" inputmode="numeric" value="' + esc(ex ? (z.room ? (qzRq(ex)[z.room] || "") : ex.qty) : "") + '" placeholder="0"/>' +
+          '<input class="qz-q" data-code="' + esc(p.code) + '" inputmode="decimal" value="' + esc(ex ? (z.room ? (qzRq(ex)[z.room] ? qShow(qzRq(ex)[z.room]) : "") : qShow(ex.qty)) : "") + '" placeholder="0"/>' +
           '<button class="stp" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
           '</div></div>';
       };
@@ -8454,7 +8533,7 @@ window.addEventListener("beforeunload", function (ev) {
               var lineNet = Math.round(i.qty * i.price * (1 - (Number(d) || 0) / 100));
               h += '<div class="prow">' +
                 '<div class="pinfo"><div class="pname">' + esc(i.desc) + '</div>' +
-                '<div class="pmeta">' + i.qty + ' \u00d7 ' + money(i.price) + '  \u2192  <b>' + money(lineNet) + '</b></div></div>' +
+                '<div class="pmeta">' + qShow(i.qty) + ' \u00d7 ' + money(i.price) + '  \u2192  <b>' + money(lineNet) + '</b></div></div>' +
                 '<div class="pqty">' +
                 '<input class="qz-d" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(i.disc === undefined ? "" : i.disc) + '" placeholder="' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '" style="width:52px"/>' +
                 '<span class="pill">%</span></div></div>';
@@ -8501,7 +8580,7 @@ window.addEventListener("beforeunload", function (ev) {
       (z.items || []).filter(function (i) { return (i.brand || brandByCode(i.code)) === b; }).forEach(function (i) {
         var d = lineDisc(i, z);
         var dr = Math.round(i.price * (1 - d / 100));
-        var amt = dr * i.qty;
+        var amt = Math.round(dr * i.qty);   /* v6.9.303 */
         var ov = (i.disc !== "" && i.disc !== undefined && i.disc !== null);
         var opt = !!i.optional;
         h += '<tr style="' + (opt ? 'background:#fffdf5' : '') + '">' +
@@ -8514,7 +8593,7 @@ window.addEventListener("beforeunload", function (ev) {
                 : '<span style="color:#b45309">No room set</span>') +
               ' <button class="btn sm ghost" data-act="qz-room-edit" data-code="' + esc(i.code) + '" style="font-size:10px;padding:1px 6px">Room</button></div>' +
             '<button class="btn sm ghost" data-act="qz-opt" data-code="' + esc(i.code) + '" style="margin-top:3px;font-size:11px;padding:2px 8px">' + (opt ? '&#9745; Optional — not in total' : '&#9744; Mark as option') + '</button></td>' +
-          '<td ' + tdR + '>' + i.qty + '</td>' +
+          '<td ' + tdR + '>' + qShow(i.qty) + '</td>' +
           '<td ' + tdR + '>' + money(i.price) + '</td>' +
           '<td ' + tdR + '>' + (Number(d) || 0) + (ov ? '<span style="color:#0f766e">*</span>' : '') + '</td>' +
           '<td ' + tdR + '>' + money(dr) + '</td>' +
@@ -8534,7 +8613,7 @@ window.addEventListener("beforeunload", function (ev) {
         _rt.map(function (r) {
           return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:13px">' +
             '<span>' + (r.room ? '<b>' + esc(r.room) + '</b>' : '<span style="color:#b45309">Not assigned to a room</span>') +
-            ' <span style="color:#94a3b8;font-size:11px">' + r.qty + ' pc</span></span>' +
+            ' <span style="color:#94a3b8;font-size:11px">' + qShow(r.qty) + ' pc</span></span>' +
             '<b style="white-space:nowrap">' + money(r.net) + '</b></div>';
         }).join("") +
         '<div class="meta" style="margin-top:6px">After discount, option lines excluded. These add back up to the same total as the table above.</div></div>';
@@ -8760,7 +8839,7 @@ function viewCatalogue() {
     h += emptyBrandCard();
     h += bucketedBrandCard();
     h += '<div class="row"><div class="grow"></div><button class="btn sm" data-act="br-new">+ Add brand</button></div>';
-    S.data.brands.forEach(function (b) {
+    S.data.brands.slice().sort(alphaBy(function (b) { return b.brand; })).forEach(function (b) {
       var prods = brandProducts(b.brand);
       var n = prods.length;
       var bopen = !!(S.brandOpen && S.brandOpen[b.brand]);
@@ -9108,7 +9187,9 @@ function viewCatalogue() {
         uni = true;
       }
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
-      var R = function (n) { return (uni ? "\u20B9" : "Rs.") + Number(n || 0).toLocaleString("en-IN"); };
+      /* v6.9.303: Math.round added. This printed the raw number, so the moment a
+         quantity could be 1.5 a customer would have received "Rs.12,345.5". */
+      var R = function (n) { return (uni ? "\u20B9" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
       var col = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
       var fill = function (c) { doc.setFillColor(c[0], c[1], c[2]); };
 
@@ -9133,7 +9214,7 @@ function viewCatalogue() {
         if (_rq) {
           for (var _k in _rq) {
             var _n = Number(_rq[_k]) || 0;
-            if (_k && _n > 0) _rooms.push(_k + (_n > 1 ? " x" + _n : ""));
+            if (_k && _n > 0) _rooms.push(_k + (_n !== 1 ? " x" + qShow(_n) : ""));   /* v6.9.303 */
           }
           _rooms.sort();
         }
@@ -9143,7 +9224,7 @@ function viewCatalogue() {
           bullets: _bul,
           code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[i.pic] || null,
           unit: i.unit || "No's", optional: i.optional ? 1 : 0,
-          qty: i.qty, price: i.price, disc: d, net: net, total: net * i.qty };
+          qty: i.qty, price: i.price, disc: d, net: net, total: Math.round(net * i.qty) };   /* v6.9.303 */
       });
       var ordered = rows.filter(function (r) { return r.disc > 0; }).sort(function (a, b) { return b.disc - a.disc; })
         .concat(rows.filter(function (r) { return r.disc <= 0; }));
@@ -9314,7 +9395,7 @@ function viewCatalogue() {
 
         col(INK); F("normal"); doc.setFontSize(6.2);
         doc.text(fitCell(doc, F, r.unit, UNIT_W, 1, "normal", 6.2)[0], X.unit, mid, { align: "right" });
-        F("bold"); doc.text(String(r.qty), X.qty, mid, { align: "right" });
+        F("bold"); doc.text(qShow(r.qty), X.qty, mid, { align: "right" });
         F("normal");
         /* A discounted line shows list PRICE, DIS.%, and the DISC. PRICE. A line with NO
            discount would just repeat the same figure in PRICE and DISC. PRICE, so we leave the
@@ -9603,7 +9684,7 @@ function viewCatalogue() {
       if (!map[c]) { map[c] = { cat: c, n: 0, qty: 0, mrp: 0, items: [] }; order.push(c); }
       var m = map[c];
       m.n++; m.qty += Number(i.qty) || 0;
-      m.mrp += (Number(i.price) || 0) * (Number(i.qty) || 0);
+      m.mrp += Math.round((Number(i.price) || 0) * (Number(i.qty) || 0));
       m.items.push(i);
     });
     return order.map(function (c) { return map[c]; });
@@ -9673,7 +9754,7 @@ function viewCatalogue() {
       var VALID_DAYS = 30;
       var vUntil = ymdLocal(new Date(Date.now() + VALID_DAYS * 86400000));
       var grandMrp = items.reduce(function (a, i) {
-        return a + (i.optional ? 0 : (Number(i.price) || 0) * (Number(i.qty) || 0));
+        return a + (i.optional ? 0 : Math.round((Number(i.price) || 0) * (Number(i.qty) || 0)));
       }, 0);
 
       var darkPg = { 1: 1 };
@@ -11729,7 +11810,7 @@ function viewCatalogue() {
     var z = S.rt;
     var h = '<div class="row" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
       return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
-    }).map(function (br) {
+    }).slice().sort(alphaBy(function (br) { return br.brand; })).map(function (br) {
       return '<button class="chip ' + (z.brand === br.brand ? "on" : "") + '" data-act="rt-brand" data-brand="' + esc(br.brand) + '">' + esc(br.brand) + '</button>';
     }).join("") + '</div>';
     if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
@@ -11747,7 +11828,7 @@ function viewCatalogue() {
         '<div class="pmeta">' + esc(p.code) + ' &middot; ' + esc(p.unit) + '</div></div>' +
         '<div class="pqty">' +
         '<button class="stp" data-act="rt-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
-        '<input class="rt-q" data-code="' + esc(p.code) + '" inputmode="numeric" value="' + esc(ex ? ex.qty : "") + '" placeholder="0"/>' +
+        '<input class="rt-q" data-code="' + esc(p.code) + '" inputmode="decimal" value="' + esc(ex ? qShow(ex.qty) : "") + '" placeholder="0"/>' +
         '<button class="stp" data-act="rt-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
         '</div></div>';
     });
@@ -11970,7 +12051,7 @@ function viewCatalogue() {
       var out = '<div class="card lc-compact">' +
         '<div class="lc-top"><div class="lc-id"><b>' + esc(c.challanNo) + '</b>' +
         /* v6.9.237 - read-only, so a man hunting for "1247" from the paper book finds it here too */
-        (manualNoFor(c) ? ' ' + manualNoChip(c, true) : '') +
+        manualNoCell(c, true) +
         ' <span class="pill ' + cls + '">' + esc(st) + '</span>' +
         (String(c.receiptReceived).toUpperCase() === "Y" ? ' <span class="pill Won">receipt in</span>' : "") +
         hisabStampPill(c) +
@@ -13236,7 +13317,7 @@ function viewCatalogue() {
       h += '<div class="acts" style="align-items:center;flex-wrap:wrap;gap:6px;border-top:1px solid ' +
         (isD ? '#fecaca' : '#fef3c7') + ';margin-top:6px;padding-top:6px">' +
         '<div class="grow" style="min-width:150px"><b>' + esc(c.challanNo || "") + '</b>' +
-        (manualNoFor(c) ? ' ' + manualNoChip(c, true) : '') +
+        manualNoCell(c, true) +
         ' <span class="pill' + (isD ? ' due' : ' teal') + '"' + (isD ? ' style="background:#fee2e2;color:#b91c1c"' : '') + '>' +
         (isD ? 'Not approved' : esc(st)) + '</span>' +
         '<br><span style="font-size:11px;color:#64748b">' + esc(d10(c.createdAt)) +
@@ -13470,7 +13551,7 @@ function viewCatalogue() {
         '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
         '<h3 style="margin:0">' +
         '<label style="cursor:pointer;font-size:15px"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label>' +
-        (manualNoFor(c) ? ' ' + manualNoChip(c) : '') +
+        manualNoCell(c) +
         ' <span class="pill teal">' + esc(d10(c.createdAt)) + '</span>' +
         /* v6.9.236 - the signed paper, or the fact that there isn't one. The thumbnail is
            drawn bigger here than on the delivery list because in hisab you are checking the
@@ -17067,11 +17148,13 @@ function viewCatalogue() {
     var seen = {}, out = [];
     S.data.areas.forEach(function (a) { if (a.location && !seen[a.location]) { seen[a.location] = 1; out.push(a.location); } });
     LOCATIONS.forEach(function (l) { if (!seen[l]) { seen[l] = 1; out.push(l); } });
-    return out;
+    return out.sort(alpha);            /* v6.9.302 */
   }
   function areasIn(loc) {
     return S.data.areas.filter(function (a) { return a.location === loc; })
-      .map(function (a) { return a.area; }).filter(Boolean);
+      .map(function (a) { return a.area; }).filter(Boolean)
+      /* v6.9.303 - natural, so "Sector 9" comes before "Sector 15", not after "Sector 100" */
+      .sort(alpha);
   }
   /* ---------- DISTRICT + AREA (v6.9.177) ----------
      A lead is entered DISTRICT first, then AREA from that district's own list. Free text was
@@ -20144,9 +20227,13 @@ function viewCatalogue() {
   function chPicker() {
     ensurePickerCss();
     var z = S.ch;
+    /* v6.9.303 - "manage alphabatically everywhere". This read S.data.brands in SHEET-ROW
+       order, so the challan's brand step came out Huliot HT PRO, Heliroma, FIMA, Stellar...
+       6.9.300 sorted the brand lists that go through brandList(); these five pickers read the
+       tab directly and were missed. Sorted on a COPY - the sheet order is untouched. */
     var brands = (S.data.brands || []).filter(function (br) {
       return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
-    });
+    }).slice().sort(alphaBy(function (br) { return br.brand; }));
 
     /* STEP 1 — no brand yet: show ONLY brands */
     if (!z.brand) {
@@ -20203,7 +20290,7 @@ function viewCatalogue() {
         '<div class="pmeta">' + esc(p.code) + ' &middot; ' + esc(p.unit) + '</div></div>' +
         '<div class="pqty">' +
         '<button class="stp" data-act="ch-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
-        '<input class="ch-q" data-code="' + esc(p.code) + '" inputmode="numeric" value="' + esc(ex ? ex.qty : "") + '" placeholder="0"/>' +
+        '<input class="ch-q" data-code="' + esc(p.code) + '" inputmode="decimal" value="' + esc(ex ? qShow(ex.qty) : "") + '" placeholder="0"/>' +
         '<button class="stp" data-act="ch-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
         '</div></div>';
     });
@@ -20242,7 +20329,7 @@ function viewCatalogue() {
     var z = S.oc;
     var h = '<div class="row" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
       return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
-    }).map(function (br) {
+    }).slice().sort(alphaBy(function (br) { return br.brand; })).map(function (br) {
       return '<button class="chip ' + (z.brand === br.brand ? "on" : "") + '" data-act="oc-brand" data-brand="' + esc(br.brand) + '">' + esc(br.brand) + '</button>';
     }).join("") + '</div>';
     if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
@@ -20363,7 +20450,7 @@ function viewCatalogue() {
               return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (idx % 2 ? '#f8fafc' : '#fff') + '">' +
                 '<td style="padding:6px 8px;color:#64748b;font-weight:700">' + (idx + 1) + '</td>' +
                 '<td style="padding:6px 8px"><b>' + esc(i.desc) + '</b><br><span style="font-size:11px;color:#94a3b8">' + esc(i.code) + '</span></td>' +
-                '<td style="padding:4px 6px;text-align:center"><input class="ch-q" data-code="' + esc(i.code) + '" inputmode="numeric" value="' + esc(i.qty) + '" style="width:76px;text-align:center;padding:7px;font-size:15px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px"/></td>' +
+                '<td style="padding:4px 6px;text-align:center"><input class="ch-q" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(qShow(i.qty)) + '" style="width:76px;text-align:center;padding:7px;font-size:15px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px"/></td>' +
                 '<td style="text-align:center"><button class="stp" data-act="ch-qty" data-code="' + esc(i.code) + '" data-d="-1" title="reduce by one">&minus;</button></td>' +
                 '</tr>';
             }).join("") +
@@ -20800,7 +20887,7 @@ function viewCatalogue() {
         h += '<div style="border-top:1px solid #fee2e2;margin-top:5px;padding-top:5px;font-size:12px">' +
           '<b>' + esc(x.desc) + '</b> <span style="color:#94a3b8;font-size:11px">' + esc(x.code) + '</span><br>' +
           '<span style="color:#b91c1c">selling at ' + money(x.dr) + ' &middot; landed ' + money(x.landed) + ' &middot; ' +
-          money((x.landed - x.dr) * x.qty) + ' short on ' + x.qty + ' unit(s)</span></div>';
+          money((x.landed - x.dr) * x.qty) + ' short on ' + qShow(x.qty) + ' unit(s)</span></div>';
       });
       h += '</div>';
     }
@@ -23731,7 +23818,7 @@ function viewCatalogue() {
       var parts = [], partsAmt = 0;
       [].forEach.call(document.querySelectorAll("#v_lines .lineitem"), function (row) {
         var d = row.querySelector(".sv-d").value.trim();
-        var q = Number(row.querySelector(".sv-q").value) || 0;
+        var q = qnum(row.querySelector(".sv-q").value);   /* v6.9.303 */
         var rt = Number(row.querySelector(".sv-r").value) || 0;
         if (d) { parts.push(d + " x" + q); partsAmt += q * rt; }
       });
@@ -24756,7 +24843,8 @@ function viewCatalogue() {
       var rp = PRODUCTS.filter(function (p) { return p.code === rc; })[0] || {};
       var rr = (S.rt.items || []).filter(function (i) { return i.code === rc; })[0];
       if (!rr) { if (rd < 0) return; S.rt.items.push({ code: rc, desc: rp.desc || rc, unit: rp.unit || "No's", qty: 1 }); }
-      else { rr.qty += rd; if (rr.qty <= 0) S.rt.items = S.rt.items.filter(function (i) { return i.code !== rc; }); }
+      else { rr.qty = Math.max(0, Math.round(((Number(rr.qty) || 0) + rd) * 1000) / 1000);   /* v6.9.303 */
+             if (rr.qty <= 0) S.rt.items = S.rt.items.filter(function (i) { return i.code !== rc; }); }
       var restoreQ = keepFields(RT_FIELDS);
       keepScroll = true;
       S.modal = modalReturn(); render(); restoreQ();
@@ -25065,7 +25153,7 @@ function viewCatalogue() {
         if (dd2 < 0) return;
         S.ch.items.push({ code: pcode, desc: prod.desc || pcode, unit: prod.unit || "No's", qty: 1, rate: prod.price || 0 });
       } else {
-        row.qty += dd2;
+        row.qty = Math.max(0, Math.round((Number(row.qty) || 0) + dd2) * 1000 / 1000);   /* v6.9.303 */
         if (row.qty <= 0) S.ch.items = S.ch.items.filter(function (i) { return i.code !== pcode; });
       }
       /* keep the form fields the user already typed - a redraw would wipe them */
@@ -25073,6 +25161,22 @@ function viewCatalogue() {
       keepScroll = true;
       S.modal = modalChallan(); render(); restoreCh();
       return;
+    }
+    if (act === "ch-bookno") {
+      var bkNo  = t.getAttribute("data-no") || "";
+      var bkCl  = t.getAttribute("data-cl") || "";
+      var bkCur = manualNoFor({ id: id, challanNo: bkNo });
+      var bkAsk = window.prompt(
+        "Paper challan book number for " + (bkNo || "this challan") +
+        "\n\nExactly as it is written in the book, e.g. CH41-6/8/26." +
+        "\nLeave it blank to clear it.", bkCur);
+      if (bkAsk === null) return;                    /* Cancel changes nothing */
+      var bkNew = String(bkAsk).trim();
+      if (bkNew === String(bkCur || "")) { toast("Unchanged."); return; }
+      saveManualNo(bkNo, id, bkNew, bkCl);
+      toast(bkNew ? ("Book no " + bkNew + " noted against " + (bkNo || "the challan") + ".")
+                  : "Book number cleared.");
+      render(); return;
     }
     if (act === "ch-exp") {
       S.chExp = S.chExp || {};
@@ -25272,7 +25376,7 @@ function viewCatalogue() {
     function altReadBack() {
       (S.alt.rows || []).forEach(function (r, i) {
         var q = el("alt_q" + i), n2 = el("alt_n" + i);
-        if (q) r.now = Number(q.value) || 0;
+        if (q) r.now = qnum(q.value);   /* v6.9.303: a short delivery can be half a kg */
         if (n2) r.note = String(n2.value || "").trim();
       });
       /* the proof travels with the quantities: a repaint (adding a line, say) rebuilds the
@@ -25284,7 +25388,7 @@ function viewCatalogue() {
     }
     if (act === "alt-add") {
       altReadBack();
-      var pd = val("alt_add"), pq = Number(val("alt_addq")) || 0;
+      var pd = val("alt_add"), pq = qnum(val("alt_addq"));   /* v6.9.303 */
       if (!pd || !pq) { toast("Pick a product and a quantity."); return; }
       var pp = PRODUCTS.filter(function (x) { return x.label === pd || x.code === pd; })[0] || {};
       S.alt.rows.push({ code: pp.code || "", desc: pp.desc || pd, unit: pp.unit || "No's",
@@ -25838,7 +25942,7 @@ function viewCatalogue() {
     }
     if (t.classList && t.classList.contains("qz-q") && S.qz) {
       var code = t.getAttribute("data-code");
-      var q = Number(t.value) || 0;
+      var q = qnum(t.value);   /* v6.9.303 */
       var p = PRODUCTS.filter(function (x) { return x.code === code; })[0];
       /* A typed quantity sets the figure for the room you are working in and
          leaves the other rooms on that line alone - otherwise typing "2" for the
@@ -25861,7 +25965,7 @@ function viewCatalogue() {
     }
     if (t.classList && t.classList.contains("ch-q") && S.ch) {
       var chCode = t.getAttribute("data-code");
-      var chQ = Math.max(0, Math.floor(Number(t.value) || 0));
+      var chQ = qnum(t.value);   /* v6.9.303: was Math.floor - see qnum() */
       var chProd = PRODUCTS.filter(function (x) { return x.code === chCode; })[0] || {};
       var chRow = (S.ch.items || []).filter(function (i) { return i.code === chCode; })[0];
       if (chRow) {
@@ -25878,7 +25982,7 @@ function viewCatalogue() {
     if (t.classList && t.classList.contains("rt-q") && S.rt) {
       /* v6.9.121: typed qty on the material-return picker (same as the challan builder). */
       var rtCode = t.getAttribute("data-code");
-      var rtQ = Math.max(0, Math.floor(Number(t.value) || 0));
+      var rtQ = qnum(t.value);   /* v6.9.303: was Math.floor - see qnum() */
       var rtProd = PRODUCTS.filter(function (x) { return x.code === rtCode; })[0] || {};
       var rtRow = (S.rt.items || []).filter(function (i) { return i.code === rtCode; })[0];
       if (rtRow) {
