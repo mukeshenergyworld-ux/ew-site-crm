@@ -10,7 +10,7 @@
    The cache only speaks when the network does not, so a man standing
    in a basement still sees the app instead of the browser's error.
 ------------------------------------------------------------------ */
-var CACHE = 'ew-visit-v1';
+var CACHE = 'ew-visit-v2';
 
 /* ===== A DEADLINE ON THE NETWORK (15 Aug 2026) =====
    This worker was network-first with no timeout. The comment above is right that the cache
@@ -62,7 +62,12 @@ self.addEventListener('activate', function (e) {
   e.waitUntil(
     caches.keys().then(function (ks) {
       return Promise.all(ks.map(function (k) {
-        return k === CACHE ? null : caches.delete(k);
+    /* THIS DELETED EVERY CACHE ON THE ORIGIN (fixed 17 Aug 2026). All seven Energy World apps
+       are served from one github.io origin, so they share ONE cache store. Every update of any
+       one app was therefore wiping the shells of the other six - which then opened to a white
+       screen the next time a phone was somewhere with no signal, and got blamed for it. An
+       app may only ever clear its OWN older versions. */
+        return (k !== CACHE && k.indexOf("ew-visit-") === 0) ? caches.delete(k) : null;
       }));
     }).then(function () { return self.clients.claim(); })
   );
