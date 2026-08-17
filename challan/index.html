@@ -99,6 +99,26 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   border-radius:12px;padding:11px 12px;margin-bottom:7px;cursor:pointer;font-size:14.5px;font-weight:700;color:#0f172a;min-height:52px}
 .tile .sub{font-size:11.5px;font-weight:600;color:#64748b;display:block;margin-top:2px}
 .tile img{width:44px;height:44px;object-fit:contain;border-radius:8px;background:#f8fafc;flex:0 0 auto}
+/* v1.19.0 - "add material brand view will ve small length box, like 2 to 3 brand again
+   alphabatically in one line" and the same for the products inside. auto-fit does the
+   deciding: a 390px phone gets 2 across, a laptop gets 3 or 4, and nothing is hard-coded
+   to a screen size that will be wrong on the next phone. */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px;margin-bottom:7px}
+.gtile{display:block;width:100%;text-align:left;background:#fff;border:1px solid #e2e8f0;border-radius:12px;
+  padding:9px 10px;cursor:pointer;font-size:13.5px;font-weight:800;color:#0f172a;min-height:56px;line-height:1.25}
+.gtile .sub{font-size:11px;font-weight:600;color:#64748b;display:block;margin-top:3px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:7px}
+/* He said "2 to 3 in one line", and he meant it as a maximum as well as a minimum. Left to
+   auto-fill a 1200px laptop fitted SEVEN brands across, which is a wall of text, not a shelf.
+   So: the phone works it out for itself (390px gives 2), and anything wider is pinned to 3. */
+@media(min-width:620px){.grid,.pgrid{grid-template-columns:repeat(3,1fr)}}
+.pcard{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:8px 9px}
+.pcard .pn{font-weight:800;font-size:13px;line-height:1.25}
+.pcard .pm{font-size:10.5px;color:#64748b;font-weight:600;margin-top:2px}
+.pcard img{width:100%;height:62px;object-fit:contain;border-radius:8px;background:#f8fafc;display:block}
+.pcard .step button{width:32px;height:34px;font-size:17px;border-radius:8px}
+.pcard .step input{width:100%;text-align:center;font-weight:800;padding:6px 2px}
+.pcard .step{gap:5px;margin-top:7px}
 .step{display:flex;align-items:center;gap:8px}
 .step button{width:42px;height:42px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;font-size:20px;font-weight:800;cursor:pointer}
 .step input{width:74px;text-align:center;font-weight:800}
@@ -151,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.18.0";
+  var APP_VERSION = "1.19.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1638,19 +1658,19 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (!p.brand) {
       var bl = brandsInStock();
       if (!bl.length) return h + '<div class="empty">The catalogue has not loaded yet. Pull the latest and try again.</div>';
-      h += bl.map(function (b) {
-        return '<button class="tile" data-act="pk-brand" data-b="' + esc(b.name) + '">' +
-          '<div class="grow">' + esc(b.name) + '<span class="sub">' + b.n + ' product' + (b.n === 1 ? '' : 's') + '</span></div>' +
-          '<span class="pill">&#8250;</span></button>';
-      }).join("");
+      /* v1.19.0 - "small length box, like 2 to 3 brand again alphabatically in one line".
+         brandsInStock() already sorts; this only changes how many fit across. */
+      h += '<div class="grid">' + bl.map(function (b) {
+        return '<button class="gtile" data-act="pk-brand" data-b="' + esc(b.name) + '">' +
+          esc(b.name) + '<span class="sub">' + b.n + ' product' + (b.n === 1 ? '' : 's') + '</span></button>';
+      }).join("") + '</div>';
       return h;
     }
     if (!p.cat) {
-      h += catsIn(p.brand).map(function (c) {
-        return '<button class="tile" data-act="pk-cat" data-c="' + esc(c.name) + '">' +
-          '<div class="grow">' + esc(c.name) + '<span class="sub">' + c.n + ' product' + (c.n === 1 ? '' : 's') + '</span></div>' +
-          '<span class="pill">&#8250;</span></button>';
-      }).join("");
+      h += '<div class="grid">' + catsIn(p.brand).map(function (c) {
+        return '<button class="gtile" data-act="pk-cat" data-c="' + esc(c.name) + '">' +
+          esc(c.name) + '<span class="sub">' + c.n + ' product' + (c.n === 1 ? '' : 's') + '</span></button>';
+      }).join("") + '</div>';
       return h;
     }
     var list = prodsIn(p.brand, p.cat);
@@ -1658,23 +1678,22 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (q) list = list.filter(function (x) { return lower(x.label).indexOf(q) >= 0; });
     h += '<div class="row" style="margin-bottom:8px"><input id="pk_q" class="grow" placeholder="Narrow this list…" value="' + esc(p.q || "") + '"/></div>';
     if (!list.length) return h + '<div class="empty">Nothing here by that name.</div>';
-    h += list.map(function (x) {
+    /* v1.19.0 - "inside also 2 to 3 priducts in single line, all alphabatically".
+       prodsIn() already sorts by description. One full-width card per product meant a man
+       scrolled six times to see six items he knew the names of; now he sees the shelf.
+       A line already in the challan keeps its green ring so it is findable at a glance. */
+    h += '<div class="pgrid">' + list.map(function (x) {
       var have = qtyOf(x.code);
-      return '<div class="card" style="padding:9px 11px;margin:7px 0">' +
-        '<div class="row">' +
-          (x.pic ? '<img src="' + esc(x.pic) + '" alt="" style="width:46px;height:46px;object-fit:contain;border-radius:8px;background:#f8fafc"/>' : '') +
-          '<div class="grow">' +
-            '<div style="font-weight:800;font-size:14px">' + esc(x.desc) + '</div>' +
-            '<div class="muted">' + esc(x.code) + (x.unit ? ' · ' + esc(x.unit) : '') + ' · ' + money(x.price) + '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="step" style="margin-top:8px">' +
+      return '<div class="pcard"' + (have ? ' style="border-color:#5eead4;background:#f0fdfa"' : '') + '>' +
+        (x.pic ? '<img src="' + esc(x.pic) + '" alt="" loading="lazy"/>' : '') +
+        '<div class="pn">' + esc(x.desc) + '</div>' +
+        '<div class="pm">' + esc(x.code) + (x.unit ? ' · ' + esc(x.unit) : '') + ' · ' + money(x.price) + '</div>' +
+        '<div class="step">' +
           '<button data-act="pk-minus" data-code="' + esc(x.code) + '">&minus;</button>' +
           '<input class="pk-qty" data-code="' + esc(x.code) + '" inputmode="decimal" value="' + (have || "") + '" placeholder="0"/>' +
           '<button data-act="pk-plus" data-code="' + esc(x.code) + '">+</button>' +
-          (have ? '<span class="pill grn" style="margin-left:6px">in the challan</span>' : '') +
         '</div></div>';
-    }).join("");
+    }).join("") + '</div>';
     return h;
   }
 
@@ -1874,6 +1893,38 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return h;
   }
 
+  /* ---------- THE ADDRESS, ONCE ----------
+     v1.19.0 - his words: "if like address not preset and entered by challan maker, that will
+     be auto update in all records and freezed".
+
+     So: a client WITH an address has it read out here and cannot be changed from this app.
+     A client WITHOUT one gets a box, and what is typed is saved onto HIS OWN RECORD - not
+     onto the challan - so the CRM, the payment app and every future challan read the same
+     line. After that it is frozen here. The office can still correct it in the CRM, which is
+     the one place that should be correcting an address; the counter can fill a blank and
+     never overwrite a filled one.
+
+     Why it matters more than it looks: a delivery address typed fresh on each challan is how
+     one house becomes four addresses, and how a lorry goes to the wrong gate. */
+  function addressBlock(cl) {
+    var a = String((cl && cl.address) || "").trim();
+    if (a) {
+      return '<div style="margin-top:7px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:7px 9px">' +
+        '<div class="muted" style="font-weight:700;font-size:11px">Delivery address</div>' +
+        '<div style="font-size:13px;font-weight:600;margin-top:1px">' + esc(a) + '</div>' +
+        '<div class="muted" style="font-size:10.5px;margin-top:3px">On his record. Wrong? The office changes it in the CRM &mdash; ' +
+        'it is one address for every challan, so it is not edited from the counter.</div></div>';
+    }
+    if (!cl || !cl.id) return "";
+    return '<div style="margin-top:7px;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:7px 9px">' +
+      '<div class="muted" style="font-weight:700;font-size:11px;color:#b45309">No delivery address on his record</div>' +
+      '<div class="muted" style="font-size:10.5px;margin:2px 0 5px">Type it once and it is saved against HIM &mdash; ' +
+      'the CRM, the payment app and every later challan all read this same line.</div>' +
+      '<input id="cl_addr" placeholder="House / plot, street, landmark" value=""/>' +
+      '<div class="row" style="margin-top:6px">' +
+      '<button class="btn sm" data-act="cl-addr" data-n="' + esc(cl.name) + '">Save his address</button></div></div>';
+  }
+
   function clientPicker(z, cl, pfx) {
     var p = pfx || "m";
     if (cl && cl.name) {
@@ -1881,13 +1932,21 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         '<div class="row"><div class="grow">' +
           '<div class="muted" style="font-weight:700">Client</div>' +
           '<div style="font-size:17px;font-weight:800;margin-top:1px">' + esc(cl.name) + '</div>' +
+          /* v1.19.0 - "rest all detial, phone no, executive dealing client, address will be
+             auto filled". Every one of these was already on his record; the challan simply
+             never showed them, so the man at the counter re-asked for a number the office
+             already had. Nothing new is typed - it is the same record, read out. */
           '<div class="muted" style="margin-top:3px">' +
             esc([cl.location, cl.area].filter(Boolean).join(" · ")) +
             (cl.mobile ? ' · ' + esc(cl.mobile) : ' · <b style="color:#b91c1c">no mobile on his record</b>') +
+            (cl.owner ? '<br>Executive: <b>' + esc(cl.owner) + '</b>' : '<br><b style="color:#b45309">No executive set for him</b>') +
             (cl.plumber ? '<br>PL ' + esc(cl.plumber) : '') +
             (cl.architect ? (cl.plumber ? ' · ' : '<br>') + 'AR ' + esc(cl.architect) : '') +
           '</div>' +
         '</div><button class="btn sm gry" data-act="cp-change" data-p="' + p + '">Change</button></div>' +
+        /* full width, BELOW the name row - inside it the box was squeezed against the
+           Change button. Caught in a screenshot, not in the markup. */
+        addressBlock(cl) +
         /* v1.12.0 - the card already said what was missing; now it can be answered here */
         (chGaps(cl).length
           ? '<div style="margin-top:8px"><button class="btn sm amb" data-act="dt-ask" data-n="' + esc(cl.name) + '">' +
@@ -1900,26 +1959,41 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
     var h2 = '<div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Who is it for?</div>';
     var ds = districts();
-    h2 += '<div class="muted" style="font-size:11.5px;margin-bottom:4px">1 · District</div>' +
-      '<div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">' +
+    /* v1.19.0 - "Ask to select district from Dropdown / ask to select area from dropdown".
+       These were wrap-buttons. Nine districts already took two rows on a laptop and pushed
+       the whole form down; on the phone they pushed it further. A select is one line however
+       many districts there are, it is the control a man already knows from every other form,
+       and it cannot be half-tapped. The counts stay - they are how he knows Panipat is the
+       real one. Both lists are alphabetical (districts() and areasIn() already sort). */
+    h2 += '<label>1 &middot; District</label>' +
+      '<select class="cp-dsel" data-p="' + p + '">' +
+      '<option value="">&mdash; choose the district &mdash;</option>' +
       ds.map(function (d) {
-        return '<button class="btn sm ' + (z.dist === d.name ? '' : 'gry') + '" data-act="cp-dist" data-p="' + p + '" data-d="' + esc(d.name) + '">' +
-          esc(d.name) + ' <b style="opacity:.7">' + d.n + '</b></button>';
-      }).join("") + '</div>';
+        return '<option value="' + esc(d.name) + '"' + (z.dist === d.name ? ' selected' : '') + '>' +
+          esc(d.name) + '  (' + d.n + ')</option>';
+      }).join("") + '</select>';
+    if (!ds.length) {
+      /* the backend scopes clients to the signed-in man, so a godown login can get NONE.
+         An empty dropdown with no word beside it reads as a broken app. */
+      h2 += '<div class="pill amb" style="display:block;padding:9px;text-align:left;margin-top:7px">' +
+        'No clients came back for your login, so there are no districts to choose from. ' +
+        'Pull the latest with the arrow above; if it stays empty the office has to open your ' +
+        'access &mdash; the challan is not the problem.</div>';
+    }
 
-    if (!z.dist) return h2 + '<div class="muted">Pick the district and the areas will follow.</div></div>';
+    if (!z.dist) return h2 + '<div class="muted" style="margin-top:8px">Pick the district and the areas will follow.</div></div>';
 
     var as = areasIn(z.dist);
-    h2 += '<div class="muted" style="font-size:11.5px;margin-bottom:4px">2 · Area in ' + esc(z.dist) + '</div>' +
-      '<div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">' +
-      '<button class="btn sm ' + (z.area ? 'gry' : '') + '" data-act="cp-area" data-p="' + p + '" data-a="">All of ' + esc(z.dist) + '</button>' +
+    h2 += '<label>2 &middot; Area in ' + esc(z.dist) + '</label>' +
+      '<select class="cp-asel" data-p="' + p + '">' +
+      '<option value=""' + (z.area ? '' : ' selected') + '>All of ' + esc(z.dist) + '</option>' +
       as.map(function (a) {
-        return '<button class="btn sm ' + (z.area === a.name ? '' : 'gry') + '" data-act="cp-area" data-p="' + p + '" data-a="' + esc(a.name) + '">' +
-          esc(a.name) + ' <b style="opacity:.7">' + a.n + '</b></button>';
-      }).join("") + '</div>';
+        return '<option value="' + esc(a.name) + '"' + (z.area === a.name ? ' selected' : '') + '>' +
+          esc(a.name) + '  (' + a.n + ')</option>';
+      }).join("") + '</select>';
 
     var list = clientsIn(z.dist, z.area, z.cq);
-    h2 += '<div class="muted" style="font-size:11.5px;margin-bottom:4px">3 · His name &mdash; type the first letters</div>' +
+    h2 += '<label>3 &middot; His name &mdash; type the first letters</label>' +
       '<input id="' + p + '_cq" placeholder="e.g. rak, or rk for Rakesh Kumar" value="' + esc(z.cq || "") + '"/>';
     if (!list.length) {
       h2 += '<div class="empty" style="padding:14px 8px">Nobody here by that name.<br>' +
@@ -2130,14 +2204,18 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         '<div class="row" style="margin-top:7px">' +
         '<button class="btn sm" data-act="dv-new" data-p="' + p + '">+ Add a driver</button></div>';
     }
-    h += '<div class="row" style="flex-wrap:wrap;gap:6px">' +
-      list.map(function (d) {
-        return '<button class="btn sm ' + (lower(d.name) === lower(z.driver) ? '' : 'gry') +
-          '" data-act="dv-pick" data-p="' + p + '" data-n="' + esc(d.name) + '">' + esc(d.name) + '</button>';
-      }).join("") +
-      (z.driver ? '<button class="btn sm gry" data-act="dv-pick" data-p="' + p + '" data-n="">None</button>' : '') +
-      '<button class="btn sm gry" data-act="dv-new" data-p="' + p + '">+ New driver</button>' +
-      '</div>';
+    /* v1.19.0 - "driver name also drop down, else add new, drive mobile and vehile no auto
+       update". Picking him has always filled his number and his lorry; the change is that
+       the register is a dropdown rather than a row of buttons that grows every time a new
+       man joins. Alphabetical, because a register you scan is a register in order. */
+    h += '<select class="dv-sel" data-p="' + p + '">' +
+      '<option value="">&mdash; nobody yet &mdash;</option>' +
+      list.slice().sort(function (a, b) { return alpha(a.name, b.name); }).map(function (d) {
+        return '<option value="' + esc(d.name) + '"' + (lower(d.name) === lower(z.driver) ? ' selected' : '') + '>' +
+          esc(d.name) + (d.vehicle ? '  ·  ' + esc(d.vehicle) : '') + '</option>';
+      }).join("") + '</select>' +
+      '<div class="row" style="margin-top:6px">' +
+      '<button class="btn sm gry" data-act="dv-new" data-p="' + p + '">+ New driver</button></div>';
     if (picked) {
       var _dt = driverType(picked);
       h += '<div class="muted" style="margin-top:6px">' +
@@ -2765,6 +2843,32 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     });
     var fto = el("m_fto");
     if (fto) fto.addEventListener("change", function () { if (S.ch) S.ch.fto = fto.value; });
+    /* v1.19.0 - district, area and driver are dropdowns now. They carry data-p, which is the
+       same attribute the click handlers read, so the holder is found exactly as before and
+       the return builder gets all three for free. */
+    Array.prototype.forEach.call(document.querySelectorAll(".cp-dsel"), function (sd) {
+      sd.addEventListener("change", function () {
+        var h = sd.getAttribute("data-p") === "r" ? S.rt : S.ch;
+        if (h) { h.dist = sd.value; h.area = ""; h.cq = ""; }
+        repaint();
+      });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".cp-asel"), function (sa) {
+      sa.addEventListener("change", function () {
+        var h = sa.getAttribute("data-p") === "r" ? S.rt : S.ch;
+        if (h) { h.area = sa.value || ""; h.cq = ""; }
+        repaint();
+      });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".dv-sel"), function (sv) {
+      sv.addEventListener("change", function () {
+        var h = sv.getAttribute("data-p") === "r" ? S.rt : S.ch;
+        /* his lorry is cleared with him - "vehicle today" belonged to the man who was
+           picked before, and carrying it over sends the wrong number out on the paper. */
+        if (h) { h.driver = sv.value || ""; h.veh = ""; }
+        repaint();
+      });
+    });
 
     /* v1.5 - r_client and r_ch are gone: the client and the delivery are picked now, so
        there is nothing left to read back from a box. r_site only exists while somebody is
@@ -2970,6 +3074,31 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       var holder = t.getAttribute("data-p") === "r" ? S.rt : S.ch;
       if (holder) { holder.driver = t.getAttribute("data-n") || ""; holder.veh = ""; }
       repaint(); return;
+    }
+    if (act === "cl-addr") {
+      var caN = t.getAttribute("data-n");
+      var caC = clientByName(caN);
+      if (!caC || !caC.id) { toast("Could not find him on the book."); return; }
+      if (String(caC.address || "").trim()) { toast("He already has an address. The office changes it in the CRM."); return; }
+      var caV = String(val("cl_addr") || "").trim();
+      if (!caV) { toast("Type the address first."); return; }
+      if (caV.length < 6) { toast("That is too short to find a gate by."); return; }
+      /* THE WHOLE ROW, NOT A PATCH - the same rule dt-save records: the backend writes the
+         entire sheet row from what it is sent, so a partial save would blank his credit
+         limit and his billing profile. */
+      var caRow = {}; for (var caK in caC) caRow[caK] = caC[caK];
+      caRow.address = caV;
+      t.disabled = true; t.textContent = "Saving...";
+      saveRow("clients", caRow).then(function () {
+        caC.address = caV;                 /* so it is frozen on the very next paint */
+        toast("Saved against " + caN + ". Every app reads it now.");
+        repaint();
+      }).catch(function () {
+        caC.address = caV;
+        toast("Kept safe on this device \u2014 it will sync on the next refresh.");
+        repaint();
+      });
+      return;
     }
     if (act === "dt-ask") { dtAsk(t.getAttribute("data-n")); return; }
     if (act === "dt-save") {
