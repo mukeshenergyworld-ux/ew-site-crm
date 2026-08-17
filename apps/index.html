@@ -30,6 +30,16 @@ h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:#64748b;
   font-size:13px;margin:24px 0 0}
 .note b{display:block;margin-bottom:3px}
 .foot{color:#94a3b8;font-size:11.5px;text-align:center;margin-top:26px}
+/* ---- THE VERSION EACH APP IS ACTUALLY SERVING (17 Aug 2026) ----
+   "show version of each app so that we can match with updated". Every row now carries the
+   number the SERVER is serving right now, read from the app's own file past every cache. It
+   is deliberately not the number the phone is running - this page is the noticeboard, and a
+   man compares what it says against what his own app's header says. If they differ, his app
+   needs its refresh arrow. */
+.ver{display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;border-radius:6px;
+  padding:1px 7px;font-size:10.5px;font-weight:800;margin-left:6px;vertical-align:middle;letter-spacing:.01em}
+.ver.on{background:#ccfbf1;border-color:#5eead4;color:#0f766e}
+.ver.no{background:#fef2f2;border-color:#fecaca;color:#b91c1c}
 </style>
 </head>
 <body>
@@ -43,43 +53,49 @@ h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:#64748b;
 <div class="wrap">
 
   <h2>Every day</h2>
-  <a class="app" href="../team/"><img src="../team/icon-192.png" alt=""/>
+  <a class="app" href="../team/" data-app="team"><img src="../team/icon-192.png" alt=""/>
     <span class="txt"><span class="nm">EW CRM</span>
     <span class="who">The whole book — clients, quotes, sites, hisab, service, incentives</span></span>
     <span class="go">&#8250;</span></a>
 
-  <a class="app" href="../challan/"><img src="../challan/icon-192.png" alt=""/>
+  <a class="app" href="../challan/" data-app="challan"><img src="../challan/icon-192.png" alt=""/>
     <span class="txt"><span class="nm">EW Challan</span>
     <span class="who">Godown &amp; accounts — material out, material back, the signed receipt</span></span>
     <span class="go">&#8250;</span></a>
 
-  <a class="app" href="../collect/"><img src="../collect/icon-192.png" alt=""/>
+  <a class="app" href="../collect/" data-app="collect"><img src="../collect/icon-192.png" alt=""/>
     <span class="txt"><span class="nm">EW Payment</span>
     <span class="who">Admin &amp; accounts — who to ring today, and the money as it comes in</span></span>
     <span class="go">&#8250;</span></a>
 
   <h2>On the road</h2>
-  <a class="app" href="../visit/"><img src="../visit/icon-192.png" alt=""/>
+  <a class="app" href="../visit/" data-app="visit"><img src="../visit/icon-192.png" alt=""/>
     <span class="txt"><span class="nm">EW Visit</span>
     <span class="who">Sales executives — log a site visit from the site</span></span>
     <span class="go">&#8250;</span></a>
 
-  <a class="app" href="../saathi/"><img src="../saathi/icon-192.png" alt=""/>
+  <a class="app" href="../saathi/" data-app="saathi"><img src="../saathi/icon-192.png" alt=""/>
     <span class="txt"><span class="nm">EW Saathi</span>
     <span class="who">Plumbers &amp; architects — the partner app</span></span>
     <span class="go">&#8250;</span></a>
 
   <h2>Office</h2>
-  <a class="app" href="../console/"><img src="../console/icon-192.png" alt=""/>
+  <a class="app" href="../console/" data-app="console"><img src="../console/icon-192.png" alt=""/>
     <span class="txt"><span class="nm">EW Console</span>
     <span class="who">Admin — the back office</span></span>
     <span class="go">&#8250;</span></a>
 
   <h2>For customers</h2>
-  <a class="app" href="../complaint/"><img src="../complaint/icon-192.png" alt=""/>
+  <a class="app" href="../complaint/" data-app="complaint"><img src="../complaint/icon-192.png" alt=""/>
     <span class="txt"><span class="nm">EW Service</span>
     <span class="who">Register a complaint — send this one to customers</span></span>
     <span class="go">&#8250;</span></a>
+
+  <div class="note" style="background:#f0fdfa;border-color:#99f6e4;color:#0f766e">
+    <b>The number beside each app is what the server is serving now.</b>
+    Open the app and look at its own header. If the two do not match, that phone is running an
+    old copy &mdash; tap the refresh arrow inside that app and it will offer the update.
+  </div>
 
   <div class="note">
     <b>The icon on a phone never updates by itself.</b>
@@ -99,6 +115,61 @@ h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:#64748b;
 document.getElementById('hRef').addEventListener('click', function () {
   location.replace(location.pathname + '?u=' + (new Date()).getTime());
 });
+</script>
+<script>
+/* ---- "show version of each app so that we can match with updated" (17 Aug 2026) ----
+
+   Read from each app's OWN FILE, past every cache, exactly the way each app reads its own
+   liveVersion(). Not from the backend: that costs Apps Script quota on every visit, and the
+   backend is often the very thing that is down when a man comes here to check.
+
+   Every app declares APP_VERSION in its own source, so this number cannot disagree with what
+   is served - there is no second place for it to be written down and go stale. The CRM keeps
+   it in app.js; the rest keep it inline in index.html. Saathi, Visit and the Console use a
+   dated build number rather than a dotted one, so the pattern accepts both.
+
+   One request per app, in parallel, no blocking: the page is usable before any of them land,
+   and an app that does not answer says so rather than showing nothing. */
+(function () {
+  var APPS = [
+    { k: "team",      url: "../team/app.js" },
+    { k: "challan",   url: "../challan/index.html" },
+    { k: "collect",   url: "../collect/index.html" },
+    { k: "visit",     url: "../visit/index.html" },
+    { k: "saathi",    url: "../saathi/index.html" },
+    { k: "console",   url: "../console/index.html" },
+    { k: "complaint", url: "../complaint/index.html" }
+  ];
+  /* two spellings in the estate: the CRM, Challan and Payment call it APP_VERSION; Saathi,
+     Visit and the Console call it BUILD and use a dated number (2026.08.17-1) rather than a
+     dotted one. Both are read, and the pattern takes either quote style. */
+  var RX = /(?:APP_VERSION|BUILD)\s*=\s*["']([0-9][0-9A-Za-z.\-]*)["']/;
+  function chip(row, text, cls) {
+    var nm = row.querySelector(".nm");
+    if (!nm) return;
+    var old = nm.querySelector(".ver");
+    if (old) old.parentNode.removeChild(old);
+    var s = document.createElement("span");
+    s.className = "ver" + (cls ? " " + cls : "");
+    s.textContent = text;
+    nm.appendChild(s);
+  }
+  APPS.forEach(function (a) {
+    var row = document.querySelector('[data-app="' + a.k + '"]');
+    if (!row) return;
+    chip(row, "checking\u2026");
+    fetch(a.url + "?v=" + Date.now(), { cache: "reload" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(function (t) {
+        var m = t.match(RX);
+        /* a file that loads but carries no version is a real finding, not a blank chip -
+           it means someone shipped a build without bumping it. */
+        if (m) chip(row, "v" + m[1], "on");
+        else chip(row, "no version in the file", "no");
+      })
+      .catch(function () { chip(row, "could not be read", "no"); });
+  });
+})();
 </script>
 </body>
 </html>
