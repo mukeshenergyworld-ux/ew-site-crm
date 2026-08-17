@@ -317,6 +317,13 @@ select{
    ============================================================ */
 var GAS_URL = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec"; // e.g. "https://script.google.com/macros/s/XXXX/exec"
 
+/* v1.0.0 (17 Aug 2026). The only app in the estate that never declared a version, which
+   the launcher's new version board found the moment it was pointed at it: every other app
+   answered and this one said "no version in the file". Without it nobody can tell whether a
+   customer is looking at today's form or one from three weeks ago - and this is the one app
+   whose users are customers, who will not be asked to refresh. */
+var BUILD = "2026.08.17-1";
+
 var state = { category:"", urgency:"normal" };
 
 /* ---- Category chips ---- */
