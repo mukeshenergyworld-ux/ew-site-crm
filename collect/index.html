@@ -137,11 +137,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.14.0";
+  var APP_VERSION = "1.15.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
   /* ==EW-CORE:BEGIN== built by tools/build_core.py — do not edit here, edit core/ew-core.js == */
+/* ==EWCORE:idb== The IndexedDB door. */
 /* ==EWCORE:idb== The IndexedDB door. */
   function idbOpen() {
     if (_idbP) return _idbP;
@@ -204,6 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   }
 /* ==EWCORE:idb:END== */
 /* ==EWCORE:bigbox== The big box: what will not fit in the shared 5 MB of localStorage. */
+/* ==EWCORE:bigbox== The big box: what will not fit in the shared 5 MB of localStorage. */
   function bigGet(k) {
     if (Object.prototype.hasOwnProperty.call(_big, k)) return _big[k];
     try { return localStorage.getItem(k); } catch (e) { return null; }
@@ -227,6 +229,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     });
   }
 /* ==EWCORE:bigbox:END== */
+/* ==EWCORE:webauthn== Face ID / fingerprint plumbing. No PIN passes through any of it. */
 /* ==EWCORE:webauthn== Face ID / fingerprint plumbing. No PIN passes through any of it. */
   function b64u(buf) {
     var b = new Uint8Array(buf), s2 = "";
@@ -336,7 +339,27 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   }
 /* ==EWCORE:refresh:END== */
 /* ==EWCORE:book== Pulling the book, and saying so when it comes back unusable. */
-  function usableBook(r) { return !!(r && r.ok && r.clients && r.clients.length); }
+  /* ============ A BOOK WITH NO CLIENTS IS AN ANSWER, NOT A FAILURE ============
+     This read `r.clients.length`, so a server that answered perfectly well - ok:true, every
+     tab present - was judged UNUSABLE the moment the client list came back empty, and the app
+     refused to open at all. From his screen on 17 Aug, in the app's own words:
+
+       asked for the named tabs: server answered ok=true, clients=0,
+         tabs=[brands,brandmap,clients,drivers,discounts,challans,returns,audit,associates,sites,pitch]
+       then asked for everything: server answered ok=true, clients=0, tabs=[logos,areas,...]
+
+     THE CLIENTS TAB WAS THERE BOTH TIMES. It simply had no rows for that sign-in - while the
+     CRM, signed in as admin, was showing a hundred sites off the same sheet at the same
+     moment. So the backend is scoping clients to the signed-in man, and this line was turning
+     that into a dead end. It is very likely the whole of the original 17 Aug report too: a
+     godown sign-in that could not get in, and looked like a network fault.
+
+     Zero clients is something to SAY. It is not a reason to refuse the book. The receipts,
+     the approve queue and every challan already on this phone stay usable, and a man who
+     cannot start a NEW one is told why instead of being shown a wall. */
+  function usableBook(r) {
+    return !!(r && r.ok && (Array.isArray(r.clients) || Array.isArray(r.challans)));
+  }
   function bookSay(r) {
     if (!r || typeof r !== "object") return "the server sent nothing at all";
     var tabs = Object.keys(r).filter(function (k) { return Array.isArray(r[k]); });
@@ -369,6 +392,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     return out;
   }
 /* ==EWCORE:book:END== */
+/* ==EWCORE:journal== The write journal's shared parts. */
 /* ==EWCORE:journal== The write journal's shared parts. */
   function jrnLoad() {
     try { var l = JSON.parse(bigGet(JRN_KEY) || "[]"); return Array.isArray(l) ? l : []; }
@@ -403,6 +427,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   }
   function jrnDrop(pk) { jrnStore(jrnLoad().filter(function (x) { return x.pk !== pk; })); }
 /* ==EWCORE:journal:END== */
+/* ==EWCORE:sw== Registering the service worker. */
 /* ==EWCORE:sw== Registering the service worker. */
   function regSW() {
     if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} }
