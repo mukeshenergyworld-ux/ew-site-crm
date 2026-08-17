@@ -34,7 +34,9 @@ h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:#64748b;
 </head>
 <body>
 <div class="top"><div class="in">
-  <h1>Energy World — all the apps</h1>
+  <h1>Energy World — all the apps<button id="hRef" title="Load this page fresh"
+    style="float:right;background:rgba(255,255,255,.18);color:inherit;border:0;border-radius:10px;
+           width:34px;height:34px;font-size:16px;line-height:1;cursor:pointer">&#8635;</button></h1>
   <p>Open this page on the phone, tap an app, then use the browser's <b>Add to Home Screen</b>.
 </p>
 </div></div>
@@ -87,5 +89,16 @@ h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:#64748b;
   </div>
   <div class="foot">Energy World · Panipat · Sonipat · Karnal</div>
 </div>
+<script>
+/* ---- REFRESH (17 Aug 2026) ----
+   "Give refresh button to all apps." This page is the one a man is sent to when his phone is
+   showing something stale, so it is the last place that should serve a stale copy of itself.
+   There is nothing to lose here - no form, no session, no queue - so it simply comes back
+   fresh past every cache. It clears NOTHING: the seven apps' own shells are theirs, and
+   wiping them from here would take every one of them offline in a basement. */
+document.getElementById('hRef').addEventListener('click', function () {
+  location.replace(location.pathname + '?u=' + (new Date()).getTime());
+});
+</script>
 </body>
 </html>
