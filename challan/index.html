@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.19.0";
+  var APP_VERSION = "1.20.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1195,12 +1195,58 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
   /* ---------- the book, read ---------- */
-  function clients() { return (S.data && S.data.clients) || []; }
+  /* ==================== WHEN THE CLIENTS TAB COMES BACK EMPTY (v1.20.0) =============
+     His words: "district no showing on mobile dropdow ... clicking show no option".
+
+     It is not the dropdown. Buttons would have shown the same nothing. The backend scopes
+     clients to the signed-in man, and a godown login gets ZERO client rows - proved twice
+     over today, once by the 1.16.0 diagnostic printing clients=0 and once by his own two
+     screenshots: the laptop, signed in as the office, showing nine districts off the same
+     sheet in the same minute that his phone showed none.
+
+     The real fix is in Apps Script and still needs clasp. But the app is NOT actually
+     without clients - it is holding 86 challans, and every one of them carries the man's
+     name, his id and his district. So when the tab is empty the picker is rebuilt from HIS
+     OWN DELIVERY BOOK: everyone this godown has already loaded a lorry for.
+
+     That is exactly the set he needs. A man he has never delivered to has to be registered
+     in the CRM first anyway - that rule has not moved. What has moved is that the ones he
+     HAS delivered to are reachable again while the backend is still wrong.
+
+     Derived rows are marked _fromBook so nothing downstream can mistake them for the real
+     record, and the screen says where they came from rather than pretending. */
+  var _bookCl = null;
+  function clientsFromBook() {
+    if (_bookCl) return _bookCl;
+    var by = {}, out = [];
+    challans().forEach(function (c) {
+      var n = String((c && c.customerName) || "").trim();
+      if (!n) return;
+      var k = n.toLowerCase();
+      if (!by[k]) { by[k] = { id: String(c.customerId || ""), name: n, location: String(c.location || "").trim(),
+                              area: "", mobile: "", owner: "", address: "", _fromBook: true };
+                    out.push(by[k]); }
+      /* the newest challan that HAS a district wins - an early one may predate the field */
+      if (!by[k].location && c.location) by[k].location = String(c.location).trim();
+      if (!by[k].id && c.customerId) by[k].id = String(c.customerId);
+    });
+    _bookCl = out;
+    return out;
+  }
+  function clients() {
+    var real = (S.data && S.data.clients) || [];
+    if (real.length) return real;
+    return clientsFromBook();
+  }
+  function clientsAreDerived() { return !(((S.data && S.data.clients) || []).length) && clientsFromBook().length > 0; }
   function clientByName(n) {
     var k = lower(n);
     return clients().filter(function (c) { return lower(c.name) === k; })[0] || null;
   }
   function challans() { return (S.data && S.data.challans) || []; }
+  /* any fresh book invalidates the derived list - otherwise a client added by the office
+     an hour ago never appears, because the first paint cached the old set. */
+  function bustBookClients() { _bookCl = null; }
   /* ================= A CHALLAN IS FOR A CLIENT (v1.11.0) =================
      The owner's rule, and the same test the CRM uses: a man is a client when one brand is
      marked Won, or when he has already taken a delivery. Anyone this godown has ever loaded
@@ -1583,7 +1629,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     }).sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
   }
 
-  function bust() { _mnCache = null; _proofCache = null; _dtCache = null; }
+  /* v1.20.0: the delivery-book client list dies with the book too - a client the office
+     added an hour ago must not be invisible because the first paint cached the old set. */
+  function bust() { _mnCache = null; _proofCache = null; _dtCache = null; bustBookClients(); }
 
   /* v1.9.1 - remembered on the record itself. chRow() calls chLines three times per card and
      byExec()'s sort comparator calls chValue O(n log n) times, each re-running JSON.parse over
@@ -1958,6 +2006,56 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     }
 
     var h2 = '<div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Who is it for?</div>';
+
+    /* ---------- SEARCH FIRST (v1.20.0) ----------
+       "also provide a search box, so one can search from there and select client".
+
+       District then area then name is three decisions to reach a man whose name he already
+       knows. It is the right path when he is BROWSING - "who do we have in Karnal" - and the
+       wrong one every other time. So the box comes first and searches everyone, in every
+       district, by name, short name, area or mobile. Two letters is enough.
+
+       It also walks straight past an empty district list, which is what he is looking at
+       today. */
+    var gq = String(z.gq || "").trim();
+    h2 += '<label>Search any client &mdash; name, area or number</label>' +
+      '<input id="' + p + '_gq" placeholder="e.g. jagdish, or 98123, or model town" value="' + esc(gq) + '" autocomplete="off"/>';
+    if (gq.length >= 2) {
+      var qq = lower(gq);
+      var hits = clients().filter(function (c) {
+        return lower(c.name).indexOf(qq) >= 0 ||
+               lower(c.shortName || "").indexOf(qq) >= 0 ||
+               lower(c.area || "").indexOf(qq) >= 0 ||
+               lower(c.location || "").indexOf(qq) >= 0 ||
+               String(c.mobile || "").indexOf(qq) >= 0;
+      }).sort(function (a, b) { return alpha(a.name, b.name); });
+      if (!hits.length) {
+        h2 += '<div class="empty" style="padding:14px 8px">Nobody by that. Try fewer letters.<br>' +
+          'A man who has never taken a delivery has to be registered in the CRM first, so his ' +
+          'discount is set before his first one.</div>';
+      } else {
+        h2 += '<div style="margin-top:8px">' + hits.slice(0, 30).map(function (c) {
+          return '<button class="tile" data-act="cp-pick" data-p="' + p + '" data-n="' + esc(c.name) + '">' +
+            '<div class="grow">' + esc(c.name) +
+            '<span class="sub">' + esc([c.location, c.area, c.mobile].filter(Boolean).join(" · ") || "no district on his record") +
+            '</span></div><span class="pill">&#8250;</span></button>';
+        }).join("") +
+        (hits.length > 30 ? '<div class="muted">and ' + (hits.length - 30) + ' more &mdash; type another letter</div>' : '') +
+        '</div>';
+      }
+      /* the three-step browse is not shown while he is searching - it is the other way in,
+         not a second thing to read */
+      return h2 + '</div>';
+    }
+
+    if (clientsAreDerived()) {
+      h2 += '<div class="pill amb" style="display:block;padding:9px;text-align:left;margin-top:8px">' +
+        'The client list did not come back for your login, so this is built from <b>your own ' +
+        'delivery book</b> &mdash; everyone you have already sent a lorry to. Search by name ' +
+        'above. The office has been told; nothing you make here is affected.</div>';
+    }
+    h2 += '<div class="muted" style="font-size:11.5px;margin:10px 0 2px;text-align:center">' +
+      '&mdash; or find him by district &mdash;</div>';
     var ds = districts();
     /* v1.19.0 - "Ask to select district from Dropdown / ask to select area from dropdown".
        These were wrap-buttons. Nine districts already took two rows on a laptop and pushed
@@ -1973,12 +2071,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           esc(d.name) + '  (' + d.n + ')</option>';
       }).join("") + '</select>';
     if (!ds.length) {
-      /* the backend scopes clients to the signed-in man, so a godown login can get NONE.
-         An empty dropdown with no word beside it reads as a broken app. */
       h2 += '<div class="pill amb" style="display:block;padding:9px;text-align:left;margin-top:7px">' +
-        'No clients came back for your login, so there are no districts to choose from. ' +
-        'Pull the latest with the arrow above; if it stays empty the office has to open your ' +
-        'access &mdash; the challan is not the problem.</div>';
+        'Nobody on your book has a district on his record yet, so there is nothing to choose ' +
+        'from here. <b>Use the search box above</b> &mdash; it finds him by name.</div>';
     }
 
     if (!z.dist) return h2 + '<div class="muted" style="margin-top:8px">Pick the district and the areas will follow.</div></div>';
@@ -2881,6 +2976,17 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     });
     var rcq = el("r_cq");
     if (rcq) rcq.addEventListener("input", function () { if (S.rt) { S.rt.cq = rcq.value; repaint(); } });
+    /* v1.20.0 - the search box, on both builders. repaint() puts the caret back where it
+       was, so it types like a search box and not like a form that redraws under him. */
+    ["m", "r"].forEach(function (pf) {
+      var gq = el(pf + "_gq");
+      if (!gq) return;
+      gq.addEventListener("input", function () {
+        var h = pf === "r" ? S.rt : S.ch;
+        if (h) h.gq = gq.value;
+        repaint();
+      });
+    });
 
     var q = el("q");
     if (q) {

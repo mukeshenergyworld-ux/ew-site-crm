@@ -1,7 +1,7 @@
 /* The shell is cached so the app opens instantly in a godown basement.
    THE BOOK IS NEVER CACHED HERE - a challan must not be served stale by a service worker
    the user cannot see. The app keeps its own snapshot and says out loud when it shows it. */
-var CACHE = "ew-challan-v1190";
+var CACHE = "ew-challan-v1200";
 
 /* ===== A DEADLINE ON THE NETWORK (15 Aug 2026) =====
    This worker was network-first with no timeout, and so were the other four. The comment above
