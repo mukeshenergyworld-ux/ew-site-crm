@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.305";
+  var APP_VERSION = "6.9.306";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -16628,8 +16628,177 @@ function viewCatalogue() {
     return h + '</div>';
   }
 
+  /* ==================== THE CATALOGUE CHECK (v6.9.306) ====================
+     HIS REPORT: "searching product show 6 product under MEA, but picking product for making
+     challan show only 5 products under MEA. inspect and fix, check for other products also."
+
+     Both screens were right. The SEARCH matches on description, code, family, brand and
+     category — so all six MEA products came back. The PICKER groups by BRAND — and one of
+     the six, MEAH75DIB125 (the Rs 14,249 Ductile Iron channel), is filed on the Products
+     sheet under brand "Fresh Air" while its category is MEA, its family is MEA LINE DRAIN
+     and its description begins "MEA Line Drain Channel". Every other MEA product sits under
+     "MEA Drain".
+
+     So it is one wrong cell on one row, and the app was reporting it faithfully in two
+     different ways. Guessing the "right" brand in the picker would hide the error rather
+     than fix it, and would put a product in front of a man under a brand his own sheet does
+     not agree with. So this screen NAMES it instead, and he corrects the sheet once.
+
+     THE SWEEP HE ASKED FOR, over all 1,044 products, found three of exactly this shape:
+       MEAH75DIB125  family MEA LINE DRAIN  filed "Fresh Air", 5 others say "MEA Drain"
+       TABSALT       family PENTAIR         filed "Accessory", 8 others say "Water Filtration"
+       SSEL15F-F     family SS ELBOW        filed "Accessory", 24 others say "SANITAAR"
+     — the last of which is the SS Elbow he reported on 17 August, from the other end.
+
+     It also finds families spelt two ways, which split one shelf into two chips.
+
+     NOTHING HERE CHANGES A ROW. It reads the catalogue and says what disagrees. */
+  function catScan() {
+    var strays = [], famSplit = [], brandSplit = [];
+    var L = function (x) { return String(x == null ? "" : x).trim().toLowerCase(); };
+
+    function oddOnesBy(key) {
+      var g = {};
+      PRODUCTS.forEach(function (p) {
+        var k = String(p[key] || "").trim();
+        if (!k) return;
+        (g[k] = g[k] || []).push(p);
+      });
+      Object.keys(g).forEach(function (k) {
+        var rows = g[k];
+        if (rows.length < 3) return;                       /* too few to call a majority */
+        var c = {};
+        rows.forEach(function (p) { c[p.brand] = (c[p.brand] || 0) + 1; });
+        var brands = Object.keys(c);
+        if (brands.length < 2) return;
+        brands.sort(function (a, b) { return c[b] - c[a]; });
+        var main = brands[0], mainN = c[main];
+        /* a genuinely mixed group is not an error - only a clear majority with one or two
+           strangers in it. Below 70% this says nothing at all. */
+        if (mainN / rows.length < 0.7) return;
+        brands.slice(1).forEach(function (b) {
+          if (c[b] > Math.max(2, rows.length * 0.25)) return;   /* a real second brand */
+          rows.filter(function (p) { return p.brand === b; }).forEach(function (p) {
+            strays.push({ by: key, group: k, code: p.code, desc: p.desc,
+                          is: b, likely: main, others: mainN });
+          });
+        });
+      });
+    }
+    oddOnesBy("family");
+    oddOnesBy("cat");
+    /* one code can only be reported once, however many ways it is odd */
+    var seen = {}, uniq = [];
+    strays.forEach(function (x) { if (seen[L(x.code)]) return; seen[L(x.code)] = 1; uniq.push(x); });
+
+    function splits(key, into) {
+      var m = {};
+      PRODUCTS.forEach(function (p) {
+        var k = L(p[key]).replace(/\s+/g, " ");
+        if (!k) return;
+        m[k] = m[k] || {};
+        m[k][String(p[key]).trim()] = (m[k][String(p[key]).trim()] || 0) + 1;
+      });
+      Object.keys(m).forEach(function (k) {
+        var ws = Object.keys(m[k]);
+        if (ws.length > 1) into.push({ spellings: ws, counts: m[k] });
+      });
+    }
+    splits("family", famSplit);
+    splits("brand", brandSplit);
+
+    /* the basics, so a clean answer is an EARNED clean answer and not an untested one */
+    var noBrand = PRODUCTS.filter(function (p) { return !L(p.brand); }).length;
+    var noCode  = PRODUCTS.filter(function (p) { return !L(p.code); }).length;
+    var noPrice = PRODUCTS.filter(function (p) { return !(Number(p.price) > 0); }).length;
+    var codes = {}, dupCodes = [];
+    PRODUCTS.forEach(function (p) { var k = L(p.code); if (!k) return; (codes[k] = codes[k] || []).push(p); });
+    Object.keys(codes).forEach(function (k) {
+      if (codes[k].length > 1) dupCodes.push({ code: codes[k][0].code, n: codes[k].length,
+        brands: codes[k].map(function (p) { return p.brand; }) });
+    });
+    return { strays: uniq, famSplit: famSplit, brandSplit: brandSplit,
+             noBrand: noBrand, noCode: noCode, noPrice: noPrice, dupCodes: dupCodes,
+             total: PRODUCTS.length,
+             faults: uniq.length + famSplit.length + brandSplit.length + dupCodes.length +
+                     noBrand + noCode + noPrice };
+  }
+
+  function catCheckHtml() {
+    var s = catScan();
+    var good = !s.faults;
+    var h = '<div class="card" style="margin-top:14px;' +
+      (good ? 'border-color:#99f6e4;background:#f0fdfa' : 'border-color:#fed7aa;background:#fff7ed') + '">' +
+      '<h2 style="margin:0">Catalogue check</h2>' +
+      '<div class="meta" style="font-size:13px">A product is <b>searched</b> by its name, code, ' +
+      'family and brand, but <b>picked</b> by its brand alone. So a row filed under the wrong ' +
+      'brand is findable by search and invisible in the picker &mdash; which is exactly the ' +
+      '&ldquo;6 in search, 5 in the picker&rdquo; under MEA. <b>Nothing here changes a row.</b> ' +
+      'It reads the catalogue and says what disagrees; the fix is one cell on the Products sheet.</div>' +
+      '<div style="margin-top:8px;font-weight:700;color:' + (good ? '#0f766e' : '#b45309') + '">' +
+      (good ? '\u2713 All ' + s.total + ' products agree with themselves.'
+            : s.faults + ' thing(s) to look at, out of ' + s.total + ' products') + '</div></div>';
+
+    if (s.strays.length) {
+      h += '<h3 style="margin:14px 0 6px;font-size:14px">Filed under a brand its own family does not use</h3>' +
+        '<div class="meta" style="margin-bottom:6px">These are the ones that vanish from the picker.</div>';
+      s.strays.forEach(function (x) {
+        h += '<div class="card"><h3 style="font-size:14px">' + esc(x.code) +
+          ' <span class="pill due">' + esc(x.is) + '</span></h3>' +
+          '<div class="meta">' + esc(String(x.desc || "").slice(0, 90)) + '<br>' +
+          'Its ' + esc(x.by === "cat" ? "category" : "family") + ' is <b>' + esc(x.group) + '</b>, and <b>' +
+          x.others + '</b> other product' + (x.others === 1 ? '' : 's') + ' in it are filed under <b>' +
+          esc(x.likely) + '</b>.<br><span style="color:#0f766e">Set its brand to ' + esc(x.likely) +
+          ' on the Products sheet and it appears in the picker.</span></div></div>';
+      });
+    }
+    if (s.brandSplit.length) {
+      h += '<h3 style="margin:14px 0 6px;font-size:14px">One brand, spelt two ways</h3>';
+      s.brandSplit.forEach(function (x) {
+        h += '<div class="card"><div class="meta">' + x.spellings.map(function (w) {
+          return '<b>' + esc(w) + '</b> &times;' + x.counts[w]; }).join('  &nbsp;vs&nbsp;  ') +
+          '<br><span style="color:#0f766e">Two chips for one brand. Pick one spelling on the sheet.</span></div></div>';
+      });
+    }
+    if (s.famSplit.length) {
+      h += '<h3 style="margin:14px 0 6px;font-size:14px">One family, spelt two ways</h3>' +
+        '<div class="meta" style="margin-bottom:6px">The quote and challan pickers already treat ' +
+        'a difference of CASE as the same family. A difference of spelling &mdash; ' +
+        '&ldquo;SHOWER&rdquo; against &ldquo;SHOWERS&rdquo; &mdash; is two shelves, and only the ' +
+        'sheet can settle it.</div>';
+      s.famSplit.forEach(function (x) {
+        var caseOnly = x.spellings.map(function (w) { return w.toLowerCase(); })
+          .every(function (w, i, a) { return w === a[0]; });
+        h += '<div class="card"><div class="meta">' + x.spellings.map(function (w) {
+          return '<b>' + esc(w) + '</b> &times;' + x.counts[w]; }).join('  &nbsp;vs&nbsp;  ') +
+          '<br><span style="color:' + (caseOnly ? '#64748b' : '#0f766e') + '">' +
+          (caseOnly ? 'Case only \u2014 the pickers already merge these. Tidy when convenient.'
+                    : 'A real difference. These are two separate chips until the sheet agrees.') +
+          '</span></div></div>';
+      });
+    }
+    if (s.dupCodes.length) {
+      h += '<h3 style="margin:14px 0 6px;font-size:14px">The same code twice</h3>';
+      s.dupCodes.forEach(function (x) {
+        h += '<div class="card"><div class="meta"><b>' + esc(x.code) + '</b> appears ' + x.n +
+          ' times (' + esc(x.brands.join(", ")) + ').<br>' +
+          '<span style="color:#b91c1c">Whichever row loads last wins wherever the code is the key.</span>' +
+          '</div></div>';
+      });
+    }
+    if (s.noBrand || s.noCode || s.noPrice) {
+      h += '<h3 style="margin:14px 0 6px;font-size:14px">Missing the basics</h3><div class="card"><div class="meta">' +
+        (s.noBrand ? '<b>' + s.noBrand + '</b> with no brand &mdash; unreachable in every picker.<br>' : '') +
+        (s.noCode ? '<b>' + s.noCode + '</b> with no code.<br>' : '') +
+        (s.noPrice ? '<b>' + s.noPrice + '</b> with no price &mdash; they will quote at zero.' : '') +
+        '</div></div>';
+    }
+    return h;
+  }
+
   function viewDups() {
     var s = dupScan();
+    var _catHtml = catCheckHtml();   /* v6.9.306 - the catalogue's own check, same screen */
     var h = '<div class="card" style="' + (s.total ? 'border-color:#fed7aa;background:#fff7ed' : 'border-color:#99f6e4;background:#f0fdfa') + '">' +
       '<h2 style="margin:0">Duplicate check</h2>' +
       '<div class="meta" style="font-size:13px">The same customer entered twice splits his money, his history and his follow-ups between two records — and whoever opens the wrong one thinks he has never bought anything. This screen finds them and asks you which of three things is true. <b>Nothing here deletes or changes a single record.</b></div>' +
@@ -16662,7 +16831,9 @@ function viewCatalogue() {
         all.forEach(function (g) { h += dupGroupCard(g, true); });
       }
     }
-    return h;
+    /* v6.9.306 - the catalogue's own check lives on the same screen. Both answer the same
+       question: "what in this book disagrees with itself?" */
+    return h + _catHtml;
   }
 
   /* The one-line note on the dashboard — his "duplicate entry log / note / warning". It only
