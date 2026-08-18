@@ -1,0 +1,128 @@
+{
+  "idb": {
+    "why": "The IndexedDB door.",
+    "fns": [
+      "idbOpen",
+      "idbSet",
+      "idbGet",
+      "idbDel"
+    ],
+    "apps": [
+      "CRM",
+      "Challan",
+      "Payment"
+    ]
+  },
+  "bigbox": {
+    "why": "The big box: what will not fit in the shared 5 MB of localStorage.",
+    "fns": [
+      "bigGet",
+      "bigDel",
+      "bigSetX"
+    ],
+    "apps": [
+      "Challan",
+      "Payment"
+    ]
+  },
+  "webauthn": {
+    "why": "Face ID / fingerprint plumbing. No PIN passes through any of it.",
+    "fns": [
+      "b64u",
+      "randBytes",
+      "bioSaved",
+      "bioAvailable"
+    ],
+    "apps": [
+      "CRM",
+      "Challan",
+      "Payment"
+    ]
+  },
+  "tiny": {
+    "why": "The three-line helpers every app rewrote.",
+    "fns": [
+      "el",
+      "lower",
+      "flushNow"
+    ],
+    "apps": [
+      "Challan",
+      "Payment"
+    ]
+  },
+  "drive": {
+    "why": "Google Drive picture links, repaired to the one form that renders.",
+    "fns": [
+      "driveImg"
+    ],
+    "apps": [
+      "CRM",
+      "Challan"
+    ]
+  },
+  "crash": {
+    "why": "The app may not die silently. Found the hard way, 17 Aug.",
+    "fns": [
+      "painted",
+      "crashPut",
+      "crashLast",
+      "crashHandle"
+    ],
+    "apps": [
+      "Challan",
+      "Payment"
+    ]
+  },
+  "refresh": {
+    "why": "One tap: the latest book AND the latest build.",
+    "fns": [
+      "liveVersion",
+      "refreshNow",
+      "updateNow",
+      "newVerBar"
+    ],
+    "apps": [
+      "Challan",
+      "Payment"
+    ]
+  },
+  "book": {
+    "why": "Pulling the book, and saying so when it comes back unusable.",
+    "fns": [
+      "usableBook",
+      "bookSay",
+      "getBook",
+      "mergeBook",
+      "slimBook"
+    ],
+    "apps": [
+      "Challan",
+      "Payment"
+    ]
+  },
+  "journal": {
+    "why": "The write journal's shared parts.",
+    "fns": [
+      "jrnLoad",
+      "jrnCount",
+      "jrnLanded",
+      "jrnMark",
+      "jrnDrop"
+    ],
+    "apps": [
+      "Challan",
+      "Payment"
+    ]
+  },
+  "sw": {
+    "why": "Registering the service worker.",
+    "fns": [
+      "regSW"
+    ],
+    "apps": [
+      "Challan",
+      "Payment"
+    ]
+  }
+}
