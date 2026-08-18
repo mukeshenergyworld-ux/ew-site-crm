@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.310";
+  var APP_VERSION = "6.9.311";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9148,6 +9148,42 @@ function viewCatalogue() {
   /* The PDF used to draw whatever logos happened to have arrived, so a slow one printed as an
      empty box. Now the fetch is a single memoised promise and quotePdf waits on it. */
   var LOGO_READY = null;
+
+  /* ================= A LOGO THAT IS OURS, NOT GOOGLE'S (v6.9.311) =================
+     Every brand logo until now came off a Drive share link on the `logos` tab: a backend
+     round-trip, an image that is really an HTML page until the server unwraps it, and a
+     12-second cap in loadPic() because one slow picture used to stall a whole quote PDF.
+
+     A logo does not change. It has no business being fetched from anywhere. Eureka Forbes,
+     added to the portfolio on 18 Aug 2026, ships as a file in assets/ on this same site - so
+     it costs no backend call, cannot be slow, cannot be rate-limited, works with no signal
+     once the app is installed, and cannot stall a PDF at all.
+
+     The Drive path stays exactly as it was for the twelve that already use it. This is not a
+     migration; it is the way any NEW logo should arrive, and the older ones can move here one
+     at a time whenever somebody has a clean file. */
+  var LOCAL_LOGOS = { "Eureka Forbes": "../assets/logo-eurekaforbes.png" };
+  function localLogos() {
+    return Promise.all(Object.keys(LOCAL_LOGOS).map(function (brand) {
+      var k = normB(brand);
+      if (LOGO_PICS[k]) return null;                        /* already in the device cache */
+      return new Promise(function (res) {
+        var img = new Image();
+        img.onload = function () {
+          try {
+            var c = document.createElement("canvas");
+            c.width = img.naturalWidth; c.height = img.naturalHeight;
+            c.getContext("2d").drawImage(img, 0, 0);
+            LOGO_PICS[k] = { src: c.toDataURL("image/png"), w: img.naturalWidth, h: img.naturalHeight };
+          } catch (e) {}
+          res(null);
+        };
+        img.onerror = function () { res(null); };           /* a missing file is not a broken quote */
+        img.src = LOCAL_LOGOS[brand];
+      });
+    })).then(function () { saveLogoCache(); return true; });
+  }
+
   function logosReady() {
     if (LOGO_READY) return LOGO_READY;
     var list = (S.data.logos || []).filter(function (l) { return l.url; });
@@ -9166,7 +9202,8 @@ function viewCatalogue() {
       });
     };
     var missing = list.filter(function (l) { return wanted(l.brand) && !LOGO_PICS[normB(l.brand)]; });
-    if (!missing.length) { LOGO_READY = Promise.resolve(true); return LOGO_READY; }
+    /* the local ones are read off this site and are always part of "ready" */
+    if (!missing.length) { LOGO_READY = localLogos(); return LOGO_READY; }
     /* v6.9.263 - THREE AT A TIME, NOT THIRTEEN.
        Promise.all over thirteen logos fires thirteen Apps Script calls in the same
        millisecond. Measured on his phone: each took 2.7-3.8s, and the sign-in and the book,
@@ -9298,12 +9335,15 @@ function viewCatalogue() {
   /* the 12 logos that print on a quote, in the order Mukesh grouped them.
      INAIR, LUNOS and NEXGEN are distributed but have no logo, so they no longer
      appear as text chips - a name beside a logo looked like a missing image. */
+  /* v6.9.311 - Eureka Forbes joins on 18 Aug 2026. Thirteen now, not twelve: the grid below
+     works the row count out from this list's length, so it reflows on its own and nothing else
+     needs touching. Its logo comes off assets/ rather than Drive - see LOCAL_LOGOS. */
   var PDF_LOGO_ORDER = ["Huliot", "Heliroma", "FIMA", "TOTO",
     "Grundfos", "Pentair", "Green Heat", "Adani",
-    "Geberit", "Stellar", "MEA", "Oyster"];
+    "Geberit", "Stellar", "MEA", "Oyster", "Eureka Forbes"];
 
   var DIST_BRANDS = ["HULIOT", "FIMA", "TOTO", "GRUNDFOS", "PENTAIR", "GREEN HEAT+", "GEBERIT",
-    "INAIR", "LUNOS", "STELLAR", "MEA", "NEXGEN", "ADANI SOLAR", "HELIROMA"];
+    "INAIR", "LUNOS", "STELLAR", "MEA", "NEXGEN", "ADANI SOLAR", "HELIROMA", "EUREKA FORBES"];
 
   var TERMS = [
     "EX WORKS - Prices are Ex Works Panipat warehouse.",
@@ -9435,8 +9475,23 @@ function viewCatalogue() {
 
       /* ---- AUTH. DISTRIBUTOR FOR: the whole strip sits in one soft panel ---- */
       var y = HH + 10;
-      var PER_ROW = 6, GAP = 2.2, BW = 17.5, BH = 9;
-      var GRID_W = PER_ROW * BW + (PER_ROW - 1) * GAP;
+      /* ============ TWO TIDY ROWS, WHATEVER THE COUNT (v6.9.311) ============
+         This was 6 across with a fixed 17.5mm box, which was two exact rows for twelve
+         brands. Eureka Forbes made thirteen, and thirteen put ONE lonely box on a third row
+         and made the panel 11mm taller on every quote page.
+
+         Drawn both ways as real PDFs and looked at, rather than worked out in my head - the
+         last grid decided in my head came out seven brands across a laptop screen. Seven
+         across is two full rows (7 + 6), the logo is still legible at 14.7mm, and holding
+         GRID_W fixed instead of deriving it keeps the AUTH. DISTRIBUTOR FOR label exactly the
+         60mm of room it had.
+
+         PER_ROW now follows the count, so the next brand added reflows on its own. The cap at
+         eight is where a box stops being readable; past that it takes a third row and that is
+         the right answer, not a squeeze. */
+      var GRID_W = 116, GAP = 2.2, BH = 9;
+      var PER_ROW = Math.min(8, Math.max(6, Math.ceil(PDF_LOGO_ORDER.length / 2)));
+      var BW = (GRID_W - (PER_ROW - 1) * GAP) / PER_ROW;
       var LROWS = Math.ceil(PDF_LOGO_ORDER.length / PER_ROW);
       var PAN_H = LROWS * BH + (LROWS - 1) * 2.2 + 8;
       fill([246, 250, 249]); doc.roundedRect(L, y - 4, Rt - L, PAN_H, 2, 2, "F");
@@ -12071,6 +12126,88 @@ function viewCatalogue() {
   /* Owner-only PIN reset. It only ever CLEARS a teammate's PIN (pin + pinSet columns); it never
      sets one. After a reset, the app forces that person to choose a fresh PIN the next time they
      sign in (login checks pinSet !== "Y"). No PIN is ever seen or typed by anyone but its owner. */
+  /* ================= WHO CAN OPEN WHAT (v6.9.311) =================
+     He wrote: "manoj still not able to log in challan app, do give him access."
+
+     The Challan app told Manoj exactly the truth - he is signed in as "service", and the app
+     is for admin, accounts and godown - and then told him to ask the owner to change it in
+     the team sheet, "nothing else controls it". That was accurate and it was a dead end: the
+     CRM showed the role as a grey pill and gave no way on earth to change it. The only way
+     was to open Google Sheets and edit a cell by hand, which is the one thing this whole
+     estate exists to stop anybody doing.
+
+     THESE THREE LISTS ARE NOT TYPED OUT HERE. The Challan and Payment lists are read out of
+     those apps' own gates at the top of this file's knowledge, and the CRM's is ROLE_TABS
+     itself - so the sentence a man reads before he presses Save cannot drift away from what
+     the apps actually do. If a gate changes, this changes with it. */
+  var APP_ROLES = {
+    "Challan app": ["admin", "accounts", "godown"],
+    "Payment app": ["admin", "accounts", "sales"]
+  };
+  /* The Visit and Saathi apps are NOT here on purpose: they sign in by mobile number against
+     EXEC / OWNER / PARTNER, not against this role at all, so a role change does not touch
+     them. Saying nothing about them would be a guess; saying this is the fact. */
+  function roleOpens(role) {
+    var out = [];
+    Object.keys(APP_ROLES).forEach(function (app) {
+      if (APP_ROLES[app].indexOf(role) >= 0) out.push(app);
+    });
+    return out;
+  }
+  function roleScreens(role) { return (ROLE_TABS[role] || []).length; }
+  var ROLE_LIST = ["admin", "accounts", "godown", "sales", "service"];
+
+  /* The one change that can lock the owner out of his own business. */
+  function activeAdmins() {
+    return (S.data.team || []).filter(function (u) {
+      return u && u.name && String(u.role || "") === "admin" &&
+             String(u.active || "").toUpperCase() !== "N";
+    });
+  }
+
+  function roleSay(role) {
+    var opens = roleOpens(role);
+    return "CRM: " + roleScreens(role) + " screen" + (roleScreens(role) === 1 ? "" : "s") +
+           " \u00b7 " + (opens.length ? opens.join(" and ") : "no other app");
+  }
+
+  function modalRole(u) {
+    var cur = String(u.role || "");
+    var h = '<h2>Role for ' + esc(u.name) + '</h2>' +
+      '<p class="sub">This is the only thing that decides which apps he can open. ' +
+      'It is one role per person \u2014 there is no way to give somebody two.</p>' +
+      '<label>Role</label><select id="ur_role">' + opts(ROLE_LIST, cur) + '</select>' +
+      '<div style="margin-top:10px;border:1px solid #e2e8f0;border-radius:9px;overflow:hidden">' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+      '<tr style="background:#f8fafc"><th style="text-align:left;padding:6px 9px">Role</th>' +
+      '<th style="text-align:left;padding:6px 9px">CRM</th>' +
+      '<th style="text-align:left;padding:6px 9px">Challan</th>' +
+      '<th style="text-align:left;padding:6px 9px">Payment</th></tr>';
+    ROLE_LIST.forEach(function (r) {
+      var on = r === cur;
+      h += '<tr style="' + (on ? 'background:#ecfdf5;font-weight:700' : '') + '">' +
+        '<td style="padding:6px 9px;border-top:1px solid #eef2f7">' + esc(r) +
+          (on ? ' <span class="pill teal">now</span>' : '') + '</td>' +
+        '<td style="padding:6px 9px;border-top:1px solid #eef2f7">' + roleScreens(r) + ' screens</td>' +
+        '<td style="padding:6px 9px;border-top:1px solid #eef2f7">' +
+          (APP_ROLES["Challan app"].indexOf(r) >= 0 ? 'yes' : '<span style="color:#94a3b8">no</span>') + '</td>' +
+        '<td style="padding:6px 9px;border-top:1px solid #eef2f7">' +
+          (APP_ROLES["Payment app"].indexOf(r) >= 0 ? 'yes' : '<span style="color:#94a3b8">no</span>') + '</td></tr>';
+    });
+    h += '</table></div>';
+    if (cur === "admin" && activeAdmins().length <= 1) {
+      h += '<div class="meta" style="margin-top:8px;color:#b91c1c;font-weight:700">' +
+        esc(u.name) + ' is the only active admin. Changing this role would leave nobody able to ' +
+        'set a PIN, edit a role, or open this screen \u2014 including you. Make somebody else ' +
+        'admin first.</div>';
+    }
+    h += '<div class="meta" style="margin-top:8px">He signs in again with the same PIN. ' +
+      'Nothing he has already written changes \u2014 challans, payments and notes keep his name on them.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="ur-save" data-id="' + esc(u.id) + '">Save role</button></div>';
+    return h;
+  }
+
   function viewTeamPins() {
     ensurePickerCss();
     var team = (S.data.team || []).slice().sort(function (a, b) {
@@ -12103,6 +12240,9 @@ function viewCatalogue() {
           /* v6.9.231 - the owner sets every PIN and therefore knows every PIN.
              Nobody can change their own, so nothing is ever chosen behind his back. */
           '<button class="btn sm" data-act="tp-setpin" data-id="' + esc(u.id) + '">Set PIN</button>' +
+          /* v6.9.311 - the role was shown as a pill and could not be changed from anywhere in
+             the estate. It is the single thing that decides which apps a man can open. */
+          '<button class="btn sm ghost" data-act="tp-role" data-id="' + esc(u.id) + '">Role</button>' +
           (temp ? '<button class="btn sm ghost act-billsend" data-act="tp-temp" data-id="' + esc(u.id) + '">Use last 4 of mobile</button>' : '') +
           '<button class="btn sm ghost act-reset" data-act="tp-reset" data-id="' + esc(u.id) + '">Block sign-in</button></div>'
               : '<span class="meta" style="color:#94a3b8">no id — set in sheet</span>') +
@@ -18952,38 +19092,19 @@ function viewCatalogue() {
         '</div></div>';
     }
     return h + '<div id="sq_res">' + uniHtml(local, lq) + serverExtraHtml(local, lq) + '</div>';
-    (r.clients || []).length && (h += '<h3 style="margin:14px 0 8px;font-size:14px">Clients</h3>');
-    (r.clients || []).forEach(function (c) {
-      if (!c.own) {
-        h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>' + esc(c.name) +
-          ' <span class="pill soon">already registered</span></h3><div class="meta">Registered on <b>' + esc(c.on) +
-          '</b> by another executive.<br><span style="color:#94a3b8">Do not enter this client again. Ask a partner if you need the details.</span></div></div>';
-        return;
-      }
-      h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "") + '</span></h3>' +
-        '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  \u00b7  ")) +
-        (c.area ? '<br>' + esc(c.area) : "") + '<br>Added ' + esc(c.on) + ' by ' + esc(c.by) + '</div>' +
-        '<div class="acts"><button class="btn sm ghost" data-act="bb-open" data-n="' + esc(c.name) + '">Brands</button></div></div>';
-    });
-    (r.quotes || []).length && (h += '<h3 style="margin:14px 0 8px;font-size:14px">Quotations</h3>');
-    (r.quotes || []).forEach(function (q) {
-      h += '<div class="card"><h3>' + esc(q.no) + ' <span class="pill teal">' + esc(q.status || "") + '</span></h3>' +
-        '<div class="meta">' + esc(q.client || "") + (q.own && q.brand ? ' &middot; ' + esc(q.brand) : "") +
-        (q.own && q.total ? '<br>' + money(q.total) : "") + '<br>' + esc(q.on) + ' by ' + esc(q.by) +
-        (q.own ? "" : '<br><span style="color:#94a3b8">Another executive\u2019s quote - amounts hidden.</span>') + '</div></div>';
-    });
-    (r.challans || []).length && (h += '<h3 style="margin:14px 0 8px;font-size:14px">Challans</h3>');
-    (r.challans || []).forEach(function (c) {
-      h += '<div class="card"><h3>' + esc(c.no) + ' <span class="pill teal">' + esc(c.status || "Draft") + '</span></h3>' +
-        '<div class="meta">' + esc(c.client || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
-        (c.own && c.amount ? '<br>' + money(c.amount) : "") + '<br>' + esc(c.on) + ' by ' + esc(c.by) + '</div></div>';
-    });
-    (r.sites || []).length && (h += '<h3 style="margin:14px 0 8px;font-size:14px">Sites</h3>');
-    (r.sites || []).forEach(function (x) {
-      h += '<div class="card"><h3>' + esc(x.name) + ' <span class="pill teal">' + esc(x.stage || "") + '</span></h3>' +
-        '<div class="meta">' + esc(x.client || "") + '</div></div>';
-    });
-    return h;
+    /* ================= 32 DEAD LINES, REMOVED 18 Aug 2026 =================
+       Everything that used to sit here was after the return above, so it never ran. It was
+       viewSearch()'s old renderer - it walked r.clients, r.quotes, r.challans and r.sites and
+       built cards from them - and it was orphaned on 16 Aug when 6.9.305 replaced this screen
+       with uniHits/uniHtml/serverExtraHtml, which read the local book instead of a server
+       reply. `r` does not exist in this function at all any more.
+
+       It could not have caused a fault where it stood. It is removed because the TypeScript
+       checker found it on the first run and it was 8 of the 10 "cannot find name" hits in the
+       whole estate - noise loud enough to hide a real one, which is exactly what it was doing:
+       the tenth was the Challan app's Edit button, broken since it shipped.
+
+       Nothing is lost. The cards it drew are drawn by uniHtml() and serverExtraHtml() now. */
   }
 
   /* What the SERVER found that this phone does not hold - another executive's client, an
@@ -22480,6 +22601,43 @@ function viewCatalogue() {
     if (act === "tp-setpin") {
       if (S.role !== "admin") { toast("Only the owner sets PINs."); return; }
       S.modal = modalSetPin(id); render(); return;
+    }
+    if (act === "tp-role") {
+      if (S.role !== "admin") { toast("Only the owner changes a role."); return; }
+      var _ru = (S.data.team || []).filter(function (x) { return x && x.id === id; })[0];
+      if (!_ru) { toast("Could not find that person on this device."); return; }
+      S.modal = modalRole(_ru); render(); return;
+    }
+    if (act === "ur-save") {
+      if (S.role !== "admin") { toast("Only the owner changes a role."); return; }
+      var _uu = (S.data.team || []).filter(function (x) { return x && x.id === id; })[0];
+      if (!_uu) { toast("Could not find that person on this device."); return; }
+      var _was = String(_uu.role || ""), _now = String(val("ur_role") || "");
+      if (!_now || ROLE_LIST.indexOf(_now) < 0) { toast("Pick a role."); return; }
+      if (_now === _was) { S.modal = null; render(); toast("No change \u2014 " + _uu.name + " is already " + _was + "."); return; }
+      /* ===== THE ONE CHANGE THAT CAN LOCK HIM OUT OF HIS OWN BUSINESS =====
+         Team PINs is admin-only, and so is this screen and every PIN reset. Move the last
+         admin off admin and there is no way back in from any app: no PIN can be set, no role
+         can be changed, and the fix would be editing a Google Sheet cell by hand - which is
+         exactly the situation this release exists to end. Refused, and told why. */
+      if (_was === "admin" && activeAdmins().length <= 1) {
+        toast(_uu.name + " is the only active admin. Make somebody else admin first \u2014 " +
+              "otherwise nobody can set a PIN or change a role again, including you.");
+        return;
+      }
+      /* SEND THE WHOLE ROW. The backend writes the entire sheet row from whatever it is sent,
+         so a partial save would blank his name, his mobile and his office. save() already
+         merges into the row held in memory and sends that - the same reason a PIN reset was
+         built this way after one blanked a team member's name. */
+      save("team", Object.assign({}, _uu, { role: _now }));
+      var _lost = roleOpens(_was).filter(function (a) { return roleOpens(_now).indexOf(a) < 0; });
+      var _gain = roleOpens(_now).filter(function (a) { return roleOpens(_was).indexOf(a) < 0; });
+      var _msg = _uu.name + " is now " + _now + ".";
+      if (_gain.length) _msg += " He can open the " + _gain.join(" and ") + ".";
+      if (_lost.length) _msg += " He can no longer open the " + _lost.join(" and ") + ".";
+      _msg += " He signs in again with the same PIN.";
+      S.modal = null; render(); toast(_msg);
+      return;
     }
     if (act === "sp-save") {
       if (S.role !== "admin") { toast("Only the owner sets PINs."); return; }
