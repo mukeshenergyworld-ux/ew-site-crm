@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.307";
+  var APP_VERSION = "6.9.308";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -15826,7 +15826,15 @@ function viewCatalogue() {
         name: nm, stage: stg, quotes: (e.quotes || []).length,
         mobile: c.mobile || c.mobile2 || "", city: c.location || "",
         architect: c.architect || "", plumber: c.plumber || "", builder: c.builder || "",
-        owner: String((e.lastQ && (e.lastQ.owner || e.lastQ.createdBy)) || c.owner || S.user || "")
+        /* v6.9.308 - was c.owner, which is NOT a column on a client. CL_ID2FIELD maps the
+           form's c_owner to "ownedBy", and that is the only name the record carries. So this
+           always read undefined and fell straight through to S.user - stamping a site with
+           whoever happened to be signed in, rather than the executive the client belongs to.
+           The SECOND instance of this exact fault: the Challan app's client card read cl.owner
+           too and showed a man filed under Mukesh Verma as having no executive. Found by
+           t_apps_agree.js, which is why that file exists. */
+        owner: String((e.lastQ && (e.lastQ.owner || e.lastQ.createdBy)) ||
+                      c.ownedBy || c.createdBy || S.user || "")
       });
     });
     /* the man with the most quotes riding on him first - if a batch runs short, it is the
