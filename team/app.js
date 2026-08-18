@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.308";
+  var APP_VERSION = "6.9.310";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -514,7 +514,34 @@
     teamGet: 60000, catalog: 60000, pdfHost: 240000, tgSend: 60000,
     search: 45000, historicChallan: 45000
   };
+  /* ============ WHAT THE WIRE ACTUALLY COSTS (v6.9.310) ============
+     He asked why a change made here takes so long to show up on the godown phone. The answer
+     turned out to be size - the Payment app's own comment has carried "about 680 KB each"
+     since v1.9.1, measured once by hand on one day - and the honest response to a number
+     measured once by hand is to make the apps measure it every time.
+
+     r.text() already holds the whole reply as a string on the way past, so the size is free
+     to take. The last dozen calls are kept, newest first, and the sync banner shows the last
+     teamGet. This is the CRM's copy of what the Challan and Payment apps now do. */
+  var _wire = [];
+  function wireNote(action, ms, bytes) {
+    _wire.unshift({ a: action, ms: Math.round(ms), b: bytes || 0, at: Date.now() });
+    if (_wire.length > 12) _wire.length = 12;
+    try { console.log("[EW wire] " + action + "  " + Math.round(ms) + "ms  " +
+                      Math.round((bytes || 0) / 1024) + "KB"); } catch (e) {}
+  }
+  function wireLast(action) {
+    for (var i = 0; i < _wire.length; i++) if (_wire[i].a === action) return _wire[i];
+    return null;
+  }
+  function wireSay() {
+    var g = wireLast("teamGet");
+    if (!g) return "";
+    return (Math.round(g.ms / 100) / 10) + "s \u00b7 " + Math.round(g.b / 1024) + " KB";
+  }
+
   function api(action, extra, ms) {
+    var _t0 = Date.now();
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
     var limit = ms || API_MS_BY_ACTION[action] || API_MS;
     var ctl = null, timer = null;
@@ -546,6 +573,7 @@
       fetch(GAS, opt)
         .then(function (r) {
           return r.text().then(function (txt) {
+            wireNote(action, Date.now() - _t0, (txt || "").length);
             var j = null;
             try { j = JSON.parse(txt); } catch (e) { j = null; }
             if (j) return j;
@@ -1119,6 +1147,44 @@
     if (fixed) { try { console.warn("[EW] re-applied " + fixed + " confirmed challan move(s) a re-sync had not caught up with"); } catch (x) { } }
   }
 
+  /* ONE PLACE THAT MINTS AN ID, because on 18 Aug 2026 the odd one out cost money.
+
+     save() below already minted a good id for any row that arrived without one: a counter,
+     the clock, and a million-wide random. But a caller that supplies its OWN id skips that
+     line entirely, and the bulk brand-discount save supplied
+
+         "D-" + Date.now() + "-" + Math.floor(Math.random() * 1000)
+
+     inside a synchronous forEach over every brand line on the screen. MEASURED, not reasoned
+     about: 60 lines finish in about 0.3 milliseconds, so Date.now() is the SAME for every row
+     in the batch and the whole id rests on three digits. A 10,000-batch run agrees with the
+     birthday maths to a tenth of a percent:
+
+         10 brand lines   4.2% of saves collide        30 lines  35.1%
+         20 brand lines  17.6%                         40 lines  53.4%    60 lines  82.1%
+
+     A collision is not a crash, which is why nothing ever reported it. The backend upserts by
+     id and so does the list in memory, so the second brand's percentage is written ONTO the
+     first brand's row: one brand silently priced at another brand's discount, on a screen
+     that has just said "Saved 30 brand lines". That row is what discPick() reads to price
+     every challan for that client, so the wrong number does not stay on the discount screen.
+
+     It only ever bit a row being created - a brand that already had a row reuses its id - so
+     the exposure is the first time a client's discount sheet is filled in, which is exactly
+     when the most lines are new at once.
+
+     The COUNTER is what fixes it. The width only matters for two devices in the same
+     millisecond. Every id this app mints for itself goes through here now, and no caller
+     writes the expression by hand again.
+
+     Whether any row on the live sheet was already lost this way cannot be answered from here
+     - it needs the Discounts tab read back and checked for a client whose brand count is
+     short. Flagged, not claimed. */
+  function mintId(p) {
+    mintId.n = (mintId.n || 0) + 1;
+    return String(p) + "-" + mintId.n + "-" + Date.now() + "-" + Math.floor(Math.random() * 1000000);
+  }
+
   function save(tab, row, quiet) {
     /* v6.9.124 — DUPLICATE FIX: every NEW row (no server id yet) is given a STABLE client-generated
        id that IS sent to the server. The backend upserts by id, so if a create is ever delivered
@@ -1130,7 +1196,7 @@
        (Previously new rows went up with id="" so each delivery created a brand-new server row, and
        the local _lid dedup key was stripped before the server ever saw it — the server had no way to
        know it was the same record.) */
-    if (!row.id) row.id = "L-" + (++_pkSeq) + "-" + Date.now() + "-" + Math.floor(Math.random() * 1000000);
+    if (!row.id) row.id = mintId("L");
     var list = (S.data[tab] = S.data[tab] || []);
     var idx = -1;
     for (var k = 0; k < list.length; k++) { if (list[k] && ((row.id && list[k].id === row.id) || (row._lid && list[k]._lid === row._lid))) { idx = k; break; } }
@@ -14759,7 +14825,7 @@ function viewCatalogue() {
     var st = sid ? clientSiteList(client).filter(function (x) { return x.id === sid; })[0] : null;
     return {
       row: {
-        id: "P-" + Date.now() + "-" + Math.floor(Math.random() * 1000), createdBy: S.user,
+        id: mintId("P"), createdBy: S.user,
         siteId: st ? st.id : "", siteName: st ? st.name : "",
         client: client, date: d, amount: amt, mode: val("pi_mode"), ref: val("pi_ref"), notes: ""
       }
@@ -16465,7 +16531,7 @@ function viewCatalogue() {
   function dupLog(kind, ids, det) {
     /* The id is minted HERE rather than left to save(), because the row has to be findable in
        the pending journal a moment later to check whether it actually went up. */
-    var rid = "D-" + Date.now() + "-" + Math.floor(Math.random() * 1000000);
+    var rid = mintId("D");
     return save("audit", {
       id: rid, createdAt: new Date().toISOString(), actor: S.user || "",
       action: "dup:" + kind, target: (ids || []).join(" "),
@@ -16488,7 +16554,7 @@ function viewCatalogue() {
      record - and then reports plainly whether the team sheet accepted it. If it did not, it
      shows the backend's own words, which is what tells us what to change. */
   function dupSelfTest() {
-    var rid = "D-" + Date.now() + "-" + Math.floor(Math.random() * 1000000);
+    var rid = mintId("D");
     S.dupTest = { state: "running" };
     render();
     return save("audit", {
@@ -21931,9 +21997,14 @@ function viewCatalogue() {
            so a copy from Tuesday looked exactly like this morning's. */
         (function () {
           var a = bookAge(bookTs());
-          if (a.tone === "ok") return '<span style="color:#94a3b8"> &middot; ' + esc(a.txt) + '</span>';
+          /* v6.9.310 - and what the last pull cost, measured. He asked why a change here is
+             slow to reach the godown phone; this is the number that answers it, on the
+             machine he asked from. */
+          var w = wireSay();
+          var tail = w ? '<span style="color:#cbd5e1"> &middot; ' + esc(w) + '</span>' : '';
+          if (a.tone === "ok") return '<span style="color:#94a3b8"> &middot; ' + esc(a.txt) + '</span>' + tail;
           return '<span style="color:' + (a.tone === "bad" ? "#b91c1c" : "#b45309") +
-                 ';font-weight:800"> &middot; ' + esc(a.txt) + '</span>';
+                 ';font-weight:800"> &middot; ' + esc(a.txt) + '</span>' + tail;
         })() + '</div></div>' +
       '<input id="gq" placeholder="Search anything — quote, challan, product, client, partner…" value="' + esc(S.gq || "") + '" autocomplete="off" ' +
       'style="flex:1;min-width:110px;max-width:380px;margin:0 14px;padding:9px 14px;border:1px solid #cbd5e1;border-radius:20px;font-size:14px;outline:none;background:#fff"/>' +
@@ -23690,7 +23761,7 @@ function viewCatalogue() {
         var notesStr = Object.keys(notes).length ? JSON.stringify(notes) : "";
         var isEmpty = (pct === "" || pct === 0) && !notesStr;
         if (isEmpty && !exd) return;       // don't create a blank row for a brand never touched
-        save("discounts", { id: (exd ? exd.id : "") || ("D-" + Date.now() + "-" + Math.floor(Math.random() * 1000)), client: g.client, brand: g.brand, pct: pct, notes: notesStr }, true);
+        save("discounts", { id: (exd ? exd.id : "") || mintId("D"), client: g.client, brand: g.brand, pct: pct, notes: notesStr }, true);
         saved++;
       });
       setTimeout(function () {
@@ -24892,7 +24963,7 @@ function viewCatalogue() {
         var v = hnon[b] ? 0 : (Number(hpct[b]) || 0);
         /* A real row either way - that is what makes "ignore once" stick. */
         save("discounts", {
-          id: "D-" + Date.now() + "-" + i + "-" + Math.floor(Math.random() * 100000),
+          id: mintId("D"),
           client: hc.customerName || "", brand: b, pct: v, notes: ""
         }, true);
         if (v > 0) hset.push(b + " " + v + "%"); else hign.push(b);
@@ -25540,7 +25611,7 @@ function viewCatalogue() {
       /* the type, filed where no sheet column is needed - see driverTypeMap() */
       if (dnType) {
         save("audit", {
-          id: "DT-" + Date.now() + "-" + Math.floor(Math.random() * 100000),
+          id: mintId("DT"),
           createdAt: new Date().toISOString(), actor: S.user || "",
           action: "driver:type", target: dnName,
           detail: JSON.stringify({ name: dnName, vehicleType: dnType, vehicle: dnVeh })
