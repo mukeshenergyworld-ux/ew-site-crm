@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.27.0";
+  var APP_VERSION = "1.28.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -421,8 +421,19 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       ", tabs=[" + tabs.join(",") + "]" +
       (r.error ? ", error=" + String(r.error) : "");
   }
-  function getBook() {
-    return api("teamGet", { only: KEEP }).then(function (r) {
+  /* ============ THE BOOK COMES DOWN IN PARTS (18 Aug 2026) ============
+     "crm app updted in my macbook takes long time to update in godwon android phone."
+
+     It was one call for the whole book before anything new could be shown. The Payment app's
+     own comment has carried the size since v1.9.1 - about 680 KB - and a client added on a
+     MacBook lives in ONE of those tabs. So `only` is now a parameter: each app asks for the
+     half a man is waiting on first, and the history behind it.
+
+     Omitted still means the whole book, which is what the fallback below asks for and what
+     anything wanting everything at once should keep asking for. */
+  function getBook(only) {
+    var want = only || KEEP;
+    return api("teamGet", { only: want }).then(function (r) {
       if (usableBook(r)) { BOOKSAY = ""; return r; }
       BOOKSAY = bookSay(r);
       /* the narrow ask came back unusable - try it the way the CRM does, which works */
@@ -437,6 +448,24 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       }).catch(function () { return r; });
     });
   }
+  /* MERGE, NEVER REPLACE. `S.data = slimBook(r)` threw away every tab the answer did not
+     carry. That is right for one call that asks for everything and catastrophic for two calls
+     that each ask for half. A tab is only ever overwritten when the server actually sent it
+     AS AN ARRAY - so a part that comes back empty, refused or broken leaves what is already on
+     the phone exactly where it was. Nothing in here can empty a tab, which matters most in the
+     Payment app: a due is challans plus freight, less payments, less returns, and a tab
+     silently blanked would show a man as owing more than he does. */
+  function mergeBook(r, tabs) {
+    if (!S.data) S.data = { ok: true };
+    S.data.ok = true;
+    if (r && r.user) S.data.user = r.user;
+    (tabs || []).forEach(function (k) { if (r && Array.isArray(r[k])) S.data[k] = r[k]; });
+    return S.data;
+  }
+  /* NO LONGER ON THE PULL PATH as of 18 Aug 2026 - mergeBook above replaced it, because this
+     one builds a NEW object and so silently drops every tab the answer did not carry. Kept
+     because it is still the right shape for a caller that has a whole book in its hand and
+     wants only the named tabs out of it. Do not wire it back into a staged pull. */
   function slimBook(r) {
     if (!r || typeof r !== "object") return r;
     var out = { ok: r.ok };
@@ -675,7 +704,31 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
        queues behind whatever teamGet another phone already has in flight. 45s. */
     teamAuth: 45000
   };
+  /* ============ WHAT THE WIRE ACTUALLY COSTS (v1.28.0) ============
+     Every claim about speed in this estate that was not measured has turned out wrong, and one
+     of them went into a document with confidence before anybody timed it. So the app times
+     itself. r.text() already has the whole reply as a string on the way past, so the size
+     costs nothing to take. The last dozen calls are kept, newest first, and the book header
+     shows the last teamGet. Nothing about the pull has to be guessed again. */
+  var _wire = [];
+  function wireNote(action, ms, bytes) {
+    _wire.unshift({ a: action, ms: Math.round(ms), b: bytes || 0, at: Date.now() });
+    if (_wire.length > 12) _wire.length = 12;
+    try { console.log("[EW wire] " + action + "  " + Math.round(ms) + "ms  " +
+                      Math.round((bytes || 0) / 1024) + "KB"); } catch (e) {}
+  }
+  function wireLast(action) {
+    for (var i = 0; i < _wire.length; i++) if (_wire[i].a === action) return _wire[i];
+    return null;
+  }
+  function wireSay() {
+    var g = wireLast("teamGet");
+    if (!g) return "";
+    return (Math.round(g.ms / 100) / 10) + "s \u00b7 " + Math.round(g.b / 1024) + " KB";
+  }
+
   function api(action, extra, ms) {
+    var _t0 = Date.now();
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
     var limit = Number(ms) || API_MS_BY_ACTION[action] || API_TIMEOUT;
     var ctrl = null, timer = null;
@@ -693,6 +746,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       fetch(GAS, opts)
         .then(function (r) {
           return r.text().then(function (txt) {
+            wireNote(action, Date.now() - _t0, (txt || "").length);
             var j = null;
             try { j = JSON.parse(txt); } catch (e) { j = null; }
             if (j) return j;
@@ -1035,7 +1089,30 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      challans and no Won brand is precisely the case being stopped, so the challans this app
      already holds cannot answer it alone. If the pull ever gets heavy, the fix is a `since:`
      cursor on the backend, not dropping this tab. */
-  var KEEP = ["clients","challans","returns","sites","drivers","discounts","brandmap","brands","associates","audit","pitch"];
+  /* ================= THE BOOK COMES DOWN IN TWO PARTS (v1.28.0) =================
+     HIS REPORT: "crm app updted in my macbook takes long time to update in godwon android
+     phone." He is right, and the reason is that this app asked for EVERYTHING before it would
+     show him ANYTHING new.
+
+     A client added on the MacBook lives in one tab: clients. To see it, this phone was
+     dragging down the whole book on the same call - including `audit`, which is every action
+     anybody has ever taken in the business and grows for ever, and which this app reads for
+     exactly three small lookups (the manual book number, a driver's vehicle type, and which
+     challans have a receipt). On a godown phone on 4G that is the wait.
+
+     So the pull is two calls now. The FIRST asks only for what a man needs to start work and
+     is where a newly added client actually is. The screen is right that much sooner. The
+     SECOND brings the history down behind it, with nothing waiting on it.
+
+     `brands` is gone from the list entirely: S.data.brands is not read anywhere in this app.
+     It was coming down every pull and being thrown away. */
+  var KEEP_FAST = ["clients","sites","drivers","discounts","brandmap","associates"];
+  var KEEP_REST = ["challans","returns","audit","pitch"];
+  /* v1.11.0 - "pitch" is not free: one row per client per brand. It is pulled because without
+     it this app cannot tell a lead from a client, and the rule the owner set is that material
+     does not leave the godown against a lead. It is in the SECOND part, not the first - the
+     lead check guards Create, which is later than the moment the form opens. */
+  var KEEP = KEEP_FAST.concat(KEEP_REST);
 
   /* ============ WHEN THE BOOK COMES BACK UNUSABLE (17 Aug 2026) ============
      Reported from the counter: "Could not read the book. Try again." - and those six words
@@ -1916,9 +1993,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function bookAgeHtml(ts, busy) {
     if (busy) return '<span class="sync">syncing&hellip;</span>';
     var a = bookAge(ts);
-    if (a.tone === "ok") return '<span class="sync">' + esc(a.txt) + '</span>';
+    /* v1.28.0 - and what the last pull cost, in the one place a man already looks to ask how
+       fresh this is. It is measured, not estimated: the seconds are wall clock around the
+       call and the KB is the length of the reply. */
+    var w = wireSay();
+    var tail = w ? '<span class="sync" style="opacity:.65"> \u00b7 ' + esc(w) + '</span>' : '';
+    if (a.tone === "ok") return '<span class="sync">' + esc(a.txt) + '</span>' + tail;
     return '<span class="sync" style="font-weight:800;color:' +
-      (a.tone === "bad" ? "#fecaca" : "#fde68a") + '">' + esc(a.txt) + '</span>';
+      (a.tone === "bad" ? "#fecaca" : "#fde68a") + '">' + esc(a.txt) + '</span>' + tail;
   }
   function header() {
     /* 18 Aug: was toTimeString() with no date - see bookAge(). */
@@ -2148,6 +2230,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (overDays) {
       h += '<div style="font-size:12px;font-weight:800;color:#b91c1c;margin-top:3px">' +
         'A challan has been unbilled ' + m.oldest + ' days on ' + m.days + '-day terms.</div>';
+    }
+    /* v1.28.0 - THIS FIGURE IS COMPUTED FROM `challans`, WHICH NOW ARRIVES SECOND.
+       For the seconds between the two halves of a pull the number below is the last full one
+       pulled onto this phone, not this minute's. It was ALWAYS that during a pull - the app
+       painted the snapshot and waited - the difference is that the split makes the window a
+       thing worth naming, and this is a figure a man decides whether to load a lorry on. So
+       it says so, rather than being quietly a little bit old. */
+    if (!S.restAt) {
+      h += '<div class="muted" style="font-size:11px;margin-top:3px">From the last full pull' +
+        (S.syncAt ? ' \u2014 ' + esc(bookAge(S.syncAt).txt) : '') + '. The delivery history is still coming down.</div>';
     }
     if (m.noReceipt) {
       h += '<div class="muted" style="font-size:11.5px;margin-top:3px">' +
@@ -3153,11 +3245,24 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     toast("Face ID / fingerprint removed from this phone.");
     S.sheet = sheetAccount(); render();
   }
+  /* ============ FORGETTING THE BOOK MEANS FORGETTING WHEN IT CAME ============
+     `S.data = null` was clearing the book and leaving the stamps that describe it standing.
+     The header then read "updated 13:15" over a screen with no book behind it at all, and
+     from v1.28.0 it was worse than cosmetic: the lead check asks S.restAt whether the
+     delivery history has been pulled THIS session before it is willing to refuse a man at the
+     counter. Sign out as one man and in as another on the same phone without reloading, and
+     that answer belonged to somebody else's book.
+
+     Three stamps, one place, so a fourth cannot be added and missed. */
+  function forgetBook() {
+    S.data = null; S.syncAt = 0; S.fastAt = 0; S.restAt = 0;
+  }
+
   function signOut() {
     try { localStorage.removeItem(STORE); } catch (e) {}
     try { localStorage.removeItem(BIO_KEY); } catch (e) {}
     try { bigDel(SNAP + "_" + S.user); } catch (e) {}
-    S.user = ""; S.pin = ""; S.role = ""; S.data = null; S.sheet = null; S.ch = null; S.rt = null;
+    S.user = ""; S.pin = ""; S.role = ""; forgetBook(); S.sheet = null; S.ch = null; S.rt = null;
     renderLogin("Signed out on this phone.");
   }
 
@@ -3657,6 +3762,27 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       /* v1.11.0 - see isClientC(). Refused here, and the message names the step and the
          people who can take it, rather than leaving a man guessing at the counter. */
       if (!isClientC(cObj.name)) {
+        /* ====== v1.28.0 - A REFUSAL THAT MIGHT BE AN IGNORANCE IS NOT A REFUSAL ======
+           isClientC() says "no" in two completely different situations: this man is genuinely
+           not a client, and the two tabs that would prove he is - challans and pitch - are not
+           on this phone yet. Those were the same thing while the book came down in one piece.
+           They are not any more. The history half lands second now, so on a phone that has
+           never held this book there is a window in which a customer of ten years would be
+           told, at the counter, with the material on the trolley, that he "is not a client
+           yet". That is the app asserting something it cannot know, which is the one thing
+           this estate keeps being bitten by.
+
+           It also fixes a fault that predates the split. If the history on this phone is from
+           yesterday and the office marked the brand Won this morning, the old code refused
+           flatly and named nobody's copy. Now a refusal that has not been checked against the
+           server THIS session goes and checks. */
+        if (!S.restAt) {
+          toast(cObj.name + " is not marked a client in the copy on this phone" +
+                (S.syncAt ? " (" + bookAge(S.syncAt).txt + ")" : "") +
+                " \u2014 checking with the office now. Press Create again in a moment.");
+          try { pull(true); } catch (e) {}
+          return;
+        }
         toast(cObj.name + " is not a client yet \u2014 no delivery has ever gone to him and no " +
               "brand is marked Won. The office marks a brand Won in the CRM, then this challan " +
               "can be written.");
@@ -4047,32 +4173,38 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     } catch (e) { return null; }
   }
 
+  /* Only one pull may be in flight. Two overlapping pulls were rare while the 60s guard
+     existed; without it a man tapping between apps could start three, and the last to land
+     would win regardless of which was freshest. */
+  var _pulling = null;
+
+  /* ================= HOW OFTEN EACH HALF IS WORTH ASKING FOR =================
+     The owner's instruction was "check every time the app is opened or returned to". Taken
+     literally that is one 680 KB pull per return, on a godown phone, on 4G - and this is an
+     app a man leaves for every phone call. Taken usefully it means: never refuse to look for
+     what he is looking for.
+
+     What he is looking for is a client, a rate, a driver. That half is small and comes down
+     EVERY time, with no guard at all. The delivery history behind it is the big half and
+     changes when somebody in this building makes it change, so it comes down on the first
+     open, on the refresh arrow, and otherwise at most every five minutes.
+
+     So the answer to "did you check?" is always yes, and the phone is not made to drag the
+     whole book across a godown roof thirty times a day to do it. */
+  var REST_EVERY = 300000;
+  function restStale() { return !S.restAt || (Date.now() - S.restAt) > REST_EVERY; }
+
   function pull(loud) {
+    if (_pulling) { if (loud) toast("Already pulling\u2026"); return _pulling; }
     var snap = snapLoad();
     if (snap && !S.data) { S.data = snap; applyJournal(); render(); }
     S.busy = true;
     if (S.data) render();
-    if (loud) toast("Pulling the latest…");
-    return Promise.all([getBook(), loadCatalog()]).then(function (arr) {
-      var r = arr[0];
-      S.busy = false;
-      if (usableBook(r)) {
-        S.data = slimBook(r); S.syncAt = Date.now(); bust();
-        /* v1.10.0 - THE ORDER MATTERS AND IT IS NOT INTERCHANGEABLE.
-           jrnReconcile reads a FRESH server pull to decide which held records the server
-           already has. applyJournal then lays the rest back on top. Do them the other way
-           round and every entry matches the copy of itself the overlay just added, so the
-           journal clears itself on the first pull - the exact opposite of the point of
-           having one. */
-        jrnReconcile(); applyJournal();
-        snapSave(); flushSoon();
-      }
-      else if (!S.data) { renderLogin("Could not read the book. " +
-        (BOOKSAY ? BOOKSAY + " \u2014 read this out to the office." : "Sign in again.")); return; }
-      render();
-      if (loud) toast("Up to date.");
-    }).catch(function () {
-      S.busy = false;
+    if (loud) toast("Pulling the latest\u2026");
+
+    var landedFast = false;
+    var fail = function () {
+      S.busy = false; _pulling = null;
       if (!S.data) {
         /* v1.10.0 - do not say nothing is saved when something is. */
         renderLogin(jrnCount()
@@ -4080,8 +4212,57 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           : "No signal, and nothing saved on this phone yet.");
         return;
       }
-      render(); toast("No signal — showing what was last pulled onto this phone.");
-    });
+      render();
+      toast(landedFast
+        ? "Names and rates are up to date. The delivery history did not come down \u2014 showing the last one pulled onto this phone."
+        : "No signal \u2014 showing what was last pulled onto this phone.");
+    };
+
+    /* PART ONE - names, sites, drivers, rates. A client added on the MacBook is in here, and
+       this is the call the man is actually waiting on. */
+    _pulling = Promise.all([getBook(KEEP_FAST), loadCatalog()]).then(function (arr) {
+      var r = arr[0];
+      if (!usableBook(r)) {
+        if (!S.data) {
+          S.busy = false; _pulling = null;
+          renderLogin("Could not read the book. " +
+            (BOOKSAY ? BOOKSAY + " \u2014 read this out to the office." : "Sign in again."));
+          return false;
+        }
+        return true;                       /* keep what is on the phone and still try part two */
+      }
+      landedFast = true;
+      mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
+      applyJournal(); snapSave(); render();
+      if (loud) toast("Names and rates are up to date" + (wireSay() ? " (" + wireSay() + ")" : "") +
+                      ". Delivery history is still coming.");
+      return true;
+    }).then(function (go) {
+      if (!go) return;
+      /* PART TWO - the history. Nothing on the screen waits for this, and it is the bigger
+         half: `audit` alone is every action anybody has ever taken. Skipped when it came down
+         recently, unless the man asked for it by name with the refresh arrow. */
+      if (!loud && !restStale()) { S.busy = false; _pulling = null; render(); return; }
+      return getBook(KEEP_REST).then(function (r2) {
+        S.busy = false; _pulling = null;
+        if (!usableBook(r2)) { render(); return; }
+        mergeBook(r2, KEEP_REST); S.restAt = Date.now(); bust();
+        /* v1.10.0 - THE ORDER MATTERS AND IT IS NOT INTERCHANGEABLE.
+           jrnReconcile reads a FRESH server pull to decide which held records the server
+           already has. applyJournal then lays the rest back on top. Do them the other way
+           round and every entry matches the copy of itself the overlay just added, so the
+           journal clears itself on the first pull - the exact opposite of the point of
+           having one.
+           v1.28.0 - and it runs HERE, after part two, never after part one: challans and
+           audit are the tabs the journal writes into, and reconciling against a half-book
+           would be asking whether a record landed while holding back the answer. */
+        jrnReconcile(); applyJournal();
+        S.syncAt = Date.now(); snapSave(); flushSoon(); render();
+        if (loud) toast("Up to date.");
+      });
+    }).catch(function () { fail(); });
+
+    return _pulling;
   }
 
   /* This is an app you leave constantly - you photograph a receipt, you ring the driver.
@@ -4091,7 +4272,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (document.hidden) return;
     if (!S.user || !S.data) return;
     if (S.sheet || S.ch || S.rt) return;
-    if (Date.now() - (S.syncAt || 0) < 60000) return;
+    /* v1.28.0 - THE 60-SECOND GUARD IS GONE, at the owner's instruction.
+       It read `if (Date.now() - S.syncAt < 60000) return;`. It was there to stop a man
+       flicking between apps from spending a backend call every few seconds, and it cost him
+       the thing he actually complained about: a client added on the MacBook and looked for on
+       the godown phone half a minute later was not there, and the app had decided not to ask.
+       What replaces it is the in-flight guard inside pull() - which stops the real problem the
+       60 seconds was aiming at, two pulls racing, without ever refusing to look. */
     pull(false);
   });
 
@@ -4132,19 +4319,22 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (snap) { S.data = snap; applyJournal(); S.busy = true; render(); } else openingScreen();
 
     var authP = api("teamAuth", { ua: navigator.userAgent });
-    var dataP = getBook();
+    /* v1.28.0 - the same split as pull(). The first open of the morning is the slowest moment
+       in this app's day, because Apps Script wakes cold; asking for the names first means the
+       form is usable while the history is still arriving. */
+    var dataP = getBook(KEEP_FAST);
     var refused = false;
     loadCatalog();
 
     authP.then(function (r) {
       if (!r || !r.ok) {
-        refused = true; S.pin = ""; S.data = null;
+        refused = true; S.pin = ""; forgetBook();
         try { localStorage.removeItem(STORE); } catch (e) {}
         renderLogin("Sign in again."); return;
       }
       S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
       if (ALLOWED.indexOf(S.role) < 0) {
-        refused = true; S.pin = ""; S.data = null;
+        refused = true; S.pin = ""; forgetBook();
         renderLogin(notForYou(S.user, S.role)); S.role = ""; return;
       }
       try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: sess.pin, role: S.role })); } catch (e) {}
@@ -4153,15 +4343,23 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
     dataP.then(function (r) {
       if (refused) return;
-      S.busy = false;
       if (usableBook(r)) {
-        S.data = slimBook(r); S.syncAt = Date.now(); bust();
-        jrnReconcile(); applyJournal();      /* reconcile first - see pull() */
-        snapSave(); render(); flushSoon();
+        mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
+        applyJournal(); snapSave(); render();
       }
-      else if (!S.data) openingScreen("Could not read the book. " +
-        (BOOKSAY ? BOOKSAY + " \u2014 read this out to the office." : "Try again."));
+      else if (!S.data) { S.busy = false;
+        openingScreen("Could not read the book. " +
+          (BOOKSAY ? BOOKSAY + " \u2014 read this out to the office." : "Try again.")); return; }
       else render();
+      /* part two, behind the screen the man is already looking at */
+      return getBook(KEEP_REST).then(function (r2) {
+        if (refused) return;
+        S.busy = false;
+        if (!usableBook(r2)) { render(); return; }
+        mergeBook(r2, KEEP_REST); S.restAt = Date.now(); bust();
+        jrnReconcile(); applyJournal();      /* reconcile after the history - see pull() */
+        S.syncAt = Date.now(); snapSave(); render(); flushSoon();
+      });
     }).catch(function () {
       if (refused) return;
       S.busy = false;
