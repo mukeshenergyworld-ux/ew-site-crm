@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.304";
+  var APP_VERSION = "6.9.305";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18492,13 +18492,181 @@ function viewCatalogue() {
     return h;
   }
 
+  /* ===================== THE BOOK ANSWERS FIRST (v6.9.305) =====================
+     "i need search bar as universal search bar, for all related apps"
+
+     This screen already searched clients, quotes, challans and sites - but it asked the
+     SERVER to do it, and waited. Three things followed from that, all bad:
+
+       1. It cost a round trip. Measured on 18 Aug: a bare call to Apps Script is 1.4 to 2.1
+          seconds before it does any work at all. Two seconds to find a man whose record is
+          already sitting in this phone's memory.
+       2. It matched however the SERVER matches - which does not know about the firm names on
+          the "Bills under" list. So "Mohit Trading" came back empty here too, for the same
+          reason it came back empty everywhere else.
+       3. With no signal it found nothing, in an app that was holding the whole book.
+
+     So the book answers first, instantly, out of S.data - and the server's answer is merged
+     in when it arrives, because the server can see records this executive's copy does not
+     (another man's clients, older quotes). Local hits are marked so the merge cannot show
+     the same record twice.
+
+     Everything a client is known by comes through clientHay(), so the firm on the cheque
+     finds him here exactly as it now does everywhere else. */
+  function uniHits(q) {
+    var lq = String(q || "").trim().toLowerCase();
+    var out = { clients: [], quotes: [], challans: [], sites: [], products: [], partners: [], payments: [], drivers: [] };
+    if (lq.length < 2) return out;
+    var d = S.data || {};
+    var has = function (v) { return String(v == null ? "" : v).toLowerCase().indexOf(lq) > -1; };
+
+    (d.clients || []).forEach(function (c) {
+      if (clientHay(c).indexOf(lq) > -1) out.clients.push(c);
+    });
+    (d.challans || []).forEach(function (c) {
+      /* the paper book number too - it is what a man hunting a delivery usually has */
+      if (has(c.challanNo) || has(c.customerName) || has(c.site) || has(c.driver) ||
+          has(c.vehicle) || has(c.billNo) || has(manualNoFor(c))) out.challans.push(c);
+    });
+    (d.quotes || []).forEach(function (q2) {
+      if (has(q2.quoteNo) || has(q2.client) || has(q2.brand) || has(q2.site)) out.quotes.push(q2);
+    });
+    (d.sites || []).forEach(function (x) {
+      if (has(x.name) || has(x.client) || has(x.area) || has(x.location)) out.sites.push(x);
+    });
+    (d.payments || []).forEach(function (p) {
+      /* the reference is where a cheque number or a UTR lives, and often the firm too */
+      if (has(p.client) || has(p.ref) || has(p.notes) || has(p.mode)) out.payments.push(p);
+    });
+    (d.drivers || []).forEach(function (dr) {
+      if (has(dr.name) || has(dr.mobile) || has(dr.vehicle)) out.drivers.push(dr);
+    });
+    PRODUCTS.forEach(function (p) {
+      if (out.products.length >= 25) return;
+      if (has(p.code) || has(p.desc) || has(p.family) || has(p.brand) || has(p.cat)) out.products.push(p);
+    });
+    (d.associates || []).forEach(function (a) {
+      if (has(a.name) || has(a.mobile) || has(a.role) || has(a.area)) out.partners.push(a);
+    });
+    return out;
+  }
+  function uniCount(o) {
+    var n = 0, k;
+    for (k in o) if (o[k] && o[k].length !== undefined) n += o[k].length;
+    return n;
+  }
+  function uniHtml(o, q) {
+    var h = "", HH = 'style="margin:14px 0 8px;font-size:14px"';
+    function group(title, list, row) {
+      if (!list || !list.length) return;
+      h += '<h3 ' + HH + '>' + title + ' <span class="pill teal">' + list.length + '</span></h3>';
+      list.slice(0, 25).forEach(function (x) { h += row(x); });
+      if (list.length > 25) h += '<div class="meta" style="margin:-4px 0 8px">and ' + (list.length - 25) +
+        ' more &mdash; type another letter</div>';
+    }
+    group("Clients", o.clients, function (c) {
+      /* WHY he matched, when it was not his own name. A hit with no visible reason reads as
+         a bug - which is exactly what the firm search would look like without this. */
+      var why = "";
+      var lq = String(q || "").toLowerCase();
+      if (String(c.name || "").toLowerCase().indexOf(lq) < 0) {
+        try {
+          var b = JSON.parse(c.billingJson || "[]");
+          for (var i = 0; i < b.length; i++) {
+            if ((String(b[i].name || "") + " " + String(b[i].gstin || "")).toLowerCase().indexOf(lq) > -1) {
+              why = 'billed under <b>' + esc(b[i].name) + '</b>'; break;
+            }
+          }
+        } catch (e) {}
+        if (!why) why = "matched on his other details";
+      }
+      return '<div class="card"><h3>' + esc(c.name) +
+        (c.location ? ' <span class="pill teal">' + esc(c.location) + '</span>' : '') + '</h3>' +
+        '<div class="meta">' + esc([c.area, c.mobile].filter(Boolean).join("  \u00b7  ")) +
+        (why ? '<br><span style="color:#0f766e">' + why + '</span>' : '') + '</div>' +
+        '<div class="acts"><button class="btn sm ghost" data-act="cl-open" data-n="' + esc(c.name) + '">Open</button>' +
+        '<button class="btn sm ghost" data-act="bb-open" data-n="' + esc(c.name) + '">Brands</button></div></div>';
+    });
+    group("Challans", o.challans, function (c) {
+      var bk = manualNoFor(c);
+      return '<div class="card"><h3>' + esc(c.challanNo || "") +
+        (bk ? ' <span class="pill">Book ' + esc(bk) + '</span>' : '') +
+        ' <span class="pill teal">' + esc(c.status || "Draft") + '</span></h3>' +
+        '<div class="meta">' + esc(c.customerName || "") + (c.site ? '  \u00b7  ' + esc(c.site) : '') +
+        '<br>' + esc(d10(c.createdAt)) + (c.amount ? '  \u00b7  ' + money(Number(c.amount) || 0) : '') + '</div></div>';
+    });
+    group("Payments", o.payments, function (p) {
+      return '<div class="card"><h3>' + money(Number(p.amount) || 0) +
+        ' <span class="pill teal">' + esc(p.mode || "") + '</span></h3>' +
+        '<div class="meta">' + esc(p.client || "") + '<br>' + esc(d10(p.date || p.createdAt)) +
+        (p.ref ? '  \u00b7  ref ' + esc(p.ref) : '') + '</div></div>';
+    });
+    group("Quotations", o.quotes, function (q2) {
+      return '<div class="card"><h3>' + esc(q2.quoteNo || "") +
+        ' <span class="pill teal">' + esc(q2.status || "") + '</span></h3>' +
+        '<div class="meta">' + esc(q2.client || "") + (q2.brand ? '  \u00b7  ' + esc(q2.brand) : '') + '</div></div>';
+    });
+    group("Sites", o.sites, function (x) {
+      return '<div class="card"><h3>' + esc(x.name || "") + '</h3><div class="meta">' +
+        esc([x.client, x.area, x.location].filter(Boolean).join("  \u00b7  ")) + '</div></div>';
+    });
+    group("Drivers", o.drivers, function (x) {
+      return '<div class="card"><h3>' + esc(x.name || "") + '</h3><div class="meta">' +
+        esc([x.mobile, x.vehicle].filter(Boolean).join("  \u00b7  ")) + '</div></div>';
+    });
+    group("Partners", o.partners, function (a) {
+      return '<div class="card"><h3>' + esc(a.name || "") + '</h3><div class="meta">' +
+        esc([a.role, a.mobile, a.area].filter(Boolean).join("  \u00b7  ")) + '</div></div>';
+    });
+    group("Products", o.products, function (p) {
+      return '<div class="card"><h3>' + esc(p.desc || p.code) + '</h3><div class="meta">' +
+        esc([p.code, p.brand, p.family].filter(Boolean).join("  \u00b7  ")) +
+        (p.price ? '  \u00b7  ' + money(p.price) : '') + '</div></div>';
+    });
+    return h;
+  }
+
+  /* The office is asked ONCE per query, in the background, and never blocks the screen. */
+  var _uniAsked = "";
+  function uniAsk(qv) {
+    qv = String(qv || "").trim();
+    if (qv.length < 2 || qv === _uniAsked) return;
+    _uniAsked = qv;
+    S.sres = null; S.sBusy = true;
+    api("search", { q: qv }).then(function (r) {
+      if (String(S.sq || "").trim() !== qv) return;   /* he has typed on - this answer is stale */
+      S.sres = (r && r.ok) ? r : { clients: [], quotes: [], challans: [], sites: [] };
+      S.sBusy = false; render();
+    }).catch(function () {
+      if (String(S.sq || "").trim() !== qv) return;
+      S.sBusy = false; render();
+    });
+  }
+
   function viewSearch() {
-    var h = '<div class="row"><input class="grow" id="sq" placeholder="Client name, phone, quote no., challan no..." value="' + esc(S.sq) + '"/>' +
-      '<button class="btn" data-act="s-go">Search</button></div>';
-    var r = S.sres;
-    if (!r) return h + '<div class="empty">Type at least 3 characters. Searches clients, phone numbers, quotes, challans and sites across the whole firm.</div>';
-    var total = (r.clients || []).length + (r.quotes || []).length + (r.challans || []).length + (r.sites || []).length;
-    if (!total) return h + '<div class="empty">Nothing found for "' + esc(S.sq) + '".</div>';
+    var h = '<div class="row"><input class="grow" id="sq" ' +
+      'placeholder="Anything &mdash; a man, his firm, a challan or book no, a cheque no, a product" ' +
+      'value="' + esc(S.sq) + '"/></div>' +
+      '<div class="meta" style="margin:-2px 0 8px">Two letters is enough. The book on this ' +
+      'phone answers at once; anything only the office holds is added a moment later.</div>';
+    var lq = String(S.sq || "").trim();
+    if (lq.length < 2) {
+      return h + '<div id="sq_res"><div class="empty">Type two letters.<br>This searches ' +
+        '<b>everything on this phone</b> &mdash; clients (including <b>every firm they are ' +
+        'billed under</b>), challans and their paper book numbers, payments and cheque ' +
+        'references, quotations, sites, drivers, vehicle numbers, partners and products.' +
+        '</div></div>';
+    }
+    var local = uniHits(lq);
+    var n = uniCount(local);
+    if (!n && !S.sres) {
+      return h + '<div id="sq_res"><div class="empty">Nothing on this phone matches <b>' +
+        esc(lq) + '</b>.<br>It looked at client names and every firm they are billed under, ' +
+        'challan and book numbers, cheque references, quotations, sites, drivers, vehicles, ' +
+        'partners and products.' + (S.sBusy ? '<br>Still asking the office&hellip;' : '') +
+        '</div></div>';
+    }
+    return h + '<div id="sq_res">' + uniHtml(local, lq) + serverExtraHtml(local, lq) + '</div>';
     (r.clients || []).length && (h += '<h3 style="margin:14px 0 8px;font-size:14px">Clients</h3>');
     (r.clients || []).forEach(function (c) {
       if (!c.own) {
@@ -18531,6 +18699,30 @@ function viewCatalogue() {
         '<div class="meta">' + esc(x.client || "") + '</div></div>';
     });
     return h;
+  }
+
+  /* What the SERVER found that this phone does not hold - another executive's client, an
+     older quote. Deliberately a SECOND section rather than mixed in: a man must be able to
+     tell what his own book says from what the office added, especially when the two disagree. */
+  function serverExtraHtml(local, q) {
+    var r = S.sres;
+    if (!r) return S.sBusy ? '<div class="meta" style="margin-top:12px">Asking the office too&hellip;</div>' : "";
+    var have = {};
+    (local.clients || []).forEach(function (c) { have[dkey(c.name)] = 1; });
+    var extra = (r.clients || []).filter(function (c) { return !have[dkey(c.name)]; });
+    if (!extra.length) return "";
+    return '<h3 style="margin:18px 0 8px;font-size:14px">Also on the firm\u2019s book ' +
+      '<span class="pill soon">' + extra.length + '</span></h3>' +
+      '<div class="meta" style="margin:-4px 0 8px">Not in your own copy &mdash; these are other ' +
+      'executives\u2019 records.</div>' +
+      extra.map(function (c) {
+        return '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>' + esc(c.name) +
+          ' <span class="pill soon">already registered</span></h3>' +
+          '<div class="meta">Registered on <b>' + esc(c.on || "") + '</b>' +
+          (c.by ? ' by ' + esc(c.by) : '') + '.<br>' +
+          '<span style="color:#94a3b8">Do not enter this client again &mdash; ask the office for ' +
+          'his details.</span></div></div>';
+      }).join("");
   }
 
   function renderLogin(err) {
@@ -21593,6 +21785,25 @@ function viewCatalogue() {
        the phone keyboard stay put while typing. */
     /* v6.9.184: the compact tree's own search. Same rule as the client list - repaint the
        tree block alone, never the page, so the caret and the keyboard stay put. */
+    /* v6.9.305 - the universal search types live. The results block alone is repainted, never
+       the page, so the caret and the phone keyboard stay where they are while a name is typed
+       one letter at a time - the same rule the client list and the quote book already follow.
+       The office is asked in the background, debounced, and never blocks anything. */
+    var sqi = el("sq");
+    if (sqi) {
+      var _sqT = null;
+      sqi.addEventListener("input", function (e) {
+        S.sq = e.target.value;
+        var box = el("sq_res");
+        if (box) {
+          var lq = String(S.sq || "").trim();
+          box.innerHTML = lq.length < 2 ? "" : (uniHtml(uniHits(lq), lq) + serverExtraHtml(uniHits(lq), lq));
+        }
+        if (_sqT) clearTimeout(_sqT);
+        _sqT = setTimeout(function () { uniAsk(String(S.sq || "")); }, 450);
+      });
+      sqi.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
+    }
     var cvqi = el("cv_q");
     if (cvqi) {
       cvqi.addEventListener("input", function (e) {
@@ -24060,16 +24271,7 @@ function viewCatalogue() {
       }).then(function (r3) { toast(r3 && r3.ok ? "Sent to " + exec + "." : "Send failed."); renderBg(); });
       return;
     }
-    if (act === "s-go") {
-      var qv = val("sq");
-      if (qv.length < 3) { toast("Type at least 3 characters."); return; }
-      S.sq = qv; t.disabled = true; t.textContent = "Searching...";
-      api("search", { q: qv }).then(function (r) {
-        S.sres = (r && r.ok) ? r : { clients: [], quotes: [], challans: [], sites: [] };
-        render();
-      });
-      return;
-    }
+    if (act === "s-go") { uniAsk(val("sq")); return; }   /* kept: an old button still works */
     if (act === "bb-open") { S.brandClient = t.getAttribute("data-n"); S.tab = "brandboard"; render(); return; }
     if (act === "bb-back") { S.brandClient = ""; S.tab = "clients"; render(); return; }
     if (act === "p-loc") {
