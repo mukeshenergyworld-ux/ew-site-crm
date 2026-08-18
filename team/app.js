@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.306";
+  var APP_VERSION = "6.9.307";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1331,13 +1331,52 @@ window.addEventListener("beforeunload", function (ev) {
           d[k] = (d[k] || []).concat(S.cancelled[k]);
         });
       }
-      bigSet(snapKey(), JSON.stringify({ at: Date.now(), d: d }));
+      var _now = Date.now();
+      bigSet(snapKey(), JSON.stringify({ at: _now, d: d }));
+      _bookTs = _now;   /* v6.9.307 - the header updates the moment a pull lands, without
+                           having to read the snapshot back out of storage */
       S.snapQuota = false;
     } catch (e) {
       S.snapQuota = true;   /* v6.9.207: offline copy is now stale - say so rather than pretend */
       try { console.error("[EW] offline copy could not be written - this site's storage box is full, not the phone", e); } catch (x) { }
     }
   }
+  /* ---------------------------------------------------------------------------
+     HOW OLD IS THIS BOOK, HONESTLY  (v6.9.307 - the same function the Challan and Payment
+     apps carry, word for word)
+
+     Those two were showing a bare clock time with no date, so a book from last week read
+     like one from five minutes ago - which is what made a client added in the CRM look
+     missing on a phone.
+
+     THE CRM WAS WORSE: it showed NOTHING AT ALL. A man here had no way to know whether the
+     screen in front of him was this morning's book or Tuesday's. Silence is not more honest
+     than a misleading time; it just fails more quietly. Checked on 18 Aug: this machine's
+     CRM copy was from 13:57 the previous day, and every screen presented it as simply "the
+     book". */
+  function bookAge(ts) {
+    ts = Number(ts) || 0;
+    if (!ts) return { txt: "never pulled onto this phone", tone: "bad" };
+    var ms = Date.now() - ts, d = new Date(ts);
+    var hhmm = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+    if (ms < 120000) return { txt: "updated just now", tone: "ok" };
+    var today = new Date();
+    var sameDay = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() &&
+                  d.getDate() === today.getDate();
+    if (sameDay) return { txt: "updated " + hhmm, tone: ms > 7200000 ? "warn" : "ok" };
+    var days = Math.floor(ms / 86400000);
+    if (days <= 1) return { txt: "from YESTERDAY " + hhmm, tone: "bad" };
+    return { txt: days + " DAYS OLD (" + hhmm + ")", tone: "bad" };
+  }
+  /* When the book on this device was last written. The snapshot already stamped it; nothing
+     ever read it. */
+  function bookStamp() {
+    try { var t = JSON.parse(bigGet(snapKey()) || "null"); return (t && Number(t.at)) || 0; }
+    catch (e) { return 0; }
+  }
+  var _bookTs = 0;
+  function bookTs() { return _bookTs || (_bookTs = bookStamp()); }
+
   function snapLoad() {
     try {
       var t = JSON.parse(bigGet(snapKey()) || "null");
@@ -1347,6 +1386,7 @@ window.addEventListener("beforeunload", function (ev) {
 
   function refresh() {
     var snap = snapLoad();
+    _bookTs = bookStamp();   /* v6.9.307 */
     if (snap && snap.ok) { S.data = snap; applyPending(); applyConfirmed(); applyMoves(); splitCancelled(); S.busy = false; render(); }
     return api("teamGet").then(function (r) {
       S.busy = false;
@@ -21877,7 +21917,16 @@ function viewCatalogue() {
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
       '<img src="' + LOGO + '" alt="EW" onerror="this.style.display=\'none\'"/>' +
-      '<div><b style="font-size:15px">Energy World</b><div style="font-size:12px;color:#64748b">CRM <span style="color:#94a3b8">&middot; v' + APP_VERSION + '</span></div></div>' +
+      '<div><b style="font-size:15px">Energy World</b><div style="font-size:12px;color:#64748b">CRM ' +
+        '<span style="color:#94a3b8">&middot; v' + APP_VERSION + '</span>' +
+        /* v6.9.307 - the age of the book this screen is drawn from. It was showing nothing,
+           so a copy from Tuesday looked exactly like this morning's. */
+        (function () {
+          var a = bookAge(bookTs());
+          if (a.tone === "ok") return '<span style="color:#94a3b8"> &middot; ' + esc(a.txt) + '</span>';
+          return '<span style="color:' + (a.tone === "bad" ? "#b91c1c" : "#b45309") +
+                 ';font-weight:800"> &middot; ' + esc(a.txt) + '</span>';
+        })() + '</div></div>' +
       '<input id="gq" placeholder="Search anything — quote, challan, product, client, partner…" value="' + esc(S.gq || "") + '" autocomplete="off" ' +
       'style="flex:1;min-width:110px;max-width:380px;margin:0 14px;padding:9px 14px;border:1px solid #cbd5e1;border-radius:20px;font-size:14px;outline:none;background:#fff"/>' +
       '<div class="who"><b>' + esc(S.user) + '</b><span class="pill teal">' + esc(S.role) + '</span>' +
