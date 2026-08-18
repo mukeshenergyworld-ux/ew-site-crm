@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.25.0";
+  var APP_VERSION = "1.26.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1477,19 +1477,56 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
   /* the client's frozen brand discount, read the CRM's way */
+  /* ==================== ONE DISCOUNT RULE, NOT TWO (v1.26.0) ====================
+     FOUND BY THE CROSS-APP CHECK, not by a complaint - and it was live.
+
+     Both apps answered "what discount does this client get on this brand?" and they answered
+     it DIFFERENTLY:
+
+       the CRM   scored every matching row and took the one with a REAL percentage on it,
+                 breaking a tie by the newest id
+       this app  took the FIRST row the sheet happened to return
+
+     The discounts sheet has three client|brand pairs carrying two rows each, one blank and
+     one at 50%:
+
+         Vishal Wadhera | Heliroma        "50", "", ""
+         Sandeep Gupta  | Huliot HT PRO   "", "50"
+         Sandeep Gupta  | Heliroma        "", "50"
+
+     For Sandeep Gupta the blank row comes first. So the office quoted him HALF PRICE and the
+     godown was writing his challans at FULL price, on two brands, and every challan looked
+     perfectly correct on the screen that made it.
+
+     The rule is now the CRM's, lifted whole rather than reimplemented - dkey(), discRowsFor(),
+     incMap(), discScore(), discStamp(), discPick(), discRow() and clientDiscount() are the
+     CRM's own bodies, byte for byte, and t_apps_agree.js holds them that way. A second
+     implementation of a money rule is a second answer waiting to happen. */
+  function dkey(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
   function discRowsFor(client, brand) {
-    var ck = lower(client), bk = lower(brand);
-    return ((S.data && S.data.discounts) || []).filter(function (d) {
-      return lower(d.client) === ck && (!bk || lower(d.brand) === bk || !String(d.brand || "").trim());
-    });
+    var c = dkey(client), b = dkey(brand);
+    return (S.data.discounts || []).filter(function (x) { return dkey(x.client) === c && dkey(x.brand) === b; });
   }
-  function clientDiscount(client, brand) {
-    var rows = discRowsFor(client, brand);
-    /* an exact brand row beats a blank-brand catch-all, the same order the CRM picks in */
-    var exact = rows.filter(function (d) { return lower(d.brand) === lower(brand); })[0];
-    var d = exact || rows[0];
-    return d ? num(d.pct) : 0;
+  function incMap(row) {
+    try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
   }
+  function discScore(d) {
+    var s = (Number(d && d.pct) || 0) > 0 ? 4 : 0, m = incMap(d);
+    Object.keys(m).forEach(function (k) { if (Number(m[k]) > 0) s += 1; });
+    return s;
+  }
+  function discStamp(d) { var m = String((d && d.id) || "").match(/(\d{10,})/); return m ? Number(m[1]) : 0; }
+  function discPick(rows) {
+    if (!rows || !rows.length) return null;
+    var best = rows[0];
+    for (var i = 1; i < rows.length; i++) {
+      var sa = discScore(rows[i]), sb = discScore(best);
+      if (sa > sb || (sa === sb && discStamp(rows[i]) > discStamp(best))) best = rows[i];
+    }
+    return best;
+  }
+  function discRow(client, brand) { return discPick(discRowsFor(client, brand)); }
+  function clientDiscount(client, brand) { var d = discRow(client, brand); return d ? Number(d.pct) || 0 : 0; }
   function realBrand(p) {
     var m = ((S.data && S.data.brandmap) || []).filter(function (x) { return String(x.catalogValue) === String(p.brand); })[0];
     return (m && m.brand) ? m.brand : "";
