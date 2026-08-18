@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.26.0";
+  var APP_VERSION = "1.27.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -2781,11 +2781,35 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      A delivery document, not a quotation: no prices and no pictures. Prices live in the
      ledger, not in the driver's hand. This mirrors the CRM's own challan print. */
 
+  /* ================= THE CHALLAN ON PAPER =================
+     A delivery document, not a quotation: no prices and no pictures. Prices live in the
+     ledger, not in the driver's hand.
+
+     v1.27.0 - IT NOW CARRIES WHAT THE CRM'S CARRIES. He put the two side by side: same
+     challan, two completely different sheets. The CRM's had the delivery address, the
+     freight line, who prepared it and who approved it, and a three-line receipt block. This
+     one had none of those and said "Draft" - so the paper that goes out with the lorry did
+     not record where the lorry was going or who bore the freight, and the office's file copy
+     and the godown's copy of one delivery disagreed about what happened.
+
+     THE LOGOS ARE DELIBERATELY NOT HERE, and that is his decision. The CRM's copy is 608 KB,
+     almost all of it twelve brand logos. This one is base64'd through Apps Script to be
+     hosted for WhatsApp, and this codebase already has a scar from a 600 KB PDF breaking a
+     send - the quote's font embed. Same content, roughly 20 KB, so the send survives one bar
+     of signal in a godown. The CRM's printed copy keeps its logos.
+
+     Portrait, not the CRM's landscape half-sheet: this is the copy that gets read on a phone
+     and shared on WhatsApp, and the landscape 2-up was for the office printer. */
+
   function chalPdf(c) {
     return ensurePdf().then(function () {
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
-      var W = 210, L = 14, R = W - 14;
+      var W = 210, H = 297, L = 14, R = W - 14;
       var F = function (w) { doc.setFont("helvetica", w === "bold" ? "bold" : "normal"); };
+      var g = function (v) { doc.setTextColor(v, v, v); };
+      var cl = clientByName(c.customerName) || {};
+      var mn = manualNoFor(c);
+      var st = chStatus(c);
 
       doc.setFillColor(15, 118, 110); doc.rect(0, 0, W, 26, "F");
       doc.setTextColor(255); F("bold"); doc.setFontSize(15);
@@ -2797,57 +2821,120 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       F(); doc.setFontSize(9);
       doc.text(String(c.challanNo || ""), R, 18, { align: "right" });
 
-      doc.setTextColor(15, 23, 42);
+      /* ---- DELIVER TO, and the three facts the CRM puts opposite it ---- */
       var y = 36;
-      var mn = manualNoFor(c);
-      var fact = function (k, v, bold) {
-        F(); doc.setFontSize(8); doc.setTextColor(100, 116, 139);
-        doc.text(String(k).toUpperCase(), L, y);
-        doc.setTextColor(15, 23, 42); F(bold ? "bold" : "normal"); doc.setFontSize(10.5);
-        doc.text(String(v == null || v === "" ? "-" : v), L + 42, y);
-        y += 7;
-      };
-      fact("Client", c.customerName, 1);
-      if (c.site) fact("Site", c.site);
-      fact("Date", dstr(d10(c.createdAt)));
-      if (mn) fact("Book no", mn, 1);
-      if (c.driver) fact("Driver", String(c.driver) + (c.vehicle ? " / " + c.vehicle : ""));
-      fact("Status", chStatus(c));
+      g(100); F("bold"); doc.setFontSize(7);
+      doc.text("DELIVER TO", L, y);
+      doc.text("DATE", R, y, { align: "right" });
+      doc.text("PREPARED BY", R - 34, y, { align: "right" });
+      doc.text("APPROVED BY", R - 74, y, { align: "right" });
+      g(15); F("bold"); doc.setFontSize(12);
+      doc.text(String(c.customerName || "-"), L, y + 6.5);
+      F(); doc.setFontSize(8.5); g(60);
+      doc.text(dstr(d10(c.createdAt)), R, y + 6, { align: "right" });
+      doc.text(String(c.createdBy || "-"), R - 34, y + 6, { align: "right" });
+      doc.text(String(c.approvedBy || "\u2014 not yet passed \u2014"), R - 74, y + 6, { align: "right" });
+      y += 11;
+      /* THE ADDRESS. The lorry has to get somewhere, and this sheet is the only thing in the
+         driver's hand that says where. It was not on this copy at all. */
+      var addr = String(cl.address || "").trim();
+      if (addr) {
+        g(60); F(); doc.setFontSize(9);
+        doc.splitTextToSize(addr, R - L - 60).slice(0, 2).forEach(function (t) {
+          doc.text(t, L, y); y += 4.4;
+        });
+      }
+      if (c.site) { g(60); F(); doc.setFontSize(9); doc.text("Site: " + String(c.site), L, y); y += 4.4; }
+      if (cl.mobile) { g(100); doc.setFontSize(8.5); doc.text(String(cl.mobile), L, y); y += 4.4; }
+      if (mn) { g(150); F("bold"); doc.setFontSize(8.5); doc.text("Book no " + String(mn), L, y); y += 4.4; }
+      /* a challan that has NOT been passed must say so on the paper. The CRM's copy is only
+         ever printed after approval; this one can be printed at the counter before it. */
+      if (st === "Draft") {
+        doc.setFillColor(254, 226, 226); doc.rect(L, y - 3.2, R - L, 6.4, "F");
+        doc.setTextColor(185, 28, 28); F("bold"); doc.setFontSize(8);
+        doc.text("NOT PASSED YET \u2014 material must not leave on this challan.", L + 2, y + 1.2);
+        y += 9;
+      }
 
-      y += 3;
-      doc.setDrawColor(226, 232, 240); doc.line(L, y, R, y); y += 7;
-      F("bold"); doc.setFontSize(9); doc.setTextColor(100, 116, 139);
-      doc.text("MATERIAL", L, y);
-      doc.text("QTY", R - 22, y, { align: "right" });
-      doc.text("UNIT", R, y, { align: "right" });
-      y += 3; doc.line(L, y, R, y); y += 6;
-      doc.setTextColor(15, 23, 42);
+      /* ---- the table, with the CRM's columns ---- */
+      y += 4;
+      doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.3); doc.line(L, y, R, y); y += 6;
+      var Xn = L, Xc = L + 8, Xd = L + 34, Xu = R - 30, Xq = R;
+      g(100); F("bold"); doc.setFontSize(7.5);
+      doc.text("#", Xn, y); doc.text("CODE", Xc, y); doc.text("ITEM DESCRIPTION", Xd, y);
+      doc.text("UNIT", Xu, y, { align: "right" }); doc.text("QTY", Xq, y, { align: "right" });
+      y += 2.5; doc.line(L, y, R, y); y += 5.5;
 
-      chLines(c).forEach(function (l) {
-        if (y > 262) { doc.addPage(); y = 22; }
-        F(); doc.setFontSize(10);
-        var name = doc.splitTextToSize(String(l.desc || l.code || ""), R - L - 46);
-        doc.text(name, L, y);
-        F("bold");
-        doc.text(String(num(l.qty)), R - 22, y, { align: "right" });
-        F(); doc.setFontSize(9);
-        doc.text(String(l.unit || ""), R, y, { align: "right" });
-        doc.setFontSize(7.5); doc.setTextColor(148, 163, 184);
-        doc.text(String(l.code || ""), L, y + 3.6);
-        doc.setTextColor(15, 23, 42);
-        y += Math.max(9, name.length * 4.6 + 4.6);
+      var rows = chLines(c), n = 0;
+      function newPage() {
+        doc.addPage(); y = 20;
+        g(100); F("bold"); doc.setFontSize(7.5);
+        doc.text("#", Xn, y); doc.text("CODE", Xc, y); doc.text("ITEM DESCRIPTION", Xd, y);
+        doc.text("UNIT", Xu, y, { align: "right" }); doc.text("QTY", Xq, y, { align: "right" });
+        y += 2.5; doc.setDrawColor(226, 232, 240); doc.line(L, y, R, y); y += 5.5;
+      }
+      rows.forEach(function (l) {
+        if (y > H - 66) newPage();
+        n++;
+        g(130); F(); doc.setFontSize(8);
+        doc.text(String(n), Xn, y);
+        g(60); doc.setFontSize(7.5);
+        doc.text(String(l.code || ""), Xc, y);
+        g(15); F(); doc.setFontSize(9.5);
+        var nm = doc.splitTextToSize(String(l.desc || l.code || ""), Xu - Xd - 6);
+        doc.text(nm, Xd, y);
+        g(90); doc.setFontSize(8);
+        doc.text(String(l.unit || ""), Xu, y, { align: "right" });
+        g(15); F("bold"); doc.setFontSize(10);
+        /* String(num()) prints 3 as "3" and 1.5 as "1.5" - the same thing the line list on
+           screen shows. qShow() lives in the CRM only; calling it here would have thrown on
+           the first challan printed. Caught by generating a real PDF rather than reading the
+           code. */
+        doc.text(String(num(l.qty)), Xq, y, { align: "right" });
+        y += Math.max(7.5, nm.length * 4.4 + 3);
+        doc.setDrawColor(241, 245, 249); doc.setLineWidth(0.2); doc.line(L, y - 2.6, R, y - 2.6);
       });
+      /* the transport line closes the list, like a final serial - the CRM's own words */
+      if (c.driver || c.vehicle || num(c.freight)) {
+        if (y > H - 66) newPage();
+        n++;
+        g(130); F(); doc.setFontSize(8); doc.text(String(n), Xn, y);
+        g(90); F("bold"); doc.setFontSize(7.5); doc.text("TRANSPORT", Xc, y);
+        g(15); F(); doc.setFontSize(9);
+        var t = [c.driver, c.vehicle].filter(Boolean).join("  \u00b7  ");
+        /* "Rs." not the rupee sign: jsPDF's core Helvetica has no glyph for U+20B9 and drops
+           it SILENTLY, so the freight read "Freight 150 (Client)" with no currency at all.
+           The CRM's own PDFs carry the same note - it chose Rs. over embedding a 600 KB font.
+           Found by generating the PDF and looking at it, not by reading the code. */
+        if (num(c.freight)) t += (t ? "   \u00b7   " : "") + "Freight Rs. " +
+          Math.round(num(c.freight)).toLocaleString("en-IN") +
+          " (" + String(c.freightTo || "Client") + ")";
+        doc.text(doc.splitTextToSize(t, Xq - Xd)[0] || "", Xd, y);
+        y += 8;
+      }
 
-      if (y > 232) { doc.addPage(); y = 22; }
-      y += 6; doc.setDrawColor(226, 232, 240); doc.line(L, y, R, y); y += 8;
-      F(); doc.setFontSize(8.5); doc.setTextColor(100, 116, 139);
-      doc.text("Received the above material in good order and condition.", L, y);
-      y += 20;
-      doc.setDrawColor(148, 163, 184);
-      doc.line(L, y, L + 60, y); doc.line(R - 60, y, R, y);
-      doc.setFontSize(8);
-      doc.text("Receiver's signature", L, y + 4.5);
-      doc.text("For Energy World", R - 60, y + 4.5);
+      /* ---- the sign-off, on the last page, exactly the CRM's three lines ---- */
+      var pages = doc.getNumberOfPages();
+      doc.setPage(pages);
+      if (c.approvedBy) {
+        g(165); F(); doc.setFontSize(7);
+        doc.text("Dispatch approved by " + String(c.approvedBy) + ", verified by PIN.",
+                 R, H - 34, { align: "right" });
+      }
+      doc.setDrawColor(190, 190, 190); doc.setLineWidth(0.2); doc.line(L, H - 30, R, H - 30);
+      g(90); F("bold"); doc.setFontSize(8);
+      doc.text("RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, H - 24);
+      doc.setDrawColor(150, 150, 150); doc.setLineWidth(0.3);
+      var S1 = 58, G1 = 68, S2 = 118, G2 = 128, S3 = 168;
+      doc.line(L, H - 12, L + S1, H - 12);
+      doc.line(L + G1, H - 12, L + S2, H - 12);
+      doc.line(L + G2, H - 12, L + S3, H - 12);
+      g(95); F(); doc.setFontSize(7.5);
+      doc.text("Client name & signature", L, H - 8.5);
+      doc.text("Contact number", L + G1, H - 8.5);
+      doc.text("Date", L + G2, H - 8.5);
+      g(140); doc.setFontSize(7);
+      doc.text("Page " + pages + " of " + pages, R, H - 8.5, { align: "right" });
       return doc;
     });
   }
