@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.20.1";
+  var APP_VERSION = "1.21.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1966,6 +1966,81 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
      Why it matters more than it looks: a delivery address typed fresh on each challan is how
      one house becomes four addresses, and how a lorry goes to the wrong gate. */
+  /* ---------- WHAT IS ALREADY OUT, BEFORE MORE GOES OUT (v1.21.0) ----------
+
+     The man at the counter could load a lorry for someone carrying two lakh of unbilled
+     material and had no way to know. The CRM knows; the Payment app knows; this app - the
+     one actually standing at the gate - showed nothing.
+
+     WHAT THIS APP CAN HONESTLY SEE, and what it cannot. It holds every challan but it does
+     NOT hold the payments tab, so it cannot say what a man OWES. Claiming to would be worse
+     than saying nothing: a wrong number at the counter gets trusted and argued with.
+
+     So it reports exactly what is in its own book:
+       - material out and not yet billed (billNo empty), in rupees and in challans
+       - the oldest of those, in days
+       - and it names the Payment app as the place the true balance lives.
+
+     The credit LIMIT and credit DAYS come off the client record - the office sets them in the
+     CRM and they arrive here whole, because slimBook keeps entire tabs rather than picking
+     fields. Two lines are loud rather than grey: unbilled material past his limit, and an
+     unbilled challan older than his terms. Those are the two a man should stop and ring about. */
+  function clientMoney(cl) {
+    var nm = lower((cl && cl.name) || "");
+    var o = { n: 0, rs: 0, oldest: 0, noReceipt: 0,
+              limit: num(cl && cl.creditLimit), days: num(cl && cl.creditDays) };
+    if (!nm) return o;
+    challans().forEach(function (c) {
+      if (lower(c.customerName) !== nm) return;
+      if (String(c.status || "") === "Cancelled") return;
+      if (String(c.receiptReceived || "").toUpperCase() !== "Y") o.noReceipt++;
+      if (String(c.billNo || "").trim()) return;          /* billed - not our business here */
+      o.n++;
+      o.rs += chValue(c);
+      var a = ageDays(c);
+      if (a > o.oldest) o.oldest = a;
+    });
+    return o;
+  }
+  function moneyBlock(cl) {
+    var m = clientMoney(cl);
+    if (!m.n && !m.limit) return "";
+    var overLimit = m.limit > 0 && m.rs > m.limit;
+    var overDays  = m.days > 0 && m.oldest > m.days;
+    var loud = overLimit || overDays;
+    var h = '<div style="margin-top:7px;border-radius:9px;padding:7px 9px;border:1px solid ' +
+      (loud ? '#fecaca;background:#fef2f2' : '#e2e8f0;background:#f8fafc') + '">' +
+      '<div class="muted" style="font-weight:700;font-size:11px' + (loud ? ';color:#b91c1c' : '') +
+      '">Before you load</div>';
+    if (m.n) {
+      h += '<div style="font-size:13px;font-weight:700;margin-top:1px">' +
+        money(m.rs) + ' not yet billed &middot; ' + m.n + ' challan' + (m.n === 1 ? '' : 's') +
+        (m.oldest ? ' &middot; oldest ' + m.oldest + ' day' + (m.oldest === 1 ? '' : 's') : '') + '</div>';
+    } else {
+      h += '<div style="font-size:13px;font-weight:700;margin-top:1px">Nothing unbilled on his name.</div>';
+    }
+    if (m.limit || m.days) {
+      h += '<div class="muted" style="font-size:11.5px;margin-top:2px">Credit ' +
+        (m.limit ? money(m.limit) : 'not set') + (m.days ? ' &middot; ' + m.days + ' days' : '') + '</div>';
+    }
+    if (overLimit) {
+      h += '<div style="font-size:12px;font-weight:800;color:#b91c1c;margin-top:3px">' +
+        'Past his credit limit by ' + money(m.rs - m.limit) + '. Ring the office before loading.</div>';
+    }
+    if (overDays) {
+      h += '<div style="font-size:12px;font-weight:800;color:#b91c1c;margin-top:3px">' +
+        'A challan has been unbilled ' + m.oldest + ' days on ' + m.days + '-day terms.</div>';
+    }
+    if (m.noReceipt) {
+      h += '<div class="muted" style="font-size:11.5px;margin-top:3px">' +
+        m.noReceipt + ' delivery' + (m.noReceipt === 1 ? '' : ' deliveries') + ' still without a signed receipt.</div>';
+    }
+    h += '<div class="muted" style="font-size:10.5px;margin-top:4px">' +
+      'This is what THIS app can see &mdash; material out and not billed. What he actually owes, ' +
+      'after payments, is in the Payment app.</div></div>';
+    return h;
+  }
+
   function addressBlock(cl) {
     var a = String((cl && cl.address) || "").trim();
     if (a) {
@@ -2008,6 +2083,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         /* full width, BELOW the name row - inside it the box was squeezed against the
            Change button. Caught in a screenshot, not in the markup. */
         addressBlock(cl) +
+        moneyBlock(cl) +
         /* v1.12.0 - the card already said what was missing; now it can be answered here */
         (chGaps(cl).length
           ? '<div style="margin-top:8px"><button class="btn sm amb" data-act="dt-ask" data-n="' + esc(cl.name) + '">' +
