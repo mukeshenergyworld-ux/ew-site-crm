@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.28.0";
+  var APP_VERSION = "1.28.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3702,7 +3702,24 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (act === "jrn-retry") { flushNow(); toast("Trying now…"); return; }
     if (act === "ch-edit") {
       if (!canMake()) { toast("Editing a challan is done by the godown or the office."); return; }
-      var ce = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      /* ================= v1.28.1 - THE EDIT BUTTON NEVER WORKED =================
+         `id` was never declared anywhere in this click handler. The CRM's handler opens with
+         `var id = t.getAttribute("data-id");` and this one does not - ch-edit was lifted from
+         the CRM's shape on 16 Aug and carried the USE across without the declaration.
+
+         Reading an undeclared variable throws a ReferenceError, in strict mode and out of it.
+         So every tap on Edit threw before it could even look for the challan, and nothing on
+         screen said so. It shipped as 1.25.0 against his own words - "also make provision to
+         edit challan before disptch" - and 28 assertions in t_chedit.js passed the whole time,
+         because every one of them READ the source and not one of them RAN it.
+
+         Found by the TypeScript checker on 18 Aug, in under a minute, from a standing start.
+
+         Declared HERE, in the block that needs it, and under its own name. A `var id` at the
+         top of a 36 KB handler hoists over the whole of it, and would turn any future bare
+         `id` from a loud throw into a silent undefined - which is the more expensive fault. */
+      var _ceId = t.getAttribute("data-id") || "";
+      var ce = (S.data.challans || []).filter(function (x) { return String(x.id) === String(_ceId); })[0];
       if (!ce) { toast("Could not find that challan on this phone."); return; }
       var cst = chStatus(ce);
       /* the same two words the CRM refuses on, and for the same reason: once it is
