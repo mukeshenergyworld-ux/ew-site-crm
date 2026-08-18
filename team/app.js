@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.303";
+  var APP_VERSION = "6.9.304";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1135,6 +1135,11 @@
     var idx = -1;
     for (var k = 0; k < list.length; k++) { if (list[k] && ((row.id && list[k].id === row.id) || (row._lid && list[k]._lid === row._lid))) { idx = k; break; } }
     if (idx >= 0) Object.assign(list[idx], row); else { list.push(row); idx = list.length - 1; }
+    /* v6.9.304 - the search haystack hangs off the row and must die WITH the edit. An
+       in-place Object.assign keeps the old __hay, so a firm name added to "Bills under" a
+       second ago would stay unsearchable until the next full pull - which is the same shape
+       of fault as the one this release exists to fix. */
+    if (tab === "clients") { try { delete list[idx].__hay; } catch (e) {} }
     /* v6.9.216 - the both-ways pitch index is built once per paint. A pitch row written mid-paint
        (marking a brand Won, or a quote stamping its brands) must invalidate it immediately, or the
        very next read serves the row as it was a second ago. */
@@ -5200,13 +5205,52 @@ window.addEventListener("beforeunload", function (ev) {
   /* v6.9.184: ONE definition of "does this customer match what was typed", shared by the
      Expand card list and the Compact tree. Two copies would drift, and then the same name
      would be findable in one lens and not the other. */
+  /* ---------------------------------------------------------------------------
+     EVERYTHING A CLIENT IS KNOWN BY  (v6.9.304)
+
+     HIS REPORT: "if i entered payment of a client from his firm - like today entered
+     payment receipt of Krishan Kumar from Mohit Trading - if i have to serch Mohit Trading
+     from search box, its have to show detail, its not showing nothing."
+
+     It was showing nothing because the search never looked there. A client is billed under
+     one or more FIRM names - that is what the "Bills under" list on his record is, and it is
+     how half this trade actually works: the man is Krishan Kumar, the cheque says Mohit
+     Trading, and the GST number belongs to the firm. The search read his own name, his
+     phone, his area, his plumber, his architect and his address, and stopped there.
+
+     So the money was recorded correctly and was simply unfindable by the only name the
+     person looking actually had in front of them.
+
+     clientHay() is now the single answer to "what is this man known by": his name, his short
+     name, both numbers, where he is, who works with him, his address - AND every firm he is
+     billed under, with their GSTINs. One function, so the client book, the client cards and
+     anything added later cannot search different things and disagree.
+
+     The GSTIN is in there on purpose: a man holding a bill in his hand often has the number
+     and not the spelling. */
+  function clientHay(c) {
+    if (!c) return "";
+    if (c.__hay !== undefined) return c.__hay;
+    var parts = ["name", "shortName", "mobile", "mobile2", "location", "area",
+                 "plumber", "architect", "builder", "pmc", "address", "notes"]
+      .map(function (k) { return String(c[k] || ""); });
+    /* every firm he is billed under, and its GST number */
+    try {
+      var b = JSON.parse(c.billingJson || "[]");
+      if (Object.prototype.toString.call(b) === "[object Array]") {
+        b.forEach(function (x) { parts.push(String((x && x.name) || ""), String((x && x.gstin) || "")); });
+      }
+    } catch (e) {}
+    var hay = parts.join(" \u0001 ").toLowerCase();
+    /* NOT enumerable: these rows are stringified into the offline snapshot and posted back
+       to the server, and a cache must never travel with the data it describes. */
+    try { Object.defineProperty(c, "__hay", { value: hay, enumerable: false, configurable: true }); }
+    catch (e) {}
+    return hay;
+  }
   function cvMatch(c, qq) {
     if (!qq) return true;
-    var f = ["name", "mobile", "mobile2", "location", "area", "plumber", "architect", "address"];
-    for (var i = 0; i < f.length; i++) {
-      if (String((c && c[f[i]]) || "").toLowerCase().indexOf(qq) > -1) return true;
-    }
-    return false;
+    return clientHay(c).indexOf(String(qq).toLowerCase()) > -1;
   }
   function clientsListHtml() {
     var loc = S.q, qq = String(S.clq || "").trim().toLowerCase();
@@ -5217,7 +5261,9 @@ window.addEventListener("beforeunload", function (ev) {
     if (S.clNoMob) list = list.filter(function (c) { return clGaps(c).length > 0; });      /* v6.9.293 */
     if (qq) list = list.filter(function (c) { return cvMatch(c, qq); });
     if (!list.length) return '<div class="empty">' + (qq
-      ? 'No client matches <b>' + esc(S.clq) + '</b>. Search runs on name, phone, area, plumber, architect and address.'
+      ? 'No client matches <b>' + esc(S.clq) + '</b>. Search runs on his name, his short name, ' +
+        'both numbers, district, area, plumber, architect, builder, PMC, address, notes &mdash; ' +
+        'and <b>every firm he is billed under</b>, with their GST numbers.'
       : (S.clNoSite ? 'Every client here has a site. Nothing hidden from the pitch board.'
       : (loc ? 'No clients in ' + esc(loc) + ' yet.' : 'No clients yet. A lead becomes a client here the moment one of his quotes is marked Won.'))) + '</div>';
 
