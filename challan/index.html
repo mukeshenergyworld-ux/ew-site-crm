@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.24.0";
+  var APP_VERSION = "1.25.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -2409,8 +2409,18 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       var d = l.disc === "" || l.disc == null ? clientDiscount(z.client, l.brand) : num(l.disc);
       return a + num(l.qty) * Math.round(num(l.rate) * (1 - d / 100));
     }, 0);
+    var isEdit = !!z.editId;
     var h = '<div class="row" style="margin:6px 0 10px"><button class="btn sm gry" data-act="ch-cancel">&#8592; Back</button>' +
-      '<div class="grow" style="font-weight:800;font-size:16px">New challan</div></div>';
+      '<div class="grow" style="font-weight:800;font-size:16px">' +
+      (isEdit ? 'Edit challan ' + esc(z.editNo || "") : 'New challan') + '</div></div>';
+    /* v1.25.0 - the CRM's warning, word for word. Approval releases material; it was given on
+       the earlier contents and cannot carry over to changed ones. */
+    if (isEdit && z.editStatus === "Approved") {
+      h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed;color:#b45309">' +
+        'This challan is <b>Approved</b>. Saving a change sends it back to <b>Draft</b>, so it ' +
+        'must be passed again before dispatch &mdash; approval releases material and cannot ' +
+        'carry over to changed contents.</div>';
+    }
 
     h += clientPicker(z, cl);
 
@@ -2476,9 +2486,15 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       driverPicker(z) +
       '</div>';
 
-    h += '<button class="btn full" data-act="ch-save" style="margin:14px 0 6px">Create the challan</button>' +
-      '<div class="muted" style="text-align:center;margin-bottom:10px">It is saved as a <b>draft</b>. ' +
-      (canApprove() ? 'You can pass it yourself on the Approve screen.' : 'The accounts desk passes it.') + '</div>';
+    h += '<button class="btn full" data-act="ch-save" style="margin:14px 0 6px">' +
+      (isEdit ? 'Save changes' : 'Create the challan') + '</button>' +
+      '<div class="muted" style="text-align:center;margin-bottom:10px">' +
+      (isEdit
+        ? 'It keeps its number, <b>' + esc(z.editNo || "") + '</b>.' +
+          (z.editStatus === "Approved" ? ' It goes back to <b>draft</b> and must be passed again.' : '')
+        : 'It is saved as a <b>draft</b>. ' +
+          (canApprove() ? 'You can pass it yourself on the Approve screen.' : 'The accounts desk passes it.')) +
+      '</div>';
     return h;
   }
 
@@ -2586,6 +2602,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
             : (canProof()
                ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(c.id) + '">Attach receipt</button>'
                : '<span class="pill amb">Receipt is attached by the office</span>')) +
+        /* v1.25.0 - "make provision to edit challan before disptch".
+           The CRM's rule, unchanged: Draft or Approved may be edited, Dispatched and Received
+           may not. A challan that is still HELD on this phone is not editable either - it has
+           no number yet and no row on the sheet, so an edit would be editing nothing. */
+        (canMake() && !held && (st === "Draft" || st === "Approved")
+          ? '<button class="btn sm gry" data-act="ch-edit" data-id="' + esc(c.id) + '">Edit</button>' : '') +
         (st === "Draft" && canApprove()
           ? (held ? '<span class="pill amb">Cannot be passed until it uploads</span>'
                   : '<button class="btn sm" data-act="ch-approve" data-no="' + esc(c.id || c.challanNo) + '">Pass it</button>')
@@ -3449,6 +3471,34 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       return;
     }
     if (act === "jrn-retry") { flushNow(); toast("Trying now…"); return; }
+    if (act === "ch-edit") {
+      if (!canMake()) { toast("Editing a challan is done by the godown or the office."); return; }
+      var ce = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      if (!ce) { toast("Could not find that challan on this phone."); return; }
+      var cst = chStatus(ce);
+      /* the same two words the CRM refuses on, and for the same reason: once it is
+         dispatched the material has left the building and the paper is with the driver. */
+      if (cst === "Dispatched" || cst === "Received") {
+        toast("A dispatched challan cannot be edited. Take the material back in on a return instead.");
+        return;
+      }
+      if (chHeld(ce)) { toast("This one is still waiting to upload. Edit it once it has a number."); return; }
+      var eItems = []; try { eItems = JSON.parse(ce.itemsJson || "[]"); } catch (e) { eItems = []; }
+      S.ch = {
+        editId: ce.id, editNo: ce.challanNo, editStatus: cst,
+        client: ce.customerName || "", site: ce.site || "",
+        dist: ce.location || "", area: "", cq: "", gq: "",
+        freight: (ce.freight != null ? ce.freight : ""), fto: ce.freightTo || "Client",
+        disc: (ce.discAmt != null ? ce.discAmt : ""), discnote: ce.discNote || "",
+        driver: ce.driver || "", veh: ce.vehicle || "",
+        manual: manualNoFor(ce) || "",
+        items: eItems.map(function (l) {
+          return { code: l.code, desc: l.desc, unit: l.unit, qty: l.qty, rate: l.rate,
+                   brand: l.brand, disc: l.disc };
+        })
+      };
+      S.tab = "make"; render(); return;
+    }
     if (act === "ch-cancel") { S.ch = null; render(); return; }
     if (act === "ln-del")  { if (S.ch) S.ch.items.splice(Number(t.getAttribute("data-i")), 1); repaint(); return; }
     if (act === "rln-del") { if (S.rt) S.rt.items.splice(Number(t.getAttribute("data-i")), 1); repaint(); return; }
@@ -3534,6 +3584,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
          on S.ch - so ten presses on a bad line are one id, one number, one row. */
       S.ch.mintId = S.ch.mintId || ("L-" + Date.now() + "-" + Math.floor(Math.random() * 1000000));
       var _mintId = S.ch.mintId;
+      /* v1.25.0 - the row as it stands on the sheet, or null for a new challan. Read ONCE,
+         here, before anything can repaint under us. */
+      var _editRow = z.editId
+        ? ((S.data.challans || []).filter(function (x) { return x.id === z.editId; })[0] || null)
+        : null;
+      var _wasApproved = !!(_editRow && chStatus(_editRow) === "Approved");
       var _noFor = cObj.shortName || cObj.name;
       /* ===== v1.10.0 - A CHALLAN CAN NOW BE WRITTEN IN A BASEMENT =====
          The number comes from the server, and v1.9.0 banned minting one here for good
@@ -3547,9 +3603,15 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
          once, later, at the moment the journal can reach the server. Until then the app
          says it has no number rather than inventing one. The paper book number he types is
          filed against the id, so the delivery is traceable from the first minute. */
-      var numP = S.ch.mintNo
-        ? Promise.resolve({ challanNo: S.ch.mintNo })
-        : api("challanNo", { client: _noFor }).catch(function () { return { challanNo: "", _held: true }; });
+      /* v1.25.0 - AN EDIT NEVER DRAWS A NEW NUMBER. It already has one, it is written in the
+         paper book, the driver may already be holding the printout, and the whole estate looks
+         a challan up by that number. Minting a second one here would split one delivery into
+         two records with the same contents. */
+      var numP = _editRow
+        ? Promise.resolve({ challanNo: _editRow.challanNo || "" })
+        : (S.ch.mintNo
+            ? Promise.resolve({ challanNo: S.ch.mintNo })
+            : api("challanNo", { client: _noFor }).catch(function () { return { challanNo: "", _held: true }; }));
       numP.then(function (n) {
         /* v1.9.0 - NEVER mint a number on this phone. The old fallback ended in a literal "001"
            with only the day-of-month for a date, so two challans for one client on one day both
@@ -3561,9 +3623,19 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
            server could not be ASKED is a basement, and is held. They are not the same thing
            and they must not read the same. */
         if (!no && !_held) { reset(); toast("The server did not give a challan number. Nothing was saved \u2014 try again."); return; }
-        if (no) S.ch.mintNo = no;
-        var ch = {
-          id: _mintId,
+        if (no && !_editRow) S.ch.mintNo = no;
+        /* ============ THE WHOLE ROW, NEVER A PATCH (v1.25.0) ============
+           saveRow() sends exactly what it is given and the backend writes the WHOLE sheet row
+           from it - any column not sent is written BLANK. So an edit starts from the row that
+           is already on the sheet and overlays only the fields this form owns. Everything else
+           - receiptReceived, commissionSet, the hisab stamp, the approver's name, whatever the
+           office added later - travels through untouched.
+
+           This app has been bitten by exactly this once already; the warning next to dt-save
+           says so. */
+        var ch = _editRow ? Object.assign({}, _editRow) : {};
+        Object.assign(ch, {
+          id: _editRow ? _editRow.id : _mintId,
           createdBy: S.user, challanNo: no,
           customerId: cObj.id || "", customerName: cObj.name,
           siteId: siteObj.id || "", site: z.site || "",
@@ -3574,19 +3646,38 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           discAmt: discAmt, discNote: discNote,
           driver: dRec.name || "", driverId: dRec.id || "", driverMobile: dRec.mobile || "",
           vehicle: z.veh || dRec.vehicle || "",
-          associate: "", commissionSet: "N", status: "Draft", receiptReceived: "N"
-        };
-        return saveRow("challans", ch, { noFor: _noFor }).then(function (r) {
+          /* on a NEW challan these three are the starting state; on an edit the first two are
+             already on the row and Object.assign above kept them, so only the status is set -
+             and it is set DOWN, deliberately. Approval was given on the earlier contents. */
+          associate: _editRow ? (_editRow.associate || "") : "",
+          commissionSet: _editRow ? (_editRow.commissionSet || "N") : "N",
+          receiptReceived: _editRow ? (_editRow.receiptReceived || "N") : "N",
+          status: "Draft"
+        });
+        return saveRow("challans", ch, { noFor: _editRow ? "" : _noFor }).then(function (r) {
           var saved = r.row || ch;
-          (S.data.challans = S.data.challans || []).push(saved);
+          var _list = (S.data.challans = S.data.challans || []);
+          if (_editRow) {
+            /* replace in place. Pushing would put two rows with the same challanNo in the
+               book, and every screen here looks one up by number and takes the first match -
+               so the edited one might never be the one anybody sees. */
+            for (var _i = 0; _i < _list.length; _i++) {
+              if (_list[_i] && _list[_i].id === saved.id) { _list[_i] = saved; break; }
+            }
+          } else _list.push(saved);
           var shown = String(saved.challanNo || no || "");
           /* the paper book's number goes after the delivery, never before it */
           var after = function () {
             bust(); S.ch = null; S.tab = "make"; render();
             toast(r.held
-              ? "Challan saved on this phone" + (shown ? " (" + shown + ")" : " \u2014 its number comes when it uploads") +
-                ". It goes up by itself when there is signal." + (manualV ? " Book no " + manualV + "." : "")
-              : "Challan " + shown + " created \u2014 waiting to be passed." + (manualV ? " Book no " + manualV + "." : ""));
+              ? (_editRow ? "Changes to " + shown + " are saved on this phone and go up when there is signal."
+                          : "Challan saved on this phone" + (shown ? " (" + shown + ")" : " \u2014 its number comes when it uploads") +
+                            ". It goes up by itself when there is signal.") + (manualV ? " Book no " + manualV + "." : "")
+              : (_editRow
+                  ? "Challan " + shown + " updated" +
+                    (_wasApproved ? " \u2014 back to draft, it must be passed again before dispatch." : " \u2014 still waiting to be passed.")
+                  : "Challan " + shown + " created \u2014 waiting to be passed.") +
+                (manualV ? " Book no " + manualV + "." : ""));
           };
           if (!manualV) { after(); return; }
           /* v1.9.0 - it used to call after() on all three paths, so a book number that never
