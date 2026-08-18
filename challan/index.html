@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.23.0";
+  var APP_VERSION = "1.24.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1136,6 +1136,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   var ALLOWED = ["admin","accounts","godown"];
   function canMake()    { return ["admin","accounts","godown"].indexOf(S.role) >= 0; }
   /* the owner's rule: the man who makes it is not the man who passes it */
+  /* v1.24.0 - the CRM's rule, word for word: "Challan-level discounts, price lists and
+     incentive data stay admin-only." Two apps must not disagree about who may cut a price. */
+  function canSetPricing() { return S.role === "admin"; }
   function canApprove() { return ["admin","accounts"].indexOf(S.role) >= 0; }
   /* v1.3 - and the signed paper is filed by the office, not by the man who loaded the
      lorry. A receipt is the proof that settles an argument; it should not be attachable
@@ -2411,6 +2414,19 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
     h += clientPicker(z, cl);
 
+    /* v1.24.0 - "challan app challan making process should be exact like crm".
+       The CRM's order is: client, MANUAL CHALLAN NO, products, freight, DISCOUNT, driver,
+       vehicle. This app had the book number at the very bottom, under the driver, and no
+       discount field at all - so a man moving between the two screens was hunting for the
+       same box in two different places, and the bargain he had just struck had nowhere to go.
+       The pickers stay as they are: same steps, laid out for a phone. */
+    h += '<div class="card"><div class="bookno" style="margin:0">' +
+        '<label for="m_manual">Manual Challan No</label>' +
+        '<input id="m_manual" class="' + (z.manual ? 'has' : '') + '" inputmode="numeric" placeholder="1247" ' +
+          'title="The number in the paper challan book - optional" value="' + esc(z.manual || "") + '"/>' +
+        '<span>' + (z.manual ? '&#10003;' : '') + '</span>' +
+      '</div></div>';
+
     h += '<div class="card"><div class="row"><div class="grow" style="font-weight:800">Material</div>' +
       '<button class="btn sm" data-act="pk-open" data-into="ch">+ Add material</button></div>';
     if (!lines.length) {
@@ -2438,16 +2454,26 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
            Energy World". Client is first AND is what an untouched form saves. */
         ['Client','Energy World'].map(function (o) { return '<option' + (String(z.fto || "Client") === o ? ' selected' : '') + '>' + o + '</option>'; }).join("") +
       '</select></div></div>' +
-      driverPicker(z) +
-      /* v1.6.1 - small, and in the corner. It shouted because every challan used to be
-         written in the paper book first; now they are made here, so it keeps its job and
-         loses its size. Optional, printed on the challan, shown in hisab - just quiet. */
-      '<div class="bookno">' +
-        '<label for="m_manual">Manual Challan No</label>' +
-        '<input id="m_manual" class="' + (z.manual ? 'has' : '') + '" inputmode="numeric" placeholder="1247" ' +
-          'title="The number in the paper challan book - optional" value="' + esc(z.manual || "") + '"/>' +
-        '<span>' + (z.manual ? '&#10003;' : '') + '</span>' +
+      /* v1.24.0 - THE BARGAIN. The CRM has carried this since v6.9.x and this app never had
+         it, so a discount agreed at the counter could not be written down by the man who
+         agreed it. Its absence was not neutral: every line quietly remembers what the client
+         ACTUALLY paid, and without this the challan records a price he did not pay - so if
+         five of twenty come back later he is credited the list price, and the leak is
+         invisible because each credit looks fair on its own.
+
+         Admin only, exactly as in the CRM (canSetPricing there; the same role here). Anyone
+         else sees it, greyed, so he knows it exists and who to ask - a field that is simply
+         absent teaches a man that the app cannot do it. */
+      '<div class="grid2" style="margin-top:8px">' +
+      '<div><label>Discount given on the whole challan</label>' +
+        '<input id="m_disc" inputmode="decimal" placeholder="0" value="' + esc(z.disc != null ? z.disc : "") + '"' +
+        (canSetPricing() ? '' : ' readonly title="Only the owner sets a challan discount" style="background:#f1f5f9;color:#94a3b8"') +
+        '/></div>' +
+      '<div><label>Why (optional)</label>' +
+        '<input id="m_discnote" placeholder="bargained on site" value="' + esc(z.discnote || "") + '"' +
+        (canSetPricing() ? '' : ' readonly style="background:#f1f5f9;color:#94a3b8"') + '/></div>' +
       '</div>' +
+      driverPicker(z) +
       '</div>';
 
     h += '<button class="btn full" data-act="ch-save" style="margin:14px 0 6px">Create the challan</button>' +
@@ -3093,6 +3119,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      repaint happens every time a line is added. Everything is read back into S on input. */
   function wireInputs() {
     var keep = [["m_site","site"],["m_freight","freight"],["m_veh","veh"],
+                ["m_disc","disc"],["m_discnote","discnote"],
                 ["m_manual","manual"],["m_cq","cq"]];
     keep.forEach(function (pair) {
       var e = el(pair[0]);
@@ -3467,14 +3494,30 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         var d = (l.disc != null && l.disc !== "") ? num(l.disc) : clientDiscount(cObj.name, l.brand);
         return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(l.rate), brand:l.brand, disc:d };
       });
-      /* v1.9.0 - the saved amount is what the screens show, computed by the SAME function.
-         It used to be qty x rate with discAmt hardcoded to 0, so the book recorded the list
-         price of a delivery the app was billing at a discount. */
+      /* ============ ONE MEANING PER COLUMN (v1.24.0) ============
+         These two columns meant DIFFERENT THINGS depending on which app wrote the row, and
+         one screen reads both:
+
+             column     CRM                       this app, until now
+             amount     gross, qty x rate         net, line discounts + client freight
+             discAmt    the TYPED bargain         the line-discount total
+
+         The CRM prints that column as "... at list" on its own challan list, so the CRM's
+         meaning is the documented one and this app was the one that drifted - in v1.9.0,
+         which was solving a real problem (discAmt hardcoded to 0) and solved it by changing
+         what the column means rather than by filling the right one in.
+
+         CHECKED BEFORE CHANGING: hisabOutstanding() re-prices every challan from its own
+         lines and never reads either column, so no rupee has ever been mis-counted by this.
+         And all 88 challans in the live book carry amount = list with no discAmt at all, so
+         the drift is in the code and has never reached the data. Fixed before it did.
+
+         Line discounts are untouched: they live per line inside itemsJson, which is where
+         chValue(), pricedLines() and every credit already read them from. */
       var gross = lines.reduce(function (a, l) { return a + num(l.qty) * num(l.rate); }, 0);
-      var amount = chValue({ itemsJson: JSON.stringify(lines),
-                             freight: num(z.freight), freightTo: z.fto || "Client" });
-      var discAmt = Math.max(0, Math.round(gross +
-        (String(z.fto || "Client") === "Client" ? num(z.freight) : 0) - amount));
+      var amount = Math.round(gross);                      /* AT LIST, exactly as the CRM writes it */
+      var discAmt = canSetPricing() ? Math.max(0, num(z.disc)) : 0;
+      var discNote = canSetPricing() ? String(z.discnote || "").trim() : "";
       var siteObj = sitesFor(cObj.name).filter(function (s) { return s.name === z.site; })[0] || {};
       var manualV = String(z.manual || "").trim();
       /* the driver comes off his own record, so freight per driver can actually be totalled */
@@ -3528,7 +3571,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           items: lines.map(function (l) { return l.desc + " x" + l.qty; }).join(", "),
           itemsJson: JSON.stringify(lines), amount: amount,
           freight: num(z.freight), freightTo: z.fto || "Client",
-          discAmt: discAmt, discNote: discAmt ? "line discounts as quoted" : "",
+          discAmt: discAmt, discNote: discNote,
           driver: dRec.name || "", driverId: dRec.id || "", driverMobile: dRec.mobile || "",
           vehicle: z.veh || dRec.vehicle || "",
           associate: "", commissionSet: "N", status: "Draft", receiptReceived: "N"
