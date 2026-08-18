@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.21.0";
+  var APP_VERSION = "1.22.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1239,6 +1239,37 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return clientsFromBook();
   }
   function clientsAreDerived() { return !(((S.data && S.data.clients) || []).length) && clientsFromBook().length > 0; }
+  /* ---------------------------------------------------------------------------
+     EVERYTHING A CLIENT IS KNOWN BY  (17 Aug 2026 - shared wording with the CRM)
+
+     HIS REPORT: "entered payment receipt of Krishan Kumar from Mohit Trading - if i have to
+     serch Mohit Trading from search box, its have to show detail, its not showing nothing."
+
+     A client is billed under one or more FIRM names - that is what the "Bills under" list on
+     his record is, and it is how half this trade works: the man is Krishan Kumar, the cheque
+     says Mohit Trading, and the GST number belongs to the firm. Every search in every app
+     read his own name and stopped there, so money recorded perfectly correctly was
+     unfindable by the only name the person looking actually had.
+
+     One function, so no two screens can search different things and disagree. The GSTIN is
+     in there on purpose: a man holding a bill often has the number and not the spelling. */
+  function clientHay(c) {
+    if (!c) return "";
+    if (c.__hay !== undefined) return c.__hay;
+    var parts = ["name", "shortName", "mobile", "mobile2", "location", "area",
+                 "plumber", "architect", "builder", "pmc", "address", "notes"]
+      .map(function (k) { return String(c[k] || ""); });
+    try {
+      var b = JSON.parse(c.billingJson || "[]");
+      if (Object.prototype.toString.call(b) === "[object Array]") {
+        b.forEach(function (x) { parts.push(String((x && x.name) || ""), String((x && x.gstin) || "")); });
+      }
+    } catch (e) {}
+    var hay = parts.join(" \u0001 ").toLowerCase();
+    try { Object.defineProperty(c, "__hay", { value: hay, enumerable: false, configurable: true }); }
+    catch (e) {}
+    return hay;
+  }
   function clientByName(n) {
     var k = lower(n);
     return clients().filter(function (c) { return lower(c.name) === k; })[0] || null;
@@ -2107,16 +2138,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
        It also walks straight past an empty district list, which is what he is looking at
        today. */
     var gq = String(z.gq || "").trim();
-    h2 += '<label>Search any client &mdash; name, area or number</label>' +
-      '<input id="' + p + '_gq" placeholder="e.g. jagdish, or 98123, or model town" value="' + esc(gq) + '" autocomplete="off"/>';
+    h2 += '<label>Search any client &mdash; his name, his <b>firm</b>, area or number</label>' +
+      '<input id="' + p + '_gq" placeholder="name, firm, area or number" value="' + esc(gq) + '" autocomplete="off"/>';
     if (gq.length >= 2) {
       var qq = lower(gq);
       var hits = clients().filter(function (c) {
-        return lower(c.name).indexOf(qq) >= 0 ||
-               lower(c.shortName || "").indexOf(qq) >= 0 ||
-               lower(c.area || "").indexOf(qq) >= 0 ||
-               lower(c.location || "").indexOf(qq) >= 0 ||
-               String(c.mobile || "").indexOf(qq) >= 0;
+        /* v1.22.0 - one haystack, so this box finds the firm on the cheque as well as the
+           man on the challan. See clientHay(). */
+        return clientHay(c).indexOf(qq) >= 0;
       }).sort(function (a, b) { return alpha(a.name, b.name); });
       if (!hits.length) {
         h2 += '<div class="empty" style="padding:14px 8px">Nobody by that. Try fewer letters.<br>' +
