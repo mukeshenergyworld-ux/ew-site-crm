@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.312";
+  var APP_VERSION = "6.9.313";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7857,7 +7857,7 @@ window.addEventListener("beforeunload", function (ev) {
                       (hd.note ? ' &middot; ' + esc(hd.note) : "") + '. Attaching another one makes it the current one; nothing is deleted.</div>'
                     : '<div class="meta" style="margin-bottom:6px">Not attached yet. A PDF is best \u2014 a clear photo of the page also works.</div>') +
                   '<input type="file" id="c_hisab" accept="application/pdf,image/*" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
-                  '<div id="c_hisab_note" class="meta" style="margin-top:4px;color:#94a3b8">Pick the file, then press Attach. It goes up on its own \u2014 you do not have to save the client.</div>' +
+                  '<div id="c_hisab_note" class="meta" style="margin-top:4px;color:#94a3b8">' + hdNoteHtml() + '</div>' +
                   '<input id="c_hisab_txt" placeholder="A note, e.g. as on 31-03-2026" style="margin-top:6px"/>' +
                   '<div class="row" style="margin-top:6px"><div class="grow"></div>' +
                   '<button class="btn sm" data-act="hd-attach" data-id="' + esc(c.id) + '">Attach the old hisab</button></div>' +
@@ -10648,6 +10648,148 @@ function viewCatalogue() {
       fr.readAsDataURL(file);
     });
   }
+
+  /* ============ THE OLD HISAB WAS NEVER GIVEN WHAT THE RECEIPT HAS (v6.9.313) ============
+     He reported: "not attacing old hisab, stucked" - the word "Uploading..." on screen and
+     nothing after it.
+
+     The receipt upload and the old-hisab upload are the SAME operation against the SAME
+     endpoint, and over v6.9.265-281 the receipt was given a durable queue, one-at-a-time
+     draining, a seconds counter on the card, the real reason on every failure, and an
+     automatic shrink-and-retry. The old hisab got none of it. It was a bare one-shot
+     promise, and that is the whole fault:
+
+       * pdfHost is allowed 240 seconds. The screen said "Uploading..." and NOTHING else for
+         up to four minutes, so there was no way to tell a slow line from a dead one. That is
+         what "stucked" is - not a hang, a silence.
+       * the Attach button stayed live throughout, so a second press started a SECOND upload
+         racing the first up the same wire. Both then go slower. That is the congestion fault
+         fixed for receipts in v6.9.267, still here.
+       * a failure said "That did not go up" and threw the reason away - the identical fault
+         the receipt queue had until v6.9.265, where the reason had been learned and discarded.
+       * no size was ever shown, before or during. A statement exported from Tally is ~200 KB
+         and goes in seven seconds; a phone scan of the same pages can be 20 MB and cannot.
+         Nothing on the screen distinguished them.
+
+     Measured today from his own browser against the live endpoint: 250 KB answered in 7.1s
+     and 1,024 KB in 11.4s. The line is healthy. So the answer is not a bigger deadline - it
+     is to say what is happening while it happens, and to say what went wrong when it does.
+
+     Deliberately NOT a second copy of the receipt queue. Attaching an old hisab happens once
+     per migrated client, on a desk, with the file still on the disk - the thing that was
+     missing was never durability, it was the app saying anything at all. */
+  /* ============ HOW BIG A HISAB CAN ACTUALLY GO UP (measured 19 Aug 2026) ============
+     Run from HIS browser against the live pdfHost endpoint, real bytes, real Drive files:
+           250 KB ->  7.1s        1,024 KB -> 11.4s        3 MB -> 15.8s
+             8 MB -> 23.7s           20 MB -> 53.7s
+     There is no size ceiling worth the name and the line is healthy - about five seconds of
+     overhead plus roughly two and a half per megabyte. So the 240s deadline was never the
+     problem, and raising it would have been one more guess. What was missing was the app
+     saying anything at all while those seconds passed.
+
+     12 MB is where the wait stops being seconds and starts being a minute, which is the point
+     at which a man needs telling BEFORE he presses, not after. Below it, say nothing. */
+  var HISAB_BIG_KB = 12000;
+  /* 20 MB went up in 53.7s. 44 MB (58.7 MB on the wire) ran the full 240 seconds and was
+     aborted with no answer. Somewhere between the two this stops working, so above 25 MB he
+     is told that plainly - and still allowed to try, because a measurement taken on one line
+     on one afternoon does not get to refuse a man his own document. */
+  var HISAB_TOOBIG_KB = 25000;
+  var _hdUp = null;                    /* {kb, t0} while the old hisab is going up */
+  var _hdTick = null;
+  /* ONE place words this line, so the ticker, the repaint and the picker cannot disagree -
+     which is exactly how a modal repaint used to replace "Uploading..." with "Pick the file". */
+  function hdNoteHtml() {
+    if (_hdUp) {
+      return '<b style="color:#0f766e">Uploading ' + _hdUp.kb + ' KB\u2026 ' +
+             Math.round((Date.now() - _hdUp.t0) / 1000) + 's</b> \u2014 leave this open. ' +
+             'A big scan can take a couple of minutes.';
+    }
+    if (S.hdFile && S.hdFile.b64) {
+      var k = Math.round(String(S.hdFile.b64).length / 1024);
+      return '<b style="color:#0f766e">Ready \u2014 ' + esc(String(S.hdFile.name || "the file")) +
+             ', ' + k + ' KB.</b> Now press <b>Attach the old hisab</b>.' +
+             (k > HISAB_TOOBIG_KB
+               ? ' <span style="color:#b91c1c">This is bigger than anything measured to work. ' +
+                 '20 MB goes up in about a minute; 44 MB ran four minutes and gave up. ' +
+                 'Open it and save a smaller PDF, or photograph the pages instead. You can still ' +
+                 'press Attach \u2014 it may simply not arrive.</span>'
+               : k > HISAB_BIG_KB
+               ? ' <span style="color:#b45309">This one is big \u2014 20 MB took 54 seconds ' +
+                 'on a good line and takes several times that on a phone. Press once and let ' +
+                 'it run.</span>'
+               : '');
+    }
+    return 'Pick the file, then press Attach. It goes up on its own \u2014 you do not have to save the client.';
+  }
+  function hdNote(html, colour) {
+    var e2 = el("c_hisab_note");
+    if (!e2) return;
+    e2.innerHTML = (html === null || html === undefined) ? hdNoteHtml() : html;
+    e2.style.color = colour || (_hdUp ? "#0f766e" : "#94a3b8");
+  }
+  /* The button is the other half of this. A man told nothing for four minutes presses it
+     again - that is not impatience, it is the only thing the screen offered him. */
+  function hdBtn(disabled, label) {
+    var b = document.querySelector('[data-act="hd-attach"]');
+    if (!b) return;
+    b.disabled = !!disabled;
+    b.style.opacity = disabled ? "0.55" : "";
+    b.textContent = label || "Attach the old hisab";
+  }
+  function hdStart(kb) {
+    _hdUp = { kb: kb, t0: Date.now() };
+    if (_hdTick) clearInterval(_hdTick);
+    _hdTick = setInterval(function () { try { if (!hdOverdue()) hdNote(null); } catch (e) {} }, 1000);
+    hdNote(null); hdBtn(true, "Going up\u2026");
+  }
+  function hdStop() {
+    _hdUp = null;
+    if (_hdTick) { clearInterval(_hdTick); _hdTick = null; }
+    hdBtn(false, null);
+  }
+  /* ============ A BACKSTOP FOR THE ENDING (v6.9.313) ============
+     api() settles every call by hand: a setTimeout at the deadline aborts the fetch and
+     rejects, so "Uploading..." is supposed to end no matter what.
+
+     WHAT WAS ACTUALLY MEASURED TODAY, and it is worth writing down because I got it wrong
+     first: a 44 MB upload was started in a background tab with a 240-second abort on it. It
+     came back at 240.9s, aborted, exactly as designed. Mid-run I read the empty result and
+     concluded the timer had been throttled - a comment claiming that was written into this
+     file and had to be taken back out. The timer is FINE. Chrome did not throttle it.
+
+     So this is not a fix for a measured fault. It is a backstop for the one case the timer
+     genuinely cannot cover: a Mac that sleeps with the upload in flight stops its timers
+     altogether, and wakes with the screen still saying "Uploading..." and nothing due to
+     fire. Date.now() does not care that the machine slept. Every tick, and again the moment
+     he comes back to the tab, elapsed time is checked against the deadline - so the ending
+     arrives on the first paint after he returns.
+
+     It costs one comparison per second and it does NOT say the upload failed. Same rule as a
+     challan move in v6.9.312: no answer is not the same as a refusal. The file may well be on
+     Drive; what is certain is only that this screen has stopped waiting for it. */
+  var HISAB_OVERDUE_MS = 270000;                 /* the 240s deadline, plus slack */
+  function hdOverdue() {
+    if (!_hdUp) return false;
+    var secs = Math.round((Date.now() - _hdUp.t0) / 1000);
+    if (secs * 1000 < HISAB_OVERDUE_MS) return false;
+    var kb = _hdUp.kb;
+    hdStop();
+    hdNote('<b style="color:#b45309">No answer after ' + Math.round(secs / 60) + ' minutes</b> \u2014 ' +
+           'this screen has stopped waiting for the ' + kb + ' KB file. It may still have gone up: ' +
+           'close this and open the client again to see. If it did not, the file is still chosen ' +
+           '\u2014 press <b>Attach the old hisab</b>.', "#b45309");
+    hdBtn(false, "Try again");
+    toast("The old hisab has had no answer in " + Math.round(secs / 60) + " minutes. It may already " +
+          "be attached \u2014 reopen the client to check before sending it again.");
+    return true;
+  }
+  /* Coming back to the tab is the moment it matters, because it is the only moment anybody
+     is looking at that line. */
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) return;
+    try { if (_hdUp) { hdOverdue() || hdNote(null); } } catch (e) {}
+  });
 
   /* v6.9.210. Everything that goes up to Drive has to be a real PDF: the backend stores exactly
      what it is handed, and a photograph saved under a .pdf name is a file nobody can open six
@@ -22555,7 +22697,8 @@ function viewCatalogue() {
             return;
           }
           S.hdFile = { b64: b64, name: f.name || "hisab", kind: k };
-          if (n4) { n4.textContent = "Ready \u2014 now press Attach the old hisab."; n4.style.color = "#0f766e"; }
+          /* v6.9.313 - the size, in KB, before he commits to waiting for it. */
+          hdNote(null, "#334155");
         });
       });
     }
@@ -26435,11 +26578,17 @@ function viewCatalogue() {
       var hcl = (S.data.clients || []).filter(function (x) { return x.id === id; })[0];
       if (!hcl) { toast("Save the client first, then attach his old hisab."); return; }
       if (!S.hdFile || !S.hdFile.b64) { toast("Pick the file first."); return; }
+      /* v6.9.313 - one at a time. A second press used to start a second upload racing the
+         first up the same wire, and both then went slower. */
+      if (_hdUp) {
+        toast("It is already going up \u2014 " + Math.round((Date.now() - _hdUp.t0) / 1000) +
+              "s so far. Pressing again only slows it down.");
+        return;
+      }
       var hnote = el("c_hisab_txt") ? String(el("c_hisab_txt").value || "").trim() : "";
-      var hnEl = el("c_hisab_note");
-      if (hnEl) { hnEl.textContent = "Uploading\u2026"; hnEl.style.color = "#94a3b8"; }
       var hf = S.hdFile;
       var hcid = hcl.id;
+      hdStart(Math.round(String(hf.b64 || "").length / 1024));
       (hf.kind === "pdf"
         ? Promise.resolve(hf.b64)
         : imgToPdf(hf.b64, String(hcl.name || "") + " \u2014 old hisab").then(function (d) {
@@ -26460,20 +26609,37 @@ function viewCatalogue() {
           detail: JSON.stringify({ clientId: hcid, name: hcl.name || "", url: r.url, at: nowh, note: hnote }),
           ip: ""
         }, true).then(function () {
+          var _secs = _hdUp ? Math.round((Date.now() - _hdUp.t0) / 1000) : 0;
           _hdCache = null; S.hdFile = null;
+          hdStop();
           /* No repaint on purpose: he may be halfway through editing this very client, and a
              redraw would take his typing with it. The line under the file box just changes. */
-          var h3 = el("c_hisab_note");
-          if (h3) {
-            h3.innerHTML = 'Attached. <a href="' + esc(r.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600">Open it &#8599;</a>';
-            h3.style.color = "#0f766e";
-          }
+          hdNote('Attached in ' + _secs + 's. <a href="' + esc(r.url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600">Open it &#8599;</a>', "#0f766e");
+          hdBtn(false, "Attach another");
           toast("Old hisab attached for " + String(hcl.name || "") + ".");
         });
-      }).catch(function () {
-        var h4 = el("c_hisab_note");
-        if (h4) { h4.textContent = "That did not go up \u2014 nothing was lost, try again in a moment."; h4.style.color = "#b45309"; }
-        toast("Could not attach it \u2014 nothing was lost, try again.");
+      }).catch(function (err) {
+        /* v6.9.313 - SAY WHAT HAPPENED. "That did not go up" threw away the one thing worth
+           keeping: api() already words its own failures ("timed out after 240s", "the server
+           asked this browser to sign in to Google", "Google Apps Script quota reached"), and
+           this catch was discarding all of it - the identical fault the receipt queue carried
+           until v6.9.265. The file itself is NOT cleared, so retrying is one press, not a
+           second trip to the file picker. */
+        var _s2 = _hdUp ? Math.round((Date.now() - _hdUp.t0) / 1000) : 0;
+        hdStop();
+        var why = (err && err.message) ? String(err.message) : "the server gave no link back";
+        if (why === "host") why = "the server took the file but sent no link back";
+        var kb2 = Math.round(String((S.hdFile && S.hdFile.b64) || "").length / 1024);
+        hdNote('<b style="color:#b45309">Not gone up \u2014 ' + esc(why) + '</b> (after ' + _s2 + 's, ' +
+               kb2 + ' KB). Nothing was lost and the file is still chosen \u2014 press <b>Attach the old hisab</b> ' +
+               'to try again.' +
+               (kb2 > HISAB_BIG_KB
+                 ? ' At this size the line is the likely reason: open it and save a smaller PDF, ' +
+                   'or photograph the page instead. Measured on a good line, 20 MB needs 54 seconds ' +
+                   'and a phone needs several times that.'
+                 : ''), "#b45309");
+        hdBtn(false, "Try again");
+        toast("Could not attach it \u2014 " + why + ". Nothing was lost.");
       });
       return;
     }
