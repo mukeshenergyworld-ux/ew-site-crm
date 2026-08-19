@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.28.2";
+  var APP_VERSION = "1.29.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1381,6 +1381,28 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           String(pt[j].clientName || "").trim().toLowerCase() === t) return true;
     }
     return false;
+  }
+  /* ====== AN EMPTY ANSWER IS NOT A "NO" (v1.29.0) ======
+     19 Aug 2026, on the godown phone: "Janpal - Safeidon is not a client yet - no delivery
+     has ever gone to him and no brand is marked Won." Seven brands were marked Won. The CRM
+     showed all seven on his card at the same moment.
+
+     The server was the cause - the godown branch of teamFilterAll_ set `all.pitch = []`, so
+     that phone was handed an empty Won list for every client, always - and V96 fixes it at
+     the source by sending the names and nothing else.
+
+     This is the second lock. isClientC() reads two tabs; if the Won tab arrives EMPTY while
+     the client list is full, the honest answer is "this phone cannot tell", not "he is not a
+     client". Those have been the same sentence in this app and they are not the same fact.
+     One is a refusal; the other is an ignorance wearing a refusal's clothes, and this estate
+     has been bitten by that shape four times now.
+
+     Deliberately still a stop. The godown must not decide who is a customer - that rule is
+     unchanged. What changes is that the man at the counter is told the truth about why. */
+  function cantTellClient() {
+    var pt = (S.data && S.data.pitch) || [];
+    var cl = (S.data && S.data.clients) || [];
+    return pt.length === 0 && cl.length > 0;
   }
   /* v1.10.0 - FIND A CHALLAN BY EITHER KEY. Every screen looked one up by its challan
      NUMBER, which was fine while a challan could not exist without one. A challan written
@@ -3798,6 +3820,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
                 (S.syncAt ? " (" + bookAge(S.syncAt).txt + ")" : "") +
                 " \u2014 checking with the office now. Press Create again in a moment.");
           try { pull(true); } catch (e) {}
+          return;
+        }
+        /* v1.29.0 - the Won list came down empty. Say that, rather than reading it as a no. */
+        if (cantTellClient()) {
+          toast("This phone was not sent the brand-Won list, so it cannot tell whether " +
+                cObj.name + " is a client \u2014 that is not the same as him not being one. " +
+                "Ring the office and ask them to check his card, or write this challan from " +
+                "a phone that has the full book.");
           return;
         }
         toast(cObj.name + " is not a client yet \u2014 no delivery has ever gone to him and no " +
