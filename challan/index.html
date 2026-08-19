@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.30.0";
+  var APP_VERSION = "1.31.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3176,7 +3176,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           var b64 = doc.output("datauristring").split(",")[1];
           return api("pdfHost", { pdfBase64: b64, filename: no.replace(/[^\w.-]+/g, "_") + "_receipt.pdf" })
             .then(function (h) {
-              if (!h || !h.ok || !h.url) throw new Error("host failed");
+              /* v1.31.0 - carry the server's reason. Since backend v98 hosting needs a PIN,
+                 and "host failed" would have hidden "not signed in on this device" behind a
+                 word that tells the man at the counter nothing he can act on. */
+              if (!h || !h.ok || !h.url) {
+                throw new Error((h && h.error) ? String(h.error)
+                                               : "the server took the receipt but sent no link back");
+              }
               return saveProof(rec, h.url, small.url).then(function (r) {
                 if (!r || !r.ok) throw new Error("audit failed");
                 (S.data.audit = S.data.audit || []).push(r.row);
