@@ -137,7 +137,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.19.1";
+  var APP_VERSION = "1.20.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -2465,6 +2465,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
           return;
         }
         S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+        try { beatStart(); } catch (e) {}   /* v1.20.0 - from here it asks on its own */
         if (["admin", "accounts", "sales"].indexOf(S.role) < 0) { S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = ""; return; }
         try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: saved.pin, role: S.role })); } catch (e) {}
         startFlushTicker();          /* the PIN path started it; Face ID never did, so a held
@@ -2921,6 +2922,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     authOnce(1).then(function (r) {
       if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
       S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+      try { beatStart(); } catch (e) {}   /* v1.20.0 - from here it asks on its own */
       if (["admin", "accounts", "sales"].indexOf(S.role) < 0) {
         S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = "";
         return;
@@ -2944,6 +2946,53 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      A man standing in a godown on 4G should not watch a spinner to find out who owes him. */
   /* Only one pull in flight. Without the ten-minute guard a man moving between apps could
      otherwise start three, and the last to land would win regardless of which was freshest. */
+  /* ================= THE HEARTBEAT (v1.20.0) =================
+     "sync between crm and related apps like challan, collection is not fast, we have to work
+     seriously on it"                                              - 19 August 2026
+
+     Every previous answer measured the PULL and reported that it was fast. It is. The pull was
+     never the problem: NOTHING TOLD THIS APP. It pulled on exactly two events - opening it,
+     and coming back to it - and so did the other two. There was no polling anywhere. A phone
+     sitting in front of a man with the app OPEN never asked again, so a payment recorded in
+     the CRM, or a challan received in the godown, reached this screen whenever somebody
+     happened to switch away and switch back. That is not slow. That is unbounded.
+
+     teamStamp returns one number - one property read on the server, no sheet, no book, about
+     sixty bytes. Against a ~680 KB pull, asking a hundred times costs less than pulling once.
+     It asks every 30 seconds while somebody is actually looking, and pulls only when the
+     number has moved.
+
+     The guard is the one visibilitychange already had, for the reason it already had it: never
+     with a form open. Nothing may take a half-typed receipt off the screen. */
+  var BEAT_EVERY = 30000, _beatSeen = "", _beatOn = null, _beatBusy = false;
+  function beatMark(st) { if (st) _beatSeen = String(st); }
+  function beat() {
+    if (_beatBusy || beatSkip()) return;
+    _beatBusy = true;
+    api("teamStamp").then(function (r) {
+      _beatBusy = false;
+      var st = (r && r.stamp) ? String(r.stamp) : "";
+      if (!st) return;
+      if (!_beatSeen) { _beatSeen = st; return; }     /* baseline, not news */
+      if (st === _beatSeen) return;
+      _beatSeen = st;
+      if (beatSkip()) return;                          /* a form opened while we asked */
+      beatGo();
+    }).catch(function () { _beatBusy = false; });
+  }
+  function beatStart() { if (!_beatOn) _beatOn = setInterval(beat, BEAT_EVERY); }
+  /* MAY_DIFFER: what "busy" means is genuinely different in each app, and these are the same
+     guards each app's own pull already used. Nothing else here differs. */
+  function beatSkip() {
+    if (document.hidden) return true;
+    if (!S.user || !S.data) return true;
+    if (S.sheet) return true;                   /* never with a half-typed receipt on screen */
+    if (_pulling) return true;
+    return false;
+  }
+  /* MAY_DIFFER: the CRM syncs through quietSync and its throttle; these two call pull(). */
+  function beatGo() { pull(false); }
+
   var _pulling = null;
   /* ============ THE SERVER IGNORES `only` — READ, NOT ASSUMED (18 Aug 2026) ============
      The backend was finally opened today. `teamGet_` never looks at `body.only`, and
@@ -3007,6 +3056,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         return true;
       }
       landedFast = true;
+      beatMark(r && r.stamp);            /* v1.20.0 - the stamp AS AT this book */
       mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
       /* the whole book arrived on the first call - take the rest of it and do not ask again */
       if (bookHas(r, KEEP_REST)) {
@@ -3055,6 +3105,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      does not hammer the server, and quiet - no toast - because he did not ask for it. */
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) return;
+    try { beatStart(); } catch (e) {}
     if (!S.user || !S.data) return;
     if (S.sheet) return;                       /* never pull the ground from under an open form */
     /* v1.9.1 - was 60 seconds. This is the app you leave for every phone call, so thirty
@@ -3149,6 +3200,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         return;
       }
       S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+      try { beatStart(); } catch (e) {}   /* v1.20.0 - from here it asks on its own */
       if (["admin", "accounts", "sales"].indexOf(S.role) < 0) {
         refused = true; S.pin = ""; forgetBook();
         renderLogin("This app is not open to you.");
@@ -3161,7 +3213,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     dataP.then(function (r) {
       if (refused) return;
       if (usableBook(r)) {
-        mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
+        beatMark(r && r.stamp);            /* v1.20.0 - the stamp AS AT this book */
+      mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
         applyJournal(); snapSave(); render();
         if (bookHas(r, KEEP_REST)) {             /* the server sent everything - see bookHas */
           mergeBook(r, KEEP_REST); S.restAt = Date.now(); bust();
