@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.29.0";
+  var APP_VERSION = "1.30.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -4200,6 +4200,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     authOnce(1).then(function (r) {
       if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
       S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+      beatStart();                        /* v1.30.0 - from here the phone asks on its own */
       if (ALLOWED.indexOf(S.role) < 0) {
         S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = "";
         return;
@@ -4298,6 +4299,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         return true;                       /* keep what is on the phone and still try part two */
       }
       landedFast = true;
+      beatMark(r && r.stamp);            /* v1.30.0 - the stamp AS AT this book */
       mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
       /* the whole book arrived on the first call - take the rest of it and do not ask again */
       if (bookHas(r, KEEP_REST)) {
@@ -4345,6 +4347,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      different pictures of it. Never while a form is open. */
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) return;
+    beatStart();
     if (!S.user || !S.data) return;
     if (S.sheet || S.ch || S.rt) return;
     /* v1.28.0 - THE 60-SECOND GUARD IS GONE, at the owner's instruction.
@@ -4356,6 +4359,62 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
        60 seconds was aiming at, two pulls racing, without ever refusing to look. */
     pull(false);
   });
+
+  /* ================= THE HEARTBEAT (1.30.0) =================
+     "sync between crm and related apps like challan, collection is not fast, we have to work
+     seriously on it"                                              - 19 August 2026
+
+     He has asked this repeatedly and been told every time that the app is already fast. That
+     answer was true and useless. His own header reads "3.7s . 383 KB" - the PULL is fast. The
+     pull was never the problem.
+
+     NOTHING TOLD THE PHONE. This app pulled on exactly two events: opening it, and coming
+     back to it. There was no polling anywhere in any of the three apps. So a phone sitting in
+     front of a man with the app OPEN never asked again. The delay was not slowness; it was
+     unbounded. A client added on the MacBook reached the godown when somebody happened to
+     switch away and switch back, and not before.
+
+     WHAT THIS COSTS. teamStamp returns one number - one property read on the server, no sheet
+     touched, no book built, about sixty bytes on the wire. Against a 383 KB pull, asking
+     thirty times is cheaper than pulling once. So it asks every 30 seconds while the app
+     is actually in front of somebody, and pulls ONLY when the number has moved.
+
+     THE GUARDS ARE THE SAME ONES THE PULL ALREADY HAD, for the same reasons: never while the
+     tab is hidden (nobody is looking, and it would poll all night), never with a form open,
+     never while a save is in flight. A heartbeat must never be the thing that takes a man's
+     typing away.
+
+     FIRST ANSWER IS A BASELINE, NOT A CHANGE. The first stamp seen is simply remembered - the
+     app has just pulled, so it is already current, and treating that first reading as news
+     would mean every app pulled twice on every open. */
+  var BEAT_EVERY = 30000, _beatSeen = "", _beatOn = null, _beatBusy = false;
+  function beatMark(st) { if (st) _beatSeen = String(st); }
+  function beat() {
+    if (_beatBusy || beatSkip()) return;
+    _beatBusy = true;
+    api("teamStamp").then(function (r) {
+      _beatBusy = false;
+      var st = (r && r.stamp) ? String(r.stamp) : "";
+      if (!st) return;
+      if (!_beatSeen) { _beatSeen = st; return; }     /* baseline, not news */
+      if (st === _beatSeen) return;
+      _beatSeen = st;
+      if (beatSkip()) return;                          /* a form opened while we asked */
+      beatGo();
+    }).catch(function () { _beatBusy = false; });
+  }
+  function beatStart() { if (!_beatOn) _beatOn = setInterval(beat, BEAT_EVERY); }
+  /* MAY_DIFFER: what "busy" means is genuinely different in each app, and these are the same
+     guards each app's own pull already used. Nothing else here differs. */
+  function beatSkip() {
+    if (document.hidden) return true;
+    if (!S.user || !S.data) return true;
+    if (S.sheet || S.ch || S.rt) return true;   /* a form is open */
+    if (_pulling) return true;
+    return false;
+  }
+  /* MAY_DIFFER: the CRM syncs through quietSync and its throttle; these two call pull(). */
+  function beatGo() { pull(false); }
 
   function openingScreen(msg) {
     el("root").innerHTML = '<div class="login"><h1>Energy World</h1><p>Challan &amp; material return</p>' +
@@ -4408,6 +4467,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         renderLogin("Sign in again."); return;
       }
       S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+      beatStart();                        /* v1.30.0 - from here the phone asks on its own */
       if (ALLOWED.indexOf(S.role) < 0) {
         refused = true; S.pin = ""; forgetBook();
         renderLogin(notForYou(S.user, S.role)); S.role = ""; return;
