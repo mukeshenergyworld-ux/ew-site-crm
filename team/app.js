@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.311";
+  var APP_VERSION = "6.9.312";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -512,7 +512,15 @@
        answers in 8.9s, so 240s costs nothing when the line is good and is the difference
        between finishing and never finishing when it is not. */
     teamGet: 60000, catalog: 60000, pdfHost: 240000, tgSend: 60000,
-    search: 45000, historicChallan: 45000
+    search: 45000, historicChallan: 45000,
+    /* v6.9.312 - challanMove was NOT in this table, so approve, dispatch and mark-received
+       ran on the 30s default while teamSave sat at 60s. The comment above teamSave gives the
+       reason it was raised - "a save that is abandoned turns into a man re-typing a challan
+       the server has already written" - and that reasoning is even truer here: an abandoned
+       approve turns into a man typing his PIN again to release material that has already been
+       released. Measured on the server side: a move reads the challan sheet, writes, and (on a
+       receipt) called Telegram while holding the global lock. 30s was never enough. */
+    challanMove: 60000
   };
   /* ============ WHAT THE WIRE ACTUALLY COSTS (v6.9.310) ============
      He asked why a change made here takes so long to show up on the godown phone. The answer
@@ -5800,9 +5808,40 @@ window.addEventListener("beforeunload", function (ev) {
      writes the same append-only audit row the challan form writes, from the same
      function, so a number added three days later is indistinguishable from one typed
      at the counter - and the one typed first is still on the sheet either way. */
+  /* ============ "NONE" AND "NOT IN THIS COPY" ARE DIFFERENT (v6.9.312) ============
+     He reported: "i have entered old book no while creating challan, on approve again its
+     asking for old book no why ?"
+
+     Because this said "+ Book no" - which reads as *nobody entered one* - whenever it could
+     not find one. The number is filed as an audit row, and this screen only knows the audit
+     rows that were in the book the last time it was pulled. A number typed in the godown ten
+     minutes ago is on the sheet and simply not in THIS copy. So the app told him it was
+     missing, and he typed it again.
+
+     Nothing was lost either way - saveManualNo appends and the newest row wins - but being
+     asked twice for something you already did is the app wasting your time and making you
+     doubt it. The same fault as the lead check, and as "No signal, nothing was recorded":
+     an app asserting the absence of something it has not actually looked for.
+
+     So: if the copy on this device is fresh, absence is real and it says so. If the copy is
+     old, it says THAT instead, and names the time, and points at Refresh. */
+  function bookIsFresh() {
+    var ts = bookTs();
+    return !!ts && (Date.now() - ts) < 600000;      /* ten minutes */
+  }
   function manualNoCell(c, small) {
     var v = manualNoFor(c);
     if (v) return ' ' + manualNoChip(c, small);
+    if (!bookIsFresh()) {
+      return ' <button data-act="ch-bookno" data-id="' + esc(c.id || "") + '" ' +
+        'data-no="' + esc(c.challanNo || "") + '" data-cl="' + esc(c.customerName || "") + '" ' +
+        'title="This copy of the book is ' + esc(bookAge(bookTs()).txt) + '. If a book number was ' +
+        'entered in the godown since then it is on the sheet but not in this copy \u2014 press the ' +
+        'refresh arrow before typing it again. Tap to enter one anyway; nothing is ever overwritten." ' +
+        'style="display:inline-block;background:#fff;border:1px dashed #cbd5e1;color:#94a3b8;' +
+        'border-radius:6px;padding:1px 7px;font-size:' + (small ? '10.5' : '11.5') + 'px;font-weight:700;' +
+        'vertical-align:middle;cursor:pointer;font-family:inherit;line-height:1.45">Book no ?</button>';
+    }
     return ' <button data-act="ch-bookno" data-id="' + esc(c.id || "") + '" ' +
       'data-no="' + esc(c.challanNo || "") + '" data-cl="' + esc(c.customerName || "") + '" ' +
       'title="No paper book number was entered for this challan. Add it here." ' +
@@ -5915,6 +5954,35 @@ window.addEventListener("beforeunload", function (ev) {
   /* Admin only, on a delivery marked Received, and only once the signed paper is actually
      on file - the whole point is that he is looking at the receipt when he presses it. A
      receipt still sitting on the phone that took it counts: it is a receipt. */
+  /* ============ A HIDDEN BUTTON EXPLAINS NOTHING (v6.9.312) ============
+     He reported: "earlier i have asked for add to hisab option, its visible for some day but
+     not now why?"
+
+     It did not break. It was TIGHTENED, by me, on 15 August, and he was never told. Before
+     v6.9.259 the button appeared on deliveries whose money hisab does not actually count, so
+     a challan could carry an "in hisab" stamp while the rupees sat outside the statement -
+     a screen lying about money. The rule became the money's own rule: receipt marked
+     received, and the signed paper on file.
+
+     Correct, and silent. The button simply vanished, and a man who had used it for days was
+     left to guess. That is the same fault as every other one found this week: the app knowing
+     exactly why and saying nothing.
+
+     So where it cannot be offered, it now says which of the two things is missing. Admin only,
+     because it is an admin button - nobody else is left wondering about a button that was
+     never theirs. */
+  function hisabWhyNot(c) {
+    if (!c || S.role !== "admin" || inHisab(c)) return "";
+    var need = [];
+    if (!hisabCounts(c)) need.push("mark the delivery received");
+    if (!chProofAny(c).has) need.push("attach the signed paper");
+    if (!need.length) return "";
+    return '<span class="pill" style="background:#f1f5f9;color:#64748b;font-weight:600" ' +
+      'title="ADD TO HISAB is the owner looking at the signed receipt and passing the delivery. ' +
+      'It needs both: the delivery marked received (that is what puts the money on his account) ' +
+      'and the paper on file (that is what you are looking at when you press it).">' +
+      'To add to hisab: ' + esc(need.join(" and ")) + '</span>';
+  }
   function canAddToHisab(c) {
     if (!c || S.role !== "admin") return false;
     if (inHisab(c)) return false;
@@ -12334,7 +12402,7 @@ function viewCatalogue() {
         /* v6.9.250 - the owner's own stage, and his alone. It appears only when the
            delivery is Received AND the signed paper is on file, which is the order he
            described: receipt first, then his eye on it, then hisab. */
-        (canAddToHisab(c) ? '<button class="btn sm" data-act="ch-hisabadd" data-id="' + esc(c.id) + '" style="background:#0b3b36;border-color:#0b3b36">ADD TO HISAB</button>' : "") +
+        (canAddToHisab(c) ? '<button class="btn sm" data-act="ch-hisabadd" data-id="' + esc(c.id) + '" style="background:#0b3b36;border-color:#0b3b36">ADD TO HISAB</button>' : hisabWhyNot(c)) +
         (S.role === "admin" ? '<button class="btn sm ghost" data-act="cx-open" data-tab="challans" data-id="' + esc(c.id) + '" style="color:#b91c1c">Cancel</button>' : "");
 
       /* two-line compact card, same pattern as the lead/client cards:
@@ -26208,12 +26276,36 @@ function viewCatalogue() {
         S.chMoving[id] = true;
         _moving++;                       /* v6.9.292 - quietSync waits while this is in flight */
         var _mdone = function () { if (_moving > 0) _moving--; };
-        var revert = function (msg) {
+        /* ===== REFUSED IS NOT THE SAME AS NO ANSWER (v6.9.312) =====
+           He reported: "i have to approve challan 2 to 3 times, like approved show dispatch,
+           suddenly again go back to approve".
+
+           This is why. On ANY failure - including the deadline simply expiring - the row was
+           put back and he was told it had not happened. But a deadline is a fact about how
+           long WE waited, not about what the SERVER did. challanMove holds a lock, rewrites
+           the row and (on a receipt) called Telegram; when that ran past 30 seconds the app
+           announced the approval had failed for material that was, on the sheet, approved.
+           So he approved it again. Same shape as "No signal - nothing was recorded", which
+           this estate has already been bitten by once in the Payment app.
+
+           refuse() is for an answer we actually got - wrong PIN, not your role. That is known,
+           so the row goes back.
+           unsure() is for no answer at all. The row STAYS moved, the memory is kept so a pull
+           taken before the write cannot undo it, and he is told plainly not to do it twice. */
+        var refuse = function (msg) {
           ch2.status = prevStatus; ch2.approvedBy = prevBy;
-          chMoveForget(id);              /* it did not happen - nothing to re-apply */
+          chMoveForget(id);              /* the server said no - nothing to re-apply */
           toast(msg || ("Could not " + (to === "Approved" ? "approve" : "dispatch") + " - reverted."));
           render();
         };
+        var unsure = function () {
+          chMoveRemember(id, to, S.user); /* keep it: the server may well have done it */
+          toast((to === "Approved" ? "Approval" : "Dispatch") + " sent, but the server did not " +
+                "answer in time. It may already be done \u2014 do NOT do it again. The next " +
+                "refresh will show the truth.");
+          render();
+        };
+        var revert = refuse;
         api("challanMove", { id: id, to: to, approvePin: pin }).then(function (r) {
           S.chMoving[id] = false; _mdone();
           if (!r || !r.ok) { revert(r && r.error); return; }
@@ -26237,7 +26329,7 @@ function viewCatalogue() {
               else { toast("Dispatched — but the Telegram message didn't go. Download the PDF and send it manually."); }
             })
             .catch(function () { toast("Dispatched — Telegram send failed. Download the PDF and send it manually."); });
-        }).catch(function () { S.chMoving[id] = false; _mdone(); revert("Network error - reverted."); });
+        }).catch(function () { S.chMoving[id] = false; _mdone(); unsure(); });
         return;
       }
       /* SNAPPY: flip instantly, validate in the background, revert on refusal (no full refresh). */
@@ -26249,7 +26341,14 @@ function viewCatalogue() {
       render();
       _moving++;                        /* v6.9.292 - same guard on the Received / other moves */
       var _m2done = function () { if (_moving > 0) _moving--; };
+      /* the same rule on the receipt path - see the note above */
       var revert2 = function (msg) { ch2.status = prevS2; ch2.receiptReceived = prevR2; chMoveForget(id); toast(msg || "Could not update - reverted."); render(); };
+      var unsure2 = function () {
+        chMoveRemember(id, to, S.user);
+        toast("Sent, but the server did not answer in time. It may already be done \u2014 do NOT " +
+              "do it again. The next refresh will show the truth.");
+        render();
+      };
       api("challanMove", { id: id, to: to }).then(function (r) {
         _m2done();
         if (!r || !r.ok) { revert2(r && r.error); return; }
@@ -26262,7 +26361,7 @@ function viewCatalogue() {
             "\nApproved by <b>" + (ch2.approvedBy || "-") + "</b>", ch2.approvedBy || "")
             .then(function (tg) { toast(tg && tg.ok ? "Sent to dispatch bot." : "Dispatch send failed."); });
         }
-      }).catch(function () { _m2done(); revert2("Network error - reverted."); });
+      }).catch(function () { _m2done(); unsure2(); });
       return;
     }
 
