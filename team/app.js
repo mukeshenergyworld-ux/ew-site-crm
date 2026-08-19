@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.313";
+  var APP_VERSION = "6.9.314";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1273,8 +1273,62 @@ window.addEventListener("beforeunload", function (ev) {
      cannot start a stampede and cannot race a save. */
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) return;
+    try { beatStart(); } catch (e) {}
     try { if (S && S.user && S.data) quietSync(); } catch (e) {}
   });
+
+  /* ================= THE HEARTBEAT (v6.9.314) =================
+     "sync between crm and related apps like challan, collection is not fast, we have to work
+     seriously on it"                                              - 19 August 2026
+
+     He has asked this repeatedly and been told every time that the app is already fast. That
+     answer was true and useless. The PULL is fast - his own Challan header reads
+     "3.7s . 383 KB". The pull was never the problem.
+
+     NOTHING TOLD THE OTHER PHONE. All three apps pulled on exactly two events: opening, and
+     coming back. There was no polling anywhere. So a phone sitting in front of a man with the
+     app OPEN never asked again, and the delay he has been reporting was not slowness - it was
+     unbounded. Something he changed here reached the godown when somebody happened to switch
+     away and switch back, and not before.
+
+     teamStamp returns one number: one property read on the server, no sheet touched, no book
+     built, about sixty bytes on the wire. Against a ~995 KB pull, asking a hundred times is
+     cheaper than pulling once. So it asks every 30 seconds while somebody is actually looking,
+     and syncs ONLY when the number has moved.
+
+     The guards are the ones quietSync already had, for the reasons it already had them: not
+     while a save is in flight, not while a challan move is, not while the tab is hidden. A
+     heartbeat must never be the thing that takes a man's typing away. */
+  var BEAT_EVERY = 30000, _beatSeen = "", _beatOn = null, _beatBusy = false;
+  function beatMark(st) { if (st) _beatSeen = String(st); }
+  function beat() {
+    if (_beatBusy || beatSkip()) return;
+    _beatBusy = true;
+    api("teamStamp").then(function (r) {
+      _beatBusy = false;
+      var st = (r && r.stamp) ? String(r.stamp) : "";
+      if (!st) return;
+      if (!_beatSeen) { _beatSeen = st; return; }     /* baseline, not news */
+      if (st === _beatSeen) return;
+      _beatSeen = st;
+      if (beatSkip()) return;                          /* a form opened while we asked */
+      beatGo();
+    }).catch(function () { _beatBusy = false; });
+  }
+  function beatStart() { if (!_beatOn) _beatOn = setInterval(beat, BEAT_EVERY); }
+  /* MAY_DIFFER: what "busy" means is genuinely different in each app, and these are the same
+     guards each app's own pull already used. Nothing else here differs. */
+  function beatSkip() {
+    if (document.hidden) return true;
+    if (!S.user || !S.data) return true;
+    if (S.pending) return true;              /* never while a save is in flight */
+    if (_moving) return true;                /* nor while a challan move is */
+    return false;
+  }
+  /* MAY_DIFFER: quietSync refuses if it ran in the last 20 seconds. A stamp that MOVED is not
+     a routine re-sync - it is the one thing worth pulling for - so the throttle is cleared
+     first, or it would be exactly the news that gets dropped. */
+  function beatGo() { syncAt = 0; quietSync(); }
 
   /* background re-sync, at most once every 20s, never blocks the screen */
   var syncAt = 0, syncing = false;
@@ -1285,6 +1339,7 @@ window.addEventListener("beforeunload", function (ev) {
     syncing = true;
     api("teamGet").then(function (r) {
       syncing = false; syncAt = Date.now();
+      beatMark(r && r.stamp);          /* v6.9.314 - the stamp AS AT this book */
       if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); splitCancelled(); snapSave(); renderBg(); }
       if (pendCount()) retryPending();
     }).catch(function () { syncing = false; });
@@ -17811,6 +17866,7 @@ function viewCatalogue() {
         if (!r || !r.ok) { localStorage.removeItem(BIO_KEY);
       try { bigDel(snapKey()); } catch (e) { } S.pin = ""; renderLogin("Saved sign-in no longer valid."); return; }
         S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
+        try { beatStart(); } catch (e) {}          /* v6.9.314 - from here it asks on its own */
         S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
         loadCatalog(); refresh();
       });
@@ -19418,6 +19474,7 @@ function viewCatalogue() {
     authOnce(1).then(function (r) {
       if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
       S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
+        try { beatStart(); } catch (e) {}          /* v6.9.314 - from here it asks on its own */
       try { localStorage.setItem(STORE, JSON.stringify({ pin: pin, user: S.user, role: S.role, pinSet: S.pinSet })); } catch (e) {}
       if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return; }
       S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
@@ -27209,6 +27266,7 @@ function viewCatalogue() {
           return null;
         }
         S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
+        try { beatStart(); } catch (e) {}          /* v6.9.314 - from here it asks on its own */
         if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return null; }
         S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
         loadCatalog();
