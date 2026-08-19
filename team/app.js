@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.314";
+  var APP_VERSION = "6.9.315";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -26657,7 +26657,13 @@ function viewCatalogue() {
           filename: "HISAB-" + String(hcl.name || hcid).replace(/[^\w.-]+/g, "-") + ".pdf"
         });
       }).then(function (r) {
-        if (!r || !r.ok || !r.url) throw new Error("host");
+        /* v6.9.315 - the server's own words, not a codeword. Since backend v98 this call
+           needs a PIN, so "not signed in on this device" is now a thing it can say - and
+           "host" would have turned that into a shrug about a link. */
+        if (!r || !r.ok || !r.url) {
+          throw new Error((r && r.error) ? String(r.error)
+                                         : "the server took the file but sent no link back");
+        }
         var nowh = new Date().toISOString();
         return save("audit", {
           id: "HD-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
@@ -26685,7 +26691,6 @@ function viewCatalogue() {
         var _s2 = _hdUp ? Math.round((Date.now() - _hdUp.t0) / 1000) : 0;
         hdStop();
         var why = (err && err.message) ? String(err.message) : "the server gave no link back";
-        if (why === "host") why = "the server took the file but sent no link back";
         var kb2 = Math.round(String((S.hdFile && S.hdFile.b64) || "").length / 1024);
         hdNote('<b style="color:#b45309">Not gone up \u2014 ' + esc(why) + '</b> (after ' + _s2 + 's, ' +
                kb2 + ' KB). Nothing was lost and the file is still chosen \u2014 press <b>Attach the old hisab</b> ' +
