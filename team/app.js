@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.315";
+  var APP_VERSION = "6.9.316";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -446,6 +446,35 @@
 
      canSee("pitch") is granted on `sites` OR `leads`. Both roles keep `leads`, so the pitch
      board is unaffected - checked, not assumed. */
+  /* ---- A MAN MAY HOLD MORE THAN ONE ROLE (20 Aug 2026) ----
+     He was asked whether Manoj was godown or service and answered "both".
+
+     Until today the estate could not express that. The role was one word; every gate compared
+     that word with === or indexOf; and the CRM's own Role dialog said so in plain English -
+     "It is one role per person, there is no way to give somebody two." So the honest answer to
+     "both" was to make it true rather than to argue with him about it.
+
+     A role is now a LIST, held in the one cell it always was: "godown,service". These three
+     functions are the only code in the estate that knows that, and they are byte-identical in
+     the CRM, Challan, Payment and Service apps - t_apps_agree.js fails the run if they drift.
+
+     NOTHING CHANGES FOR A MAN WITH ONE ROLE. "godown" splits to ["godown"], and
+     roleAny(["admin","accounts","godown"]) returns exactly what indexOf returned before. That
+     is what makes this safe to send to phones already signed in and holding a saved session:
+     a single-role session behaves identically to yesterday.
+
+     The separator is "anything that is not a letter", so godown,service - godown, service -
+     godown / service all read the same. He types this into a sheet cell by way of the Role
+     dialog; it should not matter whether he leaves a space after the comma. */
+  function myRoles() {
+    return String(S.role || "").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  }
+  function roleIs(r) { return myRoles().indexOf(r) >= 0; }
+  function roleAny(list) {
+    var mine = myRoles();
+    return list.some(function (r) { return mine.indexOf(r) >= 0; });
+  }
+
   var ROLE_TABS = {
     admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","dups","stock","brief"],
     accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","dups","stock"],
@@ -460,7 +489,10 @@
     var member = { deliveries: ["challans", "returns"], collections: ["payments", "dues"],
       pricing: ["rates", "pricelist", "catalogue"], payrollhub: ["commission", "payroll"] };
     if (member[tab]) return member[tab].some(function (m) { return t.indexOf(m) >= 0; });
-    return t.indexOf(tab) >= 0 || tab === "matrix" || tab === "pending" ||
+    /* v6.9.316 - "dossier" is every role's, because it is built entirely out of S.data,
+       which teamFilterAll_ has already cut to what this man is allowed to hold. A salesman's
+       dossier is complete for HIS book and cannot contain a row that never reached him. */
+    return t.indexOf(tab) >= 0 || tab === "dossier" || tab === "matrix" || tab === "pending" ||
       (tab === "pitch" && (t.indexOf("sites") >= 0 || t.indexOf("leads") >= 0));
   }
 
@@ -19079,6 +19111,305 @@ function viewCatalogue() {
     return save("pitch", row);
   }
 
+  /* ============================================================================
+     EVERYTHING ABOUT ONE MAN.  (v6.9.316, 20 August 2026)
+
+     He searched "dheeraj" and got four cards - a client, a challan, a partner, a site - and
+     wrote:
+
+       "its must show all data related to Dheeraj like as a builder how much site under it,
+        everything related to dheeraj / like all for every one / categories challan and quotes
+        and every other required thing month wise"
+
+     He is right, and the gap is not the search. The search answered the question it was asked:
+     which records contain this word. What he wants is the question he was actually asking:
+     WHO IS THIS MAN TO US. Four cards on four screens is four taps and a memory test, and
+     Dheeraj Chhabra is three different rows - a client, a builder in the partner register, and
+     a site - which no screen in this estate has ever shown together.
+
+     THE JOIN IS THE MOBILE NUMBER, NOT THE NAME. On his own book Dheeraj is filed as
+     "Dheeraj Chhabra - BL" in Clients and "Dheeraj Chhabra" in Partners. Matching on the name
+     alone would show two different men. Both carry 9813210030, so the number is what proves
+     they are one person - and it is matched on the LAST TEN DIGITS, because the same man is
+     written +91 9813210030 in one place and 09813210030 in another.
+
+     NO BACKEND CALL, AND THAT IS ALSO THE PERMISSION MODEL. Every table this reads is already
+     in S.data, already filtered by teamFilterAll_ for whoever is signed in. A salesman builds
+     this dossier out of his own book and it is complete for HIS book; nothing that was kept
+     from him on the server can appear here, because it never arrived. There is no second gate
+     to get wrong.
+     ========================================================================== */
+  function dgNum(v) { return Number(String(v == null ? "" : v).replace(/[^0-9.\-]/g, "")) || 0; }
+  function dgKey(s) {
+    return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+  /* the last ten digits, so +91 / 0 / spaces / dashes all land on the same man */
+  function dgMob(s) {
+    var d = String(s == null ? "" : s).replace(/\D/g, "");
+    return d.length >= 10 ? d.slice(-10) : "";
+  }
+  function dgMonth(v) {
+    var s = dstr(d10(v));
+    return s && s.length >= 7 ? s.slice(0, 7) : "";
+  }
+  function dgMonthName(m) {
+    if (!m) return "no date";
+    var MN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    var p = m.split("-");
+    return (MN[(parseInt(p[1], 10) || 1) - 1] || "") + " " + p[0];
+  }
+
+  /* WHO IS THIS. Seed on the typed words, then widen ONCE through the mobile number - a
+     second pass would start pulling in whole families through a shared landline. */
+  function dgIdentity(q) {
+    var lq = dgKey(q);
+    if (!lq) return null;
+    var D = S.data || {};
+    var names = {}, mobs = {}, roles = {};
+    var hitName = function (n) { var k = dgKey(n); return k && (k.indexOf(lq) > -1 || lq.indexOf(k) > -1); };
+    var take = function (n, m, role) {
+      var k = dgKey(n); if (k) names[k] = n;
+      var d = dgMob(m); if (d) mobs[d] = 1;
+      if (role) roles[role] = 1;
+    };
+    (D.clients || []).forEach(function (c) {
+      if (hitName(c.name)) { take(c.name, c.mobile, "client"); take(c.name, c.mobile2, "client"); }
+    });
+    (D.associates || []).forEach(function (a) {
+      if (hitName(a.name)) take(a.name, a.mobile, "partner");
+    });
+    (D.sites || []).forEach(function (s2) { if (hitName(s2.name) || hitName(s2.client)) take(s2.client || s2.name, s2.mobile, ""); });
+    (D.installs || []).forEach(function (i) { if (hitName(i.client)) take(i.client, i.mobile, ""); });
+    if (!Object.keys(names).length && !Object.keys(mobs).length) return null;
+
+    /* the one widening pass */
+    var hasMob = function (m) { var d = dgMob(m); return d && mobs[d] === 1; };
+    (D.clients || []).forEach(function (c) {
+      if (hasMob(c.mobile) || hasMob(c.mobile2)) { names[dgKey(c.name)] = c.name; roles.client = 1; }
+    });
+    (D.associates || []).forEach(function (a) {
+      if (hasMob(a.mobile)) { names[dgKey(a.name)] = a.name; roles.partner = 1; }
+    });
+    return { q: q, names: names, mobs: mobs, roles: roles,
+             isMine: function (n) { var k = dgKey(n); return !!(k && names[k]); } };
+  }
+
+  function dossierFor(q) {
+    var id = dgIdentity(q);
+    if (!id) return null;
+    var D = S.data || {}, mine = id.isMine;
+    var out = { id: id, q: q };
+
+    out.clients   = (D.clients || []).filter(function (c) { return mine(c.name); });
+    out.partners  = (D.associates || []).filter(function (a) { return mine(a.name); });
+    /* his OWN sites, and - the thing he actually asked for - the sites where he is the
+       builder, the architect, the plumber or the PMC. "as a builder how much site under it". */
+    out.sites     = (D.sites || []).filter(function (s2) { return mine(s2.client) || mine(s2.name) || mine(s2.owner); });
+    out.underHim  = (D.sites || []).filter(function (s2) {
+      return !(mine(s2.client) || mine(s2.name) || mine(s2.owner)) &&
+             (mine(s2.builder) || mine(s2.architect) || mine(s2.plumber));
+    });
+    out.brought   = (D.clients || []).filter(function (c) {
+      return !mine(c.name) && (mine(c.builder) || mine(c.architect) || mine(c.plumber) || mine(c.pmc));
+    });
+    out.challans  = (D.challans || []).filter(function (c) { return mine(c.customerName); });
+    out.quotes    = (D.quotes || []).filter(function (x) { return mine(x.client); });
+    out.payments  = (D.payments || []).filter(function (p) { return mine(p.client); });
+    out.pitch     = (D.pitch || []).filter(function (p) { return mine(p.clientName); });
+    out.svisits   = (D.sitevisits || []).filter(function (v) { return mine(v.client); });
+    out.installs  = (D.installs || []).filter(function (i) { return mine(i.client); });
+    out.visits    = (D.visits || []).filter(function (v) { return mine(v.client); });
+    out.followups = (D.followups || []).filter(function (f) { return mine(f.customerName) || mine(f.client); });
+    /* what he has EARNED as a partner. Never the other word. */
+    out.incpaid   = (D.commpay || []).filter(function (x) { return mine(x.associate); });
+
+    out.money = {
+      outValue:  out.challans.reduce(function (a, c) { return a + dgNum(c.amount); }, 0),
+      received:  out.payments.reduce(function (a, p) { return a + dgNum(p.amount); }, 0),
+      quoted:    out.quotes.reduce(function (a, x) { return a + dgNum(x.total); }, 0),
+      incentive: out.incpaid.reduce(function (a, x) { return a + dgNum(x.amount); }, 0)
+    };
+    out.money.balance = out.money.outValue - out.money.received;
+
+    /* MONTH BY MONTH - "categories challan and quotes and every other required thing month
+       wise". One row per month, newest first, every category in its own column. A month with
+       nothing in it is not printed: an empty row is not information. */
+    var M = {};
+    var bump = function (v, k, amt) {
+      var m = dgMonth(v); if (!m) return;
+      if (!M[m]) M[m] = { m: m, ch: 0, chAmt: 0, qt: 0, qtAmt: 0, pay: 0, payAmt: 0, sv: 0, srv: 0 };
+      M[m][k] += 1;
+      if (amt !== undefined) M[m][k + "Amt"] += dgNum(amt);
+    };
+    out.challans.forEach(function (c) { bump(c.createdAt, "ch", c.amount); });
+    out.quotes.forEach(function (x) { bump(x.createdAt, "qt", x.total); });
+    out.payments.forEach(function (p) { bump(p.date || p.createdAt, "pay", p.amount); });
+    out.svisits.forEach(function (v) { bump(v.date || v.createdAt, "sv"); });
+    out.visits.forEach(function (v) { bump(v.date || v.createdAt, "srv"); });
+    out.months = Object.keys(M).sort().reverse().map(function (k) { return M[k]; });
+    return out;
+  }
+
+  function dgChip(n, label, tone) {
+    return '<div class="stat' + (tone ? ' ' + tone : '') + '"><div class="n">' + n +
+      '</div><div class="l">' + esc(label) + '</div></div>';
+  }
+  function dgList(title, rows, fn) {
+    if (!rows.length) return "";
+    return '<div class="card" style="margin-top:10px"><h3>' + esc(title) +
+      ' <span class="pill">' + rows.length + '</span></h3>' +
+      rows.map(fn).join("") + '</div>';
+  }
+
+  function viewDossier() {
+    var q = S.dgWho || "";
+    var d = dossierFor(q);
+    var back = '<button class="btn sm gry" data-act="dg-back">&#8249; Back</button>';
+    if (!d) {
+      return '<h2>Everything about &ldquo;' + esc(q) + '&rdquo;</h2>' + back +
+        '<div class="empty">Nobody by that name is in the book this app has pulled. ' +
+        'If he was added on another phone in the last few minutes, press the refresh arrow first.</div>';
+    }
+    var nm = Object.keys(d.id.names).map(function (k) { return d.id.names[k]; });
+    var mobs = Object.keys(d.id.mobs);
+    var pr = d.partners[0] || null;
+
+    var h = '<h2>' + esc(nm[0] || q) + '</h2>' +
+      '<p class="sub">' +
+        (d.id.roles.client ? '<span class="pill teal">Client</span> ' : '') +
+        (d.id.roles.partner ? '<span class="pill teal">' + esc((pr && pr.role) || "Partner") + '</span> ' : '') +
+        (d.sites.length ? '<span class="pill">' + d.sites.length + ' own site' + (d.sites.length === 1 ? '' : 's') + '</span> ' : '') +
+        (d.underHim.length ? '<span class="pill">' + d.underHim.length + ' site' + (d.underHim.length === 1 ? '' : 's') + ' under him</span> ' : '') +
+      '</p>' + back;
+
+    /* THE NAMES HE IS FILED UNDER. Said out loud, because the whole reason this screen exists
+       is that one man was three rows, and a man reading it deserves to know which rows were
+       joined and on what. */
+    if (nm.length > 1 || mobs.length) {
+      h += '<div class="meta" style="margin:8px 0">Filed as ' +
+        nm.map(function (x) { return '<b>' + esc(x) + '</b>'; }).join(" &middot; ") +
+        (mobs.length ? ' &mdash; joined on ' + mobs.map(esc).join(", ") : '') + '</div>';
+    }
+
+    h += '<div class="stats">' +
+      dgChip(money(d.money.outValue), "Material sent out", d.money.outValue ? "" : "good") +
+      dgChip(money(d.money.received), "Money received", "good") +
+      dgChip(money(d.money.balance), "Balance", d.money.balance > 0 ? "bad" : "good") +
+      dgChip(money(d.money.quoted), "Quoted", "") +
+      '</div>';
+    if (d.money.incentive) {
+      h += '<div class="meta" style="margin:6px 2px">Incentive paid to him so far: <b>' +
+        money(d.money.incentive) + '</b> over ' + d.incpaid.length + ' payment' +
+        (d.incpaid.length === 1 ? '' : 's') + '.</div>';
+    }
+
+    /* ---- month by month ---- */
+    if (d.months.length) {
+      h += '<div class="card" style="margin-top:12px"><h3>Month by month</h3>' +
+        '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+        '<tr style="background:#f8fafc">' +
+        ['Month','Challans','Value','Quotes','Quoted','Payments','Received','Site visits','Service']
+          .map(function (t, i) {
+            return '<th style="text-align:' + (i ? 'right' : 'left') + ';padding:6px 9px;white-space:nowrap">' + t + '</th>';
+          }).join("") + '</tr>' +
+        d.months.map(function (m) {
+          var td = function (v, b) {
+            return '<td style="padding:6px 9px;border-top:1px solid #eef2f7;text-align:right">' +
+              (b ? '<b>' + v + '</b>' : v) + '</td>';
+          };
+          return '<tr><td style="padding:6px 9px;border-top:1px solid #eef2f7;white-space:nowrap"><b>' +
+            esc(dgMonthName(m.m)) + '</b></td>' +
+            td(m.ch || "-") + td(m.chAmt ? money(m.chAmt) : "-", true) +
+            td(m.qt || "-") + td(m.qtAmt ? money(m.qtAmt) : "-") +
+            td(m.pay || "-") + td(m.payAmt ? money(m.payAmt) : "-", true) +
+            td(m.sv || "-") + td(m.srv || "-") + '</tr>';
+        }).join("") + '</table></div></div>';
+    }
+
+    /* ---- as a partner: the question he asked in his own words ---- */
+    if (d.underHim.length || d.brought.length) {
+      h += '<div class="card" style="margin-top:12px"><h3>Work that came through him</h3>';
+      if (d.underHim.length) {
+        h += '<div class="meta" style="margin-bottom:6px"><b>' + d.underHim.length + ' site' +
+          (d.underHim.length === 1 ? '' : 's') + '</b> where he is the builder, architect or plumber</div>';
+        d.underHim.forEach(function (s2) {
+          h += '<div class="meta" style="padding:4px 0;border-top:1px solid #eef2f7">' +
+            '<b>' + esc(s2.name || s2.client || "-") + '</b>' +
+            (s2.stage ? ' <span class="pill">' + esc(s2.stage) + '</span>' : '') +
+            (s2.city ? ' &middot; ' + esc(s2.city) : '') + '</div>';
+        });
+      }
+      if (d.brought.length) {
+        h += '<div class="meta" style="margin:8px 0 4px"><b>' + d.brought.length + ' client' +
+          (d.brought.length === 1 ? '' : 's') + '</b> registered against his name</div>';
+        d.brought.forEach(function (c) {
+          h += '<div class="meta" style="padding:4px 0;border-top:1px solid #eef2f7">' +
+            '<b>' + esc(c.name) + '</b>' + (c.location ? ' &middot; ' + esc(c.location) : '') + '</div>';
+        });
+      }
+      h += '</div>';
+    }
+
+    /* ---- brands ---- */
+    if (d.pitch.length) {
+      var won = d.pitch.filter(function (p) { return String(p.status) === "Won"; });
+      var lost = d.pitch.filter(function (p) { return String(p.status) === "Lost"; });
+      var quo = d.pitch.filter(function (p) { return String(p.status) === "Quoted"; });
+      h += '<div class="card" style="margin-top:12px"><h3>Brands</h3><div class="meta">' +
+        (won.length ? '<div style="margin-bottom:4px"><b style="color:#0f766e">Won</b> &mdash; ' +
+          won.map(function (p) { return esc(p.brand); }).join(", ") + '</div>' : '') +
+        (quo.length ? '<div style="margin-bottom:4px"><b style="color:#b45309">Quoted</b> &mdash; ' +
+          quo.map(function (p) { return esc(p.brand); }).join(", ") + '</div>' : '') +
+        (lost.length ? '<div><b style="color:#b91c1c">Lost</b> &mdash; ' +
+          lost.map(function (p) { return esc(p.brand) + (p.lostTo ? ' (to ' + esc(p.lostTo) + ')' : ''); }).join(", ") + '</div>' : '') +
+        '</div></div>';
+    }
+
+    /* ---- the lists, newest first ---- */
+    var byDateDesc = function (k) {
+      return function (a, b) { return String(dstr(d10(b[k] || b.createdAt))).localeCompare(String(dstr(d10(a[k] || a.createdAt)))); };
+    };
+    h += dgList("Challans", d.challans.slice().sort(byDateDesc("createdAt")), function (c) {
+      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+        '<b>' + esc(c.challanNo || "(no number yet)") + '</b> ' +
+        '<span class="pill">' + esc(c.status || "") + '</span> &middot; ' + money(dgNum(c.amount)) +
+        ' &middot; ' + esc(dstr(d10(c.createdAt))) + (c.createdBy ? ' &middot; by ' + esc(c.createdBy) : '') + '</div>';
+    });
+    h += dgList("Quotes", d.quotes.slice().sort(byDateDesc("createdAt")), function (x) {
+      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+        '<b>' + esc(x.quoteNo || "-") + '</b> ' + esc(x.brand || "") +
+        ' <span class="pill">' + esc(x.status || "") + '</span> &middot; ' + money(dgNum(x.total)) +
+        ' &middot; ' + esc(dstr(d10(x.createdAt))) + '</div>';
+    });
+    h += dgList("Payments", d.payments.slice().sort(byDateDesc("date")), function (p) {
+      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+        '<b>' + money(dgNum(p.amount)) + '</b> &middot; ' + esc(p.mode || "") +
+        ' &middot; ' + esc(dstr(d10(p.date || p.createdAt))) + (p.ref ? ' &middot; ' + esc(p.ref) : '') + '</div>';
+    });
+    h += dgList("Machines and AMC", d.installs, function (i) {
+      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+        '<b>' + esc(i.product || "-") + '</b>' + (i.model ? ' ' + esc(i.model) : '') +
+        (i.amcType ? ' <span class="pill teal">' + esc(i.amcType) + '</span>' : '') +
+        (i.nextService ? ' &middot; next service ' + esc(dstr(d10(i.nextService))) : '') + '</div>';
+    });
+    h += dgList("Service visits", d.visits.slice().sort(byDateDesc("date")), function (v) {
+      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+        esc(dstr(d10(v.date || v.createdAt))) + ' &middot; ' + esc(v.type || "") +
+        (v.engineer ? ' &middot; ' + esc(v.engineer) : '') +
+        (dgNum(v.total) ? ' &middot; ' + money(dgNum(v.total)) : '') + '</div>';
+    });
+    h += dgList("Site visits", d.svisits.slice().sort(byDateDesc("date")), function (v) {
+      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+        esc(dstr(d10(v.date || v.createdAt))) + (v.purpose ? ' &middot; ' + esc(v.purpose) : '') +
+        (v.createdBy ? ' &middot; ' + esc(v.createdBy) : '') + '</div>';
+    });
+    h += dgList("Follow-ups", d.followups, function (f) {
+      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+        esc(dstr(d10(f.dueDate || f.createdAt))) + ' &middot; ' + esc(f.note || f.purpose || "") + '</div>';
+    });
+    return h;
+  }
+
   /* ---------------- master search ----------------
      Everyone can search everything. But a salesman searching a number that belongs to a
      colleague\u2019s client gets ONLY the name and the date it was registered - enough to stop a
@@ -19126,10 +19457,12 @@ function viewCatalogue() {
           '</b> by another executive.<br><b style="color:#dc2626">Already on another executive’s book — coordinate, do not double-quote.</b></div></div>';
         return;
       }
+      /* v6.9.316 - the way out of "four cards on four screens" */
       h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "") + '</span></h3>' +
         '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  ·  ")) +
         (c.area ? '<br>' + esc(c.area) : "") + '<br>Added ' + esc(c.on) + ' by ' + esc(c.by) + '</div>' +
-        '<div class="acts"><button class="btn sm ghost" data-act="bb-open" data-n="' + esc(c.name) + '">Brands</button></div></div>';
+        '<div class="acts"><button class="btn sm" data-act="dg-open" data-who="' + esc(c.name) + '">Everything about him</button>' +
+        '<button class="btn sm ghost" data-act="bb-open" data-n="' + esc(c.name) + '">Brands</button></div></div>';
     });
 
     if ((r.quotes || []).length) h += '<h3 ' + HH + '>Quotations</h3>';
@@ -19169,7 +19502,8 @@ function viewCatalogue() {
     (r.partners || []).forEach(function (a) {
       h += '<div class="card"><h3>' + esc(a.name || "-") + (a.role || a.type ? ' <span class="pill teal">' + esc(a.role || a.type) + '</span>' : "") + '</h3>' +
         '<div class="meta">' + esc([a.mobile, a.location || a.area].filter(Boolean).join("  ·  ")) +
-        '</div>' + (a.mobile ? '<div class="acts"><a class="btn sm ghost" href="tel:' + esc(a.mobile) + '">Call</a></div>' : "") + '</div>';
+        '</div><div class="acts"><button class="btn sm" data-act="dg-open" data-who="' + esc(a.name || "") + '">Everything about him</button>' +
+        (a.mobile ? '<a class="btn sm ghost" href="tel:' + esc(a.mobile) + '">Call</a>' : "") + '</div></div>';
     });
 
     if ((r.sites || []).length) h += '<h3 ' + HH + '>Sites</h3>';
@@ -19178,6 +19512,16 @@ function viewCatalogue() {
         '<div class="meta">' + esc(x.client || "") + '</div></div>';
     });
 
+    /* v6.9.316 - one way in that does not depend on WHICH card matched. He searched a man
+       and got four cards in four categories; this button is the same query asked as "who is
+       this to us", which is the question he was actually asking. */
+    if (counts && !r.loading) {
+      h += '<div class="card" style="margin-top:12px;background:#f0fdfa;border-color:#99f6e4">' +
+        '<h3>Everything about &ldquo;' + esc(r.q || "") + '&rdquo;</h3>' +
+        '<div class="meta">His sites, the sites under him, brands, challans, quotes, money and ' +
+        'service &mdash; on one screen, month by month.</div>' +
+        '<div class="acts"><button class="btn sm" data-act="dg-open" data-who="' + esc(r.q || "") + '">Open it</button></div></div>';
+    }
     if (!counts && !r.loading) h += '<div class="empty">Nothing found.</div>';
     h += '</div><div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
     return h;
@@ -22373,7 +22717,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
     var tabs = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
 
     var h = '<div class="top">' +
@@ -25034,6 +25378,14 @@ function viewCatalogue() {
       _lossCache = null; S.modal = null;
       toast("Reason recorded. It is on Win/Loss - Why we lose.");
       render(); return;
+    }
+    /* ---- EVERYTHING ABOUT ONE MAN (v6.9.316) ---- */
+    if (act === "dg-open") {
+      S.dgFrom = S.tab; S.dgWho = t.getAttribute("data-who") || "";
+      S.modal = ""; S.tab = "dossier"; window.scrollTo(0, 0); render(); return;
+    }
+    if (act === "dg-back") {
+      S.tab = S.dgFrom || "dash"; S.dgWho = ""; render(); return;
     }
     if (act === "cx-open") { S.modal = modalCancelRec(t.getAttribute("data-tab"), t.getAttribute("data-id")); render(); return; }
     if (act === "cx-do") {
