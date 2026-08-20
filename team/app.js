@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.317";
+  var APP_VERSION = "6.9.318";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -16887,6 +16887,50 @@ function viewCatalogue() {
     return String(v == null ? "" : v).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/^\s+|\s+$/g, "");
   }
 
+  /* ============================================================================
+     A SPELLING MISTAKE IS THE COMMONEST DUPLICATE, AND IT WAS THE ONE KIND THIS SCANNER
+     COULD NOT SEE.  (v6.9.317, 20 August 2026)
+
+     "Mahavir & Mahabir are same person, i have made spelling mistake and now two entities in
+     crm - can you merge both to Mahavir".
+
+     Everything needed to merge them existed. The Duplicate check screen, the "Same person -
+     fix" button, and (from today) a merge that actually adds his money up under one name. And
+     none of it could ever have reached Mahabir, because dupNameKey() groups on the EXACT set
+     of words: "mahavir traders" and "mahabir traders" are two different keys, they never land
+     in the same group, and the button he needed was never drawn on his screen.
+
+     So the scanner had a hole in the precise shape of the mistake people actually make.
+
+     WHY THIS IS TIGHT, AND NOT "FUZZY MATCHING". The file already warns, about addresses,
+     that a wrong group is worse than a missed one because the team stops trusting the screen
+     after the first piece of nonsense. So the rule is deliberately narrow:
+
+       - the same NUMBER of words, and every word but one identical
+       - that one word differs by a SINGLE edit - one letter changed, added or dropped
+       - and it is at least four letters long, so "Ram A" and "Ram B" are not a question
+
+     mahavir/mahabir passes. sharma/verma is two edits and does not. And the screen only ever
+     ASKS: he answers "different people - keep separate" once and the pair never returns. */
+  function dupEdit1(a, b) {
+    a = String(a || ""); b = String(b || "");
+    if (a === b || Math.abs(a.length - b.length) > 1) return false;
+    var i = 0, j = a.length - 1, k = b.length - 1;
+    while (i < a.length && i < b.length && a.charAt(i) === b.charAt(i)) i++;
+    while (j >= i && k >= i && a.charAt(j) === b.charAt(k)) { j--; k--; }
+    return (j - i < 1) && (k - i < 1);
+  }
+  /* every way of leaving ONE word out. Two names that differ in a single word share one of
+     these, whatever that word is and wherever the sort put it. */
+  function dupHoleKeys(name) {
+    var nk = dupNameKey(name);
+    if (!nk) return [];
+    var arr = nk.split(" ");
+    return arr.map(function (w, i) {
+      return { hole: arr.length + "|" + arr.filter(function (_, j) { return j !== i; }).join(" "), w: w };
+    });
+  }
+
   function dupRecKeys(c) {
     var out = [];
     var p1 = dupPhoneKey(c.mobile); if (p1) out.push({ k: "p:" + p1, why: "same phone number" });
@@ -17001,6 +17045,30 @@ function viewCatalogue() {
         else keyOwner[kk.k] = id;
       });
     });
+    /* v6.9.317 - AND NOW THE SPELLING MISTAKES. Bucket by "the name with one word left out",
+       then inside each bucket compare only the words that were left out. That is a handful of
+       short-string comparisons per bucket rather than every client against every other. */
+    var nearB = {};
+    Object.keys(byId).forEach(function (id) {
+      dupHoleKeys(byId[id].name).forEach(function (hk) {
+        (nearB[hk.hole] = nearB[hk.hole] || []).push({ id: id, w: hk.w });
+      });
+    });
+    Object.keys(nearB).forEach(function (hk) {
+      var g = nearB[hk];
+      if (g.length < 2) return;
+      for (var a = 0; a < g.length; a++) {
+        for (var b = a + 1; b < g.length; b++) {
+          if (g[a].w.length < 4 || g[b].w.length < 4) continue;
+          if (!dupEdit1(g[a].w, g[b].w)) continue;
+          if (find(g[a].id) === find(g[b].id)) continue;
+          join(g[a].id, g[b].id);
+          var rt = find(g[a].id);
+          (whyOf[rt] = whyOf[rt] || {})["one letter apart (" + g[a].w + " / " + g[b].w + ")"] = 1;
+        }
+      }
+    });
+
     /* the "why" was stamped on whatever the root was at the time; re-stamp against final roots */
     var why2 = {};
     Object.keys(whyOf).forEach(function (r0) {
