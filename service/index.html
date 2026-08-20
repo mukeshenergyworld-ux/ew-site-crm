@@ -242,7 +242,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.4.1";
+  var APP_VERSION = "1.4.2";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -401,6 +401,18 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function amcKind(ins) {
     var t = lower(String((ins && ins.amcType) || "")).replace(/[^a-z ]+/g, " ");
     if (!t.replace(/\s+/g, "") || / none /.test(" " + t + " ")) return "None";
+    /* ---- "VISIT-BASED" IS NOT A CONTRACT (v1.4.2, 20 Aug 2026) ----
+       Asked what the word meant on Ramesh - Sheena Export's row, he answered: "without AMC
+       case, Rs 600 per visit, salt cost as spares as per actual". So it records how the man
+       PAYS, not what he is covered for - and the app was reading it as a contract, which made
+       his visit charge and his salt free. On his own book that is Rs 600 given away on every
+       single call, for as long as nobody looked.
+
+       THE GUARD IS DELIBERATE. A real contract that happens to mention its visits - "AMC with
+       spares, 2 visits a year" - must NOT be cancelled by the word. Only a row that says
+       'visit' and says nothing whatever about what it covers is read as no contract. */
+    var says = /without|w\/o|excl|with spare|incl|full/.test(t);
+    if (!says && / visit/.test(" " + t)) return "None";
     if (/without|w\/o|excl/.test(t)) return "AMC without spares";
     if (/with spare|incl|full/.test(t)) return "AMC with spares";
     return "AMC without spares";
@@ -1554,6 +1566,30 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      estate's own num(), which reads "500/-" out of a spreadsheet cell where Number() reads
      zero. Changing the CRM's money arithmetic is its own decision, not a rider on a new app. */
   function visitTotal(v) { return (Number(v.visitCharge) || 0) + (Number(v.saltAmt) || 0) + (Number(v.partsAmt) || 0); }
+  /* ---- THE RATES LIVE IN THE PRICE LIST, NOT IN THIS FILE (v1.4.2, 20 Aug 2026) ----
+     "Rs 600 per visit, salt cost as spares as per actual, currently its Rs 45 per kg."
+
+     The word in that sentence which decided this design is CURRENTLY. A rate he can say out
+     loud today is a rate that will change, and a number typed into this file is a number that
+     needs me to change it. Both live as rows in the spares price list instead - which already
+     exists, already has an editor in the CRM under Spares, and is today empty.
+
+     A MISSING PRICE LIST MAY NOT INVENT MONEY. With no row the app prefills nothing and
+     suggests nothing, exactly as it behaved before this existed. It never guesses a rate. */
+  var RATE_VISIT = "VISIT", RATE_SALT = "SALT";
+  function rateOf(code) { var s = spareByCode(code); return s ? num(s.price) : 0; }
+
+  /* The standard visit charge, and the three cases where there ISN'T one:
+     a labour job is quoted per job and has no standard rate; a visit the contract covers must
+     not be given a figure at all, because the screen is about to say "collect nothing"; and a
+     price list with no VISIT row has nothing to offer. */
+  function defaultCharge(ins, type, date) {
+    if (!ins) return "";
+    if (amcCover(ins, type, date).visit) return "";
+    var r = rateOf(RATE_VISIT);
+    return r > 0 ? String(r) : "";
+  }
+
   function spareByCode(code) {
     var k = lower(code);
     var a = spares();
@@ -1927,7 +1963,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       h += '<div class="grid2">' +
         '<div><label>Salt bags</label><input id="v_bags" inputmode="numeric" value="' + esc(v.saltBags || "") + '"/></div>' +
         '<div><label>Salt amount</label><input id="v_saltamt" inputmode="numeric" value="' + esc(v.saltAmt || "") + '"/></div>' +
-        '</div>';
+        '</div>' +
+        /* "as per actual" is his rule, so the amount stays typed. The rate is shown so the
+           man on the doorstep is doing the sum against today's price and not last year's. */
+        (rateOf(RATE_SALT) > 0
+          ? '<div class="meta">Salt is ' + esc(money9(rateOf(RATE_SALT))) + ' per kg in the price list &mdash; charge the actual.</div>'
+          : '');
     }
 
     /* --- parts --- */
@@ -1948,7 +1989,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
     /* --- the charge --- */
     h += '<label>Visit / labour charge</label>' +
-      '<input id="v_charge" inputmode="numeric" value="' + esc(v.visitCharge || "") + '" placeholder="0"/>';
+      '<input id="v_charge" inputmode="numeric" value="' + esc(v.visitCharge || "") + '" placeholder="0"/>' +
+      (!cover.visit && rateOf(RATE_VISIT) > 0
+        ? '<div class="meta">Standard visit is ' + esc(money9(rateOf(RATE_VISIT))) + ' &mdash; change it if this one was different.</div>'
+        : '');
 
     /* ============ THE BILL, LINE BY LINE (v1.4.0) ============
        "salt, service charge, collected or pending". Three amounts go into a visit and the
@@ -2231,7 +2275,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     }
     if (act === "do-visit") {
       var i2 = installById(id); if (!i2) return;
-      S.vis = { installId: i2.id, type: "Service", date: today(), parts: [], collected: "" };
+      S.vis = { installId: i2.id, type: "Service", date: today(), parts: [], collected: "",
+                visitCharge: defaultCharge(i2, "Service", today()) };
       S.sheet = sheetVisit(S.vis); render(); return;
     }
     if (act === "v-type") {
