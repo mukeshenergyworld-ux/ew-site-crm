@@ -183,7 +183,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .tot{display:flex;justify-content:space-between;align-items:center;background:#0f766e;color:#fff;
      border-radius:10px;padding:11px 14px;margin:12px 0;font-size:15px}
 .tot b{font-size:18px}
-.amcbox{background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px;margin:10px 0;font-size:13px;color:#0f766e}
+.amccard{border:1.5px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin:10px 0}.amccard.on{border-color:#5eead4;background:#f0fdfa}.amccard.off{border-color:#e2e8f0;background:#f8fafc}.billbox{border:1px solid #e2e8f0;border-radius:11px;overflow:hidden;margin:10px 0}.bill{display:flex;align-items:baseline;gap:8px;padding:8px 11px;border-top:1px solid #eef2f7;font-size:13.5px}.bill:first-child{border-top:0}.bill span{flex:1;min-width:0}.bill b{font-variant-numeric:tabular-nums}.bill i{font-style:normal;font-size:11px;color:#64748b;min-width:92px;text-align:right}.bill.free b{text-decoration:line-through;color:#94a3b8}.bill.free i{color:#0f766e;font-weight:700}.bill.tot{background:#f8fafc;font-weight:800;font-size:15px}.amcbox{background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px;margin:10px 0;font-size:13px;color:#0f766e}
 .srch{margin:8px 0}.srch input{width:100%}
 .pad{padding:2px 2px 6px}
 .tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:#fff;border-top:1px solid #e2e8f0;
@@ -242,7 +242,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.3.0";
+  var APP_VERSION = "1.4.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -250,7 +250,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   var BIO_KEY = "ew_service_bio";
   var CRM_URL = "../team/";
   var S = { user:"", pin:"", role:"", data:null, tab:"today", q:"", sheet:null, busy:false,
-            syncAt:0, fastAt:0, restAt:0, job:null, vis:null, pick:null, open:"" };
+            syncAt:0, fastAt:0, restAt:0, job:null, vis:null, pick:null, open:"", accOpen:"" };
 
   var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   var _toastT = null;
@@ -358,7 +358,86 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   /* The kinds of work, and which of them an AMC is understood to cover.
      The owner's rule, in one place so no screen can disagree with another. */
   var JOB_TYPES = ["Service", "Salt refill", "Repair", "Installation", "Labour job"];
-  var AMC_COVERS = { "Service": true, "Salt refill": true };
+  /* which kinds of work move the machine's service clock on. Not a money question - the money
+     question is amcCover(), and keeping them apart is what this list exists for. */
+  var TOUCHES_MACHINE = { "Service": 1, "Salt refill": 1, "Repair": 1, "Installation": 1 };
+  /* ============================================================================
+     WHAT THE CONTRACT COVERS.  (v1.4.0, 20 August 2026)
+
+     "client under AMC, AMC with spare or without spare, AMC amt"
+
+     Until today an AMC was one thing and the rule was a two-word list: a Service or a Salt
+     refill on a live contract was free, everything else was charged. That was too blunt to
+     bill from, and the form knew it - it told the engineer "Parts are not covered. If the
+     customer is paying for these, change the work type to Repair", which is a man being asked
+     to mis-record what he did in order to make the arithmetic come out. That instruction is
+     gone.
+
+     HIS THREE ANSWERS, 20 Aug 2026, in his own words:
+
+       AMC WITH spares, routine service   -> "Nothing at all"
+       AMC WITHOUT spares, routine service -> "Only the parts"
+       A repair on a live AMC              -> "Free - the AMC covers the visit"
+
+     Which collapses to one rule worth remembering: WHILE THE CONTRACT IS LIVE, THE VISIT AND
+     THE SALT ARE FREE. The parts are free only on "with spares".
+
+     INSTALLATION IS THE ONE EXCEPTION, and it is an assumption, not something he said. An
+     installation is the sale of the machine, not its upkeep, so it stays chargeable. If that
+     is wrong it is one word to change - and it is deliberately the conservative way round,
+     because wrongly charging gets queried by the customer within the hour while wrongly
+     zeroing loses him the money silently.
+
+     LIVE ON THE DAY OF THE VISIT, NOT LIVE TODAY. Every function here takes a date. A visit
+     made in March under a contract that expired in June was covered when it happened, and the
+     account screen has to say so - otherwise every customer whose AMC has since lapsed would
+     appear to owe for work that was paid for in advance. */
+  var AMC_KINDS = ["None", "AMC with spares", "AMC without spares"];
+
+  /* The cell holds free text and has done for months, so this READS it rather than trusting
+     it. An older contract that says only "AMC" is treated as WITHOUT spares - conservative
+     the same way round as above: it charges for a part rather than giving it away, and the
+     office can see the kind on the card and correct it. */
+  function amcKind(ins) {
+    var t = lower(String((ins && ins.amcType) || "")).replace(/[^a-z ]+/g, " ");
+    if (!t.replace(/\s+/g, "") || / none /.test(" " + t + " ")) return "None";
+    if (/without|w\/o|excl/.test(t)) return "AMC without spares";
+    if (/with spare|incl|full/.test(t)) return "AMC with spares";
+    return "AMC without spares";
+  }
+
+  function amcLiveOn(ins, date) {
+    if (!ins || amcKind(ins) === "None") return false;
+    var end = String(ins.amcEnd || "").slice(0, 10);
+    /* no end date recorded is treated as live, exactly as amcState has always treated it */
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) return true;
+    return end >= String(date || today()).slice(0, 10);
+  }
+
+  /* THE ONE PLACE THE MONEY QUESTION IS ANSWERED. Everything - the form, the history, the
+     account screen - reads this, so no two screens can disagree about what a customer owes. */
+  function amcCover(ins, type, date) {
+    var kind = amcKind(ins);
+    var live = amcLiveOn(ins, date);
+    var none = { visit: false, salt: false, parts: false, kind: kind, live: live };
+    if (!ins || !live) return none;
+    if (String(type || "") === "Installation") return none;
+    return { visit: true, salt: true, parts: kind === "AMC with spares", kind: kind, live: true };
+  }
+
+  /* what the customer is actually asked for, once the contract has had its say */
+  function visitDue(v, ins) {
+    var c = amcCover(ins, v && v.type, v && v.date);
+    return (c.visit ? 0 : num(v.visitCharge)) +
+           (c.salt  ? 0 : num(v.saltAmt)) +
+           (c.parts ? 0 : num(v.partsAmt));
+  }
+  function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.collected)); }
+
+  /* kept: the GROSS value of the work, contract or no contract. The history shows it beside
+     what was charged, because "we did four thousand rupees of work for nothing" is the number
+     that tells him whether an AMC is priced right. */
+
 
 
   /* ==EW-SPINE:BEGIN== lifted verbatim from the Challan app so the estate keeps ONE
@@ -1280,7 +1359,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       try { localStorage.removeItem(STORE); } catch (e) {}
       try { localStorage.removeItem(BIO_KEY); } catch (e) {}
       try { bigDel(SNAP + "_" + S.user); } catch (e) {}
-      S.user = ""; S.pin = ""; S.role = ""; forgetBook(); S.sheet = null; S.ch = null; S.rt = null;
+      S.user = ""; S.pin = ""; S.role = ""; forgetBook(); S.sheet = null; S.ch = null; S.rt = null; S.accOpen = "";
       renderLogin("Signed out on this phone.");
     }
 
@@ -1395,10 +1474,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      "AMC is prepaid, spot jobs are paid on site." So a routine service or a salt refill on
      a live contract is already paid for and this app must not ask the customer for money.
      A repair, an installation or a labour job is not covered, whatever the contract says. */
+  /* v1.4.0 - KEPT, AND MADE TO DELEGATE. This was the whole money rule until today: a
+     Service or a Salt refill on a live contract was free and everything else was charged. It
+     is left standing rather than deleted so that anything still calling it gets the NEW
+     answer rather than the old one - a stale second opinion about money is exactly the kind
+     of thing that is found six weeks later in a customer's ledger. It now means what it has
+     always been read to mean: "is the visit itself free". */
   function amcCovers(ins, type) {
-    if (!ins) return false;                       /* a labour job has no machine and no AMC */
-    if (!AMC_COVERS[String(type || "")]) return false;
-    return amcState(ins).live;
+    return amcCover(ins, type, today()).visit;
   }
 
   /* The engineer's own day. Overdue first, then due soon - the order he would walk it. */
@@ -1522,6 +1605,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     } else {
       var over = due.filter(function (x) { return dueBand(x) === "over"; });
       var soon = due.filter(function (x) { return dueBand(x) === "soon"; });
+      /* v1.4.0 - "pending service call", in his words. The band names stay, because a man
+         walking a route needs to know which of the two he is looking at. */
+      h += '<h3 class="sec">Pending service calls — ' + due.length + '</h3>';
       if (over.length) h += '<h3 class="sec bad">Overdue — ' + over.length + '</h3>' + over.map(insRow).join("");
       if (soon.length) h += '<h3 class="sec warn">Due this week — ' + soon.length + '</h3>' + soon.map(insRow).join("");
     }
@@ -1553,6 +1639,112 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         : '<div class="empty">Nothing matches that.</div>');
   }
 
+  /* ============================================================================
+     THE SERVICE ACCOUNT.  (v1.4.0, 20 August 2026)
+
+     "proper service account manage system" - and "collected or pending".
+
+     Until today this app could tell a man what to do and let him record what he did, and then
+     the money simply stopped being anybody's business. Every rupee was on a visit row and no
+     screen ever added them up, so "how much is outstanding on service" could only be answered
+     by opening the sheet.
+
+     THREE NUMBERS, AND THEY ARE NOT THE SAME NUMBER.
+
+       WORK DONE  - the gross: charge + salt + spares, contract or no contract. This is what
+                    tells him whether an AMC is priced right, and it is the number that
+                    disappears entirely if you only ever look at revenue.
+       CHARGED    - what the customer was actually asked for, after the contract had its say.
+       COLLECTED  - what the engineer actually took. The gap is PENDING, and it is the whole
+                    reason this screen exists.
+
+     PENDING IS RECOMPUTED, NOT READ. Visit rows written before today carry a `balance` from
+     the old rule, under which an AMC-covered visit was stored with its gross total and
+     nothing collected - so every one of them looks like a debt. Reading that column would
+     have shown a dozen loyal AMC customers as defaulters on their first sight of this screen.
+     Every figure here is worked out again from the visit and the contract as it stood ON THE
+     DAY, so the history is right without one stored row being touched. */
+  function accMonth(d) { var t = dstr(d10(d)); return t && t.length >= 7 ? t.slice(0, 7) : ""; }
+
+  function accRows() {
+    return myVisits().map(function (v) {
+      var ins = v.installId ? installById(v.installId) : null;
+      return {
+        v: v, ins: ins,
+        m: accMonth(v.date || v.createdAt),
+        work: visitTotal(v),
+        due: visitDue(v, ins),
+        got: num(v.collected),
+        pend: visitPending(v, ins)
+      };
+    });
+  }
+
+  function viewAccount() {
+    var rows = accRows();
+    if (!rows.length) {
+      return '<div class="empty">No visits recorded yet, so there is no money to account for. ' +
+        'Everything you record shows up here the moment you save it.</div>';
+    }
+    var thisM = accMonth(today());
+    var sum = function (list, k) { return list.reduce(function (a, r) { return a + r[k]; }, 0); };
+    var mine = rows.filter(function (r) { return r.m === thisM; });
+    var owed = rows.filter(function (r) { return r.pend > 0.5; });
+
+    var h = '<div class="stats">' +
+      '<div class="stat"><div class="n">' + esc(money9(sum(mine, "got"))) + '</div><div class="l">Collected this month</div></div>' +
+      '<div class="stat' + (sum(rows, "pend") > 0.5 ? ' bad' : '') + '"><div class="n">' +
+        esc(money9(sum(rows, "pend"))) + '</div><div class="l">Pending, all of it</div></div>' +
+      '<div class="stat"><div class="n">' + esc(money9(sum(rows, "got"))) + '</div><div class="l">Collected, all time</div></div>' +
+      '<div class="stat"><div class="n">' + rows.length + '</div><div class="l">Visits</div></div>' +
+      '</div>';
+
+    /* WHAT THE CONTRACTS GAVE AWAY. Not a loss - it is what he sold - but it is the only
+       number that answers "is the AMC priced right", and nothing has ever shown it. */
+    var freeM = sum(mine, "work") - sum(mine, "due");
+    if (freeM > 0.5) {
+      h += '<div class="note">Under AMC this month: <b>' + esc(money9(freeM)) + '</b> of work done ' +
+        'and not charged. That is what the contracts bought.</div>';
+    }
+
+    /* ---- WHO OWES ---- */
+    if (owed.length) {
+      var by = {}, order = [];
+      owed.forEach(function (r) {
+        var k = lower(r.v.client || "(no name)");
+        if (!by[k]) { by[k] = { name: r.v.client || "(no name)", pend: 0, n: 0, rows: [] }; order.push(k); }
+        by[k].pend += r.pend; by[k].n++; by[k].rows.push(r);
+      });
+      order.sort(function (a, b) { return by[b].pend - by[a].pend; });
+      h += '<h3 class="sec bad">Pending — ' + esc(money9(sum(owed, "pend"))) + ' from ' +
+        order.length + ' customer' + (order.length === 1 ? '' : 's') + '</h3>';
+      order.forEach(function (k) {
+        var c = by[k], open = S.accOpen === k;
+        h += '<div class="card" data-act="acc-open" data-k="' + esc(k) + '">' +
+          '<div class="row"><div class="grow"><div class="ttl">' + esc(c.name) + '</div>' +
+          '<div class="meta">' + c.n + ' visit' + (c.n === 1 ? '' : 's') + ' not settled</div></div>' +
+          '<div class="right"><div class="amt bad">' + esc(money9(c.pend)) + '</div></div></div></div>';
+        if (open) h += c.rows.map(function (r) { return histRow(r.v, r.ins); }).join("");
+      });
+    } else {
+      h += '<div class="empty ok"><b>Nothing pending.</b><br>' +
+        'Every visit you have recorded is either settled or covered by a contract.</div>';
+    }
+
+    /* ---- THIS MONTH, LINE BY LINE ---- */
+    h += '<h3 class="sec">This month — ' + mine.length + ' visit' + (mine.length === 1 ? '' : 's') + '</h3>';
+    h += mine.length
+      ? '<div class="billbox">' +
+          '<div class="bill"><span>Work done</span><b>' + esc(money9(sum(mine, "work"))) + '</b><i>&nbsp;</i></div>' +
+          '<div class="bill"><span>Covered by AMC</span><b>' + esc(money9(freeM)) + '</b><i>&nbsp;</i></div>' +
+          '<div class="bill"><span>Charged</span><b>' + esc(money9(sum(mine, "due"))) + '</b><i>&nbsp;</i></div>' +
+          '<div class="bill"><span>Collected</span><b>' + esc(money9(sum(mine, "got"))) + '</b><i>&nbsp;</i></div>' +
+          '<div class="bill tot"><span>Still to come</span><b>' + esc(money9(sum(mine, "pend"))) + '</b><i>&nbsp;</i></div>' +
+        '</div>' + mine.map(function (r) { return histRow(r.v, r.ins); }).join("")
+      : '<div class="empty">Nothing recorded this month yet.</div>';
+    return h;
+  }
+
   /* ---- MY HISTORY ---- */
   function viewHistory() {
     var list = myVisits();
@@ -1563,20 +1755,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       '<div class="stat"><div class="n">' + list.length + '</div><div class="l">Visits</div></div>' +
       '<div class="stat"><div class="n">' + esc(money9(money)) + '</div><div class="l">Collected</div></div>' +
       '</div>';
-    return h + list.map(function (v) {
-      var ins = installById(v.installId);
-      return '<div class="card">' +
-        '<div class="row"><div class="grow">' +
-        '<div class="ttl">' + esc(v.client || (ins && ins.client) || "(no name)") + '</div>' +
-        '<div class="meta">' + esc(v.type || "visit") + ' &middot; ' + esc(dstr(v.date)) +
-          (v.partsUsed ? ' &middot; ' + esc(v.partsUsed) : '') + '</div>' +
-        (v.notes ? '<div class="meta">' + esc(v.notes) + '</div>' : '') +
-        '</div><div class="right">' +
-        '<div class="amt">' + esc(money9(visitTotal(v))) + '</div>' +
-        (num(v.collected) ? '<div class="pill got">took ' + esc(money9(v.collected)) + '</div>' : '') +
-        (num(v.balance) > 0 ? '<div class="pill due">' + esc(money9(v.balance)) + ' left</div>' : '') +
-        '</div></div></div>';
-    }).join("");
+    return h + list.map(function (v) { return histRow(v, v.installId ? installById(v.installId) : null); }).join("");
   }
 
   function money9(n) { return money(num(n)); }
@@ -1587,6 +1766,34 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
 
   /* ================= THE MACHINE, AND ITS HISTORY ================= */
+  /* ---- ONE VISIT, WRITTEN OUT (v1.4.0) ----
+     "serviced on ---", "spares delivered if any", "salt, service charge, collected or
+     pending". All four are on this row, and the pending figure is recomputed from the
+     contract AS IT STOOD ON THE DAY - not as it stands today. A customer whose AMC lapsed in
+     June must not suddenly appear to owe for a service he had in March. */
+  function histRow(v, ins) {
+    var g = visitTotal(v), dueAmt = visitDue(v, ins), pend = visitPending(v, ins);
+    var cov = amcCover(ins, v.type, v.date);
+    var bits = [];
+    if (num(v.visitCharge)) bits.push("charge " + money9(num(v.visitCharge)) + (cov.visit ? " (AMC)" : ""));
+    if (num(v.saltAmt) || num(v.saltBags)) bits.push("salt " + (num(v.saltBags) ? num(v.saltBags) + " bag" + (num(v.saltBags) === 1 ? "" : "s") + " " : "") +
+      money9(num(v.saltAmt)) + (cov.salt ? " (AMC)" : ""));
+    if (num(v.partsAmt)) bits.push("spares " + money9(num(v.partsAmt)) + (cov.parts ? " (AMC)" : ""));
+    return '<div class="card sm"><div class="row"><div class="grow">' +
+      '<div class="ttl">' + esc(v.type || "visit") + ' &middot; ' + esc(dstr(v.date)) +
+        (v.engineer ? ' &middot; ' + esc(v.engineer) : '') + '</div>' +
+      (v.partsUsed ? '<div class="meta"><b>Spares:</b> ' + esc(v.partsUsed) + '</div>' : '') +
+      (bits.length ? '<div class="meta">' + esc(bits.join(" · ")) + '</div>' : '') +
+      (v.notes ? '<div class="meta">' + esc(v.notes) + '</div>' : '') +
+      '</div><div class="right">' +
+      '<div class="amt">' + esc(money9(dueAmt)) + '</div>' +
+      (g > dueAmt ? '<div class="meta">' + esc(money9(g)) + ' of work</div>' : '') +
+      (num(v.collected) ? '<div class="pill got">took ' + esc(money9(v.collected)) + '</div>' : '') +
+      (pend > 0.5 ? '<div class="pill due">' + esc(money9(pend)) + ' pending</div>'
+                  : (dueAmt <= 0 ? '<div class="pill amc">AMC</div>' : '<div class="pill got">settled</div>')) +
+      '</div></div></div>';
+  }
+
   function sheetJob(ins) {
     if (!ins) return "";
     var a = amcState(ins), band = dueBand(ins), hist = visitsFor(ins.id);
@@ -1603,8 +1810,28 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       kv("Cycle", ins.cycleDays ? num(ins.cycleDays) + " days" : "not set") +
       kv("Last service", ins.lastService ? dstr(ins.lastService) : "none recorded") +
       kv("Next due", ins.nextService ? dstr(ins.nextService) + " — " + dueSay(ins) : "not set") +
-      kv("AMC", a.say || "No AMC") +
       '</div>';
+
+    /* ---- THE CONTRACT (v1.4.0) ----
+       "client under AMC, AMC with spare or without spare, AMC amt". A card rather than a line
+       in the table, because the engineer standing at the machine is about to decide what to
+       charge and this is the thing that decides it. */
+    {
+      var kind = amcKind(ins), liveNow = amcLiveOn(ins, today());
+      h += '<div class="amccard ' + (liveNow ? 'on' : 'off') + '">' +
+        '<div class="row"><div class="grow"><b>' + esc(liveNow ? kind : "No live AMC") + '</b>' +
+        (liveNow && ins.amcAmount ? ' <span class="pill">' + esc(money9(num(ins.amcAmount))) + '</span>' : '') +
+        '</div><div class="right">' +
+        (liveNow ? '<span class="pill amc">live</span>' : '') + '</div></div>' +
+        '<div class="meta">' + esc(a.say || "No AMC") +
+        (liveNow && a.endsIn !== undefined ? ' · ' + a.endsIn + ' days left' : '') + '</div>' +
+        (liveNow
+          ? '<div class="meta">' + (kind === "AMC with spares"
+              ? 'Visit, salt and spares are all covered. Collect nothing.'
+              : 'Visit and salt are covered. Spares are charged.') + '</div>'
+          : '<div class="meta">Everything is charged. The office renews an AMC in the CRM.</div>') +
+        '</div>';
+    }
 
     if (ins.mobile) {
       var n = String(ins.mobile).replace(/\D/g, ""); if (n.length === 10) n = "91" + n;
@@ -1619,15 +1846,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
     h += '<h3 class="sec">Service history</h3>';
     h += hist.length
-      ? hist.map(function (v) {
-          return '<div class="card sm"><div class="row"><div class="grow">' +
-            '<div class="ttl">' + esc(v.type || "visit") + ' &middot; ' + esc(dstr(v.date)) + '</div>' +
-            (v.partsUsed ? '<div class="meta">' + esc(v.partsUsed) + '</div>' : '') +
-            (v.notes ? '<div class="meta">' + esc(v.notes) + '</div>' : '') +
-            '</div><div class="right"><div class="amt">' + esc(money9(visitTotal(v))) + '</div>' +
-            (num(v.collected) ? '<div class="pill got">took ' + esc(money9(v.collected)) + '</div>' : '') +
-            '</div></div></div>';
-        }).join("")
+      ? hist.map(function (v) { return histRow(v, ins); }).join("")
       : '<div class="empty sm">No visit has been recorded against this machine yet. ' +
         'That is not the same as never serviced — work done before this app existed is not here.</div>';
 
@@ -1642,9 +1861,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      what was taken. */
   function sheetVisit(v) {
     var ins = v.installId ? installById(v.installId) : null;
-    var covered = amcCovers(ins, v.type);
     var pTot = partsTotal(v.parts);
-    var total = num(v.visitCharge) + num(v.saltAmt) + pTot;
+    var gross = num(v.visitCharge) + num(v.saltAmt) + pTot;
+    var cover = amcCover(ins, v.type, v.date);
+    var due = (cover.visit ? 0 : num(v.visitCharge)) +
+              (cover.salt  ? 0 : num(v.saltAmt)) +
+              (cover.parts ? 0 : pTot);
+    var covered = due <= 0 && gross > 0;
+    var total = due;
 
     var h = '<h2>' + (ins ? esc(ins.client || "") : 'Labour job') + '</h2>' +
       '<div class="muted">' + (ins
@@ -1695,7 +1919,26 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     h += '<label>Visit / labour charge</label>' +
       '<input id="v_charge" inputmode="numeric" value="' + esc(v.visitCharge || "") + '" placeholder="0"/>';
 
-    h += '<div class="tot"><span>Total</span><b>' + esc(money9(total)) + '</b></div>';
+    /* ============ THE BILL, LINE BY LINE (v1.4.0) ============
+       "salt, service charge, collected or pending". Three amounts go into a visit and the
+       contract may forgive any of them, so the screen shows each one and says which. An
+       engineer standing in front of a customer should be able to read this out. */
+    {
+      var line = function (label, amt, free) {
+        if (!amt) return "";
+        return '<div class="bill' + (free ? ' free' : '') + '"><span>' + esc(label) + '</span>' +
+          '<b>' + esc(money9(amt)) + '</b>' +
+          '<i>' + (free ? 'covered by ' + esc(cover.kind) : 'to collect') + '</i></div>';
+      };
+      h += '<div class="billbox">' +
+        line("Visit / labour charge", num(v.visitCharge), cover.visit) +
+        line("Salt" + (num(v.saltBags) ? " · " + num(v.saltBags) + " bag" + (num(v.saltBags) === 1 ? "" : "s") : ""),
+             num(v.saltAmt), cover.salt) +
+        line("Spares fitted", pTot, cover.parts) +
+        '<div class="bill tot"><span>To collect</span><b>' + esc(money9(due)) + '</b>' +
+        '<i>' + (gross > due ? esc(money9(gross - due)) + ' covered' : '&nbsp;') + '</i></div>' +
+        '</div>';
+    }
 
     /* ============ THE MONEY QUESTION, ASKED ONLY WHEN THERE IS ONE ============
        The owner's rule is that AMC is prepaid. So on a live contract this screen says so
@@ -1703,9 +1946,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
        customer for money he has already paid. */
     if (covered) {
       h += '<div class="amcbox"><b>Under AMC — nothing to collect.</b><br>' +
-        esc(amcState(ins).say) + '. This visit is already paid for.' +
-        (pTot ? '<br><span class="warn-t">Parts are not covered by the contract. If the customer is ' +
-          'paying for these, change the work type to Repair.</span>' : '') + '</div>';
+        esc(cover.kind) + ', ' + esc(amcState(ins).say) + '. ' +
+        esc(money9(gross)) + ' of work, already paid for.</div>';
     } else if (total > 0) {
       h += '<label>Taken now</label>' +
         '<input id="v_got" inputmode="numeric" value="' + esc(v.collected == null ? "" : v.collected) + '" placeholder="0"/>' +
@@ -1772,9 +2014,19 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           machine that says it was serviced with no evidence that it was. */
   function visitRowFrom(v, ins) {
     var pTot = partsTotal(v.parts);
-    var total = num(v.visitCharge) + num(v.saltAmt) + pTot;
-    var covered = amcCovers(ins, v.type);
-    var got = covered ? 0 : num(v.collected);
+    /* v1.4.0 - `total` is now WHAT WAS CHARGEABLE, after the contract has had its say. The
+       gross value of the work is not lost: visitCharge, saltAmt and partsAmt are each stored
+       beside it, and visitTotal() adds them back whenever the office wants to know what an
+       AMC actually delivered. Storing the chargeable figure is what makes `balance` mean what
+       it says, and what lets the account screen add a column without re-deciding the rule. */
+    var cover = amcCover(ins, v.type, v.date);
+    var due = (cover.visit ? 0 : num(v.visitCharge)) +
+              (cover.salt  ? 0 : num(v.saltAmt)) +
+              (cover.parts ? 0 : pTot);
+    /* nothing chargeable means nothing taken - the form does not even ask, so a stale value
+       left in the object must not become a rupee the customer never handed over */
+    var got = due > 0 ? num(v.collected) : 0;
+    var total = due;
     return {
       id: v.id || mintId("SV"),
       createdAt: v.createdAt || new Date().toISOString(),
@@ -1807,7 +2059,21 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      it cannot know. */
   function installAfter(ins, row) {
     if (!ins) return null;
-    if (!AMC_COVERS[row.type] && row.type !== "Repair" && row.type !== "Installation") return null;
+    /* v1.4.0 - AN EXPLICIT LIST, AND A BUG THIS LINE CARRIED FOR HALF AN HOUR.
+       It used to read `!AMC_COVERS[row.type]`, borrowing the MONEY list to answer a question
+       that has nothing to do with money: does this kind of work move the machine's service
+       clock forward. When AMC_COVERS was replaced by the new coverage rule, this reference was
+       left behind pointing at a name that no longer existed - a ReferenceError on every visit
+       save that touched a machine.
+
+       t_undefined_names.js did NOT catch it. The checker reports other undeclared names in
+       this very function, so the hole is real and is not understood. What caught it was
+       reading the file for something else entirely, and what proves it fixed is t_service_run.js
+       CALLING this function - which is that test file's own thesis: reading proves what code
+       says, only running proves what it does.
+
+       Everything except a labour job touches the machine. A labour job has no machine at all. */
+    if (!TOUCHES_MACHINE[String(row.type || "")]) return null;
     var cyc = num(ins.cycleDays);
     var out = { };
     Object.keys(ins).forEach(function (k) { out[k] = ins[k]; });
@@ -1868,7 +2134,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     { k: "today",   t: "Today" },
     { k: "jobs",    t: "Machines" },
     { k: "labour",  t: "Labour job" },
-    { k: "history", t: "My work" }
+    { k: "history", t: "My work" },
+    { k: "account", t: "Account" }
   ];
   function navBtn(n) {
     return '<button class="nav' + (S.tab === n.k ? ' on' : '') + '" data-act="tab" data-k="' + esc(n.k) + '">' +
@@ -1876,7 +2143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
   function bodyHtml() {
     if (S.sheet) return '<div class="sheet">' + S.sheet + '</div>';
-    var v = { today: viewToday, jobs: viewJobs, history: viewHistory }[S.tab];
+    var v = { today: viewToday, jobs: viewJobs, history: viewHistory, account: viewAccount }[S.tab];
     return v ? v() : viewToday();
   }
   function render() {
@@ -1916,6 +2183,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         S.sheet = sheetVisit(S.vis); render(); return;
       }
       S.tab = k; S.q = ""; render(); return;
+    }
+    if (act === "acc-open") {
+      var ak = t.getAttribute("data-k") || "";
+      S.accOpen = (S.accOpen === ak) ? "" : ak;
+      render(); return;
     }
     if (act === "close")   { S.sheet = null; S.vis = null; S.q = ""; render(); return; }
     if (act === "refresh") { pull(true); return; }
