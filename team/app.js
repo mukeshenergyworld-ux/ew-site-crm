@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.316";
+  var APP_VERSION = "6.9.317";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5308,8 +5308,16 @@ window.addEventListener("beforeunload", function (ev) {
       var openQ = clientQuotes(c.name).filter(function (q) { return ["Draft", "Sent", "Negotiating", "Revised"].indexOf(q.status) >= 0; }).length;
       /* COMPACT: one header line (name + pills + PL/AR badges + Call/Edit), one brand line.
          The plumber/architect gap shows on the card itself - green with phone, red to fill. */
-      return '<div class="card lc-compact">' +
+      /* v6.9.317 - the promise the Duplicate check screen made and never kept: "the team stops
+         opening the wrong one". A duplicate now says whose record it really is, on the card,
+         where a man is actually looking. */
+      var alsoC = dupAlsoSay(c.name);
+      return '<div class="card lc-compact"' +
+        (alsoC && alsoC.alias ? ' style="border-color:#fed7aa;background:#fffbf5"' : '') + '>' +
         '<div class="lc-top"><div class="lc-id"><b>' + esc(c.name) + '</b>' +
+        (alsoC ? ' <span class="pill" style="background:#ccfbf1;color:#0f766e" title="' +
+          esc(alsoC.txt) + '">' + (alsoC.alias ? '\u2192 ' + esc(alsoC.main) : 'also ' +
+          esc((dupAliasMap().aliasOf[dgKey(c.name)] || []).join(", "))) + '</span>' : '') +
         ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
         (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
         (openQ ? ' <span class="pill soon">' + openQ + ' in play</span>' : "") +
@@ -5354,6 +5362,91 @@ window.addEventListener("beforeunload", function (ev) {
      his executive's band come from exactly the same arithmetic as HISAB. There is deliberately no
      second definition of "pending" anywhere in this file to drift out of step.
      Calling clientLedger() per card would have re-walked the whole challan book once per client. */
+  /* ============================================================================
+     "SAME PERSON - FIX" NOW ACTUALLY DOES SOMETHING.  (v6.9.317, 20 August 2026)
+
+     He wrote: "Mahavir & Mahabir are same person, i have made spelling mistake and now two
+     entities in crm - can you merge both to Mahavir".
+
+     The Duplicate check screen has had a "Same person - fix" button since v6.9.180, and its
+     own panel promised, in these words:
+
+       "The others ... are recorded as OTHER NAMES FOR THE SAME MAN, so the team stops opening
+        the wrong one ... will show as another name for X WHEREVER THEY APPEAR."
+
+     That was not true. dup-fix-go wrote one audit row and stopped. The answer was filed, and
+     it changed exactly nothing: the two records still sat apart in the client book, the money
+     still split between them, and the only screen in the estate that ever mentioned the
+     decision again was the Duplicate check screen itself, under "already sorted out". A button
+     that records an opinion and calls it a fix is worse than no button, because the man who
+     pressed it stops looking.
+
+     THE MERGE IS A JOIN, NOT A DELETION. Nothing is moved on the sheet and nothing is removed
+     - that rule does not bend for tidiness. Mahabir's challans stay Mahabir's challans, on the
+     row and in the audit trail, exactly where the godown wrote them. What changes is that
+     every screen now READS the two rows as one man: his money adds up under Mahavir, his
+     dossier carries both histories, and the client book points anybody who opens Mahabir at
+     the record that is really his.
+
+     CHANGING HIS MIND STILL WORKS. dupDecisions() is append-only and in time order, so a later
+     "reopen" or "keep separate" row cancels an earlier fix, and the two come apart again with
+     nothing lost on either side. */
+  var _aliasCache = null;
+  function dupAliasMap() {
+    if (_aliasCache) return _aliasCache;
+    var byName = {}, aliasOf = {};
+    dupDecisions().forEach(function (d) {
+      /* later rows override earlier ones - this list arrives oldest first */
+      if (d.kind === "reopen" || d.kind === "keep") {
+        /* BOTH INDEXES, OR THEY COME APART ONLY HALFWAY. The first version of this deleted the
+           alias and left the reverse list alone, so dupMainName() correctly said "his own man
+           again" while dupFamily() still handed clientDue() two names to add up - the money
+           stayed merged after he had said they were different people. Caught by t_merge.js,
+           which totals the book on both sides of a reopen. */
+        Object.keys(byName).forEach(function (k) {
+          var v = byName[k];
+          if ((d.ids || []).indexOf(v.id) < 0 && (d.ids || []).indexOf(v.mainId) < 0) return;
+          var mk = dgKey(v.main);
+          aliasOf[mk] = (aliasOf[mk] || []).filter(function (x) { return dgKey(x) !== k; });
+          if (!aliasOf[mk].length) delete aliasOf[mk];
+          delete byName[k];
+        });
+        return;
+      }
+      if (d.kind !== "fix") return;
+      var mn = String((d.det && d.det.mainName) || "").trim();
+      if (!mn) return;
+      ((d.det && d.det.aliases) || []).forEach(function (a) {
+        var an = String(a.name || "").trim();
+        if (!an || dgKey(an) === dgKey(mn)) return;
+        byName[dgKey(an)] = { main: mn, alias: an, id: String(a.id || ""), mainId: String((d.det && d.det.main) || ""), at: d.at, by: d.by };
+        (aliasOf[dgKey(mn)] = aliasOf[dgKey(mn)] || []).push(an);
+      });
+    });
+    _aliasCache = { byName: byName, aliasOf: aliasOf };
+    return _aliasCache;
+  }
+  /* the name this man is really filed under */
+  function dupMainName(n) {
+    var hit = dupAliasMap().byName[dgKey(n)];
+    return hit ? hit.main : String(n == null ? "" : n).trim();
+  }
+  function dupIsAlias(n) { return !!dupAliasMap().byName[dgKey(n)]; }
+  /* the main name AND every other name he was entered under, main first */
+  function dupFamily(n) {
+    var main = dupMainName(n);
+    var others = dupAliasMap().aliasOf[dgKey(main)] || [];
+    return [main].concat(others.filter(function (x) { return dgKey(x) !== dgKey(main); }));
+  }
+  /* the sentence a man reads on the card, so the join is never silent */
+  function dupAlsoSay(n) {
+    var a = dupAliasMap().byName[dgKey(n)];
+    if (a) return { alias: true, txt: "Now filed under " + a.main, main: a.main };
+    var others = dupAliasMap().aliasOf[dgKey(n)] || [];
+    if (others.length) return { alias: false, txt: "Also entered as " + others.join(", "), main: String(n) };
+    return null;
+  }
+
   var _clDueCache = null, _clStageCache = null;
   function clientDueMap() {
     if (_clDueCache) return _clDueCache;
@@ -5364,7 +5457,16 @@ window.addEventListener("beforeunload", function (ev) {
     _clDueCache = m;
     return m;
   }
-  function clientDue(name) { return clientDueMap()[String(name || "").trim().toLowerCase()] || 0; }
+  function clientDue(name) {
+    var m = clientDueMap(), lc = function (x) { return String(x || "").trim().toLowerCase(); };
+    /* v6.9.317 - a man entered twice owes ONE amount. It is shown on the record he is really
+       filed under, and the duplicate shows nothing - NOT the same figure twice, which would
+       double every band total on the client book and every total built on top of them. */
+    if (dupIsAlias(name)) return 0;
+    var fam = dupFamily(name);
+    if (fam.length > 1) return fam.reduce(function (a, n) { return a + (m[lc(n)] || 0); }, 0);
+    return m[lc(name)] || 0;
+  }
   /* One pass over sites (and customers) for the whole book. Keyed on TRIMMED + LOWERCASED name, so a
      stray trailing space or a capital letter in a client name can never hide a stage that really is
      recorded — clientStage() matches the name exactly and case-sensitively, which is fine for a
@@ -5475,8 +5577,16 @@ window.addEventListener("beforeunload", function (ev) {
       var stg = clientStage2(c.name);
       /* COMPACT: one header line (name + pills + PL/AR badges + Call/Edit), one brand line.
          Builder/PMC/address stay on the Edit form - the card is for scanning the book fast. */
-      return '<div class="card lc-compact">' +
+      /* v6.9.317 - the promise the Duplicate check screen made and never kept: "the team stops
+         opening the wrong one". A duplicate now says whose record it really is, on the card,
+         where a man is actually looking. */
+      var alsoC = dupAlsoSay(c.name);
+      return '<div class="card lc-compact"' +
+        (alsoC && alsoC.alias ? ' style="border-color:#fed7aa;background:#fffbf5"' : '') + '>' +
         '<div class="lc-top"><div class="lc-id"><b>' + esc(c.name) + '</b>' +
+        (alsoC ? ' <span class="pill" style="background:#ccfbf1;color:#0f766e" title="' +
+          esc(alsoC.txt) + '">' + (alsoC.alias ? '\u2192 ' + esc(alsoC.main) : 'also ' +
+          esc((dupAliasMap().aliasOf[dgKey(c.name)] || []).join(", "))) + '</span>' : '') +
         ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
         (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
         ' <span class="bs win">' + (won ? won + ' WON' : 'CLIENT') + '</span>' +
@@ -5552,7 +5662,7 @@ window.addEventListener("beforeunload", function (ev) {
   }
 
   function viewClients() {
-    _clDueCache = null; _clStageCache = null;   /* fresh money + stages on every full render */
+    _clDueCache = null; _clStageCache = null; _aliasCache = null;   /* fresh money, stages and merges on every full render */
     var all = S.data.clients.filter(function (c) { return isClient(c.name); });
     if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });
     var clocs = [];
@@ -17113,7 +17223,10 @@ function viewCatalogue() {
         'After you press Confirm: <b>' + esc(main.name) + '</b> is the customer. ' +
         esc(others.map(function (r) { return r.name; }).join(", ")) +
         ' will show as <i>another name for ' + esc(main.name) + '</i> wherever they appear. ' +
-        'Their own challans and quotes stay on them — nothing moves, nothing is lost.</div>';
+        'Their own challans and quotes stay on them &mdash; nothing moves, nothing is lost. ' +
+        '<b>His money adds up under ' + esc(main.name) + ' from the moment you press this</b>, ' +
+        'and \u201cEverything about him\u201d carries both histories. If you change your mind, ' +
+        'answer <i>different people</i> later and they come apart again.</div>';
       h += '<div class="acts" style="margin-top:8px">' +
         '<button class="btn" data-act="dup-fix-go" data-k="' + esc(g.key) + '">Confirm — one man, ' + (others.length + 1) + ' records</button>' +
         '<button class="btn ghost" data-act="dup-cancel">Cancel</button></div>';
@@ -19190,6 +19303,21 @@ function viewCatalogue() {
     (D.associates || []).forEach(function (a) {
       if (hasMob(a.mobile)) { names[dgKey(a.name)] = a.name; roles.partner = 1; }
     });
+    /* v6.9.317 - AND THROUGH A MERGE HE HAS ALREADY ANSWERED. Mahavir and Mahabir do not
+       share a spelling, and they may not share a mobile either - a name typed wrong once is
+       usually typed wrong along with everything else on that day. What they share is his own
+       answer on the Duplicate check screen, and that is now load-bearing. Two passes closes
+       the family: alias -> the name he is really filed under -> every other name for him. */
+    var _am = dupAliasMap();
+    var _pull = function () {
+      Object.keys(names).forEach(function (k) {
+        var a = _am.byName[k];
+        if (a && !names[dgKey(a.main)]) names[dgKey(a.main)] = a.main;
+        (_am.aliasOf[k] || []).forEach(function (x) { if (!names[dgKey(x)]) names[dgKey(x)] = x; });
+      });
+    };
+    _pull(); _pull();
+
     return { q: q, names: names, mobs: mobs, roles: roles,
              isMine: function (n) { var k = dgKey(n); return !!(k && names[k]); } };
   }
@@ -19285,6 +19413,13 @@ function viewCatalogue() {
     /* THE NAMES HE IS FILED UNDER. Said out loud, because the whole reason this screen exists
        is that one man was three rows, and a man reading it deserves to know which rows were
        joined and on what. */
+    var _also = dupAlsoSay(nm[0] || q);
+    if (_also) {
+      h += '<div class="meta" style="margin:8px 0;padding:8px 10px;border-radius:9px;' +
+        'background:#f0fdfa;border:1px solid #99f6e4;color:#0f766e"><b>' + esc(_also.txt) + '.</b> ' +
+        'Everything below counts both records together. Nothing was moved and nothing was deleted &mdash; ' +
+        'each challan still sits on the row the godown wrote it on.</div>';
+    }
     if (nm.length > 1 || mobs.length) {
       h += '<div class="meta" style="margin:8px 0">Filed as ' +
         nm.map(function (x) { return '<b>' + esc(x) + '</b>'; }).join(" &middot; ") +
@@ -22705,7 +22840,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null;
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     /* v6.9.263 - warming the logo cache is for the NEXT quote PDF, never for this paint;
        nothing on screen waits on it. Started from the paint it competed with teamAuth and
