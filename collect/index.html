@@ -137,7 +137,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.22.0";
+  var APP_VERSION = "1.23.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1476,7 +1476,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     return list.some(function (r) { return mine.indexOf(r) >= 0; });
   }
 
-  function seesAll() { return S.role === "admin" || S.role === "accounts"; }
+  function seesAll() { return roleIs("admin") || roleIs("accounts"); }
   function canWrite() { return seesAll(); }
   function rowFor(name) {
     var k = String(name || "").trim().toLowerCase();
@@ -2593,7 +2593,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         }
         S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
         try { beatStart(); } catch (e) {}   /* v1.20.0 - from here it asks on its own */
-        if (["admin", "accounts", "sales"].indexOf(S.role) < 0) { S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = ""; return; }
+        if (!roleAny(["admin","accounts","sales"])) { S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = ""; return; }
         try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: saved.pin, role: S.role })); } catch (e) {}
         startFlushTicker();          /* the PIN path started it; Face ID never did, so a held
                                         payment on a Face ID phone had nothing running to send it */
@@ -3050,7 +3050,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
       S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
       try { beatStart(); } catch (e) {}   /* v1.20.0 - from here it asks on its own */
-      if (["admin", "accounts", "sales"].indexOf(S.role) < 0) {
+      if (!roleAny(["admin","accounts","sales"])) {
         S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = "";
         return;
       }
@@ -3363,7 +3363,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       }
       S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
       try { beatStart(); } catch (e) {}   /* v1.20.0 - from here it asks on its own */
-      if (["admin", "accounts", "sales"].indexOf(S.role) < 0) {
+      if (!roleAny(["admin","accounts","sales"])) {
         refused = true; S.pin = ""; forgetBook();
         renderLogin("This app is not open to you.");
         return;
