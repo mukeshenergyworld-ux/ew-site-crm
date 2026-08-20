@@ -242,7 +242,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.4.0";
+  var APP_VERSION = "1.4.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -408,10 +408,41 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
   function amcLiveOn(ins, date) {
     if (!ins || amcKind(ins) === "None") return false;
+    var d = String(date || today()).slice(0, 10);
+    /* ---- THE CONTRACT STARTS AFTER THE MACHINE IS IN (v1.4.1, 20 Aug 2026) ----
+       His words: "AMC start after installation, so that no issue".
+
+       Until this line existed only the END date was checked, so a contract signed in June and
+       running to next March made a service done in JANUARY look covered - work the customer
+       had already paid for in cash, quietly written off against a contract that did not exist
+       on the day. Nothing on any screen would ever have said so.
+
+       There is no amcStart column and there does not need to be one, because he has just said
+       what the start is: the machine going in. `installDate` is the floor.
+
+       IT IS `<=`, NOT `<`. The contract starts AFTER the installation, so the install day
+       itself is not covered - which is the whole of "so that no issue". The Installation job
+       type is still charged separately in amcCover(); the two rules agree, and belt-and-braces
+       on a money question is not waste. A backdated install record would otherwise slip
+       through the date rule and the type rule would still catch it.
+
+       NO INSTALL DATE RECORDED MEANS NO FLOOR. Refusing cover because the office never typed a
+       date would charge a customer who holds a perfectly good contract - the wrong way round,
+       and not his fault.
+
+       AND NOT commDate, WHICH ALSO EXISTS. The CRM keeps a commissioning date per product and
+       uses `commDate || installDate` for the warranty and the service clock. It is deliberately
+       NOT used here, for three reasons: he said "installation"; commDate lives only inside
+       productsJson and is not a column on the row this app reads; and commissioning is the
+       LATER of the two, so using install date is the more generous floor - the gap between the
+       machine going in and it being started is a gap in which the only visit possible is the
+       commissioning itself, and amcCover() charges type "Installation" regardless of date. */
+    var start = String(ins.installDate || "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(start) && d <= start) return false;
     var end = String(ins.amcEnd || "").slice(0, 10);
     /* no end date recorded is treated as live, exactly as amcState has always treated it */
     if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) return true;
-    return end >= String(date || today()).slice(0, 10);
+    return end >= d;
   }
 
   /* THE ONE PLACE THE MONEY QUESTION IS ANSWERED. Everything - the form, the history, the
