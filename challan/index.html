@@ -62,6 +62,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   margin:0 0 12px;background:#fee2e2;color:#b91c1c}
 
 .pill.amb{background:#fef3c7;color:#92400e}
+/* ---- the freight corner (v1.36.0) ---- */
+.frnote{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:13px;color:#334155}
+.frnote.amb{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.frnote.grn{background:#f0fdfa;border-color:#99f6e4;color:#0f766e}
+.frbox{background:#fff;border:1px solid #e2e8f0;border-radius:13px;margin:-4px 0 12px;overflow:hidden}
+.frline{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:10px 12px;border-top:1px solid #eef2f7;font-size:13.5px}
+.frline:first-child{border-top:0}
 .pill.grn{background:#ccfbf1;color:#0f766e}
 .pill.blu{background:#dbeafe;color:#1d4ed8}
 .row{display:flex;gap:8px;align-items:center}
@@ -171,7 +178,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.35.0";
+  var APP_VERSION = "1.36.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3573,12 +3580,186 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
   /* ================= PAINT AND PRESS ================= */
 
+
+  /* ==========================================================================
+     THE DRIVER'S FREIGHT HISAB  (v1.36.0, 20 August 2026)
+
+     "add driver freight corner also in challan app, so that godown and accounts can see
+      driver freight hisab, like how much pending receipt of a driver, freight to be
+      calculated only when receipt attached otherwise it will show pending for settlement
+      due to not having all receipts uploaded"
+
+     His rule, and it is a good one: A DRIVER IS PAID FOR A TRIP THAT CAN BE PROVED. The
+     signed receipt is the proof, so freight with no receipt against it is not "unpaid", it is
+     NOT YET COUNTABLE - and the screen has to say which of those it is, or the driver and the
+     office will disagree about a number neither can see.
+
+     THREE STATES, not two. He named two; the third exists whether we name it or not, and
+     leaving it out would hide money:
+
+       ready  - it went, and the signed receipt is filed.        Settle this.
+       held   - it went, and there is no receipt yet.            Chase the paper, not the money.
+       waiting- the challan has not been dispatched at all.      No trip has happened.
+
+     A freight line on an undispatched challan is not a debt to anybody. It is left out of both
+     his numbers on purpose and shown small, because a bucket that exists and is not drawn is
+     how a total quietly stops adding up.
+
+     JOINED ON driverId WHERE THERE IS ONE. The schema comment on the challans tab says why
+     that column was added: "a string like Suresh (HR-06-AB-1234) can never be summed into a
+     freight bill per driver". Rows written before it fall back to the name, and a driver whose
+     rows are joined that way is marked, because a name is not an identity.
+
+     NOTHING HERE WRITES. This is the hisab. Recording what was actually paid out to a driver
+     is a money record and needs a table of its own - asked, not assumed.
+     ========================================================================== */
+  var FR_DONE = ["Dispatched", "Received", "Billed"];   /* the trip actually happened */
+
+  function frHasReceipt(r) { return String((r && r.receiptReceived) || "").toUpperCase() === "Y"; }
+  function frWent(r)       { return FR_DONE.indexOf(chStatus(r)) >= 0; }
+  function frAmt(r)        { return num(r && r.freight); }
+  function frToClient(r)   { return lower((r && r.freightTo) || "") === "client"; }
+
+  /* every delivery and every return that has a driver and a freight figure on it */
+  function frTrips() {
+    var out = [];
+    challans().forEach(function (c) {
+      if (frAmt(c) > 0 && (c.driverId || c.driver)) out.push({ r: c, kind: "challan" });
+    });
+    returns().forEach(function (t) {
+      if (frAmt(t) > 0 && (t.driverId || t.driver)) out.push({ r: t, kind: "return" });
+    });
+    return out;
+  }
+
+  function frKey(r) {
+    var id = String((r && r.driverId) || "").trim();
+    if (id) return "id:" + id;
+    return "nm:" + lower((r && r.driver) || "");
+  }
+
+  /* one row per driver, with his three buckets and the trips behind them */
+  function frRows() {
+    var by = {}, order = [];
+    frTrips().forEach(function (t) {
+      var k = frKey(t.r);
+      if (!by[k]) {
+        var d = t.r.driverId ? null : driverByName(t.r.driver);
+        by[k] = { key: k, byName: k.indexOf("nm:") === 0,
+                  name: String(t.r.driver || (d && d.name) || "(driver not named)"),
+                  vehicle: String(t.r.vehicle || (d && d.vehicle) || ""),
+                  mobile: String(t.r.driverMobile || (d && d.mobile) || ""),
+                  ready: 0, held: 0, waiting: 0, readyN: 0, heldN: 0, waitingN: 0,
+                  readyClient: 0, trips: [] };
+        order.push(k);
+      }
+      var g = by[k], amt = frAmt(t.r);
+      if (!frWent(t.r))            { g.waiting += amt; g.waitingN++; t.state = "waiting"; }
+      else if (frHasReceipt(t.r))  { g.ready   += amt; g.readyN++;   t.state = "ready";
+                                     if (frToClient(t.r)) g.readyClient += amt; }
+      else                         { g.held    += amt; g.heldN++;    t.state = "held"; }
+      /* the name may be blank on one row and present on another for the same man */
+      if (!g.vehicle && t.r.vehicle) g.vehicle = String(t.r.vehicle);
+      if (!g.mobile && t.r.driverMobile) g.mobile = String(t.r.driverMobile);
+      g.trips.push(t);
+    });
+    /* the man with the most money stuck behind missing paper comes first - that is the job */
+    return order.map(function (k) { return by[k]; }).sort(function (a, b) {
+      return (b.held - a.held) || (b.ready - a.ready) || alpha(a.name, b.name);
+    });
+  }
+
+  function frTripLine(t) {
+    var r = t.r, no = String(r.challanNo || r.returnNo || "");
+    var when = d10(r.dispatchedAt || r.createdAt);
+    var tag = t.state === "ready" ? '<span class="pill grn">receipt in</span>'
+            : t.state === "held"  ? '<span class="pill amb">no receipt</span>'
+            :                       '<span class="pill">not dispatched</span>';
+    return '<div class="frline">' +
+      '<div class="grow"><b>' + esc(no) + '</b>' +
+        (t.kind === "return" ? ' <span class="pill blu">return</span>' : '') + ' ' + tag +
+        '<div class="muted">' + esc(String(r.customerName || "")) +
+          (when ? ' &middot; ' + esc(dstr(when)) : '') +
+          (frToClient(r) ? ' &middot; borne by client' : '') + '</div></div>' +
+      '<div><b>' + esc(money(frAmt(r))) + '</b></div>' +
+      (t.state === "held" && canProof()
+        ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(r.id) + '">Attach receipt</button>'
+        : '') +
+      '</div>';
+  }
+
+  function viewFreight() {
+    var rows = frRows();
+    if (!rows.length) {
+      return '<div class="empty">No freight recorded against any driver yet. ' +
+        'A challan with a driver and a freight figure on it shows up here.</div>';
+    }
+    var T = rows.reduce(function (a, g) {
+      a.ready += g.ready; a.held += g.held; a.waiting += g.waiting;
+      a.heldN += g.heldN; a.readyN += g.readyN; return a;
+    }, { ready: 0, held: 0, waiting: 0, heldN: 0, readyN: 0 });
+
+    var h = '<div class="stats">' +
+      '<div class="stat good"><div class="n">' + esc(money(T.ready)) + '</div>' +
+        '<div class="l">Ready to settle</div></div>' +
+      '<div class="stat ' + (T.held > 0 ? 'bad' : 'good') + '"><div class="n">' + esc(money(T.held)) +
+        '</div><div class="l">Held for receipts</div></div>' +
+      '</div>';
+
+    h += T.held > 0
+      ? '<div class="frnote amb"><b>' + esc(money(T.held)) + '</b> cannot be settled yet &mdash; ' +
+        T.heldN + ' deliver' + (T.heldN === 1 ? 'y has' : 'ies have') + ' gone out with no signed ' +
+        'receipt filed against them. Freight is counted when the receipt is in, not before.</div>'
+      : '<div class="frnote grn">Every dispatched trip has its signed receipt filed. ' +
+        'Nothing is held back.</div>';
+
+    if (T.waiting > 0) {
+      h += '<div class="frnote">' + esc(money(T.waiting)) + ' more sits on challans that have not ' +
+        'been dispatched. No trip has happened yet, so it is in neither figure above.</div>';
+    }
+
+    rows.forEach(function (g) {
+      var open = S.frOpen === g.key;
+      h += '<div class="card" data-act="fr-open" data-k="' + esc(g.key) + '">' +
+        '<div class="row"><div class="grow">' +
+          '<div class="big">' + esc(g.name) + '</div>' +
+          '<div class="muted">' + esc([g.vehicle, g.mobile].filter(Boolean).join(" · ") || "no vehicle on file") +
+            (g.byName ? ' &middot; <span class="pill amb">joined by name</span>' : '') + '</div></div>' +
+        '<div style="text-align:right"><div class="big">' + esc(money(g.ready)) + '</div>' +
+          '<div class="muted">ready &middot; ' + g.readyN + ' trip' + (g.readyN === 1 ? '' : 's') + '</div></div>' +
+        '</div>' +
+        (g.held > 0
+          ? '<div class="muted" style="margin-top:5px;color:#b45309"><b>' + esc(money(g.held)) +
+            '</b> held &mdash; ' + g.heldN + ' receipt' + (g.heldN === 1 ? '' : 's') + ' missing</div>'
+          : '') +
+        (g.waiting > 0
+          ? '<div class="muted" style="margin-top:2px">' + esc(money(g.waiting)) + ' not dispatched yet</div>'
+          : '') +
+        (open && g.readyClient > 0
+          ? '<div class="muted" style="margin-top:5px">Of the ready figure, ' + esc(money(g.readyClient)) +
+            ' is marked <b>borne by the client</b>. Who settles that with the driver is your rule, ' +
+            'not this app’s, so it is shown rather than quietly taken off.</div>'
+          : '') +
+        '</div>';
+      if (open) {
+        h += '<div class="frbox">' +
+          g.trips.slice().sort(function (a, b) {
+            var rank = { held: 0, ready: 1, waiting: 2 };
+            return (rank[a.state] - rank[b.state]) ||
+              String(b.r.createdAt || "").localeCompare(String(a.r.createdAt || ""));
+          }).map(frTripLine).join("") + '</div>';
+      }
+    });
+    return h;
+  }
+
   function bodyHtml() {
     /* a search reaches past whichever screen you are standing on, and past the 60-day window */
     if (S.q && !S.ch && !S.rt) return viewSearch();
     if (S.tab === "return")  return viewReturn();
     if (S.tab === "approve") return viewApprove();
     if (S.tab === "receipt") return viewReceipts();
+    if (S.tab === "freight") return viewFreight();
     return viewMake();
   }
 
@@ -3656,6 +3837,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function renderBody() {
     var p = S.data ? pendingApproval().length : 0;
     var m = S.data ? missingReceipts().filter(recent).length : 0;   /* agrees with the list it opens */
+    /* the badge counts DELIVERIES HOLDING FREIGHT BACK, not drivers - a driver with four
+       missing receipts is four pieces of paper to chase, and that is the size of the job */
+    var f = 0; if (S.data) { try { f = frRows().reduce(function (a, g) { return a + g.heldN; }, 0); } catch (e) { f = 0; } }
     el("root").innerHTML = header() +
       '<div class="wrap">' + bodyHtml() + '</div>' +
       '<div class="nav">' +
@@ -3663,6 +3847,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         navBtn("return",  "&#8630;",   "Return", 0) +
         navBtn("approve", "&#10003;",  "Approve", p) +
         navBtn("receipt", "&#128247;", "Receipts", m) +
+        navBtn("freight", "&#128667;", "Freight", f) +
         '<button data-act="crm"><b>&#8599;</b>CRM</button>' +
       '</div>' +
       '<div id="ew_sync_banner" style="display:none"></div>' +
@@ -4367,6 +4552,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
        PIN-less call would have been refused every time and this fix would have shipped broken.
        The server is the authority on what the server wants; the comment I nearly shipped was
        an opinion about it. */
+    if (act === "fr-open") {
+      var fk = t.getAttribute("data-k") || "";
+      S.frOpen = (S.frOpen === fk) ? "" : fk;
+      render(); return;
+    }
+
     if (act === "ch-dispatch") {
       if (!canApprove()) { toast("Marking a challan dispatched is done by the accounts desk."); return; }
       /* this app's click handler declares `act` and nothing else - there is no `id` in scope
