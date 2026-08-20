@@ -178,7 +178,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.37.0";
+  var APP_VERSION = "1.38.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3811,6 +3811,212 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return h;
   }
 
+
+  /* ==========================================================================
+     ADD TO HISAB  (v1.38.0, 20 August 2026)
+
+     "dont forget to add to hisab tab for admin only, cross checking challan receipts and
+      finally add challan to client hisab"
+
+     THIS IS A PORT, NOT AN INVENTION. The CRM has had it since v6.9.250, written to his words
+     then: "after attaching receipts, add one more stage, ADD TO HISAB, that can be by admin
+     only, after checking receipt". Everything below is the CRM's rule carried over so the two
+     screens cannot give different answers about the same delivery - which is the whole reason
+     this app exists beside that one rather than instead of it.
+
+     WHAT IT IS, AND WHAT IT IS NOT. It is a STAMP, not a gate. The money in hisab is counted
+     from receiptReceived = "Y" and nothing here moves a single rupee. What it adds is the
+     record that the owner has LOOKED at the signed paper and passed the delivery. Making it a
+     gate would mean every rupee already on the books vanished the moment this shipped, and
+     money must never move because a feature was deployed.
+
+     THE OLD BOOK IS THE OLD BOOK. Anything created before HISAB_STAMP_FROM counts as already
+     added. No migration, no row written, nothing touched.
+
+     WHERE IT IS KEPT: an append-only audit row keyed on the challan id - the same channel this
+     app already uses for the paper book number and the signed proof. No column, no new tab, no
+     backend change. */
+  var HISAB_STAMP_FROM = "2026-08-13";
+  var _hsbCache = null;
+  function hisabStampMap() {
+    if (_hsbCache) return _hsbCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "challan:hisab") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.chId) return;
+      var prev = m[d.chId];
+      /* newest row wins, the same convention as every other audit-backed fact here */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[d.chId] = { at: r.createdAt || "", by: r.actor || d.by || "",
+                      set: d.set || [], ignored: d.ignored || [] };
+      }
+    });
+    _hsbCache = m;
+    return m;
+  }
+  function hisabStamp(c) { return (c && c.id) ? (hisabStampMap()[c.id] || null) : null; }
+  function hisabPreExisting(c) {
+    var at = String((c && c.createdAt) || "");
+    return !!at && at.slice(0, 10) < HISAB_STAMP_FROM;
+  }
+  function inHisab(c) { return !!hisabStamp(c) || hisabPreExisting(c); }
+  /* v6.9.259's lesson, carried over with it: a stamp is not the same thing as being counted,
+     and this is deliberately the same line the money itself uses, so a pill and a statement
+     can never disagree. */
+  function hisabCounts(c) {
+    return String((c && c.receiptReceived) || "").toUpperCase() === "Y";
+  }
+  function hisabBrandsOf(c) {
+    var seen = {}, out = [];
+    function add(b) {
+      var k = dkey(b); if (!k || seen[k]) return; seen[k] = 1; out.push(String(b).trim());
+    }
+    add(c && c.brand);
+    var items = [];
+    try { items = JSON.parse((c && c.itemsJson) || "[]"); } catch (e) { items = []; }
+    (items || []).forEach(function (i) { add(i && i.brand); });
+    return out;
+  }
+  /* No ROW at all is what "not preset" means. A row saying 0% is a decision already taken and
+     is never asked about again - that is exactly what "ignore once" is meant to do.
+     v1.38.0 - and a job-work line names no brand, so it asks nothing. Labour has no brand
+     discount to set and pretending it does would put an unanswerable question on this screen. */
+  function hisabBrandsMissingDisc(c) {
+    var cl = (c && c.customerName) || "";
+    return hisabBrandsOf(c).filter(function (b) { return !discRow(cl, b); });
+  }
+  function canAddToHisab(c) {
+    if (!c || !roleIs("admin")) return false;
+    if (inHisab(c)) return false;
+    if (!hisabCounts(c)) return false;
+    return !!proofFor(c);
+  }
+  /* Waiting for the owner's eye: counted, paper on file, not yet stamped. */
+  function hisabPending() {
+    return newestFirst(challans().filter(function (c) {
+      return !inHisab(c) && hisabCounts(c) && !!proofFor(c);
+    }));
+  }
+  /* Nearly there, and what is missing. A delivery that will need his eye but cannot have it
+     yet is not the same as one that is finished, and a screen that shows only the first list
+     lets the second pile up unseen. */
+  function hisabNotReady() {
+    return newestFirst(challans().filter(function (c) {
+      if (inHisab(c) || !frWent(c)) return false;
+      return !hisabCounts(c) || !proofFor(c);
+    }));
+  }
+  function hisabWhyNot(c) {
+    var need = [];
+    if (!hisabCounts(c)) need.push("mark it received");
+    if (!proofFor(c)) need.push("attach the signed paper");
+    return need.join(" and ");
+  }
+
+  /* Writing it. The discount decisions go FIRST and the stamp LAST, so a stamp can never exist
+     for a challan whose brands were left undecided. Nothing is ever overwritten. */
+  function hisabStampSave(c, setList, ignList) {
+    _hsbCache = null;
+    var now = new Date().toISOString();
+    return saveRow("audit", {
+      id: "H-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+      createdAt: now, actor: S.user || "",
+      action: "challan:hisab",
+      target: String(c.challanNo || c.id || "") + " / " + String(c.customerName || ""),
+      detail: JSON.stringify({
+        chId: c.id, no: c.challanNo || "", client: c.customerName || "",
+        by: S.user || "", at: now, set: setList || [], ignored: ignList || []
+      })
+    });
+  }
+
+  function sheetAddToHisab(id) {
+    var c = chFind(id) || (challans().filter(function (x) { return String(x.id) === String(id); })[0]);
+    if (!c) return '<h2>Not found</h2><div class="acts"><button class="btn" data-act="close">Close</button></div>';
+    var miss = hisabBrandsMissingDisc(c);
+    var pf = proofFor(c);
+    var h = '<h2>Add to HISAB &mdash; ' + esc(c.challanNo || "") + '</h2>' +
+      '<div class="muted" style="margin-bottom:10px">' + esc(c.customerName || "") +
+      (c.site ? ' &middot; ' + esc(c.site) : "") + ' &middot; ' + esc(money(chValue(c))) +
+      '<br>Check the paper first &mdash; this is the last look before the delivery counts as ' +
+      'part of his hisab.</div>' +
+      (pf && pf.url ? '<div style="margin:0 0 12px"><a class="btn sm gry" href="' + esc(pf.url) +
+        '" target="_blank" rel="noopener">Open the signed receipt &#8599;</a></div>' : "");
+    if (!miss.length) {
+      h += '<div class="frnote grn">Every brand on this challan already has a discount set for ' +
+        esc(c.customerName || "") + '. Nothing left to decide.</div>';
+    } else {
+      h += '<div class="frnote amb"><b>' + miss.length + ' brand' + (miss.length > 1 ? 's have' : ' has') +
+        ' no discount set for ' + esc(c.customerName || "") + '</b><br>' +
+        'Put the percent in, or say there is none. <b>Either answer is remembered.</b> Saying ' +
+        'there is none means that brand goes to this client at no discount from here on, and ' +
+        'you will not be asked again.</div>' +
+        miss.map(function (b) {
+          return '<div class="card"><label style="margin:0 0 5px">' + esc(b) + '</label>' +
+            '<div class="row" style="gap:10px;flex-wrap:wrap">' +
+              '<input class="hsb-pct" data-brand="' + esc(b) + '" inputmode="decimal" ' +
+                'placeholder="Discount %" style="flex:1 1 130px;min-width:120px"/>' +
+              '<label style="display:flex;align-items:center;gap:7px;margin:0;white-space:nowrap;' +
+                'font-weight:700;cursor:pointer">' +
+                '<input type="checkbox" class="hsb-non" data-brand="' + esc(b) +
+                '" style="width:19px;height:19px;flex:0 0 auto"/> No discount</label>' +
+            '</div></div>';
+        }).join("");
+    }
+    return h + '<div class="acts" style="margin-top:14px">' +
+      '<button class="btn gry" data-act="close">Not now</button>' +
+      '<button class="btn" data-act="hsb-confirm" data-id="' + esc(c.id) + '">Add to HISAB</button></div>';
+  }
+
+  function viewHisab() {
+    if (!roleIs("admin")) {
+      return '<div class="empty">Adding a delivery to hisab is the owner&rsquo;s last look at the ' +
+        'signed paper. Only he does it.</div>';
+    }
+    var wait = hisabPending(), soon = hisabNotReady();
+    var tot = wait.reduce(function (a, c) { return a + chValue(c); }, 0);
+    var h = '<div class="stats">' +
+      '<div class="stat ' + (wait.length ? 'bad' : 'good') + '"><div class="n">' + wait.length +
+        '</div><div class="l">Waiting for your eye</div></div>' +
+      '<div class="stat"><div class="n">' + esc(money(tot)) + '</div><div class="l">In these</div></div>' +
+      '</div>';
+
+    if (!wait.length) {
+      h += '<div class="frnote grn">Nothing is waiting. Every delivery with its paper on file ' +
+        'has been through your hands.</div>';
+    } else {
+      h += '<div class="frnote">Each of these is received, with the signed receipt on file. Open ' +
+        'the paper, check it against the challan, and pass it.</div>';
+      h += wait.map(function (c) {
+        var pf = proofFor(c);
+        return '<div class="card"><div class="row"><div class="grow">' +
+          '<div class="big">' + esc(c.customerName || "") + '</div>' +
+          '<div class="muted">' + esc(c.challanNo || "") +
+            (c.createdAt ? ' &middot; ' + esc(dstr(d10(c.createdAt))) : "") +
+            (c.site ? ' &middot; ' + esc(c.site) : "") + '</div></div>' +
+          '<div style="text-align:right"><div class="big">' + esc(money(chValue(c))) + '</div></div>' +
+          '</div><div class="acts" style="margin-top:8px">' +
+          '<button class="btn sm gry" data-act="ch-open" data-id="' + esc(c.id) + '">View details</button>' +
+          (pf && pf.url ? '<a class="btn sm gry" href="' + esc(pf.url) + '" target="_blank" rel="noopener">See receipt</a>' : "") +
+          '<button class="btn sm" data-act="ch-hisabadd" data-id="' + esc(c.id) + '">ADD TO HISAB</button>' +
+          '</div>' + (S.chOpen === c.id ? chDetail(c) : "") + '</div>';
+      }).join("");
+    }
+
+    if (soon.length) {
+      h += '<div class="frnote amb"><b>' + soon.length + ' more will need your eye</b>, once the ' +
+        'paper is in. They are not ready yet and nothing is wrong with them.</div>';
+      h += soon.slice(0, 25).map(function (c) {
+        return '<div class="frline"><div class="grow"><b>' + esc(c.challanNo || "") + '</b>' +
+          '<div class="muted">' + esc(c.customerName || "") + ' &middot; ' + esc(hisabWhyNot(c)) + '</div></div>' +
+          '<div><b>' + esc(money(chValue(c))) + '</b></div></div>';
+      }).join("");
+    }
+    return h;
+  }
+
   function bodyHtml() {
     /* a search reaches past whichever screen you are standing on, and past the 60-day window */
     if (S.q && !S.ch && !S.rt) return viewSearch();
@@ -3818,6 +4024,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (S.tab === "approve") return viewApprove();
     if (S.tab === "receipt") return viewReceipts();
     if (S.tab === "freight") return viewFreight();
+    if (S.tab === "hisab")   return viewHisab();
     return viewMake();
   }
 
@@ -3898,6 +4105,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     /* the badge counts DELIVERIES HOLDING FREIGHT BACK, not drivers - a driver with four
        missing receipts is four pieces of paper to chase, and that is the size of the job */
     var f = 0; if (S.data) { try { f = frRows().reduce(function (a, g) { return a + g.heldN; }, 0); } catch (e) { f = 0; } }
+    var hb = 0; if (S.data && roleIs("admin")) { try { hb = hisabPending().length; } catch (e) { hb = 0; } }
     el("root").innerHTML = header() +
       '<div class="wrap">' + bodyHtml() + '</div>' +
       '<div class="nav">' +
@@ -3906,6 +4114,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         navBtn("approve", "&#10003;",  "Approve", p) +
         navBtn("receipt", "&#128247;", "Receipts", m) +
         navBtn("freight", "&#128667;", "Freight", f) +
+        /* admin only, and it is not there at all for anyone else - a tab that turns a man away
+           when he taps it teaches him the app is against him */
+        (roleIs("admin") ? navBtn("hisab", "&#8377;", "Hisab", hb) : '') +
         '<button data-act="crm"><b>&#8599;</b>CRM</button>' +
       '</div>' +
       '<div id="ew_sync_banner" style="display:none"></div>' +
@@ -4298,6 +4509,65 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (act === "rln-del") { if (S.rt) S.rt.items.splice(Number(t.getAttribute("data-i")), 1); repaint(); return; }
 
     /* ---- the picker ---- */
+    /* ---- the owner's last look (v1.38.0) ---- */
+    if (act === "ch-hisabadd") {
+      var _hid = t.getAttribute("data-id") || "";
+      var _hc = challans().filter(function (x) { return String(x.id) === String(_hid); })[0];
+      if (!_hc) { toast("That challan is not on this phone yet — refresh first."); return; }
+      /* the CRM learned this the hard way in v6.9.259: a button is not a rule. Every one of
+         these is tested again where the writing happens, because the status can change between
+         drawing the card and pressing the button - which is exactly how a bad stamp got
+         written on PUNIT8708/150826/001. */
+      if (!roleIs("admin")) { toast("Only the owner adds a delivery to hisab."); return; }
+      if (!proofFor(_hc)) { toast("Attach the signed receipt first — there is nothing to check yet."); return; }
+      if (!hisabCounts(_hc)) {
+        toast("Mark " + (_hc.challanNo || "this delivery") + " as received first — until then " +
+              "hisab does not count it, and a stamp would say otherwise.");
+        return;
+      }
+      S.sheet = sheetAddToHisab(_hid); render(); return;
+    }
+    if (act === "hsb-confirm") {
+      var hid = t.getAttribute("data-id") || "";
+      var hc = challans().filter(function (x) { return String(x.id) === String(hid); })[0];
+      if (!hc) { toast("That challan is not on this phone yet — refresh first."); return; }
+      if (!roleIs("admin")) { toast("Only the owner adds a delivery to hisab."); return; }
+      if (!hisabCounts(hc)) {
+        toast("Mark " + (hc.challanNo || "this delivery") + " as received first — nothing was stamped.");
+        S.sheet = null; render(); return;
+      }
+      var hmiss = hisabBrandsMissingDisc(hc);
+      var hpct = {}, hnon = {};
+      Array.prototype.forEach.call(document.querySelectorAll(".hsb-pct"), function (e2) {
+        hpct[e2.getAttribute("data-brand")] = String(e2.value || "").trim();
+      });
+      Array.prototype.forEach.call(document.querySelectorAll(".hsb-non"), function (e2) {
+        hnon[e2.getAttribute("data-brand")] = !!e2.checked;
+      });
+      /* Nothing is stamped while a brand is still an open question. */
+      var hopen = hmiss.filter(function (b) { return !hnon[b] && !String(hpct[b] || "").length; });
+      if (hopen.length) {
+        toast("Still to decide: " + hopen.join(", ") + ". Put a % in, or tick No discount.");
+        return;
+      }
+      var hset = [], hign = [];
+      hmiss.forEach(function (b) {
+        var v = hnon[b] ? 0 : (Number(hpct[b]) || 0);
+        /* A real row either way — that is what makes "ignore once" stick. */
+        /* no id: saveRow() mints one and the server assigns the real one, which is how every
+           other row this app writes is created. mintId() is the CRM's helper and does not
+           exist here - t_undefined_names.js caught it before it reached a tap. */
+        saveRow("discounts", { client: hc.customerName || "", brand: b, pct: v, notes: "" });
+        if (v > 0) hset.push(b + " " + v + "%"); else hign.push(b);
+      });
+      hisabStampSave(hc, hset, hign);
+      S.sheet = null; _hsbCache = null; bust(); render();
+      toast("Challan " + (hc.challanNo || "") + " added to hisab." +
+        (hset.length ? " Discount set for " + hset.join(", ") + "." : "") +
+        (hign.length ? " " + hign.join(", ") + " will go without discount to this client." : ""));
+      return;
+    }
+
     if (act === "job-open") {
       S.job = { desc: "", amt: "" };
       S.sheet = sheetJobWork(); render(); return;
