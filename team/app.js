@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.322";
+  var APP_VERSION = "6.9.323";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -13141,7 +13141,19 @@ function viewCatalogue() {
       chs.forEach(function (c) {
         var base = 0, inc = 0;
         pricedLines(c, c.customerName).forEach(function (x) {
+          /* ---- JOB WORK EARNS NOBODY AN INCENTIVE (v6.9.323, 20 Aug 2026) ----
+             Asked directly: "does job work earn the partner his incentive, the same as
+             material?" He answered MATERIAL ONLY - a partner earns on the goods he brought us,
+             not on our labour.
+
+             It still counts as BILLED, because the customer is billed for it and every
+             statement in this file must add up to the same number. What it does not do is
+             earn. Left alone it would have earned at the rate of whatever brand the challan
+             happened to carry, which is not even a defensible wrong answer.
+
+             The line is marked in pricedLines(), so this is the only place that has to know. */
           base += x.amt;
+          if (x.job) return;
           inc += x.amt * rateFor(cl, x.brand || c.brand || "") / 100;
         });
         billed += base; earned += inc; clientNames[c.customerName] = 1;
@@ -13766,14 +13778,24 @@ function viewCatalogue() {
      a client from the discount FROZEN on each line at creation: Qty · Rate · Disc% · discounted rate
      · amount, a per-challan total, a grand total, and an optional 18% GST. Admin can override a
      line's Disc% here for the rare product-wise case (it re-saves onto that challan). */
+  /* v6.9.323 - JOB WORK / LABOUR CHARGES, from Challan v1.37.0. Lifted whole so the two apps
+     cannot disagree about what one of these lines is. */
+  var JOB_CODE = "JOBWORK";
+  function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
   function pricedLines(c, cl) {
     var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
     var priced = items.map(function (i) {
       var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0;
-      var bBrand = i.brand || realBrand((PRODUCTS.filter(function (p) { return p.code === i.code; })[0]) || {}) || c.brand || "";
+      /* v6.9.323 - a job line has NO brand, and must not be lent the challan's. Left to the
+         fallback it would inherit whichever brand the first material line happened to carry,
+         and then be priced against that brand's client discount - a discount on labour, taken
+         from a brand that had nothing to do with it. */
+      var bBrand = isJobLine(i) ? "" :
+        (i.brand || realBrand((PRODUCTS.filter(function (p) { return p.code === i.code; })[0]) || {}) || c.brand || "");
       var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscount(cl, bBrand);
       var dr = Math.round(rate * (1 - disc / 100));
-      return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr, amt: qty * dr };
+      return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
+               amt: qty * dr, job: isJobLine(i) };
     });
     priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
     return priced;
