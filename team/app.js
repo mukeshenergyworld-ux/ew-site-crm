@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.321";
+  var APP_VERSION = "6.9.322";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -12675,7 +12675,12 @@ function viewCatalogue() {
        the dialog told a man being made `service` that his new role opened "no other app". The
        comment above says these lists are read from the apps' own gates so the sentence cannot
        drift from what the apps do; it drifted the moment an eighth app arrived. */
-    "Service app": ["admin", "service"]
+    /* v6.9.322 - ACCOUNTS ADDED, to match Service v1.4.3. "accounts and admin able to see all
+       financial, like total earning". The app's own gate is the truth; this list is what the
+       Role dialog TELLS a man his role opens, and t_role.js fails if the two ever disagree -
+       which is the only thing stopping this dialog from confidently describing a door that is
+       not there, as it did for `service` on the morning the Service app shipped. */
+    "Service app": ["admin", "accounts", "service"]
   };
   /* The Visit and Saathi apps are NOT here on purpose: they sign in by mobile number against
      EXEC / OWNER / PARTNER, not against this role at all, so a role change does not touch
