@@ -85,9 +85,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   box-shadow:0 10px 30px rgba(15,23,42,.14)}
 .login h1{margin:0 0 3px;font-size:19px;text-align:center}
 .login p{margin:0 0 16px;text-align:center;color:#64748b;font-size:13px}
-.nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #e2e8f0;display:flex;z-index:30;
-  padding-bottom:env(safe-area-inset-bottom)}
-.nav button{flex:1;border:0;background:none;padding:9px 4px 10px;font-size:11px;font-weight:700;color:#94a3b8;cursor:pointer}
+/* v1.4.4 - REMOVED: `.nav` used to be the bar itself, with `.nav button` inside it. The markup
+   moved to `.tabs` holding `button.nav` and this rule was left behind, so `position:fixed;
+   bottom:0` landed on each of the FIVE BUTTONS and stacked all five on top of one another.
+   That is the unreadable smear along the bottom of his screenshot. The live rules are `.tabs`
+   and `.nav` further down; a second, older answer to the same question is how this happens. */
 .nav button.on{color:#0f766e}
 .nav button b{display:block;font-size:17px;line-height:1.25}
 .nav button .cnt{display:inline-block;background:#b91c1c;color:#fff;border-radius:999px;padding:0 6px;font-size:10px;margin-left:3px}
@@ -180,10 +182,15 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .prow:last-child{border-bottom:0}
 .prow .qty{width:58px;text-align:center;padding:6px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px}
 .prow .x{border:0;background:transparent;color:#b91c1c;font-size:19px;line-height:1;padding:0 4px}
-.tot{display:flex;justify-content:space-between;align-items:center;background:#0f766e;color:#fff;
-     border-radius:10px;padding:11px 14px;margin:12px 0;font-size:15px}
-.tot b{font-size:18px}
-.amccard{border:1.5px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin:10px 0}.amccard.on{border-color:#5eead4;background:#f0fdfa}.amccard.off{border-color:#e2e8f0;background:#f8fafc}.billbox{border:1px solid #e2e8f0;border-radius:11px;overflow:hidden;margin:10px 0}.bill{display:flex;align-items:baseline;gap:8px;padding:8px 11px;border-top:1px solid #eef2f7;font-size:13.5px}.bill:first-child{border-top:0}.bill span{flex:1;min-width:0}.bill b{font-variant-numeric:tabular-nums}.bill i{font-style:normal;font-size:11px;color:#64748b;min-width:92px;text-align:right}.bill.free b{text-decoration:line-through;color:#94a3b8}.bill.free i{color:#0f766e;font-weight:700}.bill.tot{background:#f8fafc;font-weight:800;font-size:15px}.amcbox{background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px;margin:10px 0;font-size:13px;color:#0f766e}
+/* v1.4.4 - `.tot` WAS THE OLD TEAL TOTAL STRIP, from before the bill was written line by
+   line. Nothing has worn it alone since v1.4.0 - the only two elements in this file are
+   `class="bill tot"` - but it was still standing, and `.bill.tot` overrode its background and
+   its weight WITHOUT overriding its colour. So the total row of every bill has been white text
+   on a near-white background: the one number the engineer reads out to the customer, invisible
+   since this morning. Found by asking the browser for the computed colour, not by reading.
+   The same shape of fault as the `.nav` rule above - an older answer left lying about under a
+   name something new had taken. */
+.amccard{border:1.5px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin:10px 0}.amccard.on{border-color:#5eead4;background:#f0fdfa}.amccard.off{border-color:#e2e8f0;background:#f8fafc}.billbox{border:1px solid #e2e8f0;border-radius:11px;overflow:hidden;margin:10px 0}.bill{display:flex;align-items:baseline;gap:8px;padding:8px 11px;border-top:1px solid #eef2f7;font-size:13.5px}.bill:first-child{border-top:0}.bill span{flex:1;min-width:0}.bill b{font-variant-numeric:tabular-nums}.bill i{font-style:normal;font-size:11px;color:#64748b;min-width:92px;text-align:right}.bill.free b{text-decoration:line-through;color:#94a3b8}.bill.free i{color:#0f766e;font-weight:700}.bill.tot{background:#f8fafc;color:#0f172a;font-weight:800;font-size:15px}.bill.tot b{font-size:17px}.amcbox{background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px;margin:10px 0;font-size:13px;color:#0f766e}
 .srch{margin:8px 0}.srch input{width:100%}
 .pad{padding:2px 2px 6px}
 .tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:#fff;border-top:1px solid #e2e8f0;
@@ -198,6 +205,24 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .lsub{font-size:30px;font-weight:700;color:#0f766e;margin-bottom:16px}
 .lmsg{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:9px 11px;font-size:13px;margin-bottom:10px}
 .lfoot{margin-top:14px;font-size:11px;color:#94a3b8;text-align:center}
+
+/* ---- ON A SCREEN WIDER THAN A HAND (v1.4.4) ----
+   This app is built for a phone in a godown and that does not change. But the owner reads it
+   on a Mac, and there everything the phone gets right goes wrong: the tab bar stretched from
+   edge to edge while the column it belongs to sat centred at 760px, and the bottom sheet
+   stayed glued to the bottom of a 900px-tall window with its total row hanging off the screen.
+   760 / 5 tabs = 152.
+
+   IT LIVES AT THE END OF THE STYLESHEET ON PURPOSE. Written where it belonged by subject - up
+   beside .wrap - it lost every line to the plain .sheet and .tabs rules further down, because
+   a media query carries no extra specificity and the later rule of equal weight wins. It was
+   written, it was correct, and it did nothing at all. */
+@media(min-width:800px){
+  .tabs{justify-content:center}
+  .tabs .nav{flex:0 0 152px}
+  .sheet{align-items:center}
+  .sheet .inner{border-radius:16px;max-height:86vh}
+}
 </style>
 </head>
 <body>
@@ -242,7 +267,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.4.3";
+  var APP_VERSION = "1.4.4";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -1519,15 +1544,35 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      An amcType with no end date is treated as live: the office set a contract and did not
      record when it finishes, and refusing to honour it at a customer's door is the wrong
      way round. An end date in the past is expired, and says so. */
+  /* ---- ONE ANSWER TO "IS THIS MACHINE UNDER CONTRACT" (v1.4.4, 20 Aug 2026) ----
+     This function read `amcType` with its own eyes while amcCover() read amcKind(). The two
+     disagreed the moment "Visit-based" stopped being a contract, and it showed on his screen:
+     the card carried an AMC pill and the count said "Under AMC 2", while the sheet opened
+     underneath it said "No live AMC ... Everything is charged". Same machine, same screen,
+     two answers, and only one of them decides what a customer is charged.
+
+     The money rule wins. amcState now DESCRIBES what amcKind() and amcLiveOn() have decided,
+     and cannot drift from them again because it no longer holds an opinion of its own. */
   function amcState(ins) {
     if (!ins) return { live: false, say: "" };
     var t = String(ins.amcType || "").trim();
-    if (!t || /^none$/i.test(t)) return { live: false, say: "No AMC" };
+    if (amcKind(ins) === "None") {
+      return { live: false, say: t ? t + " — charged per visit, not a contract" : "No AMC" };
+    }
     var end = String(ins.amcEnd || "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) return { live: true, say: t + " (no end date recorded)" };
-    if (end < today()) return { live: false, say: t + " expired " + dstr(end) };
-    var days = Math.round((new Date(end + "T00:00:00").getTime() - new Date(today() + "T00:00:00").getTime()) / 86400000);
-    return { live: true, say: t + " to " + dstr(end), endsIn: days };
+    var live = amcLiveOn(ins, today());
+    if (live) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) return { live: true, say: t + " (no end date recorded)" };
+      var days = Math.round((new Date(end + "T00:00:00").getTime() - new Date(today() + "T00:00:00").getTime()) / 86400000);
+      return { live: true, say: t + " to " + dstr(end), endsIn: days };
+    }
+    /* not live, and the reason matters - "expired" and "has not started" are different
+       conversations to have at a customer's door */
+    var st = String(ins.installDate || "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(st) && today() <= st) {
+      return { live: false, say: t + " starts after the machine goes in (" + dstr(st) + ")" };
+    }
+    return { live: false, say: t + " expired " + dstr(end) };
   }
   /* THE MONEY QUESTION, ASKED ONCE AND IN ONE PLACE.
      "AMC is prepaid, spot jobs are paid on site." So a routine service or a salt refill on
@@ -2274,15 +2319,29 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       esc(n.t) + '</button>';
   }
   function bodyHtml() {
-    if (S.sheet) return '<div class="sheet">' + S.sheet + '</div>';
+    /* v1.4.4 - `.sheet .inner` HAS BEEN STYLED SINCE THE FIRST RELEASE AND NEVER EMITTED.
+       Without it the overlay's own children became the flex items of a bottom-aligned row, so
+       every sheet in this app laid its cards out ALONG THE BOTTOM EDGE instead of stacking in
+       a white card. On a narrow phone that mostly stacked anyway and looked passable, which is
+       why it survived; on a Mac it is the scattered mess in his screenshot. */
+    if (S.sheet) return '<div class="sheet"><div class="inner">' + S.sheet + '</div></div>';
     var v = { today: viewToday, jobs: viewJobs, history: viewHistory, account: viewAccount }[S.tab];
     return v ? v() : viewToday();
   }
   function render() {
     var r = el("root"); if (!r) return;
-    r.innerHTML = header() + jrnPaint() + newVerBar() +
-      '<div class="body">' + bodyHtml() + '</div>' +
+    /* v1.4.4 - THE WORD "undefined" ON EVERY SCREEN, seen in his own screenshot.
+       jrnPaint() paints the sync banner into a node OUTSIDE #root and returns nothing. It was
+       being concatenated into this string, so every render printed the literal word
+       `undefined` under the header. It is a painter; it is called, not added. */
+    r.innerHTML = header() + newVerBar() +
+      /* .wrap, not just .body: the 760px column lived only in a class nothing wore, so on any
+         screen wider than a phone the whole app ran edge to edge. jrnPaint() also looks for
+         `.wrap` to keep the sync banner off the bottom of the list, and had been finding
+         nothing at all. One missing class, two faults. */
+      '<div class="body wrap">' + bodyHtml() + '</div>' +
       (S.sheet ? '' : '<div class="tabs">' + NAV.map(navBtn).join("") + '</div>');
+    jrnPaint();
     wireInputs(); painted();
   }
   /* A background repaint. If a form is open it defers - the same rule the CRM learned in
