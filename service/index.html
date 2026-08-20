@@ -242,7 +242,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.4.2";
+  var APP_VERSION = "1.4.3";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -352,8 +352,24 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
   /* Who may open this app at all. The three engineers are `service`; the owner is `admin`
      and can see everything anywhere. Nobody else has any business on this screen - and the
-     server scopes the rows besides, so this list is the door, not the lock. */
-  var ALLOWED = ["admin","service"];
+     server scopes the rows besides, so this list is the door, not the lock.
+
+     v1.4.3 - ACCOUNTS ADDED, because he said "accounts and admin able to see all financial".
+     Saying that and then shutting accounts out of the app would make the sentence meaningless.
+     An accounts man opens it to read the money, not to do a service - which is why recording a
+     visit is a separate test below, and not this one. */
+  var ALLOWED = ["admin","accounts","service"];
+
+  /* THE TWO MONEY ROLES, and the whole of v1.4.3 in two lines.
+
+     "accounts and admin able to see all financial , like total earning / service staff only
+      able to see which service charge pending and which got"
+
+     seesAllMoney() is the business's book: every man's visits, every rupee collected since the
+     app opened, what the contracts gave away. canRecord() is the other axis entirely - whether
+     a man does the work - and they are deliberately not the same list. */
+  function seesAllMoney() { return roleAny(["admin", "accounts"]); }
+  function canRecord()    { return roleAny(["admin", "service"]); }
 
   /* The kinds of work, and which of them an AMC is understood to cover.
      The owner's rule, in one place so no screen can disagree with another. */
@@ -1547,12 +1563,26 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       return a.live && typeof a.endsIn === "number" && a.endsIn >= 0 && a.endsIn <= w;
     }).sort(function (a, b) { return amcState(a).endsIn - amcState(b).endsIn; });
   }
-  function myVisits() {
+  /* ---- MINE, AND IT NOW ACTUALLY MEANS MINE (v1.4.3, 20 Aug 2026) ----
+     This function has been called myVisits() since the first release and returned EVERY visit
+     in the book. The name asserted a filter that was not there, which is exactly how it went
+     unnoticed: nobody re-reads a function whose name already answers the question. The result
+     was that any of the three engineers could open Account and read the whole firm's money -
+     all-time collected, every customer's pending, what the contracts gave away.
+     A man's own work is his own work. The book is a separate question, asked by accVisits(). */
+  function allVisits() {
     return visits().slice().sort(function (a, b) {
       var x = String(a.date || a.createdAt || ""), y = String(b.date || b.createdAt || "");
       return y < x ? -1 : 1;
     });
   }
+  function myVisits() {
+    var me = lower(S.user);
+    if (!me) return [];
+    return allVisits().filter(function (v) { return lower(v.engineer || v.createdBy) === me; });
+  }
+  /* What the Account tab is allowed to add up for the man looking at it. */
+  function accVisits() { return seesAllMoney() ? allVisits() : myVisits(); }
 
   /* ============ WHAT A VISIT COSTS ============
      One arithmetic, used by the form, the card and the history line. Every figure is a
@@ -1734,7 +1764,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function accMonth(d) { var t = dstr(d10(d)); return t && t.length >= 7 ? t.slice(0, 7) : ""; }
 
   function accRows() {
-    return myVisits().map(function (v) {
+    return accVisits().map(function (v) {
       var ins = v.installId ? installById(v.installId) : null;
       return {
         v: v, ins: ins,
@@ -1750,26 +1780,49 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function viewAccount() {
     var rows = accRows();
     if (!rows.length) {
-      return '<div class="empty">No visits recorded yet, so there is no money to account for. ' +
-        'Everything you record shows up here the moment you save it.</div>';
+      return '<div class="empty">' + (seesAllMoney()
+        ? 'No visits recorded yet, so there is no money to account for.'
+        : 'You have not recorded a visit yet, so there is no money to account for. ' +
+          'Everything you record shows up here the moment you save it.') + '</div>';
     }
     var thisM = accMonth(today());
     var sum = function (list, k) { return list.reduce(function (a, r) { return a + r[k]; }, 0); };
     var mine = rows.filter(function (r) { return r.m === thisM; });
     var owed = rows.filter(function (r) { return r.pend > 0.5; });
 
+    /* ---- WHOSE MONEY IS ON THIS SCREEN (v1.4.3) ----
+       "accounts and admin able to see all financial , like total earning / service staff only
+        able to see which service charge pending and which got"
+
+       Same screen, two readings of it. accRows() has already narrowed the rows; what changes
+       here is which TOTALS are drawn. An engineer gets the two he was promised - what is
+       pending and what he got - and is not shown the firm's all-time takings or what the
+       contracts gave away, because neither is a question he is being asked to answer. */
+    var full = seesAllMoney();
+
     var h = '<div class="stats">' +
-      '<div class="stat"><div class="n">' + esc(money9(sum(mine, "got"))) + '</div><div class="l">Collected this month</div></div>' +
+      '<div class="stat"><div class="n">' + esc(money9(sum(mine, "got"))) + '</div><div class="l">' +
+        (full ? 'Collected this month' : 'You collected this month') + '</div></div>' +
       '<div class="stat' + (sum(rows, "pend") > 0.5 ? ' bad' : '') + '"><div class="n">' +
-        esc(money9(sum(rows, "pend"))) + '</div><div class="l">Pending, all of it</div></div>' +
-      '<div class="stat"><div class="n">' + esc(money9(sum(rows, "got"))) + '</div><div class="l">Collected, all time</div></div>' +
-      '<div class="stat"><div class="n">' + rows.length + '</div><div class="l">Visits</div></div>' +
+        esc(money9(sum(rows, "pend"))) + '</div><div class="l">' +
+        (full ? 'Pending, all of it' : 'Pending on your visits') + '</div></div>' +
+      (full
+        ? '<div class="stat"><div class="n">' + esc(money9(sum(rows, "got"))) + '</div><div class="l">Collected, all time</div></div>'
+        : '') +
+      '<div class="stat"><div class="n">' + rows.length + '</div><div class="l">' +
+        (full ? 'Visits' : 'Your visits') + '</div></div>' +
       '</div>';
 
+    if (!full) {
+      h += '<div class="note">This is <b>your own work</b> - the visits you recorded. The firm\'s ' +
+        'total is the office\'s to read.</div>';
+    }
+
     /* WHAT THE CONTRACTS GAVE AWAY. Not a loss - it is what he sold - but it is the only
-       number that answers "is the AMC priced right", and nothing has ever shown it. */
+       number that answers "is the AMC priced right", and nothing has ever shown it.
+       v1.4.3 - a pricing question, so it is the office's. */
     var freeM = sum(mine, "work") - sum(mine, "due");
-    if (freeM > 0.5) {
+    if (full && freeM > 0.5) {
       h += '<div class="note">Under AMC this month: <b>' + esc(money9(freeM)) + '</b> of work done ' +
         'and not charged. That is what the contracts bought.</div>';
     }
@@ -1783,7 +1836,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         by[k].pend += r.pend; by[k].n++; by[k].rows.push(r);
       });
       order.sort(function (a, b) { return by[b].pend - by[a].pend; });
-      h += '<h3 class="sec bad">Pending — ' + esc(money9(sum(owed, "pend"))) + ' from ' +
+      h += '<h3 class="sec bad">' + (full ? 'Pending' : 'Pending on your visits') + ' — ' +
+        esc(money9(sum(owed, "pend"))) + ' from ' +
         order.length + ' customer' + (order.length === 1 ? '' : 's') + '</h3>';
       order.forEach(function (k) {
         var c = by[k], open = S.accOpen === k;
@@ -1803,7 +1857,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     h += mine.length
       ? '<div class="billbox">' +
           '<div class="bill"><span>Work done</span><b>' + esc(money9(sum(mine, "work"))) + '</b><i>&nbsp;</i></div>' +
-          '<div class="bill"><span>Covered by AMC</span><b>' + esc(money9(freeM)) + '</b><i>&nbsp;</i></div>' +
+          (full ? '<div class="bill"><span>Covered by AMC</span><b>' + esc(money9(freeM)) + '</b><i>&nbsp;</i></div>' : '') +
           '<div class="bill"><span>Charged</span><b>' + esc(money9(sum(mine, "due"))) + '</b><i>&nbsp;</i></div>' +
           '<div class="bill"><span>Collected</span><b>' + esc(money9(sum(mine, "got"))) + '</b><i>&nbsp;</i></div>' +
           '<div class="bill tot"><span>Still to come</span><b>' + esc(money9(sum(mine, "pend"))) + '</b><i>&nbsp;</i></div>' +
@@ -2163,6 +2217,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
   function saveVisit() {
+    /* The three buttons above are the door. This is the lock: a screen already open when a
+       role changed, or a stale sheet, must not be able to write a visit either. */
+    if (!canRecord()) { toast("Recording a visit is the engineer's job."); return; }
     var v = S.vis; if (!v) return;
     var ins = v.installId ? installById(v.installId) : null;
 
@@ -2254,6 +2311,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       /* "Labour job" is a verb, not a place. Tapping it opens the form straight away rather
          than showing a screen whose only content is a button to open the form. */
       if (k === "labour") {
+        if (!canRecord()) { toast("Recording a visit is the engineer's job. You are here to read the money."); return; }
         S.vis = { installId: "", type: "Labour job", date: today(), parts: [], collected: "", client: "", area: "" };
         S.sheet = sheetVisit(S.vis); render(); return;
       }
@@ -2274,6 +2332,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       S.job = ins.id; S.sheet = sheetJob(ins); render(); return;
     }
     if (act === "do-visit") {
+      /* v1.4.3 - an accounts man may read every rupee in this app and may record nothing. The
+         engineer stamp on a visit is a claim about who stood in the customer's house; letting
+         the office write it would put a name on work that name did not do. */
+      if (!canRecord()) { toast("Recording a visit is the engineer's job. You are here to read the money."); return; }
       var i2 = installById(id); if (!i2) return;
       S.vis = { installId: i2.id, type: "Service", date: today(), parts: [], collected: "",
                 visitCharge: defaultCharge(i2, "Service", today()) };
@@ -2306,6 +2368,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (act === "v-save")  { saveVisit(); return; }
 
     if (act === "labour-new") {
+      if (!canRecord()) { toast("Recording a visit is the engineer's job. You are here to read the money."); return; }
       S.vis = { installId: "", type: "Labour job", date: today(), parts: [], collected: "", client: "", area: "" };
       S.sheet = sheetVisit(S.vis); render(); return;
     }
