@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.34.0";
+  var APP_VERSION = "1.35.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3016,7 +3016,24 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
                ? (canProof()
                   ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(c.id) + '">Attach receipt</button>'
                   : '<span class="pill amb">Receipt is attached by the office</span>')
-               : '')) +
+               /* ---- v1.35.0 - A DEAD END WITH NO DOOR, AND NO SIGN EITHER ----
+                  "upload receipt option not showing". Seven challans, Rs 87,255, and not one
+                  of them could be given a receipt.
+
+                  This morning the receipt button was correctly gated on his own words -
+                  "attach receipt only to be shown when challan approved AND dispatched". What
+                  was not checked is whether this app can REACH Dispatched. It cannot: passing
+                  writes Approved and stops, and the Dispatch button has only ever existed in
+                  the CRM. So every challan passed the way they are actually passed - here, at
+                  the accounts desk - sat at Approved for ever with the receipt button hidden
+                  and NOTHING ON THE SCREEN SAYING WHY. A silent refusal is the worst kind.
+
+                  Both halves are fixed: the door below, and this sign. */
+               : (st === "Approved"
+                  ? '<span class="pill amb">Mark it dispatched first &mdash; a receipt is for goods that have gone</span>'
+                  : ''))) +
+        (st === "Approved" && canApprove() && !held
+          ? '<button class="btn sm" data-act="ch-dispatch" data-id="' + esc(c.id) + '">Dispatch</button>' : '') +
         (canMake() && !held && (st === "Draft" || st === "Approved")
           ? '<button class="btn sm gry" data-act="ch-edit" data-id="' + esc(c.id) + '">Edit</button>' : '') +
         (st === "Draft" && canApprove()
@@ -4333,6 +4350,50 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       }).catch(function (err) {
         rreset();
         toast("Could not register the return: " + ((err && err.message) || "no answer from the server") + ".");
+      });
+      return;
+    }
+
+    /* ---- the material has actually left (v1.35.0) ----
+       Approved means the office released it. Dispatched means it is on the vehicle. They are
+       different facts and hisab counts the second one, which is why the CRM has kept them
+       apart since v6.9.259 - and why this app must be able to say the second one too, rather
+       than sending a man to a laptop to move a challan he is holding in his hand.
+
+       IT ASKS FOR THE PIN, AND I HAD IT WRONG. I wrote this handler without one, reasoning
+       that recording a departure is an observation rather than a decision. Then I read the
+       server: challanMove_ requires approvePin for "Dispatched" exactly as it does for
+       "Approved", and the CRM's own prompt says DISPATCH in the same breath as APPROVE. So a
+       PIN-less call would have been refused every time and this fix would have shipped broken.
+       The server is the authority on what the server wants; the comment I nearly shipped was
+       an opinion about it. */
+    if (act === "ch-dispatch") {
+      if (!canApprove()) { toast("Marking a challan dispatched is done by the accounts desk."); return; }
+      /* this app's click handler declares `act` and nothing else - there is no `id` in scope
+         here, unlike the CRM's. Written as a bare `id` this was a ReferenceError on the first
+         tap, and t_undefined_names.js is the only thing that would ever have told me. */
+      var _cdId = t.getAttribute("data-id") || "";
+      var cd = (S.data.challans || []).filter(function (x) { return String(x.id) === String(_cdId); })[0];
+      if (!cd) { toast("Could not find that challan on this phone."); return; }
+      if (chHeld(cd)) { toast("This one is still held on this phone. It has to go up first."); return; }
+      if (chStatus(cd) !== "Approved") { toast("Only a passed challan can be dispatched."); return; }
+      var dpin = window.prompt("Enter your PIN to DISPATCH this challan\n\n" +
+        String(cd.challanNo || "") + " \u2014 " + String(cd.customerName || "") +
+        "\n\nThis says the material has left the godown.");
+      if (!dpin) { toast("Nothing was changed."); return; }
+      t.disabled = true; t.textContent = "Sending\u2026";
+      api("challanMove", { id: cd.id, to: "Dispatched", approvePin: dpin }).then(function (r) {
+        if (!r || !r.ok) {
+          t.disabled = false; t.textContent = "Dispatch";
+          toast((r && r.error) || "The server refused it. Nothing changed.");
+          return;
+        }
+        cd.status = "Dispatched";
+        bust(); render();
+        toast(String(cd.challanNo || "The challan") + " dispatched \u2014 the receipt can go on now.");
+      }).catch(function () {
+        t.disabled = false; t.textContent = "Dispatch";
+        toast("No signal \u2014 nothing was changed. Try again.");
       });
       return;
     }
