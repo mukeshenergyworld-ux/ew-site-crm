@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.318";
+  var APP_VERSION = "6.9.319";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -580,9 +580,87 @@
     return (Math.round(g.ms / 100) / 10) + "s \u00b7 " + Math.round(g.b / 1024) + " KB";
   }
 
+  /* ============================================================================
+     WHAT IS GOING UP RIGHT NOW.  (20 August 2026)
+
+     "better to show upload status on every app, like 5% done 100% done, not uploaded or
+     created."
+
+     THE PERCENTAGE CANNOT BE HAD, AND ASKING FOR IT ONCE TOOK THE RECEIPTS DOWN. The CRM
+     tried exactly that in v6.9.270 and had to undo it in v6.9.279, and the reason is written
+     into that file: XMLHttpRequest sets the CORS-preflight flag the moment anything registers
+     xhr.upload.onprogress, Apps Script does not answer OPTIONS with CORS headers, and so every
+     receipt POST began failing with status 0 BEFORE ONE BYTE LEFT THE PHONE. The card said
+     "the connection refused a 103 KB upload". It was not refused. It was never sent.
+
+     So there is no honest 5%. A bar that invents one is worse than no bar, because a man
+     watches a lie crawl to 90% and then reports that the app hung at 90%.
+
+     WHAT THERE HONESTLY IS: the size, the seconds, and a moving stripe that says the phone is
+     still working - and, past twenty seconds and past forty-five, a sentence telling him
+     whether to keep waiting. That is what he actually needed the percentage for.
+
+     IT HOOKS INTO api(), NOT INTO EACH BUTTON. Every call that carries a pdfBase64 is an
+     upload, so every upload in the app is covered - the ones written today and the ones
+     written next month, without anybody remembering to add a bar to them. */
+  var UP_SAY = { pdfHost: "Uploading the document", tgSend: "Sending to Telegram" };
+  var _upNow = null, _upTick = null;
+  function upStart(action, kb) {
+    var what = UP_SAY[action];
+    if (!what) return false;
+    _upNow = { what: what, kb: kb, t0: Date.now() };
+    if (_upTick) clearInterval(_upTick);
+    _upTick = setInterval(function () { try { upPaint(); } catch (e) {} }, 1000);
+    upPaint();
+    return true;
+  }
+  function upEnd() {
+    _upNow = null;
+    if (_upTick) { clearInterval(_upTick); _upTick = null; }
+    try { upPaint(); } catch (e) {}
+  }
+  function upSay(now) {
+    if (!now) return "";
+    var s = Math.max(1, Math.round((Date.now() - now.t0) / 1000));
+    var tail = s < 20 ? ""
+      : (s < 45 ? " — a big file on a slow line. It is still going."
+                : " — this is slow. Nothing is lost: if it fails you can send it again.");
+    return now.what + " — " + now.kb + " KB · " + s + "s" + tail;
+  }
+  function upPaint() {
+    var bar = document.getElementById("ewupbar");
+    if (!_upNow) { if (bar && bar.parentNode) bar.parentNode.removeChild(bar); return; }
+    if (!document.getElementById("ewupcss")) {
+      var st = document.createElement("style");
+      st.id = "ewupcss";
+      /* an INDETERMINATE stripe. It says "working", which is true, and never says "62%",
+         which would not be. */
+      st.textContent = "#ewupbar{position:fixed;left:0;right:0;top:0;z-index:9999;background:#0f766e;" +
+        "color:#fff;font:600 12.5px/1.35 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
+        "padding:calc(env(safe-area-inset-top) + 7px) 12px 7px;box-shadow:0 1px 6px rgba(15,23,42,.25)}" +
+        "#ewupbar .uptxt{max-width:660px;margin:0 auto}" +
+        "#ewupbar .upfill{position:absolute;left:0;right:0;bottom:0;height:3px;overflow:hidden;background:#0b5f59}" +
+        "#ewupbar .upfill i{display:block;height:3px;width:38%;background:#5eead4;" +
+        "animation:ewupslide 1.1s linear infinite}" +
+        "@keyframes ewupslide{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}";
+      document.head.appendChild(st);
+    }
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "ewupbar";
+      bar.innerHTML = '<div class="uptxt"></div><div class="upfill"><i></i></div>';
+      document.body.appendChild(bar);
+    }
+    var txt = bar.querySelector(".uptxt");
+    if (txt) txt.textContent = upSay(_upNow);
+  }
+
   function api(action, extra, ms) {
     var _t0 = Date.now();
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
+    /* v20.08.2026 - a call carrying a file is an upload, and an upload gets said out loud */
+    var _upKb = (extra && extra.pdfBase64) ? Math.round(String(extra.pdfBase64).length / 1024) : 0;
+    var _upOn = _upKb ? upStart(action, _upKb) : false;
     var limit = ms || API_MS_BY_ACTION[action] || API_MS;
     var ctl = null, timer = null;
     try { if (window.AbortController) ctl = new AbortController(); } catch (e) { ctl = null; }
@@ -592,7 +670,7 @@
       body: JSON.stringify(body)
     };
     if (ctl) opt.signal = ctl.signal;
-    var done = function () { if (timer) { clearTimeout(timer); timer = null; } };
+    var done = function () { if (timer) { clearTimeout(timer); timer = null; } if (_upOn) upEnd(); };
     return new Promise(function (res, rej) {
       /* belt and braces: abort the request AND settle the promise. On a browser with no
          AbortController the fetch is left to finish into the void, but nothing waits on it. */
