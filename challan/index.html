@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.31.0";
+  var APP_VERSION = "1.32.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1209,6 +1209,35 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       .catch(function () { return PRODUCTS; });
   }
 
+  /* ---- A MAN MAY HOLD MORE THAN ONE ROLE (20 Aug 2026) ----
+     He was asked whether Manoj was godown or service and answered "both".
+
+     Until today the estate could not express that. The role was one word; every gate compared
+     that word with === or indexOf; and the CRM's own Role dialog said so in plain English -
+     "It is one role per person, there is no way to give somebody two." So the honest answer to
+     "both" was to make it true rather than to argue with him about it.
+
+     A role is now a LIST, held in the one cell it always was: "godown,service". These three
+     functions are the only code in the estate that knows that, and they are byte-identical in
+     the CRM, Challan, Payment and Service apps - t_apps_agree.js fails the run if they drift.
+
+     NOTHING CHANGES FOR A MAN WITH ONE ROLE. "godown" splits to ["godown"], and
+     roleAny(["admin","accounts","godown"]) returns exactly what indexOf returned before. That
+     is what makes this safe to send to phones already signed in and holding a saved session:
+     a single-role session behaves identically to yesterday.
+
+     The separator is "anything that is not a letter", so godown,service - godown, service -
+     godown / service all read the same. He types this into a sheet cell by way of the Role
+     dialog; it should not matter whether he leaves a space after the comma. */
+  function myRoles() {
+    return String(S.role || "").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  }
+  function roleIs(r) { return myRoles().indexOf(r) >= 0; }
+  function roleAny(list) {
+    var mine = myRoles();
+    return list.some(function (r) { return mine.indexOf(r) >= 0; });
+  }
+
   /* ---------- who may do what ---------- */
   var ALLOWED = ["admin","accounts","godown"];
   function canMake()    { return ["admin","accounts","godown"].indexOf(S.role) >= 0; }
@@ -1878,9 +1907,65 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return hit ? num(hit.qty) : 0;
   }
 
+  /* ---- FIND A PRODUCT BY ITS NAME, ANYWHERE (20 Aug 2026) ----
+     "on making challan also show option to search product by name, sometime a product is
+     rarely dispatched and difficult to locate so can be typed name and searched."
+
+     There WAS a search box, and that is exactly why this took so long to hear properly: it
+     sat at the BOTTOM of the drill-down, after brand and after category, and it narrowed only
+     the shelf you were already standing in front of. It is no help at all for the case he
+     describes - a thing dispatched twice a year, whose brand nobody remembers. To find it you
+     first had to know where it was, which is the whole problem.
+
+     So the box moves to the top and searches the whole catalogue: name, code and brand. The
+     drill-down stays exactly as it was for the ninety per cent of days when a man knows the
+     brand and wants to see the shelf. */
+  function prodsMatching(q) {
+    var s = lower(q);
+    if (s.length < 2) return [];
+    return PRODUCTS.filter(function (p) {
+      return lower(p.label).indexOf(s) >= 0 || lower(p.desc).indexOf(s) >= 0 ||
+             lower(p.code).indexOf(s) >= 0 || lower(brandOf(p)).indexOf(s) >= 0;
+    }).sort(function (a, b) { return String(a.desc).localeCompare(String(b.desc)); });
+  }
+
+  /* one product card, in one place, so the search results and the shelf cannot drift apart */
+  function pcards(list, withBrand) {
+    return '<div class="pgrid">' + list.map(function (x) {
+      var have = qtyOf(x.code);
+      return '<div class="pcard"' + (have ? ' style="border-color:#5eead4;background:#f0fdfa"' : '') + '>' +
+        (x.pic ? '<img src="' + esc(x.pic) + '" alt="" loading="lazy"/>' : '') +
+        '<div class="pn">' + esc(x.desc) + '</div>' +
+        '<div class="pm">' + (withBrand ? '<b>' + esc(brandOf(x)) + '</b> \u00b7 ' : '') +
+          esc(x.code) + (x.unit ? ' \u00b7 ' + esc(x.unit) : '') + ' \u00b7 ' + money(x.price) + '</div>' +
+        '<div class="step">' +
+          '<button data-act="pk-minus" data-code="' + esc(x.code) + '">&minus;</button>' +
+          '<input class="pk-qty" data-code="' + esc(x.code) + '" inputmode="decimal" value="' + (have || "") + '" placeholder="0"/>' +
+          '<button data-act="pk-plus" data-code="' + esc(x.code) + '">+</button>' +
+        '</div></div>';
+    }).join("") + '</div>';
+  }
+
   function pickerHtml() {
     var p = S.pick || {};
-    var h = '<div class="crumb">' +
+    var q = lower(p.q || "");
+    var box = '<div class="row" style="margin-bottom:8px"><input id="pk_q" class="grow" ' +
+      'placeholder="Type a product name, code or brand\u2026" value="' + esc(p.q || "") + '"/></div>';
+
+    /* A SEARCH BEATS THE DRILL-DOWN. Two letters is the floor: one letter matches half the
+       catalogue and the wait to draw it is worse than no answer. */
+    if (q.length >= 2) {
+      var hits = prodsMatching(q);
+      if (!hits.length) {
+        return box + '<div class="empty">Nothing in the catalogue matches \u201c' + esc(p.q) +
+          '\u201d \u2014 name, code or brand. If it is a new product it has to be added in the CRM first.</div>';
+      }
+      return box + '<div class="muted" style="margin:0 2px 6px">' + hits.length +
+        ' product' + (hits.length === 1 ? '' : 's') + ' anywhere in the catalogue. ' +
+        'Clear the box to go back to browsing by brand.</div>' + pcards(hits, true);
+    }
+
+    var h = box + '<div class="crumb">' +
       '<span class="c" data-act="pk-lvl" data-l="brand">Brand' + (p.brand ? ': ' + esc(p.brand) : '') + '</span>' +
       (p.brand ? '<span class="c" data-act="pk-lvl" data-l="cat">Category' + (p.cat ? ': ' + esc(p.cat) : '') + '</span>' : '') +
       '</div>';
@@ -1904,27 +1989,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       return h;
     }
     var list = prodsIn(p.brand, p.cat);
-    var q = lower(p.q || "");
-    if (q) list = list.filter(function (x) { return lower(x.label).indexOf(q) >= 0; });
-    h += '<div class="row" style="margin-bottom:8px"><input id="pk_q" class="grow" placeholder="Narrow this list…" value="' + esc(p.q || "") + '"/></div>';
-    if (!list.length) return h + '<div class="empty">Nothing here by that name.</div>';
+    if (!list.length) return h + '<div class="empty">Nothing on this shelf.</div>';
     /* v1.19.0 - "inside also 2 to 3 priducts in single line, all alphabatically".
        prodsIn() already sorts by description. One full-width card per product meant a man
        scrolled six times to see six items he knew the names of; now he sees the shelf.
        A line already in the challan keeps its green ring so it is findable at a glance. */
-    h += '<div class="pgrid">' + list.map(function (x) {
-      var have = qtyOf(x.code);
-      return '<div class="pcard"' + (have ? ' style="border-color:#5eead4;background:#f0fdfa"' : '') + '>' +
-        (x.pic ? '<img src="' + esc(x.pic) + '" alt="" loading="lazy"/>' : '') +
-        '<div class="pn">' + esc(x.desc) + '</div>' +
-        '<div class="pm">' + esc(x.code) + (x.unit ? ' · ' + esc(x.unit) : '') + ' · ' + money(x.price) + '</div>' +
-        '<div class="step">' +
-          '<button data-act="pk-minus" data-code="' + esc(x.code) + '">&minus;</button>' +
-          '<input class="pk-qty" data-code="' + esc(x.code) + '" inputmode="decimal" value="' + (have || "") + '" placeholder="0"/>' +
-          '<button data-act="pk-plus" data-code="' + esc(x.code) + '">+</button>' +
-        '</div></div>';
-    }).join("") + '</div>';
-    return h;
+    return h + pcards(list, false);
   }
 
   function sheetPicker() {
@@ -2065,8 +2135,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      It now shows every challan, everyone's, newest first, with chips to narrow it. */
   var CH_FILTERS = [
     ["all",     "All"],
-    ["draft",   "Not passed"],
-    ["noproof", "No receipt"],
+    ["draft",   "Approval pending"],
+    ["noproof", "Receipt pending"],
     ["mine",    "Mine"]
   ];
   function chFiltered(kind) {
@@ -2084,7 +2154,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       CH_FILTERS.map(function (b) {
         var n = chFiltered(b[0]).length;
         if (!n && b[0] !== "all") return "";
-        return '<button class="btn sm ' + (f === b[0] ? '' : 'gry') + '" data-act="ch-filter" data-f="' + b[0] + '">' +
+        /* v1.32.0 - "pending receipts also to be highlighted in red". A count of nought is
+           not a warning, so the red only appears when there is something to answer for. */
+        var urgent = (b[0] === "draft" || b[0] === "noproof") && n > 0;
+        var cls = (f === b[0]) ? (urgent ? 'red' : '') : 'gry';
+        return '<button class="btn sm ' + cls + '" data-act="ch-filter" data-f="' + b[0] + '"' +
+          (urgent && f !== b[0] ? ' style="border-color:#fecaca;color:#b91c1c"' : '') + '>' +
           esc(b[1]) + ' <b style="opacity:.75">' + n + '</b></button>';
       }).join("") + '</div>';
   }
@@ -2728,40 +2803,127 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       '</div>';
   }
 
+  /* ---- WHOSE CLIENT IS IT (20 Aug 2026) ----
+     "show executive name on strip along with client name, so godown can know whose client he
+     or she is". The challan row itself only records who WROTE it, which in the godown is
+     always the same man. The name he wants is the executive the CLIENT belongs to, so it is
+     read off the client - and V99 adds ownedBy to the skeleton the godown is sent, because
+     until today a godown phone received a client with no owner on it at all. */
+  function chExec(c) {
+    var cl = clientByName(c && c.customerName);
+    /* NOT cl.owner. There is no such column - the CRM's own field map says the executive
+       is ownedBy - and reading it is what once showed a client filed under Mukesh Verma as
+       having no executive at all. t_apps_agree.js has failed this exact line since. */
+    return String((cl && (cl.ownedBy || cl.createdBy)) || "").trim();
+  }
+
+  /* ---- A RECEIPT IS FOR GOODS THAT HAVE ARRIVED (20 Aug 2026) ----
+     "once a challan created, attach receipt only to be shown when challan approved and
+     dispatched, no need to show at this stage". He is right and it is not only clutter: a
+     signed receipt attached to a draft is a receipt for material still on the shelf. */
+  var RECEIPT_FROM = ["Dispatched", "Received", "Billed"];
+  function canAttachYet(st) { return RECEIPT_FROM.indexOf(String(st || "")) >= 0; }
+
+  /* ---- HAS THIS ONE ALREADY GONE TO TELEGRAM ----
+     The server writes `tgMsg` on the challan row when a send lands (V84), so the app can tell
+     a sent challan from an unsent one without keeping its own list. That is the whole
+     duplicate guard: "make provision to not send duplicate again and again". */
+  function tgSent(c) { return !!String((c && c.tgMsg) || "").trim(); }
+  function tgChallan(c, bot, caption) {
+    return chalPdf(c).then(function (doc) {
+      return api("tgSend", { bot: bot, pdfBase64: doc.output("datauristring").split(",")[1],
+        filename: chalFile(c), caption: caption, challanId: c.id });
+    });
+  }
+  function tgCaption(c) {
+    return String(c.challanNo || "Challan") + " \u2014 " + String(c.customerName || "") +
+      (c.site ? " (" + c.site + ")" : "") + "\n" + money(chValue(c)) + " \u00b7 " +
+      chLines(c).length + " line" + (chLines(c).length === 1 ? "" : "s") +
+      (chExec(c) ? "\nExecutive: " + chExec(c) : "");
+  }
+
+  /* ---- APPROVE BY READING IT, NOT BY DOWNLOADING IT (20 Aug 2026) ----
+     "for approving instead of downloading pdf and check show there option to drop down and
+     view details". Passing a challan releases real material, so the man doing it has to see
+     what is on it - and until today the only way was to build a PDF, wait for it, open it in
+     another app, and come back. On a godown phone that is a minute each time, so in practice
+     it was passed unread. The lines are already in the row; they only had to be shown. */
+  function chDetail(c) {
+    var ls = chLines(c);
+    if (!ls.length) return '<div class="muted" style="padding:8px 2px">No lines on this challan.</div>';
+    return '<div style="margin-top:8px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">' +
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<tr style="background:#f8fafc"><th style="text-align:left;padding:6px 9px">Item</th>' +
+      '<th style="text-align:right;padding:6px 9px">Qty</th>' +
+      '<th style="text-align:right;padding:6px 9px">Rate</th>' +
+      '<th style="text-align:right;padding:6px 9px">Amount</th></tr>' +
+      ls.map(function (x) {
+        var q = num(x.qty), r = num(x.rate);
+        return '<tr><td style="padding:6px 9px;border-top:1px solid #eef2f7">' +
+            esc(x.name || x.product || "-") +
+            (x.brand ? ' <span class="muted">' + esc(x.brand) + '</span>' : '') + '</td>' +
+          '<td style="padding:6px 9px;border-top:1px solid #eef2f7;text-align:right">' + esc(String(x.qty)) +
+            (x.unit ? ' ' + esc(x.unit) : '') + '</td>' +
+          '<td style="padding:6px 9px;border-top:1px solid #eef2f7;text-align:right">' + money(r) + '</td>' +
+          '<td style="padding:6px 9px;border-top:1px solid #eef2f7;text-align:right"><b>' + money(q * r) + '</b></td></tr>';
+      }).join("") +
+      '<tr style="background:#f8fafc"><td colspan="3" style="padding:7px 9px;text-align:right"><b>Total</b></td>' +
+      '<td style="padding:7px 9px;text-align:right"><b>' + money(chValue(c)) + '</b></td></tr>' +
+      '</table></div>' +
+      (c.notes ? '<div class="muted" style="margin-top:6px">Note: ' + esc(c.notes) + '</div>' : '') +
+      (c.driver ? '<div class="muted" style="margin-top:2px">Driver: ' + esc(c.driver) + '</div>' : '');
+  }
+
   function chRow(c) {
     var mn = manualNoFor(c), pf = proofFor(c), st = chStatus(c), held = chHeld(c);
-    return '<div class="card" style="padding:11px 12px">' +
+    var ex = chExec(c), open = S.open && String(S.open) === String(c.id);
+    var waiting = (st === "Draft" && !held);
+    return '<div class="card" style="padding:11px 12px' +
+        (waiting ? ';border-color:#fecaca;background:#fffafa' : '') + '">' +
       '<div class="row"><div class="grow">' +
-        '<div style="font-weight:800;font-size:14.5px">' + esc(c.customerName || "-") + '</div>' +
+        '<div style="font-weight:800;font-size:14.5px">' + esc(c.customerName || "-") +
+          /* the executive, right beside the client, because that is the question the godown
+             is actually asking when it looks at this line */
+          (ex ? ' <span class="pill grn" style="font-weight:700">' + esc(ex) + '</span>' : '') + '</div>' +
         '<div class="muted" style="margin-top:2px">' +
           esc(c.challanNo || (held ? "Its number comes when it uploads" : "")) +
-          (mn ? ' · <b style="color:#b91c1c">Book ' + esc(mn) + '</b>' : '') +
-          ' · ' + esc(dstr(d10(c.createdAt))) + (c.site ? ' · ' + esc(c.site) : '') + '</div>' +
+          (mn ? ' \u00b7 <b style="color:#b91c1c">Book ' + esc(mn) + '</b>' : '') +
+          ' \u00b7 ' + esc(dstr(d10(c.createdAt))) + (c.site ? ' \u00b7 ' + esc(c.site) : '') + '</div>' +
         '<div style="margin-top:5px">' +
           (held ? '<span class="pill amb">Held on this phone</span> ' : '') +
-          (st === "Draft" ? '<span class="pill red">Not passed yet</span>' : '<span class="pill grn">' + esc(st) + '</span>') +
+          (st === "Draft" ? '<span class="pill red">APPROVAL PENDING</span>'
+                          : '<span class="pill grn">' + esc(st) + '</span>') +
           (pf ? ' <span class="pill grn">Receipt attached</span>'
-              : ' <span class="pill amb">No receipt</span>') +
+              : (canAttachYet(st) ? ' <span class="pill red">RECEIPT PENDING</span>'
+                                  : ' <span class="pill amb">No receipt yet</span>')) +
+          (tgSent(c) ? ' <span class="pill grn">Sent to Telegram</span>' : '') +
         '</div></div>' +
         '<div style="text-align:right"><div class="big">' + money(chValue(c)) + '</div>' +
         '<div class="muted">' + chLines(c).length + ' line' + (chLines(c).length === 1 ? '' : 's') + '</div></div>' +
       '</div>' +
+      (open ? chDetail(c) : '') +
       '<div class="acts">' +
+        /* v1.32.0 - the details come FIRST, before any button that downloads anything */
+        '<button class="btn sm ' + (open ? '' : 'gry') + '" data-act="ch-open" data-id="' + esc(c.id) + '">' +
+          (open ? 'Hide details' : 'View details') + '</button>' +
         '<button class="btn sm gry" data-act="ch-pdf" data-no="' + esc(c.id || c.challanNo) + '">Challan PDF</button>' +
-        '<button class="btn sm gry" data-act="ch-wa" data-no="' + esc(c.id || c.challanNo) + '">Send on WhatsApp</button>' +
+        /* v1.32.0 - "send on whatsapp tab not required, you can put force send to telegram if
+           it is not auto sending". A challan now goes to Telegram by itself the moment it is
+           passed; this button is the hand crank for when that failed, and it asks first. */
+        (held ? '' :
+          '<button class="btn sm gry" data-act="ch-tg" data-id="' + esc(c.id) + '">' +
+            (tgSent(c) ? 'Send again' : 'Send to Telegram') + '</button>') +
         (pf ? '<a class="btn sm gry" href="' + esc(pf.url) + '" target="_blank" rel="noopener">See receipt</a>'
-            : (canProof()
-               ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(c.id) + '">Attach receipt</button>'
-               : '<span class="pill amb">Receipt is attached by the office</span>')) +
-        /* v1.25.0 - "make provision to edit challan before disptch".
-           The CRM's rule, unchanged: Draft or Approved may be edited, Dispatched and Received
-           may not. A challan that is still HELD on this phone is not editable either - it has
-           no number yet and no row on the sheet, so an edit would be editing nothing. */
+            : (canAttachYet(st)
+               ? (canProof()
+                  ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(c.id) + '">Attach receipt</button>'
+                  : '<span class="pill amb">Receipt is attached by the office</span>')
+               : '')) +
         (canMake() && !held && (st === "Draft" || st === "Approved")
           ? '<button class="btn sm gry" data-act="ch-edit" data-id="' + esc(c.id) + '">Edit</button>' : '') +
         (st === "Draft" && canApprove()
           ? (held ? '<span class="pill amb">Cannot be passed until it uploads</span>'
-                  : '<button class="btn sm" data-act="ch-approve" data-no="' + esc(c.id || c.challanNo) + '">Pass it</button>')
+                  : '<button class="btn sm red" data-act="ch-approve" data-no="' + esc(c.id || c.challanNo) + '">Pass it</button>')
           : '') +
       '</div></div>';
   }
@@ -4115,9 +4277,66 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         }
         c2.status = "Approved"; c2.approvedBy = (r && r.by) || S.user; c2.approvedAt = new Date().toISOString();
         bust(); render(); toast(String(c2.challanNo || "The challan") + " passed.");
+        /* ---- AND NOW IT GOES TO TELEGRAM (v1.32.0) ----
+           "once approved it will auto send to telegram bot, no its not sending on approval."
+
+           He was right, and the reason is that the send was never in this app. The CRM has
+           done it since v6.9.106 - sendChallanPdf(r, "TG_CHALLAN", ...) sits in its approve
+           handler. But approving moved to this app months ago and is done from the accounts
+           desk here, and this handler called challanMove and stopped. So every challan passed
+           the way they are actually passed went to Telegram never.
+
+           It is deliberately AFTER the toast and outside the success path's own promise: the
+           challan is passed the moment the server says so, and a Telegram group that is down
+           must not make a man think the approval failed. If the send fails he is told, and the
+           Send to Telegram button on the strip is the hand crank. */
+        if (!tgSent(c2)) {
+          tgChallan(c2, "TG_CHALLAN", tgCaption(c2)).then(function (tr) {
+            if (tr && tr.ok) { c2.tgMsg = c2.tgMsg || "sent"; bust(); render(); }
+            else toast("Passed, but Telegram did not take it. Use Send to Telegram on the strip.");
+          }).catch(function () {
+            toast("Passed. Telegram did not answer \u2014 use Send to Telegram on the strip.");
+          });
+        }
       }).catch(function () {
         t.disabled = false; t.textContent = "Pass it";
         toast("No signal — nothing was changed. Try again.");
+      });
+      return;
+    }
+
+    /* ---- read it here, rather than downloading it (v1.32.0) ---- */
+    if (act === "ch-open") {
+      var oid = t.getAttribute("data-id");
+      S.open = (S.open && String(S.open) === String(oid)) ? "" : oid;
+      render(); return;
+    }
+
+    /* ---- FORCE-SEND TO TELEGRAM (v1.32.0) ----
+       "you can put force send to telegram if it is not auto sending, make provision to not
+       send duplicate again and again, if anyone want to force send ask him and send once
+       clicked." So: it asks, once, naming the challan and saying plainly that it has already
+       gone - and only then sends. A second copy in the group is a real cost; two men reading
+       the same group cannot tell which is the live one. */
+    if (act === "ch-tg") {
+      var tid = t.getAttribute("data-id");
+      var tc = chFind(tid);
+      if (!tc) return;
+      if (chHeld(tc)) { toast("This challan is still held on this phone. It has to go up first."); return; }
+      if (tgSent(tc) && !window.confirm(
+            String(tc.challanNo || "This challan") + " has already been sent to Telegram.\n\n" +
+            "Send it again? The group will then hold two copies of the same challan.")) {
+        toast("Nothing was sent."); return;
+      }
+      t.disabled = true; t.textContent = "Sending\u2026";
+      tgChallan(tc, "TG_CHALLAN", tgCaption(tc)).then(function (r) {
+        t.disabled = false;
+        if (r && r.ok) { tc.tgMsg = tc.tgMsg || "sent"; bust(); render(); toast("Sent to Telegram."); }
+        else { t.textContent = tgSent(tc) ? "Send again" : "Send to Telegram";
+               toast((r && r.error) || "Telegram refused it. Nothing was sent."); }
+      }).catch(function () {
+        t.disabled = false; t.textContent = tgSent(tc) ? "Send again" : "Send to Telegram";
+        toast("No signal \u2014 nothing was sent. Try again.");
       });
       return;
     }
@@ -4265,7 +4484,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
   var REST_EVERY = 300000;
-  function restStale() { return !S.restAt || (Date.now() - S.restAt) > REST_EVERY; }
+  function restStale() {
+    if (!S.restAt) return true;
+    if (_beatSeen && _restStamp !== _beatSeen) return true;   /* somebody wrote: stale, whatever the clock says */
+    return (Date.now() - S.restAt) > REST_EVERY;
+  }
 
   function pull(loud) {
     if (_pulling) { if (loud) toast("Already pulling\u2026"); return _pulling; }
@@ -4309,7 +4532,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
       /* the whole book arrived on the first call - take the rest of it and do not ask again */
       if (bookHas(r, KEEP_REST)) {
-        mergeBook(r, KEEP_REST); S.restAt = Date.now();
+        mergeBook(r, KEEP_REST); restTook();
         jrnReconcile(); applyJournal();          /* the full book is in hand - see below */
         S.syncAt = Date.now(); S.busy = false; _pulling = null;
         snapSave(); flushSoon(); render();
@@ -4329,7 +4552,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       return getBook(KEEP_REST).then(function (r2) {
         S.busy = false; _pulling = null;
         if (!usableBook(r2)) { render(); return; }
-        mergeBook(r2, KEEP_REST); S.restAt = Date.now(); bust();
+        mergeBook(r2, KEEP_REST); restTook(); bust();
         /* v1.10.0 - THE ORDER MATTERS AND IT IS NOT INTERCHANGEABLE.
            jrnReconcile reads a FRESH server pull to decide which held records the server
            already has. applyJournal then lays the rest back on top. Do them the other way
@@ -4394,6 +4617,37 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      app has just pulled, so it is already current, and treating that first reading as news
      would mean every app pulled twice on every open. */
   var BEAT_EVERY = 30000, _beatSeen = "", _beatOn = null, _beatBusy = false;
+  /* ---- THE STAMP BEATS THE CLOCK (20 Aug 2026) ----
+     "Serious issue - Challan made at godown, taking very long to sync all device, hence
+     approval delaying."
+
+     The heartbeat shipped on 19 August and it worked: the godown writes a challan, the
+     server's write stamp moves, and every other phone notices inside thirty seconds. Then it
+     pulled the FAST half of the book and returned - and in the Challan app `challans` is not
+     in the fast half. It is in KEEP_REST, behind REST_EVERY, which is five minutes.
+
+     So an accounts phone could sit open, awake, and correctly informed that something had
+     changed, and still not show the new challan for five and a half minutes. No amount of
+     waiting shortened it and the refresh arrow was the only way through, because the app had
+     decided not to ask. That is the approval delay. It was never slowness - measured, the
+     pull is 3.7 s for 383 KB.
+
+     WHY THE FIVE MINUTES STAYS. It is not a mistake. The rest half carries `audit` - every
+     action anybody has ever taken - and re-fetching that on every glance is what a phone on
+     4G in a basement godown pays for. The throttle earns its place when nothing has changed.
+
+     WHAT CHANGES. It now yields to the stamp. The stamp only moves when somebody WROTE
+     something, so if the stamp this phone is holding is not the stamp it last took the
+     history at, the history is stale by definition and the clock has no opinion worth
+     hearing. When nothing has been written the two are equal and not one extra byte moves.
+
+     AND IT FIXES THE COME-BACK-TO-THE-APP PATH FOR FREE. The fast half calls beatMark() with
+     the server's stamp as it lands, and that happens BEFORE restStale() is consulted. So
+     returning to the app after two minutes now brings the challan written one minute ago -
+     which is what he asked for in v1.28.0 when he had the 60-second guard taken out, and
+     which he never got, because challans live in the half that guard never governed. */
+  var _restStamp = "";
+  function restTook() { S.restAt = Date.now(); _restStamp = _beatSeen; }
   function beatMark(st) { if (st) _beatSeen = String(st); }
   function beat() {
     if (_beatBusy || beatSkip()) return;
@@ -4488,7 +4742,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
         applyJournal(); snapSave(); render();
         if (bookHas(r, KEEP_REST)) {             /* the server sent everything - see bookHas */
-          mergeBook(r, KEEP_REST); S.restAt = Date.now(); bust();
+          mergeBook(r, KEEP_REST); restTook(); bust();
           jrnReconcile(); applyJournal();
           S.syncAt = Date.now(); S.busy = false; snapSave(); render(); flushSoon();
           return;
@@ -4503,7 +4757,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         if (refused) return;
         S.busy = false;
         if (!usableBook(r2)) { render(); return; }
-        mergeBook(r2, KEEP_REST); S.restAt = Date.now(); bust();
+        mergeBook(r2, KEEP_REST); restTook(); bust();
         jrnReconcile(); applyJournal();      /* reconcile after the history - see pull() */
         S.syncAt = Date.now(); snapSave(); render(); flushSoon();
       });
