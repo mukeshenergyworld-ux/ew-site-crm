@@ -171,7 +171,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.33.0";
+  var APP_VERSION = "1.34.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1318,16 +1318,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
   /* ---------- who may do what ---------- */
   var ALLOWED = ["admin","accounts","godown"];
-  function canMake()    { return ["admin","accounts","godown"].indexOf(S.role) >= 0; }
+  function canMake()    { return roleAny(["admin","accounts","godown"]); }
   /* the owner's rule: the man who makes it is not the man who passes it */
   /* v1.24.0 - the CRM's rule, word for word: "Challan-level discounts, price lists and
      incentive data stay admin-only." Two apps must not disagree about who may cut a price. */
-  function canSetPricing() { return S.role === "admin"; }
-  function canApprove() { return ["admin","accounts"].indexOf(S.role) >= 0; }
+  function canSetPricing() { return roleIs("admin"); }
+  function canApprove() { return roleAny(["admin","accounts"]); }
   /* v1.3 - and the signed paper is filed by the office, not by the man who loaded the
      lorry. A receipt is the proof that settles an argument; it should not be attachable
      by the person it would exonerate. */
-  function canProof()   { return ["admin","accounts"].indexOf(S.role) >= 0; }
+  function canProof()   { return roleAny(["admin","accounts"]); }
 
   /* ---------- WHERE THE CLIENT IS ----------
      District first, then the area inside it, then his name. That is how the godown thinks
@@ -3521,7 +3521,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           S.pin = ""; renderLogin("That saved sign-in is no longer valid. Use your PIN."); return;
         }
         S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
-        if (ALLOWED.indexOf(S.role) < 0) { S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = ""; return; }
+        if (!roleAny(ALLOWED)) { S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = ""; return; }
         try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: saved.pin, role: S.role })); } catch (e) {}
         startFlushTicker();
         pull(false);
@@ -4524,7 +4524,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
       S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
       beatStart();                        /* v1.30.0 - from here the phone asks on its own */
-      if (ALLOWED.indexOf(S.role) < 0) {
+      if (!roleAny(ALLOWED)) {
         S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = "";
         return;
       }
@@ -4826,7 +4826,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       }
       S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
       beatStart();                        /* v1.30.0 - from here the phone asks on its own */
-      if (ALLOWED.indexOf(S.role) < 0) {
+      if (!roleAny(ALLOWED)) {
         refused = true; S.pin = ""; forgetBook();
         renderLogin(notForYou(S.user, S.role)); S.role = ""; return;
       }
