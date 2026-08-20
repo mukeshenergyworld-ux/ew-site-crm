@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.319";
+  var APP_VERSION = "6.9.320";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -466,6 +466,13 @@
      The separator is "anything that is not a letter", so godown,service - godown, service -
      godown / service all read the same. He types this into a sheet cell by way of the Role
      dialog; it should not matter whether he leaves a space after the comma. */
+  /* the same reading, applied to somebody else's cell - used by the team screens, which ask
+     about a row rather than about the man holding the phone */
+  function rolesOn(v) {
+    return String(v || "").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  }
+  function roleIsOn(v, r) { return rolesOn(v).indexOf(r) >= 0; }
+
   function myRoles() {
     return String(S.role || "").toLowerCase().split(/[^a-z]+/).filter(Boolean);
   }
@@ -482,8 +489,24 @@
     sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products","dups","brief"],
     service:  ["dash","tools","service","spares","dues","followups","products"]
   };
+  /* v6.9.320 - EVERY SCREEN EITHER OF HIS ROLES OPENS.
+     A man holding godown and service is entitled to the godown's six screens AND the service
+     desk's seven; the union is what "both" means. The order is kept from ROLE_TABS rather than
+     sorted, because the FIRST tab in the list is the one the app opens on, and a man should
+     land where his main work is - not on whatever happens to sort first. */
+  function myTabs() {
+    var mine = myRoles();
+    if (!mine.length) return ["dash"];
+    if (mine.length === 1) return ROLE_TABS[mine[0]] || ["dash"];
+    var seen = {}, out = [];
+    mine.forEach(function (r) {
+      (ROLE_TABS[r] || []).forEach(function (t) { if (!seen[t]) { seen[t] = 1; out.push(t); } });
+    });
+    return out.length ? out : ["dash"];
+  }
+
   function canSee(tab) {
-    var t = ROLE_TABS[S.role] || ["dash"];
+    var t = myTabs();
     /* Hubs bundle several tabs; grant a hub to anyone who could see ANY of its members, so no
        role list needs rewriting and no member is ever exposed to a role that lacked it. */
     var member = { deliveries: ["challans", "returns"], collections: ["payments", "dues"],
@@ -2337,7 +2360,7 @@ window.addEventListener("beforeunload", function (ev) {
         (pend
           ? '<button class="btn sm" data-act="setgeo" data-id="' + esc(x.id) + '">Set location (I am at site)</button>'
           : '<button class="btn sm" data-act="checkin" data-id="' + esc(x.id) + '">Check in</button>') +
-        (!pend && S.role === "admin"
+        (!pend && roleIs("admin")
           ? '<button class="btn sm ghost" data-act="geo-reset" data-id="' + esc(x.id) + '">Reset GPS</button>' : '') +
         '<button class="btn sm ghost" data-act="matrix" data-id="' + esc(x.id) + '">Pitch matrix</button>' +
         '<button class="btn sm ghost" data-act="site-open" data-id="' + esc(x.id) + '">Edit</button></div></div>';
@@ -2872,7 +2895,7 @@ window.addEventListener("beforeunload", function (ev) {
   }
 
   function modalCancelRec(tab, id) {
-    if (S.role !== "admin") return "";
+    if (!roleIs("admin")) return "";
     if (!CANCEL_TABS[tab]) return "";
     var row = ((S.data || {})[tab] || []).filter(function (x) { return x.id === id; })[0];
     if (!row) return "";
@@ -2917,7 +2940,7 @@ window.addEventListener("beforeunload", function (ev) {
         (r.sub ? '<div class="meta" style="font-size:11.5px">' + esc(r.sub) + '</div>' : '') +
         '<div class="meta" style="font-size:11.5px">' + esc(r.reason || "no reason recorded") + (r.note ? ' &mdash; ' + esc(r.note) : '') + '</div>' +
         '<div class="meta" style="font-size:11px;color:#94a3b8">' + esc(d10(r.at)) + (r.by ? ' by ' + esc(r.by) : '') + '</div></div>' +
-        (S.role === "admin" ? '<button class="btn sm ghost" data-act="cx-undo" data-tab="' + esc(r.tab) + '" data-id="' + esc(r.id) + '">Bring back</button>' : '') +
+        (roleIs("admin") ? '<button class="btn sm ghost" data-act="cx-undo" data-tab="' + esc(r.tab) + '" data-id="' + esc(r.id) + '">Bring back</button>' : '') +
         '</div></div>';
     });
     return h;
@@ -3009,7 +3032,7 @@ window.addEventListener("beforeunload", function (ev) {
      as a selectable option so an edit never silently drops it. Enforced again in the save. */
   function ownerField(fid, current, isNew) {
     var v = current || (isNew ? S.user : "");
-    if (S.role === "admin") {
+    if (roleIs("admin")) {
       var names = [""];
       (S.data.team || []).filter(function (t2) { return String(t2.active).toUpperCase() !== "N"; })
         .forEach(function (t2) { if (t2.name && names.indexOf(t2.name) < 0) names.push(t2.name); });
@@ -3038,7 +3061,7 @@ window.addEventListener("beforeunload", function (ev) {
       ownerField(fid, current, isNew) +
       /* said only to an admin: the locked field already tells everyone else the same thing,
          and two lines saying one thing is how a form starts being skimmed instead of read. */
-      (S.role === "admin" && v
+      (roleIs("admin") && v
         ? '<div class="meta" style="margin-top:5px;font-size:11px;color:#4338ca">This lead goes onto <b>' + esc(v) + '</b>\u2019s book.</div>'
         : "") +
       '</div>';
@@ -3127,7 +3150,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div><label>Owner (sales exec)</label>' + ownerField("s_owner", x.owner || x.createdBy, !x.id) + '</div></div>' +
       '<label>Notes</label><textarea id="s_notes">' + esc(x.notes) + '</textarea>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      (x.id && S.role === "admin" ? '<button class="btn ghost" data-act="cx-open" data-tab="sites" data-id="' + esc(x.id) + '" style="color:#b91c1c">Cancel this site</button>' : "") +
+      (x.id && roleIs("admin") ? '<button class="btn ghost" data-act="cx-open" data-tab="sites" data-id="' + esc(x.id) + '" style="color:#b91c1c">Cancel this site</button>' : "") +
       '<button class="btn" data-act="site-save" data-id="' + esc(x.id || "") + '">Save</button></div>';
   }
 
@@ -6247,7 +6270,7 @@ window.addEventListener("beforeunload", function (ev) {
      because it is an admin button - nobody else is left wondering about a button that was
      never theirs. */
   function hisabWhyNot(c) {
-    if (!c || S.role !== "admin" || inHisab(c)) return "";
+    if (!c || !roleIs("admin") || inHisab(c)) return "";
     var need = [];
     if (!hisabCounts(c)) need.push("mark the delivery received");
     if (!chProofAny(c).has) need.push("attach the signed paper");
@@ -6259,7 +6282,7 @@ window.addEventListener("beforeunload", function (ev) {
       'To add to hisab: ' + esc(need.join(" and ")) + '</span>';
   }
   function canAddToHisab(c) {
-    if (!c || S.role !== "admin") return false;
+    if (!c || !roleIs("admin")) return false;
     if (inHisab(c)) return false;
     /* v6.9.259 - the money's own rule, not a looser one that happened to agree most days */
     if (!hisabCounts(c)) return false;
@@ -7254,7 +7277,7 @@ window.addEventListener("beforeunload", function (ev) {
       var st = c.status || "Draft";
       return st === "Dispatched" || st === "Received";
     });
-    if (S.role === "sales") list = list.filter(function (c) { return isMineClient(c.customerName); });
+    if (roleIs("sales")) list = list.filter(function (c) { return isMineClient(c.customerName); });
     var pmap = {};
     prfLoad().forEach(function (p) { pmap[p.chId] = p; });
     var on = [], off = [];
@@ -7373,7 +7396,7 @@ window.addEventListener("beforeunload", function (ev) {
     }
     if (!(nAmt(c.openingAmt) > 0)) return "";
     if (!(clientDue(c.name) > 0.5)) return "";
-    if (S.role !== "admin") return "";
+    if (!roleIs("admin")) return "";
     return '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
       '<h3 style="margin:0 0 2px;font-size:13px">Old hisab not attached</h3>' +
       '<div class="meta" style="font-size:12.5px;margin-bottom:7px"><b>' + esc(c.name) +
@@ -8030,7 +8053,7 @@ window.addEventListener("beforeunload", function (ev) {
       if (!S.user || S.modal) return;
       /* the weekly chase is for whoever enters/owns leads - sales and admin.
          Accounts / godown / service can't fix a lead's plumber, so never nag them. */
-      if (S.role !== "sales" && S.role !== "admin") return;
+      if (!roleIs("sales") && !roleIs("admin")) return;
       var key = "ew_pnag_" + S.user;
       var last = Number(localStorage.getItem(key) || 0);
       if (Date.now() - last < 7 * 86400000) return;      /* once a week per person */
@@ -8106,7 +8129,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<label>Notes</label><textarea id="c_notes">' + esc(c.notes) + '</textarea>' +
       /* Migration block - partners only. The server refuses these fields from anyone else, and
          a field that is visible but always errors is just a trap, so sales never sees it. */
-      (S.role === "admin"
+      (roleIs("admin")
         ? '<div style="margin-top:14px;padding:10px;border:1px solid #fde68a;background:#fffbeb;border-radius:10px">' +
           '<h3 style="margin:0 0 2px;font-size:13px">Migrating from the old books</h3>' +
           '<div class="meta" style="margin-bottom:8px">Only for a client who already existed before this app.</div>' +
@@ -8143,7 +8166,7 @@ window.addEventListener("beforeunload", function (ev) {
         : "") +
       /* CREDIT TERMS (v6.9.193). A commercial decision, so only a partner sets it. Left blank
          the app behaves exactly as it always has - nobody is stopped, nothing changes. */
-      (S.role === "admin"
+      (roleIs("admin")
         ? '<div style="margin-top:12px;padding:10px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:10px">' +
           '<h3 style="margin:0 0 2px;font-size:13px">Credit terms</h3>' +
           '<div class="meta" style="margin-bottom:8px">How much of our material may stand at his site unpaid, and for how long. Leave blank for no limit.</div>' +
@@ -8174,7 +8197,7 @@ window.addEventListener("beforeunload", function (ev) {
          standing at a site can still save a name and a number in four seconds - but the button
          says out loud what he is choosing to leave out, and the toast afterwards says where to
          find it again. */
-      (c.id && S.role === "admin" ? '<button class="btn ghost" data-act="cx-open" data-tab="clients" data-id="' + esc(c.id) + '" style="color:#b91c1c">Cancel this client</button>' : "") +
+      (c.id && roleIs("admin") ? '<button class="btn ghost" data-act="cx-open" data-tab="clients" data-id="' + esc(c.id) + '" style="color:#b91c1c">Cancel this client</button>' : "") +
       '<button class="btn" data-act="cl-save" data-stagebtn="Save client" data-id="' + esc(c.id || "") + '">' +
       ((c.stage || clientStage(c.name)) ? 'Save client' : 'Save client without stage') + '</button></div>';
   }
@@ -9160,7 +9183,7 @@ function plBrands() {
 }
 
 function viewPriceList() {
-  if (["admin", "accounts"].indexOf(S.role) < 0)
+  if (!roleAny(["admin","accounts"]))
     return '<div class="empty">Price lists are for partners and accounts only.</div>';
   S.pl = S.pl || {};
   var bs = plBrands();
@@ -9196,7 +9219,7 @@ function plRank(fam) {
 }
 
 async function priceListPdf(brands) {
-  if (["admin", "accounts"].indexOf(S.role) < 0) { toast("Not allowed."); return; }
+  if (!roleAny(["admin","accounts"])) { toast("Not allowed."); return; }
   var rows = PRODUCTS.filter(function (p) { return brands.indexOf(String(p.brand || "").trim()) >= 0; });
   if (!rows.length) { toast("No products for that brand."); return; }
   toast("Building price list...");
@@ -11213,7 +11236,7 @@ function viewCatalogue() {
     var first = new Date(y, m, 1);
     var days = new Date(y, m + 1, 0).getDate();
     var pad = first.getDay();
-    var mine = S.role === "admin" ? S.data.sitevisits
+    var mine = roleIs("admin") ? S.data.sitevisits
       : S.data.sitevisits.filter(function (v) { return v.createdBy === S.user; });
     var counts = {};
     mine.forEach(function (v) { var d = dstr(v.date); counts[d] = (counts[d] || 0) + 1; });
@@ -11238,7 +11261,7 @@ function viewCatalogue() {
   }
 
   function viewVisits() {
-    var mine = S.role === "admin" ? S.data.sitevisits
+    var mine = roleIs("admin") ? S.data.sitevisits
       : S.data.sitevisits.filter(function (v) { return v.createdBy === S.user; });
     var day = S.calDay || today();
     var todays = mine.filter(function (v) { return dstr(v.date) === day; });
@@ -11280,7 +11303,7 @@ function viewCatalogue() {
      The challan PDF deliberately carries NO prices and NO pictures - it is a delivery
      document, not a quotation. Prices live in the ledger, not in the driver's hand. */
   var CH_FLOW = ["Draft", "Approved", "Dispatched", "Received"];
-  function canApprove() { return S.role === "admin" || S.role === "accounts"; }
+  function canApprove() { return roleIs("admin") || roleIs("accounts"); }
   /* v6.9.250 - the owner's rule, in his words: "its approved by accounts or admin only,
      can be approved from both challan app and CRM app". It used to read admin|sales here
      while the challan app already read admin|accounts, so the same challan offered an
@@ -11290,7 +11313,7 @@ function viewCatalogue() {
      A client is "assigned" to a sales exec via ownedBy (falling back to whoever entered it). Admin
      and accounts see every client; a sales exec sees only the clients assigned to them, and through
      them every related quote / challan / hisab, so they can chase payment and follow up. */
-  function seesAllClients() { return S.role === "admin" || S.role === "accounts"; }
+  function seesAllClients() { return roleIs("admin") || roleIs("accounts"); }
   /* ================= THE THREE THINGS A RECORD CANNOT WORK WITHOUT (v6.9.293) =====
      HIS INSTRUCTION: "if a lead or client entered without mobile no, ask / flash the lead
      owner to enter it, and after entering auto update it everywhere required" - and then:
@@ -11364,10 +11387,10 @@ function viewCatalogue() {
   }
   /* Only the owner/admin may set pricing. A sales exec can view every figure and record a payment,
      but can never change a discount % or a rate - pricing stays the owner's control. */
-  function canSetPricing() { return S.role === "admin"; }
+  function canSetPricing() { return roleIs("admin"); }
   /* v6.9.112: quote-builder discounts are open to every sales exec (owner request).
      Challan-level discounts, price lists and incentive data stay admin-only. */
-  function canQuoteDiscount() { return S.role === "admin" || S.role === "sales"; }
+  function canQuoteDiscount() { return roleIs("admin") || roleIs("sales"); }
 
   /* ---------------- DELIVERY CHALLAN (landscape) ----------------
      This is a picking and receiving sheet, not a sales document. So: no company logo or name,
@@ -11862,7 +11885,7 @@ function viewCatalogue() {
     var execs = (S.data.team || []).filter(function (t2) {
       return String(t2.role).toLowerCase() === "sales" && String(t2.active).toUpperCase() !== "N";
     }).map(function (t2) { return t2.name; });
-    if (S.role !== "admin") execs = [S.user];
+    if (!roleIs("admin")) execs = [S.user];
     var months = [];
     for (var i = 0; i < 12; i++) {
       var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
@@ -12274,7 +12297,7 @@ function viewCatalogue() {
   }
 
   function viewScorecard() {
-    if (S.role !== "admin") return '<div class="empty">Scorecards are visible to the owner only.</div>';
+    if (!roleIs("admin")) return '<div class="empty">Scorecards are visible to the owner only.</div>';
     S.sc = S.sc || {};
     if (!S.sc.tab) S.sc.tab = "exec";
     if (S.sc.tab === "partner") return scToggle() + viewScPartner();
@@ -12393,7 +12416,7 @@ function viewCatalogue() {
     /* a sales exec sees returns for THEIR clients only */
     /* ONLY a sales exec is scoped to their own clients. Godown/service are operational roles that
        must see the whole dispatch/return board, not an owner-filtered slice. */
-    if (S.role === "sales") list = list.filter(function (r) { return isMineClient(r.customerName); });
+    if (roleIs("sales")) list = list.filter(function (r) { return isMineClient(r.customerName); });
     var by = function (st) { return list.filter(function (r) { return (r.status || "Raised") === st; }).length; };
     var h = '<div class="cards">' +
       '<div class="stat ' + (by("Raised") ? "alert" : "") + '"><div class="n">' + by("Raised") + '</div><div class="l">Raised, to collect</div></div>' +
@@ -12442,7 +12465,7 @@ function viewCatalogue() {
         /* v6.9.241 - once the material is back in, the paper signed for it can be attached */
         (stt === "Received" && !chProofAny(r).has
           ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '">Attach goods-in receipt</button>' : "") +
-        (S.role === "admin" ? '<button class="btn sm ghost" data-act="cx-open" data-tab="returns" data-id="' + esc(r.id) + '" style="color:#b91c1c">Cancel</button>' : "") +
+        (roleIs("admin") ? '<button class="btn sm ghost" data-act="cx-open" data-tab="returns" data-id="' + esc(r.id) + '" style="color:#b91c1c">Cancel</button>' : "") +
         '</div></div>';
     });
     return h;
@@ -12627,25 +12650,45 @@ function viewCatalogue() {
      the apps actually do. If a gate changes, this changes with it. */
   var APP_ROLES = {
     "Challan app": ["admin", "accounts", "godown"],
-    "Payment app": ["admin", "accounts", "sales"]
+    "Payment app": ["admin", "accounts", "sales"],
+    /* v6.9.320 - the Service app shipped on 20 Aug and this map did not know it existed, so
+       the dialog told a man being made `service` that his new role opened "no other app". The
+       comment above says these lists are read from the apps' own gates so the sentence cannot
+       drift from what the apps do; it drifted the moment an eighth app arrived. */
+    "Service app": ["admin", "service"]
   };
   /* The Visit and Saathi apps are NOT here on purpose: they sign in by mobile number against
      EXEC / OWNER / PARTNER, not against this role at all, so a role change does not touch
      them. Saying nothing about them would be a guess; saying this is the fact. */
+  /* v6.9.320 - these take a ROLE CELL now, which may be "godown" or "godown,service", and
+     answer for the whole of it. Passing a single word still works and gives the same answer
+     it always did. */
   function roleOpens(role) {
-    var out = [];
+    var mine = rolesOn(role), out = [];
     Object.keys(APP_ROLES).forEach(function (app) {
-      if (APP_ROLES[app].indexOf(role) >= 0) out.push(app);
+      if (APP_ROLES[app].some(function (r) { return mine.indexOf(r) >= 0; })) out.push(app);
     });
     return out;
   }
-  function roleScreens(role) { return (ROLE_TABS[role] || []).length; }
+  function roleScreens(role) {
+    var mine = rolesOn(role), seen = {}, n = 0;
+    mine.forEach(function (r) {
+      (ROLE_TABS[r] || []).forEach(function (t) { if (!seen[t]) { seen[t] = 1; n++; } });
+    });
+    return n;
+  }
   var ROLE_LIST = ["admin", "accounts", "godown", "sales", "service"];
 
   /* The one change that can lock the owner out of his own business. */
   function activeAdmins() {
     return (S.data.team || []).filter(function (u) {
-      return u && u.name && String(u.role || "") === "admin" &&
+      /* v6.9.320 - roleHas_, NOT ===. This tested the whole cell against the word "admin",
+         so the moment a partner was given a second role - "admin,service" - he stopped
+         counting as an active admin here. This is the one guard that decides whether the CRM
+         believes anybody can still set a PIN or change a role, so an === here would have told
+         him he was about to lock himself out of his own business while he was doing nothing
+         of the kind - or, worse, let him actually do it. */
+      return u && u.name && roleIsOn(u.role, "admin") &&
              String(u.active || "").toUpperCase() !== "N";
     });
   }
@@ -12659,9 +12702,26 @@ function viewCatalogue() {
   function modalRole(u) {
     var cur = String(u.role || "");
     var h = '<h2>Role for ' + esc(u.name) + '</h2>' +
+      /* v6.9.320 - THE SENTENCE THAT WAS TRUE UNTIL TODAY.
+         It read "It is one role per person - there is no way to give somebody two", and it was
+         accurate. Then he was asked whether Manoj was godown or service and answered "both",
+         so the honest thing was to make it possible rather than to argue with him. Tick every
+         role he holds; he gets every screen and every app that any of them opens. */
       '<p class="sub">This is the only thing that decides which apps he can open. ' +
-      'It is one role per person \u2014 there is no way to give somebody two.</p>' +
-      '<label>Role</label><select id="ur_role">' + opts(ROLE_LIST, cur) + '</select>' +
+      'Tick as many as he really does \u2014 a man who works the godown <b>and</b> goes out on ' +
+      'service gets both.</p>' +
+      '<label>Roles</label><div id="ur_roles" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px">' +
+      ROLE_LIST.map(function (r) {
+        var on = roleIsOn(cur, r);
+        return '<label style="display:inline-flex;align-items:center;gap:6px;border:1.5px solid ' +
+          (on ? '#5eead4' : '#e2e8f0') + ';background:' + (on ? '#f0fdfa' : '#fff') +
+          ';border-radius:9px;padding:7px 11px;font-weight:' + (on ? '800' : '600') + ';cursor:pointer">' +
+          '<input type="checkbox" class="ur-role" value="' + esc(r) + '"' + (on ? ' checked' : '') + '/>' +
+          esc(r) + '</label>';
+      }).join("") + '</div>' +
+      '<div class="meta" style="margin-bottom:8px">Now: <b>' +
+        (rolesOn(cur).length ? esc(rolesOn(cur).join(" + ")) : "none") + '</b> \u2014 ' +
+        esc(roleSay(cur)) + '</div>' +
       '<div style="margin-top:10px;border:1px solid #e2e8f0;border-radius:9px;overflow:hidden">' +
       '<table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
       '<tr style="background:#f8fafc"><th style="text-align:left;padding:6px 9px">Role</th>' +
@@ -12669,7 +12729,7 @@ function viewCatalogue() {
       '<th style="text-align:left;padding:6px 9px">Challan</th>' +
       '<th style="text-align:left;padding:6px 9px">Payment</th></tr>';
     ROLE_LIST.forEach(function (r) {
-      var on = r === cur;
+      var on = roleIsOn(cur, r);
       h += '<tr style="' + (on ? 'background:#ecfdf5;font-weight:700' : '') + '">' +
         '<td style="padding:6px 9px;border-top:1px solid #eef2f7">' + esc(r) +
           (on ? ' <span class="pill teal">now</span>' : '') + '</td>' +
@@ -12680,7 +12740,7 @@ function viewCatalogue() {
           (APP_ROLES["Payment app"].indexOf(r) >= 0 ? 'yes' : '<span style="color:#94a3b8">no</span>') + '</td></tr>';
     });
     h += '</table></div>';
-    if (cur === "admin" && activeAdmins().length <= 1) {
+    if (roleIsOn(cur, "admin") && activeAdmins().length <= 1) {
       h += '<div class="meta" style="margin-top:8px;color:#b91c1c;font-weight:700">' +
         esc(u.name) + ' is the only active admin. Changing this role would leave nobody able to ' +
         'set a PIN, edit a role, or open this screen \u2014 including you. Make somebody else ' +
@@ -12748,7 +12808,7 @@ function viewCatalogue() {
         'photograph the signed receipt. Godown makes it, accounts passes it.</span></div></div>';
     var list = S.data.challans.slice().reverse();
     /* ONLY sales is owner-scoped; godown must see every challan to dispatch/receipt them. */
-    if (S.role === "sales") list = list.filter(function (c) { return isMineClient(c.customerName); });
+    if (roleIs("sales")) list = list.filter(function (c) { return isMineClient(c.customerName); });
     var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
     var h = chAppLink + '<div class="cards">' +
       '<div class="stat ' + (by("Draft") ? "alert" : "") + '"><div class="n">' + by("Draft") + '</div><div class="l">Awaiting approval</div></div>' +
@@ -12767,7 +12827,7 @@ function viewCatalogue() {
     }
     h += hisabMismatchCard();
     h += '<div class="row">' +
-      (S.role === "admin" ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
+      (roleIs("admin") ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
       '<button class="btn sm ghost" data-act="prf-list">Delivery receipts</button>' +
       '<div class="grow"></div><button class="btn" data-act="ch-new">+ New challan</button></div>';
     if (!list.length) h += '<div class="empty">No challans yet.</div>';
@@ -12795,7 +12855,7 @@ function viewCatalogue() {
            delivered challan can be tied to its invoice number - the basis for tallying stock later.
            Other roles keep the hand-off ("Send for billing") that puts it in the accounts queue. */
         (st === "Received"
-          ? ((S.role === "admin" || S.role === "accounts")
+          ? ((roleIs("admin") || roleIs("accounts"))
               ? '<button class="btn sm ' + (c.billNo ? 'act-billedit' : 'act-bill') + '" data-act="bill-detail" data-id="' + esc(c.id) + '">' + (c.billNo ? 'Edit bill' : 'Add billing detail') + '</button>'
               : (!c.billStatus ? '<button class="btn sm act-billsend" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : ""))
           : "") +
@@ -12820,7 +12880,7 @@ function viewCatalogue() {
            delivery is Received AND the signed paper is on file, which is the order he
            described: receipt first, then his eye on it, then hisab. */
         (canAddToHisab(c) ? '<button class="btn sm" data-act="ch-hisabadd" data-id="' + esc(c.id) + '" style="background:#0b3b36;border-color:#0b3b36">ADD TO HISAB</button>' : hisabWhyNot(c)) +
-        (S.role === "admin" ? '<button class="btn sm ghost" data-act="cx-open" data-tab="challans" data-id="' + esc(c.id) + '" style="color:#b91c1c">Cancel</button>' : "");
+        (roleIs("admin") ? '<button class="btn sm ghost" data-act="cx-open" data-tab="challans" data-id="' + esc(c.id) + '" style="color:#b91c1c">Cancel</button>' : "");
 
       /* two-line compact card, same pattern as the lead/client cards:
          line 1 - challan no + status pills, all action buttons pinned right
@@ -13751,7 +13811,7 @@ function viewCatalogue() {
     });
   }
   function discGapCard(c) {
-    if (!c || S.role !== "admin") return "";
+    if (!c || !roleIs("admin")) return "";
     var g = chDiscGap(c);
     if (!g.n) return "";
     return '<div style="margin-top:7px;padding:8px 11px;border-radius:9px;background:#fff7ed;' +
@@ -14128,7 +14188,7 @@ function viewCatalogue() {
       /* v6.9.210 - old clients who still owe money and whose old-book statement was never
          attached. Partner only, and it empties itself: a name leaves this list either when the
          statement goes up or when the money clears, whichever happens first. */
-      if (S.role === "admin") {
+      if (roleIs("admin")) {
         var hdm = hisabDocMissing();
         if (hdm.length) {
           h += '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
@@ -14268,7 +14328,7 @@ function viewCatalogue() {
       _oh += serviceLedgerCard(cl);
       return h + _oh;
     }
-    var admin = S.role === "admin";
+    var admin = roleIs("admin");
     var allNet = 0, selNet = 0, selGoods = 0, selCount = 0;
     chs.forEach(function (c) {
       var sel = S.billSel[c.id] !== false;
@@ -15280,10 +15340,10 @@ function viewCatalogue() {
     if (!dead) {
       h += '<button class="btn sm ghost" data-act="rc-pdf" data-p="' + esc(p.id) + '">Download</button>' +
         '<button class="btn sm" data-act="rc-wa" data-p="' + esc(p.id) + '">WhatsApp</button>';
-      if (S.role === "admin" && p.id) {
+      if (roleIs("admin") && p.id) {
         h += '<button class="btn sm ghost" data-act="cx-open" data-tab="payments" data-id="' + esc(p.id) + '" style="color:#b91c1c">Cancel this</button>';
       }
-    } else if (S.role === "admin" && p.id) {
+    } else if (roleIs("admin") && p.id) {
       h += '<button class="btn sm ghost" data-act="cx-undo" data-tab="payments" data-id="' + esc(p.id) + '">Bring it back</button>';
     }
     return h + '</div></div>';
@@ -16534,7 +16594,7 @@ function viewCatalogue() {
     return out;
   }
   function runLeadSweep() {
-    if (S.role !== "admin") { toast("Only admin can fill the lead book."); return; }
+    if (!roleIs("admin")) { toast("Only admin can fill the lead book."); return; }
     var g = leadSweep(), n = 0;
     g.ready.forEach(function (x) {
       if (n >= SWEEP_BATCH218) return;
@@ -17964,7 +18024,7 @@ function viewCatalogue() {
           ' <span style="color:#94a3b8">&middot; ' + x.losers.length + ' extra row(s) doing nothing</span></div>';
       }).join('') +
       ((s.dupDisc || []).length
-        ? (S.role === "admin"
+        ? (roleIs("admin")
             ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="disc-tidy">Clear the extra rows</button></div>'
             : '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Only the owner can tidy these \u2014 tell him and he will press it.</div>') +
           '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Nothing is deleted \u2014 the extra rows are emptied and stay in the sheet.</div>'
@@ -17982,7 +18042,7 @@ function viewCatalogue() {
           ' <span style="color:#94a3b8">&middot; ' + x.losers.length + ' extra row(s)</span></div>';
       }).join('') +
       ((s.dupQuotes || []).length
-        ? (S.role === "admin"
+        ? (roleIs("admin")
             ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="quote-tidy">Set the extra rows aside</button></div>'
             : '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Only the owner can tidy these \u2014 tell him and he will press it.</div>') +
           '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Nothing is deleted \u2014 the extra rows move to the set-aside list at the bottom of this screen and can be brought back any time.</div>'
@@ -17999,7 +18059,7 @@ function viewCatalogue() {
       }).join('') +
       ((s.dupPitch || []).length > 30 ? '<div class="meta" style="font-size:12px;color:#94a3b8">\u2026and ' + ((s.dupPitch || []).length - 30) + ' more</div>' : '') +
       ((s.dupPitch || []).length
-        ? (S.role === "admin"
+        ? (roleIs("admin")
             ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="pitch-tidy">Set the extra rows aside</button></div>'
             : '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Only the owner can tidy these \u2014 tell him and he will press it.</div>') +
           '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">The row kept is the one carrying the real outcome \u2014 a Won or a Lost always beats a blank. Nothing is deleted.</div>'
@@ -18073,7 +18133,7 @@ function viewCatalogue() {
       '<div class="meta" style="font-size:11px;color:#94a3b8;margin-top:4px">Tap each morning to push the team their to-dos. (Ask me to set up automatic 8 AM posting.)</div></div>';
 
     /* the pitch-by-stage engine only works once sites are entered - nudge until at least a few are in */
-    if ((S.role === "admin" || S.role === "sales") && (S.data.sites || []).length < 3) {
+    if ((roleIs("admin") || roleIs("sales")) && (S.data.sites || []).length < 3) {
       h += '<div class="card" style="border-color:#bfdbfe;background:#eff6ff"><h3>Turn on stage-based pitching</h3>' +
         '<div class="meta">Only <b>' + (S.data.sites || []).length + '</b> site(s) entered, so the pitch matrix stays mostly dark. Enter your live sites with their construction stage and the app will start flagging <b>what to pitch, to whom, and when</b> — pipes at rough-in, heat pumps &amp; softeners at finishing. This is the single biggest lever you have unused.</div>' +
         '<div class="acts"><button class="btn sm" data-act="tab" data-tab="sites">Add a site</button>' +
@@ -18158,7 +18218,7 @@ function viewCatalogue() {
       try { bigDel(snapKey()); } catch (e) { } S.pin = ""; renderLogin("Saved sign-in no longer valid."); return; }
         S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
         try { beatStart(); } catch (e) {}          /* v6.9.314 - from here it asks on its own */
-        S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
+        S.tab = myTabs()[0];
         loadCatalog(); refresh();
       });
     }).catch(function () { toast("Biometric check failed - use your PIN."); });
@@ -19155,7 +19215,7 @@ function viewCatalogue() {
       if (["Won", "Lost"].indexOf(String(q.status)) < 0 && !live[q.client]) quoted[q.client] = 1;
     });
     var owed = 0;
-    if (S.role === "admin") {
+    if (roleIs("admin")) {
       (S.data.incentives || []).forEach(function (i) {
         if (isMine(i.person)) owed += (Number(i.earned) || 0) - (Number(i.paid) || 0);
       });
@@ -19248,7 +19308,7 @@ function viewCatalogue() {
             (p.anniversary ? 'Anniversary ' + esc(dmy(p.anniversary)) : "")
           : "") +
         /* incentive: partners only. Never rendered for sales, accounts or service. */
-        (S.role === "admin"
+        (roleIs("admin")
           ? (function () { var _b = partnerBook(p.name); return '<br><b style="color:#0d9488">' + money(_b.pending) + '</b> incentive pending' +
               (_b.reversed > 0 ? ' &middot; <span style="color:#dc2626">' + money(_b.reversed) + ' reversed on returns</span>' : ""); })()
           : "") +
@@ -20102,7 +20162,7 @@ function viewCatalogue() {
         try { beatStart(); } catch (e) {}          /* v6.9.314 - from here it asks on its own */
       try { localStorage.setItem(STORE, JSON.stringify({ pin: pin, user: S.user, role: S.role, pinSet: S.pinSet })); } catch (e) {}
       if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return; }
-      S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
+      S.tab = myTabs()[0];
       loadCatalog();
       refresh();
     }).catch(function (e) { S.pin = ""; renderLogin(loginWhy(e)); });
@@ -20246,7 +20306,7 @@ function viewCatalogue() {
         (qseg ? ' <span class="pill" style="background:' + (qseg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(qseg) + '</span>' : "") + '</h3>' +
         '<div class="meta">' + esc(q.quoteNo) + (q.brand ? ' &middot; ' + esc(q.brand) : '') + '<br>' +
         esc(moneyAscii(q.net)) + ' (GST as applicable) &middot; ' + esc(q.status) +
-        (S.role === "admin" && q.createdBy ? ' &middot; ' + esc(q.createdBy) : '') + '</div>' +
+        (roleIs("admin") && q.createdBy ? ' &middot; ' + esc(q.createdBy) : '') + '</div>' +
         '<div class="acts">' +
         '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
       '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal</button>' +
@@ -22376,7 +22436,7 @@ function viewCatalogue() {
      wrapping rows, not a table - the review table above is already min-width:560px and a
      second wide table would run this screen off a phone. */
   function qzMarginCard(z) {
-    if (S.role !== "admin") return "";
+    if (!roleIs("admin")) return "";
     ensureStock();
     var head = '<div class="card" style="margin-top:10px;border-color:#99f6e4;background:#f0fdfa">' +
       '<h3 style="margin:0 0 2px;color:#0f766e">Margin — your eyes only</h3>';
@@ -23030,7 +23090,7 @@ function viewCatalogue() {
       /* v6.9.231 - only the owner sets PINs, so the self-service button is his alone.
          The server refuses the same thing for anyone else; this only hides a button
          that would always have failed. */
-      (S.role === "admin" ? '<button class="btn sm ghost" data-act="pin-change">PIN</button>' : '') +
+      (roleIs("admin") ? '<button class="btn sm ghost" data-act="pin-change">PIN</button>' : '') +
       '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
 
     var label = {};
@@ -23044,8 +23104,8 @@ function viewCatalogue() {
        S.tab was somehow set to one. Derived/utility views (opened by handlers, not in ROLE_TABS)
        are whitelisted so legitimate flows aren't bounced. */
     var FREE_TAB = { dash: 1, brandboard: 1, matrix: 1, customers: 1, pitch: 1 };
-    if (!FREE_TAB[S.tab] && !canSee(S.tab)) S.tab = (ROLE_TABS[S.role] || ["dash"])[0] || "dash";
-    var pick = (S.tab === 'dash' && S.role === 'admin') ? viewOwner : (views[S.tab] || viewDash);
+    if (!FREE_TAB[S.tab] && !canSee(S.tab)) S.tab = myTabs()[0] || "dash";
+    var pick = (S.tab === 'dash' && roleIs("admin")) ? viewOwner : (views[S.tab] || viewDash);
     var body;
     try { body = pick(); }
     catch (err) {
@@ -23472,13 +23532,13 @@ function viewCatalogue() {
         S.pin = p1; S.pinSet = "Y";
         try { localStorage.setItem(STORE, JSON.stringify({ pin: p1, user: S.user })); } catch (e) {}
         toast("PIN updated.");
-        S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
+        S.tab = myTabs()[0];
         loadCatalog(); refresh();
       });
       return;
     }
     if (act === "tp-reset") {
-      if (S.role !== "admin") { toast("Only the owner can reset PINs."); return; }
+      if (!roleIs("admin")) { toast("Only the owner can reset PINs."); return; }
       var u = (S.data.team || []).filter(function (x) { return x.id === id; })[0];
       if (!u) { toast("Team member not found."); return; }
       if (!u.id) { toast("This member has no id - reset in the sheet."); return; }
@@ -23492,28 +23552,37 @@ function viewCatalogue() {
       return;
     }
     if (act === "tp-setpin") {
-      if (S.role !== "admin") { toast("Only the owner sets PINs."); return; }
+      if (!roleIs("admin")) { toast("Only the owner sets PINs."); return; }
       S.modal = modalSetPin(id); render(); return;
     }
     if (act === "tp-role") {
-      if (S.role !== "admin") { toast("Only the owner changes a role."); return; }
+      if (!roleIs("admin")) { toast("Only the owner changes a role."); return; }
       var _ru = (S.data.team || []).filter(function (x) { return x && x.id === id; })[0];
       if (!_ru) { toast("Could not find that person on this device."); return; }
       S.modal = modalRole(_ru); render(); return;
     }
     if (act === "ur-save") {
-      if (S.role !== "admin") { toast("Only the owner changes a role."); return; }
+      if (!roleIs("admin")) { toast("Only the owner changes a role."); return; }
       var _uu = (S.data.team || []).filter(function (x) { return x && x.id === id; })[0];
       if (!_uu) { toast("Could not find that person on this device."); return; }
-      var _was = String(_uu.role || ""), _now = String(val("ur_role") || "");
-      if (!_now || ROLE_LIST.indexOf(_now) < 0) { toast("Pick a role."); return; }
+      var _was = String(_uu.role || "");
+      /* v6.9.320 - read the ticks, in ROLE_LIST order so the cell always reads the same way
+         round for the same set of roles - "godown,service", never sometimes "service,godown". */
+      var _picked = [];
+      Array.prototype.forEach.call(document.querySelectorAll(".ur-role"), function (b) {
+        if (b.checked) _picked.push(String(b.value));
+      });
+      var _now = ROLE_LIST.filter(function (r) { return _picked.indexOf(r) >= 0; }).join(",");
+      if (!_now) { toast("Tick at least one role \u2014 a man with none cannot open anything."); return; }
       if (_now === _was) { S.modal = null; render(); toast("No change \u2014 " + _uu.name + " is already " + _was + "."); return; }
       /* ===== THE ONE CHANGE THAT CAN LOCK HIM OUT OF HIS OWN BUSINESS =====
          Team PINs is admin-only, and so is this screen and every PIN reset. Move the last
          admin off admin and there is no way back in from any app: no PIN can be set, no role
          can be changed, and the fix would be editing a Google Sheet cell by hand - which is
          exactly the situation this release exists to end. Refused, and told why. */
-      if (_was === "admin" && activeAdmins().length <= 1) {
+      /* he is only LOSING admin if he had it and no longer has it - a man going from
+         "admin" to "admin,service" is not leaving the admin seat and must not be stopped. */
+      if (roleIsOn(_was, "admin") && !roleIsOn(_now, "admin") && activeAdmins().length <= 1) {
         toast(_uu.name + " is the only active admin. Make somebody else admin first \u2014 " +
               "otherwise nobody can set a PIN or change a role again, including you.");
         return;
@@ -23533,7 +23602,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "sp-save") {
-      if (S.role !== "admin") { toast("Only the owner sets PINs."); return; }
+      if (!roleIs("admin")) { toast("Only the owner sets PINs."); return; }
       var _sp1 = val("sp1"), _sp2 = val("sp2");
       var _spid = t.getAttribute("data-id"), _spn = t.getAttribute("data-n") || "";
       if (!/^[0-9]{4,8}$/.test(_sp1)) { toast("A PIN is 4 to 8 digits."); return; }
@@ -23563,7 +23632,7 @@ function viewCatalogue() {
       /* Give a TEMPORARY PIN = last 4 digits of the person's own mobile, and force a change at first
          login (pinSet="N"). The owner clicks this; the value is derived from their mobile, never
          chosen or typed by Claude. Convenient but guessable - the forced change is what protects it. */
-      if (S.role !== "admin") { toast("Only the owner can set PINs."); return; }
+      if (!roleIs("admin")) { toast("Only the owner can set PINs."); return; }
       var tu = (S.data.team || []).filter(function (x) { return x.id === id; })[0];
       if (!tu || !tu.id) { toast("Member not found."); return; }
       var mob = String(tu.mobile || "").replace(/\D/g, "");
@@ -23760,7 +23829,7 @@ function viewCatalogue() {
        silent and never automatic: the confirm names every line, the old total and the new one,
        and it only ever raises a discount to the preset. */
     if (act === "ch-reprice") {
-      if (S.role !== "admin") { toast("Re-pricing a challan is a partner's decision."); return; }
+      if (!roleIs("admin")) { toast("Re-pricing a challan is a partner's decision."); return; }
       var rc0 = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
       if (!rc0) { toast("Not found."); return; }
       var g0 = chDiscGap(rc0);
@@ -24184,7 +24253,7 @@ function viewCatalogue() {
             stage: f.stage || "",
             /* Auto-assign the creator; only admin may set/change it. Enforced here so a tampered
                DOM cannot reassign a lead. */
-            ownedBy: (S.role === "admin"
+            ownedBy: (roleIs("admin")
               ? (f.owner || (id ? ((S.clEditing && S.clEditing.ownedBy) || "") : S.user))
               : (id ? ((S.clEditing && S.clEditing.ownedBy) || "") : S.user))
           });
@@ -24682,7 +24751,7 @@ function viewCatalogue() {
        mechanism as a cancelled challan: an audit row per record, the row lifted out of the live
        list, and a "Bring it back" button waiting at the bottom of this very screen. */
     if (act === "quote-tidy") {
-      if (S.role !== "admin") { toast("Only admin can set records aside."); return; }
+      if (!roleIs("admin")) { toast("Only admin can set records aside."); return; }
       var dqT = (healthScan().dupQuotes || []);
       if (!dqT.length) { toast("Nothing to tidy."); return; }
       var qn218 = 0;
@@ -24700,7 +24769,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "pitch-tidy") {
-      if (S.role !== "admin") { toast("Only admin can set records aside."); return; }
+      if (!roleIs("admin")) { toast("Only admin can set records aside."); return; }
       var dpT = (healthScan().dupPitch || []);
       if (!dpT.length) { toast("Nothing to tidy."); return; }
       var pn218 = 0;
@@ -24718,7 +24787,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "disc-tidy") {
-      if (S.role !== "admin") { toast("Only admin can change discounts."); return; }
+      if (!roleIs("admin")) { toast("Only admin can change discounts."); return; }
       var dupsT = (healthScan().dupDisc || []);
       if (!dupsT.length) { toast("Nothing to tidy."); return; }
       var cleared = 0;
@@ -24764,7 +24833,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "disc-saveall") {
-      if (S.role !== "admin") { toast("Only admin can set discounts."); return; }
+      if (!roleIs("admin")) { toast("Only admin can set discounts."); return; }
       if (!clientByName(S.q)) { toast("Discounts can only be set for an existing client."); return; }
       /* DEFERRED SAVE: read every discount (.dsc) and incentive (.incp) box on the screen and
          commit them in ONE pass — grouped per client+brand, because one discount row carries the
@@ -24887,7 +24956,7 @@ function viewCatalogue() {
        where the map names a brand that does not exist. Nothing is deleted and no product is
        touched; the products simply start resolving to a brand instead of a bucket. */
     if (act === "brand-promote") {
-      if (!canSee("catalogue") && S.role !== "admin") { toast("A partner sets up a brand."); return; }
+      if (!canSee("catalogue") && !roleIs("admin")) { toast("A partner sets up a brand."); return; }
       var cv = String(t.getAttribute("data-cv") || "").trim();
       if (!cv) return;
       var nice = cv.replace(/\s*(pumps?|items?)\s*$/i, "").replace(/\s+/g, " ").trim() || cv;
@@ -25588,7 +25657,7 @@ function viewCatalogue() {
       var sn = val("s_name");
       if (!sn) { toast("Site name is required."); return; }
       var existS = id ? (siteById(id) || {}) : {};
-      var sOwner = S.role === "admin"
+      var sOwner = roleIs("admin")
         ? (val("s_owner") || (id ? (existS.owner || "") : S.user))
         : (id ? (existS.owner || "") : S.user);
       save("sites", {
@@ -25670,7 +25739,7 @@ function viewCatalogue() {
     }
     if (act === "cx-open") { S.modal = modalCancelRec(t.getAttribute("data-tab"), t.getAttribute("data-id")); render(); return; }
     if (act === "cx-do") {
-      if (S.role !== "admin") { toast("Only the owner can cancel a record."); return; }
+      if (!roleIs("admin")) { toast("Only the owner can cancel a record."); return; }
       var _cxt = t.getAttribute("data-tab"), _cxi = t.getAttribute("data-id");
       var _cxr = ((S.data || {})[_cxt] || []).filter(function (x) { return x.id === _cxi; })[0];
       if (!_cxr) { toast("That record is no longer on the list. Refresh and try again."); return; }
@@ -25683,7 +25752,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "cx-undo") {
-      if (S.role !== "admin") { toast("Only the owner can bring a record back."); return; }
+      if (!roleIs("admin")) { toast("Only the owner can bring a record back."); return; }
       var _cut = t.getAttribute("data-tab"), _cui = t.getAttribute("data-id");
       var _cur = ((S.cancelled || {})[_cut] || []).filter(function (x) { return x.id === _cui; })[0];
       if (!_cur) { toast("That record is not on the cancelled list."); return; }
@@ -25981,7 +26050,7 @@ function viewCatalogue() {
       var _hid = t.getAttribute("data-id");
       var _hc = (S.data.challans || []).filter(function (x) { return x.id === _hid; })[0];
       if (!_hc) { toast("That challan is not on this device yet - pull down to refresh."); return; }
-      if (S.role !== "admin") { toast("Only the owner adds a delivery to hisab."); return; }
+      if (!roleIs("admin")) { toast("Only the owner adds a delivery to hisab."); return; }
       if (!chProofAny(_hc).has) { toast("Attach the signed receipt first - there is nothing to check yet."); return; }
       /* v6.9.259 - the button is drawn from canAddToHisab(), but a button is not a rule.
          This is the same test, made where the writing actually happens. */
@@ -25996,7 +26065,7 @@ function viewCatalogue() {
       var hid = t.getAttribute("data-id");
       var hc = (S.data.challans || []).filter(function (x) { return x.id === hid; })[0];
       if (!hc) { toast("That challan is not on this device yet - pull down to refresh."); return; }
-      if (S.role !== "admin") { toast("Only the owner adds a delivery to hisab."); return; }
+      if (!roleIs("admin")) { toast("Only the owner adds a delivery to hisab."); return; }
       /* checked again at the moment of writing: the status can change between opening this
          screen and pressing the button, and that is exactly how the bad stamp got written */
       if (!hisabCounts(hc)) {
@@ -27564,7 +27633,7 @@ function viewCatalogue() {
       return;
     }
     if (t.classList && t.classList.contains("bdsc")) {
-      if (S.role !== "admin") return;
+      if (!roleIs("admin")) return;
       var bch = (S.data.challans || []).filter(function (x) { return x.id === t.getAttribute("data-ch"); })[0];
       if (!bch) return;
       var bitems = []; try { bitems = JSON.parse(bch.itemsJson || "[]"); } catch (e) { bitems = []; }
@@ -27848,7 +27917,7 @@ function viewCatalogue() {
       S.role = sess.role;
       S.pinSet = sess.pinSet;
       if (String(S.pinSet || "").toUpperCase() === "Y") {   // "Y" = PIN is set; anything else must reset it first
-        S.tab = (ROLE_TABS[S.role] || ["dash"])[0] || "dash";
+        S.tab = myTabs()[0] || "dash";
         S.data = warm;
         /* v6.9.209: replay whatever is still journaled on this phone BEFORE painting. Without it a
            payment saved offline vanished off the screen on reopen - and a man who cannot see the
@@ -27906,7 +27975,7 @@ function viewCatalogue() {
         S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
         try { beatStart(); } catch (e) {}          /* v6.9.314 - from here it asks on its own */
         if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return null; }
-        S.tab = (ROLE_TABS[S.role] || ["dash"])[0];
+        S.tab = myTabs()[0];
         loadCatalog();
         return dataP.then(function (d) {
           S.busy = false;
