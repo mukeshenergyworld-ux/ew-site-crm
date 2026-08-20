@@ -137,7 +137,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.20.0";
+  var APP_VERSION = "1.21.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1369,6 +1369,35 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     var n = Number(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
     return isFinite(n) ? n : 0;
   }
+  /* ---- A MAN MAY HOLD MORE THAN ONE ROLE (20 Aug 2026) ----
+     He was asked whether Manoj was godown or service and answered "both".
+
+     Until today the estate could not express that. The role was one word; every gate compared
+     that word with === or indexOf; and the CRM's own Role dialog said so in plain English -
+     "It is one role per person, there is no way to give somebody two." So the honest answer to
+     "both" was to make it true rather than to argue with him about it.
+
+     A role is now a LIST, held in the one cell it always was: "godown,service". These three
+     functions are the only code in the estate that knows that, and they are byte-identical in
+     the CRM, Challan, Payment and Service apps - t_apps_agree.js fails the run if they drift.
+
+     NOTHING CHANGES FOR A MAN WITH ONE ROLE. "godown" splits to ["godown"], and
+     roleAny(["admin","accounts","godown"]) returns exactly what indexOf returned before. That
+     is what makes this safe to send to phones already signed in and holding a saved session:
+     a single-role session behaves identically to yesterday.
+
+     The separator is "anything that is not a letter", so godown,service - godown, service -
+     godown / service all read the same. He types this into a sheet cell by way of the Role
+     dialog; it should not matter whether he leaves a space after the comma. */
+  function myRoles() {
+    return String(S.role || "").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  }
+  function roleIs(r) { return myRoles().indexOf(r) >= 0; }
+  function roleAny(list) {
+    var mine = myRoles();
+    return list.some(function (r) { return mine.indexOf(r) >= 0; });
+  }
+
   function seesAll() { return S.role === "admin" || S.role === "accounts"; }
   function canWrite() { return seesAll(); }
   function rowFor(name) {
@@ -2965,6 +2994,37 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      The guard is the one visibilitychange already had, for the reason it already had it: never
      with a form open. Nothing may take a half-typed receipt off the screen. */
   var BEAT_EVERY = 30000, _beatSeen = "", _beatOn = null, _beatBusy = false;
+  /* ---- THE STAMP BEATS THE CLOCK (20 Aug 2026) ----
+     "Serious issue - Challan made at godown, taking very long to sync all device, hence
+     approval delaying."
+
+     The heartbeat shipped on 19 August and it worked: the godown writes a challan, the
+     server's write stamp moves, and every other phone notices inside thirty seconds. Then it
+     pulled the FAST half of the book and returned - and in the Challan app `challans` is not
+     in the fast half. It is in KEEP_REST, behind REST_EVERY, which is five minutes.
+
+     So an accounts phone could sit open, awake, and correctly informed that something had
+     changed, and still not show the new challan for five and a half minutes. No amount of
+     waiting shortened it and the refresh arrow was the only way through, because the app had
+     decided not to ask. That is the approval delay. It was never slowness - measured, the
+     pull is 3.7 s for 383 KB.
+
+     WHY THE FIVE MINUTES STAYS. It is not a mistake. The rest half carries `audit` - every
+     action anybody has ever taken - and re-fetching that on every glance is what a phone on
+     4G in a basement godown pays for. The throttle earns its place when nothing has changed.
+
+     WHAT CHANGES. It now yields to the stamp. The stamp only moves when somebody WROTE
+     something, so if the stamp this phone is holding is not the stamp it last took the
+     history at, the history is stale by definition and the clock has no opinion worth
+     hearing. When nothing has been written the two are equal and not one extra byte moves.
+
+     AND IT FIXES THE COME-BACK-TO-THE-APP PATH FOR FREE. The fast half calls beatMark() with
+     the server's stamp as it lands, and that happens BEFORE restStale() is consulted. So
+     returning to the app after two minutes now brings the challan written one minute ago -
+     which is what he asked for in v1.28.0 when he had the 60-second guard taken out, and
+     which he never got, because challans live in the half that guard never governed. */
+  var _restStamp = "";
+  function restTook() { S.restAt = Date.now(); _restStamp = _beatSeen; }
   function beatMark(st) { if (st) _beatSeen = String(st); }
   function beat() {
     if (_beatBusy || beatSkip()) return;
@@ -3014,7 +3074,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   }
 
   var REST_EVERY = 300000;
-  function restStale() { return !S.restAt || (Date.now() - S.restAt) > REST_EVERY; }
+  function restStale() {
+    if (!S.restAt) return true;
+    if (_beatSeen && _restStamp !== _beatSeen) return true;   /* somebody wrote: stale, whatever the clock says */
+    return (Date.now() - S.restAt) > REST_EVERY;
+  }
 
   function pull(loud) {
     if (_pulling) { if (loud) toast("Already pulling\u2026"); return _pulling; }
@@ -3060,7 +3124,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
       /* the whole book arrived on the first call - take the rest of it and do not ask again */
       if (bookHas(r, KEEP_REST)) {
-        mergeBook(r, KEEP_REST); S.restAt = Date.now();
+        mergeBook(r, KEEP_REST); restTook();
         jrnReconcile(); applyJournal();          /* the full book is in hand - see below */
         S.syncAt = Date.now(); S.busy = false; _pulling = null;
         snapSave(); flushSoon(); render();
@@ -3079,7 +3143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       return getBook(KEEP_REST).then(function (r2) {
         S.busy = false; _pulling = null;
         if (!usableBook(r2) && !(r2 && Array.isArray(r2.audit))) { render(); return; }
-        mergeBook(r2, KEEP_REST); S.restAt = Date.now(); bust();
+        mergeBook(r2, KEEP_REST); restTook(); bust();
         /* v1.10.0 - THE ORDER MATTERS AND IT IS NOT INTERCHANGEABLE.
            jrnReconcile reads a FRESH server pull to decide which held records the server
            already has. applyJournal then lays the rest back on top. Do them the other way
@@ -3217,7 +3281,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
         applyJournal(); snapSave(); render();
         if (bookHas(r, KEEP_REST)) {             /* the server sent everything - see bookHas */
-          mergeBook(r, KEEP_REST); S.restAt = Date.now(); bust();
+          mergeBook(r, KEEP_REST); restTook(); bust();
           jrnReconcile(); applyJournal();
           S.syncAt = Date.now(); S.busy = false; snapSave(); render(); flushSoon();
           return;
@@ -3232,7 +3296,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         if (refused) return;
         S.busy = false;
         if (!(r2 && Array.isArray(r2.audit))) { render(); return; }
-        mergeBook(r2, KEEP_REST); S.restAt = Date.now(); bust();
+        mergeBook(r2, KEEP_REST); restTook(); bust();
         jrnReconcile(); applyJournal();      /* reconcile after both halves - see pull() */
         S.syncAt = Date.now(); snapSave(); render(); flushSoon();
       });
