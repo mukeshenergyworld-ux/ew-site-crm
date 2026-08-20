@@ -1,0 +1,2051 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#0f766e"/>
+<title>Service &mdash; Energy World</title>
+<link rel="manifest" href="manifest.webmanifest"/>
+<link rel="apple-touch-icon" href="icon-180.png"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<script src="../ew-config.js"></script>
+<style>
+/* Teal, not the collection app's maroon, so a man never mistakes one for the other.
+   Everything here is sized for a hand in a godown: bigger type, bigger targets. */
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{font:15.5px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:#f1f5f9;color:#0f172a;padding-bottom:env(safe-area-inset-bottom)}
+a{color:#0f766e}
+.wrap{max-width:760px;margin:0 auto;padding:0 12px 96px}
+.top{background:#0f766e;color:#fff;padding:calc(env(safe-area-inset-top) + 12px) 14px 12px;position:sticky;top:0;z-index:20;
+  box-shadow:0 2px 10px rgba(0,0,0,.15)}
+.top .t1{display:flex;align-items:center;gap:10px}
+.top h1{margin:0;font-size:16px;font-weight:800;letter-spacing:.02em;flex:1}
+.top .who{font-size:11.5px;color:#ccfbf1}
+.sync{font-size:11px;color:#ccfbf1}
+.btn{appearance:none;border:1px solid #0f766e;background:#0f766e;color:#fff;border-radius:10px;
+  padding:11px 15px;font-size:14.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+  min-height:44px;justify-content:center}
+.btn:active{transform:translateY(1px)}
+.btn.ghost{background:#fff;color:#0f766e}
+.btn.sm{padding:7px 11px;font-size:13px;border-radius:9px;min-height:36px}
+.btn.gry{background:#fff;border-color:#cbd5e1;color:#334155}
+.btn.red{background:#b91c1c;border-color:#b91c1c;color:#fff}
+.btn.amb{background:#b45309;border-color:#b45309;color:#fff}
+.btn.full{width:100%;padding:14px;font-size:16px}
+.btn[disabled]{opacity:.55}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:12px 13px;margin:10px 0;
+  box-shadow:0 1px 2px rgba(15,23,42,.05)}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.stat{flex:1 1 46%;min-width:150px;background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:11px 13px}
+.stat .n{font-size:22px;font-weight:800;letter-spacing:-.02em}
+.stat .l{font-size:11.5px;color:#64748b;margin-top:2px}
+.stat.bad .n{color:#b91c1c}
+.stat.good .n{color:#0f766e}
+input,select,textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;
+  font-size:16px;font-family:inherit;background:#fff;color:#0f172a}
+label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:520px){.grid2{grid-template-columns:1fr}}
+.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;
+  background:#f1f5f9;color:#475569;vertical-align:middle;white-space:nowrap}
+.pill.red{background:#fee2e2;color:#b91c1c}
+/* THE LOGIN BANNER IS A SENTENCE, NOT A CHIP (17 Aug 2026). It borrowed .pill, which carries
+   white-space:nowrap because a status chip inside a list row must never wrap. On the login
+   screen that ran the message straight off the right edge of the phone - so the release that
+   made the app explain itself shipped an explanation nobody could read. Measured in a real
+   browser at 390px before this rule existed. Its own class, so status chips keep theirs. */
+.loginmsg{display:block;white-space:normal;word-break:break-word;text-align:left;
+  line-height:1.45;font-size:13.5px;font-weight:600;padding:10px 12px;border-radius:12px;
+  margin:0 0 12px;background:#fee2e2;color:#b91c1c}
+
+.pill.amb{background:#fef3c7;color:#92400e}
+.pill.grn{background:#ccfbf1;color:#0f766e}
+.pill.blu{background:#dbeafe;color:#1d4ed8}
+.row{display:flex;gap:8px;align-items:center}
+.grow{flex:1;min-width:0}
+.acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+.muted{color:#64748b;font-size:12.5px}
+.big{font-size:19px;font-weight:800;letter-spacing:-.02em}
+.sheet{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:60;display:flex;align-items:flex-end;cursor:pointer}
+.sheet .inner{background:#fff;width:100%;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;
+  padding:16px 16px calc(env(safe-area-inset-bottom) + 20px);max-width:760px;margin:0 auto;cursor:auto;
+  -webkit-overflow-scrolling:touch}
+@supports (height:100dvh){.sheet .inner{max-height:88dvh}}
+.sheet h2{margin:0 0 3px;font-size:17px}
+.empty{text-align:center;color:#64748b;padding:26px 14px;font-size:13.5px}
+/* the toast sits ABOVE whatever is already at the bottom - the tab bar, and the
+   icon card when it is up. --ew-bottom is measured, not guessed. See bottomFurniture(). */
+#ew_sync_banner{position:fixed;left:0;right:0;bottom:var(--ew-nav,56px);z-index:29;
+  background:#9a3412;color:#fff;padding:8px 12px calc(8px);font-size:12.5px;box-shadow:0 -4px 14px rgba(0,0,0,.12)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom) + var(--ew-bottom,0px));transition:bottom .16s ease;background:#0f172a;color:#fff;
+  padding:11px 16px;border-radius:10px;font-size:13.5px;z-index:100000;max-width:88%;box-shadow:0 6px 18px rgba(0,0,0,.3)}
+.login{max-width:340px;margin:9vh auto;background:#fff;border-radius:16px;padding:26px 22px;
+  box-shadow:0 10px 30px rgba(15,23,42,.14)}
+.login h1{margin:0 0 3px;font-size:19px;text-align:center}
+.login p{margin:0 0 16px;text-align:center;color:#64748b;font-size:13px}
+.nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #e2e8f0;display:flex;z-index:30;
+  padding-bottom:env(safe-area-inset-bottom)}
+.nav button{flex:1;border:0;background:none;padding:9px 4px 10px;font-size:11px;font-weight:700;color:#94a3b8;cursor:pointer}
+.nav button.on{color:#0f766e}
+.nav button b{display:block;font-size:17px;line-height:1.25}
+.nav button .cnt{display:inline-block;background:#b91c1c;color:#fff;border-radius:999px;padding:0 6px;font-size:10px;margin-left:3px}
+/* the picker: brand, then category, then product - one level at a time */
+.crumb{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.crumb .c{background:#ccfbf1;color:#0f766e;border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:700;cursor:pointer}
+.tile{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#fff;border:1px solid #e2e8f0;
+  border-radius:12px;padding:11px 12px;margin-bottom:7px;cursor:pointer;font-size:14.5px;font-weight:700;color:#0f172a;min-height:52px}
+.tile .sub{font-size:11.5px;font-weight:600;color:#64748b;display:block;margin-top:2px}
+.tile img{width:44px;height:44px;object-fit:contain;border-radius:8px;background:#f8fafc;flex:0 0 auto}
+/* v1.19.0 - "add material brand view will ve small length box, like 2 to 3 brand again
+   alphabatically in one line" and the same for the products inside. auto-fit does the
+   deciding: a 390px phone gets 2 across, a laptop gets 3 or 4, and nothing is hard-coded
+   to a screen size that will be wrong on the next phone. */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px;margin-bottom:7px}
+.gtile{display:block;width:100%;text-align:left;background:#fff;border:1px solid #e2e8f0;border-radius:12px;
+  padding:9px 10px;cursor:pointer;font-size:13.5px;font-weight:800;color:#0f172a;min-height:56px;line-height:1.25}
+.gtile .sub{font-size:11px;font-weight:600;color:#64748b;display:block;margin-top:3px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:7px}
+/* He said "2 to 3 in one line", and he meant it as a maximum as well as a minimum. Left to
+   auto-fill a 1200px laptop fitted SEVEN brands across, which is a wall of text, not a shelf.
+   So: the phone works it out for itself (390px gives 2), and anything wider is pinned to 3. */
+@media(min-width:620px){.grid,.pgrid{grid-template-columns:repeat(3,1fr)}}
+.pcard{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:8px 9px}
+.pcard .pn{font-weight:800;font-size:13px;line-height:1.25}
+.pcard .pm{font-size:10.5px;color:#64748b;font-weight:600;margin-top:2px}
+.pcard img{width:100%;height:62px;object-fit:contain;border-radius:8px;background:#f8fafc;display:block}
+.pcard .step button{width:32px;height:34px;font-size:17px;border-radius:8px}
+.pcard .step input{width:100%;text-align:center;font-weight:800;padding:6px 2px}
+.pcard .step{gap:5px;margin-top:7px}
+.step{display:flex;align-items:center;gap:8px}
+.step button{width:42px;height:42px;border-radius:10px;border:1px solid #cbd5e1;background:#fff;font-size:20px;font-weight:800;cursor:pointer}
+.step input{width:74px;text-align:center;font-weight:800}
+.line{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid #f1f5f9}
+/* v1.6.1 - the paper book number: one narrow field pushed to the right.
+   v1.7.1 - his words: "show book no as Manual Challan No , in red highlighted , box sixze
+   is ok". The red lives on the LABEL and stays there - it is how the field is found, not a
+   warning that it is empty. The box keeps its size and does the empty/filled work itself. */
+.bookno{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:11px 0 2px}
+.bookno label{margin:0;font-size:11px;font-weight:800;letter-spacing:.02em;color:#b91c1c;
+  background:#fee2e2;border:1px solid #fecaca;border-radius:6px;padding:3px 8px;white-space:nowrap}
+/* 16px, not 14. Below 16px iOS zooms the whole page on focus and never zooms back out,
+   and this is the one field the godown types by hand on every single challan. */
+.bookno input{width:104px;flex:0 0 auto;text-align:center;font-size:16px;font-weight:800;
+  letter-spacing:.03em;padding:8px;border:1px solid #fca5a5;border-radius:8px}
+.bookno input.has{border-color:#86efac;background:#f0fdf4}
+.bookno span{width:14px;font-size:12px;color:#15803d}
+/* executive bands: a solid teal strip per man, tap to open or shut */
+.exec{margin:14px 0 4px;padding:11px 13px;background:#0f766e;color:#fff;border-radius:11px;font-weight:700;
+  font-size:14.5px;display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer}
+.exec .sub{font-size:11.5px;font-weight:600;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:999px;white-space:nowrap}
+.exec .car{font-size:13px;opacity:.85}
+</style>
+<style>
+/* ---- Service-specific, on top of the estate's shared look ---- */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0}
+.stat{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 4px;text-align:center}
+.stat .n{font-size:19px;font-weight:700;line-height:1.1}
+.stat .l{font-size:10px;color:#64748b;margin-top:2px}
+.stat.bad{border-color:#fecaca;background:#fef2f2}.stat.bad .n{color:#b91c1c}
+.stat.warn{border-color:#fde68a;background:#fffbeb}.stat.warn .n{color:#b45309}
+.sec{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#475569;margin:16px 0 6px}
+.sec.bad{color:#b91c1c}.sec.warn{color:#b45309}
+.card{background:#fff;border:1px solid #e2e8f0;border-left-width:4px;border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.card.over{border-left-color:#dc2626}.card.soon{border-left-color:#f59e0b}
+.card.unset{border-left-color:#cbd5e1}.card.sm{padding:8px 10px}
+.card .ttl{font-weight:650;font-size:14px}
+.card .meta{font-size:12px;color:#64748b;margin-top:1px}
+.right{text-align:right;flex:0 0 auto;margin-left:8px}
+.due{font-size:12px;font-weight:600;color:#64748b;white-space:nowrap}
+.due.over{color:#b91c1c}.due.soon{color:#b45309}
+.amt{font-weight:700;font-size:14px;white-space:nowrap}
+.pill{display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;margin-top:3px}
+.pill.amc{background:#ccfbf1;color:#0f766e}
+.pill.got{background:#dcfce7;color:#166534}
+.pill.due{background:#fee2e2;color:#b91c1c}
+.empty{background:#fff;border:1px dashed #cbd5e1;border-radius:10px;padding:18px;text-align:center;color:#64748b;font-size:13px}
+.empty.ok{border-color:#a7f3d0;background:#f0fdfa;color:#0f766e}
+.empty.sm{padding:10px;font-size:12px}
+.note{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;font-size:12px;color:#475569;margin:6px 0}
+.warn-t{color:#b45309}
+.kv{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:4px 12px;margin:10px 0}
+.kvr{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
+.kvr:last-child{border-bottom:0}.kvr span{color:#64748b}.kvr b{text-align:right}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px}
+.chip{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;color:#334155}
+.chip.on{background:#0f766e;border-color:#0f766e;color:#fff}
+.parts{background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden}
+.prow{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f1f5f9}
+.prow:last-child{border-bottom:0}
+.prow .qty{width:58px;text-align:center;padding:6px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px}
+.prow .x{border:0;background:transparent;color:#b91c1c;font-size:19px;line-height:1;padding:0 4px}
+.tot{display:flex;justify-content:space-between;align-items:center;background:#0f766e;color:#fff;
+     border-radius:10px;padding:11px 14px;margin:12px 0;font-size:15px}
+.tot b{font-size:18px}
+.amcbox{background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px;margin:10px 0;font-size:13px;color:#0f766e}
+.srch{margin:8px 0}.srch input{width:100%}
+.pad{padding:2px 2px 6px}
+.tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:#fff;border-top:1px solid #e2e8f0;
+      padding-bottom:env(safe-area-inset-bottom)}
+.nav{flex:1;border:0;background:transparent;padding:11px 2px;font-size:12px;font-weight:600;color:#64748b}
+.nav.on{color:#0f766e;box-shadow:inset 0 2px 0 #0f766e}
+.wire{color:#94a3b8}
+.acts.col{flex-direction:column}
+.gap{gap:8px}
+.login{max-width:340px;margin:12vh auto;padding:0 18px}
+.lbrand{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#64748b}
+.lsub{font-size:30px;font-weight:700;color:#0f766e;margin-bottom:16px}
+.lmsg{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:9px 11px;font-size:13px;margin-bottom:10px}
+.lfoot{margin-top:14px;font-size:11px;color:#94a3b8;text-align:center}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<!-- Nothing third-party is loaded here. An engineer opens this in a kitchen with one
+     bar of signal; it has to start from the copy on the phone and ask for nothing. -->
+<script>
+(function () {
+  "use strict";
+/* ==========================================================================
+   ENERGY WORLD - SERVICE
+   The app the engineer carries. The CRM has the whole service desk in it -
+   installations, AMC contracts, the spares price list, the daily due list -
+   and none of that is any use to a man standing in somebody's kitchen with a
+   spanner. This is that half, and nothing else.
+
+   IT IS THE SAME BOOK. Same name and PIN as the Team CRM, same server, the same
+   ServiceInstalls and ServiceVisits sheets in exactly the same row shape. A visit
+   recorded here is indistinguishable from one recorded in the CRM, and the CRM is
+   not changed in any way by this app existing. No new table was added: the tabs
+   this app writes to have been in the backend all along, waiting for a screen.
+
+   WHAT AN ENGINEER SEES. His own installations and his own visits, and nothing
+   else - that scoping is done on the SERVER, in teamFilterAll_, so another
+   engineer's work never reaches this phone at all.
+
+   TWO KINDS OF WORK, because the owner named two:
+     A SERVICE VISIT is against an installation - a purifier, an RO, a softener.
+       It has a cycle, it may be under AMC, and finishing it moves the next due
+       date forward. This is the work the daily 8am reminder is about.
+     A LABOUR JOB has no machine behind it. Plumbing work at a client's site,
+       billed for the labour and whatever material went in. Same visit row, no
+       installId, and never under AMC.
+
+   MONEY, AND WHEN NOT TO ASK FOR IT. The owner's rule: "AMC is prepaid, spot jobs
+   are paid on site." So this app works out whether there is anything to collect
+   BEFORE it offers a money screen. A routine service on a live AMC says so and
+   asks for nothing. Everything else asks once, plainly, and what he takes is
+   written into the same write-journal the Payment app uses - a receipt taken in a
+   basement with no signal is kept on the phone and goes up by itself.
+
+   Nothing here deletes anything, ever. A visit is a row added.
+   ========================================================================== */
+
+  var APP_VERSION = "1.0.0";
+  var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
+  var STORE = "ew_service_session";
+
+  var SNAP  = "ew_service_snap";
+  var BIO_KEY = "ew_service_bio";
+  var CRM_URL = "../team/";
+  var S = { user:"", pin:"", role:"", data:null, tab:"today", q:"", sheet:null, busy:false,
+            syncAt:0, fastAt:0, restAt:0, job:null, vis:null, pick:null, open:"" };
+
+  var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  var _toastT = null;
+  var _bfIds = ["ew_nag", "ew_sync_banner"];
+  var _bfWatch = false;
+  var IDB_NAME = "ew_store", IDB_STORE = "kv", _idbP = null;
+  var _big = {};
+  var API_TIMEOUT = 25000;
+  var _wire = [];
+  /* The per-action deadlines, the same table and the same reasoning as the other apps: these
+     calls are not alike, and a save that is abandoned turns into a man re-typing work the
+     server has already written. */
+  var API_MS_BY_ACTION = {
+    teamSave: 60000,
+    teamAuth: 45000,
+    teamGet: 60000, catalog: 60000, pdfHost: 240000, tgSend: 60000,
+    search: 45000, historicChallan: 45000,
+    challanMove: 60000
+  };
+  var BEAT_EVERY = 30000, _beatSeen = "", _beatOn = null, _beatBusy = false;
+  var JRN_KEY = "ew_service_journal_v1";
+  var _jrnSeq = 0, _jrnTold = false, _flushing = false, _flushDog = null;
+  var _flushFails = 0, _flushSkip = 0, _flushTick = null;
+  var BOOKSAY = "";
+  var CRASH_KEY = "ew_service_crash_v1";
+  var _pulling = null;
+  var REST_EVERY = 300000;
+  var NO_AREA = "(area not set)";
+  var _bookCl = null;
+
+  /* ============ WHAT COMES DOWN FIRST (v1.0.0) ============
+     The same staged pull the other apps use. For an engineer the whole working set is
+     small - his own installations, his own visits, the spares list and the client names -
+     so it all rides in the fast half and the screen is usable on the first reply. Only the
+     audit trail waits. */
+  var KEEP_FAST = ["installs","visits","spares","clients","areas"];
+  var KEEP_REST = ["audit"];
+  var KEEP = KEEP_FAST.concat(KEEP_REST);
+
+  /* Who may open this app at all. The three engineers are `service`; the owner is `admin`
+     and can see everything anywhere. Nobody else has any business on this screen - and the
+     server scopes the rows besides, so this list is the door, not the lock. */
+  var ALLOWED = ["admin","service"];
+
+  /* The kinds of work, and which of them an AMC is understood to cover.
+     The owner's rule, in one place so no screen can disagree with another. */
+  var JOB_TYPES = ["Service", "Salt refill", "Repair", "Installation", "Labour job"];
+  var AMC_COVERS = { "Service": true, "Salt refill": true };
+
+
+  /* ==EW-SPINE:BEGIN== lifted verbatim from the Challan app so the estate keeps ONE
+     copy of every shared rule. t_apps_agree.js fails if any of these drift apart. == */
+
+  function idbOpen() {
+      if (_idbP) return _idbP;
+      _idbP = new Promise(function (res) {
+        var done = false, fin = function (v) { if (!done) { done = true; res(v); } };
+        try {
+          if (!window.indexedDB) return fin(null);
+          var rq = indexedDB.open(IDB_NAME, 1);
+          rq.onupgradeneeded = function () {
+            try { rq.result.createObjectStore(IDB_STORE); } catch (e) {}
+          };
+          rq.onsuccess = function () { fin(rq.result); };
+          rq.onerror = function () { fin(null); };
+          rq.onblocked = function () { fin(null); };
+          /* Safari in private mode can leave open() hanging forever. The app must never wait
+             on storage to start - it falls back to localStorage and carries on. */
+          setTimeout(function () { fin(null); }, 2500);
+        } catch (e) { fin(null); }
+      });
+      return _idbP;
+    }
+
+  function idbSet(k, v) {
+      return idbOpen().then(function (db) {
+        if (!db) return false;
+        return new Promise(function (res) {
+          try {
+            var t = db.transaction(IDB_STORE, "readwrite");
+            t.objectStore(IDB_STORE).put(v, k);
+            t.oncomplete = function () { res(true); };
+            t.onerror = function () { res(false); };
+            t.onabort = function () { res(false); };
+          } catch (e) { res(false); }
+        });
+      }).catch(function () { return false; });
+    }
+
+  function idbGet(k) {
+      return idbOpen().then(function (db) {
+        if (!db) return null;
+        return new Promise(function (res) {
+          try {
+            var r = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(k);
+            r.onsuccess = function () { res(r.result === undefined ? null : r.result); };
+            r.onerror = function () { res(null); };
+          } catch (e) { res(null); }
+        });
+      }).catch(function () { return null; });
+    }
+
+  function idbDel(k) {
+      return idbOpen().then(function (db) {
+        if (!db) return false;
+        return new Promise(function (res) {
+          try {
+            var t = db.transaction(IDB_STORE, "readwrite");
+            t.objectStore(IDB_STORE).delete(k);
+            t.oncomplete = function () { res(true); };
+            t.onerror = function () { res(false); };
+          } catch (e) { res(false); }
+        });
+      }).catch(function () { return false; });
+    }
+
+  function bigGet(k) {
+      if (Object.prototype.hasOwnProperty.call(_big, k)) return _big[k];
+      try { return localStorage.getItem(k); } catch (e) { return null; }
+    }
+
+  function bigDel(k) { delete _big[k]; idbDel(k); try { localStorage.removeItem(k); } catch (e) {} }
+
+  function bigSetX(k, v) {
+      _big[k] = v;
+      return idbSet(k, v).then(function (ok) {
+        if (ok) { try { localStorage.removeItem(k); } catch (e) {} return true; }
+        try { localStorage.setItem(k, v); return true; } catch (e) { return false; }
+      }).catch(function () {
+        try { localStorage.setItem(k, v); return true; } catch (e) { return false; }
+      });
+    }
+
+  function bigSet(k, v) { bigSetX(k, v); return true; }
+
+  function bigPreload(keys) {
+      return Promise.all((keys || []).map(function (k) {
+        return idbGet(k).then(function (v) {
+          var legacy = null;
+          try { legacy = localStorage.getItem(k); } catch (e) {}
+          if (v == null && legacy != null) {
+            _big[k] = legacy;
+            return idbSet(k, legacy).then(function (ok) {
+              if (ok) { try { localStorage.removeItem(k); } catch (e) {} }
+            });
+          }
+          if (v != null) {
+            _big[k] = v;
+            if (legacy != null) { try { localStorage.removeItem(k); } catch (e) {} }
+          }
+          return null;
+        });
+      })).catch(function () { return null; });
+    }
+
+  function el(id) { return document.getElementById(id); }
+
+  function lower(s) { return String(s == null ? "" : s).trim().toLowerCase(); }
+
+  function val(id) { var e = el(id); return e ? String(e.value || "").trim() : ""; }
+
+  function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+    }
+
+  function num(v) {
+      if (typeof v === "number") return isFinite(v) ? v : 0;
+      var n = Number(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
+      return isFinite(n) ? n : 0;
+    }
+
+  function money(n) { return "₹" + Math.round(num(n)).toLocaleString("en-IN"); }
+
+  function today() {
+      var d = new Date();
+      return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+    }
+
+  function d10(v) { return String(v == null ? "" : v).slice(0,10); }
+
+  function dstr(ymd) {
+      if (!ymd) return "";
+      var p = String(ymd).slice(0,10).split("-");
+      if (p.length !== 3) return String(ymd);
+      return Number(p[2]) + " " + (MON[Number(p[1])-1] || "") + " " + p[0];
+    }
+
+  function alpha(a, b) {
+      return String(a == null ? "" : a).localeCompare(String(b == null ? "" : b),
+        undefined, { numeric: true, sensitivity: "base" });
+    }
+
+  function natEq(a, b) {
+      if (!a || !b) return false;
+      if (b._lid && a._lid === b._lid) return true;
+      if (b.id && a.id === b.id) return true;
+      if (b.challanNo && a.challanNo) return a.challanNo === b.challanNo;
+      if (b.returnNo && a.returnNo) return a.returnNo === b.returnNo;
+      return false;
+    }
+
+  function toast(m) {
+      watchBottom(); syncBottomVar();
+      var t = el("toast");
+      if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "toast"; document.body.appendChild(t); }
+      t.textContent = m; t.style.display = "block";
+      clearTimeout(_toastT); _toastT = setTimeout(function () { t.style.display = "none"; }, 3600);
+    }
+
+  function painted() {
+      try { return !!document.querySelector(".top"); } catch (e) { return false; }
+    }
+
+  function bottomFurniture() {
+      var vh = 0, h = 0;
+      try { vh = window.innerHeight || 0; } catch (e) { return 0; }
+      function upFrom(node) {
+        if (!node) return 0;
+        try { var r = node.getBoundingClientRect(); return r && r.height ? Math.ceil(vh - r.top) : 0; }
+        catch (e) { return 0; }
+      }
+      for (var i = 0; i < _bfIds.length; i++) h = Math.max(h, upFrom(document.getElementById(_bfIds[i])));
+      /* the tab bar is furniture too - a toast over the tab bar hides the button being pressed */
+      h = Math.max(h, upFrom(document.querySelector(".nav")));
+      return h > 0 ? h : 0;
+    }
+
+  function syncBottomVar() {
+      try { document.documentElement.style.setProperty("--ew-bottom", bottomFurniture() + "px"); } catch (e) {}
+      /* v1.10.0 - the held-work bar sits ON the tab bar, so it has to know how tall the tab
+         bar actually is. Measured, not guessed: it is taller on a phone with a home
+         indicator, which is most of the phones this runs on. */
+      try {
+        var nav = document.querySelector(".nav"), nh = 0;
+        if (nav) { var r = nav.getBoundingClientRect(); nh = r && r.height ? Math.ceil(r.height) : 0; }
+        document.documentElement.style.setProperty("--ew-nav", (nh || 56) + "px");
+      } catch (e) {}
+    }
+
+  function watchBottom() {
+      if (_bfWatch) return;
+      _bfWatch = true;
+      try {
+        window.addEventListener("resize", syncBottomVar);
+        window.addEventListener("orientationchange", function () { setTimeout(syncBottomVar, 250); });
+      } catch (e) {}
+      try {
+        if (window.ResizeObserver && window.MutationObserver) {
+          var ro = new ResizeObserver(function () { syncBottomVar(); });
+          var attach = function () {
+            var nodes = [document.querySelector(".nav")];
+            for (var i = 0; i < _bfIds.length; i++) nodes.push(document.getElementById(_bfIds[i]));
+            nodes.forEach(function (n) { if (n && !n.__ewRo) { n.__ewRo = 1; ro.observe(n); } });
+          };
+          attach();
+          new MutationObserver(function () { attach(); syncBottomVar(); })
+            .observe(document.body, { childList: true, subtree: true });
+        }
+      } catch (e) {}
+    }
+
+  function crashPut(where, e) {
+      var o = { at: Date.now(), where: where || "", ver: APP_VERSION, user: S.user || "",
+                msg: (e && e.message) ? String(e.message) : String(e),
+                stack: String((e && e.stack) || "").split("\n").slice(0, 4).join(" | ") };
+      try { localStorage.setItem(CRASH_KEY, JSON.stringify(o)); } catch (x) {}
+      return o;
+    }
+
+  function crashLast() {
+      try { return JSON.parse(localStorage.getItem(CRASH_KEY) || "null"); } catch (e) { return null; }
+    }
+
+  function crashScreen(o) {
+      o = o || {};
+      var held = 0; try { held = jrnCount(); } catch (e) {}
+      try {
+        el("root").innerHTML =
+          '<div class="login"><h1>Energy World</h1><p>Challan &amp; material return</p>' +
+          '<div class="loginmsg">This app could not draw its screen. Nothing has been lost — ' +
+          (held ? 'the ' + held + ' record(s) held on this phone are still here, and still go up.'
+                : 'nothing was waiting to go up.') +
+          '</div>' +
+          '<div class="muted" style="font-size:12px;line-height:1.5;margin:0 0 14px;word-break:break-word;' +
+               'background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px">' +
+            '<b>Read this out and it can be fixed:</b><br>' +
+            esc(o.msg || "no message") + '<br>' +
+            '<span style="color:#94a3b8">v' + esc(o.ver || APP_VERSION) + ' · ' + esc(o.where || "") +
+            (o.user ? ' · ' + esc(o.user) : '') + '</span></div>' +
+          '<button class="btn full" data-act="crash-retry">Try again</button>' +
+          '<div style="height:8px"></div>' +
+          '<button class="btn full ghost" data-act="crash-fresh">Get the latest version</button>' +
+          '<div class="muted" style="text-align:center;margin-top:14px">If it keeps happening, ' +
+          'show this screen to the office. v' + APP_VERSION + '</div></div>';
+      } catch (e) {
+        /* even the crash screen can fail if the document is in a bad way - then say the one
+           thing that always works, in the plainest markup there is */
+        try { document.body.innerHTML = '<div style="font:15px system-ui;padding:24px">' +
+          'Energy World could not open. Close the app and open it again.</div>'; } catch (x) {}
+      }
+    }
+
+  function crashHandle(where, e) {
+      var o = crashPut(where, e);
+      if (painted()) { try { toast("Something on that screen could not be drawn — tap ↻. (" + o.msg + ")"); } catch (x) {} }
+      else crashScreen(o);
+    }
+
+  function liveVersion() {
+      return fetch("index.html?v=" + Date.now(), { cache: "reload" })
+        .then(function (r) { return r.text(); })
+        .then(function (t) { return (t.match(/APP_VERSION\s*=\s*"([\d.]+)"/) || [])[1] || ""; })
+        .catch(function () { return ""; });      /* no signal is not a new version */
+    }
+
+  function refreshNow(loud) {
+      pull(true);
+      liveVersion().then(function (v) {
+        if (!v || v === APP_VERSION) { if (loud) toast("This is the latest version (v" + APP_VERSION + ")."); return; }
+        S.newVer = v;
+        try { render(); } catch (e) {}
+        toast("Version " + v + " is ready — tap Update above.");
+      });
+    }
+
+  function updateNow(prefix) {
+      var jobs = [];
+      try {
+        if (window.caches && caches.keys) jobs.push(caches.keys().then(function (ks) {
+          return Promise.all(ks.filter(function (k) { return k.indexOf(prefix) === 0; })
+                               .map(function (k) { return caches.delete(k); }));
+        }));
+      } catch (e) {}
+      var go = function () { location.replace(location.pathname + "?u=" + Date.now()); };
+      if (jobs.length) Promise.all(jobs).then(go, go); else go();
+      setTimeout(go, 2500);                      /* never hang on a stuck cache */
+    }
+
+  function newVerBar() {
+      if (!S.newVer) return "";
+      return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#0f766e;' +
+        'color:#fff;font-size:12.5px;font-weight:600">' +
+        '<span style="flex:1">Version ' + esc(S.newVer) + ' is ready. You are on ' + esc(APP_VERSION) + '.</span>' +
+        '<button class="btn sm" data-act="ver-go" style="background:#fff;color:#0f766e;border-color:#fff">Update</button>' +
+              /* .btn.ghost sets a WHITE background, so on this teal band "Later" was white on white -
+           invisible. Seen in a screenshot of the real thing, not in the markup. */
+        '<button class="btn sm ghost" data-act="ver-later" style="background:transparent;color:#fff;' +
+          'border-color:rgba(255,255,255,.55)">Later</button>' +
+        '</div>';
+    }
+
+  function regSW() {
+      if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} }
+    }
+
+  function wireNote(action, ms, bytes) {
+      _wire.unshift({ a: action, ms: Math.round(ms), b: bytes || 0, at: Date.now() });
+      if (_wire.length > 12) _wire.length = 12;
+      try { console.log("[EW wire] " + action + "  " + Math.round(ms) + "ms  " +
+                        Math.round((bytes || 0) / 1024) + "KB"); } catch (e) {}
+    }
+
+  function wireLast(action) {
+      for (var i = 0; i < _wire.length; i++) if (_wire[i].a === action) return _wire[i];
+      return null;
+    }
+
+  function wireSay() {
+      var g = wireLast("teamGet");
+      if (!g) return "";
+      return (Math.round(g.ms / 100) / 10) + "s \u00b7 " + Math.round(g.b / 1024) + " KB";
+    }
+
+  function api(action, extra, ms) {
+      var _t0 = Date.now();
+      var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
+      var limit = Number(ms) || API_MS_BY_ACTION[action] || API_TIMEOUT;
+      var ctrl = null, timer = null;
+      try { if (window.AbortController) ctrl = new AbortController(); } catch (e) { ctrl = null; }
+      var opts = { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body: JSON.stringify(body) };
+      if (ctrl) opts.signal = ctrl.signal;
+      var done = function () { if (timer) { clearTimeout(timer); timer = null; } };
+      return new Promise(function (res, rej) {
+        /* belt and braces: cancel the request if we can, and settle the promise either way */
+        timer = setTimeout(function () {
+          timer = null;
+          try { if (ctrl) ctrl.abort(); } catch (e) {}
+          rej(new Error("no answer in " + Math.round(limit / 1000) + "s"));
+        }, limit);
+        fetch(GAS, opts)
+          .then(function (r) {
+            return r.text().then(function (txt) {
+              wireNote(action, Date.now() - _t0, (txt || "").length);
+              var j = null;
+              try { j = JSON.parse(txt); } catch (e) { j = null; }
+              if (j) return j;
+              var head = String(txt || "").replace(/\s+/g, " ").slice(0, 60);
+              if (/<html|<!doctype/i.test(txt) && /sign in|signin|accounts\.google/i.test(txt)) {
+                throw new Error("the server asked this browser to sign in to Google");
+              }
+              if (/quota|exceeded|too many/i.test(txt)) throw new Error("Google Apps Script quota reached");
+              throw new Error("the server sent something that is not JSON (HTTP " + r.status +
+                              (head ? ", starts: " + head : "") + ")");
+            });
+          })
+          .then(function (j) { done(); res(j); })
+          .catch(function (e) {
+            done();
+            var msg = (e && e.message) ? String(e.message) : "";
+            /* the browser's own words, turned into the firm's */
+            if (/aborted|AbortError/i.test(msg) && /abort/i.test(msg)) msg = "no answer in " + Math.round(limit / 1000) + "s";
+            else if (/failed to fetch|networkerror|load failed/i.test(msg)) msg = "no signal \u2014 the phone could not reach the server";
+            rej(new Error(msg || "no answer from the server"));
+          });
+      });
+    }
+
+  function usableBook(r) {
+      return !!(r && r.ok && (Array.isArray(r.clients) || Array.isArray(r.challans)));
+    }
+
+  function bookSay(r) {
+      if (!r || typeof r !== "object") return "the server sent nothing at all";
+      var tabs = Object.keys(r).filter(function (k) { return Array.isArray(r[k]); });
+      return "server answered ok=" + String(r.ok) +
+        ", clients=" + ((r.clients && r.clients.length) || 0) +
+        ", tabs=[" + tabs.join(",") + "]" +
+        (r.error ? ", error=" + String(r.error) : "");
+    }
+
+  function getBook(only) {
+      var want = only || KEEP;
+      return api("teamGet", { only: want }).then(function (r) {
+        if (usableBook(r)) { BOOKSAY = ""; return r; }
+        BOOKSAY = bookSay(r);
+        /* the narrow ask came back unusable - try it the way the CRM does, which works */
+        return api("teamGet").then(function (r2) {
+          if (usableBook(r2)) {
+            BOOKSAY = "";
+            try { toast("The short list did not come back — pulled the whole book instead."); } catch (e) {}
+            return r2;
+          }
+          BOOKSAY = "asked for the named tabs: " + BOOKSAY + " — then asked for everything: " + bookSay(r2);
+          return r2;
+        }).catch(function () { return r; });
+      });
+    }
+
+  function mergeBook(r, tabs) {
+      if (!S.data) S.data = { ok: true };
+      S.data.ok = true;
+      if (r && r.user) S.data.user = r.user;
+      (tabs || []).forEach(function (k) { if (r && Array.isArray(r[k])) S.data[k] = r[k]; });
+      return S.data;
+    }
+
+  function slimBook(r) {
+      if (!r || typeof r !== "object") return r;
+      var out = { ok: r.ok };
+      if (r.user) out.user = r.user;
+      KEEP.forEach(function (k) { if (r[k]) out[k] = r[k]; });
+      return out;
+    }
+
+  function bookHas(r, tabs) {
+      if (!r) return false;
+      for (var i = 0; i < (tabs || []).length; i++) if (!Array.isArray(r[tabs[i]])) return false;
+      return (tabs || []).length > 0;
+    }
+
+  function restStale() { return !S.restAt || (Date.now() - S.restAt) > REST_EVERY; }
+
+  function bookAge(ts) {
+      ts = Number(ts) || 0;
+      if (!ts) return { txt: "never pulled onto this phone", tone: "bad" };
+      var ms = Date.now() - ts, d = new Date(ts);
+      var hhmm = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+      if (ms < 120000) return { txt: "updated just now", tone: "ok" };
+      /* same calendar day, not "within 24 hours" - a book from 11pm last night is yesterday's
+         book at 8am, and calling it "9 hours old" invites him to trust it */
+      var today = new Date();
+      var sameDay = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() &&
+                    d.getDate() === today.getDate();
+      if (sameDay) return { txt: "updated " + hhmm, tone: ms > 7200000 ? "warn" : "ok" };
+      var days = Math.floor(ms / 86400000);
+      if (days <= 1) return { txt: "from YESTERDAY " + hhmm, tone: "bad" };
+      return { txt: days + " DAYS OLD (" + hhmm + ")", tone: "bad" };
+    }
+
+  function bookAgeHtml(ts, busy) {
+      if (busy) return '<span class="sync">syncing&hellip;</span>';
+      var a = bookAge(ts);
+      /* v1.28.0 - and what the last pull cost, in the one place a man already looks to ask how
+         fresh this is. It is measured, not estimated: the seconds are wall clock around the
+         call and the KB is the length of the reply. */
+      var w = wireSay();
+      var tail = w ? '<span class="sync" style="opacity:.65"> \u00b7 ' + esc(w) + '</span>' : '';
+      if (a.tone === "ok") return '<span class="sync">' + esc(a.txt) + '</span>' + tail;
+      return '<span class="sync" style="font-weight:800;color:' +
+        (a.tone === "bad" ? "#fecaca" : "#fde68a") + '">' + esc(a.txt) + '</span>' + tail;
+    }
+
+  function forgetBook() {
+      S.data = null; S.syncAt = 0; S.fastAt = 0; S.restAt = 0;
+    }
+
+  function jrnLoad() {
+      try { var l = JSON.parse(bigGet(JRN_KEY) || "[]"); return Array.isArray(l) ? l : []; }
+      catch (e) { return []; }
+    }
+
+  function jrnStore(l) {
+      S.jrnCount = l.length;
+      bigSetX(JRN_KEY, JSON.stringify(l)).then(function (ok) {
+        S.jrnDurable = !!ok;
+        /* Told once, loudly, and only when it is actually true. A man who cannot be promised
+           his work is safe must hear it while he can still write it in the book. */
+        if (!ok && l.length && !_jrnTold) {
+          _jrnTold = true;
+          try { toast("This phone will not keep unsent work — write it in the paper book too, and refresh where there is signal."); } catch (e) {}
+        }
+        jrnPaint();
+      });
+      jrnPaint();
+    }
+
+  function jrnCount() { return jrnLoad().length; }
+
+  function jrnLanded(e, srv) {
+      if (!srv || !e || !e.row) return false;
+      var keys = Object.keys(e.row);
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (k.charAt(0) === "_") continue;                     /* local only, never sent */
+        if (k === "updatedAt" || k === "syncedAt") continue;   /* the server's own stamp */
+        var a = e.row[k], b = srv[k];
+        if (a === null || a === undefined) a = "";
+        if (b === null || b === undefined) b = "";
+        if (typeof a === "object" || typeof b === "object") {
+          var ja = "", jb = "";
+          try { ja = JSON.stringify(a); jb = JSON.stringify(b); } catch (x) { return false; }
+          if (ja !== jb) return false;
+        } else if (String(a).trim() !== String(b).trim()) return false;
+      }
+      return true;
+    }
+
+  function jrnMark(pk, err) {
+      var l = jrnLoad();
+      l.forEach(function (x) { if (x.pk === pk) { x.err = String(err || "").slice(0, 140); x.tries = (x.tries || 0) + 1; } });
+      jrnStore(l);
+    }
+
+  function jrnDrop(pk) { jrnStore(jrnLoad().filter(function (x) { return x.pk !== pk; })); }
+
+  function jrnPut(e) {
+      var l = jrnLoad().filter(function (x) {
+        if (x.pk === e.pk) return false;
+        if (e.kind === "row" && x.kind === "row" && x.tab === e.tab && natEq(x.row, e.row)) return false;
+        if (e.kind === "move" && x.kind === "move" && x.id === e.id) return false;
+        return true;
+      });
+      l.push(e); jrnStore(l); return e;
+    }
+
+  function jrnPatch(pk, fields) {
+      var l = jrnLoad();
+      l.forEach(function (x) { if (x.pk === pk) Object.assign(x, fields); });
+      jrnStore(l);
+    }
+
+  function jrnFor(rec) {
+      if (!rec) return null;
+      var l = jrnLoad();
+      for (var i = 0; i < l.length; i++) {
+        if (l[i].kind === "row" && natEq(l[i].row, rec)) return l[i];
+      }
+      return null;
+    }
+
+  function jrnReconcile() {
+      var l = jrnLoad();
+      if (!l.length || !S.data) return 0;
+      var keep = [], gone = 0;
+      l.forEach(function (e) {
+        if (e.kind === "move") {
+          var ch = (S.data.challans || []).filter(function (x) { return x && String(x.id) === String(e.id); })[0];
+          if (ch && String(ch.status || "") === e.to) { gone++; return; }
+          keep.push(e); return;
+        }
+        var arr = (S.data[e.tab] || []), srv = null;
+        for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { srv = arr[j]; break; } }
+        if (srv && jrnLanded(e, srv)) { gone++; return; }
+        keep.push(e);
+      });
+      if (gone) {
+        jrnStore(keep);
+        try { toast(gone === 1
+          ? "1 record that looked unsent was already on the server — cleared."
+          : gone + " records that looked unsent were already on the server — cleared."); } catch (e) {}
+      }
+      return gone;
+    }
+
+  function applyJournal() {
+      if (!S.data) return;
+      jrnLoad().forEach(function (e) {
+        if (e.kind !== "row") return;
+        var arr = (S.data[e.tab] = S.data[e.tab] || []), found = false;
+        for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { found = true; break; } }
+        if (!found) arr.push(e.row);
+      });
+      bust();
+    }
+
+  function jrnSend(e) {
+      if (e.kind === "move") return api("challanMove", { id: e.id, to: e.to });
+      var pre = Promise.resolve(null);
+      var needNo = (e.tab === "challans" && !String(e.row.challanNo || "").trim()) ||
+                   (e.tab === "returns"  && !String(e.row.returnNo  || "").trim());
+      if (needNo) {
+        if (!e.noFor) return Promise.resolve({ ok: false, error: "no client on this record to draw a number for" });
+        var act = e.tab === "challans" ? "challanNo" : "returnNo";
+        var fld = e.tab === "challans" ? "challanNo" : "returnNo";
+        pre = api(act, { client: e.noFor }).then(function (n) {
+          var no = (n && n[fld]) || "";
+          if (!no) throw new Error("the server did not give a number");
+          e.row[fld] = no;
+          jrnPatch(e.pk, { row: e.row });
+          return no;
+        });
+      }
+      return pre.then(function () {
+        var payload = Object.assign({}, e.row);
+        delete payload._lid;
+        return api("teamSave", { tab: e.tab, row: payload });
+      });
+    }
+
+  function jrnFlush() {
+      if (_flushing) return;
+      var l0 = jrnLoad();
+      if (!l0.length) return;
+      _flushing = true;
+      /* Two belts. Every call has its own deadline, and if the loop is somehow still not
+         finished long after the longest possible call, the flag is released anyway - a hung
+         call once froze a whole session's queue. */
+      if (_flushDog) clearTimeout(_flushDog);
+      _flushDog = setTimeout(function () { _flushing = false; _flushDog = null; }, 180000);
+      var okCount = 0, i = 0;
+      var stop = function () {
+        _flushing = false;
+        if (_flushDog) { clearTimeout(_flushDog); _flushDog = null; }
+        try { render(); } catch (e) {}
+        if (!jrnCount()) { if (okCount) toast("Everything held on this phone is now saved."); }
+        else if (okCount) toast(okCount + " saved. " + jrnCount() + " still held — the bar shows the reason.");
+      };
+      var step = function () {
+        var l = jrnLoad();
+        if (i >= l.length) { stop(); return; }
+        var e = l[i];
+        jrnSend(e).then(function (r) {
+          if (r && r.ok) {
+            if (e.kind === "row") {
+              var arr = (S.data && S.data[e.tab]) || [];
+              for (var j = 0; j < arr.length; j++) {
+                if (arr[j] && natEq(arr[j], e.row)) { Object.assign(arr[j], r.row || e.row); break; }
+              }
+            } else if (e.kind === "move" && S.data) {
+              var cs = S.data.challans || [];
+              for (var k = 0; k < cs.length; k++) {
+                if (cs[k] && String(cs[k].id) === String(e.id)) {
+                  cs[k].status = e.to;
+                  if (e.to === "Received") cs[k].receiptReceived = "Y";
+                  break;
+                }
+              }
+            }
+            bust(); jrnDrop(e.pk); okCount++;   /* the list shifted left - same index is the next one */
+          } else {
+            jrnMark(e.pk, (r && r.error) || "the server refused it"); i++;
+          }
+          step();
+        }).catch(function (err) {
+          /* The real reason, kept. "network error" for everything is how a healthy connection
+             came to be blamed for a timeout in the CRM for eight releases. */
+          jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
+          i++; step();
+        });
+      };
+      step();
+    }
+
+  function flushSoon() {
+      if (!jrnCount()) { _flushFails = 0; _flushSkip = 0; return; }
+      try { if (navigator && navigator.onLine === false) return; } catch (e) {}
+      if (_flushSkip > 0) { _flushSkip--; return; }
+      var before = jrnCount();
+      try { jrnFlush(); } catch (e) {}
+      setTimeout(function () {
+        if (jrnCount() < before) { _flushFails = 0; _flushSkip = 0; }
+        else { _flushFails = Math.min(_flushFails + 1, 3); _flushSkip = Math.pow(2, _flushFails) - 1; }
+      }, 8000);
+    }
+
+  function startFlushTicker() {
+      if (_flushTick) return;
+      _flushTick = setInterval(flushSoon, 45000);
+      try {
+        document.addEventListener("visibilitychange", function () { if (!document.hidden) flushSoon(); });
+        window.addEventListener("online", flushSoon);
+      } catch (e) {}
+      flushSoon();
+    }
+
+  function jrnPaint() {
+      var host = document.getElementById("ew_sync_banner");
+      if (!host) return;
+      var l = jrnLoad();
+      var wrap = document.querySelector(".wrap");
+      if (!l.length) {
+        host.style.display = "none"; host.innerHTML = "";
+        if (wrap) wrap.style.paddingBottom = "";
+        return;
+      }
+      /* the bar would otherwise cover the bottom of the list, and the bottom of the list is
+         where this morning's challan is */
+      if (wrap) wrap.style.paddingBottom = "150px";
+      var err = "";
+      for (var i = 0; i < l.length; i++) if (l[i].err) { err = l[i].err; break; }
+      host.style.display = "block";
+      host.innerHTML =
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-weight:800">' + l.length + ' ' + (l.length === 1 ? "record is" : "records are") +
+              ' held on this phone' + (S.jrnDurable === false ? ' <span style="opacity:.85">(and this phone will not keep them)</span>' : '') + '</div>' +
+            '<div style="opacity:.9;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
+              esc(err || "They will go up by themselves when there is signal.") + '</div>' +
+          '</div>' +
+          '<button class="btn sm" data-act="jrn-retry" style="background:#fff;color:#7c2d12;flex:none">Try now</button>' +
+        '</div>';
+    }
+
+  function saveRow(tab, row, opts) {
+      /* v1.10.0 - JOURNAL FIRST, THEN THE SERVER. Never the other way round: the whole point
+         is that the record survives this tab being discarded one second after the tap.
+         This never rejects. It resolves { ok, row, held } - held meaning it is safe on the
+         device but the server has not confirmed it, which is a different thing from saved and
+         a different thing from lost, and every caller now says which of the three it is. */
+      opts = opts || {};
+      var r2 = Object.assign({}, row);
+      if (!String(r2.id || "").trim() && !r2._lid) r2._lid = "L-" + Date.now() + "-" + (++_jrnSeq) + "-" + Math.floor(Math.random() * 1000000);
+      var e = jrnPut({ pk: "P-" + Date.now() + "-" + (++_jrnSeq), kind: "row", tab: tab, row: r2,
+                       noFor: opts.noFor || "", by: S.user || "", at: Date.now(), err: "", tries: 0 });
+      return jrnSend(e).then(function (r) {
+        if (r && r.ok) { jrnDrop(e.pk); return { ok: true, row: r.row || r2, held: false }; }
+        jrnMark(e.pk, (r && r.error) || "the server refused it");
+        return { ok: true, row: e.row, held: true, err: (r && r.error) || "the server refused it" };
+      }).catch(function (err) {
+        jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
+        return { ok: true, row: e.row, held: true, err: (err && err.message) || "no answer from the server" };
+      });
+    }
+
+  function saveRaw(tab, row) { return api("teamSave", { tab: tab, row: row }); }
+
+  function snapSave() {
+      bigSet(SNAP + "_" + S.user, JSON.stringify({ at: Date.now(), d: S.data }));
+    }
+
+  function snapLoad() {
+      try {
+        var o = JSON.parse(bigGet(SNAP + "_" + S.user) || "null");
+        return o && o.d ? o.d : null;
+      } catch (e) { return null; }
+    }
+
+  function beatMark(st) { if (st) _beatSeen = String(st); }
+
+  function beat() {
+      if (_beatBusy || beatSkip()) return;
+      _beatBusy = true;
+      api("teamStamp").then(function (r) {
+        _beatBusy = false;
+        var st = (r && r.stamp) ? String(r.stamp) : "";
+        if (!st) return;
+        if (!_beatSeen) { _beatSeen = st; return; }     /* baseline, not news */
+        if (st === _beatSeen) return;
+        _beatSeen = st;
+        if (beatSkip()) return;                          /* a form opened while we asked */
+        beatGo();
+      }).catch(function () { _beatBusy = false; });
+    }
+
+  function beatStart() { if (!_beatOn) _beatOn = setInterval(beat, BEAT_EVERY); }
+
+  function clientHay(c) {
+      if (!c) return "";
+      if (c.__hay !== undefined) return c.__hay;
+      var parts = ["name", "shortName", "mobile", "mobile2", "location", "area",
+                   "plumber", "architect", "builder", "pmc", "address", "notes"]
+        .map(function (k) { return String(c[k] || ""); });
+      try {
+        var b = JSON.parse(c.billingJson || "[]");
+        if (Object.prototype.toString.call(b) === "[object Array]") {
+          b.forEach(function (x) { parts.push(String((x && x.name) || ""), String((x && x.gstin) || "")); });
+        }
+      } catch (e) {}
+      var hay = parts.join(" \u0001 ").toLowerCase();
+      try { Object.defineProperty(c, "__hay", { value: hay, enumerable: false, configurable: true }); }
+      catch (e) {}
+      return hay;
+    }
+
+  function clientByName(n) {
+      var k = lower(n);
+      return clients().filter(function (c) { return lower(c.name) === k; })[0] || null;
+    }
+
+  function clients() {
+      var real = (S.data && S.data.clients) || [];
+      if (real.length) return real;
+      return clientsFromBook();
+    }
+
+  function notForYou(name, role) {
+      return (name ? name + ", you are signed in as " : "You are signed in as ") +
+        "\u201c" + (role || "no role set") + "\u201d. " +
+        "The Challan app is for admin, accounts and godown only. Ask the owner to change your " +
+        "role in the team sheet \u2014 nothing else controls it.";
+    }
+
+  function loginWhy(e) {
+      var m = (e && e.message) ? String(e.message) : "";
+      if (/no signal/i.test(m))
+        return "No signal \u2014 this phone could not reach the server. Check the data connection, then try again.";
+      if (/no answer in/i.test(m))
+        return "The server did not answer within " + (m.replace(/[^0-9]/g, "") || "45") +
+               " seconds. It is usually busy, not down \u2014 try once more.";
+      if (/sign in to Google/i.test(m))
+        return "The server asked this phone to sign in to Google. The app\u2019s address needs " +
+               "republishing \u2014 tell the owner, nobody can sign in until then.";
+      if (/quota/i.test(m))
+        return "Google has stopped the server for today (quota reached). Tell the owner.";
+      if (/not JSON/i.test(m))
+        return "The server answered with something the app cannot read. Tell the owner and read " +
+               "out this line: " + m;
+      return m || "Could not sign in. Try again.";
+    }
+
+  function authOnce(left) {
+      return api("teamAuth", { ua: navigator.userAgent }).catch(function (e) {
+        var m = (e && e.message) ? String(e.message) : "";
+        if (left > 0 && /no signal/i.test(m)) {
+          return new Promise(function (r) { setTimeout(r, 1500); })
+            .then(function () { return authOnce(left - 1); });
+        }
+        throw e;
+      });
+    }
+
+  function signOut() {
+      try { localStorage.removeItem(STORE); } catch (e) {}
+      try { localStorage.removeItem(BIO_KEY); } catch (e) {}
+      try { bigDel(SNAP + "_" + S.user); } catch (e) {}
+      S.user = ""; S.pin = ""; S.role = ""; forgetBook(); S.sheet = null; S.ch = null; S.rt = null;
+      renderLogin("Signed out on this phone.");
+    }
+
+  function shrink(dataUrl, maxPx, quality) {
+      return new Promise(function (res, rej) {
+        var img = new Image();
+        img.onload = function () {
+          var w = img.width, h = img.height, m = Math.max(w, h);
+          if (m > maxPx) { w = Math.round(w * maxPx / m); h = Math.round(h * maxPx / m); }
+          var cv = document.createElement("canvas");
+          cv.width = w; cv.height = h;
+          cv.getContext("2d").drawImage(img, 0, 0, w, h);
+          res({ url: cv.toDataURL("image/jpeg", quality || 0.72), w: w, h: h });
+        };
+        img.onerror = function () { rej(new Error("bad image")); };
+        img.src = dataUrl;
+      });
+    }
+
+  function fromB64u(str) {
+      var s2 = String(str).replace(/-/g, "+").replace(/_/g, "/");
+      var bin = atob(s2), a = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+      return a;
+    }
+
+
+  function mintId(p) {
+    mintId.n = (mintId.n || 0) + 1;
+    return String(p) + "-" + mintId.n + "-" + Date.now() + "-" + Math.floor(Math.random() * 1000000);
+  }
+  /* ==EW-SPINE:END== */
+
+
+  /* ================= WHAT THE ENGINEER IS LOOKING AT =================
+     One place decides what an installation IS and when it is due, because the
+     landing screen, the job card and the daily reminder must never disagree
+     about the same machine. */
+  /* MAY_DIFFER: the Challan app recovers client names from CHALLANS when the clients tab
+     comes back empty. This app has no challans; it recovers them from the installations the
+     engineer already holds — the same idea (never be unable to name a customer you are
+     standing in front of), applied to the work this app actually has. */
+  function clientsFromBook() {
+    var seen = {}, out = [];
+    ((S.data && S.data.installs) || []).forEach(function (x) {
+      var n = String(x.client || "").trim();
+      if (!n || seen[lower(n)]) return;
+      seen[lower(n)] = 1;
+      out.push({ id: "", name: n, location: x.area || "", mobile: x.mobile || "", address: x.address || "" });
+    });
+    return out;
+  }
+
+  function installs() { return (S.data && S.data.installs) || []; }
+  function visits()   { return (S.data && S.data.visits)   || []; }
+  function spares()   { return (S.data && S.data.spares)   || []; }
+
+  /* Byte-identical to the CRM's, same reason. */
+  function installById(id) { return S.data.installs.filter(function (x) { return x.id === id; })[0] || null; }
+  /* Every visit ever recorded against this machine, newest first. */
+  function visitsFor(instId) {
+    var k = String(instId == null ? "" : instId);
+    if (!k) return [];
+    return visits().filter(function (v) { return String(v.installId || "") === k; })
+      .slice().sort(function (a, b) { return String(b.date || "") < String(a.date || "") ? -1 : 1; });
+  }
+
+  /* ============ DUE, OVERDUE, AND NOT KNOWN ============
+     Three states, not two. A machine with no nextService date is not "due today" and it
+     is not "fine" either - it is a machine nobody has set a cycle for, and saying so is
+     the only honest answer. The app must not assert what it cannot know. */
+  function dueDays(ins) {
+    var d = String((ins && ins.nextService) || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;         /* not known */
+    var t = new Date(today() + "T00:00:00").getTime();
+    var n = new Date(d + "T00:00:00").getTime();
+    if (!isFinite(n)) return null;
+    return Math.round((n - t) / 86400000);                   /* negative = overdue */
+  }
+  function dueBand(ins) {
+    var n = dueDays(ins);
+    if (n === null) return "unset";
+    if (n < 0) return "over";
+    if (n <= 7) return "soon";
+    return "later";
+  }
+  function dueSay(ins) {
+    var n = dueDays(ins);
+    if (n === null) return "no service date set";
+    if (n < -1) return Math.abs(n) + " days overdue";
+    if (n === -1) return "1 day overdue";
+    if (n === 0) return "due today";
+    if (n === 1) return "due tomorrow";
+    return "due in " + n + " days";
+  }
+
+  /* ============ IS THIS MACHINE UNDER AMC, TODAY? ============
+     An amcType with no end date is treated as live: the office set a contract and did not
+     record when it finishes, and refusing to honour it at a customer's door is the wrong
+     way round. An end date in the past is expired, and says so. */
+  function amcState(ins) {
+    if (!ins) return { live: false, say: "" };
+    var t = String(ins.amcType || "").trim();
+    if (!t || /^none$/i.test(t)) return { live: false, say: "No AMC" };
+    var end = String(ins.amcEnd || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) return { live: true, say: t + " (no end date recorded)" };
+    if (end < today()) return { live: false, say: t + " expired " + dstr(end) };
+    var days = Math.round((new Date(end + "T00:00:00").getTime() - new Date(today() + "T00:00:00").getTime()) / 86400000);
+    return { live: true, say: t + " to " + dstr(end), endsIn: days };
+  }
+  /* THE MONEY QUESTION, ASKED ONCE AND IN ONE PLACE.
+     "AMC is prepaid, spot jobs are paid on site." So a routine service or a salt refill on
+     a live contract is already paid for and this app must not ask the customer for money.
+     A repair, an installation or a labour job is not covered, whatever the contract says. */
+  function amcCovers(ins, type) {
+    if (!ins) return false;                       /* a labour job has no machine and no AMC */
+    if (!AMC_COVERS[String(type || "")]) return false;
+    return amcState(ins).live;
+  }
+
+  /* The engineer's own day. Overdue first, then due soon - the order he would walk it. */
+  function dueList() {
+    return installs().filter(function (x) {
+      if (String(x.status || "").toLowerCase() === "closed") return false;
+      var b = dueBand(x);
+      return b === "over" || b === "soon";
+    }).sort(function (a, b) {
+      var da = dueDays(a), db = dueDays(b);
+      return (da === null ? 9999 : da) - (db === null ? 9999 : db);
+    });
+  }
+  /* Contracts running out. Not a job - a conversation the office wants to have, and the
+     engineer is the one standing in front of the customer. */
+  function amcEnding(withinDays) {
+    var w = withinDays || 45;
+    return installs().filter(function (x) {
+      var a = amcState(x);
+      return a.live && typeof a.endsIn === "number" && a.endsIn >= 0 && a.endsIn <= w;
+    }).sort(function (a, b) { return amcState(a).endsIn - amcState(b).endsIn; });
+  }
+  function myVisits() {
+    return visits().slice().sort(function (a, b) {
+      var x = String(a.date || a.createdAt || ""), y = String(b.date || b.createdAt || "");
+      return y < x ? -1 : 1;
+    });
+  }
+
+  /* ============ WHAT A VISIT COSTS ============
+     One arithmetic, used by the form, the card and the history line. Every figure is a
+     number the engineer typed or a price from the spares list - nothing is inferred. */
+  function partsTotal(rows) {
+    return (rows || []).reduce(function (s, r) { return s + num(r.qty) * num(r.price); }, 0);
+  }
+  /* Byte-identical to the CRM's. Two screens must never price one visit differently, and
+     t_apps_agree.js holds them to it.
+     NOTE, deliberately not fixed inside a Service release: both would be better using this
+     estate's own num(), which reads "500/-" out of a spreadsheet cell where Number() reads
+     zero. Changing the CRM's money arithmetic is its own decision, not a rider on a new app. */
+  function visitTotal(v) { return (Number(v.visitCharge) || 0) + (Number(v.saltAmt) || 0) + (Number(v.partsAmt) || 0); }
+  function spareByCode(code) {
+    var k = lower(code);
+    var a = spares();
+    for (var i = 0; i < a.length; i++) if (lower(a[i].code) === k) return a[i];
+    return null;
+  }
+  function spareCats() {
+    var seen = {}, out = [];
+    spares().forEach(function (s) {
+      var c = String(s.category || "Other").trim() || "Other";
+      if (!seen[c]) { seen[c] = 1; out.push(c); }
+    });
+    return out.sort(alpha);
+  }
+
+
+  /* ================= SCREENS ================= */
+
+  function header() {
+    var age = bookAgeHtml(S.syncAt, S.busy);
+    return '<div class="top">' +
+      '<div class="row" style="align-items:flex-start">' +
+        '<div class="grow">' +
+          '<div class="brand">Service</div>' +
+          '<div class="who">' + esc(S.user) + ' &middot; ' + esc(S.role) +
+            (wireSay() ? ' &middot; <span class="wire">' + esc(wireSay()) + '</span>' : '') + '</div>' +
+          '<div class="who">' + age + '</div>' +
+        '</div>' +
+        '<button class="icon" data-act="refresh" title="Fetch the book again">&#8635;</button>' +
+        '<button class="icon" data-act="menu" title="Menu">&#9776;</button>' +
+      '</div></div>';
+  }
+
+  function statBar() {
+    var over = installs().filter(function (x) { return dueBand(x) === "over"; }).length;
+    var soon = installs().filter(function (x) { return dueBand(x) === "soon"; }).length;
+    var unset = installs().filter(function (x) { return dueBand(x) === "unset"; }).length;
+    var amc = installs().filter(function (x) { return amcState(x).live; }).length;
+    return '<div class="stats">' +
+      '<div class="stat' + (over ? ' bad' : '') + '"><div class="n">' + over + '</div><div class="l">Overdue</div></div>' +
+      '<div class="stat' + (soon ? ' warn' : '') + '"><div class="n">' + soon + '</div><div class="l">Due this week</div></div>' +
+      '<div class="stat"><div class="n">' + amc + '</div><div class="l">Under AMC</div></div>' +
+      '<div class="stat"><div class="n">' + installs().length + '</div><div class="l">Machines</div></div>' +
+      '</div>' +
+      (unset ? '<div class="note">' + unset + ' machine' + (unset === 1 ? '' : 's') +
+        ' with no service date set. The office sets the cycle in the CRM — until then this app ' +
+        'cannot say when they are due, and does not pretend to.</div>' : '');
+  }
+
+  /* ---- one installation, as a row ---- */
+  function insRow(ins) {
+    var band = dueBand(ins), a = amcState(ins);
+    var cls = band === "over" ? "over" : band === "soon" ? "soon" : band === "unset" ? "unset" : "";
+    return '<div class="card ' + cls + '" data-act="job" data-id="' + esc(ins.id) + '">' +
+      '<div class="row"><div class="grow">' +
+        '<div class="ttl">' + esc(ins.client || "(no name)") + '</div>' +
+        '<div class="meta">' + esc([ins.product, ins.model].filter(Boolean).join(" · ") || "machine not named") +
+          (ins.serial ? ' &middot; #' + esc(ins.serial) : '') + '</div>' +
+        '<div class="meta">' + esc(ins.area || NO_AREA) + (ins.mobile ? ' &middot; ' + esc(ins.mobile) : '') + '</div>' +
+      '</div>' +
+      '<div class="right">' +
+        '<div class="due ' + cls + '">' + esc(dueSay(ins)) + '</div>' +
+        (a.live ? '<div class="pill amc">AMC</div>' : '') +
+      '</div></div></div>';
+  }
+
+  /* ---- TODAY: what he should do, in the order he would walk it ---- */
+  function viewToday() {
+    var due = dueList(), ending = amcEnding(45);
+    var h = statBar();
+    if (!installs().length) {
+      h += '<div class="empty"><b>No machines on this phone yet.</b><br>' +
+        'The office registers an installation in the CRM and assigns it to you. ' +
+        'Once it is assigned, it appears here on the next refresh.</div>';
+      return h;
+    }
+    if (!due.length) {
+      h += '<div class="empty ok"><b>Nothing due today.</b><br>' +
+        'Every machine assigned to you is inside its service cycle.</div>';
+    } else {
+      var over = due.filter(function (x) { return dueBand(x) === "over"; });
+      var soon = due.filter(function (x) { return dueBand(x) === "soon"; });
+      if (over.length) h += '<h3 class="sec bad">Overdue — ' + over.length + '</h3>' + over.map(insRow).join("");
+      if (soon.length) h += '<h3 class="sec warn">Due this week — ' + soon.length + '</h3>' + soon.map(insRow).join("");
+    }
+    if (ending.length) {
+      h += '<h3 class="sec">AMC ending soon — ' + ending.length + '</h3>' +
+        '<div class="note">Worth a word with the customer while you are standing there. ' +
+        'The office renews it in the CRM.</div>' +
+        ending.map(function (x) {
+          var a = amcState(x);
+          return '<div class="card" data-act="job" data-id="' + esc(x.id) + '">' +
+            '<div class="row"><div class="grow"><div class="ttl">' + esc(x.client || "") + '</div>' +
+            '<div class="meta">' + esc(a.say) + '</div></div>' +
+            '<div class="right"><div class="due soon">' + a.endsIn + ' days</div></div></div></div>';
+        }).join("");
+    }
+    return h;
+  }
+
+  /* ---- ALL MACHINES, searchable ---- */
+  function viewJobs() {
+    var q = lower(S.q);
+    var list = installs().filter(function (x) {
+      if (!q) return true;
+      return lower([x.client, x.area, x.product, x.model, x.serial, x.mobile, x.address].join(" ")).indexOf(q) >= 0;
+    }).sort(function (a, b) { return alpha(a.client, b.client); });
+    return searchBox("Search a customer, area, model or serial") +
+      (list.length
+        ? '<div class="meta pad">' + list.length + ' of ' + installs().length + '</div>' + list.map(insRow).join("")
+        : '<div class="empty">Nothing matches that.</div>');
+  }
+
+  /* ---- MY HISTORY ---- */
+  function viewHistory() {
+    var list = myVisits();
+    if (!list.length) return '<div class="empty">No visits recorded yet. ' +
+      'Everything you finish shows up here, and stays.</div>';
+    var money = list.reduce(function (s, v) { return s + num(v.collected); }, 0);
+    var h = '<div class="stats">' +
+      '<div class="stat"><div class="n">' + list.length + '</div><div class="l">Visits</div></div>' +
+      '<div class="stat"><div class="n">' + esc(money9(money)) + '</div><div class="l">Collected</div></div>' +
+      '</div>';
+    return h + list.map(function (v) {
+      var ins = installById(v.installId);
+      return '<div class="card">' +
+        '<div class="row"><div class="grow">' +
+        '<div class="ttl">' + esc(v.client || (ins && ins.client) || "(no name)") + '</div>' +
+        '<div class="meta">' + esc(v.type || "visit") + ' &middot; ' + esc(dstr(v.date)) +
+          (v.partsUsed ? ' &middot; ' + esc(v.partsUsed) : '') + '</div>' +
+        (v.notes ? '<div class="meta">' + esc(v.notes) + '</div>' : '') +
+        '</div><div class="right">' +
+        '<div class="amt">' + esc(money9(visitTotal(v))) + '</div>' +
+        (num(v.collected) ? '<div class="pill got">took ' + esc(money9(v.collected)) + '</div>' : '') +
+        (num(v.balance) > 0 ? '<div class="pill due">' + esc(money9(v.balance)) + ' left</div>' : '') +
+        '</div></div></div>';
+    }).join("");
+  }
+
+  function money9(n) { return money(num(n)); }
+
+  function searchBox(ph) {
+    return '<div class="srch"><input id="q" placeholder="' + esc(ph) + '" value="' + esc(S.q) + '"/></div>';
+  }
+
+
+  /* ================= THE MACHINE, AND ITS HISTORY ================= */
+  function sheetJob(ins) {
+    if (!ins) return "";
+    var a = amcState(ins), band = dueBand(ins), hist = visitsFor(ins.id);
+    var h = '<h2>' + esc(ins.client || "(no name)") + '</h2>' +
+      '<div class="muted">' + esc([ins.product, ins.model].filter(Boolean).join(" · ") || "machine not named") +
+        (ins.serial ? ' &middot; serial ' + esc(ins.serial) : '') + '</div>';
+
+    h += '<div class="kv">' +
+      kv("Area", ins.area || NO_AREA) +
+      kv("Address", ins.address || "—") +
+      kv("Mobile", ins.mobile || "—") +
+      kv("Installed", ins.installDate ? dstr(ins.installDate) : "—") +
+      kv("Water", ins.waterQuality || "—") +
+      kv("Cycle", ins.cycleDays ? num(ins.cycleDays) + " days" : "not set") +
+      kv("Last service", ins.lastService ? dstr(ins.lastService) : "none recorded") +
+      kv("Next due", ins.nextService ? dstr(ins.nextService) + " — " + dueSay(ins) : "not set") +
+      kv("AMC", a.say || "No AMC") +
+      '</div>';
+
+    if (ins.mobile) {
+      var n = String(ins.mobile).replace(/\D/g, ""); if (n.length === 10) n = "91" + n;
+      h += '<div class="row gap">' +
+        '<a class="btn gry grow" href="tel:' + esc(ins.mobile) + '">Call</a>' +
+        '<a class="btn gry grow" target="_blank" rel="noopener" href="https://wa.me/' + esc(n) + '">WhatsApp</a>' +
+        '</div>';
+    }
+
+    h += '<div class="acts"><button class="btn grow" data-act="do-visit" data-id="' + esc(ins.id) + '">' +
+      'Record a visit</button></div>';
+
+    h += '<h3 class="sec">Service history</h3>';
+    h += hist.length
+      ? hist.map(function (v) {
+          return '<div class="card sm"><div class="row"><div class="grow">' +
+            '<div class="ttl">' + esc(v.type || "visit") + ' &middot; ' + esc(dstr(v.date)) + '</div>' +
+            (v.partsUsed ? '<div class="meta">' + esc(v.partsUsed) + '</div>' : '') +
+            (v.notes ? '<div class="meta">' + esc(v.notes) + '</div>' : '') +
+            '</div><div class="right"><div class="amt">' + esc(money9(visitTotal(v))) + '</div>' +
+            (num(v.collected) ? '<div class="pill got">took ' + esc(money9(v.collected)) + '</div>' : '') +
+            '</div></div></div>';
+        }).join("")
+      : '<div class="empty sm">No visit has been recorded against this machine yet. ' +
+        'That is not the same as never serviced — work done before this app existed is not here.</div>';
+
+    h += '<div class="acts" style="margin-top:14px"><button class="btn gry grow" data-act="close">Close</button></div>';
+    return h;
+  }
+  function kv(k, v) { return '<div class="kvr"><span>' + esc(k) + '</span><b>' + esc(v) + '</b></div>'; }
+
+  /* ================= RECORDING WHAT WAS DONE =================
+     The one form this app exists for. It is deliberately in this order: what kind of work,
+     what went into it, what it comes to, and only then - if there is anything to take -
+     what was taken. */
+  function sheetVisit(v) {
+    var ins = v.installId ? installById(v.installId) : null;
+    var covered = amcCovers(ins, v.type);
+    var pTot = partsTotal(v.parts);
+    var total = num(v.visitCharge) + num(v.saltAmt) + pTot;
+
+    var h = '<h2>' + (ins ? esc(ins.client || "") : 'Labour job') + '</h2>' +
+      '<div class="muted">' + (ins
+        ? esc([ins.product, ins.model].filter(Boolean).join(" · ") || "machine not named")
+        : 'Plumbing work with no machine behind it') + '</div>';
+
+    /* --- what kind of work --- */
+    h += '<label>What was done</label><div class="chips">' +
+      JOB_TYPES.filter(function (t) { return ins ? t !== "Labour job" : t === "Labour job"; })
+        .map(function (t) {
+          return '<button class="chip' + (v.type === t ? ' on' : '') + '" data-act="v-type" data-t="' + esc(t) + '">' +
+            esc(t) + '</button>';
+        }).join("") + '</div>';
+
+    /* --- who it is for, when there is no machine --- */
+    if (!ins) {
+      h += '<label>Customer</label>' + clientPicker(v.client) +
+        '<label>Area</label><input id="v_area" value="' + esc(v.area || "") + '" placeholder="Which area"/>';
+    }
+
+    h += '<label>Date</label><input id="v_date" type="date" value="' + esc(v.date || today()) + '"/>';
+
+    /* --- salt, only where salt is a thing --- */
+    if (v.type === "Salt refill") {
+      h += '<div class="grid2">' +
+        '<div><label>Salt bags</label><input id="v_bags" inputmode="numeric" value="' + esc(v.saltBags || "") + '"/></div>' +
+        '<div><label>Salt amount</label><input id="v_saltamt" inputmode="numeric" value="' + esc(v.saltAmt || "") + '"/></div>' +
+        '</div>';
+    }
+
+    /* --- parts --- */
+    h += '<label>Parts used</label>';
+    h += (v.parts && v.parts.length)
+      ? '<div class="parts">' + v.parts.map(function (p, i) {
+          return '<div class="prow"><div class="grow"><b>' + esc(p.name) + '</b>' +
+            '<div class="meta">' + esc(p.code || "") + ' &middot; ' + esc(money9(p.price)) + ' each</div></div>' +
+            '<input class="qty" data-act="v-qty" data-i="' + i + '" inputmode="decimal" value="' + esc(p.qty) + '"/>' +
+            '<div class="amt">' + esc(money9(num(p.qty) * num(p.price))) + '</div>' +
+            '<button class="x" data-act="v-drop" data-i="' + i + '">&times;</button></div>';
+        }).join("") + '</div>'
+      : '<div class="empty sm">Nothing yet.</div>';
+    h += '<div class="row" style="margin-top:6px">' +
+      '<button class="btn sm gry" data-act="v-parts">' + (spares().length ? '+ Add a part' : 'No spares list on this phone') + '</button>' +
+      '<div class="grow"></div>' +
+      (pTot ? '<div class="amt">' + esc(money9(pTot)) + '</div>' : '') + '</div>';
+
+    /* --- the charge --- */
+    h += '<label>Visit / labour charge</label>' +
+      '<input id="v_charge" inputmode="numeric" value="' + esc(v.visitCharge || "") + '" placeholder="0"/>';
+
+    h += '<div class="tot"><span>Total</span><b>' + esc(money9(total)) + '</b></div>';
+
+    /* ============ THE MONEY QUESTION, ASKED ONLY WHEN THERE IS ONE ============
+       The owner's rule is that AMC is prepaid. So on a live contract this screen says so
+       and asks for nothing - an engineer must never be put in the position of asking a
+       customer for money he has already paid. */
+    if (covered) {
+      h += '<div class="amcbox"><b>Under AMC — nothing to collect.</b><br>' +
+        esc(amcState(ins).say) + '. This visit is already paid for.' +
+        (pTot ? '<br><span class="warn-t">Parts are not covered by the contract. If the customer is ' +
+          'paying for these, change the work type to Repair.</span>' : '') + '</div>';
+    } else if (total > 0) {
+      h += '<label>Taken now</label>' +
+        '<input id="v_got" inputmode="numeric" value="' + esc(v.collected == null ? "" : v.collected) + '" placeholder="0"/>' +
+        '<div class="meta">Leave it blank if the customer is paying the office later. ' +
+        'Whatever you type here is money you are carrying.</div>';
+      var bal = total - num(v.collected);
+      if (v.collected !== "" && v.collected != null && bal > 0.5)
+        h += '<div class="note warn-t">' + esc(money9(bal)) + ' still owing after this.</div>';
+    }
+
+    h += '<label>Note</label><textarea id="v_note" rows="2" placeholder="What you found, what you did">' +
+      esc(v.notes || "") + '</textarea>';
+
+    h += '<div class="acts"><button class="btn gry" data-act="close">Cancel</button>' +
+      '<button class="btn grow" data-act="v-save">Save the visit</button></div>';
+    return h;
+  }
+
+  /* A customer for a labour job. The engineer types, the list narrows - the same shape the
+     other apps use, because a man should not learn two ways to pick a name. */
+  function clientPicker(cur) {
+    var list = clients().slice().sort(function (a, b) { return alpha(a.name, b.name); });
+    return '<select id="v_client"><option value="">&mdash; pick the customer &mdash;</option>' +
+      list.map(function (c) {
+        return '<option value="' + esc(c.name) + '"' + (lower(c.name) === lower(cur) ? ' selected' : '') + '>' +
+          esc(c.name) + (c.location ? ' — ' + esc(c.location) : '') + '</option>';
+      }).join("") + '</select>' +
+      '<div class="meta">Not on the list? Type the name in the note and the office will add him.</div>';
+  }
+
+  /* ---- the spares picker ---- */
+  function sheetParts() {
+    var q = lower(S.q);
+    var list = spares().filter(function (s) {
+      if (!q) return true;
+      return lower([s.code, s.name, s.category].join(" ")).indexOf(q) >= 0;
+    });
+    var h = '<h2>Add a part</h2>' + searchBox("Search the spares list") +
+      '<div class="meta pad">' + list.length + ' of ' + spares().length + '</div>';
+    h += list.length ? list.slice(0, 200).map(function (s) {
+      return '<div class="card sm" data-act="v-pick" data-code="' + esc(s.code) + '">' +
+        '<div class="row"><div class="grow"><div class="ttl">' + esc(s.name) + '</div>' +
+        '<div class="meta">' + esc(s.code || "") + (s.category ? ' &middot; ' + esc(s.category) : '') + '</div></div>' +
+        '<div class="right"><div class="amt">' + esc(money9(s.price)) + '</div></div></div></div>';
+    }).join("") : '<div class="empty">Nothing matches that.</div>';
+    h += '<div class="acts"><button class="btn gry grow" data-act="v-back">Back</button></div>';
+    return h;
+  }
+
+
+  /* ================= SAVING A VISIT =================
+     Two rows, in a deliberate order.
+
+       1. THE VISIT. What was done, what it cost, what was taken. This is the record and
+          it goes through the write-journal - so a visit finished in a basement with no
+          signal is kept on the phone, shown on the screen as held, and goes up by itself
+          when the signal returns. The Payment app learned this the hard way and this app
+          starts with it.
+
+       2. THE MACHINE. lastService moves to today and nextService moves forward by the
+          cycle. This is a SECOND row and it is written second on purpose: if the visit
+          lands and the machine update does not, the work is recorded and the due date is
+          merely stale, which the office can see and fix. The other way round would be a
+          machine that says it was serviced with no evidence that it was. */
+  function visitRowFrom(v, ins) {
+    var pTot = partsTotal(v.parts);
+    var total = num(v.visitCharge) + num(v.saltAmt) + pTot;
+    var covered = amcCovers(ins, v.type);
+    var got = covered ? 0 : num(v.collected);
+    return {
+      id: v.id || mintId("SV"),
+      createdAt: v.createdAt || new Date().toISOString(),
+      createdBy: S.user,
+      installId: ins ? String(ins.id) : "",
+      client: ins ? String(ins.client || "") : String(v.client || ""),
+      area: ins ? String(ins.area || "") : String(v.area || ""),
+      date: String(v.date || today()).slice(0, 10),
+      engineer: S.user,
+      type: String(v.type || ""),
+      visitCharge: num(v.visitCharge),
+      saltBags: num(v.saltBags),
+      saltAmt: num(v.saltAmt),
+      /* the parts as words, because the sheet column is a word column and the office reads
+         it. The arithmetic is kept beside it as a number so nobody has to re-add it. */
+      partsUsed: (v.parts || []).map(function (p) {
+        return p.name + (num(p.qty) === 1 ? "" : " x" + num(p.qty));
+      }).join(", "),
+      partsAmt: pTot,
+      total: total,
+      collected: got,
+      balance: Math.max(0, total - got),
+      notes: String(v.notes || ""),
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  /* Move the machine on. Only ever forward, and only when a cycle is actually known -
+     inventing a next date from a cycle nobody set would be the app asserting something
+     it cannot know. */
+  function installAfter(ins, row) {
+    if (!ins) return null;
+    if (!AMC_COVERS[row.type] && row.type !== "Repair" && row.type !== "Installation") return null;
+    var cyc = num(ins.cycleDays);
+    var out = { };
+    Object.keys(ins).forEach(function (k) { out[k] = ins[k]; });
+    out.lastService = row.date;
+    if (cyc > 0) {
+      var d = new Date(row.date + "T00:00:00");
+      d.setDate(d.getDate() + cyc);
+      out.nextService = d.toISOString().slice(0, 10);
+    }
+    out.updatedAt = new Date().toISOString();
+    return out;
+  }
+
+  function saveVisit() {
+    var v = S.vis; if (!v) return;
+    var ins = v.installId ? installById(v.installId) : null;
+
+    /* read the form back before anything else - a repaint must never be able to take a
+       half-typed note away, and everything below depends on these being current */
+    v.date = val("v_date") || today();
+    v.visitCharge = val("v_charge");
+    v.saltBags = val("v_bags");
+    v.saltAmt = val("v_saltamt");
+    v.notes = (el("v_note") ? String(el("v_note").value || "") : "").trim();
+    v.collected = val("v_got");
+    if (!ins) { v.client = val("v_client"); v.area = val("v_area"); }
+
+    if (!v.type) { toast("Say what was done first."); return; }
+    if (!ins && !v.client) { toast("Pick the customer this job was for."); return; }
+
+    var row = visitRowFrom(v, ins);
+    if (!row.total && !row.notes && !row.partsUsed) {
+      toast("Nothing to record — add a charge, a part, or a note about what you did.");
+      return;
+    }
+
+    S.sheet = null; S.vis = null;
+    toast("Visit saved" + (row.collected ? " — " + money9(row.collected) + " on you." : "."));
+    render();
+
+    saveRow("visits", row).then(function () {
+      var upd = installAfter(ins, row);
+      if (!upd) return null;
+      /* keep the copy on this phone in step at once, so the due list stops nagging about a
+         machine he has just serviced even before the server answers */
+      var live = installById(ins.id);
+      if (live) { live.lastService = upd.lastService; if (upd.nextService) live.nextService = upd.nextService; }
+      bust(); renderBg();
+      return saveRow("installs", upd);
+    }).catch(function () { /* the journal has it; jrnPaint says so on screen */ });
+  }
+
+  function bust() { _bookCl = null; }
+
+
+  /* ================= THE SHELL ================= */
+  var NAV = [
+    { k: "today",   t: "Today" },
+    { k: "jobs",    t: "Machines" },
+    { k: "labour",  t: "Labour job" },
+    { k: "history", t: "My work" }
+  ];
+  function navBtn(n) {
+    return '<button class="nav' + (S.tab === n.k ? ' on' : '') + '" data-act="tab" data-k="' + esc(n.k) + '">' +
+      esc(n.t) + '</button>';
+  }
+  function bodyHtml() {
+    if (S.sheet) return '<div class="sheet">' + S.sheet + '</div>';
+    var v = { today: viewToday, jobs: viewJobs, history: viewHistory }[S.tab];
+    return v ? v() : viewToday();
+  }
+  function render() {
+    var r = el("root"); if (!r) return;
+    r.innerHTML = header() + jrnPaint() + newVerBar() +
+      '<div class="body">' + bodyHtml() + '</div>' +
+      (S.sheet ? '' : '<div class="tabs">' + NAV.map(navBtn).join("") + '</div>');
+    wireInputs(); painted();
+  }
+  /* A background repaint. If a form is open it defers - the same rule the CRM learned in
+     v6.9.144, because typed values live in the DOM until they are read back. */
+  function renderBg() { if (S.sheet) return; render(); }
+
+  function wireInputs() {
+    var q = el("q");
+    if (q) {
+      q.addEventListener("input", function () {
+        S.q = q.value;
+        var body = el("root").querySelector(".body");
+        if (body) { body.innerHTML = bodyHtml(); wireInputs(); }
+      });
+      if (S.q) { q.focus(); try { q.setSelectionRange(q.value.length, q.value.length); } catch (e) {} }
+    }
+  }
+
+  /* ================= WHAT A TAP MEANS ================= */
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-act]"); if (!t) return;
+    var act = t.getAttribute("data-act"), id = t.getAttribute("data-id") || "";
+
+    if (act === "tab") {
+      var k = t.getAttribute("data-k");
+      /* "Labour job" is a verb, not a place. Tapping it opens the form straight away rather
+         than showing a screen whose only content is a button to open the form. */
+      if (k === "labour") {
+        S.vis = { installId: "", type: "Labour job", date: today(), parts: [], collected: "", client: "", area: "" };
+        S.sheet = sheetVisit(S.vis); render(); return;
+      }
+      S.tab = k; S.q = ""; render(); return;
+    }
+    if (act === "close")   { S.sheet = null; S.vis = null; S.q = ""; render(); return; }
+    if (act === "refresh") { pull(true); return; }
+    if (act === "menu")    { S.sheet = sheetMenu(); render(); return; }
+    if (act === "signout") { signOut(); return; }
+
+    if (act === "job") {
+      var ins = installById(id); if (!ins) return;
+      S.job = ins.id; S.sheet = sheetJob(ins); render(); return;
+    }
+    if (act === "do-visit") {
+      var i2 = installById(id); if (!i2) return;
+      S.vis = { installId: i2.id, type: "Service", date: today(), parts: [], collected: "" };
+      S.sheet = sheetVisit(S.vis); render(); return;
+    }
+    if (act === "v-type") {
+      if (!S.vis) return;
+      S.vis.type = t.getAttribute("data-t");
+      readVisitForm();
+      S.sheet = sheetVisit(S.vis); render(); return;
+    }
+    if (act === "v-parts") {
+      if (!S.vis || !spares().length) { toast("The spares list has not reached this phone yet — pull the book."); return; }
+      readVisitForm(); S.q = ""; S.sheet = sheetParts(); render(); return;
+    }
+    if (act === "v-back")  { if (S.vis) { S.q = ""; S.sheet = sheetVisit(S.vis); render(); } return; }
+    if (act === "v-pick") {
+      var sp = spareByCode(t.getAttribute("data-code")); if (!sp || !S.vis) return;
+      var rows = S.vis.parts || (S.vis.parts = []);
+      var hit = rows.filter(function (r) { return lower(r.code) === lower(sp.code); })[0];
+      if (hit) hit.qty = num(hit.qty) + 1;
+      else rows.push({ code: sp.code, name: sp.name, price: num(sp.price), qty: 1 });
+      S.q = ""; S.sheet = sheetVisit(S.vis); render(); return;
+    }
+    if (act === "v-drop") {
+      if (!S.vis) return; readVisitForm();
+      S.vis.parts.splice(num(t.getAttribute("data-i")), 1);
+      S.sheet = sheetVisit(S.vis); render(); return;
+    }
+    if (act === "v-save")  { saveVisit(); return; }
+
+    if (act === "labour-new") {
+      S.vis = { installId: "", type: "Labour job", date: today(), parts: [], collected: "", client: "", area: "" };
+      S.sheet = sheetVisit(S.vis); render(); return;
+    }
+  });
+
+  /* a quantity typed into a part row, kept without tearing the form down */
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t && t.getAttribute && t.getAttribute("data-act") === "v-qty" && S.vis) {
+      var i = num(t.getAttribute("data-i"));
+      if (S.vis.parts[i]) { S.vis.parts[i].qty = num(t.value); readVisitForm(); S.sheet = sheetVisit(S.vis); render(); }
+    }
+  });
+
+  /* Read every field back off the form. Called before any repaint of the visit sheet,
+     because a repaint rebuilds the DOM and whatever was typed lives only there. */
+  function readVisitForm() {
+    var v = S.vis; if (!v) return;
+    if (el("v_date"))    v.date = val("v_date");
+    if (el("v_charge"))  v.visitCharge = val("v_charge");
+    if (el("v_bags"))    v.saltBags = val("v_bags");
+    if (el("v_saltamt")) v.saltAmt = val("v_saltamt");
+    if (el("v_got"))     v.collected = val("v_got");
+    if (el("v_note"))    v.notes = String(el("v_note").value || "");
+    if (el("v_client"))  v.client = val("v_client");
+    if (el("v_area"))    v.area = val("v_area");
+  }
+
+  function sheetMenu() {
+    return '<h2>Menu</h2>' +
+      '<div class="kv">' + kv("Signed in", S.user) + kv("Role", S.role) +
+        kv("App", "v" + APP_VERSION) + kv("Book", bookAge(S.syncAt).txt) + '</div>' +
+      '<div class="acts col">' +
+      '<button class="btn gry grow" data-act="refresh">Fetch the book again</button>' +
+      '<a class="btn gry grow" href="' + CRM_URL + '">Open the CRM</a>' +
+      '<button class="btn red grow" data-act="signout">Sign out</button>' +
+      '<button class="btn gry grow" data-act="close">Close</button></div>';
+  }
+
+
+  /* ================= LOGIN ================= */
+  function renderLogin(msg) {
+    var r = el("root"); if (!r) return;
+    r.innerHTML = '<div class="login">' +
+      '<div class="lbrand">Energy World</div><div class="lsub">Service</div>' +
+      (msg ? '<div class="lmsg">' + esc(msg) + '</div>' : '') +
+      '<label>Your name</label><input id="ln" value="' + esc(S.user || "") + '" autocomplete="username"/>' +
+      '<label>PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password"/>' +
+      '<button class="btn grow" data-act="login">Sign in</button>' +
+      '<div class="lfoot">Same name and PIN as the CRM. v' + APP_VERSION + '</div></div>';
+    var n = el("ln"); if (n && !n.value) n.focus(); else { var p = el("lp"); if (p) p.focus(); }
+  }
+  function doLogin() {
+    var name = val("ln"), pin = val("lp");
+    if (!name) { renderLogin("Enter your name."); return; }
+    if (!pin)  { renderLogin("Enter your PIN."); return; }
+    S.user = name; S.pin = pin;
+    renderLogin("");
+    var b = el("root") && el("root").querySelector('[data-act="login"]');
+    if (b) { b.disabled = true; b.textContent = "Signing in…"; }
+    authOnce(1).then(function (r) {
+      if (!r || !r.ok) { renderLogin(loginWhy(r)); return; }
+      S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+      try { beatStart(); } catch (e) {}
+      if (ALLOWED.indexOf(S.role) < 0) { renderLogin(notForYou(S.user, S.role)); S.role = ""; return; }
+      try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: S.pin })); } catch (e) {}
+      S.busy = true; render(); pull(false);
+    }).catch(function (e) { renderLogin((e && e.message) ? String(e.message) : "Could not reach the server."); });
+  }
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-act]");
+    if (t && t.getAttribute("data-act") === "login") doLogin();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && el("lp") && document.activeElement && /^(ln|lp)$/.test(document.activeElement.id)) doLogin();
+  });
+
+  /* ================= THE BOOK ================= */
+  function pull(loud) {
+    if (_pulling) { if (loud) toast("Already fetching…"); return _pulling; }
+    S.busy = true; if (loud) render();
+    _pulling = getBook(KEEP_FAST).then(function (r) {
+      if (!usableBook(r)) {
+        S.busy = false; _pulling = null;
+        toast(bookSay(r)); render(); return false;
+      }
+      beatMark(r && r.stamp);
+      mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
+      if (bookHas(r, KEEP_REST)) {
+        mergeBook(r, KEEP_REST); S.restAt = Date.now();
+        jrnReconcile(); applyJournal();
+        S.syncAt = Date.now(); S.busy = false; _pulling = null;
+        snapSave(); flushSoon(); render();
+        if (loud) toast("Up to date" + (wireSay() ? " (" + wireSay() + ")" : "") + ".");
+        return false;
+      }
+      applyJournal(); snapSave(); render();
+      return true;
+    }).then(function (go) {
+      if (!go) return;
+      if (!loud && !restStale()) { S.busy = false; _pulling = null; render(); return; }
+      return getBook(KEEP_REST).then(function (r2) {
+        if (usableBook(r2)) { mergeBook(r2, KEEP_REST); S.restAt = Date.now(); }
+        jrnReconcile(); applyJournal();
+        S.syncAt = Date.now(); S.busy = false; _pulling = null;
+        snapSave(); flushSoon(); render();
+      });
+    }).catch(function (e) {
+      S.busy = false; _pulling = null;
+      toast((e && e.message) ? String(e.message) : "Could not fetch the book.");
+      render();
+    });
+    return _pulling;
+  }
+
+  /* MAY_DIFFER: each app's idea of "busy" — the same guard its own pull already used. */
+  function beatSkip() {
+    if (document.hidden) return true;
+    if (!S.user || !S.data) return true;
+    if (S.sheet) return true;                   /* never with a half-filled visit on screen */
+    if (_pulling) return true;
+    return false;
+  }
+  /* MAY_DIFFER: the CRM goes through quietSync and must clear its throttle; these call pull(). */
+  function beatGo() { pull(false); }
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) return;
+    try { beatStart(); } catch (e) {}
+    if (!S.user || !S.data) return;
+    if (S.sheet) return;
+    pull(false);
+  });
+
+  function openingScreen(msg) {
+    var r = el("root"); if (!r) return;
+    r.innerHTML = header() + '<div class="body"><div class="empty">' +
+      esc(msg || "Fetching your work…") + '</div></div>';
+  }
+
+  /* ================= START ================= */
+  (function () {
+    var sess = null;
+    try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) { sess = null; }
+    crashHandle();
+    regSW();
+    if (!sess || !sess.user || !sess.pin) { renderLogin(""); return; }
+    S.user = sess.user; S.pin = sess.pin;
+    bigPreload([SNAP + "_" + S.user, JRN_KEY]).then(function () { boot2(sess); });
+  })();
+
+  function boot2(sess) {
+    var snap = snapLoad();
+    if (snap) { S.data = snap; applyJournal(); S.busy = true; render(); } else openingScreen();
+    var authP = authOnce(1);
+    var dataP = getBook(KEEP_FAST);
+    var refused = false;
+    authP.then(function (r) {
+      if (!r || !r.ok) {
+        refused = true; S.pin = ""; forgetBook();
+        try { localStorage.removeItem(STORE); } catch (e) {}
+        renderLogin("Sign in again."); return;
+      }
+      S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
+      try { beatStart(); } catch (e) {}
+      if (ALLOWED.indexOf(S.role) < 0) {
+        refused = true; S.pin = ""; forgetBook();
+        renderLogin(notForYou(S.user, S.role)); S.role = ""; return;
+      }
+      return dataP.then(function (r2) {
+        if (refused) return;
+        if (!usableBook(r2)) { S.busy = false; toast(bookSay(r2)); render(); return; }
+        beatMark(r2 && r2.stamp);
+        mergeBook(r2, KEEP_FAST); S.fastAt = Date.now(); bust();
+        if (bookHas(r2, KEEP_REST)) { mergeBook(r2, KEEP_REST); S.restAt = Date.now(); }
+        jrnReconcile(); applyJournal();
+        S.syncAt = Date.now(); S.busy = false;
+        snapSave(); render(); flushSoon(); startFlushTicker();
+        if (!S.restAt) pull(false);
+      });
+    }).catch(function (e) {
+      if (refused) return;
+      S.busy = false;
+      if (S.data) { toast("Working from the copy on this phone."); render(); }
+      else renderLogin((e && e.message) ? String(e.message) : "Could not reach the server.");
+    });
+  }
+
+})();
+</script>
+<script>
+/* ---------------------------------------------------------------------------
+   THE ICON NAG — one time, on the phone that needs it.
+   The three apps used to share one Energy World leaf, so a man tapped the wrong
+   one. They have their own pictures and names now — but a phone copies the icon
+   into the home-screen shortcut on the day it is added and never looks again.
+   Apple gives no way to change that from here; it has to be removed and re-added
+   once. So the app tells the person holding it, rather than the owner having to
+   tell five people. Shown only to someone who OPENED IT FROM THE HOME SCREEN —
+   that is exactly the person with the old icon — once, and never again.
+   --------------------------------------------------------------------------- */
+(function () {
+  "use strict";
+  var KEY = "ew_icon_nag_v1";
+  try { if (localStorage.getItem(KEY)) return; } catch (e) { return; }
+
+  var standalone = false;
+  try {
+    standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+                 window.navigator.standalone === true;
+  } catch (e) {}
+  if (!standalone) return;              /* in a browser tab there is no icon to fix */
+
+  function show() {
+    if (document.getElementById("ew_nag")) return;
+    var d = document.createElement("div");
+    d.id = "ew_nag";
+    d.setAttribute("style",
+      "position:fixed;left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom) + 68px);z-index:9999;" +
+      "background:#fff7ed;border:1px solid #fdba74;border-radius:13px;padding:13px 15px;" +
+      "box-shadow:0 8px 24px rgba(15,23,42,.18);font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;" +
+      "color:#7c2d12;max-width:700px;margin:0 auto");
+    d.innerHTML =
+      '<div style="font-weight:800;margin-bottom:4px">This app has its own icon now</div>' +
+      '<div>The picture on your home screen is still the old one — a phone keeps the icon from the day ' +
+      'you added it. To fix it once: <b>press and hold the icon &rarr; Remove from Home Screen</b>, then open ' +
+      '<b>energyworld apps</b> in the browser and <b>Add to Home Screen</b> again. You stay signed in.</div>' +
+      '<div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap">' +
+        '<button id="ew_nag_open" style="appearance:none;border:1px solid #b45309;background:#b45309;color:#fff;' +
+          'border-radius:9px;padding:9px 13px;font-size:13px;font-weight:700;cursor:pointer">Open the apps page</button>' +
+        '<button id="ew_nag_ok" style="appearance:none;border:1px solid #fdba74;background:#fff;color:#7c2d12;' +
+          'border-radius:9px;padding:9px 13px;font-size:13px;font-weight:700;cursor:pointer">Got it</button>' +
+      '</div>';
+    document.body.appendChild(d);
+    var done = function () {
+      try { localStorage.setItem(KEY, "1"); } catch (e) {}
+      if (d.parentNode) d.parentNode.removeChild(d);
+    };
+    document.getElementById("ew_nag_ok").addEventListener("click", done);
+    document.getElementById("ew_nag_open").addEventListener("click", function () {
+      try { window.open("../apps/", "_blank"); } catch (e) {}
+      done();
+    });
+  }
+  /* after the app has painted, so it is never the first thing on a cold start */
+  setTimeout(show, 2500);
+})();
+</script>
+</body>
+</html>
+
+</body>
+</html>
