@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.320";
+  var APP_VERSION = "6.9.321";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3923,6 +3923,15 @@ window.addEventListener("beforeunload", function (ev) {
       .filter(function (n) { return n && isClient(n); })
       .sort(function (a, b) { return a.localeCompare(b); });
   }
+  /* The three kinds the Service app knows, plus whatever this row already says. A contract
+     already on the sheet is never re-worded by the act of opening the form to look at it. */
+  var AMC_OPTIONS = ["None", "AMC with spares", "AMC without spares"];
+  function amcOptions(cur) {
+    var c = String(cur || "").trim();
+    if (!c || AMC_OPTIONS.indexOf(c) >= 0) return AMC_OPTIONS;
+    return AMC_OPTIONS.concat([c]);
+  }
+
   function instProdRow(p, i) {
     p = p || {};
     return '<div class="ip-row" data-row="' + i + '" style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#f8fafc">' +
@@ -3957,7 +3966,18 @@ window.addEventListener("beforeunload", function (ev) {
       '<h3 style="margin:14px 0 6px;font-size:14px">Products</h3>' +
       '<div id="i_products">' + prods.map(function (p, i) { return instProdRow(p, i); }).join("") + '</div>' +
       '<button class="btn sm ghost" data-act="ip-add" style="margin-bottom:12px">+ Add another product</button>' +
-      '<div class="grid2"><div><label>AMC</label><select id="i_amc">' + opts(["None","Yearly","Visit-based"], x.amcType || "None") + '</select></div>' +
+      /* v6.9.321 - THE KIND OF CONTRACT, BECAUSE IT DECIDES WHAT THE CUSTOMER IS CHARGED.
+         "AMC with spare or without spare". The Service app reads this cell to decide whether
+         a part fitted on a visit is billed, so "Yearly" and "Visit-based" - which said how
+         often it was paid for, not what it covered - could not answer the question. They are
+         kept as options when a row already carries one, so opening this form never silently
+         changes a contract that is already signed; the engineer's screen shows the kind, and
+         anything it does not recognise is treated as WITHOUT spares, which charges for a part
+         rather than giving it away. */
+      '<div class="grid2"><div><label>AMC</label><select id="i_amc">' +
+        opts(amcOptions(x.amcType), x.amcType || "None") + '</select>' +
+        '<div class="meta" style="font-size:11.5px">With spares: nothing is charged at all. ' +
+        'Without spares: the visit and the salt are free, the parts are billed.</div></div>' +
       '<div><label>AMC amount (Rs)</label><input id="i_amcamt" inputmode="numeric" value="' + esc(x.amcAmount || "") + '"/></div></div>' +
       '<div class="grid2"><div><label>AMC ends</label><input id="i_amcend" type="date" value="' + esc(dstr(x.amcEnd)) + '"/></div>' +
       '<div><label>Engineer</label><select id="i_eng">' + opts([""].concat(SVC_ENGINEERS), x.engineer) + '</select></div></div>' +
@@ -25285,7 +25305,11 @@ function viewCatalogue() {
       var _adone = function (msg) { _amcCache = null; _baseCache = null; S.modal = null; toast(msg); render(); };
       if (_as === "Won" && _ains) {
         /* keep whatever type was already chosen; only fill it in when it was never set */
-        _ains.amcType = (_ains.amcType && _ains.amcType !== "None") ? _ains.amcType : "Yearly";
+        /* v6.9.321 - "Yearly" said how often it was paid for, not what it covered, and the
+           Service app now has to answer the second question. Filling a blank with "AMC without
+           spares" is the conservative way round: it bills a part rather than giving it away,
+           and it is one tap to change on the installation. Anything already chosen is kept. */
+        _ains.amcType = (_ains.amcType && _ains.amcType !== "None") ? _ains.amcType : "AMC without spares";
         if (_aamt) _ains.amcAmount = _aamt;
         _ains.amcEnd = _atill;
         save("installs", _ains).then(function () {
