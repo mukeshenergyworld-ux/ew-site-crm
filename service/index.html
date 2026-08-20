@@ -162,6 +162,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .due{font-size:12px;font-weight:600;color:#64748b;white-space:nowrap}
 .due.over{color:#b91c1c}.due.soon{color:#b45309}
 .amt{font-weight:700;font-size:14px;white-space:nowrap}
+.amt.bad{color:#b45309;font-weight:600;font-size:12px;white-space:nowrap}
 .pill{display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;margin-top:3px}
 .pill.amc{background:#ccfbf1;color:#0f766e}
 .pill.got{background:#dcfce7;color:#166534}
@@ -267,7 +268,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.4.4";
+  var APP_VERSION = "1.5.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -343,7 +344,23 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      so it all rides in the fast half and the screen is usable on the first reply. Only the
      audit trail waits. */
   var KEEP_FAST = ["installs","visits","spares","clients","areas"];
-  var KEEP_REST = ["audit"];
+  /* ---- THE REST HALF IS EMPTY, AND THAT IS THE WHOLE OF v1.5.0 ----
+     Measured on his own phone, on the wire, watching what this app actually sends and what
+     comes back:
+
+         only:[installs,visits,spares,clients,areas]   81 KB   7.5 s
+         only:[audit]                                209 KB   4.4 s
+
+     209 KB - SEVENTY-TWO PER CENT of everything this app moves - is the audit trail. And this
+     app does not read it. Not once: `audit` appears three times in the whole file and every
+     one of them is this comment or the line below it. It has never called saveRow("audit")
+     either. The Challan app reads it eight times (book numbers, receipt proofs, hisab stamps)
+     and the Payment app eight; the Service app inherited the line from them and the tab with
+     it, and has been paying for it every five minutes since the first release.
+
+     The staged pull stays exactly as it is - it is the right shape and the other two apps
+     need it. This app simply has nothing in the slow half. */
+  var KEEP_REST = [];
   var KEEP = KEEP_FAST.concat(KEEP_REST);
 
   /* ---- A MAN MAY HOLD MORE THAN ONE ROLE (20 Aug 2026) ----
@@ -985,6 +1002,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     }
 
   function getBook(only) {
+      /* AN EMPTY LIST IS NOT "NOTHING", IT IS "EVERYTHING". teamFilter_ on the server reads
+         `if (!only || !only.length) return all` - so asking for [] hands back the entire book,
+         which is the exact opposite of what any caller passing an empty list could mean. With
+         KEEP_REST now empty that is one mistaken call away, so it is refused here rather than
+         guarded at each call site. */
+      if (only && !only.length) return Promise.resolve({ ok: true, _empty: true });
       var want = only || KEEP;
       return api("teamGet", { only: want }).then(function (r) {
         if (usableBook(r)) { BOOKSAY = ""; return r; }
@@ -2153,19 +2176,38 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
   /* ---- the spares picker ---- */
+  /* ---- A SPARE WITH NO PRICE (v1.5.0) ----
+     Read off the live list on 20 Aug: 27 spares, and TWENTY-SIX of them carry no price at
+     all. Only SL-001, the salt bag, has one. So `+ Add a part` was quietly putting zero-rupee
+     lines on customers' bills - the part recorded, the money not - and the only place it
+     showed was a total that came out lower than it should have, which is the one place nobody
+     checks against anything.
+
+     The rule of this estate is that an app says what is true. It cannot invent a price and it
+     will not pretend one exists: the card says NO PRICE SET, the part still goes on the visit
+     because the customer did receive it, and the engineer is told to write the amount in. */
+  function sparePriced(s) { return num(s && s.price) > 0; }
   function sheetParts() {
     var q = lower(S.q);
     var list = spares().filter(function (s) {
       if (!q) return true;
       return lower([s.code, s.name, s.category].join(" ")).indexOf(q) >= 0;
     });
+    var noPrice = spares().filter(function (s) { return !sparePriced(s); }).length;
     var h = '<h2>Add a part</h2>' + searchBox("Search the spares list") +
       '<div class="meta pad">' + list.length + ' of ' + spares().length + '</div>';
+    if (noPrice) {
+      h += '<div class="note warn-t"><b>' + noPrice + ' of ' + spares().length + ' spares have no ' +
+        'price on the list.</b> They can still go on the visit &mdash; the customer had the part ' +
+        '&mdash; but the amount has to be written in by hand, and the office should price them ' +
+        'in the CRM under Spares.</div>';
+    }
     h += list.length ? list.slice(0, 200).map(function (s) {
       return '<div class="card sm" data-act="v-pick" data-code="' + esc(s.code) + '">' +
         '<div class="row"><div class="grow"><div class="ttl">' + esc(s.name) + '</div>' +
         '<div class="meta">' + esc(s.code || "") + (s.category ? ' &middot; ' + esc(s.category) : '') + '</div></div>' +
-        '<div class="right"><div class="amt">' + esc(money9(s.price)) + '</div></div></div></div>';
+        '<div class="right"><div class="amt' + (sparePriced(s) ? '' : ' bad') + '">' +
+          (sparePriced(s) ? esc(money9(s.price)) : 'no price set') + '</div></div></div></div>';
     }).join("") : '<div class="empty">Nothing matches that.</div>';
     h += '<div class="acts"><button class="btn gry grow" data-act="v-back">Back</button></div>';
     return h;
@@ -2528,6 +2570,15 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       return true;
     }).then(function (go) {
       if (!go) return;
+      /* nothing in the slow half means no second call, no throttle to consult, and one round
+         trip instead of two */
+      if (!KEEP_REST.length) {
+        jrnReconcile(); applyJournal(); restTook();
+        S.syncAt = Date.now(); S.busy = false; _pulling = null;
+        snapSave(); flushSoon(); render();
+        if (loud) toast("Up to date" + (wireSay() ? " (" + wireSay() + ")" : "") + ".");
+        return;
+      }
       if (!loud && !restStale()) { S.busy = false; _pulling = null; render(); return; }
       return getBook(KEEP_REST).then(function (r2) {
         if (usableBook(r2)) { mergeBook(r2, KEEP_REST); restTook(); }
