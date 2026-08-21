@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.328";
+  var APP_VERSION = "6.9.329";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -22775,18 +22775,167 @@ function viewCatalogue() {
     return doc.output("datauristring").split(",")[1];
   }
 
+  /* ==========================================================================
+     THE STAGE BOARD  (v6.9.329, 21 August 2026)
+
+     From his screenshot: "its good representation, can we implement something like this."
+     Asked which of the three stage vocabularies in this file the columns should be, he chose
+     the CONSTRUCTION STAGE - which is the right answer and the one his whole business runs on:
+     "pitch required product to customer at different construction stage of project."
+
+     IT IS A BOARD OF CLIENTS, NOT SITES, AND THAT WAS ALMOST GOT WRONG. The obvious reading of
+     "construction stage" is a property of a SITE, and this was first written that way - one
+     card per site, columns off site.stage. t_v290.js stopped it, with the reason: "Site is off
+     the menu", decided in v6.9.290. Since v6.9.211 the stage is KEYED ON THE PERSON - written
+     as a client:stage audit row, read back through clientStage2(), with the site row kept in
+     step underneath as the thing the pitch engine happens to read. Building the board on sites
+     would have quietly resurrected a menu he had taken away, and shown a different set of
+     stages from the one every other screen shows.
+
+     WHY A BOARD WHEN A STAGE-BY-STAGE LIST ALREADY EXISTS. The pitch card lists sites grouped
+     by stage, and it is good. It cannot do the two things a board is FOR:
+
+       * SHOW THE SHAPE. Columns side by side make a pile obvious. Nine clients sitting at
+         Brickwork and none at Concealed Plumbing is a fact about next month's revenue that no
+         vertical list will ever make you feel.
+       * MOVE SOMEBODY. Changing a stage today means opening the client, finding the chip grid
+         and picking. On the board it is one tap, from the screen where you noticed.
+
+     NO DRAG. This is used one-handed at a site gate. Drag-and-drop on a touch screen fights
+     the scroll it lives inside, and a mis-drag moves a client to the wrong stage - which
+     silently changes what the whole pitch engine tells everybody to sell him. Arrows move one
+     stage, one at a time.
+
+     THE COLUMN IS THE PITCH. Each header carries what to sell at that stage, straight out of
+     PITCH2 - the same table the pitch card reads - so this is not a picture of the pipeline,
+     it is the round in the order you will walk it. */
+  var NOSTAGE = "(no stage set)";
+  var BOARD_CAP = 30;
+  function boardClients() {
+    var list = (S.data.clients || []).filter(function (c) {
+      return String(c.name || "").trim() && String(c.status || "Active") !== "Cancelled";
+    });
+    if (!seesAllClients()) list = list.filter(function (c) { return isMineClient(c.name); });
+    return list;
+  }
+  function boardColumns() {
+    var by = {};
+    boardClients().forEach(function (c) {
+      var k = String(clientStage2(c.name) || "").trim();
+      if (STAGES2.indexOf(k) < 0) k = NOSTAGE;
+      (by[k] = by[k] || []).push(c);
+    });
+    Object.keys(by).forEach(function (k) {
+      by[k].sort(function (a, b) { return alpha(a.name, b.name); });
+    });
+    /* NO STAGE SET COMES FIRST, and it is loud on purpose. Somebody with no stage is invisible
+       to action(), to the pitch card and to every window warning in this app - he can never be
+       pitched at the right moment because nothing knows what moment he is at. That is the one
+       column worth emptying. */
+    var cols = [];
+    if (by[NOSTAGE]) cols.push({ stage: NOSTAGE, no: 0, rows: by[NOSTAGE], pitch: null });
+    STAGES2.forEach(function (s2, i) {
+      if (!by[s2]) return;
+      cols.push({ stage: s2, no: i + 1, rows: by[s2], pitch: PITCH2[s2] || { lines: [], win: false } });
+    });
+    return cols;
+  }
+  function viewStageBoard() {
+    var cols = boardColumns();
+    var total = cols.reduce(function (a, c) { return a + c.rows.length; }, 0);
+    if (!total) {
+      return '<div class="empty">Nobody on your book yet. Add a client, set the construction ' +
+        'stage, and this board tells you what to pitch him.</div>';
+    }
+    var closing = cols.filter(function (c) { return c.pitch && c.pitch.win; })
+      .reduce(function (a, c) { return a + c.rows.length; }, 0);
+    var blank = (cols[0] && cols[0].stage === NOSTAGE) ? cols[0].rows.length : 0;
+    var h = '<div class="cards">' +
+      '<div class="stat"><div class="n">' + total + '</div><div class="l">On the board</div></div>' +
+      '<div class="stat ' + (closing ? 'alert' : '') + '"><div class="n">' + closing + '</div>' +
+        '<div class="l">Window closing</div></div>' +
+      '<div class="stat ' + (blank ? 'alert' : '') + '"><div class="n">' + blank + '</div>' +
+        '<div class="l">No stage set</div></div>' +
+      '<div class="stat"><div class="n">' + (cols.length - (blank ? 1 : 0)) + '</div>' +
+        '<div class="l">Stages in play</div></div>' +
+      '</div>' +
+      '<div class="meta" style="font-size:12.5px;margin:0 0 8px">Scroll sideways. The arrows move ' +
+      'one stage &mdash; forward when the work has moved on, back if it was set wrong. Every pitch ' +
+      'list in the app follows it the moment you tap.</div>';
+
+    h += '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:8px">' +
+      '<div style="display:flex;gap:10px;align-items:flex-start;min-width:min-content">';
+    cols.forEach(function (c) {
+      var none = c.stage === NOSTAGE;
+      var win = !!(c.pitch && c.pitch.win);
+      var edge = none ? '#fca5a5' : (win ? '#fdba74' : '#cbd5e1');
+      var tint = none ? '#fef2f2' : (win ? '#fff7ed' : '#f8fafc');
+      var ink  = none ? '#b91c1c' : (win ? '#b45309' : '#334155');
+      h += '<div style="flex:0 0 230px;width:230px;border:1px solid ' + edge + ';border-radius:12px;' +
+        'background:' + tint + ';padding:9px 9px 6px">' +
+        '<div style="font-weight:800;font-size:13px;color:' + ink + ';line-height:1.3">' +
+          (none ? '' : c.no + '. ') + esc(c.stage) +
+          ' <span class="pill' + (none || win ? ' due' : '') + '">' + c.rows.length + '</span></div>' +
+        (win ? '<div style="font-size:10.5px;font-weight:700;color:#b45309;letter-spacing:.04em;' +
+               'text-transform:uppercase;margin-top:2px">window closing</div>' : '') +
+        (none
+          ? '<div class="meta" style="font-size:11.5px;margin-top:4px;color:#b91c1c">Nothing can be ' +
+            'pitched at the right moment until the stage is set. Press &rarr; to start at ' +
+            esc(STAGES2[0]) + '.</div>'
+          : (c.pitch && c.pitch.lines.length
+              ? '<div class="meta" style="font-size:11.5px;margin-top:4px;color:#334155"><b>Pitch:</b> ' +
+                esc(c.pitch.lines.join(" · ")) + '</div>'
+              : ''));
+      c.rows.slice(0, BOARD_CAP).forEach(function (cl) {
+        h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:9px;margin-top:7px;' +
+          'padding:7px 8px">' +
+          /* bb-open, not cl-open: cl-open reads data-ID and would have opened nothing. It is
+             also the better door - the brand board is where the column's pitch line gets
+             acted on, so the tap lands on the selling surface rather than the address book. */
+          '<div data-act="bb-open" data-n="' + esc(cl.name) + '" style="cursor:pointer">' +
+            '<div style="font-weight:700;font-size:12.5px;color:#0f172a">' + esc(cl.name) + '</div>' +
+            (cl.location ? '<div class="meta" style="font-size:11.5px">' + esc(cl.location) + '</div>' : '') +
+            (seesAllClients() && (cl.ownedBy || cl.createdBy)
+              ? '<div class="meta" style="font-size:11px;color:#94a3b8">' + esc(cl.ownedBy || cl.createdBy) + '</div>'
+              : '') +
+          '</div>' +
+          '<div class="row" style="gap:5px;margin-top:5px;align-items:center">' +
+            '<button class="btn sm ghost" data-act="stage-move" data-n="' + esc(cl.name) + '" data-d="-1" ' +
+              'title="Back one stage" style="padding:2px 8px">&larr;</button>' +
+            '<div class="grow"></div>' +
+            '<button class="btn sm" data-act="stage-move" data-n="' + esc(cl.name) + '" data-d="1" ' +
+              'title="Forward one stage" style="padding:2px 8px">&rarr;</button>' +
+          '</div></div>';
+      });
+      /* NEVER SILENTLY TRUNCATED. A column that shows thirty of ninety and says nothing is a
+         column that has lied about the size of the pile - which is the one thing a board is
+         for. */
+      if (c.rows.length > BOARD_CAP) {
+        h += '<div class="meta" style="font-size:11.5px;margin-top:7px;color:' + ink + '">and ' +
+          (c.rows.length - BOARD_CAP) + ' more in this stage</div>';
+      }
+      h += '</div>';
+    });
+    return h + '</div></div>';
+  }
+
   /* Leads hub: prospect Sites + Site visits + the Brand desk in one tab. Sub-tabs are shown
      only for the pieces this role may see; the Brand desk (viewLeads) is the tab itself. */
   function viewLeadsHub() {
     var tabs = [["board", "Leads"]];
     if (canSee("sites")) tabs.push(["sites", "Sites"]);
+    /* v6.9.329 - NOT gated on canSee("sites"). That has been false for every role since
+       v6.9.290 took Site off the menu, and this board is about clients, not sites. */
+    tabs.push(["stage", "Stage board"]);
     if (canSee("visits")) tabs.push(["visits", "Site visits"]);
     var sub = S.leadsSub || tabs[0][0];
     if (!tabs.some(function (t) { return t[0] === sub; })) sub = tabs[0][0];
     var h = '<div class="row" style="margin-bottom:10px">' + tabs.map(function (t) {
       return '<button class="btn sm ' + (sub === t[0] ? "" : "ghost") + '" data-act="leads-sub" data-s="' + t[0] + '">' + t[1] + '</button>';
     }).join("") + '</div>';
-    return h + (sub === "sites" ? viewSites() : (sub === "visits" ? viewVisits() : viewLeadBoard()));
+    return h + (sub === "sites" ? viewSites()
+              : (sub === "stage" ? viewStageBoard()
+              : (sub === "visits" ? viewVisits() : viewLeadBoard())));
   }
 
   /* Quotes hub: quotations + Win/Loss (quote outcomes) as sub-tabs instead of two tabs. */
@@ -26293,6 +26442,37 @@ function viewCatalogue() {
         ? made + " project(s) created under " + mmain.name + ". Set each site's stage to turn on its pitch board."
         : "Already recorded — those projects were there. Nothing was duplicated.");
       render(); return;
+    }
+    if (act === "stage-move") {
+      var mvN = t.getAttribute("data-n") || "", mvD = Number(t.getAttribute("data-d")) || 0;
+      if (!mvN) { toast("No client on that card."); return; }
+      var cur = STAGES2.indexOf(String(clientStage2(mvN) || "").trim());
+      /* somebody with NO stage steps onto the first one going forward, and refuses to go back
+         from nowhere - there is nothing behind "not set" */
+      var nx = (cur < 0) ? (mvD > 0 ? 0 : -1) : cur + mvD;
+      if (nx < 0) {
+        toast(cur < 0 ? "No stage set yet — press → to start at " + STAGES2[0] + "."
+                      : "Already at the first stage.");
+        return;
+      }
+      if (nx >= STAGES2.length) { toast("Already at the last stage — " + STAGES2[STAGES2.length - 1] + "."); return; }
+      var was = cur < 0 ? NOSTAGE : STAGES2[cur], now = STAGES2[nx];
+      t.disabled = true;
+      /* saveClientStage is the ONE writer for this, and has been since v6.9.211: it files the
+         client:stage audit row first and always, then keeps the site row in step. Writing the
+         site row from here instead would put a second answer in the book, and the newest-row
+         rule would then depend on which of the two landed last. */
+      saveClientStage(mvN, now).then(function () {
+        t.disabled = false;
+        _clStageCache = null;
+        render();
+        toast(mvN + " moved to " + now + ".");
+      }).catch(function () {
+        t.disabled = false;
+        toast("Could not reach the server — nothing was changed.");
+        render();
+      });
+      return;
     }
     if (act === "site-save") {
       var sn = val("s_name");
