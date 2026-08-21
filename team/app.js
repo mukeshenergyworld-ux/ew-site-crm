@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.323";
+  var APP_VERSION = "6.9.326";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1856,8 +1856,33 @@ window.addEventListener("beforeunload", function (ev) {
      moved on is a warning he will not act on. Delegated, so it survives every repaint, and it
      never blocks the save: it is advice, and he may well know better than the check. */
   var _picT = null;
+  /* v6.9.324 - the further discount, shown as it is typed. Two things move: the percent it
+     works out to (so a fat-fingered 20000 for 2000 is obvious), and the delivery total at the
+     foot of the statement (so what the client will owe is on screen before the button is
+     pressed). Typing an amount clears the "No further discount" tick, and ticking it clears
+     the amount - they are two answers to one question and both can never be true. */
+  function hsbExtraPaint() {
+    var box = el("hsb_extra");
+    if (!box) return;
+    var g = Math.round(Number(box.getAttribute("data-goods")) || 0);
+    var f = Math.round(Number(box.getAttribute("data-frt")) || 0);
+    var v = Math.round(Number(String(box.value || "").replace(/[^0-9.\-]/g, "")) || 0);
+    var lab = el("hsb_extrapct"), tot = el("hsb_tot");
+    if (lab) {
+      lab.innerHTML = v > 0
+        ? ((g > 0 ? (Math.round(v / g * 1000) / 10) + "% of goods" : "no goods value") +
+           (v > g ? ' &mdash; <b style="color:#b91c1c">more than the goods</b>' : ""))
+        : "&mdash;";
+    }
+    if (tot) tot.textContent = money(g + f - (v > 0 ? v : 0));
+  }
   document.addEventListener("input", function (ev) {
     var t = ev && ev.target;
+    if (t && t.id === "hsb_extra") {
+      var nx = document.getElementById("hsb_noextra");
+      if (nx && nx.checked && String(t.value || "").trim()) nx.checked = false;
+      hsbExtraPaint(); return;
+    }
     if (!t || t.id !== "p_pic") return;
     var h = document.getElementById("p_pic_hint");
     if (h) h.textContent = PIC_HINT[picProblem(t.value)] || "";
@@ -1868,6 +1893,13 @@ window.addEventListener("beforeunload", function (ev) {
       var pv = document.getElementById("p_pic_prev");
       if (pv) pv.innerHTML = picPreviewHtml(t.value);
     }, 450);
+  });
+
+  document.addEventListener("change", function (ev) {
+    var t = ev && ev.target;
+    if (!t || t.id !== "hsb_noextra") return;
+    if (t.checked) { var ex = document.getElementById("hsb_extra"); if (ex) ex.value = ""; }
+    hsbExtraPaint();
   });
 
   function parseCatalog(rows) {
@@ -6207,8 +6239,15 @@ window.addEventListener("beforeunload", function (ev) {
       var prev = m[d.chId];
       /* newest row wins, same convention as every other audit-backed fact */
       if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        /* v6.9.324 - a stamp now also carries WHO earns on this delivery and any further
+           discount given at the moment of passing it. Both are absent from every stamp written
+           before v6.9.324: `inc` reads null and `extra` reads 0, and every reader below treats
+           that as "no answer, behave exactly as you did yesterday". Money must never move
+           because a feature was deployed. */
         m[d.chId] = { at: r.createdAt || "", by: r.actor || d.by || "",
-                      set: d.set || [], ignored: d.ignored || [] };
+                      set: d.set || [], ignored: d.ignored || [],
+                      inc: (d.inc && d.inc.length !== undefined) ? d.inc : null,
+                      extra: Number(d.extra) || 0, extraNote: String(d.extraNote || "") };
       }
     });
     _hsbCache = m;
@@ -6349,27 +6388,200 @@ window.addEventListener("beforeunload", function (ev) {
     return ' <span class="pill Won" title="Added to hisab by ' + esc(st.by || "") +
       (st.at ? ' on ' + esc(String(st.at).slice(0, 10)) : "") + '">in hisab</span>';
   }
+  /* ================= WHO EARNS ON THIS ONE DELIVERY (v6.9.324) =================
+     HIS WORDS: "more checkboxs incase of partner and executive incentive applied for that
+     challan, 1. Plumber incentive applied, if want to remove, same for every partner and
+     executive, this is bcos sometimes plumber or partner who support us stopped working for
+     that site or changed by client, for the timebeing we have to deselect unless we dont
+     know who the new partner is" - and then: "partner change also we have to manage".
+
+     WHAT WAS ACTUALLY WRONG, AND IT IS WORSE THAN A MISSING TICK BOX. Until today the
+     incentive engine read the partner off the CLIENT RECORD, live, for the whole of history.
+     The comment above discRow says so in as many words: "Role, not partner name, so it
+     follows whoever is that client's plumber / architect today." So on the day a client
+     changes his plumber, the NEW plumber silently inherits the incentive on every delivery
+     that client has ever taken, and the old plumber loses every rupee he had earned. Nobody
+     is told. No screen changes colour. That is not a convenience gap; it is a money fault,
+     and it is the reason his second sentence exists.
+
+     THE FIX FREEZES WHO, NOT HOW MUCH. At the moment the owner adds a delivery to hisab -
+     the one moment a human being is already looking at the delivery - the line-up is written
+     onto it: this man, in this role, earning or not earning. The PERCENT is deliberately not
+     frozen, because a percent is per brand and one delivery can carry four brands; it keeps
+     coming from the discount row, where he already sets it and already understands it. What
+     is frozen is the identity and the tick.
+
+     OLD DELIVERIES ARE NOT TOUCHED. A challan with no line-up answers null, and every caller
+     falls back to the client record exactly as it did yesterday. */
+  var INC_ROLES = ["plumber", "architect", "builder", "pmc"];
+  function incRoleLabel(r) {
+    return { plumber: "Plumber", architect: "Architect", builder: "Builder",
+             pmc: "PMC", exec: "Executive" }[String(r || "")] || String(r || "");
+  }
+  /* The line-up a delivery WOULD carry if it were stamped right now: every partner named on
+     the client, plus the executive the client is assigned to. A blank name is not a line - a
+     client with no PMC has no PMC row to tick. */
+  function incLineup(c) {
+    var cl = clientByName(c && c.customerName) || {};
+    var out = [];
+    INC_ROLES.forEach(function (role) {
+      var nm = String(cl[role] || "").trim();
+      if (nm) out.push({ role: role, name: nm });
+    });
+    var ex = execForClient((c && c.customerName) || "");
+    if (ex) out.push({ role: "exec", name: ex });
+    return out;
+  }
+  /* What each man would earn on THIS delivery at today's presets, brand by brand. Job work is
+     excluded for the same reason incentiveBook excludes it: a partner earns on the goods he
+     brought us, not on our labour. `mixed` is true when the delivery carries brands at
+     different rates for the same man, because then no single percent is the truth and the
+     screen must show the rupees instead of pretending there is one number. */
+  function incPreview(c, lines) {
+    var cl = (c && c.customerName) || "";
+    /* v6.9.325 - the LINES are handed in rather than fetched. The CRM prices a challan with
+       pricedLines and the Challan app with its own chLines; if this function called either by
+       name the two apps would carry different bodies for the same rule, which is the one thing
+       t_apps_agree exists to stop. Handed the lines, the body is identical in both. */
+    return incLineup(c).map(function (m) {
+      var amt = 0, pcts = {};
+      lines.forEach(function (x) {
+        if (x.job) return;
+        var r = (m.role === "exec") ? execRateFor(cl, x.brand) : incRate(cl, x.brand, m.role);
+        if (r > 0) { amt += x.amt * r / 100; pcts[String(r)] = 1; }
+      });
+      var ks = Object.keys(pcts);
+      return { role: m.role, name: m.name, amt: amt, rated: ks.length > 0,
+               mixed: ks.length > 1, pct: ks.length === 1 ? Number(ks[0]) : 0 };
+    });
+  }
+  /* null means "this delivery carries no line-up - ask the client record", which is what every
+     delivery raised before v6.9.324 will always answer. An empty array means the opposite: it
+     WAS stamped, and this man earns nothing on it. Confusing the two would pay a partner for a
+     delivery he was deliberately taken off, so this returns null and never []. */
+  function chIncStamp(c) {
+    var st = hisabStamp(c);
+    return (st && st.inc && st.inc.length !== undefined) ? st.inc : null;
+  }
+  function chIncRoles(c, nmLower) {
+    var inc = chIncStamp(c);
+    if (!inc) return null;
+    return inc.filter(function (x) { return x && x.on !== false && dkey(x.name) === nmLower; })
+              .map(function (x) { return String(x.role || ""); });
+  }
+  /* A return reverses against the delivery it came back from, so it must read THAT delivery's
+     line-up and not the client record. Without this, a partner ticked OFF a challan would still
+     be reversed when the goods came back - an incentive he never earned taken off him - and he
+     would go negative. A return naming no challan answers null and falls back, as before. */
+  function retChallan(r) {
+    var no = String((r && r.challanNo) || "").trim();
+    if (!no) return null;
+    var clk = dkey(r && r.customerName);
+    return (S.data.challans || []).filter(function (c) {
+      return dkey(c.customerName) === clk && String(c.challanNo || "").trim() === no;
+    })[0] || null;
+  }
+  /* ---- THE FURTHER DISCOUNT (v6.9.324) ----
+     "ask for any further discount, if not check box showing no further discount".
+
+     It is a RUPEE concession on this one delivery, taken at the moment of passing it, on top
+     of the client's preset percentages which are already in the line prices. Rupees and not a
+     percent because that is what is actually said across a counter - "chhod do 2000" - and
+     because a second percent stacked on the first is the kind of arithmetic that produces a
+     bill nobody can reconstruct. The screen shows what percent of the goods it works out to,
+     so it can still be sanity-checked at a glance.
+
+     It reduces what the client owes, everywhere, because challanNet is the single expression
+     dues, hisab, the unbilled tracker and the statement all read. It does NOT reduce anybody's
+     incentive: a concession given to a customer is not a decision to cut the partner who
+     brought the goods, and quietly doing so would be taking that decision on his behalf. The
+     screen says this in one line so nothing is hidden. */
+  function hisabExtra(c) {
+    var st = hisabStamp(c);
+    return st ? (Number(st.extra) || 0) : 0;
+  }
+
   /* The screen he presses it on. Everything he needs to decide is on it: whose delivery,
      which paper, and every brand still without a discount for this client. */
   function modalAddToHisab(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
     if (!c) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var cl = c.customerName || "";
     var miss = hisabBrandsMissingDisc(c);
     var p = chProofAny(c);
-    var h = '<h2>Add to HISAB &mdash; ' + esc(c.challanNo || "") + '</h2>' +
-      '<p class="sub">' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
+    var h = '<h2>Check receipt &amp; Add to HISAB &mdash; ' + esc(c.challanNo || "") + '</h2>' +
+      '<p class="sub">' + esc(cl) + (c.site ? ' &middot; ' + esc(c.site) : "") +
       ' &middot; receipt ' + (p.queued ? '<b>on this phone, still uploading</b>' : '<b>on file</b>') +
       '. Check the paper first &mdash; this is the last look before the delivery counts as part of his hisab.</p>' +
       (p.url ? '<div style="margin:0 0 10px"><a class="btn sm ghost" href="' + esc(p.url) +
         '" target="_blank" rel="noopener">Open the signed receipt &#8599;</a></div>' : "");
+
+    /* ---- 1. THE STATEMENT, WITH THE DISCOUNT THAT WAS ACTUALLY APPLIED ----
+       His words: "show client preset discount, show statement with applied discounts". These
+       are the very same priced lines the bill and the dues are built from - pricedLines - so
+       what he reads here cannot differ from what the customer is charged. */
+    var priced = pricedLines(c, cl);
+    var goods = priced.reduce(function (a, x) { return a + x.amt; }, 0);
+    var frt = chFreight(c);
+    h += '<div class="card" style="padding:10px 12px">' +
+      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
+      '<b>The bill, as this client is priced</b></div>' +
+      '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+      '<tr style="color:#64748b;text-align:right">' +
+        '<th style="text-align:left;font-weight:600;padding:3px 6px 5px 0">Item</th>' +
+        '<th style="font-weight:600;padding:3px 6px 5px">Qty</th>' +
+        '<th style="font-weight:600;padding:3px 6px 5px">MRP</th>' +
+        '<th style="font-weight:600;padding:3px 6px 5px">Disc</th>' +
+        '<th style="font-weight:600;padding:3px 6px 5px">Rate</th>' +
+        '<th style="font-weight:600;padding:3px 0 5px 6px">Amount</th></tr>';
+    if (!priced.length) h += '<tr><td colspan="6" style="color:#94a3b8;padding:6px 0">No items on this challan.</td></tr>';
+    priced.forEach(function (x) {
+      h += '<tr style="border-top:1px solid #e2e8f0;text-align:right">' +
+        '<td style="text-align:left;padding:5px 6px 5px 0">' + esc(x.desc || x.code || "") +
+          (x.job ? ' <span class="pill" style="background:#ede9fe;color:#5b21b6">job work</span>'
+                 : (x.brand ? ' <span style="color:#94a3b8;font-size:11px">' + esc(x.brand) + '</span>' : '')) + '</td>' +
+        '<td style="padding:5px 6px">' + esc(String(x.qty)) + '</td>' +
+        '<td style="padding:5px 6px;color:' + (x.disc > 0 ? '#94a3b8;text-decoration:line-through' : '#334155') + '">' + money(x.rate) + '</td>' +
+        '<td style="padding:5px 6px;font-weight:700;color:' + (x.disc > 0 ? '#0f766e' : '#94a3b8') + '">' +
+          (x.job ? '&mdash;' : (x.disc > 0 ? x.disc + '%' : '0%')) + '</td>' +
+        '<td style="padding:5px 6px">' + money(x.dr) + '</td>' +
+        '<td style="padding:5px 0 5px 6px;font-weight:700">' + money(x.amt) + '</td></tr>';
+    });
+    h += '<tr style="border-top:2px solid #cbd5e1;text-align:right">' +
+      '<td colspan="5" style="padding:6px 6px 3px 0;color:#475569">Goods</td>' +
+      '<td style="padding:6px 0 3px 6px;font-weight:800">' + money(goods) + '</td></tr>';
+    if (frt > 0) h += '<tr style="text-align:right"><td colspan="5" style="padding:2px 6px 3px 0;color:#475569">' +
+      'Freight (recovered from the client)</td><td style="padding:2px 0 3px 6px;font-weight:700">' + money(frt) + '</td></tr>';
+    h += '<tr style="text-align:right;background:#f8fafc">' +
+      '<td colspan="5" style="padding:6px 6px 6px 0;font-weight:800;color:#0f172a">This delivery</td>' +
+      '<td id="hsb_tot" style="padding:6px 0 6px 6px;font-weight:800;font-size:15px;color:#0f172a">' + money(goods + frt) + '</td></tr>' +
+      '</table></div></div>';
+
+    /* ---- 2. THE PRESET, BRAND BY BRAND ----
+       Every brand on this delivery, and what this client is set at for it. Until now only the
+       MISSING ones appeared, so the commonest case - everything already set - showed nothing at
+       all and there was no way to check a preset without leaving the screen. */
+    var brands = hisabBrandsOf(c);
+    if (brands.length) {
+      h += '<div class="card" style="padding:10px 12px">' +
+        '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
+        '<b>' + esc(cl) + '&rsquo;s preset discount</b></div><div class="row" style="flex-wrap:wrap;gap:6px;margin-top:7px">' +
+        brands.map(function (b) {
+          var d = discRow(cl, b);
+          if (!d) return '<span class="pill" style="background:#fef2f2;color:#b91c1c">' + esc(b) + ' &mdash; not set</span>';
+          var pct = Number(d.pct) || 0;
+          return '<span class="pill" style="background:' + (pct > 0 ? '#f0fdfa;color:#0f766e' : '#f1f5f9;color:#475569') +
+            '">' + esc(b) + ' &mdash; ' + (pct > 0 ? pct + '%' : 'no discount') + '</span>';
+        }).join("") + '</div></div>';
+    }
+
     if (!miss.length) {
       h += '<div class="empty" style="text-align:left;padding:0 0 10px;color:#0f766e">' +
-        'Every brand on this challan already has a discount set for ' + esc(c.customerName || "") +
-        '. Nothing left to decide.</div>';
+        'Every brand on this challan already has a discount set for ' + esc(cl) + '. Nothing left to decide.</div>';
     } else {
       h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed">' +
         '<b style="color:#7c2d12">' + miss.length + ' brand' + (miss.length > 1 ? 's have' : ' has') +
-        ' no discount set for ' + esc(c.customerName || "") + '</b>' +
+        ' no discount set for ' + esc(cl) + '</b>' +
         '<div class="meta" style="color:#7c2d12;margin-top:3px">Put the percent in, or say there is none. ' +
         '<b>Either answer is remembered.</b> Saying there is none means that brand goes to this client ' +
         'at no discount from here on, and you will not be asked again.</div>' +
@@ -6387,15 +6599,62 @@ window.addEventListener("beforeunload", function (ev) {
         }).join("") +
         '</div>';
     }
+
+    /* ---- 3. ANY FURTHER DISCOUNT ON THIS DELIVERY ---- */
+    h += '<div class="card" style="padding:10px 12px">' +
+      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
+      '<b>Any further discount on this delivery?</b></div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:3px">Over and above the preset above, for this ' +
+      'delivery only. It comes off what ' + esc(cl) + ' owes. It does <b>not</b> cut anybody&rsquo;s incentive.</div>' +
+      '<div class="row" style="gap:10px;flex-wrap:wrap;margin-top:8px;align-items:center">' +
+        '<input id="hsb_extra" inputmode="decimal" placeholder="Amount off (₹)" ' +
+          'data-goods="' + Math.round(goods) + '" data-frt="' + Math.round(frt) + '" ' +
+          'style="flex:1 1 150px;min-width:130px"/>' +
+        '<span id="hsb_extrapct" class="meta" style="font-size:12px;white-space:nowrap">&mdash;</span>' +
+        '<label style="display:flex;align-items:center;gap:7px;margin:0;white-space:nowrap;font-weight:700;' +
+          'color:#334155;cursor:pointer"><input type="checkbox" id="hsb_noextra" ' +
+          'style="width:19px;height:19px;flex:0 0 auto"/> No further discount</label>' +
+      '</div>' +
+      '<input id="hsb_extranote" placeholder="Why (optional) — e.g. breakage adjusted, rate settled on site" ' +
+        'style="margin-top:8px"/></div>';
+
+    /* ---- 4. WHO EARNS ON THIS DELIVERY ---- */
+    var lineup = incPreview(c, priced);
+    h += '<div class="card" style="padding:10px 12px">' +
+      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
+      '<b>Who earns on this delivery</b></div>';
+    if (!lineup.length) {
+      h += '<div class="meta" style="font-size:12.5px;margin-top:4px;color:#94a3b8">No partner and no executive is ' +
+        'named on ' + esc(cl) + ', so nobody earns on this delivery.</div>';
+    } else {
+      h += '<div class="meta" style="font-size:12.5px;margin-top:3px">Untick anyone who should <b>not</b> earn on ' +
+        'this delivery &mdash; a plumber who has left the site, a partner the client has changed. It applies to ' +
+        '<b>this delivery only</b>, and whoever is ticked here is fixed to it for good: changing this client&rsquo;s ' +
+        'partner later will not move a rupee of it.</div>';
+      lineup.forEach(function (m) {
+        h += '<label style="display:flex;align-items:center;gap:9px;margin:0;padding:8px 0 0;cursor:pointer">' +
+          '<input type="checkbox" class="hsb-inc" checked data-role="' + esc(m.role) + '" data-name="' + esc(m.name) +
+            '" style="width:19px;height:19px;flex:0 0 auto"/>' +
+          '<span style="flex:1 1 auto;font-weight:600;color:#0f172a">' + esc(incRoleLabel(m.role)) +
+            ' <span style="color:#475569;font-weight:500">&middot; ' + esc(m.name) + '</span></span>' +
+          '<span style="font-size:12.5px;color:' + (m.rated ? '#0f766e' : '#94a3b8') + ';white-space:nowrap">' +
+            (m.rated ? (m.mixed ? 'mixed rates' : m.pct + '%') + ' &middot; <b>' + money(m.amt) + '</b>'
+                     : 'no rate set &mdash; earns nothing') + '</span></label>';
+      });
+    }
+    h += '</div>';
+
     return h +
       '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
       '<button class="btn" data-act="hsb-confirm" data-id="' + esc(c.id) + '">Add to HISAB</button></div>';
   }
+
   /* Writing it. The discount decisions go first and the stamp last, so a stamp can never
      exist for a challan whose brands were left undecided. Nothing is ever overwritten. */
-  function hisabStampSave(c, setList, ignList) {
+  function hisabStampSave(c, setList, ignList, extra) {
     _hsbCache = null;
     var now = new Date().toISOString();
+    var x = extra || {};
     return save("audit", {
       id: "H-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
       createdAt: now, actor: S.user || "",
@@ -6403,7 +6662,11 @@ window.addEventListener("beforeunload", function (ev) {
       target: String(c.challanNo || c.id || "") + " / " + String(c.customerName || ""),
       detail: JSON.stringify({
         chId: c.id, no: c.challanNo || "", client: c.customerName || "",
-        by: S.user || "", at: now, set: setList || [], ignored: ignList || []
+        by: S.user || "", at: now, set: setList || [], ignored: ignList || [],
+        /* v6.9.324 - `inc` is always written, even when nobody is named on the client, so an
+           empty line-up is a recorded fact rather than an absent one. That distinction is the
+           whole reason chIncStamp can tell "stamped, nobody earns" from "never stamped". */
+        inc: x.inc || [], extra: Math.round(Number(x.extra) || 0), extraNote: String(x.extraNote || "")
       })
     }, true);
   }
@@ -6851,7 +7114,17 @@ window.addEventListener("beforeunload", function (ev) {
       _prfUp = null;
       if (_prfTick) { clearInterval(_prfTick); _prfTick = null; }
     };
-    return api("pdfHost", { pdfBase64: e.b64, filename: e.fname }, 240000)
+    /* v6.9.326 - THE RECEIPT IS MIRRORED TO TELEGRAM AS IT GOES UP.
+       His words: "can we save / forward all material receipt auto to specified telegram bot in
+       proper format with client name". The facts travel with the document because the server
+       cannot get them from a file name - DELIVERY-ARUN0912-180826-002.pdf carries a code and a
+       date and not one word a human being would recognise as a client.
+
+       `mirror` is what makes it a receipt rather than a statement or a quote: all three go
+       through pdfHost, and only this one belongs in the group. */
+    return api("pdfHost", { pdfBase64: e.b64, filename: e.fname, mirror: "receipt",
+                            client: e.client || "", site: e.site || "", no: e.no || "",
+                            at: e.at || "", by: e.by || "" }, 240000)
       .then(function (j) { clear(); return j; },
             function (err) { clear(); throw err; });
   }
@@ -6870,6 +7143,11 @@ window.addEventListener("beforeunload", function (ev) {
         detail: JSON.stringify({
           chId: e.chId, no: e.no, client: e.client, site: e.site,
           by: e.by, geo: e.geo, url: r.url, at: e.at, photo: !!e.hasPhoto, sig: !!e.hasSig,
+          /* v6.9.326 - where the same document landed in Telegram, kept BESIDE the Drive link
+             and never instead of it. Drive stays the primary until a t.me link has actually
+             been opened and seen to work; a backup nobody has opened is not a backup. Blank
+             when the mirror failed, which is the honest record of a mirror that failed. */
+          tg: String((r && r.tgLink) || ""),
           /* v6.9.212 - the 2-3 KB picture of the paper, filed with the proof itself. */
           thumb: String(e.thumb || "")
         }), ip: ""
@@ -12001,7 +12279,7 @@ function viewCatalogue() {
         && ["Approved", "Dispatched", "Received"].indexOf(String(c.status)) >= 0
         && scOwnerOf(c.customerName) === exec;
     }).reduce(function (a, c) {
-      return a + pricedLines(c, c.customerName).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c);
+      return a + chValue(c);
     }, 0);
   }
   function scExecMetrics(exec, month) {
@@ -12022,7 +12300,7 @@ function viewCatalogue() {
     (hisabClientNames() || []).forEach(function (nm) {
       if (scOwnerOf(nm) !== exec) return;
       var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === nm && String(c.receiptReceived).toUpperCase() === "Y"; }));
-      var net = chs.reduce(function (a, c) { return a + pricedLines(c, nm).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
+      var net = chs.reduce(function (a, c) { return a + chValue(c); }, 0);
       var cl = clientByName(nm) || {}, opening = nAmt(cl.openingAmt);   /* v6.9.266 */
       var l = clientLedger(nm), ret = clientReturns(nm).reduce(function (a, r) { return a + returnNet(r); }, 0);
       billed += net + opening; paid += (l.paid || 0);
@@ -12125,7 +12403,7 @@ function viewCatalogue() {
       if (isNaN(d)) return false;
       var age = (now - d) / 86400000;
       return age >= toDaysAgo && age < fromDaysAgo;
-    }).reduce(function (a, c) { return a + pricedLines(c, nm).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
+    }).reduce(function (a, c) { return a + chValue(c); }, 0);
   }
   function scHealthStyle(flag) {
     if (flag === "At risk") return { bg: "#fee2e2", c: "#b91c1c" };
@@ -13154,7 +13432,11 @@ function viewCatalogue() {
              The line is marked in pricedLines(), so this is the only place that has to know. */
           base += x.amt;
           if (x.job) return;
-          inc += x.amt * rateFor(cl, x.brand || c.brand || "") / 100;
+          /* v6.9.325 - the DELIVERY is handed to rateFor now, not just the client and the
+             brand. That is the whole of the partner-change fix: a delivery that carries its own
+             line-up answers for itself, and one that does not falls back to the client record
+             exactly as it always has. */
+          inc += x.amt * rateFor(cl, x.brand || c.brand || "", c) / 100;
         });
         billed += base; earned += inc; clientNames[c.customerName] = 1;
         clBilled += base; clFreight += chFreight(c);
@@ -13174,9 +13456,14 @@ function viewCatalogue() {
                String(r.status || "").trim().toLowerCase() === "received";
       }).forEach(function (r) {
         var rBase = 0, rInc = 0, rBrands = {};
+        /* v6.9.325 - a return reverses against THE DELIVERY IT CAME BACK FROM, so it reads that
+           delivery's line-up. Read against the client record instead, a partner deliberately
+           ticked off a challan would be reversed for an incentive he never earned and would go
+           NEGATIVE. A return naming no challan hands back null and falls back, as before. */
+        var rCh = retChallan(r);
         returnLines(r).forEach(function (x) {
           rBase += x.amt;
-          rInc += x.amt * rateFor(cl, x.brand) / 100;
+          rInc += x.amt * rateFor(cl, x.brand, rCh) / 100;
           if (x.brand) rBrands[x.brand] = 1;
         });
         returned += rBase; reversed += rInc; earned -= rInc;
@@ -13223,15 +13510,45 @@ function viewCatalogue() {
       collected: collected, payBase: payBase, ratio: ratio, payable: payable, paid: paid, pending: payable - paid, sites: [] };
   }
 
+  /* v6.9.325 - every client whose STAMPED delivery still names this man, whether or not the
+     client record does today. Keyed by dkey so it lines up with every other name comparison in
+     this file. Cheap: one pass over the challans, and the stamp map behind chIncStamp is
+     already cached. */
+  function incStampClients(nmLower) {
+    var out = {};
+    if (!nmLower) return out;
+    (S.data.challans || []).forEach(function (c) {
+      var inc = chIncStamp(c);
+      if (!inc) return;
+      if (inc.some(function (x) { return x && x.on !== false && dkey(x.name) === nmLower; })) {
+        out[dkey(c.customerName)] = 1;
+      }
+    });
+    return out;
+  }
+
   function partnerBook(name) {
     var nm = String(name).trim().toLowerCase();
     /* A partner earns on every client he is NAMED on (as plumber / architect / builder /
        PMC), at the rate set for THAT client and THAT brand - line by line, because one
        challan can carry more than one brand. Incentive is paid ONLY where an explicit
        client-&-brand rate is set (owner's decision: explicit-only, no default fallback). */
-    var myClients = (S.data.clients || []).filter(function (cl) { return clientRolesOf(cl, nm).length; });
-    var bk = incentiveBook(myClients, function (cl, br) {
-      var roles = clientRolesOf(cl, nm), rate = 0;
+    /* v6.9.325 - A PARTNER TAKEN OFF A CLIENT KEEPS WHAT WAS ALREADY FROZEN TO HIM.
+       This used to start from clientRolesOf alone, so the moment his name came off the client
+       record he vanished from his own book - including from deliveries he had been stamped onto
+       and had genuinely earned. Any client whose stamped delivery still names him is added back. */
+    var stampedCl = incStampClients(nm);
+    var myClients = (S.data.clients || []).filter(function (cl) {
+      return clientRolesOf(cl, nm).length || stampedCl[dkey(cl.name)];
+    });
+    var bk = incentiveBook(myClients, function (cl, br, c) {
+      /* The stamped line-up wins where there is one. "exec" is dropped here on purpose: a man
+         who is both this client's plumber and its executive is paid once as each, by the two
+         books, and letting the partner's book see the exec role would pay him twice. */
+      var roles = chIncRoles(c, nm);
+      roles = roles === null ? clientRolesOf(cl, nm)
+                             : roles.filter(function (r) { return r !== "exec"; });
+      var rate = 0;
       roles.forEach(function (role) { var r = incRate(cl.name, br, role); if (r > rate) rate = r; });
       return rate;
     }, nm);
@@ -13247,10 +13564,21 @@ function viewCatalogue() {
      return - the engine above is shared with the partners' so they cannot diverge. */
   function execBook(name) {
     var nm = String(name).trim().toLowerCase();
+    /* v6.9.325 - and an executive moved off a client keeps his stamped deliveries too. The
+       client changing hands is far commoner than a partner changing, so this matters more here. */
+    var stampedEx = incStampClients(nm);
     var myClients = (S.data.clients || []).filter(function (cl) {
-      return String(cl.ownedBy || cl.createdBy || "").trim().toLowerCase() === nm && nm;
+      return (String(cl.ownedBy || cl.createdBy || "").trim().toLowerCase() === nm && nm) ||
+             stampedEx[dkey(cl.name)];
     });
-    var bk = incentiveBook(myClients, function (cl, br) { return execRateFor(cl.name, br); }, nm);
+    var bk = incentiveBook(myClients, function (cl, br, c) {
+      /* v6.9.325 - same three-way answer as the partner's. null: no line-up on this delivery,
+         behave as before. A line-up without "exec": he was deliberately left off it, and earns
+         nothing. With "exec": his usual rate. */
+      var roles = chIncRoles(c, nm);
+      if (roles && roles.indexOf("exec") < 0) return 0;
+      return execRateFor(cl.name, br);
+    }, nm);
     var mine = {};
     myClients.forEach(function (cl) { mine[String(cl.name || "").trim().toLowerCase()] = 1; });
     bk.sites = S.data.sites.filter(function (st) { return mine[String(st.client || "").trim().toLowerCase()]; });
@@ -13927,9 +14255,26 @@ function viewCatalogue() {
      the one that had lost it. There is one reader now and every site uses it. */
   function clientOpening(name) { return nAmt((clientByName(name) || {}).openingAmt); }
   function chFreight(c) { return String(c.freightTo) === "Client" ? nAmt(c.freight) : 0; }
+  /* v6.9.325 - ONE EXPRESSION FOR WHAT A DELIVERY IS WORTH: net goods - which from v6.9.324
+     has any further discount already taken off it - plus the freight the client is carrying.
+     Five screens were spelling this out longhand, as a reduce over pricedLines plus chFreight,
+     and every one of them would have gone on showing the PRE-concession figure while the dues
+     beside it showed the post-concession one. Two numbers for the same delivery is precisely
+     the fault the check screen exists to prevent, so there is now one place to be wrong. */
+  function chValue(c) { return challanNet(c) + chFreight(c); }
   /* Net (post-discount, ex-GST) goods value of a challan - the basis for dues and incentive.
      Freight is NOT part of it (freight is a pass-through cost, not a sale). */
-  function challanNet(c) { return pricedLines(c, c.customerName).reduce(function (s, x) { return s + x.amt; }, 0); }
+  /* v6.9.324 - a further discount taken at hisab time comes off here, which is the ONE place
+     dues, hisab, the unbilled tracker and every statement read. Putting it anywhere else would
+     mean two numbers for the same delivery. It can only exist on a stamp written by v6.9.324 or
+     later, so no figure already on the books moves. It is floored at the goods value: a
+     concession larger than the goods would turn a delivery into a credit note, which is a
+     different document and not something a tick box should be able to create by accident. */
+  function challanNet(c) {
+    var gross = pricedLines(c, c.customerName).reduce(function (s, x) { return s + x.amt; }, 0);
+    var off = hisabExtra(c);
+    return off > 0 ? Math.max(0, gross - Math.min(off, gross)) : gross;
+  }
   /* v6.9.125 — defence-in-depth against DOUBLE-BILLING. The v6.9.124 stable-id fix stops duplicate
      challans being created; this makes the money maths immune even if a duplicate ever slips in from
      old data: when two challans carry the SAME challan number, only ONE is counted (the later row
@@ -13945,7 +14290,7 @@ function viewCatalogue() {
   function hisabOutstanding() {
     return hisabClientNames().map(function (nm) {
       var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === nm && String(c.receiptReceived).toUpperCase() === "Y"; }));
-      var net = chs.reduce(function (a, c) { return a + pricedLines(c, nm).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
+      var net = chs.reduce(function (a, c) { return a + chValue(c); }, 0);
       var paid = clientLedger(nm).paid, cl = clientByName(nm) || {};
       var opening = nAmt(cl.openingAmt);   /* v6.9.266 - was Number(), which is NaN on "1,48,000" */
       /* v6.9.121: booked-in material returns credit the client, so they come off the outstanding
@@ -14381,7 +14726,10 @@ function viewCatalogue() {
       var sel = S.billSel[c.id] !== false;
       var priced = pricedLines(c, cl);
       var sub = priced.reduce(function (a, x) { return a + x.amt; }, 0);
-      var frt = chFreight(c), chTotal = sub + frt;
+      /* v6.9.325 - a further discount taken when this delivery was passed. It is shown as its
+         own line rather than folded quietly into the total, because a total that is lower than
+         the lines above it and does not say why reads as an arithmetic fault. */
+      var frt = chFreight(c), xOff = Math.min(hisabExtra(c), sub), chTotal = sub + frt - xOff;
       allNet += chTotal; if (sel) { selNet += chTotal; selGoods += sub; selCount++; }
       var rows = priced.map(function (x, idx) {
         var disc = x.disc;
@@ -14426,6 +14774,7 @@ function viewCatalogue() {
         '<th style="padding:6px;text-align:center;width:56px">Disc%</th><th style="padding:6px;text-align:right;width:72px">Net rate</th>' +
         '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' + rows +
         (frt > 0 ? '<tr style="background:#fffbeb;border-top:1px dashed #e2e8f0"><td colspan="6" style="padding:5px 6px;text-align:right;color:#92400e">Freight' + (c.driver ? ' (' + esc(c.driver) + ')' : '') + '</td><td style="padding:5px 6px;text-align:right;font-weight:700;color:#92400e">' + money(frt) + '</td></tr>' : '') +
+        (xOff > 0 ? '<tr style="background:#f0fdfa;border-top:1px dashed #e2e8f0"><td colspan="6" style="padding:5px 6px;text-align:right;color:#0f766e">Further discount' + (hisabStamp(c) && hisabStamp(c).extraNote ? ' (' + esc(hisabStamp(c).extraNote) + ')' : '') + '</td><td style="padding:5px 6px;text-align:right;font-weight:700;color:#0f766e">- ' + money(xOff) + '</td></tr>' : '') +
         '</tbody>' +
         '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total</td>' +
         '<td style="padding:6px;text-align:right;font-weight:800">' + money(chTotal) + '</td></tr></tfoot></table></div>' +
@@ -14680,7 +15029,7 @@ function viewCatalogue() {
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }));
     var sel = chs.filter(function (c) { return all || S.billSel[c.id] !== false; })
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
-    var allNet = chs.reduce(function (a, c) { return a + pricedLines(c, cl).reduce(function (s, x) { return s + x.amt; }, 0) + chFreight(c); }, 0);
+    var allNet = chs.reduce(function (a, c) { return a + chValue(c); }, 0);
     /* The statement uses its OWN compact header (not the shared commPdfBase): a shorter band,
        a small un-shouty "STATEMENT" label top-right, then the client's details and date beneath
        it - so the client block need not repeat in the body. No company tagline. */
@@ -14876,14 +15225,25 @@ function viewCatalogue() {
           F("bold"); doc.text(RS(x.amt), cA, y, { align: "right" }); F("normal");
           y += rowH; sub += x.amt;
         });
-        var frt = chFreight(c), chTotal = sub + frt;
+        /* v6.9.325 - the further discount prints on the client's own statement too. It has to:
+           he is handed this paper, and a Challan total below the lines that does not add up
+           unless a concession is named is the sort of thing that starts an argument at a
+           counter. Same figure and same wording as the screen. */
+        var frt = chFreight(c), xOff = Math.min(hisabExtra(c), sub), chTotal = sub + frt - xOff;
         if (frt > 0) {
           if (y + 4.4 > 282) { doc.addPage(); y = 20; head(); }
           F("normal"); doc.setFontSize(6.8); doc.setTextColor(146, 64, 14);
           doc.text("Freight" + (c.driver ? " (" + c.driver + ")" : ""), pX, y);
           doc.text(RS(frt), cA, y, { align: "right" }); y += 4.4;
         }
-        grand += chTotal; goodsGrand += sub;
+        if (xOff > 0) {
+          if (y + 4.4 > 282) { doc.addPage(); y = 20; head(); }
+          var _xn = (hisabStamp(c) && hisabStamp(c).extraNote) || "";
+          F("normal"); doc.setFontSize(6.8); doc.setTextColor(15, 118, 110);
+          doc.text("Further discount" + (_xn ? " (" + pdfSafe(_xn) + ")" : ""), pX, y);
+          doc.text("- " + RS(xOff), cA, y, { align: "right" }); y += 4.4;
+        }
+        grand += chTotal; goodsGrand += sub - xOff;
         /* Challan total in a shaded band, text VERTICALLY CENTERED in the band. */
         var tbY = y - 3.4, tbH = 6.4, tMid = tbY + tbH / 2 + 1.35;
         doc.setFillColor(241, 245, 249); doc.rect(L, tbY, R - L, tbH, "F");
@@ -17979,6 +18339,102 @@ function viewCatalogue() {
      a 1000px q0.55 photograph of a written page measures ~245 KB, plus the PDF's own frame */
   var PROOF_TARGET_KB = 280;
 
+  /* ==========================================================================
+     DRIVE HOUSEKEEPING  (v6.9.326, 21 August 2026)
+
+     "make proper system for deletion in crm"
+
+     WHAT THE COUNT ACTUALLY SHOWED, and it is why this screen leads with numbers. On 21 Aug
+     the newest 100 files in the receipts folder came to 123 MB. FORTY PER CENT of that - 49 MB
+     - was my own test files, one of them a single 20 MB probe. The real documents were 74 MB
+     over eighteen days, which is about 1.5 GB a year. On a 100 GB plan the receipts are not
+     the problem and were never going to be; the junk and the rebuildable statements are.
+
+     NOTHING IS DELETED. A file is moved to Drive's trash, which keeps it for thirty days, and
+     the clear is written to the audit sheet. The house rule about never deleting is about
+     RECORDS; this is about files, and even so it is reversible.
+
+     AND A RECEIPT THE APP LINKS TO IS NEVER OFFERED. Those are read off the audit sheet on the
+     server - the actual urls the app can still open - and refused again at the moment of
+     writing, because a receipt can be attached between the scan and the tap. Deleting one
+     would leave a green "Receipt received" tick pointing at nothing, which is the worst
+     possible outcome: the paper still exists, and the app has forgotten where. */
+  var DRV_KINDS = {
+    junk: { t: "Test files", why: "Left behind by upload and size probes. Nothing reads them.", safe: true },
+    statement: { t: "HISAB statements", why: "The app rebuilds any of these from the sheet on demand, so keeping them is keeping a copy of something you can print again in five seconds. They are also the biggest files here, 2-3 MB each.", safe: true },
+    dup: { t: "Duplicate copies", why: "The same document, same name and same size, written more than once by upload retries. The oldest copy of each is kept; only the extras are offered.", safe: true },
+    proof: { t: "Delivery receipts in use", why: "The app links to every one of these. They are shown so you can see the real size of what you are keeping, and they can never be cleared from here.", safe: false },
+    other: { t: "Everything else", why: "Not recognised, so not offered. Quotes, challan PDFs, anything hand-uploaded.", safe: false }
+  };
+  function drvGroup(f) { return (f && f.dup && f.kind !== "proof") ? "dup" : String((f && f.kind) || "other"); }
+  function drvMB(n) { return (Math.round((Number(n) || 0) / 1048576 * 10) / 10) + " MB"; }
+  function drvBuckets() {
+    var out = {}; Object.keys(DRV_KINDS).forEach(function (k) { out[k] = { n: 0, b: 0, ids: [] }; });
+    (((S.drv && S.drv.files) || [])).forEach(function (f) {
+      var g = drvGroup(f); if (!out[g]) return;
+      out[g].n++; out[g].b += Number(f.size) || 0;
+      if (DRV_KINDS[g].safe) out[g].ids.push(f.id);
+    });
+    return out;
+  }
+  function driveCard() {
+    if (!roleIs("admin")) return "";
+    var d = S.drv || {};
+    var h = '<div class="card"><h3 style="margin:0 0 2px">Storage on Google Drive</h3>' +
+      '<div class="meta" style="font-size:12.5px">Every signed receipt, statement and quote the ' +
+      'apps have ever hosted lives in one Drive folder. Nothing here is deleted &mdash; whatever ' +
+      'you clear goes to Drive&rsquo;s trash and stays recoverable for thirty days.</div>';
+    if (d.err) h += '<div class="meta" style="color:#b91c1c;margin-top:6px">' + esc(d.err) + '</div>';
+    if (!d.files) {
+      return h + '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="drv-scan"' +
+        (d.busy ? ' disabled' : '') + '>' + (d.busy ? 'Reading Drive…' : 'Check what is on Drive') +
+        '</button></div></div>';
+    }
+    var b = drvBuckets();
+    var tot = d.files.reduce(function (a, f) { return a + (Number(f.size) || 0); }, 0);
+    var free = ["junk", "statement", "dup"].reduce(function (a, k) { return a + b[k].b; }, 0);
+    h += '<div class="cards" style="margin-top:8px">' +
+      '<div class="stat"><div class="n">' + d.files.length + '</div><div class="l">Files</div></div>' +
+      '<div class="stat"><div class="n">' + drvMB(tot) + '</div><div class="l">In all</div></div>' +
+      '<div class="stat ' + (free > 0 ? 'alert' : '') + '"><div class="n">' + drvMB(free) + '</div>' +
+      '<div class="l">Can be cleared</div></div></div>';
+    Object.keys(DRV_KINDS).forEach(function (k) {
+      var g = b[k], K = DRV_KINDS[k];
+      if (!g.n) return;
+      h += '<div style="border-top:1px solid #e2e8f0;margin-top:10px;padding-top:10px">' +
+        '<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<b style="flex:1 1 auto">' + esc(K.t) + '</b>' +
+        '<span class="meta" style="font-size:12.5px;white-space:nowrap">' + g.n + ' file(s) &middot; <b>' + drvMB(g.b) + '</b></span>' +
+        (K.safe && g.ids.length
+          ? '<button class="btn sm" data-act="drv-ask" data-kind="' + esc(k) + '">Clear these</button>'
+          : '<span class="pill" style="background:#f1f5f9;color:#475569">kept</span>') +
+        '</div><div class="meta" style="font-size:12px;margin-top:3px">' + esc(K.why) + '</div></div>';
+    });
+    h += '<div class="acts" style="margin-top:10px"><button class="btn sm ghost" data-act="drv-scan"' +
+      (d.busy ? ' disabled' : '') + '>' + (d.busy ? 'Reading Drive…' : 'Re-check') + '</button>' +
+      '<span class="meta" style="align-self:center;font-size:11.5px">Read ' + esc(String(d.at || "").slice(11, 16)) + '</span></div>';
+    return h + '</div>';
+  }
+  function modalDriveClear(kind) {
+    var K = DRV_KINDS[kind]; if (!K) return "";
+    var g = drvBuckets()[kind];
+    var names = (((S.drv && S.drv.files) || [])).filter(function (f) { return drvGroup(f) === kind; })
+      .slice(0, 12);
+    return '<h2>Clear ' + esc(K.t.toLowerCase()) + '?</h2>' +
+      '<p class="sub">' + g.n + ' file(s), ' + drvMB(g.b) + '. They go to <b>Drive&rsquo;s trash</b>, ' +
+      'where Google keeps them for thirty days &mdash; this is not a delete and it can be undone ' +
+      'from Drive itself. Nothing the app links to is included.</p>' +
+      '<div class="card" style="max-height:230px;overflow:auto">' +
+      names.map(function (f) {
+        return '<div class="meta" style="font-size:12px;padding:2px 0">' + esc(f.name) +
+          ' <span style="color:#94a3b8">&middot; ' + drvMB(f.size) + '</span></div>';
+      }).join("") +
+      (g.n > names.length ? '<div class="meta" style="font-size:12px;padding:4px 0 0;color:#94a3b8">and ' +
+        (g.n - names.length) + ' more</div>' : '') + '</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Keep them</button>' +
+      '<button class="btn" data-act="drv-do" data-kind="' + esc(kind) + '">Move ' + g.n + ' to trash</button></div>';
+  }
+
   function viewHealth() {
     var s = healthScan();
     var h = '<div class="card" style="' + (s.total ? 'border-color:#fed7aa;background:#fff7ed' : 'border-color:#99f6e4;background:#f0fdfa') + '">' +
@@ -17989,6 +18445,7 @@ function viewCatalogue() {
       '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="health-refresh">Re-scan</button></div></div>';
 
     h += lineTestCard();
+    try { h += driveCard(); } catch (e) { console.warn("[drive] card:", e); }
 
     /* v6.9.257 - THE STORAGE READOUT. "phone storage is full" cost a day of everybody
        deleting photographs off phones that had plenty of room, because nothing anywhere
@@ -26112,6 +26569,60 @@ function viewCatalogue() {
       }
       S.modal = modalAddToHisab(_hid); render(); return;
     }
+    if (act === "drv-scan") {
+      if (!roleIs("admin")) { toast("Only the owner reads the Drive folder."); return; }
+      S.drv = { busy: true, files: (S.drv && S.drv.files) || null, at: (S.drv && S.drv.at) || "" };
+      render();
+      api("driveList", {}, 60000).then(function (r) {
+        if (!r || !r.ok) {
+          S.drv = { err: (r && r.error) || "Drive did not answer.", files: null };
+        } else {
+          S.drv = { files: r.files || [], folder: r.folder || "", at: new Date().toISOString(),
+                    capped: !!r.capped };
+        }
+        render();
+      }).catch(function (e) {
+        S.drv = { err: (e && e.message) ? String(e.message) : "No answer from the server.", files: null };
+        render();
+      });
+      return;
+    }
+    if (act === "drv-ask") {
+      var dk = t.getAttribute("data-kind");
+      if (!DRV_KINDS[dk] || !DRV_KINDS[dk].safe) { toast("Those are kept."); return; }
+      S.modal = modalDriveClear(dk); render(); return;
+    }
+    if (act === "drv-do") {
+      var dk2 = t.getAttribute("data-kind");
+      if (!roleIs("admin")) { toast("Only the owner clears Drive."); return; }
+      if (!DRV_KINDS[dk2] || !DRV_KINDS[dk2].safe) { toast("Those are kept."); return; }
+      var ids = drvBuckets()[dk2].ids;
+      if (!ids.length) { toast("Nothing to clear."); S.modal = null; render(); return; }
+      t.disabled = true; t.textContent = "Moving to trash…";
+      api("driveTrash", { ids: ids }, 120000).then(function (r) {
+        S.modal = null;
+        if (!r || !r.ok) { toast((r && r.error) || "Nothing was moved."); render(); return; }
+        /* the list on screen is now stale by exactly what went. Re-read rather than patch it:
+           the server refuses anything the app has since linked to, so what it actually trashed
+           and what was asked for are not always the same list. */
+        toast(r.trashed + " file(s) moved to Drive trash, " +
+              drvMB(r.bytes) + " freed. Google keeps them thirty days." +
+              (r.refused && r.refused.length ? " " + r.refused.length + " were kept back because the app links to them." : ""));
+        S.drv = { busy: true, files: null };
+        render();
+        api("driveList", {}, 60000).then(function (r2) {
+          S.drv = (r2 && r2.ok) ? { files: r2.files || [], folder: r2.folder || "",
+                                    at: new Date().toISOString(), capped: !!r2.capped }
+                                : { err: (r2 && r2.error) || "Drive did not answer.", files: null };
+          render();
+        });
+      }).catch(function (e) {
+        S.modal = null;
+        toast((e && e.message) ? String(e.message) : "No answer from the server.");
+        render();
+      });
+      return;
+    }
     if (act === "hsb-confirm") {
       var hid = t.getAttribute("data-id");
       var hc = (S.data.challans || []).filter(function (x) { return x.id === hid; })[0];
@@ -26137,6 +26648,34 @@ function viewCatalogue() {
         toast("Still to decide: " + hopen.join(", ") + ". Put a % in, or tick No discount.");
         return;
       }
+      /* v6.9.324 - THE FURTHER DISCOUNT IS A QUESTION, AND A QUESTION HAS TO BE ANSWERED.
+         Same shape as the brand discount above it: an amount, or the tick that says there is
+         none. Leaving it blank is not "no" - it is "not looked at", and the difference matters
+         on a screen whose whole job is that a human being looked. */
+      var hxEl = el("hsb_extra"), hxNo = el("hsb_noextra");
+      var hxRaw = hxEl ? String(hxEl.value || "").replace(/[^0-9.\-]/g, "").trim() : "";
+      var hxAmt = Math.round(Number(hxRaw) || 0);
+      if (!(hxNo && hxNo.checked) && !hxRaw.length) {
+        toast("Further discount: put an amount in, or tick No further discount.");
+        return;
+      }
+      if (hxNo && hxNo.checked) hxAmt = 0;
+      if (hxAmt < 0) { toast("A further discount cannot be a negative amount."); return; }
+      var hGoods = pricedLines(hc, hc.customerName).reduce(function (a, x) { return a + x.amt; }, 0);
+      if (hxAmt > hGoods) {
+        toast("That is more than the goods on this delivery (" + money(hGoods) + "). Check the amount.");
+        return;
+      }
+      /* Every man on the line-up, ticked or not. The unticked ones are written too: "this man
+         was looked at and deliberately left out" is a different fact from "this man was never
+         on the delivery", and only one of them can be defended to him later. */
+      var hInc = [];
+      document.querySelectorAll(".hsb-inc").forEach(function (elx) {
+        hInc.push({ role: elx.getAttribute("data-role") || "", name: elx.getAttribute("data-name") || "",
+                    on: !!elx.checked });
+      });
+      var hOff = hInc.filter(function (x) { return !x.on; });
+
       var hset = [], hign = [];
       hmiss.forEach(function (b, i) {
         var v = hnon[b] ? 0 : (Number(hpct[b]) || 0);
@@ -26147,11 +26686,16 @@ function viewCatalogue() {
         }, true);
         if (v > 0) hset.push(b + " " + v + "%"); else hign.push(b);
       });
-      hisabStampSave(hc, hset, hign);
+      hisabStampSave(hc, hset, hign, {
+        inc: hInc, extra: hxAmt,
+        extraNote: (el("hsb_extranote") && el("hsb_extranote").value) || ""
+      });
       S.modal = null;
       _hsbCache = null;
       render();
       toast("Challan " + (hc.challanNo || "") + " added to hisab." +
+        (hxAmt > 0 ? " " + money(hxAmt) + " further discount taken off." : "") +
+        (hOff.length ? " No incentive on it for " + hOff.map(function (x) { return x.name; }).join(", ") + "." : "") +
         (hset.length ? " Discount set for " + hset.join(", ") + "." : "") +
         (hign.length ? " " + hign.join(", ") + " will go without discount to this client." : ""));
       return;
