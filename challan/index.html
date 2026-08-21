@@ -172,11 +172,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      same numbering - a challan made here is indistinguishable from one made in the
      CRM, and the CRM is not changed in any way by this app existing.
 
-     WHO DOES WHAT (the owner's rule).
-       GODOWN  makes the challan, registers the return, attaches the signed receipt.
-               What he makes is a DRAFT. It is not a delivery yet.
-       ACCOUNTS approves it. Only then does it count against the client's account.
-       ADMIN   may do either.
+     WHO DOES WHAT (the owner's rule). This list is kept current on purpose - it was
+     three lines out of date by 21 August and a header nobody trusts is worse than none.
+       GODOWN   makes the challan and registers the return. What he makes is a DRAFT:
+                it is not a delivery yet and nothing about it touches anybody's account.
+       ACCOUNTS passes it, and marks it dispatched. Both need the approval PIN.
+       ANYONE   attaches the signed receipt - but only AFTER it has been dispatched,
+                because a receipt is for goods that have actually gone.
+       ADMIN    alone checks the receipt and adds the delivery to the client's hisab,
+                which is the last look before the money counts. He alone settles a
+                driver's freight, and he alone decides who earns an incentive on it.
      Two pairs of eyes on every delivery. Nothing here can delete anything, ever:
      an approval is a row added, not a row changed.
      ========================================================================== */
