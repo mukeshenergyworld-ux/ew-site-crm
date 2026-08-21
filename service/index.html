@@ -271,7 +271,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.6.0";
+  var APP_VERSION = "1.7.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -362,8 +362,18 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      it, and has been paying for it every five minutes since the first release.
 
      The staged pull stays exactly as it is - it is the right shape and the other two apps
-     need it. This app simply has nothing in the slow half. */
-  var KEEP_REST = [];
+     need it. This app simply has nothing in the slow half.
+
+     ---- v1.7.0, 21 August 2026: IT HAS SOMETHING IN THE SLOW HALF NOW ----
+     Visit photographs are filed as service:photo audit rows, so this app reads the tab again.
+     The 209 KB measured above is NOT what comes back any more: backend V105 cuts the service
+     role's audit down to service:photo rows and nothing else, so what arrives is a handful of
+     rows carrying a url and a 2 KB thumbnail. The measurement that justified emptying this
+     list was true, and the thing it measured has been changed on the server.
+
+     IT GOES IN THE SLOW HALF, behind REST_EVERY, and not in the fast one. A photograph taken
+     last week is not urgent; the machine list and the money are. */
+  var KEEP_REST = ["audit"];
   var KEEP = KEEP_FAST.concat(KEEP_REST);
 
   /* ---- A MAN MAY HOLD MORE THAN ONE ROLE (20 Aug 2026) ----
@@ -2328,6 +2338,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     h += '<label>Note</label><textarea id="v_note" rows="2" placeholder="What you found, what you did">' +
       esc(v.notes || "") + '</textarea>';
 
+    /* v1.7.0 - the three photographs, and anything already taken on this machine */
+    h += picPickers(v) + picPending(v);
+    if (ins) h += picStrip(picsOf("machine", ins.id), "On this machine");
+
     h += '<div class="acts"><button class="btn gry" data-act="close">Cancel</button>' +
       '<button class="btn grow" data-act="v-save">Save the visit</button></div>';
     return h;
@@ -2473,6 +2487,154 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return out;
   }
 
+  /* ==========================================================================
+     A PHOTOGRAPH ON A SERVICE VISIT  (v1.7.0, 21 August 2026)
+
+     Asked what the photo is actually of, he picked all three, and they are not one feature:
+
+       THE FAULT          what was wrong. Filed against the VISIT, so the next man sees what
+                          the last man found instead of diagnosing it again.
+       THE COMPLETED WORK proof the job was done and the machine runs. Filed against the
+                          VISIT - the service equivalent of a signed delivery receipt.
+       THE MACHINE & PLATE the unit and its serial. Filed against the INSTALLATION, not the
+                          visit, so it is there for every future visit and settles a warranty
+                          argument about which machine it was.
+
+     WHERE IT IS KEPT. As an append-only audit row, the same channel the delivery proofs and
+     the hisab stamps use, and for the same reason their comments give: no column is added to
+     any tab, so no sheet migration - and teamSaveLocked_ writes a row from the SHEET's own
+     headers, which means a field with no column is silently dropped. A photo that vanishes
+     into a header that does not exist is the one failure this feature cannot have.
+
+     A PHOTO NEVER BLOCKS THE VISIT. The visit is money; the photo is evidence. Everything
+     below runs AFTER saveRow and outside its promise - the same rule the complaint close
+     follows three functions up, and for the same reason: a slow upload must never make a man
+     think his visit was lost. If a photo fails he is told that the photo failed, in those
+     words, and the visit stays saved. */
+  var PIC_KINDS = [
+    { k: "fault",   t: "The fault",        hint: "What was wrong — the leak, the burnt card, the cracked housing." },
+    { k: "done",    t: "Work done",        hint: "The machine running after the job. Your proof it was finished." },
+    { k: "machine", t: "Machine & serial", hint: "The unit and its serial plate. Kept on the machine, not this visit — every future visit sees it." }
+  ];
+  function picKind(k) {
+    return PIC_KINDS.filter(function (x) { return x.k === k; })[0] || null;
+  }
+  function picsOf(kind, id) {
+    if (!id) return [];
+    var want = String(id);
+    return ((S.data && S.data.audit) || []).filter(function (a) {
+      if (!a || String(a.action || "") !== "service:photo") return false;
+      var d; try { d = JSON.parse(a.detail || "{}"); } catch (e) { return false; }
+      if (!d || !d.url) return false;
+      return String(kind === "machine" ? d.installId : d.visitId) === want &&
+             (kind === "machine" ? d.kind === "machine" : d.kind !== "machine");
+    }).map(function (a) {
+      var d = {}; try { d = JSON.parse(a.detail || "{}"); } catch (e) { }
+      return { kind: d.kind || "", url: d.url || "", thumb: d.thumb || "", by: d.by || a.actor || "", at: d.at || a.createdAt || "" };
+    }).sort(function (x, y) { return String(y.at).localeCompare(String(x.at)); });
+  }
+  /* The strip of thumbnails. Tapping one opens the full picture in a new tab - it is a Drive
+     link, so it opens the way every other document in this estate opens. */
+  function picStrip(list, title) {
+    if (!list.length) return "";
+    return '<div style="margin-top:6px"><div class="muted" style="font-size:11px;letter-spacing:.06em;' +
+      'text-transform:uppercase">' + esc(title) + '</div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:4px">' +
+      list.map(function (p) {
+        var lbl = (picKind(p.kind) || {}).t || p.kind;
+        var img = p.thumb
+          ? '<img src="data:image/jpeg;base64,' + esc(p.thumb) + '" alt="" loading="lazy" ' +
+            'style="width:44px;height:44px;box-sizing:border-box;object-fit:cover;border-radius:7px;' +
+            'border:1px solid #cbd5e1;background:#fff;display:block"/>'
+          : '<div style="width:44px;height:44px;border-radius:7px;border:1px dashed #cbd5e1;' +
+            'display:flex;align-items:center;justify-content:center;font-size:15px;color:#94a3b8">open</div>';
+        return '<a href="' + esc(p.url) + '" target="_blank" rel="noopener" ' +
+          'title="' + esc(lbl + (p.by ? " · " + p.by : "") + (p.at ? " · " + String(p.at).slice(0, 10) : "")) + '" ' +
+          'style="text-decoration:none">' + img + '</a>';
+      }).join("") + '</div></div>';
+  }
+  /* What is waiting on this phone, not yet up. Kept separate from picStrip because a picture
+     that is still on the phone is a different fact from one that is filed, and showing them
+     the same way is how a man stops checking. */
+  function picPending(v) {
+    var l = (v && v.pics) || [];
+    if (!l.length) return "";
+    return '<div class="note warn-t" style="margin-top:6px">' + l.length + ' photo' +
+      (l.length > 1 ? 's' : '') + ' ready — ' +
+      esc(l.map(function (p) { return (picKind(p.kind) || {}).t || p.kind; }).join(", ")) +
+      '. ' + (l.length > 1 ? 'They go up' : 'It goes up') + ' when you save the visit.</div>';
+  }
+  function picPickers(v) {
+    var got = {};
+    ((v && v.pics) || []).forEach(function (p) { got[p.kind] = 1; });
+    return '<label>Photos</label>' +
+      '<div class="muted" style="font-size:12px;margin-bottom:6px">Nothing here is required. ' +
+      'A picture of the fault saves the next man a diagnosis, and a picture of the finished job ' +
+      'is the only proof this visit leaves behind.</div>' +
+      PIC_KINDS.map(function (K) {
+        return '<div class="card" style="padding:8px 10px;margin-bottom:6px">' +
+          '<div style="font-weight:700;font-size:12.5px">' + esc(K.t) +
+            (got[K.k] ? ' <span class="pill grn">✓ taken</span>' : '') + '</div>' +
+          '<div class="muted" style="font-size:11.5px;margin:2px 0 5px">' + esc(K.hint) + '</div>' +
+          '<input type="file" accept="image/*" capture="environment" class="v-pic" ' +
+            'data-kind="' + esc(K.k) + '"/></div>';
+      }).join("");
+  }
+  /* Shrunk on the phone, not on the way out. A 4 MB camera JPEG over one bar of signal is the
+     upload that never finishes, and 1400px is comfortably enough to read a serial plate. The
+     thumbnail is built at the same time and travels on the audit row, so the strip draws with
+     no second fetch. */
+  function picRead(file, kind) {
+    return new Promise(function (res, rej) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        shrink(fr.result, 1400, 0.7).then(function (big) {
+          return shrink(fr.result, 96, 0.5).then(function (sm) {
+            res({ kind: kind, b64: String(big.url).split(",")[1] || "",
+                  thumb: String(sm.url).split(",")[1] || "" });
+          });
+        }).catch(rej);
+      };
+      fr.onerror = function () { rej(new Error("could not read that photo")); };
+      fr.readAsDataURL(file);
+    });
+  }
+  /* Sent one at a time on purpose - the receipt queue in the CRM learned this the hard way and
+     wrote it down: firing three uploads together on a bad line gets three timeouts instead of
+     one success. Each one that lands is filed immediately, so a failure half way through never
+     costs the ones already up. */
+  function picSend(pics, visitId, installId, client) {
+    var done = 0, failed = 0;
+    var step = function (i) {
+      if (i >= pics.length) {
+        if (done) { bust(); renderBg(); }
+        if (failed) toast(failed + " photo" + (failed > 1 ? "s" : "") + " did not go up. The visit is saved — the photo is not.");
+        else if (done) toast(done + " photo" + (done > 1 ? "s" : "") + " filed.");
+        return;
+      }
+      var p = pics[i];
+      var nm = (p.kind + "-" + (p.kind === "machine" ? (installId || "x") : (visitId || "x")) + "-" + Date.now() + ".jpg")
+        .replace(/[^\w.-]+/g, "_");
+      api("pdfHost", { pdfBase64: p.b64, filename: nm, mime: "image/jpeg" }, 240000)
+        .then(function (r) {
+          if (!r || !r.ok || !r.url) { failed++; return step(i + 1); }
+          var at = new Date().toISOString();
+          return saveRow("audit", {
+            id: mintId("SP"), createdAt: at, actor: S.user || "",
+            action: "service:photo",
+            target: String(client || "") + " · " + ((picKind(p.kind) || {}).t || p.kind),
+            detail: JSON.stringify({ visitId: visitId || "", installId: installId || "",
+              kind: p.kind, url: r.url, thumb: p.thumb || "", client: client || "",
+              by: S.user || "", at: at }),
+            ip: ""
+          }).then(function () { done++; step(i + 1); })
+            .catch(function () { failed++; step(i + 1); });
+        })
+        .catch(function () { failed++; step(i + 1); });
+    };
+    step(0);
+  }
+
   function saveVisit() {
     /* The three buttons above are the door. This is the lock: a screen already open when a
        role changed, or a stale sheet, must not be able to write a visit either. */
@@ -2530,6 +2692,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         }).catch(function () {
           toast("Visit saved. No signal to close the complaint — it stays on the list.");
         });
+    }
+
+    /* v1.7.0 - AFTER the row, OUTSIDE its promise. Same rule as the complaint close above:
+       the visit is money and the photo is evidence, and a slow upload must never make a man
+       think his visit was lost. */
+    if (v.pics && v.pics.length) {
+      try { picSend(v.pics.slice(), row.id || "", (ins && ins.id) || "", row.client || ""); }
+      catch (ePx) { toast("The visit is saved. The photos could not be sent."); }
     }
 
     saveRow("visits", row).then(function () {
@@ -2705,6 +2875,25 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   /* a quantity typed into a part row, kept without tearing the form down */
   document.addEventListener("change", function (e) {
     var t = e.target;
+    /* v1.7.0 - a photograph, straight off the camera. Read into state, never into the DOM:
+       the visit sheet repaints on every part added and every quantity changed, and a file
+       input cannot be repopulated by a repaint - whatever was taken would simply be gone. */
+    if (t && t.classList && t.classList.contains("v-pic") && S.vis) {
+      var f = t.files && t.files[0];
+      var kind = t.getAttribute("data-kind") || "";
+      if (!f || !kind) return;
+      readVisitForm();
+      toast("Shrinking the photo…");
+      picRead(f, kind).then(function (p) {
+        S.vis.pics = (S.vis.pics || []).filter(function (x) { return x.kind !== kind; });
+        S.vis.pics.push(p);
+        S.sheet = sheetVisit(S.vis); render();
+        toast(((picKind(kind) || {}).t || "Photo") + " ready. It goes up when you save.");
+      }).catch(function () {
+        toast("That photo could not be read. Try taking it again.");
+      });
+      return;
+    }
     if (t && t.getAttribute && t.getAttribute("data-act") === "v-qty" && S.vis) {
       var i = num(t.getAttribute("data-i"));
       if (S.vis.parts[i]) { S.vis.parts[i].qty = num(t.value); readVisitForm(); S.sheet = sheetVisit(S.vis); render(); }
