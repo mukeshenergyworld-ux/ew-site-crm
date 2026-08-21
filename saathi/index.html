@@ -351,16 +351,67 @@ function authClear(keepMobile){
    text/plain keeps this a "simple" request, so the browser sends it
    straight through with no preflight. That is the same trick the main
    CRM already uses to talk to Apps Script from GitHub Pages. ---- */
-function call(action, payload){
+/* ---- EVERY CALL HAS A DEADLINE (21 Aug 2026) ----
+   The CRM learned this on 17 August and the note there is worth repeating, because this file
+   had the same hole: a request that stalls does not FAIL. It never comes back. The promise
+   neither resolves nor rejects, so a .catch that was written to say "Network slow hai" is
+   never reached, and the partner who tapped Mujhe chahiye on one bar of signal gets no toast,
+   no error and no request - nothing at all happens and he has no way to tell.
+
+   A phone in a basement, or on a wifi that has associated but passes no traffic, is the
+   ordinary case for the men this app is for. Twenty seconds, then it is a failure the app can
+   see and act on. */
+function call(action, payload, ms){
   var body = { action: action, mobile: A.mobile, pin: A.pin,
                build: BUILD, app: APPKEY };
   if (payload) for (var k in payload) if (payload.hasOwnProperty(k)) body[k] = payload[k];
-  return fetch(GAS, {
+  var live = fetch(GAS, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(body)
   }).then(function(r){ return r.json(); });
+  var late = new Promise(function(_, bad){
+    setTimeout(function(){ bad(new Error('Server ne jawab nahi diya')); }, ms || 20000);
+  });
+  return Promise.race([live, late]);
 }
+
+/* ---- A REQUEST THAT DID NOT GO IS HELD, NOT LOST (21 Aug 2026) ----
+   "Mujhe chahiye" was fire-and-forget. On a bad line the partner tapped it, saw "Network slow
+   hai, phir try karein", and that was the end of it: nothing was kept, nothing was retried,
+   and the office never heard that a partner wanted material. The one action in this app that
+   is worth money to us was the one action with no memory behind it.
+
+   Every other app in the estate keeps a write journal for exactly this. This is the small
+   version of it - the request is written to this phone, the partner is told it is HELD rather
+   than lost, and it goes up by itself on the next thing that succeeds. */
+var AQ = 'ew_saathi_ack_q_v1';
+function ackQ(){ try { var l = JSON.parse(localStorage.getItem(AQ) || '[]'); return (l && l.length !== undefined) ? l : []; } catch(e){ return []; } }
+function ackQPut(l){ try { localStorage.setItem(AQ, JSON.stringify(l.slice(-40))); } catch(e){} }
+function ackHold(id, act){
+  var l = ackQ();
+  /* the same broadcast asked for twice is one request, not two - the newest wins */
+  l = l.filter(function(x){ return !(x.id === id && x.act === act); });
+  l.push({ id:id, act:act, at:new Date().toISOString() });
+  ackQPut(l);
+}
+function ackDrain(){
+  var l = ackQ();
+  if (!l.length) return Promise.resolve(0);
+  var left = l.slice(), sent = 0;
+  var step = function(){
+    if (!left.length){ ackQPut(left); if (sent) toast(sent + ' request bhej diya gaya.'); return sent; }
+    var e = left[0];
+    return call('ack', { id:e.id, act:e.act }).then(function(r){
+      if (r && r.ok){ left.shift(); sent++; ackQPut(left); return step(); }
+      /* the server ANSWERED and refused - holding it for ever would retry a refusal every
+         time the app opens, so it is dropped and the partner is not told a lie about it */
+      left.shift(); ackQPut(left); return step();
+    }).catch(function(){ ackQPut(left); return sent; });   /* still no line: keep the rest */
+  };
+  return Promise.resolve(step());
+}
+function ackHeld(){ return ackQ().length; }
 
 /* ---- small helpers ---- */
 /* 16 Aug 2026 - the apostrophe is escaped now. Read the note above the click handler below
@@ -506,15 +557,30 @@ function viewFeed(){
 }
 
 function ack(id, act){
+  var done = function(){
+    var f = D.feed.filter(function(x){ return x.id===id; })[0];
+    if (f) f.seen = true;
+    var el = document.getElementById('bc-'+id); if (el) el.classList.remove('new');
+    paintNav();
+  };
   call('ack', { id:id, act:act }).then(function(r){
     if (r && r.ok){
       toast(act==='CALLBACK' ? 'Theek hai, hum call karenge.' : 'Note kar liya. Team aapse baat karegi.');
-      var f = D.feed.filter(function(x){ return x.id===id; })[0];
-      if (f) f.seen = true;
-      var el = document.getElementById('bc-'+id); if (el) el.classList.remove('new');
-      paintNav();
-    } else toast('Network slow hai, phir try karein.');
-  }).catch(function(){ toast('Network slow hai, phir try karein.'); });
+      done();
+      ackDrain();          /* the line is up - anything held from before goes now */
+    } else {
+      /* the server answered and said no. Holding it would retry a refusal for ever. */
+      toast((r && r.err) ? String(r.err) : 'Yeh request abhi nahi ja saki.');
+    }
+  }).catch(function(){
+    /* NO LINE. The request is kept on this phone and the partner is told so - the whole point
+       is that he does not have to remember to come back and tap it again. */
+    ackHold(id, act);
+    done();
+    toast(act==='CALLBACK'
+      ? 'Note kar liya. Network aate hi apne aap chala jayega.'
+      : 'Note kar liya. Network aate hi apne aap chala jayega \u2014 dobara tap karne ki zaroorat nahi.');
+  });
 }
 
 /* Mark everything on screen as seen, quietly, once the tab is opened. */
@@ -523,6 +589,10 @@ function markFeedSeen(){
   if (!unseen.length) return;
   unseen.forEach(function(f){
     f.seen = true;
+    /* SEEN is deliberately NOT queued. It is a read receipt, not a request: if it does not
+       reach the server the worst that happens is a dot stays on a broadcast, and filling this
+       phone's queue with read receipts would push out the one thing that matters - a partner
+       asking for material. Mujhe chahiye is held; this is not. */
     call('ack', { id:f.id, act:'SEEN' }).catch(function(){});
   });
   paintNav();
@@ -931,7 +1001,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.08.17-1';        /* which build of this file is running */
+var BUILD  = '2026.08.21-1';        /* which build of this file is running */
 var APPKEY = 'SAATHI';
 var VKEY   = 'ew_saathi_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1051,6 +1121,8 @@ function landed(r){
       GERR = (r && r.err) || ''; authClear(true); renderGate(); return;
     }
     landed(r);
+    /* anything tapped on a dead line last time goes up now, before he does anything else */
+    ackDrain();
   }).catch(function(){
     document.getElementById('main').innerHTML =
       '<div class="empty">Network nahi mil raha.<br><br>' +
