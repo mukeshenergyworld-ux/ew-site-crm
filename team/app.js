@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.326";
+  var APP_VERSION = "6.9.328";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18435,6 +18435,60 @@ function viewCatalogue() {
       '<button class="btn" data-act="drv-do" data-kind="' + esc(kind) + '">Move ' + g.n + ' to trash</button></div>';
   }
 
+  /* ================= MISSING NUMBERS IN THE CHALLAN BOOK (v6.9.328) =================
+     From backend V104 a challan number is RESERVED the moment it is drawn, so a challan
+     started and then abandoned burns its number instead of releasing it back. That is the
+     right trade - his rule is "Challan no must not be same", and a gap is not "same" - but a
+     gap must never be a MYSTERY. A book that reads 006, 008 is a question, and this is where
+     it gets its answer.
+
+     Only gaps INSIDE the range are reported. Nothing before the lowest number in the book,
+     because the new book starts wherever it starts and the old client-name numbers are a
+     different scheme entirely; and nothing after the highest, because that is simply the
+     future. Per financial year, because the series restarts on 1 April. */
+  function chNoGaps() {
+    var byFy = {};
+    (S.data.challans || []).forEach(function (c) {
+      var m = String(c.challanNo || "").match(/^(\d{2})\/(\d{2})\/(\d{4})\/(\d+)$/);
+      if (!m) return;
+      var fy = (Number(m[2]) >= 4) ? Number(m[3]) : (Number(m[3]) - 1);
+      (byFy[fy] = byFy[fy] || {})[Number(m[4])] = 1;
+    });
+    var out = [];
+    Object.keys(byFy).forEach(function (fy) {
+      var seen = byFy[fy];
+      var have = Object.keys(seen).map(Number).sort(function (a, b) { return a - b; });
+      if (have.length < 2) return;
+      var lo = have[0], hi = have[have.length - 1], miss = [];
+      for (var n = lo; n < hi; n++) if (!seen[n]) miss.push(n);
+      if (miss.length) out.push({ fy: Number(fy), lo: lo, hi: hi, missing: miss });
+    });
+    return out.sort(function (a, b) { return b.fy - a.fy; });
+  }
+  function chNoGapCard() {
+    var g = [];
+    try { g = chNoGaps(); } catch (e) { return ""; }
+    if (!g.length) return "";
+    var tot = g.reduce(function (a, x) { return a + x.missing.length; }, 0);
+    var h = '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
+      '<h3 style="margin:0 0 2px">' + tot + ' number' + (tot === 1 ? '' : 's') + ' missing from the challan book</h3>' +
+      '<div class="meta" style="font-size:12.5px;color:#7c2d12">A number is taken the moment ' +
+      '<b>New challan</b> is pressed, so one started and abandoned leaves a hole. That is on ' +
+      'purpose &mdash; a gap is far safer than two papers carrying the same number &mdash; but ' +
+      'here is exactly which, so it is never a surprise in an audit.</div>';
+    g.forEach(function (x) {
+      var show = x.missing.slice(0, 20).map(function (n) { return String(n).padStart(3, "0"); });
+      h += '<div style="border-top:1px solid #fde68a;margin-top:8px;padding-top:8px">' +
+        '<b style="font-size:13px">FY ' + x.fy + '&ndash;' + String(x.fy + 1).slice(-2) + '</b> ' +
+        '<span class="meta" style="font-size:12px">(' + String(x.lo).padStart(3, "0") + ' to ' +
+          String(x.hi).padStart(3, "0") + ')</span>' +
+        '<div class="meta" style="font-size:12.5px;margin-top:3px;color:#7c2d12">' +
+          esc(show.join(", ")) + (x.missing.length > show.length ? ' and ' + (x.missing.length - show.length) + ' more' : '') +
+        '</div></div>';
+    });
+    return h + '</div>';
+  }
+
   function viewHealth() {
     var s = healthScan();
     var h = '<div class="card" style="' + (s.total ? 'border-color:#fed7aa;background:#fff7ed' : 'border-color:#99f6e4;background:#f0fdfa') + '">' +
@@ -18445,6 +18499,7 @@ function viewCatalogue() {
       '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="health-refresh">Re-scan</button></div></div>';
 
     h += lineTestCard();
+    h += chNoGapCard();
     try { h += driveCard(); } catch (e) { console.warn("[drive] card:", e); }
 
     /* v6.9.257 - THE STORAGE READOUT. "phone storage is full" cost a day of everybody
@@ -18627,6 +18682,7 @@ function viewCatalogue() {
     if (canSee("agent")) { try { h += agTodayCard(); } catch (e) { console.warn("[agent] today card:", e); } }
 
     /* duplicate entries, if there are any left to answer */
+    try { h += draftDashCard(); } catch (e) { console.warn("[draft] card:", e); }
     try { h += dupDashCard(); } catch (e) { console.warn("[dups] card:", e); }
 
     var dg = digestLines();
@@ -20691,6 +20747,82 @@ function viewCatalogue() {
     renderLogin();
   }
 
+  /* ================= A DELIVERY WAITING TO BE PASSED (v6.9.327) =================
+     HIS WORDS: "once a challan created, related executive will show aleart notificaiton to
+     approve it for dispatch".
+
+     THE EXECUTIVE CANNOT APPROVE, and building him a button would be the worst kind of help.
+     canApprove() is admin or accounts, in both apps, and it has read that way since v6.9.250
+     because he said so himself: "its approved by accounts or admin only". A button the server
+     refuses every time is a button that teaches a man his app is broken.
+
+     So the card TELLS him, and it says the true thing for whoever is reading it:
+
+       * a SALES EXECUTIVE sees his own clients' deliveries still sitting in Draft, with their
+         age, so he can go and chase whoever is holding them. It is his customer waiting for
+         goods, which is why he wanted to know in the first place.
+       * ADMIN and ACCOUNTS see the same list told as work of their own, because for them it
+         is: they are the ones who pass it.
+       * THE GODOWN sees the ones IT raised. A man who made a challan on Tuesday and finds it
+         still unpassed on Thursday is the other person who needs to know.
+
+     One card, three true sentences, because the same fact is different work to different men.
+
+     WHY A CARD AND NOT A TELEGRAM MESSAGE. TG_DISPATCH already fires on approval. Firing again
+     on every draft would double the traffic in a channel people already half-read, and a
+     notification you have learned to ignore is worse than no notification. This sits on the
+     screen each of them opens first, and it disappears by itself the moment the challan moves. */
+  function draftWaiting() {
+    /* the same three ways in that the rest of the dashboard uses, plus the man who raised it */
+    var me = String(S.user || "").trim().toLowerCase();
+    return (S.data.challans || []).filter(function (c) {
+      if (String(c.status || "Draft") !== "Draft") return false;
+      return seesAllClients() || isMineClient(c.customerName) ||
+             String(c.createdBy || "").trim().toLowerCase() === me;
+    }).map(function (c) {
+      return { c: c, age: Math.max(0, -daysTo(String(c.createdAt || "").slice(0, 10))) };
+    }).sort(function (a, b) { return b.age - a.age; });
+  }
+  function draftDashCard() {
+    var list = draftWaiting();
+    if (!list.length) return "";
+    var val = list.reduce(function (a, x) { return a + chValue(x.c); }, 0);
+    var stale = list.filter(function (x) { return x.age >= 2; }).length;
+    var iPass = canApprove();
+    var hot = stale > 0;
+    var head = iPass
+      ? list.length + ' deliver' + (list.length === 1 ? 'y is' : 'ies are') + ' waiting for you to pass ' +
+        (list.length === 1 ? 'it' : 'them')
+      : list.length + ' of your deliver' + (list.length === 1 ? 'y is' : 'ies are') + ' still waiting to be passed';
+    var say = iPass
+      ? 'Nothing leaves the godown until it is passed. ' +
+        (stale ? '<b>' + stale + '</b> ' + (stale === 1 ? 'has' : 'have') + ' been sitting two days or more.' : '')
+      : 'Only the owner or accounts can pass a delivery, so this is not yours to do &mdash; it is ' +
+        'yours to <b>chase</b>. Until it is passed the goods stay in the godown and your customer waits.' +
+        (stale ? ' <b>' + stale + '</b> ' + (stale === 1 ? 'has' : 'have') + ' been sitting two days or more.' : '');
+    var h = '<div class="card" style="border-color:' + (hot ? '#fca5a5;background:#fef2f2' : '#fde68a;background:#fffbeb') + '">' +
+      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:' +
+        (hot ? '#b91c1c' : '#b45309') + '"><b>Waiting to be passed</b></div>' +
+      '<h3 style="font-size:16px;margin:4px 0 2px">' + head + '</h3>' +
+      '<div class="meta" style="font-size:13px">' + money(val) + ' of goods. ' + say + '</div>';
+    list.slice(0, 5).forEach(function (x) {
+      h += '<div class="row" style="align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap;' +
+        'border-top:1px solid ' + (hot ? '#fecaca' : '#fde68a') + ';padding-top:7px">' +
+        '<b style="flex:1 1 auto;font-size:13.5px">' + esc(x.c.customerName || "(client)") +
+          (x.c.site ? ' <span class="meta" style="font-weight:500">&middot; ' + esc(x.c.site) + '</span>' : '') + '</b>' +
+        '<span class="meta" style="font-size:12px;white-space:nowrap">' + esc(x.c.challanNo || "") + '</span>' +
+        '<span class="pill ' + (x.age >= 2 ? 'due' : 'soon') + '" style="white-space:nowrap">' +
+          (x.age === 0 ? 'today' : x.age + 'd') + '</span>' +
+        '<span style="font-size:12.5px;white-space:nowrap"><b>' + money(chValue(x.c)) + '</b></span></div>';
+    });
+    if (list.length > 5) {
+      h += '<div class="meta" style="font-size:12px;margin-top:6px">and ' + (list.length - 5) + ' more</div>';
+    }
+    return h + '<div class="acts" style="margin-top:9px">' +
+      '<button class="btn sm" data-act="tab" data-tab="challans">' +
+      (iPass ? 'Open the delivery book and pass them' : 'Open the delivery book') + '</button></div></div>';
+  }
+
   function viewDash() {
     /* every figure on a sales exec's dashboard is THEIR book only: their reminders, their
        customers, their clients' challans. Admin/accounts still see the whole company. */
@@ -20727,6 +20859,7 @@ function viewCatalogue() {
       (seesAllClients() ? '<div class="stat"><div class="n">' + money(comm) + '</div><div class="l">Incentive owed</div></div>' : '') +
       '</div>';
 
+    try { h += draftDashCard(); } catch (e) { console.warn("[draft] card:", e); }
     try { h += dupDashCard(); } catch (e) { console.warn("[dups] card:", e); }
 
     var todo = overdue.concat(due);
@@ -27586,7 +27719,30 @@ function viewCatalogue() {
 
       Promise.all([driverReady, api("challanNo", { client: cObj.shortName || cn })]).then(function (arr) {
         var dRec = arr[0], n = arr[1];
-        var no = (n && n.challanNo) || (cn.toUpperCase().slice(0, 6) + "/" + today().slice(8) + "/001");
+        /* ============ v6.9.328 - NEVER MINT A NUMBER ON THIS PHONE ============
+           This line used to end in
+
+               || (cn.toUpperCase().slice(0, 6) + "/" + today().slice(8) + "/001")
+
+           so every failed call for the number produced RAKESH/21/001 - and the SECOND failed
+           call the same day produced RAKESH/21/001 again. A fallback whose whole job was to
+           keep working quietly was a duplicate-number generator sitting in the middle of the
+           save path, and it fired exactly when the network was worst and nobody was watching.
+
+           The Challan app removed its own copy of this in v1.9.0 and wrote down why: approve,
+           PDF and WhatsApp all look a challan up BY NUMBER and take the first match, so
+           passing the second one passes the first. The CRM kept its copy for another eleven
+           days. It refuses now, like the other app, and the challan comes back on screen with
+           everything on it - nothing typed is lost, and nothing is saved under a number that
+           may already be on somebody's paper. */
+        var no = String((n && n.challanNo) || "").trim();
+        if (!no) {
+          S.ch = chDraft; S.modal = modalChallan(); render();
+          toast((n && n.error)
+            ? String(n.error) + " Nothing was saved \u2014 your challan is back on screen."
+            : "The server did not give a challan number. Nothing was saved \u2014 your challan is back on screen, press Create again.");
+          return;
+        }
         var ch = {
           id: "", createdBy: S.user, challanNo: no,
           customerId: cObj.id || "", customerName: cn,
