@@ -171,6 +171,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .empty.ok{border-color:#a7f3d0;background:#f0fdfa;color:#0f766e}
 .empty.sm{padding:10px;font-size:12px}
 .note{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;font-size:12px;color:#475569;margin:6px 0}
+.cx{border-left:4px solid #b91c1c}
+.cx.urgent{background:#fef2f2;border-color:#fecaca;border-left-color:#7f1d1d}
+.cxsay{margin-top:5px;font-size:13px;color:#334155;font-style:italic;line-height:1.45}
 .warn-t{color:#b45309}
 .kv{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:4px 12px;margin:10px 0}
 .kvr{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
@@ -268,7 +271,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.5.0";
+  var APP_VERSION = "1.6.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -1704,6 +1707,115 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
 
+
+  /* ==========================================================================
+     THE COMPLAINT LOOP  (v1.6.0, 21 August 2026)
+
+     Until the backend went to V102 a customer complaint landed on a sheet marked "Open",
+     fired one Telegram message, and was never read again by anything. No screen showed it, the
+     tab was not even in the list the apps were allowed to pull, and nothing ever set that
+     "Open" to anything else. The loop was open at both ends.
+
+     A COMPLAINT IS A SERVICE CALL THE CUSTOMER RAISED INSTEAD OF THE OFFICE. So it does not
+     get an app of its own - it arrives where service calls already live, at the top of Today,
+     and the visit that fixes it is what closes it.
+
+     HIS THREE ANSWERS, asked before any of this was built:
+       money       - "free if under warranty or AMC, else normal"
+       who takes it- "any engineer can take it"
+       closing     - "tell the customer on WhatsApp, with a check screen first"
+     ========================================================================== */
+  var CX_KEY = "ew_service_cx_v1";
+
+  function complaints() { return (S.cx && S.cx.rows) || []; }
+
+  /* Its own call, not part of the book: Complaints is keyed on Ref rather than id, and the
+     generic reader drops any row without an id. Kept on the phone so a complaint raised at
+     eight is still on the screen in a basement at eleven with no signal. */
+  function cxSave() { try { localStorage.setItem(CX_KEY, JSON.stringify(S.cx || {})); } catch (e) {} }
+  function cxLoad() {
+    try { var r = JSON.parse(localStorage.getItem(CX_KEY) || "null"); if (r && r.rows) S.cx = r; }
+    catch (e) {}
+  }
+  function cxPull() {
+    return api("complaintList", {}, 20000).then(function (r) {
+      if (!r || !r.ok || !Array.isArray(r.complaints)) return false;
+      S.cx = { rows: r.complaints, at: Date.now() };
+      cxSave();
+      return true;
+    }).catch(function () { return false; });
+  }
+  function cxOpen(c) { return !/^closed$/i.test(String((c && c.Status) || "")); }
+  function openComplaints() {
+    return complaints().filter(cxOpen).sort(function (a, b) {
+      /* oldest first: a complaint is a customer already let down, and the longest wait is the
+         worst one */
+      return String(a.Timestamp || "").localeCompare(String(b.Timestamp || ""));
+    });
+  }
+  function cxDays(c) {
+    var t = Date.parse(String((c && c.Timestamp) || ""));
+    if (!isFinite(t)) return null;
+    return Math.max(0, Math.round((Date.now() - t) / 86400000));
+  }
+  /* the same join the CRM's dossier uses: the last ten digits of a mobile, because the book
+     holds "+91 98120 83516", "098120-83516" and "9812083516" for the same man */
+  function cxMob(v) { return String(v == null ? "" : v).replace(/\D+/g, "").slice(-10); }
+  function cxInstall(c) {
+    var m = cxMob(c && c.Mobile);
+    if (!m) return null;
+    return installs().filter(function (i) { return cxMob(i.mobile) === m; })[0] || null;
+  }
+  function cxWho(c) {
+    var ins = cxInstall(c);
+    return (ins && ins.client) || String((c && c.Name) || "").trim() || "(no name)";
+  }
+
+  /* ---- WARRANTY, lifted from the CRM so the two cannot disagree ---- */
+  function ymdLocal(d) {
+    if (!d || isNaN(d.getTime())) return "";
+    return d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+  function warrantyEnd(p) {
+    var m = Number(p.warrantyMonths) || 0; if (!m) return "";
+    var base = dstr(p.commDate) || dstr(p.installDate); if (!base) return "";
+    var d = new Date(base + "T00:00:00"); d.setMonth(d.getMonth() + m);
+    return ymdLocal(d);
+  }
+  /* ANY product still in warranty makes the visit free. A machine is one machine to the man
+     who owns it; asking an engineer at the door which of three products failed, to decide
+     whether the CALL is chargeable, is a question the customer would rightly not accept. */
+  function inWarranty(ins, date) {
+    if (!ins) return false;
+    var d = String(date || today()).slice(0, 10);
+    var prods = [];
+    try { prods = JSON.parse(ins.productsJson || "[]") || []; } catch (e) { prods = []; }
+    if (!prods.length) prods = [{ installDate: ins.installDate, warrantyMonths: ins.warrantyMonths }];
+    return prods.some(function (p) {
+      var end = warrantyEnd(p || {});
+      return /^\d{4}-\d{2}-\d{2}$/.test(end) && end >= d;
+    });
+  }
+
+  /* ---- WHAT A COMPLAINT VISIT COSTS ----
+     "Free if under warranty or AMC, else normal."
+
+     Warranty covers the VISIT and the PARTS. It does not cover SALT: salt is a consumable the
+     customer would have bought anyway, and giving away a bag because a machine had a fault is
+     not what he said and not what anyone means. Where the AMC is the thing that covers it,
+     amcCover() decides exactly as it does for any other visit - one rule, not two. */
+  function complaintCover(ins, type, date) {
+    var amc = amcCover(ins, type, date);
+    if (String(type || "") === "Installation") return amc;
+    if (inWarranty(ins, date)) {
+      return { visit: true, salt: amc.salt, parts: true,
+               kind: "Warranty", live: true, warranty: true };
+    }
+    return amc;
+  }
+
   /* ================= SCREENS ================= */
 
   function header() {
@@ -1755,9 +1867,67 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
   /* ---- TODAY: what he should do, in the order he would walk it ---- */
+  function cRowOf(ref) {
+    return complaints().filter(function (x) { return String(x.Ref) === String(ref); })[0] || null;
+  }
+  function cxTellText(ref) {
+    var c = cRowOf(ref) || {};
+    return "Namaste " + (String(c.Name || "").trim() || "ji") + ", " +
+      "aapki complaint (" + String(ref || "") + ") ka kaam ho gaya hai. " +
+      "Koi dikkat ho to is number par bata dijiye. — Energy World";
+  }
+  function sheetCxTell() {
+    var t = S.cxTell || {};
+    var msg = cxTellText(t.ref);
+    var can = /^\d{10}$/.test(String(t.mobile || ""));
+    return '<h2>Complaint closed</h2>' +
+      '<div class="muted" style="margin-bottom:10px">' + esc(t.ref || "") + ' &middot; ' +
+        esc(t.name || "") + '</div>' +
+      (can
+        ? '<div class="note">This goes to <b>' + esc(t.mobile) + '</b> on WhatsApp. ' +
+          '<b>Nothing has been sent.</b> WhatsApp opens with it ready and you press send there.</div>' +
+          '<div class="billbox"><div class="bill"><span style="font-style:italic">' + esc(msg) +
+          '</span><b>&nbsp;</b><i>&nbsp;</i></div></div>'
+        : '<div class="note warn-t">No ten-digit mobile on this complaint, so there is nobody to ' +
+          'message. The visit is saved and the complaint is closed either way.</div>') +
+      '<div class="acts" style="margin-top:14px">' +
+        '<button class="btn gry" data-act="cx-tell-no">Not now</button>' +
+        (can ? '<button class="btn" data-act="cx-tell-go">Open WhatsApp</button>' : '') +
+      '</div>';
+  }
+
+  function cxRow(c) {
+    var ins = cxInstall(c), d = cxDays(c);
+    var urgent = /high/i.test(String(c.Urgency || ""));
+    return '<div class="card cx' + (urgent ? ' urgent' : '') + '" data-act="cx-do" data-ref="' + esc(c.Ref || "") + '">' +
+      '<div class="row"><div class="grow">' +
+        '<div class="ttl">' + esc(cxWho(c)) + '</div>' +
+        '<div class="meta">' + esc(String(c.Category || "Complaint")) +
+          (c.OrderOrChallan ? ' &middot; ' + esc(String(c.OrderOrChallan)) : '') +
+          (c.Mobile ? ' &middot; ' + esc(String(c.Mobile)) : '') + '</div>' +
+        (c.Description ? '<div class="cxsay">&ldquo;' + esc(String(c.Description).slice(0, 180)) + '&rdquo;</div>' : '') +
+        (ins ? '' : '<div class="meta">Not matched to a machine &mdash; it opens as a labour job</div>') +
+      '</div>' +
+      '<div class="right">' +
+        (d === null ? '' : '<div class="amt' + (d >= 2 ? ' bad' : '') + '">' +
+          (d === 0 ? 'today' : d + ' day' + (d === 1 ? '' : 's')) + '</div>') +
+        (urgent ? '<div class="meta bad">urgent</div>' : '') +
+      '</div></div>' +
+      '<div class="meta">' + esc(String(c.Ref || "")) + '</div></div>';
+  }
+
   function viewToday() {
-    var due = dueList(), ending = amcEnding(45);
+    var due = dueList(), ending = amcEnding(45), cx = openComplaints();
     var h = statBar();
+    /* ---- ABOVE EVERYTHING ELSE, AND IN RED (v1.6.0) ----
+       A complaint is a customer who has already been let down. It outranks a routine service
+       that is merely due, however overdue that service is. */
+    if (cx.length) {
+      h += '<h3 class="sec bad">Complaints waiting &mdash; ' + cx.length + '</h3>' +
+        '<div class="note warn-t">The customer raised these himself. Open one and it becomes a ' +
+        'visit; saving that visit closes the complaint.</div>' +
+        cx.map(cxRow).join("");
+    }
     if (!installs().length) {
       h += '<div class="empty"><b>No machines on this phone yet.</b><br>' +
         'The office registers an installation in the CRM and assigns it to you. ' +
@@ -2333,6 +2503,35 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     toast("Visit saved" + (row.collected ? " — " + money9(row.collected) + " on you." : "."));
     render();
 
+    /* ---- AND THE VISIT CLOSES THE COMPLAINT (v1.6.0) ----
+       Deliberately AFTER the visit is written and outside its promise. The work is recorded
+       the moment saveRow takes it; a complaints sheet that is slow or down must never make a
+       man think his visit was lost. If the close fails the complaint simply stays open and
+       somebody goes again - which is the safe direction. */
+    if (v.complaintRef) {
+      var _ref = v.complaintRef, _vid = row.id || "";
+      api("complaintClose", { ref: _ref, visitId: _vid, note: row.notes || "" }, 20000)
+        .then(function (r) {
+          if (r && r.ok) {
+            (S.cx && S.cx.rows || []).forEach(function (x) {
+              if (String(x.Ref) === String(_ref)) { x.Status = "Closed"; x.ClosedBy = S.user; }
+            });
+            cxSave();
+            /* ---- TELL THE CUSTOMER, WITH A CHECK SCREEN FIRST (v1.6.0) ----
+               His answer, in his words: "Yes - WhatsApp, with a check screen first". So this
+               does not send. It shows exactly what would go and to whom, and WhatsApp itself
+               is where the send button lives. A message to a customer cannot be called back,
+               which is the same reason the Payment app has never sent one either. */
+            S.cxTell = { ref: _ref, name: cxWho(cRowOf(_ref)), mobile: cxMob((cRowOf(_ref) || {}).Mobile) };
+            S.sheet = sheetCxTell(); render();
+          } else {
+            toast("Visit saved. The complaint could not be closed — it stays on the list.");
+          }
+        }).catch(function () {
+          toast("Visit saved. No signal to close the complaint — it stays on the list.");
+        });
+    }
+
     saveRow("visits", row).then(function () {
       var upd = installAfter(ins, row);
       if (!upd) return null;
@@ -2432,6 +2631,34 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       var ins = installById(id); if (!ins) return;
       S.job = ins.id; S.sheet = sheetJob(ins); render(); return;
     }
+    if (act === "cx-tell-no") { S.cxTell = null; S.sheet = null; render(); return; }
+    if (act === "cx-tell-go") {
+      var tt = S.cxTell || {};
+      var url = "https://wa.me/91" + String(tt.mobile || "") + "?text=" + encodeURIComponent(cxTellText(tt.ref));
+      S.cxTell = null; S.sheet = null; render();
+      window.open(url, "_blank");
+      return;
+    }
+
+    if (act === "cx-do") {
+      if (!canRecord()) { toast("Going out on a complaint is the engineer's job."); return; }
+      var cref = t.getAttribute("data-ref") || "";
+      var cRow = complaints().filter(function (x) { return String(x.Ref) === String(cref); })[0];
+      if (!cRow) { toast("That complaint is not on this phone — refresh."); return; }
+      var cIns = cxInstall(cRow);
+      /* A COMPLAINT FROM A MAN WHO IS NOT ON THE BOOK STILL OPENS. He complained; whether the
+         office ever registered him is not his problem and must not be a dead end. With no
+         machine it opens as a labour job, which is exactly what it is. */
+      S.vis = cIns
+        ? { installId: cIns.id, type: "Repair", date: today(), parts: [], collected: "",
+            complaintRef: cRow.Ref, visitCharge: defaultCharge(cIns, "Repair", today()) }
+        : { installId: "", type: "Labour job", date: today(), parts: [], collected: "",
+            complaintRef: cRow.Ref,
+            client: String(cRow.Name || ""), area: String(cRow.City || "") };
+      S.vis.notes = "Complaint " + String(cRow.Ref || "") + ": " + String(cRow.Description || "").slice(0, 160);
+      S.sheet = sheetVisit(S.vis); render(); return;
+    }
+
     if (act === "do-visit") {
       /* v1.4.3 - an accounts man may read every rupee in this app and may record nothing. The
          engineer stamp on a visit is a claim about who stood in the customer's house; letting
@@ -2558,6 +2785,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       }
       beatMark(r && r.stamp);
       mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
+      /* fire and forget: the complaints are their own call and a slow complaints sheet must
+         never hold up the book the engineer is standing there waiting for */
+      cxPull().then(function (got) { if (got) render(); });
       if (bookHas(r, KEEP_REST)) {
         mergeBook(r, KEEP_REST); restTook();
         jrnReconcile(); applyJournal();
@@ -2631,6 +2861,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   })();
 
   function boot2(sess) {
+    /* the complaints this phone already had, before any network at all - a complaint raised
+       at eight is still on the screen in a basement at eleven */
+    cxLoad();
     var snap = snapLoad();
     if (snap) { S.data = snap; applyJournal(); S.busy = true; render(); } else openingScreen();
     var authP = authOnce(1);
@@ -2657,6 +2890,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         jrnReconcile(); applyJournal();
         S.syncAt = Date.now(); S.busy = false;
         snapSave(); render(); flushSoon(); startFlushTicker();
+        cxPull().then(function (got) { if (got) render(); });
         if (!S.restAt) pull(false);
       });
     }).catch(function (e) {
