@@ -271,7 +271,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.7.0";
+  var APP_VERSION = "1.7.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -2933,7 +2933,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       '<div class="lbrand">Energy World</div><div class="lsub">Service</div>' +
       (msg ? '<div class="lmsg">' + esc(msg) + '</div>' : '') +
       '<label>Your name</label><input id="ln" value="' + esc(S.user || "") + '" autocomplete="username"/>' +
-      '<label>PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password"/>' +
+      /* v1.7.1 - said PIN where Challan and Collection both say "Your PIN" with the same
+         placeholder. One man signs into three of these apps with one PIN; three different words
+         for it is three chances to think it is three different PINs. Carried on the pending list
+         since 20 August and found again by a spot check. */
+      '<label>Your PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Your Team CRM PIN"/>' +
       '<button class="btn grow" data-act="login">Sign in</button>' +
       '<div class="lfoot">Same name and PIN as the CRM. v' + APP_VERSION + '</div></div>';
     var n = el("ln"); if (n && !n.value) n.focus(); else { var p = el("lp"); if (p) p.focus(); }
