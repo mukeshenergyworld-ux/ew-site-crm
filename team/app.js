@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.337";
+  var APP_VERSION = "6.9.338";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -6592,6 +6592,47 @@ window.addEventListener("beforeunload", function (ev) {
 
   /* The screen he presses it on. Everything he needs to decide is on it: whose delivery,
      which paper, and every brand still without a discount for this client. */
+  /* ---- WHAT THIS DELIVERY CARRIES, BRAND BY BRAND  (v6.9.338) ----
+     HIS WORDS: "adding challan to hisab, show all brand summary for items included in challan,
+     applicable discount, Partners Incentive applicable, executive incentive applicable, only if
+     selected, also give option to select partner and executive at that time, motive is just to
+     remind if anything left".
+
+     THE MOTIVE IS THE DESIGN. This is not a report; it is a last look before a delivery becomes
+     settled business, and the only thing it has to do well is make an OMISSION obvious. So a
+     brand with no discount and a man with no rate on a brand are drawn loudly, and everything
+     that is properly set is drawn quietly. A screen where the faults look like the facts is a
+     screen nobody reads twice.
+
+     Job work is its own row and earns nobody anything - a partner earns on the goods he brought
+     us, not on our labour. incPreview has excluded it since v6.9.324 and this must agree, so it
+     reads the same `x.job` flag rather than a second rule that could drift from it. */
+  function hisabBrandRows(cl, priced, lineup) {
+    var byBrand = {}, order = [], job = 0;
+    (priced || []).forEach(function (x) {
+      if (x.job) { job += x.amt; return; }
+      var b = String(x.brand || "").trim() || "(no brand)";
+      if (!byBrand[b]) { byBrand[b] = 0; order.push(b); }
+      byBrand[b] += x.amt;
+    });
+    var rows = order.map(function (b) {
+      var d = discRow(cl, b);
+      return {
+        brand: b, value: byBrand[b],
+        disc: d ? (Number(d.pct) || 0) : null,      /* null means NOT SET, 0 means "no discount", set */
+        per: (lineup || []).map(function (m) {
+          var r = (m.role === "exec") ? execRateFor(cl, b) : incRate(cl, b, m.role);
+          return { role: m.role, name: m.name, pct: r, amt: byBrand[b] * r / 100, rated: r > 0 };
+        })
+      };
+    });
+    return { rows: rows, job: job,
+             noDisc: rows.filter(function (r) { return r.disc === null; }).length,
+             noRate: rows.reduce(function (n, r) {
+               return n + r.per.filter(function (p) { return !p.rated; }).length;
+             }, 0) };
+  }
+
   function modalAddToHisab(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
     if (!c) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
@@ -6650,18 +6691,61 @@ window.addEventListener("beforeunload", function (ev) {
        Every brand on this delivery, and what this client is set at for it. Until now only the
        MISSING ones appeared, so the commonest case - everything already set - showed nothing at
        all and there was no way to check a preset without leaving the screen. */
-    var brands = hisabBrandsOf(c);
-    if (brands.length) {
+    /* v6.9.338 - this used to be a row of pills reading "Huliot - 45%". It said what the
+       discount was and nothing about who earns on that brand, so the commonest omission of all
+       - a brand carrying a discount but no incentive rate for the man standing on the site -
+       was invisible at the one moment it could still be fixed. One table now: what each brand
+       is worth on THIS delivery, what it is discounted at, and what every man in the line-up
+       earns on it. Quiet where it is right, loud where it is missing. */
+    var lineup = incPreview(c, priced);
+    var bs = hisabBrandRows(cl, priced, lineup);
+    if (bs.rows.length || bs.job > 0) {
       h += '<div class="card" style="padding:10px 12px">' +
         '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
-        '<b>' + esc(cl) + '&rsquo;s preset discount</b></div><div class="row" style="flex-wrap:wrap;gap:6px;margin-top:7px">' +
-        brands.map(function (b) {
-          var d = discRow(cl, b);
-          if (!d) return '<span class="pill" style="background:#fef2f2;color:#b91c1c">' + esc(b) + ' &mdash; not set</span>';
-          var pct = Number(d.pct) || 0;
-          return '<span class="pill" style="background:' + (pct > 0 ? '#f0fdfa;color:#0f766e' : '#f1f5f9;color:#475569') +
-            '">' + esc(b) + ' &mdash; ' + (pct > 0 ? pct + '%' : 'no discount') + '</span>';
-        }).join("") + '</div></div>';
+        '<b>Brand summary &mdash; discount and who earns</b></div>' +
+        '<div style="overflow-x:auto;margin-top:7px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+        '<tr style="color:#64748b;text-align:right">' +
+          '<th style="text-align:left;font-weight:600;padding:3px 6px 5px 0">Brand</th>' +
+          '<th style="font-weight:600;padding:3px 6px 5px">On this challan</th>' +
+          '<th style="font-weight:600;padding:3px 6px 5px">Discount</th>' +
+          lineup.map(function (m) {
+            return '<th style="font-weight:600;padding:3px 6px 5px;white-space:nowrap">' +
+              esc(incRoleLabel(m.role)) + '<br><span style="font-weight:500;color:#94a3b8">' + esc(m.name) + '</span></th>';
+          }).join("") + '</tr>';
+      bs.rows.forEach(function (r) {
+        h += '<tr style="border-top:1px solid #e2e8f0;text-align:right">' +
+          '<td style="text-align:left;padding:5px 6px 5px 0;font-weight:600">' + esc(r.brand) + '</td>' +
+          '<td style="padding:5px 6px">' + money(r.value) + '</td>' +
+          '<td style="padding:5px 6px;font-weight:700;color:' +
+            (r.disc === null ? '#b91c1c' : (r.disc > 0 ? '#0f766e' : '#94a3b8')) + '">' +
+            (r.disc === null ? 'not set' : (r.disc > 0 ? r.disc + '%' : 'none')) + '</td>' +
+          r.per.map(function (p) {
+            return '<td style="padding:5px 6px;white-space:nowrap;color:' + (p.rated ? '#0f172a' : '#b45309') + '">' +
+              (p.rated ? p.pct + '% &middot; <b>' + money(p.amt) + '</b>'
+                       : '<b>no rate</b>') + '</td>';
+          }).join("") + '</tr>';
+      });
+      if (bs.job > 0) {
+        h += '<tr style="border-top:1px solid #e2e8f0;text-align:right;background:#faf5ff">' +
+          '<td style="text-align:left;padding:5px 6px 5px 0;font-weight:600;color:#5b21b6">Job work / labour</td>' +
+          '<td style="padding:5px 6px;color:#5b21b6">' + money(bs.job) + '</td>' +
+          '<td colspan="' + (1 + lineup.length) + '" style="padding:5px 6px;text-align:left;color:#5b21b6">' +
+          'no discount and no incentive &mdash; our labour, not his goods</td></tr>';
+      }
+      h += '</table></div>';
+      if (bs.noDisc || bs.noRate) {
+        h += '<div class="meta" style="margin-top:8px;font-size:12.5px;color:#b45309">' +
+          (bs.noDisc ? '<b>' + bs.noDisc + ' brand' + (bs.noDisc > 1 ? 's have' : ' has') +
+            ' no discount set</b> &mdash; decide it below. ' : '') +
+          (bs.noRate ? '<b>' + bs.noRate + ' rate' + (bs.noRate > 1 ? 's are' : ' is') +
+            ' missing</b> in the box' + (bs.noRate > 1 ? 'es' : '') + ' above: that man earns nothing on that ' +
+            'brand. Set it in <b>Discounts</b> if he should. This does not stop the stamp.' : '') +
+          '</div>';
+      } else if (lineup.length) {
+        h += '<div class="meta" style="margin-top:8px;font-size:12.5px;color:#0f766e">' +
+          'Every brand is priced and every man in the line-up has a rate on all of them. Nothing left out.</div>';
+      }
+      h += '</div>';
     }
 
     if (!miss.length) {
@@ -6707,8 +6791,9 @@ window.addEventListener("beforeunload", function (ev) {
       '<input id="hsb_extranote" placeholder="Why (optional) — e.g. breakage adjusted, rate settled on site" ' +
         'style="margin-top:8px"/></div>';
 
-    /* ---- 4. WHO EARNS ON THIS DELIVERY ---- */
-    var lineup = incPreview(c, priced);
+    /* ---- 4. WHO EARNS ON THIS DELIVERY ----
+       `lineup` is the one built for the brand table above. Computing it twice would be two
+       answers to one question, and this file has been bitten by that three times this month. */
     h += '<div class="card" style="padding:10px 12px">' +
       '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
       '<b>Who earns on this delivery</b></div>';
@@ -6730,6 +6815,39 @@ window.addEventListener("beforeunload", function (ev) {
             (m.rated ? (m.mixed ? 'mixed rates' : m.pct + '%') + ' &middot; <b>' + money(m.amt) + '</b>'
                      : 'no rate set &mdash; earns nothing') + '</span></label>';
       });
+    }
+    /* v6.9.338 - AND NAME ONE NOW IF NOBODY IS NAMED.
+       "also give option to select partner and executive at that time, motive is just to remind
+       if anything left." Until today the only thing you could do here was UNTICK. A delivery
+       whose plumber was never written on the client record showed nothing at all, and the
+       moment to notice it - looking at the signed paper - was the moment it could not be fixed.
+
+       THIS DELIVERY ONLY, and the screen says so. Whoever is picked is frozen onto this stamp
+       exactly like a ticked one. It deliberately does NOT rewrite the client record: that is a
+       lasting change to who earns on everything, and it belongs on the client card where it can
+       be seen, not buried in a delivery that happens to be passing through. */
+    var taken = {};
+    lineup.forEach(function (m) { taken[m.role] = 1; });
+    var free = INC_ROLES.concat(["exec"]).filter(function (r) { return !taken[r]; });
+    if (free.length) {
+      var assoc = (S.data.associates || []).map(function (a) { return String(a.name || "").trim(); })
+        .filter(Boolean).sort(function (a, b) { return a.localeCompare(b); });
+      var execs = execTeam().map(function (u) { return String(u.name || "").trim(); }).filter(Boolean);
+      h += '<div style="border-top:1px dashed #cbd5e1;margin-top:10px;padding-top:9px">' +
+        '<div class="meta" style="font-size:12.5px;color:#475569">Nobody is named as ' +
+        free.map(incRoleLabel).map(function (x) { return x.toLowerCase(); }).join(", ") +
+        ' on ' + esc(cl) + '. Name one here if he earns on <b>this delivery</b> &mdash; it is fixed to ' +
+        'this delivery only. To make it permanent, set it on the client&rsquo;s card.</div>';
+      free.forEach(function (r) {
+        var list = (r === "exec") ? execs : assoc;
+        h += '<div class="row" style="gap:9px;align-items:center;margin:8px 0 0">' +
+          '<span style="flex:0 0 92px;font-weight:600;color:#0f172a">' + esc(incRoleLabel(r)) + '</span>' +
+          '<select class="hsb-pick" data-role="' + esc(r) + '" style="flex:1 1 160px;min-width:150px">' +
+            '<option value="">&mdash; nobody &mdash;</option>' +
+            list.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join("") +
+          '</select></div>';
+      });
+      h += '</div>';
     }
     h += '</div>';
 
@@ -14711,6 +14829,64 @@ function viewCatalogue() {
     return h + '</div>';
   }
 
+  /* ---- WHAT IS STILL WAITING, AT THE TOP OF HISAB  (v6.9.338) ----
+     HIS WORDS: "while opening hisab show log like - challan pending to dispatch, pending to
+     attach receipt".
+
+     HISAB is the screen he opens to read the account, and the account is only as complete as
+     the deliveries that have finished their journey. A challan sitting at Draft is money not
+     yet earned; one dispatched with no paper back is money earned with nothing to prove it.
+     Neither shows anywhere on this screen, because this screen counts receiptReceived = Y and
+     nothing else - so the two states that keep money OUT of it were the two states it could
+     not show.
+
+     Counts, not a wall of rows: the ten oldest of each, because what matters is the oldest, and
+     a list of forty tells him nothing he can act on this morning. Tapping one opens its client.
+     Scoped by isMineClient, like everything else here. */
+  function hisabWaitingCard() {
+    var all = dedupeChallans(S.data.challans || []).filter(function (c) {
+      return isMineClient(c.customerName) && String(c.status || "") !== "Cancelled";
+    });
+    var toGo = all.filter(function (c) {
+      var st = String(c.status || "Draft");
+      return st === "Draft" || st === "Approved";
+    }).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+    var toPaper = all.filter(function (c) {
+      return String(c.status || "") === "Dispatched" && !chProofAny(c).has;
+    }).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+    if (!toGo.length && !toPaper.length) return '';
+
+    var strip = function (list, title, why, colour, wash) {
+      if (!list.length) return '';
+      var val = list.reduce(function (a, c) { return a + chValue(c); }, 0);
+      return '<div style="flex:1 1 280px;min-width:260px;background:' + wash + ';border-radius:10px;padding:11px 13px">' +
+        '<div style="font-size:19px;font-weight:800;color:' + colour + '">' + list.length +
+          ' <span style="font-size:12.5px;font-weight:600">&middot; ' + money(val) + '</span></div>' +
+        '<div style="font-size:12px;font-weight:700;color:' + colour + ';margin-top:1px">' + title + '</div>' +
+        '<div style="font-size:11.5px;color:' + colour + ';opacity:.85;margin-top:2px">' + why + '</div>' +
+        '<div style="margin-top:7px">' + list.slice(0, 10).map(function (c) {
+          /* daysTo() is negative for a date in the past, so the age is its negation. Using the
+             helper that already exists rather than adding a second one that could drift. */
+          var d = -daysTo(String(c.createdAt || "").slice(0, 10));
+          return '<div style="font-size:12px;padding:2px 0;cursor:pointer;color:' + colour + '" ' +
+            'data-act="bill-open" data-n="' + esc(c.customerName || "") + '">' +
+            '<b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(c.customerName || "") +
+            (d >= 0 ? ' <span style="opacity:.7">&middot; ' + d + 'd</span>' : '') + '</div>';
+        }).join("") +
+        (list.length > 10 ? '<div style="font-size:11.5px;opacity:.7;margin-top:3px;color:' + colour + '">and ' +
+          (list.length - 10) + ' more</div>' : '') + '</div></div>';
+    };
+
+    return '<div class="card" style="border-color:#cbd5e1"><h3 style="margin:0 0 3px">Still waiting</h3>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:9px">Deliveries that have not finished their ' +
+      'journey. None of this money is in the account below yet &mdash; HISAB counts a delivery only once its ' +
+      'receipt is confirmed. Tap one to open that client.</div>' +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap">' +
+      strip(toGo, "waiting to be dispatched", "written, not yet released", "#92400e", "#fef9c3") +
+      strip(toPaper, "waiting for the signed paper", "gone out, nothing signed back", "#b91c1c", "#fee2e2") +
+      '</div></div>';
+  }
+
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
     var cl = hisabResolve(S.q);
@@ -14743,6 +14919,7 @@ function viewCatalogue() {
             '</div>';
         }
       }
+      h += hisabWaitingCard();
       if (!outs.length && !credits.length) return h + '<div class="empty">No outstanding balances &mdash; every received challan is fully paid. Type a client above to view their hisab.</div>';
       var oh = '';
       if (outs.length) {
@@ -27497,6 +27674,16 @@ function viewCatalogue() {
       document.querySelectorAll(".hsb-inc").forEach(function (elx) {
         hInc.push({ role: elx.getAttribute("data-role") || "", name: elx.getAttribute("data-name") || "",
                     on: !!elx.checked });
+      });
+      /* v6.9.338 - anyone named on the spot joins the line-up as if he had been on the client
+         record all along. Deduped by role+name, because a picker and a tick must never write the
+         same man twice: incentiveBook would pay him twice for one delivery. */
+      document.querySelectorAll(".hsb-pick").forEach(function (elp) {
+        var pn = String(elp.value || "").trim();
+        if (!pn) return;
+        var pr = elp.getAttribute("data-role") || "";
+        var dup = hInc.some(function (x) { return x.role === pr && dkey(x.name) === dkey(pn); });
+        if (!dup) hInc.push({ role: pr, name: pn, on: true });
       });
       var hOff = hInc.filter(function (x) { return !x.on; });
 
