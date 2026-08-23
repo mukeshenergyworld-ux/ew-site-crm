@@ -47,6 +47,12 @@ label .req{color:var(--red)}
 input,select,textarea{width:100%;font:inherit;font-size:16px;padding:11px 12px;
   border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);
   min-height:46px;-webkit-appearance:none;appearance:none}
+/* ==== A TICK BOX IS NOT A TEXT FIELD (23 Aug 2026) ====
+   The rule above is right for every field in this app and wrong for the two that are not
+   fields: a bare checkbox inherited width:100% and took the whole line, so the label beside
+   it dropped underneath. Found on the CRM's HISAB card, fixed everywhere at once. */
+input[type="checkbox"],input[type="radio"]{width:auto;padding:0;min-height:0;flex:0 0 auto;
+  -webkit-appearance:auto;appearance:auto}
 textarea{min-height:78px;resize:vertical;line-height:1.45}
 input:focus,select,textarea:focus{outline:2px solid var(--blue);outline-offset:-1px}
 select{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
