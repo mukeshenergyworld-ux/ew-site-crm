@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.349";
+  var APP_VERSION = "6.9.350";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4830,12 +4830,121 @@ window.addEventListener("beforeunload", function (ev) {
      (admin only). We store it on the very same discount row, in its `notes` column, as a small
      JSON map of role -> percent, e.g. {"plumber":5,"architect":3}. Role, not partner name, so it
      follows whoever is that client's plumber / architect today. No new sheet column is needed. */
-  function discRow(client, brand) { return discPick(discRowsFor(client, brand)); }
+  /* ================= A RATE HAS A DAY IT STARTS  (v6.9.350, 23 August 2026) =================
+     HIS WORDS: "if any discount % change attempt for a client or partner incentive % change
+     attempted, ask for effective date."
+
+     WHY IT MATTERS, AND IT IS WORSE FOR THE INCENTIVE THAN FOR THE DISCOUNT.
+
+     The DISCOUNT is mostly safe already: pricedLines() uses the percent FROZEN ON THE CHALLAN
+     LINE where the line carries one, and only falls back to the client's preset when it does
+     not. So changing a discount today mostly leaves old bills alone.
+
+     THE INCENTIVE HAS NO SUCH FLOOR. incRate() and execRateFor() read the live row every single
+     time, for every delivery ever made. Move a plumber from 4.2% to 5% this afternoon and he has
+     retrospectively earned 5% on every challan since the first one - his book, his payout, the
+     dues, the scorecards, all of it, rewritten by one typed number, silently. Nobody would ever
+     see it happen; they would only see that the totals had changed.
+
+     SO A RATE IS NOW A ROW WITH A DAY ON IT, and a change APPENDS rather than overwrites: the
+     old rate keeps its own row, and the deliveries it covered keep it. Nothing is deleted, which
+     is the house rule, and history stops moving under his feet.
+
+     WHERE THE DATE LIVES. In `notes`, the JSON blob that already carries the incentive map. The
+     discounts tab has five columns - id, client, brand, pct, notes - and teamSaveLocked_ writes
+     from the SHEET's own headers, so a field with no column is silently dropped. A new column
+     means a backend deploy and a hand edit of the sheet; `notes` is already there, already JSON,
+     and already read by incMap(). No server change, nothing to migrate.
+
+     AND NOTHING MOVES TODAY. A row with NO `from` is treated as effective since the beginning of
+     time, which is exactly what every one of the 256 rows in his book is. Until he sets his
+     first dated rate, every figure in the app computes to the number it computed to yesterday.
+     Money must never move because a feature was deployed. */
+  /* ---- THE ASK, IN ONE PLACE  (v6.9.350) ----
+     Three screens can change a rate - the Discounts screen, the owner's ledger panel, and the
+     brand decisions inside ADD TO HISAB. All three ask the same question the same way, because
+     a question worded three ways is three questions.
+
+     It returns "" for "leave it as it always was" and null for CANCELLED, and the two are not
+     the same: cancelled means write nothing at all. A date in the past is allowed on purpose -
+     "we agreed this from the first of the month" is the commonest correction there is - but a
+     date in the FUTURE is refused, because a rate that has not started yet would leave today's
+     deliveries reading the old row and nobody would understand why. */
+  function askEffectiveFrom(what) {
+    var d = window.prompt(
+      "From which date does the new " + (what || "rate") + " apply?\n\n" +
+      "Deliveries BEFORE this date keep the rate they were made at - nothing already earned " +
+      "moves. Leave it as today if it starts now.\n\n" +
+      "Type a date as YYYY-MM-DD, or leave blank to apply it to everything as before:", today());
+    if (d === null) return null;                       /* cancelled - write nothing */
+    var v = String(d).trim();
+    if (!v) return "";                                 /* blank - undated, as every old row is */
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { toast("Write the date as YYYY-MM-DD, e.g. " + today() + "."); return null; }
+    if (v > today()) { toast("A rate cannot start in the future \u2014 today\u2019s deliveries would still read the old one."); return null; }
+    return v;
+  }
+  /* Did anything about this row's money actually change? Asking for an effective date when he
+     only re-saved the same numbers would be a question with no purpose, and a question with no
+     purpose is one he learns to dismiss without reading. */
+  function discChanged(exd, pct, notes) {
+    if (!exd) return true;
+    if (String(Number(exd.pct) || 0) !== String(Number(pct) || 0)) return true;
+    var was = incMap(exd), now = notes || {};
+    var keys = {};
+    Object.keys(was).concat(Object.keys(now)).forEach(function (k) { if (k !== "from") keys[k] = 1; });
+    return Object.keys(keys).some(function (k) {
+      return String(Number(was[k]) || 0) !== String(Number(now[k]) || 0);
+    });
+  }
+  /* NO dstr() IN HERE, AND THAT IS DELIBERATE. This block is shared byte-for-byte with the
+     Challan app, and the two apps have a function called dstr that does OPPOSITE things: in the
+     CRM it truncates to "2026-08-01", in the Challan app it FORMATS to "1 Aug 2026". Calling it
+     here read every dated rate as undated in the Challan app - so a challan would have been
+     priced at the old percent while the CRM used the new one, silently, and nothing on either
+     screen would have said so. Caught by t_apps_agree the moment the port landed, which is what
+     that suite is for. Ten characters of slicing, no shared name, no trap. */
+  function discFrom(row) {
+    var f = String((incMap(row) || {}).from || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : "";
+  }
+  /* The rate in force on a given day. Rows that had not started yet are out; among the rest the
+     LATEST start wins, and an undated row - "since the beginning" - loses to any dated one, so
+     the first dated rate he writes takes over cleanly from the row that was there before it. */
+  function discRowOn(client, brand, onYmd) {
+    var rows = discRowsFor(client, brand);
+    if (!rows.length) return null;
+    /* same reason as discFrom: no dstr, and no today() either - the two apps build today's date
+       their own way and this block must mean one thing in both. */
+    var day = String(onYmd || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      var _n = new Date();
+      day = _n.getFullYear() + "-" + String(_n.getMonth() + 1).padStart(2, "0") +
+            "-" + String(_n.getDate()).padStart(2, "0");
+    }
+    var dated = [], undated = [];
+    rows.forEach(function (r) { (discFrom(r) ? dated : undated).push(r); });
+    var live = dated.filter(function (r) { return discFrom(r) <= day; });
+    if (live.length) {
+      var best = live[0];
+      for (var i = 1; i < live.length; i++) {
+        var a = discFrom(live[i]), b = discFrom(best);
+        /* two rates starting the same day: the one written later is the correction */
+        if (a > b || (a === b && discStamp(live[i]) > discStamp(best))) best = live[i];
+      }
+      return best;
+    }
+    /* nothing dated has started yet - fall back to whatever was there before dates existed,
+       and never to a rate that has not begun */
+    return undated.length ? discPick(undated) : null;
+  }
+  /* Unchanged for every caller that does not know a date: it asks for today's rate, which is
+     what asking for "the rate" has always meant. */
+  function discRow(client, brand, onYmd) { return discRowOn(client, brand, onYmd); }
   function incMap(row) {
     try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
   }
-  function incRate(client, brand, role) {
-    var d = discRow(client, brand); if (!d) return 0;
+  function incRate(client, brand, role, onYmd) {
+    var d = discRow(client, brand, onYmd); if (!d) return 0;
     return Number(incMap(d)[String(role).toLowerCase()]) || 0;
   }
   /* ---- THE SALES EXECUTIVE'S INCENTIVE, SET LIKE A PARTNER'S (v6.9.234) ----
@@ -4853,8 +4962,8 @@ window.addEventListener("beforeunload", function (ev) {
     var m = incMap(d);
     return String(m.execOn) === "1" || Number(m.exec) > 0;
   }
-  function execRateFor(client, brand) {
-    var d = discRow(client, brand); if (!d) return 0;
+  function execRateFor(client, brand, onYmd) {
+    var d = discRow(client, brand, onYmd); if (!d) return 0;
     return Number(incMap(d).exec) || 0;
   }
   /* WHO earns it: the executive the client is assigned to. Every challan here is
@@ -14566,6 +14675,10 @@ function viewCatalogue() {
      computed it its own way would be a second answer to a money question. This file has been
      bitten by that three times this month; the fix each time was one function, called twice.
      Lifted verbatim, called by both. */
+  /* v6.9.350 - ON THE DAY OF THE DELIVERY, not today. The challan is already in hand; taking
+     its date costs nothing and is the whole point of dating a rate. A delivery with no date -
+     there are none, but the book is old - asks for today's, which is what it always did. */
+  function rateDayOf(c) { return dstr(c && (c.createdAt || c.date)) || today(); }
   function partnerBookRate(cl, br, c, nmLower) {
     /* The stamped line-up wins where there is one. "exec" is dropped here on purpose: a man who
        is both this client's plumber and its executive is paid once as each, by the two books,
@@ -14573,8 +14686,8 @@ function viewCatalogue() {
     var roles = chIncRoles(c, nmLower);
     roles = roles === null ? clientRolesOf(cl, nmLower)
                            : roles.filter(function (r) { return r !== "exec"; });
-    var rate = 0;
-    roles.forEach(function (role) { var r = incRate(cl.name, br, role); if (r > rate) rate = r; });
+    var day = rateDayOf(c), rate = 0;
+    roles.forEach(function (role) { var r = incRate(cl.name, br, role, day); if (r > rate) rate = r; });
     return rate;
   }
   function execBookRate(cl, br, c, nmLower) {
@@ -14583,7 +14696,7 @@ function viewCatalogue() {
        usual rate. */
     var roles = chIncRoles(c, nmLower);
     if (roles && roles.indexOf("exec") < 0) return 0;
-    return execRateFor(cl.name, br);
+    return execRateFor(cl.name, br, rateDayOf(c));   /* v6.9.350 - the day of the delivery */
   }
   /* What ONE man has earned on ONE client, through the payout engine itself rather than beside
      it. Returns incentiveBook's own totals, so this panel and his incentive card cannot print
@@ -14665,6 +14778,20 @@ function viewCatalogue() {
       'style="width:52px;text-align:center;padding:3px 4px;font-size:12px;border-radius:5px;border:1px solid ' +
       (miss ? '#fcd34d;background:#fffbeb' : '#cbd5e1;background:#fff') + '"/>';
   }
+  /* v6.9.350 - a rate with a start date says so, and one that replaced an earlier rate says
+     that too. A dated rate that looked identical to an undated one would be a change he could
+     not see he had made. */
+  function admFromNote(cl, brand) {
+    var rows = discRowsFor(cl, brand);
+    var cur = discRow(cl, brand);
+    var f = discFrom(cur);
+    var older = rows.filter(function (r) { return r !== cur; }).length;
+    if (!f && !older) return "";
+    return '<div style="font-size:10px;color:#94a3b8;margin-top:1px">' +
+      (f ? "from " + esc(d10(f)) : "since the start") +
+      (older ? " \u00b7 " + older + " earlier rate" + (older === 1 ? "" : "s") + " kept" : "") +
+      '</div>';
+  }
   function admBrandTable(cl) {
     var brands = admClientBrands(cl), line = admLineup(cl);
     if (!brands.length) {
@@ -14683,7 +14810,8 @@ function viewCatalogue() {
     brands.forEach(function (b) {
       var d = discRow(cl, b);
       h += '<tr style="border-top:1px solid #e2e8f0;text-align:center">' +
-        '<td style="text-align:left;padding:4px 6px 4px 0;font-weight:600;white-space:nowrap">' + esc(b) + '</td>' +
+        '<td style="text-align:left;padding:4px 6px 4px 0;font-weight:600;white-space:nowrap">' + esc(b) +
+          admFromNote(cl, b) + '</td>' +
         '<td style="padding:3px 5px">' + admCell(cl, b, "disc", d ? (Number(d.pct) || 0) : 0) + '</td>' +
         line.map(function (m) {
           return '<td style="padding:3px 5px">' + admCell(cl, b, m.role, admRateOf(cl, b, m.role)) + '</td>';
@@ -27678,8 +27806,12 @@ function viewCatalogue() {
               ". Nothing was saved.");
         return;
       }
-      var admN = 0;
+      /* v6.9.350 - ASK ONCE, for the whole save, and only if a money figure actually moved.
+         Asking per brand would be five prompts to change five rows he thinks of as one decision. */
+      var admFrom = "", admAsked = false;
+      var admN = 0, admStop = false;
       Object.keys(admG).forEach(function (k) {
+        if (admStop) return;
         var g = admG[k], exd = discRow(admCl, g.brand);
         var notes = incMap(exd);
         var pct = (g.vals.disc === undefined)
@@ -27697,12 +27829,25 @@ function viewCatalogue() {
             else { delete notes.exec; if (!notes.execOn) delete notes.execOn; }
           } else if (n > 0) { notes[role] = n; } else { delete notes[role]; }
         });
+        if (!discChanged(exd, pct, notes)) return;      /* nothing moved - no row, no question */
+        if (!admAsked) {
+          admAsked = true;
+          var _f = askEffectiveFrom("discount / incentive");
+          if (_f === null) { admStop = true; return; }   /* cancelled */
+          admFrom = _f;
+        }
+        if (admFrom) notes.from = admFrom; else delete notes.from;
         var notesStr = Object.keys(notes).length ? JSON.stringify(notes) : "";
         if ((pct === "" || pct === 0) && !notesStr && !exd) return;
-        save("discounts", { id: (exd ? exd.id : "") || mintId("D"),
+        /* v6.9.350 - A DATED CHANGE IS A NEW ROW. The old rate keeps its own row and the
+           deliveries it covered keep it; overwriting would rewrite what a partner earned on
+           every challan since the first one. An undated change still edits in place, exactly as
+           it always has, so a man correcting a typo does not litter the sheet. */
+        save("discounts", { id: (admFrom ? mintId("D") : ((exd ? exd.id : "") || mintId("D"))),
           client: admCl, brand: g.brand, pct: pct, notes: notesStr }, true);
         admN++;
       });
+      if (admStop) { toast("Nothing was saved."); return; }
       S.modal = null;
       toast(admN ? ("Saved " + admN + " brand line" + (admN > 1 ? "s" : "") + " for " + admCl + ".")
                  : "Nothing to save.");
@@ -28042,8 +28187,11 @@ function viewCatalogue() {
         groups[k] = groups[k] || { client: cl, brand: br };
         groups[k].execVal = String(el.value || "").trim();
       });
+      /* v6.9.350 - one question for the whole save, asked only if a figure actually moved. */
+      var dsFrom = "", dsAsked = false, dsStop = false;
       var saved = 0;
       Object.keys(groups).forEach(function (k) {
+        if (dsStop) return;
         var g = groups[k], exd = discRow(g.client, g.brand);
         var pct = g.pctSet ? (g.pct === "" ? "" : (Number(g.pct) || 0)) : (exd && exd.pct != null ? exd.pct : "");
         var notes = incMap(exd);           // start from what's stored, overlay the on-screen roles
@@ -28058,12 +28206,23 @@ function viewCatalogue() {
             if (_exv > 0) notes.exec = _exv; else delete notes.exec;
           }
         }
+        if (!discChanged(exd, pct, notes)) return;      /* nothing moved - no row, no question */
+        if (!dsAsked) {
+          dsAsked = true;
+          var _df = askEffectiveFrom("discount / incentive");
+          if (_df === null) { dsStop = true; return; }
+          dsFrom = _df;
+        }
+        if (dsFrom) notes.from = dsFrom; else delete notes.from;
         var notesStr = Object.keys(notes).length ? JSON.stringify(notes) : "";
         var isEmpty = (pct === "" || pct === 0) && !notesStr;
         if (isEmpty && !exd) return;       // don't create a blank row for a brand never touched
-        save("discounts", { id: (exd ? exd.id : "") || mintId("D"), client: g.client, brand: g.brand, pct: pct, notes: notesStr }, true);
+        /* v6.9.350 - dated changes append; undated ones edit in place as they always have */
+        save("discounts", { id: (dsFrom ? mintId("D") : ((exd ? exd.id : "") || mintId("D"))),
+          client: g.client, brand: g.brand, pct: pct, notes: notesStr }, true);
         saved++;
       });
+      if (dsStop) { toast("Nothing was saved."); return; }
       setTimeout(function () {
         S.q = ""; render();
         toast(saved ? ("Saved " + saved + " brand line" + (saved > 1 ? "s" : "") + " for this client.") : "Nothing to save.");
@@ -29501,13 +29660,20 @@ function viewCatalogue() {
       });
       var hOff = hInc.filter(function (x) { return !x.on; });
 
+      /* v6.9.350 - THIS ONE IS DELIBERATELY NOT ASKED ABOUT, and it is worth saying why.
+         These brands have NO row at all: they are being decided for the first time, at the
+         moment of passing the delivery they were carried on. There is no old rate to protect
+         and nothing to move. So the effective date is the DELIVERY'S OWN DATE - which is more
+         truthful than today, and is the answer a prompt would have been fishing for anyway. */
+      var hFrom = dstr(hc.createdAt) || today();
       var hset = [], hign = [];
       hmiss.forEach(function (b, i) {
         var v = hnon[b] ? 0 : (Number(hpct[b]) || 0);
         /* A real row either way - that is what makes "ignore once" stick. */
         save("discounts", {
           id: mintId("D"),
-          client: hc.customerName || "", brand: b, pct: v, notes: ""
+          client: hc.customerName || "", brand: b, pct: v,
+          notes: JSON.stringify({ from: hFrom })
         }, true);
         if (v > 0) hset.push(b + " " + v + "%"); else hign.push(b);
       });
