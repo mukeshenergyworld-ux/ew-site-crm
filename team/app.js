@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.351";
+  var APP_VERSION = "6.9.352";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -6975,7 +6975,11 @@ window.addEventListener("beforeunload", function (ev) {
              ever read it, so he has had no way to see whether the mirror works. Same rule as the
              thumbnail: a row written before the mirror existed reads back as "" and simply shows
              no Telegram chip, which is the truth about that row. */
-          tg: String(d.tg || "")
+          tg: String(d.tg || ""),
+          /* v6.9.352 - the AUDIT ROW's own id, so the fingerprint cache can be keyed by the
+             row rather than by the challan. Two proofs on one challan are two rows and two
+             fingerprints; keying by challan would lose the older one. */
+          rowId: String(r.id || "")
         };
       }
     });
@@ -7849,12 +7853,14 @@ window.addEventListener("beforeunload", function (ev) {
     /* a queued proof has not reached the server, so it cannot have been mirrored: tg is "" and
        no Telegram chip is drawn. Saying otherwise would be the app claiming a backup exists for
        a document still sitting on one phone. */
+    /* v6.9.352 - rowId: "" while it is still queued. A photo that has not reached the server
+       has no audit row to fingerprint against, and flagging one against itself would be a lie. */
     if (q) return { has: true, queued: q.err ? { err: q.err, tries: q.tries || 0 } : true,
-                    url: "", thumb: q.thumb || "", by: q.by || "", tg: "", replaces: "" };
+                    url: "", thumb: q.thumb || "", by: q.by || "", tg: "", replaces: "", rowId: "" };
     var p = challanProof(c.id);
-    if (!p) return { has: false, queued: false, url: "", thumb: "", by: "", tg: "", replaces: "" };
+    if (!p) return { has: false, queued: false, url: "", thumb: "", by: "", tg: "", replaces: "", rowId: "" };
     return { has: true, queued: false, url: p.url || "", thumb: p.thumb || "", by: p.by || "",
-             tg: p.tg || "", replaces: p.replaces || "" };
+             tg: p.tg || "", replaces: p.replaces || "", rowId: p.rowId || "" };
   }
   /* v6.9.335 - THE MIRROR YOU CAN SEE.
      "we can easily delete old receipts when required and have backup at telegram" - and then
@@ -7894,9 +7900,13 @@ window.addEventListener("beforeunload", function (ev) {
       'title="Photograph the right receipt. The one on file now is kept - nothing is deleted.">Change</button>';
   }
   function proofSealFor(c, size) {
+    /* v6.9.352 - kick the fingerprint pass the first time a seal is drawn. It is idempotent,
+       runs off the render path, and re-renders once when it has something to say. */
+    try { pHashScan(); } catch (e) { }
     var r = chProofAny(c);
     if (!r.has) return "";
-    return proofSeal(r.url, r.thumb, r.queued, r.by, size) + tgSeal(r.tg) + chgSeal(c);
+    return proofSeal(r.url, r.thumb, r.queued, r.by, size) + tgSeal(r.tg) +
+           proofTwinFlag(c) + chgSeal(c);
   }
   function proofLink(c) {
     /* v6.9.212 - the queued copy carries its own thumbnail, so the picture of the paper is on the
@@ -7907,6 +7917,127 @@ window.addEventListener("beforeunload", function (ev) {
   /* What a delivery with no paper behind it looks like. Red on purpose: hisab lists only
      challans whose receipt is CONFIRMED, so material has gone out and nothing signed has
      come back for it. That is the gap this is here to show. */
+  /* ================= THE SAME PHOTO ON TWO CHALLANS  (v6.9.352, 23 August 2026) ==========
+     HIS WORDS: "can we make a provision that CRM can try to match challan no of product with
+     receipt pic and if major changes found give red flag to us."
+
+     I LOOKED AT A REAL ONE BEFORE ANSWERING. His latest receipt is a handwritten challan-book
+     page, in ballpoint, photographed at an angle, half in shadow, with the top of the page -
+     where a printed number would be - cropped off. Google Drive OCR on that returns noise.
+     Reading a HANDWRITTEN challan number off a godown phone photo is not something this can do
+     honestly, and matching the product lines is further out of reach still.
+
+     AND A FALSE RED FLAG ON MONEY IS WORSE THAN NO FLAG. Tell him twice that a good receipt is
+     wrong and he stops reading the flag - the same failure as every silent screen found this
+     week, only inverted.
+
+     SO THE FLAG IS BUILT ON SOMETHING CERTAIN INSTEAD. The commonest way a wrong receipt gets
+     attached is not a misread number: it is THE SAME PHOTOGRAPH going onto two challans -
+     a man opens the gallery, taps the picture he took an hour ago, and files it against the
+     wrong delivery. That leaves an unmistakable trace, because the app already stores a 96px
+     thumbnail of every receipt. Two attachments of one photograph are the same picture.
+
+     An 8x8 average hash of that thumbnail, compared across every proof on the book. It is
+     computed once per proof and cached, off the render path. It never guesses: only a distance
+     of four bits or fewer out of sixty-four is called a match, which is the same picture, not
+     a similar one. */
+  var _phash = {}, _phashRun = false;
+  function pHashOf(id) { return _phash[String(id)] || null; }
+  /* every delivery/return proof that carries a thumbnail we can fingerprint */
+  function proofRowsAll() {
+    return (S.data.audit || []).filter(function (r) {
+      if (!r || String(r.action || "") !== "challan:proof") return false;
+      try { return !!(JSON.parse(r.detail || "{}") || {}).thumb; } catch (e) { return false; }
+    });
+  }
+  /* Background pass: decode each 96px thumbnail once, average-hash it, and re-render ONCE at the
+     end. Nothing on the render path waits for this - a card with no fingerprint yet simply
+     carries no flag, which is the honest state until the picture has been looked at. */
+  function pHashScan() {
+    if (_phashRun) return;
+    var rows = proofRowsAll().filter(function (r) { return !_phash[String(r.id)]; });
+    if (!rows.length) return;
+    _phashRun = true;
+    var left = rows.length, done = 0;
+    var finish = function () {
+      if (--left > 0) return;
+      _phashRun = false;
+      if (done) { try { render(); } catch (e) { } }
+    };
+    rows.forEach(function (r) {
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return finish(); }
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var cv = document.createElement("canvas"); cv.width = 8; cv.height = 8;
+          var cx = cv.getContext("2d");
+          cx.drawImage(img, 0, 0, 8, 8);
+          var px = cx.getImageData(0, 0, 8, 8).data, g = [], sum = 0;
+          for (var i = 0; i < 64; i++) {
+            /* plain luminance - the paper is grey on grey and hue tells us nothing */
+            var v = (px[i * 4] * 299 + px[i * 4 + 1] * 587 + px[i * 4 + 2] * 114) / 1000;
+            g.push(v); sum += v;
+          }
+          var avg = sum / 64, bits = "";
+          for (var j = 0; j < 64; j++) bits += (g[j] >= avg ? "1" : "0");
+          _phash[String(r.id)] = bits; done++;
+        } catch (e) { }
+        finish();
+      };
+      img.onerror = finish;
+      img.src = "data:image/jpeg;base64," + d.thumb;
+    });
+  }
+  function pHashDist(a, b) {
+    if (!a || !b || a.length !== b.length) return 99;
+    var n = 0;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) n++;
+    return n;
+  }
+  /* The proofs that are the SAME PICTURE as this one, on a different row. Four bits of
+     sixty-four: the same photograph re-encoded, not two photographs of similar paper. */
+  var PHASH_SAME = 4;
+  function proofTwins(rowId, ownerId) {
+    var mine = pHashOf(rowId);
+    if (!mine) return [];
+    var out = [];
+    proofRowsAll().forEach(function (r) {
+      if (String(r.id) === String(rowId)) return;
+      var h = pHashOf(r.id);
+      if (!h || pHashDist(mine, h) > PHASH_SAME) return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var other = String(d.chId || d.id || "");
+      if (!other || other === String(ownerId)) return;   /* the same row re-photographed is fine */
+      out.push({ chId: other, at: r.createdAt || "", by: r.actor || "" });
+    });
+    return out;
+  }
+  /* What to call the other row: a challan number if it is one, a return number if it is a
+     return, and the raw id only if the book on this phone has never heard of it. */
+  function proofOwnerName(id) {
+    var c = (S.data.challans || []).filter(function (x) { return String(x.id) === String(id); })[0];
+    if (c) return c.challanNo || id;
+    var r = (S.data.returns || []).filter(function (x) { return String(x.id) === String(id); })[0];
+    if (r) return r.returnNo || id;
+    return id;
+  }
+  /* THE FLAG. Red, specific, and it names the other one - a warning that does not say WHICH
+     other delivery has the same paper is a warning nobody can act on. */
+  function proofTwinFlag(c) {
+    if (!c) return "";
+    var p = chProofAny(c);
+    if (!p.has || !p.rowId) return "";
+    var tw = proofTwins(p.rowId, c.id);
+    if (!tw.length) return "";
+    var names = tw.map(function (t) { return proofOwnerName(t.chId); });
+    return ' <span class="pill" style="background:#7f1d1d;color:#fff;font-weight:700;cursor:help" ' +
+      'title="The very same photograph is attached to ' + esc(names.join(", ")) +
+      '. One of the two is on the wrong delivery. Open both, look at the paper, and use Change ' +
+      'on whichever is wrong.">SAME PHOTO AS ' + esc(names[0]) +
+      (names.length > 1 ? " +" + (names.length - 1) : "") + '</span>';
+  }
   function noProofPill() {
     return '<span style="display:inline-flex;align-items:center;gap:5px;background:#fef2f2;' +
       'border:1px solid #fecaca;color:#b91c1c;border-radius:999px;padding:2px 9px;' +
@@ -16240,6 +16371,42 @@ function viewCatalogue() {
      "Raised" credits nothing and shows on no statement; until today it also showed on no screen
      he would think to open, which is how a return disappears into the gap between the man who
      writes it and the man who counts it back in. */
+  /* v6.9.352 - every pair of rows carrying the SAME photograph, on the front of HISAB beside the
+     other two waiting cards. Silent when there are none, which is the normal state and the one
+     worth keeping quiet. */
+  function twinWaitingCard() {
+    if (!roleIs("admin")) return "";
+    try { pHashScan(); } catch (e) { }
+    var seen = {}, pairs = [];
+    proofRowsAll().forEach(function (r) {
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var owner = String(d.chId || "");
+      if (!owner) return;
+      proofTwins(r.id, owner).forEach(function (t) {
+        var k = [owner, t.chId].sort().join("|");
+        if (seen[k]) return; seen[k] = 1;
+        pairs.push({ a: owner, b: t.chId, at: r.createdAt || "" });
+      });
+    });
+    if (!pairs.length) return "";
+    return '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
+      '<h3 style="margin:0 0 2px;font-size:13px">' + pairs.length + ' pair' +
+      (pairs.length === 1 ? '' : 's') + ' of deliveries carry the SAME receipt photograph</h3>' +
+      '<div class="meta" style="color:#7f1d1d;margin-bottom:6px">The picture is the same one, ' +
+      'not merely a similar page \u2014 so one of each pair has the wrong paper against it. ' +
+      'Open both, look at the receipt, and use <b>Change</b> on whichever is wrong. ' +
+      'Nothing is deleted: the old photo stays on the audit trail.</div>' +
+      pairs.slice(0, 10).map(function (p) {
+        return '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow">' +
+          '<b>' + esc(proofOwnerName(p.a)) + '</b> <span style="color:#7f1d1d">and</span> ' +
+          '<b>' + esc(proofOwnerName(p.b)) + '</b>' +
+          '<br><span style="font-size:11.5px;color:#7f1d1d">same photograph on both</span></div>' +
+          '</div>';
+      }).join("") +
+      (pairs.length > 10 ? '<div class="meta" style="margin-top:6px">and ' + (pairs.length - 10) + ' more.</div>' : "") +
+      '</div>';
+  }
   function retWaitingCard() {
     var list = (S.data.returns || []).filter(function (r) {
       var st = String(r.status || "").trim().toLowerCase();
@@ -16345,7 +16512,7 @@ function viewCatalogue() {
             '</div>';
         }
       }
-      h += hisabWaitingCard() + retWaitingCard();
+      h += hisabWaitingCard() + retWaitingCard() + twinWaitingCard();
       if (!outs.length && !credits.length) return h + '<div class="empty">No outstanding balances &mdash; every received challan is fully paid. Type a client above to view their hisab.</div>';
       var oh = '';
       if (outs.length) {
@@ -16573,7 +16740,15 @@ function viewCatalogue() {
            drawn bigger here than on the delivery list because in hisab you are checking the
            document, not scanning a queue. Tap it to open the full one. */
         ' <span style="display:inline-block;vertical-align:middle;margin-top:3px">' +
-          (_rc.has ? proofSeal(_rc.url, _rc.thumb, _rc.queued, _rc.by, 40) : noProofPill()) + '</span></h3>' +
+          /* v6.9.352 - proofSealFor, NOT the raw proofSeal. HE ASKED FOR THE CHANGE BUTTON
+             TWICE. v6.9.339 built it - chgSeal() inside proofSealFor() - and wired every
+             surface to it EXCEPT this one, which had called proofSeal directly since v6.9.236
+             and was never switched over. So the one screen where a man actually sits and
+             checks receipts against the money was the one screen with no way to replace a
+             wrong one. He reported it on 22 August, I built it, and he had to report it again
+             today because the button was on the return card and the collections card and not
+             on the delivery card in HISAB. */
+          (_rc.has ? proofSealFor(c, 40) : noProofPill()) + '</span></h3>' +
         /* v6.9.345 - ONE row of actions where there were two. Show items, the total, Copy,
            Return and Attach receipt all sit together and wrap on a narrow screen. */
         '<div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px">' +
