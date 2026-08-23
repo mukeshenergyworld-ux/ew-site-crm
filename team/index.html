@@ -201,9 +201,22 @@
 <body>
 <div id="root"><div class="boot">Loading Energy World Team…</div></div>
 <script>
-/* Thin shell. The app lives in app.js and is fetched fresh on EVERY load
-   (no-store + cache-busting query), so any update pushed to the repo reaches
-   the whole team the next time anyone opens or logs into this page. */
+/* Thin shell. The app lives in app.js and is CHECKED on every load, which is not the same
+   thing as downloaded on every load - and until 23 Aug 2026 this line did the second while
+   believing it did the first.
+
+   It used to ask for app.js?cb=<now> with cache:"no-store". Both halves were wrong together:
+   no-store forbids reuse, so all 548 KB came down every open; and the changing query made a
+   new url every time, so the service worker filed a fresh 1.8 MB copy under a key nothing
+   would ever ask for again. Measured on his own phone: TWELVE copies of app.js, 20.8 MB,
+   none of them ever served.
+
+   A stable url with cache:"no-cache" gets the promise this comment always claimed. no-cache
+   does not mean "do not cache" - it means "never use it without asking the server first". So
+   the browser sends its ETag, GitHub Pages answers 304, and the copy it already has is used.
+   Measured from a page no worker controls: 548 KB the first time, 0 KB every time after, and
+   always the newest build. The footer's "updates apply automatically on each login" is now
+   true and nearly free. */
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", function () {
     navigator.serviceWorker.register("sw.js").catch(function () {});
@@ -221,7 +234,7 @@ window.addEventListener("beforeinstallprompt", function (e) {
 
 (function () {
   var root = document.getElementById("root");
-  fetch("app.js?cb=" + Date.now(), { cache: "no-store" })
+  fetch("app.js", { cache: "no-cache" })
     .then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.text();
