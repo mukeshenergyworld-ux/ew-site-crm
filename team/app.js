@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.344";
+  var APP_VERSION = "6.9.346";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14695,13 +14695,19 @@ function viewCatalogue() {
             (r.rated ? (r.mixed ? "mixed" : r.pct + "%") + " \u00b7 " + money(r.amt) : "no rate") + '</span></div>';
         }).join("")
       : '<div style="color:#b45309;font-weight:600">Nobody earns on this delivery</div>';
-    return '<div style="text-align:right;font-size:11.5px;line-height:1.6;margin-top:6px;' +
-      'border-top:1px dashed #fecaca;padding-top:6px">' +
-      '<div style="font-size:10px;letter-spacing:.06em;color:#7f1d1d;font-weight:700;margin-bottom:2px">' +
-      'OWNER ONLY \u00b7 NOT ON THE STATEMENT</div>' + body +
-      (stamp ? '<div style="color:#94a3b8;font-size:10.5px;margin-top:2px">frozen when it was passed into hisab</div>' : '') +
+    /* v6.9.345 - "make this compact one, lots of space empty utilize". The button used to sit on
+       a line of its own under the men, which made this strip five lines deep and set the height
+       of every challan card on the screen. On the banner line it costs nothing: the banner was
+       half-empty and the button is small. */
+    return '<div style="text-align:right;font-size:11.5px;line-height:1.55;margin-top:5px;' +
+      'border-top:1px dashed #fecaca;padding-top:5px">' +
+      '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:2px">' +
+      '<span style="font-size:10px;letter-spacing:.06em;color:#7f1d1d;font-weight:700">' +
+      'OWNER ONLY \u00b7 NOT ON THE STATEMENT</span>' +
       '<button class="btn sm ghost" data-act="adm-ch" data-id="' + esc(c.id) + '" ' +
-      'style="margin-top:5px;font-size:11px;padding:3px 9px">Set rates / add partner</button></div>';
+      'style="font-size:10.5px;padding:2px 8px;flex:0 0 auto">Set rates</button></div>' + body +
+      (stamp ? '<div style="color:#94a3b8;font-size:10.5px">frozen when it was passed into hisab</div>' : '') +
+      '</div>';
   }
   /* The screen behind that button: only the brands THIS delivery carries, so it is three rows and
      not the client's whole history. */
@@ -16172,9 +16178,14 @@ function viewCatalogue() {
       }
       /* v6.9.118: if a site/project was entered on the challan, show it centred at the top of every
          challan card in HISAB. Only rendered when c.site has a value. */
+      /* v6.9.345 - it lives on the title line now, so it is a pill and not a flex column. As a
+         third flex child with text-align:center it put the project name adrift in the middle of
+         the card; beside the challan number it reads as a label on this delivery. */
       var siteBlock = c.site
-        ? '<div style="flex:1 1 auto;text-align:center;min-width:110px;align-self:center">' +
-            '<span style="display:inline-block;font-size:13px;font-weight:700;color:#0b3b36;background:#ecfdf5;border:1px solid #99f6e4;border-radius:999px;padding:3px 12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">' + esc(c.site) + '</span></div>'
+        ? ' <span style="display:inline-block;font-size:12.5px;font-weight:700;color:#0b3b36;' +
+          'background:#ecfdf5;border:1px solid #99f6e4;border-radius:999px;padding:2px 11px;' +
+          'max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
+          'vertical-align:middle">' + esc(c.site) + '</span>'
         : '';
       var _chExp = !!(S.chExp && S.chExp[c.id]);
       var _rc = chProofAny(c);
@@ -16191,37 +16202,59 @@ function viewCatalogue() {
         '<td style="padding:6px;text-align:right;font-weight:800">' + money(chTotal) + '</td></tr></tfoot></table></div>' +
         /* v6.9.274 - and say so when the frozen discount is behind the preset */
         discGapCard(c);
-      h += '<div class="card" style="' + (sel ? '' : 'opacity:.5') + '">' +
-        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
-        '<h3 style="margin:0">' +
-        '<label style="cursor:pointer;font-size:15px"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label>' +
+      /* ================= THE CARD, CLOSED UP  (v6.9.345, 23 August 2026) =================
+         HIS WORDS: "make this compact one, lots of space empty utilize."
+
+         He is looking at the hole the owner's strip opened yesterday. The header was ONE flex
+         row - title on the left, bill block on the right - with the buttons stacked underneath
+         it. A flex row is as tall as its tallest child, and the right-hand column grew from two
+         lines to six. So the title sat alone at the top of a six-line row and the buttons began
+         below all of it: a band of white the height of four lines, running the full width of
+         every challan on the screen.
+
+         THE FIX IS NOT SMALLER TEXT. Everything on the left goes INSIDE the left column of that
+         same flex row - title, then the items line, then Copy and Return - so the buttons rise
+         up beside the strip and fill exactly the space it made. Nothing is removed and nothing
+         is shrunk; the two columns simply stop being one row and a stack.
+
+         The site pill moves into the title line for the same reason: it was a third flex child
+         with `text-align:center`, which on a wide card put the project name adrift in the middle
+         of the gap. On the title line it reads as what it is - a label on this delivery. */
+      h += '<div class="card" style="padding:9px 12px' + (sel ? '' : ';opacity:.5') + '">' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
+        '<div style="flex:1 1 320px;min-width:0">' +
+        '<h3 style="margin:0 0 6px;line-height:1.5">' +
+        /* v6.9.345 - nowrap. With everything now on one line the label was the first thing the
+           browser broke, and it broke it BETWEEN the tick box and the challan number - a tick
+           box floating alone above the number it belongs to. */
+        '<label style="cursor:pointer;font-size:15px;white-space:nowrap"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label>' +
         manualNoCell(c) +
         ' <span class="pill teal">' + esc(d10(c.createdAt)) + '</span>' +
+        siteBlock +
         /* v6.9.236 - the signed paper, or the fact that there isn't one. The thumbnail is
            drawn bigger here than on the delivery list because in hisab you are checking the
            document, not scanning a queue. Tap it to open the full one. */
         ' <span style="display:inline-block;vertical-align:middle;margin-top:3px">' +
           (_rc.has ? proofSeal(_rc.url, _rc.thumb, _rc.queued, _rc.by, 40) : noProofPill()) + '</span></h3>' +
-        siteBlock +
-        /* v6.9.344 - the owner's strip sits under the bill block, in the same right-hand column
-           he pointed at. Empty string for everyone else, so the layout is unchanged for them. */
-        '<div style="flex:0 0 auto;text-align:right">' + billBlock + admChallanStrip(c) + '</div>' + '</div>' +
-        '<div class="acts" style="align-items:center;margin-top:6px"><button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '">' + (_chExp ? '&#9662; Hide items' : '&#9656; Show ' + priced.length + ' item(s)') + '</button><div class="grow"></div><span style="font-size:13px;color:#334155">Total <b>' + money(chTotal) + '</b></span></div>' +
+        /* v6.9.345 - ONE row of actions where there were two. Show items, the total, Copy,
+           Return and Attach receipt all sit together and wrap on a narrow screen. */
+        '<div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px">' +
+        '<button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '">' + (_chExp ? '&#9662; Hide items' : '&#9656; Show ' + priced.length + ' item(s)') + '</button>' +
+        '<span style="font-size:13px;color:#334155;white-space:nowrap">Total <b>' + money(chTotal) + '</b></span>' +
         /* v6.9.235 - the old challan you are looking at is the fastest way to raise the
            next one. Copy repeats the same client, site and products into a NEW challan;
            the old one is never touched. */
-        ((canSee("challans") || canSee("returns"))
-          ? '<div class="acts" style="margin-top:6px;flex-wrap:wrap;gap:6px">' +
-            (canSee("challans") ? '<button class="btn sm ghost" data-act="hisab-chcopy" data-id="' + esc(c.id) + '" title="Start a new challan with this client, site and the same products">&#8635; Copy to new challan</button>' : '') +
-            (canSee("returns") ? '<button class="btn sm ghost" data-act="hisab-rtch" data-id="' + esc(c.id) + '" title="Book material coming back against this challan">&#8592; Return against this</button>' : '') +
-            /* v6.9.236 - no paper on file, so ask for it right here. Open to anyone who can
-               see the challan: the photo usually reaches whoever has the customer on WhatsApp,
-               not whoever loaded the tempo. Once one is attached this button is gone. */
-            (!_rc.has && canSee("challans")
-              ? (canProof() ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" style="background:#b91c1c;border-color:#b91c1c" title="Photograph or upload the signed receipt for this delivery">&#128206; Attach receipt</button>' : '')
-              : '') +
-            '</div>'
+        (canSee("challans") ? '<button class="btn sm ghost" data-act="hisab-chcopy" data-id="' + esc(c.id) + '" title="Start a new challan with this client, site and the same products">&#8635; Copy</button>' : '') +
+        (canSee("returns") ? '<button class="btn sm ghost" data-act="hisab-rtch" data-id="' + esc(c.id) + '" title="Book material coming back against this challan">&#8592; Return</button>' : '') +
+        /* v6.9.236 - no paper on file, so ask for it right here. Open to anyone who can see the
+           challan: the photo usually reaches whoever has the customer on WhatsApp, not whoever
+           loaded the tempo. Once one is attached this button is gone. */
+        (!_rc.has && canSee("challans") && canProof()
+          ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" style="background:#b91c1c;border-color:#b91c1c" title="Photograph or upload the signed receipt for this delivery">&#128206; Attach receipt</button>'
           : '') +
+        '</div></div>' +
+        '<div style="flex:0 0 auto;text-align:right">' + billBlock + admChallanStrip(c) + '</div>' +
+        '</div>' +
         (_chExp ? _ctbl : '') + '</div>';
     });
     /* v6.9.121: booked-in material returns show here like a challan in reverse — a red card whose
@@ -21705,6 +21738,8 @@ function viewCatalogue() {
   function dossierFor(q) {
     var id = dgIdentity(q);
     if (!id) return null;
+    /* every name this one man is filed under, which is the whole point of this screen */
+    var nmAll = Object.keys(id.names).map(function (k) { return id.names[k]; });
     var D = S.data || {}, mine = id.isMine;
     var out = { id: id, q: q };
 
@@ -21738,6 +21773,55 @@ function viewCatalogue() {
       incentive: out.incpaid.reduce(function (a, x) { return a + dgNum(x.amount); }, 0)
     };
     out.money.balance = out.money.outValue - out.money.received;
+
+    /* ================= WHAT CAME THROUGH HIM  (v6.9.346, 23 August 2026) =================
+       HE REPORTED IT: "i have incentive for Site Dr pawan gupta for mukesh kasyap, its not
+       shown here why? this is really to worry."
+
+       He is right to worry, and the screen was worse than wrong - it was CONFIDENTLY wrong.
+       Mukesh Kashyap is the plumber on four clients, one of whom has taken Rs 1,23,762 of
+       material with the receipt signed, and the discount row pays him 4.2% of it. His dossier
+       showed FOUR ZEROS - material out, money received, balance, quoted - and directly beneath
+       them "Incentive paid to him so far: Rs 40,000 over 1 payment". A man reading that page
+       concludes forty thousand rupees went out against nothing at all.
+
+       WHAT WAS ACTUALLY HAPPENING. Every line of out.money asked "what did this man buy
+       HIMSELF": out.challans is challans whose customerName is him, out.payments is payments
+       whose client is him. For a customer those are the right questions. For a plumber the
+       answer is nought and always will be, and nought is not the same fact as "we never asked".
+       out.brought - the clients he introduced - was computed four lines above and then used for
+       a LIST and never for a rupee.
+
+       IT ASKS THE PAYOUT ENGINE, and not a sum of its own. partnerBook() is what his incentive
+       card prints and what a payout is made against; a dossier that added the figure up its own
+       way would be a second answer to the one question that ends in cash leaving the building.
+
+       ONCE PER NAME HE IS FILED UNDER. This screen exists because one man was three rows. A
+       book taken on the primary name alone would miss the clients filed against the other
+       spellings - which is the very fault the dossier was built to cure, reappearing inside it.
+       Summing is safe: a client's plumber cell holds one string, so no client can appear in two
+       of these books. */
+    out.book = null;
+    try {
+      var _seenBk = {}, _bk = { billed: 0, earned: 0, payable: 0, paid: 0, returned: 0,
+                                reversed: 0, rows: [], names: 0 };
+      nmAll.forEach(function (n2) {
+        var k2 = dkey(n2); if (!k2 || _seenBk[k2]) return; _seenBk[k2] = 1;
+        var b2 = partnerBook(n2);
+        if (!b2) return;
+        _bk.names++;
+        _bk.billed += b2.billed || 0; _bk.earned += b2.earned || 0;
+        _bk.payable += b2.payable || 0; _bk.returned += b2.returned || 0;
+        _bk.reversed += b2.reversed || 0;
+        /* paid is read off commpay by name and would DOUBLE if two spellings both matched a
+           payment row. out.incpaid already collects those through the same identity rule this
+           whole screen is built on, so take it from there and not from the books. */
+        _bk.rows = _bk.rows.concat(b2.rows || []);
+      });
+      _bk.paid = out.money.incentive;
+      _bk.pending = _bk.payable - _bk.paid;
+      out.book = _bk;
+    } catch (e) { out.book = null; console.warn("[dossier] partner book skipped:", e); }
 
     /* MONTH BY MONTH - "categories challan and quotes and every other required thing month
        wise". One row per month, newest first, every category in its own column. A month with
@@ -21803,15 +21887,74 @@ function viewCatalogue() {
     if (nm.length > 1 || mobs.length) {
       h += '<div class="meta" style="margin:8px 0">Filed as ' +
         nm.map(function (x) { return '<b>' + esc(x) + '</b>'; }).join(" &middot; ") +
-        (mobs.length ? ' &mdash; joined on ' + mobs.map(esc).join(", ") : '') + '</div>';
+        /* v6.9.346 - it said "joined on" and then printed a MOBILE NUMBER. Nobody joined on
+           9671793942. A wrong word on a screen about money costs more than an ugly one. */
+        (mobs.length ? ' &mdash; reachable on ' + mobs.map(esc).join(", ") : '') + '</div>';
     }
 
-    h += '<div class="stats">' +
-      dgChip(money(d.money.outValue), "Material sent out", d.money.outValue ? "" : "good") +
-      dgChip(money(d.money.received), "Money received", "good") +
-      dgChip(money(d.money.balance), "Balance", d.money.balance > 0 ? "bad" : "good") +
-      dgChip(money(d.money.quoted), "Quoted", "") +
-      '</div>';
+    /* v6.9.346 - HIS OWN ACCOUNT, and only when there is one. Four zeros on a plumber's page
+       are not a fact about him, they are four unanswered questions, and printed above
+       "Incentive paid: Rs 40,000" they read as forty thousand paid against nothing. */
+    var _own = d.money.outValue || d.money.received || d.money.quoted;
+    if (_own) {
+      h += '<div class="meta" style="margin:10px 2px 4px;font-size:11px;letter-spacing:.07em;' +
+        'text-transform:uppercase;color:#475569"><b>What he bought himself</b></div>' +
+        '<div class="stats">' +
+        dgChip(money(d.money.outValue), "Material sent out", d.money.outValue ? "" : "good") +
+        dgChip(money(d.money.received), "Money received", "good") +
+        dgChip(money(d.money.balance), "Balance", d.money.balance > 0 ? "bad" : "good") +
+        dgChip(money(d.money.quoted), "Quoted", "") +
+        '</div>';
+    }
+
+    /* v6.9.346 - WHAT CAME THROUGH HIM. The block this screen was missing entirely. */
+    var _bk = d.book;
+    if (_bk && (_bk.billed || _bk.earned || _bk.paid || d.brought.length)) {
+      h += '<div class="meta" style="margin:12px 2px 4px;font-size:11px;letter-spacing:.07em;' +
+        'text-transform:uppercase;color:#475569"><b>What came through him</b>' +
+        (d.brought.length ? ' &middot; ' + d.brought.length + ' client' +
+          (d.brought.length === 1 ? '' : 's') : '') + '</div>' +
+        '<div class="stats">' +
+        dgChip(money(_bk.billed), "Material to his clients", "") +
+        dgChip(money(_bk.earned), "Incentive earned", _bk.earned ? "good" : "") +
+        dgChip(money(_bk.paid), "Paid to him", "") +
+        dgChip(money(_bk.pending), "Still to pay",
+               _bk.pending > 0.5 ? "bad" : (_bk.pending < -0.5 ? "bad" : "good")) +
+        '</div>';
+      /* THE THREE NUMBERS THAT DO NOT ADD UP UNLESS THE RULE IS SAID OUT LOUD. Earned is what
+         the goods have earned him; PAYABLE is what has been released by the client actually
+         paying, and it is what "still to pay" is measured against. A partner looking at
+         "earned 5,185, paid 0, still to pay 0" would otherwise think he had been cheated. */
+      if (Math.round(_bk.earned) !== Math.round(_bk.payable)) {
+        h += '<div class="meta" style="margin:4px 2px;font-size:12px;color:#92400e">' +
+          'Of ' + money(_bk.earned) + ' earned, <b>' + money(_bk.payable) + '</b> has been ' +
+          'released so far &mdash; incentive follows the money the client has actually paid in. ' +
+          'The rest follows as he pays.</div>';
+      }
+      /* TWO DIFFERENT OVER-PAYMENTS, and only one of them is ordinary.
+         Paid beyond what is RELEASED is a timing matter: the work is on the book, the client
+         has not settled yet, and it clears itself. Paid beyond what has been EARNED AT ALL is
+         not timing - it is money ahead of any work this app can see, and it is worth a look
+         before the next payout. Found on his own book the day this was written: Mukesh Kashyap,
+         Rs 40,000 paid on 22 August against Rs 5,185 earned across all four of his clients. */
+      if (_bk.paid > _bk.earned + 1) {
+        h += '<div class="meta" style="margin:4px 2px;font-size:12.5px;color:#b91c1c;' +
+          'background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:7px 9px">' +
+          '<b>Paid ' + money(_bk.paid) + ' against ' + money(_bk.earned) + ' earned so far.</b> ' +
+          money(_bk.paid - _bk.earned) + ' of it is ahead of any work on the book. That is either ' +
+          'an advance you meant to give, or a payment recorded against the wrong name &mdash; ' +
+          'worth a look before the next one.</div>';
+      } else if (_bk.pending < -0.5) {
+        h += '<div class="meta" style="margin:4px 2px;font-size:12px;color:#92400e">' +
+          '<b>He has been paid ' + money(-_bk.pending) + ' more than is released.</b> ' +
+          'The work is on the book; his clients have not settled it yet. It clears itself as they pay.</div>';
+      }
+      if (!_bk.billed && d.brought.length) {
+        h += '<div class="meta" style="margin:4px 2px;font-size:12px;color:#64748b">' +
+          'His clients have taken no material with a signed receipt yet, so nothing has been ' +
+          'earned. Incentive counts a delivery only once its receipt is in.</div>';
+      }
+    }
     if (d.money.incentive) {
       h += '<div class="meta" style="margin:6px 2px">Incentive paid to him so far: <b>' +
         money(d.money.incentive) + '</b> over ' + d.incpaid.length + ' payment' +
@@ -21857,9 +22000,32 @@ function viewCatalogue() {
       if (d.brought.length) {
         h += '<div class="meta" style="margin:8px 0 4px"><b>' + d.brought.length + ' client' +
           (d.brought.length === 1 ? '' : 's') + '</b> registered against his name</div>';
+        /* v6.9.346 - AND WHAT EACH ONE ACTUALLY BROUGHT. This list named the clients and stopped,
+           which is how "i have incentive for Site Dr pawan gupta for mukesh kasyap, its not shown
+           here" happens: the client he was asking about was on the screen, with nothing beside it.
+           The rows come out of the same book the tiles above are built from - one pass over
+           book.rows, grouped by client - so a figure here can never differ from the total there. */
+        var _byCl = {};
+        ((d.book && d.book.rows) || []).forEach(function (r) {
+          var k = dkey(r.client); if (!k) return;
+          if (!_byCl[k]) _byCl[k] = { billed: 0, inc: 0, n: 0 };
+          _byCl[k].billed += Number(r.base) || 0;
+          _byCl[k].inc += Number(r.inc) || 0;
+          _byCl[k].n += 1;
+        });
         d.brought.forEach(function (c) {
-          h += '<div class="meta" style="padding:4px 0;border-top:1px solid #eef2f7">' +
-            '<b>' + esc(c.name) + '</b>' + (c.location ? ' &middot; ' + esc(c.location) : '') + '</div>';
+          var m = _byCl[dkey(c.name)];
+          h += '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7;display:flex;' +
+            'gap:8px;align-items:baseline;flex-wrap:wrap">' +
+            '<span style="flex:1 1 150px;min-width:0"><b>' + esc(c.name) + '</b>' +
+            (c.location ? ' &middot; ' + esc(c.location) : '') + '</span>' +
+            (m
+              ? '<span style="white-space:nowrap;color:#475569">' + money(m.billed) + ' out' +
+                ' <span style="color:#94a3b8">&middot;</span> <b style="color:' +
+                (m.inc > 0 ? '#0f766e' : '#b45309') + '">' +
+                (m.inc > 0 ? money(m.inc) + ' earned' : 'no rate set') + '</b></span>'
+              : '<span style="white-space:nowrap;color:#94a3b8">nothing delivered yet</span>') +
+            '</div>';
         });
       }
       h += '</div>';

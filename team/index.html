@@ -40,6 +40,18 @@
     font-family:inherit;font-size:15px;background:#fff;color:var(--ink);
   }
   input:focus,select:focus,textarea:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(20,184,166,.15)}
+  /* ============ A TICK BOX IS NOT A TEXT FIELD  (23 August 2026) ============
+     `input,select,textarea{width:100%}` above is right for every field in this app and wrong
+     for the two that are not fields. A bare checkbox inherited width:100% and 11px of padding,
+     so it took the whole line: on the HISAB challan card the tick box sat alone across the row
+     and the challan number dropped underneath it, which is what it looks like in every
+     screenshot of that screen. Every checkbox written since has carried its own inline width to
+     work around it - a workaround repeated at eight sites and forgotten at the ninth.
+     One rule, and the workarounds become harmless. */
+  input[type="checkbox"],input[type="radio"]{
+    width:auto;padding:0;border-radius:4px;flex:0 0 auto;
+  }
+
   textarea{min-height:74px;resize:vertical}
   .btn{
     display:inline-flex;align-items:center;justify-content:center;gap:6px;
