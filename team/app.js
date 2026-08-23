@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.354";
+  var APP_VERSION = "6.9.355";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7794,6 +7794,32 @@ window.addEventListener("beforeunload", function (ev) {
      Inline styles on purpose: the stylesheet lives in the shell file and this must ship in app.js
      alone, in one deploy. `size` is the only thing that changes between the card line and the
      bigger showing on the receipts screen. */
+  /* ---- A MISSING PREVIEW IS NOT A MISSING RECEIPT  (v6.9.355, 23 Aug 2026) ----
+     HIS WORDS: "have you removed thumnails ?" - asked over three cards that had none.
+
+     Nothing was removed, and I checked his own book before answering rather than reasoning
+     about it. 74 of his 79 sealed deliveries carry a preview. The five that do not are
+     NAVEEN0757/020826/001, NAVEEN0757/020826/002, NAVEEN0757/030826/002, LAKSHAY003/030826/001
+     and NITIN9382/030826/001 - every one signed for on 2 or 3 August, and every one of their
+     audit rows has no `thumb` KEY AT ALL, because the app did not start keeping one until after
+     they were taken. Their documents are intact on Drive; the arrow on the pill opens them.
+
+     But a seal that quietly looks different from every other seal reads as a fault, and he was
+     right to ask. The gap now says what it is: a dashed empty box - the same "not yet" language
+     the app already uses for + Book no and for ADD TO HISAB before it is live - and a tooltip
+     that says where the paper is and how to put a preview on if he wants one.
+
+     One consequence worth knowing and deliberately not put on the card: with no preview there is
+     no fingerprint, so these five can never be caught by the same-photo check. */
+  function proofNoThumb(size) {
+    var px = size || 26;
+    return '<span title="This receipt was photographed before the app began keeping a small ' +
+      'preview on the card (3 August). The signed document itself is safe - tap the arrow to ' +
+      'open it. Use Change if you want a fresh photograph with a preview." ' +
+      'style="display:inline-block;width:' + px + 'px;height:' + px + 'px;box-sizing:border-box;' +
+      'border-radius:5px;border:1px dashed #94a3b8;background:#f8fafc;vertical-align:middle;' +
+      'flex:0 0 auto;cursor:help"></span>';
+  }
   function proofThumbImg(thumb, size) {
     if (!thumb) return "";
     var px = size || 26;
@@ -7827,7 +7853,9 @@ window.addEventListener("beforeunload", function (ev) {
         'color:#92400e;border-radius:999px;padding:2px 8px 2px 3px;font-size:11px;font-weight:700">' +
         (img || '') + '<span>Receipt received \u2713 &middot; uploading</span></span>';
     }
-    var body = (img || '') + '<span>Receipt received \u2713</span>';
+    /* v6.9.355 - never a blank space where a picture belongs. Either the photograph, or a
+       dashed box that says out loud there is not one and why. */
+    var body = (img || proofNoThumb(size || 26)) + '<span>Receipt received \u2713</span>';
     if (!url) {
       return '<span title="' + esc(tip) + '" style="display:inline-flex;align-items:center;gap:5px;background:#f0fdfa;' +
         'border:1px solid #99f6e4;color:#0f766e;border-radius:999px;padding:2px 8px 2px 3px;' +
