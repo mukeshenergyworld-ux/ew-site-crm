@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.353";
+  var APP_VERSION = "6.9.354";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14761,7 +14761,20 @@ function viewCatalogue() {
     var cl = r.customerName;
     return items.map(function (it) {
       var p = PRODUCTS.filter(function (pp) { return pp.code === it.code; })[0] || {};
-      var brand = it.brand || realBrand(p) || p.brand || "";
+      /* ---- JOB WORK COMES BACK AS JOB WORK  (v6.9.354, 23 Aug 2026) ----
+         pricedLines has marked its job lines since v6.9.323, because job work is billed but
+         earns nobody an incentive - "a partner earns on the goods he brought us, not on our
+         labour". returnLines never marked anything, so the flag reached every reader as
+         `undefined`. admIncRows already asks `if (x.job) return;` and had been asking a
+         question that could never be answered yes; incentiveBook's reversal loop did not ask
+         at all. Between them a returned job line would have CLAWED BACK an incentive nobody
+         was ever paid - money taken off a partner for our labour.
+
+         The brand is emptied for exactly the reason pricedLines empties it: labour belongs to
+         no brand, and left to resolve it would reverse at the rate of whatever brand happened
+         to be on the paper, which is not even a defensible wrong answer. */
+      var job = isJobLine(it);
+      var brand = job ? "" : (it.brand || realBrand(p) || p.brand || "");
       var rate, disc, est = false;
       if (it.rate != null && it.rate !== "") {
         /* frozen on the return itself (newer rows) */
@@ -14772,7 +14785,7 @@ function viewCatalogue() {
         if (src) {
           rate = Number(src.rate) || 0;
           disc = (src.disc != null && src.disc !== "") ? Number(src.disc) : clientDiscount(cl, src.brand || brand);
-          if (!brand) brand = src.brand || brand;
+          if (!job && !brand) brand = src.brand || brand;
         } else {
           rate = Number(p.price) || 0;
           disc = clientDiscount(cl, brand);
@@ -14782,11 +14795,34 @@ function viewCatalogue() {
       var netRate = Math.round(rate * (1 - disc / 100));
       var qty = Number(it.qty) || 0;
       /* desc/code/rate/disc/dr added for the HISAB return card; incentive code only reads brand/qty/amt. */
-      return { brand: brand, qty: qty, amt: qty * netRate, desc: it.desc || p.desc || it.code || "", code: it.code, rate: rate, disc: disc, dr: netRate, est: est };
+      return { brand: brand, qty: qty, amt: qty * netRate, desc: it.desc || p.desc || it.code || "", code: it.code, rate: rate, disc: disc, dr: netRate, est: est, job: job };
     });
   }
   /* how many lines of this return could not be traced to a delivery - the screen says so */
   function returnEstCount(r) { return returnLines(r).filter(function (x) { return x.est; }).length; }
+  /* ---- A PRICE WE GUESSED IS NOT A PRICE HE AGREED  (v6.9.354, 23 Aug 2026) ----
+     returnEstCount was written in v6.9.266 and drawn on nothing. The comment beside it promised
+     that "the card and the statement can say so rather than print a confident wrong number",
+     and then no card and no statement ever said so.
+
+     Measured on his own book the morning this was written: 39 of 44 return lines across all
+     five returns - Rs 86,092 of the Rs 99,384 credited - trace to no delivery in the app,
+     because the goods went out before the app existed. Every one of them is priced off TODAY's
+     catalogue. That may well be the best figure available; it is not the figure the client was
+     billed, and a screen he reads money off should not pretend it is.
+
+     The pill also says what to do about it, because both cures are his: put the challan number
+     on the return, or type the rate on the line. */
+  function retEstPill(r) {
+    var n = returnEstCount(r), all = returnLines(r).length;
+    if (!n || !all) return "";
+    return ' <span class="pill" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a" title="' +
+      esc(n + " of " + all + " line" + (all === 1 ? "" : "s") + " on this return could not be traced " +
+          "to a delivery of this client, so the price came from today's catalogue and not from " +
+          "what he was billed. Put the challan number on the return, or type the rate on the " +
+          "line, and it will use the real figure.") + '">' +
+      (n === all ? "price estimated" : esc(n) + " of " + esc(all) + " estimated") + '</span>';
+  }
   /* Net (post-discount) value of a booked-in return — a credit against the client's ledger. */
   function returnNet(r) { return returnLines(r).reduce(function (s, x) { return s + x.amt; }, 0); }
   /* Returns for a client that are BOOKED IN at the godown (status "Received") — these are the ones
@@ -15281,6 +15317,10 @@ function viewCatalogue() {
         var rCh = retChallan(r);
         returnLines(r).forEach(function (x) {
           rBase += x.amt;
+          /* v6.9.354 - the mirror of the sale four hundred lines above: job work counts as
+             RETURNED value, because the client is credited for it, and reverses nobody's
+             incentive, because nobody earned one on it. Same flag, same rule, both directions. */
+          if (x.job) return;
           rInc += x.amt * rateFor(cl, x.brand, rCh) / 100;
           if (x.brand) rBrands[x.brand] = 1;
         });
@@ -16816,7 +16856,7 @@ function viewCatalogue() {
         '<div style="flex:1 1 300px;min-width:0">' +
         '<h3 style="margin:0 0 5px;line-height:1.5">' + esc(r.returnNo || "Return") +
         ' <span class="pill" style="background:#fed7aa;color:#7c2d12">' + esc(st) + '</span>' +
-        ' <span class="pill teal">' + esc(d10(r.createdAt)) + '</span>' +
+        ' <span class="pill teal">' + esc(d10(r.createdAt)) + '</span>' + retEstPill(r) +
         (r.challanNo ? ' <span style="font-size:12px;color:#64748b">vs ' + esc(r.challanNo) + '</span>' : '') +
         '</h3>' +
         '<div class="meta" style="font-size:12.5px;color:#92400e">' +
@@ -16900,7 +16940,7 @@ function viewCatalogue() {
         '<h3 style="margin:0 0 6px;line-height:1.5">' +
         '<span style="white-space:nowrap">' + esc(r.returnNo) + '</span>' +
         ' <span class="pill due" style="background:#fee2e2;color:#b91c1c">Return</span>' +
-        ' <span class="pill teal">' + esc(d10(r.createdAt)) + '</span>' +
+        ' <span class="pill teal">' + esc(d10(r.createdAt)) + '</span>' + retEstPill(r) +
         (r.challanNo ? ' <span style="font-size:12px;color:#64748b">vs ' + esc(r.challanNo) + '</span>' : '') +
         rSite +
         /* v6.9.241 - a return carries a signed goods-in receipt exactly as a delivery does */
