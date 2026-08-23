@@ -192,7 +192,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.42.0";
+  var APP_VERSION = "1.43.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1757,7 +1757,38 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     }
     return best;
   }
-  function discRow(client, brand) { return discPick(discRowsFor(client, brand)); }
+  function discFrom(row) {
+    var f = String((incMap(row) || {}).from || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : "";
+  }
+function discRowOn(client, brand, onYmd) {
+    var rows = discRowsFor(client, brand);
+    if (!rows.length) return null;
+    /* same reason as discFrom: no dstr, and no today() either - the two apps build today's date
+       their own way and this block must mean one thing in both. */
+    var day = String(onYmd || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      var _n = new Date();
+      day = _n.getFullYear() + "-" + String(_n.getMonth() + 1).padStart(2, "0") +
+            "-" + String(_n.getDate()).padStart(2, "0");
+    }
+    var dated = [], undated = [];
+    rows.forEach(function (r) { (discFrom(r) ? dated : undated).push(r); });
+    var live = dated.filter(function (r) { return discFrom(r) <= day; });
+    if (live.length) {
+      var best = live[0];
+      for (var i = 1; i < live.length; i++) {
+        var a = discFrom(live[i]), b = discFrom(best);
+        /* two rates starting the same day: the one written later is the correction */
+        if (a > b || (a === b && discStamp(live[i]) > discStamp(best))) best = live[i];
+      }
+      return best;
+    }
+    /* nothing dated has started yet - fall back to whatever was there before dates existed,
+       and never to a rate that has not begun */
+    return undated.length ? discPick(undated) : null;
+  }
+  function discRow(client, brand, onYmd) { return discRowOn(client, brand, onYmd); }
   function clientDiscount(client, brand) { var d = discRow(client, brand); return d ? Number(d.pct) || 0 : 0; }
   function realBrand(p) {
     var m = ((S.data && S.data.brandmap) || []).filter(function (x) { return String(x.catalogValue) === String(p.brand); })[0];
@@ -3946,12 +3977,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     var st = hisabStamp(c);
     return st ? (Number(st.extra) || 0) : 0;
   }
-  function incRate(client, brand, role) {
-    var d = discRow(client, brand); if (!d) return 0;
+  function incRate(client, brand, role, onYmd) {
+    var d = discRow(client, brand, onYmd); if (!d) return 0;
     return Number(incMap(d)[String(role).toLowerCase()]) || 0;
   }
-  function execRateFor(client, brand) {
-    var d = discRow(client, brand); if (!d) return 0;
+  function execRateFor(client, brand, onYmd) {
+    var d = discRow(client, brand, onYmd); if (!d) return 0;
     return Number(incMap(d).exec) || 0;
   }
   function execForClient(name) {
