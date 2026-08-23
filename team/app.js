@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.331";
+  var APP_VERSION = "6.9.332";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -13343,7 +13343,7 @@ function viewCatalogue() {
       var gExpanded = !grouped ? true :
         ((S.chGrpExp && (exec in S.chGrpExp)) ? !!S.chGrpExp[exec] : (exec === S.user || execOrder.length === 1));
       if (grouped) {
-        h += '<div class="ch-exec" data-act="ch-grp" data-k="' + esc(exec) + '" style="cursor:pointer;user-select:none">' +
+        h += '<div class="ch-exec" data-act="ch-grp" data-k="' + esc(exec) + '" data-open="' + (gExpanded ? "1" : "0") + '" style="cursor:pointer;user-select:none">' +
           '<span style="display:inline-block;width:15px;color:#94a3b8">' + (gExpanded ? '&#9662;' : '&#9656;') + '</span>' + esc(exec) +
           '<span class="sub">' + g.clientOrder.length + ' client' + (g.clientOrder.length > 1 ? 's' : '') +
           ' &middot; ' + g.n + ' challan' + (g.n > 1 ? 's' : '') + (gExpanded ? '' : ' &middot; tap to view') + '</span></div>';
@@ -14752,7 +14752,7 @@ function viewCatalogue() {
               '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.paid) + '</td>' +
               '<td style="padding:7px 8px;text-align:right;font-weight:800;color:#dc2626">' + money(r.due) + '</td></tr>';
           }).join("") + '</tbody></table></div>';
-        oh += '<div class="card"><h3 data-act="hisab-grp" data-k="' + esc(k) + '" style="margin:0;cursor:pointer;user-select:none">' +
+        oh += '<div class="card"><h3 data-act="hisab-grp" data-k="' + esc(k) + '" data-open="' + (expanded ? "1" : "0") + '" style="margin:0;cursor:pointer;user-select:none">' +
           '<span style="display:inline-block;width:16px;color:#94a3b8">' + (expanded ? '&#9662;' : '&#9656;') + '</span>' +
           esc(k) + ' <span class="pill due">' + money(gtot(k)) + '</span> <span style="font-weight:400;color:#94a3b8;font-size:12.5px">' + rows.length + ' client(s)' + (expanded ? '' : ' &middot; tap to view') + '</span></h3>' +
           (expanded ? _tbl : '') + '</div>';
@@ -25535,10 +25535,17 @@ function viewCatalogue() {
     if (act === "bf-mode") { S.bfMode = t.getAttribute("data-m") === "client" ? "client" : "lead"; render(); return; }
     if (act === "bill-go") { render(); return; }
     if (act === "bill-open") { S.q = t.getAttribute("data-n"); render(); return; }
+    /* v6.9.332 - FLIP THE STATE THE ELEMENT WAS DRAWN WITH.
+
+       This used to recompute the default (gk === S.user) and could not see the OTHER half of
+       what render() decides: a lone group opens because it is the only one (gkeys.length === 1).
+       So for a book with a single sales executive the handler read "shut" for a group that was
+       plainly open, set it to open, and the group could never be collapsed. Reading data-open
+       off the element removes the second opinion entirely - there is now one decision, made in
+       render(), and the handler inverts it. */
     if (act === "hisab-grp") {
       var gk = t.getAttribute("data-k"); S.hisabExp = S.hisabExp || {};
-      var cur = (gk in S.hisabExp) ? !!S.hisabExp[gk] : (gk === S.user);
-      S.hisabExp[gk] = !cur; render(); return;
+      S.hisabExp[gk] = t.getAttribute("data-open") !== "1"; render(); return;
     }
     /* v6.9.331 - the dues screen's own executive groups. The open state is read off the
        element the tap landed on, so this cannot disagree with what was drawn. */
@@ -25550,10 +25557,12 @@ function viewCatalogue() {
       var cid = t.getAttribute("data-id"); S.chExp = S.chExp || {};
       S.chExp[cid] = !S.chExp[cid]; render(); return;
     }
+    /* v6.9.332 - the challan book's executive bands had the same fault as HISAB's, from the
+       same cause: render() also opens a lone band (execOrder.length === 1) and this could not
+       see it. Same cure - the element carries what it was drawn with. */
     if (act === "ch-grp") {
       var _cgk = t.getAttribute("data-k"); S.chGrpExp = S.chGrpExp || {};
-      var _cgcur = (_cgk in S.chGrpExp) ? !!S.chGrpExp[_cgk] : (_cgk === S.user);
-      S.chGrpExp[_cgk] = !_cgcur; render(); return;
+      S.chGrpExp[_cgk] = t.getAttribute("data-open") !== "1"; render(); return;
     }
     if (act === "sc-pick") { S.sc = S.sc || {}; S.sc.exec = t.getAttribute("data-n"); render(); return; }
     if (act === "sc-tab") { S.sc = S.sc || {}; S.sc.tab = t.getAttribute("data-k") || "exec"; render(); return; }
