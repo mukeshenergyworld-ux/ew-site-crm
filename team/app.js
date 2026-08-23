@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.352";
+  var APP_VERSION = "6.9.353";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7943,10 +7943,41 @@ window.addEventListener("beforeunload", function (ev) {
      a similar one. */
   var _phash = {}, _phashRun = false;
   function pHashOf(id) { return _phash[String(id)] || null; }
-  /* every delivery/return proof that carries a thumbnail we can fingerprint */
+  /* ---- A REPLACED PHOTOGRAPH IS HISTORY, NOT EVIDENCE  (v6.9.353, 23 August 2026) ----
+     HE REPORTED IT WITHIN THE HOUR: "i have changed one recipt for which showing same for 2
+     challan, then it must remove red flag for both."
+
+     He is right, and the flag was worse than wrong - it was ONE-SIDED, which is the shape of a
+     bug that makes a man distrust a screen. Read off his own book:
+
+       MANISH0043/110826/001  PF-...890458  11 Aug        <- the duplicate
+       MANISH0043/110826/001  PF-...616613  23 Aug 16:51  <- his replacement, carrying `replaces`
+       MANISH0043/250726/002  PF-...211187  23 Aug 10:06
+
+     This walked EVERY challan:proof row on the audit sheet, superseded ones included. So
+     250726/002 was compared against 110826/001's ELEVENTH-OF-AUGUST photo - a picture that is
+     no longer on that challan and has not been since 16:51 - and flagged. From 110826/001's own
+     side chProofAny returns only its newest row, whose photo matches nothing, so it showed no
+     flag at all. One card accusing another that was not accusing back.
+
+     The audit sheet keeps every version on purpose, and that is right: v6.9.339 built the
+     replacement precisely so the wrong paper becomes history rather than a hole. But history is
+     not what is on the delivery today, and only what is on the delivery today can be the wrong
+     paper. proofMap() already decides which row is current - one per challan, newest wins - so
+     the fingerprint pass now asks it instead of reading the sheet raw.
+
+     And it settles his second sentence too: "one changed and its understood that another is for
+     that only." Fix one side and BOTH flags go, because there is no longer a pair. */
   function proofRowsAll() {
+    var m = proofMap(), live = {};
+    Object.keys(m).forEach(function (k) {
+      var row = m[k];
+      if (row && row.rowId) live[String(row.rowId)] = 1;
+    });
     return (S.data.audit || []).filter(function (r) {
       if (!r || String(r.action || "") !== "challan:proof") return false;
+      /* superseded by a later photo on the same delivery - kept on the sheet, never compared */
+      if (!live[String(r.id)]) return false;
       try { return !!(JSON.parse(r.detail || "{}") || {}).thumb; } catch (e) { return false; }
     });
   }
