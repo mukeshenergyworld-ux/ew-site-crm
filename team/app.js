@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.346";
+  var APP_VERSION = "6.9.347";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14442,6 +14442,37 @@ function viewCatalogue() {
   /* Returns for a client that are BOOKED IN at the godown (status "Received") — these are the ones
      that count as a money credit in HISAB, symmetric with a challan counting only once its receipt
      is in. A return merely raised or in transit is not yet deducted. */
+  /* ================= A RETURN THAT IS NOT BACK YET  (v6.9.347, 23 August 2026) ==========
+     HE REPORTED IT: "i have registerd a return for Naveen kundu that not showing?"
+
+     Measured on his own book before a line was changed: NAVEEN3471/230826/R01, Naveen Kundu,
+     two items, raised today - status "Raised". Nothing was lost. clientReturns() answers only
+     "received", because a return credits the client's account when the material is COUNTED BACK
+     IN AT THE GODOWN and not when somebody says it is coming. That rule is right and it is not
+     changing: credit a client for goods still sitting on his site and the ledger is a wish.
+
+     THE FAULT IS THE SILENCE, and it is the third time this month in the same shape. ADD TO
+     HISAB hid itself when its conditions were unmet and he asked three times where it had gone.
+     The dossier printed four zeros rather than saying it had never asked the question. Here a
+     return he had just written simply did not appear, on the one screen he would look for it.
+
+     A CORRECT RULE AND A SILENT SCREEN IS STILL A BUG. The screen must say: it is here, this is
+     what it is worth, this is why it is not on his account yet, and here is the one button that
+     finishes it.
+
+     THIS FUNCTION IS DELIBERATELY SEPARATE. clientReturns() is read by the statement PDF, the
+     WhatsApp statement, clientLedger and the incentive reversal - eight sites, all money.
+     Widening it would have quietly credited every client for every return anyone had merely
+     raised. t_return_pending.js fails if a pending return ever reaches a document. */
+  function clientReturnsPending(cl) {
+    var q = dkey(cl);
+    return (S.data.returns || []).filter(function (r) {
+      if (dkey(r.customerName) !== q) return false;
+      var st = String(r.status || "").trim().toLowerCase();
+      /* "received" is counted elsewhere; a cancelled one is not waiting for anything */
+      return st !== "received" && st !== "cancelled";
+    }).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+  }
   function clientReturns(cl) {
     var q = String(cl || "").trim().toLowerCase();
     return (S.data.returns || []).filter(function (r) {
@@ -15931,6 +15962,40 @@ function viewCatalogue() {
      Counts, not a wall of rows: the ten oldest of each, because what matters is the oldest, and
      a list of forty tells him nothing he can act on this morning. Tapping one opens its client.
      Scoped by isMineClient, like everything else here. */
+  /* v6.9.347 - EVERY RETURN ANYBODY HAS RAISED AND NOBODY HAS BOOKED IN. On the front of HISAB,
+     because that is where he went looking for the one he had just written. A return sitting at
+     "Raised" credits nothing and shows on no statement; until today it also showed on no screen
+     he would think to open, which is how a return disappears into the gap between the man who
+     writes it and the man who counts it back in. */
+  function retWaitingCard() {
+    var list = (S.data.returns || []).filter(function (r) {
+      var st = String(r.status || "").trim().toLowerCase();
+      return st !== "received" && st !== "cancelled";
+    }).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+    if (!list.length) return "";
+    var tot = list.reduce(function (a, r) { return a + returnNet(r); }, 0);
+    return '<div class="card" style="border-color:#fdba74;background:#fffbeb">' +
+      '<h3 style="margin:0 0 2px;font-size:13px">' + list.length + ' return' +
+      (list.length === 1 ? '' : 's') + ' raised, not yet back in the godown</h3>' +
+      '<div class="meta" style="color:#92400e;margin-bottom:6px">' + money(tot) + ' in all. ' +
+      'A return credits the client only when the material is counted back in &mdash; so none of ' +
+      'this is on anybody\u2019s account yet, and none of it is on any statement. Book it in and ' +
+      'the credit lands by itself.</div>' +
+      list.slice(0, 10).map(function (r) {
+        return '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow">' +
+          '<b>' + esc(r.returnNo || "Return") + '</b> <span class="pill" style="background:#fed7aa;color:#7c2d12">' +
+          esc(r.status || "Raised") + '</span>' +
+          '<br><span style="font-size:11.5px;color:#92400e">' + esc(r.customerName || "") +
+          ' &middot; ' + money(returnNet(r)) + ' &middot; raised ' + esc(d10(r.createdAt)) + '</span></div>' +
+          '<button class="btn sm ghost" data-act="ch-hisab" data-cl="' + esc(r.customerName || "") + '">Open HISAB</button>' +
+          (canSee("returns")
+            ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received" ' +
+              'style="background:#b45309;border-color:#b45309">Received at godown</button>' : '') +
+          '</div>';
+      }).join("") +
+      (list.length > 10 ? '<div class="meta" style="margin-top:6px">and ' + (list.length - 10) + ' more.</div>' : "") +
+      '</div>';
+  }
   function hisabWaitingCard() {
     var all = dedupeChallans(S.data.challans || []).filter(function (c) {
       return isMineClient(c.customerName) && String(c.status || "") !== "Cancelled";
@@ -16007,7 +16072,7 @@ function viewCatalogue() {
             '</div>';
         }
       }
-      h += hisabWaitingCard();
+      h += hisabWaitingCard() + retWaitingCard();
       if (!outs.length && !credits.length) return h + '<div class="empty">No outstanding balances &mdash; every received challan is fully paid. Type a client above to view their hisab.</div>';
       var oh = '';
       if (outs.length) {
@@ -16259,6 +16324,54 @@ function viewCatalogue() {
     });
     /* v6.9.121: booked-in material returns show here like a challan in reverse — a red card whose
        amounts are negative and which credit (reduce) the client's balance. Only "Received" returns. */
+    /* v6.9.347 - the returns he has RAISED that are not back in the godown yet. Drawn before the
+       counted ones, because the whole point is that they are the ones needing a hand. They add
+       nothing to retTotal and nothing to any document: they are not on his account yet, and
+       saying otherwise on a screen he reads money off is the one thing this must not do. */
+    clientReturnsPending(cl).forEach(function (r) {
+      var rl = returnLines(r);
+      var rSub = rl.reduce(function (a, x) { return a + x.amt; }, 0);
+      var st = String(r.status || "Raised");
+      h += '<div class="card" style="border:1px dashed #fdba74;background:#fffbeb;padding:9px 12px">' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
+        '<div style="flex:1 1 300px;min-width:0">' +
+        '<h3 style="margin:0 0 5px;line-height:1.5">' + esc(r.returnNo || "Return") +
+        ' <span class="pill" style="background:#fed7aa;color:#7c2d12">' + esc(st) + '</span>' +
+        ' <span class="pill teal">' + esc(d10(r.createdAt)) + '</span>' +
+        (r.challanNo ? ' <span style="font-size:12px;color:#64748b">vs ' + esc(r.challanNo) + '</span>' : '') +
+        '</h3>' +
+        '<div class="meta" style="font-size:12.5px;color:#92400e">' +
+        '<b>Not on his account yet.</b> A return credits the client when the material is counted ' +
+        'back in at the godown &mdash; not when it is written down. ' + esc(rl.length) + ' item' +
+        (rl.length === 1 ? '' : 's') + ', worth ' + money(rSub) + ' when it lands.</div>' +
+        '<div class="acts" style="align-items:center;margin:7px 0 0;flex-wrap:wrap;gap:6px">' +
+        '<button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(r.id) + '" ' +
+          'style="border-color:#fdba74;color:#92400e">' +
+          ((S.chExp && S.chExp[r.id]) ? '&#9662; Hide items' : '&#9656; Show ' + rl.length + ' item(s)') + '</button>' +
+        (canSee("returns")
+          ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received" ' +
+            'style="background:#b45309;border-color:#b45309" ' +
+            'title="Count this material back in at the godown. That is what puts the credit on his account.">' +
+            'Received at godown</button>'
+          : '') +
+        '</div></div>' +
+        '<div style="flex:0 0 auto;text-align:right;font-size:12px;color:#92400e">Will credit<br>' +
+        '<b>&minus;' + money(rSub) + '</b></div></div>' +
+        (!(S.chExp && S.chExp[r.id]) ? '' :
+        '<div style="overflow-x:auto;margin-top:7px"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #fed7aa">' +
+        '<thead><tr style="background:#7c2d12;color:#fff">' +
+        '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product returned</th>' +
+        '<th style="padding:6px;text-align:center;width:40px">Qty</th>' +
+        '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' +
+        rl.map(function (x, idx) {
+          return '<tr style="border-bottom:1px solid #fed7aa;background:' + (idx % 2 ? '#fffbeb' : '#fff') + '">' +
+            '<td style="padding:5px 6px;color:#64748b">' + (idx + 1) + '</td>' +
+            '<td style="padding:5px 6px">' + esc(x.desc) + '</td>' +
+            '<td style="padding:5px 6px;text-align:center">' + x.qty + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;font-weight:700;color:#92400e">' + money(x.amt) + '</td></tr>';
+        }).join("") + '</tbody></table></div>') +
+        '</div>';
+    });
     var rets = clientReturns(cl);
     var retTotal = 0;
     rets.slice().sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); }).forEach(function (r) {
