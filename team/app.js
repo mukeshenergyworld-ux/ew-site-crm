@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.335";
+  var APP_VERSION = "6.9.336";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14837,6 +14837,9 @@ function viewCatalogue() {
         (_l0.due > 0.5
           ? dueAmt(_l0.due, "lg")
           : 'Balance: <b style="color:#0d9488">' + money(_l0.due) + (_l0.due < -0.5 ? ' (in credit)' : '') + '</b>') + '</div>' +
+        /* v6.9.336 - and here too. A client whose only activity is a payment against an opening
+           balance is EXACTLY the man who needs to see which payment landed. */
+        payTable(cl) +
         (canSee("payments") && _l0.due > 0 ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '">&#8377; Payment received</button></div>' : '') +
         '</div>';
       /* The "not in the account yet" card is drawn once, above, for BOTH branches
@@ -15007,6 +15010,7 @@ function viewCatalogue() {
       (bal > 0.5
         ? dueAmt(bal, "lg")
         : 'Balance due: <b style="color:#0d9488">' + money(bal) + '</b>') + '</div>' +
+      payTable(cl) +
       '<div style="margin-top:8px;font-size:14px">Statement: <b>' + selCount + '</b> of ' + chs.length + ' challan(s) ticked &mdash; <b>' + money(selNet) + '</b>' + (S.billGst ? ' + GST ' + money(gst) + ' = <b>' + money(selNet + gst) + '</b>' : '') + '</div>' +
       '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:10px">' +
       '<button class="btn sm ' + (S.billGst ? '' : 'ghost') + '" data-act="bill-gst">' + (S.billGst ? 'GST 18% ✓' : 'Add GST 18%') + '</button>' +
@@ -15477,6 +15481,23 @@ function viewCatalogue() {
       if (opening > 0) { doc.text("Previous balance (before app): " + RS(opening), L, y); y += 5; }
       doc.text("Account billed to date (net): " + RS(allNet), L, y); y += 5;
       doc.text("Received to date: " + RS(paid), L, y); y += 5;
+      /* v6.9.336 - itemised underneath, from the SAME payLines() the screen reads, so the
+         statement in the customer's hand and the ledger in the office cannot disagree. Core
+         Helvetica cannot draw anything outside Latin-1, so every free-text field goes through
+         pdfSafe - a UPI reference with a rupee sign in it would otherwise print as rubbish. */
+      (function () {
+        var _pl = payLines(cl);
+        if (!_pl.length) return;
+        doc.setFontSize(8.5);
+        _pl.forEach(function (p) {
+          if (y > 272) { doc.addPage(); y = 20; F("normal"); doc.setFontSize(8.5); doc.setTextColor(100, 116, 139); }
+          var tail = pdfSafe(p.mode || "not recorded") + (p.ref ? " / " + pdfSafe(p.ref) : "");
+          doc.text("    " + d10(p.date) + "   " + tail, L + 2, y);
+          doc.text(RS(p.amount), R, y, { align: "right" });
+          y += 4.2;
+        });
+        doc.setFontSize(9.5); y += 1.5;
+      })();
       if (retTot > 0) { doc.setTextColor(185, 28, 28); doc.text("Less material returns: -" + RS(retTot), L, y); y += 5; doc.setTextColor(100, 116, 139); }
       F("bold"); doc.setTextColor(17, 34, 45); doc.setFontSize(10.5);
       doc.text("Balance due: " + RS(opening + allNet - paid - retTot), L, y); y += 6;
@@ -15560,6 +15581,58 @@ function viewCatalogue() {
       }
       return doc;
     });
+  }
+
+  /* ---- WHAT HE PAID, WHEN, AND IN WHAT FORM  (v6.9.336) ----
+     HIS WORDS: "show payment details below like how much received when and in which form,
+     also show same in hisab download".
+
+     The ledger said "Received: Rs 2,00,000" and nothing else. That is a fact with no evidence
+     behind it: a client ringing to ask which of his four transfers has been credited could not
+     be answered from this screen, and the statement he was sent could not be checked against
+     his own bank book. One number is not an account.
+
+     ONE function, read by BOTH the screen and the PDF, so the two can never disagree about
+     what was received - which is the whole point, since the customer holds the PDF and the
+     office holds the screen. Sorted oldest first: a ledger is read down the page. */
+  function payLines(client) {
+    return (S.data.payments || [])
+      .filter(function (p) { return p && p.client === client; })
+      .map(function (p) {
+        return { date: String(p.date || p.createdAt || "").slice(0, 10),
+                 amount: Number(p.amount) || 0,
+                 mode: String(p.mode || "").trim(),
+                 ref: String(p.ref || "").trim(),
+                 notes: String(p.notes || "").trim() };
+      })
+      .sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+  }
+  /* The block under the ledger line. Nothing at all when nothing has been received - an empty
+     table under a Rs 0 is noise, and "Received: Rs 0" already says it. */
+  function payTable(client) {
+    var ps = payLines(client);
+    if (!ps.length) return '';
+    var tot = ps.reduce(function (a, p) { return a + p.amount; }, 0);
+    return '<div style="margin-top:9px;border-top:1px dashed #99f6e4;padding-top:8px">' +
+      '<div style="font-size:12.5px;font-weight:700;color:#0f766e;margin-bottom:5px">' +
+        'Payments received &mdash; ' + ps.length + '</div>' +
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+      '<thead><tr style="background:#ccfbf1;color:#0f766e">' +
+        '<th style="padding:5px 7px;text-align:left">Date</th>' +
+        '<th style="padding:5px 7px;text-align:left">Form</th>' +
+        '<th style="padding:5px 7px;text-align:left">Reference</th>' +
+        '<th style="padding:5px 7px;text-align:right">Amount</th></tr></thead><tbody>' +
+      ps.map(function (p, i) {
+        return '<tr style="border-bottom:1px solid #d9f5ef;background:' + (i % 2 ? '#f6fffd' : '#fff') + '">' +
+          '<td style="padding:5px 7px;white-space:nowrap">' + esc(dstr(p.date)) + '</td>' +
+          '<td style="padding:5px 7px">' + (p.mode ? esc(p.mode) : '<span style="color:#94a3b8">not recorded</span>') + '</td>' +
+          '<td style="padding:5px 7px;color:#64748b">' + esc(p.ref || p.notes || '') + '</td>' +
+          '<td style="padding:5px 7px;text-align:right;font-weight:700;color:#0d9488">' + money(p.amount) + '</td></tr>';
+      }).join("") +
+      '</tbody><tfoot><tr style="background:#e2f5f1">' +
+        '<td colspan="3" style="padding:5px 7px;text-align:right;font-weight:700">Total received</td>' +
+        '<td style="padding:5px 7px;text-align:right;font-weight:800;color:#0d9488">' + money(tot) + '</td>' +
+      '</tr></tfoot></table></div></div>';
   }
 
   /* ---------------- client payments + ledger ---------------- */
