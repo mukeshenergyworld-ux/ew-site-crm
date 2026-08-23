@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.329";
+  var APP_VERSION = "6.9.330";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1876,8 +1876,36 @@ window.addEventListener("beforeunload", function (ev) {
     }
     if (tot) tot.textContent = money(g + f - (v > 0 ? v : 0));
   }
+  /* v6.9.330 - hide the rows that do not match, in place. No state, no repaint. */
+  function incFilter() {
+    var box = document.getElementById("inc_q");
+    if (!box) return;
+    var q = String(box.value || "").replace(/\s+/g, " ").trim().toLowerCase();
+    var rows = document.querySelectorAll("[data-pname]");
+    var shown = 0, all = rows.length;
+    Array.prototype.forEach.call(rows, function (r) {
+      var hit = !q || String(r.getAttribute("data-pname") || "").indexOf(q) >= 0;
+      r.style.display = hit ? "" : "none";
+      if (hit) shown++;
+    });
+    var note = document.getElementById("inc_qn");
+    if (note) {
+      /* SAY WHEN IT FINDS NOTHING. A filtered list that silently goes empty is the fault that
+         cost him an afternoon on 17 Aug - the screen showed nothing and gave no reason, so the
+         only reasonable conclusion was that the record had not saved. */
+      if (!q) { note.style.display = "none"; note.textContent = ""; }
+      else {
+        note.style.display = "";
+        note.textContent = shown
+          ? shown + " of " + all + " shown"
+          : "Nobody matches \u201c" + box.value.trim() + "\u201d. Clear the box to see all " + all + ".";
+        note.style.color = shown ? "#64748b" : "#b91c1c";
+      }
+    }
+  }
   document.addEventListener("input", function (ev) {
     var t = ev && ev.target;
+    if (t && t.id === "inc_q") { incFilter(); return; }
     if (t && t.id === "hsb_extra") {
       var nx = document.getElementById("hsb_noextra");
       if (nx && nx.checked && String(t.value || "").trim()) nx.checked = false;
@@ -13605,6 +13633,22 @@ function viewCatalogue() {
       '</div>';
     h += '<div class="empty" style="text-align:left;padding:0 0 12px">Incentive = net sale (post-discount, ex-GST) \u00d7 the rate set for that <b>client &amp; brand</b> on the discount screen, paid to whoever is that client\u2019s plumber / architect / builder / PMC. It only becomes <b>payable as the client pays</b>, and a challan counts only once its material receipt is in. A booked-in material return reverses it.</div>';
 
+    /* ---- FIND A MAN (v6.9.330) ----
+       "show search bar here, to find and open". The two lists below only grow, and an Open
+       button is no use if you have to scroll for the name first.
+
+       IT DOES NOT RE-RENDER, and that is deliberate. Every other search box in this app writes
+       S.q and repaints - and S.q is SHARED BY EVERY VIEW, which is exactly the fault that made
+       a lead invisible on 17 Aug and had him entering it twice. This one touches no state at
+       all: it walks the rows already on the screen and hides the ones that do not match. The
+       caret never moves, the phone keyboard never closes, and nothing another screen is holding
+       can change what this one shows. */
+    h += '<div class="row" style="margin:0 0 10px">' +
+      '<input class="grow" id="inc_q" placeholder="Find a partner or executive\u2026" ' +
+        'autocomplete="off" spellcheck="false"/>' +
+      '<button class="btn sm ghost" data-act="inc-qclear">Clear</button></div>' +
+      '<div class="meta" id="inc_qn" style="font-size:12px;margin:-6px 0 8px;display:none"></div>';
+
     /* ---- SALES EXECUTIVES (v6.9.234) ----
        Calculated by the same engine as the partners above, on the clients each one is
        assigned to, at the % ticked for that client and brand. Shown here rather than on
@@ -13631,7 +13675,7 @@ function viewCatalogue() {
         '</div>';
       _ex.slice().sort(function (x, y) { return _exB[y.name].earned - _exB[x.name].earned; }).forEach(function (u) {
         var eb = _exB[u.name];
-        h += '<div style="border:1px solid #e9d5ff;border-radius:10px;background:#fff;padding:9px 10px;margin-bottom:6px">' +
+        h += '<div data-pname="' + esc(dkey(u.name)) + '" style="border:1px solid #e9d5ff;border-radius:10px;background:#fff;padding:9px 10px;margin-bottom:6px">' +
           '<div class="acts" style="align-items:center;margin:0">' +
           '<div class="grow"><b>' + esc(u.name) + '</b>' +
             ' <span class="pill" style="background:#ede9fe;color:#6d28d9">' + eb.clientCount + ' client' + (eb.clientCount === 1 ? '' : 's') + '</span>' +
@@ -13678,7 +13722,7 @@ function viewCatalogue() {
     list.forEach(function (a, idx) {
       var b = books[a.name];
       var medal = idx === 0 ? "#1" : (idx === 1 ? "#2" : (idx === 2 ? "#3" : "#" + (idx + 1)));
-      h += '<div class="card"><h3><span class="pill ' + (idx < 3 ? "teal" : "") + '">' + medal + '</span> ' + esc(a.name) +
+      h += '<div class="card" data-pname="' + esc(dkey(a.name + " " + (a.role || ""))) + '"><h3><span class="pill ' + (idx < 3 ? "teal" : "") + '">' + medal + '</span> ' + esc(a.name) +
         ' <span class="pill">' + esc(a.role || "") + '</span>' +
         (b.pending > 0 ? ' <span class="pill due">' + money(b.pending) + ' pending</span>' : ' <span class="pill Won">settled</span>') + '</h3>' +
         '<div class="meta"><b>Drove ' + money(b.billed) + '</b> &middot; ' + b.sites.length + ' site(s) &middot; ' + b.rows.length + ' challan(s)' +
@@ -22961,8 +23005,133 @@ function viewCatalogue() {
     var chosen = vis.filter(function (p) { return p[0] === sub; })[0];
     return h + chosen[2]();
   }
+  /* ==========================================================================
+     MONEY OUT, IN ONE PLACE  (v6.9.330, 21 August 2026)
+
+     HIS INSTINCT: "can we put all payment related work under one single payment Tab like
+     1. Payment Receipt 2. Payment Paid ... correct me if i am wrong?"
+
+     He was right, and the sheet proves it. These are the two tables as they actually stand:
+
+       payments:  id createdAt createdBy siteId siteName client    date amount mode ref notes
+       commpay:   id createdAt createdBy siteId siteName associate date amount mode     notes
+
+     The same table. Same columns, same order, one word different. One is money coming in and
+     one is money going out, and until today they sat at opposite ends of the app with separate
+     screens, separate forms and separate duplicate-checks, doing one job twice.
+
+     WHAT IS AND IS NOT IN HERE, and both were decided rather than assumed:
+
+       IN   partner and sales-executive incentive payouts (commpay). Recorded, dated, with the
+            mode the money left by.
+       OUT  PAYROLL. It looks like a payment and is not one: viewPayroll stores a monthly
+            SALARY FIGURE per engineer and sets it against what he collected. There is no
+            date, no mode, no "paid on". Listing it here would say money moved when nothing
+            was recorded. It also means there is no record anywhere of an engineer's salary
+            actually being paid - a real gap, and a thing to build, not a thing to move.
+       OUT  DRIVER FREIGHT. It is settled in the Challan app on purpose: a driver's freight is
+            released only once his receipts are in, and the receipts are there. Moving the
+            entry here would separate the payment from the evidence that unlocks it. It is
+            pointed at instead - and pointed at honestly, with no figure, because this app does
+            not pull that sheet and inventing a number would be worse than not showing one.
+       OUT  SUPPLIERS. Almost certainly the largest money-out in the business, and the app has
+            never tracked it. Named here so it is a known hole rather than a surprising one. */
+  function paidRows() {
+    return (S.data.commpay || []).slice().sort(function (a, b) {
+      return String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || ""));
+    });
+  }
+  function paidWho() {
+    var out = [];
+    (S.data.associates || []).forEach(function (a) {
+      if (String(a.name || "").trim()) out.push({ kind: "partner", name: a.name, role: a.role || "Partner" });
+    });
+    try {
+      execTeam().forEach(function (u) {
+        if (String(u.name || "").trim()) out.push({ kind: "exec", name: u.name, role: "Sales executive" });
+      });
+    } catch (e) { }
+    return out;
+  }
+  function viewPaidOut() {
+    var rows = paidRows();
+    var thisM = ymLocal(new Date());
+    var mTot = rows.filter(function (p) { return String(p.date || "").slice(0, 7) === thisM; })
+      .reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
+    var allTot = rows.reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
+    /* still to pay, across everybody - the same books the Incentives screen reads, so the two
+       screens can never disagree about what is owed */
+    var owed = 0, owedOk = true;
+    try {
+      (S.data.associates || []).forEach(function (a) { owed += partnerBook(a.name).pending; });
+      execTeam().forEach(function (u) { owed += execBook(u.name).pending; });
+    } catch (e) { owedOk = false; }
+
+    var h = '<div class="cards">' +
+      '<div class="stat"><div class="n">' + money(mTot) + '</div><div class="l">Paid this month</div></div>' +
+      '<div class="stat"><div class="n">' + money(allTot) + '</div><div class="l">Paid, all time</div></div>' +
+      '<div class="stat"><div class="n">' + rows.length + '</div><div class="l">Payouts recorded</div></div>' +
+      (owedOk
+        ? '<div class="stat ' + (owed > 0.5 ? "alert" : "") + '"><div class="n">' + money(owed) + '</div><div class="l">Still to pay</div></div>'
+        /* SAY WHEN IT CANNOT BE COMPUTED. A zero here would read as "nothing is owed". */
+        : '<div class="stat"><div class="n" style="font-size:15px">not read</div><div class="l">Still to pay &mdash; open Incentives</div></div>') +
+      '</div>';
+
+    /* ---- record one, from here ---- */
+    var who = paidWho();
+    h += '<div class="card"><h3 style="margin:0 0 6px">Record a payment made</h3>' +
+      '<div class="meta" style="margin-bottom:7px">Money you have given a partner or an executive against his incentive. ' +
+      'Paying more than is due is allowed &mdash; that is an advance, and it comes off what unlocks next.</div>' +
+      (who.length
+        ? '<div class="row"><select class="grow" id="po_who"><option value="">&mdash; who was paid &mdash;</option>' +
+            who.map(function (w) {
+              return '<option value="' + esc(w.kind + "|" + w.name) + '">' + esc(w.name) + ' · ' + esc(w.role) + '</option>';
+            }).join("") + '</select>' +
+          '<button class="btn" data-act="po-pick">Record</button></div>'
+        : '<div class="empty" style="text-align:left;padding:0">No partners or executives on the book yet.</div>') +
+      '</div>';
+
+    /* ---- what has actually been paid ---- */
+    h += '<h3 style="margin:16px 0 6px;font-size:15px">Payments made</h3>';
+    if (!rows.length) {
+      h += '<div class="empty">Nothing has been paid out yet.</div>';
+    } else {
+      rows.slice(0, 100).forEach(function (p) {
+        h += '<div class="card" style="padding:9px 12px">' +
+          '<div class="acts" style="align-items:center;margin:0">' +
+          '<div class="grow"><b>' + esc(p.associate || "(nobody named)") + '</b>' +
+            (p.mode ? ' <span class="pill">' + esc(p.mode) + '</span>' : '') +
+            '<div class="meta" style="margin-top:2px">' + esc(d10(p.date || p.createdAt)) +
+            (p.notes ? ' &middot; ' + esc(p.notes) : '') +
+            (p.createdBy ? ' &middot; entered by ' + esc(p.createdBy) : '') + '</div></div>' +
+          '<b style="white-space:nowrap;font-size:14px">' + money(p.amount) + '</b></div></div>';
+      });
+      if (rows.length > 100) {
+        h += '<div class="meta" style="font-size:12px">and ' + (rows.length - 100) + ' older</div>';
+      }
+    }
+
+    /* ---- the two kinds of money-out that are NOT here, said out loud ---- */
+    h += '<div class="card" style="border-color:#e2e8f0;background:#f8fafc;margin-top:14px">' +
+      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
+      '<b>Not on this screen</b></div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:4px">' +
+      '<b>Driver freight</b> is settled in the <b>Challan app</b>, because a driver is paid only once ' +
+      'his receipts are in and that is where the receipts live. ' +
+      '<a href="../challan/" target="_blank" rel="noopener">Open it</a>.' +
+      '<br><b>Engineer salary</b> is a monthly figure on the Payroll screen, not a payment &mdash; ' +
+      'nothing records the day it was actually handed over.' +
+      '<br><b>Supplier payments</b> are not tracked anywhere in this app at all.</div></div>';
+    return h;
+  }
+
+  /* v6.9.330 - one tab for money, both directions. "Paid out" rides on canSee("commission"),
+     which is admin only - a sales executive must not see what every partner is being paid.
+     subHub already drops a piece his role cannot see, so no second gate is needed here. */
   function viewCollections() {
-    return subHub([["payments", "Payments", viewPayments], ["dues", "Client dues", viewDues]], "collSub", "coll-sub");
+    return subHub([["payments", "Received", viewPayments],
+                   ["commission", "Paid out", viewPaidOut],
+                   ["dues", "Client dues", viewDues]], "collSub", "coll-sub");
   }
   function viewPricing() {
     return subHub([["rates", "Rate revision", viewRates], ["pricelist", "Price list PDF", viewPriceList], ["catalogue", "Catalogue", viewCatalogue]], "priceSub", "price-sub");
@@ -23845,7 +24014,7 @@ function viewCatalogue() {
     }
     if (!S.pin) { renderLogin(); return; }
     var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Collections"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+    var tabs = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -26623,6 +26792,22 @@ function viewCatalogue() {
     }
 
     if (act === "pay-out") { S.modal = modalPayout(t.getAttribute("data-n"), t.getAttribute("data-k")); render(); return; }
+    if (act === "inc-qclear") {
+      var iq = el("inc_q");
+      if (iq) { iq.value = ""; incFilter(); iq.focus(); }
+      return;
+    }
+    /* v6.9.330 - record a payout without navigating to the man's card first. The picker
+       carries the kind with the name, because a partner's book and an executive's are two
+       different books read by the same modal. */
+    if (act === "po-pick") {
+      var sel = el("po_who");
+      var v = String((sel && sel.value) || "");
+      if (!v) { toast("Pick who is being paid."); return; }
+      var cut = v.indexOf("|");
+      S.modal = modalPayout(v.slice(cut + 1), v.slice(0, cut));
+      render(); return;
+    }
     if (act === "po-save" || act === "po-force") {
       var poRow;
       if (act === "po-force") { poRow = _poPend; _poPend = null; }
