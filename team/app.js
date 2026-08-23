@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.350";
+  var APP_VERSION = "6.9.351";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14438,7 +14438,16 @@ function viewCatalogue() {
         /* v6.9.237 - read-only, so a man hunting for "1247" from the paper book finds it here too */
         manualNoCell(c, true) +
         ' <span class="pill ' + cls + '">' + esc(st) + '</span>' +
-        (String(c.receiptReceived).toUpperCase() === "Y" ? ' <span class="pill Won">receipt in</span>' : "") +
+        /* v6.9.351 - "compact a little challan tab also". ONE PILL FEWER ON THE BUSIEST CARDS.
+           "in hisab" cannot happen without the receipt being in - canAddToHisab requires
+           receiptReceived = Y - so on a stamped challan "receipt in" is a pill that tells him
+           something he can already see. On a phone that is a whole wrapped line, on exactly the
+           challans that carry the most pills.
+           NOT collapsed for the RED "stamped - NOT in hisab" pill: that one exists precisely
+           because the two facts have come apart, and hiding the receipt beside it would hide
+           half of what makes it worth reading. */
+        ((String(c.receiptReceived).toUpperCase() === "Y" && !(inHisab(c) && hisabCounts(c)))
+          ? ' <span class="pill Won">receipt in</span>' : "") +
         hisabStampPill(c) +
         '</div>' +
         '<div class="lc-right">' + actions +
@@ -14972,19 +14981,35 @@ function viewCatalogue() {
                             .map(function (x) { return { role: x.role, name: x.name }; })
                      : admLineup(cl);
     var rows = admIncRows(cl, lines, line, "");
-    var body = rows.length
-      ? rows.map(function (x) { return admIncLine(x, -1); }).join("")
+    /* v6.9.351 - "compact this also for all". ON A RETURN, "no rate" IS NOT NEWS. It means
+       nothing is being taken back off that man, which is quiet and uninteresting - three lines
+       of it set the height of the whole card. On a DELIVERY the same words are a job to do (a
+       man earning nothing who probably should be), so they stay loud there. Same figures, two
+       different questions, and only one of them deserves a line each. */
+    var hit = rows.filter(function (x) { return x.rated; });
+    var quiet = rows.length - hit.length;
+    var body = hit.length
+      ? hit.map(function (x) { return admIncLine(x, -1); }).join("")
       : '<div style="color:#b45309;font-weight:600">Nobody is reversed on this return</div>';
-    var tot = rows.reduce(function (a, x) { return a + (x.rated ? x.amt : 0); }, 0);
+    if (quiet) {
+      body += '<div style="color:#94a3b8" title="' +
+        esc(rows.filter(function (x) { return !x.rated; })
+                .map(function (x) { return incRoleLabel(x.role) + " " + x.name; }).join(", ")) +
+        '">' + quiet + ' other' + (quiet === 1 ? '' : 's') + ' \u00b7 no rate, nothing reversed</div>';
+    }
+    var tot = hit.reduce(function (a, x) { return a + x.amt; }, 0);
     return '<div style="text-align:right;font-size:11.5px;line-height:1.55;margin-top:5px;' +
       'border-top:1px dashed #fecaca;padding-top:5px">' +
       '<div style="font-size:10px;letter-spacing:.06em;color:#7f1d1d;font-weight:700;margin-bottom:2px">' +
       'OWNER ONLY \u00b7 COMES BACK OFF THE INCENTIVE</div>' + body +
       (tot > 0 ? '<div style="color:#7f1d1d;font-weight:700;margin-top:2px">' +
         '\u2212' + money(tot) + ' in all</div>' : '') +
-      '<div style="color:#94a3b8;font-size:10.5px;margin-top:2px">' +
-      (rCh ? 'reversed against ' + esc(rCh.challanNo || "its delivery") + (stamp ? ", on its frozen line-up" : "")
-           : 'no challan named on this return, so it reverses against the client record') +
+      /* the long sentence moves into the tooltip: on the card it is four words */
+      '<div style="color:#94a3b8;font-size:10.5px" title="' +
+      (rCh ? 'Reversed against the delivery this material came back from' + (stamp ? ", on the line-up frozen when it was passed into hisab." : ".")
+           : 'This return names no challan, so the incentive is reversed against whoever the client record names today - which may not be who earned it.') +
+      '">' +
+      (rCh ? 'vs ' + esc(rCh.challanNo || "its delivery") : 'vs client record') +
       '</div></div>';
   }
 
@@ -16643,32 +16668,46 @@ function viewCatalogue() {
           '<td style="padding:5px 6px;text-align:right;font-weight:600">' + money(x.dr) + '</td>' +
           '<td style="padding:5px 6px;text-align:right;font-weight:700;color:#dc2626">&minus;' + money(x.amt) + '</td></tr>';
       }).join("");
+      /* v6.9.351 - on the title line, like the delivery's since v6.9.345. As a third flex child
+         with text-align:center it set the project adrift in the middle of the card. */
       var rSite = r.site
-        ? '<div style="flex:1 1 auto;text-align:center;min-width:110px;align-self:center">' +
-            '<span style="display:inline-block;font-size:13px;font-weight:700;color:#7f1d1d;background:#fef2f2;border:1px solid #fecaca;border-radius:999px;padding:3px 12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">' + esc(r.site) + '</span></div>'
+        ? ' <span style="display:inline-block;font-size:12.5px;font-weight:700;color:#7f1d1d;' +
+          'background:#fef2f2;border:1px solid #fecaca;border-radius:999px;padding:2px 11px;' +
+          'max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
+          'vertical-align:middle">' + esc(r.site) + '</span>'
         : '';
-      h += '<div class="card" style="border-color:#fecaca;background:#fff7f7">' +
-        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
-        '<h3 style="margin:0">' + esc(r.returnNo) + ' <span class="pill due" style="background:#fee2e2;color:#b91c1c">Return</span> <span class="pill teal">' + esc(d10(r.createdAt)) + '</span>' +
+      /* ================= THE RETURN CARD, CLOSED UP  (v6.9.351) =================
+         HIS WORDS: "compact this also for all, material return it is."
+
+         The same hole the delivery card had before v6.9.345, and for the same reason: one flex
+         row, title on the left, money on the right, buttons stacked underneath. Yesterday's
+         owner strip grew the right column to seven lines, and a flex row is as tall as its
+         tallest child - so the title sat alone at the top and four lines of white ran under it.
+
+         Worse here than on the delivery, because `justify-content:space-between` with a wrapping
+         h3 pushed the money block onto its own line, where `text-align:right` inside a
+         `flex:0 0 auto` box put "Credit to client" at the LEFT of the card. It read as a
+         mistake. Everything on the left now lives inside the left column of that same row. */
+      h += '<div class="card" style="border-color:#fecaca;background:#fff7f7;padding:9px 12px">' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
+        '<div style="flex:1 1 320px;min-width:0">' +
+        '<h3 style="margin:0 0 6px;line-height:1.5">' +
+        '<span style="white-space:nowrap">' + esc(r.returnNo) + '</span>' +
+        ' <span class="pill due" style="background:#fee2e2;color:#b91c1c">Return</span>' +
+        ' <span class="pill teal">' + esc(d10(r.createdAt)) + '</span>' +
         (r.challanNo ? ' <span style="font-size:12px;color:#64748b">vs ' + esc(r.challanNo) + '</span>' : '') +
+        rSite +
         /* v6.9.241 - a return carries a signed goods-in receipt exactly as a delivery does */
         ' <span style="display:inline-block;vertical-align:middle;margin-top:3px">' +
           (chProofAny(r).has ? proofSealFor(r, 40) : noProofPill()) + '</span>' +
         '</h3>' +
-        rSite +
-        '<div style="text-align:right;flex:0 0 auto">' +
-          '<div style="font-size:12px;color:#b91c1c">Credit to client<br><b>&minus;' + money(rSub) + '</b></div>' +
-          /* v6.9.348 - and what it takes back off the men, in the same place the delivery card
-             shows what it gave them. */
-          admReturnStrip(r) +
-        '</div></div>' +
-        (!chProofAny(r).has && canSee("returns")
-          ? (canProof() ? '<div class="acts" style="margin-top:6px"><button class="btn sm" data-act="ch-proof" data-id="' + esc(r.id) + '" style="background:#b91c1c;border-color:#b91c1c" title="Photograph the paper signed at the godown when this material was counted back in">&#128206; Attach goods-in receipt</button></div>' : '')
-          : '') +
-        '<div class="acts" style="align-items:center;margin-top:6px">' +
+        '<div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px">' +
           '<button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(r.id) + '" ' +
             'style="border-color:#fecaca;color:#b91c1c">' +
-            (_rExp ? '&#9662; Hide items' : '&#9656; Show ' + rl.length + ' item(s) returned') + '</button>' +
+            (_rExp ? '&#9662; Hide items' : '&#9656; Show ' + rl.length + ' item(s)') + '</button>' +
+          (!chProofAny(r).has && canSee("returns") && canProof()
+            ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(r.id) + '" style="background:#b91c1c;border-color:#b91c1c" title="Photograph the paper signed at the godown when this material was counted back in">&#128206; Attach goods-in receipt</button>'
+            : '') +
           /* v6.9.348 - the way back from a mistaken booking-in. Owner only, confirmed, and it
              writes an audit row: this is money coming off a client's credit. */
           (roleIs("admin")
@@ -16677,8 +16716,15 @@ function viewCatalogue() {
               'title="Booked in by mistake? Put it back to Raised - the credit comes off his account again.">' +
               'Not back yet</button>'
             : '') +
-          '<div class="grow"></div>' +
-          '<span style="font-size:13px;color:#b91c1c">Return total <b>&minus;' + money(rSub) + '</b></span></div>' +
+        '</div></div>' +
+        /* v6.9.351 - the money and the owner's strip: the right-hand column of the SAME row, so
+           the buttons rise up beside them instead of starting below all seven lines. */
+        '<div style="flex:0 0 auto;text-align:right">' +
+          '<div style="font-size:12px;color:#b91c1c">Credit to client<br><b>&minus;' + money(rSub) + '</b></div>' +
+          /* v6.9.348 - and what it takes back off the men, in the same place the delivery card
+             shows what it gave them. */
+          admReturnStrip(r) +
+        '</div></div>' +
         (!_rExp ? '' :
         '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #fecaca">' +
         '<thead><tr style="background:#7f1d1d;color:#fff">' +
