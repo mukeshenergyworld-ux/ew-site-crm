@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.343";
+  var APP_VERSION = "6.9.344";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14458,6 +14458,286 @@ function viewCatalogue() {
      incentive on the goods that came back at the very same rate that earned it.
      That shared half is written here ONCE, so the two can never drift apart and a
      return can never be reversed for one and forgotten for the other. */
+  /* ============ THE TWO RATE RULES, NAMED  (v6.9.344, 23 August 2026) ============
+     These were two anonymous closures, one inside partnerBook and one inside execBook. That was
+     fine while the incentive screen was the only thing that asked. The owner's ledger panel now
+     asks the same question - "what has this man earned on THIS client" - and a screen that
+     computed it its own way would be a second answer to a money question. This file has been
+     bitten by that three times this month; the fix each time was one function, called twice.
+     Lifted verbatim, called by both. */
+  function partnerBookRate(cl, br, c, nmLower) {
+    /* The stamped line-up wins where there is one. "exec" is dropped here on purpose: a man who
+       is both this client's plumber and its executive is paid once as each, by the two books,
+       and letting the partner's book see the exec role would pay him twice. */
+    var roles = chIncRoles(c, nmLower);
+    roles = roles === null ? clientRolesOf(cl, nmLower)
+                           : roles.filter(function (r) { return r !== "exec"; });
+    var rate = 0;
+    roles.forEach(function (role) { var r = incRate(cl.name, br, role); if (r > rate) rate = r; });
+    return rate;
+  }
+  function execBookRate(cl, br, c, nmLower) {
+    /* v6.9.325 - three-way. null: no line-up on this delivery, behave as before. A line-up
+       without "exec": he was deliberately left off it, and earns nothing. With "exec": his
+       usual rate. */
+    var roles = chIncRoles(c, nmLower);
+    if (roles && roles.indexOf("exec") < 0) return 0;
+    return execRateFor(cl.name, br);
+  }
+  /* What ONE man has earned on ONE client, through the payout engine itself rather than beside
+     it. Returns incentiveBook's own totals, so this panel and his incentive card cannot print
+     two different numbers for one man. */
+  function admEarnedOnClient(clientName, personName, kind) {
+    var cl = clientByName(clientName);
+    if (!cl) return null;
+    var nm = dkey(personName);
+    if (!nm) return null;
+    return incentiveBook([cl], (kind === "exec")
+      ? function (c2, br, c) { return execBookRate(c2, br, c, nm); }
+      : function (c2, br, c) { return partnerBookRate(c2, br, c, nm); }, nm);
+  }
+  /* ================= THE OWNER'S OWN CORNER  (v6.9.344, 23 August 2026) =================
+     HIS WORDS: "for admin only ... show client discount structure for all brand, ask to add
+     disc to any brand, show associated partner name and his incentive slab for each brand,
+     total incentive gained by him, same as for executive ... ask to add partner or executive
+     there also" - and then:
+
+         "strictly above two is just for admin area not to be shown on any statement downloaded
+          for that client, if these goes to client statement, it will be dangerous for us."
+
+     He is right, and it is worth being blunt about why, because a future reader will be tempted
+     to reuse one of these functions in a document. What this panel prints is THE MARGIN: what
+     Energy World discounts a brand at for this client, and what it pays the client's own plumber
+     and architect on his purchases. A client reading that learns two things at once - the real
+     floor of the price he is being quoted, and that the plumber advising him is paid by the
+     supplier. The first costs money on every future order. The second costs the relationship,
+     and it costs the plumber his.
+
+     SO EVERY FUNCTION HERE IS PREFIXED adm, AND NOT ONE IS CALLED FROM ANY DOCUMENT BUILDER.
+     t_admin_only.js lifts hisabPdf, ledgerPdf, challanPdf, quotePdf and the WhatsApp statement
+     and fails if any of them so much as mentions one. That test is the fence; this comment is
+     only the sign on it. Every entry point is gated on roleIs("admin") at the point of RENDER
+     and again at the point of WRITE, because a button is not a rule. */
+
+  /* Every brand this client actually buys - from the lines of his receipted deliveries, which is
+     where the money is - plus any brand already carrying a discount row for him, so a rate set
+     ahead of the first order is visible rather than waiting for one. */
+  function admClientBrands(cl) {
+    var seen = {}, out = [];
+    var add = function (b) {
+      b = String(b || "").trim(); var k = dkey(b);
+      if (!b || seen[k]) return; seen[k] = 1; out.push(b);
+    };
+    dedupeChallans((S.data.challans || []).filter(function (c) {
+      return dkey(c.customerName) === dkey(cl) && String(c.receiptReceived).toUpperCase() === "Y";
+    })).forEach(function (c) {
+      pricedLines(c, cl).forEach(function (x) { if (!x.job) add(x.brand || c.brand); });
+    });
+    (S.data.discounts || []).forEach(function (d) {
+      if (dkey(d.client) === dkey(cl)) add(d.brand);
+    });
+    return out.sort(function (a, b) { return a.localeCompare(b); });
+  }
+  /* The men who earn on this client today: the partners named on his record, and his executive.
+     Same source as incLineup - deliberately, so the panel and the stamp screen name the same
+     people - but keyed off the client rather than off one delivery. */
+  function admLineup(cl) {
+    var c = clientByName(cl) || {}, out = [];
+    INC_ROLES.forEach(function (role) {
+      var nm = String(c[role] || "").trim();
+      if (nm) out.push({ role: role, name: nm });
+    });
+    var ex = execForClient(cl);
+    if (ex) out.push({ role: "exec", name: ex });
+    return out;
+  }
+  function admRateOf(cl, brand, role) {
+    return (role === "exec") ? execRateFor(cl, brand) : incRate(cl, brand, role);
+  }
+  /* One editable cell. Every number here is typed straight into the discount row it belongs to,
+     because the alternative - "go to the Discounts screen and find it" - is the reason half of
+     them are unset in the first place. */
+  function admCell(cl, brand, role, v) {
+    var miss = !(Number(v) > 0);
+    return '<input class="admr" data-cl="' + esc(cl) + '" data-b="' + esc(brand) + '" data-role="' + esc(role) + '" ' +
+      'inputmode="decimal" value="' + (miss ? "" : esc(v)) + '" placeholder="\u2014" ' +
+      'style="width:52px;text-align:center;padding:3px 4px;font-size:12px;border-radius:5px;border:1px solid ' +
+      (miss ? '#fcd34d;background:#fffbeb' : '#cbd5e1;background:#fff') + '"/>';
+  }
+  function admBrandTable(cl) {
+    var brands = admClientBrands(cl), line = admLineup(cl);
+    if (!brands.length) {
+      return '<div class="meta" style="font-size:12px;color:#64748b">Nothing delivered to this ' +
+        'client yet, so there is no brand to price.</div>';
+    }
+    var h = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
+      '<tr style="color:#475569;text-align:center">' +
+      '<th style="text-align:left;font-weight:600;padding:2px 6px 4px 0">Brand</th>' +
+      '<th style="font-weight:600;padding:2px 5px 4px">Disc %</th>' +
+      line.map(function (m) {
+        return '<th style="font-weight:600;padding:2px 5px 4px;white-space:nowrap">' +
+          esc(incRoleLabel(m.role)) + '<br><span style="font-weight:500;color:#94a3b8;font-size:10.5px">' +
+          esc(m.name) + '</span></th>';
+      }).join("") + '</tr>';
+    brands.forEach(function (b) {
+      var d = discRow(cl, b);
+      h += '<tr style="border-top:1px solid #e2e8f0;text-align:center">' +
+        '<td style="text-align:left;padding:4px 6px 4px 0;font-weight:600;white-space:nowrap">' + esc(b) + '</td>' +
+        '<td style="padding:3px 5px">' + admCell(cl, b, "disc", d ? (Number(d.pct) || 0) : 0) + '</td>' +
+        line.map(function (m) {
+          return '<td style="padding:3px 5px">' + admCell(cl, b, m.role, admRateOf(cl, b, m.role)) + '</td>';
+        }).join("") + '</tr>';
+    });
+    return h + '</table></div>' +
+      '<div class="acts" style="margin-top:7px;gap:6px"><div class="grow"></div>' +
+      '<button class="btn sm" data-act="adm-save" data-cl="' + esc(cl) + '">Save rates</button></div>' +
+      '<div class="meta" style="font-size:11px;color:#94a3b8;margin-top:3px">An amber box is a rate ' +
+      'nobody has set: that man earns <b>nothing</b> on that brand. A blank saves as 0, which is a ' +
+      'decision and is remembered as one.</div>';
+  }
+  /* Who earns, and what he has actually earned on this client - through incentiveBook itself, so
+     this and his incentive card can never print two different figures for one man. */
+  function admEarnRows(cl) {
+    var line = admLineup(cl), h = "";
+    if (line.length) {
+      h += '<div style="overflow-x:auto;margin-top:9px"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
+        '<tr style="color:#475569"><th style="text-align:left;font-weight:600;padding:2px 6px 4px 0">Who earns</th>' +
+        '<th style="text-align:right;font-weight:600;padding:2px 0 4px 6px">Earned on this client</th></tr>';
+      var _brs = admClientBrands(cl);
+      line.forEach(function (m) {
+        var bk = admEarnedOnClient(cl, m.name, m.role === "exec" ? "exec" : "partner");
+        var amt = bk ? Math.round(bk.earned || 0) : 0;
+        /* v6.9.344 - A CONFIDENT ZERO IS THE ONE THING THIS PANEL MUST NOT PRINT. "Rs.0" reads
+           as "we owe this man nothing", and for a man with no rate anywhere it is really
+           "nobody has ever decided what he earns" - which is a job to do, not a settled fact.
+           The two are worth different actions, so they read differently. */
+        var rated = _brs.some(function (b) { return admRateOf(cl, b, m.role) > 0; });
+        var cell = !bk ? "\u2014"
+                 : (!rated ? '<span style="color:#b45309">no rate set</span>' : money(amt));
+        h += '<tr style="border-top:1px solid #e2e8f0">' +
+          '<td style="padding:4px 6px 4px 0"><b>' + esc(incRoleLabel(m.role)) + '</b> ' +
+          '<span style="color:#475569">' + esc(m.name) + '</span></td>' +
+          '<td style="padding:4px 0 4px 6px;text-align:right;font-weight:700;color:' +
+          (amt > 0 && rated ? '#0f766e' : '#94a3b8') + '">' + cell + '</td></tr>';
+      });
+      h += '</table></div>';
+    }
+    var taken = {};
+    line.forEach(function (m) { taken[m.role] = 1; });
+    var free = INC_ROLES.concat(["exec"]).filter(function (r) { return !taken[r]; });
+    if (free.length) {
+      var assoc = (S.data.associates || []).map(function (a) { return String(a.name || "").trim(); })
+        .filter(Boolean).sort(function (a, b) { return a.localeCompare(b); });
+      var execs = execTeam().map(function (u) { return String(u.name || "").trim(); }).filter(Boolean);
+      h += '<div style="border-top:1px dashed #cbd5e1;margin-top:9px;padding-top:8px">' +
+        '<div class="meta" style="font-size:11.5px;color:#475569">Nobody is named as ' +
+        free.map(incRoleLabel).map(function (x) { return x.toLowerCase(); }).join(", ") +
+        ' on this client. Naming one here is <b>permanent</b> \u2014 it is his role on every future ' +
+        'delivery. It does not touch a delivery already passed into hisab, which froze its own line-up.</div>';
+      free.forEach(function (r) {
+        var list = (r === "exec") ? execs : assoc;
+        h += '<div class="row" style="gap:8px;align-items:center;margin:7px 0 0">' +
+          '<span style="flex:0 0 84px;font-weight:600;font-size:12px">' + esc(incRoleLabel(r)) + '</span>' +
+          '<select class="admpick" data-role="' + esc(r) + '" style="flex:1 1 150px;min-width:140px;font-size:12px;padding:4px 6px">' +
+          '<option value="">\u2014 nobody \u2014</option>' +
+          list.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join("") +
+          '</select></div>';
+      });
+      h += '<div class="acts" style="margin-top:7px;gap:6px"><div class="grow"></div>' +
+        '<button class="btn sm ghost" data-act="adm-name" data-cl="' + esc(cl) + '">Name them</button></div></div>';
+    }
+    return h;
+  }
+  /* The banner. Red, and it says the word CLIENT: the whole risk of this panel is somebody
+     photographing the ledger and sending it on. */
+  function admSeal() {
+    return '<div style="display:flex;align-items:center;gap:6px;margin:0 0 7px;flex-wrap:wrap">' +
+      '<span class="pill" style="background:#7f1d1d;color:#fff;font-weight:700;letter-spacing:.05em">OWNER ONLY</span>' +
+      '<span style="font-size:11px;color:#7f1d1d;font-weight:600">Never on a client statement. ' +
+      'Do not send this to a client.</span></div>';
+  }
+  function admLedgerPanel(cl) {
+    if (!roleIs("admin")) return "";
+    return '<div style="flex:1 1 330px;min-width:min(100%,300px);border:1px solid #fecaca;' +
+      'background:#fff;border-radius:10px;padding:9px 11px">' + admSeal() +
+      '<div class="meta" style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:#475569;margin-bottom:5px">' +
+      '<b>Discount &amp; incentive \u2014 ' + esc(cl) + '</b></div>' +
+      admBrandTable(cl) + admEarnRows(cl) + '</div>';
+  }
+  /* ---- THE SAME QUESTION, ABOUT ONE DELIVERY ----
+     The frozen line-up where the delivery has been stamped, the client's presets where it has
+     not - the same three-way answer chIncRoles gives the payout engine, so this strip and his
+     incentive card describe one delivery the same way. */
+  function admChallanStrip(c) {
+    if (!roleIs("admin") || !c) return "";
+    var cl = c.customerName || "";
+    var priced = pricedLines(c, cl);
+    var stamp = chIncStamp(c);
+    var line = stamp ? stamp.filter(function (x) { return x && x.on !== false; })
+                            .map(function (x) { return { role: x.role, name: x.name }; })
+                     : incLineup(c);
+    var rows = line.map(function (m) {
+      var amt = 0, pcts = {};
+      priced.forEach(function (x) {
+        if (x.job) return;
+        var r = admRateOf(cl, x.brand || c.brand || "", m.role);
+        if (r > 0) { amt += x.amt * r / 100; pcts[String(r)] = 1; }
+      });
+      var ks = Object.keys(pcts);
+      return { role: m.role, name: m.name, amt: amt, rated: ks.length > 0,
+               pct: ks.length === 1 ? Number(ks[0]) : 0, mixed: ks.length > 1 };
+    });
+    var body = rows.length
+      ? rows.map(function (r) {
+          return '<div style="display:flex;gap:8px;justify-content:flex-end;align-items:baseline;white-space:nowrap">' +
+            '<span style="color:#475569">' + esc(incRoleLabel(r.role)) + ' <b style="color:#0f172a">' + esc(r.name) + '</b></span>' +
+            '<span style="color:' + (r.rated ? '#0f766e' : '#b45309') + ';font-weight:700">' +
+            (r.rated ? (r.mixed ? "mixed" : r.pct + "%") + " \u00b7 " + money(r.amt) : "no rate") + '</span></div>';
+        }).join("")
+      : '<div style="color:#b45309;font-weight:600">Nobody earns on this delivery</div>';
+    return '<div style="text-align:right;font-size:11.5px;line-height:1.6;margin-top:6px;' +
+      'border-top:1px dashed #fecaca;padding-top:6px">' +
+      '<div style="font-size:10px;letter-spacing:.06em;color:#7f1d1d;font-weight:700;margin-bottom:2px">' +
+      'OWNER ONLY \u00b7 NOT ON THE STATEMENT</div>' + body +
+      (stamp ? '<div style="color:#94a3b8;font-size:10.5px;margin-top:2px">frozen when it was passed into hisab</div>' : '') +
+      '<button class="btn sm ghost" data-act="adm-ch" data-id="' + esc(c.id) + '" ' +
+      'style="margin-top:5px;font-size:11px;padding:3px 9px">Set rates / add partner</button></div>';
+  }
+  /* The screen behind that button: only the brands THIS delivery carries, so it is three rows and
+     not the client's whole history. */
+  function modalAdmChallan(id) {
+    var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+    if (!c || !roleIs("admin")) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var cl = c.customerName || "";
+    var brands = hisabBrandsOf(c), line = admLineup(cl);
+    var h = '<h2>Rates on ' + esc(c.challanNo || "") + '</h2>' +
+      '<p class="sub">' + esc(cl) + (c.site ? ' &middot; ' + esc(c.site) : "") + '</p>' + admSeal() +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:8px">Only the brands on this ' +
+      'delivery. What you set here is the <b>client&rsquo;s</b> preset for that brand, so it applies to ' +
+      'every future delivery too &mdash; and to this one, unless it has already been passed into hisab, ' +
+      'which froze its line-up.</div>' +
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+      '<tr style="color:#475569;text-align:center">' +
+      '<th style="text-align:left;font-weight:600;padding:2px 6px 5px 0">Brand</th>' +
+      '<th style="font-weight:600;padding:2px 5px 5px">Disc %</th>' +
+      line.map(function (m) {
+        return '<th style="font-weight:600;padding:2px 5px 5px;white-space:nowrap">' + esc(incRoleLabel(m.role)) +
+          '<br><span style="font-weight:500;color:#94a3b8;font-size:11px">' + esc(m.name) + '</span></th>';
+      }).join("") + '</tr>';
+    brands.forEach(function (b) {
+      var d = discRow(cl, b);
+      h += '<tr style="border-top:1px solid #e2e8f0;text-align:center">' +
+        '<td style="text-align:left;padding:5px 6px 5px 0;font-weight:600">' + esc(b) + '</td>' +
+        '<td style="padding:4px 5px">' + admCell(cl, b, "disc", d ? (Number(d.pct) || 0) : 0) + '</td>' +
+        line.map(function (m) {
+          return '<td style="padding:4px 5px">' + admCell(cl, b, m.role, admRateOf(cl, b, m.role)) + '</td>';
+        }).join("") + '</tr>';
+    });
+    return h + '</table></div>' + admEarnRows(cl) +
+      '<div class="foot"><button class="btn ghost" data-act="close">Close</button>' +
+      '<button class="btn" data-act="adm-save" data-cl="' + esc(cl) + '">Save rates</button></div>';
+  }
+
   function incentiveBook(myClients, rateFor, payeeLower) {
     var billed = 0, earned = 0, returned = 0, reversed = 0, rows = [], clientNames = {};
     /* v6.9.266 - ONE CLIENT, ONE PASS.
@@ -14608,15 +14888,7 @@ function viewCatalogue() {
       return clientRolesOf(cl, nm).length || stampedCl[dkey(cl.name)];
     });
     var bk = incentiveBook(myClients, function (cl, br, c) {
-      /* The stamped line-up wins where there is one. "exec" is dropped here on purpose: a man
-         who is both this client's plumber and its executive is paid once as each, by the two
-         books, and letting the partner's book see the exec role would pay him twice. */
-      var roles = chIncRoles(c, nm);
-      roles = roles === null ? clientRolesOf(cl, nm)
-                             : roles.filter(function (r) { return r !== "exec"; });
-      var rate = 0;
-      roles.forEach(function (role) { var r = incRate(cl.name, br, role); if (r > rate) rate = r; });
-      return rate;
+      return partnerBookRate(cl, br, c, nm);
     }, nm);
     bk.sites = S.data.sites.filter(function (st) {
       return [st.architect, st.plumber, st.builder, st.pmc].some(function (x) { return String(x || "").toLowerCase() === nm; });
@@ -14638,12 +14910,7 @@ function viewCatalogue() {
              stampedEx[dkey(cl.name)];
     });
     var bk = incentiveBook(myClients, function (cl, br, c) {
-      /* v6.9.325 - same three-way answer as the partner's. null: no line-up on this delivery,
-         behave as before. A line-up without "exec": he was deliberately left off it, and earns
-         nothing. With "exec": his usual rate. */
-      var roles = chIncRoles(c, nm);
-      if (roles && roles.indexOf("exec") < 0) return 0;
-      return execRateFor(cl.name, br);
+      return execBookRate(cl, br, c, nm);
     }, nm);
     var mine = {};
     myClients.forEach(function (cl) { mine[String(cl.name || "").trim().toLowerCase()] = 1; });
@@ -15936,7 +16203,9 @@ function viewCatalogue() {
         ' <span style="display:inline-block;vertical-align:middle;margin-top:3px">' +
           (_rc.has ? proofSeal(_rc.url, _rc.thumb, _rc.queued, _rc.by, 40) : noProofPill()) + '</span></h3>' +
         siteBlock +
-        billBlock + '</div>' +
+        /* v6.9.344 - the owner's strip sits under the bill block, in the same right-hand column
+           he pointed at. Empty string for everyone else, so the layout is unchanged for them. */
+        '<div style="flex:0 0 auto;text-align:right">' + billBlock + admChallanStrip(c) + '</div>' + '</div>' +
         '<div class="acts" style="align-items:center;margin-top:6px"><button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '">' + (_chExp ? '&#9662; Hide items' : '&#9656; Show ' + priced.length + ' item(s)') + '</button><div class="grow"></div><span style="font-size:13px;color:#334155">Total <b>' + money(chTotal) + '</b></span></div>' +
         /* v6.9.235 - the old challan you are looking at is the fastest way to raise the
            next one. Copy repeats the same client, site and products into a NEW challan;
@@ -16016,7 +16285,11 @@ function viewCatalogue() {
     var _led = clientLedger(cl), paid = _led.paid, opening = _led.opening || 0, bal = opening + allNet - paid - retTotal;
     var gst = S.billGst ? Math.round(selNet * 0.18) : 0;
     var _clMob = (clientByName(cl) || {}).mobile || '';
+    /* v6.9.344 - the ledger's own figures on the left, the owner's corner on the right. It is
+       flex-wrapped, so on a phone the panel drops underneath instead of squeezing the balance. */
     h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">' +
+      '<div style="flex:1 1 320px;min-width:0">' +
       '<h3 style="margin:0 0 2px">Client ledger &mdash; ' + esc(cl) + '</h3>' +
       (_clMob ? '<div style="font-size:13px;margin-bottom:6px">☎ <a href="tel:' + esc(String(_clMob).replace(/[^\d+]/g, '')) + '" style="color:#0d766c;font-weight:600;text-decoration:none">' + esc(_clMob) + '</a></div>' : '') +
       '<div class="meta" style="font-size:13.5px">' +
@@ -16046,7 +16319,7 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="bill-pdf">Download PDF (ticked)</button>' +
       /* v6.9.240 - everything, in date order, without touching the ticks */
       '<button class="btn sm ghost" data-act="bill-pdf" data-all="1" title="Every received challan and every booked-in return, in date order, whatever is ticked">Download all</button>' +
-      '</div></div>';
+      '</div></div>' + admLedgerPanel(cl) + '</div></div>';
     h += serviceLedgerCard(cl);
     return h;
   }
@@ -26961,6 +27234,96 @@ function viewCatalogue() {
       (S.data.challans || []).filter(function (c) { return c.customerName === bcl && String(c.receiptReceived).toUpperCase() === "Y"; })
         .forEach(function (c) { S.billSel[c.id] = bsv; });
       render(); return;
+    }
+    /* ================= THE OWNER'S CORNER, WRITTEN  (v6.9.344) =================
+       Onto the SAME discount row the Discounts screen writes, in the same shape - one row per
+       client and brand carrying the discount in pct and every incentive in notes. A second
+       storage for the same fact would be two answers to a money question. */
+    if (act === "adm-save") {
+      if (!roleIs("admin")) { toast("The discount and incentive card is the owner\u2019s."); return; }
+      var admCl = t.getAttribute("data-cl") || "";
+      var admG = {};
+      document.querySelectorAll(".admr").forEach(function (elx) {
+        var b = elx.getAttribute("data-b") || "", role = String(elx.getAttribute("data-role") || "").toLowerCase();
+        var k = dkey(b); if (!k) return;
+        admG[k] = admG[k] || { brand: b, vals: {} };
+        admG[k].vals[role] = String(elx.value || "").trim();
+      });
+      var admBad = [];
+      Object.keys(admG).forEach(function (k) {
+        Object.keys(admG[k].vals).forEach(function (role) {
+          var raw = admG[k].vals[role];
+          if (raw === "") return;
+          var n = Number(raw);
+          /* A percent outside 0-100 is a typo, and a typo here is paid out every month until
+             somebody notices. 45 typed as 450 would pay a plumber four and a half times the
+             value of the goods. */
+          if (!isFinite(n) || n < 0 || n > 100) admBad.push(admG[k].brand + " " + incRoleLabel(role));
+        });
+      });
+      if (admBad.length) {
+        toast("A percent must be between 0 and 100: " + admBad.slice(0, 3).join(", ") +
+              ". Nothing was saved.");
+        return;
+      }
+      var admN = 0;
+      Object.keys(admG).forEach(function (k) {
+        var g = admG[k], exd = discRow(admCl, g.brand);
+        var notes = incMap(exd);
+        var pct = (g.vals.disc === undefined)
+          ? (exd && exd.pct != null ? exd.pct : "")
+          : (g.vals.disc === "" ? 0 : (Number(g.vals.disc) || 0));
+        INC_ROLES.concat(["exec"]).forEach(function (role) {
+          var raw = g.vals[role];
+          if (raw === undefined) return;                       /* not on screen - leave alone */
+          var n = (raw === "") ? 0 : (Number(raw) || 0);
+          if (role === "exec") {
+            /* execOn is the TICK, and it is kept separate from the rate on purpose: a rate
+               deliberately left at 0 must stay visible instead of quietly vanishing. Typing a
+               number here is the tick. */
+            if (n > 0) { notes.exec = n; notes.execOn = 1; }
+            else { delete notes.exec; if (!notes.execOn) delete notes.execOn; }
+          } else if (n > 0) { notes[role] = n; } else { delete notes[role]; }
+        });
+        var notesStr = Object.keys(notes).length ? JSON.stringify(notes) : "";
+        if ((pct === "" || pct === 0) && !notesStr && !exd) return;
+        save("discounts", { id: (exd ? exd.id : "") || mintId("D"),
+          client: admCl, brand: g.brand, pct: pct, notes: notesStr }, true);
+        admN++;
+      });
+      S.modal = null;
+      toast(admN ? ("Saved " + admN + " brand line" + (admN > 1 ? "s" : "") + " for " + admCl + ".")
+                 : "Nothing to save.");
+      setTimeout(render, 120);
+      return;
+    }
+    /* Naming a partner or an executive ON THE CLIENT RECORD - permanent, and the screen says so.
+       It deliberately does NOT touch a delivery already stamped: that froze its own line-up, and
+       rewriting it would move money that has already been counted. */
+    if (act === "adm-name") {
+      if (!roleIs("admin")) { toast("Naming a partner is the owner\u2019s."); return; }
+      var anCl = t.getAttribute("data-cl") || "";
+      var anRec = clientByName(anCl);
+      if (!anRec) { toast("That client is not on this device yet - pull down to refresh."); return; }
+      var anSet = {}, anWords = [];
+      document.querySelectorAll(".admpick").forEach(function (elx) {
+        var nm = String(elx.value || "").trim(); if (!nm) return;
+        var role = String(elx.getAttribute("data-role") || "").toLowerCase();
+        anSet[role] = nm; anWords.push(incRoleLabel(role) + " " + nm);
+      });
+      if (!anWords.length) { toast("Pick a name first. Nothing was saved."); return; }
+      var anRow = { id: anRec.id, name: anRec.name };
+      var anEx = anSet.exec; delete anSet.exec;
+      Object.keys(anSet).forEach(function (r) { anRow[r] = anSet[r]; });
+      if (anEx) anRow.ownedBy = anEx;
+      save("clients", anRow, true);
+      toast("Set on " + anCl + ": " + anWords.join(", ") + ". It applies from the next delivery.");
+      setTimeout(render, 120);
+      return;
+    }
+    if (act === "adm-ch") {
+      if (!roleIs("admin")) { toast("That is the owner\u2019s.") ; return; }
+      S.modal = modalAdmChallan(t.getAttribute("data-id")); render(); return;
     }
     if (act === "bill-wa") {
       var wcl = hisabResolve(S.q), wc = clientByName(wcl) || {};
