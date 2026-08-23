@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.347";
+  var APP_VERSION = "6.9.348";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1268,6 +1268,38 @@
   var _moving = 0, _moved = {}, MOVED_TTL = 300000;
   function chMoveRemember(id, to, by) { _moved[String(id)] = { to: to, by: by || "", at: Date.now() }; }
   function chMoveForget(id) { delete _moved[String(id)]; }
+  /* ================= A RETURN MOVE SURVIVES A STALE PULL  (v6.9.348) =================
+     Challans got this on 15 August, after "i have to approve challan 2 to 3 times". Returns
+     never did, and the hole was the same shape: rt-move flips the status on the phone and
+     confirms with the server behind, and a quietSync that had already fetched a copy taken
+     BEFORE the move puts the old status straight back. applyMoves() walks S.data.challans and
+     nothing else, so nothing put it right again.
+
+     Nobody had reported it, which is exactly why it was worth fixing while the returns code was
+     open: five returns exist in the whole book, so the race has had almost no chance to fire. It
+     would have fired eventually, on a money row, and read as "it went back by itself". */
+  var _rtMoved = {};
+  function rtMoveRemember(id, to) { if (id && to) _rtMoved[String(id)] = { to: to, at: Date.now() }; }
+  function rtMoveForget(id) { delete _rtMoved[String(id)]; }
+  function applyRtMoves() {
+    if (!S.data) return;
+    var now = Date.now(), arr = S.data.returns || [], fixed = 0;
+    Object.keys(_rtMoved).forEach(function (id) {
+      var m = _rtMoved[id];
+      if (now - m.at > MOVED_TTL) { delete _rtMoved[id]; return; }
+      var row = null;
+      for (var i = 0; i < arr.length; i++) { if (arr[i] && String(arr[i].id) === id) { row = arr[i]; break; } }
+      if (!row) return;                                   /* missing entirely - applyConfirmed's job */
+      if (String(row.status || "") === m.to) { delete _rtMoved[id]; return; }   /* server caught up */
+      /* UNLIKE A CHALLAN, THIS IS NOT FORWARD-ONLY. A return can legitimately be put BACK to
+         Raised when it was booked in by mistake, and that correction must survive a stale pull
+         exactly as the booking-in does. The memory is short-lived and dropped the moment the
+         server agrees, so it can never hold a status against a later decision. */
+      row.status = m.to;
+      fixed++;
+    });
+    if (fixed) { try { console.warn("[EW] re-applied " + fixed + " confirmed return move(s) a re-sync had not caught up with"); } catch (x) { } }
+  }
   function applyMoves() {
     if (!S.data) return;
     var now = Date.now(), fixed = 0, arr = S.data.challans || [];
@@ -1473,7 +1505,7 @@ window.addEventListener("beforeunload", function (ev) {
     api("teamGet").then(function (r) {
       syncing = false; syncAt = Date.now();
       beatMark(r && r.stamp);          /* v6.9.314 - the stamp AS AT this book */
-      if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); splitCancelled(); snapSave(); renderBg(); }
+      if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); applyRtMoves(); splitCancelled(); snapSave(); renderBg(); }
       if (pendCount()) retryPending();
     }).catch(function () { syncing = false; });
   }
@@ -1649,11 +1681,11 @@ window.addEventListener("beforeunload", function (ev) {
   function refresh() {
     var snap = snapLoad();
     _bookTs = bookStamp();   /* v6.9.307 */
-    if (snap && snap.ok) { S.data = snap; applyPending(); applyConfirmed(); applyMoves(); splitCancelled(); S.busy = false; render(); }
+    if (snap && snap.ok) { S.data = snap; applyPending(); applyConfirmed(); applyMoves(); applyRtMoves(); splitCancelled(); S.busy = false; render(); }
     return api("teamGet").then(function (r) {
       S.busy = false;
       syncAt = Date.now();
-      if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); splitCancelled(); snapSave(); }
+      if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); applyRtMoves(); splitCancelled(); snapSave(); }
       render(); syncBanner();
       if (pendCount()) retryPending();
       try { prfFlush(); } catch (e) { }          /* delivery proofs taken out of signal */
@@ -14699,6 +14731,32 @@ function viewCatalogue() {
      The frozen line-up where the delivery has been stamped, the client's presets where it has
      not - the same three-way answer chIncRoles gives the payout engine, so this strip and his
      incentive card describe one delivery the same way. */
+  /* v6.9.348 - the per-man arithmetic, lifted out of admChallanStrip so the RETURN strip can use
+     the identical body. A delivery that says a man earned Rs 231 and a return that says he loses
+     Rs 199 must be two runs of one calculation, not two calculations that agree today. */
+  function admIncRows(cl, lines, line, fallbackBrand) {
+    return (line || []).map(function (m) {
+      var amt = 0, pcts = {};
+      (lines || []).forEach(function (x) {
+        if (x.job) return;
+        var r = admRateOf(cl, x.brand || fallbackBrand || "", m.role);
+        if (r > 0) { amt += x.amt * r / 100; pcts[String(r)] = 1; }
+      });
+      var ks = Object.keys(pcts);
+      return { role: m.role, name: m.name, amt: amt, rated: ks.length > 0,
+               pct: ks.length === 1 ? Number(ks[0]) : 0, mixed: ks.length > 1 };
+    });
+  }
+  /* One man's line, drawn the same way on both cards. `sign` is -1 on a return, and it changes
+     the words as well as the arithmetic: "loses" is not "earns". */
+  function admIncLine(r, sign) {
+    var neg = sign < 0;
+    return '<div style="display:flex;gap:8px;justify-content:flex-end;align-items:baseline;white-space:nowrap">' +
+      '<span style="color:#475569">' + esc(incRoleLabel(r.role)) + ' <b style="color:#0f172a">' + esc(r.name) + '</b></span>' +
+      '<span style="color:' + (r.rated ? (neg ? '#b91c1c' : '#0f766e') : '#b45309') + ';font-weight:700">' +
+      (r.rated ? (r.mixed ? "mixed" : r.pct + "%") + " \u00b7 " + (neg ? "\u2212" : "") + money(r.amt)
+               : "no rate") + '</span></div>';
+  }
   function admChallanStrip(c) {
     if (!roleIs("admin") || !c) return "";
     var cl = c.customerName || "";
@@ -14707,24 +14765,9 @@ function viewCatalogue() {
     var line = stamp ? stamp.filter(function (x) { return x && x.on !== false; })
                             .map(function (x) { return { role: x.role, name: x.name }; })
                      : incLineup(c);
-    var rows = line.map(function (m) {
-      var amt = 0, pcts = {};
-      priced.forEach(function (x) {
-        if (x.job) return;
-        var r = admRateOf(cl, x.brand || c.brand || "", m.role);
-        if (r > 0) { amt += x.amt * r / 100; pcts[String(r)] = 1; }
-      });
-      var ks = Object.keys(pcts);
-      return { role: m.role, name: m.name, amt: amt, rated: ks.length > 0,
-               pct: ks.length === 1 ? Number(ks[0]) : 0, mixed: ks.length > 1 };
-    });
+    var rows = admIncRows(cl, priced, line, c.brand);
     var body = rows.length
-      ? rows.map(function (r) {
-          return '<div style="display:flex;gap:8px;justify-content:flex-end;align-items:baseline;white-space:nowrap">' +
-            '<span style="color:#475569">' + esc(incRoleLabel(r.role)) + ' <b style="color:#0f172a">' + esc(r.name) + '</b></span>' +
-            '<span style="color:' + (r.rated ? '#0f766e' : '#b45309') + ';font-weight:700">' +
-            (r.rated ? (r.mixed ? "mixed" : r.pct + "%") + " \u00b7 " + money(r.amt) : "no rate") + '</span></div>';
-        }).join("")
+      ? rows.map(function (r) { return admIncLine(r, 1); }).join("")
       : '<div style="color:#b45309;font-weight:600">Nobody earns on this delivery</div>';
     /* v6.9.345 - "make this compact one, lots of space empty utilize". The button used to sit on
        a line of its own under the men, which made this strip five lines deep and set the height
@@ -14740,6 +14783,45 @@ function viewCatalogue() {
       (stamp ? '<div style="color:#94a3b8;font-size:10.5px">frozen when it was passed into hisab</div>' : '') +
       '</div>';
   }
+  /* ---- WHAT A RETURN TAKES BACK  (v6.9.348, 23 August 2026) ----
+     HIS WORDS: "show material return reverse effect on incentive like shown incentive gained on
+     challan."
+
+     Exactly right, and the gap was mine: 6.9.344 put the earnings on the delivery card and left
+     the return card silent, so the screen showed money going out to a partner and never showed
+     it coming back. A man reconciling a partner's month had to hold the reversal in his head.
+
+     IT READS THE RETURN'S OWN DELIVERY WHERE IT HAS ONE. incentiveBook reverses against
+     retChallan(r) - the challan the goods came back from - so a partner ticked OFF that delivery
+     is not reversed for an incentive he never earned. This asks the same question through the
+     same function; where the return names no challan, both fall back to the client record, and
+     both do so identically. */
+  function admReturnStrip(r) {
+    if (!roleIs("admin") || !r) return "";
+    var cl = r.customerName || "";
+    var lines = returnLines(r);
+    var rCh = retChallan(r);
+    var stamp = rCh ? chIncStamp(rCh) : null;
+    var line = stamp ? stamp.filter(function (x) { return x && x.on !== false; })
+                            .map(function (x) { return { role: x.role, name: x.name }; })
+                     : admLineup(cl);
+    var rows = admIncRows(cl, lines, line, "");
+    var body = rows.length
+      ? rows.map(function (x) { return admIncLine(x, -1); }).join("")
+      : '<div style="color:#b45309;font-weight:600">Nobody is reversed on this return</div>';
+    var tot = rows.reduce(function (a, x) { return a + (x.rated ? x.amt : 0); }, 0);
+    return '<div style="text-align:right;font-size:11.5px;line-height:1.55;margin-top:5px;' +
+      'border-top:1px dashed #fecaca;padding-top:5px">' +
+      '<div style="font-size:10px;letter-spacing:.06em;color:#7f1d1d;font-weight:700;margin-bottom:2px">' +
+      'OWNER ONLY \u00b7 COMES BACK OFF THE INCENTIVE</div>' + body +
+      (tot > 0 ? '<div style="color:#7f1d1d;font-weight:700;margin-top:2px">' +
+        '\u2212' + money(tot) + ' in all</div>' : '') +
+      '<div style="color:#94a3b8;font-size:10.5px;margin-top:2px">' +
+      (rCh ? 'reversed against ' + esc(rCh.challanNo || "its delivery") + (stamp ? ", on its frozen line-up" : "")
+           : 'no challan named on this return, so it reverses against the client record') +
+      '</div></div>';
+  }
+
   /* The screen behind that button: only the brands THIS delivery carries, so it is three rows and
      not the client's whole history. */
   function modalAdmChallan(id) {
@@ -16408,7 +16490,12 @@ function viewCatalogue() {
           (chProofAny(r).has ? proofSealFor(r, 40) : noProofPill()) + '</span>' +
         '</h3>' +
         rSite +
-        '<div style="text-align:right;font-size:12px;color:#b91c1c;flex:0 0 auto">Credit to client<br><b>&minus;' + money(rSub) + '</b></div></div>' +
+        '<div style="text-align:right;flex:0 0 auto">' +
+          '<div style="font-size:12px;color:#b91c1c">Credit to client<br><b>&minus;' + money(rSub) + '</b></div>' +
+          /* v6.9.348 - and what it takes back off the men, in the same place the delivery card
+             shows what it gave them. */
+          admReturnStrip(r) +
+        '</div></div>' +
         (!chProofAny(r).has && canSee("returns")
           ? (canProof() ? '<div class="acts" style="margin-top:6px"><button class="btn sm" data-act="ch-proof" data-id="' + esc(r.id) + '" style="background:#b91c1c;border-color:#b91c1c" title="Photograph the paper signed at the godown when this material was counted back in">&#128206; Attach goods-in receipt</button></div>' : '')
           : '') +
@@ -16416,6 +16503,14 @@ function viewCatalogue() {
           '<button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(r.id) + '" ' +
             'style="border-color:#fecaca;color:#b91c1c">' +
             (_rExp ? '&#9662; Hide items' : '&#9656; Show ' + rl.length + ' item(s) returned') + '</button>' +
+          /* v6.9.348 - the way back from a mistaken booking-in. Owner only, confirmed, and it
+             writes an audit row: this is money coming off a client's credit. */
+          (roleIs("admin")
+            ? '<button class="btn sm ghost" data-act="rt-unreceive" data-id="' + esc(r.id) + '" ' +
+              'style="border-color:#fdba74;color:#92400e" ' +
+              'title="Booked in by mistake? Put it back to Raised - the credit comes off his account again.">' +
+              'Not back yet</button>'
+            : '') +
           '<div class="grow"></div>' +
           '<span style="font-size:13px;color:#b91c1c">Return total <b>&minus;' + money(rSub) + '</b></span></div>' +
         (!_rExp ? '' :
@@ -29820,17 +29915,105 @@ function viewCatalogue() {
       });
       return;
     }
+    /* ================= A TAP MUST NOT MOVE MONEY  (v6.9.348, 23 August 2026) =================
+       HE REPORTED IT WITHIN THE HOUR: "not got back retrun challan, but that gone away?"
+
+       NAVEEN3471/230826/R01 now reads status Received, receivedBy Mukesh Verma, and Rs 4,733 is
+       credited to Naveen Kundu - and the material is still on the site. Nothing vanished; it
+       moved out of the amber "not back yet" block and into the counted one further down, which
+       from where he was standing looks exactly like disappearing.
+
+       THAT IS MY FAULT, FROM SIX HOURS AGO. v6.9.347 put a solid amber "Received at godown"
+       button on a summary card at the top of HISAB: one tap, no confirmation, and it credits a
+       client's account. Pressing it is the natural thing to do while looking at a card about a
+       return, and nothing on it said the press meant "the goods are physically back in my
+       godown now".
+
+       THE RULE, FROM HERE ON: nothing that moves money moves on one tap. ADD TO HISAB has a
+       whole screen before it writes; this had nothing. It confirms now, naming the client, the
+       amount and what the press asserts - and it says WHERE the row went afterwards, because a
+       row that changes section without a word is a row that has disappeared. */
     if (act === "rt-move") {
       var rto = t.getAttribute("data-to");
+      var rrec0 = (S.data.returns || []).filter(function (x) { return x.id === id; })[0];
+      if (!rrec0) { toast("That return is not on this device yet - pull down to refresh."); return; }
+      if (rto === "Received") {
+        var rAmt = returnNet(rrec0), rWho = rrec0.customerName || "this client";
+        if (!window.confirm(
+          "Is this material actually back in the godown?\n\n" +
+          (rrec0.returnNo || "This return") + "  \u00b7  " + rWho + "\n" +
+          moneyAscii(rAmt) + " will be CREDITED to his account the moment you say yes, and the " +
+          "incentive on it comes back off whoever earned it.\n\n" +
+          "Press Cancel if the goods have not reached the godown yet - the return stays exactly " +
+          "where it is and nothing is lost.")) {
+          toast("Left as it is. Nothing was credited.");
+          return;
+        }
+      }
       t.disabled = true; t.textContent = "...";
+      /* v6.9.348 - the guard challans have had since v6.9.292 and returns never did. quietSync
+         replaces S.data wholesale; without this, a pull taken before the move landed puts the
+         old status straight back and the press looks as if it did nothing. */
+      _moving++;
+      var _rdone = function () { if (_moving > 0) _moving--; };
       api("returnMove", { id: id, to: rto }).then(function (r) {
+        _rdone();
         if (!r || !r.ok) { toast((r && r.error) || "Could not update."); render(); return; }
         var rec = S.data.returns.filter(function (x) { return x.id === id; })[0];
         if (rec) { rec.status = rto; if (rto === "Received") rec.receivedBy = r.by; }
-        toast(rto === "Received" ? "Booked in at the godown." : "Marked picked up.");
+        rtMoveRemember(id, rto);
+        /* WHERE IT WENT, in words. The row leaves one block and joins another, and silence
+           about that is what "gone away" was. */
+        toast(rto === "Received"
+          ? "Booked in. " + (rec ? moneyAscii(returnNet(rec)) : "") + " is now credited on " +
+            ((rec && rec.customerName) || "his") + "'s hisab \u2014 the card has moved down to " +
+            "the counted returns."
+          : "Marked picked up. It stays out of his account until it reaches the godown.");
         S.recon = null;
         render();
+      }, function (e) {
+        _rdone();
+        /* no answer is NOT a refusal - the write very likely landed. Same reasoning as the
+           challan move: forget a refusal, remember an unanswered one. */
+        rtMoveRemember(id, rto);
+        toast("No answer from the server. The move was probably saved - it will show on the " +
+              "next refresh. Nothing was lost.");
+        render();
       });
+      return;
+    }
+    /* v6.9.348 - AND A WAY BACK, because the press above is one a man will make by mistake and
+       a return wrongly credited is money on a client's account that should not be there.
+       Nothing is deleted: the status moves back and an audit row records who moved it and why. */
+    if (act === "rt-unreceive") {
+      if (!roleIs("admin")) { toast("Only the owner can put a booked-in return back."); return; }
+      var urec = (S.data.returns || []).filter(function (x) { return x.id === id; })[0];
+      if (!urec) { toast("That return is not on this device yet - pull down to refresh."); return; }
+      var uWhy = window.prompt(
+        "Put " + (urec.returnNo || "this return") + " back to \"Raised\"?\n\n" +
+        moneyAscii(returnNet(urec)) + " comes OFF " + (urec.customerName || "his") + "'s credit " +
+        "again, and the incentive goes back to whoever had it.\n\n" +
+        "Say in one line why (it is kept against the return):", "booked in by mistake - not back yet");
+      if (uWhy === null) { toast("Left as it is."); return; }
+      if (String(uWhy).trim().length < 4) { toast("Say in one line why. Nothing was changed."); return; }
+      _moving++;
+      var _udone = function () { if (_moving > 0) _moving--; };
+      api("returnMove", { id: id, to: "Raised" }).then(function (r) {
+        _udone();
+        if (!r || !r.ok) { toast((r && r.error) || "Could not update."); render(); return; }
+        var rec2 = S.data.returns.filter(function (x) { return x.id === id; })[0];
+        if (rec2) rec2.status = "Raised";
+        rtMoveRemember(id, "Raised");
+        save("audit", {
+          id: "RU-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+          createdAt: new Date().toISOString(), actor: S.user || "", action: "return:unreceive",
+          target: String(urec.returnNo || urec.id || "") + " / " + String(urec.customerName || ""),
+          detail: JSON.stringify({ rtId: id, no: urec.returnNo || "", client: urec.customerName || "",
+            amount: Math.round(returnNet(urec)), why: String(uWhy).trim(), by: S.user || "" })
+        }, true);
+        toast("Put back to Raised. The credit is off his account again.");
+        S.recon = null; render();
+      }, function () { _udone(); toast("No answer from the server. Nothing was changed."); render(); });
       return;
     }
     if (act === "rt-save") {
@@ -31354,7 +31537,7 @@ function viewCatalogue() {
            a fresh page load. It is here so the rule holds without exception: every place that
            replaces S.data runs BOTH registers. The next person to add a pull site copies a line
            that is already complete, instead of half of one. */
-        applyMoves();
+        applyMoves(); applyRtMoves();
         splitCancelled();
         S.warmStart = true;
         loadCatalog();
@@ -31455,7 +31638,7 @@ function viewCatalogue() {
              still runs, because a pending save still needs retrying whether or not the server's
              book moved. */
           if (!d.__same) {
-            S.data = d; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); splitCancelled(); snapSave();
+            S.data = d; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); applyRtMoves(); splitCancelled(); snapSave();
           }
           render(); syncBanner();
           if (pendCount()) retryPending();
