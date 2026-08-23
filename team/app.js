@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.334";
+  var APP_VERSION = "6.9.335";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -6154,7 +6154,12 @@ window.addEventListener("beforeunload", function (ev) {
           actor: r.actor || "", photo: !!d.photo, sig: !!d.sig,
           /* v6.9.212. Older proof rows have none - they read back as "" and the card shows the
              seal without a picture, which is exactly right and needs no migration. */
-          thumb: String(d.thumb || "")
+          thumb: String(d.thumb || ""),
+          /* v6.9.335 - the Telegram mirror has been WRITING this since v6.9.326 and nothing has
+             ever read it, so he has had no way to see whether the mirror works. Same rule as the
+             thumbnail: a row written before the mirror existed reads back as "" and simply shows
+             no Telegram chip, which is the truth about that row. */
+          tg: String(d.tg || "")
         };
       }
     });
@@ -6818,16 +6823,36 @@ window.addEventListener("beforeunload", function (ev) {
        difference between "on its way" and "has been refused four times". Anything that only
        tests it for truthiness is unaffected: an object with an err is still truthy, and a
        queued entry that has never failed still gets a plain true. */
+    /* a queued proof has not reached the server, so it cannot have been mirrored: tg is "" and
+       no Telegram chip is drawn. Saying otherwise would be the app claiming a backup exists for
+       a document still sitting on one phone. */
     if (q) return { has: true, queued: q.err ? { err: q.err, tries: q.tries || 0 } : true,
-                    url: "", thumb: q.thumb || "", by: q.by || "" };
+                    url: "", thumb: q.thumb || "", by: q.by || "", tg: "" };
     var p = challanProof(c.id);
-    if (!p) return { has: false, queued: false, url: "", thumb: "", by: "" };
-    return { has: true, queued: false, url: p.url || "", thumb: p.thumb || "", by: p.by || "" };
+    if (!p) return { has: false, queued: false, url: "", thumb: "", by: "", tg: "" };
+    return { has: true, queued: false, url: p.url || "", thumb: p.thumb || "", by: p.by || "",
+             tg: p.tg || "" };
+  }
+  /* v6.9.335 - THE MIRROR YOU CAN SEE.
+     "we can easily delete old receipts when required and have backup at telegram" - and then
+     nothing ever showed the t.me link, so the one question that matters about a backup - does
+     it actually work - could not be answered from the app at all. I told him to "open a t.me
+     link and see it work" when there was no link to open anywhere. This is that link.
+
+     A SIBLING of the receipt seal, never inside it: proofSeal returns an <a>, and an <a> inside
+     an <a> is not a link, it is two broken ones. */
+  function tgSeal(url) {
+    if (!url) return "";
+    return ' <a href="' + esc(url) + '" target="_blank" rel="noopener" ' +
+      'title="The same signed document, mirrored into the Telegram group. Tap to open it there." ' +
+      'style="display:inline-flex;align-items:center;gap:4px;background:#e0f2fe;border:1px solid #7dd3fc;' +
+      'color:#0369a1;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700;' +
+      'text-decoration:none;vertical-align:middle">Telegram <span style="opacity:.75">&#8599;</span></a>';
   }
   function proofSealFor(c, size) {
     var r = chProofAny(c);
     if (!r.has) return "";
-    return proofSeal(r.url, r.thumb, r.queued, r.by, size);
+    return proofSeal(r.url, r.thumb, r.queued, r.by, size) + tgSeal(r.tg);
   }
   function proofLink(c) {
     /* v6.9.212 - the queued copy carries its own thumbnail, so the picture of the paper is on the
@@ -18628,6 +18653,40 @@ function viewCatalogue() {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
 
+  /* ---- HAS THE TELEGRAM MIRROR EVER RUN?  (v6.9.335) ----
+     Two features shipped this month that have never once run for real, and a feature nobody
+     has watched work is a feature you do not have. The chip above answers it one delivery at a
+     time; this answers it for the whole book, in one line, on the screen he opens when he wants
+     to know whether something is wrong. It counts rows - it does not ask Telegram anything. */
+  function tgMirrorCard() {
+    var rows = (S.data.audit || []).filter(function (r) {
+      return r && String(r.action || "") === "challan:proof";
+    });
+    var withTg = 0, newest = "", newestTg = "";
+    rows.forEach(function (r) {
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (String(r.createdAt || "") > newest) newest = String(r.createdAt || "");
+      if (d.tg) { withTg++; if (String(r.createdAt || "") > newestTg) newestTg = String(r.createdAt || ""); }
+    });
+    var ok = withTg > 0;
+    return '<div class="card" style="border-color:' + (ok ? '#7dd3fc;background:#f0f9ff' : '#fde68a;background:#fffbeb') + '">' +
+      '<h3 style="margin:0 0 2px">Telegram receipt mirror</h3>' +
+      '<div class="meta" style="font-size:12.5px">' +
+      (rows.length === 0
+        ? 'No signed receipt has been uploaded yet at all, so there is nothing to mirror. This will answer itself the first time one goes up.'
+        : ok
+          ? '<b style="color:#0369a1">Working.</b> ' + withTg + ' of ' + rows.length +
+            ' uploaded receipt(s) carry a Telegram link' +
+            (newestTg ? ', the most recent on <b>' + esc(d10(newestTg)) + '</b>' : '') +
+            '. Open one from the <b>Telegram</b> chip beside any receipt and check you can see the document there. ' +
+            'Until you have opened one and seen it, Drive stays the primary and nothing should be cleared.'
+          : '<b style="color:#b45309">Not proved yet.</b> ' + rows.length + ' receipt(s) have been uploaded and <b>none</b> carries a Telegram link' +
+            (newest ? ', the most recent on ' + esc(d10(newest)) : '') +
+            '. Either the mirror has not run since it shipped, or it ran and failed. Upload one receipt and look here again.') +
+      '</div></div>';
+  }
+
   var TABUSE_KEY = "ew_tabuse";
   function tabUseAll() {
     try { return JSON.parse(localStorage.getItem(TABUSE_KEY) || "{}") || {}; } catch (e) { return {}; }
@@ -18690,6 +18749,7 @@ function viewCatalogue() {
       '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="health-refresh">Re-scan</button></div></div>';
 
     h += lineTestCard();
+    h += tgMirrorCard();
     h += tabUseCard();
     h += chNoGapCard();
     try { h += driveCard(); } catch (e) { console.warn("[drive] card:", e); }
