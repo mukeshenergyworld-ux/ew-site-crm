@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.355";
+  var APP_VERSION = "6.9.356";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1937,6 +1937,9 @@ window.addEventListener("beforeunload", function (ev) {
   }
   document.addEventListener("input", function (ev) {
     var t = ev && ev.target;
+    /* v6.9.356 - the challan's product search. Only the picker is redrawn, so the cursor stays
+       in the box and the half-filled form around it is not disturbed. */
+    if (t && t.id === "ch_q") { if (S.ch) { S.ch.q = t.value; repaintChPick(t); } return; }
     if (t && t.id === "inc_q") { incFilter(); return; }
     if (t && t.id === "hsb_extra") {
       var nx = document.getElementById("hsb_noextra");
@@ -1957,6 +1960,9 @@ window.addEventListener("beforeunload", function (ev) {
 
   document.addEventListener("change", function (ev) {
     var t = ev && ev.target;
+    /* v6.9.356 - the off-list item's brand box. Changing it re-draws the little form so the
+       discount and the price it will actually bill at are true BEFORE he saves, not after. */
+    if (t && t.id === "ox_brand") { chxSyncOther(); return; }
     if (!t || t.id !== "hsb_noextra") return;
     if (t.checked) { var ex = document.getElementById("hsb_extra"); if (ex) ex.value = ""; }
     hsbExtraPaint();
@@ -15999,6 +16005,123 @@ function viewCatalogue() {
      cannot disagree about what one of these lines is. */
   var JOB_CODE = "JOBWORK";
   function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
+  /* ================= LABOUR, AND A THING THAT IS NOT IN THE LIST  (v6.9.356, 23 Aug 2026) ====
+     HIS WORDS: "what if only to register a job work for any client, or enter a item not in
+     price list with description, made arrangemetn for that also".
+
+     JOB WORK has existed since Challan v1.37.0 and could only ever be raised from the Challan
+     app. THIS form - the one he had open when he asked - had no way to bill labour at all, so
+     a challan for labour alone, or labour plus material, could not be made here. jobLine() and
+     num() are lifted BYTE FOR BYTE from that app, so a job line written from either one is the
+     same row on the same sheet and t_apps_agree can hold them to it.
+
+     THE OFF-LIST ITEM is new to both, and it raises two money questions that were his to answer
+     rather than mine to assume. He answered both:
+
+       * "Ask which brand it is" - so the line carries a brand he taps, and its discount and
+         everyone's incentive then work through the machinery that already exists. No new money
+         rule was invented, and nothing silently earns at a brand nobody chose.
+       * "Description, quantity, rate" - not one lump sum. That matters months later: if some of
+         it comes back, retSourceLine() finds the original line BY CODE and credits what he was
+         actually billed. A lump could never be returned honestly.
+
+     Which is why every off-list line gets its OWN code. Two of them on one challan are two rows,
+     not one row fought over by two quantity boxes - and a return of either can still find its
+     own price. */
+  function num(v) {
+    if (typeof v === "number") return isFinite(v) ? v : 0;
+    var n = Number(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
+    return isFinite(n) ? n : 0;
+  }
+  function jobLine(desc, amt) {
+    return { code: JOB_CODE, desc: String(desc || "").trim(), unit: "job",
+             qty: 1, rate: Math.round(num(amt)), brand: "", disc: 0, job: true };
+  }
+  var OTHER_PFX = "X-";
+  function isOtherLine(l) { return !!(l && String(l.code || "").indexOf(OTHER_PFX) === 0); }
+  function otherLine(desc, qty, rate, brand) {
+    return { code: OTHER_PFX + Date.now(), desc: String(desc || "").trim(), unit: "No's",
+             qty: num(qty) || 1, rate: Math.round(num(rate)), brand: String(brand || ""), job: false };
+  }
+  /* A <select> is changed, not clicked - and a data-act on it would have fired the click
+     handler and re-rendered the page out from under the open dropdown. So the brand box is
+     wired to the change listener instead, and both paths call this one function. */
+  function chxSyncOther() {
+    if (!S.chx || S.chx.kind !== "other") return;
+    S.chx.desc = val("ox_desc"); S.chx.qty = val("ox_qty");
+    S.chx.rate = val("ox_rate"); S.chx.brand = val("ox_brand");
+    var restore = keepFields(CH_FIELDS);
+    keepScroll = true;
+    S.modal = modalChallan(); render(); restore();
+  }
+  /* The two buttons, and the little form that replaces them once one is tapped. Deliberately
+     ABOVE the brand grid: he screenshotted that grid asking where this was, and a button under
+     twenty-six brand chips is a button nobody finds. */
+  function chExtraBox() {
+    var x = S.chx;
+    if (!x) {
+      var hasJob = ((S.ch && S.ch.items) || []).filter(isJobLine)[0];
+      return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:9px 0 3px">' +
+        '<button class="btn sm ghost" data-act="ch-job-open" style="border-color:#c7d2fe;color:#4338ca">' +
+        '&#128295; ' + (hasJob ? 'Job work \u2014 change it' : 'Job work / Labour charges') + '</button>' +
+        '<button class="btn sm ghost" data-act="ch-other-open" style="border-color:#fde68a;color:#92400e">' +
+        '&#43; Item not in the price list</button></div>';
+    }
+    var head = '<div style="border:1px solid ' + (x.kind === "job" ? '#c7d2fe' : '#fde68a') +
+      ';background:' + (x.kind === "job" ? '#eef2ff' : '#fffbeb') + ';border-radius:10px;padding:10px 12px;margin:9px 0 3px">';
+    if (x.kind === "job") {
+      return head +
+        '<b style="color:#3730a3">Job work / Labour charges</b>' +
+        '<div class="meta" style="font-size:12px;color:#475569;margin:3px 0 8px">One line on the ' +
+        'challan and in his hisab with everything else. It carries no brand and no discount, and ' +
+        'it earns nobody an incentive &mdash; labour is ours, not a partner\u2019s.</div>' +
+        '<label for="jw_desc">What was done</label>' +
+        '<input id="jw_desc" value="' + esc(x.desc || "") + '" placeholder="e.g. Concealed piping labour, 2nd floor"/>' +
+        '<label for="jw_amt">Total amount</label>' +
+        '<input id="jw_amt" inputmode="numeric" value="' + esc(x.amt || "") + '" placeholder="0"/>' +
+        '<div style="display:flex;gap:8px;margin-top:9px">' +
+        '<button class="btn sm ghost" data-act="ch-x-cancel">Cancel</button>' +
+        '<button class="btn sm" data-act="ch-job-add">Put it on the challan</button></div></div>';
+    }
+    var cn = String((S.ch && S.ch.client) || "");
+    var brands = (S.data.brands || []).filter(function (br) {
+      return String(br.active || "Y").toUpperCase() !== "N";
+    }).map(function (br) { return br.brand; }).slice().sort(alphaBy(function (b) { return b; }));
+    var pick = String(x.brand || "");
+    /* say the discount out loud before he saves, not after. It is the client's own preset for
+       whichever brand he taps, and it is what this line will actually be billed at. */
+    var dpct = pick ? clientDiscount(cn, pick) : 0;
+    var rNum = num(x.rate), qNum = num(x.qty) || 1;
+    var net = Math.round(rNum * (1 - dpct / 100));
+    return head +
+      '<b style="color:#92400e">An item that is not in the price list</b>' +
+      '<div class="meta" style="font-size:12px;color:#475569;margin:3px 0 8px">Type it once here. ' +
+      'Tap the brand it belongs to and it is billed, discounted and earns exactly like any other ' +
+      'line of that brand &mdash; and if some of it comes back later it is credited at this rate, ' +
+      'not guessed.</div>' +
+      '<label for="ox_desc">What it is</label>' +
+      '<input id="ox_desc" value="' + esc(x.desc || "") + '" placeholder="e.g. 63mm brass union, bought from the market"/>' +
+      '<div class="grid2">' +
+      '<div><label for="ox_qty">Quantity</label><input id="ox_qty" inputmode="decimal" value="' + esc(x.qty || "") + '" placeholder="1"/></div>' +
+      '<div><label for="ox_rate">Rate each (before discount)</label><input id="ox_rate" inputmode="numeric" value="' + esc(x.rate || "") + '" placeholder="0"/></div>' +
+      '</div>' +
+      '<label for="ox_brand">Which brand is it</label>' +
+      '<select id="ox_brand">' +
+      '<option value=""' + (pick ? '' : ' selected') + '>\u2014 tap a brand \u2014</option>' +
+      brands.map(function (b) {
+        return '<option value="' + esc(b) + '"' + (b === pick ? ' selected' : '') + '>' + esc(b) + '</option>';
+      }).join("") + '</select>' +
+      (pick
+        ? '<div style="font-size:12.5px;color:#0f766e;margin-top:6px">' +
+          esc(cn || "This client") + '\u2019s ' + esc(pick) + ' discount is <b>' + dpct + '%</b>' +
+          (rNum > 0 ? ' \u00b7 bills at <b>' + money(net) + '</b> each, <b>' + money(Math.round(net * qNum)) + '</b> in all' : '') +
+          '</div>'
+        : '<div style="font-size:12.5px;color:#b45309;margin-top:6px">Tap a brand and it will show ' +
+          'you the discount and the price this line will actually be billed at.</div>') +
+      '<div style="display:flex;gap:8px;margin-top:9px">' +
+      '<button class="btn sm ghost" data-act="ch-x-cancel">Cancel</button>' +
+      '<button class="btn sm" data-act="ch-other-add">Put it on the challan</button></div></div>';
+  }
   function pricedLines(c, cl) {
     var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
     var priced = items.map(function (i) {
@@ -25040,9 +25163,77 @@ function viewCatalogue() {
      2 shows only that brand's categories (indigo). Pick one and Step 3 lists the products with photo
      and a +/- stepper. Tap a breadcrumb's × to change that level. The photo is there to stop picking
      the wrong 110mm fitting - it never reaches the printed challan. */
+  /* ================= FIND IT BY ITS NAME  (v6.9.356, 23 Aug 2026) =================
+     HIS WORDS: "also give option to search product by name or code, sometimes there is single
+     items and it will be fast to search and add product insted to follow brand, family, product
+     seqence".
+
+     The Challan app has had this since 20 August, from the same complaint. The CRM's own
+     builder still made a man walk brand -> category -> product for a single elbow whose brand
+     nobody remembers. Same rule as over there: TWO characters is the floor, because one letter
+     matches half the catalogue and drawing it is slower than not answering.
+
+     Deliberately searches CODE as well as name and brand - he asked for both, and half the
+     time the code is what is written on the box in front of him. */
+  function chProdsMatching(q) {
+    var s = String(q || "").toLowerCase().trim();
+    if (s.length < 2) return [];
+    return PRODUCTS.filter(function (p) {
+      return (String(p.desc || "") + " " + String(p.code || "") + " " +
+              String(p.brand || "") + " " + String(realBrand(p) || "") + " " +
+              String(p.family || "") + " " + String(p.cat || "")).toLowerCase().indexOf(s) >= 0;
+    }).slice(0, 60);
+  }
+  /* One product row, so a search hit and a shelf item are the same thing on screen and the
+     same +/- and quantity box work on both without either being told about the other. */
+  function chProw(p, z) {
+    var ex = ((z && z.items) || []).filter(function (i) { return i.code === p.code; })[0];
+    return '<div class="prow ' + (ex ? "picked" : "") + '">' +
+      picCell(p) +
+      '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
+      '<div class="pmeta">' + esc(p.code) + ' &middot; ' + esc(p.unit) +
+      (p.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : '') + '</div></div>' +
+      '<div class="pqty">' +
+      '<button class="stp" data-act="ch-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
+      '<input class="ch-q" data-code="' + esc(p.code) + '" inputmode="decimal" value="' + esc(ex ? qShow(ex.qty) : "") + '" placeholder="0"/>' +
+      '<button class="stp" data-act="ch-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
+      '</div></div>';
+  }
+  /* Repaints ONLY the picker. A full modal rebuild on every keystroke would take the cursor
+     with it, and the challan form around it is full of things he has already typed. */
+  function repaintChPick(focus) {
+    var box = document.getElementById("ch_pick");
+    if (!box) return;
+    var pos = null;
+    if (focus && focus.id === "ch_q") { try { pos = [focus.selectionStart, focus.selectionEnd]; } catch (e) {} }
+    box.innerHTML = chPicker();
+    var q = document.getElementById("ch_q");
+    if (q && focus && focus.id === "ch_q") {
+      q.focus();
+      if (pos) { try { q.setSelectionRange(pos[0], pos[1]); } catch (e) {} }
+    }
+  }
   function chPicker() {
     ensurePickerCss();
     var z = S.ch;
+    var qs = String((z && z.q) || "");
+    var qbox = '<div style="margin:9px 0 4px"><input id="ch_q" value="' + esc(qs) + '" ' +
+      'placeholder="Search a product by name, code or brand\u2026" ' +
+      'style="width:100%;padding:9px 11px;font-size:14px;border:1px solid #cbd5e1;border-radius:8px"/></div>';
+    if (qs.trim().length >= 2) {
+      var hits = chProdsMatching(qs);
+      if (!hits.length) {
+        return qbox + '<div class="meta" style="padding:10px 2px;color:#b45309">Nothing in the ' +
+          'catalogue matches \u201c' + esc(qs) + '\u201d \u2014 name, code or brand. If it is a ' +
+          'genuinely new product, add it to the catalogue; if it is a one-off, use ' +
+          '<b>+ Item not in the price list</b> above.</div>';
+      }
+      return qbox + '<div class="meta" style="margin:0 2px 6px;color:#64748b">' + hits.length +
+        (hits.length === 60 ? '+' : '') + ' match' + (hits.length === 1 ? '' : 'es') +
+        ' anywhere in the catalogue \u2014 set a quantity and it is on the challan. ' +
+        'Clear the box to go back to browsing by brand.</div>' +
+        '<div class="plist">' + hits.map(function (p) { return chProw(p, z); }).join("") + '</div>';
+    }
     /* v6.9.303 - "manage alphabatically everywhere". This read S.data.brands in SHEET-ROW
        order, so the challan's brand step came out Huliot HT PRO, Heliroma, FIMA, Stellar...
        6.9.300 sorted the brand lists that go through brandList(); these five pickers read the
@@ -25053,7 +25244,7 @@ function viewCatalogue() {
 
     /* STEP 1 — no brand yet: show ONLY brands */
     if (!z.brand) {
-      return '<div class="ew-picklabel"><span class="step">1</span>Tap a brand</div>' +
+      return qbox + '<div class="ew-picklabel"><span class="step">1</span>Tap a brand</div>' +
         '<div class="ew-pickgrid">' + brands.map(function (br) {
           return '<button class="ew-pickbtn brand" data-act="ch-brand" data-brand="' + esc(br.brand) + '">' + esc(br.brand) + '</button>';
         }).join("") + '</div>';
@@ -25070,7 +25261,7 @@ function viewCatalogue() {
        Same action, said out loud, and only once there is something to protect. */
     var _anyPicked = ((z.items || []).length > 0);
     var _keepMsg = "Goes back to the list of brands. Everything already picked stays on the challan.";
-    var bar = '<div class="ew-pickbar">' +
+    var bar = qbox + '<div class="ew-pickbar">' +
       '<button class="ew-crumb" data-act="ch-brandclear" title="' + esc(_keepMsg) + '">' +
       '<span class="tag">Brand</span> ' + esc(z.brand) + ' <span class="cx">&#10005;</span></button>' +
       (z.family ? '<button class="ew-crumb" data-act="ch-famclear" title="Goes back to this brand’s categories. Nothing picked is lost."><span class="tag">Category</span> ' + esc(z.family) + ' <span class="cx">&#10005;</span></button>' : '') +
@@ -25099,16 +25290,7 @@ function viewCatalogue() {
     /* STEP 3 — products in the chosen brand+category */
     var h = bar + '<div class="ew-picklabel"><span class="step">3</span>Set quantities</div><div class="plist">';
     brandProducts(z.brand).filter(function (p) { return famSame(p.family, z.family); }).forEach(function (p) {
-      var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
-      h += '<div class="prow ' + (ex ? "picked" : "") + '">' +
-        picCell(p) +
-        '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
-        '<div class="pmeta">' + esc(p.code) + ' &middot; ' + esc(p.unit) + '</div></div>' +
-        '<div class="pqty">' +
-        '<button class="stp" data-act="ch-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
-        '<input class="ch-q" data-code="' + esc(p.code) + '" inputmode="decimal" value="' + esc(ex ? qShow(ex.qty) : "") + '" placeholder="0"/>' +
-        '<button class="stp" data-act="ch-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
-        '</div></div>';
+      h += chProw(p, z);
     });
     return h + '</div>';
   }
@@ -25254,7 +25436,8 @@ function viewCatalogue() {
       /* v6.9.273 - as many brands as the job needs, on one challan */
       (picked.length ? '<span class="meta" style="font-weight:400;font-size:11.5px;margin-left:8px;color:#64748b">from any brand \u2014 add as many as the job needs</span>' : '') +
       '</h3>' +
-      chPicker() +
+      chExtraBox() +
+      '<div id="ch_pick">' + chPicker() + '</div>' +
       (picked.length
         ? '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e2e8f0">' +
             '<thead><tr style="background:#0b3b36;color:#fff">' +
@@ -25265,8 +25448,21 @@ function viewCatalogue() {
             picked.map(function (i, idx) {
               return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (idx % 2 ? '#f8fafc' : '#fff') + '">' +
                 '<td style="padding:6px 8px;color:#64748b;font-weight:700">' + (idx + 1) + '</td>' +
-                '<td style="padding:6px 8px"><b>' + esc(i.desc) + '</b><br><span style="font-size:11px;color:#94a3b8">' + esc(i.code) + '</span></td>' +
-                '<td style="padding:4px 6px;text-align:center"><input class="ch-q" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(qShow(i.qty)) + '" style="width:76px;text-align:center;padding:7px;font-size:15px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px"/></td>' +
+                /* v6.9.356 - a raw code under the description is right for a catalogue line and
+                   useless for the other two. JOBWORK says nothing a man wants to read, and
+                   X-1787504013919 says less than nothing. Each line now says what it is. */
+                '<td style="padding:6px 8px"><b>' + esc(i.desc) + '</b><br>' +
+                (isJobLine(i)
+                  ? '<span class="pill" style="background:#ede9fe;color:#5b21b6;font-size:10.5px">job work</span>' +
+                    ' <span style="font-size:11px;color:#94a3b8">' + money(Number(i.rate) || 0) + ' \u00b7 no discount, earns nobody</span>'
+                  : isOtherLine(i)
+                    ? '<span class="pill" style="background:#fef3c7;color:#92400e;font-size:10.5px">not in the price list</span>' +
+                      ' <span style="font-size:11px;color:#94a3b8">' + esc(i.brand || "no brand") + ' \u00b7 ' + money(Number(i.rate) || 0) + ' each</span>'
+                    : '<span style="font-size:11px;color:#94a3b8">' + esc(i.code) + '</span>') + '</td>' +
+                '<td style="padding:4px 6px;text-align:center">' +
+                (isJobLine(i)
+                  ? '<span style="font-weight:700;color:#64748b" title="A job is one job - the amount is the amount">1</span>'
+                  : '<input class="ch-q" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(qShow(i.qty)) + '" style="width:76px;text-align:center;padding:7px;font-size:15px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px"/>') + '</td>' +
                 '<td style="text-align:center"><button class="stp" data-act="ch-qty" data-code="' + esc(i.code) + '" data-d="-1" title="reduce by one">&minus;</button></td>' +
                 '</tr>';
             }).join("") +
@@ -27149,6 +27345,7 @@ function viewCatalogue() {
        The mask still swallows the click so the main screen stays inert underneath. */
     if (act === "mask") { return; }
     if (act === "close") {
+      S.chx = null;   /* v6.9.356 - the job-work / off-list box never outlives its challan */
       /* cancelling a partner form that was opened FROM the client form goes back to the client
          form with everything still typed - never dumps the user's half-entered lead. */
       if (S.clDraft) {
@@ -28778,6 +28975,7 @@ function viewCatalogue() {
          honest numbers instead of one misleading one. It also makes `amount` the gross, which
          is what the rest of the app already assumes - the deliveries screen prints
          money(c.amount) + " at list". */
+      S.chx = null;
       S.ch = {
         brand: String(wqc.brand || "").split(",")[0].trim(),
         family: "", client: wqc.client, fromQuote: wqc.quoteNo, disc: 0,
@@ -30233,6 +30431,7 @@ function viewCatalogue() {
     }
 
     if (act === "ch-new") {
+      S.chx = null;
       S.ch = { brand: "", family: "", items: [] }; S.modal = modalChallan(); render(); return; }
     /* ---- v6.9.235: the two doors out of a client's hisab into the delivery forms ----
        Same forms, same save path, same draft-and-confirm. Only the starting values differ. */
@@ -30242,6 +30441,7 @@ function viewCatalogue() {
       var _hc = clientByName(_hn) || {};
       if (act === "hisab-ch") {
         if (!canSee("challans")) { toast("Challans are not open to you."); return; }
+        S.chx = null;
         S.ch = { brand: "", family: "", items: [], client: _hn, loc: _hc.location || "" };
         S.modal = modalChallan();
       } else {
@@ -30271,6 +30471,7 @@ function viewCatalogue() {
         return { code: i.code, desc: i.desc || _p.desc || i.code,
                  unit: i.unit || _p.unit || "No's", qty: Number(i.qty) || 0 };
       }).filter(function (i) { return i.code && i.qty > 0; });
+      S.chx = null;
       S.ch = { brand: "", family: "", client: _sc.customerName, site: _sc.site || "",
                loc: _sc.location || _cc.location || "", assoc: _sc.associate || "",
                copyOf: _sc.challanNo || "", items: _items };
@@ -30807,11 +31008,58 @@ function viewCatalogue() {
     }
     if (act === "ch-brand" || act === "ch-fam" || act === "ch-brandclear" || act === "ch-famclear") {
       var restoreC = keepFields(CH_FIELDS);
-      if (act === "ch-brand") { S.ch.brand = t.getAttribute("data-brand"); S.ch.family = ""; }
+      if (act === "ch-brand") { S.ch.brand = t.getAttribute("data-brand"); S.ch.family = ""; S.ch.q = ""; }
       else if (act === "ch-fam") { S.ch.family = t.getAttribute("data-fam"); }
       else if (act === "ch-brandclear") { S.ch.brand = ""; S.ch.family = ""; }  /* back to Step 1 */
       else if (act === "ch-famclear") { S.ch.family = ""; }                     /* back to Step 2 */
       S.modal = modalChallan(); render(); restoreC(); return;
+    }
+    /* ================= THE TWO NEW LINES  (v6.9.356) =================
+       Everything stays inside the challan builder. Opening a second modal over this one would
+       take every field he has already typed with it - which is why ch-qty has used
+       keepFields(CH_FIELDS) since long before today, and why these do the same. */
+    if (act === "ch-job-open" || act === "ch-other-open" || act === "ch-x-cancel") {
+      if (!S.ch) { toast("Open a challan first."); return; }
+      if (act === "ch-x-cancel") S.chx = null;
+      else if (act === "ch-job-open") {
+        /* one job line per challan: a second would be a second row wearing the same code, and
+           the quantity box of whichever came first would answer for both. Open the one that is
+           already there instead of quietly making a twin. */
+        var jOld = (S.ch.items || []).filter(isJobLine)[0];
+        S.chx = { kind: "job", desc: (jOld && jOld.desc) || "", amt: jOld ? String(jOld.rate || "") : "" };
+        if (jOld) S.ch.items = (S.ch.items || []).filter(function (i) { return !isJobLine(i); });
+      } else if (act === "ch-other-open") {
+        S.chx = { kind: "other", desc: "", qty: "", rate: "", brand: "" };
+      }
+      var restoreX = keepFields(CH_FIELDS);
+      keepScroll = true;
+      S.modal = modalChallan(); render(); restoreX();
+      return;
+    }
+    if (act === "ch-job-add" || act === "ch-other-add") {
+      if (!S.ch) { toast("Open a challan first."); return; }
+      S.ch.items = S.ch.items || [];
+      if (act === "ch-job-add") {
+        var jd = val("jw_desc"), ja = num(val("jw_amt"));
+        /* both, and said separately - "it needs a description" and "it needs an amount" are
+           different things to have got wrong and a man should be told which */
+        if (!jd) { toast("Say what the job work was \u2014 it goes on the customer's bill."); return; }
+        if (!(ja > 0)) { toast("Put the total amount for the job work."); return; }
+        S.ch.items.push(jobLine(jd, ja));
+        toast("Job work added \u2014 " + money(Math.round(ja)) + ". Carry on with the material.");
+      } else {
+        var od = val("ox_desc"), oq = num(val("ox_qty")) || 1, orr = num(val("ox_rate")), ob = val("ox_brand");
+        if (!od) { toast("Say what the item is \u2014 it is printed on his challan."); return; }
+        if (!(orr > 0)) { toast("Put the rate for one of them, before discount."); return; }
+        if (!ob) { toast("Tap the brand it belongs to \u2014 that is what sets its discount and whose incentive it earns."); return; }
+        S.ch.items.push(otherLine(od, oq, orr, ob));
+        toast(esc(od).slice(0, 30) + " added \u2014 " + oq + " \u00d7 " + money(orr) + " (" + ob + ").");
+      }
+      S.chx = null;
+      var restoreA = keepFields(CH_FIELDS);
+      keepScroll = true;
+      S.modal = modalChallan(); render(); restoreA();
+      return;
     }
     if (act === "ch-qty") {
       var pcode = t.getAttribute("data-code");
@@ -30860,6 +31108,7 @@ function viewCatalogue() {
       if (!ce) return;
       if (ce.status === "Dispatched" || ce.status === "Received") { toast("A dispatched challan can't be edited."); return; }
       var eItems = []; try { eItems = JSON.parse(ce.itemsJson || "[]"); } catch (e) { eItems = []; }
+      S.chx = null;
       S.ch = {
         editId: ce.id, editNo: ce.challanNo, editStatus: ce.status || "Draft",
         brand: ce.brand || "", family: "",
@@ -30880,7 +31129,7 @@ function viewCatalogue() {
          isClient(), so no existing customer is stopped. */
       if (!isClient(cn)) { S.modal = modalNotYetClient(cn); render(); return; }
       var lines = (S.ch && S.ch.items) || [];
-      if (!lines.length) { toast("Pick at least one product."); return; }
+      if (!lines.length) { toast("Add at least one line \u2014 material, job work, or an item not in the price list."); return; }
       var cObj = clientByName(cn) || {};
       var siteName = val("m_site");
       var siteObj = S.data.sites.filter(function (x) { return x.name === siteName; })[0] || {};
@@ -30892,6 +31141,18 @@ function viewCatalogue() {
          challans). Admin can override a line product-wise later in the Billing screen. */
       var chBrandV = val("m_brand") || (S.ch && S.ch.brand) || "";
       lines = lines.map(function (l) {
+        /* ---- LABOUR HAS NO BRAND, SO IT MUST NOT BORROW ONE  (v6.9.356) ----
+           This mapping fell back to the CHALLAN's brand for any line the catalogue did not know,
+           and then priced a discount off it. On a job line that is a discount nobody typed, on
+           work nobody discounted: a client with a 12% Heliroma preset would have had his labour
+           bill quietly cut by 12%, and the partner's incentive figured on the difference. The
+           Challan app has guarded this since v1.37.0 - the CRM had no job line to guard until
+           today, and would have got it wrong the first time one was made.
+           `job` is written out as well as the code, so a reader can ask either question. */
+        if (isJobLine(l)) {
+          return { code: l.code, desc: l.desc, unit: l.unit, qty: l.qty, rate: l.rate,
+                   brand: "", disc: 0, job: true };
+        }
         var prod = (PRODUCTS.filter(function (x) { return x.code === l.code; })[0]) || {};
         var lb = l.brand || realBrand(prod) || chBrandV;
         var pd = (l.disc != null && l.disc !== "") ? Number(l.disc) : clientDiscount(cn, lb);
@@ -30935,7 +31196,7 @@ function viewCatalogue() {
          still in it, instead of the whole challan vanishing behind a "kept safe" message that
          was not true - nothing had been journaled at that point because save() had not run. */
       var chDraft = S.ch, chSaved = false;
-      S.modal = null; S.ch = null;
+      S.modal = null; S.ch = null; S.chx = null;
 
       /* ----- EDIT an existing (pre-dispatch) challan ----- */
       if (editId) {
