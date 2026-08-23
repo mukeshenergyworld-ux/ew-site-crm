@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.330";
+  var APP_VERSION = "6.9.331";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3827,6 +3827,30 @@ window.addEventListener("beforeunload", function (ev) {
     return h;
   }
 
+  /* ---- CLIENT DUES, READ EXECUTIVE BY EXECUTIVE  (v6.9.331, 23 August 2026) ----
+
+     HIS WORDS: "here show, executive wise details, clicking will migrate to hisab section."
+
+     Two things were wrong with this screen. Only one of them is the one he saw.
+
+     THE ONE HE SAW. It was a flat list. Two clients today - but at forty there is no way to
+     ask the one question an owner asks of a dues list: whose book is this money sitting in.
+     It now groups by execForClient, which reads the same ownedBy the goods HISAB groups by,
+     so a client sits under the same name on both screens and the two can never disagree.
+     Unassigned is a group and is never hidden: a client owing money with nobody to chase it
+     is the most useful row on the page.
+
+     THE ONE HE DID NOT. Every rupee on this screen comes from VISITS - a periodic service,
+     a complaint, an AMC call. It is the SERVICE ledger. The goods ledger is HISAB and it is
+     a different number entirely. Nothing on the screen said so, so "Total pending from
+     clients" read like the whole of what a client owes, and it never was. It now names
+     which pending it is, on the tile and again in one line under it.
+
+     TAPPING. Admin and accounts go to HISAB - the whole account, where serviceLedgerCard
+     already puts these same service figures beside the goods. A service engineer has no
+     HISAB tab at all (ROLE_TABS.service), so for him the identical tap opens the service
+     hisab these rows were built from. Nobody is given a tap that does nothing.
+  */
   function viewDues() {
     var by = {};
     S.data.visits.forEach(function (v) {
@@ -3845,17 +3869,49 @@ window.addEventListener("beforeunload", function (ev) {
       return c ? cvMatch(c, dq) : String(k).toLowerCase().indexOf(dq) > -1;
     });
     var total = names.reduce(function (a, k) { return a + by[k].bal; }, 0);
-    var h = '<div class="cards"><div class="stat ' + (total ? "alert" : "") + '"><div class="n">' + money(total) + '</div><div class="l">Total pending from clients</div></div>' +
-      '<div class="stat"><div class="n">' + names.length + '</div><div class="l">Clients owing</div></div></div>';
-    if (!names.length) return h + '<div class="empty">Nothing pending. Everything collected.</div>';
+    var groups = {};
     names.forEach(function (k) {
-      var vs = S.data.visits.filter(function (v) { return v.client === k && (Number(v.balance) || 0) > 0; });
-      h += '<div class="card"><h3>' + esc(k) + ' ' + dueAmt(by[k].bal) + '</h3><div class="meta">';
-      vs.forEach(function (v) {
-        h += esc(dstr(v.date)) + ' &middot; ' + esc(v.type) + ' &middot; billed ' + money(v.total) +
-          ', paid ' + money(v.collected) + ', <b>due ' + money(v.balance) + '</b><br>';
+      var ex = execForClient(k) || "Unassigned";
+      (groups[ex] = groups[ex] || []).push(k);
+    });
+    var gtot = function (e) { return groups[e].reduce(function (s, k) { return s + by[k].bal; }, 0); };
+    var gkeys = Object.keys(groups).sort(function (a, b) { return gtot(b) - gtot(a); });
+    var h = '<div class="cards"><div class="stat ' + (total ? "alert" : "") + '"><div class="n">' + money(total) + '</div><div class="l">Service pending from clients</div></div>' +
+      '<div class="stat"><div class="n">' + names.length + '</div><div class="l">Clients owing</div></div>' +
+      '<div class="stat"><div class="n">' + gkeys.length + '</div><div class="l">Executives carrying it</div></div></div>';
+    if (!names.length) return h + '<div class="empty">Nothing pending. Everything collected.</div>';
+    h += '<div class="meta" style="margin:0 0 10px;font-size:12.5px">Service, AMC and complaint bills only &mdash; the goods account is <b>HISAB</b>, and that is a separate number. Grouped by the sales executive the client is assigned to. Tap a client to open the account.</div>';
+    var canBill = canSee("billing");
+    gkeys.forEach(function (e) {
+      var mine = groups[e].slice().sort(function (a, b) { return by[b].bal - by[a].bal; });
+      /* Same rule as HISAB - your own group open, everyone else collapsed to a total - but kept
+         in its own S.duesExp so opening a group here never moves HISAB's, and the open state is
+         carried on the element rather than recomputed in the handler. Recomputing it is what
+         makes HISAB's single-executive group refuse to collapse: the handler cannot see that
+         the group was the only one, so it reads "shut" for a group that is plainly open. */
+      var open = (S.duesExp && (e in S.duesExp)) ? !!S.duesExp[e] : (e === S.user || gkeys.length === 1);
+      h += '<div class="card"><h3 data-act="dues-grp" data-k="' + esc(e) + '" data-open="' + (open ? "1" : "0") + '" style="margin:0;cursor:pointer;user-select:none">' +
+        '<span style="display:inline-block;width:16px;color:#94a3b8">' + (open ? "&#9662;" : "&#9656;") + '</span>' +
+        esc(e) + ' <span class="pill due">' + money(gtot(e)) + '</span> ' +
+        '<span style="font-weight:400;color:#94a3b8;font-size:12.5px">' + mine.length + ' client(s)' + (open ? "" : " &middot; tap to view") + '</span></h3></div>';
+      if (!open) return;
+      mine.forEach(function (k) {
+        var vs = S.data.visits.filter(function (v) { return v.client === k && (Number(v.balance) || 0) > 0; })
+          .slice().sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+        var cm = (clientByName(k) || {}).mobile || "";
+        h += '<div class="card" style="cursor:pointer;margin-left:12px;border-left:3px solid #99f6e4" ' +
+          'data-act="' + (canBill ? "ch-hisab" : "svc-ledger") + '" data-cl="' + esc(k) + '" data-n="' + esc(k) + '">' +
+          '<h3>' + esc(k) + ' ' + dueAmt(by[k].bal) + '</h3><div class="meta">';
+        vs.forEach(function (v) {
+          h += esc(dstr(v.date)) + ' &middot; ' + esc(v.type) + ' &middot; billed ' + money(v.total) +
+            ', paid ' + money(v.collected) + ', <b>due ' + money(v.balance) + '</b>' +
+            (v.engineer ? ' &middot; <span style="color:#94a3b8">' + esc(v.engineer) + '</span>' : "") + '<br>';
+        });
+        h += '</div><div class="acts">' +
+          (cm ? '<a class="btn sm ghost" href="tel:' + esc(cm) + '">Call</a>' : "") +
+          (canBill ? '<button class="btn sm" data-act="ch-hisab" data-cl="' + esc(k) + '">Open HISAB &rarr;</button>' : "") +
+          '<button class="btn sm ghost" data-act="svc-ledger" data-n="' + esc(k) + '">Service hisab</button></div></div>';
       });
-      h += '</div></div>';
     });
     return h;
   }
@@ -25483,6 +25539,12 @@ function viewCatalogue() {
       var gk = t.getAttribute("data-k"); S.hisabExp = S.hisabExp || {};
       var cur = (gk in S.hisabExp) ? !!S.hisabExp[gk] : (gk === S.user);
       S.hisabExp[gk] = !cur; render(); return;
+    }
+    /* v6.9.331 - the dues screen's own executive groups. The open state is read off the
+       element the tap landed on, so this cannot disagree with what was drawn. */
+    if (act === "dues-grp") {
+      var dgk = t.getAttribute("data-k"); S.duesExp = S.duesExp || {};
+      S.duesExp[dgk] = t.getAttribute("data-open") !== "1"; render(); return;
     }
     if (act === "ch-detail") {
       var cid = t.getAttribute("data-id"); S.chExp = S.chExp || {};
