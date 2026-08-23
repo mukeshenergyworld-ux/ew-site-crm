@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.348";
+  var APP_VERSION = "6.9.349";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -6474,6 +6474,35 @@ window.addEventListener("beforeunload", function (ev) {
       : (S.clNoSite ? 'Every client here has a site. Nothing hidden from the pitch board.'
       : (loc ? 'No clients in ' + esc(loc) + ' yet.' : 'No clients yet. A lead becomes a client here the moment one of his quotes is marked Won.'))) + '</div>';
 
+    /* v6.9.349 - one pill, from amcForClient(). It draws nothing at all for a client with no
+       machine on a contract, which is most of them: a card that says "AMC: none" on two hundred
+       clients has taught nobody anything and cost every one of them a line. */
+    function amcCardPill(name) {
+      var a;
+      try { a = amcForClient(name); } catch (e) { return ""; }
+      if (!a || !a.onAmc) return "";
+      var mach = a.onAmc + " machine" + (a.onAmc === 1 ? "" : "s");
+      /* NOT PRICED IS NOT ZERO. A contract nobody has put an amount against prints the words,
+         never Rs.0 - the whole point of the pill is that he can see the hole from the list. */
+      if (a.charged <= 0) {
+        var _hole = (a.rows || []).filter(function (r) {
+          return r.kind !== "None" && !(r.amount > 0);
+        })[0];
+        return ' <span class="pill"' +
+          (_hole ? ' data-act="inst-open" data-id="' + esc(_hole.ins.id) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer"'
+                 : ' style="background:#fee2e2;color:#b91c1c"') +
+          ' title="' + esc(mach) + ' under AMC and no amount agreed on any of them' +
+          (_hole ? ' \u2014 tap to open the installation and type it' : '') + '.">AMC \u2014 no amount</span>';
+      }
+      var short = a.missing > 0
+        ? ' <span class="pill" style="background:#fef3c7;color:#92400e" title="' + a.missing +
+          ' machine' + (a.missing === 1 ? '' : 's') + ' on this contract have no rate on the card, ' +
+          'so the suggestion below the amount is short.">rate ?</span>'
+        : '';
+      return ' <span class="pill" style="background:#ccfbf1;color:#0f766e" title="' + esc(mach) +
+        ' under AMC, ' + moneyAscii(a.charged) + ' a year in all. Service tab \u2192 the installation ' +
+        'card carries the AMC sheet.">AMC ' + money(a.charged) + '/yr</span>' + short;
+    }
     function clientCardHtml(c) {
       var won = clientWonCount(c.name);
       var cSeg = clientSegment(c);
@@ -6509,6 +6538,15 @@ window.addEventListener("beforeunload", function (ev) {
         /* The money sits right beside the phone number on purpose: the number you would call and the
            reason you would call him, read as one line. */
         (due > 0.5 ? ' ' + dueAmt(due) : "") +
+        /* ============ THE CONTRACT HE IS ON, ON HIS OWN CARD  (v6.9.349) ============
+           amcForClient() has existed since v6.9.340 and only the rate-card screen ever asked
+           it, so "what is this client paying us a year" was answerable on one admin screen and
+           nowhere a man would be standing. It belongs here, beside what he owes: those two
+           numbers together are the whole of what a client is worth.
+
+           Quiet where it is settled - one teal pill - and loud where it is not: a contract
+           with no amount typed is the money leak he named on 22 August, and it says so. */
+        amcCardPill(c.name) +
         /* v6.9.210 - the old book. Only ever shown for a client carried over WITH a balance:
            teal and tappable once the statement is attached, red until it is, and gone entirely
            the day his money clears. */
@@ -31490,7 +31528,46 @@ function viewCatalogue() {
   /* iOS never fires beforeinstallprompt, so offer the manual route after the app settles */
   setTimeout(showInstallBar, 2500);
 
+  /* ============ THIRTEEN PASSWORDS IN PLAIN TEXT, LEFT BEHIND  (v6.9.349) ============
+     THE RANDOM CHECK, 23 August 2026, and nobody asked about it.
+
+     Reading his phone's localStorage for the tab-usage counter turned up `ew_users_v2`:
+     THIRTEEN staff records - Mukesh, Dinesh, Vivek, Imran, Ashish, Gautam, Ashish Jha, Manoj,
+     Jaiparkash, Satya and three blanks - each with a role, a phone number and a PASSWORD IN
+     PLAIN TEXT. Two kilobytes of it, sitting on a public origin.
+
+     IT IS DEAD. Nothing in this estate reads or writes that key: grep across team, challan,
+     collect, service, saathi, visit, console, complaint, apps, core, tools and help finds
+     nothing, and it appears nowhere in this repository's history. It is a leftover from a
+     version of the app that predates the repo, and it has been sitting in the browser of
+     every man who ever opened that old version, on every device, ever since.
+
+     Dead is not harmless. GitHub Pages puts every repository of one account on ONE ORIGIN, so
+     any page ever published under mukeshenergyworld-ux can read it, and so can any script that
+     ever finds a way onto one of these pages. The house rule is that secrets live only in
+     Script Properties and the TeamUsers tab. This is thirteen of them in the wrong place.
+
+     So it goes, on the next boot of every device that has it. Nothing of value is lost - no
+     app has read it for months - and this is not the "nothing is ever deleted" rule: that rule
+     is about his RECORDS. A dead key full of passwords is not a record, it is a leak.
+
+     TELL HIM ANYWAY, because clearing it does not un-leak it: if admin123 or ew2024 is still
+     a live password anywhere - the sheet, a mail account, a router - it should be changed. */
+  var LEGACY_JUNK = ["ew_users_v2"];
+  function legacyPurge() {
+    var gone = [];
+    LEGACY_JUNK.forEach(function (k) {
+      try { if (localStorage.getItem(k) != null) { localStorage.removeItem(k); gone.push(k); } }
+      catch (e) { }
+    });
+    if (gone.length) {
+      try { console.warn("[EW] removed dead legacy storage: " + gone.join(", ")); } catch (e) { }
+    }
+    return gone;
+  }
+
   (function boot() {
+    try { legacyPurge(); } catch (e) { }
     var sess = null;
     try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) {}
     /* v6.9.257 - the offline copy now lives in IndexedDB, so it has to be in memory before
