@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.338";
+  var APP_VERSION = "6.9.339";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -6155,6 +6155,8 @@ window.addEventListener("beforeunload", function (ev) {
           /* v6.9.212. Older proof rows have none - they read back as "" and the card shows the
              seal without a picture, which is exactly right and needs no migration. */
           thumb: String(d.thumb || ""),
+          /* v6.9.339 - present only on a replacement; "" on every proof written before today */
+          replaces: String(d.replaces || ""),
           /* v6.9.335 - the Telegram mirror has been WRITING this since v6.9.326 and nothing has
              ever read it, so he has had no way to see whether the mirror works. Same rule as the
              thumbnail: a row written before the mirror existed reads back as "" and simply shows
@@ -6945,11 +6947,11 @@ window.addEventListener("beforeunload", function (ev) {
        no Telegram chip is drawn. Saying otherwise would be the app claiming a backup exists for
        a document still sitting on one phone. */
     if (q) return { has: true, queued: q.err ? { err: q.err, tries: q.tries || 0 } : true,
-                    url: "", thumb: q.thumb || "", by: q.by || "", tg: "" };
+                    url: "", thumb: q.thumb || "", by: q.by || "", tg: "", replaces: "" };
     var p = challanProof(c.id);
-    if (!p) return { has: false, queued: false, url: "", thumb: "", by: "", tg: "" };
+    if (!p) return { has: false, queued: false, url: "", thumb: "", by: "", tg: "", replaces: "" };
     return { has: true, queued: false, url: p.url || "", thumb: p.thumb || "", by: p.by || "",
-             tg: p.tg || "" };
+             tg: p.tg || "", replaces: p.replaces || "" };
   }
   /* v6.9.335 - THE MIRROR YOU CAN SEE.
      "we can easily delete old receipts when required and have backup at telegram" - and then
@@ -6967,10 +6969,31 @@ window.addEventListener("beforeunload", function (ev) {
       'color:#0369a1;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700;' +
       'text-decoration:none;vertical-align:middle">Telegram <span style="opacity:.75">&#8599;</span></a>';
   }
+  /* ---- THE WRONG PAPER  (v6.9.339) ----
+     HIS WORDS: "show alter or change receipt option in case wrong receipt uploaded".
+
+     Until today a receipt was final. Photograph the wrong page - the next challan's paper, the
+     back of the sheet, a thumb over the signature - and it was on that delivery for good, with
+     no way to put the right one on and nothing on any screen admitting the problem.
+
+     IT IS A REPLACEMENT, NOT AN EDIT. The new photograph is written as a NEW audit row naming
+     the document it supersedes. proofMap has always taken the newest row per challan, so the
+     right one wins by being newer and the wrong one stays in the trail exactly as written. The
+     rule holds: nothing is ever deleted, and a wrong receipt becomes history rather than a hole.
+
+     Not offered while one is still uploading - there is nothing on file yet to replace, and the
+     seal already says so in amber. */
+  function chgSeal(c) {
+    var r = chProofAny(c);
+    if (!r.has || r.queued || !canProof()) return "";
+    return ' <button class="btn sm ghost" data-act="ch-reproof" data-id="' + esc(c.id) + '" ' +
+      'style="padding:2px 9px;font-size:11px;border-color:#fed7aa;color:#b45309;vertical-align:middle" ' +
+      'title="Photograph the right receipt. The one on file now is kept - nothing is deleted.">Change</button>';
+  }
   function proofSealFor(c, size) {
     var r = chProofAny(c);
     if (!r.has) return "";
-    return proofSeal(r.url, r.thumb, r.queued, r.by, size) + tgSeal(r.tg);
+    return proofSeal(r.url, r.thumb, r.queued, r.by, size) + tgSeal(r.tg) + chgSeal(c);
   }
   function proofLink(c) {
     /* v6.9.212 - the queued copy carries its own thumbnail, so the picture of the paper is on the
@@ -7375,6 +7398,11 @@ window.addEventListener("beforeunload", function (ev) {
              been opened and seen to work; a backup nobody has opened is not a backup. Blank
              when the mirror failed, which is the honest record of a mirror that failed. */
           tg: String((r && r.tgLink) || ""),
+          /* v6.9.339 - a replacement names the document it supersedes. The old row is NOT
+             touched: proofMap already takes the newest row per challan, so the new one wins by
+             being newer and the old one stays in the audit trail exactly as it was written.
+             Nothing is ever deleted - the wrong receipt becomes history, not a hole. */
+          replaces: String(e.replaces || ""),
           /* v6.9.212 - the 2-3 KB picture of the paper, filed with the proof itself. */
           thumb: String(e.thumb || "")
         }), ip: ""
@@ -7736,6 +7764,9 @@ window.addEventListener("beforeunload", function (ev) {
            that will not go up can be rebuilt smaller and tried again rather than being stuck
            at whatever size it happened to be made at. IndexedDB has room for this many times
            over; the 5 MB box that made us careful about size is not where this lives. */
+        /* v6.9.339 - the url of the receipt this one replaces, when it is a replacement.
+           Empty on a first attach, which is every proof written before today. */
+        replaces: String(prf.replaces || ""),
         photo: String(prf.photo || ""), shrinks: 0, build: PRF_BUILD,
         fname: (ch._isReturn ? "RETURN-" : "DELIVERY-") + String(ch.challanNo || cid).replace(/[^\w.-]+/g, "-") + ".pdf",
         b64: b64
@@ -29001,6 +29032,21 @@ function viewCatalogue() {
       S.prf = { id: id, by: "", photo: "" };
       S.modal = modalProof(id); render(); return;
     }
+    /* v6.9.339 - the wrong paper. Draft and confirm: replacing the evidence on a delivery is
+       not a thing to do by mistake, so it says plainly what will happen and what will not. */
+    if (act === "ch-reproof") {
+      if (!canProof()) { toast("The signed receipt is filed by accounts or the owner."); return; }
+      var rsub = proofSubject(id);
+      var rold = chProofAny(rsub || { id: id });
+      if (!rold.has || rold.queued) { toast("There is no receipt on file to change yet."); return; }
+      if (!window.confirm(
+        "Replace the receipt on " + String((rsub && rsub.challanNo) || "this delivery") + "?\n\n" +
+        "You will photograph the right one next.\n\n" +
+        "The one on file now is KEPT - nothing is deleted. The new photograph becomes the one " +
+        "every screen shows, and the old one stays in the audit trail with the new one naming it.")) return;
+      S.prf = { id: id, by: rold.by || "", photo: "", replaces: rold.url || "" };
+      S.modal = modalProof(id); render(); return;
+    }
     if (act === "prf-cancel") { S.prf = null; S.modal = null; render(); return; }
     if (act === "prf-list") { S.modal = modalProofList(); render(); return; }
     if (act === "prf-save") {
@@ -29008,13 +29054,14 @@ function viewCatalogue() {
       var pby = el("prf_by") ? String(el("prf_by").value || "").trim() : "";
       var pph = S.prf.photo || "";
       var pcid = S.prf.id;
+      var prepl = S.prf.replaces || "";   /* v6.9.339 - "" unless this is a replacement */
       if (!pph && !pby) { toast("Add the photo of the receipt, or at least the name of whoever signed it."); return; }
       S.prf = null; S.modal = null;
       toast("Making the document \u2014 it will show on the challan in a moment.");
       render();
       /* Behind the screen, never in front of it. The document is built on this phone and queued;
          it goes up on its own and survives being closed, exactly like the older proof queue. */
-      try { proofStart(pcid, { by: pby, photo: pph, sig: "", rows: null }); } catch (e) { }
+      try { proofStart(pcid, { by: pby, photo: pph, sig: "", rows: null, replaces: prepl }); } catch (e) { }
       /* v6.9.259 - the photograph of a signed receipt IS the evidence the goods arrived, but
          attaching it never moved the delivery's status - so the money stayed off the client's
          hisab and nothing said so. It is offered here, with the consequence spelled out in
