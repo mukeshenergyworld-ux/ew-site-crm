@@ -192,7 +192,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.43.0";
+  var APP_VERSION = "1.44.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -2072,6 +2072,22 @@ function discRowOn(client, brand, onYmd) {
     return { code: JOB_CODE, desc: String(desc || "").trim(), unit: "job",
              qty: 1, rate: Math.round(num(amt)), brand: "", disc: 0, job: true };
   }
+  /* ---- AN ITEM THAT IS NOT IN THE PRICE LIST  (v1.44.0, 23 August 2026) ----
+     HIS WORDS: "or enter a item not in price list with description, made arrangemetn for that
+     also". Two questions came with it and he answered both himself: it ASKS WHICH BRAND it
+     belongs to, so its discount and everyone's incentive run through the machinery that already
+     exists rather than a new rule; and it takes a DESCRIPTION, A QUANTITY AND A RATE rather than
+     one lump, so that if some of it comes back months later retSourceLine() finds this very line
+     by its code and credits what he was billed instead of guessing.
+
+     Hence the OWN CODE on every one. Two off-list lines on a challan are two rows, not one row
+     fought over by two quantity boxes, and each can be returned at its own price. */
+  var OTHER_PFX = "X-";
+  function isOtherLine(l) { return !!(l && String(l.code || "").indexOf(OTHER_PFX) === 0); }
+  function otherLine(desc, qty, rate, brand) {
+    return { code: OTHER_PFX + Date.now(), desc: String(desc || "").trim(), unit: "No's",
+             qty: num(qty) || 1, rate: Math.round(num(rate)), brand: String(brand || ""), job: false };
+  }
 
   function basket() { return S.pick && S.pick.into === "rt" ? (S.rt && S.rt.items) : (S.ch && S.ch.items); }
   function qtyOf(code) {
@@ -2176,8 +2192,10 @@ function discRowOn(client, brand, onYmd) {
       '<div class="muted" style="margin-bottom:10px">' + n + ' line' + (n === 1 ? '' : 's') + ' so far. Set a quantity and it is in — no separate Add button.</div>' +
       /* not buried under a brand, because it belongs to no brand */
       (S.pick && S.pick.into === "rt" ? '' :
-        '<button class="btn sm gry full" data-act="job-open" style="margin-bottom:10px">' +
-        '&#128295; Job work / Labour charges</button>') +
+        '<button class="btn sm gry full" data-act="job-open" style="margin-bottom:8px">' +
+        '&#128295; Job work / Labour charges</button>' +
+        '<button class="btn sm gry full" data-act="oth-open" style="margin-bottom:10px">' +
+        '&#43; Item not in the price list</button>') +
       '<div id="pk_body">' + pickerHtml() + '</div>' +
       '<div class="acts" style="margin-top:14px"><button class="btn full" data-act="close">Done</button></div>';
   }
@@ -2197,6 +2215,47 @@ function discRowOn(client, brand, onYmd) {
       '<div class="acts" style="margin-top:14px">' +
         '<button class="btn gry" data-act="job-cancel">Cancel</button>' +
         '<button class="btn" data-act="job-add">Add to the challan</button></div>';
+  }
+
+  /* Four boxes and a brand, because the brand is the whole of the money answer. The discount
+     it will actually bill at is shown BEFORE he saves, not discovered afterwards on a
+     statement. */
+  function sheetOther() {
+    var x = S.oth || { desc: "", qty: "", rate: "", brand: "" };
+    var cn = String((S.ch && S.ch.client) || "");
+    /* v1.44.0 - NOT S.data.brands. This app deliberately does not download that tab (nothing
+       read it, so it was dropped from the staged pull), and a dropdown built from it would have
+       been EMPTY on every phone - the off-list item would have been unusable here and looked
+       fine in the CRM. brandsInStock() is the same list the picker's own brand step is built
+       from, off the catalogue this app already has. t_staged_pull caught this. */
+    var brands = brandsInStock().map(function (br) { return br.name; });
+    var pick = String(x.brand || "");
+    var dp = pick ? clientDiscount(cn, pick) : 0;
+    var rN = num(x.rate), qN = num(x.qty) || 1, net = Math.round(rN * (1 - dp / 100));
+    return '<h2>An item that is not in the price list</h2>' +
+      '<div class="muted" style="margin-bottom:10px">Type it once here. Tap the brand it belongs ' +
+      'to and it is billed, discounted and earns exactly like any other line of that brand.</div>' +
+      '<label for="ox_desc">What it is</label>' +
+      '<input id="ox_desc" value="' + esc(x.desc || "") + '" placeholder="e.g. 63mm brass union, bought from the market"/>' +
+      '<label for="ox_qty">Quantity</label>' +
+      '<input id="ox_qty" inputmode="decimal" value="' + esc(x.qty || "") + '" placeholder="1"/>' +
+      '<label for="ox_rate">Rate each (before discount)</label>' +
+      '<input id="ox_rate" inputmode="numeric" value="' + esc(x.rate || "") + '" placeholder="0"/>' +
+      '<label for="ox_brand">Which brand is it</label>' +
+      '<select id="ox_brand">' +
+      '<option value=""' + (pick ? '' : ' selected') + '>&mdash; tap a brand &mdash;</option>' +
+      brands.map(function (b) {
+        return '<option value="' + esc(b) + '"' + (b === pick ? ' selected' : '') + '>' + esc(b) + '</option>';
+      }).join("") + '</select>' +
+      (pick
+        ? '<div style="font-size:12.5px;color:#0f766e;margin-top:7px">' + esc(cn || "This client") +
+          '&rsquo;s ' + esc(pick) + ' discount is <b>' + dp + '%</b>' +
+          (rN > 0 ? ' &middot; bills at <b>' + money(net) + '</b> each, <b>' + money(Math.round(net * qN)) + '</b> in all' : '') + '</div>'
+        : '<div style="font-size:12.5px;color:#b45309;margin-top:7px">Tap a brand and it will show ' +
+          'you the discount and the price this line will actually be billed at.</div>') +
+      '<div class="acts" style="margin-top:14px">' +
+        '<button class="btn gry" data-act="oth-cancel">Cancel</button>' +
+        '<button class="btn" data-act="oth-add">Add to the challan</button></div>';
   }
 
   /* Setting a quantity IS adding the line - there is no second button to forget. A
@@ -2890,9 +2949,12 @@ function discRowOn(client, brand, onYmd) {
           /* a job line has no code, no quantity and no rate to show - printing "JOBWORK · 1 job
              × Rs2500" next to "Job work" says the same thing three times and one of them looks
              like a product code the customer can look up */
+          /* v1.44.0 - and an off-list line's own code is X-1787504013919, which is a reference
+             to nothing. It says what it is and which brand it was billed under instead. */
           '<div class="muted">' + (isJobLine(l)
             ? 'Job work / Labour charges'
-            : esc(l.code) + ' · ' + num(l.qty) + ' ' + esc(l.unit || "") +
+            : (isOtherLine(l) ? 'Not in the price list · ' + esc(l.brand || "no brand") : esc(l.code)) +
+              ' · ' + num(l.qty) + ' ' + esc(l.unit || "") +
               ' × ' + money(l.rate) + (d ? ' &minus;' + d + '%' : '')) + '</div></div>' +
           '<div style="font-weight:800;white-space:nowrap">' + money(net) + '</div>' +
           '<button class="btn sm gry" data-act="ln-del" data-i="' + i + '">&times;</button></div>';
@@ -3323,15 +3385,24 @@ function discRowOn(client, brand, onYmd) {
       var mn = manualNoFor(c);
       var st = chStatus(c);
 
+      /* ---- NO FIRM NAME ON THE CUSTOMER'S CHALLAN  (v1.44.0, 23 August 2026) ----
+         HIS WORDS: "earlier in challan energyworld name not mentioned, now its mentioned, i
+         strictly not want to mention energy world details on challan for customer".
+
+         He is right about both halves, and I checked before changing anything. The CRM's own
+         printed challan has never carried the name - header() opens straight into DELIVERY
+         CHALLAN and the number. THIS app was created on 17 August with a branded header, and
+         every challan printed from a phone since then has carried the firm's name and the
+         three towns. Those two lines are the ONLY place this document identifies us: there is
+         no GST line, no address and no telephone number anywhere else on it.
+
+         The teal band stays, because it is what makes the sheet read as a document rather than
+         a printout. What it says now is what the paper IS, not who printed it. */
       doc.setFillColor(15, 118, 110); doc.rect(0, 0, W, 26, "F");
       doc.setTextColor(255); F("bold"); doc.setFontSize(15);
-      doc.text("ENERGY WORLD", L, 12);
-      F(); doc.setFontSize(8.5);
-      doc.text("Panipat  |  Sonipat  |  Karnal", L, 18);
+      doc.text("DELIVERY CHALLAN", L, 15.5);
       F("bold"); doc.setFontSize(12);
-      doc.text("DELIVERY CHALLAN", R, 12, { align: "right" });
-      F(); doc.setFontSize(9);
-      doc.text(String(c.challanNo || ""), R, 18, { align: "right" });
+      doc.text(String(c.challanNo || ""), R, 15.5, { align: "right" });
 
       /* ---- DELIVER TO, and the three facts the CRM puts opposite it ---- */
       var y = 36;
@@ -3394,7 +3465,9 @@ function discRowOn(client, brand, onYmd) {
         /* v1.37.0 - a job-work line has no product code, and printing the internal word
            JOBWORK in a column headed CODE gives the customer a reference to ask about that
            does not exist. The column says what the line IS instead. */
-        doc.text(isJobLine(l) ? "JOB WORK" : String(l.code || ""), Xc, y);
+        /* v1.44.0 - same reasoning for an off-list item: X-1787504013919 in a column headed
+           CODE is a reference the customer cannot look up and we cannot answer. */
+        doc.text(isJobLine(l) ? "JOB WORK" : (isOtherLine(l) ? "-" : String(l.code || "")), Xc, y);
         g(15); F(); doc.setFontSize(9.5);
         var nm = doc.splitTextToSize(String(l.desc || l.code || ""), Xu - Xd - 6);
         doc.text(nm, Xd, y);
@@ -4523,6 +4596,17 @@ function discRowOn(client, brand, onYmd) {
     });
     var fto = el("m_fto");
     if (fto) fto.addEventListener("change", function () { if (S.ch) S.ch.fto = fto.value; });
+    /* v1.44.0 - the off-list item's brand box. A <select> is changed, not clicked, and a
+       data-act on it would have fired the click handler and torn the page down under the open
+       dropdown. Same redraw, from the right event. */
+    var oxb = el("ox_brand");
+    if (oxb) oxb.addEventListener("change", function () {
+      S.oth = { desc: String((el("ox_desc") && el("ox_desc").value) || ""),
+                qty: String((el("ox_qty") && el("ox_qty").value) || ""),
+                rate: String((el("ox_rate") && el("ox_rate").value) || ""),
+                brand: oxb.value };
+      S.sheet = sheetOther(); render();
+    });
     /* v1.19.0 - district, area and driver are dropdowns now. They carry data-p, which is the
        same attribute the click handlers read, so the holder is found exactly as before and
        the return builder gets all three for free. */
@@ -4991,6 +5075,29 @@ function discRowOn(client, brand, onYmd) {
          the challan and back in again */
       S.sheet = sheetPicker(); render();
       toast("Job work added — " + money(Math.round(ja)) + ". Carry on with the material.");
+      return;
+    }
+
+    if (act === "oth-open") {
+      S.oth = { desc: "", qty: "", rate: "", brand: "" };
+      S.sheet = sheetOther(); render(); return;
+    }
+    if (act === "oth-cancel") { S.oth = null; S.sheet = sheetPicker(); render(); return; }
+    if (act === "oth-add") {
+      var od = String((el("ox_desc") && el("ox_desc").value) || "").trim();
+      var oq = num((el("ox_qty") && el("ox_qty").value) || 0) || 1;
+      var orr = num((el("ox_rate") && el("ox_rate").value) || 0);
+      var ob = String((el("ox_brand") && el("ox_brand").value) || "").trim();
+      /* three different things to have got wrong, and a man should be told which */
+      if (!od) { toast("Say what the item is \u2014 it is printed on his challan."); return; }
+      if (!(orr > 0)) { toast("Put the rate for one of them, before discount."); return; }
+      if (!ob) { toast("Tap the brand it belongs to \u2014 that is what sets its discount and whose incentive it earns."); return; }
+      if (!S.ch) { toast("Open a challan first."); return; }
+      S.ch.items = S.ch.items || [];
+      S.ch.items.push(otherLine(od, oq, orr, ob));
+      S.oth = null;
+      S.sheet = sheetPicker(); render();
+      toast(od.slice(0, 26) + " added \u2014 " + oq + " \u00d7 " + money(orr) + " (" + ob + ").");
       return;
     }
 
