@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.340";
+  var APP_VERSION = "6.9.343";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2574,6 +2574,83 @@ window.addEventListener("beforeunload", function (ev) {
   }
   function lossOf(qid) { return lossMap()[String(qid || "")] || null; }
 
+  /* ================= ONE QUOTE, TWO BRANDS, TWO ANSWERS  (v6.9.343, 23 August 2026) ==========
+     HIS WORDS: "i have quoted 2 brands, make provision to mark one brand won, sometimes client
+     approved one brand and say will install another after some time, make provision for that
+     also."
+
+     WHAT WAS ACTUALLY WRONG, AND IT WAS LOSING HIM WORK. clientWonBrands() marked EVERY brand
+     on a quote as won the moment that quote's status read Won.
+
+     Q/DR3211/310726/001 carries Green Heat Plus AND Pentair. Mark it Won because the client
+     took the Green Heat Plus, and the app was told PENTAIR WAS WON TOO. The follow-up board
+     stopped chasing it, clientBrandState() read "won", and the pitch engine never suggested it
+     again. The half of the quote he had NOT sold quietly became a sale, and the machine the
+     client said he would install later was never asked about again. Nothing on any screen
+     would ever have said so.
+
+     THREE ANSWERS, NOT TWO. Won and Lost cannot describe "he will install it after some time".
+     Called Lost it stops being chased; left open it looks like a live negotiation gone quiet
+     and the agent nags him about it every week. LATER is its own answer, it carries the date it
+     should come back, and rule 8c raises it on that date.
+
+     APPEND-ONLY AUDIT ROWS, the channel the manual challan number, the delivery proof, the
+     hisab stamp, the AMC rate and the loss reason all use. No column, no tab, no backend
+     change; a changed mind is a newer row, never an overwrite. And every quote written before
+     today has no such row, so qBrandOf() returns null and every reader falls back to exactly
+     the rule it used yesterday. Money must never move because a feature was deployed. */
+  var _qbCache = null;
+  var QB_STATES = ["Won", "Later", "Lost"];
+  function qBrandMap() {
+    if (_qbCache) return _qbCache;
+    var m = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "quote:brand") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var qid = String(d.qId || ""), br = String(d.brand || "");
+      if (!qid || !br || QB_STATES.indexOf(String(d.state)) < 0) return;
+      var k = qid + "|" + dkey(br);
+      var prev = m[k];
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[k] = { state: String(d.state), brand: br, till: dstr(d.till), why: String(d.why || ""),
+                 at: r.createdAt || "", by: r.actor || d.by || "" };
+      }
+    });
+    _qbCache = m;
+    return m;
+  }
+  function qBrandOf(qid, brand) { return qBrandMap()[String(qid || "") + "|" + dkey(brand)] || null; }
+  /* Every brand on a quote with its answer, in the order the quote lists them. A brand with no
+     row of its own inherits the QUOTE's status, which is what every reader did before today. */
+  function qBrandRows(q) {
+    return quoteBrands(q).map(function (b) {
+      var d = qBrandOf(q.id, b);
+      return { brand: b, state: d ? d.state : "", till: d ? d.till : "", why: d ? d.why : "",
+               by: d ? d.by : "", at: d ? d.at : "", own: !!d };
+    });
+  }
+  /* THE ONE PLACE THAT DECIDES WHETHER A BRAND ON A QUOTE COUNTS AS SOLD. Its own answer if it
+     has one - either way, so a brand marked Lost on a Won quote is not a sale - else the
+     quote's status, exactly as before. */
+  function qBrandWon(q, brand) {
+    var d = qBrandOf(q.id, brand);
+    if (d) return d.state === "Won";
+    return q.status === "Won";
+  }
+  function qBrandSave(q, brand, state, till, why) {
+    _qbCache = null;
+    var now = new Date().toISOString();
+    return save("audit", {
+      id: "QB-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+      createdAt: now, actor: S.user || "", action: "quote:brand",
+      target: String(q.quoteNo || q.id || "") + " / " + String(brand || ""),
+      detail: JSON.stringify({ qId: q.id, no: q.quoteNo || "", client: q.client || "",
+        brand: String(brand || ""), state: String(state || ""), till: dstr(till) || "",
+        why: String(why || ""), by: S.user || "", at: now })
+    }, true);
+  }
+
   /* Every Lost quote this signed-in person is allowed to see, joined to its reason.  The
      geography is read LIVE off the client, because an area filled in next month should
      improve last month's board; the figure stored on the audit row is the fallback for a
@@ -3888,6 +3965,236 @@ window.addEventListener("beforeunload", function (ev) {
     };
   }
 
+  /* ================= THE CONTRACT THE CUSTOMER KEEPS  (v6.9.341, 23 August 2026) ==========
+     HIS WORDS: "proper amc format for cleient".
+
+     Every fact this document needs already existed and not one of them had ever been on paper.
+     The machines are in productsJson, the kind of contract in amcType, the end date in amcEnd,
+     the money in amcAmount, and the rules for what is actually covered live in amcCover() over
+     in the Service app. A customer who asked "what does my AMC cover" could only be answered
+     from somebody's memory - and the engineer standing at his door had a different memory,
+     which is exactly how a free visit turns into an argument.
+
+     IT PRINTS WHAT HE CHARGES, NOT WHAT I THINK HE SHOULD CHARGE. amcAmount is the money
+     record and it is his. The rate card's suggestion is a screen for the owner and it stays on
+     that screen. An installation with no amount typed prints "to be confirmed" - never Rs.0,
+     which a customer would read, fairly, as free.
+
+     AND IT PRINTS WHAT IS NOT COVERED, TWICE. The machines standing at that site on no
+     contract at all, and the things no contract ever covers. A document that carries only the
+     good news is the document that causes the argument on the day of the visit.
+
+     THE COVER WORDS ARE amcCover()'s OWN RULES IN ENGLISH, not a second opinion about them:
+     with spares nothing is charged, without spares the parts are charged, and an Installation
+     is charged either way. If those rules ever change, this paragraph is wrong and
+     t_amc_doc.js goes red. */
+  function amcCoverWords(kind) {
+    if (kind === "AMC with spares") {
+      return ["Every scheduled service visit, at the interval shown against each machine.",
+              "The visit charge - there is nothing to pay the engineer on a covered visit.",
+              "Salt, resin and filter media topped up during a covered visit.",
+              "Spare parts fitted during a covered visit, at no charge."];
+    }
+    return ["Every scheduled service visit, at the interval shown against each machine.",
+            "The visit charge - there is nothing to pay the engineer for the call itself.",
+            "Salt, resin and filter media topped up during a covered visit.",
+            "Spare parts are NOT included: a part fitted is charged at actual, and shown to you before it is fitted."];
+  }
+  /* The date the cover starts. His rule, in his words: "AMC start after installation, so that
+     no issue" - so the installation date is the floor and the install day itself is not
+     covered. amcLiveOn() enforces exactly this; this only prints it. */
+  function amcStartOf(ins) {
+    var d = dstr((ins || {}).installDate);
+    if (d) return d;
+    var ps = instProducts(ins), best = "";
+    ps.forEach(function (p) {
+      var pd = dstr(p.installDate);
+      if (pd && (!best || pd < best)) best = pd;
+    });
+    return best;
+  }
+  function amcPdf(client) {
+    var A = amcForClient(client);
+    var cust = clientByName(client) || {};
+    var on  = A.rows.filter(function (r) { return r.kind !== "None"; });
+    var off = A.rows.filter(function (r) { return r.kind === "None"; });
+    return commPdfBase("ANNUAL MAINTENANCE CONTRACT", { customerName: client }, today()).then(function (b) {
+      var doc = b.doc, F = b.F, L = b.L, R = b.R;
+      var RS = function (n) { return "Rs." + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      var T = function (v) { return pdfSafe(String(v == null ? "" : v)); };
+      var y = 46;
+      var need = function (n) {
+        if (y + n <= 268) return;
+        doc.addPage();
+        F("normal"); doc.setFontSize(7); doc.setTextColor(120, 130, 145);
+        doc.text(T("Annual Maintenance Contract  ·  " + client), L, 12);
+        doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.line(L, 14.5, R, 14.5);
+        doc.setTextColor(17, 34, 45); y = 22;
+      };
+      var heading = function (txt) {
+        need(22);
+        F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
+        doc.text(txt, L, y); F("normal"); doc.setTextColor(17, 34, 45); y += 7;
+      };
+      /* A HANGING INDENT, and it is not decoration. Wrapped straight, the second line of a
+         term starts back at the margin and reads as a term of its own - so a five-point list
+         with two long terms in it looks like seven, and a customer counting what he is owed
+         counts wrong. The bullet is drawn once; every line of the term sits under the words. */
+      var bullet = function (txt) {
+        doc.splitTextToSize(T(txt), R - L - 6).forEach(function (ln, i) {
+          need(6);
+          if (i === 0) doc.text("•", L + 1, y);
+          doc.text(ln, L + 5.5, y); y += 5;
+        });
+      };
+
+      /* ---- the customer, and where the machines are ---- */
+      F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108); doc.text("CUSTOMER", L, y);
+      F("normal"); doc.setTextColor(17, 34, 45); doc.setFontSize(11.5); y += 6.5;
+      doc.text(T(client), L, y);
+      doc.setFontSize(9); doc.setTextColor(100, 116, 139);
+      var l2 = [cust.area, cust.location].filter(Boolean).join(", ");
+      if (l2) { y += 5.5; doc.text(T(l2), L, y); }
+      if (cust.address) { y += 5; doc.text(T(String(cust.address).slice(0, 110)), L, y); }
+      if (cust.mobile)  { y += 5; doc.text(T("Mobile: " + cust.mobile), L, y); }
+      y += 10; doc.setTextColor(17, 34, 45);
+
+      if (!on.length) {
+        F("normal"); doc.setFontSize(10.5);
+        doc.splitTextToSize("No machine at this site is on a maintenance contract today. The machines below are on record, and any of them can be brought under contract.", R - L)
+          .forEach(function (ln) { doc.text(ln, L, y); y += 6; });
+        y += 4;
+      }
+
+      /* ---- one block per installation, because two installations can be on two different
+             contracts, running to two different dates, for two different amounts ---- */
+      var priced = 0, unpriced = 0;
+      if (on.length) {
+        heading("MACHINES COVERED BY THIS CONTRACT");
+        on.forEach(function (r) {
+          var ps = instProducts(r.ins);
+          need(16 + ps.length * 8);
+          var start = amcStartOf(r.ins), end = dstr(r.ins.amcEnd);
+          var per = [T(r.kind),
+                     (start ? fullDate(start) : "installation date not recorded") + " to " + (end ? fullDate(end) : "no end date recorded"),
+                     (r.amount > 0 ? RS(r.amount) + " per year" : "amount to be confirmed")].join("   ·   ");
+          if (r.amount > 0) { priced += r.amount; } else { unpriced += 1; }
+          doc.setFillColor(236, 253, 245); doc.rect(L, y - 4.6, R - L, 7.6, "F");
+          F("bold"); doc.setFontSize(8); doc.setTextColor(13, 118, 108);
+          doc.text(per, L + 3, y); y += 8.4;
+          /* a contract whose end date has already gone by is not quietly printed as live */
+          if (!r.live) {
+            F("normal"); doc.setFontSize(7.6); doc.setTextColor(185, 28, 28);
+            doc.text(T(end && end < today()
+              ? "This contract has expired. Renew it to keep the cover running."
+              : "This contract is not running today - the machine goes in first, then the cover starts."), L + 3, y);
+            y += 5.6;
+          }
+          doc.setFillColor(30, 41, 59); doc.rect(L, y - 4.5, R - L, 7.4, "F");
+          doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.8);
+          doc.text("MACHINE", L + 3, y);
+          doc.text("INSTALLED", R - 62, y, { align: "right" });
+          doc.text("WARRANTY TILL", R - 30, y, { align: "right" });
+          doc.text("SERVICE EVERY", R - 3, y, { align: "right" });
+          y += 8;
+          ps.forEach(function (p, i) {
+            var sub = [p.model, p.brand].filter(Boolean).join(" · ");
+            var rh = sub ? 10.5 : 7;
+            need(rh + 4);
+            if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, R - L, rh, "F"); }
+            doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(9);
+            doc.text(doc.splitTextToSize(T(p.product || "-"), 74)[0], L + 3, y);
+            doc.text(dstr(p.installDate) ? fullDate(p.installDate) : "-", R - 62, y, { align: "right" });
+            var we = warrantyEnd(p);
+            doc.text(we ? fullDate(we) : "-", R - 30, y, { align: "right" });
+            doc.text(Number(p.serviceReq) ? (Number(p.serviceMonths) || 2) + " months" : "on call", R - 3, y, { align: "right" });
+            if (sub) { doc.setFontSize(7.4); doc.setTextColor(100, 116, 139); doc.text(T(sub), L + 3, y + 4.2); }
+            y += rh;
+          });
+          y += 5;
+        });
+
+        /* ---- the total, and the honest version of it ---- */
+        need(16);
+        doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.line(L, y - 1, R, y - 1); y += 5;
+        F("bold"); doc.setFontSize(10.5); doc.setTextColor(17, 34, 45);
+        doc.text("Total for the year", L, y);
+        doc.text(priced > 0 ? RS(priced) : "To be confirmed", R, y, { align: "right" });
+        y += 6;
+        if (unpriced) {
+          F("normal"); doc.setFontSize(7.6); doc.setTextColor(185, 28, 28);
+          doc.text(T(unpriced === 1
+            ? "One contract above has no amount agreed yet, so it is not in this total."
+            : unpriced + " contracts above have no amount agreed yet, so they are not in this total."), L, y);
+          y += 6;
+        }
+        y += 3;
+      }
+
+      /* ---- machines standing at the same site on no contract at all ---- */
+      if (off.length) {
+        heading("AT THIS SITE, NOT ON CONTRACT");
+        F("normal"); doc.setFontSize(8.4); doc.setTextColor(100, 116, 139);
+        doc.text("These are serviced on call and charged per visit. Any of them can be added to the contract.", L, y);
+        y += 6.5; doc.setTextColor(17, 34, 45); doc.setFontSize(9);
+        off.forEach(function (r) {
+          instProducts(r.ins).forEach(function (p) {
+            need(7);
+            var we = warrantyEnd(p), inw = we && daysTo(we) >= 0;
+            doc.text("•", L + 1, y);
+            doc.text(T([p.product, p.model].filter(Boolean).join(" ")) +
+                     (inw ? "   (in warranty to " + fullDate(we) + ")" : ""), L + 5.5, y);
+            y += 5.6;
+          });
+        });
+        y += 5;
+      }
+
+      /* ---- what the contract actually does, in the words the engineer's screen enforces ---- */
+      if (on.length) {
+        var kinds = {}; on.forEach(function (r) { kinds[r.kind] = 1; });
+        Object.keys(kinds).forEach(function (k) {
+          heading(Object.keys(kinds).length > 1 ? "WHAT IS COVERED - " + k.toUpperCase() : "WHAT IS COVERED");
+          F("normal"); doc.setFontSize(8.6); doc.setTextColor(60, 72, 88);
+          amcCoverWords(k).forEach(bullet);
+          y += 3;
+        });
+      }
+
+      heading("WHAT IS NOT COVERED, ON ANY CONTRACT");
+      F("normal"); doc.setFontSize(8.6); doc.setTextColor(60, 72, 88);
+      [
+        "Installation and commissioning of a new machine. That is charged separately, whether or not a contract is running.",
+        "Any visit before the cover starts. Cover begins after the machine is installed and runs to the end date shown above.",
+        "Damage from misuse, tampering, incorrect voltage, or work done by anyone not sent by Energy World.",
+        "Water that is outside the quality the machine was sized for. Media and salt are consumed faster on hard water; that is not a fault.",
+        "Any machine not listed in this document."
+      ].forEach(bullet);
+      y += 4;
+
+      heading("HOW THIS CONTRACT WORKS");
+      F("normal"); doc.setFontSize(8.6); doc.setTextColor(60, 72, 88);
+      [
+        "Cover runs from the day after installation to the end date shown against each machine, and is renewed for a year at a time.",
+        "The engineer visits at the interval shown against each machine. Call us any time in between; a covered fault is attended without a visit charge.",
+        "A machine still inside its warranty is covered by that warranty as well - you are never charged twice for the same repair.",
+        "Adding a machine to the contract changes the yearly amount. A fresh sheet is issued whenever a machine is added or removed.",
+        "This contract covers only the machines listed here, at the address shown, and is not transferable."
+      ].forEach(bullet);
+
+      /* ---- the two signatures ---- */
+      need(30); y = Math.max(y + 12, 244);
+      doc.setDrawColor(180, 190, 200); doc.setLineWidth(0.3);
+      doc.line(L, y, L + 62, y); doc.line(R - 62, y, R, y);
+      F("normal"); doc.setFontSize(8); doc.setTextColor(100, 116, 139);
+      doc.text("Customer - name & signature", L, y + 5);
+      doc.text("For Energy World - Authorised Signatory", R, y + 5, { align: "right" });
+      doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
+      doc.text("Energy World  |  Panipat · Sonipat · Karnal", L, 290);
+      return doc;
+    });
+  }
+
   /* ---- THE RATE CARD SCREEN, AND WHAT IT CATCHES  (v6.9.340) ---- */
   function viewAmcRates() {
     if (!roleIs("admin")) return '<div class="empty">The AMC rate card is the owner\u2019s.</div>';
@@ -4104,6 +4411,7 @@ window.addEventListener("beforeunload", function (ev) {
         (x.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.mobile) + '">Call</a>' : "") +
         '<button class="btn sm" data-act="visit-new" data-id="' + esc(x.id) + '">Log visit</button>' +
         '<button class="btn sm ghost" data-act="svc-ledger" data-n="' + esc(x.client) + '">Service hisab</button>' +
+        (amcKind(x) !== "None" ? '<button class="btn sm ghost" data-act="amc-pdf" data-n="' + esc(x.client) + '" style="color:#0f766e">AMC sheet</button>' : "") +
         '<button class="btn sm ghost" data-act="inst-open" data-id="' + esc(x.id) + '">Edit</button></div></div>';
     });
     return h;
@@ -4920,7 +5228,10 @@ window.addEventListener("beforeunload", function (ev) {
   function clientWonBrands(name) {
     var set = challanWonBrands(name);
     clientQuotes(name).forEach(function (q) {
-      if (q.status === "Won") quoteBrands(q).forEach(function (b) { set[b] = 1; });
+      /* v6.9.343 - was: q.status === "Won" marking EVERY brand on the quote. On a two-brand
+         quote that made the brand he did NOT sell read as sold. Each brand now answers for
+         itself, and a brand with no answer of its own still follows the quote. */
+      quoteBrands(q).forEach(function (b) { if (qBrandWon(q, b)) set[b] = 1; });
     });
     /* manual per-brand wins (for old clients entered without a quote)
        v6.9.216 - matched on a trimmed lowercased name, and also by the site join, so a win
@@ -4950,6 +5261,11 @@ window.addEventListener("beforeunload", function (ev) {
     var ps = (clientPitch(name, brand) || {}).status || "";
     if (ps === "Not required") return "nr";
     var qs = clientQuotes(name).filter(function (q) { return quoteBrands(q).indexOf(brand) >= 0; });
+    /* v6.9.343 - "will install another after some time" is NOT a loss and must not read as one.
+       A brand answered Later is live: the client has said yes in principle and named no date to
+       walk away. Checked BEFORE the open-quote test, because by then the quote it sits on has
+       usually been marked Won for the OTHER brand and would fall straight through to "lost". */
+    if (qs.some(function (q) { var d = qBrandOf(q.id, brand); return d && d.state === "Later"; })) return "live";
     var hasOpen = qs.some(function (q) { return ["Draft", "Sent", "Negotiating", "Revised"].indexOf(q.status) >= 0; });
     if (hasOpen || ["Pitched", "Quoted", "Negotiating", "Ongoing"].indexOf(ps) >= 0) return "live";
     if (ps === "Lost" || qs.length) return "lost";
@@ -6657,7 +6973,11 @@ window.addEventListener("beforeunload", function (ev) {
         m[d.chId] = { at: r.createdAt || "", by: r.actor || d.by || "",
                       set: d.set || [], ignored: d.ignored || [],
                       inc: (d.inc && d.inc.length !== undefined) ? d.inc : null,
-                      extra: Number(d.extra) || 0, extraNote: String(d.extraNote || "") };
+                      extra: Number(d.extra) || 0, extraNote: String(d.extraNote || ""),
+                      /* v6.9.342 - carried out of the audit row so the card can show it. An
+                         old stamp has no such key and reads "", which is exactly right: every
+                         stamp written before today required a receipt to exist. */
+                      noProof: String(d.noProof || "") };
       }
     });
     _hsbCache = m;
@@ -6738,26 +7058,82 @@ window.addEventListener("beforeunload", function (ev) {
      So where it cannot be offered, it now says which of the two things is missing. Admin only,
      because it is an admin button - nobody else is left wondering about a button that was
      never theirs. */
+  /* v6.9.342 - THE SIGNED PAPER CAME OUT OF THIS SENTENCE, because it came out of the rule.
+     It used to say "mark the delivery received AND attach the signed paper", and a pill that
+     asks for a thing the app no longer requires is worse than no pill: he would go looking for
+     a receipt he does not need. One condition left, and it is the money's own. */
   function hisabWhyNot(c) {
     if (!c || !roleIs("admin") || inHisab(c)) return "";
-    var need = [];
-    if (!hisabCounts(c)) need.push("mark the delivery received");
-    if (!chProofAny(c).has) need.push("attach the signed paper");
-    if (!need.length) return "";
+    if (hisabCounts(c)) return "";
     return '<span class="pill" style="background:#f1f5f9;color:#64748b;font-weight:600" ' +
-      'title="ADD TO HISAB is the owner looking at the signed receipt and passing the delivery. ' +
-      'It needs both: the delivery marked received (that is what puts the money on his account) ' +
-      'and the paper on file (that is what you are looking at when you press it).">' +
-      'To add to hisab: ' + esc(need.join(" and ")) + '</span>';
+      'title="Hisab counts a delivery only once it is marked received - that is what puts the ' +
+      'money on the client\u2019s account. The button is still there: pressing it will offer to ' +
+      'mark it received.">' +
+      'not counted until marked received</span>';
   }
+  /* ============ STANDARD ON EVERY CHALLAN (v6.9.342, 23 August 2026) ============
+     HIS WORDS: "even if admin making challan and approving it, make add to hisab standard for
+     all challan."
+
+     THIS IS THE THIRD TIME. 15 Aug I tightened the rule and said nothing; ~19 Aug he asked why
+     the button had disappeared and I answered with a grey pill explaining what was missing;
+     today he is still telling me he cannot find it. A pill is not a button. The lesson each
+     time was the same and each time I fixed it one notch short: the app knew exactly what was
+     needed and would not put it where his thumb was.
+
+     SO THE BUTTON IS NOW ON EVERY CHALLAN he has not already stamped, and the two conditions
+     are handled where they belong rather than by hiding it:
+
+       THE SIGNED PAPER stops being a gate. He chose: "show it, ask one line why". A delivery
+       he made and handed over himself has no counter-signed paper and never will, and refusing
+       those was refusing his own normal day's work. It goes in, and the reason he types is
+       filed against the challan for good - because a delivery in hisab with no paper and no
+       reason is indistinguishable, months later, from a mistake.
+
+       RECEIVED STAYS A HARD GATE, and it is his own answer: "add to hisab only effective after
+       delivery marked received." It is not fussiness. hisabOutstanding() counts a delivery on
+       receiptReceived = "Y" and on nothing else, so a stamp written before that puts an "in
+       hisab" mark on the card while the rupees stay off the client's account - which is
+       precisely the lie found on Punit Jain's challan on 15 August. The button is drawn all the
+       same; pressing it explains, and offers Mark as received in the same breath. It never
+       flips the status by itself: that is his act, not the app's. */
   function canAddToHisab(c) {
     if (!c || !roleIs("admin")) return false;
     if (inHisab(c)) return false;
-    /* v6.9.259 - the money's own rule, not a looser one that happened to agree most days */
-    if (!hisabCounts(c)) return false;
-    return chProofAny(c).has;
+    return hisabCounts(c);
+  }
+  /* The button itself, drawn for every challan the owner has not yet stamped - live when it
+     will work, outlined when it will explain. Same act, same place, always there. */
+  function hisabAddBtn(c) {
+    if (!c || !roleIs("admin") || inHisab(c)) return "";
+    var live = hisabCounts(c);
+    return '<button class="btn sm" data-act="ch-hisabadd" data-id="' + esc(c.id) + '" style="' +
+      (live ? 'background:#0b3b36;border-color:#0b3b36'
+            : 'background:#fff;color:#0b3b36;border-color:#0b3b36;border-style:dashed') + '"' +
+      (live ? '' : ' title="Not counted yet \u2014 this delivery is not marked received."') +
+      '>ADD TO HISAB</button>';
   }
   /* A delivery that is waiting for the owner's eye: received, paper in, not stamped. */
+  /* v6.9.342 - what happens when he presses it on a delivery nobody has marked received.
+     It says what hisab will and will not do, and puts the one thing that fixes it under his
+     thumb. Marking received is a separate, deliberate press - his rule. */
+  function modalHisabNotYet(id) {
+    var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+    if (!c) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    return '<h2>Not counted yet &mdash; ' + esc(c.challanNo || "") + '</h2>' +
+      '<p class="sub">' + esc(c.customerName || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
+      ' &middot; ' + money(chValue(c)) + ' &middot; <b>' + esc(c.status || "") + '</b></p>' +
+      '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
+      '<div class="meta" style="color:#7f1d1d;font-size:13px;line-height:1.55">' +
+      'This delivery is <b>not marked received</b>, and hisab counts a delivery only when it is.' +
+      '<br><br>Stamping it now would put an <b>in hisab</b> mark on this card while the ' +
+      money(chValue(c)) + ' stayed <b>off ' + esc(c.customerName || "his") + '\u2019s account</b> ' +
+      '&mdash; the card saying one thing and the statement another. That is the fault found on ' +
+      'Punit Jain\u2019s challan on 15 August, and it is worth one extra tap to not repeat it.' +
+      '<br><br>Mark it received. Then ADD TO HISAB does exactly what it says.</div></div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
+      '<button class="btn" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button></div>';
+  }
   function hisabPendingList() {
     return (S.data.challans || []).filter(function (c) {
       return !inHisab(c) && chProofAny(c).has &&
@@ -6796,7 +7172,12 @@ window.addEventListener("beforeunload", function (ev) {
         'stamped &mdash; NOT in hisab</span>';
     }
     return ' <span class="pill Won" title="Added to hisab by ' + esc(st.by || "") +
-      (st.at ? ' on ' + esc(String(st.at).slice(0, 10)) : "") + '">in hisab</span>';
+      (st.at ? ' on ' + esc(String(st.at).slice(0, 10)) : "") + '">in hisab</span>' +
+      /* v6.9.342 - and if it went in without a signed receipt, the card SAYS so and carries
+         his reason. A quiet exception is one nobody can audit; a loud one is a decision. */
+      (st.noProof ? ' <span class="pill" style="background:#fef3c7;color:#92400e" ' +
+        'title="Passed into hisab with no signed receipt. Reason given: ' + esc(st.noProof) + '">' +
+        'no paper</span>' : "");
   }
   /* ================= WHO EARNS ON THIS ONE DELIVERY (v6.9.324) =================
      HIS WORDS: "more checkboxs incase of partner and executive incentive applied for that
@@ -6962,10 +7343,30 @@ window.addEventListener("beforeunload", function (ev) {
     var p = chProofAny(c);
     var h = '<h2>Check receipt &amp; Add to HISAB &mdash; ' + esc(c.challanNo || "") + '</h2>' +
       '<p class="sub">' + esc(cl) + (c.site ? ' &middot; ' + esc(c.site) : "") +
-      ' &middot; receipt ' + (p.queued ? '<b>on this phone, still uploading</b>' : '<b>on file</b>') +
-      '. Check the paper first &mdash; this is the last look before the delivery counts as part of his hisab.</p>' +
+      ' &middot; receipt ' + (!p.has ? '<b style="color:#b45309">not on file</b>'
+                                 : (p.queued ? '<b>on this phone, still uploading</b>' : '<b>on file</b>')) +
+      '. ' + (p.has ? 'Check the paper first &mdash; this' : 'This') +
+      ' is the last look before the delivery counts as part of his hisab.</p>' +
       (p.url ? '<div style="margin:0 0 10px"><a class="btn sm ghost" href="' + esc(p.url) +
         '" target="_blank" rel="noopener">Open the signed receipt &#8599;</a></div>' : "");
+
+    /* ---- 0. NO PAPER, AND ONE LINE SAYING WHY  (v6.9.342) ----
+       His answer, in his own choice of the three: "show it, ask one line why". A delivery he
+       carried and handed over himself has no counter-signed paper and never will; refusing
+       those was refusing a normal day. So it goes in - and the line he types is filed with the
+       stamp for good, because in six months a delivery sitting in hisab with no paper and no
+       reason cannot be told apart from a mistake, and the man who has to tell them apart is
+       him. It is REQUIRED: an empty box would make the question decoration. */
+    if (!p.has) {
+      h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed">' +
+        '<b style="color:#7c2d12">There is no signed receipt on this delivery</b>' +
+        '<div class="meta" style="color:#7c2d12;margin-top:3px;font-size:12.5px">It can still go into ' +
+        'hisab &mdash; say in one line why, and that line stays on the challan for good. ' +
+        '<b>Six months from now this is the only thing that tells it apart from a mistake.</b></div>' +
+        '<input id="hsb_noproof" maxlength="120" style="margin-top:8px" ' +
+        'placeholder="e.g. I delivered it myself \u00b7 paper coming Monday \u00b7 site would not sign"/>' +
+        '</div>';
+    }
 
     /* ---- 1. THE STATEMENT, WITH THE DISCOUNT THAT WAS ACTUALLY APPLIED ----
        His words: "show client preset discount, show statement with applied discounts". These
@@ -7194,7 +7595,11 @@ window.addEventListener("beforeunload", function (ev) {
         /* v6.9.324 - `inc` is always written, even when nobody is named on the client, so an
            empty line-up is a recorded fact rather than an absent one. That distinction is the
            whole reason chIncStamp can tell "stamped, nobody earns" from "never stamped". */
-        inc: x.inc || [], extra: Math.round(Number(x.extra) || 0), extraNote: String(x.extraNote || "")
+        inc: x.inc || [], extra: Math.round(Number(x.extra) || 0), extraNote: String(x.extraNote || ""),
+        /* v6.9.342 - empty means there WAS a signed receipt. A non-empty string is the reason
+           this delivery was passed without one, in his words, kept beside the stamp itself so
+           the two can never be separated. */
+        noProof: String(x.noProof || "")
       })
     }, true);
   }
@@ -9362,6 +9767,54 @@ window.addEventListener("beforeunload", function (ev) {
   function qCatOf(q) { return q.status === "Won" ? "Won" : (q.status === "Lost" ? "Lost" : "In play"); }
 
   /* quoteCardHtml is a hoisted declaration, so the compact tree borrows the same card. */
+  /* v6.9.343 - the chip. Grey means nobody has answered for this brand yet, and grey is the
+     commonest state on the day a quote goes out; it is deliberately quiet rather than a red
+     flag on every open quote in the book. */
+  var QB_INK = { "Won": ["#dcfce7", "#166534"], "Later": ["#fef3c7", "#92400e"],
+                 "Lost": ["#fee2e2", "#b91c1c"], "": ["#f1f5f9", "#64748b"] };
+  function qbChip(q, r) {
+    var ink = QB_INK[r.state] || QB_INK[""];
+    var lab = r.state === "Later" ? ("later" + (r.till ? " \u00b7 " + d10(r.till) : ""))
+            : (r.state ? r.state.toLowerCase() : "not decided");
+    return '<button class="btn sm" data-act="qb-open" data-id="' + esc(q.id) + '" data-b="' + esc(r.brand) + '" ' +
+      'style="background:' + ink[0] + ';color:' + ink[1] + ';border-color:' + ink[0] + ';font-size:11.5px;' +
+      'padding:3px 9px;font-weight:600" title="' + esc(r.brand) + ' \u2014 ' + esc(lab) +
+      (r.why ? ". " + esc(r.why) : "") + (r.by ? " (" + esc(r.by) + ")" : "") + '">' +
+      esc(r.brand) + ' <span style="opacity:.75;font-weight:500">' + esc(lab) + '</span></button>';
+  }
+  function modalQuoteBrand(qid, brand) {
+    var q = (S.data.quotes || []).filter(function (x) { return x.id === qid; })[0];
+    if (!q) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var cur = qBrandOf(qid, brand) || {};
+    var others = quoteBrands(q).filter(function (b) { return dkey(b) !== dkey(brand); });
+    return '<h2>' + esc(brand) + '</h2>' +
+      '<p class="sub">' + esc(q.quoteNo || "") + ' &middot; ' + esc(q.client || "") + ' &middot; ' +
+      money(q.net) + ' net on the whole quote</p>' +
+      '<div class="card" style="border-color:#bfdbfe;background:#eff6ff;padding:10px 12px">' +
+      '<div class="meta" style="font-size:12.5px;color:#1e40af">This quote carries ' +
+      quoteBrands(q).length + ' brands. <b>This answer is for ' + esc(brand) + ' alone</b>' +
+      (others.length ? ' &mdash; ' + esc(others.join(" and ")) + ' keep' + (others.length > 1 ? '' : 's') +
+        ' whatever ' + (others.length > 1 ? 'they were' : 'it was') + ' given.' : '.') +
+      ' Until today, marking the quote Won marked <b>every</b> brand on it sold.</div></div>' +
+      '<label>What happened with ' + esc(brand) + '?</label>' +
+      '<select id="qb_state">' +
+        '<option value=""' + (cur.state ? '' : ' selected') + '>&mdash; not decided yet &mdash;</option>' +
+        '<option value="Won"' + (cur.state === "Won" ? ' selected' : '') + '>Won &mdash; he took this brand</option>' +
+        '<option value="Later"' + (cur.state === "Later" ? ' selected' : '') + '>Later &mdash; he will install this one after some time</option>' +
+        '<option value="Lost"' + (cur.state === "Lost" ? ' selected' : '') + '>Lost &mdash; this brand is not happening</option>' +
+      '</select>' +
+      '<div class="grid2" style="margin-top:8px"><div><label>Come back on</label>' +
+        '<input id="qb_till" type="date" value="' + esc(cur.till || addDays(today(), 60)) + '"/>' +
+        '<div class="meta" style="font-size:11px;color:#94a3b8">Used only for <b>Later</b>. On that day it comes ' +
+        'back on the daily list by itself, so a deferred machine is not something you have to remember.</div></div>' +
+      '<div><label>Note (optional)</label><input id="qb_why" maxlength="120" value="' + esc(cur.why || "") + '" ' +
+        'placeholder="e.g. slab not cast yet \u00b7 budget next quarter"/></div></div>' +
+      (cur.state ? '<div class="meta" style="margin-top:8px;font-size:11.5px;color:#64748b">Currently <b>' +
+        esc(cur.state) + '</b>, set by ' + esc(cur.by || "-") + (cur.at ? ' on ' + esc(d10(cur.at)) : "") +
+        '. Changing it writes a new line; the old one stays.</div>' : "") +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="qb-save" data-id="' + esc(q.id) + '" data-b="' + esc(brand) + '">Save</button></div>';
+  }
   function quoteCardHtml(q) {
     /* v6.9.215 - the customer's own number, shown ONLY while a search is running. That is the
        moment it earns its place: he searched a number, and this is what tells him he has the
@@ -9387,12 +9840,21 @@ window.addEventListener("beforeunload", function (ev) {
          phone, but 0 0 auto forbade the box from shrinking, so it sat at its full one-line width
          and pushed Revise clean off the right edge of a 320px screen instead. It shrinks now, and
          only then can the flex-wrap on it actually do anything. */
+      /* v6.9.343 - one chip per brand, and only when there is more than one. A single-brand
+         quote already has its answer in the status select beside it, and a second control
+         saying the same thing is a second thing to keep in step. */
+      (quoteBrands(q).length > 1 ? '<div style="flex:1 1 100%;display:flex;flex-wrap:wrap;gap:5px;margin:5px 0 0">' +
+        qBrandRows(q).map(function (r) { return qbChip(q, r); }).join("") + '</div>' : "") +
       '<div class="acts" style="margin:0;flex:1 1 auto;min-width:0;flex-wrap:wrap;justify-content:flex-end;gap:6px">' +
       '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:5px 8px;font-size:12.5px">' + opts(QSTATUS, q.status) + '</select>' +
       '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
       '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal</button>' +
       '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
-      (q.status === "Won" ? '<button class="btn sm" data-act="q-challan" data-id="' + esc(q.id) + '">Make challan</button>' : "") +
+      /* v6.9.343 - a two-brand quote whose Green Heat Plus is sold and whose Pentair is
+         deferred is not "Won" as a whole, and he still has material to send out today. The
+         button follows whether ANY brand on it is won. */
+      (q.status === "Won" || quoteBrands(q).some(function (b) { return qBrandWon(q, b); })
+        ? '<button class="btn sm" data-act="q-challan" data-id="' + esc(q.id) + '">Make challan</button>' : "") +
       /* v6.9.205 - every quote already marked Lost can still be answered, so the back
          catalogue is fillable without a migration. The pill carries the SHORT label: the
          full reason is 38 characters and would burst the acts row on a phone. */
@@ -13783,7 +14245,10 @@ function viewCatalogue() {
         /* v6.9.250 - the owner's own stage, and his alone. It appears only when the
            delivery is Received AND the signed paper is on file, which is the order he
            described: receipt first, then his eye on it, then hisab. */
-        (canAddToHisab(c) ? '<button class="btn sm" data-act="ch-hisabadd" data-id="' + esc(c.id) + '" style="background:#0b3b36;border-color:#0b3b36">ADD TO HISAB</button>' : hisabWhyNot(c)) +
+        /* v6.9.342 - the BUTTON always, and the pill beside it only while it will not yet
+           count. The pill used to stand INSTEAD of the button, which is how he came to ask
+           three times where the button had gone. */
+        hisabAddBtn(c) + hisabWhyNot(c) +
         (roleIs("admin") ? '<button class="btn sm ghost" data-act="cx-open" data-tab="challans" data-id="' + esc(c.id) + '" style="color:#b91c1c">Cancel</button>' : "");
 
       /* two-line compact card, same pattern as the lead/client cards:
@@ -22000,6 +22465,23 @@ function viewCatalogue() {
         "May I renew it for you? The AMC covers periodic service, salt and filter refills at agreed rates, " +
         "and priority attention if anything ever stops." + sign;
     }
+    /* v6.9.341 - without this branch the new warranty card fell through to the catch-all,
+       which drafts "Regarding <client> - Warranty ending - <client>". A draft that reads like
+       a mistake is a draft nobody sends, and the reminder would have been dead on arrival. */
+    if (a.kind === "qblater") {
+      return head + "When we supplied " + (a.quoteNo ? "against our quotation " + a.quoteNo : "your order") +
+        ", you had mentioned you would install the " + (a.product || "second unit") +
+        " a little later \u2014 around " + d10(a.till) + ".\n\n" +
+        "Shall I hold the same rate and arrange it now? The quotation is already with you; " +
+        "nothing needs to be worked out again." + sign;
+    }
+    if (a.kind === "warrend") {
+      return head + "The installation warranty on your " + (a.product || "unit") + " " +
+        (daysTo(a.till) < 0 ? "ended on " : "ends on ") + d10(a.till) + ".\n\n" +
+        "After that, service visits, filters and spares are chargeable. May I share our Annual " +
+        "Maintenance Contract? It covers periodic service, and there is no visit charge on a " +
+        "covered call." + sign;
+    }
     if (a.kind === "partner") {
       return "Namaste " + name + ",\n\n" +
         "It has been about " + a.days + " days since we last worked on a site together. " +
@@ -22142,6 +22624,98 @@ function viewCatalogue() {
           btns: [{ act: "amc-wa", attrs: { n: x.client || "", p: x.product || "", till: d10(x.amcEnd) }, label: "AMC offer", ghost: 1 },
                  { act: "inst-open", attrs: { id: x.id }, label: "Open record", ghost: 1 }]
         }));
+      });
+    } catch (e) { console.warn("[agent] rule skipped:", e); }
+
+    /* 8b. WARRANTY RUNNING OUT \u2014 and the machine is on NO contract  (v6.9.341)
+           HIS WORDS, in the AMC list of 22 August: "warranty expire renew warranty reminder to
+           client". warrantyEnd() has existed for weeks and three screens print it; nothing
+           anywhere ever raised it. A date that appears only when somebody happens to open the
+           record is not a reminder - it is a date.
+
+           IT DELIBERATELY SKIPS MACHINES ALREADY ON AMC. Rule 8 chases those on the date that
+           matters to them, the contract end, and a customer who is already paying does not
+           need a letter telling him his free period is over. What this finds is the machines
+           with nothing behind them the day the warranty stops - which is the one day in the
+           life of a machine when an AMC sells itself.
+
+           PER MACHINE, NOT PER ROW. An installation carries several products with several
+           warranties, and keying on the row would raise one card naming whichever product
+           happened to be stored first. */
+    try {
+      (S.data.installs || []).forEach(function (x) {
+        if (String(x.status || "Active") !== "Active") return;
+        if (amcKind(x) !== "None") return;
+        instProducts(x).forEach(function (p, pi) {
+          var we = warrantyEnd(p); if (!we) return;
+          var left = daysTo(we);
+          if (left > 60 || left < -45) return;
+          var nm = [p.product, p.model].filter(Boolean).join(" ") || "the unit";
+          out.push(mk({
+            key: "warrend|" + x.id + "|" + pi + "|" + d10(we), kind: "warrend",
+            prio: left < 0 ? 68 : (left <= 20 ? 64 : 52),
+            tag: left < 0 ? "OUT " + (-left) + "d" : left + "d LEFT",
+            title: "Warranty ending \u2014 " + (x.client || "client"),
+            why: "The installation warranty on " + nm + " at " + (x.client || "this client") +
+              (left < 0 ? " ended on " : " ends on ") + d10(we) +
+              ", and the machine is on no contract. From that day every visit, every filter and " +
+              "every part is chargeable \u2014 which is exactly why an AMC is easiest to sell now.",
+            sub: (x.client || "") + " \u00b7 " + nm + " \u00b7 warranty to " + d10(we) +
+              (x.area ? " \u00b7 " + x.area : ""),
+            client: x.client || "", siteName: x.client || "warranty", product: nm, till: we,
+            contacts: agContactsFor(x.client),
+            btns: [{ act: "warr-wa", attrs: { n: x.client || "", p: nm, till: d10(we) }, label: "Offer AMC", ghost: 1 },
+                   { act: "inst-open", attrs: { id: x.id }, label: "Open record", ghost: 1 }]
+          }));
+        });
+      });
+    } catch (e) { console.warn("[agent] rule skipped:", e); }
+
+    /* 8c. A BRAND HE SAID HE WOULD TAKE LATER, COMING BACK ON ITS DAY  (v6.9.343)
+           HIS WORDS: "sometimes client approved one brand and say will install another after
+           some time, make provision for that also."
+
+           This is the rule that makes Later worth having. Without it "Later" is just a quieter
+           way of losing the work: a note nobody reads, on a quote that has been marked Won for
+           the other brand and has therefore dropped off every open-quote list in the app.
+
+           IT FIRES ON HIS OWN DATE, and stays up for sixty days after it, because a machine
+           deferred to November is not urgent in September and is not dead in January. A brand
+           already sold since - by a challan or by a later answer - drops out on its own,
+           because qBrandWon() and clientWonBrands() are asked rather than assumed. */
+    try {
+      var _qbSeen = {};
+      (S.data.quotes || []).forEach(function (q) {
+        qBrandRows(q).forEach(function (r) {
+          if (r.state !== "Later" || !r.till) return;
+          /* sold since - by any route. Nothing to chase. */
+          if (clientWonBrands(q.client || "").indexOf(r.brand) >= 0) return;
+          var left = daysTo(r.till);
+          if (left > 0 || left < -60) return;
+          /* one card per client+brand: a brand deferred on two quotes is one job, not two */
+          var ck = dkey(q.client) + "|" + dkey(r.brand);
+          if (_qbSeen[ck]) return; _qbSeen[ck] = 1;
+          var od = -left;
+          out.push(mk({
+            key: "qblater|" + q.id + "|" + dkey(r.brand) + "|" + d10(r.till), kind: "qblater",
+            prio: od >= 21 ? 78 : (od >= 3 ? 64 : 58),
+            tag: od === 0 ? "DUE TODAY" : od + "d ON",
+            title: "He said later \u2014 " + esc(r.brand) + " at " + (q.client || "client"),
+            why: (q.client || "This client") + " took the rest of quote " + (q.quoteNo || "") +
+              " and said he would install the " + r.brand + " after some time. That time was " +
+              d10(r.till) + (od > 0 ? ", " + od + " days ago" : "") + "." +
+              (r.why ? " His reason then: " + r.why + "." : "") +
+              " The quote is already written and the price is already agreed \u2014 this is the " +
+              "cheapest order in the book to go and collect.",
+            sub: (q.client || "") + " \u00b7 " + r.brand + " \u00b7 deferred on " + d10(r.at || "") +
+              " to " + d10(r.till) + " \u00b7 quote " + (q.quoteNo || ""),
+            client: q.client || "", siteName: q.client || "quote", product: r.brand,
+            quoteNo: q.quoteNo || "", till: r.till,
+            contacts: agContactsFor(q.client),
+            btns: [{ act: "qb-open", attrs: { id: q.id, b: r.brand }, label: "Answer it", ghost: 1 },
+                   { act: "q-pdf", attrs: { id: q.id }, label: "The quote", ghost: 1 }]
+          }));
+        });
       });
     } catch (e) { console.warn("[agent] rule skipped:", e); }
 
@@ -24833,7 +25407,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null;
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     /* v6.9.263 - warming the logo cache is for the NEXT quote PDF, never for this paint;
        nothing on screen waits on it. Started from the paint it competed with teamAuth and
@@ -26121,6 +26695,29 @@ function viewCatalogue() {
       });
       return;
     }
+    /* v6.9.343 - one brand's own answer on a quote that carries several. */
+    if (act === "qb-open") {
+      S.modal = modalQuoteBrand(t.getAttribute("data-id"), t.getAttribute("data-b") || "");
+      render(); return;
+    }
+    if (act === "qb-save") {
+      var qbId = t.getAttribute("data-id"), qbB = t.getAttribute("data-b") || "";
+      var qbQ = (S.data.quotes || []).filter(function (x) { return x.id === qbId; })[0];
+      if (!qbQ) { toast("That quote is not on this device yet - pull down to refresh."); return; }
+      var qbSt = val("qb_state");
+      if (!qbSt) { toast("Pick Won, Later or Lost for " + qbB + ". Nothing was saved."); return; }
+      var qbTill = (qbSt === "Later") ? (val("qb_till") || addDays(today(), 60)) : "";
+      /* A date already gone by would raise the reminder the same minute and read as overdue on
+         the day it was set - which is not what "after some time" means. */
+      if (qbSt === "Later" && qbTill <= today()) {
+        toast("Pick a date in the future for " + qbB + " - that is what brings it back.");
+        return;
+      }
+      qBrandSave(qbQ, qbB, qbSt, qbTill, val("qb_why"));
+      S.modal = null;
+      toast(qbB + ": " + qbSt + (qbSt === "Later" ? " - back on " + d10(qbTill) : "") + ".");
+      render(); return;
+    }
     if (act === "q-pdf") {
       var qd = S.data.quotes.filter(function (x) { return x.id === id; })[0];
       if (!qd) return;
@@ -27259,11 +27856,39 @@ function viewCatalogue() {
       }
       return;
     }
+    /* v6.9.341 - the warranty letter: the wording amc-wa carried until today, put against the
+       date it was always describing. */
+    if (act === "warr-wa") {
+      var wn = t.getAttribute("data-n"), wp = t.getAttribute("data-p"), wtill = t.getAttribute("data-till");
+      var wcl = clientByName(wn) || {};
+      var wnum = String(wcl.mobile || "").replace(/\D/g, ""); if (wnum.length === 10) wnum = "91" + wnum;
+      var wout = wtill && String(wtill).length === 10 && daysTo(wtill) < 0;
+      var wmsg = "Dear " + wn + ",\n\nThe installation warranty on your " + wp + " from Energy World " +
+        (wout ? "ended on " : "ends on ") + fullDate(wtill) +
+        ".\n\nTo keep it running trouble-free after that, we would be glad to offer an Annual Maintenance Contract \u2014 periodic service, priority attendance, and no visit charge on a covered call.\n\nMay we share the details?\n\nThank you,\nEnergy World";
+      window.open("https://wa.me/" + wnum + "?text=" + encodeURIComponent(wmsg), "_blank");
+      return;
+    }
     if (act === "amc-wa") {
       var an = t.getAttribute("data-n"), ap = t.getAttribute("data-p"), atill = t.getAttribute("data-till");
       var acl = clientByName(an) || {};
       var anum = String(acl.mobile || "").replace(/\D/g, ""); if (anum.length === 10) anum = "91" + anum;
-      var amsg = "Dear " + an + ",\n\nYour " + ap + " from Energy World is nearing the end of its installation warranty (" + fullDate(atill) + "). To keep it running trouble-free, we would be glad to offer an Annual Maintenance Contract (AMC) with priority service and periodic checks.\n\nMay we share the details?\n\nThank you,\nEnergy World";
+      /* ==== 23 Aug 2026, RANDOM CHECK: THIS MESSAGE WAS ABOUT THE WRONG THING ====
+         The only rule that raises this button is "AMC ABOUT TO LAPSE", and it hands over
+         till = amcEnd. The text said "nearing the end of its installation warranty" and
+         printed the AMC end date beside those words. So a customer whose CONTRACT was running
+         out was told his WARRANTY was - about a machine that may have been out of warranty for
+         two years - and was then offered the AMC he already holds.
+
+         Nobody reported it because nobody reads a message they are about to send: they read
+         the customer's name, see that it is right, and press send.
+
+         An AMC ending and a warranty ending are two different letters to two different
+         customers, so there are now two. This one is the renewal. */
+      var alapsed = atill && String(atill).length === 10 && daysTo(atill) < 0;
+      var amsg = "Dear " + an + ",\n\nYour Annual Maintenance Contract with Energy World for " + ap +
+        (alapsed ? " lapsed on " : " is due to end on ") + fullDate(atill) +
+        ".\n\nWe would be glad to renew it, so that your periodic service and priority attendance continue without a break.\n\nMay we share the renewal details?\n\nThank you,\nEnergy World";
       window.open("https://wa.me/" + anum + "?text=" + encodeURIComponent(amsg), "_blank");
       return;
     }
@@ -27280,6 +27905,17 @@ function viewCatalogue() {
     }
     if (act === "inst-new") { S.modal = modalInstall(null); render(); return; }
     if (act === "inst-open") { S.modal = modalInstall(installById(id)); render(); return; }
+    /* v6.9.341 - the contract on paper. Nothing is written; it only reads what is already
+       on the installation rows and prints it. */
+    if (act === "amc-pdf") {
+      var _an = t.getAttribute("data-n") || "";
+      if (!_an) { toast("No client on this row."); return; }
+      toast("Building the AMC sheet\u2026");
+      loadLogo().then(function () { return amcPdf(_an); })
+        .then(function (d) { d.save("AMC_" + String(_an).replace(/[^\w.-]/g, "_") + "_" + today() + ".pdf"); })
+        .catch(function (e) { toast("Could not build it: " + ((e && e.message) || "unknown")); });
+      return;
+    }
     if (act === "svc-ledger") { S.modal = modalServiceLedger(t.getAttribute("data-n")); render(); return; }
     if (act === "inst-save") {
       var ic = val("i_client");
@@ -27954,14 +28590,12 @@ function viewCatalogue() {
       var _hc = (S.data.challans || []).filter(function (x) { return x.id === _hid; })[0];
       if (!_hc) { toast("That challan is not on this device yet - pull down to refresh."); return; }
       if (!roleIs("admin")) { toast("Only the owner adds a delivery to hisab."); return; }
-      if (!chProofAny(_hc).has) { toast("Attach the signed receipt first - there is nothing to check yet."); return; }
-      /* v6.9.259 - the button is drawn from canAddToHisab(), but a button is not a rule.
-         This is the same test, made where the writing actually happens. */
-      if (!hisabCounts(_hc)) {
-        toast("Mark " + (_hc.challanNo || "this delivery") + " as received first \u2014 until then " +
-              "hisab does not count it, and a stamp would say otherwise.");
-        return;
-      }
+      if (inHisab(_hc)) { toast("That delivery is already in hisab."); return; }
+      /* v6.9.342 - the missing paper is no longer a refusal; it becomes a question inside the
+         screen. The missing RECEIVED still is, and now it explains itself instead of being a
+         toast that scrolls away. A button is not a rule: this is the same test made where the
+         writing actually happens. */
+      if (!hisabCounts(_hc)) { S.modal = modalHisabNotYet(_hid); render(); return; }
       S.modal = modalAddToHisab(_hid); render(); return;
     }
     if (act === "drv-scan") {
@@ -28029,6 +28663,17 @@ function viewCatalogue() {
         toast("Mark " + (hc.challanNo || "this delivery") + " as received first \u2014 nothing was stamped.");
         S.modal = null; render(); return;
       }
+      /* v6.9.342 - no paper is allowed, an unanswered question is not. Checked here and not
+         only in the screen, because the screen can be built once and pressed later. */
+      var hNoProof = "";
+      if (!chProofAny(hc).has) {
+        hNoProof = String((el("hsb_noproof") && el("hsb_noproof").value) || "").trim();
+        if (hNoProof.length < 4) {
+          toast("There is no signed receipt on this delivery \u2014 say in one line why it is going " +
+                "into hisab without one. Nothing was stamped.");
+          return;
+        }
+      }
       var hmiss = hisabBrandsMissingDisc(hc);
       var hpct = {}, hnon = {};
       document.querySelectorAll(".hsb-pct").forEach(function (el) {
@@ -28092,7 +28737,7 @@ function viewCatalogue() {
         if (v > 0) hset.push(b + " " + v + "%"); else hign.push(b);
       });
       hisabStampSave(hc, hset, hign, {
-        inc: hInc, extra: hxAmt,
+        inc: hInc, extra: hxAmt, noProof: hNoProof,
         extraNote: (el("hsb_extranote") && el("hsb_extranote").value) || ""
       });
       S.modal = null;
