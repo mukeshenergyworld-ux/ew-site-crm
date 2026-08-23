@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.332";
+  var APP_VERSION = "6.9.334";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14919,6 +14919,13 @@ function viewCatalogue() {
       var rl = returnLines(r);
       var rSub = rl.reduce(function (a, x) { return a + x.amt; }, 0);
       retTotal += rSub;
+      /* v6.9.334 - HIS WORDS: "materila returned also be drop down like normal challan, in red
+         color its ok". A delivery has folded away since v6.9.153; a return never did, so one
+         thirteen-line return pushed the client ledger - the thing you actually came to read -
+         off the bottom of the screen. Same mechanism as the delivery, deliberately: the same
+         act, the same S.chExp store keyed by row id, the same default of shut. Only the colour
+         differs, because a credit should still look like a credit. */
+      var _rExp = !!(S.chExp && S.chExp[r.id]);
       var rrows = rl.map(function (x, idx) {
         return '<tr style="border-bottom:1px solid #fecaca;background:' + (idx % 2 ? '#fff5f5' : '#fff') + '">' +
           '<td style="padding:5px 6px;color:#64748b">' + (idx + 1) + '</td>' +
@@ -14946,6 +14953,13 @@ function viewCatalogue() {
         (!chProofAny(r).has && canSee("returns")
           ? '<div class="acts" style="margin-top:6px"><button class="btn sm" data-act="ch-proof" data-id="' + esc(r.id) + '" style="background:#b91c1c;border-color:#b91c1c" title="Photograph the paper signed at the godown when this material was counted back in">&#128206; Attach goods-in receipt</button></div>'
           : '') +
+        '<div class="acts" style="align-items:center;margin-top:6px">' +
+          '<button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(r.id) + '" ' +
+            'style="border-color:#fecaca;color:#b91c1c">' +
+            (_rExp ? '&#9662; Hide items' : '&#9656; Show ' + rl.length + ' item(s) returned') + '</button>' +
+          '<div class="grow"></div>' +
+          '<span style="font-size:13px;color:#b91c1c">Return total <b>&minus;' + money(rSub) + '</b></span></div>' +
+        (!_rExp ? '' :
         '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #fecaca">' +
         '<thead><tr style="background:#7f1d1d;color:#fff">' +
         '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product returned</th>' +
@@ -14953,7 +14967,7 @@ function viewCatalogue() {
         '<th style="padding:6px;text-align:center;width:56px">Disc%</th><th style="padding:6px;text-align:right;width:72px">Net rate</th>' +
         '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' + rrows +
         '</tbody><tfoot><tr style="background:#fee2e2"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Return total</td>' +
-        '<td style="padding:6px;text-align:right;font-weight:800;color:#b91c1c">&minus;' + money(rSub) + '</td></tr></tfoot></table></div></div>';
+        '<td style="padding:6px;text-align:right;font-weight:800;color:#b91c1c">&minus;' + money(rSub) + '</td></tr></tfoot></table></div>') + '</div>';
     });
     var _led = clientLedger(cl), paid = _led.paid, opening = _led.opening || 0, bal = opening + allNet - paid - retTotal;
     var gst = S.billGst ? Math.round(selNet * 0.18) : 0;
@@ -18589,6 +18603,83 @@ function viewCatalogue() {
     return h + '</div>';
   }
 
+  /* ---- WHICH SCREENS ARE ACTUALLY OPENED  (v6.9.333) ----
+     An admin sees THIRTY-THREE tabs. Nobody navigates thirty-three of anything; they learn four
+     and never find the rest. The obvious next move is to fold them into hubs the way Payments
+     already folds Received / Paid out / Client dues - but which ones, and in what order, is not
+     something to guess at, and it is certainly not something for me to guess at from a
+     screenshot. Measure before you change.
+
+     So: count. Nothing more.
+
+     THIS NEVER LEAVES THE PHONE. It is one localStorage key per person on their own device. It
+     is not in S.data, it is not written to the sheet, it is not in any snapshot, and no api()
+     call ever carries it. Nobody can be watched with this - the counts on his phone are HIS,
+     and the counts on a salesman's phone stay on the salesman's phone unless he shows them.
+     It is a ruler, not a camera.
+
+     Read it in Health check in a month. Then hide - never delete - what nobody opens. */
+  /* ONE list of every tab and its name (v6.9.333). It used to live inside render(), where
+     nothing else could reach it - so the usage counter would have had to keep a second copy
+     of the same forty-two names, and a second copy is how the two quietly stop agreeing.
+     Hoisted, not duplicated. render() still reads exactly this. */
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+  var TAB_LABEL = (function () {
+    var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
+  })();
+
+  var TABUSE_KEY = "ew_tabuse";
+  function tabUseAll() {
+    try { return JSON.parse(localStorage.getItem(TABUSE_KEY) || "{}") || {}; } catch (e) { return {}; }
+  }
+  function tabUse(tab) {
+    if (!tab) return;
+    try {
+      var all = tabUseAll();
+      if (!all.since) all.since = today();
+      all.t = all.t || {};
+      all.t[tab] = (Number(all.t[tab]) || 0) + 1;
+      localStorage.setItem(TABUSE_KEY, JSON.stringify(all));
+    } catch (e) { }        /* a full box must never cost a man his tap */
+  }
+  function tabUseCard() {
+    var all = tabUseAll(), t = all.t || {};
+    var names = Object.keys(t).sort(function (a, b) { return t[b] - t[a]; });
+    var total = names.reduce(function (n, k) { return n + t[k]; }, 0);
+    var since = all.since || today();
+    var days = Math.max(1, Math.round((new Date(today()) - new Date(since)) / 86400000) + 1);
+    var mine = myTabs();
+    var label = function (k) {
+      var f = TAB_LABEL[k];
+      return f || k;
+    };
+    var h = '<div class="card"><h3 style="margin:0 0 2px">Which screens you actually open</h3>' +
+      '<div class="meta" style="font-size:12.5px">Counted on this device only &mdash; never sent anywhere, never in the sheet. ' +
+      'Your role carries <b>' + mine.length + '</b> screens. ' +
+      (total ? 'Since ' + esc(dstr(since)) + ' (' + days + ' day' + (days > 1 ? 's' : '') + ') you have opened <b>' +
+               names.length + '</b> of them, <b>' + total + '</b> times.'
+             : 'Nothing counted yet &mdash; it starts from your next tap.') + '</div>';
+    if (names.length) {
+      var top = t[names[0]] || 1;
+      h += '<div style="margin-top:9px">' + names.map(function (k) {
+        var pc = Math.round(100 * t[k] / top);
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;font-size:12.5px">' +
+          '<span style="flex:0 0 150px;color:#334155">' + esc(label(k)) + '</span>' +
+          '<span style="flex:1;background:#f1f5f9;border-radius:4px;height:9px;overflow:hidden">' +
+            '<span style="display:block;height:9px;width:' + Math.max(3, pc) + '%;background:#14b8a6"></span></span>' +
+          '<span style="flex:0 0 42px;text-align:right;color:#94a3b8">' + t[k] + '</span></div>';
+      }).join("") + '</div>';
+      var never = mine.filter(function (k) { return !t[k]; });
+      if (never.length) {
+        h += '<div class="meta" style="margin-top:9px;font-size:12.5px"><b>Never opened in ' + days +
+          ' day' + (days > 1 ? 's' : '') + ':</b> ' + never.map(label).map(esc).join(", ") +
+          '. <span style="color:#94a3b8">Give it a month before reading anything into that.</span></div>';
+      }
+      h += '<div class="acts" style="margin-top:9px"><button class="btn sm ghost" data-act="tabuse-clear">Start counting again</button></div>';
+    }
+    return h + '</div>';
+  }
+
   function viewHealth() {
     var s = healthScan();
     var h = '<div class="card" style="' + (s.total ? 'border-color:#fed7aa;background:#fff7ed' : 'border-color:#99f6e4;background:#f0fdfa') + '">' +
@@ -18599,6 +18690,7 @@ function viewCatalogue() {
       '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="health-refresh">Re-scan</button></div></div>';
 
     h += lineTestCard();
+    h += tabUseCard();
     h += chNoGapCard();
     try { h += driveCard(); } catch (e) { console.warn("[drive] card:", e); }
 
@@ -24070,7 +24162,7 @@ function viewCatalogue() {
     }
     if (!S.pin) { renderLogin(); return; }
     var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
-    var tabs = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+    var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
       '<button class="burger" data-act="nav-toggle">&#9776;</button>' +
@@ -24655,6 +24747,11 @@ function viewCatalogue() {
       render();
       return;
     }
+    if (act === "tabuse-clear") {
+      try { localStorage.removeItem(TABUSE_KEY); } catch (e) { }
+      toast("Counting restarted from today. Nothing else was touched.");
+      render(); return;
+    }
     if (act === "logout") { logout(); return; }
     /* Clicking the dimmed background no longer closes a popup - a stray click while making a
        challan used to wipe the whole form. Popups now close ONLY via their Cancel/Close button.
@@ -24707,6 +24804,7 @@ function viewCatalogue() {
     if (act === "reload-app") { location.reload(); return; }
     if (act === "tab") {
       S.tab = t.getAttribute("data-tab");
+      tabUse(S.tab);
       /* counted on his own device, against his own name, so "Your six" becomes his six */
       try { navBump(S.tab); } catch (e) { }
       /* follow him into whichever group he landed in, so the open band is always the useful one */
@@ -29142,9 +29240,44 @@ function viewCatalogue() {
          data for a second before the login screen replaces it. The saved snapshot is already
          on screen by this point, so nothing is lost by that caution. */
       var authP = api("teamAuth", { ua: navigator.userAgent });
-      /* fired NOW, in parallel. Caught here so a failed book never turns into an
-         unhandled rejection that also fails the sign-in. */
-      var dataP = api("teamGet").catch(function (e) { return { __err: (e && e.message) || "no answer" }; });
+      /* ===== PART 1b: AND DO NOT PULL A BOOK THAT HAS NOT CHANGED (v6.9.333) =====
+         MEASURED 23 Aug, on his own phone, in his own browser. The snapshot in IndexedDB is
+         1,062 KB and it is ALREADY ON THE SCREEN by the time this line runs - the warm branch
+         above painted it. The app then pulled all 1,062 KB again: 4.1 seconds, on every open,
+         whether or not one row had changed. Every morning, on every phone, on mobile data.
+
+         teamStamp answers ONE NUMBER - one property read, no sheet touched, about sixty bytes -
+         and the heartbeat has been comparing it every thirty seconds since v6.9.314. It goes
+         out WITH teamAuth, and that costs nothing: measured against this endpoint, FOUR calls
+         fired together finish in 2,170 ms and ONE finishes in 2,377 ms. Concurrency is free
+         here. It is the wake-up that costs, and we are paying for it anyway.
+
+         So if the stamp still matches the book already on screen, there is nothing to fetch and
+         nothing is fetched. If it has moved, if there is no snapshot, or if the stamp call
+         fails for any reason whatever, the book is pulled exactly as before. Every uncertain
+         path leads to "pull it" - a needless megabyte is a waste, a missed change is a wrong
+         number in front of a customer.
+
+         Caught here so a failed book never turns into an unhandled rejection that also fails
+         the sign-in. */
+      var _snapStamp = (S.warmStart && S.data && S.data.stamp) ? String(S.data.stamp) : "";
+      var dataP = (_snapStamp
+        ? api("teamStamp").then(function (st) {
+            var now = (st && st.stamp) ? String(st.stamp) : "";
+            if (!now || now !== _snapStamp) return api("teamGet");
+            _beatSeen = now;          /* the heartbeat's baseline, so it does not re-ask at once */
+            return { ok: true, __same: true };
+          }, function () {
+            /* the stamp call itself failed. The comment above promises that every uncertain
+               path pulls the book, and this is the path that would otherwise have quietly
+               skipped it - a rejection here would have fallen straight to the outer catch and
+               shown "the book did not load" for a book we never asked for. Two-argument then,
+               deliberately: this must catch a failing STAMP and not a failing teamGet, which
+               would retry for ever. */
+            return api("teamGet");
+          })
+        : api("teamGet")
+      ).catch(function (e) { return { __err: (e && e.message) || "no answer" }; });
 
       authP.then(function (r) {
         if (!r || !r.ok) {
@@ -29175,7 +29308,14 @@ function viewCatalogue() {
             return;
           }
           syncAt = Date.now();
-          S.data = d; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); splitCancelled(); snapSave();
+          /* v6.9.333 - __same means the stamp had not moved, so the book already on screen IS
+             the book on the server. There is nothing to replace and nothing to re-save; doing
+             either would overwrite a good book with a two-field stub. Everything AFTER this
+             still runs, because a pending save still needs retrying whether or not the server's
+             book moved. */
+          if (!d.__same) {
+            S.data = d; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); splitCancelled(); snapSave();
+          }
           render(); syncBanner();
           if (pendCount()) retryPending();
           try { prfFlush(); } catch (e) { }
