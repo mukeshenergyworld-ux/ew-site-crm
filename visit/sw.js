@@ -20,6 +20,39 @@ var CACHE = 'ew-visit-v2';
    Ask the network; if it has not answered in 2.5 seconds serve what is cached and let the
    network finish quietly into the cache. */
 var NET_MS = 2500;
+/* ===== NEVER STORE A ONE-TIME URL  (23 Aug 2026) =====
+   MEASURED ON HIS OWN PHONE, not suspected: cache ew-team-v11 held TWELVE copies of app.js -
+   20.8 MB - and had served none of them. ew-service-v1 held 97 more one-time URLs. 69 MB on
+   the origin, all of it dead.
+
+   The CRM asked for app.js?cb=<now> and liveVersion() asks every app for index.html?v=<now>.
+   Both correctly went to the NETWORK - a query string means "I want fresh" - and both were
+   then STORED under that one-time url. The next open carries a different stamp, so the stored
+   copy can never match. A full copy written on every open, for ever, never once read.
+
+   The routing was right. The storing was wrong: a url that will never be asked for again has
+   no business in a cache. One line, and it is this one. */
+function ewKeep(req, res) {
+  if (!res || !(res.ok || res.status === 200)) return;
+  try { if (new URL(req.url).search) return; } catch (e) { return; }
+  var cp = res.clone();
+  caches.open(CACHE).then(function (c) { c.put(req, cp); }).catch(function () {});
+}
+/* and clear what the old rule left behind. Runs once, when this worker activates. The cache
+   NAME is deliberately not bumped - that would delete the good entries too and cost every
+   phone a fresh download, which is the exact cost this release exists to remove. */
+function ewPurge() {
+  return caches.open(CACHE).then(function (c) {
+    return c.keys().then(function (rs) {
+      return Promise.all(rs.map(function (r) {
+        var dead = true;
+        try { dead = !!new URL(r.url).search; } catch (e) { dead = true; }
+        return dead ? c.delete(r) : null;
+      }));
+    });
+  }).catch(function () {});
+}
+
 function ewFresh(req, fallbackUrl) {
   return new Promise(function (resolve) {
     var settled = false;
@@ -33,8 +66,7 @@ function ewFresh(req, fallbackUrl) {
     var timer = setTimeout(function () { cached().then(give); }, NET_MS);
     fetch(req).then(function (res) {
       if (res && res.status === 200 && res.type === 'basic') {
-        var copy = res.clone();
-        caches.open(CACHE).then(function (c) { c.put(req, copy); }).catch(function () {});
+        ewKeep(req, res);
       }
       clearTimeout(timer);
       give(res);
@@ -81,8 +113,7 @@ function ewShelf(req, fallbackUrl) {
   return caches.match(req).then(function (hit) {
     var net = fetch(req).then(function (r) {
       if (r && r.ok) {
-        var cp = r.clone();
-        caches.open(CACHE).then(function (c) { c.put(req, cp); }).catch(function () {});
+        ewKeep(req, r);
       }
       return r;
     }).catch(function () { return null; });
@@ -98,7 +129,17 @@ function ewShelf(req, fallbackUrl) {
 }
 /* a request that is ASKING for the network gets it: a version poll, or a forced fresh open */
 function ewWantsNetwork(req) {
-  try { return !!(new URL(req.url).search); } catch (e) { return true; }
+  /* 23 Aug 2026 - AND app.js, which is now asked for at a STABLE url with cache:"no-cache".
+     That is a revalidation, not a download. Measured on GitHub Pages from a page no worker
+     controls: 548 KB the first time and 0 KB every time after, because the server answers 304
+     against its ETag. So the network path is nearly free AND always correct, and ewFresh's
+     2.5-second deadline still serves the shelf when there is no signal.
+
+     Cache-first here would be wrong, and for a reason worth writing down: the CRM has no
+     liveVersion() and no update banner. Its footer promises "updates apply automatically on
+     each login", and THIS REQUEST is the only thing that keeps that promise. */
+  try { var u = new URL(req.url); return !!u.search || /\/app\.js$/.test(u.pathname); }
+  catch (e) { return true; }
 }
 
 var SHELL = ['./', './index.html', './manifest.webmanifest'];
@@ -122,7 +163,7 @@ self.addEventListener('activate', function (e) {
        app may only ever clear its OWN older versions. */
         return (k !== CACHE && k.indexOf("ew-visit-") === 0) ? caches.delete(k) : null;
       }));
-    }).then(function () { return self.clients.claim(); })
+    }).then(ewPurge).then(function () { return self.clients.claim(); })
   );
 });
 
