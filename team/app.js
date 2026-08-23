@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.339";
+  var APP_VERSION = "6.9.340";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3590,7 +3590,11 @@ window.addEventListener("beforeunload", function (ev) {
     var ex = amcStageMap()[u.key];
     if (ex) return { stage: ex.stage, at: ex.at, by: ex.by, amount: ex.amount, till: ex.till, note: ex.note, how: "moved" };
     var ins = amcInstallFor(u);
-    if (ins && ins.amcType && ins.amcType !== "None" && !amcRowSpokenFor(ins, u)) {
+    /* v6.9.340 - amcKind(), not `amcType !== "None"`. By the loose test a row saying
+           "Visit-based" was a contract; the engineer's app decided in v1.4.2 that it is not,
+           because the word says how the man PAYS and not what he is covered for. Until today
+           the office screen and the engineer's screen answered that differently. */
+    if (ins && amcKind(ins) !== "None" && !amcRowSpokenFor(ins, u)) {
       return { stage: "Won", at: "", by: "", amount: Number(ins.amcAmount) || 0,
         till: dstr(ins.amcEnd) || "", note: "", how: "already on the installation record" };
     }
@@ -3713,13 +3717,308 @@ window.addEventListener("beforeunload", function (ev) {
       '<button class="btn" data-act="amc-stage-save" data-k="' + esc(u.key) + '">Save the stage</button></div>';
   }
 
+  /* ---- IS THIS MACHINE ON A CONTRACT, AND IS IT LIVE TODAY?  (ported v6.9.340) ----
+     PORTED WORD FOR WORD FROM THE SERVICE APP, and the reason is a disagreement this found.
+
+     The CRM has never had amcKind(). It asked `amcType && amcType !== "None"` in four places -
+     the dashboard count, the installed-base pill, the AMC reminder and the client card - and by
+     that reading a row saying "Visit-based" IS a contract. The engineer's app decided in v1.4.2
+     that it is NOT, after he explained what the word meant: "without AMC case, Rs 600 per visit,
+     salt cost as spares as per actual". It records how the man PAYS, not what he is covered for.
+
+     So the office screen and the engineer's screen have been giving two different answers to
+     "does this client have an AMC". These functions and lower() are copied here byte for byte
+     rather than rewritten, so t_apps_agree holds them together from now on.
+  */
+  function lower(s) { return String(s == null ? "" : s).trim().toLowerCase(); }
+  function amcKind(ins) {
+    var t = lower(String((ins && ins.amcType) || "")).replace(/[^a-z ]+/g, " ");
+    if (!t.replace(/\s+/g, "") || / none /.test(" " + t + " ")) return "None";
+    /* ---- "VISIT-BASED" IS NOT A CONTRACT (v1.4.2, 20 Aug 2026) ----
+       Asked what the word meant on Ramesh - Sheena Export's row, he answered: "without AMC
+       case, Rs 600 per visit, salt cost as spares as per actual". So it records how the man
+       PAYS, not what he is covered for - and the app was reading it as a contract, which made
+       his visit charge and his salt free. On his own book that is Rs 600 given away on every
+       single call, for as long as nobody looked.
+
+       THE GUARD IS DELIBERATE. A real contract that happens to mention its visits - "AMC with
+       spares, 2 visits a year" - must NOT be cancelled by the word. Only a row that says
+       'visit' and says nothing whatever about what it covers is read as no contract. */
+    var says = /without|w\/o|excl|with spare|incl|full/.test(t);
+    if (!says && / visit/.test(" " + t)) return "None";
+    if (/without|w\/o|excl/.test(t)) return "AMC without spares";
+    if (/with spare|incl|full/.test(t)) return "AMC with spares";
+    return "AMC without spares";
+  }
+  function amcLiveOn(ins, date) {
+    if (!ins || amcKind(ins) === "None") return false;
+    var d = String(date || today()).slice(0, 10);
+    /* ---- THE CONTRACT STARTS AFTER THE MACHINE IS IN (v1.4.1, 20 Aug 2026) ----
+       His words: "AMC start after installation, so that no issue".
+
+       Until this line existed only the END date was checked, so a contract signed in June and
+       running to next March made a service done in JANUARY look covered - work the customer
+       had already paid for in cash, quietly written off against a contract that did not exist
+       on the day. Nothing on any screen would ever have said so.
+
+       There is no amcStart column and there does not need to be one, because he has just said
+       what the start is: the machine going in. `installDate` is the floor.
+
+       IT IS `<=`, NOT `<`. The contract starts AFTER the installation, so the install day
+       itself is not covered - which is the whole of "so that no issue". The Installation job
+       type is still charged separately in amcCover(); the two rules agree, and belt-and-braces
+       on a money question is not waste. A backdated install record would otherwise slip
+       through the date rule and the type rule would still catch it.
+
+       NO INSTALL DATE RECORDED MEANS NO FLOOR. Refusing cover because the office never typed a
+       date would charge a customer who holds a perfectly good contract - the wrong way round,
+       and not his fault.
+
+       AND NOT commDate, WHICH ALSO EXISTS. The CRM keeps a commissioning date per product and
+       uses `commDate || installDate` for the warranty and the service clock. It is deliberately
+       NOT used here, for three reasons: he said "installation"; commDate lives only inside
+       productsJson and is not a column on the row this app reads; and commissioning is the
+       LATER of the two, so using install date is the more generous floor - the gap between the
+       machine going in and it being started is a gap in which the only visit possible is the
+       commissioning itself, and amcCover() charges type "Installation" regardless of date. */
+    var start = String(ins.installDate || "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(start) && d <= start) return false;
+    var end = String(ins.amcEnd || "").slice(0, 10);
+    /* no end date recorded is treated as live, exactly as amcState has always treated it */
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) return true;
+    return end >= d;
+  }
+
+  /* ================= THE AMC RATE CARD  (v6.9.340, 23 August 2026) =================
+     HIS WORDS: "AMC calculation for client product wise, adding product increase amc amount,
+     proper amc format for client".
+
+     THE FAULT IT FIXES. amcAmount was ONE number typed by hand on the installation row, and
+     nothing derived it. Add a second machine to that installation and the amount sat exactly
+     where it was: the engineer then serviced two machines for the price of one, and no screen
+     anywhere said the contract was underpriced. That is money leaking quietly, which is the
+     worst kind, and it is the one he named.
+
+     PER KIND, NOT PER MODEL - with a per-model override for the exceptions.
+     A rate per MODEL would need a row for every model ever sold, most of them never used, and
+     a machine whose model was typed slightly differently would find no rate at all. A rate per
+     KIND always has an answer: there are seven kinds and they do not change. Where a particular
+     model genuinely costs more to cover, an override on that model wins over its kind. The rule
+     is: the most specific rate that exists, and there is always a general one.
+
+     TWO RATES PER ROW, because there are two contracts. "With spares" covers the parts and
+     "without spares" does not, so they cannot share a price. amcKind() already answers which
+     contract a machine is on; this just prices it.
+
+     WHERE IT LIVES. Append-only audit rows, the same channel the manual challan number, the
+     delivery proof and the hisab stamp use - no column, no tab, no backend change, and a rate
+     corrected later is a newer row rather than an overwrite. THE CONTRACT AMOUNT ITSELF is not
+     kept here: it stays in amcAmount, its own column on the installation, because that is a
+     money record and this is only the card that suggests what it should be.
+
+     AND IT NEVER OVERWRITES. The suggestion is shown beside what he typed, with the difference
+     spelled out. Nothing in this app rewrites his money records; the code is fixed, the record
+     is his. */
+  function amcRateMap() {
+    if (_amcRateCache) return _amcRateCache;
+    var m = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "amc:rate") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var kind = String(d.kind || "").trim();
+      if (!kind) return;
+      var key = dkey(kind) + "|" + dkey(d.model || "");
+      var prev = m[key];
+      /* newest row wins, the same convention every audit-backed fact in this app uses */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[key] = { at: r.createdAt || "", by: r.actor || d.by || "",
+                   kind: kind, model: String(d.model || ""),
+                   withSpares: Number(d.withSpares) || 0,
+                   withoutSpares: Number(d.withoutSpares) || 0 };
+      }
+    });
+    _amcRateCache = m;
+    return m;
+  }
+  var _amcRateCache = null;
+  /* The most specific rate that exists: this model, else this kind. Returns 0 when neither has
+     been set, and 0 means NOT PRICED - never "free". Every screen that shows a 0 from here says
+     so in words rather than printing a confident zero. */
+  function amcRateFor(kind, model, contract) {
+    var m = amcRateMap();
+    var row = m[dkey(kind) + "|" + dkey(model)] || m[dkey(kind) + "|"] || null;
+    if (!row) return 0;
+    return (String(contract) === "AMC with spares") ? row.withSpares : row.withoutSpares;
+  }
+  /* What this installation SHOULD cost a year, from the products actually on it. A machine not
+     on a contract is not priced at all - amcKind() says None and there is nothing to suggest. */
+  function amcSuggest(ins) {
+    var contract = amcKind(ins);
+    if (contract === "None") return { on: false, total: 0, lines: [], missing: 0 };
+    var lines = instProducts(ins).map(function (p) {
+      var rate = amcRateFor(p.product, p.model, contract);
+      return { product: String(p.product || ""), model: String(p.model || ""), rate: rate, priced: rate > 0 };
+    });
+    return {
+      on: true, contract: contract,
+      total: lines.reduce(function (a, x) { return a + x.rate; }, 0),
+      lines: lines,
+      missing: lines.filter(function (x) { return !x.priced; }).length
+    };
+  }
+  /* Every machine this client has, and what the contracts add up to. There was no answer to
+     "what is this client paying us a year" anywhere in the estate: the service ledger shows what
+     was BILLED ON VISITS, which is a different number and always will be. */
+  function amcForClient(client) {
+    var k = dkey(client);
+    var rows = (S.data.installs || []).filter(function (x) {
+      return dkey(x.client) === k && String(x.status || "Active") !== "Inactive";
+    }).map(function (x) {
+      var sug = amcSuggest(x);
+      return { ins: x, kind: amcKind(x), live: amcLiveOn(x, today()),
+               amount: nAmt(x.amcAmount), suggest: sug };
+    });
+    var on = rows.filter(function (r) { return r.kind !== "None"; });
+    return {
+      rows: rows, onAmc: on.length, machines: rows.length,
+      charged: on.reduce(function (a, r) { return a + r.amount; }, 0),
+      should: on.reduce(function (a, r) { return a + r.suggest.total; }, 0),
+      missing: on.reduce(function (a, r) { return a + r.suggest.missing; }, 0)
+    };
+  }
+
+  /* ---- THE RATE CARD SCREEN, AND WHAT IT CATCHES  (v6.9.340) ---- */
+  function viewAmcRates() {
+    if (!roleIs("admin")) return '<div class="empty">The AMC rate card is the owner\u2019s.</div>';
+    var m = amcRateMap();
+    var overrides = Object.keys(m).map(function (k) { return m[k]; })
+      .filter(function (r) { return r.model; })
+      .sort(function (a, b) { return (a.kind + a.model).localeCompare(b.kind + b.model); });
+
+    var h = '<div class="card"><h3 style="margin:0 0 3px">What a year of cover costs</h3>' +
+      '<div class="meta" style="font-size:12.5px">One rate per kind of machine, for each of the two ' +
+      'contracts. This is what the app <b>suggests</b> when a contract is priced &mdash; it never ' +
+      'overwrites an amount you have typed. A blank rate is <b>not priced</b>, and every screen says ' +
+      'so in words rather than printing a confident zero.</div>' +
+      '<div style="overflow-x:auto;margin-top:10px"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr style="background:#ccfbf1;color:#0f766e">' +
+        '<th style="padding:7px 9px;text-align:left">Machine</th>' +
+        '<th style="padding:7px 9px;text-align:right">With spares</th>' +
+        '<th style="padding:7px 9px;text-align:right">Without spares</th></tr></thead><tbody>' +
+      SVC_PRODUCTS.map(function (k, i) {
+        var r = m[dkey(k) + "|"] || null;
+        return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' +
+          '<td style="padding:6px 9px;font-weight:600">' + esc(k) + '</td>' +
+          '<td style="padding:5px 9px;text-align:right"><input class="amcr-w" data-kind="' + esc(k) + '" ' +
+            'inputmode="numeric" value="' + esc(r && r.withSpares ? r.withSpares : "") + '" ' +
+            'placeholder="not priced" style="width:120px;text-align:right;padding:6px 9px"/></td>' +
+          '<td style="padding:5px 9px;text-align:right"><input class="amcr-o" data-kind="' + esc(k) + '" ' +
+            'inputmode="numeric" value="' + esc(r && r.withoutSpares ? r.withoutSpares : "") + '" ' +
+            'placeholder="not priced" style="width:120px;text-align:right;padding:6px 9px"/></td></tr>';
+      }).join("") + '</tbody></table></div>' +
+      '<div class="acts" style="margin-top:10px"><button class="btn" data-act="amcr-save">Save the rate card</button>' +
+      '<span class="meta" style="align-self:center;font-size:11.5px">A rate corrected later is a new ' +
+      'entry, never an overwrite &mdash; the old one stays in the trail.</span></div></div>';
+
+    /* ---- a model that genuinely costs more than its kind ---- */
+    h += '<div class="card"><h3 style="margin:0 0 3px">A particular model</h3>' +
+      '<div class="meta" style="font-size:12.5px">Only where one model really costs more or less than ' +
+      'its kind. The most specific rate wins, and there is always a general one behind it, so a model ' +
+      'nobody has priced is never left without an answer.</div>';
+    if (overrides.length) {
+      h += '<div style="overflow-x:auto;margin-top:9px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+        '<tr style="color:#64748b;text-align:right"><th style="text-align:left;padding:3px 9px 5px 0">Machine</th>' +
+        '<th style="text-align:left;padding:3px 9px 5px">Model</th><th style="padding:3px 9px 5px">With</th>' +
+        '<th style="padding:3px 0 5px 9px">Without</th></tr>' +
+        overrides.map(function (r) {
+          return '<tr style="border-top:1px solid #e2e8f0;text-align:right">' +
+            '<td style="text-align:left;padding:5px 9px 5px 0">' + esc(r.kind) + '</td>' +
+            '<td style="text-align:left;padding:5px 9px;font-weight:600">' + esc(r.model) + '</td>' +
+            '<td style="padding:5px 9px">' + (r.withSpares ? money(r.withSpares) : '<span style="color:#94a3b8">&mdash;</span>') + '</td>' +
+            '<td style="padding:5px 0 5px 9px">' + (r.withoutSpares ? money(r.withoutSpares) : '<span style="color:#94a3b8">&mdash;</span>') + '</td></tr>';
+        }).join("") + '</table></div>';
+    }
+    h += '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">' +
+      '<select id="amcr_kind" style="flex:1 1 150px;min-width:140px">' +
+        SVC_PRODUCTS.map(function (k) { return '<option value="' + esc(k) + '">' + esc(k) + '</option>'; }).join("") +
+      '</select>' +
+      '<input id="amcr_model" placeholder="Model" style="flex:1 1 130px;min-width:120px"/>' +
+      '<input id="amcr_mw" inputmode="numeric" placeholder="With spares" style="flex:0 1 130px"/>' +
+      '<input id="amcr_mo" inputmode="numeric" placeholder="Without" style="flex:0 1 120px"/>' +
+      '<button class="btn sm" data-act="amcr-model">Add</button></div></div>';
+
+    /* ---- and the thing the whole rate card exists for ---- */
+    var under = [], noRate = [], live = 0, charged = 0, should = 0;
+    (S.data.installs || []).forEach(function (x) {
+      if (String(x.status || "Active") === "Inactive") return;
+      var sug = amcSuggest(x);
+      if (!sug.on) return;
+      live++;
+      var amt = nAmt(x.amcAmount);
+      charged += amt; should += sug.total;
+      if (sug.missing) noRate.push({ x: x, sug: sug });
+      else if (sug.total > 0 && amt + 0.5 < sug.total) under.push({ x: x, sug: sug, amt: amt, gap: sug.total - amt });
+    });
+    under.sort(function (a, b) { return b.gap - a.gap; });
+
+    h += '<div class="cards"><div class="stat"><div class="n">' + live + '</div><div class="l">Machines on a contract</div></div>' +
+      '<div class="stat"><div class="n">' + money(charged) + '</div><div class="l">Charged a year</div></div>' +
+      '<div class="stat ' + (should > charged + 0.5 ? "alert" : "") + '"><div class="n">' + money(should) +
+        '</div><div class="l">The card says</div></div></div>';
+
+    if (under.length) {
+      h += '<div class="card" style="border-color:#fecaca;background:#fff7f7">' +
+        '<h3 style="margin:0 0 3px">' + under.length + ' contract' + (under.length > 1 ? 's look' : ' looks') +
+        ' underpriced &mdash; ' + money(under.reduce(function (a, u) { return a + u.gap; }, 0)) + ' a year</h3>' +
+        '<div class="meta" style="font-size:12.5px;color:#7f1d1d">This is the one he named: add a second ' +
+        'machine to an installation and the amount stays where it was, so the engineer services two for ' +
+        'the price of one and nothing says so. Nothing here is changed automatically &mdash; open the ' +
+        'machine and decide.</div>' +
+        under.slice(0, 25).map(function (u) {
+          return '<div class="acts" style="align-items:center;margin-top:9px"><div class="grow">' +
+            '<b>' + esc(u.x.client || "") + '</b> &middot; ' + esc(u.x.product || "") +
+            ' <span class="pill teal">' + esc(u.sug.contract) + '</span><br>' +
+            '<span style="font-size:11.5px;color:#7f1d1d">charged ' + money(u.amt) + ' &middot; the card says ' +
+            money(u.sug.total) + ' &middot; <b>' + money(u.gap) + ' short</b> &middot; ' +
+            u.sug.lines.length + ' machine(s) on this contract</span></div>' +
+            '<button class="btn sm" data-act="inst-open" data-id="' + esc(u.x.id) + '">Open</button></div>';
+        }).join("") +
+        (under.length > 25 ? '<div class="meta" style="margin-top:8px">and ' + (under.length - 25) + ' more.</div>' : '') +
+        '</div>';
+    }
+    if (noRate.length) {
+      h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed">' +
+        '<h3 style="margin:0 0 3px">' + noRate.length + ' contract' + (noRate.length > 1 ? 's carry' : ' carries') +
+        ' a machine with no rate</h3>' +
+        '<div class="meta" style="font-size:12.5px;color:#7c2d12">Nothing can be suggested for these until ' +
+        'the kind is priced above. They are not wrong &mdash; they are unanswerable, which is a different ' +
+        'thing and worth keeping apart.</div>' +
+        '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">' +
+        noRate.slice(0, 30).map(function (u) {
+          return '<span class="pill" style="background:#fef3c7;color:#92400e;cursor:pointer" ' +
+            'data-act="inst-open" data-id="' + esc(u.x.id) + '">' + esc(u.x.client || "") + ' &middot; ' +
+            esc(u.sug.lines.filter(function (l) { return !l.priced; }).map(function (l) { return l.product; }).join(", ")) +
+            '</span>';
+        }).join("") + '</div></div>';
+    }
+    if (!under.length && !noRate.length && live) {
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><div class="meta" style="color:#0f766e">' +
+        '\u2713 Every contract is priced at or above what the card says. Nothing is being serviced for less ' +
+        'than it costs.</div></div>';
+    }
+    return h;
+  }
+
   function viewServiceDesk() {
-    var sub = (S.svcSub === "base") ? "base" : "visits";
+    var sub = (S.svcSub === "base" || (S.svcSub === "amcrates" && roleIs("admin"))) ? S.svcSub : "visits";
     var h = '<div class="row" style="margin-bottom:10px">' +
       '<button class="btn sm ' + (sub === "visits" ? "" : "ghost") + '" data-act="svc-sub" data-s="visits">Service visits</button>' +
       '<button class="btn sm ' + (sub === "base" ? "" : "ghost") + '" data-act="svc-sub" data-s="base">Installed base</button>' +
+      (roleIs("admin") ? '<button class="btn sm ' + (sub === "amcrates" ? "" : "ghost") +
+        '" data-act="svc-sub" data-s="amcrates">AMC rates</button>' : '') +
       '</div>';
-    return h + (sub === "base" ? viewBase() : viewService());
+    return h + (sub === "amcrates" ? viewAmcRates() : (sub === "base" ? viewBase() : viewService()));
   }
 
   function commissioningSection() {
@@ -3771,7 +4070,8 @@ window.addEventListener("beforeunload", function (ev) {
     var h = '<div class="cards">' +
       '<div class="stat"><div class="n">' + S.data.installs.length + '</div><div class="l">Installations</div></div>' +
       '<div class="stat ' + (due ? "alert" : "") + '"><div class="n">' + due + '</div><div class="l">Service due / overdue</div></div>' +
-      '<div class="stat"><div class="n">' + S.data.installs.filter(function (x) { return x.amcType && x.amcType !== "None"; }).length + '</div><div class="l">Under AMC</div></div>' +
+      /* v6.9.340 - see the note on the reminder above: this counted "Visit-based" as a contract */
+      '<div class="stat"><div class="n">' + S.data.installs.filter(function (x) { return amcKind(x) !== "None"; }).length + '</div><div class="l">Under AMC</div></div>' +
       '</div>';
     h += commissioningSection();
     h += '<div class="row"><input class="grow" id="q" placeholder="Search client, area, engineer..." value="' + esc(S.q) + '"/>' +
@@ -3782,7 +4082,7 @@ window.addEventListener("beforeunload", function (ev) {
       var bal = S.data.visits.filter(function (v) { return v.installId === x.id; })
         .reduce(function (a, v) { return a + (Number(v.balance) || 0); }, 0);
       h += '<div class="card"><h3>' + esc(x.client) + ' <span class="pill ' + d.k + '">' + d.t + '</span>' +
-        (x.amcType && x.amcType !== "None" ? ' <span class="pill teal">AMC' + (x.amcEnd ? " to " + esc(dstr(x.amcEnd)) : "") + '</span>' : "") +
+        (amcKind(x) !== "None" ? ' <span class="pill teal">AMC' + (x.amcEnd ? " to " + esc(dstr(x.amcEnd)) : "") + '</span>' : "") +
         (bal > 0 ? ' ' + dueAmt(bal) : "") + '</h3>' +
         '<div class="meta">' + (function () {
           var ps = instProducts(x), lines = [];
@@ -4094,7 +4394,26 @@ window.addEventListener("beforeunload", function (ev) {
         opts(amcOptions(x.amcType), x.amcType || "None") + '</select>' +
         '<div class="meta" style="font-size:11.5px">With spares: nothing is charged at all. ' +
         'Without spares: the visit and the salt are free, the parts are billed.</div></div>' +
-      '<div><label>AMC amount (Rs)</label><input id="i_amcamt" inputmode="numeric" value="' + esc(x.amcAmount || "") + '"/></div></div>' +
+      '<div><label>AMC amount (Rs)</label><input id="i_amcamt" inputmode="numeric" value="' + esc(x.amcAmount || "") + '"/>' +
+        /* v6.9.340 - what the rate card makes of the products actually on this machine. It is a
+           SUGGESTION and nothing more: it is never written for him and never overwrites what he
+           typed. His money records are his; the code is what gets fixed. */
+        (function () {
+          var sg = amcSuggest(x), amt = nAmt(x.amcAmount);
+          if (!sg.on) return '<div class="meta" style="font-size:11.5px">Not on a contract, so there is nothing to price.</div>';
+          if (sg.missing) return '<div class="meta" style="font-size:11.5px;color:#b45309">' +
+            sg.missing + ' of ' + sg.lines.length + ' machine(s) here have no rate on the card yet &mdash; ' +
+            'nothing can be suggested until the kind is priced.</div>';
+          if (!sg.total) return '<div class="meta" style="font-size:11.5px;color:#b45309">The rate card has ' +
+            'no price for this kind yet.</div>';
+          var short = sg.total - amt;
+          return '<div class="meta" style="font-size:11.5px;color:' + (short > 0.5 ? '#b91c1c' : '#0f766e') + '">' +
+            'The card says <b>' + money(sg.total) + '</b> for ' + sg.lines.length + ' machine(s)' +
+            (short > 0.5 ? ' &mdash; <b>' + money(short) + ' more than this</b>. Adding a machine does not ' +
+              'raise the amount by itself.' : (amt > sg.total + 0.5 ? ' &mdash; you are charging more, which is fine.' : ' &mdash; matches.')) +
+            '</div>';
+        })() +
+      '</div></div>' +
       '<div class="grid2"><div><label>AMC ends</label><input id="i_amcend" type="date" value="' + esc(dstr(x.amcEnd)) + '"/></div>' +
       '<div><label>Engineer</label><select id="i_eng">' + opts([""].concat(SVC_ENGINEERS), x.engineer) + '</select></div></div>' +
       '<label>Notes</label><textarea id="i_notes">' + esc(x.notes) + '</textarea>' +
@@ -21805,7 +22124,7 @@ function viewCatalogue() {
           customer is free and the next breakdown call goes to somebody else. */
     try {
       (S.data.installs || []).forEach(function (x) {
-        if (!x.amcType || x.amcType === "None" || !x.amcEnd) return;
+        if (amcKind(x) === "None" || !x.amcEnd) return;
         var left = daysTo(x.amcEnd);
         if (left > 45 || left < -30) return;
         out.push(mk({
@@ -26748,6 +27067,47 @@ function viewCatalogue() {
       });
       return;
     }
+    /* v6.9.340 - the rate card. Every changed rate is its own append-only row; a rate that has
+       not moved writes nothing, so saving twice does not fill the sheet with duplicates. */
+    if (act === "amcr-save") {
+      if (!roleIs("admin")) { toast("The AMC rate card is the owner\u2019s."); return; }
+      var _m0 = amcRateMap(), _n = 0;
+      SVC_PRODUCTS.forEach(function (k) {
+        var w = document.querySelector('.amcr-w[data-kind="' + k.replace(/"/g, '\\"') + '"]');
+        var o = document.querySelector('.amcr-o[data-kind="' + k.replace(/"/g, '\\"') + '"]');
+        if (!w || !o) return;
+        var nw = Number(String(w.value || "").trim()) || 0;
+        var no = Number(String(o.value || "").trim()) || 0;
+        var was = _m0[dkey(k) + "|"] || { withSpares: 0, withoutSpares: 0 };
+        if (nw === was.withSpares && no === was.withoutSpares) return;
+        _n++;
+        save("audit", {
+          id: "AR-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+          createdAt: new Date().toISOString(), actor: S.user || "", action: "amc:rate",
+          target: k, detail: JSON.stringify({ kind: k, model: "", withSpares: nw, withoutSpares: no,
+            by: S.user || "", at: new Date().toISOString() }), ip: ""
+        }, true);
+      });
+      _amcRateCache = null;
+      toast(_n ? (_n + " rate" + (_n > 1 ? "s" : "") + " recorded.") : "Nothing changed.");
+      render(); return;
+    }
+    if (act === "amcr-model") {
+      if (!roleIs("admin")) { toast("The AMC rate card is the owner\u2019s."); return; }
+      var _mk = val("amcr_kind"), _mm = val("amcr_model");
+      if (!_mm) { toast("Type the model this rate is for."); return; }
+      var _mw = Number(val("amcr_mw")) || 0, _mo = Number(val("amcr_mo")) || 0;
+      if (!_mw && !_mo) { toast("Put at least one rate in, or there is nothing to record."); return; }
+      save("audit", {
+        id: "AR-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+        createdAt: new Date().toISOString(), actor: S.user || "", action: "amc:rate",
+        target: _mk + " " + _mm, detail: JSON.stringify({ kind: _mk, model: _mm,
+          withSpares: _mw, withoutSpares: _mo, by: S.user || "", at: new Date().toISOString() }), ip: ""
+      }, true);
+      _amcRateCache = null;
+      toast(_mk + " " + _mm + " priced.");
+      render(); return;
+    }
     if (act === "svc-sub") { S.svcSub = t.getAttribute("data-s"); S.q = ""; render(); return; }
     if (act === "base-find") { S.baseQ = val("baseq") || ""; render(); return; }
     if (act === "base-clear") { S.baseQ = ""; render(); return; }
@@ -26778,7 +27138,10 @@ function viewCatalogue() {
            Service app now has to answer the second question. Filling a blank with "AMC without
            spares" is the conservative way round: it bills a part rather than giving it away,
            and it is one tap to change on the installation. Anything already chosen is kept. */
-        _ains.amcType = (_ains.amcType && _ains.amcType !== "None") ? _ains.amcType : "AMC without spares";
+        /* v6.9.340 - amcKind(), so that marking an AMC Won on a row still saying "Visit-based"
+           writes a real contract type instead of keeping a word that answers a different
+           question. Anything that IS a contract is still kept exactly as chosen. */
+        _ains.amcType = (amcKind(_ains) !== "None") ? _ains.amcType : "AMC without spares";
         if (_aamt) _ains.amcAmount = _aamt;
         _ains.amcEnd = _atill;
         save("installs", _ains).then(function () {
