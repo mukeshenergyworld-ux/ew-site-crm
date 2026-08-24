@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.358";
+  var APP_VERSION = "6.9.359";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1358,6 +1358,42 @@
     return String(p) + "-" + mintId.n + "-" + Date.now() + "-" + Math.floor(Math.random() * 1000000);
   }
 
+  /* ================= THE CHALLAN THAT CAME BACK  (v6.9.359, 24 Aug 2026) =================
+     HIS WORDS: "challan created, screen gone, after some time again flashed same screen then
+     again have to save challan, like this 2, 3 times happens."
+
+     WHAT ACTUALLY HAPPENED, read off his own screen rather than guessed. The red banner said:
+
+         server sent something that is not JSON (HTTP 404, starts: <!DOCTYPE html><html lang="en">
+
+     Apps Script had answered one call with an HTML error page. api() rightly refuses to parse
+     that and rejects. The challan-number reservation is inside a Promise.all, so the whole chain
+     rejects, and the create path put the form back on screen - correctly, because at that point
+     NOTHING had been saved.
+
+     The lie was in the timing. The builder closed the INSTANT he pressed Create, seconds before
+     anybody knew whether a number could be had. So he read "closed" as "created", and when the
+     form reappeared he pressed Create again. Measured on his book afterwards: 125 challans, and
+     ZERO duplicates - the mechanism never made a bad row. It cost him taps and it cost him trust,
+     which is quite enough.
+
+     Two changes. This one retries a TRANSPORT failure once, because that HTML 404 is a Google
+     hiccup that clears on the next breath. A server that answers "no" in proper JSON is an
+     answer and is never retried. Worst case a number is reserved and lost, leaving a gap in the
+     sequence - which is exactly what his own second press already did, and a gap is harmless
+     where a duplicate would not be. */
+  /* lockBtn lets go after 30 seconds so a wedged button can never trap a man. A create that
+     retries can outlive that, and a second press would mint a SECOND number. So the create path
+     carries its own flag, which is cleared only when the attempt truly ends. */
+  var _chSaving = false;
+  function challanNoOnce(client) {
+    return api("challanNo", { client: client }).catch(function (e) {
+      var m = String((e && e.message) || "");
+      if (!/not JSON|HTTP \d|timed out|Failed to fetch|NetworkError|load failed/i.test(m)) throw e;
+      return new Promise(function (r) { setTimeout(r, 1200); })
+        .then(function () { return api("challanNo", { client: client }); });
+    });
+  }
   function save(tab, row, quiet) {
     /* v6.9.124 — DUPLICATE FIX: every NEW row (no server id yet) is given a STABLE client-generated
        id that IS sent to the server. The backend upserts by id, so if a create is ever delivered
@@ -31404,7 +31440,11 @@ function viewCatalogue() {
          still in it, instead of the whole challan vanishing behind a "kept safe" message that
          was not true - nothing had been journaled at that point because save() had not run. */
       var chDraft = S.ch, chSaved = false;
-      S.modal = null; S.ch = null; S.chx = null;
+      /* v6.9.359 - the EDIT path still closes at once: it writes through the journalled save()
+         and cannot lose anything. Only CREATE waits, because only CREATE needs a number from
+         the server before it may exist at all. */
+      var chIsNew = !editId;
+      if (!chIsNew) { S.modal = null; S.ch = null; S.chx = null; }
 
       /* ----- EDIT an existing (pre-dispatch) challan ----- */
       if (editId) {
@@ -31449,10 +31489,26 @@ function viewCatalogue() {
       var _priorCh = (S.data.challans || []).filter(function (x) { return String(x.customerName || "") === cn; }).length;
       var _hasDisc = (S.data.discounts || []).some(function (d) { return String(d.client || "").trim().toLowerCase() === String(cn).trim().toLowerCase(); });
       var firstSetup = (_priorCh === 0 && !_hasDisc);
+      /* v6.9.359 - THE FORM STAYS. It used to close here, before the number existed, which is
+         what made a failure look like a success that had un-happened. The button says what is
+         going on and cannot be pressed twice; everything typed was read into plain vars above,
+         so nothing on screen can change under it while it waits. */
+      if (_chSaving) { toast("Still creating that challan \u2014 one moment."); return; }
+      _chSaving = true;
+      var chBackOn = function (msg) {
+        _chSaving = false;
+        unlockBtn(t);
+        /* the form never left the screen on this path, so DO NOT redraw it - a redraw would
+           reset every field he typed back to what the draft happened to hold. Restore it only
+           if something really did close it. */
+        if (!S.modal) { S.ch = chDraft; S.modal = modalChallan(); render(); }
+        toast(msg);
+      };
+      lockBtn(t);
+      try { t.innerHTML = "Creating\u2026"; } catch (e) { }
       toast("Creating challan for " + cn + "...");
-      render();
 
-      Promise.all([driverReady, api("challanNo", { client: cObj.shortName || cn })]).then(function (arr) {
+      Promise.all([driverReady, challanNoOnce(cObj.shortName || cn)]).then(function (arr) {
         var dRec = arr[0], n = arr[1];
         /* ============ v6.9.328 - NEVER MINT A NUMBER ON THIS PHONE ============
            This line used to end in
@@ -31472,12 +31528,15 @@ function viewCatalogue() {
            may already be on somebody's paper. */
         var no = String((n && n.challanNo) || "").trim();
         if (!no) {
-          S.ch = chDraft; S.modal = modalChallan(); render();
-          toast((n && n.error)
-            ? String(n.error) + " Nothing was saved \u2014 your challan is back on screen."
-            : "The server did not give a challan number. Nothing was saved \u2014 your challan is back on screen, press Create again.");
+          chBackOn((n && n.error)
+            ? String(n.error) + " Nothing was saved \u2014 your challan is still on screen."
+            : "The server did not give a challan number. Nothing was saved \u2014 your challan is still on screen, press Create again.");
           return;
         }
+        /* the number is ours. NOW the builder may go, and from here on the journalled save()
+           cannot lose the row whatever the network does. */
+        _chSaving = false;
+        S.modal = null; S.ch = null; S.chx = null;
         var ch = {
           id: "", createdBy: S.user, challanNo: no,
           customerId: cObj.id || "", customerName: cn,
@@ -31517,9 +31576,11 @@ function viewCatalogue() {
         });
       }).catch(function (e) {
         if (chSaved) { toast("Challan saved. Something after it did not finish - pull down to refresh."); return; }
-        /* Nothing reached the server and nothing was journaled - so give the challan back. */
-        S.ch = chDraft; S.modal = modalChallan(); render();
-        toast("Could not reach the server. Nothing was lost - your challan is back on screen, press Create again.");
+        /* Nothing reached the server and nothing was journalled - so the challan is still here.
+           v6.9.359 - it never left the screen now, so this only unlocks and says why. */
+        chBackOn("Could not reach the server (" +
+          String((e && e.message) || "no answer").slice(0, 70) +
+          "). Nothing was saved \u2014 your challan is still on screen, press Create again.");
       });
       return;
     }
