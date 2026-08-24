@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.357";
+  var APP_VERSION = "6.9.358";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7985,6 +7985,83 @@ window.addEventListener("beforeunload", function (ev) {
     return proofSeal(r.url, r.thumb, r.queued, r.by, size) + tgSeal(r.tg) +
            proofTwinFlag(c) + chgSeal(c);
   }
+  /* ---- ONE PANEL, ONE DELIVERY. Drawn the same for the card he came from and the card he is
+     being asked about, so the two sides of the question look alike and neither is the accused. */
+  function twinPanel(sub, thumb, url, rowId, mine) {
+    if (!sub) return '<div style="flex:1 1 220px;min-width:0;color:#94a3b8">That delivery is not ' +
+      'on this phone yet - pull down to refresh.</div>';
+    return '<div style="flex:1 1 220px;min-width:0;border:1px solid ' +
+      (mine ? '#99f6e4' : '#e2e8f0') + ';border-radius:10px;padding:9px 10px;background:' +
+      (mine ? '#f0fdfa' : '#fff') + '">' +
+      '<div style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:#64748b">' +
+      (mine ? 'This delivery' : 'The other one') + '</div>' +
+      '<div style="font-weight:800;margin:2px 0 1px">' + esc(sub.challanNo || sub.id) + '</div>' +
+      '<div class="meta" style="font-size:12px;color:#475569">' + esc(sub.customerName || "") +
+      (sub.site ? ' \u00b7 ' + esc(sub.site) : '') + ' \u00b7 ' + esc(d10(sub.createdAt)) + '</div>' +
+      '<div style="margin:8px 0;text-align:center;background:#f8fafc;border:1px solid #e2e8f0;' +
+      'border-radius:8px;padding:8px">' +
+      (thumb
+        ? '<img src="data:image/jpeg;base64,' + esc(thumb) + '" alt="" ' +
+          'style="max-width:100%;height:auto;border-radius:5px;border:1px solid #cbd5e1"/>'
+        : '<span style="color:#94a3b8;font-size:12.5px">no preview kept for this one</span>') +
+      '</div>' +
+      (url ? '<a class="btn sm ghost full" href="' + esc(url) + '" target="_blank" rel="noopener" ' +
+        'style="text-decoration:none;text-align:center">Open the full document &#8599;</a>'
+           : '<div class="meta" style="font-size:12px;color:#b45309">no link to the document</div>') +
+      (canProof() ? '<button class="btn sm ghost full" data-act="ch-reproof" data-id="' + esc(sub.id) +
+        '" style="margin-top:6px;border-color:#fed7aa;color:#b45309">This one is wrong \u2014 Change it</button>' : '') +
+      '</div>';
+  }
+  /* ---- THE SCREEN HE ASKED FOR: both pictures, and a straight question with two answers. ---- */
+  function modalTwins(id) {
+    var c = proofSubject(id);
+    if (!c) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var p = chProofAny(c);
+    var tw = p.rowId ? proofTwinsAll(p.rowId, c.id) : [];
+    var h = '<h2>The same photograph, on two deliveries</h2>' +
+      '<p class="sub">The app compares the picture itself, not the writing on it. It is right ' +
+      'often enough to be worth asking about and wrong often enough that only you can settle it.</p>' +
+      /* measured, and said out loud: 105x140, 60x80, 54x96 pixels */
+      '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:9px 12px">' +
+      '<div class="meta" style="font-size:12.5px;color:#92400e">These previews are small &mdash; ' +
+      'about a hundred pixels, which is all the card keeps. They are enough to see whether it is ' +
+      'the <b>same picture</b>. They are not enough to <b>read the challan number</b>. ' +
+      'Open both documents if the answer is not obvious.</div></div>';
+    if (!tw.length) {
+      return h + '<div class="empty" style="text-align:left;color:#0f766e">Nothing matches this ' +
+        'photograph any more. Either you have already settled it, or the other photograph was ' +
+        'changed.</div><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    }
+    tw.forEach(function (t) {
+      var other = proofSubject(t.chId);
+      var call = twinCalled(p.rowId, t.rowId);
+      h += '<div class="card" style="padding:10px 12px">' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+        twinPanel(c, p.thumb, p.url, p.rowId, true) +
+        twinPanel(other, t.thumb, t.url, t.rowId, false) +
+        '</div>';
+      if (call && call.call) {
+        h += '<div class="meta" style="margin-top:9px;font-size:12.5px;color:' +
+          (call.call === "diff" ? '#0f766e' : '#b91c1c') + '">' +
+          (call.call === "diff"
+            ? '<b>You said these are different receipts</b> on ' + esc(d10(call.at)) +
+              ', so the flag is off for this pair. It comes back by itself if either photograph is changed.'
+            : '<b>You said these really are the same photograph</b> on ' + esc(d10(call.at)) +
+              '. It stays flagged until one of them is changed \u2014 that is the point of it.') +
+          (call.by ? ' (' + esc(call.by) + ')' : '') +
+          '<br>Answering again is allowed and nothing is lost: both answers stay on the record.</div>';
+      }
+      h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px">' +
+        '<button class="btn sm" data-act="twin-diff" data-id="' + esc(c.id) + '" data-a="' + esc(p.rowId) +
+        '" data-b="' + esc(t.rowId) + '" data-bc="' + esc(t.chId) + '" ' +
+        'style="background:#0f766e;border-color:#0f766e">Different receipts &mdash; clear the flag</button>' +
+        '<button class="btn sm ghost" data-act="twin-same" data-id="' + esc(c.id) + '" data-a="' + esc(p.rowId) +
+        '" data-b="' + esc(t.rowId) + '" data-bc="' + esc(t.chId) + '" ' +
+        'style="border-color:#fca5a5;color:#b91c1c">The same photo &mdash; keep it flagged</button>' +
+        '</div></div>';
+    });
+    return h + '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
+  }
   function proofLink(c) {
     /* v6.9.212 - the queued copy carries its own thumbnail, so the picture of the paper is on the
        card the instant it is attached, long before Drive has heard of it. */
@@ -8106,7 +8183,60 @@ window.addEventListener("beforeunload", function (ev) {
   /* The proofs that are the SAME PICTURE as this one, on a different row. Four bits of
      sixty-four: the same photograph re-encoded, not two photographs of similar paper. */
   var PHASH_SAME = 4;
-  function proofTwins(rowId, ownerId) {
+  /* ================= LOOK AT BOTH, AND SAY  (v6.9.358, 24 Aug 2026) =================
+     HIS WORDS: "if showing this red mark show option to check and decide with click to view
+     both preview and mark same or different one".
+
+     v6.9.352 could only ever say "these two pictures match". It could not be told it was wrong,
+     so a genuine near-match - two pages of the same challan book, photographed on the same grey
+     floor in the same light - stayed red for good and taught him to ignore red.
+
+     THE DECISION IS KEYED ON THE TWO PHOTOGRAPHS, not on the two deliveries. That is deliberate:
+     replace either photo with Change and the pair simply ceases to exist, so a fresh photograph
+     is always compared fresh and yesterday's "different" can never suppress today's real
+     duplicate. Nothing is deleted - a later, opposite decision appends and the newest wins.
+
+     MEASURED BEFORE DESIGNING THE SCREEN: the stored previews are 105x140, 60x80, 54x96 pixels.
+     Blown up they are a blur, so the screen shows them at their own size, says out loud how
+     small they are, and puts Open the full document beside each. A screen that pretended a
+     54-pixel thumbnail was evidence would be worse than no screen. */
+  var TWIN_ACT = "proof:twin", _twinCache = null;
+  function twinKey(a, b) { return [String(a), String(b)].sort().join("|"); }
+  function twinCalls() {
+    if (_twinCache) return _twinCache;
+    var m = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== TWIN_ACT) return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.key) return;
+      var prev = m[d.key];
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[d.key] = { call: String(d.call || ""), at: r.createdAt || "", by: r.actor || "" };
+      }
+    });
+    _twinCache = m;
+    return m;
+  }
+  function twinCall(a, b) { return (twinCalls()[twinKey(a, b)] || {}).call || ""; }
+  function twinCalled(a, b) { return twinCalls()[twinKey(a, b)] || null; }
+  function twinSave(a, b, aCh, bCh, call) {
+    var now = new Date().toISOString();
+    _twinCache = null;
+    return save("audit", {
+      id: mintId("TW"),
+      createdAt: now, actor: S.user || "", action: TWIN_ACT,
+      target: String(proofOwnerName(aCh)) + " / " + String(proofOwnerName(bCh)),
+      detail: JSON.stringify({ key: twinKey(a, b), a: String(a), b: String(b),
+        aCh: String(aCh), bCh: String(bCh), call: String(call),
+        aNo: proofOwnerName(aCh), bNo: proofOwnerName(bCh), by: S.user || "", at: now })
+    }, true);
+  }
+  /* The screen shows a pair he has ALREADY settled - otherwise "different, clear it" would make
+     the card vanish mid-decision and he could never see or change his own answer. So the raw
+     matcher takes a flag, and only the flag on the card filters. */
+  function proofTwinsAll(rowId, ownerId) { return proofTwins(rowId, ownerId, true); }
+  function proofTwins(rowId, ownerId, all) {
     var mine = pHashOf(rowId);
     if (!mine) return [];
     var out = [];
@@ -8114,11 +8244,16 @@ window.addEventListener("beforeunload", function (ev) {
       if (String(r.id) === String(rowId)) return;
       var h = pHashOf(r.id);
       if (!h || pHashDist(mine, h) > PHASH_SAME) return;
+      /* v6.9.358 - he has looked at these two and said they are different receipts. The machine
+         does not get to insist. It stands until either photograph is replaced, at which point
+         this pair no longer exists and the new one is judged on its own. */
+      if (!all && twinCall(rowId, r.id) === "diff") return;
       var d = {};
       try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
       var other = String(d.chId || d.id || "");
       if (!other || other === String(ownerId)) return;   /* the same row re-photographed is fine */
-      out.push({ chId: other, at: r.createdAt || "", by: r.actor || "" });
+      out.push({ chId: other, rowId: String(r.id), url: String(d.url || ""),
+                 thumb: String(d.thumb || ""), at: r.createdAt || "", by: r.actor || "" });
     });
     return out;
   }
@@ -8140,11 +8275,16 @@ window.addEventListener("beforeunload", function (ev) {
     var tw = proofTwins(p.rowId, c.id);
     if (!tw.length) return "";
     var names = tw.map(function (t) { return proofOwnerName(t.chId); });
-    return ' <span class="pill" style="background:#7f1d1d;color:#fff;font-weight:700;cursor:help" ' +
+    /* v6.9.358 - a BUTTON. It was a pill with a tooltip telling him to go and open two other
+       screens himself, which is a fair description of the problem and no help at all with it. */
+    var seen = tw.every(function (t) { return twinCall(p.rowId, t.rowId) === "same"; });
+    return ' <button class="btn sm" data-act="twin-open" data-id="' + esc(c.id) + '" ' +
+      'style="background:#7f1d1d;border-color:#7f1d1d;color:#fff;font-weight:700;font-size:11px;' +
+      'padding:2px 9px;vertical-align:middle" ' +
       'title="The very same photograph is attached to ' + esc(names.join(", ")) +
-      '. One of the two is on the wrong delivery. Open both, look at the paper, and use Change ' +
-      'on whichever is wrong.">SAME PHOTO AS ' + esc(names[0]) +
-      (names.length > 1 ? " +" + (names.length - 1) : "") + '</span>';
+      '. Tap to see both and say whether they really are the same receipt.">SAME PHOTO AS ' +
+      esc(names[0]) + (names.length > 1 ? " +" + (names.length - 1) : "") +
+      (seen ? ' \u2713' : '') + '</button>';
   }
   function noProofPill() {
     return '<span style="display:inline-flex;align-items:center;gap:5px;background:#fef2f2;' +
@@ -16660,13 +16800,18 @@ function viewCatalogue() {
       (pairs.length === 1 ? '' : 's') + ' of deliveries carry the SAME receipt photograph</h3>' +
       '<div class="meta" style="color:#7f1d1d;margin-bottom:6px">The picture is the same one, ' +
       'not merely a similar page \u2014 so one of each pair has the wrong paper against it. ' +
-      'Open both, look at the receipt, and use <b>Change</b> on whichever is wrong. ' +
-      'Nothing is deleted: the old photo stays on the audit trail.</div>' +
+      'Tap <b>Look at both</b>, and either say they are different \u2014 which clears the flag on ' +
+      'both cards \u2014 or use <b>Change</b> on whichever has the wrong paper. ' +
+      'Nothing is deleted: the old photo stays on the audit trail, and so does your answer.</div>' +
       pairs.slice(0, 10).map(function (p) {
         return '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow">' +
           '<b>' + esc(proofOwnerName(p.a)) + '</b> <span style="color:#7f1d1d">and</span> ' +
           '<b>' + esc(proofOwnerName(p.b)) + '</b>' +
           '<br><span style="font-size:11.5px;color:#7f1d1d">same photograph on both</span></div>' +
+          /* v6.9.358 - this list could name the pairs and do nothing about them. Same screen,
+             same two answers, reached from the place that found the problem. */
+          '<button class="btn sm" data-act="twin-open" data-id="' + esc(p.a) + '" ' +
+          'style="background:#7f1d1d;border-color:#7f1d1d">Look at both</button>' +
           '</div>';
       }).join("") +
       (pairs.length > 10 ? '<div class="meta" style="margin-top:6px">and ' + (pairs.length - 10) + ' more.</div>' : "") +
@@ -26779,7 +26924,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null;
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     /* v6.9.263 - warming the logo cache is for the NEXT quote PDF, never for this paint;
        nothing on screen waits on it. Started from the paint it competed with teamAuth and
@@ -31715,6 +31860,25 @@ function viewCatalogue() {
     }
     /* v6.9.339 - the wrong paper. Draft and confirm: replacing the evidence on a delivery is
        not a thing to do by mistake, so it says plainly what will happen and what will not. */
+    /* ================= HIS DECISION, WRITTEN DOWN  (v6.9.358) ================= */
+    if (act === "twin-open") {
+      S.modal = modalTwins(t.getAttribute("data-id")); render(); return;
+    }
+    if (act === "twin-diff" || act === "twin-same") {
+      var twId = t.getAttribute("data-id") || "";
+      var twA = t.getAttribute("data-a") || "", twB = t.getAttribute("data-b") || "";
+      var twBc = t.getAttribute("data-bc") || "";
+      var twSub = proofSubject(twId);
+      if (!twA || !twB || !twSub) { toast("That pair is not on this phone any more - pull down to refresh."); return; }
+      if (!canProof()) { toast("Only accounts or the owner settles a receipt."); return; }
+      twinSave(twA, twB, twSub.id, twBc, act === "twin-diff" ? "diff" : "same");
+      S.modal = modalTwins(twId); render();
+      toast(act === "twin-diff"
+        ? "Marked different \u2014 the flag is off " + esc(proofOwnerName(twSub.id)) + " and " +
+          esc(proofOwnerName(twBc)) + " both."
+        : "Marked the same \u2014 it stays flagged until one of the two photographs is changed.");
+      return;
+    }
     if (act === "ch-reproof") {
       if (!canProof()) { toast("The signed receipt is filed by accounts or the owner."); return; }
       var rsub = proofSubject(id);
