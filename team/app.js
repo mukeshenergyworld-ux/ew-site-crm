@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.356";
+  var APP_VERSION = "6.9.357";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7286,15 +7286,37 @@ window.addEventListener("beforeunload", function (ev) {
        precisely the lie found on Punit Jain's challan on 15 August. The button is drawn all the
        same; pressing it explains, and offers Mark as received in the same breath. It never
        flips the status by itself: that is his act, not the app's. */
+  /* ================= ACCOUNTS MAY DO THE BOOKKEEPING  (v6.9.357, 23 Aug 2026) =========
+     Measured before it was offered: 123 challans on his book, and ALL 123 approved by Mukesh
+     Verma. Every one of 226 recorded actions in the last seven days is his. Nine people are on
+     the team and seven have never touched the app. He asked what to do about it, and the answer
+     was to hand ONE job to ONE man - accounts, because ADD TO HISAB and the collections behind
+     it are what eat his evenings.
+
+     ADD TO HISAB was admin-only, so the job he most wanted to hand over was the one the app
+     refused. It is now open to ACCOUNTS as well, which is the role that already checks and
+     files the signed receipt (canProof) and already passes the challan (canApprove). Adding the
+     delivery to hisab is the same act one step later: it moves no money and sets no price.
+
+     WHAT IT DELIBERATELY DOES NOT OPEN. Everything on that screen about who earns, and every
+     box that sets a price, stays behind roleIs("admin") - see modalAddToHisab. His words, and
+     they are not negotiable: "strictly ... just for admin area." An accounts man who could read
+     every partner's incentive rate would be a worse leak than the evening he saves. */
+  /* ONE predicate, two readers. hisabAddBtn draws the button even when the delivery is not yet
+     received (dashed, and it explains itself); canAddToHisab says whether pressing it can do
+     anything. They must never disagree about WHO, only about WHEN - so who lives here, once.
+     Caught by t_hisab_standard the moment the role widened: hisabAddBtn still carried its own
+     roleIs("admin") and would have hidden the button from the very man it was opened for. */
+  function canHisabRole() { return roleAny(["admin", "accounts"]); }
   function canAddToHisab(c) {
-    if (!c || !roleIs("admin")) return false;
+    if (!c || !canHisabRole()) return false;
     if (inHisab(c)) return false;
     return hisabCounts(c);
   }
   /* The button itself, drawn for every challan the owner has not yet stamped - live when it
      will work, outlined when it will explain. Same act, same place, always there. */
   function hisabAddBtn(c) {
-    if (!c || !roleIs("admin") || inHisab(c)) return "";
+    if (!c || !canHisabRole() || inHisab(c)) return "";
     var live = hisabCounts(c);
     return '<button class="btn sm" data-act="ch-hisabadd" data-id="' + esc(c.id) + '" style="' +
       (live ? 'background:#0b3b36;border-color:#0b3b36'
@@ -7610,19 +7632,23 @@ window.addEventListener("beforeunload", function (ev) {
        earns on it. Quiet where it is right, loud where it is missing. */
     var lineup = incPreview(c, priced);
     var bs = hisabBrandRows(cl, priced, lineup);
+    /* v6.9.357 - accounts reaches this screen now. It sees the delivery, the paper and the
+       money the CLIENT owes, because that is its job. It does not see who earns, and it cannot
+       set a price. Four blocks below turn on this one flag. */
+    var own = roleIs("admin");
     if (bs.rows.length || bs.job > 0) {
       h += '<div class="card" style="padding:10px 12px">' +
         '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
-        '<b>Brand summary &mdash; discount and who earns</b></div>' +
+        '<b>Brand summary &mdash; discount' + (own ? ' and who earns' : '') + '</b></div>' +
         '<div style="overflow-x:auto;margin-top:7px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
         '<tr style="color:#64748b;text-align:right">' +
           '<th style="text-align:left;font-weight:600;padding:3px 6px 5px 0">Brand</th>' +
           '<th style="font-weight:600;padding:3px 6px 5px">On this challan</th>' +
           '<th style="font-weight:600;padding:3px 6px 5px">Discount</th>' +
-          lineup.map(function (m) {
+          (own ? lineup.map(function (m) {
             return '<th style="font-weight:600;padding:3px 6px 5px;white-space:nowrap">' +
               esc(incRoleLabel(m.role)) + '<br><span style="font-weight:500;color:#94a3b8">' + esc(m.name) + '</span></th>';
-          }).join("") + '</tr>';
+          }).join("") : "") + '</tr>';
       bs.rows.forEach(function (r) {
         h += '<tr style="border-top:1px solid #e2e8f0;text-align:right">' +
           '<td style="text-align:left;padding:5px 6px 5px 0;font-weight:600">' + esc(r.brand) + '</td>' +
@@ -7630,29 +7656,29 @@ window.addEventListener("beforeunload", function (ev) {
           '<td style="padding:5px 6px;font-weight:700;color:' +
             (r.disc === null ? '#b91c1c' : (r.disc > 0 ? '#0f766e' : '#94a3b8')) + '">' +
             (r.disc === null ? 'not set' : (r.disc > 0 ? r.disc + '%' : 'none')) + '</td>' +
-          r.per.map(function (p) {
+          (own ? r.per.map(function (p) {
             return '<td style="padding:5px 6px;white-space:nowrap;color:' + (p.rated ? '#0f172a' : '#b45309') + '">' +
               (p.rated ? p.pct + '% &middot; <b>' + money(p.amt) + '</b>'
                        : '<b>no rate</b>') + '</td>';
-          }).join("") + '</tr>';
+          }).join("") : "") + '</tr>';
       });
       if (bs.job > 0) {
         h += '<tr style="border-top:1px solid #e2e8f0;text-align:right;background:#faf5ff">' +
           '<td style="text-align:left;padding:5px 6px 5px 0;font-weight:600;color:#5b21b6">Job work / labour</td>' +
           '<td style="padding:5px 6px;color:#5b21b6">' + money(bs.job) + '</td>' +
-          '<td colspan="' + (1 + lineup.length) + '" style="padding:5px 6px;text-align:left;color:#5b21b6">' +
+          '<td colspan="' + (1 + (own ? lineup.length : 0)) + '" style="padding:5px 6px;text-align:left;color:#5b21b6">' +
           'no discount and no incentive &mdash; our labour, not his goods</td></tr>';
       }
       h += '</table></div>';
-      if (bs.noDisc || bs.noRate) {
+      if (bs.noDisc || (own && bs.noRate)) {
         h += '<div class="meta" style="margin-top:8px;font-size:12.5px;color:#b45309">' +
           (bs.noDisc ? '<b>' + bs.noDisc + ' brand' + (bs.noDisc > 1 ? 's have' : ' has') +
             ' no discount set</b> &mdash; decide it below. ' : '') +
-          (bs.noRate ? '<b>' + bs.noRate + ' rate' + (bs.noRate > 1 ? 's are' : ' is') +
+          ((own && bs.noRate) ? '<b>' + bs.noRate + ' rate' + (bs.noRate > 1 ? 's are' : ' is') +
             ' missing</b> in the box' + (bs.noRate > 1 ? 'es' : '') + ' above: that man earns nothing on that ' +
             'brand. Set it in <b>Discounts</b> if he should. This does not stop the stamp.' : '') +
           '</div>';
-      } else if (lineup.length) {
+      } else if (own && lineup.length) {
         h += '<div class="meta" style="margin-top:8px;font-size:12.5px;color:#0f766e">' +
           'Every brand is priced and every man in the line-up has a rate on all of them. Nothing left out.</div>';
       }
@@ -7662,6 +7688,16 @@ window.addEventListener("beforeunload", function (ev) {
     if (!miss.length) {
       h += '<div class="empty" style="text-align:left;padding:0 0 10px;color:#0f766e">' +
         'Every brand on this challan already has a discount set for ' + esc(cl) + '. Nothing left to decide.</div>';
+    } else if (!own) {
+      /* v6.9.357 - a discount is a price, and setting a price is the owner's. Rather than a
+         locked box, it says whose decision it is and exactly what to ask for, because the man
+         reading this has to go and get an answer before the delivery can be stamped. */
+      h += '<div class="card" style="border-color:#fecaca;background:#fef2f2">' +
+        '<b style="color:#b91c1c">' + miss.length + ' brand' + (miss.length > 1 ? 's have' : ' has') +
+        ' no discount set for ' + esc(cl) + '</b>' +
+        '<div class="meta" style="color:#b91c1c;margin-top:3px">' + esc(miss.join(", ")) +
+        '. Only the owner sets a discount. Ask him for the percent (or that there is none), he ' +
+        'puts it on the client&rsquo;s card, and this delivery then goes straight in.</div></div>';
     } else {
       h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed">' +
         '<b style="color:#7c2d12">' + miss.length + ' brand' + (miss.length > 1 ? 's have' : ' has') +
@@ -7685,7 +7721,7 @@ window.addEventListener("beforeunload", function (ev) {
     }
 
     /* ---- 3. ANY FURTHER DISCOUNT ON THIS DELIVERY ---- */
-    h += '<div class="card" style="padding:10px 12px">' +
+    if (own) h += '<div class="card" style="padding:10px 12px">' +
       '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
       '<b>Any further discount on this delivery?</b></div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:3px">Over and above the preset above, for this ' +
@@ -7705,6 +7741,12 @@ window.addEventListener("beforeunload", function (ev) {
     /* ---- 4. WHO EARNS ON THIS DELIVERY ----
        `lineup` is the one built for the brand table above. Computing it twice would be two
        answers to one question, and this file has been bitten by that three times this month. */
+    /* v6.9.357 - the whole card, not just its numbers. Who is on a delivery and at what rate is
+       the thing he said must never leave the admin area, and a screen that shows the names while
+       hiding the percents still tells a man which partners are worth cultivating. When accounts
+       stamps a delivery the line-up is written exactly as it stands - the same rows the owner
+       would have accepted untouched - so nothing is lost by not being asked. */
+    if (own) {
     h += '<div class="card" style="padding:10px 12px">' +
       '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
       '<b>Who earns on this delivery</b></div>';
@@ -7761,6 +7803,7 @@ window.addEventListener("beforeunload", function (ev) {
       h += '</div>';
     }
     h += '</div>';
+    }
 
     return h +
       '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
@@ -30041,7 +30084,7 @@ function viewCatalogue() {
       var _hid = t.getAttribute("data-id");
       var _hc = (S.data.challans || []).filter(function (x) { return x.id === _hid; })[0];
       if (!_hc) { toast("That challan is not on this device yet - pull down to refresh."); return; }
-      if (!roleIs("admin")) { toast("Only the owner adds a delivery to hisab."); return; }
+      if (!canHisabRole()) { toast("Only the owner or accounts adds a delivery to hisab."); return; }
       if (inHisab(_hc)) { toast("That delivery is already in hisab."); return; }
       /* v6.9.342 - the missing paper is no longer a refusal; it becomes a question inside the
          screen. The missing RECEIVED still is, and now it explains itself instead of being a
@@ -30108,7 +30151,8 @@ function viewCatalogue() {
       var hid = t.getAttribute("data-id");
       var hc = (S.data.challans || []).filter(function (x) { return x.id === hid; })[0];
       if (!hc) { toast("That challan is not on this device yet - pull down to refresh."); return; }
-      if (!roleIs("admin")) { toast("Only the owner adds a delivery to hisab."); return; }
+      if (!canHisabRole()) { toast("Only the owner or accounts adds a delivery to hisab."); return; }
+      var hOwn = roleIs("admin");
       /* checked again at the moment of writing: the status can change between opening this
          screen and pressing the button, and that is exactly how the bad stamp got written */
       if (!hisabCounts(hc)) {
@@ -30135,6 +30179,13 @@ function viewCatalogue() {
         hnon[el.getAttribute("data-brand")] = !!el.checked;
       });
       /* Nothing is stamped while a brand is still an open question. */
+      /* v6.9.357 - accounts cannot decide a discount, so it cannot stamp a delivery that still
+         needs one. Refused with the name of the brand and whose answer to fetch, not a locked
+         box: without the percent the client's bill would be wrong and nobody would know. */
+      if (!hOwn && hmiss.length) {
+        toast("Ask the owner for the discount on " + hmiss.join(", ") + " first \u2014 nothing was stamped.");
+        return;
+      }
       var hopen = hmiss.filter(function (b) { return !hnon[b] && !String(hpct[b] || "").length; });
       if (hopen.length) {
         toast("Still to decide: " + hopen.join(", ") + ". Put a % in, or tick No discount.");
@@ -30147,7 +30198,10 @@ function viewCatalogue() {
       var hxEl = el("hsb_extra"), hxNo = el("hsb_noextra");
       var hxRaw = hxEl ? String(hxEl.value || "").replace(/[^0-9.\-]/g, "").trim() : "";
       var hxAmt = Math.round(Number(hxRaw) || 0);
-      if (!(hxNo && hxNo.checked) && !hxRaw.length) {
+      /* the further-discount question is not on the screen accounts sees, so it is not asked of
+         it, and it answers zero. An unasked question must never be read as an answer. */
+      if (!hOwn) hxAmt = 0;
+      if (hOwn && !(hxNo && hxNo.checked) && !hxRaw.length) {
         toast("Further discount: put an amount in, or tick No further discount.");
         return;
       }
@@ -30161,7 +30215,16 @@ function viewCatalogue() {
       /* Every man on the line-up, ticked or not. The unticked ones are written too: "this man
          was looked at and deliberately left out" is a different fact from "this man was never
          on the delivery", and only one of them can be defended to him later. */
+      /* v6.9.357 - THE STAMP IS THE SAME EITHER WAY. Accounts is not shown the line-up, so
+         there are no tick boxes to read; taking the empty list would stamp the delivery with
+         NOBODY on it and quietly cost every partner his incentive. It is built from
+         incPreview() instead - the identical rows the owner would have accepted untouched. */
       var hInc = [];
+      if (!hOwn) {
+        incPreview(hc, pricedLines(hc, hc.customerName)).forEach(function (m) {
+          hInc.push({ role: m.role, name: m.name, on: true });
+        });
+      }
       document.querySelectorAll(".hsb-inc").forEach(function (elx) {
         hInc.push({ role: elx.getAttribute("data-role") || "", name: elx.getAttribute("data-name") || "",
                     on: !!elx.checked });
