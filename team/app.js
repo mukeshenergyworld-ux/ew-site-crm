@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.359";
+  var APP_VERSION = "6.9.360";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17372,8 +17372,22 @@ function viewCatalogue() {
       (retTotal > 0 ? 'Returns (&minus;): <b style="color:#dc2626">' + money(retTotal) + '</b>  &middot;  ' : '') +
       (bal > 0.5
         ? dueAmt(bal, "lg")
-        : 'Balance due: <b style="color:#0d9488">' + money(bal) + '</b>') + '</div>' +
+        /* v6.9.360 - "Balance due: -514" reads like a fault. It is not: he is holding the man's
+           money. Say that, and say it in the direction the money is actually pointing. */
+        : bal < -0.5
+          ? '<b style="color:#0f766e">' + money(-bal) + ' in credit</b> ' +
+            '<span style="color:#64748b">\u2014 paid ahead, comes off the next delivery</span>'
+          : '<b style="color:#0d9488">Settled in full</b>') + '</div>' +
       payTable(cl) +
+      /* v6.9.360 - money can be entered from the ledger itself now, in all three directions.
+         It was on the Payments screen only, which is a different tab and a different search. */
+      (canSee("payments") ? '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:9px">' +
+        '<button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '" data-k="in">+ Payment received</button>' +
+        '<button class="btn sm ghost" data-act="pay-in" data-n="' + esc(cl) + '" data-k="advance" ' +
+          'style="border-color:#99f6e4;color:#0f766e">+ Advance</button>' +
+        '<button class="btn sm ghost" data-act="pay-in" data-n="' + esc(cl) + '" data-k="refund" ' +
+          'style="border-color:#fecaca;color:#b91c1c">\u2212 Refund to client</button>' +
+        '</div>' : '') +
       '<div style="margin-top:8px;font-size:14px">Statement: <b>' + selCount + '</b> of ' + chs.length + ' challan(s) ticked &mdash; <b>' + money(selNet) + '</b>' + (S.billGst ? ' + GST ' + money(gst) + ' = <b>' + money(selNet + gst) + '</b>' : '') + '</div>' +
       '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:10px">' +
       '<button class="btn sm ' + (S.billGst ? '' : 'ghost') + '" data-act="bill-gst">' + (S.billGst ? 'GST 18% ✓' : 'Add GST 18%') + '</button>' +
@@ -17986,14 +18000,21 @@ function viewCatalogue() {
         '<th style="padding:5px 7px;text-align:left">Reference</th>' +
         '<th style="padding:5px 7px;text-align:right">Amount</th></tr></thead><tbody>' +
       ps.map(function (p, i) {
-        return '<tr style="border-bottom:1px solid #d9f5ef;background:' + (i % 2 ? '#f6fffd' : '#fff') + '">' +
+        /* v6.9.360 - a refund is a payment with a minus. It must never look like money that came
+           in, so it is red, signed, and named in its own row rather than left to arithmetic. */
+        var k = payKindOf(p), neg = k === "refund";
+        return '<tr style="border-bottom:1px solid #d9f5ef;background:' + (neg ? '#fff5f5' : (i % 2 ? '#f6fffd' : '#fff')) + '">' +
           '<td style="padding:5px 7px;white-space:nowrap">' + esc(dstr(p.date)) + '</td>' +
-          '<td style="padding:5px 7px">' + (p.mode ? esc(p.mode) : '<span style="color:#94a3b8">not recorded</span>') + '</td>' +
+          '<td style="padding:5px 7px">' + (p.mode ? esc(p.mode) : '<span style="color:#94a3b8">not recorded</span>') +
+            (neg ? ' <span class="pill" style="background:#fee2e2;color:#b91c1c;font-size:10.5px">refund</span>'
+                 : k === "advance" ? ' <span class="pill" style="background:#ccfbf1;color:#0f766e;font-size:10.5px">advance</span>' : '') + '</td>' +
           '<td style="padding:5px 7px;color:#64748b">' + esc(p.ref || p.notes || '') + '</td>' +
-          '<td style="padding:5px 7px;text-align:right;font-weight:700;color:#0d9488">' + money(p.amount) + '</td></tr>';
+          '<td style="padding:5px 7px;text-align:right;font-weight:700;color:' + (neg ? '#b91c1c' : '#0d9488') + '">' +
+            (neg ? '\u2212' + money(-p.amount) : money(p.amount)) + '</td></tr>';
       }).join("") +
       '</tbody><tfoot><tr style="background:#e2f5f1">' +
-        '<td colspan="3" style="padding:5px 7px;text-align:right;font-weight:700">Total received</td>' +
+        '<td colspan="3" style="padding:5px 7px;text-align:right;font-weight:700">' +
+          (ps.some(function (p) { return payKindOf(p) === "refund"; }) ? 'Net received (after refunds)' : 'Total received') + '</td>' +
         '<td style="padding:5px 7px;text-align:right;font-weight:800;color:#0d9488">' + money(tot) + '</td>' +
       '</tr></tfoot></table></div></div>';
   }
@@ -18480,11 +18501,42 @@ function viewCatalogue() {
   }
 
   /* Reads the payment form once and says plainly what is wrong with it.  Returns {row} or {err}. */
-  function readPayIn(client) {
+  /* ================= MONEY BOTH WAYS  (v6.9.360, 24 Aug 2026) =================
+     HIS WORDS: "make provision to register payment here, like sometimes we have to return some
+     payment or received advance, show option to register that here".
+
+     Three things happen with a client's money and until today the app knew one of them. A
+     payment could only be entered from the Payments screen, and only ever as money coming IN.
+
+     A REFUND IS A NEGATIVE PAYMENT. That is not a shortcut, it is the honest shape: every total
+     in this file is sum(payments.amount), so money going back out is that same sum with a minus
+     on one row. Nothing else has to learn a new word - the ledger, the dues list, the statement
+     and hisabOutstanding all come out right without being touched. A separate "refunds" store
+     would have been a second set of books to keep in step with the first.
+
+     AN ADVANCE IS ALSO JUST A PAYMENT. The running balance already handles money that arrives
+     before the goods - it simply goes negative, which is exactly what a credit is. What was
+     missing was not arithmetic, it was WORDS: the card printed "Balance due -514", which reads
+     like a fault. It says he is in credit now.
+
+     THE KIND LIVES IN `notes`, NOT IN A NEW COLUMN. teamSaveLocked_ writes from the sheet's own
+     headers, so a field with no column is silently dropped - the trap that has cost this estate
+     time before. notes is a real column, so the label survives. */
+  var PAY_KINDS = {
+    "in":      { label: "Payment received", sign:  1, note: "" },
+    "advance": { label: "Advance received", sign:  1, note: "Advance" },
+    "refund":  { label: "Refund \u2014 money returned to the client", sign: -1, note: "Refund to client" }
+  };
+  function payKindOf(p) {
+    if ((Number(p && p.amount) || 0) < 0) return "refund";
+    return /^advance/i.test(String((p && p.notes) || "")) ? "advance" : "in";
+  }
+  function readPayIn(client, kind) {
+    var K = PAY_KINDS[String(kind || "in")] || PAY_KINDS["in"];
     /* nAmt keeps the minus sign.  Stripping it turned a typed "-500" into a receipt for
        Rs 500 RECEIVED - money that never came in.  Now it is simply refused. */
     var amt = Math.round(nAmt(val("pi_amt")));
-    if (amt <= 0) return { err: "Enter the amount received." };
+    if (amt <= 0) return { err: K.sign < 0 ? "Enter the amount going back to the client." : "Enter the amount received." };
     var d = String(val("pi_date") || "");
     if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(d)) return { err: "Pick the date this money came in." };
     if (d > today()) return { err: "That date has not arrived yet \u2014 check it once." };
@@ -18494,7 +18546,10 @@ function viewCatalogue() {
       row: {
         id: mintId("P"), createdBy: S.user,
         siteId: st ? st.id : "", siteName: st ? st.name : "",
-        client: client, date: d, amount: amt, mode: val("pi_mode"), ref: val("pi_ref"), notes: ""
+        client: client, date: d, amount: amt * K.sign,
+        mode: val("pi_mode"), ref: val("pi_ref"),
+        /* the label first so payKindOf can read it back, then whatever he typed */
+        notes: (K.note ? K.note + (val("pi_why") ? " \u2014 " + val("pi_why") : "") : String(val("pi_why") || "")).slice(0, 300)
       }
     };
   }
@@ -18545,12 +18600,35 @@ function viewCatalogue() {
     }).catch(function () { land(false); });
   }
 
-  function modalPayIn(client) {
+  function modalPayIn(client, kind) {
+    var _pk = String(kind || "in"), K = PAY_KINDS[_pk] || PAY_KINDS["in"];
     var l = clientLedger(client), sites = clientSiteList(client);
-    var h = '<h2>Payment received</h2><p class="sub">' + esc(client) + '</p>' +
+    var h = '<h2>' + esc(K.label) + '</h2><p class="sub">' + esc(client) + '</p>' +
+      /* v6.9.360 - three tabs on one form, because a man who opened the wrong one should not
+         have to close it and find the right button again. */
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px">' +
+      Object.keys(PAY_KINDS).map(function (k) {
+        return '<button class="btn sm' + (k === _pk ? '' : ' ghost') + '" data-act="pi-kind" data-n="' +
+          esc(client) + '" data-k="' + esc(k) + '"' +
+          (k === "refund" ? ' style="' + (k === _pk ? 'background:#b91c1c;border-color:#b91c1c' : 'border-color:#fecaca;color:#b91c1c') + '"' : '') +
+          '>' + esc(PAY_KINDS[k].label.split(" \u2014 ")[0]) + '</button>';
+      }).join("") + '</div>' +
+      (_pk === "refund"
+        ? '<div class="card" style="border-color:#fecaca;background:#fef2f2;padding:9px 12px">' +
+          '<div class="meta" style="font-size:12.5px;color:#b91c1c">This is money going <b>OUT</b>, back to ' +
+          esc(client) + '. It is filed as a payment with a minus, so his balance goes UP by this ' +
+          'amount and every statement adds up without anybody adjusting anything.</div></div>'
+        : _pk === "advance"
+          ? '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px">' +
+            '<div class="meta" style="font-size:12.5px;color:#0f766e">Money in before the material. ' +
+            'It sits on his account as credit and comes off the next delivery by itself \u2014 there ' +
+            'is nothing to remember later.</div></div>'
+          : '') +
       '<div class="card"><div class="meta">Billed ' + money(l.billed) + (l.freight ? ' + freight ' + money(l.freight) : "") +
       '<br>Received so far ' + money(l.paid) + '<br><b>Due ' + money(l.due) + '</b></div></div>' +
-      '<label>Amount received</label><input id="pi_amt" inputmode="numeric" value="' + Math.round(l.due > 0 ? l.due : 0) + '"/>' +
+      '<label>' + (K.sign < 0 ? 'Amount going back' : 'Amount received') + '</label>' +
+      '<input id="pi_amt" inputmode="numeric" value="' +
+        (_pk === "in" ? Math.round(l.due > 0 ? l.due : 0) : (K.sign < 0 && l.due < -0.5 ? Math.round(-l.due) : "")) + '"/>' +
       '<div class="grid2"><div><label>Date</label><input id="pi_date" type="date" max="' + today() + '" value="' + today() + '"/></div>' +
       '<div><label>Mode</label><select id="pi_mode">' + opts(["Cash", "Bank transfer", "Cheque", "UPI"], "Bank transfer") + '</select></div></div>';
     /* Only asked when there is a real choice to make - one site needs no question. */
@@ -18561,8 +18639,13 @@ function viewCatalogue() {
       h += '<input type="hidden" id="pi_site" value="' + esc(sites[0].id) + '"/>';
     }
     return h + '<label>Reference (cheque / UTR)</label><input id="pi_ref"/>' +
+      '<label>Why (optional)</label><input id="pi_why" placeholder="' +
+        (_pk === "refund" ? 'e.g. excess received on the Sonipat site'
+         : _pk === "advance" ? 'e.g. advance against the Huliot order' : 'e.g. part payment') + '"/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      '<button class="btn" data-act="pi-save" data-n="' + esc(client) + '">Save payment</button></div>';
+      '<button class="btn" data-act="pi-save" data-n="' + esc(client) + '" data-k="' + esc(_pk) + '"' +
+        (_pk === "refund" ? ' style="background:#b91c1c;border-color:#b91c1c"' : '') + '>' +
+        (_pk === "refund" ? 'Record the refund' : 'Save payment') + '</button></div>';
   }
 
   /* ---------- PAYMENT RECEIPT (v6.9.193) ----------
@@ -30048,12 +30131,15 @@ function viewCatalogue() {
       return;
     }
 
-    if (act === "pay-in") { S.modal = modalPayIn(t.getAttribute("data-n")); render(); return; }
+    if (act === "pay-in") { S.modal = modalPayIn(t.getAttribute("data-n"), t.getAttribute("data-k") || "in"); render(); return; }
+    /* v6.9.360 - switching kind re-opens the same form on the other tab. Nothing typed is carried
+       across on purpose: an amount meant as money IN must never become money OUT by a mis-tap. */
+    if (act === "pi-kind") { S.modal = modalPayIn(t.getAttribute("data-n"), t.getAttribute("data-k")); render(); return; }
     if (act === "pi-save" || act === "pi-force") {
       var piRow;
       if (act === "pi-force") { piRow = _payPend; _payPend = null; }
       else {
-        var pRead = readPayIn(t.getAttribute("data-n"));
+        var pRead = readPayIn(t.getAttribute("data-n"), t.getAttribute("data-k") || "in");
         if (pRead.err) { unlockBtn(t); toast(pRead.err); return; }
         piRow = pRead.row;
         var twin = payTwin(piRow);
