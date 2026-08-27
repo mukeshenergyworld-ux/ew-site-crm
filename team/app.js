@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.361";
+  var APP_VERSION = "6.9.362";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -16563,6 +16563,31 @@ function viewCatalogue() {
      beside it showed the post-concession one. Two numbers for the same delivery is precisely
      the fault the check screen exists to prevent, so there is now one place to be wrong. */
   function chValue(c) { return challanNet(c) + chFreight(c); }
+  /* ================= A CHALLAN THAT CANCELLED ITSELF  (v6.9.362, 24 Aug 2026) ==========
+     HIS WORDS: "amount not showing in last challan, fix this for all".
+
+     27/08/2026/034, Ashish Goyal, two hand-worked lines: -22,463 and -47,793. The saved row is
+     right - amount -70,256 - and the owner's strip beside it read the truth too, 4.2% of that,
+     minus 2,951. The card said TOTAL Rs 0.
+
+         var xOff = Math.min(hisabExtra(c), sub)         // Math.min(0, -70256)  ->  -70256
+         chTotal  = sub + frt - xOff                     // -70256 - (-70256)    ->  0
+
+     xOff is the FURTHER DISCOUNT taken when a delivery was passed, and Math.min is there to
+     stop it exceeding the goods. It was written when every subtotal was positive - which every
+     subtotal was, until yesterday's hand-worked line let one go the other way. With a negative
+     subtotal the guard picks the SUBTOTAL as the discount and the challan wipes itself out.
+
+     THE SAME LINE WAS IN THE STATEMENT PDF, forty lines of code and one screen apart. So a
+     client statement printed Rs 0 for that delivery and its grand total was short by the whole
+     70,256 - a credit the client is owed, silently missing from the paper he is sent. That is
+     the half of this that mattered.
+
+     One function now, read by both, so they cannot drift apart again. A further discount is
+     never negative and never more than goods that exist. */
+  function chFurtherOff(c, sub) {
+    return sub > 0 ? Math.min(Math.max(0, hisabExtra(c)), sub) : 0;
+  }
   /* Net (post-discount, ex-GST) goods value of a challan - the basis for dues and incentive.
      Freight is NOT part of it (freight is a pass-through cost, not a sale). */
   /* v6.9.324 - a further discount taken at hisab time comes off here, which is the ONE place
@@ -16574,7 +16599,9 @@ function viewCatalogue() {
   function challanNet(c) {
     var gross = pricedLines(c, c.customerName).reduce(function (s, x) { return s + x.amt; }, 0);
     var off = hisabExtra(c);
-    return off > 0 ? Math.max(0, gross - Math.min(off, gross)) : gross;
+    /* v6.9.362 - same trap as chFurtherOff, one screen away: with a negative gross this used
+       to hand back 0. A credit is not nothing. */
+    return gross > 0 ? Math.max(0, gross - Math.min(Math.max(0, off), gross)) : gross;
   }
   /* v6.9.125 — defence-in-depth against DOUBLE-BILLING. The v6.9.124 stable-id fix stops duplicate
      challans being created; this makes the money maths immune even if a duplicate ever slips in from
@@ -17167,7 +17194,7 @@ function viewCatalogue() {
       /* v6.9.325 - a further discount taken when this delivery was passed. It is shown as its
          own line rather than folded quietly into the total, because a total that is lower than
          the lines above it and does not say why reads as an arithmetic fault. */
-      var frt = chFreight(c), xOff = Math.min(hisabExtra(c), sub), chTotal = sub + frt - xOff;
+      var frt = chFreight(c), xOff = chFurtherOff(c, sub), chTotal = sub + frt - xOff;
       allNet += chTotal; if (sel) { selNet += chTotal; selGoods += sub; selCount++; }
       var rows = priced.map(function (x, idx) {
         var disc = x.disc;
@@ -17819,7 +17846,7 @@ function viewCatalogue() {
            he is handed this paper, and a Challan total below the lines that does not add up
            unless a concession is named is the sort of thing that starts an argument at a
            counter. Same figure and same wording as the screen. */
-        var frt = chFreight(c), xOff = Math.min(hisabExtra(c), sub), chTotal = sub + frt - xOff;
+        var frt = chFreight(c), xOff = chFurtherOff(c, sub), chTotal = sub + frt - xOff;
         if (frt > 0) {
           if (y + 4.4 > 282) { doc.addPage(); y = 20; head(); }
           F("normal"); doc.setFontSize(6.8); doc.setTextColor(146, 64, 14);
