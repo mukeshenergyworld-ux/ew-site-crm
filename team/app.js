@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.363";
+  var APP_VERSION = "6.9.364";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17351,6 +17351,35 @@ function viewCatalogue() {
       return h + _oh;
     }
     var admin = roleIs("admin");
+    /* v6.9.364 - the deliveries this client has already paid for, folded away. HIS WORDS:
+       "we dont wnat to show to client 5 chllan whose payment receiveed". Folded, never
+       removed: the tick boxes, the totals and every figure below are computed over ALL of
+       them, so the account on this screen is the same account it was before the fold. */
+    var _done = settleDone(cl), _dvis = settleShown(cl);
+    var _dval = _done.reduce(function (a, r) { return a + r.amt; }, 0);
+    var _dlast = _done.reduce(function (a, r) { return r.date > a ? r.date : a; }, "");
+    if (_done.length) {
+      /* RENDERED AND LOOKED AT on a 430px screen: the caret was centred against a three-line
+         block and floated in the middle of the sentence, and "Cleared up to 05/03/2026" ran
+         on at the end of it. The date belongs in the headline - it is part of WHAT is folded -
+         and the caret belongs on the first line, beside the thing it opens. */
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px;cursor:pointer" ' +
+        'data-act="stl-show" data-n="' + esc(cl) + '">' +
+        '<div style="display:flex;gap:9px;align-items:flex-start;flex-wrap:nowrap">' +
+        '<span style="font-size:16px;color:#0d9488;line-height:1.35">' + (_dvis ? '&#9662;' : '&#9656;') + '</span>' +
+        '<div style="flex:1 1 auto;min-width:0">' +
+        '<b style="font-size:13.5px;color:#0f766e">' + _done.length + ' deliver' +
+          (_done.length === 1 ? 'y is' : 'ies are') + ' paid for' +
+          (_dlast ? ', up to ' + esc(dstr(_dlast)) : '') + ' &mdash; ' + money(_dval) + '</b>' +
+        '<div style="font-size:12px;color:#0f766e;opacity:.85;margin-top:2px">' +
+          /* the tap moves the PAPER too, and says so where the tap is - hisabPdf reads this
+             same settleShown(), so what he is looking at is what the client is sent. */
+          (_dvis ? 'Shown below, and back on the client\u2019s statement. Tap to fold them away.'
+                 : 'Folded away here, and left off the client\u2019s statement. Tap to see them.') +
+        '</div></div>' +
+        '<span class="pill" style="background:#ccfbf1;color:#0f766e;flex:0 0 auto">' + (_dvis ? 'Hide' : 'Show') + '</span>' +
+        '</div></div>';
+    }
     var allNet = 0, selNet = 0, selGoods = 0, selCount = 0;
     chs.forEach(function (c) {
       var sel = S.billSel[c.id] !== false;
@@ -17433,7 +17462,14 @@ function viewCatalogue() {
          The site pill moves into the title line for the same reason: it was a third flex child
          with `text-align:center`, which on a wide card put the project name adrift in the middle
          of the gap. On the title line it reads as what it is - a label on this delivery. */
-      h += '<div class="card" style="padding:9px 12px' + (sel ? '' : ';opacity:.5') + '">' +
+      /* v6.9.364 - where this one delivery stands. It is worked out, not stored: see
+         settleWalk(). A settled delivery is FOLDED, not dropped - every total on this screen
+         was accumulated above, before this line, over all of them. */
+      var _stl = settleOf(cl, c.id);
+      var _fold = !!(_stl && _stl.state === "settled") && !_dvis;
+      var _card = '<div class="card" style="padding:9px 12px' +
+        (_stl && _stl.state === "settled" ? ';border-color:#99f6e4;background:#f7fffd' : '') +
+        (sel ? '' : ';opacity:.5') + '">' +
         '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
         '<div style="flex:1 1 320px;min-width:0">' +
         '<h3 style="margin:0 0 6px;line-height:1.5">' +
@@ -17443,6 +17479,7 @@ function viewCatalogue() {
         '<label style="cursor:pointer;font-size:15px;white-space:nowrap"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label>' +
         manualNoCell(c) +
         ' <span class="pill teal">' + esc(d10(c.createdAt)) + '</span>' +
+        settlePill(_stl) +
         siteBlock +
         /* v6.9.236 - the signed paper, or the fact that there isn't one. The thumbnail is
            drawn bigger here than on the delivery list because in hisab you are checking the
@@ -17477,6 +17514,7 @@ function viewCatalogue() {
         '<div style="flex:0 0 auto;text-align:right">' + billBlock + admChallanStrip(c) + '</div>' +
         '</div>' +
         (_chExp ? _ctbl : '') + '</div>';
+      if (!_fold) h += _card;
     });
     /* v6.9.121: booked-in material returns show here like a challan in reverse — a red card whose
        amounts are negative and which credit (reduce) the client's balance. Only "Received" returns. */
@@ -17809,8 +17847,27 @@ function viewCatalogue() {
      exactly as he left it when the file has been made. */
   function hisabPdf(cl, all) {
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }));
-    var sel = chs.filter(function (c) { return all || S.billSel[c.id] !== false; })
+    var selAll = chs.filter(function (c) { return all || S.billSel[c.id] !== false; })
       .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+    /* v6.9.364 - THE DELIVERIES HE HAS ALREADY PAID FOR COME OFF THE PAPER. HIS WORDS:
+       "we dont wnat to show to client 5 chllan whose payment receiveed".
+
+       They are replaced by ONE line that carries their count, their value and the date they
+       cleared, and that line's value goes into `grand` in their place - so the statement
+       total, the GST on it and the balance at the foot are the same figures they were before
+       any of this, to the rupee. A statement that quietly dropped five deliveries out of its
+       arithmetic would be a worse document than the long one it replaced.
+
+       The fold follows the screen: whatever he has open in HISAB is what the client is sent.
+       Tapping Show puts them all back on the paper, listed in full. */
+    var _paidSet = {};
+    if (!settleShown(cl)) settleDone(cl).forEach(function (r) { _paidSet[String(r.id)] = true; });
+    var sel = selAll.filter(function (c) { return !_paidSet[String(c.id)]; });
+    var selPaid = selAll.filter(function (c) { return !!_paidSet[String(c.id)]; });
+    var selPaidVal = selPaid.reduce(function (a, c) { return a + chValue(c); }, 0);
+    var selPaidTo = selPaid.reduce(function (a, c) {
+      var d = String(c.createdAt || "").slice(0, 10); return d > a ? d : a;
+    }, "");
     var allNet = chs.reduce(function (a, c) { return a + chValue(c); }, 0);
     /* The statement uses its OWN compact header (not the shared commPdfBase): a shorter band,
        a small un-shouty "STATEMENT" label top-right, then the client's details and date beneath
@@ -18032,6 +18089,25 @@ function viewCatalogue() {
         F("bold"); doc.setFontSize(8.2); doc.setTextColor(17, 34, 45);
         doc.text("Challan total", cN, tMid, { align: "right" }); doc.text(RS(chTotal), cA, tMid, { align: "right" });
         y = tbY + tbH + 3;
+        /* v6.9.364 - a delivery that is PART paid prints what has come off it. Without this
+           line a client looking at a folded statement would see a full-price delivery and no
+           sign of the 40,000 he has already put against it.
+
+           RENDERED AND LOOKED AT, which is why it is a strip and not a floating line: three
+           millimetres of white above it and five below put it almost exactly between two
+           deliveries, and it read as a note on the one BELOW - the single delivery it is not
+           about. Flush under the total band, tinted, indented from the same margin the band
+           uses, it belongs to the challan it is under and to nothing else. */
+        var _ps = settleOf(cl, c.id);
+        if (_ps && _ps.state === "part") {
+          var pbY = tbY + tbH, pbH = 5.6;
+          if (pbY + pbH > 286) { doc.addPage(); pbY = 20; }
+          doc.setFillColor(240, 253, 250); doc.rect(L, pbY, R - L, pbH, "F");
+          F("normal"); doc.setFontSize(6.8); doc.setTextColor(15, 118, 110);
+          doc.text("Part paid: " + RS(_ps.paid) + " already received against this delivery. " +
+                   RS(_ps.open) + " of it is still open.", L + 3, pbY + 3.7);
+          y = pbY + pbH + 4;
+        }
       };
 
       /* v6.9.122: a booked-in return printed as a challan in reverse - a red header, every
@@ -18082,7 +18158,7 @@ function viewCatalogue() {
       /* Booked-in returns ("Received" only), which now travel in the same stream as the
          challans instead of being appended after them. */
       var retList = clientReturns(cl).slice();
-      if (!sel.length && !retList.length) {
+      if (!sel.length && !retList.length && !selPaid.length) {
         doc.setFontSize(10); doc.setTextColor(120, 120, 120);
         doc.text("No challans selected.", L, y); y += 6;
       }
@@ -18090,6 +18166,23 @@ function viewCatalogue() {
         .concat(retList.map(function (r) { return { t: "R", d: String(r.createdAt || ""), r: r }; }))
         .sort(function (a, b) { return a.d.localeCompare(b.d); });
 
+      /* v6.9.364 - the folded deliveries, as one line, before the open ones. It is drawn
+         whatever the per-page setting is, because it is not a delivery and has no receipt. */
+      if (selPaid.length) {
+        if (y + 16 > 282) { doc.addPage(); y = 20; }
+        doc.setFillColor(240, 253, 250); doc.rect(L, y - 4, R - L, 13.6, "F");
+        doc.setDrawColor(153, 246, 228); doc.setLineWidth(0.3); doc.rect(L, y - 4, R - L, 13.6, "S");
+        F("bold"); doc.setFontSize(8.6); doc.setTextColor(13, 118, 108);
+        doc.text("SETTLED IN FULL", L + 3, y + 0.6);
+        doc.text(RS(selPaidVal), R - 3, y + 0.6, { align: "right" });
+        F("normal"); doc.setFontSize(7); doc.setTextColor(15, 118, 110);
+        doc.text(selPaid.length + " deliver" + (selPaid.length === 1 ? "y" : "ies") +
+          (selPaidTo ? ", up to " + fullDate(selPaidTo) : "") +
+          " \u2014 paid for and closed. Listed in full on request.", L + 3, y + 5.6);
+        grand += selPaidVal;
+        goodsGrand += selPaid.reduce(function (a, c) { return a + challanNet(c); }, 0);
+        y += 17;
+      }
       stream.forEach(function (it, i) {
         /* in per-page mode each entry starts on a clean sheet. The FIRST one still sits
            below the dark banner on page one; only the added pages start at the top. */
@@ -18248,10 +18341,89 @@ function viewCatalogue() {
   }
   /* The block under the ledger line. Nothing at all when nothing has been received - an empty
      table under a Rs 0 is noise, and "Received: Rs 0" already says it. */
+  /* The line under a payment saying what it actually cleared. Named deliveries, not a count:
+     "which of my transfers paid for that challan" is the question a client rings up to ask,
+     and a number cannot answer it. A payment still sitting as credit says so. */
+  function payWentTo(w, p) {
+    var src = w.byPay[String(p.id || "")];
+    if (!src) return "";
+    var hits = src.hits || [], used = hits.reduce(function (a, x) { return a + x.amt; }, 0);
+    var left = Math.max(0, src.amt - used);
+    var named = hits.filter(function (x) { return x.kind === "ch"; })
+      .map(function (x) { return x.no || "delivery"; });
+    var open = hits.filter(function (x) { return x.kind === "open"; }).length;
+    var bits = [];
+    if (open) bits.push("the old balance");
+    if (named.length) bits.push(named.slice(0, 4).join(", ") + (named.length > 4 ? " and " + (named.length - 4) + " more" : ""));
+    if (left > 0.4) bits.push(money(left) + " still in credit");
+    if (!bits.length) return "";
+    var pick = allocFor(p.id);
+    return '<div style="font-size:11px;color:#0f766e;opacity:.9;margin-top:2px;white-space:normal">' +
+      (pick && pick.length ? '<b>Pointed by hand:</b> ' : 'Went to: ') + esc(bits.join(" \u00b7 ")) +
+      (canSee("payments") && (Number(p.amount) || 0) > 0
+        ? ' <span style="color:#0d9488;text-decoration:underline;cursor:pointer" data-act="pa-open" ' +
+          'data-id="' + esc(p.id) + '" data-n="' + esc(p.client || "") + '">change</span>'
+        : '') + '</div>';
+  }
+
+  /* ---- POINTING A PAYMENT AT PARTICULAR DELIVERIES (v6.9.364) ----
+     His words were "oldest first, and you can override". Oldest-first is right nearly always
+     and needs no thought; this is for the day a client says "that lakh was for the Sonipat
+     site". Ticking nothing goes back to oldest-first, which is why the empty list is saved
+     rather than the row being removed. */
+  function modalPayAlloc(payId) {
+    var p = (S.data.payments || []).filter(function (x) { return String(x.id) === String(payId); })[0];
+    if (!p) return "";
+    var cl = String(p.client || ""), amt = Number(p.amount) || 0;
+    var w = settleWalk(cl);
+    var chs = dedupeChallans((S.data.challans || []).filter(function (c) {
+      return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y";
+    })).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+    var pick = allocFor(payId) || [];
+    var pk = {}; pick.forEach(function (x) { pk[String(x)] = true; });
+    var src = w.byPay[String(payId)] || { hits: [] };
+    var auto = {}; (src.hits || []).forEach(function (x) { auto[String(x.id)] = x.amt; });
+    return '<h2>What did this payment pay for?</h2>' +
+      '<p class="sub">' + esc(cl) + ' &middot; ' + money(amt) + ' on ' + esc(dstr(p.date || p.createdAt)) +
+        (p.mode ? ' &middot; ' + esc(p.mode) : '') + '</p>' +
+      '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px">' +
+      '<div class="meta" style="font-size:12.5px;color:#0f766e">Leave everything unticked and the app ' +
+      'clears the <b>oldest unpaid delivery first</b>, which is what it does now and is right nearly ' +
+      'every time. Tick some and this payment goes to those first, in the order they are listed; ' +
+      'anything left over falls back to oldest-first. <b>No balance changes either way</b> \u2014 this ' +
+      'only decides which deliveries come off the client\u2019s statement.</div></div>' +
+      '<div style="max-height:46vh;overflow:auto;margin-top:9px">' +
+      (chs.length
+        ? chs.map(function (c) {
+            var st = settleOf(cl, c.id) || { state: "open", amt: chValue(c), paid: 0, open: chValue(c) };
+            var mine = auto[String(c.id)] || 0;
+            return '<label style="display:flex;gap:8px;align-items:flex-start;padding:7px 6px;' +
+              'border-bottom:1px solid #e2e8f0;cursor:pointer">' +
+              '<input type="checkbox" class="pachk" value="' + esc(c.id) + '"' + (pk[String(c.id)] ? ' checked' : '') +
+                ' style="margin-top:3px;transform:scale(1.2)"/>' +
+              '<span style="flex:1 1 auto;min-width:0">' +
+              '<b style="font-size:13px">' + esc(c.challanNo || "") + '</b> ' +
+              '<span class="pill teal" style="font-size:10.5px">' + esc(d10(c.createdAt)) + '</span>' +
+              settlePill(st) +
+              '<br><span style="font-size:11.5px;color:#64748b">' + money(st.amt) +
+              (mine > 0.4 ? ' &middot; <b style="color:#0f766e">' + money(mine) + ' of it from this payment</b>' : '') +
+              '</span></span></label>';
+          }).join("")
+        : '<div class="empty">No delivered challans on this client yet.</div>') +
+      '</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn ghost" data-act="pa-save" data-id="' + esc(payId) + '" data-clear="1">Back to oldest first</button>' +
+      '<button class="btn" data-act="pa-save" data-id="' + esc(payId) + '">Save</button></div>';
+  }
+
   function payTable(client) {
     var ps = payLines(client);
     if (!ps.length) return '';
     var tot = ps.reduce(function (a, p) { return a + p.amount; }, 0);
+    /* v6.9.364 - and WHICH deliveries each one cleared. Worked out oldest-first unless he has
+       pointed it somewhere by hand; the pointing is his to change, and changing it moves no
+       money at all - the balance is the same number before and after. */
+    var _w = settleWalk(client);
     return '<div style="margin-top:9px;border-top:1px dashed #99f6e4;padding-top:8px">' +
       '<div style="font-size:12.5px;font-weight:700;color:#0f766e;margin-bottom:5px">' +
         'Payments received &mdash; ' + ps.length + '</div>' +
@@ -18266,7 +18438,7 @@ function viewCatalogue() {
            in, so it is red, signed, and named in its own row rather than left to arithmetic. */
         var k = payKindOf(p), neg = k === "refund";
         return '<tr style="border-bottom:1px solid #d9f5ef;background:' + (neg ? '#fff5f5' : (i % 2 ? '#f6fffd' : '#fff')) + '">' +
-          '<td style="padding:5px 7px;white-space:nowrap">' + esc(dstr(p.date)) + '</td>' +
+          '<td style="padding:5px 7px;white-space:nowrap">' + esc(dstr(p.date)) + payWentTo(_w, p) + '</td>' +
           '<td style="padding:5px 7px">' + (p.mode ? esc(p.mode) : '<span style="color:#94a3b8">not recorded</span>') +
             (neg ? ' <span class="pill" style="background:#fee2e2;color:#b91c1c;font-size:10.5px">refund</span>'
                  : k === "advance" ? ' <span class="pill" style="background:#ccfbf1;color:#0f766e;font-size:10.5px">advance</span>' : '') + '</td>' +
@@ -18279,6 +18451,204 @@ function viewCatalogue() {
           (ps.some(function (p) { return payKindOf(p) === "refund"; }) ? 'Net received (after refunds)' : 'Total received') + '</td>' +
         '<td style="padding:5px 7px;text-align:right;font-weight:800;color:#0d9488">' + money(tot) + '</td>' +
       '</tr></tfoot></table></div></div>';
+  }
+
+  /* ================= WHICH DELIVERIES THE MONEY PAID FOR  (v6.9.364, 27 Aug 2026) ========
+     HIS WORDS: "total due rs 2 for 10 challan and client give 1 lac for 5 challan then we
+     dont wnat to show to client 5 chllan whose payment receiveed, what can we best design
+     for that?"
+
+     The book keeps ONE running balance per client. Challans add to it, payments take away
+     from it, and no payment has ever been tied to any challan. That is the right way to keep
+     it - it cannot drift, and it is what the sheet has held since the first day. But it also
+     means the app has never been able to answer "which of these is still open?", so a client
+     with fourteen deliveries and eleven of them paid is handed a statement listing fourteen.
+
+     NOTHING IS STORED AND NO COLUMN IS ADDED. The allocation is worked out, oldest debt
+     first, from rows that already exist - so it can be re-derived on any device at any time,
+     and it can never disagree with the balance. The arithmetic closes:
+
+         (what is still open)  -  (credit held)  =  the balance the ledger already prints
+
+     That identity was checked against all 158 of his clients before a line of this was
+     written, and t_settle.js asserts it on constructed books at every awkward shape there is.
+     Twenty-four of his hundred and twenty-four received challans fall away today.
+
+     THE WALK is in date order and not a subtraction, because money that arrives before the
+     material is an ADVANCE: it waits as credit and meets the next delivery by itself. A
+     delivery worth less than nothing - the hand-worked credit note of v6.9.362 - is a credit
+     and not a debt, or it would sit at the front of the queue for ever and every rupee behind
+     it would be marked paid. Ashish Goyal's 27/08/2026/034 is exactly that case: minus 70,256
+     against a 1,00,000 opening balance, and until this was written the walk turned it into a
+     70,256 windfall. A refund is the mirror of it - money going back out is a charge, dated
+     the day it went out. */
+  var ALLOC_ACT = "pay:alloc";
+  var _alcCache = null, _stlCache = null;
+
+  /* A payment he has pointed at particular deliveries by hand. Newest row per payment wins,
+     the same way cancelMap and cxAskMap read theirs - going back to oldest-first is a later
+     row with an empty list, never a deletion. */
+  function allocMap() {
+    if (_alcCache) return _alcCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== ALLOC_ACT) return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var pid = String(d.pay || "");
+      if (!pid) return;
+      var prev = m[pid];
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[pid] = { ids: (d.ids || []).map(String), at: r.createdAt || "", by: r.actor || "" };
+      }
+    });
+    _alcCache = m;
+    return m;
+  }
+  function allocFor(payId) {
+    var r = allocMap()[String(payId || "")];
+    return r ? r.ids : null;
+  }
+  function allocWrite(pay, ids) {
+    if (!pay || !pay.id) return;
+    try {
+      save("audit", {
+        id: "", createdAt: new Date().toISOString(), actor: S.user, action: ALLOC_ACT,
+        target: String(pay.client || "") + " / " + money(Number(pay.amount) || 0),
+        detail: JSON.stringify({ pay: String(pay.id), client: String(pay.client || ""),
+                                 amount: Number(pay.amount) || 0, ids: (ids || []).map(String) }),
+        ip: ""
+      });
+    } catch (e) { }
+    _alcCache = null; _stlCache = null;
+    try { snapSave(); } catch (e) { }
+    S.modal = null;
+    render();
+  }
+
+  /* One walk per client, cached for the render. Returns every charge with what has been paid
+     against it and what is still open, every credit with what it went to, and the credit still
+     in hand. Both directions are kept: a delivery can name the payment that cleared it, and a
+     payment can name the deliveries it cleared. */
+  function settleWalk(client) {
+    client = String(client || "");
+    if (!_stlCache) _stlCache = {};
+    if (_stlCache[client]) return _stlCache[client];
+    var chs = dedupeChallans((S.data.challans || []).filter(function (c) {
+      return c.customerName === client && String(c.receiptReceived).toUpperCase() === "Y";
+    }));
+    var ev = [], op = clientOpening(client);
+    /* The opening balance has no date and is older than everything, so it sorts first on an
+       empty string and is settled first. A MINUS opening balance is money he already held. */
+    if (op > 0.4) ev.push({ k: "D", d: "", ord: 0, kind: "open", amt: op, id: "OPENING" });
+    else if (op < -0.4) ev.push({ k: "C", d: "", ord: 0, kind: "open", amt: -op, id: "OPENING" });
+    chs.forEach(function (c) {
+      var v = chValue(c), cr = v < -0.4;
+      ev.push({ k: cr ? "C" : "D", d: String(c.createdAt || "").slice(0, 10), ord: 1,
+                kind: cr ? "chcr" : "ch", amt: cr ? -v : v,
+                id: String(c.id), no: String(c.challanNo || ""), row: c });
+    });
+    (S.data.payments || []).filter(function (p) { return p && p.client === client; }).forEach(function (p) {
+      var a = Number(p.amount) || 0, neg = a < 0;
+      ev.push({ k: neg ? "D" : "C", d: String(p.date || p.createdAt || "").slice(0, 10), ord: 2,
+                kind: neg ? "refund" : "pay", amt: neg ? -a : a, id: String(p.id), row: p });
+    });
+    clientReturns(client).forEach(function (r) {
+      ev.push({ k: "C", d: String(r.createdAt || "").slice(0, 10), ord: 2, kind: "ret",
+                amt: returnNet(r), id: String(r.id), no: String(r.returnNo || ""), row: r });
+    });
+    ev.sort(function (a, b) { return a.d === b.d ? a.ord - b.ord : String(a.d).localeCompare(String(b.d)); });
+
+    /* Every charge is built BEFORE the walk, so a payment he has pointed at a delivery dated
+       later than the payment itself still finds it. An advance named against next week's
+       delivery is a real thing to want to record. */
+    var debts = [], credits = [], byId = {}, byPay = {};
+    ev.forEach(function (e) {
+      if (e.k !== "D") return;
+      var row = { id: e.id, no: e.no, kind: e.kind, date: e.d, amt: e.amt, paid: 0, open: e.amt,
+                  from: [], row: e.row };
+      debts.push(row); byId[e.id] = row;
+    });
+    var q = [], pot = [];
+    var drain = function () {
+      var guard = 0;
+      while (pot.length && q.length && guard++ < 9000) {
+        var c = pot[0], h = q[0];
+        if (c.amt <= 0.4) { pot.shift(); continue; }
+        if (h.open <= 0.4) { h.open = 0; q.shift(); continue; }
+        var t = Math.min(c.amt, h.open);
+        c.amt -= t; h.open -= t; h.paid += t;
+        c.src.hits.push({ id: h.id, no: h.no, kind: h.kind, amt: t });
+        h.from.push({ id: c.src.id, kind: c.src.kind, date: c.src.date, amt: t });
+        if (c.amt <= 0.4) pot.shift();
+        if (h.open <= 0.4) { h.open = 0; q.shift(); }
+      }
+    };
+    ev.forEach(function (e) {
+      if (e.k === "D") {
+        var d = byId[e.id];
+        if (d && d.open > 0.4) { q.push(d); drain(); }
+        return;
+      }
+      var src = { id: e.id, no: e.no, kind: e.kind, date: e.d, amt: e.amt, hits: [], row: e.row };
+      credits.push(src); byPay[e.id] = src;
+      var rest = e.amt, ids = e.kind === "pay" ? allocFor(e.id) : null;
+      /* HIS OVERRIDE. He asked for oldest-first "and you can override": a payment pointed at
+         particular deliveries pays those first, in the order he listed them, and whatever is
+         left of it falls back to oldest-first like every other rupee - so an override can
+         never lose money, only redirect it. */
+      if (ids && ids.length) {
+        ids.forEach(function (cid) {
+          var row = byId[String(cid)];
+          if (!row || row.open <= 0.4 || rest <= 0.4) return;
+          var t = Math.min(rest, row.open);
+          row.open -= t; row.paid += t; rest -= t;
+          src.hits.push({ id: row.id, no: row.no, kind: row.kind, amt: t });
+          row.from.push({ id: src.id, kind: src.kind, date: src.date, amt: t });
+          if (row.open <= 0.4) { row.open = 0; var ix = q.indexOf(row); if (ix >= 0) q.splice(ix, 1); }
+        });
+      }
+      if (rest > 0.4) pot.push({ src: src, amt: rest });
+      drain();
+    });
+    var out = {
+      rows: debts, credits: credits, by: byId, byPay: byPay,
+      credit: pot.reduce(function (a, x) { return a + x.amt; }, 0),
+      open: debts.reduce(function (a, r) { return a + r.open; }, 0)
+    };
+    _stlCache[client] = out;
+    return out;
+  }
+  /* Where one delivery stands. null when it is not on the account at all (not received yet),
+     "nil" when there was never anything to settle - a challan worth nothing is not "paid". */
+  function settleOf(client, id) {
+    var r = settleWalk(client).by[String(id || "")];
+    if (!r) return null;
+    return { amt: r.amt, paid: r.paid, open: r.open, from: r.from,
+             state: r.amt <= 0.4 ? "nil" : (r.open <= 0.4 ? "settled" : (r.paid > 0.4 ? "part" : "open")) };
+  }
+  function settleDone(client) {
+    return settleWalk(client).rows.filter(function (r) {
+      return r.kind === "ch" && r.amt > 0.4 && r.open <= 0.4;
+    });
+  }
+  /* Folded away by default - that is what he asked for. The tap is remembered per client for
+     as long as the screen is open and forgotten after, because the answer to "show me" is
+     almost always about the client in front of him. */
+  function settleShown(cl) { return !!(S.stlShow && S.stlShow[String(cl)]); }
+  /* The mark on a delivery card. Silent on one that is simply open - a green tick on every
+     unpaid line and nothing on the paid ones would be the wrong way round, and a pill on all
+     of them says nothing at all. */
+  function settlePill(st) {
+    if (!st || st.state === "open" || st.state === "nil") return "";
+    if (st.state === "settled") {
+      return ' <span class="pill" style="background:#ccfbf1;color:#0f766e" ' +
+        'title="Paid for in full. Worked out oldest-first from the payments on this account.">' +
+        '\u2713 Settled</span>';
+    }
+    return ' <span class="pill" style="background:#fef3c7;color:#92400e" ' +
+      'title="Part paid: ' + esc(money(st.paid)) + ' of ' + esc(money(st.amt)) + '">' +
+      money(st.open) + ' still open</span>';
   }
 
   /* ---------------- client payments + ledger ---------------- */
@@ -27310,7 +27680,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null;
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     /* v6.9.263 - warming the logo cache is for the NEXT quote PDF, never for this paint;
        nothing on screen waits on it. Started from the paint it competed with teamAuth and
@@ -28978,6 +29348,30 @@ function viewCatalogue() {
       var wnum = String(wc.mobile || "").replace(/\D/g, ""); if (wnum.length === 10) wnum = "91" + wnum;
       var wmsg = "Dear " + wcl + ",\n\nPlease find your Energy World statement (hisab) attached.\n\nThank you.\nEnergy World";
       waShareDoc(loadLogo().then(function () { return hisabPdf(wcl); }), wcl.replace(/[^\w.-]/g, "_") + "_hisab.pdf", wnum, wmsg);
+      return;
+    }
+    if (act === "pa-open") {
+      S.modal = modalPayAlloc(t.getAttribute("data-id")); render(); return;
+    }
+    if (act === "pa-save") {
+      var _pid = t.getAttribute("data-id");
+      var _pp = (S.data.payments || []).filter(function (x) { return String(x.id) === String(_pid); })[0];
+      if (!_pp) { toast("That payment is no longer on the screen."); return; }
+      var _ids = t.getAttribute("data-clear") === "1" ? []
+        : [].slice.call(document.querySelectorAll(".pachk"))
+            .filter(function (b) { return b.checked; }).map(function (b) { return b.value; });
+      allocWrite(_pp, _ids);
+      toast(_ids.length
+        ? "Saved. This payment now goes to the " + _ids.length + " deliver" +
+          (_ids.length === 1 ? "y" : "ies") + " you ticked first. The balance has not moved."
+        : "Back to oldest first. The balance has not moved.");
+      return;
+    }
+    if (act === "stl-show") {
+      var _sn = t.getAttribute("data-n") || "";
+      if (!S.stlShow) S.stlShow = {};
+      S.stlShow[_sn] = !S.stlShow[_sn];
+      keepScroll = true; render();
       return;
     }
     if (act === "bill-perpage") {
