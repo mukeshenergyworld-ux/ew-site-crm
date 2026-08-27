@@ -352,7 +352,11 @@
     for (var i = 0; i < keys.length; i++) {
       var k = keys[i];
       if (k.charAt(0) === "_") continue;                     /* local only, never sent */
-      if (k === "updatedAt" || k === "syncedAt") continue;   /* the server's own stamp */
+      /* v6.9.365 - createdAt joins them. It is a STAMP, not content: it can never answer
+         "did my save land?", and from this release the client puts one on every new row while
+         a row already on the sheet carries whatever the server stamped before. Comparing them
+         would report a landed save as unsent and send it a second time. */
+      if (k === "updatedAt" || k === "syncedAt" || k === "createdAt") continue;   /* the server's own stamp */
       var a = e.row[k], b = srv[k];
       if (a === null || a === undefined) a = "";
       if (b === null || b === undefined) b = "";
