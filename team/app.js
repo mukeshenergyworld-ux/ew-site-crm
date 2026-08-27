@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.368";
+  var APP_VERSION = "6.9.369";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17460,7 +17460,11 @@ function viewCatalogue() {
       var _pending = (S.data.challans || []).filter(function (c) {
         return c.customerName === cl && String(c.receiptReceived).toUpperCase() !== "Y";
       });
-      if (!_l0.opening && !_pending.length && !(_l0.rets || []).length) {
+      /* v6.9.369 - a client whose ONLY challan was cancelled lands here, and used to be told
+         there was nothing at all for him. There is: a dead one, and the question he is ringing
+         up about. */
+      var _dead0 = deadChallans(cl);
+      if (!_l0.opening && !_pending.length && !(_l0.rets || []).length && !_dead0.length) {
         return h + '<div class="empty">No received challans for <b>' + esc(cl) + '</b> yet. A challan lands here automatically once its receipt is confirmed.</div>';
       }
       var _oh = '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 4px">Client ledger &mdash; ' + esc(cl) + '</h3>' +
@@ -17487,6 +17491,7 @@ function viewCatalogue() {
       /* The "not in the account yet" card is drawn once, above, for BOTH branches
          (see hisabPendingCard) - it used to exist only here, so a client WITH received
          challans never saw his unapproved ones at all. */
+      _oh += deadChallanCards(cl);
       _oh += serviceLedgerCard(cl);
       return h + _oh;
     }
@@ -17799,6 +17804,10 @@ function viewCatalogue() {
         '</tbody><tfoot><tr style="background:#fee2e2"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Return total</td>' +
         '<td style="padding:6px;text-align:right;font-weight:800;color:#b91c1c">&minus;' + money(rSub) + '</td></tr></tfoot></table></div>') + '</div>';
     });
+    /* v6.9.369 - the dead ones, under the live ones and above the ledger card. Under, because
+       they are history and not work; above the ledger, because the ledger is the summary and a
+       summary comes last. */
+    h += deadChallanCards(cl);
     var _led = clientLedger(cl), paid = _led.paid, opening = _led.opening || 0, bal = opening + allNet - paid - retTotal;
     var gst = S.billGst ? Math.round(selNet * 0.18) : 0;
     var _clMob = (clientByName(cl) || {}).mobile || '';
@@ -18793,6 +18802,84 @@ function viewCatalogue() {
      as long as the screen is open and forgotten after, because the answer to "show me" is
      almost always about the client in front of him. */
   function settleShown(cl) { return !!(S.stlShow && S.stlShow[String(cl)]); }
+
+  /* ================= A DEAD CHALLAN  (v6.9.369, 27 Aug 2026) =================
+     HIS WORDS: "also make provision to alter or delete any challan with remarks, that show as
+     dead challan, not for client".
+
+     MEASURED FIRST. Both halves of what he is asking for already half-existed:
+
+       * CANCEL WITH REMARKS is built and IN USE - 28 records cancelled, from a fixed reason
+         list plus a free note, every one of them an audit row that is never removed. One of
+         the 28 is a challan: NAVEEN0757/030826/001, Naveen Mittal, "Raised by mistake",
+         remark "already settled", 3 Aug, by him.
+       * ALTER WITH REMARKS is built too - modalAlter takes a reason PER CHANGED LINE, writes
+         altJson, and prints an alteration sheet on the challan itself. It has never fired:
+         0 of 130 challans carry one.
+
+     SO WHAT WAS MISSING IS THE WORD HE USED: **it does not SHOW as a dead challan.**
+     splitCancelled() lifts a cancelled row clean out of S.data, which is right for every
+     total - and it is why "not for client" already holds, on the screen and on the paper. But
+     it also means the challan simply VANISHES from the client's ledger. The number was used,
+     the paper exists, and the client may be holding his own copy of it; a man who rings up
+     about NAVEEN0757/030826/001 could not be answered from the screen his money is on. The
+     only place it survived was the Cancelled records screen, which is a different tab and a
+     different search.
+
+     So it comes back to the ledger, struck through, marked DEAD, carrying the reason and the
+     remark and the name of whoever killed it - and counting for absolutely nothing. It is
+     drawn from S.cancelled, which is the list splitCancelled() puts them in, so nothing about
+     what counts changes by a rupee: the totals above it never saw these rows and still do not.
+
+     IT IS NEVER ON THE CLIENT'S STATEMENT. hisabPdf reads S.data.challans, which no longer
+     holds them - so that half needs no code at all, and t_dead_challan.js asserts it stays
+     that way rather than trusting that it will. */
+  function deadChallans(cl) {
+    var q = dkey(cl);
+    return (((S.cancelled || {}).challans) || [])
+      .filter(function (c) { return c && dkey(c.customerName) === q; })
+      .map(function (c) { return { row: c, cx: cancelInfo("challans", c.id) || {} }; })
+      .sort(function (a, b) {
+        return String(b.row.createdAt || "").localeCompare(String(a.row.createdAt || ""));
+      });
+  }
+  function deadChallanCards(cl) {
+    var list = deadChallans(cl);
+    if (!list.length) return "";
+    /* RENDERED AND LOOKED AT at 430px first. This was a two-column flex like the live challan
+       card, and on a phone the right-hand column wrapped underneath and left the value and the
+       button ragged against a right-aligned block that no longer had anything beside it. There
+       is not enough on a dead card to need two columns: the value goes into the sentence, and
+       the one button sits in an ordinary acts row. */
+    return list.map(function (x) {
+      var c = x.row, cx = x.cx;
+      var val = 0; try { val = chValue(c); } catch (e) { val = 0; }
+      return '<div class="card" style="border:1px dashed #cbd5e1;background:#f8fafc;padding:9px 12px">' +
+        '<h3 style="margin:0 0 5px;line-height:1.5;color:#64748b">' +
+        '<span style="text-decoration:line-through">' + esc(c.challanNo || c.id) + '</span> ' +
+        '<span class="pill" style="background:#e2e8f0;color:#475569">DEAD CHALLAN</span> ' +
+        '<span class="pill" style="background:#f1f5f9;color:#94a3b8">' + esc(d10(c.createdAt)) + '</span>' +
+        (c.site ? ' <span style="font-size:12px;color:#94a3b8">' + esc(c.site) + '</span>' : '') +
+        '</h3>' +
+        '<div class="meta" style="font-size:12.5px;color:#64748b">' +
+        '<b>Cancelled' + (cx.by ? ' by ' + esc(cx.by) : '') + (cx.at ? ' on ' + esc(dstr(cx.at)) : '') + '.</b> ' +
+        (cx.reason ? esc(cx.reason) : 'No reason recorded') +
+        (cx.note ? ' &mdash; ' + esc(cx.note) : '') +
+        '<br>Was worth <b style="text-decoration:line-through">' + money(val) + '</b>. ' +
+        'It counts for nothing now: not in the balance above, not on his statement, and no ' +
+        'incentive on it. The number stays used, so this app and the paper book still agree.' +
+        '</div>' +
+        /* Bringing one back is the owner's, and it already exists - cx-undo, the same machinery
+           the Cancelled records screen uses. Put here so he need not go and find that screen. */
+        (roleIs("admin")
+          ? '<div class="acts" style="margin:8px 0 0"><button class="btn sm ghost" data-act="cx-undo" ' +
+            'data-tab="challans" data-id="' + esc(c.id) + '" ' +
+            'title="Put this challan back on his account exactly as it was">Bring it back</button></div>'
+          : '') +
+        '</div>';
+    }).join("");
+  }
+
   /* The mark on a delivery card. Silent on one that is simply open - a green tick on every
      unpaid line and nothing on the paid ones would be the wrong way round, and a pill on all
      of them says nothing at all. */
