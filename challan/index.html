@@ -192,7 +192,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.44.0";
+  var APP_VERSION = "1.45.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -511,7 +511,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     for (var i = 0; i < keys.length; i++) {
       var k = keys[i];
       if (k.charAt(0) === "_") continue;                     /* local only, never sent */
-      if (k === "updatedAt" || k === "syncedAt") continue;   /* the server's own stamp */
+      /* v6.9.365 - createdAt joins them. It is a STAMP, not content: it can never answer
+         "did my save land?", and from this release the client puts one on every new row while
+         a row already on the sheet carries whatever the server stamped before. Comparing them
+         would report a landed save as unsent and send it a second time. */
+      if (k === "updatedAt" || k === "syncedAt" || k === "createdAt") continue;   /* the server's own stamp */
       var a = e.row[k], b = srv[k];
       if (a === null || a === undefined) a = "";
       if (b === null || b === undefined) b = "";
@@ -1164,6 +1168,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     opts = opts || {};
     var r2 = Object.assign({}, row);
     if (!String(r2.id || "").trim() && !r2._lid) r2._lid = "L-" + Date.now() + "-" + (++_jrnSeq) + "-" + Math.floor(Math.random() * 1000000);
+/* v6.9.365 / 27 Aug 2026 - THE DATE A ROW WAS MADE, STAMPED HERE.
+   Found by counting on a random check: 16 of 130 challans carry no createdAt at all.
+   The backend stamps it only when the row is NEW, and it writes the whole sheet row from
+   whatever it is sent - blanking any column it is not sent. So a row created here, kept in
+   memory without a date, and sent up again when it is approved or dispatched, blanks the
+   date the server stamped itself. Stamping it at birth closes it: the backend's own line
+   is `row.createdAt = row.createdAt || now`, so ours is simply the one that gets used. */
+    if (!String(r2.createdAt || "").trim()) r2.createdAt = new Date().toISOString();
     var e = jrnPut({ pk: "P-" + Date.now() + "-" + (++_jrnSeq), kind: "row", tab: tab, row: r2,
                      noFor: opts.noFor || "", by: S.user || "", at: Date.now(), err: "", tries: 0 });
     return jrnSend(e).then(function (r) {
