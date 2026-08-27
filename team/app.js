@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.360";
+  var APP_VERSION = "6.9.361";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1999,6 +1999,14 @@ window.addEventListener("beforeunload", function (ev) {
     /* v6.9.356 - the off-list item's brand box. Changing it re-draws the little form so the
        discount and the price it will actually bill at are true BEFORE he saves, not after. */
     if (t && t.id === "ox_brand") { chxSyncOther(); return; }
+    if (t && t.id === "mx_brand") {
+      if (S.chx && S.chx.kind === "man") {
+        S.chx.desc = val("mx_desc"); S.chx.amt = val("mx_amt"); S.chx.brand = val("mx_brand");
+        var _rm = keepFields(CH_FIELDS); keepScroll = true;
+        S.modal = modalChallan(); render(); _rm();
+      }
+      return;
+    }
     if (!t || t.id !== "hsb_noextra") return;
     if (t.checked) { var ex = document.getElementById("hsb_extra"); if (ex) ex.value = ""; }
     hsbExtraPaint();
@@ -16256,6 +16264,35 @@ function viewCatalogue() {
     return { code: JOB_CODE, desc: String(desc || "").trim(), unit: "job",
              qty: 1, rate: Math.round(num(amt)), brand: "", disc: 0, job: true };
   }
+  /* ================= A FIGURE HE WORKED OUT HIMSELF  (v6.9.361, 24 Aug 2026) ==========
+     HIS WORDS: "sometimes for an old client, we have to calculate manually and enter it, make
+     provision for that also in challan making."
+
+     He was already doing it when he asked, and the screenshot showed what it would have cost.
+     He had typed into the OFF-LIST box: "Material Return - 22/8/26", quantity 1, rate -22463,
+     brand Huliot HT PRO. That brand carries a 50% discount for this client, so:
+
+         round(-22463 x (1 - 50/100))  =  -11,231
+
+     The client would have been credited ELEVEN THOUSAND TWO HUNDRED AND THIRTY-TWO RUPEES LESS
+     than he intended, and the challan would have looked perfectly ordinary.
+
+     The off-list line is priced BY the app: list rate in, discount applied, net out. A figure he
+     has already worked out on paper must not be priced again by anything. So it gets its own
+     kind of line, and the off-list box now refuses a rate that is not a real list rate and sends
+     him here instead.
+
+     NO DISCOUNT, EVER - disc is a stored 0, not a blank, because a blank means "ask
+     clientDiscount" everywhere in this file. THE BRAND IS OPTIONAL and defaults to nobody: a
+     manual figure carrying no brand would otherwise fall through to the challan's own brand and
+     earn somebody an incentive on a number he calculated by hand. Same trap as job work. */
+  var MANUAL_PFX = "M-";
+  function isManualLine(l) { return !!(l && String(l.code || "").indexOf(MANUAL_PFX) === 0); }
+  function manualLine(desc, amt, brand) {
+    var v = Math.round(num(amt));
+    return { code: MANUAL_PFX + Date.now(), desc: String(desc || "").trim(), unit: "amount",
+             qty: 1, rate: v, brand: String(brand || ""), disc: 0, job: false, manual: true };
+  }
   var OTHER_PFX = "X-";
   function isOtherLine(l) { return !!(l && String(l.code || "").indexOf(OTHER_PFX) === 0); }
   function otherLine(desc, qty, rate, brand) {
@@ -16284,10 +16321,13 @@ function viewCatalogue() {
         '<button class="btn sm ghost" data-act="ch-job-open" style="border-color:#c7d2fe;color:#4338ca">' +
         '&#128295; ' + (hasJob ? 'Job work \u2014 change it' : 'Job work / Labour charges') + '</button>' +
         '<button class="btn sm ghost" data-act="ch-other-open" style="border-color:#fde68a;color:#92400e">' +
-        '&#43; Item not in the price list</button></div>';
+        '&#43; Item not in the price list</button>' +
+        '<button class="btn sm ghost" data-act="ch-man-open" style="border-color:#c7d2fe;color:#3730a3">' +
+        '&#177; Amount I worked out myself</button></div>';
     }
-    var head = '<div style="border:1px solid ' + (x.kind === "job" ? '#c7d2fe' : '#fde68a') +
-      ';background:' + (x.kind === "job" ? '#eef2ff' : '#fffbeb') + ';border-radius:10px;padding:10px 12px;margin:9px 0 3px">';
+    var _blue = (x.kind === "job" || x.kind === "man");
+    var head = '<div style="border:1px solid ' + (_blue ? '#c7d2fe' : '#fde68a') +
+      ';background:' + (_blue ? '#eef2ff' : '#fffbeb') + ';border-radius:10px;padding:10px 12px;margin:9px 0 3px">';
     if (x.kind === "job") {
       return head +
         '<b style="color:#3730a3">Job work / Labour charges</b>' +
@@ -16306,6 +16346,36 @@ function viewCatalogue() {
     var brands = (S.data.brands || []).filter(function (br) {
       return String(br.active || "Y").toUpperCase() !== "N";
     }).map(function (br) { return br.brand; }).slice().sort(alphaBy(function (b) { return b; }));
+    if (x.kind === "man") {
+      var mv = num(x.amt);
+      return head +
+        '<b style="color:#3730a3">An amount you have worked out yourself</b>' +
+        '<div class="meta" style="font-size:12px;color:#475569;margin:3px 0 8px">For an old client, ' +
+        'or anything you have already totalled on paper. <b>This exact figure goes on the challan.</b> ' +
+        'No discount is applied to it and nothing re-prices it. Put a <b>minus</b> in front to take ' +
+        'money OFF.</div>' +
+        '<label for="mx_desc">What it is for</label>' +
+        '<input id="mx_desc" value="' + esc(x.desc || "") + '" placeholder="e.g. Material return 22/8/26, settled on site"/>' +
+        '<label for="mx_amt">Amount (minus to take money off)</label>' +
+        '<input id="mx_amt" inputmode="text" value="' + esc(x.amt || "") + '" placeholder="e.g. -22463"/>' +
+        '<label for="mx_brand">Should anybody earn on it?</label>' +
+        '<select id="mx_brand" data-act="ch-man-brand">' +
+        '<option value=""' + (x.brand ? '' : ' selected') + '>\u2014 nobody earns on this \u2014</option>' +
+        brands.map(function (b) {
+          return '<option value="' + esc(b) + '"' + (b === String(x.brand || "") ? ' selected' : '') + '>' +
+            esc(b) + ' \u2014 pays the usual incentive on it</option>';
+        }).join("") + '</select>' +
+        (mv !== 0
+          ? '<div style="font-size:12.5px;margin-top:6px;color:' + (mv < 0 ? '#b91c1c' : '#0f766e') + '">' +
+            'This line will ' + (mv < 0 ? 'take <b>' + money(-mv) + '</b> OFF' : 'add <b>' + money(mv) + '</b> to') +
+            ' the challan, exactly as typed.' +
+            (x.brand ? ' ' + esc(x.brand) + ' incentive is paid on it.' : ' Nobody earns on it.') + '</div>'
+          : '<div style="font-size:12.5px;margin-top:6px;color:#b45309">Type the figure and it will ' +
+            'say here exactly what it does to the challan.</div>') +
+        '<div style="display:flex;gap:8px;margin-top:9px">' +
+        '<button class="btn sm ghost" data-act="ch-x-cancel">Cancel</button>' +
+        '<button class="btn sm" data-act="ch-man-add">Put it on the challan</button></div></div>';
+    }
     var pick = String(x.brand || "");
     /* say the discount out loud before he saves, not after. It is the client's own preset for
        whichever brand he taps, and it is what this line will actually be billed at. */
@@ -25759,7 +25829,12 @@ function viewCatalogue() {
                    useless for the other two. JOBWORK says nothing a man wants to read, and
                    X-1787504013919 says less than nothing. Each line now says what it is. */
                 '<td style="padding:6px 8px"><b>' + esc(i.desc) + '</b><br>' +
-                (isJobLine(i)
+                (isManualLine(i)
+                  ? '<span class="pill" style="background:#e0e7ff;color:#3730a3;font-size:10.5px">worked out by hand</span>' +
+                    ' <span style="font-size:11px;color:' + ((Number(i.rate) || 0) < 0 ? '#b91c1c' : '#94a3b8') + '">' +
+                    ((Number(i.rate) || 0) < 0 ? '\u2212' + money(-(Number(i.rate) || 0)) + ' off' : money(Number(i.rate) || 0) + ' on') +
+                    ' \u00b7 no discount \u00b7 ' + (i.brand ? esc(i.brand) : 'earns nobody') + '</span>'
+                : isJobLine(i)
                   ? '<span class="pill" style="background:#ede9fe;color:#5b21b6;font-size:10.5px">job work</span>' +
                     ' <span style="font-size:11px;color:#94a3b8">' + money(Number(i.rate) || 0) + ' \u00b7 no discount, earns nobody</span>'
                   : isOtherLine(i)
@@ -25767,8 +25842,8 @@ function viewCatalogue() {
                       ' <span style="font-size:11px;color:#94a3b8">' + esc(i.brand || "no brand") + ' \u00b7 ' + money(Number(i.rate) || 0) + ' each</span>'
                     : '<span style="font-size:11px;color:#94a3b8">' + esc(i.code) + '</span>') + '</td>' +
                 '<td style="padding:4px 6px;text-align:center">' +
-                (isJobLine(i)
-                  ? '<span style="font-weight:700;color:#64748b" title="A job is one job - the amount is the amount">1</span>'
+                ((isJobLine(i) || isManualLine(i))
+                  ? '<span style="font-weight:700;color:#64748b" title="One amount, not a quantity">1</span>'
                   : '<input class="ch-q" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(qShow(i.qty)) + '" style="width:76px;text-align:center;padding:7px;font-size:15px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px"/>') + '</td>' +
                 '<td style="text-align:center"><button class="stp" data-act="ch-qty" data-code="' + esc(i.code) + '" data-d="-1" title="reduce by one">&minus;</button></td>' +
                 '</tr>';
@@ -31348,7 +31423,7 @@ function viewCatalogue() {
        Everything stays inside the challan builder. Opening a second modal over this one would
        take every field he has already typed with it - which is why ch-qty has used
        keepFields(CH_FIELDS) since long before today, and why these do the same. */
-    if (act === "ch-job-open" || act === "ch-other-open" || act === "ch-x-cancel") {
+    if (act === "ch-job-open" || act === "ch-other-open" || act === "ch-man-open" || act === "ch-x-cancel") {
       if (!S.ch) { toast("Open a challan first."); return; }
       if (act === "ch-x-cancel") S.chx = null;
       else if (act === "ch-job-open") {
@@ -31360,10 +31435,28 @@ function viewCatalogue() {
         if (jOld) S.ch.items = (S.ch.items || []).filter(function (i) { return !isJobLine(i); });
       } else if (act === "ch-other-open") {
         S.chx = { kind: "other", desc: "", qty: "", rate: "", brand: "" };
+      } else if (act === "ch-man-open") {
+        S.chx = { kind: "man", desc: "", amt: "", brand: "" };
       }
       var restoreX = keepFields(CH_FIELDS);
       keepScroll = true;
       S.modal = modalChallan(); render(); restoreX();
+      return;
+    }
+    if (act === "ch-man-add") {
+      if (!S.ch) { toast("Open a challan first."); return; }
+      var md = val("mx_desc"), mrRaw = String(val("mx_amt") || "").trim(), mb = val("mx_brand");
+      var mAmt = Math.round(num(mrRaw));
+      if (!md) { toast("Say what the amount is for \u2014 it is printed on his challan."); return; }
+      if (!mrRaw || mAmt === 0) { toast("Put the amount. A minus in front takes money off."); return; }
+      S.ch.items = S.ch.items || [];
+      S.ch.items.push(manualLine(md, mAmt, mb));
+      S.chx = null;
+      var restoreM = keepFields(CH_FIELDS);
+      keepScroll = true;
+      S.modal = modalChallan(); render(); restoreM();
+      toast(md.slice(0, 26) + " \u2014 " + (mAmt < 0 ? "\u2212" + money(-mAmt) + " off" : money(mAmt) + " on") +
+        " the challan" + (mb ? ", " + mb + " incentive" : ", nobody earns") + ".");
       return;
     }
     if (act === "ch-job-add" || act === "ch-other-add") {
@@ -31380,6 +31473,10 @@ function viewCatalogue() {
       } else {
         var od = val("ox_desc"), oq = num(val("ox_qty")) || 1, orr = num(val("ox_rate")), ob = val("ox_brand");
         if (!od) { toast("Say what the item is \u2014 it is printed on his challan."); return; }
+        /* v6.9.361 - a MINUS here is the mistake that started this. The discount would halve it
+           and nobody would see. An off-list line is priced by the app; a figure already worked
+           out is not, and belongs on the manual line. */
+        if (orr < 0) { toast("A minus cannot go here \u2014 the brand discount would be applied to it. Use \u00b1 Amount I worked out myself."); return; }
         if (!(orr > 0)) { toast("Put the rate for one of them, before discount."); return; }
         if (!ob) { toast("Tap the brand it belongs to \u2014 that is what sets its discount and whose incentive it earns."); return; }
         S.ch.items.push(otherLine(od, oq, orr, ob));
@@ -31482,6 +31579,14 @@ function viewCatalogue() {
         if (isJobLine(l)) {
           return { code: l.code, desc: l.desc, unit: l.unit, qty: l.qty, rate: l.rate,
                    brand: "", disc: 0, job: true };
+        }
+        /* v6.9.361 - a hand-worked figure keeps EXACTLY the brand he chose, including none, and
+           a stored 0 discount. Left to the fallback below it would take the challan's brand and
+           be re-priced at that brand's percent - which is the eleven thousand rupees this whole
+           thing exists to stop. */
+        if (isManualLine(l)) {
+          return { code: l.code, desc: l.desc, unit: l.unit, qty: 1, rate: l.rate,
+                   brand: String(l.brand || ""), disc: 0, job: false };
         }
         var prod = (PRODUCTS.filter(function (x) { return x.code === l.code; })[0]) || {};
         var lb = l.brand || realBrand(prod) || chBrandV;
