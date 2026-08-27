@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.369";
+  var APP_VERSION = "6.9.370";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17656,6 +17656,25 @@ function viewCatalogue() {
         (!_rc.has && canSee("challans") && canProof()
           ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" style="background:#b91c1c;border-color:#b91c1c" title="Photograph or upload the signed receipt for this delivery">&#128206; Attach receipt</button>'
           : '') +
+        /* ================= THE CANCEL BUTTON WAS NOT HERE  (v6.9.370, 27 Aug 2026) ==========
+           HIS WORDS: "where is cancel, its not shown anywhere".
+
+           He was looking at this card and he was right. cxCardBtn had been wired into exactly
+           two places: viewChallans() on the Deliveries tab, and hisabPendingCard() - the "not
+           in the account yet" card, which by definition holds only challans that have NOT been
+           received. The received-challan card in HISAB never had it.
+
+           That is the screen where a man sits with a client's account open in front of him, and
+           it is where he goes when the client rings up about a delivery. It is also, now, the
+           only screen that shows a DEAD CHALLAN (v6.9.369) - so it could show him the result of
+           a cancellation while offering no way to make one.
+
+           THIS IS THE SECOND TIME THE SAME SHAPE OF FAULT HAS BEEN FOUND ON THIS EXACT CARD.
+           v6.9.352: "HE ASKED FOR THE CHANGE BUTTON TWICE. v6.9.339 built it and wired every
+           surface to it EXCEPT this one." A button that exists on the list screens and not on
+           the money screen is a button he cannot find, and he reports it as missing because for
+           him it IS missing. */
+        cxCardBtn("challans", c.id) +
         '</div></div>' +
         '<div style="flex:0 0 auto;text-align:right">' + billBlock + admChallanStrip(c) + '</div>' +
         '</div>' +
