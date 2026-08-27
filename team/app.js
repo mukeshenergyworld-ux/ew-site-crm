@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.362";
+  var APP_VERSION = "6.9.363";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3113,14 +3113,154 @@ window.addEventListener("beforeunload", function (ev) {
     render();
   }
 
-  function modalCancelRec(tab, id) {
-    if (!roleIs("admin")) return "";
+  /* ================= ASKED, THEN ANSWERED  (v6.9.363, 24 Aug 2026) =================
+     HIS WORDS: "show way to delete any challan with admin approval only, executive can also
+     delete his client challan but final approval from admin only".
+
+     NOTHING IS DELETED HERE, and that is not a technicality he has to live with - it is the
+     house rule and it is also what he actually wants. A cancelled challan drops out of every
+     count, total, due and stock figure the moment it is cancelled; what it does NOT do is leave
+     a hole where a numbered challan used to be. The number stays used, so the paper book and
+     the app never disagree, and the row is one tap from coming back.
+
+     All of that already existed - CANCEL_TABS, cxWrite, cancelBlockers, the reason list, the
+     undo, and the Cancelled records screen under Health. What did not exist is the half he
+     asked for: a man who is NOT the owner could not start it. So a request is a request, kept
+     as its own audit row, and it moves nothing at all until the owner answers it. */
+  var _cxaCache = null;
+  function cxAskMap() {
+    if (_cxaCache) return _cxaCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "rec:cxask") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var tab = String(d.tab || ""), rid = String(d.recId || "");
+      if (!tab || !rid || !CANCEL_TABS[tab]) return;
+      var k = tab + "|" + rid, prev = m[k];
+      /* newest wins, exactly as cancelMap does - withdrawn, refused and asked-again are all
+         just later rows, and every one of them stays on the sheet */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[k] = { state: String(d.state || "asked"), reason: String(d.reason || ""),
+                 note: String(d.note || ""), label: String(d.label || ""),
+                 at: r.createdAt || "", by: r.actor || "" };
+      }
+    });
+    _cxaCache = m;
+    return m;
+  }
+  /* ONE function for the card, so the challan list and HISAB cannot end up offering different
+     things to the same man. The owner gets Cancel, and an amber pill the moment somebody has
+     asked; anybody else gets Ask, or Withdraw if it is his own request standing. */
+  function cxCardBtn(tab, id) {
     if (!CANCEL_TABS[tab]) return "";
+    var a = cxAsk(tab, id);
+    if (roleIs("admin")) {
+      return (a
+        ? '<button class="btn sm" data-act="cx-open" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
+          '" style="background:#b45309;border-color:#b45309" title="' +
+          esc(a.by + " asked to cancel this on " + d10(a.at) + ": " + (a.reason || "no reason given")) +
+          '">Cancel asked \u00b7 ' + esc(a.by || "?") + '</button>'
+        : '<button class="btn sm ghost" data-act="cx-open" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
+          '" style="color:#b91c1c">Cancel</button>');
+    }
+    if (!canAskCancel()) return "";
+    return (a
+      ? '<button class="btn sm ghost" data-act="cx-askoff" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
+        '" style="border-color:#fed7aa;color:#b45309" title="Asked on ' + esc(d10(a.at)) +
+        '. Nothing has moved.">Cancel asked \u2014 withdraw</button>'
+      : '<button class="btn sm ghost" data-act="cx-open" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
+        '" style="color:#b91c1c">Ask to cancel</button>');
+  }
+  /* Everything waiting on his word, in one place. Counted, not guessed - and it names who asked
+     and why, because a list of requests he cannot read is a list he will stop opening. */
+  function cxAskWaitingCard() {
+    if (!roleIs("admin")) return "";
+    var m = cxAskMap(), rows = [];
+    Object.keys(m).forEach(function (k) {
+      if (m[k].state !== "asked") return;
+      var p = k.split("|"), tab = p[0], id = p.slice(1).join("|");
+      var row = ((S.data || {})[tab] || []).filter(function (x) { return x.id === id; })[0];
+      if (!row) return;                         /* already cancelled, or not on this phone */
+      rows.push({ tab: tab, id: id, a: m[k], label: cancelLabel(tab, row), sub: cancelSub(tab, row) });
+    });
+    if (!rows.length) return "";
+    rows.sort(function (x, y) { return String(x.a.at).localeCompare(String(y.a.at)); });
+    return '<div class="card" style="border-color:#fed7aa;background:#fff7ed">' +
+      '<h3 style="margin:0 0 2px;font-size:13px">' + rows.length + ' cancellation' +
+      (rows.length === 1 ? '' : 's') + ' waiting on you</h3>' +
+      '<div class="meta" style="color:#7c2d12;margin-bottom:6px">Nothing has moved on any of ' +
+      'these. Each one is exactly as it was until you answer it.</div>' +
+      rows.slice(0, 10).map(function (r) {
+        return '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow">' +
+          '<b>' + esc(r.label) + '</b> <span class="pill" style="background:#fed7aa;color:#7c2d12">' +
+          esc(CANCEL_TABS[r.tab]) + '</span>' +
+          '<br><span style="font-size:11.5px;color:#7c2d12">' + esc(r.sub) + '</span>' +
+          '<br><span style="font-size:11.5px;color:#7c2d12">' + esc(r.a.by || "?") + ' \u00b7 ' +
+          esc(d10(r.a.at)) + ' \u00b7 <b>' + esc(r.a.reason || "no reason given") + '</b>' +
+          (r.a.note ? ' \u2014 ' + esc(r.a.note) : '') + '</span></div>' +
+          '<button class="btn sm" data-act="cx-open" data-tab="' + esc(r.tab) + '" data-id="' + esc(r.id) +
+          '" style="background:#b45309;border-color:#b45309">Decide</button></div>';
+      }).join("") +
+      (rows.length > 10 ? '<div class="meta" style="margin-top:6px">and ' + (rows.length - 10) + ' more.</div>' : "") +
+      '</div>';
+  }
+  function cxAsk(tab, id) {
+    var a = cxAskMap()[String(tab) + "|" + String(id || "")];
+    return (a && a.state === "asked") ? a : null;
+  }
+  function cxAskLast(tab, id) { return cxAskMap()[String(tab) + "|" + String(id || "")] || null; }
+  function cxAskWrite(tab, id, row, reason, note, state) {
+    try {
+      save("audit", {
+        id: "", createdAt: new Date().toISOString(), actor: S.user, action: "rec:cxask",
+        target: String(CANCEL_TABS[tab] || tab) + " / " + cancelLabel(tab, row),
+        detail: JSON.stringify({
+          tab: tab, recId: String(id), label: cancelLabel(tab, row), sub: cancelSub(tab, row),
+          reason: String(reason || ""), note: String(note || ""), state: String(state || "asked"),
+          value: cxValue(tab, row),
+          client: String(row.customerName || row.client || row.name || "")
+        }), ip: ""
+      });
+    } catch (e) { }
+    _cxaCache = null;
+    try { snapSave(); } catch (e) { }
+    S.modal = null;
+    render();
+  }
+  /* Who may ASK: anybody who can see the record. A request writes one audit row and moves not a
+     rupee, so the cost of a wrong one is a line the owner reads and refuses. Who may ANSWER is
+     unchanged - the owner, and nobody else. */
+  function canAskCancel() { return !roleIs("admin"); }
+
+  function modalCancelRec(tab, id) {
+    if (!CANCEL_TABS[tab]) return "";
+    var own = roleIs("admin");
+    if (!own && !canAskCancel()) return "";
     var row = ((S.data || {})[tab] || []).filter(function (x) { return x.id === id; })[0];
     if (!row) return "";
     var b = cancelBlockers(tab, id), lbl = cancelLabel(tab, row), sub = cancelSub(tab, row);
-    var h = '<h2>Cancel this ' + esc(String(CANCEL_TABS[tab]).toLowerCase()) + '?</h2>' +
+    var _ask = cxAsk(tab, id), _last = cxAskLast(tab, id);
+    var h = '<h2>' + (own ? 'Cancel this ' : 'Ask to cancel this ') +
+      esc(String(CANCEL_TABS[tab]).toLowerCase()) + '?</h2>' +
       '<p class="sub">' + esc(lbl) + (sub ? ' &middot; ' + esc(sub) : '') + '</p>';
+    /* the request itself, shown first to whichever of them is reading */
+    if (_ask) {
+      h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed;padding:10px 12px">' +
+        '<b style="color:#7c2d12">' + esc(_ask.by || "Somebody") + ' has asked for this to be cancelled</b>' +
+        '<div class="meta" style="font-size:12.5px;color:#7c2d12;margin-top:3px">' +
+        esc(d10(_ask.at)) + ' \u00b7 <b>' + esc(_ask.reason || "no reason given") + '</b>' +
+        (_ask.note ? ' \u2014 ' + esc(_ask.note) : '') + '</div>' +
+        '<div class="meta" style="font-size:12px;color:#7c2d12;margin-top:4px">' +
+        (own ? 'Nothing has moved. It is cancelled only when you say so below.'
+             : 'Nothing has moved yet. The owner decides.') + '</div></div>';
+    } else if (_last && _last.state === "refused") {
+      h += '<div class="card" style="border-color:#fecaca;background:#fef2f2;padding:10px 12px">' +
+        '<b style="color:#b91c1c">A request to cancel this was refused</b>' +
+        '<div class="meta" style="font-size:12.5px;color:#b91c1c;margin-top:3px">' +
+        esc(d10(_last.at)) + ' by ' + esc(_last.by || "the owner") +
+        (_last.note ? ' \u2014 ' + esc(_last.note) : '') + '</div></div>';
+    }
     if (b.stop.length) {
       h += '<div class="card" style="border-left:4px solid #b91c1c;padding:10px 13px;margin-bottom:8px">' +
         '<b style="color:#b91c1c;font-size:13px">This one cannot be cancelled yet</b>' +
@@ -3129,18 +3269,39 @@ window.addEventListener("beforeunload", function (ev) {
         '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
       return h;
     }
-    h += '<div class="meta" style="margin-bottom:8px">Nothing is deleted. This record is set aside &mdash; it drops out of every count, total, due and stock figure, and you can bring it back any time from <b>Health &rarr; Cancelled records</b>.</div>';
+    h += '<div class="meta" style="margin-bottom:8px">Nothing is deleted. This record is set aside &mdash; it drops out of every count, total, due and stock figure, and ' +
+        (own ? 'you can bring it back any time from <b>Health &rarr; Cancelled records</b>'
+             : 'the owner can bring it back any time') + '. ' +
+        (own ? '' : '<b>The challan number stays used</b>, so the paper book and the app never disagree.') + '</div>';
     if (b.warn.length) {
       h += '<div class="card" style="border-left:4px solid #b45309;padding:10px 13px;margin-bottom:8px">' +
         '<b style="color:#b45309;font-size:13px">What this moves</b>' +
         b.warn.map(function (x) { return '<div class="meta" style="font-size:12.5px;padding:2px 0">&bull; ' + esc(x) + '</div>'; }).join('') + '</div>';
     }
+    /* the owner answering a request does not retype the reason - it is already on the row */
+    if (own && _ask) {
+      return h +
+        '<label>Note (optional)</label>' +
+        '<textarea id="cx_note" placeholder="e.g. agreed with Vivek, material never left"></textarea>' +
+        '<div class="foot"><button class="btn ghost" data-act="cx-refuse" data-tab="' + esc(tab) +
+          '" data-id="' + esc(id) + '" style="border-color:#fecaca;color:#b91c1c">Refuse \u2014 keep it</button>' +
+        '<button class="btn" data-act="cx-do" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
+          '" data-from="ask">Approve \u2014 cancel it</button></div>';
+    }
     h += '<label>Reason</label><select id="cx_reason">' + opts([""].concat(CANCEL_REASONS), "") + '</select>' +
       '<label>Note (optional)</label>' +
-      '<textarea id="cx_note" placeholder="e.g. customer changed the model before dispatch"></textarea>' +
+      '<textarea id="cx_note" placeholder="e.g. customer changed the model before dispatch"></textarea>';
+    if (!own) {
+      return h + '<div class="meta" style="font-size:12.5px;color:#475569;margin-top:4px">' +
+        'This goes to the owner. <b>Nothing moves until he answers.</b> You can withdraw it any ' +
+        'time before he does.</div>' +
+        '<div class="foot"><button class="btn ghost" data-act="close">Keep it</button>' +
+        '<button class="btn" data-act="cx-ask" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
+        '">Ask the owner to cancel it</button></div>';
+    }
+    return h +
       '<div class="foot"><button class="btn ghost" data-act="close">Keep it</button>' +
       '<button class="btn" data-act="cx-do" data-tab="' + esc(tab) + '" data-id="' + esc(id) + '">Cancel this record</button></div>';
-    return h;
   }
 
   /* The one place everything cancelled can be seen and brought back. */
@@ -14851,7 +15012,8 @@ function viewCatalogue() {
            count. The pill used to stand INSTEAD of the button, which is how he came to ask
            three times where the button had gone. */
         hisabAddBtn(c) + hisabWhyNot(c) +
-        (roleIs("admin") ? '<button class="btn sm ghost" data-act="cx-open" data-tab="challans" data-id="' + esc(c.id) + '" style="color:#b91c1c">Cancel</button>' : "");
+        /* v6.9.363 - one function draws it for the owner AND for the man who may only ask */
+        cxCardBtn("challans", c.id);
 
       /* two-line compact card, same pattern as the lead/client cards:
          line 1 - challan no + status pills, all action buttons pinned right
@@ -16885,6 +17047,9 @@ function viewCatalogue() {
         /* v6.9.259 - renamed here too. This is the delivery's STATUS, not the photograph -
            and it was the same words as the seal that appears once the photo is attached. */
         (st === "Dispatched" && (canSee("billing") || canSee("challans")) ? '<button class="btn sm act-receipt" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button>' : '') +
+        /* v6.9.363 - a challan raised by mistake is usually spotted HERE, sitting at Draft in
+           the middle of a client's hisab. It had no way out of this screen. */
+        cxCardBtn("challans", c.id) +
         '</div>';
     });
     return h + '</div>';
@@ -17055,7 +17220,7 @@ function viewCatalogue() {
             '</div>';
         }
       }
-      h += hisabWaitingCard() + retWaitingCard() + twinWaitingCard();
+      h += hisabWaitingCard() + retWaitingCard() + twinWaitingCard() + cxAskWaitingCard();
       if (!outs.length && !credits.length) return h + '<div class="empty">No outstanding balances &mdash; every received challan is fully paid. Type a client above to view their hisab.</div>';
       var oh = '';
       if (outs.length) {
@@ -27145,7 +27310,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null;
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     /* v6.9.263 - warming the logo cache is for the NEXT quote PDF, never for this paint;
        nothing on screen waits on it. Started from the paint it competed with teamAuth and
@@ -30122,15 +30287,57 @@ function viewCatalogue() {
       S.tab = S.dgFrom || "dash"; S.dgWho = ""; render(); return;
     }
     if (act === "cx-open") { S.modal = modalCancelRec(t.getAttribute("data-tab"), t.getAttribute("data-id")); render(); return; }
+    /* ================= THE REQUEST, AND THE ANSWER  (v6.9.363) ================= */
+    if (act === "cx-ask") {
+      var _cat = t.getAttribute("data-tab"), _cai = t.getAttribute("data-id");
+      var _car = ((S.data || {})[_cat] || []).filter(function (x) { return x.id === _cai; })[0];
+      if (!_car) { toast("That record is no longer on the list. Refresh and try again."); return; }
+      if (!canAskCancel()) { toast("You can cancel it yourself \u2014 no need to ask."); return; }
+      if (cancelBlockers(_cat, _cai).stop.length) { toast("Live records still depend on this one."); render(); return; }
+      var _cars = String(val("cx_reason") || "");
+      if (!_cars) { toast("Pick a reason \u2014 the owner has to decide on something."); return; }
+      t.disabled = true; t.textContent = "Asking\u2026";
+      cxAskWrite(_cat, _cai, _car, _cars, String(val("cx_note") || "").slice(0, 400), "asked");
+      toast("Asked. Nothing has moved \u2014 " + CANCEL_TABS[_cat].toLowerCase() +
+            " stays exactly as it is until the owner answers.");
+      return;
+    }
+    if (act === "cx-askoff") {
+      var _cwt = t.getAttribute("data-tab"), _cwi = t.getAttribute("data-id");
+      var _cwr = ((S.data || {})[_cwt] || []).filter(function (x) { return x.id === _cwi; })[0];
+      if (!_cwr) { toast("That record is no longer on the list."); return; }
+      cxAskWrite(_cwt, _cwi, _cwr, "", "", "withdrawn");
+      toast("Withdrawn. The owner will not see it any more.");
+      return;
+    }
+    if (act === "cx-refuse") {
+      if (!roleIs("admin")) { toast("Only the owner answers a request."); return; }
+      var _crt = t.getAttribute("data-tab"), _cri = t.getAttribute("data-id");
+      var _crr = ((S.data || {})[_crt] || []).filter(function (x) { return x.id === _cri; })[0];
+      if (!_crr) { toast("That record is no longer on the list."); return; }
+      var _crn = String(val("cx_note") || "").trim();
+      if (_crn.length < 4) { toast("Say in one line why it stays \u2014 the man who asked will read it."); return; }
+      t.disabled = true; t.textContent = "Refusing\u2026";
+      cxAskWrite(_crt, _cri, _crr, "", _crn.slice(0, 400), "refused");
+      toast("Refused, and the reason is on the record.");
+      return;
+    }
     if (act === "cx-do") {
       if (!roleIs("admin")) { toast("Only the owner can cancel a record."); return; }
       var _cxt = t.getAttribute("data-tab"), _cxi = t.getAttribute("data-id");
       var _cxr = ((S.data || {})[_cxt] || []).filter(function (x) { return x.id === _cxi; })[0];
       if (!_cxr) { toast("That record is no longer on the list. Refresh and try again."); return; }
       if (cancelBlockers(_cxt, _cxi).stop.length) { toast("Live records still depend on this one."); render(); return; }
-      var _cxrs = String(val("cx_reason") || "");
+      /* approving somebody else's request: the reason came with the request and there is no
+         reason box on that screen to read */
+      var _cxask = (t.getAttribute("data-from") === "ask") ? cxAsk(_cxt, _cxi) : null;
+      var _cxrs = _cxask ? String(_cxask.reason || "") : String(val("cx_reason") || "");
       if (!_cxrs) { toast("Pick a reason - that is the whole record of why."); return; }
       t.disabled = true; t.textContent = "Cancelling...";
+      /* v6.9.363 - approving a REQUEST closes the request too, so it stops appearing as
+         waiting. Written before the cancel, because the cancel re-renders and the row this is
+         reading would be lifted out of S.data by splitCancelled() a moment later. */
+      if (_cxask) cxAskWrite(_cxt, _cxi, _cxr, _cxask.reason, String(val("cx_note") || "").slice(0, 400), "approved");
       cxWrite(_cxt, _cxi, _cxr, _cxrs, String(val("cx_note") || "").slice(0, 400), false);
       toast(CANCEL_TABS[_cxt] + " cancelled. It is on Health - Cancelled records if you ever need it back.");
       return;
