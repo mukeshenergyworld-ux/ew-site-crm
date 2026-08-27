@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.364";
+  var APP_VERSION = "6.9.365";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -806,7 +806,11 @@
     for (var i = 0; i < keys.length; i++) {
       var k = keys[i];
       if (k.charAt(0) === "_") continue;                    /* local-only, never sent */
-      if (k === "updatedAt" || k === "syncedAt") continue;  /* the server's own stamp */
+      /* v6.9.365 - createdAt joins them. It is a STAMP, not content: it can never answer
+         "did my save land?", and from this release the client puts one on every new row while
+         a row already on the sheet carries whatever the server stamped before. Comparing them
+         would report a landed save as unsent and send it a second time. */
+      if (k === "updatedAt" || k === "syncedAt" || k === "createdAt") continue;  /* the server's own stamp */
       var a = e.row[k], b = srv[k];
       if (a === null || a === undefined) a = "";
       if (b === null || b === undefined) b = "";
@@ -1405,7 +1409,31 @@
        (Previously new rows went up with id="" so each delivery created a brand-new server row, and
        the local _lid dedup key was stripped before the server ever saw it — the server had no way to
        know it was the same record.) */
-    if (!row.id) row.id = mintId("L");
+    if (!row.id) {
+      row.id = mintId("L");
+      /* ================= AND THE DATE IT WAS MADE  (v6.9.365, 27 Aug 2026) =================
+         NOBODY ASKED FOR THIS. It was found by counting, on the random check this session:
+         SIXTEEN of his 130 challans - 283,251 rupees of delivered goods - carry NO createdAt
+         at all. Their statements print a delivery with no date on it.
+
+         The cause is two correct-looking lines meeting. The backend stamps the date only when
+         the row is NEW:
+
+             if (rowIndex < 0) { row.id = row.id || ...; row.createdAt = row.createdAt || now; }
+
+         and it writes the WHOLE sheet row from whatever it is sent, blanking any column it is
+         not sent. This function mints an id so the row can never duplicate (v6.9.124), pushes
+         it into S.data, and sends it - and the copy left in memory has no createdAt, because
+         only the server ever put one on. Everything is fine until that challan is approved,
+         dispatched or edited from the same un-refreshed copy: the row goes up again WITHOUT a
+         createdAt, the backend finds it by id, and writes blank over the date it stamped
+         itself. Every one of the sixteen has an approvedAt. That is the fingerprint.
+
+         Stamping it here closes it for every tab at once, because every tab saves through
+         here, and it can never fight the server: the backend's own line is `row.createdAt =
+         row.createdAt || now`, so ours is simply the one that is used. */
+      if (!row.createdAt) row.createdAt = new Date().toISOString();
+    }
     var list = (S.data[tab] = S.data[tab] || []);
     var idx = -1;
     for (var k = 0; k < list.length; k++) { if (list[k] && ((row.id && list[k].id === row.id) || (row._lid && list[k]._lid === row._lid))) { idx = k; break; } }
@@ -2943,8 +2971,53 @@ window.addEventListener("beforeunload", function (ev) {
   /* Rebuilt from live + held every time, so it is idempotent (running it twice changes nothing)
      and reversible (a record brought back walks straight back into the live list).  A row with
      no id is always kept live - it cannot be cancelled, because there is nothing to name it by. */
+  /* ================= A DELIVERY WITH NO DATE  (v6.9.365) =================
+     The sixteen rows that already lost theirs, read back. A challan number carries the day it
+     was minted - AR7937/270726/001 and 20/08/2026/001 are the two shapes in his book - and
+     that is a better source than approvedAt, which can be a day or two later: KAPIL/190826/001
+     was approved on the 20th.
+
+     It is filled in MEMORY and marked. The mark matters: a date invented in silence is worse
+     than a blank one, so the card and the statement both say where it came from, and the row
+     carries a __-prefixed key that the backend drops on its way to the sheet.
+
+     It is not written back on its own. The next ordinary save of that challan will carry it,
+     which is the code fixing what the code broke - and until then nothing on his sheet moves. */
+  function chNoDate(c) {
+    var s = String((c && c.challanNo) || "");
+    var m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})\//);
+    if (m) return m[3] + "-" + m[2] + "-" + m[1];
+    m = s.match(/\/(\d{2})(\d{2})(\d{2})\//);
+    if (m) return "20" + m[3] + "-" + m[2] + "-" + m[1];
+    return "";
+  }
+  function chDatesIn() {
+    (((S.data || {}).challans) || []).forEach(function (c) {
+      if (!c || String(c.createdAt || "").trim()) return;
+      var d = chNoDate(c);
+      var src = d ? "number" : "";
+      if (!d) { d = String(c.approvedAt || "").slice(0, 10); src = d ? "approval" : ""; }
+      if (!d) { d = String(c.updatedAt || "").slice(0, 10); src = d ? "last change" : ""; }
+      if (!d) return;
+      /* midday, not midnight: a date-only stamp read back in any timezone stays the same day */
+      c.createdAt = d + "T12:00:00.000Z";
+      c.__dFrom = src;
+    });
+  }
+  function chDateLost(c) { return String((c && c.__dFrom) || ""); }
+  /* The mark on the card. Amber, tiny, and it names its source - so a man checking a delivery
+     against his paper book can see at a glance which date he is being shown. */
+  function chDatePill(c) {
+    var f = chDateLost(c);
+    return f ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-size:10px" ' +
+      'title="This delivery has no date of its own on the sheet. The date shown is taken from its ' +
+      'challan number. It will be written back the next time this challan is saved.">date from ' +
+      esc(f) + '</span>' : '';
+  }
+
   function splitCancelled() {
     if (!S.data) return;
+    chDatesIn();
     S.cancelled = S.cancelled || {};
     _cxCache = null;
     var m = cancelMap();
@@ -17479,6 +17552,7 @@ function viewCatalogue() {
         '<label style="cursor:pointer;font-size:15px;white-space:nowrap"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label>' +
         manualNoCell(c) +
         ' <span class="pill teal">' + esc(d10(c.createdAt)) + '</span>' +
+        chDatePill(c) +
         settlePill(_stl) +
         siteBlock +
         /* v6.9.236 - the signed paper, or the fact that there isn't one. The thumbnail is
