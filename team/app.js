@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.366";
+  var APP_VERSION = "6.9.367";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -15386,7 +15386,10 @@ function viewCatalogue() {
       var st = String(r.status || "").trim().toLowerCase();
       /* "received" is counted elsewhere; a cancelled one is not waiting for anything */
       return st !== "received" && st !== "cancelled";
-    }).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+      /* v6.9.367 - newest first, like every other list on the HISAB screen. This one is read
+         ONLY by viewBilling (retWaitingCard builds its own, and that one is a chase list and
+         stays oldest-first), so the change cannot reach a screen it was not meant for. */
+    }).sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
   }
   function clientReturns(cl) {
     var q = String(cl || "").trim().toLowerCase();
@@ -17416,8 +17419,31 @@ function viewCatalogue() {
        Added to h and not to one branch, because a man with an opening balance and no
        received challan yet is EXACTLY the man this question is about. */
     h += hisabAskCard(cl);
+    /* ================= NEWEST FIRST  (v6.9.367, 27 Aug 2026) =================
+       HIS WORDS: "in hisab, show chllans in reverse order like new challan above and rest
+       all below".
+
+       CHECKED BEFORE CHANGING: the Challans tab, the Returns tab and the Quotes tab have all
+       been newest-first since they were written - `S.data.challans.slice().reverse()` - and
+       HISAB was the one screen going the other way. So this is not a preference, it is the
+       odd one out being brought into line, and he is the man who noticed.
+
+       The sort is written as a comparator rather than a .reverse(), so the intent is in the
+       code and not in the order of two statements.
+
+       WHAT IS DELIBERATELY NOT REVERSED:
+         * the client's STATEMENT PDF (hisabPdf) - an account is read down the page, oldest
+           to newest, and the SETTLED IN FULL band of v6.9.364 stands where the deliveries it
+           replaced would have been. Turning that upside down would make a running balance
+           impossible to follow.
+         * the "still waiting" and "not in the account yet" cards - those are CHASE lists,
+           where the oldest is the most urgent and belongs at the top.
+         * the pick-list in modalPayAlloc - it is oldest-first because the allocation it is
+           overriding is oldest-first, and the two must read the same way.
+         * settleWalk() itself, which is date-ordered arithmetic and has nothing to do with
+           what order the cards are painted in. */
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }))
-      .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+      .sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
     h += hisabNewBar(cl, chs);
     h += hisabPendingCard(cl);
     if (!chs.length) {
@@ -17675,7 +17701,9 @@ function viewCatalogue() {
     });
     var rets = clientReturns(cl);
     var retTotal = 0;
-    rets.slice().sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); }).forEach(function (r) {
+    /* v6.9.367 - and the returns with them. Leaving these oldest-first while the deliveries
+       above them run newest-first would be two clocks on one screen. */
+    rets.slice().sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).forEach(function (r) {
       var rl = returnLines(r);
       var rSub = rl.reduce(function (a, x) { return a + x.amt; }, 0);
       retTotal += rSub;
