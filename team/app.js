@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.370";
+  var APP_VERSION = "6.9.371";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3225,25 +3225,55 @@ window.addEventListener("beforeunload", function (ev) {
   /* ONE function for the card, so the challan list and HISAB cannot end up offering different
      things to the same man. The owner gets Cancel, and an amber pill the moment somebody has
      asked; anybody else gets Ask, or Withdraw if it is his own request standing. */
-  function cxCardBtn(tab, id) {
+  /* ================= ONE BUTTON FOR EVERY CANCELLABLE RECORD  (v6.9.371) =================
+     HIS WORDS: "how to cancel return challan, make provision of this also for all cleints".
+
+     COUNTED BEFORE CHANGING. CANCEL_TABS declares SEVEN kinds of record that may be cancelled,
+     and every one of them has the full machinery behind it - reasons, blockers, an audit row,
+     undo, the Cancelled records screen. What they did not have was a way in:
+
+         challans  ->  cxCardBtn, on three screens
+         returns   ->  a HAND-WRITTEN button, on the Returns tab ONLY
+         payments  ->  a HAND-WRITTEN button, on the receipt card
+         clients   ->  a HAND-WRITTEN button, in the client form's footer
+         sites     ->  a HAND-WRITTEN button, in the site form's footer
+         quotes    ->  nothing
+         pitch     ->  nothing
+
+     Four hand-written copies of one button, which is precisely what t_cancel_ask warns about:
+     "two hand-written buttons is how they come to disagree". They already had. All four were
+     roleIs("admin") only, so the ask-to-cancel path built in v6.9.363 existed for a challan and
+     for nothing else - an executive could ask about a delivery but not about the return against
+     it. And a return could not be cancelled from the client's own ledger at all, which is the
+     screen he was looking at when he asked.
+
+     THE `what` OPTION IS NOT DECORATION. On the client and site forms this button sits in a
+     footer that ALREADY has a Cancel - the one that closes the form. Two buttons reading
+     "Cancel" side by side, one of which shuts a window and the other of which cancels a record
+     with money against it, is a trap. So those two say what they cancel, and so does the ask. */
+  function cxCardBtn(tab, id, opt) {
     if (!CANCEL_TABS[tab]) return "";
+    opt = opt || {};
+    var cls = opt.big ? "btn ghost" : "btn sm ghost";     /* a modal footer wants a full-size button */
+    var clsOn = opt.big ? "btn" : "btn sm";
+    var what = opt.what ? " " + opt.what : "";            /* "this client", "this site" */
     var a = cxAsk(tab, id);
     if (roleIs("admin")) {
       return (a
-        ? '<button class="btn sm" data-act="cx-open" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
+        ? '<button class="' + clsOn + '" data-act="cx-open" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
           '" style="background:#b45309;border-color:#b45309" title="' +
           esc(a.by + " asked to cancel this on " + d10(a.at) + ": " + (a.reason || "no reason given")) +
           '">Cancel asked \u00b7 ' + esc(a.by || "?") + '</button>'
-        : '<button class="btn sm ghost" data-act="cx-open" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
-          '" style="color:#b91c1c">Cancel</button>');
+        : '<button class="' + cls + '" data-act="cx-open" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
+          '" style="color:#b91c1c">Cancel' + what + '</button>');
     }
     if (!canAskCancel()) return "";
     return (a
-      ? '<button class="btn sm ghost" data-act="cx-askoff" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
+      ? '<button class="' + cls + '" data-act="cx-askoff" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
         '" style="border-color:#fed7aa;color:#b45309" title="Asked on ' + esc(d10(a.at)) +
         '. Nothing has moved.">Cancel asked \u2014 withdraw</button>'
-      : '<button class="btn sm ghost" data-act="cx-open" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
-        '" style="color:#b91c1c">Ask to cancel</button>');
+      : '<button class="' + cls + '" data-act="cx-open" data-tab="' + esc(tab) + '" data-id="' + esc(id) +
+        '" style="color:#b91c1c">Ask to cancel' + what + '</button>');
   }
   /* Everything waiting on his word, in one place. Counted, not guessed - and it names who asked
      and why, because a list of requests he cannot read is a list he will stop opening. */
@@ -3603,7 +3633,8 @@ window.addEventListener("beforeunload", function (ev) {
       '<div><label>Owner (sales exec)</label>' + ownerField("s_owner", x.owner || x.createdBy, !x.id) + '</div></div>' +
       '<label>Notes</label><textarea id="s_notes">' + esc(x.notes) + '</textarea>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      (x.id && roleIs("admin") ? '<button class="btn ghost" data-act="cx-open" data-tab="sites" data-id="' + esc(x.id) + '" style="color:#b91c1c">Cancel this site</button>' : "") +
+      /* v6.9.371 - same trap as the client form: the Cancel next to it closes the window */
+      (x.id ? cxCardBtn("sites", x.id, { big: true, what: "this site" }) : "") +
       '<button class="btn" data-act="site-save" data-id="' + esc(x.id || "") + '">Save</button></div>';
   }
 
@@ -10313,7 +10344,9 @@ window.addEventListener("beforeunload", function (ev) {
          standing at a site can still save a name and a number in four seconds - but the button
          says out loud what he is choosing to leave out, and the toast afterwards says where to
          find it again. */
-      (c.id && roleIs("admin") ? '<button class="btn ghost" data-act="cx-open" data-tab="clients" data-id="' + esc(c.id) + '" style="color:#b91c1c">Cancel this client</button>' : "") +
+      /* v6.9.371 - full-size, and it SAYS "this client": the footer beside it already has a
+         Cancel, and that one only closes the form. */
+      (c.id ? cxCardBtn("clients", c.id, { big: true, what: "this client" }) : "") +
       '<button class="btn" data-act="cl-save" data-stagebtn="Save client" data-id="' + esc(c.id || "") + '">' +
       ((c.stage || clientStage(c.name)) ? 'Save client' : 'Save client without stage') + '</button></div>';
   }
@@ -14661,7 +14694,8 @@ function viewCatalogue() {
         /* v6.9.241 - once the material is back in, the paper signed for it can be attached */
         (stt === "Received" && !chProofAny(r).has
           ? (canProof() ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '">Attach goods-in receipt</button>' : '') : "") +
-        (roleIs("admin") ? '<button class="btn sm ghost" data-act="cx-open" data-tab="returns" data-id="' + esc(r.id) + '" style="color:#b91c1c">Cancel</button>' : "") +
+        /* v6.9.371 - was hand-written and admin-only, so nobody could ASK about a return */
+        cxCardBtn("returns", r.id) +
         '</div></div>';
     });
     return h;
@@ -17713,6 +17747,10 @@ function viewCatalogue() {
             'title="Count this material back in at the godown. That is what puts the credit on his account.">' +
             'Received at godown</button>'
           : '') +
+        /* v6.9.371 - and the way to kill it, on the client's own ledger. This return has not
+           credited anybody yet, so cancelling it moves nothing at all - it is the cheapest one
+           in the whole app to get rid of, and it had no button on this screen. */
+        cxCardBtn("returns", r.id) +
         '</div></div>' +
         '<div style="flex:0 0 auto;text-align:right;font-size:12px;color:#92400e">Will credit<br>' +
         '<b>&minus;' + money(rSub) + '</b></div></div>' +
@@ -17804,6 +17842,10 @@ function viewCatalogue() {
               'title="Booked in by mistake? Put it back to Raised - the credit comes off his account again.">' +
               'Not back yet</button>'
             : '') +
+        /* v6.9.371 - "Not back yet" un-books it; this cancels the whole return. Two different
+           things, and cancelBlockers warns before the second one that the client's credit goes
+           with it. */
+        cxCardBtn("returns", r.id) +
         '</div></div>' +
         /* v6.9.351 - the money and the owner's strip: the right-hand column of the SAME row, so
            the buttons rise up beside them instead of starting below all seven lines. */
@@ -19353,9 +19395,8 @@ function viewCatalogue() {
     if (!dead) {
       h += '<button class="btn sm ghost" data-act="rc-pdf" data-p="' + esc(p.id) + '">Download</button>' +
         '<button class="btn sm" data-act="rc-wa" data-p="' + esc(p.id) + '">WhatsApp</button>';
-      if (roleIs("admin") && p.id) {
-        h += '<button class="btn sm ghost" data-act="cx-open" data-tab="payments" data-id="' + esc(p.id) + '" style="color:#b91c1c">Cancel this</button>';
-      }
+      /* v6.9.371 - one button, so a receipt reads the same as a delivery */
+      if (p.id) h += cxCardBtn("payments", p.id);
     } else if (roleIs("admin") && p.id) {
       h += '<button class="btn sm ghost" data-act="cx-undo" data-tab="payments" data-id="' + esc(p.id) + '">Bring it back</button>';
     }
