@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.367";
+  var APP_VERSION = "6.9.368";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17473,6 +17473,14 @@ function viewCatalogue() {
           : 'Balance: <b style="color:#0d9488">' + money(_l0.due) + (_l0.due < -0.5 ? ' (in credit)' : '') + '</b>') + '</div>' +
         /* v6.9.336 - and here too. A client whose only activity is a payment against an opening
            balance is EXACTLY the man who needs to see which payment landed. */
+        openingNote(cl) +
+        /* v6.9.368 - and here above all: a client whose ONLY entry is an old balance is exactly
+           the man whose old balance needs correcting, and this branch is the only screen he has. */
+        (canSetOpening()
+          ? '<div class="acts" style="margin-top:7px"><button class="btn sm ghost" data-act="op-open" ' +
+            'data-n="' + esc(cl) + '" style="border-color:#fecaca;color:#b91c1c">' +
+            (_l0.opening ? '\u270e Change the previous balance' : '\u270e Set a previous balance') + '</button></div>'
+          : '') +
         payTable(cl) +
         (canSee("payments") && _l0.due > 0 ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '">&#8377; Payment received</button></div>' : '') +
         '</div>';
@@ -17802,7 +17810,11 @@ function viewCatalogue() {
       '<h3 style="margin:0 0 2px">Client ledger &mdash; ' + esc(cl) + '</h3>' +
       (_clMob ? '<div style="font-size:13px;margin-bottom:6px">☎ <a href="tel:' + esc(String(_clMob).replace(/[^\d+]/g, '')) + '" style="color:#0d766c;font-weight:600;text-decoration:none">' + esc(_clMob) + '</a></div>' : '') +
       '<div class="meta" style="font-size:13.5px">' +
-      (opening > 0 ? 'Previous balance (b/f): <b>' + money(opening) + '</b>  &middot;  ' : '') +
+      /* v6.9.368 - a MINUS opening balance is shown now too. It was hidden behind `> 0` while
+         being counted in `bal` all along, so on the two clients who carry one the line above
+         did not add up to the balance beside it. */
+      (opening > 0 ? 'Previous balance (b/f): <b>' + money(opening) + '</b>  &middot;  '
+       : opening < 0 ? 'Opening credit: <b style="color:#0f766e">' + money(-opening) + '</b>  &middot;  ' : '') +
       'Billed (net): <b>' + money(allNet) + '</b>  &middot;  Received: <b>' + money(paid) + '</b>  &middot;  ' +
       (retTotal > 0 ? 'Returns (&minus;): <b style="color:#dc2626">' + money(retTotal) + '</b>  &middot;  ' : '') +
       (bal > 0.5
@@ -17813,6 +17825,16 @@ function viewCatalogue() {
           ? '<b style="color:#0f766e">' + money(-bal) + ' in credit</b> ' +
             '<span style="color:#64748b">\u2014 paid ahead, comes off the next delivery</span>'
           : '<b style="color:#0d9488">Settled in full</b>') + '</div>' +
+      openingNote(cl) +
+      /* v6.9.368 - and the way to correct it, on the one line it belongs to. Owner only, and
+         the button says which it is: there is nothing to CHANGE on a client who never carried
+         an old balance, but there is something to SET. */
+      (canSetOpening()
+        ? '<div class="acts" style="margin-top:7px"><button class="btn sm ghost" data-act="op-open" ' +
+          'data-n="' + esc(cl) + '" style="border-color:#fecaca;color:#b91c1c" ' +
+          'title="Correct the balance carried over from the old books. Your PIN is checked by the server.">' +
+          (opening ? '\u270e Change the previous balance' : '\u270e Set a previous balance') + '</button></div>'
+        : '') +
       payTable(cl) +
       /* v6.9.360 - money can be entered from the ledger itself now, in all three directions.
          It was on the Payments screen only, which is a different tab and a different search. */
@@ -18784,6 +18806,121 @@ function viewCatalogue() {
     return ' <span class="pill" style="background:#fef3c7;color:#92400e" ' +
       'title="Part paid: ' + esc(money(st.paid)) + ' of ' + esc(money(st.amt)) + '">' +
       money(st.open) + ' still open</span>';
+  }
+
+  /* ================= CHANGING A PREVIOUS BALANCE  (v6.9.368, 27 Aug 2026) =============
+     HIS WORDS: "for admin only. - show option to alter or change previous balance with admin
+     pin only".
+
+     MEASURED FIRST, on his live book. This is not a small field:
+
+         86 of 160 clients carry one
+         Rs 94,12,180 owed across 84 of them, and Rs 78,448 of credit on the other two
+         79 are still open, worth Rs 76,79,116 - the LARGEST single number on his book
+         biggest: Rakesh - Ansal I Block 8,00,799 - Rajesh Mittal 4,84,629 - Gaurav Goel 4,28,033
+
+     Every one of them was typed by hand off the old books, and until today there was no way to
+     correct one inside the app at all - and no record if somebody corrected it in the sheet.
+     A figure that large with no way to fix it and no trail behind it is the thing to fix.
+
+     THREE LOCKS, AND THE MIDDLE ONE IS THE REAL ONE.
+
+       1. The button is admin-only, which hides it.
+       2. He types his PIN and it is checked BY THE SERVER, against HIS OWN record, through
+          teamAuth - the same pinRowMatch_ that guards releasing material at the godown. The
+          PIN is never compared on this device and never stored anywhere by this code. A hidden
+          button is not a rule; this is the rule.
+       3. The reply's ROLE is read off the sheet, not off S.role - so a tampered local role
+          cannot get past it either.
+
+     teamAuth is a READ action, so it changes nothing. It does append one line to the LoginLog
+     sheet, which is honest: he did authenticate. Said plainly here rather than discovered later.
+
+     NOTHING IS EVER DELETED. The old figure is written into an audit row - old, new, who, when
+     and why - before the new one goes on the client. The row carries BOTH numbers, so anyone can
+     hold it against the sheet and see whether it took. The screen then says the balance has been
+     changed, and by whom, rather than quietly showing a different number than it did yesterday. */
+  var OPEN_ACT = "client:opening";
+  var _opnCache = null;
+  function openingMap() {
+    if (_opnCache) return _opnCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== OPEN_ACT) return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var k = dkey(d.client || "");
+      if (!k) return;
+      (m[k] = m[k] || []).push({
+        old: nAmt(d.old), neu: nAmt(d.neu), why: String(d.why || ""),
+        at: String(r.createdAt || ""), by: String(r.actor || "")
+      });
+    });
+    Object.keys(m).forEach(function (k) {
+      m[k].sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
+    });
+    _opnCache = m;
+    return m;
+  }
+  function openingChanges(name) { return openingMap()[dkey(name || "")] || []; }
+  function openingLast(name) { return openingChanges(name)[0] || null; }
+  /* Who may. Kept as its own function so there is one answer and not one per screen. */
+  function canSetOpening() { return roleIs("admin"); }
+
+  /* The line under the balance when it has been altered. It names the man and the day, because
+     "the number is different from last week" is a question somebody will ask out loud. */
+  function openingNote(name) {
+    var l = openingLast(name);
+    if (!l) return "";
+    var n = openingChanges(name).length;
+    return '<div style="font-size:11.5px;color:#92400e;margin-top:2px">' +
+      'Previous balance changed ' + esc(dstr(l.at)) + ' by <b>' + esc(l.by || "?") + '</b>' +
+      ' — was ' + money(l.old) + ', now ' + money(l.neu) +
+      (l.why ? ' · ' + esc(l.why) : '') +
+      (n > 1 ? ' <span style="opacity:.75">(' + n + ' changes in all)</span>' : '') + '</div>';
+  }
+
+  function modalOpening(name) {
+    if (!canSetOpening()) return "";
+    var c = clientByName(name);
+    if (!c) return "";
+    var cur = clientOpening(name), hist = openingChanges(name);
+    var l = clientLedger(name);
+    return '<h2>' + (cur ? 'Change' : 'Set') + ' the previous balance</h2>' +
+      '<p class="sub">' + esc(name) + '</p>' +
+      '<div class="card" style="border-color:#fecaca;background:#fef2f2;padding:10px 12px">' +
+      '<div class="meta" style="font-size:12.5px;color:#b91c1c">This is the money he owed ' +
+      '<b>before the app</b>, carried over from the old books. It rides in every due, every ' +
+      'statement and the collection list, so changing it moves what this client owes by the ' +
+      'same amount. Your PIN is asked for on the next tap and checked by the server against ' +
+      'your own record.</div></div>' +
+      '<div class="card" style="padding:9px 12px"><div class="meta" style="font-size:12.5px">' +
+      'Now: previous balance <b>' + money(cur) + '</b> &middot; billed ' + money(l.billed) +
+      ' &middot; received ' + money(l.paid) +
+      (l.returned > 0 ? ' &middot; returns ' + money(l.returned) : '') +
+      '<br><b>Balance today ' + money(l.due) + '</b></div></div>' +
+      '<label>New previous balance</label>' +
+      '<input id="op_amt" inputmode="decimal" value="' + esc(cur ? Math.round(cur) : "") + '" ' +
+        'placeholder="what he actually owed before the app"/>' +
+      '<div class="meta" style="font-size:12px;margin-top:3px">A minus means <b>you</b> were ' +
+      'holding his money.</div>' +
+      '<label>Why it is being changed</label>' +
+      '<input id="op_why" placeholder="e.g. old book re-checked, 6,000 receipt was missed"/>' +
+      (hist.length
+        ? '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:9px 12px;margin-top:9px">' +
+          '<div style="font-size:12.5px;font-weight:700;color:#92400e;margin-bottom:3px">' +
+          'Changed before &mdash; ' + hist.length + '</div>' +
+          hist.slice(0, 6).map(function (h) {
+            return '<div style="font-size:11.5px;color:#92400e">' + esc(dstr(h.at)) + ' &middot; ' +
+              esc(h.by || "?") + ' &middot; ' + money(h.old) + ' → ' + money(h.neu) +
+              (h.why ? ' &middot; ' + esc(h.why) : '') + '</div>';
+          }).join("") +
+          (hist.length > 6 ? '<div style="font-size:11.5px;color:#92400e;opacity:.75">and ' +
+            (hist.length - 6) + ' more.</div>' : '') + '</div>'
+        : '') +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="op-save" data-n="' + esc(name) + '" ' +
+        'style="background:#b91c1c;border-color:#b91c1c">Check my PIN and save</button></div>';
   }
 
   /* ---------------- client payments + ledger ---------------- */
@@ -27818,7 +27955,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null;
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     /* v6.9.263 - warming the logo cache is for the NEXT quote PDF, never for this paint;
        nothing on screen waits on it. Started from the paint it competed with teamAuth and
@@ -29486,6 +29623,73 @@ function viewCatalogue() {
       var wnum = String(wc.mobile || "").replace(/\D/g, ""); if (wnum.length === 10) wnum = "91" + wnum;
       var wmsg = "Dear " + wcl + ",\n\nPlease find your Energy World statement (hisab) attached.\n\nThank you.\nEnergy World";
       waShareDoc(loadLogo().then(function () { return hisabPdf(wcl); }), wcl.replace(/[^\w.-]/g, "_") + "_hisab.pdf", wnum, wmsg);
+      return;
+    }
+    if (act === "op-open") {
+      if (!canSetOpening()) { toast("Only the owner can change a previous balance."); return; }
+      S.modal = modalOpening(t.getAttribute("data-n") || ""); render(); return;
+    }
+    if (act === "op-save") {
+      if (!canSetOpening()) { toast("Only the owner can change a previous balance."); return; }
+      var opN = t.getAttribute("data-n") || "";
+      var opC = clientByName(opN);
+      if (!opC) { toast("That client is no longer on this screen."); return; }
+      var opRaw = String(val("op_amt") || "").trim();
+      if (!opRaw) { toast("Put the new previous balance in — 0 if he owed nothing."); return; }
+      var opNew = Math.round(nAmt(opRaw));
+      var opOld = Math.round(clientOpening(opN));
+      var opWhy = String(val("op_why") || "").trim();
+      if (opWhy.length < 4) { toast("Say in a few words why it is being changed. It goes on the record beside the figure."); return; }
+      if (opNew === opOld) { toast("That is the figure it already carries. Nothing changed."); return; }
+      /* ===== THE PIN. HE TYPES IT, THE SERVER CHECKS IT, NOBODY STORES IT =====
+         Asked here and not on the form, so it is the LAST thing before the write and cannot sit
+         in a field while he is called away. Checked through teamAuth, which runs the same
+         pinRowMatch_ that guards releasing material at the godown - against HIS OWN row on the
+         team sheet. Nothing in this app compares a PIN locally, and this does not either. */
+      /* v6.9.368 - the prompt shows the RESULTING BALANCE, not just the size of the move.
+         Rendered and looked at first: the form says "Balance today Rs 10,049" and then asked him
+         to commit to a figure whose effect on that number he had to work out in his head. The
+         balance is what he actually cares about, so it is on the last screen before the write.
+         moneyAscii, because a window.prompt is not HTML and "Rs." is what it can show. */
+      var opDue = clientLedger(opN).due, opWill = opDue + (opNew - opOld);
+      var opPin = window.prompt(
+        "Enter your PIN to change the previous balance\n\n" + opN +
+        "\n" + moneyAscii(opOld) + "  ->  " + moneyAscii(opNew) +
+        "\n\nWhat he owes moves by " + moneyAscii(Math.abs(opNew - opOld)) + ".\n" +
+        "Balance would go from " + moneyAscii(opDue) + " to " + moneyAscii(opWill) + ".");
+      if (!opPin) { toast("Nothing was changed."); return; }
+      toast("Checking your PIN…");
+      api("teamAuth", { pin: opPin, ua: navigator.userAgent }).then(function (r) {
+        /* Wrong PIN, or a name the sheet does not know. Say which, and change nothing. */
+        if (!r || !r.ok) { toast((r && r.error) || "Wrong PIN. Nothing was changed."); return; }
+        /* The role is read off the SERVER'S reply, not off S.role - so a local role that has
+           been tampered with cannot walk past this. Belt and braces on the one screen that can
+           move Rs 8,00,799 with one number. */
+        var sRole = String((r.user && r.user.role) || "").toLowerCase();
+        if (sRole.indexOf("admin") < 0) {
+          toast("The server says this sign-in is not the owner's. Nothing was changed.");
+          return;
+        }
+        /* THE TRAIL FIRST, THEN THE FIGURE. The row carries BOTH numbers, so it can be held
+           against the sheet afterwards and checked. Nothing is deleted: the old balance lives
+           on in this row for as long as the audit tab does. */
+        save("audit", {
+          id: "", createdAt: new Date().toISOString(), actor: S.user, action: OPEN_ACT,
+          target: opN + " / previous balance",
+          detail: JSON.stringify({ client: opN, old: opOld, neu: opNew,
+                                   moved: opNew - opOld, why: opWhy }),
+          ip: ""
+        });
+        save("clients", Object.assign({}, opC, { openingAmt: String(opNew) }));
+        _opnCache = null; _stlCache = null; _clDueCache = null; _hsbCache = null;
+        try { snapSave(); } catch (e) { }
+        S.modal = null;
+        render();
+        toast("Previous balance for " + opN + " is now " + money(opNew) +
+              " (was " + money(opOld) + "). The change is on the record with your name on it.");
+      }).catch(function () {
+        toast("Could not reach the server to check your PIN. NOTHING was changed — try again when there is signal.");
+      });
       return;
     }
     if (act === "pa-open") {
