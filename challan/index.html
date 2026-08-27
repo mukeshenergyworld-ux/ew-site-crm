@@ -192,7 +192,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.45.0";
+  var APP_VERSION = "1.46.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3005,6 +3005,9 @@ function discRowOn(client, brand, onYmd) {
       driverPicker(z) +
       '</div>';
 
+    /* v1.46.0 - beside the Save button, not up beside the fare box: that is where he is
+       looking when he taps Create, and it is the tap this is answering. */
+    h += chFreightBar();
     h += '<button class="btn full" data-act="ch-save" style="margin:14px 0 6px">' +
       (isEdit ? 'Save changes' : 'Create the challan') + '</button>' +
       '<div class="muted" style="text-align:center;margin-bottom:10px">' +
@@ -4577,6 +4580,35 @@ function discRowOn(client, brand, onYmd) {
     if (tot) tot.textContent = money(g + f - (v > 0 ? v : 0));
   }
 
+  /* ================= NO FREIGHT ON THIS ONE?  (v1.46.0, 27 Aug 2026) =================
+     HIS WORDS: "for every chllan created, if freight not mention ask while saving again".
+
+     MEASURED on his live book before it was written: 44 of 130 challans carry no fare at all,
+     9 of them in the last 30 - a live gap, not a historic one - and every challan in the book
+     says "Freight borne by: Client", so a fare left empty is a fare the client is not billed
+     for. The 86 that do carry one come to Rs 16,550 between them.
+
+     IT ASKS ONCE AND IT DOES NOT REFUSE. A third of his deliveries genuinely have no fare, and
+     a wall in front of those would be worse than the gap. It also asks BEFORE the challan
+     number is drawn from the server: a number taken and then abandoned is a hole in the paper
+     series, and the series is the one thing the app and the book must agree about. */
+  function chFreightBar() {
+    if (!(S.ch && S.ch.frAsked)) return "";
+    return '<div class="card" style="border:1px solid #fbbf24;background:#fffbeb">' +
+      '<div style="font-weight:700;font-size:14px;color:#92400e;margin-bottom:3px">No freight on this one?</div>' +
+      /* English, like every other word in this app. Saathi is the Hinglish one, and it is
+         Hinglish because it is for partners outside the business - this screen is the godown
+         and the office. */
+      '<div class="muted" style="color:#92400e">The fare box is empty. If a tempo was paid for, ' +
+      'put the amount in &mdash; <b>Freight borne by: Client</b> means it is added to his bill. ' +
+      'If the customer took it himself, or it went on our own vehicle, say so and it saves.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px">' +
+      '<button class="btn" data-act="ch-fr-add" style="background:#b45309;border-color:#b45309">' +
+        'Put the fare in</button>' +
+      '<button class="btn ghost" data-act="ch-fr-no" style="border-color:#fbbf24;color:#92400e">' +
+        'No freight &mdash; save it</button>' +
+      '</div></div>';
+  }
   function wireInputs() {
     var hx = el("hsb_extra"), hxn = el("hsb_noextra");
     if (hx) hx.addEventListener("input", function () {
@@ -5134,6 +5166,19 @@ function discRowOn(client, brand, onYmd) {
     /* ---- save the challan ----
        Same row shape, same numbering endpoint and the same frozen discount as the CRM, so a
        challan made in the godown is indistinguishable from one made at the desk. */
+    if (act === "ch-fr-add") {
+      var _fb = el("m_freight");
+      if (_fb) { try { _fb.scrollIntoView({ block: "center" }); _fb.focus(); _fb.select(); } catch (e) {} }
+      return;
+    }
+    if (act === "ch-fr-no") {
+      /* Straight back into the same Save, on the SAME screen - no repaint between the two
+         taps. frAsked is already set, so the ask cannot fire twice and this can never loop. */
+      if (S.ch) S.ch.frAsked = true;
+      var _sv = document.querySelector('[data-act="ch-save"]');
+      if (_sv) _sv.click(); else toast("Tap Create the challan again — it will save with no freight.");
+      return;
+    }
     if (act === "ch-save") {
       if (!canMake()) { toast("Making a challan is done by the godown or the office."); return; }
       var z = S.ch || {};
@@ -5180,6 +5225,15 @@ function discRowOn(client, brand, onYmd) {
       /* v1.37.0 - "product" was right until job work existed. A challan for labour alone is a
          real thing and this message would have turned it away. */
       if (!lines.length) { toast("Add at least one line — material or job work."); return; }
+      /* v1.46.0 - the fare, asked for once. See chFreightBar(). It sits ahead of the mintId,
+         ahead of the disabled button, and a long way ahead of the challanNo call - so nothing
+         has been taken when it stops, and nothing is lost if he walks away from it. The typed
+         fields all live on S.ch already (see wireInputs), so the repaint cannot lose any. */
+      if (!(S.ch && S.ch.frAsked) && num(z.freight) <= 0) {
+        if (S.ch) S.ch.frAsked = true;
+        render();
+        return;
+      }
       lines = lines.map(function (l) {
         if (isJobLine(l)) {
           /* rebuilt rather than copied, so a job line can never carry a brand discount in from
