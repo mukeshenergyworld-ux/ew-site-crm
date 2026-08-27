@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.365";
+  var APP_VERSION = "6.9.366";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14692,6 +14692,39 @@ function viewCatalogue() {
   /* m_stage is a hidden field written by the stage chips, not typed - it has to be kept too, or
      tapping a brand rebuilds the form and throws away the stage he just answered. */
   var CH_FIELDS = ["m_loc", "m_client", "m_site", "m_assoc", "m_freight", "m_fto", "m_driver", "m_dmob", "m_veh", "m_disc", "m_discnote", "m_stage", "m_manual"];
+  /* ================= NO FREIGHT ON THIS ONE?  (v6.9.366, 27 Aug 2026) =================
+     HIS WORDS: "for every chllan created, if freight not mention ask while saving again".
+
+     MEASURED FIRST, on his live book: 44 of 130 challans carry no fare at all, and 9 of the
+     last 30 - so this is a live gap and not a historic one, and it is a third of everything
+     rather than a rarity. The 86 that DO carry one add up to Rs 16,550, which is the size of
+     what is quietly going missing. Every single challan in the book says "Freight borne by:
+     Client", so a fare left at zero is a fare the client is not billed for.
+
+     IT ASKS. IT DOES NOT REFUSE. A third of his deliveries genuinely have no fare - the
+     customer collected it, or it went on his own vehicle - and a wall in front of those would
+     be worse than the gap. So the first Save on a challan with an empty fare shows this and
+     stops; the next one saves whatever he decides. One tap either way, and neither answer is
+     the default.
+
+     It is asked BEFORE the challan number is minted, and before anything is written. A number
+     drawn and then abandoned is a hole in his paper series, and the series is the one thing
+     the app and the book must agree about. */
+  function chFreightBar() {
+    if (!(S.ch && S.ch.frAsked)) return "";
+    return '<div class="card" style="border-color:#fbbf24;background:#fffbeb;padding:10px 12px;margin-top:10px">' +
+      '<h3 style="margin:0 0 3px;font-size:13.5px;color:#92400e">No freight on this one?</h3>' +
+      '<div class="meta" style="font-size:12.5px;color:#92400e">The fare box is empty. If a tempo ' +
+      'was paid for, put the amount in &mdash; with <b>Freight borne by: Client</b> it is added to ' +
+      'his bill, and it is what a driver\u2019s payout is worked out from. If the customer took it ' +
+      'himself, or it went on your own vehicle, say so and it saves.</div>' +
+      '<div class="acts" style="margin-top:9px;flex-wrap:wrap;gap:8px">' +
+      '<button class="btn sm" data-act="ch-fr-add" style="background:#b45309;border-color:#b45309">' +
+        'Put the fare in</button>' +
+      '<button class="btn sm ghost" data-act="ch-fr-no" style="border-color:#fbbf24;color:#92400e">' +
+        'No freight on this one &mdash; save it</button>' +
+      '</div></div>';
+  }
   var RT_FIELDS = ["r_client", "r_site", "r_ch", "r_reason", "r_driver", "r_freight"];
 
   function modalReturn() {
@@ -26510,6 +26543,9 @@ function viewCatalogue() {
       '<div><label>Driver mobile</label><input id="m_dmob" inputmode="numeric" placeholder="fills in from his record" value="' + esc((z && z.dmob) || "") + '"/></div>' +
       '</div>' +
       '<label>Vehicle number</label><input id="m_veh" placeholder="fills in from the driver - change it only if he is in a different lorry today" value="' + esc((z && z.veh) || "") + '"/>' +
+      /* v6.9.366 - beside the Save button and not up beside the fare box, because that is where
+         he is looking when he taps Save and it is the tap this is answering. */
+      chFreightBar() +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="ch-save" data-stagebtn="' + (isEdit ? 'Save changes' : 'Create challan') + '">' +
       (clientStage((S.ch && S.ch.client) || "")
@@ -32249,6 +32285,20 @@ function viewCatalogue() {
       };
       S.modal = modalChallan(); render(); return;
     }
+    if (act === "ch-fr-add") {
+      var _fb = el("m_freight");
+      if (_fb) { try { _fb.scrollIntoView({ block: "center" }); _fb.focus(); _fb.select(); } catch (e) {} }
+      return;
+    }
+    if (act === "ch-fr-no") {
+      /* Straight back into the same Save, with the SAME form still on screen - no redraw, so
+         nothing he typed can be lost between the two taps. frAsked is already set, so the ask
+         cannot fire a second time and this can never loop. */
+      S.ch = S.ch || {}; S.ch.frAsked = true;
+      var _sv = document.querySelector('[data-act="ch-save"]');
+      if (_sv) _sv.click(); else toast("Tap Create challan again \u2014 it will save with no freight.");
+      return;
+    }
     if (act === "ch-save") {
       var cn = val("m_client");
       if (!cn) { toast("Pick a registered client from the list, or tap + Register new."); return; }
@@ -32259,6 +32309,18 @@ function viewCatalogue() {
       if (!isClient(cn)) { S.modal = modalNotYetClient(cn); render(); return; }
       var lines = (S.ch && S.ch.items) || [];
       if (!lines.length) { toast("Add at least one line \u2014 material, job work, or an item not in the price list."); return; }
+      /* v6.9.366 - the fare, asked for once. See chFreightBar(). This sits ahead of
+         saveClientStage(), ahead of the driver record, and a long way ahead of the challan
+         number: nothing has been written when it stops, so answering it costs nothing and
+         walking away from it costs nothing either. */
+      if (!(S.ch && S.ch.frAsked) && nAmt(val("m_freight")) <= 0) {
+        S.ch = S.ch || {};
+        S.ch.frAsked = true;
+        var restoreFr = keepFields(CH_FIELDS);
+        keepScroll = true;
+        S.modal = modalChallan(); render(); restoreFr();
+        return;
+      }
       var cObj = clientByName(cn) || {};
       var siteName = val("m_site");
       var siteObj = S.data.sites.filter(function (x) { return x.name === siteName; })[0] || {};
