@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.372";
+  var APP_VERSION = "6.9.373";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -677,6 +677,72 @@
     var txt = bar.querySelector(".uptxt");
     if (txt) txt.textContent = upSay(_upNow);
   }
+
+  /* ============ A NEWER BUILD HAS LANDED  (v6.9.373, 29 Aug 2026) ============
+     app.js used to be fetched network-first on every open: up to 2.5 seconds of waiting on a
+     phone, every time, to find out something that is almost always "no change". It now comes
+     off the shelf instantly and the worker checks in the background - and when the ETag it
+     gets back differs from the one it served, it says so here.
+
+     The footer has always promised "updates apply automatically on each login". It still does;
+     what changed is that a new build now announces itself instead of being silently waited for.
+     The reload carries ?u= deliberately: a query string is the worker's own signal to go past
+     the shelf to the network, so the button cannot hand him the same old copy again. */
+  var _newBuild = false;
+  function nbPaint() {
+    var bar = document.getElementById("ewnewbar");
+    /* It is FIXED, so it sits on top of whatever is at the top of the screen. ewupbar gets away
+       with that because it lasts a few seconds; this one stays until he answers it, and the
+       first thing it would cover is the header he uses to navigate. So the body is pushed down
+       by exactly the bar's height while it is up, and given back the moment it goes. */
+    var pad = function () {
+      try {
+        var b = document.getElementById("ewnewbar");
+        document.body.style.paddingTop = b ? (b.offsetHeight + "px") : "";
+      } catch (e) {}
+    };
+    if (!_newBuild) {
+      if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
+      try { document.body.style.paddingTop = ""; } catch (e) {}
+      return;
+    }
+    if (bar) return;
+    if (!document.getElementById("ewnewcss")) {
+      var st = document.createElement("style");
+      st.id = "ewnewcss";
+      st.textContent = "#ewnewbar{position:fixed;left:0;right:0;top:0;z-index:9998;background:#0f766e;" +
+        "color:#fff;font:600 12.5px/1.35 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
+        "padding:calc(env(safe-area-inset-top) + 7px) 12px 7px;box-shadow:0 1px 6px rgba(15,23,42,.25);" +
+        "display:flex;align-items:center;gap:8px}" +
+        "#ewnewbar span{flex:1;min-width:0}" +
+        "#ewnewbar button{flex:none;border:1px solid #fff;border-radius:7px;background:#fff;color:#0f766e;" +
+        "font:700 12px/1 inherit;padding:7px 11px;cursor:pointer}" +
+        "#ewnewbar button.gh{background:transparent;color:#fff;border-color:rgba(255,255,255,.55)}";
+      document.head.appendChild(st);
+    }
+    bar = document.createElement("div");
+    bar.id = "ewnewbar";
+    bar.innerHTML = '<span>A newer version is ready.</span>' +
+      '<button type="button" id="ewnewgo">Update</button>' +
+      '<button type="button" class="gh" id="ewnewlater">Later</button>';
+    document.body.appendChild(bar);
+    var go = document.getElementById("ewnewgo");
+    if (go) go.onclick = function () { location.replace(location.pathname + "?u=" + Date.now()); };
+    var later = document.getElementById("ewnewlater");
+    if (later) later.onclick = function () { _newBuild = false; nbPaint(); };
+    pad();
+    try { if (window.addEventListener) window.addEventListener("resize", pad); } catch (e) {}
+  }
+  try {
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener("message", function (e) {
+        if (!e || !e.data || e.data.ew !== "new-build") return;
+        if (String(e.data.url || "").indexOf("app.js") < 0) return;
+        _newBuild = true;
+        try { nbPaint(); } catch (x) {}
+      });
+    }
+  } catch (e) {}
 
   function api(action, extra, ms) {
     var _t0 = Date.now();
@@ -2094,6 +2160,7 @@ window.addEventListener("beforeunload", function (ev) {
         if (items.length) {
           PRODUCTS = items;
           PRODLIST_HTML = null;
+          _pcbCache = null;                 /* v6.9.373 - the brand map is derived from PRODUCTS */
           _catAt = Date.now();
           bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items }));
         }
@@ -2143,6 +2210,7 @@ window.addEventListener("beforeunload", function (ev) {
     var c = String(code || "").trim();
     PRODUCTS = PRODUCTS.filter(function (x) { return String(x.code || "").trim() !== c; });
     PRODLIST_HTML = null;
+    _pcbCache = null;                       /* v6.9.373 - and here */
     bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: at || Date.now(), items: PRODUCTS }));
   }
 
@@ -3038,6 +3106,9 @@ window.addEventListener("beforeunload", function (ev) {
     /* v6.9.218 - quotes and pitch rows can now move in and out of the live list, and both feed
        per-paint indexes. Busting them here means no caller has to remember to. */
     _pitchIdx = null; _cbgCache = null; _clStageCache = null; _lsnCache = null;
+    /* v6.9.373 - and the money ones. This function MOVES CHALLANS out of S.data, so a ledger
+       memoised before it ran counts goods that have just been cancelled. */
+    _ledCache = null; _cqCache = null; _cwbCache = null;
   }
 
   function cancelLabel(tab, r) {
@@ -5362,8 +5433,12 @@ window.addEventListener("beforeunload", function (ev) {
     return roles;
   }
   /* The catalogue Master Brand column mixes real brands with categories. Map it. */
+  /* v6.9.373 - the Challan app's guarded form, adopted here so all three apps carry ONE
+     realBrand. This one threw outright on a book that came back without a brandmap, which is
+     exactly what teamGet does when it is asked for a short list of tabs. It was on
+     t_apps_agree's exemption list with an empty reason; it is off it now. */
   function realBrand(p) {
-    var m = S.data.brandmap.filter(function (x) { return String(x.catalogValue) === String(p.brand); })[0];
+    var m = ((S.data && S.data.brandmap) || []).filter(function (x) { return String(x.catalogValue) === String(p.brand); })[0];
     return (m && m.brand) ? m.brand : "";
   }
   function brandList() {
@@ -5573,9 +5648,13 @@ window.addEventListener("beforeunload", function (ev) {
      A quote can carry products from several brands (Lunos + Pentair + Oyster + ...).
      Each brand keeps its OWN discount in z.brandDiscs[brand]; a per-line override in
      i.disc still wins. Every item is tagged with i.brand so it can be grouped. */
+  /* ---- 6.9.373: THE SAME ANSWER, LOOKED UP INSTEAD OF SEARCHED ----
+     This scanned all 1,041 catalogue products, and then realBrand scanned the whole brandmap,
+     ONCE PER LINE of whatever was being priced. productBrandByCode (below) already builds that
+     answer as a map, once per paint, and challanWonBrands has used it since v6.9.343. Same
+     result, two lookups instead of two scans. */
   function brandByCode(code) {
-    var p = PRODUCTS.filter(function (x) { return x.code === code; })[0];
-    return p ? realBrand(p) : "";
+    return productBrandByCode(code);
   }
   /* distinct brands present in the quote, in the order they were first added */
   function qzBrands(z) {
@@ -5631,9 +5710,22 @@ window.addEventListener("beforeunload", function (ev) {
        lost -> only lost quotes     : red strikethrough, wake-able
        none -> no quote yet         : neutral, tap to start
      "Waking" a parked brand just starts a fresh quote, which turns it green again. */
+  /* ---- 6.9.373: BUCKETED, LIKE pitchIndex AND clientGroupMap ----
+     clientBrandState asks this once per (client x brand), and every ask walked the whole quote
+     book. On the brand-follow screen that is clients x brands x members full scans - the single
+     biggest reason that screen took 24 seconds on a phone. One pass, then a lookup.
+     Dropped in renderCore with the rest, so a quote saved mid-paint is never read stale. */
+  var _cqCache = null;
   function clientQuotes(name) {
     var t = String(name || "").trim().toLowerCase();
-    return (S.data.quotes || []).filter(function (q) { return String(q.client || "").trim().toLowerCase() === t; });
+    if (!_cqCache) {
+      _cqCache = {};
+      (S.data.quotes || []).forEach(function (q) {
+        var k = "|" + String(q.client || "").trim().toLowerCase();
+        (_cqCache[k] || (_cqCache[k] = [])).push(q);
+      });
+    }
+    return _cqCache["|" + t] || [];
   }
   function quoteBrands(q) {
     return String(q.brand || "").split(/,\s*/).map(function (s) { return s.trim(); }).filter(Boolean);
@@ -5681,7 +5773,19 @@ window.addEventListener("beforeunload", function (ev) {
         String(c.receiptReceived).toUpperCase() === "Y";
     });
   }
+  /* ---- 6.9.373: ASKED ONCE PER CLIENT, NOT ONCE PER BRAND ----
+     This walks the challan book (parsing itemsJson on every received challan), the quote book,
+     the site list and the pitch list. clientBrandState calls it for every brand of every client,
+     so the same four walks and the same JSON.parse ran twenty times over for one client. Every
+     caller only reads the result - none sorts it or pushes into it - so one instance is safe. */
+  var _cwbCache = null;
   function clientWonBrands(name) {
+    var _wk = "|" + String(name || "").trim().toLowerCase();
+    if (!_cwbCache) _cwbCache = {};
+    if (_cwbCache[_wk]) return _cwbCache[_wk];
+    return (_cwbCache[_wk] = clientWonBrandsCalc(name));
+  }
+  function clientWonBrandsCalc(name) {
     var set = challanWonBrands(name);
     clientQuotes(name).forEach(function (q) {
       /* v6.9.343 - was: q.status === "Won" marking EVERY brand on the quote. On a two-brand
@@ -16725,7 +16829,7 @@ function viewCatalogue() {
          and then be priced against that brand's client discount - a discount on labour, taken
          from a brand that had nothing to do with it. */
       var bBrand = isJobLine(i) ? "" :
-        (i.brand || realBrand((PRODUCTS.filter(function (p) { return p.code === i.code; })[0]) || {}) || c.brand || "");
+        (i.brand || productBrandByCode(i.code) || c.brand || "");
       var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscount(cl, bBrand);
       var dr = Math.round(rate * (1 - disc / 100));
       return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
@@ -16751,7 +16855,7 @@ function viewCatalogue() {
     var lines = [], skipped = [], was = 0, now = 0;
     items.forEach(function (i) {
       var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0;
-      var brand = i.brand || realBrand((PRODUCTS.filter(function (p) { return p.code === i.code; })[0]) || {}) || (c && c.brand) || "";
+      var brand = i.brand || productBrandByCode(i.code) || (c && c.brand) || "";
       var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : 0;
       var preset = clientDiscount(cl, brand);
       /* v6.9.277 - IS THIS RATE AN MRP AT ALL?
@@ -16779,7 +16883,7 @@ function viewCatalogue() {
     var cl = c && c.customerName;
     var items = []; try { items = JSON.parse((c && c.itemsJson) || "[]"); } catch (e) { items = []; }
     return items.map(function (i) {
-      var brand = i.brand || realBrand((PRODUCTS.filter(function (p) { return p.code === i.code; })[0]) || {}) || (c && c.brand) || "";
+      var brand = i.brand || productBrandByCode(i.code) || (c && c.brand) || "";
       var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : 0;
       var preset = clientDiscount(cl, brand);
       /* v6.9.277 - the same guard. A rate that is not the list price is a net figure, and a
@@ -19201,7 +19305,22 @@ function viewCatalogue() {
   }
 
   /* ---------------- client payments + ledger ---------------- */
+  /* ---- 6.9.373: THE DASHBOARD PAID FOR THE BOOK THREE TIMES PER CLIENT ----
+     viewDash does, for every live client: clientLedger(name), then clientAging(name) - which
+     re-filters every challan AND calls clientLedger a second time itself. Three full walks of
+     challans + payments + returns per client, each re-pricing every line.
+     This changes no arithmetic whatsoever; it answers the second and third ask from the first.
+     Checked before shipping: all 24 callers only read the result - none sorts the arrays it
+     hands back or pushes into them - so sharing one object is safe. The "|" on the key keeps a
+     client actually named "constructor" off Object.prototype. */
+  var _ledCache = null;
   function clientLedger(client) {
+    var _lk = "|" + String(client == null ? "" : client);
+    if (!_ledCache) _ledCache = {};
+    if (_ledCache[_lk]) return _ledCache[_lk];
+    return (_ledCache[_lk] = clientLedgerCalc(client));
+  }
+  function clientLedgerCalc(client) {
     var chs = dedupeChallans(S.data.challans.filter(function (c) {
       return c.customerName === client && String(c.receiptReceived).toUpperCase() === "Y";
     }));
@@ -28384,6 +28503,9 @@ function viewCatalogue() {
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
     _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
+    /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
+       yesterday's money, which is the worst thing this app can do. */
+    _ledCache = null; _cqCache = null; _cwbCache = null;
     /* v6.9.263 - warming the logo cache is for the NEXT quote PDF, never for this paint;
        nothing on screen waits on it. Started from the paint it competed with teamAuth and
        teamGet for the same connections. Four seconds later the boot is done and the line is
