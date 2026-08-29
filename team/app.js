@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.371";
+  var APP_VERSION = "6.9.372";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17422,10 +17422,24 @@ function viewCatalogue() {
               '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.paid) + '</td>' +
               '<td style="padding:7px 8px;text-align:right;font-weight:800;color:#dc2626">' + money(r.due) + '</td></tr>';
           }).join("") + '</tbody></table></div>';
+        /* v6.9.372 - his report card, from the group header it belongs to. Drawn only for the
+           man who may pull it: the owner and accounts see one on every executive, a sales
+           executive sees one on his own group and there is no other group on his screen. */
+        var _cardBtns = canExecCard(k)
+          ? '<div class="acts" style="margin:8px 0 0;flex-wrap:wrap;gap:8px">' +
+            '<button class="btn sm ghost" data-act="exec-xlsx" data-k="' + esc(k) + '" ' +
+              'title="Every client under ' + esc(k) + ' who owes money, as an Excel file">' +
+              '\u2193 Excel</button>' +
+            '<button class="btn sm ghost" data-act="exec-pdf" data-k="' + esc(k) + '" ' +
+              'title="The same list on the letterhead, ready to print or send on WhatsApp">' +
+              '\u2193 PDF</button>' +
+            '<span style="font-size:11.5px;color:#94a3b8;align-self:center">pending list \u00b7 not for a client</span>' +
+            '</div>'
+          : '';
         oh += '<div class="card"><h3 data-act="hisab-grp" data-k="' + esc(k) + '" data-open="' + (expanded ? "1" : "0") + '" style="margin:0;cursor:pointer;user-select:none">' +
           '<span style="display:inline-block;width:16px;color:#94a3b8">' + (expanded ? '&#9662;' : '&#9656;') + '</span>' +
           esc(k) + ' <span class="pill due">' + money(gtot(k)) + '</span> <span style="font-weight:400;color:#94a3b8;font-size:12.5px">' + rows.length + ' client(s)' + (expanded ? '' : ' &middot; tap to view') + '</span></h3>' +
-          (expanded ? _tbl : '') + '</div>';
+          (expanded ? _tbl + _cardBtns : '') + '</div>';
       });
       }
       /* In-credit / advance clients — money we hold or a minus opening balance. Shown as their own
@@ -19071,6 +19085,121 @@ function viewCatalogue() {
         'style="background:#b91c1c;border-color:#b91c1c">Check my PIN and save</button></div>';
   }
 
+  /* ================= THE EXECUTIVE'S REPORT CARD  (v6.9.372, 27 Aug 2026) ==============
+     HIS WORDS: "make provision to download, executive pending payment of all client under him
+     a professional client report card cum pending payment ... in excel and pdf both".
+
+     MEASURED FIRST, on his live book:
+
+         Mukesh Verma    55 clients   46 owing   Rs 52,03,004
+         Imran           37 clients   22 owing   Rs 22,77,531
+         Vivek Verma     40 clients   21 owing   Rs 22,09,494
+         Dinesh Verma     1 client     1 owing   Rs  1,76,660
+         Ashish Bhuker   28 clients    1 owing   Rs  1,01,772
+                                    ---------   -------------
+                                     91 owing   Rs 99,68,461
+
+     Nearly a crore, and the men who are supposed to collect it had no list they could carry.
+
+     ASKED, AND HE ANSWERED BOTH: the owner picks any executive and each executive can pull his
+     own; and the row is the FULL card, not just a figure - the money, how old it is, when the
+     man last paid, when he last took delivery, how many deliveries have no signed paper behind
+     them, and how many quotes are still open on him. A pending figure tells him WHAT. A report
+     card tells him what to DO about it, which is the difference between a report and a work list.
+
+     NOTHING ABOUT WHO EARNS IS ON IT. No incentive rate, no discount preset, no cost. Those stay
+     admin-only wherever they appear, and this file is handed to a sales executive.
+
+     ONE ROW-BUILDER, TWO FILES. execCardRows() is the only thing that knows the arithmetic;
+     the .xlsx and the .pdf are two ways of printing it. That is the whole reason the totals on
+     the sheet and the print cannot disagree. */
+  function execCardRows(exec) {
+    var who = String(exec || "").trim();
+    var out = [];
+    (S.data.clients || []).forEach(function (c) {
+      var nm = String(c.name || "").trim();
+      if (!nm) return;
+      if (String(execForClient(nm) || "") !== who) return;
+      var l = clientLedger(nm);
+      /* Only the men who owe something. A report card of 55 clients where 9 owe nothing is a
+         report card nobody reads to the end. */
+      if (!(l.due > 0.5)) return;
+      var chs = dedupeChallans((S.data.challans || []).filter(function (x) {
+        return x.customerName === nm && String(x.receiptReceived).toUpperCase() === "Y";
+      }));
+      var lastCh = chs.reduce(function (a, x) {
+        var d = String(x.createdAt || "").slice(0, 10); return d > a ? d : a;
+      }, "");
+      var pays = payLines(nm);
+      var lastPay = pays.length ? pays[pays.length - 1].date : "";
+      var noPaper = chs.filter(function (x) { return !chProofAny(x).has; }).length;
+      var openQ = (S.data.quotes || []).filter(function (q) {
+        return String(q.client || "") === nm && CX_OPENQ.indexOf(String(q.status)) >= 0;
+      }).length;
+      /* ================= AN AGE THAT COULD NOT BE WORKED OUT IS NOT "CURRENT" ============
+         RENDERED AND LOOKED AT, and that is the only reason this is here. The first draft was
+         `try { ag = clientAging(nm); } catch (e) { ag = null; }` and then read `ag ? ag.oldest
+         : 0`. On a page where clientAging threw, every single row printed **Current** - against
+         Rs 8,00,799 that had not been paid in four hundred days. A collections list whose
+         failure mode is the most reassuring answer on it is worse than no list.
+         Unknown is now UNKNOWN: it says so, it is not coloured green, and it is counted. */
+      var ag = null, agOk = true;
+      try { ag = clientAging(nm); } catch (e) { ag = null; agOk = false; }
+      var oldest = (ag && isFinite(ag.oldest)) ? ag.oldest : null;
+      out.push({
+        name: nm,
+        mobile: String(c.mobile || ""),
+        where: [c.area, c.location].filter(Boolean).join(", "),
+        opening: Math.round(l.opening || 0),
+        billed: Math.round((l.billed || 0) + (l.freight || 0)),
+        received: Math.round(l.paid || 0),
+        returned: Math.round(l.returned || 0),
+        due: Math.round(l.due),
+        oldest: oldest,
+        bucket: execBucket(oldest),
+        ageKnown: oldest !== null,
+        sincePay: lastPay ? Math.max(0, -daysTo(lastPay)) : "",
+        lastPay: lastPay,
+        sinceCh: lastCh ? Math.max(0, -daysTo(lastCh)) : "",
+        lastCh: lastCh,
+        deliveries: chs.length,
+        noPaper: noPaper,
+        openQ: openQ
+      });
+    });
+    out.sort(function (a, b) { return b.due - a.due; });
+    return out;
+  }
+  /* The same four buckets the ageing tiles use, as a WORD - so the sheet reads on a black and
+     white printer and the PDF and the xlsx say the same thing. */
+  function execBucket(d) {
+    if (d === null || d === undefined || !isFinite(d)) return "Age not known";
+    if (d > 90) return "Chase hard";
+    if (d > 60) return "61 - 90 days";
+    if (d > CREDIT_DAYS) return "31 - 60 days";
+    return "Current";
+  }
+  function execCardTotals(rows) {
+    var t = { due: 0, billed: 0, received: 0, returned: 0, opening: 0, noPaper: 0, openQ: 0,
+              chase: 0, unknown: 0, unknownDue: 0 };
+    rows.forEach(function (r) {
+      t.due += r.due; t.billed += r.billed; t.received += r.received;
+      t.returned += r.returned; t.opening += r.opening;
+      t.noPaper += r.noPaper; t.openQ += r.openQ;
+      if (r.oldest > 90) t.chase += r.due;
+      /* counted, so "past 90 days" is never quietly short by money whose age nobody knows */
+      if (!r.ageKnown) { t.unknown++; t.unknownDue += r.due; }
+    });
+    return t;
+  }
+  /* Who may pull whose. The owner and accounts may pull anybody's; a sales executive may pull
+     his OWN and nobody else's. Asked as a function so the button and the two builders cannot
+     end up answering it differently. */
+  function canExecCard(exec) {
+    if (seesAllClients()) return true;
+    return String(exec || "").trim() === String(S.user || "").trim();
+  }
+
   /* ---------------- client payments + ledger ---------------- */
   function clientLedger(client) {
     var chs = dedupeChallans(S.data.challans.filter(function (c) {
@@ -19330,6 +19459,157 @@ function viewCatalogue() {
       toast("Downloaded " + name);
     } catch (e) { toast("Could not build the file on this device."); }
   }
+  /* ---- THE EXECUTIVE'S REPORT CARD, AS A REAL EXCEL FILE (v6.9.372) ----
+     Coloured by bucket AND labelled with the word, the same rule the brand sheet follows: the
+     file has to read on a black and white printer and for a man who cannot separate red from
+     green. Column widths are set so nothing arrives as ####. */
+  function execCardXlsx(exec) {
+    if (!canExecCard(exec)) { toast("That is not your list."); return; }
+    var rows = execCardRows(exec);
+    if (!rows.length) { toast("Nothing pending under " + exec + " — nothing to download."); return; }
+    var t = execCardTotals(rows);
+    var HEAD = ["Client", "Mobile", "Where", "Previous balance", "Billed (net)", "Received",
+                "Returns", "PENDING", "Oldest (days)", "Age", "Days since payment",
+                "Last payment", "Days since delivery", "Last delivery", "Deliveries",
+                "No signed receipt", "Open quotes"];
+    var out = [HEAD.map(function (h) { return { v: h, s: XL.HEAD }; })];
+    rows.forEach(function (r) {
+      out.push([r.name, r.mobile, r.where, r.opening, r.billed, r.received, r.returned,
+                { v: r.due, s: XL.BOLD },
+                r.oldest,
+                { v: r.bucket, s: !r.ageKnown ? XL.NR
+                                    : r.oldest > 90 ? XL.LOST
+                                    : r.oldest > CREDIT_DAYS ? XL.NONE : XL.WON },
+                r.sincePay, r.lastPay ? dstr(r.lastPay) : "never",
+                r.sinceCh, r.lastCh ? dstr(r.lastCh) : "",
+                r.deliveries, r.noPaper, r.openQ]);
+    });
+    out.push([]);
+    out.push([{ v: "TOTAL · " + rows.length + " client(s)", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
+              { v: t.opening, s: XL.BAND }, { v: t.billed, s: XL.BAND }, { v: t.received, s: XL.BAND },
+              { v: t.returned, s: XL.BAND }, { v: t.due, s: XL.BAND },
+              { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
+              { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
+              { v: t.noPaper, s: XL.BAND }, { v: t.openQ, s: XL.BAND }]);
+    out.push([]);
+    out.push(["Of that, " + moneyAscii(t.chase) + " is past 90 days." +
+              (t.unknown ? "  " + t.unknown + " client(s) worth " + moneyAscii(t.unknownDue) +
+                           " have no age the app could work out - they are NOT counted as current." : "")]);
+    out.push(["Energy World · " + exec + " · built " + fullDate(today()) +
+              " · internal working list, not for a client."]);
+    dlXlsx("Pending_" + String(exec).replace(/[^\w.-]/g, "_") + "_" + today() + ".xlsx",
+           String(exec).slice(0, 28), out,
+           [30, 14, 24, 16, 14, 13, 11, 14, 13, 14, 17, 14, 19, 14, 11, 17, 12]);
+  }
+
+  /* ---- AND AS A PDF, on the letterhead, landscape (v6.9.372) ----
+     Same rows, same totals, one builder behind both. Landscape because seventeen columns will
+     not go on a portrait page without shrinking the figures to something nobody can read at a
+     counter. */
+  function execCardPdf(exec) {
+    if (!canExecCard(exec)) { toast("That is not your list."); return; }
+    var rows = execCardRows(exec);
+    if (!rows.length) { toast("Nothing pending under " + exec + " — nothing to build."); return; }
+    return loadLogo().then(function () {
+      var t = execCardTotals(rows);
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+      var F = function (w) { doc.setFont(ppEmbed(doc), (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"); };
+      var W = 297, L = 12, R = W - 12, HB = 22;
+      var RS = function (n) { return "Rs." + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, HB, "F");
+      doc.setFillColor(94, 234, 212); doc.rect(0, HB, W, 0.9, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 5, 24, 12); } catch (e) { } }
+      F("bold"); doc.setFontSize(11.5); doc.setTextColor(255, 255, 255);
+      doc.text("PENDING PAYMENT · " + String(exec).toUpperCase(), R, 10, { align: "right" });
+      F("normal"); doc.setFontSize(7.6); doc.setTextColor(172, 212, 205);
+      doc.text(rows.length + " client(s) owing   ·   " + fullDate(today()), R, 15.5, { align: "right" });
+      doc.text("Internal working list — not for a client", R, 19.5, { align: "right" });
+
+      /* the four figures he is actually judged on, before the table */
+      var y = HB + 9;
+      var tile = function (x, w, lab, val, ink) {
+        doc.setFillColor(ink[0], ink[1], ink[2]); doc.rect(x, y, w, 13, "F");
+        F("bold"); doc.setFontSize(11); doc.setTextColor(255, 255, 255);
+        doc.text(String(val), x + 3, y + 6.6);
+        F("normal"); doc.setFontSize(6.4); doc.text(lab, x + 3, y + 10.8);
+      };
+      var tw = (R - L - 9) / 4;
+      tile(L, tw, "TOTAL PENDING", RS(t.due), [185, 28, 28]);
+      tile(L + tw + 3, tw, "PAST 90 DAYS", RS(t.chase), [124, 45, 18]);
+      tile(L + (tw + 3) * 2, tw, "DELIVERIES WITH NO SIGNED RECEIPT", t.noPaper, [146, 64, 14]);
+      tile(L + (tw + 3) * 3, tw, "OPEN QUOTES ON THESE CLIENTS", t.openQ, [13, 118, 108]);
+      y += 19;
+      /* said on the paper, not only in the column - money whose age is unknown is the money
+         most likely to be old */
+      if (t.unknown) {
+        /* BELOW the tiles, not on them. Drawn at y - 4.5 it sat across the bottom of the four
+           coloured blocks - rendered and looked at. */
+        F("normal"); doc.setFontSize(6.6); doc.setTextColor(180, 83, 9);
+        doc.text(t.unknown + " client(s) worth " + RS(t.unknownDue) +
+                 " have no age this app could work out. They are NOT counted as current, and " +
+                 "they are the ones to look at first.", L, y + 1.5);
+        y += 6;
+      }
+
+      var cols = [
+        { k: "name", h: "CLIENT", w: 46, a: "left" },
+        { k: "mobile", h: "MOBILE", w: 22, a: "left" },
+        { k: "where", h: "WHERE", w: 34, a: "left" },
+        { k: "billed", h: "BILLED", w: 22, a: "right", n: 1 },
+        { k: "received", h: "RECEIVED", w: 22, a: "right", n: 1 },
+        { k: "due", h: "PENDING", w: 24, a: "right", n: 1, b: 1 },
+        { k: "bucket", h: "AGE", w: 22, a: "left" },
+        { k: "sincePay", h: "SINCE PAID", w: 20, a: "right" },
+        { k: "sinceCh", h: "SINCE DEL.", w: 20, a: "right" },
+        { k: "noPaper", h: "NO RECEIPT", w: 20, a: "right" },
+        { k: "openQ", h: "QUOTES", w: 16, a: "right" }
+      ];
+      var xs = [], acc = L;
+      cols.forEach(function (c) { xs.push(acc); acc += c.w; });
+      var head = function () {
+        doc.setFillColor(11, 59, 54); doc.rect(L, y - 4, R - L, 6, "F");
+        F("bold"); doc.setFontSize(6); doc.setTextColor(255, 255, 255);
+        cols.forEach(function (c, i) {
+          doc.text(c.h, c.a === "right" ? xs[i] + c.w - 1.5 : xs[i] + 1.5, y, { align: c.a === "right" ? "right" : "left" });
+        });
+        y += 5.4;
+      };
+      head();
+      rows.forEach(function (r, i) {
+        if (y > 190) { doc.addPage(); y = 18; head(); }
+        if (i % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 3.2, R - L, 4.8, "F"); }
+        /* the oldest money is marked on its own row, so a man scanning down the page finds the
+           calls to make first without reading the age column */
+        if (r.oldest > 90) { doc.setFillColor(254, 242, 242); doc.rect(L, y - 3.2, R - L, 4.8, "F"); }
+        else if (!r.ageKnown) { doc.setFillColor(255, 251, 235); doc.rect(L, y - 3.2, R - L, 4.8, "F"); }
+        doc.setFontSize(6.6);
+        cols.forEach(function (c, i2) {
+          var v = r[c.k];
+          if (c.n) v = RS(v); else v = String(v === undefined || v === null ? "" : v);
+          F(c.b ? "bold" : "normal");
+          doc.setTextColor(c.b ? 185 : 17, c.b ? 28 : 34, c.b ? 28 : 45);
+          var txt = doc.splitTextToSize(pdfSafe(v), c.w - 3)[0] || "";
+          doc.text(txt, c.a === "right" ? xs[i2] + c.w - 1.5 : xs[i2] + 1.5, y,
+                   { align: c.a === "right" ? "right" : "left" });
+        });
+        y += 4.8;
+      });
+      if (y > 186) { doc.addPage(); y = 18; }
+      doc.setFillColor(241, 245, 249); doc.rect(L, y - 3.4, R - L, 6.6, "F");
+      F("bold"); doc.setFontSize(7.6); doc.setTextColor(17, 34, 45);
+      doc.text("TOTAL  ·  " + rows.length + " client(s)", xs[0] + 1.5, y + 0.9);
+      doc.text(RS(t.billed), xs[3] + cols[3].w - 1.5, y + 0.9, { align: "right" });
+      doc.text(RS(t.received), xs[4] + cols[4].w - 1.5, y + 0.9, { align: "right" });
+      doc.setTextColor(185, 28, 28);
+      doc.text(RS(t.due), xs[5] + cols[5].w - 1.5, y + 0.9, { align: "right" });
+      F("normal"); doc.setFontSize(6.4); doc.setTextColor(150, 163, 175);
+      doc.text("Energy World  |  Panipat · Sonipat · Karnal    |    " +
+               "Worked out from the app on " + fullDate(today()) +
+               ". Internal working list — not a statement, and not for a client.", L, 203);
+      return doc;
+    });
+  }
+
   function dlCsv(name, rows) {
     try {
       var body = rows.map(function (r) { return r.map(csvCell).join(","); }).join("\r\n");
@@ -29770,6 +30050,19 @@ function viewCatalogue() {
       var wnum = String(wc.mobile || "").replace(/\D/g, ""); if (wnum.length === 10) wnum = "91" + wnum;
       var wmsg = "Dear " + wcl + ",\n\nPlease find your Energy World statement (hisab) attached.\n\nThank you.\nEnergy World";
       waShareDoc(loadLogo().then(function () { return hisabPdf(wcl); }), wcl.replace(/[^\w.-]/g, "_") + "_hisab.pdf", wnum, wmsg);
+      return;
+    }
+    if (act === "exec-xlsx") { execCardXlsx(t.getAttribute("data-k") || ""); return; }
+    if (act === "exec-pdf") {
+      var _ek = t.getAttribute("data-k") || "";
+      if (!canExecCard(_ek)) { toast("That is not your list."); return; }
+      toast("Building the pending list for " + _ek + "\u2026");
+      var _p = execCardPdf(_ek);
+      if (!_p) return;
+      _p.then(function (d) {
+        if (!d) return;
+        d.save("Pending_" + String(_ek).replace(/[^\w.-]/g, "_") + "_" + today() + ".pdf");
+      }).catch(function () { toast("Could not build the PDF on this device."); });
       return;
     }
     if (act === "op-open") {
