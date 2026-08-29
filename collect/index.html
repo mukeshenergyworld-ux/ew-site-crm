@@ -143,7 +143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.25.1";
+  var APP_VERSION = "1.25.2";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -384,10 +384,31 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
 
      Omitted still means the whole book, which is what the fallback below asks for and what
      anything wanting everything at once should keep asking for. */
+  /* ============ "USABLE" MEANS "CARRIES WHAT I ASKED FOR" (29 Aug 2026) ============
+     usableBook asks whether an answer holds clients or challans, because that is what makes a
+     WHOLE book usable. Applied to a NARROW ask it is simply the wrong question.
+
+     FOUND BY OPENING THE APP AND READING THE TOAST, not by reasoning. The Payment app's second
+     call asks for ["audit"] and nothing else, so its answer can never hold clients or challans -
+     and this line therefore threw away a perfectly good reply and re-pulled the ENTIRE book,
+     every time, on every open, for every collector, while toasting "the short list did not come
+     back" as it did so.
+
+     Measured against the live backend the same minute: the narrow ask is 466 KB; the fallback it
+     was triggering is 838 KB. The staged pull was costing MORE than the single call it replaced.
+
+     A NAMED ask is usable when it carries the tabs it named. An unnamed ask - the fallback below,
+     and anything that wants everything - is judged exactly as before. */
+  function askedFor(r, only) {
+    if (!r || !r.ok) return false;
+    if (!only || !only.length) return usableBook(r);
+    for (var i = 0; i < only.length; i++) if (!Array.isArray(r[only[i]])) return false;
+    return true;
+  }
   function getBook(only) {
     var want = only || KEEP;
     return api("teamGet", { only: want }).then(function (r) {
-      if (usableBook(r)) { BOOKSAY = ""; return r; }
+      if (askedFor(r, only)) { BOOKSAY = ""; return r; }
       BOOKSAY = bookSay(r);
       /* the narrow ask came back unusable - try it the way the CRM does, which works */
       return api("teamGet").then(function (r2) {
