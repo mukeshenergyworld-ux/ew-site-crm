@@ -102,10 +102,28 @@ function ewFresh(req, fallbackUrl) {
      - the backend, which is not ours to cache. Stale business data is worse than slow business
        data - that rule stands.
 */
+/* ===== SAYING SO, INSTEAD OF WAITING TO SAY IT (29 Aug 2026) =====
+   Serving off the shelf is only honest if the man is told when the shelf is out of date. The
+   bodies are 2.1 MB and comparing them would cost more than the wait we just removed, so this
+   compares what the server itself uses to answer 304: the ETag, or failing that Last-Modified.
+   Different tag, different build. Nothing is guessed and nothing is downloaded twice. */
+function ewTag(r) {
+  try { return (r && (r.headers.get("etag") || r.headers.get("last-modified"))) || ""; }
+  catch (e) { return ""; }
+}
+function ewTellNewBuild(url) {
+  try {
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (cs) {
+      cs.forEach(function (c) { try { c.postMessage({ ew: "new-build", url: url }); } catch (e) {} });
+    });
+  } catch (e) {}
+}
 function ewShelf(req, fallbackUrl) {
   return caches.match(req).then(function (hit) {
     var net = fetch(req).then(function (r) {
       if (r && r.ok) {
+        /* the tag is read BEFORE ewKeep replaces the stored copy */
+        if (hit && ewTag(hit) && ewTag(r) && ewTag(hit) !== ewTag(r)) ewTellNewBuild(req.url);
         ewKeep(req, r);
       }
       return r;
@@ -131,7 +149,19 @@ function ewWantsNetwork(req) {
      Cache-first here would be wrong, and for a reason worth writing down: the CRM has no
      liveVersion() and no update banner. Its footer promises "updates apply automatically on
      each login", and THIS REQUEST is the only thing that keeps that promise. */
-  try { var u = new URL(req.url); return !!u.search || /\/app\.js$/.test(u.pathname); }
+  /* ===== 29 Aug 2026 - AND app.js CAME OFF THE LIST =====
+     The paragraph above is a correct description of a fast line and a wrong one of a phone in
+     a godown. A 304 revalidation is free in BYTES; it is not free in TIME. It is still a round
+     trip to GitHub Pages before the app may start, and ewFresh waits up to 2,500 ms for it
+     before it will look at the copy already on the phone. Measured across the estate that is
+     0.5 to 2.5 seconds on every single open, paid by every man, every time.
+
+     The reason given for keeping it - "the CRM has no update banner, and this request is the
+     only thing that keeps the footer's promise" - was true when it was written. It is not true
+     any more, because this release built the banner: ewShelf now compares the ETag of what it
+     served against the ETag of what came back, and tells the page when they differ. The promise
+     is kept LOUDLY instead of slowly, and the wait is gone. */
+  try { var u = new URL(req.url); return !!u.search; }
   catch (e) { return true; }
 }
 
