@@ -143,7 +143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.25.0";
+  var APP_VERSION = "1.25.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -3291,6 +3291,51 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      which is what he asked for in v1.28.0 when he had the 60-second guard taken out, and
      which he never got, because challans live in the half that guard never governed. */
   var _restStamp = "";
+  /* ============ 297 KB THIS APP DOWNLOADS AND NEVER DRAWS (v1.25.1, 29 Aug 2026) ============
+     Nobody asked for this. Measured on his own book while looking at something else:
+
+       the whole book on a phone            1,415 KB
+       of which the audit tab                 466 KB
+       of which challan:proof rows            348 KB
+       of which base64 thumbnails             297 KB   - 21% of EVERY pull, by everyone
+
+     94 audit rows carry a JPEG thumbnail inline. 87 of the 100 proof rows carry BOTH that
+     thumbnail AND a Drive url; not one carries a thumbnail without a url. So the picture is
+     always reachable by link, and the inline copy is a convenience for the screens that draw a
+     proof thumbnail instantly.
+
+     THIS APP DRAWS NONE OF THEM. It reads `audit` for exactly two things, both of which are
+     words: the follow-up calls and the old-book notes. The CRM, the Challan app and the Service
+     app do draw proof thumbnails and keep theirs untouched.
+
+     NOTHING IS DELETED. The thumbnail stays on the sheet, and every app that shows it still
+     gets it. This drops it from THIS app's copy in memory, which is also what gets stringified
+     into storage on every pull and parsed back on every open.
+
+     Net effect on this release: discounts + brandmap added about 37 KB, and this takes 297 KB
+     away. The app pulls roughly 260 KB LESS than it did before today. */
+  function dropProofThumbs() {
+    var a = S.data && S.data.audit;
+    if (!Array.isArray(a)) return 0;
+    var freed = 0;
+    for (var i = 0; i < a.length; i++) {
+      var r = a[i];
+      if (!r || String(r.action || "").indexOf("proof") < 0) continue;
+      var d = String(r.detail || "");
+      if (d.indexOf('"thumb"') < 0) continue;
+      var o = null;
+      try { o = JSON.parse(d); } catch (e) { continue; }
+      if (!o || typeof o !== "object" || !o.thumb) continue;
+      freed += String(o.thumb).length;
+      o.thumb = "";                     /* the url beside it is how the picture is found */
+      try { r.detail = JSON.stringify(o); } catch (e) {}
+    }
+    return freed;
+  }
+  /* restTook is shared code and stays byte-identical with the CRM's and the Challan app's -
+     t_apps_agree caught the first attempt at hooking the line above into it, and was right to.
+     dropProofThumbs is called beside each mergeBook(r, KEEP_REST) instead, which is this app's
+     own code and is where `audit` actually lands. */
   function restTook() { S.restAt = Date.now(); _restStamp = _beatSeen; }
   function beatMark(st) { if (st) _beatSeen = String(st); }
   function beat() {
@@ -3391,7 +3436,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
       /* the whole book arrived on the first call - take the rest of it and do not ask again */
       if (bookHas(r, KEEP_REST)) {
-        mergeBook(r, KEEP_REST); restTook();
+        mergeBook(r, KEEP_REST); dropProofThumbs(); restTook();
         jrnReconcile(); applyJournal();          /* the full book is in hand - see below */
         S.syncAt = Date.now(); S.busy = false; _pulling = null;
         snapSave(); flushSoon(); render();
@@ -3410,7 +3455,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       return getBook(KEEP_REST).then(function (r2) {
         S.busy = false; _pulling = null;
         if (!usableBook(r2) && !(r2 && Array.isArray(r2.audit))) { render(); return; }
-        mergeBook(r2, KEEP_REST); restTook(); bust();
+        mergeBook(r2, KEEP_REST); dropProofThumbs(); restTook(); bust();
         /* v1.10.0 - THE ORDER MATTERS AND IT IS NOT INTERCHANGEABLE.
            jrnReconcile reads a FRESH server pull to decide which held records the server
            already has. applyJournal then lays the rest back on top. Do them the other way
@@ -3554,7 +3599,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       mergeBook(r, KEEP_FAST); S.fastAt = Date.now(); bust();
         applyJournal(); snapSave(); render();
         if (bookHas(r, KEEP_REST)) {             /* the server sent everything - see bookHas */
-          mergeBook(r, KEEP_REST); restTook(); bust();
+          mergeBook(r, KEEP_REST); dropProofThumbs(); restTook(); bust();
           jrnReconcile(); applyJournal();
           S.syncAt = Date.now(); S.busy = false; snapSave(); render(); flushSoon();
           return;
@@ -3569,7 +3614,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         if (refused) return;
         S.busy = false;
         if (!(r2 && Array.isArray(r2.audit))) { render(); return; }
-        mergeBook(r2, KEEP_REST); restTook(); bust();
+        mergeBook(r2, KEEP_REST); dropProofThumbs(); restTook(); bust();
         jrnReconcile(); applyJournal();      /* reconcile after both halves - see pull() */
         S.syncAt = Date.now(); snapSave(); render(); flushSoon();
       });
