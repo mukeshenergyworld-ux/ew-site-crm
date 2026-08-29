@@ -143,7 +143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.24.0";
+  var APP_VERSION = "1.25.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -847,7 +847,32 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      business, it grows for ever, and this app reads it for two things that are not money -
      the follow-up calls (followMap) and the old-book notes (obMap). Neither belongs in front
      of a man waiting to see what somebody owes. */
-  var KEEP_FAST = ["clients", "challans", "payments", "returns"];
+  /* ============ v1.25.0 - TWO MORE TABS, AND WHY THEY EARN THEIR PLACE ============
+     MEASURED ON HIS OWN BOOK, 29 Aug 2026. All five returns in the business are credited
+     differently here than in the CRM, and every difference chases the client for MORE:
+
+       Himanshu Kumawat      this app  7,554     CRM 48,526
+       Sachin - Kabri        this app      0     CRM 22,141
+       Ravi - Parshawnath    this app    830     CRM 15,809     <- the one he reported
+       Manish Singla         this app    484     CRM  8,175
+       Naveen Kundu          this app  3,189     CRM  4,733
+                             ---------------------------------
+                                      12,057         99,384     Rs 87,327 over-chased
+
+     39 of the 44 return lines carry no rate of their own and trace to no delivery in the app,
+     because the goods went out before the app existed. The CRM prices those from the catalogue
+     at the client's standing discount and says "price estimated" on the card. This app added
+     ZERO for them and said nothing - so a collector was sent to five men to ask for goods they
+     had already sent back.
+     Pricing them the CRM's way needs the client's discount, which needs `discounts`, and the
+     brand behind a catalogue code, which needs `brandmap`. 300 rows and 26 rows. That is what
+     they cost, and Rs 87,327 of wrong chasing is what they buy.
+
+     AND THEY GO IN THE FIRST HALF, not the second. t_staged_pull caught this before it
+     shipped and it was right to: money is computed from `discounts`, and a due worked out from
+     four fresh tabs and one that has not landed yet is a WRONG figure on the screen of the app
+     whose whole job is saying what a man owes. 326 rows between them. */
+  var KEEP_FAST = ["clients", "challans", "payments", "returns", "discounts", "brandmap"];
   var KEEP_REST = ["audit"];
   var KEEP = KEEP_FAST.concat(KEEP_REST);
 
@@ -1123,6 +1148,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   }
 
 
+  var JOB_CODE = "JOBWORK";
+  function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
   function num(v) {
     if (typeof v === "number") return isFinite(v) ? v : 0;
     var t = String(v == null ? "" : v).replace(/[^0-9.\-]/g, "");
@@ -1139,18 +1166,113 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
 
 
   /* Net (post-discount) goods value of a challan, from the discount frozen on each
-     line when it was created. Mirrors the CRM's pricedLines exactly. */
+     line when it was created.
+     v1.25.0 - AND IT DID NOT MIRROR pricedLines, WHICH THE LINE ABOVE HAS CLAIMED SINCE v1.9.0.
+     Where a line carries no frozen percent at all, the CRM falls back to the client's standing
+     discount and this fell back to ZERO - the same delivery billed at 12,000 here and 7,500
+     there. Measured on his book today it costs nothing: 720 of 740 lines carry a frozen
+     percent, and the one challan holding the other 20 has not been received yet. So this is
+     shipped as a latent fault closed, not a number corrected - and the day that challan is
+     signed for, the two apps will still agree. */
   function challanNet(c) {
     var items = [];
     try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
     var goods = items.reduce(function (s, i) {
       var rate = num(i.rate), qty = num(i.qty);
-      var disc = (i.disc != null && i.disc !== "") ? num(i.disc) : 0;
+      var brand = isJobLine(i) ? "" : String(i.brand || c.brand || "");
+      var disc = (i.disc != null && i.disc !== "") ? num(i.disc) : clientDiscount(c.customerName, brand);
       return s + qty * Math.round(rate * (1 - disc / 100));
     }, 0);
     var freight = String(c.freightTo) === "Client" ? num(c.freight) : 0;
     return goods + freight;
   }
+
+  /* ---------------- the catalogue, and what a client is charged ----------------
+     Every function from realBrand to clientDiscount below is BYTE-IDENTICAL to the Challan
+     app's and the CRM's, deliberately. t_apps_agree.js will refuse the next release that
+     lets one of them drift, which is the whole reason this app was pricing a return
+     differently from the app that raised it. */
+  var CAT_KEY = "ew_team_catalog", CAT_V = 2;
+  var PRODUCTS = [], _catP = null;
+  /* what the CRM left on the shelf. Never fetched here on the ordinary path. */
+  function catFromShelf() {
+    try {
+      var c = JSON.parse(bigGet(CAT_KEY) || "null");
+      if (c && c.v === CAT_V && c.items && c.items.length) PRODUCTS = c.items;
+    } catch (e) {}
+  }
+  /* Asked for ONLY when a return line cannot be priced any other way. Returns nothing and
+     blocks nothing: it fills PRODUCTS and repaints, so the estimate appears a moment later
+     rather than the screen waiting on a catalogue almost nobody needs. */
+  function retPriceReady() {
+    if (PRODUCTS.length || _catP) return;
+    _catP = fetch(GAS + "?action=catalog", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (rows) {
+        var items = (rows || []).map(function (x) {
+          return { code: String(x.code || x.Code || "").trim(), desc: x.desc || x.Desc || "",
+                   brand: x.brand || x.Brand || "", price: Number(x.price || x.Price) || 0 };
+        }).filter(function (x) { return x.code; });
+        if (items.length) { PRODUCTS = items; _catP = null; try { render(); } catch (e) {} }
+      })
+      .catch(function () { _catP = null; });
+  }
+  function dkey(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
+  function realBrand(p) {
+    var m = ((S.data && S.data.brandmap) || []).filter(function (x) { return String(x.catalogValue) === String(p.brand); })[0];
+    return (m && m.brand) ? m.brand : "";
+  }
+  function incMap(row) {
+    try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
+  }
+  function discFrom(row) {
+    var f = String((incMap(row) || {}).from || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : "";
+  }
+  function discStamp(d) { var m = String((d && d.id) || "").match(/(\d{10,})/); return m ? Number(m[1]) : 0; }
+  function discRowsFor(client, brand) {
+    var c = dkey(client), b = dkey(brand);
+    return (S.data.discounts || []).filter(function (x) { return dkey(x.client) === c && dkey(x.brand) === b; });
+  }
+  function discRowOn(client, brand, onYmd) {
+    var rows = discRowsFor(client, brand);
+    if (!rows.length) return null;
+    /* same reason as discFrom: no dstr, and no today() either - the two apps build today's date
+       their own way and this block must mean one thing in both. */
+    var day = String(onYmd || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      var _n = new Date();
+      day = _n.getFullYear() + "-" + String(_n.getMonth() + 1).padStart(2, "0") +
+            "-" + String(_n.getDate()).padStart(2, "0");
+    }
+    var dated = [], undated = [];
+    rows.forEach(function (r) { (discFrom(r) ? dated : undated).push(r); });
+    var live = dated.filter(function (r) { return discFrom(r) <= day; });
+    if (live.length) {
+      var best = live[0];
+      for (var i = 1; i < live.length; i++) {
+        var a = discFrom(live[i]), b = discFrom(best);
+        /* two rates starting the same day: the one written later is the correction */
+        if (a > b || (a === b && discStamp(live[i]) > discStamp(best))) best = live[i];
+      }
+      return best;
+    }
+    /* nothing dated has started yet - fall back to whatever was there before dates existed,
+       and never to a rate that has not begun */
+    return undated.length ? discPick(undated) : null;
+  }
+  function discScore(d) { var m = incMap(d); return (Number(d && d.pct) || 0) + (Object.keys(m).length ? 0.5 : 0); }
+  function discPick(rows) {
+    if (!rows || !rows.length) return null;
+    var best = rows[0];
+    for (var i = 1; i < rows.length; i++) {
+      var sa = discScore(rows[i]), sb = discScore(best);
+      if (sa > sb || (sa === sb && discStamp(rows[i]) > discStamp(best))) best = rows[i];
+    }
+    return best;
+  }
+  function discRow(client, brand, onYmd) { return discRowOn(client, brand, onYmd); }
+  function clientDiscount(client, brand) { var d = discRow(client, brand); return d ? Number(d.pct) || 0 : 0; }
 
   /* ============ WHAT A RETURNED ITEM IS WORTH (v1.9.0) ============
      The old answer was r.amount, and r.amount does not exist - the CRM has never written an
@@ -1207,17 +1329,33 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         }
       }
     }
-    return { amt: 0, src: "" };        /* unpriced - NOT zero, and the caller must say so */
+    /* ---- 4. THE CATALOGUE, AT THIS CLIENT'S DISCOUNT (v1.25.0) ----
+       This used to stop at 3 and return zero, and the balance on the screen quietly absorbed
+       it. Measured on his book: 39 of 44 return lines land here, Rs 87,327 across five
+       clients, every rupee of it chased from a man who had already sent the goods back.
+       The CRM has always priced these from the catalogue; this app now prices them the same
+       way and, like the CRM, SAYS SO on the card rather than printing a confident figure.
+       A guessed price is not a price he agreed - but it is a great deal closer to the truth
+       than pretending the goods were never returned. */
+    if (code) {
+      var pr = PRODUCTS.filter(function (x) { return String(x.code || "").trim() === code; })[0];
+      if (pr && Number(pr.price) > 0) {
+        var brnd = String(item.brand || realBrand(pr) || pr.brand || "");
+        return { amt: rnNet(pr.price, clientDiscount(r.customerName, brnd), item.qty), src: "catalogue" };
+      }
+      retPriceReady();                 /* no catalogue on this phone yet - go and get it once */
+    }
+    return { amt: 0, src: "" };        /* still unpriced - NOT zero, and the caller must say so */
   }
   /* {amt, unpriced} - amt is what can honestly be credited, unpriced is how many lines could not
      be valued at all. A return with unpriced lines is shown flagged, never silently short. */
   function returnNet(r, allChallans) {
-    var amt = 0, unpriced = 0;
+    var amt = 0, unpriced = 0, est = 0;
     rnLines(r).forEach(function (i) {
       var p = rnPriceOf(i, r, allChallans);
-      if (p.src) amt += p.amt; else unpriced++;
+      if (p.src) { amt += p.amt; if (p.src === "catalogue") est++; } else unpriced++;
     });
-    return { amt: Math.round(amt), unpriced: unpriced };
+    return { amt: Math.round(amt), unpriced: unpriced, est: est };
   }
 
   /* Two challans carrying the same number are one challan. Defence against the
@@ -2335,8 +2473,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       /* v1.9.0 - the same pricing the balance uses, so the statement and the figure above it
          can never disagree. An unpriceable line is named on the row, not buried. */
       var _rv = returnNet(r, d.challans || []);
+      /* v1.25.0 - AND A PRICE WE GUESSED IS SAID OUT LOUD, exactly as the CRM's card says it.
+         These lines used to be worth nothing at all here. They are now worth the catalogue
+         price at this client's discount, which is very likely the best figure available and
+         is certainly not the figure he was billed. He is told which, and both cures are his:
+         put the challan number on the return, or type the rate on the line. */
       out.push({ ymd: d10(r.createdAt), what: "Material returned " + (r.returnNo || ""),
                  extra: [r.challanNo ? "against " + r.challanNo : "",
+                         _rv.est ? _rv.est + " of " + rnLines(r).length + " priced from our catalogue" : "",
                          _rv.unpriced ? _rv.unpriced + " item(s) not priced - ask the office" : ""]
                         .filter(Boolean).join(" \u00b7 "),
                  debit: 0, credit: _rv.amt });
@@ -2393,8 +2537,15 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         if (cr) { doc.setTextColor(13, 118, 108); doc.text(RS(cr), cCr, y, { align: "right" }); doc.setTextColor(17, 34, 45); }
         F("bold"); doc.text(RS(bal), cB, y, { align: "right" });
         if (extra) {
-          y += 3.4; F("normal"); doc.setFontSize(6.2); doc.setTextColor(120, 130, 145);
-          doc.text(doc.splitTextToSize(String(extra), cDb - cW - 6)[0] || "", cW, y);
+          /* v1.25.0 - THIS TOOK [0] AND THREW THE REST AWAY. The note column is 80 mm wide and
+             a return can carry a challan number 21 characters long plus a reason; anything past
+             the first wrapped line vanished mid-sentence with nothing to show it had. Measured,
+             not guessed: "against NAVEEN3471/230826/R01 - 12 of 13 priced from our catalogue"
+             is 67 characters and does not fit. Print every line it wraps to, and move the
+             cursor down by however many there were. */
+          F("normal"); doc.setFontSize(6.2); doc.setTextColor(120, 130, 145);
+          var _xl = doc.splitTextToSize(String(extra), cDb - cW - 6);
+          for (var _i = 0; _i < _xl.length; _i++) { y += 3.4; doc.text(_xl[_i], cW, y); }
         }
         y += 5.6;
       };
@@ -3357,7 +3508,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
        localStorage copy the moment IndexedDB has it, and bigGet only reads IndexedDB through
        the _big mirror - so a journal key left out of the preload reads back EMPTY on exactly
        the boot it was written for. */
-    bigPreload([SNAP + "_" + S.user, JRN_KEY]).then(function () { boot2(sess); });
+    /* v1.25.0 - AND THE CATALOGUE, WHICH THIS APP DOES NOT PAY FOR.
+       All eight apps share one origin and one IndexedDB, and the CRM has been writing the
+       master catalogue into ew_team_catalog for weeks. Reading it here costs one index lookup
+       and no network at all. Where it is genuinely absent - a phone that has only ever opened
+       this app - retPriceReady() fetches it ONCE, in the background, and only if a return
+       actually has a line that needs it. Nothing waits on it and no screen is blocked. */
+    bigPreload([SNAP + "_" + S.user, JRN_KEY, CAT_KEY]).then(function () { catFromShelf(); boot2(sess); });
   })();
 
   function boot2(sess) {
