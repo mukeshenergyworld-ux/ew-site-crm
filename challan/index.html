@@ -192,7 +192,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.46.1";
+  var APP_VERSION = "1.46.2";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -4162,9 +4162,35 @@ function discRowOn(client, brand, onYmd) {
      is never asked about again - that is exactly what "ignore once" is meant to do.
      v1.38.0 - and a job-work line names no brand, so it asks nothing. Labour has no brand
      discount to set and pretending it does would put an unanswerable question on this screen. */
+  /* "Accessory" and "Net Price Items" are heads under which allied items are
+     filed, not brands. Byte-identical to the CRM's - t_apps_agree keeps it that way. */
+  function presRealBrand(b) {
+    var l = String(b || "").trim().toLowerCase();
+    if (!l) return false;
+    return l.indexOf("accessor") < 0 && l.indexOf("net price") < 0;
+  }
+  /* ---- IT KEPT ASKING FOR A DISCOUNT ON A THING THAT IS NOT A BRAND (v6.9.374) ----
+     HE REPORTED IT: "why this asking time and again, its frustrating".
+
+     From his own screen: "1 brand has no discount set for Arun Sethi — ACCESSORY". Accessory is
+     not a brand. It is a catalogue bucket that allied items are filed under, and this file has
+     said so in three separate places since v6.9.218 - the brand board keeps it off lead cards,
+     the compact challan card hides it, and presRealBrand() keeps it off a customer proposal.
+     Only this one question never got the message, so every stamp on every client demanded a
+     standing percent for a heading that spans a dozen real brands and that he will never set.
+
+     Asked once per client per bucket, for ever, on a screen he has to pass through to record
+     money. That is a large part of why 88 deliveries are sitting unstamped.
+
+     Nothing about pricing changes. Every line still carries the discount frozen on it when the
+     challan was made, and if he does want a standing percent on accessories for a client he can
+     still set it in Discounts. It simply stops being a gate. presRealBrand is reused rather
+     than re-written so there is ONE definition of what counts as a brand. */
   function hisabBrandsMissingDisc(c) {
     var cl = (c && c.customerName) || "";
-    return hisabBrandsOf(c).filter(function (b) { return !discRow(cl, b); });
+    return hisabBrandsOf(c).filter(function (b) {
+      return presRealBrand(b) && !discRow(cl, b);
+    });
   }
   function canAddToHisab(c) {
     if (!c || !roleIs("admin")) return false;
