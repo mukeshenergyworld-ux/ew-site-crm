@@ -143,7 +143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.25.2";
+  var APP_VERSION = "1.26.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1208,6 +1208,60 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     return goods + freight;
   }
 
+  /* ============ A CANCELLED RECORD IS CANCELLED IN THIS APP TOO (v1.26.0) ============
+     MEASURED ON HIS OWN BOOK, 29 Aug 2026. Dr Danish Pritam Arora:
+
+       opening                                        21,767
+       delivered                                   +  1,52,176
+       paid - 1,00,000 cash, 52,400 cheque, 20 cash - 1,52,420
+       AND a FOURTH row: a second 1,00,000 cash on the same day, entered twice
+       and CANCELLED in the CRM on the day it was spotted.
+
+       the CRM says he owes                            21,523
+       this app said he was                        -  78,477   (in credit)
+
+     A cancelled duplicate does not make the collector chase a smaller number. It takes him
+     off the list altogether: a man showing 78,477 in credit is never called. One row, one
+     client, 1,00,000 - and it is the only cancelled money row on the whole book, which is
+     exactly why nobody noticed.
+
+     Cancellation is not a column anywhere. It is an audit row, and until now only the CRM
+     read them. cancelMap below is the CRM's own, byte-identical, and t_apps_agree.js will
+     refuse the release that lets the two drift.
+
+     ON THE STAGED PULL, because it is a fair question: `audit` comes down in the SECOND half.
+     But snapLoad() puts the whole of the last book - audit included - back into memory before
+     the first paint, so the cancellations are known from the moment the app opens on any
+     device that has opened it before. Only a phone's very first pull is without them, and
+     that phone has no balances on screen yet either. */
+  var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return", payments: "Payment received", quotes: "Quote", pitch: "Brand record" };
+  var _cxCache = null;
+function cancelMap() {
+    if (_cxCache) return _cxCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "rec:cancel") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var tab = String(d.tab || ""), rid = String(d.recId || "");
+      if (!tab || !rid || !CANCEL_TABS[tab]) return;
+      var k = tab + "|" + rid, prev = m[k];
+      /* newest wins - a record brought back reads as brought back because that row is newer,
+         not because the cancel row went anywhere */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[k] = {
+          on: !d.undo, reason: String(d.reason || ""), note: String(d.note || ""),
+          label: String(d.label || ""), sub: String(d.sub || ""), value: Number(d.value) || 0,
+          at: r.createdAt || "", by: r.actor || ""
+        };
+      }
+    });
+    _cxCache = m;
+    return m;
+  }
+  function cancelInfo(tab, id) { return cancelMap()[String(tab) + "|" + String(id || "")] || null; }
+  function isCancelled(tab, id) { var c = cancelInfo(tab, id); return !!(c && c.on); }
+
   /* ---------------- the catalogue, and what a client is charged ----------------
      Every function from realBrand to clientDiscount below is BYTE-IDENTICAL to the Challan
      app's and the CRM's, deliberately. t_apps_agree.js will refuse the next release that
@@ -1393,18 +1447,23 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Returns everything the screen and the reminder need, and nothing it does not. */
   function clientDue(opts) {
     var client = opts.client || {};
+    /* v1.26.0 - and NOT cancelled. All three, because all three move the balance: a cancelled
+       delivery over-bills him, a cancelled payment under-chases him, a cancelled return credits
+       goods that never came back. */
     var challans = dedupe((opts.challans || []).filter(function (c) {
       return lower(c.customerName) === lower(client.name) &&
-             String(c.receiptReceived || "").toUpperCase() === "Y";
+             String(c.receiptReceived || "").toUpperCase() === "Y" &&
+             !isCancelled("challans", c.id);
     })).sort(function (a, b) { return d10(a.createdAt).localeCompare(d10(b.createdAt)); });
 
     var payments = (opts.payments || []).filter(function (p) {
-      return lower(p.client) === lower(client.name);
+      return lower(p.client) === lower(client.name) && !isCancelled("payments", p.id);
     }).sort(function (a, b) { return d10(a.date || a.createdAt).localeCompare(d10(b.date || b.createdAt)); });
 
     var returns = (opts.returns || []).filter(function (r) {
       return lower(r.customerName) === lower(client.name) &&
-             lower(r.status) === "received";
+             lower(r.status) === "received" &&
+             !isCancelled("returns", r.id);
     });
 
     var today = opts.today;
@@ -2480,16 +2539,21 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   function ledgerRows(name) {
     var d = S.data || {}, k = String(name || "").trim().toLowerCase();
     var out = [];
+    /* v1.26.0 - the statement is the evidence FOR the balance, so it obeys the same three
+       exclusions. A statement that lists a payment the balance does not count is a statement
+       the client will win an argument with. */
     dedupe((d.challans || []).filter(function (c) {
       return String(c.customerName || "").trim().toLowerCase() === k &&
-             String(c.receiptReceived || "").toUpperCase() === "Y";
+             String(c.receiptReceived || "").toUpperCase() === "Y" &&
+             !isCancelled("challans", c.id);
     })).forEach(function (c) {
       out.push({ ymd: d10(c.createdAt), what: "Delivery " + (c.challanNo || ""),
                  extra: c.site || "", debit: challanNet(c), credit: 0 });
     });
     (d.returns || []).filter(function (r) {
       return String(r.customerName || "").trim().toLowerCase() === k &&
-             String(r.status || "").trim().toLowerCase() === "received";
+             String(r.status || "").trim().toLowerCase() === "received" &&
+             !isCancelled("returns", r.id);
     }).forEach(function (r) {
       /* v1.9.0 - the same pricing the balance uses, so the statement and the figure above it
          can never disagree. An unpriceable line is named on the row, not buried. */
@@ -2507,7 +2571,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
                  debit: 0, credit: _rv.amt });
     });
     (d.payments || []).filter(function (p) {
-      return String(p.client || "").trim().toLowerCase() === k;
+      return String(p.client || "").trim().toLowerCase() === k && !isCancelled("payments", p.id);
     }).forEach(function (p) {
       out.push({ ymd: d10(p.date || p.createdAt), what: "Payment received",
                  extra: [p.mode, p.ref].filter(Boolean).join(" · "), debit: 0, credit: EWnum(p.amount) });
@@ -2963,7 +3027,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      array, and clientCard() calls them three times per visible client - on every letter typed
      into the search box. Memoised into the same cache bust() already clears. */
   var _pmCache = {}, _flCache = {};
-  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; }
+  /* v1.26.0 - AND the cancellation map, which is built from `audit`. audit arrives in the
+     SECOND half of the pull, so a map built during the first paint knows nothing about it.
+     bust() runs on the fast merge in both pull paths, before anything reads it again, so one
+     line here covers every route the book takes in. A cancellation cache that is not dropped
+     shows a cancelled payment as live, which is the exact fault this release exists to fix. */
+  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; }
 
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest("[data-act]");
