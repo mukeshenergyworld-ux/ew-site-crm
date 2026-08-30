@@ -143,7 +143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.27.1";
+  var APP_VERSION = "1.28.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -341,10 +341,20 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       });
     } catch (e) {}
   }
+  /* ============ "NO ANSWER" IS NOT "UP TO DATE" (30 Aug 2026) ============
+     liveVersion() ends in .catch(return "") - correct, because no signal is not a new version.
+     But this line then read that empty string as `!v` and said "This is the latest version",
+     out loud, with a version number on it. A check that never reached the server reported
+     success. On a phone in a godown that is the most common outcome there is, and it is the
+     one answer that stops a man looking further.
+
+     Say which of the two actually happened. Nothing else changes: an unreachable server still
+     raises no banner. */
   function refreshNow(loud) {
     pull(true);
     liveVersion().then(function (v) {
-      if (!v || v === APP_VERSION) { if (loud) toast("This is the latest version (v" + APP_VERSION + ")."); return; }
+      if (!v) { if (loud) toast("Could not check for a new version — you are on v" + APP_VERSION + "."); return; }
+      if (v === APP_VERSION) { if (loud) toast("This is the latest version (v" + APP_VERSION + ")."); return; }
       S.newVer = v;
       try { render(); } catch (e) {}
       toast("Version " + v + " is ready — tap Update above.");
@@ -1416,16 +1426,95 @@ function cancelMap() {
   /* Asked for ONLY when a return line cannot be priced any other way. Returns nothing and
      blocks nothing: it fills PRODUCTS and repaints, so the estimate appears a moment later
      rather than the screen waiting on a catalogue almost nobody needs. */
+  /* ============ THE CATALOGUE CAME DOWN AND WAS THROWN AWAY (30 Aug 2026) ============
+     HIS WORDS, twice, and he was right both times: "for same client different balances on CRM
+     and collection app", then "still same case ,,, dont know what are you doing?".
+
+     Ravi - Parshawnath City. Thirteen lines came back. TWELVE of them have no rate on the
+     return row and no rate on any challan of his, so they fall to the catalogue - which is the
+     whole reason tier 4 was built in v1.25.0. His screen credited him Rs 830: the ONE line that
+     could be priced from a delivery. Rs 830 is not a stale figure. It is what this app computes
+     TODAY, on the shipped build, when PRODUCTS is empty.
+
+     And PRODUCTS was empty on his phone, for a reason that had nothing to do with his phone:
+
+       ?action=catalog answers with ROWS OF THE SHEET - plain arrays, ["", "7071740275", ...].
+       This function read x.code and x.Code off each of them. An array has neither, so every one
+       of the 1,047 rows produced an empty code, .filter dropped all 1,047, and items.length was
+       0. PRODUCTS stayed empty. _catP was cleared only INSIDE `if (items.length)`, so it also
+       stayed set - and the guard on the first line then refused to ever try again. 225 KB
+       downloaded, parsed to nothing, given up on permanently, silently.
+
+     WHY FIVE DAYS OF CHECKING NEVER CAUGHT IT. I tested in a browser with the CRM open on the
+     same github.io origin. The CRM writes ew_team_catalog into the IndexedDB both apps share,
+     so catFromShelf() filled PRODUCTS before this function was ever reached and the broken
+     branch never ran. On a phone that has the Payment app and NOT the CRM - which is every
+     collector's phone, and his - it ran every single time.
+
+       A test on a device that already has the other app installed proves nothing about a
+       device that does not.
+
+     The parse is now the CRM's own parseCatalog, byte for byte, so the two apps can never again
+     read one sheet differently. _catP is cleared on every path, so a bad answer is retried
+     instead of ending the matter. And the result is written to the shelf both apps share, so it
+     costs 225 KB once rather than on every open. */
+  function driveImg(u, size) {
+    u = String(u || "").trim();
+    if (!u) return "";
+    var m = u.match(/\/d\/([A-Za-z0-9_\-]{20,})/) || u.match(/[?&]id=([A-Za-z0-9_\-]{20,})/);
+    if (!m) return u;
+    return "https://lh3.googleusercontent.com/d/" + m[1] + "=w" + (size || 200);
+  }
+  function parseCatalog(rows) {
+    var head = -1, i, r;
+    for (i = 0; i < rows.length && i < 10; i++) {
+      r = (rows[i] || []).map(function (x) { return String(x || "").toLowerCase().trim(); });
+      if (r.indexOf("product code") >= 0) { head = i; break; }
+    }
+    if (head < 0) return [];
+    var out = [];
+    for (i = head + 1; i < rows.length; i++) {
+      var row = rows[i] || [];
+      var code = String(row[1] || "").trim();
+      var desc = String(row[3] || row[2] || "").trim();
+      if (!code && !desc) continue;
+      out.push({
+        code: code,
+        family: String(row[2] || "").trim(),
+        desc: desc,
+        cat: String(row[4] || "").trim(),
+        unit: String(row[5] || "").trim(),
+        /* v6.9.375 - was Number(String(row[6]||"0").replace(/[^0-9.]/g,""))||0, whose
+           character class has no minus in it: the CRM STRIPPED the sign from a negative
+           catalogue price and read -450 as 450, while the Challan app's num() kept it. Two
+           apps pricing one product with opposite signs. No product on his 1,044-row catalogue
+           is negative today, so this is a latent fault closed, not a number corrected - and
+           both apps now parse a price with the same function. */
+        price: num(row[6]),
+        brand: String(row[8] || "").trim(),
+        pic: driveImg(row[10]),
+        /* column L of the master catalogue. Written once per product, it then
+           appears on the Products screen and on every future quote. Blank is
+           fine - a product with no specs simply prints without the block. */
+        specs: String(row[11] || "").trim(),
+        label: (code ? code + " - " : "") + desc
+      });
+    }
+    return out;
+  }
   function retPriceReady() {
     if (PRODUCTS.length || _catP) return;
     _catP = fetch(GAS + "?action=catalog", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (rows) {
-        var items = (rows || []).map(function (x) {
-          return { code: String(x.code || x.Code || "").trim(), desc: x.desc || x.Desc || "",
-                   brand: x.brand || x.Brand || "", price: Number(x.price || x.Price) || 0 };
-        }).filter(function (x) { return x.code; });
-        if (items.length) { PRODUCTS = items; _catP = null; try { render(); } catch (e) {} }
+        var items = parseCatalog(rows);
+        if (items.length) {
+          PRODUCTS = items;
+          try { bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items })); } catch (e) {}
+          try { bust(); } catch (e) {}
+          try { render(); } catch (e) {}
+        }
+        _catP = null;                  /* an answer we could not use is a reason to try again */
       })
       .catch(function () { _catP = null; });
   }
@@ -1619,6 +1708,11 @@ function cancelMap() {
     var opening = num(client.openingAmt);
     var billed = challans.reduce(function (s, c) { return s + challanNet(c); }, 0);
     var credited = returns.reduce(function (s, r) { return s + num(opts.returnValue ? opts.returnValue(r) : 0); }, 0);
+    /* v1.28.0 - HOW MANY LINES CAME BACK THAT WE COULD NOT PUT A PRICE ON. The statement has
+       named them since v1.9.0; the card - the screen he actually chases from - printed the
+       short figure with no mark on it at all. A credit that is too small is money asked for
+       twice, so the card now says when one is incomplete. */
+    var unpricedLines = returns.reduce(function (s, r) { return s + num(opts.returnUnpriced ? opts.returnUnpriced(r) : 0); }, 0);
     var paid = payments.reduce(function (s, p) { return s + num(p.amount); }, 0);
     var due = Math.round(opening + billed - credited - paid);
 
@@ -1661,7 +1755,7 @@ function cancelMap() {
       owner: String(client.ownedBy || client.createdBy || "").trim(),
       due: due,
       billed: Math.round(billed), paid: Math.round(paid),
-      credited: Math.round(credited),
+      credited: Math.round(credited), unpricedLines: unpricedLines,
       opening: Math.round(opening), oldBook: openLeft,
       overdue: Math.round(overdue),
       oldestUnpaid: oldest,
@@ -1804,6 +1898,7 @@ function cancelMap() {
        that has never existed. See returnNet. */
     var _ch = d.challans || [];
     var retVal = function (r) { return returnNet(r, _ch).amt; };
+    var retUnp = function (r) { return returnNet(r, _ch).unpriced; };
     var mine = (d.clients || []).filter(function (c) { return String(c.name || "").trim(); });
     if (!seesAll()) {
       var me = String(S.user || "").trim().toLowerCase();
@@ -1828,7 +1923,7 @@ function cancelMap() {
                              opts.creditDays since v1.9 and this call site handed it the constant,
                              so the box on the client card did nothing here at all. */
                           creditDays: num(c.creditDays) || CREDIT_DAYS,
-                          returnValue: retVal });
+                          returnValue: retVal, returnUnpriced: retUnp });
       r.promise = promiseFor(c.name);
       r.follows = followFor(c.name).length;
       r.bucket = bucketOf(r, t);
@@ -2219,6 +2314,8 @@ function cancelMap() {
     h += '<div class="muted" style="margin-bottom:8px">' +
       'Billed ' + money(r.billed + r.opening) + ' · received ' + money(r.paid) +
       (r.credited > 0 ? ' · returns ' + money(r.credited) : '') +
+      (r.unpricedLines > 0 ? ' <span class="pill red">' + r.unpricedLines +
+        ' returned item(s) not priced — this credit is short</span>' : '') +
       ' · <b>' + r.challans + ' delivery' + (r.challans === 1 ? '' : ' notes') + '</b></div>';
 
     if (r.unpaid && r.unpaid.length) {
