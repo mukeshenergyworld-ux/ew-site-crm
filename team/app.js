@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.378";
+  var APP_VERSION = "6.9.379";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5248,6 +5248,12 @@ window.addEventListener("beforeunload", function (ev) {
     return best;
   }
   function clientDiscount(client, brand) { var d = discRow(client, brand); return d ? Number(d.pct) || 0 : 0; }
+  /* THE RATE THAT WAS IN FORCE ON A GIVEN DAY. clientDiscount() answers "what is this client's
+     discount now", which is the right question when pricing something today and the WRONG one
+     when asking whether a delivery already made was priced correctly. v6.9.350 built dated rates
+     precisely so that "deliveries BEFORE this date keep the rate they were made at" - and then
+     chDiscGap compared every challan ever made against today's rate anyway. */
+  function clientDiscountOn(client, brand, ymd) { var d = discRow(client, brand, ymd); return d ? Number(d.pct) || 0 : 0; }
   /* ---- per-client, per-brand, per-partner incentive ----
      The incentive a partner earns is set at the SAME place as that client's brand discount
      (admin only). We store it on the very same discount row, in its `notes` column, as a small
@@ -16978,13 +16984,21 @@ function viewCatalogue() {
      the day, and nothing here will ever quietly take that away. */
   function chDiscGap(c) {
     var cl = c && c.customerName;
+    /* v6.9.379 - THE DAY THIS DELIVERY WAS MADE, not today. Measured on his book the day this
+       was written: 11 challans were being offered a re-price worth Rs 73,150, every one of them
+       judged against the rate in force this morning. It happened to agree with the dated rate on
+       all 11 - he has one dated rate so far - so this closes a latent fault rather than moving a
+       rupee. It would not have stayed latent: the next dated discount he sets makes every older
+       delivery of that client look under-discounted, and offers to hand back money he never
+       agreed to hand back. */
+    var _day = String((c && c.createdAt) || "").slice(0, 10);
     var items = []; try { items = JSON.parse((c && c.itemsJson) || "[]"); } catch (e) { items = []; }
     var lines = [], skipped = [], was = 0, now = 0;
     items.forEach(function (i) {
       var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0;
       var brand = i.brand || productBrandByCode(i.code) || (c && c.brand) || "";
       var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : 0;
-      var preset = clientDiscount(cl, brand);
+      var preset = clientDiscountOn(cl, brand, _day);
       /* v6.9.277 - IS THIS RATE AN MRP AT ALL?
          Until v6.9.277 a challan raised from a quote stored the NET as its rate and disc 0 -
          71,561 became a 37,927 "rate" with no discount recorded. Applying a preset to that
@@ -17008,11 +17022,12 @@ function viewCatalogue() {
      discount to the preset and never lowers one, and it touches nothing but disc. */
   function chRepriced(c) {
     var cl = c && c.customerName;
+    var _day = String((c && c.createdAt) || "").slice(0, 10);   /* v6.9.379 - as chDiscGap judges it */
     var items = []; try { items = JSON.parse((c && c.itemsJson) || "[]"); } catch (e) { items = []; }
     return items.map(function (i) {
       var brand = i.brand || productBrandByCode(i.code) || (c && c.brand) || "";
       var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : 0;
-      var preset = clientDiscount(cl, brand);
+      var preset = clientDiscountOn(cl, brand, _day);
       /* v6.9.277 - the same guard. A rate that is not the list price is a net figure, and a
          percentage applied to a net figure discounts what has already been discounted. */
       var list = Number((PRODUCTS.filter(function (p) { return p.code === i.code; })[0] || {}).price) || 0;
@@ -17022,30 +17037,90 @@ function viewCatalogue() {
       return out;
     });
   }
-  function discGapCard(c) {
-    if (!c || !roleIs("admin")) return "";
-    var g = chDiscGap(c);
-    if (!g.n) return "";
-    return '<div style="margin-top:7px;padding:8px 11px;border-radius:9px;background:#fff7ed;' +
-      'border:1px solid #fed7aa;font-size:12.5px;color:#7c2d12">' +
-      '<b>Priced before this client had a discount.</b> ' + g.n + ' line(s) are frozen at ' +
-      (g.lines[0].frozen ? g.lines[0].frozen + '%' : '0%') + ' where ' + esc(c.customerName) +
-      '’s preset is now ' + g.lines.map(function (l) { return l.preset + '%'; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(" / ") +
-      '. Billed ' + money(g.was) + ', would be ' + money(g.now) +
-      ' — <b>' + money(g.diff) + '</b> less.' +
-      /* v6.9.277 - and name the lines this will deliberately not touch */
-      ((g.skipped && g.skipped.length)
-        ? '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #fed7aa">' +
-          '<b>' + g.skipped.length + ' line(s) left alone</b> — ' +
-          g.skipped.map(function (x) { return esc(x.desc); }).join(", ") +
-          '. The rate stored on ' + (g.skipped.length > 1 ? 'those lines is' : 'that line is') +
-          ' already a discounted price, not the list price' +
-          (g.skipped[0].list ? ' (' + money(g.skipped[0].rate) + ' stored, list is ' + money(g.skipped[0].list) + ')' : '') +
-          ', so taking the preset off it again would discount it twice.</div>'
-        : '') +
-      '<div class="acts" style="margin-top:7px"><button class="btn sm" data-act="ch-reprice" data-id="' +
-      esc(c.id) + '">Re-price at the preset</button></div></div>';
+  /* ================= ONE QUESTION, AT THE MOMENT IT IS LIVE (v6.9.379) =================
+     Called after a discount save that actually moved a figure. It looks only at deliveries the
+     new rate could legitimately reach - on or after the day he said it starts - and asks once,
+     naming every one and what it costs, with the ones already passed into hisab called out
+     separately because those are bills the client may already be holding.
+
+     Cancel leaves every delivery exactly as it is, and nothing asks again. */
+  function repriceOffer(touched, fromYmd) {
+    if (!touched || !touched.length || !roleIs("admin")) return;
+    var want = {};
+    touched.forEach(function (t) { want[dkey(t.client)] = 1; });
+    var hits = [];
+    (S.data.challans || []).forEach(function (c) {
+      if (!want[dkey(c.customerName)]) return;
+      var ymd = String(c.createdAt || "").slice(0, 10);
+      if (fromYmd && ymd < fromYmd) return;      /* a rate does not reach back past its own start */
+      if (isCancelled && isCancelled("challans", c.id)) return;
+      var g = chDiscGap(c);
+      if (g.n) hits.push({ c: c, g: g, ymd: ymd });
+    });
+    if (!hits.length) return;
+    hits.sort(function (a, b) { return String(a.ymd).localeCompare(String(b.ymd)); });
+    var total = hits.reduce(function (a, h) { return a + h.g.diff; }, 0);
+    var inH = hits.filter(function (h) { return inHisab(h.c); });
+    var show = hits.slice(0, 8).map(function (h) {
+      var l = h.g.lines[0];
+      return "\u2022 " + (h.c.challanNo || "?") + "   " + fullDate(h.ymd) + "   " +
+             l.frozen + "% \u2192 " + l.preset + "%   " + money(h.g.diff) + " less";
+    }).join("\n");
+    if (hits.length > 8) show += "\n  \u2026 and " + (hits.length - 8) + " more";
+    if (!window.confirm(
+      hits[0].c.customerName + " \u2014 the discount you just saved is higher than the one " +
+      (hits.length > 1 ? hits.length + " deliveries were" : "one delivery was") + " priced at" +
+      (fromYmd ? " (on or after " + fullDate(fromYmd) + ")" : "") + ".\n\n" + show +
+      "\n\nTotal " + money(total) + " off what this client owes." +
+      (inH.length ? "\n\n\u26a0 " + inH.length + " of these " +
+        (inH.length > 1 ? "have" : "has") + " already been passed into hisab \u2014 " +
+        "re-pricing changes a bill the client may already hold." : "") +
+      "\n\nRe-price " + (hits.length > 1 ? "them" : "it") + " now?\n" +
+      "Cancel leaves every delivery exactly as it is, and you will not be asked again.")) {
+      toast("Left as they are \u2014 nothing was re-priced.");
+      return;
+    }
+    var jobs = hits.map(function (h) {
+      var newItems = chRepriced(h.c);
+      return save("challans", Object.assign({}, h.c, {
+        itemsJson: JSON.stringify(newItems),
+        amount: newItems.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0)
+      })).then(function () {
+        return save("audit", {
+          id: "RP-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+          createdAt: new Date().toISOString(), actor: S.user, action: "challan:reprice",
+          target: (h.c.challanNo || "") + " / " + (h.c.customerName || ""),
+          detail: JSON.stringify({ chId: h.c.id, no: h.c.challanNo, was: h.g.was, now: h.g.now,
+            from: fromYmd || "", why: "discount changed",
+            lines: h.g.lines.map(function (l) { return { code: l.code, from: l.frozen, to: l.preset }; }) }), ip: ""
+        }, true);
+      });
+    });
+    Promise.all(jobs).then(function () {
+      toast(hits.length + " deliver" + (hits.length > 1 ? "ies" : "y") + " re-priced \u2014 " +
+            money(total) + " off " + hits[0].c.customerName + "\u2019s account.");
+      renderBg();
+    });
   }
+  /* ================= THE NAG CAME OFF THE DELIVERY CARD (v6.9.379, 30 Aug 2026) ==========
+     HIS WORDS: "that reprice at preset , its very confusing , either do that on time we are
+     fixing discount , what the logic to show it here ? do something for it".
+
+     He is right, and the count says how right. discGapCard() drew an orange panel with a money
+     button on EVERY delivery whose lines sat below the client's preset - 11 of them on his book
+     the day he asked, offering Rs 73,150 off. Every one is a delivery already made, signed for,
+     and mostly already passed into hisab. A permanent standing offer to hand money back, on a
+     historical document, is not a prompt: it is a hazard, and he has to read past it every time
+     he opens a client.
+
+     THE MOMENT THAT DECISION BELONGS TO IS THE MOMENT THE DISCOUNT CHANGES. That is the only
+     time the question is live, it is the only time he has the context to answer it, and the app
+     already stops him there to ask which date the new rate starts from. So the question is now
+     asked once, in that same breath, for every affected delivery at once - and if he says no,
+     it is not asked again. See repriceOffer() below, called from disc-saveall.
+
+     discGapCard() and the per-challan ch-reprice button are gone. chDiscGap() and chRepriced()
+     stay - they do the arithmetic, and the offer uses them. */
 
   /* Distinct customer names that actually have a received challan (these are the billable clients). */
   function hisabClientNames() {
@@ -17884,9 +17959,11 @@ function viewCatalogue() {
         (xOff > 0 ? '<tr style="background:#f0fdfa;border-top:1px dashed #e2e8f0"><td colspan="6" style="padding:5px 6px;text-align:right;color:#0f766e">Further discount' + (hisabStamp(c) && hisabStamp(c).extraNote ? ' (' + esc(hisabStamp(c).extraNote) + ')' : '') + '</td><td style="padding:5px 6px;text-align:right;font-weight:700;color:#0f766e">- ' + money(xOff) + '</td></tr>' : '') +
         '</tbody>' +
         '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total</td>' +
-        '<td style="padding:6px;text-align:right;font-weight:800">' + money(chTotal) + '</td></tr></tfoot></table></div>' +
-        /* v6.9.274 - and say so when the frozen discount is behind the preset */
-        discGapCard(c);
+        /* v6.9.274 drew discGapCard() here - an orange "Re-price at the preset" panel on every
+           delivery priced below the client's preset. v6.9.379 took it off: the question is asked
+           once, when the discount actually changes, and not for ever afterwards on a delivery
+           that has already been made and signed for. See repriceOffer(). */
+        '<td style="padding:6px;text-align:right;font-weight:800">' + money(chTotal) + '</td></tr></tfoot></table></div>';
       /* ================= THE CARD, CLOSED UP  (v6.9.345, 23 August 2026) =================
          HIS WORDS: "make this compact one, lots of space empty utilize."
 
@@ -27510,7 +27587,7 @@ function viewCatalogue() {
          list price. Without this the credit is always slightly too generous and the leak is
          invisible, because each one looks fair on its own. */
       '<div class="grid2">' +
-      '<div><label>Discount given on the whole challan</label><input id="m_disc" inputmode="numeric" placeholder="0" value="' + esc((z && z.disc != null) ? z.disc : 0) + '"' + (canSetPricing() ? '' : ' readonly title="Only the owner can set a discount" style="background:#f1f5f9;color:#94a3b8"') + '/></div>' +
+      '<div><label>Discount given on the whole challan</label><input id="m_disc" inputmode="decimal" placeholder="0" value="' + esc((z && z.disc != null) ? z.disc : 0) + '"' + (canSetPricing() ? '' : ' readonly title="Only the owner can set a discount" style="background:#f1f5f9;color:#94a3b8"') + '/></div>' +
       '<div><label>Why (optional)</label><input id="m_discnote" placeholder="bargained on site" value="' + esc((z && z.discnote) || "") + '"' + (canSetPricing() ? '' : ' readonly') + '/></div>' +
       '</div>' +
       '<div class="grid2" style="margin-top:6px">' +
@@ -29560,43 +29637,6 @@ function viewCatalogue() {
     /* v6.9.274 - put right a challan that was priced before its client had a discount. Never
        silent and never automatic: the confirm names every line, the old total and the new one,
        and it only ever raises a discount to the preset. */
-    if (act === "ch-reprice") {
-      if (!roleIs("admin")) { toast("Re-pricing a challan is a partner's decision."); return; }
-      var rc0 = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
-      if (!rc0) { toast("Not found."); return; }
-      var g0 = chDiscGap(rc0);
-      if (!g0.n) {
-        toast((g0.skipped && g0.skipped.length)
-          ? "Nothing safe to change — those lines already store a discounted price, not the list price."
-          : "Nothing to change — this challan already carries the preset.");
-        return;
-      }
-      if (!window.confirm(
-        "Re-price " + (rc0.challanNo || "this challan") + " at " + rc0.customerName + "’s preset discount?\n\n" +
-        g0.lines.map(function (l) { return "• " + l.desc + ": " + l.frozen + "% → " + l.preset + "%"; }).join("\n") +
-        ((g0.skipped && g0.skipped.length)
-          ? "\n\nLeft alone (already priced net, not at list):\n" +
-            g0.skipped.map(function (x) { return "• " + x.desc; }).join("\n")
-          : "") +
-        "\n\nBilled now: " + money(g0.was) + "\nAfter: " + money(g0.now) +
-        "\n\nThat is " + money(g0.diff) + " off what this client owes. Nothing else on the challan changes.")) return;
-      var newItems = chRepriced(rc0);
-      save("challans", Object.assign({}, rc0, {
-        itemsJson: JSON.stringify(newItems),
-        amount: newItems.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0)
-      })).then(function () {
-        save("audit", {
-          id: "RP-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
-          createdAt: new Date().toISOString(), actor: S.user, action: "challan:reprice",
-          target: (rc0.challanNo || "") + " / " + (rc0.customerName || ""),
-          detail: JSON.stringify({ chId: rc0.id, no: rc0.challanNo, was: g0.was, now: g0.now,
-            lines: g0.lines.map(function (l) { return { code: l.code, from: l.frozen, to: l.preset }; }) }), ip: ""
-        }, true);
-        toast(rc0.challanNo + " re-priced — " + money(g0.diff) + " off " + rc0.customerName + "’s account.");
-        renderBg();
-      });
-      return;
-    }
     if (act === "ch-hisab") {
       /* v6.9.126: jump from a client's challan group straight into their full HISAB ledger. */
       var hcl = t.getAttribute("data-cl") || "";
@@ -30845,7 +30885,7 @@ function viewCatalogue() {
       });
       /* v6.9.350 - one question for the whole save, asked only if a figure actually moved. */
       var dsFrom = "", dsAsked = false, dsStop = false;
-      var saved = 0;
+      var saved = 0, touched = [];
       Object.keys(groups).forEach(function (k) {
         if (dsStop) return;
         var g = groups[k], exd = discRow(g.client, g.brand);
@@ -30876,12 +30916,16 @@ function viewCatalogue() {
         /* v6.9.350 - dated changes append; undated ones edit in place as they always have */
         save("discounts", { id: (dsFrom ? mintId("D") : ((exd ? exd.id : "") || mintId("D"))),
           client: g.client, brand: g.brand, pct: pct, notes: notesStr }, true);
+        touched.push({ client: g.client, brand: g.brand, pct: pct });
         saved++;
       });
       if (dsStop) { toast("Nothing was saved."); return; }
       setTimeout(function () {
         S.q = ""; render();
         toast(saved ? ("Saved " + saved + " brand line" + (saved > 1 ? "s" : "") + " for this client.") : "Nothing to save.");
+        /* v6.9.379 - and NOW the re-price question, once, while he still has the change in mind.
+           After the render, so the confirm does not sit on top of a half-drawn screen. */
+        if (saved) setTimeout(function () { try { repriceOffer(touched, dsFrom); } catch (e) {} }, 60);
       }, 120);
       return;
     }
@@ -34371,8 +34415,18 @@ function viewCatalogue() {
         S.discPinAt = _now;
       }
       /* v6.9.209: clamped. 100 typed by mistake zeroed the line; a minus sign over-billed him. */
-      var _nd = Math.max(0, Math.min(90, Math.round(Number(t.value) || 0)));
-      if (_nd !== (Number(t.value) || 0)) toast("Discount kept within 0-90%.");
+      /* ============ 44.5 IS A DISCOUNT (v6.9.379, 30 Aug 2026) ============
+         HIS WORDS: "make provision that we can enter discount like 44.5 , decimal its not
+         supporting now". Math.round() turned 44.5 into 45 the moment he left the box - and
+         said nothing, so the number he typed simply was not the number that was billed.
+
+         The box was already inputmode="decimal" and the client's PRESET has always taken a
+         decimal (disc-saveall stores Number(g.pct)), as has every incentive rate - his plumber
+         is on 4.2%. This one line was the only place a discount was forced to a whole number.
+         Two decimal places, which is a paisa on a lakh, and the clamp is unchanged. */
+      var _raw = num(t.value);
+      var _nd = Math.max(0, Math.min(90, Math.round(_raw * 100) / 100));
+      if (Math.abs(_nd - _raw) > 0.0001) toast("Discount kept within 0-90%.");
       bit.disc = _nd; bch.itemsJson = JSON.stringify(bitems); save("challans", bch); render();
       return;
     }
