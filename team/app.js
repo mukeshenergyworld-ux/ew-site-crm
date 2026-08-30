@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.377";
+  var APP_VERSION = "6.9.378";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18274,23 +18274,124 @@ function viewCatalogue() {
     if (m) out.push("https://drive.google.com/uc?export=download&id=" + m[1]);
     return out;
   }
+  /* ================= PAGE ONE WAS NOT THE RECEIPT (v6.9.378, 30 Aug 2026) =================
+     HIS WORDS: "normal challan showing as receipts why ?" - with Manish Singla's statement
+     attached, nine receipts behind it, four of them a plain delivery challan under a heading
+     that says SIGNED RECEIPT.
+
+     MEASURED, from the statement he sent and from his own audit rows:
+
+       MANISH0043/250726/001   13 lines   filed 23 Aug   no photograph on the attached page
+       MANISH0043/250726/002   13 lines   filed 23 Aug   no photograph
+       MANISH0043/110826/002   32 lines   filed 11 Aug   no photograph
+       MANISH0043/110826/003    1 line    filed 11 Aug   no photograph
+       the other five           1-4 lines filed 23+ Aug  photograph present
+
+     Every one of the eleven proof rows says photo:true. Nothing was missing. The document on
+     Drive is a PDF of TWO pages - the challan, then the signed paper - and this function asked
+     Google for lh3.googleusercontent.com/d/<id>=w1400, which renders PAGE ONE AND NOTHING ELSE.
+     Tested on his own file: =w800-p2 fails, thumbnail?page=2 silently returns page one again.
+     There is no page-two URL. So whenever the photograph sat on page two - because the item
+     list was long, or because the proof was filed before v6.9.281 when the photograph always
+     took a sheet of its own - the statement attached the challan and called it the receipt.
+
+     Across his whole book: 50 of 96 filed proofs, over 23 clients. Jagdish Bansal 9 of them.
+
+     So the file is now READ, not previewed. The raw bytes come back through imgB64 exactly as
+     before - that fallback has been in rcptUrls all along - and pdf.js turns every page into an
+     image. An image proof is still one page and costs nothing new. A document that will not
+     render at all falls back to the old single-page preview and SAYS it is only part of the
+     document, rather than printing page one under a heading that promises the whole.
+
+     pdf.js is vendored in assets/pdfjs rather than taken from a CDN. Measured the same day: a
+     worker fetched cross-origin from cdnjs never starts and pdf.js then hangs for ever with no
+     error in the console. Same origin renders both pages first time. */
+  var _pdfjsP = null;
+  /* THE WORKER PATH IS THE WHOLE OF IT. Setting it was inside the script's onload, so a page
+     that already had pdfjsLib skipped it - and pdf.js with no workerSrc does not throw, does
+     not warn, and does not resolve. It waits for ever. Caught by the test rig, which loads the
+     library itself before driving this; it would have been caught in production by nothing at
+     all. So the path is set whenever it is missing, however the library got here. */
+  function pdfjsWorker(lib) {
+    try {
+      var g = lib && lib.GlobalWorkerOptions;
+      if (g && !g.workerSrc) g.workerSrc = "../assets/pdfjs/pdf.worker.min.js";
+    } catch (e) {}
+    return lib || null;
+  }
+  function pdfjsReady() {
+    if (window.pdfjsLib) return Promise.resolve(pdfjsWorker(window.pdfjsLib));
+    if (_pdfjsP) return _pdfjsP;
+    _pdfjsP = new Promise(function (res) {
+      try {
+        var sc = document.createElement("script");
+        sc.src = "../assets/pdfjs/pdf.min.js";
+        sc.onload = function () { res(pdfjsWorker(window.pdfjsLib)); };
+        sc.onerror = function () { res(null); };
+        document.head.appendChild(sc);
+      } catch (e) { res(null); }
+    });
+    return _pdfjsP;
+  }
+  /* Every page of a PDF, as JPEGs about 1400 px wide - the same width the single preview used,
+     so a statement is no heavier per page than it was. */
+  function pdfPages(b64) {
+    return pdfjsReady().then(function (lib) {
+      if (!lib) return null;
+      var bin = atob(b64), arr = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return lib.getDocument({ data: arr }).promise.then(function (pdf) {
+        var out = [];
+        var one = function (n) {
+          if (n > pdf.numPages) return Promise.resolve(out);
+          return pdf.getPage(n).then(function (pg) {
+            var v1 = pg.getViewport({ scale: 1 });
+            var vp = pg.getViewport({ scale: Math.min(3, Math.max(1, 1400 / (v1.width || 595))) });
+            var cv = document.createElement("canvas");
+            cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+            return pg.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise
+              .then(function () {
+                out.push({ src: cv.toDataURL("image/jpeg", 0.72), w: cv.width, h: cv.height });
+                return one(n + 1);
+              });
+          });
+        };
+        return one(1);
+      });
+    }).catch(function () { return null; });
+  }
+  /* {pages: [{src,w,h}...], whole: true} - whole is false when only the first page could be
+     had, and the appendix then says so instead of claiming to be the receipt. */
   function receiptImage(c) {
     var r = chProofAny(c);
     if (!r.has || !r.url) return Promise.resolve(null);
     var key = String(r.url);
     if (RCPT_IMG[key] !== undefined) return Promise.resolve(RCPT_IMG[key]);
-    var tries = rcptUrls(key);
+    /* THE FILE FIRST, the preview only as a fallback. rcptUrls has always listed both; the
+       order was preview-first, which is what turned a two-page document into one page. */
+    var tries = rcptUrls(key).slice().reverse();
     var attempt = function (n) {
       if (n >= tries.length) { RCPT_IMG[key] = null; return Promise.resolve(null); }
+      var isFile = String(tries[n]).indexOf("export=download") >= 0;
       return api("imgB64", { url: tries[n] }, 90000).then(function (x) {
         if (!x || !x.ok || !x.b64) return attempt(n + 1);
         var mime = rcptMime(x.b64, x.mime);
-        if (!mime) return attempt(n + 1);
+        if (!mime) {
+          /* not an image. A PDF is not a failure here - it is the usual case. */
+          if (String(x.b64).slice(0, 8).indexOf("JVBERi0") !== 0) return attempt(n + 1);
+          return pdfPages(x.b64).then(function (pp) {
+            if (!pp || !pp.length) return attempt(n + 1);
+            RCPT_IMG[key] = { pages: pp, whole: true };
+            return RCPT_IMG[key];
+          });
+        }
         /* re-encode once: a rendering can come back as a 1024px PNG, and twenty of those make a
            statement nobody can send */
         return shrinkPic("data:" + mime + ";base64," + x.b64, 1400, 0.72).then(function (p) {
           if (!p) return attempt(n + 1);
-          RCPT_IMG[key] = { src: p.src, w: p.w, h: p.h };
+          /* the raw file being an image means we hold the whole of it; the lh3 preview of a
+             PDF is page one only, and must not claim otherwise */
+          RCPT_IMG[key] = { pages: [{ src: p.src, w: p.w, h: p.h }], whole: !!isFile };
           return RCPT_IMG[key];
         });
       }).catch(function () { return attempt(n + 1); });
@@ -18757,25 +18858,43 @@ function viewCatalogue() {
          account can turn straight to the paper for any of it. */
       if (withRcpt) {
         var rq = stream.filter(function (it) { return !!RIMG[(it.t === "C" ? it.c : it.r).id]; });
-        rq.forEach(function (it, ri) {
-          var rc = it.t === "C" ? it.c : it.r, img = RIMG[rc.id];
-          doc.addPage();
-          doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 14, "F");
-          F("bold"); doc.setFontSize(8.6); doc.setTextColor(255, 255, 255);
-          doc.text((it.t === "R" ? "GOODS-IN RECEIPT   " : "SIGNED RECEIPT   ") +
-                   pdfSafe(String(rc.challanNo || rc.returnNo || "")), L, 9);
-          F("normal"); doc.setFontSize(7.2); doc.setTextColor(160, 205, 199);
-          doc.text(pdfSafe(String(cl)) + "   \u00b7   " + fullDate(String(rc.createdAt || "").slice(0, 10)) +
-                   "   \u00b7   " + (ri + 1) + " of " + rq.length, R, 9, { align: "right" });
-          var rbox = fitBox(img.w, img.h, R - L, 262);
-          var rx = L + ((R - L) - rbox.w) / 2;
-          try {
-            doc.addImage(img.src, "JPEG", rx, 20, rbox.w, rbox.h);
-            doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(rx, 20, rbox.w, rbox.h);
-          } catch (e) { }
-          F("normal"); doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
-          doc.text("Attached to the statement of " + pdfSafe(String(cl)) +
-                   ". This is the receipt held on file, reproduced unaltered.", L, 291);
+        /* v6.9.378 - the sheets are counted, not the receipts. A two-page document used to be
+           announced as "3 of 9" and then show one page of itself; the count now says what a
+           man is actually holding. */
+        var rTot = 0;
+        rq.forEach(function (it) { rTot += RIMG[(it.t === "C" ? it.c : it.r).id].pages.length; });
+        var rSeen = 0;
+        rq.forEach(function (it) {
+          var rc = it.t === "C" ? it.c : it.r, rec = RIMG[rc.id];
+          rec.pages.forEach(function (img, pi) {
+            rSeen++;
+            doc.addPage();
+            doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 14, "F");
+            F("bold"); doc.setFontSize(8.6); doc.setTextColor(255, 255, 255);
+            doc.text((it.t === "R" ? "GOODS-IN RECEIPT   " : "SIGNED RECEIPT   ") +
+                     pdfSafe(String(rc.challanNo || rc.returnNo || "")) +
+                     (rec.pages.length > 1 ? "   (sheet " + (pi + 1) + " of " + rec.pages.length + ")" : ""), L, 9);
+            F("normal"); doc.setFontSize(7.2); doc.setTextColor(160, 205, 199);
+            doc.text(pdfSafe(String(cl)) + "   \u00b7   " + fullDate(String(rc.createdAt || "").slice(0, 10)) +
+                     "   \u00b7   " + rSeen + " of " + rTot, R, 9, { align: "right" });
+            var rbox = fitBox(img.w, img.h, R - L, 262);
+            var rx = L + ((R - L) - rbox.w) / 2;
+            try {
+              doc.addImage(img.src, "JPEG", rx, 20, rbox.w, rbox.h);
+              doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(rx, 20, rbox.w, rbox.h);
+            } catch (e) { }
+            F("normal"); doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
+            /* SAY WHICH OF THE TWO THIS IS. The old footnote said "the receipt held on file,
+               reproduced unaltered" under every page, including the ones that were only the
+               first sheet of a longer document - which is how a challan came to be presented
+               as a signed receipt. */
+            doc.text(rec.whole
+              ? "Attached to the statement of " + pdfSafe(String(cl)) +
+                ". This is the receipt held on file, reproduced unaltered."
+              : "Attached to the statement of " + pdfSafe(String(cl)) +
+                ". First sheet only \u2014 the full document, with the signed paper, is on file.",
+              L, 291);
+          });
         });
         /* A receipt that is on file but would not come down is NOT left as a silent gap. One
            was, in testing: a JPEG uploaded an hour earlier whose thumbnail Drive had not
