@@ -277,7 +277,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.8.0";
+  var APP_VERSION = "1.8.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -1585,7 +1585,48 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
   function installs() { return (S.data && S.data.installs) || []; }
-  function visits()   { return (S.data && S.data.visits)   || []; }
+  /* ================= A VISIT SET ASIDE IS SET ASIDE HERE TOO (v1.8.1) ================
+     The CRM can now mark a duplicate service visit as a double. If this app kept counting it,
+     the two screens would show one customer two balances - which is exactly the fault that cost
+     the Payment app three releases to find and Rs 87,327 to notice.
+
+     cancelMap, cancelInfo and isCancelled are byte-identical to the CRM's, and CANCEL_TABS with
+     them, so t_apps_agree holds them to one meaning.
+
+     WHAT AN ENGINEER SEES, honestly: the backend sends a service phone only service:photo audit
+     rows, so a rec:cancel row does not reach it and a set-aside visit still shows there. Admin
+     and accounts get the whole tab and see it correctly today. One line in the server's audit
+     filter closes that, and it is on the V108 list. */
+  var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return", payments: "Payment received", quotes: "Quote", pitch: "Brand record", visits: "Service visit", installs: "Installation" };
+  var _cxCache = null;
+  function cancelMap() {
+    if (_cxCache) return _cxCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "rec:cancel") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      var tab = String(d.tab || ""), rid = String(d.recId || "");
+      if (!tab || !rid || !CANCEL_TABS[tab]) return;
+      var k = tab + "|" + rid, prev = m[k];
+      /* newest wins - a record brought back reads as brought back because that row is newer,
+         not because the cancel row went anywhere */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[k] = {
+          on: !d.undo, reason: String(d.reason || ""), note: String(d.note || ""),
+          label: String(d.label || ""), sub: String(d.sub || ""), value: Number(d.value) || 0,
+          at: r.createdAt || "", by: r.actor || ""
+        };
+      }
+    });
+    _cxCache = m;
+    return m;
+  }
+  function cancelInfo(tab, id) { return cancelMap()[String(tab) + "|" + String(id || "")] || null; }
+  function isCancelled(tab, id) { var c = cancelInfo(tab, id); return !!(c && c.on); }
+  function visits()   {
+    return ((S.data && S.data.visits) || []).filter(function (v) { return !isCancelled("visits", v.id); });
+  }
   function spares()   { return (S.data && S.data.spares)   || []; }
 
   /* ================= THE PRICE LIST THIS APP NEVER HAD (v1.8.0, 30 Aug 2026) ============
@@ -2890,7 +2931,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     }).catch(function () { /* the journal has it; jrnPaint says so on screen */ });
   }
 
-  function bust() { _bookCl = null; }
+  function bust() {
+    _cxCache = null; _bookCl = null; }
 
 
   /* ================= THE SHELL ================= */
