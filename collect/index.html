@@ -143,7 +143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.26.0";
+  var APP_VERSION = "1.26.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -2635,9 +2635,28 @@ function cancelMap() {
         y += 5.6;
       };
 
+      /* ============ AN ADVANCE IS MONEY HE HAS ALREADY GIVEN US (v1.26.1) ============
+         `r.opening > 0` meant a NEGATIVE opening - an advance he has paid and not yet drawn
+         against - was neither printed on the statement nor added to its running balance, while
+         clientDue() counted it in the figure on his card all along. The statement and the app
+         therefore disagreed by the whole advance, and the statement is the half that gets sent
+         to the customer on WhatsApp.
+
+         MEASURED ON HIS BOOK, 30 Aug 2026: two clients hold one.
+           Asian Handicraft   65,217
+           Piyush Gupta       13,231
+                              ------
+                              78,448  asked for, on paper, from men who had already paid it
+
+         This is the same fault the CRM carried until v6.9.368 - hidden behind `opening > 0` on
+         the ledger card while being counted in the balance beside it - and it is fixed the same
+         way. A credit is shown in the RECEIVED column, because that is what it is. */
       if (r.opening > 0) {
         bal += r.opening;
         line("", "Balance brought forward from earlier books", "", r.opening, 0, true);
+      } else if (r.opening < 0) {
+        bal += r.opening;
+        line("", "Advance held from earlier books", "", 0, -r.opening, true);
       }
       var rows2 = ledgerRows(r.name);
       rows2.forEach(function (x) {
@@ -2658,7 +2677,7 @@ function cancelMap() {
       if (r.oldestUnpaid) {
         doc.text("Oldest pending delivery: " + dstr(r.oldestUnpaid) + "  (" + ageWords(r.ageDays) + ")", L, y); y += 4.6;
       }
-      if (r.opening > 0) {
+      if (r.opening !== 0) {
         doc.splitTextToSize("The brought-forward figure is from our earlier books. If it does not agree with yours, tell us and we will reconcile it line by line.", R - L)
           .forEach(function (ln) { doc.text(ln, L, y); y += 4; });
       }
@@ -2765,7 +2784,8 @@ function cancelMap() {
           '<div class="row"><div class="grow">' +
             '<div style="font-weight:700">The statement</div>' +
             '<div class="muted">' + ent + ' entr' + (ent === 1 ? 'y' : 'ies') +
-              (r.opening > 0 ? ' · opening ' + money(r.opening) : '') +
+              (r.opening > 0 ? ' · opening ' + money(r.opening)
+                             : (r.opening < 0 ? ' · advance held ' + money(-r.opening) : '')) +
               ' · balance <b>' + money(r.due) + '</b></div>' +
           '</div>' +
           '<button class="btn sm gry" data-act="hisab-dl" data-n="' + esc(name) + '">Open it first</button>' +
