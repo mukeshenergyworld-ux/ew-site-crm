@@ -277,7 +277,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.8.2";
+  var APP_VERSION = "1.8.3";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -1892,6 +1892,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return isFinite(n) ? n : 0;
   }
   var SALT_BAG_KG = 25;
+  function saltCatPrice() {
+    var kg = nAmt((PRODUCTS.filter(function (p) { return String(p.code || "").toUpperCase() === "TABSALT"; })[0] || {}).price);
+    return kg > 0 ? Math.round(kg * SALT_BAG_KG) : 0;
+  }
   function saltBagPrice() {
     var sp = ((S.data && S.data.spares) || []);
     var bag = sp.filter(function (x) { return /salt/i.test(String(x.name || "")) && /bag/i.test(String(x.unit || x.name || "")); })[0];
@@ -2484,6 +2488,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           /* v1.8.2 - the bag, because bags are what he counts on this screen, and the per-kg
              rate underneath so the arithmetic is visible rather than magic. */
           var bag = saltBagPrice(), kg = rateOf(RATE_SALT);
+          var cat = saltCatPrice();
+          if (bag > 0 && cat && cat !== bag) return '<div class="meta bad"><b>Two price lists disagree.</b> ' +
+            'Spares says ' + esc(money9(bag)) + ' a bag; the catalogue says ' + esc(money9(cat)) +
+            '. The office must fix the Spares row \u2014 charge the actual.</div>';
           if (bag > 0) return '<div class="meta">A bag is ' + esc(money9(bag)) + ' on the price list' +
             (kg > 0 ? ' (' + esc(money9(kg)) + ' per kg \u00d7 ' + SALT_BAG_KG + ' kg)' : '') +
             ' &mdash; charge the actual.</div>';
