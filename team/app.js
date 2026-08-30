@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.375";
+  var APP_VERSION = "6.9.376";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2155,10 +2155,41 @@ window.addEventListener("beforeunload", function (ev) {
       if (_catP) return _catP;                                  /* one already in the air */
       if (_catAt && Date.now() - _catAt < 300000) return Promise.resolve();
     }
-    try {
-      var c = JSON.parse(bigGet(CAT_KEY) || "null");
-      if (c && c.v === CAT_V && c.at && (Date.now() - c.at < 86400000) && c.items && c.items.length) PRODUCTS = c.items;
-    } catch (e) {}
+    /* ============ THE 24-HOUR CACHE WAS READ AND THEN IGNORED (v6.9.376) ============
+       MEASURED ON THE LIVE APP, 30 Aug 2026. Four backend calls fire on every open of the CRM,
+       and this is the slowest of them:
+
+         /exec                    2,536 ms   the fast half of the book
+         /exec?action=catalog     4,166 ms   <- this one
+         /exec                    2,641 ms   the rest of the book
+         /exec                    2,212 ms   the heartbeat
+
+       Apps Script costs 1.5-2.8 s per call whatever it carries - measured four times in a row,
+       the fourth as slow as the first, so it is not warm-up. This call is the longest of the
+       four AND the only one that need not happen at all: the shelf copy read on the line above
+       held 1,044 products, version 2, ZERO HOURS OLD, and was thrown at PRODUCTS before the
+       fetch was fired anyway.
+
+       The Challan app has had the right rule since v1.24: `if (fresh && PRODUCTS.length) return`
+       - "222 KB not worth re-reading", in its own words. The CRM read the same cache and
+       downloaded regardless. The rule is now the same in both, and t_catalog_cache.js drives
+       both to prove it.
+
+       force is untouched, so "Reload catalogue" still reloads, and adding a product still
+       refreshes immediately. */
+    var _shelf = null;
+    try { _shelf = JSON.parse(bigGet(CAT_KEY) || "null"); } catch (e) { _shelf = null; }
+    var _fresh = !!(_shelf && _shelf.v === CAT_V && _shelf.at &&
+                    (Date.now() - _shelf.at < 86400000) && _shelf.items && _shelf.items.length);
+    if (_fresh) {
+      PRODUCTS = _shelf.items;
+      if (!force) {
+        _catAt = _shelf.at;               /* so the 5-minute guard above works on the NEXT call too */
+        PRODLIST_HTML = null;
+        _pcbCache = null;
+        return Promise.resolve();
+      }
+    }
     _catP = fetch(GAS + "?action=catalog", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (rows) {
