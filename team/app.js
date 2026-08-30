@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.376";
+  var APP_VERSION = "6.9.377";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17199,12 +17199,22 @@ function viewCatalogue() {
     items.sort(function (a, b) { return b.age - a.age; });          // oldest first
     var led = clientLedger(name), credit = (led.paid || 0) + (led.returned || 0) + (opening < 0 ? -opening : 0);
     items.forEach(function (it) { if (credit > 0) { var u = Math.min(credit, it.amt); it.amt -= u; credit -= u; } });
+    /* ---- ONE RECORD, ONE SET OF TERMS  (v6.9.377, 30 Aug 2026) ----
+       The client card has a "Credit days" box. creditTerms() reads it - and only the credit
+       control gate, the thing that stops a dispatch, ever asked. This line used the company-wide
+       CREDIT_DAYS, so a client given 60-day terms was GATED at 60 and REPORTED OVERDUE AT 30, on
+       every screen, out of the same record. A box that half the app obeys is worse than no box.
+
+       No client has a non-default value today, so this corrects no figure: it is a latent fault
+       closed, and the day he types 45 into that box it will now mean the same thing everywhere.
+       Blank still falls back to the company terms - creditTerms() has always done that. */
+    var _terms = creditTerms(name).days;
     var b = { cur: 0, d30: 0, d60: 0, d90: 0 }, oldest = 0, overdue = 0;
     items.forEach(function (it) {
       if (it.amt <= 0.5) return;
       var age = it.age >= 99999 ? 120 : it.age;                     // show brought-forward as 90+
       if (age > oldest) oldest = age;
-      if (age > CREDIT_DAYS) overdue += it.amt;                     // past the credit window = overdue
+      if (age > _terms) overdue += it.amt;                          // past HIS credit window = overdue
       if (age <= 30) b.cur += it.amt; else if (age <= 60) b.d30 += it.amt;
       else if (age <= 90) b.d60 += it.amt; else b.d90 += it.amt;
     });
