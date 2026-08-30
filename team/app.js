@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.379";
+  var APP_VERSION = "6.9.380";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3032,7 +3032,13 @@ window.addEventListener("beforeunload", function (ev) {
      splitCancelled() physically lifts a cancelled row out of S.data[tab], so every screen that
      reads quotes or the pitch board stops counting it at once, with no reader having to know
      about cancelling at all. The row itself is untouched in the sheet and comes straight back. */
-  var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return", payments: "Payment received", quotes: "Quote", pitch: "Brand record" };
+  /* v6.9.380 - visits and installs join the list. "check and mark duplicate enteries in service
+     and make provision to merge them if any with my permission". A service visit saved twice is
+     a customer billed twice: measured on his book the day he asked, Punit Jain - Ar Himanshu was
+     billed Rs 1,045 for one visit worth Rs 545, because the form was saved twice eight seconds
+     apart and the second save lost the salt bag. Nothing is deleted - the second row is set
+     aside with a reason, exactly as a duplicate challan is, and can be brought back. */
+  var CANCEL_TABS = { challans: "Challan", clients: "Client / lead", sites: "Site (lead)", returns: "Material return", payments: "Payment received", quotes: "Quote", pitch: "Brand record", visits: "Service visit", installs: "Installation" };
   /* Fixed list, same reasoning as the loss reasons: free text cannot be counted, and "mistake",
      "Mistake" and "wrong entry" are three rows and one reason. */
   var CANCEL_REASONS = [
@@ -3155,6 +3161,8 @@ window.addEventListener("beforeunload", function (ev) {
     if (tab === "payments") { try { return receiptNo(r); } catch (e) { return String(r.id || ""); } }
     if (tab === "quotes") return String(r.quoteNo || r.id || "");
     if (tab === "pitch") return String(r.brand || r.id || "");
+    if (tab === "visits") return fullDate(String(r.date || r.createdAt || "").slice(0, 10)) + " visit";
+    if (tab === "installs") return String(r.product || "") + (r.serial ? " " + r.serial : "");
     return String(r.name || r.id || "");
   }
   function cxValue(tab, r) {
@@ -3163,6 +3171,8 @@ window.addEventListener("beforeunload", function (ev) {
       if (tab === "returns") return returnNet(r);
       if (tab === "payments") return Math.round(Number(r.amount) || 0);
       if (tab === "quotes") return Math.round(Number(r.net) || 0);
+      if (tab === "visits") return Math.round(nAmt(r.total) ||
+        (nAmt(r.visitCharge) + nAmt(r.saltAmt) + nAmt(r.partsAmt)));
     } catch (e) { }
     return 0;
   }
@@ -3176,6 +3186,9 @@ window.addEventListener("beforeunload", function (ev) {
       (Number(r.net) ? " · " + money(r.net) : "") + (r.status ? " · " + r.status : "");
     if (tab === "pitch") return String(r.clientName || (siteById(r.siteId) || {}).client || "") +
       (r.status ? " · " + r.status : "");
+    if (tab === "visits") return String(r.client || "") + " · " + String(r.engineer || "") +
+      " · " + String(r.type || "") + " · " + money(cxValue("visits", r));
+    if (tab === "installs") return String(r.client || "") + (r.area ? " · " + r.area : "");
     return String(r.mobile || "") + (r.location ? " · " + r.location : "");
   }
 
@@ -22523,6 +22536,187 @@ function viewCatalogue() {
     return h;
   }
 
+  /* ================= THE SERVICE CHECK (v6.9.380, 30 Aug 2026) =================
+     THREE ASKS, ONE SCREEN, because they are one question - what in the service book disagrees
+     with itself?
+
+       "check and mark duplicate enteries in service and make provision to merge them if any
+        with my permission"
+       "mark and intimate any duplicate client in service log also"
+       "set all salt bag prices to rs 48 per kg , thats correct value , correct all enteries
+        with my permission"
+
+     WITH MY PERMISSION is the whole design. Nothing on this screen changes anything until he
+     presses the button on that row, every change writes an audit row saying who and why, and a
+     set-aside record can be brought back. No sheet is edited by hand, here or anywhere. */
+
+  /* Two visits against ONE machine on ONE day are almost always one visit saved twice - the
+     save looked like it did not take, so it was pressed again. Same install, same day is the
+     test; the engineer and the type are shown so he can see at a glance whether it really was
+     two calls. */
+  function svcDupVisits() {
+    var by = {}, out = [];
+    ((S.data && S.data.visits) || []).forEach(function (v) {
+      if (isCancelled("visits", v.id)) return;
+      var k = String(v.installId || dgKey(v.client)) + "|" + String(v.date || v.createdAt || "").slice(0, 10);
+      (by[k] = by[k] || []).push(v);
+    });
+    Object.keys(by).forEach(function (k) {
+      if (by[k].length < 2) return;
+      var rows = by[k].slice().sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+      out.push({ rows: rows, client: rows[0].client || "", ymd: String(rows[0].date || "").slice(0, 10),
+                 worth: rows.reduce(function (a, r) { return a + cxValue("visits", r); }, 0),
+                 keep: rows.reduce(function (a, r) { return Math.max(a, cxValue("visits", r)); }, 0) });
+    });
+    return out;
+  }
+
+  /* A name typed into the service log that is NOT the name on the client master. The service
+     book is typed on a phone at a doorstep; "Ramesh Chug - Sec 11" and "Ramesh - Sheena Export"
+     are one man and two records, and every rupee of his service history splits between them. */
+  function svcDupClients() {
+    var master = {}, out = [];
+    ((S.data && S.data.clients) || []).forEach(function (c) {
+      if (String(c.name || "").trim()) master[dgKey(c.name)] = c.name;
+    });
+    var seen = {};
+    [["installs", S.data && S.data.installs], ["visits", S.data && S.data.visits]].forEach(function (p) {
+      (p[1] || []).forEach(function (r) {
+        var nm = String(r.client || "").trim();
+        if (!nm) return;
+        var k = dgKey(nm);
+        if (master[k]) return;                       /* it IS a client, nothing to say */
+        var e = seen[k] || (seen[k] = { name: nm, rows: [], near: [] });
+        e.rows.push({ tab: p[0], id: r.id, when: String(r.date || r.createdAt || "").slice(0, 10) });
+      });
+    });
+    Object.keys(seen).forEach(function (k) {
+      var e = seen[k];
+      /* who on the client master this most looks like: a shared first word is enough to raise
+         it, and he decides. dupEdit1 catches the one-letter slips the client screen already
+         catches, and is reused rather than rewritten. */
+      var w0 = k.split(" ")[0] || "";
+      Object.keys(master).forEach(function (mk) {
+        if (mk === k) return;
+        var m0 = mk.split(" ")[0] || "";
+        if (w0.length >= 4 && (m0 === w0 || dupEdit1(m0, w0))) e.near.push(master[mk]);
+      });
+      out.push(e);
+    });
+    return out;
+  }
+
+  /* What one bag of salt costs, from the price list and nowhere else. The spares row for a bag
+     wins; failing that the master catalogue's per-kg rate times the pack size printed on the
+     bag row. Returns 0 when the price list cannot answer - and then nothing is flagged, because
+     a check that guesses is worse than no check. */
+  var SALT_BAG_KG = 25;
+  function saltBagPrice() {
+    var sp = ((S.data && S.data.spares) || []);
+    var bag = sp.filter(function (x) { return /salt/i.test(String(x.name || "")) && /bag/i.test(String(x.unit || x.name || "")); })[0];
+    if (bag && nAmt(bag.price) > 0) return Math.round(nAmt(bag.price));
+    var perKg = sp.filter(function (x) { return String(x.code || "").toUpperCase() === "SALT"; })[0];
+    var kg = perKg && nAmt(perKg.price) > 0 ? nAmt(perKg.price)
+           : nAmt((PRODUCTS.filter(function (p) { return String(p.code || "").toUpperCase() === "TABSALT"; })[0] || {}).price);
+    return kg > 0 ? Math.round(kg * SALT_BAG_KG) : 0;
+  }
+  /* Visits whose salt figure disagrees with that price. Measured on his book: one bag billed at
+     Rs 1,125 in June, at Rs 45 in July, and listed at Rs 450 - three prices for one thing. */
+  function svcSaltGap() {
+    var bp = saltBagPrice();
+    if (!bp) return { price: 0, rows: [] };
+    var rows = [];
+    ((S.data && S.data.visits) || []).forEach(function (v) {
+      if (isCancelled("visits", v.id)) return;
+      var bags = nAmt(v.saltBags);
+      if (!(bags > 0)) return;
+      var was = Math.round(nAmt(v.saltAmt)), should = Math.round(bags * bp);
+      if (was === should) return;
+      rows.push({ v: v, bags: bags, was: was, should: should, diff: should - was,
+                  wasTotal: cxValue("visits", v), nowTotal: cxValue("visits", v) - was + should });
+    });
+    return { price: bp, rows: rows };
+  }
+
+  /* The three findings, drawn. Each row carries the button that answers it, and says in rupees
+     what pressing it will do. Nothing is drawn at all when there is nothing to answer. */
+  function svcCheckHtml() {
+    if (!roleIs("admin")) return "";
+    var dv = svcDupVisits(), dc = svcDupClients(), sg = svcSaltGap();
+    if (!dv.length && !dc.length && !sg.rows.length) {
+      return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;margin-top:12px">' +
+        '<h3 style="margin:0;font-size:15px">Service check</h3>' +
+        '<div class="meta" style="font-size:13px;color:#0f766e">\u2713 No duplicate visits, no unknown ' +
+        'client names in the service log, and every salt figure agrees with the price list.</div></div>';
+    }
+    var h = '<div class="card" style="border-color:#fed7aa;background:#fff7ed;margin-top:12px">' +
+      '<h3 style="margin:0;font-size:15px">Service check</h3>' +
+      '<div class="meta" style="font-size:13px">The same three questions as above, asked of the ' +
+      'service book. <b>Nothing here changes until you press the button on that row</b>, every ' +
+      'change is written to the audit trail with your name on it, and a visit set aside can be ' +
+      'brought back from the cancelled list.</div></div>';
+
+    /* ---- duplicate visits ---- */
+    dv.forEach(function (g) {
+      h += '<div class="card" style="margin-top:8px">' +
+        '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>The same visit twice</b></div>' +
+        '<h3 style="font-size:15px;margin:3px 0 2px">' + esc(g.client) + ' \u00b7 ' + esc(fullDate(g.ymd)) + '</h3>' +
+        '<div class="meta" style="font-size:12.5px">' + g.rows.length + ' visits are recorded against this ' +
+        'machine on this day, totalling <b>' + money(g.worth) + '</b>. If it was one visit, he owes <b>' +
+        money(g.keep) + '</b> and the rest is a double.</div>' +
+        '<div style="margin-top:7px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">' +
+        g.rows.map(function (v, i) {
+          return '<div class="row" style="padding:7px 10px;border-bottom:1px solid #f1f5f9;align-items:center">' +
+            '<div class="grow"><b style="font-size:12.5px">' + money(cxValue("visits", v)) + '</b>' +
+            '<div class="meta">' + esc(String(v.engineer || "")) + ' \u00b7 ' + esc(String(v.type || "")) +
+            ' \u00b7 saved ' + esc(String(v.createdAt || "").slice(11, 19)) +
+            (nAmt(v.saltBags) ? ' \u00b7 ' + nAmt(v.saltBags) + ' bag(s) salt ' + money(nAmt(v.saltAmt)) : ' \u00b7 no salt') +
+            '</div></div>' +
+            (i === 0 ? '<span class="pill">first</span>'
+                     : '<button class="btn sm" data-act="svc-dupcx" data-id="' + esc(v.id) + '">This one is a double</button>') +
+            '</div>';
+        }).join("") + '</div></div>';
+    });
+
+    /* ---- names in the service log that are not on the client master ---- */
+    dc.forEach(function (e) {
+      h += '<div class="card" style="margin-top:8px">' +
+        '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Not a client on the master</b></div>' +
+        '<h3 style="font-size:15px;margin:3px 0 2px">' + esc(e.name) + '</h3>' +
+        '<div class="meta" style="font-size:12.5px">' + e.rows.length + ' service record(s) are filed under this ' +
+        'name, and there is no client by it. His service history and his account are two different books.' +
+        (e.near.length
+          ? ' It looks like <b>' + e.near.slice(0, 3).map(esc).join('</b> or <b>') + '</b>.'
+          : ' Nothing on the master looks like it.') + '</div>' +
+        '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:4px">' +
+        e.rows.slice(0, 6).map(function (r) { return esc(r.tab + " " + (r.when || "")); }).join(" \u00b7 ") + '</div>' +
+        '<div class="acts" style="margin-top:7px">' +
+        '<button class="btn sm ghost" data-act="tab" data-tab="clients">Open Clients</button></div></div>';
+    });
+
+    /* ---- salt against the price list ---- */
+    if (sg.rows.length) {
+      var tot = sg.rows.reduce(function (a, r) { return a + r.diff; }, 0);
+      h += '<div class="card" style="margin-top:8px">' +
+        '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Salt against the price list</b></div>' +
+        '<h3 style="font-size:15px;margin:3px 0 2px">' + sg.rows.length + ' visit(s) do not match ' + money(sg.price) + ' a bag</h3>' +
+        '<div class="meta" style="font-size:12.5px">A bag is ' + money(sg.price) + ' on the price list. ' +
+        'Correcting these changes what ' + (sg.rows.length > 1 ? 'those customers owe' : 'that customer owes') +
+        ' by <b>' + money(tot) + '</b> \u2014 <b>tell them before you send the next statement.</b></div>' +
+        '<div style="margin-top:7px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">' +
+        sg.rows.map(function (r) {
+          return '<div class="row" style="padding:7px 10px;border-bottom:1px solid #f1f5f9;align-items:center">' +
+            '<div class="grow"><b style="font-size:12.5px">' + esc(String(r.v.client || "")) + '</b>' +
+            '<div class="meta">' + esc(fullDate(String(r.v.date || "").slice(0, 10))) + ' \u00b7 ' + r.bags +
+            ' bag(s) \u00b7 salt ' + money(r.was) + ' \u2192 ' + money(r.should) +
+            ' \u00b7 bill ' + money(r.wasTotal) + ' \u2192 ' + money(r.nowTotal) + '</div></div>' +
+            '<button class="btn sm" data-act="svc-saltfix" data-id="' + esc(r.v.id) + '">Correct it</button>' +
+            '</div>';
+        }).join("") + '</div></div>';
+    }
+    return h;
+  }
+
   function viewDups() {
     var s = dupScan();
     var _catHtml = catCheckHtml();   /* v6.9.306 - the catalogue's own check, same screen */
@@ -22560,7 +22754,9 @@ function viewCatalogue() {
     }
     /* v6.9.306 - the catalogue's own check lives on the same screen. Both answer the same
        question: "what in this book disagrees with itself?" */
-    return h + _catHtml;
+    /* v6.9.380 - and the service book's own check, same screen, same reasoning as the
+       catalogue's: everything that disagrees with itself is answered in one place. */
+    return h + svcCheckHtml() + _catHtml;
   }
 
   /* The one-line note on the dashboard — his "duplicate entry log / note / warning". It only
@@ -29637,6 +29833,61 @@ function viewCatalogue() {
     /* v6.9.274 - put right a challan that was priced before its client had a discount. Never
        silent and never automatic: the confirm names every line, the old total and the new one,
        and it only ever raises a discount to the preset. */
+    /* v6.9.380 - set aside one of a pair of visits recorded on the same machine on the same
+       day. Same audit row a duplicate challan writes, same cancelled list, same undo. */
+    if (act === "svc-dupcx") {
+      if (!roleIs("admin")) { toast("Setting a visit aside is the owner's decision."); return; }
+      var dvId = t.getAttribute("data-id");
+      var dvRow = ((S.data && S.data.visits) || []).filter(function (x) { return x.id === dvId; })[0];
+      if (!dvRow) { toast("Not found."); return; }
+      if (!window.confirm(
+        "Set this visit aside as a duplicate?\n\n" +
+        String(dvRow.client || "") + "\n" + fullDate(String(dvRow.date || "").slice(0, 10)) +
+        "  \u00b7  " + String(dvRow.engineer || "") + "  \u00b7  " + money(cxValue("visits", dvRow)) +
+        "\n\n" + String(dvRow.client || "This customer") + " will owe " +
+        money(cxValue("visits", dvRow)) + " LESS.\n\n" +
+        "Nothing is deleted. It stays readable in the cancelled list and can be brought back.")) return;
+      cxWrite("visits", dvRow.id, dvRow, "Duplicate of another record", "Same machine, same day");
+      toast("Set aside \u2014 " + money(cxValue("visits", dvRow)) + " off " + String(dvRow.client || "") + "\u2019s service account.");
+      return;
+    }
+    /* Re-price the salt on one visit at the price list. The visit row is rewritten - it is a
+       service record, not a delivery, and there is no signed paper behind it - but the old
+       figures are written into the audit row, so what it used to say is never lost. */
+    if (act === "svc-saltfix") {
+      if (!roleIs("admin")) { toast("Changing a recorded bill is the owner's decision."); return; }
+      var sfId = t.getAttribute("data-id");
+      var sg2 = svcSaltGap();
+      var hit = sg2.rows.filter(function (r) { return r.v.id === sfId; })[0];
+      if (!hit) { toast("Nothing to correct on that visit."); return; }
+      if (!window.confirm(
+        "Correct the salt on this visit to the price list?\n\n" +
+        String(hit.v.client || "") + "  \u00b7  " + fullDate(String(hit.v.date || "").slice(0, 10)) + "\n" +
+        hit.bags + " bag(s) at " + money(sg2.price) + "\n\n" +
+        "salt   " + money(hit.was) + "  \u2192  " + money(hit.should) + "\n" +
+        "bill   " + money(hit.wasTotal) + "  \u2192  " + money(hit.nowTotal) + "\n\n" +
+        (hit.diff > 0
+          ? "He will owe " + money(hit.diff) + " MORE than he was told. Tell him before the next statement."
+          : "He will owe " + money(-hit.diff) + " LESS than he was told.") +
+        "\n\nWhat it says now is kept in the audit trail.")) return;
+      var nv = Object.assign({}, hit.v, {
+        saltAmt: hit.should,
+        total: hit.nowTotal,
+        balance: Math.round(hit.nowTotal - nAmt(hit.v.collected))
+      });
+      save("visits", nv).then(function () {
+        save("audit", {
+          id: "SV-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+          createdAt: new Date().toISOString(), actor: S.user, action: "visit:saltfix",
+          target: String(hit.v.client || "") + " / " + String(hit.v.date || ""),
+          detail: JSON.stringify({ visitId: hit.v.id, bags: hit.bags, bagPrice: sg2.price,
+            saltWas: hit.was, saltNow: hit.should, totalWas: hit.wasTotal, totalNow: hit.nowTotal }), ip: ""
+        }, true);
+        toast("Salt corrected \u2014 " + String(hit.v.client || "") + " now " + money(hit.nowTotal) + ".");
+        renderBg();
+      });
+      return;
+    }
     if (act === "ch-hisab") {
       /* v6.9.126: jump from a client's challan group straight into their full HISAB ledger. */
       var hcl = t.getAttribute("data-cl") || "";
