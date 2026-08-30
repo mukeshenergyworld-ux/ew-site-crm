@@ -277,7 +277,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.8.1";
+  var APP_VERSION = "1.8.2";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -1877,6 +1877,30 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      suggests nothing, exactly as it behaved before this existed. It never guesses a rate. */
   var RATE_VISIT = "VISIT", RATE_SALT = "SALT";
   function rateOf(code) { var s = spareByCode(code); return s ? num(s.price) : 0; }
+  /* ============ ONE ANSWER TO "WHAT DOES A BAG COST" (v1.8.2, 30 Aug 2026) ============
+     The CRM's Log-a-visit form and this one are two screens that look the same, and on 30 Aug
+     they disagreed: this app was fixed to read the master catalogue and the CRM's was not, so
+     he was still shown Rs 450 on the other screen and had to tell me twice.
+
+     saltBagPrice, nAmt and SALT_BAG_KG are byte-identical to the CRM's. Both forms and the
+     service check now read the same function, so a price cannot differ by which screen you
+     happen to have open. */
+  function nAmt(v) {
+    if (typeof v === "number") return isFinite(v) ? v : 0;
+    var t = String(v === undefined || v === null ? "" : v).replace(/[^0-9.\-]/g, "");
+    var n = Number(t);
+    return isFinite(n) ? n : 0;
+  }
+  var SALT_BAG_KG = 25;
+  function saltBagPrice() {
+    var sp = ((S.data && S.data.spares) || []);
+    var bag = sp.filter(function (x) { return /salt/i.test(String(x.name || "")) && /bag/i.test(String(x.unit || x.name || "")); })[0];
+    if (bag && nAmt(bag.price) > 0) return Math.round(nAmt(bag.price));
+    var perKg = sp.filter(function (x) { return String(x.code || "").toUpperCase() === "SALT"; })[0];
+    var kg = perKg && nAmt(perKg.price) > 0 ? nAmt(perKg.price)
+           : nAmt((PRODUCTS.filter(function (p) { return String(p.code || "").toUpperCase() === "TABSALT"; })[0] || {}).price);
+    return kg > 0 ? Math.round(kg * SALT_BAG_KG) : 0;
+  }
 
   /* The standard visit charge, and the three cases where there ISN'T one:
      a labour job is quoted per job and has no standard rate; a visit the contract covers must
@@ -2456,9 +2480,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         '</div>' +
         /* "as per actual" is his rule, so the amount stays typed. The rate is shown so the
            man on the doorstep is doing the sum against today's price and not last year's. */
-        (rateOf(RATE_SALT) > 0
-          ? '<div class="meta">Salt is ' + esc(money9(rateOf(RATE_SALT))) + ' per kg in the price list &mdash; charge the actual.</div>'
-          : '');
+        (function () {
+          /* v1.8.2 - the bag, because bags are what he counts on this screen, and the per-kg
+             rate underneath so the arithmetic is visible rather than magic. */
+          var bag = saltBagPrice(), kg = rateOf(RATE_SALT);
+          if (bag > 0) return '<div class="meta">A bag is ' + esc(money9(bag)) + ' on the price list' +
+            (kg > 0 ? ' (' + esc(money9(kg)) + ' per kg \u00d7 ' + SALT_BAG_KG + ' kg)' : '') +
+            ' &mdash; charge the actual.</div>';
+          if (kg > 0) return '<div class="meta">Salt is ' + esc(money9(kg)) + ' per kg in the price list &mdash; charge the actual.</div>';
+          return '<div class="meta">No salt price on the list yet &mdash; the office sets it in Spares.</div>';
+        })();
     }
 
     /* --- parts --- */
