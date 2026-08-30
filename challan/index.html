@@ -192,7 +192,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.46.3";
+  var APP_VERSION = "1.46.4";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -409,10 +409,20 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       });
     } catch (e) {}
   }
+  /* ============ "NO ANSWER" IS NOT "UP TO DATE" (30 Aug 2026) ============
+     liveVersion() ends in .catch(return "") - correct, because no signal is not a new version.
+     But this line then read that empty string as `!v` and said "This is the latest version",
+     out loud, with a version number on it. A check that never reached the server reported
+     success. On a phone in a godown that is the most common outcome there is, and it is the
+     one answer that stops a man looking further.
+
+     Say which of the two actually happened. Nothing else changes: an unreachable server still
+     raises no banner. */
   function refreshNow(loud) {
     pull(true);
     liveVersion().then(function (v) {
-      if (!v || v === APP_VERSION) { if (loud) toast("This is the latest version (v" + APP_VERSION + ")."); return; }
+      if (!v) { if (loud) toast("Could not check for a new version — you are on v" + APP_VERSION + "."); return; }
+      if (v === APP_VERSION) { if (loud) toast("This is the latest version (v" + APP_VERSION + ")."); return; }
       S.newVer = v;
       try { render(); } catch (e) {}
       toast("Version " + v + " is ready — tap Update above.");
