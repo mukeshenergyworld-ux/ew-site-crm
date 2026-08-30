@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.374";
+  var APP_VERSION = "6.9.375";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2125,7 +2125,13 @@ window.addEventListener("beforeunload", function (ev) {
         desc: desc,
         cat: String(row[4] || "").trim(),
         unit: String(row[5] || "").trim(),
-        price: Number(String(row[6] || "0").replace(/[^0-9.]/g, "")) || 0,
+        /* v6.9.375 - was Number(String(row[6]||"0").replace(/[^0-9.]/g,""))||0, whose
+           character class has no minus in it: the CRM STRIPPED the sign from a negative
+           catalogue price and read -450 as 450, while the Challan app's num() kept it. Two
+           apps pricing one product with opposite signs. No product on his 1,044-row catalogue
+           is negative today, so this is a latent fault closed, not a number corrected - and
+           both apps now parse a price with the same function. */
+        price: num(row[6]),
         brand: String(row[8] || "").trim(),
         pic: driveImg(row[10]),
         /* column L of the master catalogue. Written once per product, it then
@@ -7762,23 +7768,38 @@ window.addEventListener("beforeunload", function (ev) {
      HE REPORTED IT: "add to hisab is pending of lots of challans and its not red marked
      anywhere, its huge loss of money".
 
-     COUNTED ON HIS OWN BOOK THE MINUTE HE SAID IT:
-       133 deliveries received
-        45 stamped
-        88 NEVER STAMPED  -  Rs 29,11,522 of goods, the oldest 40 days old
+     COUNTED ON HIS OWN BOOK - AND THE FIRST COUNT WAS WRONG, WHICH IS WORTH WRITING DOWN.
 
-     hisabPendingList() below has existed for weeks and shows only deliveries that carry a
-     PROOF PHOTO. That is the right list for the approve queue and the wrong one for this: a
-     delivery signed for on paper with no photo is not stamped and is not on any list either,
-     so it is invisible twice over.
+     The first pass looked for a challan:hisab audit row and called everything without one
+     unstamped: 88 deliveries, Rs 29,11,522, oldest 40 days. That number was reported to him
+     and it was not true. It ignored hisabPreExisting() - a delivery created before
+     HISAB_STAMP_FROM (13 Aug 2026, the day the stamp was introduced) is deliberately counted
+     as already in hisab, because it predates the feature and was never going to be stamped.
+
+     The honest count, using the app's OWN inHisab():
+       133 received
+        53 stamped by hand
+        79 created before 13 Aug - counted as done, correctly
+         1 ACTUALLY WAITING
+
+     The lesson is the one this file keeps relearning: do not re-derive a definition that
+     already exists in the code. hisabNotStamped() below asks inHisab(), so the band has always
+     shown the true figure - it was the measurement ALONGSIDE the code that was wrong, not the
+     code. Had this used its own idea of "stamped", the band would have cried wolf about 88
+     deliveries for ever and been ignored within a week.
+
+     It still earns its place. hisabPendingList() below has existed for weeks and shows only
+     deliveries that carry a PROOF PHOTO - the right list for the approve queue and the wrong
+     one for this: a delivery signed for on paper with no photo is not stamped and is on no
+     list either. And the one delivery that IS waiting had been waiting three days with nothing
+     anywhere saying so.
 
      WHAT IS ACTUALLY AT RISK, said precisely, because "huge loss of money" deserves an exact
      answer rather than agreement. The client IS billed - an unstamped delivery is in his
      balance already. Two other things are not:
        - WHO EARNS on it is never fixed. The stamp writes the line-up down for good; without
          it the incentive follows whoever the client's partner is TODAY, so changing a partner
-         silently moves the earnings on every unstamped delivery that client ever had. That is
-         Rs 29,11,522 of history that can still move under him.
+         silently moves the earnings on every unstamped delivery that client ever had.
        - any further discount settled on site is not recorded against the delivery.
      Neither is visible until somebody disputes it, which is the worst way to find out. */
   function hisabNotStamped() {
