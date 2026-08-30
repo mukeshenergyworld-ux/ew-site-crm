@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.381";
+  var APP_VERSION = "6.9.382";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5245,7 +5245,15 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="grid2"><div><label>Visit charge (Rs)</label><input id="v_charge" inputmode="numeric" value="' + MIN_VISIT + '"/></div>' +
       '<div><label>Salt bags</label><input id="v_salt" inputmode="numeric" value="0"/></div></div>' +
       '<label>Salt rate per bag (Rs)</label><input id="v_saltrate" inputmode="numeric" value="' + esc(saltBag || "") + '" placeholder="set the salt price in Spares or the catalogue"/>' +
-      (saltBag ? '<div class="meta" style="font-size:11.5px">' + money(saltBag) + ' a bag, from the price list.</div>' : '') +
+      (function () {
+        if (!saltBag) return '';
+        var cat = saltCatPrice();
+        if (cat && cat !== saltBag) return '<div class="meta" style="font-size:11.5px;color:#b91c1c">' +
+          '<b>Two price lists disagree.</b> Spares says ' + money(saltBag) + ' a bag; the catalogue says ' +
+          money(cat) + ' (TABSALT at ' + money(Math.round(cat / SALT_BAG_KG)) + ' per kg \u00d7 ' + SALT_BAG_KG +
+          ' kg). Fix the Spares row and this stops asking.</div>';
+        return '<div class="meta" style="font-size:11.5px">' + money(saltBag) + ' a bag, from the price list.</div>';
+      })() +
       '<label>Spare parts used</label><div id="v_lines">' + spareRow(0) + '</div>' +
       '<button class="btn sm ghost" data-act="sv-add" style="margin-top:4px">+ Add spare</button>' +
       '<label>Collected now (Rs)</label><input id="v_coll" inputmode="numeric" value="0"/>' +
@@ -22657,6 +22665,14 @@ function viewCatalogue() {
      bag row. Returns 0 when the price list cannot answer - and then nothing is flagged, because
      a check that guesses is worse than no check. */
   var SALT_BAG_KG = 25;
+  /* What the CATALOGUE alone says a bag costs. Kept separate from saltBagPrice() so the two
+     can be COMPARED: a spares row that disagrees with the master list is the exact mess he was
+     looking at - Rs 450 on one list, Rs 48 per kg on the other - and the form now says so
+     instead of quietly picking one. */
+  function saltCatPrice() {
+    var kg = nAmt((PRODUCTS.filter(function (p) { return String(p.code || "").toUpperCase() === "TABSALT"; })[0] || {}).price);
+    return kg > 0 ? Math.round(kg * SALT_BAG_KG) : 0;
+  }
   function saltBagPrice() {
     var sp = ((S.data && S.data.spares) || []);
     var bag = sp.filter(function (x) { return /salt/i.test(String(x.name || "")) && /bag/i.test(String(x.unit || x.name || "")); })[0];
