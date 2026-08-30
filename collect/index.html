@@ -143,7 +143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.26.2";
+  var APP_VERSION = "1.27.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1243,6 +1243,75 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     return net + freight;
   }
 
+  /* ============ TWO CARDS FOR ONE MAN (v1.27.0) ============
+     When the CRM's duplicate radar merges two client records, it does not delete either of them -
+     nothing in this business is ever deleted - it writes a `dup:fix` audit row saying which name
+     is the real one. Every CRM screen reads that row and shows one man. This app never did, so
+     the collector's list carried both.
+
+     MEASURED ON HIS BOOK, 30 Aug 2026. Five merges, and all five aliases were still their own
+     card here:
+
+       ravi                     ->  Ravi - Parshawnath City
+       Builder Gurpreet Singh   ->  Gurpreet Singh
+       Mohit - Orlov Hotel      ->  Rajesh Kalra - Orlov
+       vijay gupta              ->  Piyush Gupta
+       ar. Gurjinder singh      ->  Ar Gurjinder Singh
+
+     Not one of them carries a rupee today, so no balance is wrong. What is wrong is the list: a
+     man ringing round sees "ravi" and "Ravi - Parshawnath City" as two customers and calls one of
+     them about the other one's money. And the moment a delivery lands on the bare name, the
+     balance splits in two as well.
+
+     A LATER DECISION WINS, exactly as it does in the CRM: dup:keep and dup:reopen undo a fix, so
+     changing his mind pulls the two apart again with nothing lost. */
+  /* dgKey is the CRM's, byte-identical, and using it rather than lower() is not a detail.
+     It strips punctuation, so "ar. Gurjinder singh" and "Ar Gurjinder Singh" collapse to ONE key
+     - which is why the CRM skips such a pair as not-really-an-alias. Keyed with lower() this app
+     would have registered a merge the CRM never made, and the two would disagree about which
+     names are one man. t_apps_agree.js caught exactly that before it shipped. */
+function dgKey(s) {
+    return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+  var _dupCache = null;
+  function dupAliasMap() {
+    if (_dupCache) return _dupCache;
+    var byName = {};
+    ((S.data && S.data.audit) || []).slice().sort(function (a, b) {
+      return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+    }).forEach(function (r) {
+      var act = String((r && r.action) || "");
+      if (act !== "dup:fix" && act !== "dup:keep" && act !== "dup:reopen") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (act !== "dup:fix") {
+        /* he changed his mind - every alias named by this decision comes apart again */
+        var ids = d.ids || [];
+        Object.keys(byName).forEach(function (k) {
+          var v = byName[k];
+          if (ids.indexOf(v.id) < 0 && ids.indexOf(v.mainId) < 0) return;
+          delete byName[k];
+        });
+        return;
+      }
+      var mn = String(d.mainName || "").trim();
+      if (!mn) return;
+      (d.aliases || []).forEach(function (a) {
+        var an = String(a.name || "").trim();
+        if (!an || dgKey(an) === dgKey(mn)) return;
+        byName[dgKey(an)] = { main: mn, id: String(a.id || ""), mainId: String(d.main || "") };
+      });
+    });
+    _dupCache = { byName: byName };
+    return _dupCache;
+  }
+  /* the name this man is really filed under - byte-identical with the CRM's */
+function dupMainName(n) {
+    var hit = dupAliasMap().byName[dgKey(n)];
+    return hit ? hit.main : String(n == null ? "" : n).trim();
+  }
+  function dupIsAlias(n) { return !!dupAliasMap().byName[dgKey(n)]; }
+
   /* ============ A CANCELLED RECORD IS CANCELLED IN THIS APP TOO (v1.26.0) ============
      MEASURED ON HIS OWN BOOK, 29 Aug 2026. Dr Danish Pritam Arora:
 
@@ -1482,21 +1551,31 @@ function cancelMap() {
      Returns everything the screen and the reminder need, and nothing it does not. */
   function clientDue(opts) {
     var client = opts.client || {};
+    /* v1.27.0 - ONE MAN'S MONEY, UNDER WHATEVER NAME IT WAS BOOKED. Where the CRM has merged two
+       client records, this adds up both. opts.names is the family - the main name plus every
+       alias merged into it - and defaults to just his own, so every existing caller is unchanged.
+       Folding rather than hiding is the whole point: an alias card is dropped from the list only
+       because its money has been counted here instead, never because it was thrown away. */
+    var _fam = {};
+    ((opts.names && opts.names.length) ? opts.names : [client.name]).forEach(function (n) {
+      _fam[lower(n)] = 1;
+    });
+    var _mine = function (n) { return !!_fam[lower(n)]; };
     /* v1.26.0 - and NOT cancelled. All three, because all three move the balance: a cancelled
        delivery over-bills him, a cancelled payment under-chases him, a cancelled return credits
        goods that never came back. */
     var challans = dedupe((opts.challans || []).filter(function (c) {
-      return lower(c.customerName) === lower(client.name) &&
+      return _mine(c.customerName) &&
              String(c.receiptReceived || "").toUpperCase() === "Y" &&
              !isCancelled("challans", c.id);
     })).sort(function (a, b) { return d10(a.createdAt).localeCompare(d10(b.createdAt)); });
 
     var payments = (opts.payments || []).filter(function (p) {
-      return lower(p.client) === lower(client.name) && !isCancelled("payments", p.id);
+      return _mine(p.client) && !isCancelled("payments", p.id);
     }).sort(function (a, b) { return d10(a.date || a.createdAt).localeCompare(d10(b.date || b.createdAt)); });
 
     var returns = (opts.returns || []).filter(function (r) {
-      return lower(r.customerName) === lower(client.name) &&
+      return _mine(r.customerName) &&
              lower(r.status) === "received" &&
              !isCancelled("returns", r.id);
     });
@@ -1699,9 +1778,23 @@ function cancelMap() {
         return String(c.ownedBy || c.createdBy || "").trim().toLowerCase() === me;
       });
     }
+    /* v1.27.0 - a name the CRM has merged away is not a customer to ring. Its money is folded
+       into the man it belongs to on the line below, so nothing leaves the list except the
+       duplicate card itself. */
+    mine = mine.filter(function (c) { return !dupIsAlias(c.name); });
+    var _aliasOf = {}, _byName = dupAliasMap().byName;
+    Object.keys(_byName).forEach(function (k) {
+      var m = lower(_byName[k].main);
+      (_aliasOf[m] = _aliasOf[m] || []).push(k);
+    });
     var out = mine.map(function (c) {
       var r = clientDue({ client: c, challans: d.challans || [], payments: d.payments || [],
-                          returns: d.returns || [], today: t, creditDays: CREDIT_DAYS,
+                          returns: d.returns || [], today: t,
+                          names: [c.name].concat(_aliasOf[lower(c.name)] || []),
+                          /* v1.27.0 - HIS terms, not just the company's. clientDue has taken an
+                             opts.creditDays since v1.9 and this call site handed it the constant,
+                             so the box on the client card did nothing here at all. */
+                          creditDays: num(c.creditDays) || CREDIT_DAYS,
                           returnValue: retVal });
       r.promise = promiseFor(c.name);
       r.follows = followFor(c.name).length;
@@ -3087,7 +3180,7 @@ function cancelMap() {
      bust() runs on the fast merge in both pull paths, before anything reads it again, so one
      line here covers every route the book takes in. A cancellation cache that is not dropped
      shows a cancelled payment as live, which is the exact fault this release exists to fix. */
-  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; _hxCache = null; }
+  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; _hxCache = null; _dupCache = null; }
 
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest("[data-act]");
