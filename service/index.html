@@ -277,7 +277,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.7.3";
+  var APP_VERSION = "1.8.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -1588,6 +1588,102 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function visits()   { return (S.data && S.data.visits)   || []; }
   function spares()   { return (S.data && S.data.spares)   || []; }
 
+  /* ================= THE PRICE LIST THIS APP NEVER HAD (v1.8.0, 30 Aug 2026) ============
+     HIS WORDS, with the Log-a-visit screen open: "here must show actual salt price from master
+     catalog , why showing Rs 450 , make provision to select item from master price list , only
+     with search box type and select item or item with item code".
+
+     MEASURED before changing anything. There were THREE salt prices in this business:
+
+         master catalogue   TABSALT   Tablet Salt   Per Kg   Rs 48      <- the real one
+         spares list        SL-001    Salt tablet bag (25 kg)  Rs 450   <- a 25 kg bag is Rs 1,200
+         a visit in June    Ramesh - Sheena Export   1 bag     Rs 1,125
+         a visit in July    Punit Jain               1 bag     Rs 45
+
+     One bag of salt, billed at 1,125, at 45, and listed at 450. And the spares tab is 27 rows
+     of which TWENTY-SIX have no price at all - it was never filled in, so the parts picker was
+     searching an empty list.
+
+     The catalogue has 1,044 products, is maintained, and is already on the shelf both the CRM
+     and the Payment app share. So this app reads THAT, and the spares tab stays as the place
+     for service-only items the sanitary catalogue does not carry - an MPV seal kit is not a
+     product he sells.
+
+     parseCatalog and driveImg are byte-identical to the CRM's, as they now are in the Payment
+     app - t_apps_agree holds all three to one parser, because the day two apps read one sheet
+     differently is the day the Payment app credited a return at Rs 830. */
+  var CAT_KEY = "ew_team_catalog", CAT_V = 2;
+  var PRODUCTS = [], _catP = null;
+  function catFromShelf() {
+    try {
+      var c = JSON.parse(bigGet(CAT_KEY) || "null");
+      if (c && c.v === CAT_V && c.items && c.items.length) PRODUCTS = c.items;
+    } catch (e) {}
+  }
+  function driveImg(u, size) {
+    u = String(u || "").trim();
+    if (!u) return "";
+    var m = u.match(/\/d\/([A-Za-z0-9_\-]{20,})/) || u.match(/[?&]id=([A-Za-z0-9_\-]{20,})/);
+    if (!m) return u;
+    return "https://lh3.googleusercontent.com/d/" + m[1] + "=w" + (size || 200);
+  }
+  function parseCatalog(rows) {
+    var head = -1, i, r;
+    for (i = 0; i < rows.length && i < 10; i++) {
+      r = (rows[i] || []).map(function (x) { return String(x || "").toLowerCase().trim(); });
+      if (r.indexOf("product code") >= 0) { head = i; break; }
+    }
+    if (head < 0) return [];
+    var out = [];
+    for (i = head + 1; i < rows.length; i++) {
+      var row = rows[i] || [];
+      var code = String(row[1] || "").trim();
+      var desc = String(row[3] || row[2] || "").trim();
+      if (!code && !desc) continue;
+      out.push({
+        code: code,
+        family: String(row[2] || "").trim(),
+        desc: desc,
+        cat: String(row[4] || "").trim(),
+        unit: String(row[5] || "").trim(),
+        /* v6.9.375 - was Number(String(row[6]||"0").replace(/[^0-9.]/g,""))||0, whose
+           character class has no minus in it: the CRM STRIPPED the sign from a negative
+           catalogue price and read -450 as 450, while the Challan app's num() kept it. Two
+           apps pricing one product with opposite signs. No product on his 1,044-row catalogue
+           is negative today, so this is a latent fault closed, not a number corrected - and
+           both apps now parse a price with the same function. */
+        price: num(row[6]),
+        brand: String(row[8] || "").trim(),
+        pic: driveImg(row[10]),
+        /* column L of the master catalogue. Written once per product, it then
+           appears on the Products screen and on every future quote. Blank is
+           fine - a product with no specs simply prints without the block. */
+        specs: String(row[11] || "").trim(),
+        label: (code ? code + " - " : "") + desc
+      });
+    }
+    return out;
+  }
+  /* Fetched ONCE, in the background, and only when the parts picker is actually opened - the
+     boot of this app is 81 KB and stays that way. Written to the shelf both other apps read, so
+     an engineer's phone that has been in a godown all morning still opens the picker instantly.
+     _catP is cleared on every path, including a reply we could not use. */
+  function catReady() {
+    if (PRODUCTS.length || _catP) return;
+    _catP = fetch(GAS + "?action=catalog", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (rows) {
+        var items = parseCatalog(rows);
+        if (items.length) {
+          PRODUCTS = items;
+          try { bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items })); } catch (e) {}
+          try { render(); } catch (e) {}
+        }
+        _catP = null;
+      })
+      .catch(function () { _catP = null; });
+  }
+
   /* Byte-identical to the CRM's, same reason. */
   function installById(id) { return S.data.installs.filter(function (x) { return x.id === id; })[0] || null; }
   /* Every visit ever recorded against this machine, newest first. */
@@ -2336,7 +2432,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         }).join("") + '</div>'
       : '<div class="empty sm">Nothing yet.</div>';
     h += '<div class="row" style="margin-top:6px">' +
-      '<button class="btn sm gry" data-act="v-parts">' + (spares().length ? '+ Add a part' : 'No spares list on this phone') + '</button>' +
+      '<button class="btn sm gry" data-act="v-parts">+ Add a part</button>' +
       '<div class="grow"></div>' +
       (pTot ? '<div class="amt">' + esc(money9(pTot)) + '</div>' : '') + '</div>';
 
@@ -2422,32 +2518,61 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      will not pretend one exists: the card says NO PRICE SET, the part still goes on the visit
      because the customer did receive it, and the engineer is told to write the amount in. */
   function sparePriced(s) { return num(s && s.price) > 0; }
-  function sheetParts() {
-    var q = lower(S.q);
-    var list = spares().filter(function (s) {
-      if (!q) return true;
-      return lower([s.code, s.name, s.category].join(" ")).indexOf(q) >= 0;
+  /* ---- ONE SEARCH BOX OVER THE WHOLE PRICE LIST (v1.8.0) ----
+     "only with search box type and select item or item with item code" - so it matches on the
+     description AND the code, and shows both on every row. The master catalogue first because
+     that is the priced one; the service-only spares underneath, still available, still saying
+     out loud when they carry no price. */
+  function partRows(q) {
+    var out = [];
+    PRODUCTS.forEach(function (p) {
+      if (q && lower([p.code, p.desc, p.family, p.brand].join(" ")).indexOf(q) < 0) return;
+      out.push({ code: p.code, name: p.desc, unit: p.unit || "", note: p.brand || "",
+                 price: num(p.price), src: "list" });
     });
-    var noPrice = spares().filter(function (s) { return !sparePriced(s); }).length;
-    var h = '<h2>Add a part</h2>' + searchBox("Search the spares list") +
-      '<div class="meta pad">' + list.length + ' of ' + spares().length + '</div>';
+    spares().forEach(function (sp) {
+      /* a spares row whose code the catalogue already carries would be the same item twice */
+      if (PRODUCTS.some(function (p) { return lower(p.code) === lower(sp.code); })) return;
+      if (q && lower([sp.code, sp.name, sp.category].join(" ")).indexOf(q) < 0) return;
+      out.push({ code: sp.code, name: sp.name, unit: sp.unit || "", note: sp.category || "",
+                 price: num(sp.price), src: "spare" });
+    });
+    return out;
+  }
+  function sheetParts() {
+    catReady();                      /* costs nothing once the shelf is warm */
+    var q = lower(S.q);
+    var all = partRows(""), list = partRows(q);
+    var h = '<h2>Add a part</h2>' + searchBox("Type a name or an item code") +
+      '<div class="meta pad">' + list.length + ' of ' + all.length + ' items' +
+      (PRODUCTS.length ? '' : ' &middot; price list still coming down\u2026') + '</div>';
+    if (!PRODUCTS.length && !_catP) {
+      h += '<div class="note warn-t"><b>The master price list has not reached this phone.</b> ' +
+        'You can still pick from the service spares below and write the amount in by hand.</div>';
+    }
+    /* v1.4.x kept, v1.8.0 recounted. It used to read "26 of 27 spares have no price" off the
+       service spares tab; the picker now reads the master list too, so it counts what is
+       actually in front of him. The rule it protects is unchanged and is the reason the count
+       is here at all: `+ Add a part` was quietly putting zero-rupee lines on customers' bills. */
+    var noPrice = all.filter(function (x) { return !(x.price > 0); }).length;
     if (noPrice) {
-      h += '<div class="note warn-t"><b>' + noPrice + ' of ' + spares().length + ' spares have no ' +
+      h += '<div class="note warn-t"><b>' + noPrice + ' of ' + all.length + ' items have no ' +
         'price on the list.</b> They can still go on the visit &mdash; the customer had the part ' +
         '&mdash; but the amount has to be written in by hand, and the office should price them ' +
         'in the CRM under Spares.</div>';
     }
-    h += list.length ? list.slice(0, 200).map(function (s) {
-      return '<div class="card sm" data-act="v-pick" data-code="' + esc(s.code) + '">' +
-        '<div class="row"><div class="grow"><div class="ttl">' + esc(s.name) + '</div>' +
-        '<div class="meta">' + esc(s.code || "") + (s.category ? ' &middot; ' + esc(s.category) : '') + '</div></div>' +
-        '<div class="right"><div class="amt' + (sparePriced(s) ? '' : ' bad') + '">' +
-          (sparePriced(s) ? esc(money9(s.price)) : 'no price set') + '</div></div></div></div>';
+    h += list.length ? list.slice(0, 200).map(function (s2) {
+      return '<div class="card sm" data-act="v-pick" data-code="' + esc(s2.code) + '" data-src="' + esc(s2.src) + '">' +
+        '<div class="row"><div class="grow"><div class="ttl">' + esc(s2.name) + '</div>' +
+        '<div class="meta">' + esc(s2.code || "") + (s2.note ? ' &middot; ' + esc(s2.note) : '') + '</div></div>' +
+        '<div class="right"><div class="amt' + (s2.price > 0 ? '' : ' bad') + '">' +
+          (s2.price > 0 ? esc(money9(s2.price)) : 'no price set') + '</div>' +
+          (s2.unit ? '<div class="meta">per ' + esc(String(s2.unit).replace(/^per\s+/i, "")) + '</div>' : '') +
+        '</div></div></div>';
     }).join("") : '<div class="empty">Nothing matches that.</div>';
     h += '<div class="acts"><button class="btn gry grow" data-act="v-back">Back</button></div>';
     return h;
   }
-
 
   /* ================= SAVING A VISIT =================
      Two rows, in a deliberate order.
@@ -2897,16 +3022,30 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       S.sheet = sheetVisit(S.vis); render(); return;
     }
     if (act === "v-parts") {
-      if (!S.vis || !spares().length) { toast("The spares list has not reached this phone yet — pull the book."); return; }
+      if (!S.vis) return;
+      /* v1.8.0 - it used to refuse when the 27-row spares tab was empty. The picker now reads
+         the 1,044-product master list, so an empty spares tab is no reason to refuse anything. */
+      catReady();
       readVisitForm(); S.q = ""; S.sheet = sheetParts(); render(); return;
     }
     if (act === "v-back")  { if (S.vis) { S.q = ""; S.sheet = sheetVisit(S.vis); render(); } return; }
     if (act === "v-pick") {
-      var sp = spareByCode(t.getAttribute("data-code")); if (!sp || !S.vis) return;
+      if (!S.vis) return;
+      var _c = t.getAttribute("data-code");
+      /* v1.8.0 - the master list first, the service spares second. The price is the CATALOGUE
+         LIST PRICE and no discount is taken off it: his answer, and the right one - a service
+         call is not a bulk order. It is frozen onto the line here, so a later change to the
+         catalogue can never rewrite a visit already recorded. */
+      var pr = PRODUCTS.filter(function (p) { return lower(p.code) === lower(_c); })[0];
+      var sp = pr ? { code: pr.code, name: pr.desc, price: num(pr.price), unit: pr.unit || "" }
+                  : spareByCode(_c);
+      if (!sp) return;
       var rows = S.vis.parts || (S.vis.parts = []);
+      /* the same item picked twice is a bigger quantity, never a second row - two identical
+         lines on one visit is how a customer gets billed for one thing twice */
       var hit = rows.filter(function (r) { return lower(r.code) === lower(sp.code); })[0];
-      if (hit) hit.qty = num(hit.qty) + 1;
-      else rows.push({ code: sp.code, name: sp.name, price: num(sp.price), qty: 1 });
+      if (hit) { hit.qty = num(hit.qty) + 1; toast(sp.name + " \u2014 now " + hit.qty); }
+      else rows.push({ code: sp.code, name: sp.name, price: num(sp.price), qty: 1, unit: sp.unit || "" });
       S.q = ""; S.sheet = sheetVisit(S.vis); render(); return;
     }
     if (act === "v-drop") {
@@ -3101,7 +3240,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     regSW();
     if (!sess || !sess.user || !sess.pin) { renderLogin(""); return; }
     S.user = sess.user; S.pin = sess.pin;
-    bigPreload([SNAP + "_" + S.user, JRN_KEY]).then(function () { verWatch(); boot2(sess); });
+    bigPreload([SNAP + "_" + S.user, JRN_KEY, CAT_KEY]).then(function () { catFromShelf(); verWatch(); boot2(sess); });
   })();
 
   function boot2(sess) {
