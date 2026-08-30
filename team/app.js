@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.380";
+  var APP_VERSION = "6.9.381";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3771,6 +3771,34 @@ window.addEventListener("beforeunload", function (ev) {
     var t = String(n || "").trim().toLowerCase();
     return S.data.spares.filter(function (x) { return String(x.name).toLowerCase() === t; })[0] || null;
   }
+  /* ============ THE SAME FAULT, ONE SCREEN OVER (v6.9.381, 30 Aug 2026) ============
+     HIS WORDS: "now also salt bag saying of rs 450 , what the mess is this , why are you not
+     able to fix things at once , why i have to promted you time and again for same thing".
+
+     He was right and it was my mistake. He showed me the Log-a-visit screen; I fixed the
+     SERVICE APP'S parts picker in 1.8.0 and left the CRM'S OWN Log-a-visit form - a different
+     screen that looks the same - reading spareByName("Salt tablet bag (25 kg)") off the 27-row
+     spares tab and printing Rs 450. One app fixed, one not, and he had to find it.
+
+     So the lookup is now ONE function used by both forms, and svcItem() answers for any item,
+     not just salt: the master catalogue by CODE or by description first - 1,044 products, all
+     priced, maintained - and the service-only spares tab second, for the MPV seal kits and
+     brine floats the sanitary catalogue does not carry.
+
+     t_parts_picker now drives BOTH apps over the same rows. */
+  function svcItem(q) {
+    var t = String(q || "").trim().toLowerCase();
+    if (!t) return null;
+    var p = (PRODUCTS || []).filter(function (x) {
+      return String(x.code || "").toLowerCase() === t || String(x.desc || "").toLowerCase() === t;
+    })[0];
+    if (p) return { code: p.code, name: p.desc, price: nAmt(p.price), unit: p.unit || "", src: "list" };
+    var sp = spareByName(q) || (S.data.spares || []).filter(function (x) {
+      return String(x.code || "").toLowerCase() === t;
+    })[0];
+    if (sp) return { code: sp.code, name: sp.name, price: nAmt(sp.price), unit: sp.unit || "", src: "spare" };
+    return null;
+  }
   function visitTotal(v) { return (Number(v.visitCharge) || 0) + (Number(v.saltAmt) || 0) + (Number(v.partsAmt) || 0); }
 
   function dueLabel(x) {
@@ -5206,19 +5234,37 @@ window.addEventListener("beforeunload", function (ev) {
   }
 
   function modalVisit(inst) {
-    var saltPrice = spareByName("Salt tablet bag (25 kg)");
+    /* v6.9.381 - the price list, not the 27-row spares tab. saltBagPrice() is the one place
+       that answers "what does a bag cost", and it is the same one the service check judges
+       against - so the form and the check can never disagree. */
+    var saltBag = saltBagPrice();
     return '<h2>Log a visit</h2><p class="sub">' + esc(inst.client) + ' &middot; ' + esc(inst.product || "") + ' &middot; ' + esc(inst.area || "") + '</p>' +
       '<div class="grid2"><div><label>Date</label><input id="v_date" type="date" value="' + today() + '"/></div>' +
       '<div><label>Engineer</label><select id="v_eng">' + opts(SVC_ENGINEERS, inst.engineer || SVC_ENGINEERS[0]) + '</select></div></div>' +
       '<label>Type of visit</label><select id="v_type">' + opts(VISIT_TYPES, "Periodic service") + '</select>' +
       '<div class="grid2"><div><label>Visit charge (Rs)</label><input id="v_charge" inputmode="numeric" value="' + MIN_VISIT + '"/></div>' +
       '<div><label>Salt bags</label><input id="v_salt" inputmode="numeric" value="0"/></div></div>' +
-      '<label>Salt rate per bag (Rs)</label><input id="v_saltrate" inputmode="numeric" value="' + esc(saltPrice && saltPrice.price ? saltPrice.price : "") + '" placeholder="set the salt bag price in Spares"/>' +
+      '<label>Salt rate per bag (Rs)</label><input id="v_saltrate" inputmode="numeric" value="' + esc(saltBag || "") + '" placeholder="set the salt price in Spares or the catalogue"/>' +
+      (saltBag ? '<div class="meta" style="font-size:11.5px">' + money(saltBag) + ' a bag, from the price list.</div>' : '') +
       '<label>Spare parts used</label><div id="v_lines">' + spareRow(0) + '</div>' +
       '<button class="btn sm ghost" data-act="sv-add" style="margin-top:4px">+ Add spare</button>' +
       '<label>Collected now (Rs)</label><input id="v_coll" inputmode="numeric" value="0"/>' +
       '<label>Notes</label><textarea id="v_notes"></textarea>' +
-      '<datalist id="sparelist">' + S.data.spares.map(function (p) { return '<option value="' + esc(p.name) + '"></option>'; }).join("") + '</datalist>' +
+      /* v6.9.381 - the whole price list, by code AND by name, so he can type either. The
+         service-only spares stay on the end; an item in both is offered once. */
+      '<datalist id="sparelist">' + (function () {
+        var seen = {}, out = [];
+        (PRODUCTS || []).forEach(function (p) {
+          var k = String(p.code || "").toLowerCase(); if (!k || seen[k]) return; seen[k] = 1;
+          out.push('<option value="' + esc(p.desc) + '">' + esc(p.code) + (p.unit ? ' \u00b7 per ' + esc(String(p.unit).replace(/^per\s+/i, "")) : '') + ' \u00b7 ' + esc(money(nAmt(p.price))) + '</option>');
+          out.push('<option value="' + esc(p.code) + '">' + esc(p.desc) + '</option>');
+        });
+        (S.data.spares || []).forEach(function (p) {
+          if (seen[String(p.code || "").toLowerCase()]) return;
+          out.push('<option value="' + esc(p.name) + '">' + esc(p.code || "") + '</option>');
+        });
+        return out.join("");
+      })() + '</datalist>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="visit-save" data-id="' + esc(inst.id) + '">Save visit</button></div>';
   }
@@ -34822,9 +34868,12 @@ function viewCatalogue() {
       return;
     }
     if (t.classList && t.classList.contains("sv-d")) {
-      var sp = spareByName(t.value);
+      /* v6.9.381 - resolves a CODE as well as a name, and the master price list before the
+         spares tab. Typing TABSALT fills Rs 48; typing Tablet Salt fills Rs 48. */
+      var sp = svcItem(t.value);
       if (!sp) return;
       var row = t.closest(".lineitem");
+      if (sp.src === "list" && String(t.value).trim().toLowerCase() === String(sp.code || "").toLowerCase()) t.value = sp.name;
       if (sp.price) row.querySelector(".sv-r").value = sp.price;
       if (!row.querySelector(".sv-q").value) row.querySelector(".sv-q").value = 1;
       return;
