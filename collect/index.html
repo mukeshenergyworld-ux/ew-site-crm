@@ -143,7 +143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.26.1";
+  var APP_VERSION = "1.26.2";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1171,10 +1171,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
 
   var JOB_CODE = "JOBWORK";
   function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
+  /* v1.26.2 - spelled exactly as the CRM's and the Challan app's. It always did the same
+     arithmetic; it just used an intermediate variable, and an exemption for a money function
+     that differs only cosmetically is an exemption that teaches you to ignore the guard. */
   function num(v) {
     if (typeof v === "number") return isFinite(v) ? v : 0;
-    var t = String(v == null ? "" : v).replace(/[^0-9.\-]/g, "");
-    var n = Number(t);
+    var n = Number(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
     return isFinite(n) ? n : 0;
   }
   function d10(v) { return String(v == null ? "" : v).slice(0, 10); }
@@ -1185,6 +1187,36 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     return Math.round((b - a) / 86400000);
   }
 
+
+  /* ============ THE DISCOUNT HE GAVE AT THE COUNTER (v1.26.2) ============
+     When a delivery is stamped into HISAB the owner may take a further amount off it - breakage
+     adjusted, a rate settled on site. The CRM records it on the stamp and subtracts it from what
+     the client owes. This app never read it, so the same delivery was worth more here than there
+     by exactly that amount.
+
+     It costs Rs 0 today: no stamp on the whole book carries one. It is fixed NOW anyway, because
+     CRM 6.9.374 - shipped this afternoon - ticked "No further discount" by default and took the
+     Accessory gate off the stamp, which is precisely the change that makes him start using it.
+     A gap that has never fired and is about to is worth closing before it does, not after.
+
+     Same shape as the CRM's: the discount can never exceed the goods, and a credit (negative
+     gross) is handed back untouched rather than floored at zero. */
+  var _hxCache = null;
+  function hisabExtraMap() {
+    if (_hxCache) return _hxCache;
+    var m = {}, seen = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "challan:hisab") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.chId) return;
+      var at = String(r.createdAt || "");
+      if (!seen[d.chId] || at >= seen[d.chId]) { seen[d.chId] = at; m[d.chId] = Number(d.extra) || 0; }
+    });
+    _hxCache = m;
+    return m;
+  }
+  function hisabExtraOf(c) { return (c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0; }
 
   /* Net (post-discount) goods value of a challan, from the discount frozen on each
      line when it was created.
@@ -1204,8 +1236,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
       var disc = (i.disc != null && i.disc !== "") ? num(i.disc) : clientDiscount(c.customerName, brand);
       return s + qty * Math.round(rate * (1 - disc / 100));
     }, 0);
+    /* v1.26.2 - less whatever was taken off at the counter, exactly as the CRM does it. */
+    var off = hisabExtraOf(c);
+    var net = goods > 0 ? Math.max(0, goods - Math.min(Math.max(0, off), goods)) : goods;
     var freight = String(c.freightTo) === "Client" ? num(c.freight) : 0;
-    return goods + freight;
+    return net + freight;
   }
 
   /* ============ A CANCELLED RECORD IS CANCELLED IN THIS APP TOO (v1.26.0) ============
@@ -3052,7 +3087,7 @@ function cancelMap() {
      bust() runs on the fast merge in both pull paths, before anything reads it again, so one
      line here covers every route the book takes in. A cancellation cache that is not dropped
      shows a cancelled payment as live, which is the exact fault this release exists to fix. */
-  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; }
+  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; _hxCache = null; }
 
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest("[data-act]");
