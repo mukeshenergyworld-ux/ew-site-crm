@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.373";
+  var APP_VERSION = "6.9.374";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7758,6 +7758,57 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
       '<button class="btn" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button></div>';
   }
+  /* ============ NOT STAMPED, AND NOTHING SAID SO  (v6.9.374, 29 Aug 2026) ============
+     HE REPORTED IT: "add to hisab is pending of lots of challans and its not red marked
+     anywhere, its huge loss of money".
+
+     COUNTED ON HIS OWN BOOK THE MINUTE HE SAID IT:
+       133 deliveries received
+        45 stamped
+        88 NEVER STAMPED  -  Rs 29,11,522 of goods, the oldest 40 days old
+
+     hisabPendingList() below has existed for weeks and shows only deliveries that carry a
+     PROOF PHOTO. That is the right list for the approve queue and the wrong one for this: a
+     delivery signed for on paper with no photo is not stamped and is not on any list either,
+     so it is invisible twice over.
+
+     WHAT IS ACTUALLY AT RISK, said precisely, because "huge loss of money" deserves an exact
+     answer rather than agreement. The client IS billed - an unstamped delivery is in his
+     balance already. Two other things are not:
+       - WHO EARNS on it is never fixed. The stamp writes the line-up down for good; without
+         it the incentive follows whoever the client's partner is TODAY, so changing a partner
+         silently moves the earnings on every unstamped delivery that client ever had. That is
+         Rs 29,11,522 of history that can still move under him.
+       - any further discount settled on site is not recorded against the delivery.
+     Neither is visible until somebody disputes it, which is the worst way to find out. */
+  function hisabNotStamped() {
+    return (S.data.challans || []).filter(function (c) {
+      return String(c.receiptReceived || "").toUpperCase() === "Y" && !inHisab(c);
+    });
+  }
+  /* The red band. Drawn on the dashboard and at the top of HISAB, for whoever can stamp. */
+  function hisabNotStampedBand() {
+    var list = hisabNotStamped().filter(function (c) {
+      return seesAllClients() || isMineClient(c.customerName);
+    });
+    if (!list.length) return "";
+    var worth = list.reduce(function (a, c) { return a + chValue(c); }, 0);
+    var oldest = 0;
+    list.forEach(function (c) {
+      var t = Date.parse(c.createdAt || "");
+      if (isFinite(t)) oldest = Math.max(oldest, Math.round((Date.now() - t) / 86400000));
+    });
+    return '<div class="card" style="border-color:#fca5a5;background:#fef2f2;cursor:pointer" ' +
+      'data-act="tab" data-tab="challans">' +
+      '<h3 style="color:#991b1b;margin:0">' + list.length + ' deliver' + (list.length === 1 ? 'y is' : 'ies are') +
+        ' waiting for ADD TO HISAB <span class="pill due">' + money(worth) + '</span></h3>' +
+      '<div class="meta" style="color:#7f1d1d;font-size:12.5px;line-height:1.55;margin-top:6px">' +
+      (oldest ? 'The oldest has been waiting <b>' + oldest + ' days</b>. ' : '') +
+      'They are already on the client&rsquo;s account &mdash; what is <b>not</b> fixed is who earns ' +
+      'on them. Until a delivery is stamped the incentive follows whoever the client&rsquo;s partner ' +
+      'is <i>today</i>, so changing a partner moves the earnings on all of these at once.' +
+      '<br><b>Tap to open Deliveries.</b> Each one is marked <b>NOT IN HISAB</b>.</div></div>';
+  }
   function hisabPendingList() {
     return (S.data.challans || []).filter(function (c) {
       return !inHisab(c) && chProofAny(c).has &&
@@ -7779,13 +7830,36 @@ window.addEventListener("beforeunload", function (ev) {
   }
   /* No ROW at all is what "not preset" means. A row saying 0% is a decision already taken
      and is never asked about again - that is exactly what "ignore once" is meant to do. */
+  /* ---- IT KEPT ASKING FOR A DISCOUNT ON A THING THAT IS NOT A BRAND (v6.9.374) ----
+     HE REPORTED IT: "why this asking time and again, its frustrating".
+
+     From his own screen: "1 brand has no discount set for Arun Sethi — ACCESSORY". Accessory is
+     not a brand. It is a catalogue bucket that allied items are filed under, and this file has
+     said so in three separate places since v6.9.218 - the brand board keeps it off lead cards,
+     the compact challan card hides it, and presRealBrand() keeps it off a customer proposal.
+     Only this one question never got the message, so every stamp on every client demanded a
+     standing percent for a heading that spans a dozen real brands and that he will never set.
+
+     Asked once per client per bucket, for ever, on a screen he has to pass through to record
+     money. That is a large part of why 88 deliveries are sitting unstamped.
+
+     Nothing about pricing changes. Every line still carries the discount frozen on it when the
+     challan was made, and if he does want a standing percent on accessories for a client he can
+     still set it in Discounts. It simply stops being a gate. presRealBrand is reused rather
+     than re-written so there is ONE definition of what counts as a brand. */
   function hisabBrandsMissingDisc(c) {
     var cl = (c && c.customerName) || "";
-    return hisabBrandsOf(c).filter(function (b) { return !discRow(cl, b); });
+    return hisabBrandsOf(c).filter(function (b) {
+      return presRealBrand(b) && !discRow(cl, b);
+    });
   }
   function hisabStampPill(c) {
     var st = hisabStamp(c);
-    if (!st) return "";
+    /* v6.9.374 - AN EMPTY STRING WAS THE WHOLE PROBLEM. A delivery that has never been stamped
+       drew nothing at all, so 88 of them - Rs 29,11,522 - sat on his screens looking exactly
+       like a delivery that was finished with. Every card that draws the green "in hisab" pill
+       now draws a red one instead when there is none, at no extra call site. */
+    if (!st) return notInHisabPill(c);
     /* v6.9.259 - a stamp is not the same thing as being counted. If the delivery was never
        marked received the money is NOT on his account, and the card says exactly that
        instead of a green tick that is not true. */
@@ -8145,7 +8219,7 @@ window.addEventListener("beforeunload", function (ev) {
           'style="flex:1 1 150px;min-width:130px"/>' +
         '<span id="hsb_extrapct" class="meta" style="font-size:12px;white-space:nowrap">&mdash;</span>' +
         '<label style="display:flex;align-items:center;gap:7px;margin:0;white-space:nowrap;font-weight:700;' +
-          'color:#334155;cursor:pointer"><input type="checkbox" id="hsb_noextra" ' +
+          'color:#334155;cursor:pointer"><input type="checkbox" id="hsb_noextra" checked ' +
           'style="width:19px;height:19px;flex:0 0 auto"/> No further discount</label>' +
       '</div>' +
       '<input id="hsb_extranote" placeholder="Why (optional) — e.g. breakage adjusted, rate settled on site" ' +
@@ -15197,6 +15271,7 @@ function viewCatalogue() {
           '<div class="meta" style="font-size:13.5px;color:#7c2d12"><b>' + money(_unb.val) + '</b> in <b>' + _unb.count + '</b> delivered challan(s) not billed yet — raise the bills so nothing slips on GST.</div></div>';
       }
     }
+    h += hisabNotStampedBand();
     h += hisabMismatchCard();
     h += '<div class="row">' +
       (roleIs("admin") ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
@@ -17258,6 +17333,14 @@ function viewCatalogue() {
      exactly that reason; approved and dispatched ones sit under it in amber, because those
      are moving.
      Cancelled challans are lifted out of S.data entirely, so none can appear here. */
+  /* The same fact on the card itself, so it is impossible to scroll past. Drawn by
+     hisabStampPill, which every challan card already calls. */
+  function notInHisabPill(c) {
+    if (!c || String(c.receiptReceived || "").toUpperCase() !== "Y" || inHisab(c)) return "";
+    return ' <span class="pill" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5" ' +
+      'title="Received, and never stamped to HISAB. The money is on the client\u2019s account, but ' +
+      'who earns on this delivery is not fixed until it is stamped.">NOT IN HISAB</span>';
+  }
   function hisabPendingCard(cl) {
     var pend = (S.data.challans || []).filter(function (c) {
       return c.customerName === cl && String(c.receiptReceived).toUpperCase() !== "Y";
@@ -17443,7 +17526,8 @@ function viewCatalogue() {
     var h = '<div class="row">' +
       (S.q ? '<button class="btn sm ghost" data-act="bill-clear">\u2190 All clients</button>' : '') +
       '<input class="grow" id="q" placeholder="Type a client to bill (then Enter)..." list="billclients" value="' + esc(S.q) + '"/><button class="btn" data-act="bill-go">Show</button></div>' +
-      '<datalist id="billclients">' + billNames.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>';
+      '<datalist id="billclients">' + billNames.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      hisabNotStampedBand();
     if (cl && !isMineClient(cl)) return h + '<div class="empty"><b>' + esc(cl) + '</b> is assigned to another sales executive, so their hisab is not open to you. You can view and follow up on the clients assigned to you.</div>';
     if (!S.q) {
       var outs = hisabOutstanding();
@@ -25202,7 +25286,9 @@ function viewCatalogue() {
       if (dv > 0.5) { myOutstanding += dv; myOverdue += clientAging(c.name).overdue; }
     });
 
-    var h = '<div class="cards">' +
+    /* v6.9.374 - ABOVE the tiles, not below them. A number nobody scrolls to is a number
+       nobody acts on, and 88 unstamped deliveries is what that costs. */
+    var h = hisabNotStampedBand() + '<div class="cards">' +
       '<div class="stat"><div class="n">' + liveClients.length + '</div><div class="l">Clients</div></div>' +
       '<div class="stat ' + (overdue.length ? 'alert' : '') + '"><div class="n">' + overdue.length + '</div><div class="l">Follow-ups overdue</div></div>' +
       '<div class="stat"><div class="n">' + due.length + '</div><div class="l">Due today</div></div>' +
@@ -32082,8 +32168,26 @@ function viewCatalogue() {
       if (hxNo && hxNo.checked) hxAmt = 0;
       if (hxAmt < 0) { toast("A further discount cannot be a negative amount."); return; }
       var hGoods = pricedLines(hc, hc.customerName).reduce(function (a, x) { return a + x.amt; }, 0);
-      if (hxAmt > hGoods) {
-        toast("That is more than the goods on this delivery (" + money(hGoods) + "). Check the amount.");
+      /* ---- A CREDIT IS NOT A DELIVERY WITH A DISCOUNT ON IT  (v6.9.374, 29 Aug 2026) ----
+         HE REPORTED IT: "how to enter it to hisab, ashish goel". He could not. Not because he
+         was doing it wrong - because there was no number he could type.
+
+         27/08/2026/034 is two material returns entered as one delivery with negative rates:
+         -22,463 and -47,793, so hGoods is -70,256. The guard below asked `hxAmt > hGoods`, and
+         ZERO IS GREATER THAN MINUS SEVENTY THOUSAND. So ticking "No further discount" - which
+         sets hxAmt to 0 - was refused, typing 0 was refused, and typing a negative was refused
+         by the line above. Every path closed. He was locked out of his own record.
+
+         The guard is right about what it is FOR: nobody may discount more than the goods are
+         worth. It is simply meaningless on a credit, where there are no goods to take anything
+         off. Comparing against max(0, goods) leaves every positive delivery behaving exactly as
+         before - the arithmetic is identical whenever hGoods >= 0 - and lets a further discount
+         of NOTHING through on a credit, while still refusing a real one. */
+      if (hxAmt > Math.max(0, hGoods)) {
+        toast(hGoods <= 0
+          ? "This delivery is a credit (" + money(hGoods) + "), so there is nothing to take a " +
+            "further discount off. Leave it blank or tick No further discount."
+          : "That is more than the goods on this delivery (" + money(hGoods) + "). Check the amount.");
         return;
       }
       /* Every man on the line-up, ticked or not. The unticked ones are written too: "this man
