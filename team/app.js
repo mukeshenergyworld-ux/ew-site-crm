@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.382";
+  var APP_VERSION = "6.9.383";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4202,6 +4202,35 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="stat ' + (noSn ? "alert" : "") + '"><div class="n">' + noSn + '</div><div class="l">Without a serial no.</div></div>' +
       '<div class="stat"><div class="n">' + all.filter(function (u) { return u.till && daysTo(u.till) >= 0; }).length + '</div><div class="l">Still in warranty</div></div>' +
       '</div>';
+    /* v6.9.383 - "maintain a proper data that how many softener are under mainatainece".
+       The count above says how many units exist; this says WHAT they are and which of them
+       somebody is actually paying to look after. A kind with none is not drawn - a row of
+       zeroes teaches nobody anything. */
+    (function () {
+      var byKind = {};
+      all.forEach(function (u) {
+        var k = String(u.product || "Other").trim() || "Other";
+        var e = byKind[k] || (byKind[k] = { n: 0, amc: 0, warr: 0 });
+        e.n++;
+        if (u.till && daysTo(u.till) >= 0) e.warr++;
+        try { if (amcOf(u).stage === "Won") e.amc++; } catch (x) {}
+      });
+      var kinds = Object.keys(byKind).sort(function (a, b) { return byKind[b].n - byKind[a].n; });
+      if (!kinds.length) return;
+      h += '<div class="card" style="margin-top:10px"><h3 style="margin:0 0 6px;font-size:14px">What is standing out there</h3>' +
+        '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">' +
+        kinds.map(function (k) {
+          var e = byKind[k];
+          return '<div class="row" style="padding:7px 10px;border-bottom:1px solid #f1f5f9;align-items:center">' +
+            '<div class="grow"><b style="font-size:13px">' + esc(k) + '</b></div>' +
+            '<span class="pill">' + e.n + ' installed</span>' +
+            (e.warr ? '<span class="pill Won">' + e.warr + ' in warranty</span>' : '') +
+            (e.amc ? '<span class="pill teal">' + e.amc + ' on AMC</span>' : '') +
+            ((!e.warr && !e.amc) ? '<span class="pill due">none covered</span>' : '') +
+            '</div>';
+        }).join("") + '</div>' +
+        '<div class="meta" style="margin-top:6px">A machine with neither a live warranty nor a won AMC is one nobody is paid to look after \u2014 and every one of them is a customer who would take a call.</div></div>';
+    })();
     var pipe = amcPipeline();
     if (pipe.Due + pipe.Offered + pipe.Quoted + pipe.Won + pipe.Lost) {
       h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;margin-top:10px">' +
@@ -5143,6 +5172,32 @@ window.addEventListener("beforeunload", function (ev) {
       .filter(function (n) { return n && isClient(n); })
       .sort(function (a, b) { return a.localeCompare(b); });
   }
+  /* ============ THE GATE THAT BLOCKED EVERY OLD MACHINE (v6.9.383, 30 Aug 2026) ============
+     HIS WORDS: "make arrangement to enter old enteries also as may softeners , sand filter ,
+     heat pump and pressure pump installed to old clients , we have to manage them also , i
+     will put tentative commissioning date for old clients so to manage warrantry and amc of
+     old clients , bcos they also are our references for new clients".
+
+     MEASURED before touching it: the installation form offered ONLY wonClientNames(), and
+     isClient() answers true when a client has a won brand or a delivered challan. Run over his
+     book: 164 clients, and ZERO pass. Not one machine could be entered against any of them.
+
+     THE GATE HAD IT BACKWARDS. It demanded evidence of a sale before it would let him record
+     the machine that IS the evidence. A softener standing on a man's roof since 2023 is a
+     harder fact than a quote marked Won - the quote may predate the app, and for these clients
+     it always does.
+
+     So the list is now every registered client, with the ones already marked won at the top
+     because that is the common case and he should not scroll past history to find today. It is
+     grouped, not merged, so nothing about a won client's record changes. */
+  function allClientNamesForService() {
+    var won = wonClientNames(), seen = {};
+    won.forEach(function (n) { seen[dgKey(n)] = 1; });
+    var rest = (S.data.clients || []).map(function (c) { return c.name; })
+      .filter(function (n) { return n && !seen[dgKey(n)]; })
+      .sort(function (a, b) { return a.localeCompare(b); });
+    return { won: won, rest: rest };
+  }
   /* The three kinds the Service app knows, plus whatever this row already says. A contract
      already on the sheet is never re-worded by the act of opening the form to look at it. */
   var AMC_OPTIONS = ["None", "AMC with spares", "AMC without spares"];
@@ -5173,12 +5228,15 @@ window.addEventListener("beforeunload", function (ev) {
       '<p class="sub">Add each product with its own dates &amp; warranty. \u201cPeriodic service = Yes\u201d drives the reminders.</p>' +
       '<label>Client (won lead) <span style="color:#ef4444">*</span></label>' +
       '<select id="i_client">' + (function () {
-        var names = wonClientNames(), cur = String(x.client || ""), have = names.indexOf(cur) >= 0;
-        return '<option value="">— Select a won client —</option>' +
-          (cur && !have ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + ' (not marked won)</option>' : '') +
-          names.map(function (n) { return '<option value="' + esc(n) + '"' + (n === cur ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join("");
+        var g = allClientNamesForService(), cur = String(x.client || "");
+        var opt = function (n) { return '<option value="' + esc(n) + '"' + (n === cur ? ' selected' : '') + '>' + esc(n) + '</option>'; };
+        var known = g.won.concat(g.rest).indexOf(cur) >= 0;
+        return '<option value="">\u2014 Select the customer \u2014</option>' +
+          (cur && !known ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + ' (not in the client list)</option>' : '') +
+          (g.won.length ? '<optgroup label="Customers with a won brand or a delivery">' + g.won.map(opt).join("") + '</optgroup>' : '') +
+          (g.rest.length ? '<optgroup label="Everyone else \u2014 for machines installed before the app">' + g.rest.map(opt).join("") + '</optgroup>' : '');
       })() + '</select>' +
-      '<div class="meta" style="font-size:11px;color:#94a3b8;margin:2px 0 6px">Only a registered lead marked <b>Won</b> (a won quote, a won pitch, or a delivered challan) can get a service / AMC record. Not listed? Win the quote or mark the pitch <b>Won</b> first.</div>' +
+      '<div class="meta" style="font-size:11px;color:#94a3b8;margin:2px 0 6px">Any registered customer can carry a machine. <b>A machine standing on his roof is the proof he bought one</b> \u2014 the older ones predate the app, so nothing here waits for a quote to be marked Won. Put the <b>commissioning date</b> on each product below and the warranty and AMC clocks work from that.</div>' +
       '<div class="grid2"><div><label>Mobile</label><input id="i_mobile" inputmode="numeric" value="' + esc(x.mobile) + '"/></div>' +
       '<div><label>Area / route</label><input id="i_area" value="' + esc(x.area) + '"/></div></div>' +
       '<label>Address</label><input id="i_addr" value="' + esc(x.address) + '"/>' +
