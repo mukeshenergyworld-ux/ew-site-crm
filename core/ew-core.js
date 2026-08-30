@@ -215,10 +215,53 @@
       .then(function (t) { return (t.match(/APP_VERSION\s*=\s*"([\d.]+)"/) || [])[1] || ""; })
       .catch(function () { return ""; });      /* no signal is not a new version */
   }
+  /* ============ THE BANNER NOBODY EVER FIRED (30 Aug 2026) ============
+     HE REPORTED IT, and he was right: "for same client different balances on CRM and collection
+     app". The arithmetic had been fixed and verified live five days running. His PHONE was still
+     showing the old one, because the new build had never reached it.
+
+     Every one of these apps has a "Version X is ready - Update" bar. liveVersion() is what sets
+     it, and liveVersion() was called from exactly ONE place: refreshNow(), which is the manual
+     Refresh button. Nothing checked on boot, nothing checked on a timer. A man who never taps
+     Refresh runs whatever build his phone cached, for ever, while the shelf-first worker quietly
+     serves him yesterday.
+
+     That is worse than any wrong figure on this list, because it makes every OTHER fix optional.
+
+     The workers already do the hard half: since 29 Aug ewShelf compares the ETag it served with
+     the ETag that came back and posts "new-build" to the page. Nothing was listening. This
+     listens, and confirms with liveVersion() before it says anything - the message is a hint,
+     the version string is the proof, so a changed icon can never raise a false banner.
+     It costs no extra network: that revalidation was happening anyway. */
+  function verWatch() {
+    try {
+      if (!navigator.serviceWorker || !navigator.serviceWorker.addEventListener) return;
+      navigator.serviceWorker.addEventListener("message", function (e) {
+        if (!e || !e.data || e.data.ew !== "new-build") return;
+        if (String(e.data.url || "").indexOf("app.js") >= 0) return;   /* that one is the CRM's */
+        liveVersion().then(function (v) {
+          if (!v || v === APP_VERSION || v === S.newVer) return;
+          S.newVer = v;
+          try { render(); } catch (x) {}
+          try { toast("Version " + v + " is ready - tap Update above."); } catch (x) {}
+        });
+      });
+    } catch (e) {}
+  }
+  /* ============ "NO ANSWER" IS NOT "UP TO DATE" (30 Aug 2026) ============
+     liveVersion() ends in .catch(return "") - correct, because no signal is not a new version.
+     But this line then read that empty string as `!v` and said "This is the latest version",
+     out loud, with a version number on it. A check that never reached the server reported
+     success. On a phone in a godown that is the most common outcome there is, and it is the
+     one answer that stops a man looking further.
+
+     Say which of the two actually happened. Nothing else changes: an unreachable server still
+     raises no banner. */
   function refreshNow(loud) {
     pull(true);
     liveVersion().then(function (v) {
-      if (!v || v === APP_VERSION) { if (loud) toast("This is the latest version (v" + APP_VERSION + ")."); return; }
+      if (!v) { if (loud) toast("Could not check for a new version — you are on v" + APP_VERSION + "."); return; }
+      if (v === APP_VERSION) { if (loud) toast("This is the latest version (v" + APP_VERSION + ")."); return; }
       S.newVer = v;
       try { render(); } catch (e) {}
       toast("Version " + v + " is ready — tap Update above.");
@@ -292,10 +335,31 @@
 
      Omitted still means the whole book, which is what the fallback below asks for and what
      anything wanting everything at once should keep asking for. */
+  /* ============ "USABLE" MEANS "CARRIES WHAT I ASKED FOR" (29 Aug 2026) ============
+     usableBook asks whether an answer holds clients or challans, because that is what makes a
+     WHOLE book usable. Applied to a NARROW ask it is simply the wrong question.
+
+     FOUND BY OPENING THE APP AND READING THE TOAST, not by reasoning. The Payment app's second
+     call asks for ["audit"] and nothing else, so its answer can never hold clients or challans -
+     and this line therefore threw away a perfectly good reply and re-pulled the ENTIRE book,
+     every time, on every open, for every collector, while toasting "the short list did not come
+     back" as it did so.
+
+     Measured against the live backend the same minute: the narrow ask is 466 KB; the fallback it
+     was triggering is 838 KB. The staged pull was costing MORE than the single call it replaced.
+
+     A NAMED ask is usable when it carries the tabs it named. An unnamed ask - the fallback below,
+     and anything that wants everything - is judged exactly as before. */
+  function askedFor(r, only) {
+    if (!r || !r.ok) return false;
+    if (!only || !only.length) return usableBook(r);
+    for (var i = 0; i < only.length; i++) if (!Array.isArray(r[only[i]])) return false;
+    return true;
+  }
   function getBook(only) {
     var want = only || KEEP;
     return api("teamGet", { only: want }).then(function (r) {
-      if (usableBook(r)) { BOOKSAY = ""; return r; }
+      if (askedFor(r, only)) { BOOKSAY = ""; return r; }
       BOOKSAY = bookSay(r);
       /* the narrow ask came back unusable - try it the way the CRM does, which works */
       return api("teamGet").then(function (r2) {
