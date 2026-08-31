@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.383";
+  var APP_VERSION = "6.9.384";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3786,18 +3786,51 @@ window.addEventListener("beforeunload", function (ev) {
      brine floats the sanitary catalogue does not carry.
 
      t_parts_picker now drives BOTH apps over the same rows. */
+  /* ================= ONE PRICE LIST, NOT TWO (30 Aug 2026) =================
+     HIS WORDS, with the salt line still showing Rs 450 in front of him:
+
+       "remove this salt , rs 450 from everywhere , there will be no seprate spare parts
+        list in service section , everthing to be picked from master catalog"
+
+     He is right, and the last three releases are the argument for it. A 27-row spares tab
+     and a 1,044-row master catalogue both claiming to price the same bag of salt produced,
+     in order: Rs 450 on one screen, Rs 48 per kg on another, Rs 1,125 on one visit and
+     Rs 45 on the next - and then a red warning telling him the two lists disagree. The
+     warning was honest. The second list was the fault.
+
+     So service pricing reads the MASTER CATALOGUE and nothing else. The spares tab is not
+     deleted - nothing in this estate ever is, and 27 rows of real part names are worth
+     keeping - but no price on any service screen comes from it any more.
+
+     WHAT MOVED, AND WHERE IT WENT:
+       spare parts  -> the catalogue, searched by description or item code
+       salt         -> TABSALT, per kg, times the pack size on the bag
+       visit charge -> THIS CLIENT'S OWN HIGHEST PREVIOUS CHARGE, which is the other thing
+                       he asked for ("once a service charge enteerd for a client first time,
+                       remember that for all future, pick highest if changed or updated in
+                       future"), and which needed no spares row at all. */
   function svcItem(q) {
     var t = String(q || "").trim().toLowerCase();
     if (!t) return null;
     var p = (PRODUCTS || []).filter(function (x) {
       return String(x.code || "").toLowerCase() === t || String(x.desc || "").toLowerCase() === t;
     })[0];
-    if (p) return { code: p.code, name: p.desc, price: nAmt(p.price), unit: p.unit || "", src: "list" };
-    var sp = spareByName(q) || (S.data.spares || []).filter(function (x) {
-      return String(x.code || "").toLowerCase() === t;
-    })[0];
-    if (sp) return { code: sp.code, name: sp.name, price: nAmt(sp.price), unit: sp.unit || "", src: "spare" };
-    return null;
+    if (!p) return null;
+    return { code: p.code, name: p.desc, price: nAmt(p.price), unit: p.unit || "", src: "list" };
+  }
+  /* What this client has been charged for a visit before. His rule: remember the first one,
+     and if it ever changes keep the HIGHEST - a rate agreed upward is the rate agreed.
+     A client never visited falls to MIN_VISIT, which is the only figure left that is not
+     read off a record. */
+  function clientVisitCharge(client) {
+    var k = dgKey(client), best = 0;
+    ((S.data && S.data.visits) || []).forEach(function (v) {
+      if (dgKey(v.client) !== k) return;
+      if (isCancelled("visits", v.id)) return;
+      var c = nAmt(v.visitCharge);
+      if (c > best) best = c;
+    });
+    return best;
   }
   function visitTotal(v) { return (Number(v.visitCharge) || 0) + (Number(v.saltAmt) || 0) + (Number(v.partsAmt) || 0); }
 
@@ -5300,18 +5333,16 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="grid2"><div><label>Date</label><input id="v_date" type="date" value="' + today() + '"/></div>' +
       '<div><label>Engineer</label><select id="v_eng">' + opts(SVC_ENGINEERS, inst.engineer || SVC_ENGINEERS[0]) + '</select></div></div>' +
       '<label>Type of visit</label><select id="v_type">' + opts(VISIT_TYPES, "Periodic service") + '</select>' +
-      '<div class="grid2"><div><label>Visit charge (Rs)</label><input id="v_charge" inputmode="numeric" value="' + MIN_VISIT + '"/></div>' +
+      '<div class="grid2"><div><label>Visit charge (Rs)</label><input id="v_charge" inputmode="numeric" value="' + (clientVisitCharge(inst.client) || "") + '"/>' +
+        (clientVisitCharge(inst.client)
+          ? '<div class="meta" style="font-size:11.5px">' + money(clientVisitCharge(inst.client)) + ' is the most ' + esc(String(inst.client || "this client")) + ' has been charged before.</div>'
+          : '<div class="meta" style="font-size:11.5px;color:#b45309">This client has never been charged for a visit \u2014 type what was agreed. Nothing is suggested, because nothing is known.</div>') + '</div>' +
       '<div><label>Salt bags</label><input id="v_salt" inputmode="numeric" value="0"/></div></div>' +
       '<label>Salt rate per bag (Rs)</label><input id="v_saltrate" inputmode="numeric" value="' + esc(saltBag || "") + '" placeholder="set the salt price in Spares or the catalogue"/>' +
-      (function () {
-        if (!saltBag) return '';
-        var cat = saltCatPrice();
-        if (cat && cat !== saltBag) return '<div class="meta" style="font-size:11.5px;color:#b91c1c">' +
-          '<b>Two price lists disagree.</b> Spares says ' + money(saltBag) + ' a bag; the catalogue says ' +
-          money(cat) + ' (TABSALT at ' + money(Math.round(cat / SALT_BAG_KG)) + ' per kg \u00d7 ' + SALT_BAG_KG +
-          ' kg). Fix the Spares row and this stops asking.</div>';
-        return '<div class="meta" style="font-size:11.5px">' + money(saltBag) + ' a bag, from the price list.</div>';
-      })() +
+      (saltBag
+        ? '<div class="meta" style="font-size:11.5px">' + money(saltBag) + ' a bag \u2014 TABSALT at ' +
+          money(Math.round(saltBag / SALT_BAG_KG)) + ' per kg \u00d7 ' + SALT_BAG_KG + ' kg, from the catalogue.</div>'
+        : '<div class="meta" style="font-size:11.5px;color:#b45309">No salt price in the catalogue yet \u2014 price TABSALT on the Products sheet.</div>') +
       '<label>Spare parts used</label><div id="v_lines">' + spareRow(0) + '</div>' +
       '<button class="btn sm ghost" data-act="sv-add" style="margin-top:4px">+ Add spare</button>' +
       '<label>Collected now (Rs)</label><input id="v_coll" inputmode="numeric" value="0"/>' +
@@ -5324,10 +5355,6 @@ window.addEventListener("beforeunload", function (ev) {
           var k = String(p.code || "").toLowerCase(); if (!k || seen[k]) return; seen[k] = 1;
           out.push('<option value="' + esc(p.desc) + '">' + esc(p.code) + (p.unit ? ' \u00b7 per ' + esc(String(p.unit).replace(/^per\s+/i, "")) : '') + ' \u00b7 ' + esc(money(nAmt(p.price))) + '</option>');
           out.push('<option value="' + esc(p.code) + '">' + esc(p.desc) + '</option>');
-        });
-        (S.data.spares || []).forEach(function (p) {
-          if (seen[String(p.code || "").toLowerCase()]) return;
-          out.push('<option value="' + esc(p.name) + '">' + esc(p.code || "") + '</option>');
         });
         return out.join("");
       })() + '</datalist>' +
@@ -22731,15 +22758,7 @@ function viewCatalogue() {
     var kg = nAmt((PRODUCTS.filter(function (p) { return String(p.code || "").toUpperCase() === "TABSALT"; })[0] || {}).price);
     return kg > 0 ? Math.round(kg * SALT_BAG_KG) : 0;
   }
-  function saltBagPrice() {
-    var sp = ((S.data && S.data.spares) || []);
-    var bag = sp.filter(function (x) { return /salt/i.test(String(x.name || "")) && /bag/i.test(String(x.unit || x.name || "")); })[0];
-    if (bag && nAmt(bag.price) > 0) return Math.round(nAmt(bag.price));
-    var perKg = sp.filter(function (x) { return String(x.code || "").toUpperCase() === "SALT"; })[0];
-    var kg = perKg && nAmt(perKg.price) > 0 ? nAmt(perKg.price)
-           : nAmt((PRODUCTS.filter(function (p) { return String(p.code || "").toUpperCase() === "TABSALT"; })[0] || {}).price);
-    return kg > 0 ? Math.round(kg * SALT_BAG_KG) : 0;
-  }
+  function saltBagPrice() { return saltCatPrice(); }
   /* Visits whose salt figure disagrees with that price. Measured on his book: one bag billed at
      Rs 1,125 in June, at Rs 45 in July, and listed at Rs 450 - three prices for one thing. */
   function svcSaltGap() {
