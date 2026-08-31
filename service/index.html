@@ -277,7 +277,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.8.3";
+  var APP_VERSION = "1.9.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -1896,15 +1896,22 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     var kg = nAmt((PRODUCTS.filter(function (p) { return String(p.code || "").toUpperCase() === "TABSALT"; })[0] || {}).price);
     return kg > 0 ? Math.round(kg * SALT_BAG_KG) : 0;
   }
-  function saltBagPrice() {
-    var sp = ((S.data && S.data.spares) || []);
-    var bag = sp.filter(function (x) { return /salt/i.test(String(x.name || "")) && /bag/i.test(String(x.unit || x.name || "")); })[0];
-    if (bag && nAmt(bag.price) > 0) return Math.round(nAmt(bag.price));
-    var perKg = sp.filter(function (x) { return String(x.code || "").toUpperCase() === "SALT"; })[0];
-    var kg = perKg && nAmt(perKg.price) > 0 ? nAmt(perKg.price)
-           : nAmt((PRODUCTS.filter(function (p) { return String(p.code || "").toUpperCase() === "TABSALT"; })[0] || {}).price);
-    return kg > 0 ? Math.round(kg * SALT_BAG_KG) : 0;
+  function saltBagPrice() { return saltCatPrice(); }
+  /* the client's own highest previous visit charge - byte-identical to the CRM's */
+  function dgKey(s) {
+    return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
   }
+  function clientVisitCharge(client) {
+    var k = dgKey(client), best = 0;
+    ((S.data && S.data.visits) || []).forEach(function (v) {
+      if (dgKey(v.client) !== k) return;
+      if (isCancelled("visits", v.id)) return;
+      var c = nAmt(v.visitCharge);
+      if (c > best) best = c;
+    });
+    return best;
+  }
+  var MIN_VISIT = 500;
 
   /* The standard visit charge, and the three cases where there ISN'T one:
      a labour job is quoted per job and has no standard rate; a visit the contract covers must
@@ -1913,7 +1920,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function defaultCharge(ins, type, date) {
     if (!ins) return "";
     if (amcCover(ins, type, date).visit) return "";
-    var r = rateOf(RATE_VISIT);
+    /* v1.9.0 - HIS rate, and ONLY his rate. t_service_money has held this line since the
+       start and it caught the first cut of this change: "a missing price list may not invent
+       money, which is the whole reason the number is not typed into the app". A client never
+       visited gets an EMPTY box and a line saying so - not a number somebody made up. */
+    var r = clientVisitCharge(ins.client);
     return r > 0 ? String(r) : "";
   }
 
@@ -2487,26 +2498,35 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         (function () {
           /* v1.8.2 - the bag, because bags are what he counts on this screen, and the per-kg
              rate underneath so the arithmetic is visible rather than magic. */
-          var bag = saltBagPrice(), kg = rateOf(RATE_SALT);
-          var cat = saltCatPrice();
-          if (bag > 0 && cat && cat !== bag) return '<div class="meta bad"><b>Two price lists disagree.</b> ' +
-            'Spares says ' + esc(money9(bag)) + ' a bag; the catalogue says ' + esc(money9(cat)) +
-            '. The office must fix the Spares row \u2014 charge the actual.</div>';
+          var bag = saltBagPrice(), kg = bag ? Math.round(bag / SALT_BAG_KG) : 0;
           if (bag > 0) return '<div class="meta">A bag is ' + esc(money9(bag)) + ' on the price list' +
             (kg > 0 ? ' (' + esc(money9(kg)) + ' per kg \u00d7 ' + SALT_BAG_KG + ' kg)' : '') +
             ' &mdash; charge the actual.</div>';
           if (kg > 0) return '<div class="meta">Salt is ' + esc(money9(kg)) + ' per kg in the price list &mdash; charge the actual.</div>';
-          return '<div class="meta">No salt price on the list yet &mdash; the office sets it in Spares.</div>';
+          return '<div class="meta bad">No salt price in the catalogue yet &mdash; the office prices TABSALT on the Products sheet.</div>';
         })();
     }
 
     /* --- parts --- */
     h += '<label>Parts used</label>';
+    if (v.parts && v.parts.length) {
+      h += '<div class="prow" style="padding-bottom:2px"><div class="grow"><span class="muted" ' +
+        'style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase">Item</span></div>' +
+        '<span class="muted" style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;width:64px;text-align:center">Qty</span>' +
+        '<span class="muted" style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;width:64px;text-align:center">Rate</span>' +
+        '<span class="muted" style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;width:74px;text-align:right">Amount</span>' +
+        '<span style="width:28px"></span></div>';
+    }
     h += (v.parts && v.parts.length)
       ? '<div class="parts">' + v.parts.map(function (p, i) {
           return '<div class="prow"><div class="grow"><b>' + esc(p.name) + '</b>' +
             '<div class="meta">' + esc(p.code || "") + ' &middot; ' + esc(money9(p.price)) + ' each</div></div>' +
+            /* v1.9.0 - "in service spare part list also same item name , qty , rate amount
+               provision". The rate is now typed here, exactly as it is on the CRM's form: the
+               catalogue fills it, and the man on the doorstep can change it for the one job
+               where it was different, without the office having to reprice a product. */
             '<input class="qty" data-act="v-qty" data-i="' + i + '" inputmode="decimal" value="' + esc(p.qty) + '"/>' +
+            '<input class="qty" data-act="v-rate" data-i="' + i + '" inputmode="decimal" value="' + esc(p.price) + '"/>' +
             '<div class="amt">' + esc(money9(num(p.qty) * num(p.price))) + '</div>' +
             '<button class="x" data-act="v-drop" data-i="' + i + '">&times;</button></div>';
         }).join("") + '</div>'
@@ -2519,9 +2539,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     /* --- the charge --- */
     h += '<label>Visit / labour charge</label>' +
       '<input id="v_charge" inputmode="numeric" value="' + esc(v.visitCharge || "") + '" placeholder="0"/>' +
-      (!cover.visit && rateOf(RATE_VISIT) > 0
-        ? '<div class="meta">Standard visit is ' + esc(money9(rateOf(RATE_VISIT))) + ' &mdash; change it if this one was different.</div>'
-        : '');
+      (function () {
+        /* 30 Aug 2026 - HIS rate, not a spares row. "once a service charge enteerd for a
+           client first time , remember that for all future , pick highest if changed". */
+        if (cover.visit) return '';
+        var mine = clientVisitCharge(v && v.client);
+        if (mine > 0) return '<div class="meta">' + esc(money9(mine)) + ' is the most this client has been charged before &mdash; change it if this one was different.</div>';
+        return '<div class="meta bad">This client has never been charged for a visit &mdash; type what was agreed. Nothing is suggested, because nothing is known.</div>';
+      })();
 
     /* ============ THE BILL, LINE BY LINE (v1.4.0) ============
        "salt, service charge, collected or pending". Three amounts go into a visit and the
@@ -2610,13 +2635,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       out.push({ code: p.code, name: p.desc, unit: p.unit || "", note: p.brand || "",
                  price: num(p.price), src: "list" });
     });
-    spares().forEach(function (sp) {
-      /* a spares row whose code the catalogue already carries would be the same item twice */
-      if (PRODUCTS.some(function (p) { return lower(p.code) === lower(sp.code); })) return;
-      if (q && lower([sp.code, sp.name, sp.category].join(" ")).indexOf(q) < 0) return;
-      out.push({ code: sp.code, name: sp.name, unit: sp.unit || "", note: sp.category || "",
-                 price: num(sp.price), src: "spare" });
-    });
+    /* 30 Aug 2026 - the service spares tab used to be appended here. It is not read for a
+       price any longer: one list, and it is the master catalogue. See the note in the CRM. */
     return out;
   }
   function sheetParts() {
@@ -3118,8 +3138,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
          call is not a bulk order. It is frozen onto the line here, so a later change to the
          catalogue can never rewrite a visit already recorded. */
       var pr = PRODUCTS.filter(function (p) { return lower(p.code) === lower(_c); })[0];
-      var sp = pr ? { code: pr.code, name: pr.desc, price: num(pr.price), unit: pr.unit || "" }
-                  : spareByCode(_c);
+      var sp = pr ? { code: pr.code, name: pr.desc, price: num(pr.price), unit: pr.unit || "" } : null;
       if (!sp) return;
       var rows = S.vis.parts || (S.vis.parts = []);
       /* the same item picked twice is a bigger quantity, never a second row - two identical
@@ -3168,6 +3187,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (t && t.getAttribute && t.getAttribute("data-act") === "v-qty" && S.vis) {
       var i = num(t.getAttribute("data-i"));
       if (S.vis.parts[i]) { S.vis.parts[i].qty = num(t.value); readVisitForm(); S.sheet = sheetVisit(S.vis); render(); }
+    }
+    /* v1.9.0 - and the rate, the same way */
+    if (t && t.getAttribute && t.getAttribute("data-act") === "v-rate" && S.vis) {
+      var ri = num(t.getAttribute("data-i"));
+      if (S.vis.parts[ri]) { S.vis.parts[ri].price = num(t.value); readVisitForm(); S.sheet = sheetVisit(S.vis); render(); }
     }
   });
 
