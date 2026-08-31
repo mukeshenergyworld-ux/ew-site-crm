@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.384";
+  var APP_VERSION = "6.9.385";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4384,6 +4384,62 @@ window.addEventListener("beforeunload", function (ev) {
     if (/without|w\/o|excl/.test(t)) return "AMC without spares";
     if (/with spare|incl|full/.test(t)) return "AMC with spares";
     return "AMC without spares";
+  }
+  /* ================= THE SERVICE SIDE OF A CLIENT, IN HISAB (v6.9.385) =================
+     HIS WORDS: "service log hisab should also be visible in CRM hisab section , so that if any
+     new prouduct quoting can se clietn status".
+
+     A man ringing a customer about money, or pricing him a new pump, should not have to open
+     another app to find out that there are two machines on his roof, one contract running out
+     in March, and Rs 1,725 owed on the last service call. It is the same customer and the same
+     money; it was only ever in two screens because it is written on two sheets.
+
+     PENDING IS RECOMPUTED, NOT READ, exactly as the Service app does it - a `balance` column
+     written months ago is a figure from months ago. And a cancelled visit is not pending. */
+  function svcSummary(client) {
+    var k = dgKey(client);
+    var ins = (S.data.installs || []).filter(function (x) {
+      return dgKey(x.client) === k && !isCancelled("installs", x.id);
+    });
+    var vis = (S.data.visits || []).filter(function (x) {
+      return dgKey(x.client) === k && !isCancelled("visits", x.id);
+    });
+    var pend = 0, got = 0;
+    vis.forEach(function (v) {
+      var tot = nAmt(v.visitCharge) + nAmt(v.saltAmt) + nAmt(v.partsAmt);
+      var col = nAmt(v.collected);
+      pend += Math.max(0, tot - col); got += col;
+    });
+    var today0 = today();
+    var live = ins.filter(function (x) { return amcLiveOn(x, today0); });
+    var ends = live.map(function (x) { return String(x.amcEnd || "").slice(0, 10); })
+                   .filter(Boolean).sort();
+    var machines = 0;
+    ins.forEach(function (x) {
+      var ps = []; try { ps = JSON.parse(x.productsJson || "[]") || []; } catch (e) { ps = []; }
+      machines += ps.length || 1;
+    });
+    return { installs: ins.length, machines: machines, visits: vis.length,
+             pending: Math.round(pend), collected: Math.round(got),
+             amcLive: live.length, amcNext: ends[0] || "" };
+  }
+  /* One line on the ledger. Silent when the customer has no machine at all - most do not, and a
+     line saying "0 machines" on 160 clients is noise, not information. */
+  function svcLedgerLine(client) {
+    var v = svcSummary(client);
+    if (!v.installs && !v.visits) return "";
+    var bits = [];
+    bits.push('<b>' + v.machines + '</b> machine' + (v.machines === 1 ? '' : 's'));
+    if (v.amcLive) bits.push('<b style="color:#0f766e">' + v.amcLive + ' on AMC</b>' +
+      (v.amcNext ? ' to ' + fullDate(v.amcNext) : ''));
+    else bits.push('<span style="color:#b45309">no live AMC</span>');
+    if (v.visits) bits.push(v.visits + ' visit' + (v.visits === 1 ? '' : 's') +
+      (v.collected ? ', ' + money(v.collected) + ' collected' : ''));
+    if (v.pending > 0.5) bits.push('<b style="color:#b91c1c">' + money(v.pending) + ' pending on service</b>');
+    return '<div class="meta" style="font-size:12.5px;margin-top:5px;padding-top:5px;border-top:1px dashed #99f6e4">' +
+      '<span style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#0f766e">Service</span> &nbsp;' +
+      bits.join(' &nbsp;\u00b7&nbsp; ') +
+      '<button class="btn sm ghost" data-act="tab" data-tab="service" style="margin-left:8px;padding:1px 8px;font-size:11px">Open</button></div>';
   }
   function amcLiveOn(ins, date) {
     if (!ins || amcKind(ins) === "None") return false;
@@ -18388,6 +18444,8 @@ function viewCatalogue() {
           ? '<b style="color:#0f766e">' + money(-bal) + ' in credit</b> ' +
             '<span style="color:#64748b">\u2014 paid ahead, comes off the next delivery</span>'
           : '<b style="color:#0d9488">Settled in full</b>') + '</div>' +
+      /* v6.9.385 - and what the same customer looks like on the service side */
+      svcLedgerLine(cl) +
       openingNote(cl) +
       /* v6.9.368 - and the way to correct it, on the one line it belongs to. Owner only, and
          the button says which it is: there is nothing to CHANGE on a client who never carried
