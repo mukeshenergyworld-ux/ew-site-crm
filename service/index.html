@@ -277,7 +277,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.10.0";
+  var APP_VERSION = "1.11.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -553,6 +553,64 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
            (c.parts ? 0 : num(v.partsAmt));
   }
   function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.collected)); }
+
+  /* ================= WHAT HE OWES THE FIRM, NOT ONLY US  (v1.11.0, 31 Aug 2026) =========
+     HIS WORDS: "if any client is under Service amc, show his pending payment in service
+     section also for both service and admin, detailed hisab to admin only".
+
+     This app is sent NO challans and NO payments. That is deliberate and it is not changing -
+     teamFilterOne_ calls itself the security boundary and says in as many words that
+     entitlement must not depend on what the caller asks for - so a trading balance cannot be
+     worked out here. Backend V108 attaches ONE NUMBER to the client row instead, computed by
+     the CRM's own ledger functions, and this reads it. No rows, no rates, no discounts, and
+     nothing about what anybody earns.
+
+     NULL AND ZERO ARE DIFFERENT ANSWERS, and the screen must not conflate them. A backend
+     older than V108 sends no field at all; a screen that turned that into "owes nothing" would
+     be telling an engineer something this app does not know. Absent is silent - which is also
+     what makes this safe to ship before he deploys. */
+  function dueOnAcct(name) {
+    var c = clientByName(name);
+    if (!c) return null;
+    var v = c.dueOnAccount;
+    if (v === undefined || v === null || v === "") return null;
+    var n = Number(v);
+    return isFinite(n) ? n : null;
+  }
+  /* Service money still to collect from this customer, across every machine of his.
+     allVisits and not accVisits: what a CUSTOMER owes is a fact about the customer, not about
+     which engineer happened to log the call. */
+  function svcPendingOf(client) {
+    var k = lower(client), t = 0;
+    allVisits().forEach(function (v) {
+      if (lower(v.client) !== k) return;
+      t += visitPending(v, v.installId ? installById(v.installId) : null);
+    });
+    return t;
+  }
+  /* THE TWO NUMBERS ARE NEVER ADDED TOGETHER. One is our service work, which the man standing
+     at the door may collect; the other is the office's ledger for goods delivered, which he
+     may not. A single merged total would be read as "collect this", and that is how an
+     engineer ends up asking a customer for three lakh at his front gate. */
+  function moneyStrip(client) {
+    var s = svcPendingOf(client), a = dueOnAcct(client);
+    var hasS = s > 0.5, hasA = a !== null && Math.abs(a) > 0.5;
+    if (!hasS && !hasA) return "";
+    var h = '<h3 class="sec">Money</h3><div class="billbox">';
+    if (hasS) h += '<div class="bill"><span>Pending on service</span><b>' + esc(money9(s)) +
+      '</b><i>to collect</i></div>';
+    if (hasA) h += '<div class="bill"><span>' + (a < 0 ? 'Advance held' : 'Owed on account') +
+      '</span><b>' + esc(money9(Math.abs(a))) + '</b><i>' + (a < 0 ? 'his credit' : 'deliveries') +
+      '</i></div>';
+    h += '</div>';
+    if (hasA && a > 0.5) {
+      h += '<div class="note">' + (seesAllMoney()
+        ? 'The account figure is the office ledger - deliveries, not service. The delivery-by-delivery hisab is in the CRM.'
+        : 'The account figure is for goods the office delivered, not for service. Collect only what is pending on service; the office chases the rest.') +
+        '</div>';
+    }
+    return h;
+  }
 
   /* kept: the GROSS value of the work, contract or no contract. The history shows it beside
      what was charged, because "we did four thousand rupees of work for nothing" is the number
@@ -2318,7 +2376,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         var c = by[k], open = S.accOpen === k;
         h += '<div class="card" data-act="acc-open" data-k="' + esc(k) + '">' +
           '<div class="row"><div class="grow"><div class="ttl">' + esc(c.name) + '</div>' +
-          '<div class="meta">' + c.n + ' visit' + (c.n === 1 ? '' : 's') + ' not settled</div></div>' +
+          '<div class="meta">' + c.n + ' visit' + (c.n === 1 ? '' : 's') + ' not settled' +
+            /* v1.11.0 - the office's ledger beside ours, never added into it */
+            (function () { var a = dueOnAcct(c.name);
+              return (a !== null && a > 0.5)
+                ? ' &middot; <b style="color:#b45309">' + esc(money9(a)) + '</b> on account' : ''; })() +
+          '</div></div>' +
           '<div class="right"><div class="amt bad">' + esc(money9(c.pend)) + '</div></div></div></div>';
         if (open) h += c.rows.map(function (r) { return histRow(r.v, r.ins); }).join("");
       });
@@ -2434,6 +2497,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           : '<div class="meta">Everything is charged. The office renews an AMC in the CRM.</div>') +
         '</div>';
     }
+
+    /* v1.11.0 - before the phone numbers, because what he is owed decides what is said on
+       the call as much as it decides what is collected at the door. */
+    h += moneyStrip(ins.client);
 
     if (ins.mobile) {
       var n = String(ins.mobile).replace(/\D/g, ""); if (n.length === 10) n = "91" + n;
