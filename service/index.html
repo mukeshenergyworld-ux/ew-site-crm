@@ -277,7 +277,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.9.0";
+  var APP_VERSION = "1.10.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -2381,6 +2381,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       (v.partsUsed ? '<div class="meta"><b>Spares:</b> ' + esc(v.partsUsed) + '</div>' : '') +
       (bits.length ? '<div class="meta">' + esc(bits.join(" · ")) + '</div>' : '') +
       (v.notes ? '<div class="meta">' + esc(v.notes) + '</div>' : '') +
+      /* v1.10.0 - AND THE PHOTOGRAPHS, which until today were write-only. picsOf() has taken a
+         visit id since v1.7.0 and nothing ever called it with one: the only call in the file
+         asked for the machine. Every fault and completed-work photo any engineer has taken was
+         uploaded, stored, and never shown to anybody again. */
+      picStrip(picsOf("receipt", v.id), "Signed receipt") +
+      picStrip(picsOf("visit", v.id), "On this visit") +
       '</div><div class="right">' +
       '<div class="amt">' + esc(money9(dueAmt)) + '</div>' +
       (g > dueAmt ? '<div class="meta">' + esc(money9(g)) + ' of work</div>' : '') +
@@ -2787,7 +2793,19 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      follows three functions up, and for the same reason: a slow upload must never make a man
      think his visit was lost. If a photo fails he is told that the photo failed, in those
      words, and the visit stays saved. */
+  /* ============ THE SIGNED SERVICE RECEIPT (v1.10.0, 30 Aug 2026) ============
+     "also made provision to attached signed service receipt in service section also"
+
+     A delivery has carried one since 6.9.281 - the paper that came back from the site, filed
+     against the challan and reproduced on the customer's statement. A service visit had three
+     photographs and none of them was that. "Work done" is proof the machine runs; it is not
+     the customer's signature against an amount.
+
+     It rides the same channel as the other three - a service:photo audit row, no new column,
+     no sheet migration - and it is filed against the VISIT, because that is what was signed
+     for. */
   var PIC_KINDS = [
+    { k: "receipt", t: "Signed service receipt", hint: "The paper the customer signed, with the amount on it. This is the one that settles an argument about a bill." },
     { k: "fault",   t: "The fault",        hint: "What was wrong — the leak, the burnt card, the cracked housing." },
     { k: "done",    t: "Work done",        hint: "The machine running after the job. Your proof it was finished." },
     { k: "machine", t: "Machine & serial", hint: "The unit and its serial plate. Kept on the machine, not this visit — every future visit sees it." }
@@ -2802,8 +2820,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       if (!a || String(a.action || "") !== "service:photo") return false;
       var d; try { d = JSON.parse(a.detail || "{}"); } catch (e) { return false; }
       if (!d || !d.url) return false;
-      return String(kind === "machine" ? d.installId : d.visitId) === want &&
-             (kind === "machine" ? d.kind === "machine" : d.kind !== "machine");
+      /* v1.10.0 - the receipt is asked for BY NAME. Before there were only two buckets, the
+         machine's and "everything else on this visit", and a new kind would have fallen
+         silently into the second one. */
+      if (kind === "machine") return String(d.installId) === want && d.kind === "machine";
+      if (kind === "receipt") return String(d.visitId) === want && d.kind === "receipt";
+      return String(d.visitId) === want && d.kind !== "machine" && d.kind !== "receipt";
     }).map(function (a) {
       var d = {}; try { d = JSON.parse(a.detail || "{}"); } catch (e) { }
       return { kind: d.kind || "", url: d.url || "", thumb: d.thumb || "", by: d.by || a.actor || "", at: d.at || a.createdAt || "" };
