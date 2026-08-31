@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.385";
+  var APP_VERSION = "6.9.386";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4404,11 +4404,14 @@ window.addEventListener("beforeunload", function (ev) {
     var vis = (S.data.visits || []).filter(function (x) {
       return dgKey(x.client) === k && !isCancelled("visits", x.id);
     });
+    /* v6.9.386 - what the CONTRACT leaves the customer owing, not the gross of the work.
+       One arithmetic, and it is the Service app's. */
+    var insById = {};
+    ins.forEach(function (x) { insById[String(x.id || "")] = x; });
     var pend = 0, got = 0;
     vis.forEach(function (v) {
-      var tot = nAmt(v.visitCharge) + nAmt(v.saltAmt) + nAmt(v.partsAmt);
-      var col = nAmt(v.collected);
-      pend += Math.max(0, tot - col); got += col;
+      pend += visitPending(v, insById[String(v.installId || "")] || null);
+      got += nAmt(v.collected);
     });
     var today0 = today();
     var live = ins.filter(function (x) { return amcLiveOn(x, today0); });
@@ -4441,6 +4444,30 @@ window.addEventListener("beforeunload", function (ev) {
       bits.join(' &nbsp;\u00b7&nbsp; ') +
       '<button class="btn sm ghost" data-act="tab" data-tab="service" style="margin-left:8px;padding:1px 8px;font-size:11px">Open</button></div>';
   }
+  /* ---- WHAT A CONTRACT COVERS, AND WHAT IS STILL OWED  (v6.9.386, 31 Aug 2026) ----
+     These three are the Service app's own text, moved here so the two screens cannot price one
+     visit two ways. svcSummary() below used to add charge + salt + parts and take off what was
+     collected, with no idea a contract existed; the Service app has asked amcCover() since
+     v1.4.0. MEASURED on his book the day this was written: 3 visits, not one under a live AMC,
+     so no figure on his screen moves. The day he sells an "AMC with spares" it would have -
+     his HISAB would have chased money the engineer's phone knew was covered.
+     t_apps_agree.js holds all three byte-identical to the Service app from here on. */
+function amcCover(ins, type, date) {
+  var kind = amcKind(ins);
+  var live = amcLiveOn(ins, date);
+  var none = { visit: false, salt: false, parts: false, kind: kind, live: live };
+  if (!ins || !live) return none;
+  if (String(type || "") === "Installation") return none;
+  return { visit: true, salt: true, parts: kind === "AMC with spares", kind: kind, live: true };
+  }
+function visitDue(v, ins) {
+  var c = amcCover(ins, v && v.type, v && v.date);
+  return (c.visit ? 0 : num(v.visitCharge)) +
+         (c.salt  ? 0 : num(v.saltAmt)) +
+         (c.parts ? 0 : num(v.partsAmt));
+  }
+function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.collected)); }
+
   function amcLiveOn(ins, date) {
     if (!ins || amcKind(ins) === "None") return false;
     var d = String(date || today()).slice(0, 10);
