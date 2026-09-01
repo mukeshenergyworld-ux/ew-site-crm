@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.389";
+  var APP_VERSION = "6.9.390";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -34475,10 +34475,20 @@ function viewCatalogue() {
         pc.status = "Approved"; chMoveRemember(id, "Approved", S.user);
         S.chMoving[id] = false; pDone();
         toast(msg || (pc.challanNo + " is passed but NOT dispatched. Press Dispatch on it."));
+        /* ---- AND THE GROUP IS TOLD  (v6.9.390) ----
+           HIS WORDS: "sometimes some challan left undispatched". THIS is where they come from -
+           two calls, one PIN, and the second one fails. Until now the only trace was a toast on
+           one phone, which is gone the moment he changes screen. Now the dispatch group gets the
+           challan with a live button on it, and that button stays there until it really leaves.
+           Best effort: if this does not go, nothing is worse than it was a minute ago. */
+        try { api("tgDispatchPost", { id: id }); } catch (e) {}
         render();
       };
 
-      api("challanMove", { id: id, to: "Approved", approvePin: ppin }).then(function (r1) {
+      /* v6.9.390 - noTg: this pair means to dispatch a second later, so the backend must not
+         post a "not dispatched yet" message to the group and then edit it away again. If the
+         dispatch half fails, pHalf() asks for that message explicitly - see there. */
+      api("challanMove", { id: id, to: "Approved", approvePin: ppin, noTg: 1 }).then(function (r1) {
         if (!r1 || !r1.ok) { pBack(r1 && r1.error); return; }
         pc.approvedBy = r1.by || S.user;
         chMoveRemember(id, "Approved", r1.by || S.user);
