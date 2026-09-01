@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.386";
+  var APP_VERSION = "6.9.387";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14004,6 +14004,55 @@ function viewCatalogue() {
      lorry. A receipt is the proof that settles an argument; it should not be attachable
      by the person it would exonerate. */
   function canProof()   { return roleAny(["admin","accounts"]); }
+
+  /* ================= A DELIVERY THAT HAS ARRIVED  (v6.9.387, 31 August 2026) ===========
+     HIS WORDS, with 23/08/2026/008 on the screen: "receipt attached then why this dispatch
+     showing".
+
+     The card read its BUTTONS off `status` and its RECEIPT SEAL off `receiptReceived`. On that
+     challan the two disagree, so it drew "Receipt received" and offered to DISPATCH in the same
+     row. Dispatch is not a label: it asks for a PIN, fires the dispatch bot and tells a driver
+     to load material for a site that already has it.
+
+     HOW ONE RECORD CAME TO HOLD BOTH, out of its own audit trail: created 11:09:59, book number
+     11:10:15, receipt photograph 11:11:29, receiptAt 11:11:32 - and approvedAt 11:13:15, TWO
+     MINUTES AFTER the receipt. He filed the paper first and approved afterwards, and both this
+     app's ch-move and the server's challanMove_ write `status = to` unconditionally. Approving
+     wrote "Approved" over a delivery that was already signed for.
+
+     MEASURED BEFORE CHANGING ANYTHING: 139 live challans - 136 Received with the receipt in, 2
+     Dispatched with no receipt yet, and exactly ONE in this state, the one he photographed. No
+     money moved by it: hisab counts receiptReceived and never status, so his balance has been
+     right the whole time. It is the button that was wrong, and the button is the dangerous half.
+
+     THE RULE, IN ONE PLACE: a delivery whose receipt is in HAS ARRIVED, whatever the status
+     column says. Nothing may offer to send it again, and nothing may move it backwards. */
+  function chArrived(c) { return String((c && c.receiptReceived) || "").toUpperCase() === "Y"; }
+  /* Arrived, but the status column has not caught up. Deliberately NOT a list of the stages
+     before "Received": a blank status, or one this app has never heard of, is also behind. */
+  function chStatusBehind(c) {
+    var st = String((c && c.status) || "");
+    return chArrived(c) && st !== "Received" && st !== "Billed";
+  }
+  /* AND IT MUST SAY SO. Rendering the card after the guard went in showed a godown man left
+     with one button - PDF - and no word anywhere about why Dispatch had gone. This estate has
+     already been bitten three times by exactly that: ADD TO HISAB hid itself when its conditions
+     were unmet and he asked where it had gone three times; the dossier printed four zeros rather
+     than saying it had never asked; a return he had just written simply did not appear.
+     A CORRECT RULE AND A SILENT SCREEN IS STILL A BUG. */
+  function chArrivedPill(c) {
+    if (!chStatusBehind(c)) return "";
+    /* FOUR WORDS, because it was rendered and looked at. The first draft read "receipt already
+       in - will not be dispatched again": twice as long, and it repeated what the button beside
+       it already says. At 390px this still wraps under the challan number, which is what every
+       other pill on this card does. */
+    return ' <span class="pill" style="background:#fef3c7;color:#92400e;font-weight:700;font-size:10px" ' +
+      'title="The signed receipt for this delivery is already on file, so it has arrived and it ' +
+      'is already counted in hisab. The status column has not caught up, which is why there is ' +
+      'no Dispatch button - sending it again would put a driver on the road for material the ' +
+      'customer already has. Accounts or the owner can correct the status from this card.">' +
+      'status is behind the receipt</span>';
+  }
   /* v6.9.250 - the owner's rule, in his words: "its approved by accounts or admin only,
      can be approved from both challan app and CRM app". It used to read admin|sales here
      while the challan app already read admin|accounts, so the same challan offered an
@@ -15583,10 +15632,14 @@ function viewCatalogue() {
       /* action buttons stay on the compact card too, so approving many in a row never needs an
          extra tap to expand first. */
       var actions =
-        (st === "Draft" && canApprove() ? '<button class="btn sm act-approve" data-act="ch-pass" data-id="' + esc(c.id) + '">Pass &amp; Dispatch</button>' : "") +
+        /* v6.9.387 - !chArrived: a delivery already signed for is never offered again */
+        (st === "Draft" && canApprove() && !chArrived(c) ? '<button class="btn sm act-approve" data-act="ch-pass" data-id="' + esc(c.id) + '">Pass &amp; Dispatch</button>' : "") +
         /* a challan already sitting at Approved from before v6.9.337 still has its own door */
-        (st === "Approved" && canApprove() ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : "") +
-        ((st === "Draft" || st === "Approved") && canApprove() ? '<button class="btn sm ghost" data-act="ch-edit" data-id="' + esc(c.id) + '">Edit</button>' : "") +
+        (st === "Approved" && canApprove() && !chArrived(c) ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : "") +
+        /* and the way OUT of the state, in his hand and not in mine: one tap that moves the
+           status to where the paper already is. It changes nothing else and it is audited. */
+        (chStatusBehind(c) && canProof() ? '<button class="btn sm act-receipt" data-act="ch-arrived" data-id="' + esc(c.id) + '">Receipt is in &mdash; mark Received</button>' : "") +
+        ((st === "Draft" || st === "Approved") && canApprove() && !chArrived(c) ? '<button class="btn sm ghost" data-act="ch-edit" data-id="' + esc(c.id) + '">Edit</button>' : "") +
         /* v6.9.259 - it used to read "Receipt received", the same words as the seal that
            appears once the PHOTO is attached. So a man who had just attached the photo saw a
            button apparently asking for it again. They are different things: the seal is the
@@ -15635,6 +15688,8 @@ function viewCatalogue() {
         /* v6.9.237 - read-only, so a man hunting for "1247" from the paper book finds it here too */
         manualNoCell(c, true) +
         ' <span class="pill ' + cls + '">' + esc(st) + '</span>' +
+        /* v6.9.387 - why the Dispatch button is not there */
+        chArrivedPill(c) +
         /* v6.9.351 - "compact a little challan tab also". ONE PILL FEWER ON THE BUSIEST CARDS.
            "in hisab" cannot happen without the receipt being in - canAddToHisab requires
            receiptReceived = Y - so on a stamped challan "receipt in" is a pill that tells him
@@ -17741,11 +17796,15 @@ function viewCatalogue() {
         manualNoCell(c, true) +
         ' <span class="pill' + (isD ? ' due' : ' teal') + '"' + (isD ? ' style="background:#fee2e2;color:#b91c1c"' : '') + '>' +
         (isD ? 'Not approved' : esc(st)) + '</span>' +
+        chArrivedPill(c) +
         '<br><span style="font-size:11px;color:#64748b">' + esc(d10(c.createdAt)) +
         (c.site ? ' &middot; ' + esc(c.site) : '') +
         (c.amount ? ' &middot; ' + money(Number(c.amount) || 0) + ' at list' : '') + '</span></div>' +
-        (isD && canApprove() ? '<button class="btn sm act-approve" data-act="ch-pass" data-id="' + esc(c.id) + '">Pass &amp; Dispatch</button>' : '') +
-        (st === "Approved" && canApprove() ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : '') +
+        /* v6.9.387 - the same guard, one screen over. This strip is drawn from a different
+           function and would otherwise have gone on offering the dispatch this fix removes. */
+        (isD && canApprove() && !chArrived(c) ? '<button class="btn sm act-approve" data-act="ch-pass" data-id="' + esc(c.id) + '">Pass &amp; Dispatch</button>' : '') +
+        (st === "Approved" && canApprove() && !chArrived(c) ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : '') +
+        (chStatusBehind(c) && canProof() ? '<button class="btn sm act-receipt" data-act="ch-arrived" data-id="' + esc(c.id) + '">Receipt is in &mdash; mark Received</button>' : '') +
         /* v6.9.259 - renamed here too. This is the delivery's STATUS, not the photograph -
            and it was the same words as the seal that appears once the photo is attached. */
         (st === "Dispatched" && (canSee("billing") || canSee("challans")) ? '<button class="btn sm act-receipt" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button>' : '') +
@@ -34250,6 +34309,9 @@ function viewCatalogue() {
       var pc = S.data.challans.filter(function (x) { return x.id === id; })[0];
       if (!pc) return;
       if (!canApprove()) { toast("Your role cannot pass a challan."); return; }
+      /* v6.9.387 - a card is a drawing; this is the door. Guarding only the button leaves a
+         stale screen, a second tab and every other caller able to do the thing anyway. */
+      if (chArrived(pc)) { toast("The receipt for " + pc.challanNo + " is already in \u2014 this delivery has arrived."); return; }
       S.chMoving = S.chMoving || {};
       if (S.chMoving[id]) { toast("Still saving " + pc.challanNo + " \u2014 one moment."); return; }
 
@@ -34326,11 +34388,69 @@ function viewCatalogue() {
       });
       return;
     }
+    /* ---- THE WAY OUT, AND IT IS HIS HAND ON IT  (v6.9.387) ----
+       23/08/2026/008 is signed for and its status column says "Approved". The guards above
+       stop it being dispatched, but the row still reads wrong on every screen that prints a
+       status, and nothing in this estate edits his records for him.
+
+       So: one button, one confirmation that says exactly what will and will not change, and an
+       audit row under his own name. It writes STATUS and nothing else - not receiptAt, which is
+       23 August and must stay 23 August. That is the whole reason this does not simply call
+       challanMove with to="Received": the server stamps receiptAt = now on that path, and it
+       would move the delivery's proof date to today to fix a cosmetic fault. */
+    if (act === "ch-arrived") {
+      var ca = S.data.challans.filter(function (x) { return x.id === id; })[0];
+      if (!ca) return;
+      if (!canProof()) { toast("Only accounts or the owner may file a receipt."); return; }
+      if (!chStatusBehind(ca)) { toast("Nothing to correct on " + (ca.challanNo || "this challan") + "."); return; }
+      var rAt = String(ca.receiptAt || "").slice(0, 10);
+      if (!window.confirm(
+        (ca.challanNo || "") + "  -  " + (ca.customerName || "") + "\n\n" +
+        "The signed receipt for this delivery is already on file" +
+        (rAt ? ", filed " + fullDate(rAt) : "") + ", but the status column still reads \"" +
+        (ca.status || "Draft") + "\".\n\n" +
+        "This moves the status to Received. It changes NOTHING else - not the receipt, not the " +
+        "date it was filed, not a rupee. Your balance has counted this delivery all along, " +
+        "because hisab counts the receipt and never the status.\n\nPress OK to correct it.")) {
+        toast("Left as it is."); return;
+      }
+      var prevSt = ca.status;
+      ca.status = "Received";
+      render();
+      save("audit", {
+        /* mintId, not a hand-rolled clock+random: it carries a per-session counter, so two
+           corrections in the same millisecond cannot collide. t_mintid.js holds the count of
+           hand-minted ids at 24 and went red the moment this file added a 25th - which is
+           exactly what that ratchet is for. */
+        id: mintId("S"),
+        createdAt: new Date().toISOString(), actor: S.user || "",
+        action: "challan:statusfix",
+        target: String(ca.challanNo || ca.id || "") + " / " + String(ca.customerName || ""),
+        detail: JSON.stringify({ chId: ca.id, no: ca.challanNo || "", from: prevSt || "",
+                                 to: "Received", receiptAt: String(ca.receiptAt || ""),
+                                 why: "receipt already on file; status column was behind it" }),
+        ip: ""
+      }, true);
+      save("challans", ca).then(function (r) {
+        if (!r || !r.ok) {
+          ca.status = prevSt;
+          toast((r && r.error) || "Could not correct the status - put back as it was.");
+          render(); return;
+        }
+        toast("Status corrected. The receipt and its date are untouched.");
+      }).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
+      return;
+    }
     if (act === "ch-move") {
       var to = t.getAttribute("data-to");
       var ch2 = S.data.challans.filter(function (x) { return x.id === id; })[0];
       if (!ch2) return;
       if (to === "Received") { S.alt = { id: id, rows: null, by: "", photo: "", sig: "" }; S.modal = modalAlter(); render(); return; }
+      /* v6.9.387 - nothing moves a signed-for delivery backwards. */
+      if ((to === "Approved" || to === "Dispatched") && chArrived(ch2)) {
+        toast("The receipt for " + ch2.challanNo + " is already in \u2014 this delivery has arrived.");
+        render(); return;
+      }
       /* Approving a dispatch releases real material. A pocket tap must not do that, so the PIN
          is asked again here - the same one used to sign in, nothing new to remember. */
       /* THE CREDIT GATE (v6.9.193). Approving is the last moment at which this money can still
