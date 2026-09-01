@@ -143,7 +143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.28.0";
+  var APP_VERSION = "1.29.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1979,6 +1979,31 @@ function cancelMap() {
      full he leaves it, and the receipt screen - which read his mobile off that row - then told
      the man who had just cleared his account that he had no number on record and no receipt
      could be sent to him. His number was in the clients book the whole time. */
+  /* ================= THE ROW ON THE SHEET, NOT THE ROW ON THE SCREEN  (v1.29.0) ==========
+     HE REPORTED IT, saving a mobile for Vikas Ahlawat: "updating a phone no showing this
+     error?" - "Could not find him on the book."
+
+     He was on the book. anyClient() never returns a row that came off the clients tab: the
+     chase row it prefers is built by rowFor() out of challans and payments, and the fallback
+     underneath BUILDS A NEW OBJECT - { name, mobile, due, oldBook, lines, settled }. Neither
+     carries an id. mb-save asks `if (!mbc || !mbc.id)`, so the answer was always no and
+     ADDING A NUMBER FROM THIS APP HAS NEVER WORKED FOR ANYBODY.
+
+     AND THE GUARD IS THE ONLY REASON THAT IS ALL THAT WENT WRONG. Behind it, the save built
+     the client row as Object.assign({}, mbc, {mobile}) - the CHASE row, not the sheet row -
+     and this backend "rebuilds the whole row out of the payload, so every column the payload
+     does not carry is set to ''" (its own words, teamSaveLocked_). Vikas Ahlawat carries an
+     OPENING BALANCE OF Rs 1,05,213. One tap on Save the number would have written it to blank,
+     with his address, his owner, his terms and his billing profiles.
+
+     So this is not a guard to loosen. It is a lookup to fix: the row that goes up must be the
+     row that is on the sheet. */
+  function clientRow(name) {
+    var k = String(name || "").trim().toLowerCase();
+    return ((S.data && S.data.clients) || []).filter(function (c) {
+      return String(c.name || "").trim().toLowerCase() === k && String(c.id || "").trim();
+    })[0] || null;
+  }
   function anyClient(name) {
     var k = String(name || "").trim().toLowerCase();
     return rowFor(name) ||
@@ -3411,8 +3436,18 @@ function cancelMap() {
     if (act === "mb-ask") { mbAsk(t.getAttribute("data-n")); return; }
     if (act === "mb-save") {
       var mbn = t.getAttribute("data-n");
-      var mbc = anyClient(mbn);
-      if (!mbc || !mbc.id) { toast("Could not find him on the book."); return; }
+      /* v1.29.0 - the row on the SHEET. anyClient() answers with a chase row that has no id
+         and none of his other columns; see the note above clientRow(). */
+      var mbRealRow = clientRow(mbn);
+      if (!mbRealRow) {
+        /* SAY WHICH OF THE TWO IT IS. "Could not find him on the book" was true of the lookup
+           and false about him, and there is nothing a man can do with it. A name that reaches
+           this screen off a challan with no client record behind it is a real case - his book
+           has one today, Dheeraj Chhabra - 97 MT - and the cure is in the CRM. */
+        toast(mbn + " has no client record yet \u2014 add him in the CRM, then the number saves here.");
+        return;
+      }
+      var mbc = anyClient(mbn) || mbRealRow;
       var mb = String(val("mb_no") || "").replace(/\D/g, "");
       if (mb.length !== 10) { toast("A mobile is 10 digits."); return; }
       /* ================= SEND THE WHOLE ROW, NOT A PATCH =================
@@ -3425,9 +3460,10 @@ function cancelMap() {
          So a three-field patch here would have saved his mobile and wiped his address, credit
          limit, opening balance and billing profiles. The full in-memory row goes up with the
          one field changed, which is safe whether the backend merges or overwrites. */
-      var mbRow = Object.assign({}, mbc, { mobile: mb });
+      var mbRow = Object.assign({}, mbRealRow, { mobile: mb });
       saveRow("clients", mbRow).then(function (r) {
-        mbc.mobile = mb;                                   /* on his screen at once */
+        mbRealRow.mobile = mb;                             /* the book */
+        mbc.mobile = mb;                                   /* and the chase row on his screen */
         bust(); S.sheet = null; render();
         toast(mbc.name + " — " + mb + " saved" + (r.held ? ", held on this phone until there is signal" : "") + ".");
       });
