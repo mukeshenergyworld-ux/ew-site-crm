@@ -143,7 +143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.29.0";
+  var APP_VERSION = "1.30.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1763,7 +1763,23 @@ function cancelMap() {
       lastPay: lastPay,
       daysSincePay: lastPay ? daysBetween(lastPay, today) : -1,
       challans: challans.length,
-      unpaid: unpaid
+      unpaid: unpaid,
+      /* ---- v1.30.0 - THE ROWS BEHIND THE TOTALS ----
+         HIS WORDS: "in collection app make provison to see challan wise detail and payment
+         received details, expand and contract type".
+
+         The card has always said "Billed 1,61,672 · received 1,00,000 · 1 delivery" and then
+         shown only what is STILL unpaid. On a call the customer asks which delivery, and which
+         payment he made in June - and the man chasing had to open the CRM to answer. Both lists
+         were already computed here and thrown away at the return statement.
+
+         lines carries EVERY delivery with its full value and what the FIFO has settled against
+         it, so a paid-off one can be named too. payments carries the receipts themselves. */
+      lines: lines,
+      payments: payments.map(function (p) {
+        return { ymd: d10(p.date || p.createdAt), amount: num(p.amount),
+                 mode: String(p.mode || ""), ref: String(p.ref || ""), by: String(p.createdBy || "") };
+      })
     };
   }
 
@@ -2334,6 +2350,20 @@ function cancelMap() {
       '</div>';
   }
 
+  /* ---- ONE EXPANDER, TWO LISTS  (v1.30.0) ----
+     Open state is keyed by client AND section, so opening Ravinder's payments does not open
+     everybody's, and it survives the repaint that follows every save. */
+  function expOn(name, k) { return !!(S.exp && S.exp[name + "|" + k]); }
+  function expRow(name, k, label, sub) {
+    var on = expOn(name, k);
+    return '<div class="row" data-act="exp" data-n="' + esc(name) + '" data-k="' + esc(k) + '" ' +
+      'style="cursor:pointer;user-select:none;padding:7px 10px;background:#fff;' +
+      'border:1px solid #e2e8f0;border-radius:10px;align-items:center;gap:8px">' +
+      '<span style="color:#94a3b8;width:12px;flex:0 0 auto">' + (on ? '&#9662;' : '&#9656;') + '</span>' +
+      '<div class="grow" style="font-weight:700;font-size:13px">' + esc(label) + '</div>' +
+      '<div class="muted" style="font-size:12px">' + sub + '</div></div>';
+  }
+
   function clientBody(r, t) {
     var h = '<div style="border-top:1px solid #e2e8f0;padding:11px 13px;background:#fafafa">';
     h += '<div class="muted" style="margin-bottom:8px">' +
@@ -2343,21 +2373,80 @@ function cancelMap() {
         ' returned item(s) not priced — this credit is short</span>' : '') +
       ' · <b>' + r.challans + ' delivery' + (r.challans === 1 ? '' : ' notes') + '</b></div>';
 
-    if (r.unpaid && r.unpaid.length) {
-      h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:9px">' +
-        r.unpaid.slice(0, 6).map(function (u) {
-          var d = EWdays(u.ymd, t), late = d > CREDIT_DAYS;
-          return '<div class="row" style="padding:7px 10px;border-bottom:1px solid #f1f5f9">' +
-            '<div class="grow"><b style="font-size:12.5px">' + esc(u.no) + '</b>' +
-            '<div class="muted">' + esc(dstr(u.ymd)) + ' · ' + esc(ageWords(d)) + (late ? ' <b style="color:#b91c1c">past term</b>' : '') + '</div></div>' +
-            '<div style="font-weight:700;color:' + (late ? '#b91c1c' : '#0f172a') + '">' + money(u.left) + '</div></div>';
-        }).join("") +
-        (r.unpaid.length > 6 ? '<div class="muted" style="padding:7px 10px">and ' + (r.unpaid.length - 6) + ' more</div>' : '') +
+    /* ---- DELIVERIES, CHALLAN BY CHALLAN  (v1.30.0) ----
+       Closed it is what it has always been: the deliveries still owed for, oldest first, capped
+       at six because that is a chase list. Open it is EVERY delivery he has ever taken, with
+       what each was worth and what the money already received has settled against it - which is
+       the question a customer actually asks on the phone.
+
+       The FIFO is not re-run here. lines[] arrives already settled by the same pass that
+       produced the total on the card, so a delivery can never read one figure here and another
+       one there. */
+    var allLines = (r.lines || []), unpaidL = (r.unpaid || []);
+    if (allLines.length) {
+      var chOpen = expOn(r.name, "ch");
+      var show = chOpen ? allLines : unpaidL.slice(0, 6);
+      h += '<div style="margin-bottom:9px">' +
+        expRow(r.name, "ch", chOpen ? "All deliveries" : "Deliveries still owed for",
+          (unpaidL.length ? unpaidL.length + " unpaid of " + allLines.length : "all " + allLines.length + " settled")) +
+        (show.length
+          ? '<div style="background:#fff;border:1px solid #e2e8f0;border-top:0;border-radius:0 0 10px 10px;overflow:hidden;margin-top:-6px;padding-top:6px">' +
+            show.map(function (u) {
+              var d = EWdays(u.ymd, t), late = u.left > 0.5 && d > CREDIT_DAYS;
+              var settled = Math.round((u.amount || 0) - (u.left || 0));
+              var done = u.left <= 0.5;
+              return '<div class="row" style="padding:7px 10px;border-top:1px solid #f1f5f9;' +
+                (done ? 'opacity:.62' : '') + '">' +
+                '<div class="grow"><b style="font-size:12.5px">' + esc(u.no || "(no number)") + '</b>' +
+                (u.site ? ' <span class="muted">' + esc(u.site) + '</span>' : '') +
+                '<div class="muted">' + esc(u.ymd ? dstr(u.ymd) : "no date") +
+                  (u.ymd ? ' · ' + esc(ageWords(d)) : '') +
+                  (late ? ' <b style="color:#b91c1c">past term</b>' : '') +
+                  /* v1.30.0 - what the money already received has taken off THIS delivery */
+                  (chOpen && settled > 0 && !done ? ' · ' + esc(money(settled)) + ' paid' : '') +
+                  '</div></div>' +
+                '<div style="text-align:right">' +
+                  (chOpen ? '<div class="muted" style="font-size:11.5px">' + money(u.amount || 0) + '</div>' : '') +
+                  '<div style="font-weight:700;color:' + (done ? '#0f766e' : (late ? '#b91c1c' : '#0f172a')) + '">' +
+                  (done ? 'settled' : money(u.left)) + '</div></div></div>';
+            }).join("") +
+            (!chOpen && unpaidL.length > 6
+              ? '<div class="muted" style="padding:7px 10px;border-top:1px solid #f1f5f9">and ' +
+                (unpaidL.length - 6) + ' more \u2014 tap the line above to see every delivery</div>' : '') +
+            '</div>'
+          : '') +
         '</div>';
     }
     if (r.oldBook > 0) {
       h += '<div class="muted" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:8px 10px;margin-bottom:9px;color:#9a3412">' +
         '<b>' + money(r.oldBook) + '</b> is brought forward from the old paper books. It carries no date, so it cannot be aged — but it is the oldest money he owes.</div>';
+    }
+
+    /* ---- PAYMENTS RECEIVED  (v1.30.0) ----
+       "received 1,00,000" was the whole of it. Which day, by what mode, against which reference -
+       all of it was on the sheet and none of it on the screen he chases from. Newest first here,
+       deliberately: on a call the question is always "the last one", never "the first one". */
+    var pays = (r.payments || []).slice().reverse();
+    if (pays.length) {
+      var pOpen = expOn(r.name, "pay");
+      h += '<div style="margin-bottom:9px">' +
+        expRow(r.name, "pay", "Payments received",
+          pays.length + " receipt" + (pays.length === 1 ? "" : "s") + " \u00b7 " + money(r.paid)) +
+        (pOpen
+          ? '<div style="background:#fff;border:1px solid #e2e8f0;border-top:0;border-radius:0 0 10px 10px;overflow:hidden;margin-top:-6px;padding-top:6px">' +
+            pays.map(function (p) {
+              var bits = [];
+              if (p.mode) bits.push(esc(p.mode));
+              if (p.ref) bits.push(esc(p.ref));
+              if (p.by) bits.push('entered by ' + esc(p.by));
+              return '<div class="row" style="padding:7px 10px;border-top:1px solid #f1f5f9">' +
+                '<div class="grow"><b style="font-size:12.5px">' + esc(p.ymd ? dstr(p.ymd) : "no date") + '</b>' +
+                (bits.length ? '<div class="muted">' + bits.join(' \u00b7 ') + '</div>'
+                             : '<div class="muted">no mode or reference recorded</div>') + '</div>' +
+                '<div style="font-weight:700;color:#0f766e">' + money(p.amount) + '</div></div>';
+            }).join("") + '</div>'
+          : '') +
+        '</div>';
     }
 
     var fl = followFor(r.name);
@@ -3432,6 +3521,14 @@ function cancelMap() {
     if (act === "log") {
       if (!canWrite()) { toast("Recording a promise is done by the office."); return; }
       S.sheet = sheetLog(t.getAttribute("data-n")); render(); return;
+    }
+    /* v1.30.0 - open or close one list on one client. Nothing is fetched and nothing is saved:
+       both lists are already on the row the card was drawn from. */
+    if (act === "exp") {
+      var ek = t.getAttribute("data-n") + "|" + t.getAttribute("data-k");
+      S.exp = S.exp || {};
+      S.exp[ek] = !S.exp[ek];
+      render(); return;
     }
     if (act === "mb-ask") { mbAsk(t.getAttribute("data-n")); return; }
     if (act === "mb-save") {
