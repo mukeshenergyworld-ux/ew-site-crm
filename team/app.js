@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.388";
+  var APP_VERSION = "6.9.389";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5645,6 +5645,35 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
              String(u.active == null ? "Y" : u.active).toUpperCase() !== "N";
     });
   }
+  /* ================= AN OWNER IS NOT HIS OWN EXECUTIVE  (v6.9.389, 1 Sept 2026) =========
+     HIS WORDS, on the ADD TO HISAB screen for Infinite Constructions: "what is this showing in
+     red marked, what means with it?" - two amber "no rate" boxes and "2 rates are missing".
+
+     execTeam() above has said the rule since it was written: "An admin who owns clients does
+     not pay himself an incentive, so he is not listed here." incLineup() never asked. It takes
+     the client's owner - ownedBy, falling back to createdBy - and calls him the executive, so
+     the owner's own name goes into the line-up and is then flagged as a man whose rate somebody
+     forgot to set.
+
+     MEASURED ON HIS BOOK before this was written: 164 clients, and 59 of them are "owned" by an
+     admin - 58 by Mukesh Verma, 1 by Dinesh Verma. 27 of the 54 stamps already written name him
+     as exec. NOT ONE RUPEE IS AFFECTED: he has no exec rate anywhere (both rates that exist are
+     Ashish Bhuker's on Dr Pawan Gupta), execRateFor returns 0, and execTeam already keeps him
+     out of the incentive book. The whole of the fault is the screen - and the cost is that a
+     warning which cries wolf on 58 clients is a warning he stops reading, on the one screen
+     that exists to make an omission obvious.
+
+     WHY THE FIX IS HERE AND NOT IN incLineup(). incLineup is byte-identical in the Challan app
+     and t_apps_agree holds it that way - but the Challan app never asks the server for the
+     `team` tab (KEEP_FAST/KEEP_REST), so execTeam() there would answer "nobody earns" and
+     silently empty the line-up on every delivery raised at the godown. The rule is only
+     knowable where the data is. So the man stays in the table, which is true - he IS the
+     client's owner - and only the ALARM learns to tell the two cases apart. */
+  function execEarns(name) {
+    var n = String(name || "").trim().toLowerCase();
+    if (!n) return false;
+    return execTeam().some(function (u) { return String(u.name || "").trim().toLowerCase() === n; });
+  }
   /* ---- SALES EXECUTIVE INCENTIVE: the discount budget ----
      Each brand carries a STANDARD discount and a BASE rate. Sell at the standard
      and the executive earns the base. Every point of discount he does NOT give
@@ -8317,15 +8346,26 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         disc: d ? (Number(d.pct) || 0) : null,      /* null means NOT SET, 0 means "no discount", set */
         per: (lineup || []).map(function (m) {
           var r = (m.role === "exec") ? execRateFor(cl, b) : incRate(cl, b, m.role);
-          return { role: m.role, name: m.name, pct: r, amt: byBrand[b] * r / 100, rated: r > 0 };
+          /* v6.9.389 - a partner named on the client always earns; an EXECUTIVE earns only if
+             he is one. A blank box for a man who takes no executive incentive is not an
+             omission, and calling it one is what made this warning noise. */
+          var earns = (m.role !== "exec") || execEarns(m.name);
+          return { role: m.role, name: m.name, pct: r, amt: byBrand[b] * r / 100,
+                   rated: r > 0, earns: earns };
         })
       };
     });
     return { rows: rows, job: job,
              noDisc: rows.filter(function (r) { return r.disc === null; }).length,
              noRate: rows.reduce(function (n, r) {
-               return n + r.per.filter(function (p) { return !p.rated; }).length;
-             }, 0) };
+               return n + r.per.filter(function (p) { return !p.rated && p.earns; }).length;
+             }, 0),
+             /* v6.9.389 - how many men in this line-up can earn at all. The all-clear sentence
+                below used to read "every man in the line-up has a rate on all of them", which on
+                a client the owner owns himself was simply untrue: he has no rate and never will. */
+             earners: (lineup || []).filter(function (m) {
+               return (m.role !== "exec") || execEarns(m.name);
+             }).length };
   }
 
   function modalAddToHisab(id) {
@@ -8439,9 +8479,16 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             (r.disc === null ? '#b91c1c' : (r.disc > 0 ? '#0f766e' : '#94a3b8')) + '">' +
             (r.disc === null ? 'not set' : (r.disc > 0 ? r.disc + '%' : 'none')) + '</td>' +
           (own ? r.per.map(function (p) {
-            return '<td style="padding:5px 6px;white-space:nowrap;color:' + (p.rated ? '#0f172a' : '#b45309') + '">' +
+            /* v6.9.389 - three states, not two. Rated. Unrated and somebody should set it
+               (amber, and counted below). Unrated because this man takes no executive
+               incentive at all - grey, silent, and it says so when you hold it. */
+            var _col = p.rated ? '#0f172a' : (p.earns ? '#b45309' : '#94a3b8');
+            return '<td style="padding:5px 6px;white-space:nowrap;color:' + _col + '">' +
               (p.rated ? p.pct + '% &middot; <b>' + money(p.amt) + '</b>'
-                       : '<b>no rate</b>') + '</td>';
+                       : (p.earns ? '<b>no rate</b>'
+                                  : '<span title="' + esc(p.name) + ' owns this client but is not a ' +
+                                    'sales executive, so he takes no executive incentive. Nothing is ' +
+                                    'missing here.">&mdash;</span>')) + '</td>';
           }).join("") : "") + '</tr>';
       });
       if (bs.job > 0) {
@@ -8462,7 +8509,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           '</div>';
       } else if (own && lineup.length) {
         h += '<div class="meta" style="margin-top:8px;font-size:12.5px;color:#0f766e">' +
-          'Every brand is priced and every man in the line-up has a rate on all of them. Nothing left out.</div>';
+          (bs.earners
+            ? 'Every brand is priced and every man in the line-up has a rate on all of them. Nothing left out.'
+            /* v6.9.389 - and when NOBODY on this client takes an executive incentive, say that
+               instead of claiming everyone has a rate. The old sentence was false on 59 of his
+               164 clients, which is the same fault as the amber boxes wearing a green coat. */
+            : 'Every brand is priced. Nobody named on this client takes an executive incentive, ' +
+              'so there is no rate to set.') + '</div>';
       }
       h += '</div>';
     }
