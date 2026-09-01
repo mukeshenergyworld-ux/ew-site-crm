@@ -114,7 +114,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.387";
+  var APP_VERSION = "6.9.388";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8092,7 +8092,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (isFinite(t)) oldest = Math.max(oldest, Math.round((Date.now() - t) / 86400000));
     });
     return '<div class="card" style="border-color:#fca5a5;background:#fef2f2;cursor:pointer" ' +
-      'data-act="tab" data-tab="challans">' +
+      /* v6.9.388 - into the QUEUE, not into the whole delivery book. This line used to promise
+         "Tap to open Deliveries" and then leave him to find them. */
+      'data-act="ch-queue">' +
       '<h3 style="color:#991b1b;margin:0">' + list.length + ' deliver' + (list.length === 1 ? 'y is' : 'ies are') +
         ' waiting for ADD TO HISAB <span class="pill due">' + money(worth) + '</span></h3>' +
       '<div class="meta" style="color:#7f1d1d;font-size:12.5px;line-height:1.55;margin-top:6px">' +
@@ -8100,7 +8102,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       'They are already on the client&rsquo;s account &mdash; what is <b>not</b> fixed is who earns ' +
       'on them. Until a delivery is stamped the incentive follows whoever the client&rsquo;s partner ' +
       'is <i>today</i>, so changing a partner moves the earnings on all of these at once.' +
-      '<br><b>Tap to open Deliveries.</b> Each one is marked <b>NOT IN HISAB</b>.</div></div>';
+      '<br><b>Tap to open the list</b> &mdash; just these, oldest first.</div></div>';
   }
   function hisabPendingList() {
     return (S.data.challans || []).filter(function (c) {
@@ -15598,11 +15600,34 @@ function viewCatalogue() {
     /* ONLY sales is owner-scoped; godown must see every challan to dispatch/receipt them. */
     if (roleIs("sales")) list = list.filter(function (c) { return isMineClient(c.customerName); });
     var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
+    /* v6.9.388 - the same predicate the red band counts, scoped the same way, so the tile, the
+       band and the queue can never disagree about how many there are. hisabNotStamped() is NOT
+       re-implemented here: it already exists and it already knows about HISAB_STAMP_FROM, which
+       is the only reason the band says 1 and not 79. */
+    var hq = hisabNotStamped().filter(function (c) {
+      return seesAllClients() || isMineClient(c.customerName);
+    }).sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
     var h = chAppLink + '<div class="cards">' +
       '<div class="stat ' + (by("Draft") ? "alert" : "") + '"><div class="n">' + by("Draft") + '</div><div class="l">Awaiting approval</div></div>' +
       '<div class="stat"><div class="n">' + by("Approved") + '</div><div class="l">Approved, to dispatch</div></div>' +
       '<div class="stat"><div class="n">' + by("Dispatched") + '</div><div class="l">Awaiting receipt</div></div>' +
       '<div class="stat"><div class="n">' + by("Received") + '</div><div class="l">Receipt in</div></div>' +
+      /* ---- A PLACE OF ITS OWN FOR THE HISAB QUEUE  (v6.9.388, 1 September 2026) ----
+         HIS WORDS: "make a dedicated space for pending for add to hisab, as i have to search
+         time and again for each entry and find".
+
+         The red band has counted them since v6.9.346 and then said "Tap to open Deliveries" -
+         which drops him into the whole book, grouped by executive and then by client, to hunt
+         for the one card that needs stamping. Counting a queue is not the same as giving him
+         somewhere to work it.
+
+         The tile is drawn even at zero, and quiet when it is: a space he has to find only when
+         it is full is a space he will not trust is there. */
+      (canHisabRole()
+        ? '<div class="stat' + (hq.length ? ' alert' : '') + '" data-act="ch-queue" style="cursor:pointer" ' +
+          'title="Deliveries whose receipt is in and which have not been stamped. Tap to work through them.">' +
+          '<div class="n">' + hq.length + '</div><div class="l">Waiting for hisab</div></div>'
+        : '') +
       '</div>';
     /* v6.9.128: delivered-but-not-billed banner, so bills get raised (a delivered challan with no bill
        is money shipped without a tax invoice). Only for billing-capable roles. */
@@ -15613,7 +15638,9 @@ function viewCatalogue() {
           '<div class="meta" style="font-size:13.5px;color:#7c2d12"><b>' + money(_unb.val) + '</b> in <b>' + _unb.count + '</b> delivered challan(s) not billed yet — raise the bills so nothing slips on GST.</div></div>';
       }
     }
-    h += hisabNotStampedBand();
+    /* v6.9.388 - not inside the queue: the band and the queue's own header would say the same
+       thing twice, one under the other. */
+    if (S.chOnly !== "hisab") h += hisabNotStampedBand();
     h += hisabMismatchCard();
     h += '<div class="row">' +
       (roleIs("admin") ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
@@ -15731,6 +15758,39 @@ function viewCatalogue() {
 
       out += '</div>';
       return out;
+    }
+
+    /* ---- THE QUEUE ITSELF. Flat and OLDEST FIRST, because this is a list to be emptied and
+       not a book to be browsed: the exec/client grouping that makes the full list readable is
+       exactly what makes one card hard to find in it. Every card is the ordinary card, so
+       ADD TO HISAB is where it always is and nothing about stamping changes. */
+    if (S.chOnly === "hisab" && canHisabRole()) {
+      var hqWorth = hq.reduce(function (a, c) { return a + chValue(c); }, 0);
+      var hqOld = 0;
+      hq.forEach(function (c) {
+        var t2 = Date.parse(c.createdAt || "");
+        if (isFinite(t2)) hqOld = Math.max(hqOld, Math.round((Date.now() - t2) / 86400000));
+      });
+      var back = '<button class="btn sm ghost" data-act="ch-queue" data-off="1">Show all deliveries</button>';
+      if (!hq.length) {
+        /* SAY IT, do not draw an empty screen. The estate has hidden four things in silence
+           already and he has had to ask where each went. */
+        return h + '<div class="empty ok" style="margin-top:10px"><b>Nothing is waiting for ADD TO HISAB.</b>' +
+          '<br>Every delivery with its receipt in has been stamped, so who earns on each one is ' +
+          'written down and cannot move if a partner changes.</div>' +
+          '<div class="row" style="margin-top:10px">' + back + '</div>';
+      }
+      h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
+        '<h3 style="color:#991b1b;margin:0">Waiting for ADD TO HISAB &mdash; ' + hq.length +
+          ' deliver' + (hq.length === 1 ? 'y' : 'ies') +
+          ' <span class="pill due">' + money(hqWorth) + '</span></h3>' +
+        '<div class="meta" style="color:#7f1d1d;font-size:12.5px;line-height:1.55;margin-top:6px">' +
+        (hqOld ? 'Oldest first. The oldest has been waiting <b>' + hqOld + ' days</b>. ' : 'Oldest first. ') +
+        'Stamping one writes down who earns on it for good. Until then the incentive follows ' +
+        'whoever the client&rsquo;s partner is <i>today</i>.</div>' +
+        '<div class="row" style="margin-top:8px">' + back + '</div></div>';
+      hq.forEach(function (c) { h += challanCardHtml(c); });
+      return h;
     }
 
     /* Group the whole delivery book top-down: Sales exec -> Client -> that client's challans.
@@ -29981,8 +30041,18 @@ function viewCatalogue() {
     if (act === "crash-log") { S.modal = modalCrashLog(); render(); return; }
     if (act === "crash-clear") { try { localStorage.removeItem(CRASH_KEY); } catch (e) { } S.modal = modalCrashLog(); render(); return; }
     if (act === "reload-app") { location.reload(); return; }
+    /* v6.9.388 - one action for both doors into the queue: the red band and the tile. It also
+       switches to the Deliveries tab, because the band is drawn on the dashboard and on HISAB
+       as well and a filter that leaves you on another screen has done nothing. */
+    if (act === "ch-queue") {
+      S.chOnly = t.getAttribute("data-off") ? "" : "hisab";
+      if (S.tab !== "challans") { S.tab = "challans"; try { tabUse(S.tab); navBump(S.tab); } catch (e) {} }
+      try { window.scrollTo(0, 0); } catch (e) {}
+      render(); return;
+    }
     if (act === "tab") {
       S.tab = t.getAttribute("data-tab");
+      S.chOnly = "";        /* v6.9.388 - a filter must not outlive the visit that set it */
       tabUse(S.tab);
       /* counted on his own device, against his own name, so "Your six" becomes his six */
       try { navBump(S.tab); } catch (e) { }
