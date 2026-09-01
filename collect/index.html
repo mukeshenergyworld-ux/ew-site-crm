@@ -143,7 +143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.30.0";
+  var APP_VERSION = "1.30.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1725,18 +1725,44 @@ function cancelMap() {
     var openLeft = opening;
     if (pot > 0) { var t0 = Math.min(pot, openLeft); openLeft -= t0; pot -= t0; }
 
-    var credit = credited;
     var lines = challans.map(function (c) {
-      return { no: c.challanNo || "", ymd: d10(c.createdAt), amount: challanNet(c), left: challanNet(c), site: c.site || "" };
+      var v = challanNet(c);
+      return { no: c.challanNo || "", ymd: d10(c.createdAt), amount: v, left: v, site: c.site || "",
+               /* v1.30.1 - a challan whose lines are hand-worked NEGATIVE is a credit note, not
+                  a delivery. His book has exactly one: 27/08/2026/034, Ashish Goyal, -70,256. */
+               credit: v < 0 };
     });
-    for (var i = lines.length - 1; i >= 0 && credit > 0; i--) {
-      var t1 = Math.min(credit, lines[i].left); lines[i].left -= t1; credit -= t1;
+
+    /* ================= A CREDIT NOTE IS NOT A DELIVERY  (v1.30.1, 1 Sept 2026) ==============
+       HE ASKED, seeing it on the new list: "what is this settled one".
+
+       27/08/2026/034 is worth MINUS 70,256 - two hand-worked lines, and the row is right. The
+       card called it "settled", which is not what a credit is, and that was the smaller half.
+
+       THE ALLOCATION WAS THE REAL FAULT. Both loops below say Math.min(pot, line.left). On a
+       negative line that picks the NEGATIVE number, so `left -= t` sets it to zero and
+       `pot -= t` makes the pot BIGGER. Driven with his own six rows: at a 2,00,000 payment the
+       pot ends at 1,17,041 left over - the app would think he had overpaid by that much - and
+       every delivery reads settled. It does not fire today only because he has paid nothing at
+       all, so the pot never reaches the line.
+
+       A credit note is a CREDIT. It belongs with the booked-in returns, which already credit the
+       newest deliveries first, and it belongs nowhere near the queue money settles down. And
+       when the credits come to more than every delivery he has taken - which they do here,
+       70,256 against 53,215 - the rest comes off the old book, because that is the oldest money
+       he owes and there is nothing else left to reduce. Without that last line the parts would
+       stop adding up to the total on the card. */
+    var owed = lines.filter(function (l) { return !l.credit; });
+    var credit = credited + lines.reduce(function (s, l) { return s + (l.credit ? -l.amount : 0); }, 0);
+    for (var i = owed.length - 1; i >= 0 && credit > 0; i--) {
+      var t1 = Math.min(credit, owed[i].left); owed[i].left -= t1; credit -= t1;
     }
-    for (var j = 0; j < lines.length && pot > 0; j++) {
-      var t2 = Math.min(pot, lines[j].left); lines[j].left -= t2; pot -= t2;
+    if (credit > 0) { var tC = Math.min(credit, openLeft); openLeft -= tC; credit -= tC; }
+    for (var j = 0; j < owed.length && pot > 0; j++) {
+      var t2 = Math.min(pot, owed[j].left); owed[j].left -= t2; pot -= t2;
     }
 
-    var unpaid = lines.filter(function (l) { return l.left > 0.5; });
+    var unpaid = owed.filter(function (l) { return l.left > 0.5; });
     var oldest = unpaid.length ? unpaid[0].ymd : "";
     var ageDays = oldest ? daysBetween(oldest, today) : 0;
     /* how much of what he still owes is past the agreed term */
@@ -2388,27 +2414,38 @@ function cancelMap() {
       var show = chOpen ? allLines : unpaidL.slice(0, 6);
       h += '<div style="margin-bottom:9px">' +
         expRow(r.name, "ch", chOpen ? "All deliveries" : "Deliveries still owed for",
-          (unpaidL.length ? unpaidL.length + " unpaid of " + allLines.length : "all " + allLines.length + " settled")) +
+          (function () {
+            /* v1.30.1 - "5 unpaid of 6" counted a credit note as a delivery. It is not one. */
+            var nCr = allLines.filter(function (l) { return l.credit; }).length;
+            var nDel = allLines.length - nCr;
+            return (unpaidL.length ? unpaidL.length + " unpaid of " + nDel
+                                   : "all " + nDel + " settled") +
+                   (nCr ? " \u00b7 " + nCr + " credit note" + (nCr === 1 ? "" : "s") : "");
+          })()) +
         (show.length
           ? '<div style="background:#fff;border:1px solid #e2e8f0;border-top:0;border-radius:0 0 10px 10px;overflow:hidden;margin-top:-6px;padding-top:6px">' +
             show.map(function (u) {
               var d = EWdays(u.ymd, t), late = u.left > 0.5 && d > CREDIT_DAYS;
               var settled = Math.round((u.amount || 0) - (u.left || 0));
-              var done = u.left <= 0.5;
+              /* v1.30.1 - three kinds of line, not two. A credit note is never "settled": it is
+                 money coming OFF his account, and saying otherwise hides the most unusual row
+                 on his book behind the most ordinary word on the screen. */
+              var isCr = !!u.credit, done = !isCr && u.left <= 0.5;
               return '<div class="row" style="padding:7px 10px;border-top:1px solid #f1f5f9;' +
-                (done ? 'opacity:.62' : '') + '">' +
+                (done && !isCr ? 'opacity:.62' : '') + '">' +
                 '<div class="grow"><b style="font-size:12.5px">' + esc(u.no || "(no number)") + '</b>' +
                 (u.site ? ' <span class="muted">' + esc(u.site) + '</span>' : '') +
                 '<div class="muted">' + esc(u.ymd ? dstr(u.ymd) : "no date") +
                   (u.ymd ? ' · ' + esc(ageWords(d)) : '') +
                   (late ? ' <b style="color:#b91c1c">past term</b>' : '') +
                   /* v1.30.0 - what the money already received has taken off THIS delivery */
-                  (chOpen && settled > 0 && !done ? ' · ' + esc(money(settled)) + ' paid' : '') +
+                  (isCr ? ' · <b style="color:#5b21b6">credit note</b> \u2014 comes off what he owes'
+                        : (chOpen && settled > 0 && !done ? ' · ' + esc(money(settled)) + ' paid' : '')) +
                   '</div></div>' +
                 '<div style="text-align:right">' +
-                  (chOpen ? '<div class="muted" style="font-size:11.5px">' + money(u.amount || 0) + '</div>' : '') +
-                  '<div style="font-weight:700;color:' + (done ? '#0f766e' : (late ? '#b91c1c' : '#0f172a')) + '">' +
-                  (done ? 'settled' : money(u.left)) + '</div></div></div>';
+                  (chOpen && !isCr ? '<div class="muted" style="font-size:11.5px">' + money(u.amount || 0) + '</div>' : '') +
+                  '<div style="font-weight:700;color:' + (isCr ? '#5b21b6' : (done ? '#0f766e' : (late ? '#b91c1c' : '#0f172a'))) + '">' +
+                  (isCr ? money(u.amount) : (done ? 'settled' : money(u.left))) + '</div></div></div>';
             }).join("") +
             (!chOpen && unpaidL.length > 6
               ? '<div class="muted" style="padding:7px 10px;border-top:1px solid #f1f5f9">and ' +
