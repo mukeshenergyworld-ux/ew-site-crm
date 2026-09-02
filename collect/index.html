@@ -143,7 +143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.30.1";
+  var APP_VERSION = "1.31.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -160,12 +160,36 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         rq.onupgradeneeded = function () {
           try { rq.result.createObjectStore(IDB_STORE); } catch (e) {}
         };
-        rq.onsuccess = function () { fin(rq.result); };
+        /* ============ THE DOOR THAT LATCHED SHUT (v6.9.391) ============
+           The timeout below exists so the app never waits on storage to start. It answered
+           null - correctly - and then left that null CACHED IN _idbP, where it stood for the
+           rest of the page. Every later read and every later write got "this browser has no
+           IndexedDB" from a browser that has it and had merely been slow for one moment.
+
+           That is not a small window. v6.9.257 moved the catalogue, the offline book and the
+           logo cache into IndexedDB and REMOVES the localStorage copy once IndexedDB confirms
+           the write. So on a device that has already migrated, one slow open means: the
+           catalogue reads as absent, the saved book reads as absent, the logos read as absent,
+           and nothing saved during that whole session is kept. The app carries on and says
+           nothing, because every one of those paths is written to treat "not there" as normal.
+
+           Found on 1 Sep chasing an empty brand grid. An empty grid is what an empty PRODUCTS
+           looks like, and this is one of the ways PRODUCTS ends up empty.
+
+           A SLOW OPEN IS NOT AN ANSWER. If the door opens late, put the real door back. */
+        rq.onsuccess = function () {
+          if (done) _idbP = Promise.resolve(rq.result);
+          fin(rq.result);
+        };
+        /* onerror and onblocked ARE answers. A browser that refuses stays refused, and
+           re-opening it on every read would be noise. Only the timeout un-latches. */
         rq.onerror = function () { fin(null); };
         rq.onblocked = function () { fin(null); };
         /* Safari in private mode can leave open() hanging forever. The app must never wait
-           on storage to start - it falls back to localStorage and carries on. */
-        setTimeout(function () { fin(null); }, 2500);
+           on storage to start - it falls back to localStorage and carries on.
+           v6.9.391 - and _idbP is cleared, so the NEXT caller knocks again instead of
+           inheriting this one's shrug. */
+        setTimeout(function () { if (!done) { _idbP = null; fin(null); } }, 2500);
       } catch (e) { fin(null); }
     });
     return _idbP;
@@ -1042,7 +1066,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   /* how much money is sitting on this phone and not yet on the sheet */
   function jrnHeldMoney() {
     return jrnLoad().reduce(function (a, e) {
-      return a + (e.tab === "payments" ? EWnum(e.row && e.row.amount) : 0);
+      return a + (e.tab === "payments" ? payAmt(e.row) : 0);
     }, 0);
   }
 
@@ -1217,12 +1241,39 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   /* v1.26.2 - spelled exactly as the CRM's and the Challan app's. It always did the same
      arithmetic; it just used an intermediate variable, and an exemption for a money function
      that differs only cosmetically is an exemption that teaches you to ignore the guard. */
+  /* v1.31.0 - THE IMPLEMENTATION, and it carries the CRM's name for it so that payAmt() below
+     can be byte-identical in both apps. t_apps_agree.js refuses anything else, and it is right
+     to: two spellings of one rule is how the rule drifts, which is the whole subject of this
+     release. num() and EWnum() are aliases now - every one of their ~100 call sites is
+     untouched, and there is one place left in this file that can be wrong. */
+  function nAmt(v) {
+    if (typeof v === "number") return isFinite(v) ? v : 0;
+    var t = String(v === undefined || v === null ? "" : v).replace(/[^0-9.\-]/g, "");
+    var n = Number(t);
+    return isFinite(n) ? n : 0;
+  }
+  /* v6.9.392 - num() is a second copy of nAmt(), and it stays a second copy ON PURPOSE.
+     It was briefly made an alias - one implementation, which sounds strictly better - and that
+     broke eleven test rigs at once: every one of them lifts a function out of this file by
+     brace-matching and runs it in a scope of its own dependencies, and num had been
+     self-contained since the day it was written. What needs protecting is that the two AGREE,
+     and t_onerule.js holds every spelling of this parser in every app to one body. A test is
+     the right tool for that; coupling two functions is not. */
   function num(v) {
     if (typeof v === "number") return isFinite(v) ? v : 0;
-    var n = Number(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
+    var t = String(v === undefined || v === null ? "" : v).replace(/[^0-9.\-]/g, "");
+    var n = Number(t);
     return isFinite(n) ? n : 0;
   }
   function d10(v) { return String(v == null ? "" : v).slice(0, 10); }
+  /* v1.31.0 - ONE READER FOR A PAYMENT AMOUNT, the same text as the CRM's.
+     This app was already tolerant here - it has read payments through num()/EWnum() since it
+     shipped - so no figure on this screen moves today. It is converted anyway, because the
+     fault the CRM had was not "Number() is wrong": it was that a payment amount had no ONE
+     name, so sixteen sites each chose for themselves and one of them chose badly. A rule only
+     holds if it is the same word in every app - and t_apps_agree.js now holds this one to the
+     byte against the CRM's. */
+  function payAmt(p) { return nAmt((p || {}).amount); }
   function daysBetween(from, to) {
     if (!from || !to) return 0;
     var a = Date.parse(from + "T00:00:00Z"), b = Date.parse(to + "T00:00:00Z");
@@ -1713,7 +1764,7 @@ function cancelMap() {
        short figure with no mark on it at all. A credit that is too small is money asked for
        twice, so the card now says when one is incomplete. */
     var unpricedLines = returns.reduce(function (s, r) { return s + num(opts.returnUnpriced ? opts.returnUnpriced(r) : 0); }, 0);
-    var paid = payments.reduce(function (s, p) { return s + num(p.amount); }, 0);
+    var paid = payments.reduce(function (s, p) { return s + payAmt(p); }, 0);
     var due = Math.round(opening + billed - credited - paid);
 
     /* ---- FIFO: what the money that came in has already settled ----
@@ -1803,7 +1854,7 @@ function cancelMap() {
          it, so a paid-off one can be named too. payments carries the receipts themselves. */
       lines: lines,
       payments: payments.map(function (p) {
-        return { ymd: d10(p.date || p.createdAt), amount: num(p.amount),
+        return { ymd: d10(p.date || p.createdAt), amount: payAmt(p),
                  mode: String(p.mode || ""), ref: String(p.ref || ""), by: String(p.createdBy || "") };
       })
     };
@@ -1976,9 +2027,13 @@ function cancelMap() {
     _rowsCache = out;
     return out;
   }
+  /* v1.31.0 - EWnum is a THIRD copy of the same six lines, 760 lines from the second, and
+     neither knew the other existed. It stays a copy, for the reason written beside num() - and
+     t_onerule.js is what now stops the three of them drifting apart. */
   function EWnum(v) {
     if (typeof v === "number") return isFinite(v) ? v : 0;
-    var n = Number(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
+    var t = String(v === undefined || v === null ? "" : v).replace(/[^0-9.\-]/g, "");
+    var n = Number(t);
     return isFinite(n) ? n : 0;
   }
   /* ---- A MAN MAY HOLD MORE THAN ONE ROLE (20 Aug 2026) ----
@@ -2983,7 +3038,7 @@ function cancelMap() {
       return String(p.client || "").trim().toLowerCase() === k && !isCancelled("payments", p.id);
     }).forEach(function (p) {
       out.push({ ymd: d10(p.date || p.createdAt), what: "Payment received",
-                 extra: [p.mode, p.ref].filter(Boolean).join(" · "), debit: 0, credit: EWnum(p.amount) });
+                 extra: [p.mode, p.ref].filter(Boolean).join(" · "), debit: 0, credit: payAmt(p) });
     });
     out.sort(function (a, b) { return String(a.ymd).localeCompare(String(b.ymd)); });
     return out;
@@ -3625,7 +3680,7 @@ function cancelMap() {
       var twin = ((S.data && S.data.payments) || []).filter(function (x) {
         return String(x.client || "").trim().toLowerCase() === String(name).trim().toLowerCase() &&
           String(x.date || "").slice(0, 10) === dt &&
-          Math.round(EWnum(x.amount)) === amt;
+          Math.round(payAmt(x)) === amt;
       })[0];
       if (twin && !t.getAttribute("data-force")) {
         t.setAttribute("data-force", "1");
