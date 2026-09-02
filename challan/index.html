@@ -26,14 +26,16 @@ a{color:#0f766e}
   box-shadow:0 2px 10px rgba(0,0,0,.15)}
 .top .t1{display:flex;align-items:center;gap:10px}
 .top h1{margin:0;font-size:16px;font-weight:800;letter-spacing:.02em;flex:1}
-.top .who{font-size:11.5px;color:#ccfbf1}
-.sync{font-size:11px;color:#ccfbf1}
+.top .who{font-size:12px;color:#ccfbf1}
+.sync{font-size:12px;color:#ccfbf1}
 .btn{appearance:none;border:1px solid #0f766e;background:#0f766e;color:#fff;border-radius:10px;
   padding:11px 15px;font-size:14.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
   min-height:44px;justify-content:center}
 .btn:active{transform:translateY(1px)}
 .btn.ghost{background:#fff;color:#0f766e}
-.btn.sm{padding:7px 11px;font-size:13px;border-radius:9px;min-height:36px}
+/* v1.46.7 - 40px, not 36: measured at 360, 46 of the 90 things a thumb taps on this app
+   were these, and the two header icons were 35px wide. Same floor as the CRM. */
+.btn.sm{padding:7px 11px;font-size:13px;border-radius:9px;min-height:40px;min-width:40px}
 .btn.gry{background:#fff;border-color:#cbd5e1;color:#334155}
 .btn.red{background:#b91c1c;border-color:#b91c1c;color:#fff}
 .btn.amb{background:#b45309;border-color:#b45309;color:#fff}
@@ -44,7 +46,7 @@ a{color:#0f766e}
 .stats{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 .stat{flex:1 1 46%;min-width:150px;background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:11px 13px}
 .stat .n{font-size:22px;font-weight:800;letter-spacing:-.02em}
-.stat .l{font-size:11.5px;color:#64748b;margin-top:2px}
+.stat .l{font-size:12px;color:#64748b;margin-top:2px}
 .stat.bad .n{color:#b91c1c}
 .stat.good .n{color:#0f766e}
 input,select,textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;
@@ -58,7 +60,7 @@ input[type="checkbox"],input[type="radio"]{width:auto;padding:0;min-height:0;fle
 label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:520px){.grid2{grid-template-columns:1fr}}
-.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;
+.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700;
   background:#f1f5f9;color:#475569;vertical-align:middle;white-space:nowrap}
 .pill.red{background:#fee2e2;color:#b91c1c}
 /* THE LOGIN BANNER IS A SENTENCE, NOT A CHIP (17 Aug 2026). It borrowed .pill, which carries
@@ -71,6 +73,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   margin:0 0 12px;background:#fee2e2;color:#b91c1c}
 
 .pill.amb{background:#fef3c7;color:#92400e}
+/* v1.46.7 - THE SAME LESSON AS THE LOGIN BANNER, ON THE CHALLAN CARD. "Mark it dispatched
+   first - a receipt is for goods that have gone" (v1.35.0) is a sentence wearing .pill, and
+   .pill does not wrap. On a 360px phone it ran 347px wide from 25px in, and every screen of the
+   app scrolled sideways by 12px whenever an Approved challan was in the list - the tab bar,
+   fixed to the viewport, stretched with it. A sentence gets .say: it wraps, sits on its own
+   line, and keeps the pill's colour so it still reads as a status. */
+.pill.say{display:block;white-space:normal;word-break:break-word;flex:1 1 100%;text-align:left;
+  border-radius:10px;padding:6px 10px;line-height:1.4;font-size:12px}
 /* ---- the freight corner (v1.36.0) ---- */
 .frnote{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:13px;color:#334155}
 .frnote.amb{background:#fffbeb;border-color:#fde68a;color:#92400e}
@@ -104,16 +114,19 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .login p{margin:0 0 16px;text-align:center;color:#64748b;font-size:13px}
 .nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #e2e8f0;display:flex;z-index:30;
   padding-bottom:env(safe-area-inset-bottom)}
-.nav button{flex:1;border:0;background:none;padding:9px 4px 10px;font-size:11px;font-weight:700;color:#94a3b8;cursor:pointer}
+/* v1.46.7 - min-width:0. A flex item will not shrink below its own content unless told, so six
+   buttons (seven for the owner) added up to 373px on a 360px phone and the WHOLE app scrolled
+   sideways by 13px on every screen, with the last tab clipped. Measured by booting it at 360. */
+.nav button{flex:1 1 0;min-width:0;border:0;background:none;padding:9px 2px 10px;font-size:12px;font-weight:700;color:#94a3b8;cursor:pointer;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .nav button.on{color:#0f766e}
 .nav button b{display:block;font-size:17px;line-height:1.25}
-.nav button .cnt{display:inline-block;background:#b91c1c;color:#fff;border-radius:999px;padding:0 6px;font-size:10px;margin-left:3px}
+.nav button .cnt{display:inline-block;background:#b91c1c;color:#fff;border-radius:999px;padding:0 6px;font-size:12px;margin-left:3px}
 /* the picker: brand, then category, then product - one level at a time */
 .crumb{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .crumb .c{background:#ccfbf1;color:#0f766e;border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:700;cursor:pointer}
 .tile{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#fff;border:1px solid #e2e8f0;
   border-radius:12px;padding:11px 12px;margin-bottom:7px;cursor:pointer;font-size:14.5px;font-weight:700;color:#0f172a;min-height:52px}
-.tile .sub{font-size:11.5px;font-weight:600;color:#64748b;display:block;margin-top:2px}
+.tile .sub{font-size:12px;font-weight:600;color:#64748b;display:block;margin-top:2px}
 .tile img{width:44px;height:44px;object-fit:contain;border-radius:8px;background:#f8fafc;flex:0 0 auto}
 /* v1.19.0 - "add material brand view will ve small length box, like 2 to 3 brand again
    alphabatically in one line" and the same for the products inside. auto-fit does the
@@ -122,7 +135,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px;margin-bottom:7px}
 .gtile{display:block;width:100%;text-align:left;background:#fff;border:1px solid #e2e8f0;border-radius:12px;
   padding:9px 10px;cursor:pointer;font-size:13.5px;font-weight:800;color:#0f172a;min-height:56px;line-height:1.25}
-.gtile .sub{font-size:11px;font-weight:600;color:#64748b;display:block;margin-top:3px}
+.gtile .sub{font-size:12px;font-weight:600;color:#64748b;display:block;margin-top:3px}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:7px}
 /* He said "2 to 3 in one line", and he meant it as a maximum as well as a minimum. Left to
    auto-fill a 1200px laptop fitted SEVEN brands across, which is a wall of text, not a shelf.
@@ -130,7 +143,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 @media(min-width:620px){.grid,.pgrid{grid-template-columns:repeat(3,1fr)}}
 .pcard{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:8px 9px}
 .pcard .pn{font-weight:800;font-size:13px;line-height:1.25}
-.pcard .pm{font-size:10.5px;color:#64748b;font-weight:600;margin-top:2px}
+.pcard .pm{font-size:12px;color:#64748b;font-weight:600;margin-top:2px}
 .pcard img{width:100%;height:62px;object-fit:contain;border-radius:8px;background:#f8fafc;display:block}
 .pcard .step button{width:32px;height:34px;font-size:17px;border-radius:8px}
 .pcard .step input{width:100%;text-align:center;font-weight:800;padding:6px 2px}
@@ -144,7 +157,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    is ok". The red lives on the LABEL and stays there - it is how the field is found, not a
    warning that it is empty. The box keeps its size and does the empty/filled work itself. */
 .bookno{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:11px 0 2px}
-.bookno label{margin:0;font-size:11px;font-weight:800;letter-spacing:.02em;color:#b91c1c;
+.bookno label{margin:0;font-size:12px;font-weight:800;letter-spacing:.02em;color:#b91c1c;
   background:#fee2e2;border:1px solid #fecaca;border-radius:6px;padding:3px 8px;white-space:nowrap}
 /* 16px, not 14. Below 16px iOS zooms the whole page on focus and never zooms back out,
    and this is the one field the godown types by hand on every single challan. */
@@ -155,7 +168,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 /* executive bands: a solid teal strip per man, tap to open or shut */
 .exec{margin:14px 0 4px;padding:11px 13px;background:#0f766e;color:#fff;border-radius:11px;font-weight:700;
   font-size:14.5px;display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer}
-.exec .sub{font-size:11.5px;font-weight:600;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:999px;white-space:nowrap}
+.exec .sub{font-size:12px;font-weight:600;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:999px;white-space:nowrap}
 .exec .car{font-size:13px;opacity:.85}
 </style>
 </head>
@@ -192,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.46.6";
+  var APP_VERSION = "1.46.7";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1248,7 +1261,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         '<div style="flex:1;min-width:0">' +
           '<div style="font-weight:800">' + l.length + ' ' + (l.length === 1 ? "record is" : "records are") +
             ' held on this phone' + (S.jrnDurable === false ? ' <span style="opacity:.85">(and this phone will not keep them)</span>' : '') + '</div>' +
-          '<div style="opacity:.9;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
+          '<div style="opacity:.9;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
             esc(err || "They will go up by themselves when there is signal.") + '</div>' +
         '</div>' +
         '<button class="btn sm" data-act="jrn-retry" style="background:#fff;color:#7c2d12;flex:none">Try now</button>' +
@@ -2566,7 +2579,7 @@ function discRowOn(client, brand, onYmd) {
       return '<div class="exec" data-act="band" data-n="' + esc(g.name) + '">' +
           '<span class="car">' + (open ? '&#9662;' : '&#9656;') + '</span>' +
           '<div class="grow">' + esc(g.name) +
-            '<div style="font-size:11.5px;font-weight:600;opacity:.9">' +
+            '<div style="font-size:12px;font-weight:600;opacity:.9">' +
               g.list.length + ' challan' + (g.list.length === 1 ? '' : 's') + ' · ' + money(val) +
               (draft ? ' · ' + draft + ' not passed' : '') +
               (noRc ? ' · ' + noRc + ' no receipt' : '') +
@@ -2626,7 +2639,7 @@ function discRowOn(client, brand, onYmd) {
       h += '<select id="dt_' + f.k + '"><option value="">— not known —</option>' +
         list.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join("") +
         '</select>' +
-        (list.length ? '' : '<div class="muted" style="font-size:11.5px">Nobody on the partner register yet — the office adds them in the CRM.</div>');
+        (list.length ? '' : '<div class="muted" style="font-size:12px">Nobody on the partner register yet — the office adds them in the CRM.</div>');
     });
     h += '<div class="muted" style="margin:10px 0 0">Saved against him everywhere — the CRM, ' +
       'the payment app and this one all read the same record.</div>' +
@@ -2694,7 +2707,7 @@ function discRowOn(client, brand, onYmd) {
     var loud = overLimit || overDays;
     var h = '<div style="margin-top:7px;border-radius:9px;padding:7px 9px;border:1px solid ' +
       (loud ? '#fecaca;background:#fef2f2' : '#e2e8f0;background:#f8fafc') + '">' +
-      '<div class="muted" style="font-weight:700;font-size:11px' + (loud ? ';color:#b91c1c' : '') +
+      '<div class="muted" style="font-weight:700;font-size:12px' + (loud ? ';color:#b91c1c' : '') +
       '">Before you load</div>';
     if (m.n) {
       h += '<div style="font-size:13px;font-weight:700;margin-top:1px">' +
@@ -2704,7 +2717,7 @@ function discRowOn(client, brand, onYmd) {
       h += '<div style="font-size:13px;font-weight:700;margin-top:1px">Nothing unbilled on his name.</div>';
     }
     if (m.limit || m.days) {
-      h += '<div class="muted" style="font-size:11.5px;margin-top:2px">Credit ' +
+      h += '<div class="muted" style="font-size:12px;margin-top:2px">Credit ' +
         (m.limit ? money(m.limit) : 'not set') + (m.days ? ' &middot; ' + m.days + ' days' : '') + '</div>';
     }
     if (overLimit) {
@@ -2722,14 +2735,14 @@ function discRowOn(client, brand, onYmd) {
        thing worth naming, and this is a figure a man decides whether to load a lorry on. So
        it says so, rather than being quietly a little bit old. */
     if (!S.restAt) {
-      h += '<div class="muted" style="font-size:11px;margin-top:3px">From the last full pull' +
+      h += '<div class="muted" style="font-size:12px;margin-top:3px">From the last full pull' +
         (S.syncAt ? ' \u2014 ' + esc(bookAge(S.syncAt).txt) : '') + '. The delivery history is still coming down.</div>';
     }
     if (m.noReceipt) {
-      h += '<div class="muted" style="font-size:11.5px;margin-top:3px">' +
+      h += '<div class="muted" style="font-size:12px;margin-top:3px">' +
         m.noReceipt + ' delivery' + (m.noReceipt === 1 ? '' : ' deliveries') + ' still without a signed receipt.</div>';
     }
-    h += '<div class="muted" style="font-size:10.5px;margin-top:4px">' +
+    h += '<div class="muted" style="font-size:12px;margin-top:4px">' +
       'This is what THIS app can see &mdash; material out and not billed. What he actually owes, ' +
       'after payments, is in the Payment app.</div></div>';
     return h;
@@ -2739,15 +2752,15 @@ function discRowOn(client, brand, onYmd) {
     var a = String((cl && cl.address) || "").trim();
     if (a) {
       return '<div style="margin-top:7px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:7px 9px">' +
-        '<div class="muted" style="font-weight:700;font-size:11px">Delivery address</div>' +
+        '<div class="muted" style="font-weight:700;font-size:12px">Delivery address</div>' +
         '<div style="font-size:13px;font-weight:600;margin-top:1px">' + esc(a) + '</div>' +
-        '<div class="muted" style="font-size:10.5px;margin-top:3px">On his record. Wrong? The office changes it in the CRM &mdash; ' +
+        '<div class="muted" style="font-size:12px;margin-top:3px">On his record. Wrong? The office changes it in the CRM &mdash; ' +
         'it is one address for every challan, so it is not edited from the counter.</div></div>';
     }
     if (!cl || !cl.id) return "";
     return '<div style="margin-top:7px;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:7px 9px">' +
-      '<div class="muted" style="font-weight:700;font-size:11px;color:#b45309">No delivery address on his record</div>' +
-      '<div class="muted" style="font-size:10.5px;margin:2px 0 5px">Type it once and it is saved against HIM &mdash; ' +
+      '<div class="muted" style="font-weight:700;font-size:12px;color:#b45309">No delivery address on his record</div>' +
+      '<div class="muted" style="font-size:12px;margin:2px 0 5px">Type it once and it is saved against HIM &mdash; ' +
       'the CRM, the payment app and every later challan all read this same line.</div>' +
       '<input id="cl_addr" placeholder="House / plot, street, landmark" value=""/>' +
       '<div class="row" style="margin-top:6px">' +
@@ -2844,7 +2857,7 @@ function discRowOn(client, brand, onYmd) {
         'delivery book</b> &mdash; everyone you have already sent a lorry to. Search by name ' +
         'above. The office has been told; nothing you make here is affected.</div>';
     }
-    h2 += '<div class="muted" style="font-size:11.5px;margin:10px 0 2px;text-align:center">' +
+    h2 += '<div class="muted" style="font-size:12px;margin:10px 0 2px;text-align:center">' +
       '&mdash; or find him by district &mdash;</div>';
     var ds = districts();
     /* v1.19.0 - "Ask to select district from Dropdown / ask to select area from dropdown".
@@ -3330,7 +3343,7 @@ function discRowOn(client, brand, onYmd) {
 
                   Both halves are fixed: the door below, and this sign. */
                : (st === "Approved"
-                  ? '<span class="pill amb">Mark it dispatched first &mdash; a receipt is for goods that have gone</span>'
+                  ? '<span class="pill amb say">Mark it dispatched first &mdash; a receipt is for goods that have gone</span>'
                   : ''))) +
         (st === "Approved" && canApprove() && !held
           ? '<button class="btn sm" data-act="ch-dispatch" data-id="' + esc(c.id) + '">Dispatch</button>' : '') +
@@ -4442,14 +4455,14 @@ function discRowOn(client, brand, onYmd) {
     var _goods = _pl.reduce(function (a, x) { return a + x.amt; }, 0);
     var _frt = (String(c.freightTo) === "Client") ? num(c.freight) : 0;
 
-    h += '<div class="card"><div class="muted" style="font-size:11px;letter-spacing:.08em;' +
+    h += '<div class="card"><div class="muted" style="font-size:12px;letter-spacing:.08em;' +
       'text-transform:uppercase"><b>The bill, as this client is priced</b></div>' +
       '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
       _pl.map(function (x, i) {
         var l = chLines(c)[i] || {};
         return '<tr style="border-top:1px solid #e2e8f0;text-align:right">' +
           '<td style="text-align:left;padding:5px 6px 5px 0">' + esc(l.desc || l.code || "") +
-            (x.job ? ' <span class="pill">job work</span>' : (x.brand ? ' <span class="muted" style="font-size:11px">' + esc(x.brand) + '</span>' : '')) + '</td>' +
+            (x.job ? ' <span class="pill">job work</span>' : (x.brand ? ' <span class="muted" style="font-size:12px">' + esc(x.brand) + '</span>' : '')) + '</td>' +
           '<td style="padding:5px 6px">' + esc(String(num(l.qty))) + '</td>' +
           '<td style="padding:5px 6px;font-weight:700">' + (x.job ? '&mdash;' : (num(l.disc) > 0 ? num(l.disc) + '%' : '0%')) + '</td>' +
           '<td style="padding:5px 0 5px 6px;font-weight:700">' + money(x.amt) + '</td></tr>';
@@ -4464,7 +4477,7 @@ function discRowOn(client, brand, onYmd) {
 
     var _brands = hisabBrandsOf(c);
     if (_brands.length) {
-      h += '<div class="card"><div class="muted" style="font-size:11px;letter-spacing:.08em;' +
+      h += '<div class="card"><div class="muted" style="font-size:12px;letter-spacing:.08em;' +
         'text-transform:uppercase"><b>' + esc(c.customerName || "") + '&rsquo;s preset discount</b></div>' +
         '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:7px">' +
         _brands.map(function (b) {
@@ -4476,7 +4489,7 @@ function discRowOn(client, brand, onYmd) {
         }).join("") + '</div></div>';
     }
 
-    h += '<div class="card"><div class="muted" style="font-size:11px;letter-spacing:.08em;' +
+    h += '<div class="card"><div class="muted" style="font-size:12px;letter-spacing:.08em;' +
       'text-transform:uppercase"><b>Any further discount on this delivery?</b></div>' +
       '<div class="muted" style="font-size:12.5px;margin-top:3px">Over and above the preset above, for ' +
       'this delivery only. It comes off what ' + esc(c.customerName || "") + ' owes. It does <b>not</b> ' +
@@ -4492,7 +4505,7 @@ function discRowOn(client, brand, onYmd) {
       '<input id="hsb_extranote" placeholder="Why (optional)" style="margin-top:8px"/></div>';
 
     var _lu = incPreview(c, _pl);
-    h += '<div class="card"><div class="muted" style="font-size:11px;letter-spacing:.08em;' +
+    h += '<div class="card"><div class="muted" style="font-size:12px;letter-spacing:.08em;' +
       'text-transform:uppercase"><b>Who earns on this delivery</b></div>';
     if (!_lu.length) {
       h += '<div class="muted" style="font-size:12.5px;margin-top:4px">No partner and no executive is ' +
