@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.400";
+  var APP_VERSION = "6.9.401";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -829,6 +829,13 @@
     });
   }
 
+  /* v6.9.401 - one voice for "the server did not answer". api() words its own failures
+     ("timed out after 30s", "the server asked this browser to sign in to Google", "Google
+     Apps Script quota reached") and a catch that throws that away tells him nothing. */
+  function apiWhy(e) { var m = (e && e.message) ? String(e.message) : ""; return m || "no answer from the server"; }
+  /* and one way to hand a button back: its own label, and nothing he typed is touched */
+  function btnBack(t, lbl) { try { t.disabled = false; t.textContent = lbl; } catch (e) {} }
+
   /* ---------- bulletproof saving ----------
      A save used to be DISCARDED (rolled back) the instant the network hiccuped - that is how a
      finished quote could vanish. Now nothing is ever thrown away: every save is written to a
@@ -1118,7 +1125,7 @@
      on this device but not yet confirmed by the server. */
   function pendBadge() {
     var n = pendCount();
-    return n ? ' <span style="background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:700;margin-left:4px">' + n + '</span>' : '';
+    return n ? ' <span style="background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:12px;font-weight:700;margin-left:4px">' + n + '</span>' : '';
   }
   /* Friendly names for each kind of record shown on the Pending upload tab. */
   var PEND_TYPE = { challans: "Challan", quotes: "Quote", returns: "Material return", payments: "Payment",
@@ -1214,7 +1221,7 @@
         h += '<div class="row" style="align-items:center;border-top:1px solid #fecaca;padding:7px 0;gap:8px">' +
           (e.thumb ? proofThumbImg(e.thumb, 38) : "") +
           '<div class="grow" style="font-size:12.5px"><b>' + esc(e.no || "") + '</b> &middot; ' + esc(e.client || "") +
-          '<div style="font-size:11px;margin-top:2px;color:' + (e.err ? '#b91c1c' : '#92400e') + '">' +
+          '<div style="font-size:12px;margin-top:2px;color:' + (e.err ? '#b91c1c' : '#92400e') + '">' +
           (prfOnServer(e)
              ? '<b style="color:#0f766e">\u2713 This receipt is already on the server \u2014 the copy here is a spare.</b>'
              : (_prfUp && _prfUp.pk === e.pk)
@@ -1227,7 +1234,7 @@
           '<div style="text-align:right;flex:0 0 auto">' +
           '<span class="pill" style="background:#fee2e2;color:#b91c1c">' + kb + ' KB</span>' +
           (Number(e.shrinks || 0) > 0
-            ? '<div class="meta" style="font-size:10.5px;margin-top:2px;color:#b45309">made smaller ' +
+            ? '<div class="meta" style="font-size:12px;margin-top:2px;color:#b45309">made smaller ' +
               e.shrinks + '\u00d7 to fit' +
               (e.jpg ? ' \u00b7 now the photograph alone, without the document around it' : '') +
               '</div>' : '') +
@@ -1243,7 +1250,7 @@
               esc(e.pk) + '" title="Rebuild this document from its own photograph at full size, then try again">' +
               'Rebuild and retry</button></div>'
             : '') +
-          (ageTxt ? '<div class="meta" style="font-size:11px;margin-top:3px">' + esc(ageTxt) + '</div>' : "") +
+          (ageTxt ? '<div class="meta" style="font-size:12px;margin-top:3px">' + esc(ageTxt) + '</div>' : "") +
           '</div></div>';
       });
       h += '</div>';
@@ -1919,7 +1926,7 @@ window.addEventListener("beforeunload", function (ev) {
   }
   function radarBadge() {
     var n = radarQuotes().length;
-    return n ? ' <span style="background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:700;margin-left:4px">' + n + '</span>' : '';
+    return n ? ' <span style="background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:12px;font-weight:700;margin-left:4px">' + n + '</span>' : '';
   }
   /* Residential vs Project. Explicit c.segment wins; otherwise auto-classified from the client
      Type you already set (Home owner = Residential, any partner/trade type = Project). */
@@ -2003,7 +2010,7 @@ window.addEventListener("beforeunload", function (ev) {
         '<img data-picprev="1" src="' + esc(fixed) + '" alt="" ' +
              'style="max-width:100%;max-height:100%;object-fit:contain"/>' +
       '</div>' +
-      '<div class="meta" id="p_pic_say" style="font-size:11.5px;line-height:1.5;min-width:0;word-break:break-word">' +
+      '<div class="meta" id="p_pic_say" style="font-size:12px;line-height:1.5;min-width:0;word-break:break-word">' +
         (fixed !== u ? 'Drive link repaired. The app will use:<br><span style="color:#0f766e">' + esc(fixed) + '</span>'
                      : 'The app will use this address as it is.') +
       '</div></div>';
@@ -2339,7 +2346,7 @@ window.addEventListener("beforeunload", function (ev) {
   function prodChips(act, items, active, allLabel, someBlank, rowLabel) {
     if (items.length < 2 && !(items.length === 1 && someBlank)) return "";
     var h = '<div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0 2px;align-items:center">' +
-      '<span style="font-size:11px;color:#94a3b8;min-width:56px">' + esc(rowLabel || "") + '</span>' +
+      '<span style="font-size:12px;color:#94a3b8;min-width:56px">' + esc(rowLabel || "") + '</span>' +
       '<button class="btn sm ' + (active ? "ghost" : "") + '" data-act="' + act + '" data-v="">' + allLabel + '</button>';
     items.forEach(function (x) {
       h += '<button class="btn sm ' + (active === x.k ? "" : "ghost") + '" data-act="' + act + '" data-v="' + esc(x.k) + '">' +
@@ -2412,7 +2419,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="meta" style="margin-bottom:8px">List price - discount alag se lagta hai.</div>';
     var sp = specLines(p.specs);
     if (sp.length) {
-      h += '<div style="font-size:10.5px;letter-spacing:.08em;color:#94a3b8;margin:12px 0 4px">SPECIFICATIONS</div>' +
+      h += '<div style="font-size:12px;letter-spacing:.08em;color:#94a3b8;margin:12px 0 4px">SPECIFICATIONS</div>' +
         '<div style="font-size:13px;line-height:1.6;color:#334155">' +
         sp.map(function (x) {
           return '<div style="display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #f8fafc">' +
@@ -2421,7 +2428,7 @@ window.addEventListener("beforeunload", function (ev) {
         }).join("") + '</div>';
     }
     if (d.bullets.length) {
-      h += (sp.length ? '<div style="font-size:10.5px;letter-spacing:.08em;color:#94a3b8;margin:12px 0 4px">KEY FEATURES</div>' : '') +
+      h += (sp.length ? '<div style="font-size:12px;letter-spacing:.08em;color:#94a3b8;margin:12px 0 4px">KEY FEATURES</div>' : '') +
         '<ul style="margin:8px 0 10px;padding-left:18px;font-size:13px;line-height:1.6;color:#334155">' +
         d.bullets.map(function (b) { return '<li>' + esc(b) + '</li>'; }).join("") + '</ul>';
     }
@@ -2643,8 +2650,8 @@ window.addEventListener("beforeunload", function (ev) {
         '<div class="meta">No visit logged in ' + STALE_SITE + '+ days. Check in, or update the stage — the pitch windows depend on it.</div>';
       stale.slice(0, 12).forEach(function (s) {
         h += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(s.st.name) + '</b>' +
-          ' <span style="color:#94a3b8;font-size:11px">stage ' + stageNo(s.st) + '</span>' +
-          '<br><span style="font-size:11px;color:#64748b">quiet ' + s.days + 'd</span></div>' +
+          ' <span style="color:#94a3b8;font-size:12px">stage ' + stageNo(s.st) + '</span>' +
+          '<br><span style="font-size:12px;color:#64748b">quiet ' + s.days + 'd</span></div>' +
           '<button class="btn sm ghost" data-act="matrix" data-id="' + esc(s.st.id) + '">Open</button></div>';
       });
       h += '</div>';
@@ -2953,7 +2960,7 @@ window.addEventListener("beforeunload", function (ev) {
       (share === null ? "" :
         '<div style="height:6px;background:#eef2f7;border-radius:4px;margin-top:6px;overflow:hidden">' +
         '<div style="height:6px;width:' + Math.max(2, Math.round(share)) + '%;background:' + colour + '"></div></div>') +
-      (sub ? '<div class="meta" style="font-size:11.5px;margin-top:5px">' + sub + '</div>' : "") +
+      (sub ? '<div class="meta" style="font-size:12px;margin-top:5px">' + sub + '</div>' : "") +
       '</div>';
   }
 
@@ -3013,10 +3020,10 @@ window.addEventListener("beforeunload", function (ev) {
         h += '<div class="card" style="padding:8px 13px;margin-bottom:6px">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
           '<div style="flex:1 1 170px;min-width:0"><b style="font-size:13px">' + esc(r.quoteNo || r.client) + '</b>' +
-          '<div class="meta" style="font-size:11.5px">' + esc(r.client) + ' &middot; ' + esc(r.brand) + ' &middot; ' + money(r.net) + '</div></div>' +
+          '<div class="meta" style="font-size:12px">' + esc(r.client) + ' &middot; ' + esc(r.brand) + ' &middot; ' + money(r.net) + '</div></div>' +
           '<button class="btn sm" data-act="quote-lost" data-id="' + esc(r.id) + '">Why lost?</button></div></div>';
       });
-      if (quiet.length > 25) h += '<div class="meta" style="font-size:11.5px">' + (quiet.length - 25) + ' more not shown.</div>';
+      if (quiet.length > 25) h += '<div class="meta" style="font-size:12px">' + (quiet.length - 25) + ' more not shown.</div>';
     }
     return h;
   }
@@ -3159,7 +3166,7 @@ window.addEventListener("beforeunload", function (ev) {
      against his paper book can see at a glance which date he is being shown. */
   function chDatePill(c) {
     var f = chDateLost(c);
-    return f ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-size:10px" ' +
+    return f ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-size:12px" ' +
       'title="This delivery has no date of its own on the sheet. The date shown is taken from its ' +
       'challan number. It will be written back the next time this challan is saved.">date from ' +
       esc(f) + '</span>' : '';
@@ -3458,8 +3465,8 @@ window.addEventListener("beforeunload", function (ev) {
         return '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow">' +
           '<b>' + esc(r.label) + '</b> <span class="pill" style="background:#fed7aa;color:#7c2d12">' +
           esc(CANCEL_TABS[r.tab]) + '</span>' +
-          '<br><span style="font-size:11.5px;color:#7c2d12">' + esc(r.sub) + '</span>' +
-          '<br><span style="font-size:11.5px;color:#7c2d12">' + esc(r.a.by || "?") + ' \u00b7 ' +
+          '<br><span style="font-size:12px;color:#7c2d12">' + esc(r.sub) + '</span>' +
+          '<br><span style="font-size:12px;color:#7c2d12">' + esc(r.a.by || "?") + ' \u00b7 ' +
           esc(d10(r.a.at)) + ' \u00b7 <b>' + esc(r.a.reason || "no reason given") + '</b>' +
           (r.a.note ? ' \u2014 ' + esc(r.a.note) : '') + '</span></div>' +
           '<button class="btn sm" data-act="cx-open" data-tab="' + esc(r.tab) + '" data-id="' + esc(r.id) +
@@ -3580,9 +3587,9 @@ window.addEventListener("beforeunload", function (ev) {
         '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
         '<div style="flex:1 1 175px;min-width:0">' +
         '<b style="font-size:13px">' + esc(r.label) + '</b> <span class="pill cx">' + esc(CANCEL_TABS[r.tab]) + '</span>' +
-        (r.sub ? '<div class="meta" style="font-size:11.5px">' + esc(r.sub) + '</div>' : '') +
-        '<div class="meta" style="font-size:11.5px">' + esc(r.reason || "no reason recorded") + (r.note ? ' &mdash; ' + esc(r.note) : '') + '</div>' +
-        '<div class="meta" style="font-size:11px;color:#94a3b8">' + esc(d10(r.at)) + (r.by ? ' by ' + esc(r.by) : '') + '</div></div>' +
+        (r.sub ? '<div class="meta" style="font-size:12px">' + esc(r.sub) + '</div>' : '') +
+        '<div class="meta" style="font-size:12px">' + esc(r.reason || "no reason recorded") + (r.note ? ' &mdash; ' + esc(r.note) : '') + '</div>' +
+        '<div class="meta" style="font-size:12px;color:#94a3b8">' + esc(d10(r.at)) + (r.by ? ' by ' + esc(r.by) : '') + '</div></div>' +
         (roleIs("admin") ? '<button class="btn sm ghost" data-act="cx-undo" data-tab="' + esc(r.tab) + '" data-id="' + esc(r.id) + '">Bring back</button>' : '') +
         '</div></div>';
     });
@@ -3683,7 +3690,7 @@ window.addEventListener("beforeunload", function (ev) {
       return '<select id="' + fid + '">' + opts(names, v) + '</select>';
     }
     return '<input id="' + fid + '" value="' + esc(v) + '" disabled style="background:#f1f5f9;color:#64748b"/>' +
-      '<div class="meta" style="font-size:11px;margin-top:2px">Auto-assigned to you. Only admin can reassign.</div>';
+      '<div class="meta" style="font-size:12px;margin-top:2px">Auto-assigned to you. Only admin can reassign.</div>';
   }
 
   /* v6.9.213 - WHO THE LEAD BELONGS TO, ASKED FIRST AND IN COLOUR.
@@ -3705,7 +3712,7 @@ window.addEventListener("beforeunload", function (ev) {
       /* said only to an admin: the locked field already tells everyone else the same thing,
          and two lines saying one thing is how a form starts being skimmed instead of read. */
       (roleIs("admin") && v
-        ? '<div class="meta" style="margin-top:5px;font-size:11px;color:#4338ca">This lead goes onto <b>' + esc(v) + '</b>\u2019s book.</div>'
+        ? '<div class="meta" style="margin-top:5px;font-size:12px;color:#4338ca">This lead goes onto <b>' + esc(v) + '</b>\u2019s book.</div>'
         : "") +
       '</div>';
   }
@@ -3760,8 +3767,8 @@ window.addEventListener("beforeunload", function (ev) {
       list.slice(0, 12).map(function (x) {
         return '<div class="acts" style="align-items:center;margin-top:9px"><div class="grow">' +
           '<b>' + esc(x.name || "(no name)") + '</b>' +
-          (x.city ? ' <span style="color:#94a3b8;font-size:11px">' + esc(x.city) + '</span>' : '') +
-          '<br><span style="font-size:11.5px;color:#7f1d1d">client written as <b>' +
+          (x.city ? ' <span style="color:#94a3b8;font-size:12px">' + esc(x.city) + '</span>' : '') +
+          '<br><span style="font-size:12px;color:#7f1d1d">client written as <b>' +
           esc(x.client || "(blank)") + '</b>' + (x.mobile ? ' · ' + esc(x.mobile) : '') + '</span></div>' +
           '<button class="btn sm" data-act="site-tolead" data-id="' + esc(x.id) + '">Register him as a lead</button>' +
           '</div>';
@@ -3788,7 +3795,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div><label>Type</label><select id="s_type">' + opts(["Bungalow","Apartment","Villa Project","Commercial","Hotel","Hospital","Other"], x.type || "Bungalow") + '</select></div></div>' +
       '<div class="grid2"><div><label>Architect</label>' + partnerSelect("s_arch", "architect", x.architect, true) + '</div>' +
       '<div><label>Plumber</label>' + partnerSelect("s_plumb", "plumber", x.plumber, true) + '</div></div>' +
-      '<div class="meta" style="font-size:11px;color:#94a3b8;margin:-4px 0 6px">Pick from registered partners. A new man? Add him first (Partners tab or the client card) &mdash; mobile required.</div>' +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin:-4px 0 6px">Pick from registered partners. A new man? Add him first (Partners tab or the client card) &mdash; mobile required.</div>' +
       '<div class="grid2"><div><label>Builder</label>' + partnerSelect("s_build", "builder", x.builder, false) + '</div>' +
       '<div><label>Owner (sales exec)</label>' + ownerField("s_owner", x.owner || x.createdBy, !x.id) + '</div></div>' +
       '<label>Notes</label><textarea id="s_notes">' + esc(x.notes) + '</textarea>' +
@@ -3953,7 +3960,7 @@ window.addEventListener("beforeunload", function (ev) {
     var rows = commItemsOf(ch).filter(function (x) { return !(x.i.comm && x.i.comm.date); }).map(function (x) {
       var wm = x.cat.months;
       return '<div class="acts" style="align-items:center;margin:6px 0"><div class="grow"><b>' + esc(x.i.desc) + '</b>' +
-        '<br><span style="font-size:11px;color:#94a3b8">' + esc(x.cat.label) + ' &middot; qty ' + esc(qShow(x.i.qty || 1)) + '</span></div>' +
+        '<br><span style="font-size:12px;color:#94a3b8">' + esc(x.cat.label) + ' &middot; qty ' + esc(qShow(x.i.qty || 1)) + '</span></div>' +
         '<input class="cm-sn" data-idx="' + x.idx + '" placeholder="serial no." value="' + esc((x.i.comm && x.i.comm.sn) || "") + '" style="width:120px;padding:6px 8px;font-size:13px;font-family:ui-monospace,monospace"/>' +
         '<input class="cm-wm" data-idx="' + x.idx + '" inputmode="numeric" value="' + esc(wm) + '" style="width:60px;padding:6px 8px;font-size:13px"/>' +
         '<span style="font-size:12px;color:#64748b">months</span></div>';
@@ -3963,7 +3970,7 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="grid2"><div><label>Commissioning date</label><input id="cm_date" type="date" value="' + today() + '"/></div>' +
       '<div><label>Engineer</label><select id="cm_eng">' + opts(SVC_ENGINEERS, SVC_ENGINEERS[0]) + '</select></div></div>' +
       '<label style="margin-top:8px">Serial number and warranty, per product</label>' +
-      '<div class="meta" style="font-size:11px;color:#94a3b8;margin:2px 0 6px">You are standing in front of the machine now &mdash; this is the only easy moment to read the serial off it. A warranty claim later is made against this number.</div>' + rows +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin:2px 0 6px">You are standing in front of the machine now &mdash; this is the only easy moment to read the serial off it. A warranty claim later is made against this number.</div>' + rows +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="comm-save" data-ch="' + esc(ch.id) + '">Commission &amp; generate</button></div>';
   }
@@ -4487,9 +4494,9 @@ window.addEventListener("beforeunload", function (ev) {
       (v.collected ? ', ' + money(v.collected) + ' collected' : ''));
     if (v.pending > 0.5) bits.push('<b style="color:#b91c1c">' + money(v.pending) + ' pending on service</b>');
     return '<div class="meta" style="font-size:12.5px;margin-top:5px;padding-top:5px;border-top:1px dashed #99f6e4">' +
-      '<span style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#0f766e">Service</span> &nbsp;' +
+      '<span style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#0f766e">Service</span> &nbsp;' +
       bits.join(' &nbsp;\u00b7&nbsp; ') +
-      '<button class="btn sm ghost" data-act="tab" data-tab="service" style="margin-left:8px;padding:1px 8px;font-size:11px">Open</button></div>';
+      '<button class="btn sm ghost" data-act="tab" data-tab="service" style="margin-left:8px;padding:1px 8px;font-size:12px">Open</button></div>';
   }
   /* ---- WHAT A CONTRACT COVERS, AND WHAT IS STILL OWED  (v6.9.386, 31 Aug 2026) ----
      These three are the Service app's own text, moved here so the two screens cannot price one
@@ -4913,7 +4920,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             'placeholder="not priced" style="width:120px;text-align:right;padding:6px 9px"/></td></tr>';
       }).join("") + '</tbody></table></div>' +
       '<div class="acts" style="margin-top:10px"><button class="btn" data-act="amcr-save">Save the rate card</button>' +
-      '<span class="meta" style="align-self:center;font-size:11.5px">A rate corrected later is a new ' +
+      '<span class="meta" style="align-self:center;font-size:12px">A rate corrected later is a new ' +
       'entry, never an overwrite &mdash; the old one stays in the trail.</span></div></div>';
 
     /* ---- a model that genuinely costs more than its kind ---- */
@@ -4974,7 +4981,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           return '<div class="acts" style="align-items:center;margin-top:9px"><div class="grow">' +
             '<b>' + esc(u.x.client || "") + '</b> &middot; ' + esc(u.x.product || "") +
             ' <span class="pill teal">' + esc(u.sug.contract) + '</span><br>' +
-            '<span style="font-size:11.5px;color:#7f1d1d">charged ' + money(u.amt) + ' &middot; the card says ' +
+            '<span style="font-size:12px;color:#7f1d1d">charged ' + money(u.amt) + ' &middot; the card says ' +
             money(u.sug.total) + ' &middot; <b>' + money(u.gap) + ' short</b> &middot; ' +
             u.sug.lines.length + ' machine(s) on this contract</span></div>' +
             '<button class="btn sm" data-act="inst-open" data-id="' + esc(u.x.id) + '">Open</button></div>';
@@ -5025,7 +5032,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       exp.slice(0, 15).forEach(function (x) {
         var lbl = x.days < 0 ? Math.abs(x.days) + 'd ago' : (x.days === 0 ? 'today' : x.days + 'd left');
         cs += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(x.client) + '</b> &middot; ' + esc(x.product) +
-          '<br><span style="font-size:11px;color:#64748b">warranty till ' + esc(fullDate(x.till)) + ' &middot; ' + lbl + '</span></div>' +
+          '<br><span style="font-size:12px;color:#64748b">warranty till ' + esc(fullDate(x.till)) + ' &middot; ' + lbl + '</span></div>' +
           '<button class="btn sm" data-act="amc-wa" data-n="' + esc(x.client) + '" data-p="' + esc(x.product) + '" data-till="' + esc(x.till) + '">Offer AMC</button></div>';
       });
       cs += '</div>';
@@ -5036,8 +5043,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       pend.forEach(function (c) {
         var names = commItemsOf(c).filter(function (x) { return !(x.i.comm && x.i.comm.date); }).map(function (x) { return x.cat.label; });
         cs += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(c.customerName || "") + '</b>' +
-          (c.site ? ' <span style="color:#94a3b8;font-size:11px">' + esc(c.site) + '</span>' : "") +
-          '<br><span style="font-size:11px;color:#64748b">' + esc(c.challanNo || "") + ' &middot; ' + esc(names.join(", ")) + '</span></div>' +
+          (c.site ? ' <span style="color:#94a3b8;font-size:12px">' + esc(c.site) + '</span>' : "") +
+          '<br><span style="font-size:12px;color:#64748b">' + esc(c.challanNo || "") + ' &middot; ' + esc(names.join(", ")) + '</span></div>' +
           '<button class="btn sm" data-act="comm-open" data-ch="' + esc(c.id) + '">Commission</button></div>';
       });
       cs += '</div>';
@@ -5046,7 +5053,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       cs += '<div class="card"><h3>Commissioned <span class="pill Won">' + done.length + '</span></h3><div class="meta">Re-print or send the documents any time.</div>';
       done.slice(0, 12).forEach(function (c) {
         cs += '<div class="acts" style="align-items:center;margin-top:8px;flex-wrap:wrap"><div class="grow"><b>' + esc(c.customerName || "") + '</b>' +
-          '<br><span style="font-size:11px;color:#64748b">' + esc(c.challanNo || "") + ' &middot; ' + esc(fullDate(commDateOf(c))) + '</span></div>' +
+          '<br><span style="font-size:12px;color:#64748b">' + esc(c.challanNo || "") + ' &middot; ' + esc(fullDate(commDateOf(c))) + '</span></div>' +
           '<button class="btn sm ghost" data-act="comm-cert" data-ch="' + esc(c.id) + '">Certificate</button>' +
           '<button class="btn sm ghost" data-act="comm-warr" data-ch="' + esc(c.id) + '">Warranty</button>' +
           '<button class="btn sm" data-act="comm-warr-wa" data-ch="' + esc(c.id) + '">Send</button></div>';
@@ -5399,7 +5406,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           (g.won.length ? '<optgroup label="Customers with a won brand or a delivery">' + g.won.map(opt).join("") + '</optgroup>' : '') +
           (g.rest.length ? '<optgroup label="Everyone else \u2014 for machines installed before the app">' + g.rest.map(opt).join("") + '</optgroup>' : '');
       })() + '</select>' +
-      '<div class="meta" style="font-size:11px;color:#94a3b8;margin:2px 0 6px">Any registered customer can carry a machine. <b>A machine standing on his roof is the proof he bought one</b> \u2014 the older ones predate the app, so nothing here waits for a quote to be marked Won. Put the <b>commissioning date</b> on each product below and the warranty and AMC clocks work from that.</div>' +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin:2px 0 6px">Any registered customer can carry a machine. <b>A machine standing on his roof is the proof he bought one</b> \u2014 the older ones predate the app, so nothing here waits for a quote to be marked Won. Put the <b>commissioning date</b> on each product below and the warranty and AMC clocks work from that.</div>' +
       '<div class="grid2"><div><label>Mobile</label><input id="i_mobile" inputmode="numeric" value="' + esc(x.mobile) + '"/></div>' +
       '<div><label>Area / route</label><input id="i_area" value="' + esc(x.area) + '"/></div></div>' +
       '<label>Address</label><input id="i_addr" value="' + esc(x.address) + '"/>' +
@@ -5417,7 +5424,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          rather than giving it away. */
       '<div class="grid2"><div><label>AMC</label><select id="i_amc">' +
         opts(amcOptions(x.amcType), x.amcType || "None") + '</select>' +
-        '<div class="meta" style="font-size:11.5px">With spares: nothing is charged at all. ' +
+        '<div class="meta" style="font-size:12px">With spares: nothing is charged at all. ' +
         'Without spares: the visit and the salt are free, the parts are billed.</div></div>' +
       '<div><label>AMC amount (Rs)</label><input id="i_amcamt" inputmode="numeric" value="' + esc(x.amcAmount || "") + '"/>' +
         /* v6.9.340 - what the rate card makes of the products actually on this machine. It is a
@@ -5425,14 +5432,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
            typed. His money records are his; the code is what gets fixed. */
         (function () {
           var sg = amcSuggest(x), amt = nAmt(x.amcAmount);
-          if (!sg.on) return '<div class="meta" style="font-size:11.5px">Not on a contract, so there is nothing to price.</div>';
-          if (sg.missing) return '<div class="meta" style="font-size:11.5px;color:#b45309">' +
+          if (!sg.on) return '<div class="meta" style="font-size:12px">Not on a contract, so there is nothing to price.</div>';
+          if (sg.missing) return '<div class="meta" style="font-size:12px;color:#b45309">' +
             sg.missing + ' of ' + sg.lines.length + ' machine(s) here have no rate on the card yet &mdash; ' +
             'nothing can be suggested until the kind is priced.</div>';
-          if (!sg.total) return '<div class="meta" style="font-size:11.5px;color:#b45309">The rate card has ' +
+          if (!sg.total) return '<div class="meta" style="font-size:12px;color:#b45309">The rate card has ' +
             'no price for this kind yet.</div>';
           var short = sg.total - amt;
-          return '<div class="meta" style="font-size:11.5px;color:' + (short > 0.5 ? '#b91c1c' : '#0f766e') + '">' +
+          return '<div class="meta" style="font-size:12px;color:' + (short > 0.5 ? '#b91c1c' : '#0f766e') + '">' +
             'The card says <b>' + money(sg.total) + '</b> for ' + sg.lines.length + ' machine(s)' +
             (short > 0.5 ? ' &mdash; <b>' + money(short) + ' more than this</b>. Adding a machine does not ' +
               'raise the amount by itself.' : (amt > sg.total + 0.5 ? ' &mdash; you are charging more, which is fine.' : ' &mdash; matches.')) +
@@ -5465,14 +5472,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<label>Type of visit</label><select id="v_type">' + opts(VISIT_TYPES, "Periodic service") + '</select>' +
       '<div class="grid2"><div><label>Visit charge (Rs)</label><input id="v_charge" inputmode="numeric" value="' + (clientVisitCharge(inst.client) || "") + '"/>' +
         (clientVisitCharge(inst.client)
-          ? '<div class="meta" style="font-size:11.5px">' + money(clientVisitCharge(inst.client)) + ' is the most ' + esc(String(inst.client || "this client")) + ' has been charged before.</div>'
-          : '<div class="meta" style="font-size:11.5px;color:#b45309">This client has never been charged for a visit \u2014 type what was agreed. Nothing is suggested, because nothing is known.</div>') + '</div>' +
+          ? '<div class="meta" style="font-size:12px">' + money(clientVisitCharge(inst.client)) + ' is the most ' + esc(String(inst.client || "this client")) + ' has been charged before.</div>'
+          : '<div class="meta" style="font-size:12px;color:#b45309">This client has never been charged for a visit \u2014 type what was agreed. Nothing is suggested, because nothing is known.</div>') + '</div>' +
       '<div><label>Salt bags</label><input id="v_salt" inputmode="numeric" value="0"/></div></div>' +
       '<label>Salt rate per bag (Rs)</label><input id="v_saltrate" inputmode="numeric" value="' + esc(saltBag || "") + '" placeholder="set the salt price in Spares or the catalogue"/>' +
       (saltBag
-        ? '<div class="meta" style="font-size:11.5px">' + money(saltBag) + ' a bag \u2014 TABSALT at ' +
+        ? '<div class="meta" style="font-size:12px">' + money(saltBag) + ' a bag \u2014 TABSALT at ' +
           money(Math.round(saltBag / SALT_BAG_KG)) + ' per kg \u00d7 ' + SALT_BAG_KG + ' kg, from the catalogue.</div>'
-        : '<div class="meta" style="font-size:11.5px;color:#b45309">No salt price in the catalogue yet \u2014 price TABSALT on the Products sheet.</div>') +
+        : '<div class="meta" style="font-size:12px;color:#b45309">No salt price in the catalogue yet \u2014 price TABSALT on the Products sheet.</div>') +
       '<label>Spare parts used</label><div id="v_lines">' + spareRow(0) + '</div>' +
       '<button class="btn sm ghost" data-act="sv-add" style="margin-top:4px">+ Add spare</button>' +
       '<label>Collected now (Rs)</label><input id="v_coll" inputmode="numeric" value="0"/>' +
@@ -5914,7 +5921,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         return '<div class="acts" style="align-items:center;margin-top:9px"><div class="grow">' +
           '<b>' + esc(x.brand) + '</b>' +
           (x.active ? '' : ' <span class="pill">inactive</span>') +
-          '<br><span style="font-size:11.5px;color:' + (ties.length ? '#7c2d12' : '#7f1d1d') + '">' +
+          '<br><span style="font-size:12px;color:' + (ties.length ? '#7c2d12' : '#7f1d1d') + '">' +
           (ties.length
             ? 'In use: ' + esc(ties.join(", ")) + ' &mdash; removing it loses that history'
             : 'Not used anywhere &mdash; no quote, no challan, no discount, never pitched') +
@@ -5938,7 +5945,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       list.map(function (x) {
         return '<div class="acts" style="align-items:center;margin-top:9px"><div class="grow">' +
           '<b>' + esc(x.catalogValue) + '</b> <span class="pill">' + x.n + ' product' + (x.n === 1 ? '' : 's') + '</span>' +
-          '<br><span style="font-size:11.5px;color:#7c2d12">' + esc(x.why) + '</span></div>' +
+          '<br><span style="font-size:12px;color:#7c2d12">' + esc(x.why) + '</span></div>' +
           '<button class="btn sm" data-act="brand-promote" data-cv="' + esc(x.catalogValue) + '">Make it a brand</button>' +
           '</div>';
       }).join("") + '</div>';
@@ -6390,7 +6397,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     });
     if (!brands.length) return "";
     var base = compact
-      ? "display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:10px;font-size:11px;margin:0 4px 0 0;border:1px solid;cursor:pointer;flex:0 0 auto;"
+      ? "display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:10px;font-size:12px;margin:0 4px 0 0;border:1px solid;cursor:pointer;flex:0 0 auto;"
       : "display:inline-flex;align-items:center;gap:4px;padding:6px 11px;border-radius:14px;font-size:12px;margin:0 6px 6px 0;border:1px solid;cursor:pointer;";
     /* v6.9.287 - one way in for a man who buys several brands already. Only on the full
        board: the compact card strip is one scrolling line and has no room for it. */
@@ -6404,7 +6411,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (st === "won") { sty = base + "background:#f1f5f9;color:#94a3b8;border-color:#cbd5e1"; inner = "✓ " + esc(b); }
       else if (st === "lost") { sty = base + "background:#fef2f2;color:#dc2626;border-color:#fecaca"; inner = '<span style="text-decoration:line-through">' + esc(b) + '</span>'; }
       else if (st === "live") { sty = base + "background:#0d9488;color:#fff;border-color:#0d9488"; inner = esc(b); }
-      else if (st === "nr") { sty = base + "background:#f8fafc;color:#94a3b8;border-color:#e2e8f0"; inner = esc(b) + ' <span style="font-size:10px">n/a</span>'; }
+      else if (st === "nr") { sty = base + "background:#f8fafc;color:#94a3b8;border-color:#e2e8f0"; inner = esc(b) + ' <span style="font-size:12px">n/a</span>'; }
       else { sty = base + "background:#fff;color:#334155;border-color:#e2e8f0"; inner = esc(b); }
       return '<button data-act="board-menu" data-n="' + esc(name) + '" data-brand="' + esc(b) + '" style="' + sty + '">' + inner + '</button>';
     }).join("") + '</div>';
@@ -6553,7 +6560,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div style="display:flex;flex-wrap:wrap;gap:6px">';
     open.forEach(function (ln) {
       if (ln.head) {
-        h += '<div style="flex:0 0 100%;font-size:11px;font-weight:800;color:#0f766e;margin:6px 0 0">' +
+        h += '<div style="flex:0 0 100%;font-size:12px;font-weight:800;color:#0f766e;margin:6px 0 0">' +
              esc(ln.head) + ' <span style="font-weight:600;opacity:.7">— pick the exact one</span></div>';
         return;
       }
@@ -6564,7 +6571,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         'display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:12px;' +
         'font-size:12.5px;font-weight:600;border:1.5px solid;cursor:pointer;' + f.s + '">' +
         esc(ln.label) +
-        '<span data-bbface="1" style="font-size:10.5px;font-weight:800;opacity:.85">' + f.t + '</span>' +
+        '<span data-bbface="1" style="font-size:12px;font-weight:800;opacity:.85">' + f.t + '</span>' +
         '</button>';
     });
     h += '</div>' +
@@ -6659,7 +6666,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div class="row" style="gap:8px;align-items:center">' +
         '<div class="meta" style="flex:1;min-width:0;font-size:12.5px">Brands: ' + line + '</div>' +
         '<button class="btn sm ghost" data-act="bb-open" data-n="' + esc(name) + '" data-back="client"' +
-        ' style="flex:0 0 auto;min-height:28px">Change</button>' +
+        ' style="flex:0 0 auto">Change</button>' +
       '</div></div>';
   }
 
@@ -7104,8 +7111,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<div class="meta">No quote activity for ' + STALE_LEAD + '+ days — give them a nudge before they go cold.</div>';
       aging.slice(0, 12).forEach(function (x) {
         h += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(x.c.name) + '</b>' +
-          (x.c.location ? ' <span style="color:#94a3b8;font-size:11px">' + esc(x.c.location) + '</span>' : "") +
-          '<br><span style="font-size:11px;color:#64748b">quiet ' + x.days + 'd</span></div>' +
+          (x.c.location ? ' <span style="color:#94a3b8;font-size:12px">' + esc(x.c.location) + '</span>' : "") +
+          '<br><span style="font-size:12px;color:#64748b">quiet ' + x.days + 'd</span></div>' +
           (x.c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.c.mobile) + '">Call</a>' : "") + '</div>';
       });
       h += '</div>';
@@ -7548,7 +7555,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           (S.clNoMob ? '' : ' style="border-color:#b45309;color:#b45309"') + '>' +
           'Missing details <b>' + gapL.length + '</b></button>' +
         (S.clNoMob ? '<button class="btn sm ghost" data-act="cl-nomob-off">Show all</button>' : '') +
-        '<div class="muted" style="font-size:11.5px;margin-left:8px;align-self:center">' +
+        '<div class="muted" style="font-size:12px;margin-left:8px;align-self:center">' +
           'No mobile, plumber or architect — he cannot be rung and cannot be pitched to' +
         '</div></div>';
     }
@@ -7562,7 +7569,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         (S.clNoSite
           ? '<button class="btn sm ghost" data-act="cl-nosite-off">Show all</button>'
           : '') +
-        '<div class="muted" style="font-size:11.5px;margin-left:8px;align-self:center">' +
+        '<div class="muted" style="font-size:12px;margin-left:8px;align-self:center">' +
           'Invisible to the pitch board and the brand leads' +
           (nsMoney > 0.5 ? ' \u2014 <b style="color:#b91c1c">' + money(nsMoney) + '</b> owing between them' : '') +
         '</div></div>';
@@ -7845,11 +7852,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     /* v6.9.303: this was a plain <span>. It is now the same chip drawn as a button, so a
        number typed wrong in a hurry can be corrected from the card it is wrong on. Nothing
        is overwritten - saveManualNo appends, and the newest row wins. */
-    return '<button data-act="ch-bookno" data-id="' + esc(c.id || "") + '" ' +
+    return '<button class="bkno" data-act="ch-bookno" data-id="' + esc(c.id || "") + '" ' +
       'data-no="' + esc(c.challanNo || "") + '" data-cl="' + esc(c.customerName || "") + '" ' +
       'title="From the paper challan book. Tap to correct it." ' +
       'style="display:inline-block;background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;' +
-      'border-radius:6px;padding:1px 7px;font-size:' + (small ? '10.5' : '11.5') + 'px;font-weight:700;' +
+      'border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700;' +
       'vertical-align:middle;cursor:pointer;font-family:inherit;line-height:1.45">Book no ' + esc(v) + '</button>';
   }
   /* ---------------------------------------------------------------------------
@@ -7889,20 +7896,20 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var v = manualNoFor(c);
     if (v) return ' ' + manualNoChip(c, small);
     if (!bookIsFresh()) {
-      return ' <button data-act="ch-bookno" data-id="' + esc(c.id || "") + '" ' +
+      return ' <button class="bkno" data-act="ch-bookno" data-id="' + esc(c.id || "") + '" ' +
         'data-no="' + esc(c.challanNo || "") + '" data-cl="' + esc(c.customerName || "") + '" ' +
         'title="This copy of the book is ' + esc(bookAge(bookTs()).txt) + '. If a book number was ' +
         'entered in the godown since then it is on the sheet but not in this copy \u2014 press the ' +
         'refresh arrow before typing it again. Tap to enter one anyway; nothing is ever overwritten." ' +
         'style="display:inline-block;background:#fff;border:1px dashed #cbd5e1;color:#94a3b8;' +
-        'border-radius:6px;padding:1px 7px;font-size:' + (small ? '10.5' : '11.5') + 'px;font-weight:700;' +
+        'border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700;' +
         'vertical-align:middle;cursor:pointer;font-family:inherit;line-height:1.45">Book no ?</button>';
     }
-    return ' <button data-act="ch-bookno" data-id="' + esc(c.id || "") + '" ' +
+    return ' <button class="bkno" data-act="ch-bookno" data-id="' + esc(c.id || "") + '" ' +
       'data-no="' + esc(c.challanNo || "") + '" data-cl="' + esc(c.customerName || "") + '" ' +
       'title="No paper book number was entered for this challan. Add it here." ' +
       'style="display:inline-block;background:#fff;border:1px dashed #cbd5e1;color:#94a3b8;' +
-      'border-radius:6px;padding:1px 7px;font-size:' + (small ? '10.5' : '11.5') + 'px;font-weight:700;' +
+      'border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700;' +
       'vertical-align:middle;cursor:pointer;font-family:inherit;line-height:1.45">+ Book no</button>';
   }
 
@@ -8012,7 +8019,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       list.slice(0, 10).map(function (c) {
         return '<div class="acts" style="align-items:center;margin-top:9px"><div class="grow">' +
           '<b>' + esc(c.challanNo || "") + '</b> <span class="pill due">' + esc(c.status || "") + '</span>' +
-          '<br><span style="font-size:11.5px;color:#7f1d1d">' + esc(c.customerName || "") +
+          '<br><span style="font-size:12px;color:#7f1d1d">' + esc(c.customerName || "") +
           ' &middot; ' + money(c.amount) + ' &middot; not on his hisab</span></div>' +
           '<button class="btn sm" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button>' +
           '</div>';
@@ -8198,7 +8205,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<h3 style="color:#991b1b;margin:0">' + list.length + ' deliver' + (list.length === 1 ? 'y is' : 'ies are') +
         ' waiting for ADD TO HISAB <span class="pill due">' + money(worth) + '</span></h3>' +
       '<div class="meta" style="color:#7f1d1d;font-size:12.5px;line-height:1.55;margin-top:6px">' +
-      (oldest ? 'The oldest has been waiting <b>' + oldest + ' days</b>. ' : '') +
+      (oldest ? 'The oldest has been waiting <b>' + oldest + (oldest === 1 ? ' day' : ' days') + '</b>. ' : '') +
       'They are already on the client&rsquo;s account &mdash; what is <b>not</b> fixed is who earns ' +
       'on them. Until a delivery is stamped the incentive follows whoever the client&rsquo;s partner ' +
       'is <i>today</i>, so changing a partner moves the earnings on all of these at once.' +
@@ -8480,7 +8487,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var goods = priced.reduce(function (a, x) { return a + x.amt; }, 0);
     var frt = chFreight(c);
     h += '<div class="card" style="padding:10px 12px">' +
-      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
       '<b>The bill, as this client is priced</b></div>' +
       '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
       '<tr style="color:#64748b;text-align:right">' +
@@ -8495,7 +8502,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       h += '<tr style="border-top:1px solid #e2e8f0;text-align:right">' +
         '<td style="text-align:left;padding:5px 6px 5px 0">' + esc(x.desc || x.code || "") +
           (x.job ? ' <span class="pill" style="background:#ede9fe;color:#5b21b6">job work</span>'
-                 : (x.brand ? ' <span style="color:#94a3b8;font-size:11px">' + esc(x.brand) + '</span>' : '')) + '</td>' +
+                 : (x.brand ? ' <span style="color:#94a3b8;font-size:12px">' + esc(x.brand) + '</span>' : '')) + '</td>' +
         '<td style="padding:5px 6px">' + esc(String(x.qty)) + '</td>' +
         '<td style="padding:5px 6px;color:' + (x.disc > 0 ? '#94a3b8;text-decoration:line-through' : '#334155') + '">' + money(x.rate) + '</td>' +
         '<td style="padding:5px 6px;font-weight:700;color:' + (x.disc > 0 ? '#0f766e' : '#94a3b8') + '">' +
@@ -8531,7 +8538,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var own = roleIs("admin");
     if (bs.rows.length || bs.job > 0) {
       h += '<div class="card" style="padding:10px 12px">' +
-        '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
+        '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
         '<b>Brand summary &mdash; discount' + (own ? ' and who earns' : '') + '</b></div>' +
         '<div style="overflow-x:auto;margin-top:7px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
         '<tr style="color:#64748b;text-align:right">' +
@@ -8628,7 +8635,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
     /* ---- 3. ANY FURTHER DISCOUNT ON THIS DELIVERY ---- */
     if (own) h += '<div class="card" style="padding:10px 12px">' +
-      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
       '<b>Any further discount on this delivery?</b></div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:3px">Over and above the preset above, for this ' +
       'delivery only. It comes off what ' + esc(cl) + ' owes. It does <b>not</b> cut anybody&rsquo;s incentive.</div>' +
@@ -8654,7 +8661,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        would have accepted untouched - so nothing is lost by not being asked. */
     if (own) {
     h += '<div class="card" style="padding:10px 12px">' +
-      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
       '<b>Who earns on this delivery</b></div>';
     if (!lineup.length) {
       h += '<div class="meta" style="font-size:12.5px;margin-top:4px;color:#94a3b8">No partner and no executive is ' +
@@ -8800,12 +8807,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (_pf) {
         return '<span title="' + esc(tip + " - NOT uploaded. Last try: " + _pf) + '" ' +
           'style="display:inline-flex;align-items:center;gap:5px;background:#fef2f2;border:1px solid #fecaca;' +
-          'color:#b91c1c;border-radius:999px;padding:2px 8px 2px 3px;font-size:11px;font-weight:700">' +
+          'color:#b91c1c;border-radius:999px;padding:2px 8px 2px 3px;font-size:12px;font-weight:700">' +
           (img || '') + '<span>Receipt \u2713 &middot; NOT uploaded</span></span>';
       }
       return '<span title="' + esc(tip) + ' - the document is on the phone it was made on and goes up on the next refresh." ' +
         'style="display:inline-flex;align-items:center;gap:5px;background:#fffbeb;border:1px solid #fde68a;' +
-        'color:#92400e;border-radius:999px;padding:2px 8px 2px 3px;font-size:11px;font-weight:700">' +
+        'color:#92400e;border-radius:999px;padding:2px 8px 2px 3px;font-size:12px;font-weight:700">' +
         (img || '') + '<span>Receipt received \u2713 &middot; uploading</span></span>';
     }
     /* v6.9.355 - never a blank space where a picture belongs. Either the photograph, or a
@@ -8814,12 +8821,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (!url) {
       return '<span title="' + esc(tip) + '" style="display:inline-flex;align-items:center;gap:5px;background:#f0fdfa;' +
         'border:1px solid #99f6e4;color:#0f766e;border-radius:999px;padding:2px 8px 2px 3px;' +
-        'font-size:11px;font-weight:700">' + body + '</span>';
+        'font-size:12px;font-weight:700">' + body + '</span>';
     }
     return '<a href="' + esc(url) + '" target="_blank" rel="noopener" title="' + esc(tip) +
       ' - tap to open the full delivery document" ' +
       'style="display:inline-flex;align-items:center;gap:5px;background:#f0fdfa;border:1px solid #99f6e4;' +
-      'color:#0f766e;border-radius:999px;padding:2px 8px 2px 3px;font-size:11px;font-weight:700;' +
+      'color:#0f766e;border-radius:999px;padding:2px 8px 2px 3px;font-size:12px;font-weight:700;' +
       'text-decoration:none">' + body + ' <span style="opacity:.75">&#8599;</span></a>';
   }
 
@@ -8858,7 +8865,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return ' <a href="' + esc(url) + '" target="_blank" rel="noopener" ' +
       'title="The same signed document, mirrored into the Telegram group. Tap to open it there." ' +
       'style="display:inline-flex;align-items:center;gap:4px;background:#e0f2fe;border:1px solid #7dd3fc;' +
-      'color:#0369a1;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700;' +
+      'color:#0369a1;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:700;' +
       'text-decoration:none;vertical-align:middle">Telegram <span style="opacity:.75">&#8599;</span></a>';
   }
   /* ---- THE WRONG PAPER  (v6.9.339) ----
@@ -8879,7 +8886,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var r = chProofAny(c);
     if (!r.has || r.queued || !canProof()) return "";
     return ' <button class="btn sm ghost" data-act="ch-reproof" data-id="' + esc(c.id) + '" ' +
-      'style="padding:2px 9px;font-size:11px;border-color:#fed7aa;color:#b45309;vertical-align:middle" ' +
+      'style="padding:2px 9px;font-size:12px;border-color:#fed7aa;color:#b45309;vertical-align:middle" ' +
       'title="Photograph the right receipt. The one on file now is kept - nothing is deleted.">Change</button>';
   }
   function proofSealFor(c, size) {
@@ -8899,7 +8906,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return '<div style="flex:1 1 220px;min-width:0;border:1px solid ' +
       (mine ? '#99f6e4' : '#e2e8f0') + ';border-radius:10px;padding:9px 10px;background:' +
       (mine ? '#f0fdfa' : '#fff') + '">' +
-      '<div style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:#64748b">' +
+      '<div style="font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:#64748b">' +
       (mine ? 'This delivery' : 'The other one') + '</div>' +
       '<div style="font-weight:800;margin:2px 0 1px">' + esc(sub.challanNo || sub.id) + '</div>' +
       '<div class="meta" style="font-size:12px;color:#475569">' + esc(sub.customerName || "") +
@@ -9185,7 +9192,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        screens himself, which is a fair description of the problem and no help at all with it. */
     var seen = tw.every(function (t) { return twinCall(p.rowId, t.rowId) === "same"; });
     return ' <button class="btn sm" data-act="twin-open" data-id="' + esc(c.id) + '" ' +
-      'style="background:#7f1d1d;border-color:#7f1d1d;color:#fff;font-weight:700;font-size:11px;' +
+      'style="background:#7f1d1d;border-color:#7f1d1d;color:#fff;font-weight:700;font-size:12px;' +
       'padding:2px 9px;vertical-align:middle" ' +
       'title="The very same photograph is attached to ' + esc(names.join(", ")) +
       '. Tap to see both and say whether they really are the same receipt.">SAME PHOTO AS ' +
@@ -9195,7 +9202,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function noProofPill() {
     return '<span style="display:inline-flex;align-items:center;gap:5px;background:#fef2f2;' +
       'border:1px solid #fecaca;color:#b91c1c;border-radius:999px;padding:2px 9px;' +
-      'font-size:11px;font-weight:700">No receipt attached</span>';
+      'font-size:12px;font-weight:700">No receipt attached</span>';
   }
 
   /* ---- the lines of a delivery, as the receipt should show them ----
@@ -10051,7 +10058,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       off.slice(0, CAP).forEach(function (c) {
         h += '<div class="row" style="align-items:center;border-top:1px solid #fecaca;padding:5px 0">' +
           '<div class="grow" style="font-size:12.5px"><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(c.customerName || "") +
-          (c.site ? '<div style="color:#94a3b8;font-size:11px">' + esc(c.site) + '</div>' : "") + '</div>' +
+          (c.site ? '<div style="color:#94a3b8;font-size:12px">' + esc(c.site) + '</div>' : "") + '</div>' +
           (canProof() ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '">Attach</button>' : '') + '</div>';
       });
       if (off.length > CAP) h += '<div class="meta" style="margin-top:6px">Showing the newest ' + CAP + ' of ' + off.length + '. The rest are still on their own challan cards.</div>';
@@ -10067,7 +10074,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         h += '<div class="row" style="align-items:center;border-top:1px solid #99f6e4;padding:5px 0">' +
           (pth ? '<div style="margin-right:8px">' + proofThumbImg(pth, 38) + '</div>' : "") +
           '<div class="grow" style="font-size:12.5px"><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(c.customerName || "") +
-          '<div style="color:#94a3b8;font-size:11px">' +
+          '<div style="color:#94a3b8;font-size:12px">' +
           (p ? fullDate(String(p.at || "").slice(0, 10)) : "waiting to upload") +
           (p && p.by ? ' &middot; signed by ' + esc(p.by) : "") + '</div></div>' +
           (p && p.url
@@ -10142,7 +10149,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">' +
         '<a href="' + esc(hd.url) + '" target="_blank" rel="noopener" class="btn sm" ' +
         'style="background:#0d9488;border-color:#0d9488;color:#fff;text-decoration:none;' +
-        'display:inline-flex;align-items:center;min-height:32px;padding:5px 12px;box-sizing:border-box">' +
+        'display:inline-flex;align-items:center;min-height:40px;padding:5px 12px;box-sizing:border-box">' +
         'Open his old hisab &#8599;</a>' +
         '<div class="meta grow" style="font-size:12px;min-width:0">The statement from the old books is on file' +
         (hd.note ? ' &middot; ' + esc(hd.note) : "") + '.</div></div></div>';
@@ -10209,16 +10216,16 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div class="meta" style="margin-bottom:8px">Enter what actually arrived. Leave a line alone if it came in full.</div>' +
       '<div style="max-height:46vh;overflow:auto">' +
       '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
-      '<tr style="text-align:left;color:#64748b;font-size:10px">' +
+      '<tr style="text-align:left;color:#64748b;font-size:12px">' +
       '<th style="padding:4px">ITEM</th><th style="width:52px">SENT</th><th style="width:64px">RECEIVED</th><th style="width:110px">REASON</th></tr>';
     S.alt.rows.forEach(function (r, i) {
       var diff = Number(r.now) - Number(r.was);
       var col = diff === 0 ? "#94a3b8" : (diff < 0 ? "#dc2626" : "#0d9488");
       h += '<tr style="border-top:1px solid #e2e8f0">' +
-        '<td style="padding:5px 4px">' + esc(r.desc) + '<br><span style="color:#94a3b8;font-size:10px">' + esc(r.code) + '</span></td>' +
+        '<td style="padding:5px 4px">' + esc(r.desc) + '<br><span style="color:#94a3b8;font-size:12px">' + esc(r.code) + '</span></td>' +
         '<td style="color:#94a3b8">' + qShow(r.was) + '</td>' +
         '<td><input id="alt_q' + i + '" inputmode="decimal" value="' + qShow(r.now) + '" style="width:56px;padding:4px" data-act="alt-q" data-i="' + i + '"/>' +
-        '<div style="font-size:10px;color:' + col + '">' + (diff === 0 ? "full" : (diff > 0 ? "+" + qShow(diff) + " excess" : "-" + qShow(-diff) + " short")) + '</div></td>' +
+        '<div style="font-size:12px;color:' + col + '">' + (diff === 0 ? "full" : (diff > 0 ? "+" + qShow(diff) + " excess" : "-" + qShow(-diff) + " short")) + '</div></td>' +
         '<td><input id="alt_n' + i + '" value="' + esc(r.note) + '" placeholder="reason" style="width:100%;padding:4px"/></td>' +
         '</tr>';
     });
@@ -10403,7 +10410,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<select class="grow" id="' + id + '">' + options + '</select>' +
       '<button class="btn sm ghost" data-act="cl-inline" data-for="' + id + '">+ Register new</button>' +
       '</div>' +
-      '<div class="meta" style="font-size:11px;color:#94a3b8;margin:2px 0 0">Only a registered client / lead can be picked — this keeps the name exact so the preset discount always applies. Not listed? Tap <b>+ Register new</b> first.</div>' +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin:2px 0 0">Only a registered client / lead can be picked — this keeps the name exact so the preset discount always applies. Not listed? Tap <b>+ Register new</b> first.</div>' +
       '<div id="' + id + '_flash">' + presetFlashHtml(sel) + '</div>';
   }
 
@@ -10492,7 +10499,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         return '<button class="btn sm ' + (d.vtype === t2 ? '' : 'ghost') +
           '" data-act="dn-type" data-t="' + esc(t2) + '">' + esc(t2) + '</button>';
       }).join("") + '</div>' +
-      '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:6px">' +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:6px">' +
       'The type is what lets the freight be worked out per driver later &mdash; a tempo and a full ' +
       'lorry do not cost the same for the same load.</div>' +
       '<div class="foot"><button class="btn ghost" data-act="dn-cancel">Cancel</button>' +
@@ -10527,7 +10534,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          plainly rather than pretending there is a list to choose from */
       return lab +
         '<input id="' + esc(id) + '" placeholder="No site on his record yet - name this one" value="' + esc(cur) + '"/>' +
-        '<div class="meta" style="font-size:11px;color:#94a3b8;margin-top:2px">' +
+        '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:2px">' +
         'He has no site registered yet. What is typed here is filed with the challan.</div>';
     }
     return lab + '<select id="' + esc(id) + '">' +
@@ -10538,7 +10545,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       }).join("") +
       '<option value="' + SITE_NEW + '">+ A new site&hellip;</option>' +
       '</select>' +
-      '<div class="meta" style="font-size:11px;color:#94a3b8;margin-top:2px">' +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:2px">' +
       'His registered sites. Choose <b>+ A new site</b> only for a project he has genuinely just started.</div>';
   }
   /* The driver, from the register. Picking him is what makes the existing cascade fire, so
@@ -10555,7 +10562,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return lab +
         '<div class="row"><select class="grow" id="' + esc(id) + '" disabled style="background:#f1f5f9;color:#94a3b8">' +
         '<option value="">Nobody on the register yet</option></select>' + addBtn + '</div>' +
-        '<div class="meta" style="font-size:11px;color:#b45309;margin-top:2px">' +
+        '<div class="meta" style="font-size:12px;color:#b45309;margin-top:2px">' +
         'The driver register is empty. Tap <b>+ New driver</b> once and he is there for every challan after this.</div>';
     }
     return lab + '<div class="row"><select class="grow" id="' + esc(id) + '">' +
@@ -10638,7 +10645,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return '<div class="meta" style="font-size:12px;color:#b45309;margin-top:6px">' + _pdMsg +
         (canSee("discounts")
           ? '<button class="btn sm" data-act="disc-jump" data-n="' + esc(c.name) + '"' +
-            ' style="min-height:24px;padding:2px 9px;font-size:11.5px;vertical-align:baseline">' +
+            ' style="min-height:24px;padding:2px 9px;font-size:12px;vertical-align:baseline">' +
             'set one under Discounts</button>'
           : 'set one under <b>Discounts</b>') +
         _pdEnd + '</div>';
@@ -10793,8 +10800,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     list.slice(0, 30).forEach(function (c) {
       var miss = [!String(c.plumber || "").trim() ? "plumber" : "", !String(c.architect || "").trim() ? "architect" : ""].filter(Boolean).join(" + ");
       h += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(c.name) + '</b>' +
-        (seesAllClients() ? ' <span style="color:#94a3b8;font-size:11px">' + esc(c.ownedBy || c.createdBy || "") + '</span>' : '') +
-        '<br><span style="font-size:11px;color:#b45309">missing ' + miss + '</span></div>' +
+        (seesAllClients() ? ' <span style="color:#94a3b8;font-size:12px">' + esc(c.ownedBy || c.createdBy || "") + '</span>' : '') +
+        '<br><span style="font-size:12px;color:#b45309">missing ' + miss + '</span></div>' +
         '<button class="btn sm" data-act="cl-open" data-id="' + esc(c.id) + '">Fill now</button></div>';
     });
     if (list.length > 30) h += '<div class="meta" style="margin-top:8px">&hellip;and ' + (list.length - 30) + ' more.</div>';
@@ -10861,7 +10868,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          is two wasted lines in a form he is already scrolling. */
       '<div class="grid2"><div><label>Type</label><select id="c_type">' + opts(CLIENT_TYPES, c.type || "Home owner") + '</select></div>' +
       '<div><label>Segment</label><select id="c_segment">' + opts(["", "Residential", "Project"], c.segment || "") + '</select></div></div>' +
-      '<div class="pmeta" style="font-size:11px;color:#94a3b8;margin:-4px 0 8px">Leave Segment blank to auto-classify from Type.</div>' +
+      '<div class="pmeta" style="font-size:12px;color:#94a3b8;margin:-4px 0 8px">Leave Segment blank to auto-classify from Type.</div>' +
       /* THE STAGE. Asked here, on the very first screen a lead is entered on, because a lead
          with no stage is a lead nobody can sell to. Answering it also creates the site record,
          so the pitch board has something to work with from day one. */
@@ -10875,7 +10882,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div><label>Address</label><input id="c_addr" value="' + esc(c.address) + '"/></div></div>' +
       '<div class="grid2"><div><label>Architect</label>' + partnerSelect("c_arch", "architect", c.architect) + '</div>' +
       '<div><label>Plumber</label>' + partnerSelect("c_plumb", "plumber", c.plumber) + '</div></div>' +
-      '<div class="meta" style="font-size:11px;color:#94a3b8;margin:-4px 0 6px">Pick from the list. If he isn’t on it, choose <b>+ Add new</b> &mdash; his mobile number is required.</div>' +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin:-4px 0 6px">Pick from the list. If he isn’t on it, choose <b>+ Add new</b> &mdash; his mobile number is required.</div>' +
       '<div class="grid2"><div><label>Builder</label><input id="c_build" list="dl_build" value="' + esc(c.builder) + '"/></div>' +
       '<div><label>PMC</label><input id="c_pmc" list="dl_pmc" value="' + esc(c.pmc) + '"/></div></div>' +
       dl("dl_build", "builder") + dl("dl_pmc", "pmc") +
@@ -11252,7 +11259,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var lab = r.state === "Later" ? ("later" + (r.till ? " \u00b7 " + d10(r.till) : ""))
             : (r.state ? r.state.toLowerCase() : "not decided");
     return '<button class="btn sm" data-act="qb-open" data-id="' + esc(q.id) + '" data-b="' + esc(r.brand) + '" ' +
-      'style="background:' + ink[0] + ';color:' + ink[1] + ';border-color:' + ink[0] + ';font-size:11.5px;' +
+      'style="background:' + ink[0] + ';color:' + ink[1] + ';border-color:' + ink[0] + ';font-size:12px;' +
       'padding:3px 9px;font-weight:600" title="' + esc(r.brand) + ' \u2014 ' + esc(lab) +
       (r.why ? ". " + esc(r.why) : "") + (r.by ? " (" + esc(r.by) + ")" : "") + '">' +
       esc(r.brand) + ' <span style="opacity:.75;font-weight:500">' + esc(lab) + '</span></button>';
@@ -11280,11 +11287,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '</select>' +
       '<div class="grid2" style="margin-top:8px"><div><label>Come back on</label>' +
         '<input id="qb_till" type="date" value="' + esc(cur.till || addDays(today(), 60)) + '"/>' +
-        '<div class="meta" style="font-size:11px;color:#94a3b8">Used only for <b>Later</b>. On that day it comes ' +
+        '<div class="meta" style="font-size:12px;color:#94a3b8">Used only for <b>Later</b>. On that day it comes ' +
         'back on the daily list by itself, so a deferred machine is not something you have to remember.</div></div>' +
       '<div><label>Note (optional)</label><input id="qb_why" maxlength="120" value="' + esc(cur.why || "") + '" ' +
         'placeholder="e.g. slab not cast yet \u00b7 budget next quarter"/></div></div>' +
-      (cur.state ? '<div class="meta" style="margin-top:8px;font-size:11.5px;color:#64748b">Currently <b>' +
+      (cur.state ? '<div class="meta" style="margin-top:8px;font-size:12px;color:#64748b">Currently <b>' +
         esc(cur.state) + '</b>, set by ' + esc(cur.by || "-") + (cur.at ? ' on ' + esc(d10(cur.at)) : "") +
         '. Changing it writes a new line; the old one stays.</div>' : "") +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
@@ -11888,7 +11895,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
     /* Excel-like review: one table, grouped by brand, each brand with its own subtotal. */
     var TB = 'border:1px solid #e2e8f0;';
-    var thBase = TB + 'padding:6px 8px;font-size:11px;font-weight:700;color:#475569;background:#f1f5f9;';
+    var thBase = TB + 'padding:6px 8px;font-size:12px;font-weight:700;color:#475569;background:#f1f5f9;';
     var thL = 'style="' + thBase + 'text-align:left"', thR = 'style="' + thBase + 'text-align:right"';
     h += '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:560px;font-variant-numeric:tabular-nums lining-nums">' +
       '<thead><tr>' +
@@ -11916,13 +11923,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         h += '<tr style="' + (opt ? 'background:#fffdf5' : '') + '">' +
           '<td ' + tdL + '><div style="font-weight:600">' + esc(i.desc) +
             (opt ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-weight:700">Option</span>' : '') + '</div>' +
-            '<div style="font-size:10px;color:#94a3b8">' + esc(i.code) + '</div>' +
-            '<div style="font-size:11px;margin-top:2px">' +
+            '<div style="font-size:12px;color:#94a3b8">' + esc(i.code) + '</div>' +
+            '<div style="font-size:12px;margin-top:2px">' +
               (qzRoomsOf(i).length
                 ? '<span style="color:#0f766e;font-weight:600">' + esc(qzRoomLabel(i)) + '</span>'
                 : '<span style="color:#b45309">No room set</span>') +
-              ' <button class="btn sm ghost" data-act="qz-room-edit" data-code="' + esc(i.code) + '" style="font-size:10px;padding:1px 6px">Room</button></div>' +
-            '<button class="btn sm ghost" data-act="qz-opt" data-code="' + esc(i.code) + '" style="margin-top:3px;font-size:11px;padding:2px 8px">' + (opt ? '&#9745; Optional — not in total' : '&#9744; Mark as option') + '</button></td>' +
+              ' <button class="btn sm ghost" data-act="qz-room-edit" data-code="' + esc(i.code) + '" style="font-size:12px;padding:1px 6px">Room</button></div>' +
+            '<button class="btn sm ghost" data-act="qz-opt" data-code="' + esc(i.code) + '" style="margin-top:3px;font-size:12px;padding:2px 8px">' + (opt ? '&#9745; Optional — not in total' : '&#9744; Mark as option') + '</button></td>' +
           '<td ' + tdR + '>' + qShow(i.qty) + '</td>' +
           '<td ' + tdR + '>' + money(i.price) + '</td>' +
           '<td ' + tdR + '>' + (Number(d) || 0) + (ov ? '<span style="color:#0f766e">*</span>' : '') + '</td>' +
@@ -11943,7 +11950,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         _rt.map(function (r) {
           return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:13px">' +
             '<span>' + (r.room ? '<b>' + esc(r.room) + '</b>' : '<span style="color:#b45309">Not assigned to a room</span>') +
-            ' <span style="color:#94a3b8;font-size:11px">' + qShow(r.qty) + ' pc</span></span>' +
+            ' <span style="color:#94a3b8;font-size:12px">' + qShow(r.qty) + ' pc</span></span>' +
             '<b style="white-space:nowrap">' + money(r.net) + '</b></div>';
         }).join("") +
         '<div class="meta" style="margin-top:6px">After discount, option lines excluded. These add back up to the same total as the table above.</div></div>';
@@ -12185,7 +12192,7 @@ function viewCatalogue() {
         (bopen ? ('<div style="margin-top:6px;border-top:1px solid #f1f5f9;padding-top:6px">' +
           (n ? prods.slice().sort(function (x, y) { return String(x.desc).localeCompare(String(y.desc)); }).map(function (p) {
             return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:4px 0;border-bottom:1px solid #f8fafc">' +
-              '<span>' + esc(p.desc) + ' <span style="color:#94a3b8;font-size:11px">' + esc(p.code) + '</span></span>' +
+              '<span>' + esc(p.desc) + ' <span style="color:#94a3b8;font-size:12px">' + esc(p.code) + '</span></span>' +
               '<span style="color:#0f766e;font-weight:600;white-space:nowrap">' + money(p.price) + '</span></div>';
           }).join("") : '<div class="meta">No products mapped to this brand yet.</div>') + '</div>') : "") +
         '<div class="acts"><button class="btn sm ghost" data-act="br-open" data-id="' + esc(b.id) + '">Edit</button>' +
@@ -12230,14 +12237,14 @@ function viewCatalogue() {
       '<div class="grid2"><div><label>Product code</label><input id="p_code" value="' + esc(p.code) + '"' + (p.code ? " readonly" : "") + '/></div>' +
       '<div><label>List price (Rs)</label><input id="p_price" inputmode="decimal" value="' + esc(p.price || "") + '"/></div></div>' +
       '<label>Description &amp; features</label><textarea id="p_desc" rows="3" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;resize:vertical">' + esc(p.desc) + '</textarea>' +
-      '<div class="pmeta" style="font-size:11px;color:#94a3b8;margin:-2px 0 8px">Product name first, then each feature after a comma, a <b>|</b>, or on a new line — they print as neat bullet points on the quote PDF.</div>' +
+      '<div class="pmeta" style="font-size:12px;color:#94a3b8;margin:-2px 0 8px">Product name first, then each feature after a comma, a <b>|</b>, or on a new line — they print as neat bullet points on the quote PDF.</div>' +
       '<div class="grid2"><div><label>Product family</label><input id="p_fam" value="' + esc(p.family) + '"/></div>' +
       '<div><label>Unit</label><input id="p_unit" value="' + esc(p.unit || "Per Pc.") + '"/></div></div>' +
       '<div class="grid2"><div><label>Master Brand (catalogue value)</label><input id="p_mb" list="mblist" value="' + esc(p.brand) + '"/></div>' +
       '<div><label>Category</label><input id="p_cat" value="' + esc(p.cat) + '"/></div></div>' +
       '<datalist id="mblist">' + mapVals.map(function (m) { return '<option value="' + esc(m) + '"></option>'; }).join("") + '</datalist>' +
       '<label>Picture URL</label><input id="p_pic" value="' + esc(p.pic) + '"/>' +
-      '<div id="p_pic_hint" style="font-size:11.5px;line-height:1.45;margin:4px 2px 0;color:#b45309">' +
+      '<div id="p_pic_hint" style="font-size:12px;line-height:1.45;margin:4px 2px 0;color:#b45309">' +
         esc(PIC_HINT[picProblem(p.pic)] || "") + '</div>' +
       '<div id="p_pic_prev" style="margin:8px 2px 0">' + picPreviewHtml(p.pic) + '</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
@@ -14181,7 +14188,7 @@ function viewCatalogue() {
        in - will not be dispatched again": twice as long, and it repeated what the button beside
        it already says. At 390px this still wraps under the challan number, which is what every
        other pill on this card does. */
-    return ' <span class="pill" style="background:#fef3c7;color:#92400e;font-weight:700;font-size:10px" ' +
+    return ' <span class="pill" style="background:#fef3c7;color:#92400e;font-weight:700;font-size:12px" ' +
       'title="The signed receipt for this delivery is already on file, so it has arrived and it ' +
       'is already counted in hisab. The status column has not caught up, which is why there is ' +
       'no Dispatch button - sending it again would put a driver on the road for material the ' +
@@ -15120,7 +15127,7 @@ function viewCatalogue() {
       fn.rows.forEach(function (r) {
         var w = Math.max(4, Math.round(r.n / mx * 100));
         h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
-          '<div style="width:150px;font-size:11.5px;color:#334155;text-align:right;flex:0 0 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.stage) + '</div>' +
+          '<div style="width:150px;font-size:12px;color:#334155;text-align:right;flex:0 0 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.stage) + '</div>' +
           '<div style="flex:1;background:#eef2f2;border-radius:6px;overflow:hidden;height:16px"><div style="width:' + w + '%;height:100%;background:#0d9488"></div></div>' +
           '<div style="width:26px;text-align:right;font-weight:700;color:#0f766e">' + r.n + '</div></div>';
       });
@@ -15141,8 +15148,8 @@ function viewCatalogue() {
       var t = scTier(m), ts = scTierStyle(t), on = m.name === S.sc.partner;
       h += '<div data-act="sc-ppick" data-n="' + esc(m.name) + '" style="display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid #e2e8f0;cursor:pointer;border-radius:8px;' + (on ? 'background:#f0fdfa' : '') + '">' +
         '<span style="width:24px;height:24px;border-radius:50%;background:#0b3b36;color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex:0 0 auto">' + (i + 1) + '</span>' +
-        '<div style="flex:1"><b>' + esc(m.name) + '</b> <span style="color:#94a3b8;font-size:11px">' + esc(m.role) + '</span>' +
-        '<div style="font-size:11px;color:#64748b">' + m.projects + ' project(s) · ' + Math.round(m.conv * 100) + '% convert</div></div>' +
+        '<div style="flex:1"><b>' + esc(m.name) + '</b> <span style="color:#94a3b8;font-size:12px">' + esc(m.role) + '</span>' +
+        '<div style="font-size:12px;color:#64748b">' + m.projects + ' project(s) · ' + Math.round(m.conv * 100) + '% convert</div></div>' +
         '<span class="pill" style="background:' + ts.bg + ';color:' + ts.c + ';font-weight:800">' + t + '</span>' +
         '<div style="font-weight:800;color:#0f766e;text-align:right;min-width:74px">' + money(m.billed) + '</div></div>';
     });
@@ -15154,10 +15161,10 @@ function viewCatalogue() {
       '<div><div style="font-size:17px;font-weight:800;color:#0b3b36">' + esc(M.name) + ' <span class="pill" style="background:' + ts.bg + ';color:' + ts.c + '">' + esc(M.role || "Partner") + '</span></div>' +
       '<div class="meta">' + M.projects + ' live project(s)</div></div>' +
       '<div style="text-align:center;min-width:104px"><div style="font-size:30px;font-weight:900;color:#fff;background:linear-gradient(135deg,#b45309,#f59e0b);border-radius:12px;padding:6px 4px">' + tier + '</div>' +
-      '<div style="font-size:11px;color:#64748b;margin-top:4px">' + esc(ts.label) + '</div></div></div>';
+      '<div style="font-size:12px;color:#64748b;margin-top:4px">' + esc(ts.label) + '</div></div></div>';
 
     var tile = function (l, v, col) { return '<div style="flex:1 1 130px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:11px 13px">' +
-      '<div style="font-size:11.5px;color:#64748b">' + l + '</div><div style="font-size:18px;font-weight:800;color:' + (col || "#0b3b36") + ';margin-top:2px">' + v + '</div></div>'; };
+      '<div style="font-size:12px;color:#64748b">' + l + '</div><div style="font-size:18px;font-weight:800;color:' + (col || "#0b3b36") + ';margin-top:2px">' + v + '</div></div>'; };
     h += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:14px">' +
       tile("Revenue influenced", money(M.billed)) +
       tile("Clients linked", String(M.referred)) +
@@ -15217,7 +15224,7 @@ function viewCatalogue() {
       '<div class="meta">Sales Executive · ' + esc(scMonLabel(S.sc.month)) + '</div>' +
       '<button class="btn sm ghost" data-act="kt-open" data-n="' + esc(S.sc.exec) + '" style="margin-top:6px;font-size:12px">&#9881; Set targets' + (M.custom ? ' <span class="pill teal" style="background:#ccfbf1;color:#0f766e">custom</span>' : '') + '</button></div>' +
       '<div style="text-align:center;min-width:110px"><div style="font-size:34px;font-weight:900;line-height:1;color:#0f766e">' + Math.round(M.score) + '</div>' +
-      '<div style="font-size:11px;color:#64748b">out of 100</div>' +
+      '<div style="font-size:12px;color:#64748b">out of 100</div>' +
       '<span class="pill" style="background:' + bnd.bg + ';color:' + bnd.c + ';font-weight:800;margin-top:4px;display:inline-block">' + bnd.t + '</span></div></div>';
 
     var fmt = function (a, v) { return a.money ? money(v) : a.pct ? (Math.round(v * 100) + "%") : String(Math.round(v)); };
@@ -15232,7 +15239,7 @@ function viewCatalogue() {
     M.areas.forEach(function (a, i) {
       var achPct = Math.round(a.ach * 100), col = a.ach >= 0.9 ? "#16a34a" : a.ach >= 0.6 ? "#d97706" : "#dc2626";
       h += '<tr style="border-bottom:1px solid #e2e8f0;background:' + (i % 2 ? "#f8fafc" : "#fff") + '">' +
-        '<td style="padding:9px 8px"><b style="color:#0b3b36">' + esc(a.label) + '</b><div style="font-size:11.5px;color:#64748b">' + esc(a.kpi) + '</div></td>' +
+        '<td style="padding:9px 8px"><b style="color:#0b3b36">' + esc(a.label) + '</b><div style="font-size:12px;color:#64748b">' + esc(a.kpi) + '</div></td>' +
         '<td style="padding:9px 8px;text-align:center">' + a.w + '%</td>' +
         '<td style="padding:9px 8px;text-align:right">' + fmt(a, a.target) + (a.key === "over" ? " max" : "") + '</td>' +
         '<td style="padding:9px 8px;text-align:right;font-weight:700">' + fmt(a, a.actual) + '</td>' +
@@ -15505,7 +15512,7 @@ function viewCatalogue() {
       '<thead><tr style="background:#0b3b36;color:#fff"><th style="padding:6px 8px;text-align:left;width:32px">#</th>' +
       '<th style="padding:6px 8px;text-align:left">Product</th><th style="padding:6px 8px;text-align:center;width:60px">Qty</th></tr></thead>' +
       '<tbody>' + rows + '</tbody></table></div>' +
-      '<div style="text-align:right;font-size:11.5px;color:#64748b;margin-bottom:4px"><b>' + items.length + '</b> item(s) &middot; <b>' + tot + '</b> units</div>';
+      '<div style="text-align:right;font-size:12px;color:#64748b;margin-bottom:4px"><b>' + items.length + '</b> item(s) &middot; <b>' + tot + '</b> units</div>';
   }
 
   /* line & unit counts for the compact challan card, without building the whole table */
@@ -15728,7 +15735,7 @@ function viewCatalogue() {
     var chAppLink = '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
       '<div class="acts" style="margin:0"><a class="btn sm" href="../challan/" target="_blank" rel="noopener" ' +
         'style="background:#0f766e;border-color:#0f766e">&#128230; Open the Challan app</a>' +
-      '<span class="meta" style="align-self:center;font-size:11.5px">Make a challan, register a return, ' +
+      '<span class="meta" style="align-self:center;font-size:12px">Make a challan, register a return, ' +
         'photograph the signed receipt. Godown makes it, accounts passes it.</span></div></div>';
     var list = S.data.challans.slice().reverse();
     /* ONLY sales is owner-scoped; godown must see every challan to dispatch/receipt them. */
@@ -15919,7 +15926,7 @@ function viewCatalogue() {
           ' deliver' + (hq.length === 1 ? 'y' : 'ies') +
           ' <span class="pill due">' + money(hqWorth) + '</span></h3>' +
         '<div class="meta" style="color:#7f1d1d;font-size:12.5px;line-height:1.55;margin-top:6px">' +
-        (hqOld ? 'Oldest first. The oldest has been waiting <b>' + hqOld + ' days</b>. ' : 'Oldest first. ') +
+        (hqOld ? 'Oldest first. The oldest has been waiting <b>' + hqOld + (hqOld === 1 ? ' day' : ' days') + '</b>. ' : 'Oldest first. ') +
         'Stamping one writes down who earns on it for good. Until then the incentive follows ' +
         'whoever the client&rsquo;s partner is <i>today</i>.</div>' +
         '<div class="row" style="margin-top:8px">' + back + '</div></div>';
@@ -16291,7 +16298,7 @@ function viewCatalogue() {
     var f = discFrom(cur);
     var older = rows.filter(function (r) { return r !== cur; }).length;
     if (!f && !older) return "";
-    return '<div style="font-size:10px;color:#94a3b8;margin-top:1px">' +
+    return '<div style="font-size:12px;color:#94a3b8;margin-top:1px">' +
       (f ? "from " + esc(d10(f)) : "since the start") +
       (older ? " \u00b7 " + older + " earlier rate" + (older === 1 ? "" : "s") + " kept" : "") +
       '</div>';
@@ -16308,7 +16315,7 @@ function viewCatalogue() {
       '<th style="font-weight:600;padding:2px 5px 4px">Disc %</th>' +
       line.map(function (m) {
         return '<th style="font-weight:600;padding:2px 5px 4px;white-space:nowrap">' +
-          esc(incRoleLabel(m.role)) + '<br><span style="font-weight:500;color:#94a3b8;font-size:10.5px">' +
+          esc(incRoleLabel(m.role)) + '<br><span style="font-weight:500;color:#94a3b8;font-size:12px">' +
           esc(m.name) + '</span></th>';
       }).join("") + '</tr>';
     brands.forEach(function (b) {
@@ -16325,7 +16332,7 @@ function viewCatalogue() {
     return h + '</table></div>' +
       '<div class="acts" style="margin-top:7px;gap:6px"><div class="grow"></div>' +
       '<button class="btn sm" data-act="adm-save" data-cl="' + esc(cl) + '">Save rates</button></div>' +
-      '<div class="meta" style="font-size:11px;color:#94a3b8;margin-top:3px">An amber box is a rate ' +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:3px">An amber box is a rate ' +
       'nobody has set: that man earns <b>nothing</b> on that brand. A blank saves as 0, which is a ' +
       'decision and is remembered as one.</div>';
   }
@@ -16364,7 +16371,7 @@ function viewCatalogue() {
         .filter(Boolean).sort(function (a, b) { return a.localeCompare(b); });
       var execs = execTeam().map(function (u) { return String(u.name || "").trim(); }).filter(Boolean);
       h += '<div style="border-top:1px dashed #cbd5e1;margin-top:9px;padding-top:8px">' +
-        '<div class="meta" style="font-size:11.5px;color:#475569">Nobody is named as ' +
+        '<div class="meta" style="font-size:12px;color:#475569">Nobody is named as ' +
         free.map(incRoleLabel).map(function (x) { return x.toLowerCase(); }).join(", ") +
         ' on this client. Naming one here is <b>permanent</b> \u2014 it is his role on every future ' +
         'delivery. It does not touch a delivery already passed into hisab, which froze its own line-up.</div>';
@@ -16387,14 +16394,14 @@ function viewCatalogue() {
   function admSeal() {
     return '<div style="display:flex;align-items:center;gap:6px;margin:0 0 7px;flex-wrap:wrap">' +
       '<span class="pill" style="background:#7f1d1d;color:#fff;font-weight:700;letter-spacing:.05em">OWNER ONLY</span>' +
-      '<span style="font-size:11px;color:#7f1d1d;font-weight:600">Never on a client statement. ' +
+      '<span style="font-size:12px;color:#7f1d1d;font-weight:600">Never on a client statement. ' +
       'Do not send this to a client.</span></div>';
   }
   function admLedgerPanel(cl) {
     if (!roleIs("admin")) return "";
     return '<div style="flex:1 1 330px;min-width:min(100%,300px);border:1px solid #fecaca;' +
       'background:#fff;border-radius:10px;padding:9px 11px">' + admSeal() +
-      '<div class="meta" style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:#475569;margin-bottom:5px">' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:#475569;margin-bottom:5px">' +
       '<b>Discount &amp; incentive \u2014 ' + esc(cl) + '</b></div>' +
       admBrandTable(cl) + admEarnRows(cl) + '</div>';
   }
@@ -16444,14 +16451,14 @@ function viewCatalogue() {
        a line of its own under the men, which made this strip five lines deep and set the height
        of every challan card on the screen. On the banner line it costs nothing: the banner was
        half-empty and the button is small. */
-    return '<div style="text-align:right;font-size:11.5px;line-height:1.55;margin-top:5px;' +
+    return '<div style="text-align:right;font-size:12px;line-height:1.55;margin-top:5px;' +
       'border-top:1px dashed #fecaca;padding-top:5px">' +
       '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:2px">' +
-      '<span style="font-size:10px;letter-spacing:.06em;color:#7f1d1d;font-weight:700">' +
+      '<span style="font-size:12px;letter-spacing:.06em;color:#7f1d1d;font-weight:700">' +
       'OWNER ONLY \u00b7 NOT ON THE STATEMENT</span>' +
       '<button class="btn sm ghost" data-act="adm-ch" data-id="' + esc(c.id) + '" ' +
-      'style="font-size:10.5px;padding:2px 8px;flex:0 0 auto">Set rates</button></div>' + body +
-      (stamp ? '<div style="color:#94a3b8;font-size:10.5px">frozen when it was passed into hisab</div>' : '') +
+      'style="font-size:12px;padding:2px 8px;flex:0 0 auto">Set rates</button></div>' + body +
+      (stamp ? '<div style="color:#94a3b8;font-size:12px">frozen when it was passed into hisab</div>' : '') +
       '</div>';
   }
   /* ---- WHAT A RETURN TAKES BACK  (v6.9.348, 23 August 2026) ----
@@ -16494,14 +16501,14 @@ function viewCatalogue() {
         '">' + quiet + ' other' + (quiet === 1 ? '' : 's') + ' \u00b7 no rate, nothing reversed</div>';
     }
     var tot = hit.reduce(function (a, x) { return a + x.amt; }, 0);
-    return '<div style="text-align:right;font-size:11.5px;line-height:1.55;margin-top:5px;' +
+    return '<div style="text-align:right;font-size:12px;line-height:1.55;margin-top:5px;' +
       'border-top:1px dashed #fecaca;padding-top:5px">' +
-      '<div style="font-size:10px;letter-spacing:.06em;color:#7f1d1d;font-weight:700;margin-bottom:2px">' +
+      '<div style="font-size:12px;letter-spacing:.06em;color:#7f1d1d;font-weight:700;margin-bottom:2px">' +
       'OWNER ONLY \u00b7 COMES BACK OFF THE INCENTIVE</div>' + body +
       (tot > 0 ? '<div style="color:#7f1d1d;font-weight:700;margin-top:2px">' +
         '\u2212' + money(tot) + ' in all</div>' : '') +
       /* the long sentence moves into the tooltip: on the card it is four words */
-      '<div style="color:#94a3b8;font-size:10.5px" title="' +
+      '<div style="color:#94a3b8;font-size:12px" title="' +
       (rCh ? 'Reversed against the delivery this material came back from' + (stamp ? ", on the line-up frozen when it was passed into hisab." : ".")
            : 'This return names no challan, so the incentive is reversed against whoever the client record names today - which may not be who earned it.') +
       '">' +
@@ -16528,7 +16535,7 @@ function viewCatalogue() {
       '<th style="font-weight:600;padding:2px 5px 5px">Disc %</th>' +
       line.map(function (m) {
         return '<th style="font-weight:600;padding:2px 5px 5px;white-space:nowrap">' + esc(incRoleLabel(m.role)) +
-          '<br><span style="font-weight:500;color:#94a3b8;font-size:11px">' + esc(m.name) + '</span></th>';
+          '<br><span style="font-weight:500;color:#94a3b8;font-size:12px">' + esc(m.name) + '</span></th>';
       }).join("") + '</tr>';
     brands.forEach(function (b) {
       var d = discRow(cl, b);
@@ -16780,7 +16787,7 @@ function viewCatalogue() {
         '<h3 style="margin:0 0 4px">Sales executives <span class="pill" style="background:#ede9fe;color:#6d28d9">' + _ex.length + '</span></h3>' +
         '<div class="meta" style="margin-bottom:8px">Each earns on the clients assigned to him, at the % ticked on the Discounts screen for that client and brand. Same rules as a partner: the receipt must be in, it becomes payable as the client pays, and a booked-in return reverses it.</div>';
       if (!_anyRate) {
-        h += '<div class="meta" style="font-size:11.5px;color:#b45309;margin-bottom:8px">No executive rate is ticked on any client yet, so nothing is being calculated. Open <b>Discounts</b>, pick a client, tick <b>Sales executive incentive</b> on the brands you want and type the %.</div>';
+        h += '<div class="meta" style="font-size:12px;color:#b45309;margin-bottom:8px">No executive rate is ticked on any client yet, so nothing is being calculated. Open <b>Discounts</b>, pick a client, tick <b>Sales executive incentive</b> on the brands you want and type the %.</div>';
       }
       h += '<div class="cards" style="margin-bottom:8px">' +
         '<div class="stat"><div class="n">' + money(_exT.earned) + '</div><div class="l">Executive incentive earned</div></div>' +
@@ -16808,8 +16815,8 @@ function viewCatalogue() {
       h += '<div class="card" style="border-color:#fdba74;background:#fff7ed"><h3>Stay in touch <span class="pill soon">' + cold.length + '</span></h3>' +
         '<div class="meta">No challan, visit or payout logged with these partners for ' + COLD_PARTNER + '+ days. A quick call keeps the pipeline warm.</div>';
       cold.slice(0, 12).forEach(function (x) {
-        h += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(x.a.name) + '</b> <span style="color:#94a3b8;font-size:11px">' + esc(x.a.role || "") + '</span>' +
-          '<br><span style="font-size:11px;color:#64748b">quiet ' + x.days + 'd</span></div>' +
+        h += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(x.a.name) + '</b> <span style="color:#94a3b8;font-size:12px">' + esc(x.a.role || "") + '</span>' +
+          '<br><span style="font-size:12px;color:#64748b">quiet ' + x.days + 'd</span></div>' +
           (x.a.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.a.mobile) + '">Call</a>' : "") + '</div>';
       });
       h += '</div>';
@@ -16953,7 +16960,7 @@ function viewCatalogue() {
          agreed; some should carry only the money. The choice is made here and the PDF,
          the WhatsApp copy and the table below all follow it. */
       '<div class="row" style="margin:0 0 6px;flex-wrap:wrap;gap:6px;align-items:center">' +
-      '<span style="font-size:11.5px;color:#64748b">Statement shows:</span>' +
+      '<span style="font-size:12px;color:#64748b">Statement shows:</span>' +
       '<button class="btn sm ' + (stmtShowPct() ? '' : 'ghost') + '" data-act="p-pct" data-v="1">Rate % and amount</button>' +
       '<button class="btn sm ' + (stmtShowPct() ? 'ghost' : '') + '" data-act="p-pct" data-v="0">Amount only</button>' +
       '</div>' +
@@ -16978,7 +16985,7 @@ function viewCatalogue() {
             '<b style="color:#0f766e;white-space:nowrap;margin-left:8px">' + money(g.inc) + '</b>' +
           '</button>' +
           (open
-            ? '<div style="padding:0 10px 8px"><table style="width:100%;border-collapse:collapse;font-size:11.5px">' +
+            ? '<div style="padding:0 10px 8px"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
               g.rows.map(function (r) {
                 /* a booked-in return is shown for what it is: a line that took money back */
                 return '<tr style="border-top:1px solid #f1f5f9' + (r.ret ? ';background:#fef2f2' : '') + '">' +
@@ -16993,7 +17000,7 @@ function viewCatalogue() {
           '</div>';
       }).join("") + '</div>';
     }
-    h += '<div class="meta" style="margin-top:6px;font-size:11px">Only clients where something was earned are listed. Tap a client to see the challans behind the figure.</div>';
+    h += '<div class="meta" style="margin-top:6px;font-size:12px">Only clients where something was earned are listed. Tap a client to see the challans behind the figure.</div>';
     h += '</div>';
 
     /* Projects under this partner — one architect / builder often runs several sites at once.
@@ -17007,7 +17014,7 @@ function viewCatalogue() {
       var al = siteAlerts(st);
       var who = [st.architect ? "Arch: " + st.architect : "", st.plumber ? "Plumber: " + st.plumber : "", st.builder ? "Builder: " + st.builder : "", st.pmc ? "PMC: " + st.pmc : ""].filter(Boolean).join(" · ");
       h += '<div class="card"><h3>' + esc(st.name) + ' <span class="pill teal">stage ' + stageNo(st) + '</span>' +
-        ' <span style="font-size:11px;color:#94a3b8">' + esc(st.stage || "-") + '</span>' +
+        ' <span style="font-size:12px;color:#94a3b8">' + esc(st.stage || "-") + '</span>' +
         (al.open ? ' <span class="pill due">' + al.open + ' to pitch now</span>' : "") +
         (al.closed ? ' <span class="pill">' + al.closed + ' closed</span>' : "") + '</h3>' +
         '<div class="meta">' + esc(st.client || "") + (st.city ? ' · ' + esc(st.city) : "") +
@@ -17110,7 +17117,7 @@ function viewCatalogue() {
         var s = agg[n]; return s.disc.length || s.plumber.length || s.architect.length || s.pmc.length || s.builder.length || s.exec.length;
       }).sort();
       h += '<div class="empty" style="text-align:left;padding:0 0 10px">Type a client above to set discounts, or tap one below to edit. Discounts feed the quote builder, each new challan and the billing screen. <b>Admin only</b>; edits apply to future challans, not past ones.</div>';
-      h += '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:10px 12px"><div class="meta" style="font-size:11px;color:#92400e">🔒 Incentive figures are admin-only inside the app — but they also live in the CRM Google Sheet. Keep that sheet shared with as few Google accounts as possible (ideally just you) so partner rates stay private there too. Staff should work through the app, not the sheet.</div></div>';
+      h += '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:10px 12px"><div class="meta" style="font-size:12px;color:#92400e">🔒 Incentive figures are admin-only inside the app — but they also live in the CRM Google Sheet. Keep that sheet shared with as few Google accounts as possible (ideally just you) so partner rates stay private there too. Staff should work through the app, not the sheet.</div></div>';
       if (!names.length) return h + '<div class="empty">No client discounts set yet. Type a client above to set the first one.</div>';
       /* THE EXECUTIVE RATE CARD. One card for the whole team, brand by brand, kept
          on the Brands master. Set once; every quote and every discount screen
@@ -17238,12 +17245,12 @@ function viewCatalogue() {
          is typed in (see the .dsc listener; the line is rebuilt in place so the caret
          never jumps), and tells you what it would have paid at this discount. */
       var execLine = execSet(b)
-        ? '<div class="meta" id="exl_' + _bkey + '" style="margin-top:6px;font-size:11.5px;border-top:1px solid #eef2f7;padding-top:6px">' +
+        ? '<div class="meta" id="exl_' + _bkey + '" style="margin-top:6px;font-size:12px;border-top:1px solid #eef2f7;padding-top:6px">' +
             execLineHtml(b, dPct) + '</div>'
         : "";
       var _eLoad = _eOn ? (Number(_eVal) || 0) : 0;
       var loadLine = (totInc > 0 || _eLoad > 0)
-        ? '<div class="meta" style="margin-top:6px;font-size:11px;color:#64748b">Total incentive load: <b style="color:#b45309">' +
+        ? '<div class="meta" style="margin-top:6px;font-size:12px;color:#64748b">Total incentive load: <b style="color:#b45309">' +
             pf(totInc + _eLoad) + ' of net</b>' +
             ' <span style="color:#94a3b8">(partners ' + pf(totInc) + (_eLoad > 0 ? ' + executive ' + pf(_eLoad) : '') + ')</span>' +
             (dPct ? ' &middot; ≈ ' + pf((totInc + _eLoad) * (1 - dPct / 100)) + ' of list, on top of the ' + pf(dPct) + ' discount' : "") + '</div>'
@@ -17834,7 +17841,7 @@ function viewCatalogue() {
     else if (d > 60) { bg = "#ffedd5"; fg = "#c2410c"; lbl = d + " d"; }
     else if (d > CREDIT_DAYS) { bg = "#fef9c3"; fg = "#92400e"; lbl = d + " d"; }
     else { bg = "#dcfce7"; fg = "#166534"; lbl = d + " d"; }
-    return ' <span style="background:' + bg + ';color:' + fg + ';border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap">' + lbl + '</span>';
+    return ' <span style="background:' + bg + ';color:' + fg + ';border-radius:999px;padding:1px 7px;font-size:12px;font-weight:700;white-space:nowrap">' + lbl + '</span>';
   }
   /* ---------- CREDIT CONTROL (v6.9.193) ----------
      HISAB, dues and the brief all REPORT credit - they tell you afterwards. Nothing in the app
@@ -17959,10 +17966,10 @@ function viewCatalogue() {
     if (!t.limit) return "";
     var ex = clientAging(name).due + chOnRoad(name, "");
     if (ex <= t.limit + 0.5) {
-      return ' <span style="background:#dcfce7;color:#166534;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap">' +
+      return ' <span style="background:#dcfce7;color:#166534;border-radius:999px;padding:1px 7px;font-size:12px;font-weight:700;white-space:nowrap">' +
         money(t.limit - ex) + ' left</span>';
     }
-    return ' <span style="background:#fee2e2;color:#b91c1c;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;white-space:nowrap">' +
+    return ' <span style="background:#fee2e2;color:#b91c1c;border-radius:999px;padding:1px 7px;font-size:12px;font-weight:700;white-space:nowrap">' +
       money(ex - t.limit) + ' over limit</span>';
   }
 
@@ -18037,7 +18044,7 @@ function viewCatalogue() {
         ' <span class="pill' + (isD ? ' due' : ' teal') + '"' + (isD ? ' style="background:#fee2e2;color:#b91c1c"' : '') + '>' +
         (isD ? 'Not approved' : esc(st)) + '</span>' +
         chArrivedPill(c) +
-        '<br><span style="font-size:11px;color:#64748b">' + esc(d10(c.createdAt)) +
+        '<br><span style="font-size:12px;color:#64748b">' + esc(d10(c.createdAt)) +
         (c.site ? ' &middot; ' + esc(c.site) : '') +
         (c.amount ? ' &middot; ' + money(Number(c.amount) || 0) + ' at list' : '') + '</span></div>' +
         /* v6.9.387 - the same guard, one screen over. This strip is drawn from a different
@@ -18106,7 +18113,7 @@ function viewCatalogue() {
         return '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow">' +
           '<b>' + esc(proofOwnerName(p.a)) + '</b> <span style="color:#7f1d1d">and</span> ' +
           '<b>' + esc(proofOwnerName(p.b)) + '</b>' +
-          '<br><span style="font-size:11.5px;color:#7f1d1d">same photograph on both</span></div>' +
+          '<br><span style="font-size:12px;color:#7f1d1d">same photograph on both</span></div>' +
           /* v6.9.358 - this list could name the pairs and do nothing about them. Same screen,
              same two answers, reached from the place that found the problem. */
           '<button class="btn sm" data-act="twin-open" data-id="' + esc(p.a) + '" ' +
@@ -18134,7 +18141,7 @@ function viewCatalogue() {
         return '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow">' +
           '<b>' + esc(r.returnNo || "Return") + '</b> <span class="pill" style="background:#fed7aa;color:#7c2d12">' +
           esc(r.status || "Raised") + '</span>' +
-          '<br><span style="font-size:11.5px;color:#92400e">' + esc(r.customerName || "") +
+          '<br><span style="font-size:12px;color:#92400e">' + esc(r.customerName || "") +
           ' &middot; ' + money(returnNet(r)) + ' &middot; raised ' + esc(d10(r.createdAt)) + '</span></div>' +
           '<button class="btn sm ghost" data-act="ch-hisab" data-cl="' + esc(r.customerName || "") + '">Open HISAB</button>' +
           (canSee("returns")
@@ -18165,17 +18172,17 @@ function viewCatalogue() {
         '<div style="font-size:19px;font-weight:800;color:' + colour + '">' + list.length +
           ' <span style="font-size:12.5px;font-weight:600">&middot; ' + money(val) + '</span></div>' +
         '<div style="font-size:12px;font-weight:700;color:' + colour + ';margin-top:1px">' + title + '</div>' +
-        '<div style="font-size:11.5px;color:' + colour + ';opacity:.85;margin-top:2px">' + why + '</div>' +
+        '<div style="font-size:12px;color:' + colour + ';opacity:.85;margin-top:2px">' + why + '</div>' +
         '<div style="margin-top:7px">' + list.slice(0, 10).map(function (c) {
           /* daysTo() is negative for a date in the past, so the age is its negation. Using the
              helper that already exists rather than adding a second one that could drift. */
           var d = -daysTo(String(c.createdAt || "").slice(0, 10));
-          return '<div style="font-size:12px;padding:2px 0;cursor:pointer;color:' + colour + '" ' +
+          return '<div style="font-size:12px;padding:2px 0;cursor:pointer;color:' + colour + ';min-height:40px;display:flex;align-items:center;flex-wrap:wrap;gap:0 4px" ' +
             'data-act="bill-open" data-n="' + esc(c.customerName || "") + '">' +
             '<b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(c.customerName || "") +
             (d >= 0 ? ' <span style="opacity:.7">&middot; ' + d + 'd</span>' : '') + '</div>';
         }).join("") +
-        (list.length > 10 ? '<div style="font-size:11.5px;opacity:.7;margin-top:3px;color:' + colour + '">and ' +
+        (list.length > 10 ? '<div style="font-size:12px;opacity:.7;margin-top:3px;color:' + colour + '">and ' +
           (list.length - 10) + ' more</div>' : '') + '</div></div>';
     };
 
@@ -18242,7 +18249,7 @@ function viewCatalogue() {
            reading the account, that one is for working through the calls. */
         '<div class="acts" style="margin-top:9px"><a class="btn sm" href="../collect/" target="_blank" rel="noopener" ' +
           'style="background:#7f1d1d;border-color:#7f1d1d">&#9742; Open the Collection app</a>' +
-        '<span class="meta" style="align-self:center;font-size:11.5px">Who to ring today, what was promised, and record the money as it comes in.</span></div>' +
+        '<span class="meta" style="align-self:center;font-size:12px">Who to ring today, what was promised, and record the money as it comes in.</span></div>' +
         '</div>';
       /* Ageing strip: how the outstanding splits by how long it has been owed. 60+ days is money to
          chase hard. Buckets are 0-30 / 31-60 / 61-90 / 90+ days from delivery (payments clear oldest
@@ -18250,7 +18257,7 @@ function viewCatalogue() {
       var ageTile = function (lbl, amt, bg, fg) {
         return '<div style="flex:1 1 120px;min-width:120px;background:' + bg + ';border-radius:10px;padding:10px 12px">' +
           '<div style="font-size:18px;font-weight:800;color:' + fg + '">' + money(amt) + '</div>' +
-          '<div style="font-size:11.5px;color:' + fg + ';opacity:.85">' + lbl + '</div></div>';
+          '<div style="font-size:12px;color:' + fg + ';opacity:.85">' + lbl + '</div></div>';
       };
       oh += '<div class="card"><h3 style="margin:0 0 8px">Ageing of outstanding' +
         (overdueTot > 0 ? ' &middot; <span style="color:#b91c1c">' + money(overdueTot) + ' overdue (past ' + CREDIT_DAYS + '-day terms)</span>' : '') + '</h3>' +
@@ -18275,7 +18282,7 @@ function viewCatalogue() {
             var _mob = (clientByName(r.name) || {}).mobile || '';
             return '<tr style="border-bottom:1px solid #eef2f7;cursor:pointer;background:' + (i % 2 ? '#f8fafc' : '#fff') + '" data-act="bill-open" data-n="' + esc(r.name) + '">' +
               '<td style="padding:7px 8px"><div style="font-weight:600;color:#0d766c">' + esc(r.name) + '</div>' +
-                (_mob ? '<div style="font-size:11.5px;color:#94a3b8">☎ ' + esc(_mob) + '</div>' : '') + '</td>' +
+                (_mob ? '<div style="font-size:12px;color:#94a3b8">☎ ' + esc(_mob) + '</div>' : '') + '</td>' +
               '<td style="padding:7px 8px;text-align:center">' + agePill(r.ag) + '</td>' +
               '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.net) + '</td>' +
               '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.paid) + '</td>' +
@@ -18292,7 +18299,7 @@ function viewCatalogue() {
             '<button class="btn sm ghost" data-act="exec-pdf" data-k="' + esc(k) + '" ' +
               'title="The same list on the letterhead, ready to print or send on WhatsApp">' +
               '\u2193 PDF</button>' +
-            '<span style="font-size:11.5px;color:#94a3b8;align-self:center">pending list \u00b7 not for a client</span>' +
+            '<span style="font-size:12px;color:#94a3b8;align-self:center">pending list \u00b7 not for a client</span>' +
             '</div>'
           : '';
         oh += '<div class="card"><h3 data-act="hisab-grp" data-k="' + esc(k) + '" data-open="' + (expanded ? "1" : "0") + '" style="margin:0;cursor:pointer;user-select:none">' +
@@ -19623,7 +19630,7 @@ function viewCatalogue() {
     if (left > 0.4) bits.push(money(left) + " still in credit");
     if (!bits.length) return "";
     var pick = allocFor(p.id);
-    return '<div style="font-size:11px;color:#0f766e;opacity:.9;margin-top:2px;white-space:normal">' +
+    return '<div style="font-size:12px;color:#0f766e;opacity:.9;margin-top:2px;white-space:normal">' +
       (pick && pick.length ? '<b>Pointed by hand:</b> ' : 'Went to: ') + esc(bits.join(" \u00b7 ")) +
       (canSee("payments") && payAmt(p) > 0
         ? ' <span style="color:#0d9488;text-decoration:underline;cursor:pointer" data-act="pa-open" ' +
@@ -19668,9 +19675,9 @@ function viewCatalogue() {
                 ' style="margin-top:3px;transform:scale(1.2)"/>' +
               '<span style="flex:1 1 auto;min-width:0">' +
               '<b style="font-size:13px">' + esc(c.challanNo || "") + '</b> ' +
-              '<span class="pill teal" style="font-size:10.5px">' + esc(d10(c.createdAt)) + '</span>' +
+              '<span class="pill teal" style="font-size:12px">' + esc(d10(c.createdAt)) + '</span>' +
               settlePill(st) +
-              '<br><span style="font-size:11.5px;color:#64748b">' + money(st.amt) +
+              '<br><span style="font-size:12px;color:#64748b">' + money(st.amt) +
               (mine > 0.4 ? ' &middot; <b style="color:#0f766e">' + money(mine) + ' of it from this payment</b>' : '') +
               '</span></span></label>';
           }).join("")
@@ -19705,8 +19712,8 @@ function viewCatalogue() {
         return '<tr style="border-bottom:1px solid #d9f5ef;background:' + (neg ? '#fff5f5' : (i % 2 ? '#f6fffd' : '#fff')) + '">' +
           '<td style="padding:5px 7px;white-space:nowrap">' + esc(dstr(p.date)) + payWentTo(_w, p) + '</td>' +
           '<td style="padding:5px 7px">' + (p.mode ? esc(p.mode) : '<span style="color:#94a3b8">not recorded</span>') +
-            (neg ? ' <span class="pill" style="background:#fee2e2;color:#b91c1c;font-size:10.5px">refund</span>'
-                 : k === "advance" ? ' <span class="pill" style="background:#ccfbf1;color:#0f766e;font-size:10.5px">advance</span>' : '') + '</td>' +
+            (neg ? ' <span class="pill" style="background:#fee2e2;color:#b91c1c;font-size:12px">refund</span>'
+                 : k === "advance" ? ' <span class="pill" style="background:#ccfbf1;color:#0f766e;font-size:12px">advance</span>' : '') + '</td>' +
           '<td style="padding:5px 7px;color:#64748b">' + esc(p.ref || p.notes || '') + '</td>' +
           '<td style="padding:5px 7px;text-align:right;font-weight:700;color:' + (neg ? '#b91c1c' : '#0d9488') + '">' +
             (neg ? '\u2212' + money(-p.amount) : money(p.amount)) + '</td></tr>';
@@ -20059,7 +20066,7 @@ function viewCatalogue() {
     var l = openingLast(name);
     if (!l) return "";
     var n = openingChanges(name).length;
-    return '<div style="font-size:11.5px;color:#92400e;margin-top:2px">' +
+    return '<div style="font-size:12px;color:#92400e;margin-top:2px">' +
       'Previous balance changed ' + esc(dstr(l.at)) + ' by <b>' + esc(l.by || "?") + '</b>' +
       ' — was ' + money(l.old) + ', now ' + money(l.neu) +
       (l.why ? ' · ' + esc(l.why) : '') +
@@ -20097,11 +20104,11 @@ function viewCatalogue() {
           '<div style="font-size:12.5px;font-weight:700;color:#92400e;margin-bottom:3px">' +
           'Changed before &mdash; ' + hist.length + '</div>' +
           hist.slice(0, 6).map(function (h) {
-            return '<div style="font-size:11.5px;color:#92400e">' + esc(dstr(h.at)) + ' &middot; ' +
+            return '<div style="font-size:12px;color:#92400e">' + esc(dstr(h.at)) + ' &middot; ' +
               esc(h.by || "?") + ' &middot; ' + money(h.old) + ' → ' + money(h.neu) +
               (h.why ? ' &middot; ' + esc(h.why) : '') + '</div>';
           }).join("") +
-          (hist.length > 6 ? '<div style="font-size:11.5px;color:#92400e;opacity:.75">and ' +
+          (hist.length > 6 ? '<div style="font-size:12px;color:#92400e;opacity:.75">and ' +
             (hist.length - 6) + ' more.</div>' : '') + '</div>'
         : '') +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
@@ -21580,11 +21587,11 @@ function viewCatalogue() {
     var p = PITCH2[String(cur || "")];
     if (!p || !p.lines || !p.lines.length) return "";
     return '<div style="margin-top:8px;border-top:1px solid ' + (p.win ? '#fecaca' : '#ccfbf1') + ';padding-top:7px">' +
-      '<div class="meta" style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:' +
       (p.win ? '#b91c1c' : '#0f766e') + '"><b>Pitch now' + (p.win ? ' \u2014 window closing' : '') + '</b></div>' +
       '<div class="meta" style="font-size:12.5px;color:#334155">' +
       p.lines.map(function (l) { return esc(l); }).join(' &middot; ') + '</div>' +
-      (p.win ? '<div class="meta" style="font-size:11.5px;color:#b91c1c;margin-top:3px">This goes inside the wall. Miss it and the sale is gone for this project.</div>' : '') +
+      (p.win ? '<div class="meta" style="font-size:12px;color:#b91c1c;margin-top:3px">This goes inside the wall. Miss it and the sale is gone for this project.</div>' : '') +
       '</div>';
   }
   function stageAskLine(cur) {
@@ -21605,7 +21612,7 @@ function viewCatalogue() {
     var cur = String(current || "");
     return '<div class="card" id="' + esc(fid) + '_box" data-stagebox="' + esc(fid) + '" style="border-color:' + (cur ? '#99f6e4' : '#fca5a5') +
       ';background:' + (cur ? '#f0fdfa' : '#fef2f2') + ';margin:10px 0">' +
-      '<div class="meta" data-stagelabel style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:' +
+      '<div class="meta" data-stagelabel style="font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:' +
       (cur ? '#0f766e' : '#b91c1c') + '"><b>' + esc(label || "Construction stage") + '</b></div>' +
       '<h3 data-stagehead style="font-size:15px;margin:3px 0 2px">' +
       (cur ? esc(cur) : 'Which stage is this site at?') + '</h3>' +
@@ -21892,37 +21899,37 @@ function viewCatalogue() {
     h += '<div class="row" style="align-items:flex-start;gap:8px;flex-wrap:wrap">';
     h += '<div class="grow" style="min-width:0">' +
       '<div style="font-weight:800;font-size:13.5px;word-break:break-word">' + esc(e.name) + '</div>' +
-      (ph ? '<div style="font-size:11.5px;color:#64748b;white-space:nowrap">' + esc(ph) + '</div>' : "") +
-      (where ? '<div style="font-size:11.5px;color:#64748b;word-break:break-word">' + esc(where) + '</div>' : "") +
+      (ph ? '<div style="font-size:12px;color:#64748b;white-space:nowrap">' + esc(ph) + '</div>' : "") +
+      (where ? '<div style="font-size:12px;color:#64748b;word-break:break-word">' + esc(where) + '</div>' : "") +
       '</div>';
-    h += '<div style="font-size:11px;font-weight:800;color:' + tone + ';background:' + bg +
+    h += '<div style="font-size:12px;font-weight:800;color:' + tone + ';background:' + bg +
       ';border-radius:999px;padding:3px 9px;white-space:nowrap">' +
       (e.state === "won" ? "Won" : e.state === "lost" ? "Lost" : e.open + " open") + '</div>';
     h += '</div>';
 
     if (e.brandList.length) {
-      h += '<div style="margin-top:6px;font-size:11.5px;color:#334155;word-break:break-word">' +
+      h += '<div style="margin-top:6px;font-size:12px;color:#334155;word-break:break-word">' +
         '<b>Quoted:</b> ' + esc(e.brandList.join(", ")) + '</div>';
     }
     if (e.lastQ) {
-      h += '<div style="margin-top:3px;font-size:11.5px;color:#64748b;word-break:break-word">' +
+      h += '<div style="margin-top:3px;font-size:12px;color:#64748b;word-break:break-word">' +
         esc(e.lastQ.quoteNo || "") + (e.value ? ' &middot; ' + money(e.value) : "") +
         (age ? ' &middot; ' + esc(age) : "") + '</div>';
     }
 
     /* The stage is what the pitch engine ranks on, so a missing one is said out loud rather
        than left as a blank the eye slides over. */
-    h += '<div style="margin-top:6px;font-size:11.5px">' +
+    h += '<div style="margin-top:6px;font-size:12px">' +
       (e.stage
         ? '<span style="color:#047857"><b>Stage:</b> ' + esc(e.stage) + '</span>'
         : '<span style="color:#b91c1c"><b>No stage recorded</b></span>') + '</div>';
 
     h += '<div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap;justify-content:flex-end">';
     if (!e.inBook) {
-      h += '<div class="grow" style="min-width:110px;font-size:11px;color:#b91c1c;line-height:1.35">' +
+      h += '<div class="grow" style="min-width:110px;font-size:12px;color:#b91c1c;line-height:1.35">' +
         'Not in the lead book &mdash; the pitch engine cannot see him yet.</div>';
       h += '<button class="btn sm" data-act="ql-add" data-n="' + esc(e.name) +
-        '" style="flex:1 1 auto;min-width:0;min-height:30px">Add to the lead book</button>';
+        '" style="flex:1 1 auto;min-width:0">Add to the lead book</button>';
     }
     /* cl-open takes an id, not a name. A quote naming somebody with no client row at all is
        rare but possible (a name typed on an old row), and that man must still be visible here
@@ -21930,9 +21937,9 @@ function viewCatalogue() {
        open. Saying so beats a button that does nothing. */
     if (c.id) {
       h += '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) +
-        '" style="flex:0 0 auto;min-height:30px">Open client</button>';
+        '" style="flex:0 0 auto">Open client</button>';
     } else {
-      h += '<div style="font-size:11px;color:#b91c1c;flex:0 0 auto">No client record</div>';
+      h += '<div style="font-size:12px;color:#b91c1c;flex:0 0 auto">No client record</div>';
     }
     h += '</div></div>';
     return h;
@@ -22220,7 +22227,7 @@ function viewCatalogue() {
         (miss === 1 ? "him" : "them") + ' below, one tap each' +
         (seesAllClients() ? ' — or all of them in one press.' : '.') + '</div>' +
         (seesAllClients()
-          ? '<button class="btn sm" data-act="ql-sweep" style="min-height:30px">Add all ' + miss + ' at once</button>'
+          ? '<button class="btn sm" data-act="ql-sweep">Add all ' + miss + ' at once</button>'
           : '') + '</div>';
     }
 
@@ -22237,7 +22244,7 @@ function viewCatalogue() {
           gaps216.quotes.length + ' quote' + (gaps216.quotes.length === 1 ? "" : "s") + ' and ' +
           gaps216.pitch.length + ' brand record' + (gaps216.pitch.length === 1 ? "" : "s") +
           ' name a client but carry no lead, so the lead cannot count them.</div>' +
-          '<button class="btn sm" data-act="ql-fix" style="min-height:30px">Show me</button></div>';
+          '<button class="btn sm" data-act="ql-fix">Show me</button></div>';
       }
     }
 
@@ -22245,7 +22252,7 @@ function viewCatalogue() {
       QL_TABS216.map(function (t) {
         var n = all.filter(function (e) { return t[0] === "all" || e.state === t[0]; }).length;
         return '<button class="btn sm ' + (f === t[0] ? "" : "ghost") + '" data-act="ql-f" data-f="' +
-          t[0] + '" style="min-height:30px">' + esc(t[1]) + ' (' + n + ')</button>';
+          t[0] + '">' + esc(t[1]) + ' (' + n + ')</button>';
       }).join("") + '</div>';
 
     h += '<div class="row" style="gap:6px;margin-bottom:8px">' +
@@ -23258,7 +23265,7 @@ function viewCatalogue() {
     /* ---- duplicate visits ---- */
     dv.forEach(function (g) {
       h += '<div class="card" style="margin-top:8px">' +
-        '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>The same visit twice</b></div>' +
+        '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>The same visit twice</b></div>' +
         '<h3 style="font-size:15px;margin:3px 0 2px">' + esc(g.client) + ' \u00b7 ' + esc(fullDate(g.ymd)) + '</h3>' +
         '<div class="meta" style="font-size:12.5px">' + g.rows.length + ' visits are recorded against this ' +
         'machine on this day, totalling <b>' + money(g.worth) + '</b>. If it was one visit, he owes <b>' +
@@ -23280,7 +23287,7 @@ function viewCatalogue() {
     /* ---- names in the service log that are not on the client master ---- */
     dc.forEach(function (e) {
       h += '<div class="card" style="margin-top:8px">' +
-        '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Not a client on the master</b></div>' +
+        '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Not a client on the master</b></div>' +
         '<h3 style="font-size:15px;margin:3px 0 2px">' + esc(e.name) + '</h3>' +
         '<div class="meta" style="font-size:12.5px">' + e.rows.length + ' service record(s) are filed under this ' +
         'name, and there is no client by it. His service history and his account are two different books.' +
@@ -23297,7 +23304,7 @@ function viewCatalogue() {
     if (sg.rows.length) {
       var tot = sg.rows.reduce(function (a, r) { return a + r.diff; }, 0);
       h += '<div class="card" style="margin-top:8px">' +
-        '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Salt against the price list</b></div>' +
+        '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Salt against the price list</b></div>' +
         '<h3 style="font-size:15px;margin:3px 0 2px">' + sg.rows.length + ' visit(s) do not match ' + money(sg.price) + ' a bag</h3>' +
         '<div class="meta" style="font-size:12.5px">A bag is ' + money(sg.price) + ' on the price list. ' +
         'Correcting these changes what ' + (sg.rows.length > 1 ? 'those customers owe' : 'that customer owes') +
@@ -23367,7 +23374,7 @@ function viewCatalogue() {
     var money0 = s.groups.reduce(function (a, g) { return a + (g.due > 0 ? g.due : 0); }, 0);
     var recs = s.groups.reduce(function (a, g) { return a + g.recs.length; }, 0);
     return '<div class="card" style="border-color:#fed7aa;background:#fff7ed">' +
-      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Duplicate entries</b></div>' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Duplicate entries</b></div>' +
       '<h3 style="font-size:16px;margin:4px 0 2px">' + s.total + ' customer(s) look like they are in the book more than once</h3>' +
       '<div class="meta" style="font-size:13px">' + recs + ' records between them' +
       (money0 > 0 ? ', with ' + money(money0) + ' of dues split across the copies' : '') +
@@ -23548,8 +23555,8 @@ function viewCatalogue() {
     t.rows.forEach(function (r) {
       h += '<div class="row" style="border-top:1px solid #bfdbfe;padding:6px 0;align-items:center">' +
         '<div class="grow" style="font-size:13px"><b>' + r.kb + ' KB</b>' +
-        (r.wireKB ? ' <span class="meta" style="font-size:11px">(' + r.wireKB + ' KB on the wire)</span>' : '') +
-        (r.ok ? '' : '<div style="color:#b91c1c;font-size:11.5px;margin-top:2px">' + esc(r.why) + '</div>') +
+        (r.wireKB ? ' <span class="meta" style="font-size:12px">(' + r.wireKB + ' KB on the wire)</span>' : '') +
+        (r.ok ? '' : '<div style="color:#b91c1c;font-size:12px;margin-top:2px">' + esc(r.why) + '</div>') +
         '</div><div style="text-align:right;flex:0 0 auto">' +
         (r.ok ? '<span class="pill teal" style="background:#dcfce7;color:#166534">went up in ' + (r.ms / 1000).toFixed(1) + 's</span>'
               : '<span class="pill due" style="background:#fee2e2;color:#b91c1c">failed after ' + (r.ms / 1000).toFixed(1) + 's</span>') +
@@ -23657,7 +23664,7 @@ function viewCatalogue() {
     });
     h += '<div class="acts" style="margin-top:10px"><button class="btn sm ghost" data-act="drv-scan"' +
       (d.busy ? ' disabled' : '') + '>' + (d.busy ? 'Reading Drive…' : 'Re-check') + '</button>' +
-      '<span class="meta" style="align-self:center;font-size:11.5px">Read ' + esc(String(d.at || "").slice(11, 16)) + '</span></div>';
+      '<span class="meta" style="align-self:center;font-size:12px">Read ' + esc(String(d.at || "").slice(11, 16)) + '</span></div>';
     return h + '</div>';
   }
   function modalDriveClear(kind) {
@@ -23943,8 +23950,8 @@ function viewCatalogue() {
       ((s.dupDisc || []).length
         ? (roleIs("admin")
             ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="disc-tidy">Clear the extra rows</button></div>'
-            : '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Only the owner can tidy these \u2014 tell him and he will press it.</div>') +
-          '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Nothing is deleted \u2014 the extra rows are emptied and stay in the sheet.</div>'
+            : '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:5px">Only the owner can tidy these \u2014 tell him and he will press it.</div>') +
+          '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:5px">Nothing is deleted \u2014 the extra rows are emptied and stay in the sheet.</div>'
         : ''));
 
     /* v6.9.218 - the same quote number on two rows. The winner is named on screen BEFORE any
@@ -23961,8 +23968,8 @@ function viewCatalogue() {
       ((s.dupQuotes || []).length
         ? (roleIs("admin")
             ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="quote-tidy">Set the extra rows aside</button></div>'
-            : '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Only the owner can tidy these \u2014 tell him and he will press it.</div>') +
-          '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Nothing is deleted \u2014 the extra rows move to the set-aside list at the bottom of this screen and can be brought back any time.</div>'
+            : '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:5px">Only the owner can tidy these \u2014 tell him and he will press it.</div>') +
+          '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:5px">Nothing is deleted \u2014 the extra rows move to the set-aside list at the bottom of this screen and can be brought back any time.</div>'
         : ''));
 
     /* v6.9.218 - the same brand recorded twice for the same man on the pitch board. */
@@ -23978,8 +23985,8 @@ function viewCatalogue() {
       ((s.dupPitch || []).length
         ? (roleIs("admin")
             ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="pitch-tidy">Set the extra rows aside</button></div>'
-            : '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">Only the owner can tidy these \u2014 tell him and he will press it.</div>') +
-          '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:5px">The row kept is the one carrying the real outcome \u2014 a Won or a Lost always beats a blank. Nothing is deleted.</div>'
+            : '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:5px">Only the owner can tidy these \u2014 tell him and he will press it.</div>') +
+          '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:5px">The row kept is the one carrying the real outcome \u2014 a Won or a Lost always beats a blank. Nothing is deleted.</div>'
         : ''));
 
     /* Discounts pointing at a client that doesn't exist (the "in" class of error). */
@@ -24027,7 +24034,7 @@ function viewCatalogue() {
     var h = "";
     if (one) {
       h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
-        '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#0f766e"><b>Today</b></div>' +
+        '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#0f766e"><b>Today</b></div>' +
         '<h3 style="font-size:17px;margin:4px 0 2px">' + esc(one.t) + '</h3>' +
         '<div class="meta">' + esc(one.s) + '</div>' +
         '<div class="acts"><button class="btn sm" data-act="tab" data-tab="' + one.a + '">' + esc(one.b) + '</button></div></div>';
@@ -24048,7 +24055,7 @@ function viewCatalogue() {
       '<div class="meta">' + (dg.length ? dg.map(function (l) { return "&bull; " + esc(l); }).join("<br>") : "All clear — nothing pending. 🎉") + '</div>' +
       '<div class="acts"><button class="btn sm" data-act="dg-tg">Send to team (Telegram)</button>' +
       '<button class="btn sm ghost" data-act="dg-wa">WhatsApp</button></div>' +
-      '<div class="meta" style="font-size:11px;color:#94a3b8;margin-top:4px">Tap each morning to push the team their to-dos. (Ask me to set up automatic 8 AM posting.)</div></div>';
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:4px">Tap each morning to push the team their to-dos. (Ask me to set up automatic 8 AM posting.)</div></div>';
 
     /* the pitch-by-stage engine only works once sites are entered - nudge until at least a few are in */
     if ((roleIs("admin") || roleIs("sales")) && (S.data.sites || []).length < 3) {
@@ -24321,10 +24328,10 @@ function viewCatalogue() {
     var sug = areaSuggest(loc, typed);
     if (!sug.length) {
       return areaNorm(typed)
-        ? '<div class="meta" style="font-size:11px;margin-top:6px;color:#0f766e">New name &mdash; nothing like it is registered under ' + esc(loc) + '.</div>'
+        ? '<div class="meta" style="font-size:12px;margin-top:6px;color:#0f766e">New name &mdash; nothing like it is registered under ' + esc(loc) + '.</div>'
         : "";
     }
-    return '<div class="meta" style="font-size:11px;margin-top:6px">Already registered &mdash; tap to use it instead:</div>' +
+    return '<div class="meta" style="font-size:12px;margin-top:6px">Already registered &mdash; tap to use it instead:</div>' +
       '<div class="row" style="flex-wrap:wrap;gap:4px;margin-top:2px;margin-bottom:0">' +
       sug.map(function (s) {
         return '<button class="btn sm ghost" data-act="area-pick" data-sel="' + esc(selId) + '" data-area="' + esc(s.area) + '">' + esc(s.area) + '</button>';
@@ -24332,7 +24339,7 @@ function viewCatalogue() {
   }
   function areaNewPanelHtml(selId, loc, typed) {
     return '<div style="margin-top:6px;padding:8px;border:1px solid #99f6e4;background:#f0fdfa;border-radius:10px">' +
-      '<div class="meta" style="font-size:11px;margin-bottom:4px">New area under <b>' + esc(loc) + '</b> &mdash; one colony should carry one name.</div>' +
+      '<div class="meta" style="font-size:12px;margin-bottom:4px">New area under <b>' + esc(loc) + '</b> &mdash; one colony should carry one name.</div>' +
       '<div class="row" style="margin-bottom:0"><input class="grow an-in" id="' + esc(selId) + '_nn" data-sel="' + esc(selId) + '" data-loc="' + esc(loc) + '" placeholder="e.g. Eldeco" value="' + esc(typed || "") + '" autocomplete="off"/>' +
       '<button class="btn sm" data-act="area-new-save" data-sel="' + esc(selId) + '" data-loc="' + esc(loc) + '">Register</button>' +
       '<button class="btn sm ghost" data-act="area-new-cancel" data-sel="' + esc(selId) + '">Cancel</button></div>' +
@@ -24462,7 +24469,7 @@ function viewCatalogue() {
     return '<div style="border:1px solid ' + (r.area ? "#99f6e4" : "#e2e8f0") + ';border-radius:10px;padding:8px;margin-bottom:8px' +
       (r.area ? ';background:#f0fdfa' : '') + '">' +
       '<div style="font-weight:600;font-size:13px">' + esc(r.c.name) + '</div>' +
-      '<div class="meta" style="font-size:11px;margin-bottom:6px">' +
+      '<div class="meta" style="font-size:12px;margin-bottom:6px">' +
       (addr ? esc(addr) : '<i>no address on this record &mdash; pick the colony from what you know</i>') + '</div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">' +
       (kind === "nod"
@@ -24471,7 +24478,7 @@ function viewCatalogue() {
       '<div><label>Area / colony</label><select id="' + pre + '_a' + i + '">' + opts([""].concat(alist), r.area) + '</select></div>' +
       '</div>' +
       '<div class="foot" style="margin-top:6px">' +
-      (r.area ? '<span class="meta" style="font-size:11px;color:#0f766e;margin-right:auto">read from his address</span>' : '') +
+      (r.area ? '<span class="meta" style="font-size:12px;color:#0f766e;margin-right:auto">read from his address</span>' : '') +
       '<button class="btn sm" data-act="place-apply" data-kind="' + kind + '" data-i="' + i + '" data-id="' + esc(r.c.id) + '">Apply</button></div>' +
       '</div>';
   }
@@ -24491,7 +24498,7 @@ function viewCatalogue() {
     if (rows.length) {
       h += '<h3 style="margin:12px 0 4px;font-size:13px">' + rows.length +
         ' district name(s) that are really a colony</h3>' +
-        '<div class="meta" style="font-size:11px;margin-bottom:6px">These move as a group because they all carry the same typed value. The plot number is kept in the address.</div>';
+        '<div class="meta" style="font-size:12px;margin-bottom:6px">These move as a group because they all carry the same typed value. The plot number is kept in the address.</div>';
     }
     h += rows.map(function (r, i) {
         var alist = areasIn2(r.guess.district);
@@ -24501,7 +24508,7 @@ function viewCatalogue() {
         var who = r.clients.slice(0, 3).map(function (c) { return c.name; }).join(", ");
         return '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:8px;margin-bottom:8px">' +
           '<div style="font-weight:600;font-size:13px">' + esc(r.value) + '</div>' +
-          '<div class="meta" style="font-size:11px;margin-bottom:6px">' + r.clients.length + ' record(s): ' + esc(who) +
+          '<div class="meta" style="font-size:12px;margin-bottom:6px">' + r.clients.length + ' record(s): ' + esc(who) +
           (r.clients.length > 3 ? " +" + (r.clients.length - 3) + " more" : "") + '</div>' +
           /* auto-fit, not a hard 1fr 1fr: on a 360px phone the two selects stack instead of
              squeezing "Ansal Sushant City" down to an unreadable sliver. */
@@ -24518,7 +24525,7 @@ function viewCatalogue() {
     if (g.nod.length) {
       h += '<h3 style="margin:14px 0 4px;font-size:13px">' + g.nod.length +
         ' name(s) with no district</h3>' +
-        '<div class="meta" style="font-size:11px;margin-bottom:6px">Nobody can plan a round for these until they sit in a district.</div>' +
+        '<div class="meta" style="font-size:12px;margin-bottom:6px">Nobody can plan a round for these until they sit in a district.</div>' +
         g.nod.slice(0, PLACE_CAP).map(function (r, i) { return placeRowHtml(r, i, "nod"); }).join("");
     }
 
@@ -24527,7 +24534,7 @@ function viewCatalogue() {
       var shown = g.noa.slice(0, PLACE_CAP);
       h += '<h3 style="margin:14px 0 4px;font-size:13px">' + g.noa.length +
         ' name(s) with a district but no colony</h3>' +
-        '<div class="meta" style="font-size:11px;margin-bottom:6px">' +
+        '<div class="meta" style="font-size:12px;margin-bottom:6px">' +
         'This is what puts the amber <b>no area</b> chips on the tree. Where the address said which colony it is, ' +
         'the answer is already filled in and the line is green &mdash; those are one tap each.' +
         (g.noa.length > PLACE_CAP
@@ -24813,12 +24820,12 @@ function viewCatalogue() {
     s.id = "ew_cv_css";
     s.textContent =
       ".cv-seg{display:inline-flex;border:1px solid #cbd5e1;border-radius:999px;overflow:hidden;background:#fff}" +
-      ".cv-seg button{border:0;background:#fff;color:#475569;font-size:12.5px;font-weight:700;padding:8px 16px;cursor:pointer;min-height:36px;line-height:1}" +
+      ".cv-seg button{border:0;background:#fff;color:#475569;font-size:12.5px;font-weight:700;padding:8px 16px;cursor:pointer;min-height:40px;line-height:1}" +
       ".cv-seg button.on{background:#0f766e;color:#fff}" +
       ".cv-exec{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;color:#fff;border-radius:12px;padding:9px 13px;margin:14px 0 8px;font-weight:700;font-size:13.5px}" +
       ".cv-en{flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
       ".cv-tags{display:inline-flex;gap:5px;align-items:center;flex-wrap:wrap;flex:0 0 auto}" +
-      ".cv-tag{border-radius:999px;padding:3px 9px;font-size:11.5px;font-weight:700;white-space:nowrap}" +
+      ".cv-tag{border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700;white-space:nowrap}" +
       ".cv-dist{display:flex;align-items:center;gap:9px;width:100%;text-align:left;border:1px solid #e2e8f0;border-left-width:5px;border-radius:11px;padding:10px 12px;margin-bottom:6px;cursor:pointer;font-weight:700;font-size:13.5px;min-height:46px}" +
       ".cv-caret{flex:0 0 auto;font-size:12px}" +
       ".cv-dn{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
@@ -24827,12 +24834,12 @@ function viewCatalogue() {
       ".cv-peek{display:flex;flex-wrap:wrap;gap:5px;margin:-2px 0 10px 14px}" +
       /* v6.9.215 min-height:26px. These colony chips are buttons - tapping one opens that district -
          and they were drawing 23px tall, which is a thumb hitting the gap between two of them. */
-      ".cv-pk{display:inline-flex;align-items:center;gap:5px;max-width:100%;min-height:26px;box-sizing:border-box;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:999px;padding:3px 4px 3px 10px;font-size:11px;font-weight:700;cursor:pointer;line-height:1.3}" +
-      ".cv-pk b{background:#f1f5f9;color:#0f172a;border-radius:999px;padding:1px 7px;font-size:10.5px;font-weight:800}" +
+      ".cv-pk{display:inline-flex;align-items:center;gap:5px;max-width:100%;min-height:26px;box-sizing:border-box;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:999px;padding:3px 4px 3px 10px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.3}" +
+      ".cv-pk b{background:#f1f5f9;color:#0f172a;border-radius:999px;padding:1px 7px;font-size:12px;font-weight:800}" +
       ".cv-pk.un{border-color:#fcd34d;background:#fffbeb;color:#92400e}" +
       ".cv-pk.un b{background:#fde68a;color:#7c2d12}" +
       ".cv-pk.more{border-style:dashed;color:#64748b;padding:3px 11px}" +
-      ".cv-area{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;margin:9px 0 5px}" +
+      ".cv-area{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;margin:9px 0 5px}" +
       ".cv-an{flex:1 1 100px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
       ".cv-cli{border:1px solid #eef2f7;border-radius:10px;padding:7px 10px;margin-bottom:5px;background:#fff}" +
       ".cv-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}" +
@@ -24841,20 +24848,20 @@ function viewCatalogue() {
          makes it a proper thumb target and costs about 2px of row height. */
       ".cv-nm{flex:1 1 130px;min-width:0;text-align:left;border:0;background:none;padding:4px 0;font-size:13.5px;font-weight:700;color:#0f172a;cursor:pointer;line-height:1.3}" +
       ".cv-due{background:#fee2e2;color:#b91c1c;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:800;white-space:nowrap}" +
-      ".cv-ok{background:#dcfce7;color:#166534;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap}" +
+      ".cv-ok{background:#dcfce7;color:#166534;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700;white-space:nowrap}" +
       ".cv-bs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}" +
-      ".cv-b{border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:8px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer;line-height:1.2}" +
+      ".cv-b{border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:8px;padding:4px 9px;font-size:12px;font-weight:600;cursor:pointer;line-height:1.2}" +
       ".cv-b.live{background:#0d9488;border-color:#0d9488;color:#fff}" +
       ".cv-b.more{background:#f1f5f9;color:#64748b}" +
       ".cv-b.done{background:#f8fafc;color:#94a3b8;border-style:dashed;cursor:default}" +
-      ".cv-set{border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:999px;padding:4px 11px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;line-height:1.2}" +
+      ".cv-set{border:1px solid #f59e0b;background:#fffbeb;color:#92400e;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;line-height:1.2}" +
       ".cv-set:hover{background:#fef3c7}" +
       ".cv-ask{display:flex;align-items:center;gap:9px;flex-wrap:wrap;background:#fffbeb;border:1px dashed #fcd34d;border-radius:10px;padding:8px 11px;margin:0 0 8px;font-size:12px;color:#92400e;line-height:1.45}" +
-      ".cv-ask.sm{margin:6px 0 0;padding:6px 9px;font-size:11.5px}" +
+      ".cv-ask.sm{margin:6px 0 0;padding:6px 9px;font-size:12px}" +
       ".cv-cli.ask{border-color:#fde68a;background:#fffdf5}" +
       ".cv-duebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fef2f2;border:1px solid #fecaca;border-left:5px solid #dc2626;border-radius:11px;padding:9px 12px;margin:0 0 12px;color:#7f1d1d}" +
       ".cv-duebar b{font-size:17px;color:#b91c1c;white-space:nowrap}" +
-      ".cv-duetag{background:#dc2626;color:#fff;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:800;letter-spacing:.4px}" +
+      ".cv-duetag{background:#dc2626;color:#fff;border-radius:999px;padding:3px 9px;font-size:12px;font-weight:800;letter-spacing:.4px}" +
       ".cv-duemsg{font-size:12px;flex:1 1 170px;min-width:0}" +
       /* THE MOBILE RULES. Paired fields stop being two slivers, a row's flexible child is
          allowed to get small enough to actually wrap, and the compact tree tightens up. */
@@ -24865,8 +24872,8 @@ function viewCatalogue() {
       ".cv-dist{font-size:13px;padding:10px;gap:7px}" +
       ".cv-body{margin-left:5px;padding-left:8px}" +
       ".cv-peek{margin-left:8px;gap:4px}" +
-      ".cv-pk{font-size:10.5px;padding:3px 3px 3px 9px;min-height:26px}" +
-      ".cv-pk b{font-size:10px;padding:1px 6px}" +
+      ".cv-pk{font-size:12px;padding:3px 3px 3px 9px;min-height:26px}" +
+      ".cv-pk b{font-size:12px;padding:1px 6px}" +
       ".cv-nm{flex-basis:100%}" +
       ".cv-duebar b{font-size:16px}" +
       "}";
@@ -25059,7 +25066,7 @@ function viewCatalogue() {
       "@media(max-width:560px){" +
       ".qv-cli{padding:8px 9px}" +
       ".qv-nm{flex-basis:100%}" +
-      ".qv-log .cv-tag{font-size:11px;padding:3px 8px}" +
+      ".qv-log .cv-tag{font-size:12px;padding:3px 8px}" +
       "}";
     document.head.appendChild(s);
   }
@@ -25608,7 +25615,7 @@ function viewCatalogue() {
        "Incentive paid: Rs 40,000" they read as forty thousand paid against nothing. */
     var _own = d.money.outValue || d.money.received || d.money.quoted;
     if (_own) {
-      h += '<div class="meta" style="margin:10px 2px 4px;font-size:11px;letter-spacing:.07em;' +
+      h += '<div class="meta" style="margin:10px 2px 4px;font-size:12px;letter-spacing:.07em;' +
         'text-transform:uppercase;color:#475569"><b>What he bought himself</b></div>' +
         '<div class="stats">' +
         dgChip(money(d.money.outValue), "Material sent out", d.money.outValue ? "" : "good") +
@@ -25621,7 +25628,7 @@ function viewCatalogue() {
     /* v6.9.346 - WHAT CAME THROUGH HIM. The block this screen was missing entirely. */
     var _bk = d.book;
     if (_bk && (_bk.billed || _bk.earned || _bk.paid || d.brought.length)) {
-      h += '<div class="meta" style="margin:12px 2px 4px;font-size:11px;letter-spacing:.07em;' +
+      h += '<div class="meta" style="margin:12px 2px 4px;font-size:12px;letter-spacing:.07em;' +
         'text-transform:uppercase;color:#475569"><b>What came through him</b>' +
         (d.brought.length ? ' &middot; ' + d.brought.length + ' client' +
           (d.brought.length === 1 ? '' : 's') : '') + '</div>' +
@@ -26312,7 +26319,7 @@ function viewCatalogue() {
         'yours to <b>chase</b>. Until it is passed the goods stay in the godown and your customer waits.' +
         (stale ? ' <b>' + stale + '</b> ' + (stale === 1 ? 'has' : 'have') + ' been sitting two days or more.' : '');
     var h = '<div class="card" style="border-color:' + (hot ? '#fca5a5;background:#fef2f2' : '#fde68a;background:#fffbeb') + '">' +
-      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:' +
         (hot ? '#b91c1c' : '#b45309') + '"><b>Waiting to be passed</b></div>' +
       '<h3 style="font-size:16px;margin:4px 0 2px">' + head + '</h3>' +
       '<div class="meta" style="font-size:13px">' + money(val) + ' of goods. ' + say + '</div>';
@@ -27020,7 +27027,7 @@ function viewCatalogue() {
   }
   function agBadge() {
     var n = agTodayCount();
-    return n ? ' <span style="background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;font-weight:700;margin-left:4px">' + n + '</span>' : '';
+    return n ? ' <span style="background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:12px;font-weight:700;margin-left:4px">' + n + '</span>' : '';
   }
 
   /* One card shape for every kind of suggestion. A site action shows its construction stage and
@@ -27152,7 +27159,7 @@ function viewCatalogue() {
       .reduce(function (a, s2) { return a + byStage[s2].length; }, 0);
 
     var h = '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
-      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#0f766e"><b>What to pitch, stage by stage</b></div>' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#0f766e"><b>What to pitch, stage by stage</b></div>' +
       '<h3 style="font-size:17px;margin:4px 0 2px">' + sites.length + ' site(s) on your book</h3>' +
       '<div class="meta" style="margin-bottom:4px">' +
       (winCount ? '<b style="color:#b91c1c">' + winCount + ' at a stage where the window is closing.</b> ' : '') +
@@ -27171,7 +27178,7 @@ function viewCatalogue() {
       h += '<div style="border-top:1px solid ' + (p.win ? '#fecaca' : '#ccfbf1') + ';padding:8px 0 5px">' +
         '<div style="font-weight:700;font-size:13.5px;color:' + (p.win ? '#b91c1c' : '#0f766e') + '">' +
         no + '. ' + esc(s2) + ' <span class="pill' + (p.win ? ' due' : ' teal') + '">' + list.length + ' site(s)</span>' +
-        (p.win ? ' <span style="font-size:11px;font-weight:600">window closing</span>' : '') + '</div>';
+        (p.win ? ' <span style="font-size:12px;font-weight:600">window closing</span>' : '') + '</div>';
       if (p.lines.length) {
         h += '<div class="meta" style="font-size:12.5px;color:#334155;margin:2px 0 4px"><b>Pitch:</b> ' +
           p.lines.map(function (l) { return esc(l); }).join(' &middot; ') + '</div>';
@@ -27181,7 +27188,7 @@ function viewCatalogue() {
           return '<button class="btn sm ghost" data-act="site-open" data-id="' + esc(st.id) + '">' +
             esc(st.client || st.name) + '</button>';
         }).join("") +
-        (list.length > 8 ? '<span class="meta" style="font-size:11.5px;align-self:center">+ ' + (list.length - 8) + ' more</span>' : '') +
+        (list.length > 8 ? '<span class="meta" style="font-size:12px;align-self:center">+ ' + (list.length - 8) + ' more</span>' : '') +
         '</div></div>';
     });
 
@@ -27209,7 +27216,7 @@ function viewCatalogue() {
           return '<button class="btn sm" data-act="' + (x.site ? "site-open" : "cl-open") + '" data-id="' + esc(x.id) + '">' +
             esc(x.nm) + '</button>';
         }).join("") +
-        (chase.length > 10 ? '<span class="meta" style="font-size:11.5px;align-self:center">+ ' + (chase.length - 10) + ' more</span>' : '') +
+        (chase.length > 10 ? '<span class="meta" style="font-size:12px;align-self:center">+ ' + (chase.length - 10) + ' more</span>' : '') +
         '</div></div>';
     }
     /* v6.9.293 - and the three details a record cannot work without, on the same screen and
@@ -27225,7 +27232,7 @@ function viewCatalogue() {
           return '<button class="btn sm" data-act="gap-open" data-n="' + esc(c.name) + '">' +
             esc(c.name) + ' <span style="opacity:.75;font-weight:500">' + esc(gapWords(c)) + '</span></button>';
         }).join("") +
-        (gaps.length > 10 ? '<span class="meta" style="font-size:11.5px;align-self:center">+ ' + (gaps.length - 10) + ' more</span>' : '') +
+        (gaps.length > 10 ? '<span class="meta" style="font-size:12px;align-self:center">+ ' + (gaps.length - 10) + ' more</span>' : '') +
         '</div></div>';
     }
     return h + '</div>';
@@ -27559,7 +27566,7 @@ function viewCatalogue() {
       '<p class="sub">Nothing has gone out yet. Read it, change any line you like, then send it. It goes out as a PDF with this text as the message.</p>' +
       '<label>Draft</label>' +
       '<textarea id="brief_msg" rows="14" style="font-size:13px">' + esc(briefText()) + '</textarea>' +
-      '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:4px">This is an internal note for your own team — no customer sees it.</div>' +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:4px">This is an internal note for your own team — no customer sees it.</div>' +
       '<div class="foot" style="flex-wrap:wrap;gap:6px">' +
       '<button class="btn ghost" data-act="close">Close</button>' +
       '<button class="btn ghost" data-act="brief-copy">Copy text</button>' +
@@ -27594,7 +27601,7 @@ function viewCatalogue() {
     var h = '<div class="card" style="background:#0b3b36;border-color:#0b3b36;color:#fff">' +
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
       '<div style="flex:1;min-width:180px">' +
-      '<div style="font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#5eead4"><b>The brief</b></div>' +
+      '<div style="font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:#5eead4"><b>The brief</b></div>' +
       '<h3 style="margin:3px 0 0;font-size:18px;color:#fff">' + (isPlan ? "Where this week goes" : "Where the week went") + '</h3>' +
       '<div style="font-size:12.5px;color:#a7f3e8;margin-top:2px">' +
       (isPlan ? "Monday plan — read it once, then work down it." : "Friday recap — including the part nobody likes.") +
@@ -27806,7 +27813,7 @@ function viewCatalogue() {
     if (!top.length) return "";
     var n0 = live.filter(function (a) { return agBand(a) === 0; }).length;
     var h = '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
-      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#b91c1c"><b>Your agent</b></div>' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b91c1c"><b>Your agent</b></div>' +
       '<h3 style="font-size:17px;margin:4px 0 2px">' +
       (n0 ? n0 + " thing(s) to do today" : live.length + " open suggestion(s)") + '</h3>' +
       '<div class="meta" style="margin-bottom:6px">Ranked from your sites, your money, your quotations and your service book. The message is already written.</div>';
@@ -27842,7 +27849,7 @@ function viewCatalogue() {
         : '') +
       '<label>Draft — edit it however you like</label>' +
       '<textarea id="ag_msg" rows="12" style="font-size:13.5px">' + esc(txt) + '</textarea>' +
-      '<div class="meta" style="font-size:11.5px;color:#94a3b8;margin-top:4px">' +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:4px">' +
       (who && who.mobile
         ? 'WhatsApp opens with this text already filled in for <b>' + esc(who.name) + '</b> (' + esc(who.mobile) + '). Nothing is sent until you press send inside WhatsApp.'
         : 'No mobile saved for this contact, so WhatsApp can’t be pre-addressed. Copy the text and paste it — or add the mobile on the site / partner record and it will be.') +
@@ -27878,7 +27885,7 @@ function viewCatalogue() {
         '<div class="meta">These sites have no construction stage yet, so the board can\'t pitch for them. One tap to set it.</div>';
       noStage.slice(0, 12).forEach(function (st) {
         h += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(st.name) + '</b>' +
-          (st.client ? ' <span style="font-size:11px;color:#64748b">' + esc(st.client) + '</span>' : '') + '</div>' +
+          (st.client ? ' <span style="font-size:12px;color:#64748b">' + esc(st.client) + '</span>' : '') + '</div>' +
           '<button class="btn sm" data-act="site-open" data-id="' + esc(st.id) + '">Set stage</button></div>';
       });
       h += '</div>';
@@ -27898,7 +27905,7 @@ function viewCatalogue() {
           var who = [st.architect ? "Arch: " + st.architect : "", st.plumber ? "Plumber: " + st.plumber : "", st.builder ? "Builder: " + st.builder : ""].filter(Boolean).join(" · ");
           h += '<div class="acts" style="align-items:center;border-top:1px solid #f1f5f9;margin-top:8px;padding-top:8px">' +
             '<div class="grow"><b>' + esc(st.name) + '</b>' + (st.client ? ' — ' + esc(st.client) : '') +
-            (who ? '<br><span style="font-size:11px;color:#64748b">' + esc(who) + '</span>' : '') + '</div>' +
+            (who ? '<br><span style="font-size:12px;color:#64748b">' + esc(who) + '</span>' : '') + '</div>' +
             (st.mobile ? '<a class="btn sm ghost" href="tel:' + esc(st.mobile) + '">Call</a>' : '') +
             '<button class="btn sm" data-act="matrix" data-id="' + esc(st.id) + '">Pitch matrix</button>' +
             '<button class="btn sm ghost" data-act="site-open" data-id="' + esc(st.id) + '">Stage</button></div>';
@@ -28007,18 +28014,18 @@ function viewCatalogue() {
     s.id = "ew_pick_css";
     s.textContent =
       ".ew-picklabel{font-size:12px;font-weight:700;color:#0f766e;margin:12px 0 7px;text-transform:uppercase;letter-spacing:.4px}" +
-      ".ew-picklabel .step{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#0f766e;color:#fff;font-size:11px;margin-right:6px}" +
+      ".ew-picklabel .step{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#0f766e;color:#fff;font-size:12px;margin-right:6px}" +
       ".ew-pickgrid{display:flex;flex-wrap:wrap;gap:8px}" +
       ".ew-pickbtn{border:1.5px solid #cbd5e1;background:#fff;border-radius:11px;padding:11px 15px;font-size:14px;font-weight:600;cursor:pointer;color:#0f172a;display:inline-flex;align-items:center;gap:7px;line-height:1}" +
       ".ew-pickbtn.brand{border-color:#0d9488;color:#0f766e;background:#f0fdfa}" +
       ".ew-pickbtn.brand:active,.ew-pickbtn.brand:hover{background:#ccfbf1}" +
       ".ew-pickbtn.cat{border-color:#a5b4fc;color:#3730a3;background:#eef2ff}" +
       ".ew-pickbtn.cat:active,.ew-pickbtn.cat:hover{background:#e0e7ff}" +
-      ".ew-pickbtn .cnt{background:#0f766e;color:#fff;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700}" +
+      ".ew-pickbtn .cnt{background:#0f766e;color:#fff;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:700}" +
       ".ew-pickbtn.cat .cnt{background:#4f46e5}" +
       ".ew-pickbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0 2px;padding:8px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:11px}" +
       ".ew-crumb{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;color:#0f172a;display:inline-flex;align-items:center;gap:7px}" +
-      ".ew-crumb .tag{font-size:9.5px;text-transform:uppercase;letter-spacing:.3px;color:#64748b;font-weight:700}" +
+      ".ew-crumb .tag{font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:#64748b;font-weight:700}" +
       ".ew-crumb .cx{color:#94a3b8;font-weight:700}" +
       ".ew-crumb:active,.ew-crumb:hover{border-color:#ef4444;color:#b91c1c}" +
       ".ew-crumb:hover .cx{color:#b91c1c}" +
@@ -28031,7 +28038,7 @@ function viewCatalogue() {
       ".noimg.bad{color:#b45309;background:#fffbeb;border:1px solid #fde68a}" +
       ".plist .prow .pinfo{flex:1 1 auto;min-width:0}" +
       ".plist .prow .pname{font-size:13.5px;font-weight:600;line-height:1.25}" +
-      ".plist .prow .pmeta{font-size:11.5px;color:#94a3b8}" +
+      ".plist .prow .pmeta{font-size:12px;color:#94a3b8}" +
       ".plist .prow .pqty{flex:0 0 auto;display:flex;align-items:center;gap:6px}" +
       ".plist .prow .pqty .ch-q,.plist .prow .pqty .rt-q{width:56px;text-align:center}" +
       /* Colour-coded stage actions, so Approve / Dispatch / Receipt / Billing read apart at a glance.
@@ -28046,9 +28053,9 @@ function viewCatalogue() {
       ".btn.act-reset:hover{background:#fef2f2!important}" +
       /* Grouped challan book: a solid teal band per sales exec, a lighter left-ruled strip per client. */
       ".ch-exec{margin:20px 0 4px;padding:9px 13px;background:#0f766e;color:#fff;border-radius:10px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:8px}" +
-      ".ch-exec .sub{font-size:11px;font-weight:600;background:rgba(255,255,255,.2);padding:2px 9px;border-radius:999px;white-space:nowrap}" +
+      ".ch-exec .sub{font-size:12px;font-weight:600;background:rgba(255,255,255,.2);padding:2px 9px;border-radius:999px;white-space:nowrap}" +
       ".ch-client{margin:12px 0 6px;padding:6px 11px;border-left:4px solid #0d9488;background:#f0fdfa;border-radius:0 8px 8px 0;font-weight:700;font-size:13.5px;color:#134e4a;display:flex;justify-content:space-between;align-items:center;gap:8px}" +
-      ".ch-client .sub{font-size:11px;font-weight:600;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:999px;white-space:nowrap}" +
+      ".ch-client .sub{font-size:12px;font-weight:600;color:#0f766e;background:#ccfbf1;padding:2px 8px;border-radius:999px;white-space:nowrap}" +
       /* Compact lead/client cards: one header line (name+pills left, PL/AR badges + Call/Edit
          right), one scrollable brand line. PL/AR badge: green = named (with phone), red = fill. */
       ".card.lc-compact{padding:8px 12px;margin-bottom:6px}" +
@@ -28063,9 +28070,13 @@ function viewCatalogue() {
       ".lc-id{display:flex;align-items:center;gap:5px;min-width:0;flex:1 1 320px;flex-wrap:wrap;overflow:visible}" +
       ".lc-id b{font-size:13.5px;flex:0 1 auto;min-width:170px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
       /* a shade smaller than free-standing pills, so more of them fit before wrapping */
-      ".lc-id .pill,.lc-id .bs{font-size:10.5px;padding:2px 7px;white-space:nowrap;line-height:1.5}" +
-      ".lc-right{display:flex;align-items:center;gap:5px;flex:0 0 auto;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}" +
-      ".pl-badge{font-size:10.5px;font-weight:700;border-radius:999px;padding:3px 8px;white-space:nowrap;border:0}" +
+      ".lc-id .pill,.lc-id .bs{font-size:12px;padding:2px 7px;white-space:nowrap;line-height:1.5}" +
+      /* v6.9.401 - flex:0 0 auto never shrank, so the Deliveries card's action column ran 558px
+         past the edge of a 360px phone (measured by booting it at 360). It may shrink now, and on
+         a phone it takes a line of its own under the name. */
+      ".lc-right{display:flex;align-items:center;gap:5px;flex:1 1 auto;min-width:0;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}" +
+      "@media(max-width:700px){.lc-right{flex:1 1 100%;margin-left:0;justify-content:flex-start}}" +
+      ".pl-badge{font-size:12px;font-weight:700;border-radius:999px;padding:3px 8px;white-space:nowrap;border:0}" +
       /* on a phone the name gets the first line to itself - there is no width to share */
       "@media(max-width:700px){.lc-id b{min-width:100%;flex:1 1 100%}}" +
       ".pl-ok{background:#dcfce7;color:#15803d}" +
@@ -28193,7 +28204,7 @@ function viewCatalogue() {
         : '') +
       '</div>' +
       (_anyPicked
-        ? '<div class="meta" style="font-size:11.5px;margin:3px 2px 0;color:#64748b">' +
+        ? '<div class="meta" style="font-size:12px;margin:3px 2px 0;color:#64748b">' +
           'Fittings, elbows, valves — anything the job needs can go on the same challan. ' +
           'The ' + (z.items || []).length + ' line(s) already picked stay where they are.</div>'
         : '');
@@ -28330,7 +28341,7 @@ function viewCatalogue() {
          field is found, not a warning about being empty. The box's own colour still does
          the empty/filled work, green with a tick once a number is in it. */
       '<div id="m_manual_box" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:10px 0">' +
-        '<label id="m_manual_lab" for="m_manual" style="margin:0;font-size:11px;font-weight:800;' +
+        '<label id="m_manual_lab" for="m_manual" style="margin:0;font-size:12px;font-weight:800;' +
           'letter-spacing:.02em;color:#b91c1c;background:#fee2e2;border:1px solid #fecaca;' +
           'border-radius:6px;padding:3px 8px;white-space:nowrap">Manual Challan No</label>' +
         '<input id="m_manual" inputmode="numeric" placeholder="1247" value="' +
@@ -28356,7 +28367,7 @@ function viewCatalogue() {
       '<h3 style="margin:14px 0 4px;font-size:14px">Products ' +
       '<span class="pill teal">' + picked.length + ' picked</span>' +
       /* v6.9.273 - as many brands as the job needs, on one challan */
-      (picked.length ? '<span class="meta" style="font-weight:400;font-size:11.5px;margin-left:8px;color:#64748b">from any brand \u2014 add as many as the job needs</span>' : '') +
+      (picked.length ? '<span class="meta" style="font-weight:400;font-size:12px;margin-left:8px;color:#64748b">from any brand \u2014 add as many as the job needs</span>' : '') +
       '</h3>' +
       chExtraBox() +
       '<div id="ch_pick">' + chPicker() + '</div>' +
@@ -28375,17 +28386,17 @@ function viewCatalogue() {
                    X-1787504013919 says less than nothing. Each line now says what it is. */
                 '<td style="padding:6px 8px"><b>' + esc(i.desc) + '</b><br>' +
                 (isManualLine(i)
-                  ? '<span class="pill" style="background:#e0e7ff;color:#3730a3;font-size:10.5px">worked out by hand</span>' +
-                    ' <span style="font-size:11px;color:' + ((Number(i.rate) || 0) < 0 ? '#b91c1c' : '#94a3b8') + '">' +
+                  ? '<span class="pill" style="background:#e0e7ff;color:#3730a3;font-size:12px">worked out by hand</span>' +
+                    ' <span style="font-size:12px;color:' + ((Number(i.rate) || 0) < 0 ? '#b91c1c' : '#94a3b8') + '">' +
                     ((Number(i.rate) || 0) < 0 ? '\u2212' + money(-(Number(i.rate) || 0)) + ' off' : money(Number(i.rate) || 0) + ' on') +
                     ' \u00b7 no discount \u00b7 ' + (i.brand ? esc(i.brand) : 'earns nobody') + '</span>'
                 : isJobLine(i)
-                  ? '<span class="pill" style="background:#ede9fe;color:#5b21b6;font-size:10.5px">job work</span>' +
-                    ' <span style="font-size:11px;color:#94a3b8">' + money(Number(i.rate) || 0) + ' \u00b7 no discount, earns nobody</span>'
+                  ? '<span class="pill" style="background:#ede9fe;color:#5b21b6;font-size:12px">job work</span>' +
+                    ' <span style="font-size:12px;color:#94a3b8">' + money(Number(i.rate) || 0) + ' \u00b7 no discount, earns nobody</span>'
                   : isOtherLine(i)
-                    ? '<span class="pill" style="background:#fef3c7;color:#92400e;font-size:10.5px">not in the price list</span>' +
-                      ' <span style="font-size:11px;color:#94a3b8">' + esc(i.brand || "no brand") + ' \u00b7 ' + money(Number(i.rate) || 0) + ' each</span>'
-                    : '<span style="font-size:11px;color:#94a3b8">' + esc(i.code) + '</span>') + '</td>' +
+                    ? '<span class="pill" style="background:#fef3c7;color:#92400e;font-size:12px">not in the price list</span>' +
+                      ' <span style="font-size:12px;color:#94a3b8">' + esc(i.brand || "no brand") + ' \u00b7 ' + money(Number(i.rate) || 0) + ' each</span>'
+                    : '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + '</span>') + '</td>' +
                 '<td style="padding:4px 6px;text-align:center">' +
                 ((isJobLine(i) || isManualLine(i))
                   ? '<span style="font-weight:700;color:#64748b" title="One amount, not a quantity">1</span>'
@@ -28585,14 +28596,14 @@ function viewCatalogue() {
         '<div style="font-weight:800;font-size:13px;color:' + ink + ';line-height:1.3">' +
           (none ? '' : c.no + '. ') + esc(c.stage) +
           ' <span class="pill' + (none || win ? ' due' : '') + '">' + c.rows.length + '</span></div>' +
-        (win ? '<div style="font-size:10.5px;font-weight:700;color:#b45309;letter-spacing:.04em;' +
+        (win ? '<div style="font-size:12px;font-weight:700;color:#b45309;letter-spacing:.04em;' +
                'text-transform:uppercase;margin-top:2px">window closing</div>' : '') +
         (none
-          ? '<div class="meta" style="font-size:11.5px;margin-top:4px;color:#b91c1c">Nothing can be ' +
+          ? '<div class="meta" style="font-size:12px;margin-top:4px;color:#b91c1c">Nothing can be ' +
             'pitched at the right moment until the stage is set. Press &rarr; to start at ' +
             esc(STAGES2[0]) + '.</div>'
           : (c.pitch && c.pitch.lines.length
-              ? '<div class="meta" style="font-size:11.5px;margin-top:4px;color:#334155"><b>Pitch:</b> ' +
+              ? '<div class="meta" style="font-size:12px;margin-top:4px;color:#334155"><b>Pitch:</b> ' +
                 esc(c.pitch.lines.join(" · ")) + '</div>'
               : ''));
       c.rows.slice(0, BOARD_CAP).forEach(function (cl) {
@@ -28603,9 +28614,9 @@ function viewCatalogue() {
              acted on, so the tap lands on the selling surface rather than the address book. */
           '<div data-act="bb-open" data-n="' + esc(cl.name) + '" style="cursor:pointer">' +
             '<div style="font-weight:700;font-size:12.5px;color:#0f172a">' + esc(cl.name) + '</div>' +
-            (cl.location ? '<div class="meta" style="font-size:11.5px">' + esc(cl.location) + '</div>' : '') +
+            (cl.location ? '<div class="meta" style="font-size:12px">' + esc(cl.location) + '</div>' : '') +
             (seesAllClients() && (cl.ownedBy || cl.createdBy)
-              ? '<div class="meta" style="font-size:11px;color:#94a3b8">' + esc(cl.ownedBy || cl.createdBy) + '</div>'
+              ? '<div class="meta" style="font-size:12px;color:#94a3b8">' + esc(cl.ownedBy || cl.createdBy) + '</div>'
               : '') +
           '</div>' +
           '<div class="row" style="gap:5px;margin-top:5px;align-items:center">' +
@@ -28620,7 +28631,7 @@ function viewCatalogue() {
          column that has lied about the size of the pile - which is the one thing a board is
          for. */
       if (c.rows.length > BOARD_CAP) {
-        h += '<div class="meta" style="font-size:11.5px;margin-top:7px;color:' + ink + '">and ' +
+        h += '<div class="meta" style="font-size:12px;margin-top:7px;color:' + ink + '">and ' +
           (c.rows.length - BOARD_CAP) + ' more in this stage</div>';
       }
       h += '</div>';
@@ -28778,7 +28789,7 @@ function viewCatalogue() {
 
     /* ---- the two kinds of money-out that are NOT here, said out loud ---- */
     h += '<div class="card" style="border-color:#e2e8f0;background:#f8fafc;margin-top:14px">' +
-      '<div class="meta" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
       '<b>Not on this screen</b></div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:4px">' +
       '<b>Driver freight</b> is settled in the <b>Challan app</b>, because a driver is paid only once ' +
@@ -28838,8 +28849,8 @@ function viewCatalogue() {
     if (!list.length) h += '<div class="empty">No crashes recorded on this device. 🎉</div>';
     list.forEach(function (e) {
       h += '<div class="card"><h3 style="font-size:13px;color:#b91c1c">' + esc(e.msg || "error") + '</h3>' +
-        '<div class="meta" style="font-size:11.5px">' + esc(String(e.t).replace("T", " ").slice(0, 19)) + ' &middot; v' + esc(e.v) + ' &middot; ' + esc(e.where || "") + (e.tab ? ' &middot; tab: ' + esc(e.tab) : "") + (e.user ? ' &middot; ' + esc(e.user) : "") + '</div>' +
-        (e.stack ? '<pre style="white-space:pre-wrap;font-size:10px;color:#64748b;margin:6px 0 0;max-height:130px;overflow:auto">' + esc(e.stack) + '</pre>' : "") + '</div>';
+        '<div class="meta" style="font-size:12px">' + esc(String(e.t).replace("T", " ").slice(0, 19)) + ' &middot; v' + esc(e.v) + ' &middot; ' + esc(e.where || "") + (e.tab ? ' &middot; tab: ' + esc(e.tab) : "") + (e.user ? ' &middot; ' + esc(e.user) : "") + '</div>' +
+        (e.stack ? '<pre style="white-space:pre-wrap;font-size:12px;color:#64748b;margin:6px 0 0;max-height:130px;overflow:auto">' + esc(e.stack) + '</pre>' : "") + '</div>';
     });
     h += '<div class="foot"><button class="btn ghost" data-act="crash-clear">Clear log</button>' +
       '<button class="btn" data-act="close">Close</button></div>';
@@ -28921,7 +28932,7 @@ function viewCatalogue() {
           '<h2 style="color:#0f766e;margin:0 0 8px">Energy World hit a snag</h2>' +
           '<p style="color:#64748b">The app caught an error and paused to keep your data safe. Your saved data is untouched.</p>' +
           '<button onclick="location.reload()" style="padding:11px 20px;border:0;border-radius:10px;background:#0d9488;color:#fff;font-size:15px;cursor:pointer">Reload the app</button>' +
-          '<p style="margin-top:16px;font-size:11px;color:#94a3b8">Saved to the crash log (v' + APP_VERSION + ').</p></div>';
+          '<p style="margin-top:16px;font-size:12px;color:#94a3b8">Saved to the crash log (v' + APP_VERSION + ').</p></div>';
       } catch (x) { }
     }
   }
@@ -29064,7 +29075,7 @@ function viewCatalogue() {
     var m = qzMargin(z);
     if (!m.tot) return "";
     var lp = landingPcts();
-    head += '<div class="meta" style="font-size:11.5px;margin-bottom:8px">Landed cost = latest purchase rate × (1 + landing ' + (Number(lp.global) || 0) + '%). ' +
+    head += '<div class="meta" style="font-size:12px;margin-bottom:8px">Landed cost = latest purchase rate × (1 + landing ' + (Number(lp.global) || 0) + '%). ' +
       'Never printed on the quote, never shown to an executive.</div>';
     if (!m.cov) {
       return head + '<div class="meta" style="font-size:12.5px;color:#b91c1c">No purchase rate is set for any of these ' + m.tot + ' line(s), so margin cannot be worked out. ' +
@@ -29081,7 +29092,7 @@ function viewCatalogue() {
       }
       h += '<span style="font-size:12px;color:#475569">sell ' + money(r.netCov) + ' &middot; cost ' + money(r.landed) + '</span>' +
         '<b style="font-size:13px;color:' + marginColour(r.pct) + '">' + money(r.margin) + ' &middot; ' + r.pct.toFixed(1) + '%</b>' +
-        (known ? '' : '<span style="font-size:11px;color:#94a3b8;flex:1 1 100%">on ' + r.cov + ' of ' + r.tot + ' line(s)</span>') +
+        (known ? '' : '<span style="font-size:12px;color:#94a3b8;flex:1 1 100%">on ' + r.cov + ' of ' + r.tot + ' line(s)</span>') +
         '</div>';
     });
     h += '<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;border-top:2px solid #0d9488;padding:8px 0 2px">' +
@@ -29089,7 +29100,7 @@ function viewCatalogue() {
       '<span style="font-size:12px;color:#475569">sell ' + money(m.netCov) + ' &middot; cost ' + money(m.landed) + '</span>' +
       '<b style="font-size:14px;color:' + marginColour(m.pct) + '">' + money(m.margin) + ' &middot; ' + m.pct.toFixed(1) + '%</b></div>';
     /* the honest bit - say what is NOT counted, in the same breath as the number */
-    h += '<div class="meta" style="font-size:11.5px;margin-top:4px">' +
+    h += '<div class="meta" style="font-size:12px;margin-top:4px">' +
       (m.cov === m.tot
         ? 'Every line has a purchase rate — this covers the whole quote.'
         : '<b>Margin known on ' + m.cov + ' of ' + m.tot + ' line(s)</b> — ' + money(m.netCov) + ' of ' + money(m.net) +
@@ -29098,10 +29109,10 @@ function viewCatalogue() {
     if (m.below.length) {
       h += '<div class="card" style="margin-top:8px;border-color:#fecaca;background:#fef2f2">' +
         '<b style="color:#b91c1c;font-size:13px">Below cost — ' + m.below.length + ' line(s)</b>' +
-        '<div class="meta" style="font-size:11.5px">The discounted rate is under what the item costs us landed.</div>';
+        '<div class="meta" style="font-size:12px">The discounted rate is under what the item costs us landed.</div>';
       m.below.slice(0, 12).forEach(function (x) {
         h += '<div style="border-top:1px solid #fee2e2;margin-top:5px;padding-top:5px;font-size:12px">' +
-          '<b>' + esc(x.desc) + '</b> <span style="color:#94a3b8;font-size:11px">' + esc(x.code) + '</span><br>' +
+          '<b>' + esc(x.desc) + '</b> <span style="color:#94a3b8;font-size:12px">' + esc(x.code) + '</span><br>' +
           '<span style="color:#b91c1c">selling at ' + money(x.dr) + ' &middot; landed ' + money(x.landed) + ' &middot; ' +
           money((x.landed - x.dr) * x.qty) + ' short on ' + qShow(x.qty) + ' unit(s)</span></div>';
       });
@@ -29149,7 +29160,7 @@ function viewCatalogue() {
       h += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3 style="margin:0 0 3px;color:#b91c1c">Reorder now — ' + lowList.length + ' item(s)</h3>' +
         '<div class="meta" style="font-size:12px">Out of stock, or at/below the reorder level you set. Tap one to buy against, or to adjust its level.</div>';
       lowList.slice(0, 25).forEach(function (x) {
-        h += '<div class="acts" style="align-items:center;border-top:1px solid #fee2e2;margin-top:6px;padding-top:6px"><div class="grow"><b>' + esc(x.desc) + '</b> <span style="font-size:11px;color:#94a3b8">' + esc(x.code) + '</span>' +
+        h += '<div class="acts" style="align-items:center;border-top:1px solid #fee2e2;margin-top:6px;padding-top:6px"><div class="grow"><b>' + esc(x.desc) + '</b> <span style="font-size:12px;color:#94a3b8">' + esc(x.code) + '</span>' +
           '<br><span style="font-size:12px;color:#b91c1c">on hand <b>' + x.onhand + '</b>' + (x.reorder ? ' · reorder at ' + x.reorder : ' · no level set') + '</span></div>' +
           '<button class="btn sm ghost" data-act="stock-item" data-code="' + esc(x.code) + '">Set level</button></div>';
       });
@@ -29160,7 +29171,7 @@ function viewCatalogue() {
       (_lpG ? '<b>Landing ' + _lpG + '%</b> is added to every purchase rate to work out landed cost on a quote.'
             : '<b>No landing % set.</b> Freight, loading and breakage are not counted, so quote margins read higher than they are.') +
       ' <button class="btn sm ghost" data-act="stock-landing">Change</button></div></div>';
-    if (totVal > 0) h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><b>Stock value (approx):</b> ' + money(totVal) + ' <span style="font-size:11px;color:#64748b">— on-hand × latest purchase rate, for items where a rate is set.</span></div>';
+    if (totVal > 0) h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><b>Stock value (approx):</b> ' + money(totVal) + ' <span style="font-size:12px;color:#64748b">— on-hand × latest purchase rate, for items where a rate is set.</span></div>';
 
     h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
       '<thead><tr style="background:#0b3b36;color:#fff"><th style="padding:6px 8px;text-align:left">Product</th>' +
@@ -29170,13 +29181,13 @@ function viewCatalogue() {
         var col = x.zero ? '#b91c1c' : (x.low ? '#c2410c' : '#0f766e');
         var bg = x.zero ? '#fef2f2' : (x.low ? '#fff7ed' : (i % 2 ? '#f8fafc' : '#fff'));
         return '<tr data-act="stock-item" data-code="' + esc(x.code) + '" style="border-bottom:1px solid #eef2f7;background:' + bg + ';cursor:pointer">' +
-          '<td style="padding:6px 8px"><div style="font-weight:600">' + esc(x.desc) + '</div><div style="font-size:11px;color:#94a3b8">' + esc(x.code) + (x.brand ? ' &middot; ' + esc(x.brand) : '') +
+          '<td style="padding:6px 8px"><div style="font-weight:600">' + esc(x.desc) + '</div><div style="font-size:12px;color:#94a3b8">' + esc(x.code) + (x.brand ? ' &middot; ' + esc(x.brand) : '') +
           '<br>in ' + x.inq + ' &middot; del ' + x.del + ' &middot; ret ' + x.ret + (x.rate ? ' &middot; @' + money(x.rate) : '') + '</div></td>' +
           '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + col + '">' + x.onhand + '</td>' +
           '<td style="padding:6px 8px;text-align:right;color:#64748b">' + (x.reorder ? x.reorder : '—') + '</td>' +
           '<td style="padding:6px 8px;text-align:right;color:#64748b">' + (x.value ? money(x.value) : '—') + '</td></tr>';
       }).join("") + '</tbody></table></div>' +
-      '<div class="meta" style="font-size:11.5px;margin-top:6px">Tap any row to set its <b>reorder level</b> and <b>purchase rate</b>. Showing products with a stock entry, a delivery, or a reorder level.</div>';
+      '<div class="meta" style="font-size:12px;margin-top:6px">Tap any row to set its <b>reorder level</b> and <b>purchase rate</b>. Showing products with a stock entry, a delivery, or a reorder level.</div>';
     return h;
   }
 
@@ -29211,7 +29222,7 @@ function viewCatalogue() {
       'Quote margin uses <b>purchase rate × (1 + this)</b> as the landed cost. If you are not sure, 3–5% is the usual range; you can change it any time.</div>' +
       '<div ' + lbl + '>Landing % applied to every product</div>' +
       '<input id="sl_pct" inputmode="decimal" value="' + esc(cur || "") + '" placeholder="e.g. 4" ' + inp + '/>' +
-      '<div class="meta" style="font-size:11.5px;margin-top:6px">A single item can override this from its own row on the Stock screen.</div>' +
+      '<div class="meta" style="font-size:12px;margin-top:6px">A single item can override this from its own row on the Stock screen.</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="stock-landing-save">Save</button></div>';
   }
@@ -29551,8 +29562,6 @@ function viewCatalogue() {
       ".nvrow,.nvitems{display:flex;flex-wrap:wrap;align-items:center;gap:5px;width:100%}" +
       ".nvrow{padding:7px 0}" +
       ".nvitems{background:#f8fafc;border-top:1px solid #e2e8f0;margin:0 -10px;padding:8px 10px 9px}" +
-      /* v6.9.396 - the eight are the one row that matters, so they are the bigger target */
-      "nav button.nvg{font-size:13.5px;padding:8px 14px;border-radius:10px}" +
       /* every nav item is a chip now - a real tap target, and it wraps */
       "nav button.nvb{background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:6px 12px;" +
       "font-family:inherit;font-size:13px;font-weight:600;color:#475569;cursor:pointer;white-space:nowrap;line-height:1.35}" +
@@ -29563,13 +29572,22 @@ function viewCatalogue() {
       "font-family:inherit;font-size:12.5px;font-weight:700;color:#334155;cursor:pointer;white-space:nowrap;line-height:1.35}" +
       "nav button.nvg:hover{border-color:#5eead4}" +
       "nav button.nvg.on{background:#0f766e;border-color:#0f766e;color:#fff}" +
+      /* v6.9.396 said "the eight are the one row that matters, so they are the bigger
+         target" - and wrote that rule ABOVE the base rule of equal weight, which then
+         overrode it line for line. Measured at 360: the chips were 33px tall at 12.5px,
+         exactly what the base rule says, and the "bigger target" had never once applied.
+         Same fault as the Service app's wide-screen block: written, correct, and silent.
+         v6.9.401 - it lives BELOW the base rule now, and both kinds of chip carry a 40px
+         floor: 921 of the CRM's 1,060 taps were under 40px, and 436 of them were these. */
+      "nav button.nvg{font-size:13.5px;padding:0 14px;border-radius:10px;min-height:40px}" +
+      "nav button.nvb{min-height:40px;padding:0 12px}" +
       ".nvdot{position:absolute;top:3px;right:4px;width:7px;height:7px;border-radius:50%;background:#dc2626;" +
       "box-shadow:0 0 0 2px #fff}" +
       /* a phone: slightly tighter, still no sideways swipe */
       "@media(max-width:560px){nav{padding:6px 8px 0!important}" +
       ".nvitems{margin:0 -8px;padding:7px 8px 8px}" +
-      "nav button.nvb{font-size:12.5px;padding:6px 10px}" +
-      "nav button.nvg{font-size:12.5px;padding:7px 10px}}";
+      "nav button.nvb{font-size:12.5px;padding:0 10px}" +
+      "nav button.nvg{font-size:13px;padding:0 12px}}";
     document.head.appendChild(s);
   }
   /* v6.9.203 THE HEADER ON A PHONE.
@@ -29595,13 +29613,15 @@ function viewCatalogue() {
       ".top>img{height:26px}" +
       /* #gq carries its width as an inline style, so this has to shout to be heard */
       "#gq{order:9;flex:1 0 100%!important;min-width:0!important;max-width:none!important;" +
-      "margin:0!important;padding:8px 12px!important}" +
+      "margin:0!important;padding:8px 12px!important;min-height:40px}" +
       ".top .who{margin-left:auto;min-width:0;display:flex;flex-wrap:wrap;" +
       "align-items:center;justify-content:flex-end;gap:4px;text-align:left;line-height:1.2}" +
       ".top .who b{display:inline;font-size:12px;max-width:118px;white-space:nowrap;" +
       "overflow:hidden;text-overflow:ellipsis}" +
       ".top .who>div{margin-top:0!important;flex-wrap:wrap}" +
-      ".top .who .btn.sm{padding:5px 8px;font-size:11.5px}" +
+      /* v6.9.401 - 26px tall and 11.5px: the four buttons a thumb uses most, the smallest
+         on the screen. 40px and 12px now, and they wrap to a row of their own. */
+      ".top .who .btn.sm{padding:5px 10px;font-size:12px;min-height:40px}" +
       "nav{top:0}" +
       "}";
     document.head.appendChild(s);
@@ -29626,9 +29646,26 @@ function viewCatalogue() {
       "backdrop-filter:saturate(180%) blur(6px);-webkit-backdrop-filter:saturate(180%) blur(6px);" +
       "border-bottom:1px solid #e2e8f0;border-radius:18px 18px 0 0}" +
       ".modalx .btn{padding:5px 12px;font-size:12.5px}" +
+      /* v6.9.401 THE 40px FLOOR. On a phone, anything a thumb taps is at least 40px tall
+         and 40px wide: .btn.sm was 29-31px (about 170 of them across the app), the
+         popup's Close 27px, the compact/expand switch 36px, the amber "Set district"
+         chip 24px, the group headline in the client book 35px. One breakpoint - 639px,
+         the header's - so the Mac keeps its denser rows. Measured by probe_taps.mjs. */
+      "@media(max-width:639px){" +
+      ".btn.sm{min-height:40px;min-width:40px}" +
+      ".modalx .btn{min-height:40px;padding:5px 14px}" +
+      ".cv-seg button{min-height:40px}.cv-set{min-height:40px}" +
+      ".ch-exec{min-height:40px}" +
+      ".bkno{min-height:40px;padding:0 10px!important}" +
+      /* second measurement: what the first pass left, by rule */
+      ".btn{min-height:40px}" +
+      "main input:not([type=checkbox]):not([type=radio]):not([type=file]),main select{min-height:40px}" +
+      "tr[data-act]>td{padding-top:13px!important;padding-bottom:13px!important}" +
+      ".ch-client{min-height:40px}.chip{min-height:40px}" +
+      "}" +
       /* v6.9.181 DUE AMT pill - one look for owed money across every tab */
       ".due-amt{display:inline-flex;align-items:center;gap:5px;background:#fee2e2;border:1px solid #fca5a5;border-radius:999px;padding:2px 9px 2px 3px;white-space:nowrap;vertical-align:middle;line-height:1.3}" +
-      ".due-amt-k{background:#dc2626;color:#fff;border-radius:999px;padding:2px 7px;font-size:9.5px;font-weight:800;letter-spacing:.7px}" +
+      ".due-amt-k{background:#dc2626;color:#fff;border-radius:999px;padding:2px 7px;font-size:12px;font-weight:800;letter-spacing:.7px}" +
       ".due-amt b{color:#b91c1c;font-size:12.5px;font-weight:800}" +
       ".due-amt.lg{padding:3px 12px 3px 4px}.due-amt.lg b{font-size:16px}" +
       ".due-amt.on{background:#dc2626;border-color:#dc2626}.due-amt.on .due-amt-k{background:#fff;color:#dc2626}.due-amt.on b{color:#fff}" +
@@ -29644,14 +29681,14 @@ function viewCatalogue() {
       ".pv-t:hover{border-color:#94a3b8}" +
       ".pv-i{aspect-ratio:1/1;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden}" +
       ".pv-i img{width:100%;height:100%;object-fit:contain}" +
-      ".pv-i span{font-size:9px;color:#cbd5e1}" +
+      ".pv-i span{font-size:12px;color:#cbd5e1}" +
       ".pv-b{padding:5px 6px 7px;display:flex;flex-direction:column;gap:1px;flex:1}" +
-      ".pv-n{font-size:10.5px;line-height:1.25;font-weight:600;color:#0f172a;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}" +
-      ".pv-c{font-size:9px;color:#94a3b8}" +
-      ".pv-p{margin-top:auto;padding-top:2px;font-size:11.5px;font-weight:700;color:#0f766e;white-space:nowrap}" +
+      ".pv-n{font-size:12px;line-height:1.25;font-weight:600;color:#0f172a;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}" +
+      ".pv-c{font-size:12px;color:#94a3b8}" +
+      ".pv-p{margin-top:auto;padding-top:2px;font-size:12px;font-weight:700;color:#0f766e;white-space:nowrap}" +
       ".pv-p i{font-size:8.5px;font-weight:400;color:#94a3b8;font-style:normal}" +
       "@media(max-width:560px){.pv-grid{grid-template-columns:repeat(auto-fill,minmax(112px,1fr))}" +
-      ".pv-n{font-size:11.5px}.pv-c{font-size:9.5px}.pv-p{font-size:12.5px}.pv-p i{font-size:9.5px}" +
+      ".pv-n{font-size:12px}.pv-c{font-size:12px}.pv-p{font-size:12.5px}.pv-p i{font-size:12px}" +
       ".pv-b{padding:6px 7px 8px}}";
     document.head.appendChild(s);
   }
@@ -29749,7 +29786,7 @@ function viewCatalogue() {
         '<button class="btn sm ghost" data-act="reload-app">Reload app</button></div></div>';
     }
     h += '<main>' + body +
-      '<div class="foot-note">Energy World Team <span data-act="crash-log" style="cursor:pointer;border-bottom:1px dotted #cbd5e1" title="View crash log">v' + APP_VERSION + '</span> &middot; data lives in your Google Sheet</div></main>';
+      '<div class="foot-note">Energy World Team <span data-act="crash-log" style="cursor:pointer;border-bottom:1px dotted #cbd5e1;display:inline-block;padding:13px 6px;margin:-13px 0" title="View crash log">v' + APP_VERSION + '</span> &middot; data lives in your Google Sheet</div></main>';
 
     h += '</div>';
     /* bump the modal generation whenever a DIFFERENT form is shown, so a save that started under an
@@ -30553,11 +30590,11 @@ function viewCatalogue() {
     if (act === "rm-preview") {
       var cp = val("rm_code"), fp = val("rm_fam");
       if (!cp && !fp) { toast("Give a code or family prefix."); return; }
-      t.disabled = true; t.textContent = "Checking...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "Checking...";
       api("catalogRemap", { codePrefix: cp, familyPrefix: fp, preview: true }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Preview failed."); render(); return; }
         S.rmPreview = r; render();
-      });
+      }).catch(function (e) { btnBack(t, _lbl); toast("Could not check the catalogue \u2014 " + apiWhy(e) + ". Nothing was changed."); });
       return;
     }
     if (act === "rm-apply") {
@@ -30565,13 +30602,13 @@ function viewCatalogue() {
       if (!cp2 && !fp2) { toast("Give a code or family prefix."); return; }
       if (!to) { toast("Pick the brand to move them to."); return; }
       if (!window.confirm("Move matching products to " + to + "? This edits the master catalogue sheet.")) return;
-      t.disabled = true; t.textContent = "Moving...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "Moving...";
       api("catalogRemap", { codePrefix: cp2, familyPrefix: fp2, toBrand: to }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Move failed."); render(); return; }
         S.rmPreview = null;
         toast(r.moved + " product(s) moved to " + to + ".");
         loadCatalog().then(function () { refresh(); });
-      });
+      }).catch(function (e) { btnBack(t, _lbl); toast("The products were NOT moved \u2014 " + apiWhy(e) + ". Preview again before retrying."); });
       return;
     }
     if (act === "br-list") { var _bb = t.getAttribute("data-b"); S.brandOpen = S.brandOpen || {}; S.brandOpen[_bb] = !S.brandOpen[_bb]; render(); return; }
@@ -31057,7 +31094,10 @@ function viewCatalogue() {
       var qg2 = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
       if (!qg2) return;
       var sg = presSummary(qg2);
-      t.disabled = true; t.textContent = "Building and sending...";
+      /* v6.9.401 - building a proposal PDF and pushing it to Telegram is 5-10 s on a phone.
+         The preview closed only at the end, and closed whatever was open by then - which
+         could be a different form. It closes now, and the result comes back as a toast. */
+      S.modal = null; toast("Sending the proposal to Telegram\u2026"); render();
       quotePresPdf(qg2).then(function (d) {
         var b64 = d.output("datauristring").split(",")[1];
         return api("tgSend", {
@@ -31068,27 +31108,26 @@ function viewCatalogue() {
             "\n" + moneyAscii(sg.mrp) + " at MRP\nBy " + (S.user || "")
         });
       }).then(function (r) {
-        toast(r && r.ok ? "Proposal sent to Telegram." : "Telegram send failed - try WhatsApp or download.");
-        if (r && r.ok) presLog(qg2, "Telegram");
-        S.modal = null; render();
+        toast(r && r.ok ? "Proposal sent to Telegram." : "Telegram send failed - open the quote and try WhatsApp or download.");
+        if (r && r.ok) { presLog(qg2, "Telegram"); renderBg(); }
       }).catch(function (e) {
         console.warn("[pres-tg]", e);
-        toast("Could not send the proposal.");
-        S.modal = null; render();
+        toast("The proposal did not go to Telegram \u2014 " + apiWhy(e) + ". Open the quote and try again.");
       });
       return;
     }
     if (act === "q-tg") {
       var qt = S.data.quotes.filter(function (x) { return x.id === id; })[0];
       if (!qt) return;
-      t.disabled = true; t.textContent = "Sending...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "Sending...";
       quotePdf(qt).then(function (d) {
         var b64 = d.output("datauristring").split(",")[1];
         return api("tgSend", { bot: "TG_QUOTES", pdfBase64: b64,
           filename: String(qt.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf",
           caption: "<b>Quotation " + qt.quoteNo + "</b>\n" + qt.client + "\n" + qt.brand + "\nSub-total Rs. " + qt.net + " (GST as actual)\nBy " + qt.createdBy
         });
-      }).then(function (r) { toast(r && r.ok ? "Quote sent to Telegram." : "Send failed."); renderBg(); });
+      }).then(function (r) { toast(r && r.ok ? "Quote sent to Telegram." : "Send failed."); renderBg(); })
+        .catch(function (e) { btnBack(t, _lbl); toast("The quote did not go to Telegram \u2014 " + apiWhy(e) + ". Try again, or send it on WhatsApp."); });
       return;
     }
     if (act === "qz-new") { S.qz = { step: 1, location: "", client: "", items: [], brandDisc: 0, brandDiscs: {} }; S.tab = "quotes"; render(); return; }
@@ -32272,9 +32311,9 @@ function viewCatalogue() {
         _ains.amcType = (amcKind(_ains) !== "None") ? _ains.amcType : "AMC without spares";
         if (_aamt) _ains.amcAmount = _aamt;
         _ains.amcEnd = _atill;
-        save("installs", _ains).then(function () {
-          _adone("AMC won. It is on the installation record, so the service reminders will pick it up.");
-        });
+        /* v6.9.401 - save() has already merged and journalled it; the form does not wait */
+        save("installs", _ains);
+        _adone("AMC won. It is on the installation record, so the service reminders will pick it up.");
         return;
       }
       _adone(_as === "Won"
@@ -32313,18 +32352,19 @@ function viewCatalogue() {
         if (_bu.pi === 0) _brow.serial = _bv;      /* keep the old single-serial column in step */
         _btab = "installs";
       }
-      t.disabled = true; t.textContent = "Saving...";
-      save(_btab, _brow).then(function () {
-        try {
-          var _bd = { client: _bu.client, product: _bu.product, from: _bold, to: _bv };
-          if (_bsalv) { _bd.repaired = "productsJson"; _bd.salvage = _bsalv.slice(0, 900); }
-          save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "unit:serial",
-            target: _bk, detail: JSON.stringify(_bd), ip: "" });
-        } catch (e) { }
-        _baseCache = null; S.modal = null;
-        toast(_bsalv ? "Serial saved. An old bad value on this row was moved to the audit trail." : (_bv ? "Serial saved." : "Serial cleared."));
-        render();
-      });
+      /* v6.9.401 - the row and its audit line are journalled together, in that order, and
+         the form closes now: save() has merged the row and repainted, the round trip is
+         behind the closed form. */
+      save(_btab, _brow);
+      try {
+        var _bd = { client: _bu.client, product: _bu.product, from: _bold, to: _bv };
+        if (_bsalv) { _bd.repaired = "productsJson"; _bd.salvage = _bsalv.slice(0, 900); }
+        save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "unit:serial",
+          target: _bk, detail: JSON.stringify(_bd), ip: "" });
+      } catch (e) { }
+      _baseCache = null; S.modal = null;
+      toast(_bsalv ? "Serial saved. An old bad value on this row was moved to the audit trail." : (_bv ? "Serial saved." : "Serial cleared."));
+      render();
       return;
     }
     if (act === "comm-open") { S.modal = modalCommission(t.getAttribute("data-ch")); render(); return; }
@@ -32343,8 +32383,11 @@ function viewCatalogue() {
         if (cItems[idx]) { cItems[idx].comm = { date: cDate, eng: cEng, wm: wm, till: addMonths(cDate, wm), sn: _sn[String(idx)] || "" }; justDone.push(cItems[idx]); }
       });
       commCh.itemsJson = JSON.stringify(cItems);
-      t.disabled = true; t.textContent = "Generating...";
-      save("challans", commCh).then(function (r) {
+      /* v6.9.401 - the form closed only when Google had answered, then the certificate and
+         warranty card were built. save() has merged and journalled the row already; the
+         installation rows and the two PDFs need nothing from the server either. */
+      save("challans", commCh);
+      (function () {
         S.modal = null; toast("Commissioned. Generating documents..."); render();
         /* Close the loop: every commissioned unit becomes a tracked installation, so it flows
            into the Service-due reminders and AMC pipeline automatically. */
@@ -32365,7 +32408,7 @@ function viewCatalogue() {
           .then(function (d) { d.save("Commissioning_" + String(commCh.challanNo || "").replace(/[^\w.-]/g, "_") + ".pdf"); return warrantyCardPdf(commCh, cDate); })
           .then(function (d) { d.save("Warranty_" + String(commCh.challanNo || "").replace(/[^\w.-]/g, "_") + ".pdf"); toast("Certificate + warranty card downloaded."); })
           .catch(function () { toast("Saved, but PDF generation failed."); });
-      });
+      })();
       return;
     }
     if (act === "comm-cert" || act === "comm-warr" || act === "comm-warr-wa") {
@@ -32736,7 +32779,7 @@ function viewCatalogue() {
       var exec = val("lead_exec");
       var r2 = brandLeads(S.leadBrand);
       if (!r2.list.length) { toast("Nothing pending."); return; }
-      t.disabled = true; t.textContent = "Sending...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "Sending...";
       loadLogo().then(function () { return leadsPdf(S.leadBrand); }).then(function (d) {
         var urg = r2.list.filter(function (x) { return x.urgent; }).length;
         return api("tgSend", { bot: "TG_QUOTES",
@@ -32744,7 +32787,8 @@ function viewCatalogue() {
           filename: "Leads_" + S.leadBrand.replace(/[^\w.-]/g, "_") + ".pdf",
           caption: "<b>" + S.leadBrand + " - pending leads</b>\nFor: <b>" + exec + "</b>\n" +
             r2.list.length + " open" + (urg ? ", <b>" + urg + " closing now</b>" : "") + "\nSent by " + S.user });
-      }).then(function (r3) { toast(r3 && r3.ok ? "Sent to " + exec + "." : "Send failed."); renderBg(); });
+      }).then(function (r3) { toast(r3 && r3.ok ? "Sent to " + exec + "." : "Send failed."); renderBg(); })
+        .catch(function (e) { btnBack(t, _lbl); toast("The lead list did not go to Telegram \u2014 " + apiWhy(e) + ". Try again."); });
       return;
     }
     if (act === "s-go") { uniAsk(val("sq")); return; }   /* kept: an old button still works */
@@ -33380,7 +33424,7 @@ function viewCatalogue() {
       var note = val("vd_note");
       var fEl = el("vd_photo");
       var file2 = fEl && fEl.files && fEl.files[0];
-      t.disabled = true; t.textContent = "Saving...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "Saving...";
       (file2 ? shrinkPhoto(file2) : Promise.resolve(null)).then(function (b64) {
         return api("siteVisit", {
           siteId: id, setLocation: setLoc, purpose: note, photoB64: b64 || "",
@@ -33394,7 +33438,7 @@ function viewCatalogue() {
           : (r.verified === "Verified" ? "Visit logged and verified." :
              (r.verified === "Far" ? "Logged, " + r.distanceM + "m from the site." : "Logged as unverified.")));
         refresh();
-      });
+      }).catch(function (e) { btnBack(t, _lbl); toast("The visit was NOT logged \u2014 " + apiWhy(e) + ". Your photo and note are still on the form \u2014 press Save again."); });
       return;
     }
 
@@ -33409,7 +33453,7 @@ function viewCatalogue() {
 
     if (act === "v-photo") {
       var fid = t.getAttribute("data-file");
-      t.disabled = true; t.textContent = "Loading...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "Loading...";
       api("visitPhoto", { fileId: fid }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Photo not available."); render(); return; }
         /* Telegram hands the file back as application/octet-stream; it is a JPEG. */
@@ -33418,7 +33462,7 @@ function viewCatalogue() {
           '" style="width:100%;border-radius:12px;margin-top:8px"/>' +
           '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
         render();
-      });
+      }).catch(function (e) { btnBack(t, _lbl); toast("Could not fetch the photo \u2014 " + apiWhy(e) + ". Try again."); });
       return;
     }
     if (act === "checkin") { S.modal = modalCheckIn(siteById(id), false); render(); return; }
@@ -33709,7 +33753,7 @@ function viewCatalogue() {
         toast("The percentage must be a number between \u2212100 and 100. Nothing was saved.");
         return;
       }
-      t.disabled = true; t.textContent = "Saving...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "Saving...";
       api("priceSave", {
         brand: pb, pct: pPct === "" ? 0 : nAmt(pPct), effectiveFrom: pf,
         overrides: S.pr.overrides || [], notes: val("pr_note")
@@ -33718,17 +33762,17 @@ function viewCatalogue() {
         S.pr = null; S.modal = null;
         toast("Revision saved. It applies from " + pf + ".");
         refresh();
-      });
+      }).catch(function (e) { btnBack(t, _lbl); toast("The revision was NOT saved \u2014 " + apiWhy(e) + ". Everything typed is still here \u2014 press Save again."); });
       return;
     }
     if (act === "rp-go") {
       var ex = val("rp_exec"), mo = val("rp_month");
-      t.disabled = true; t.textContent = "...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "...";
       api("execReport", { exec: ex, month: mo }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Could not build the report."); render(); return; }
         S.rpt = { exec: ex, month: mo, data: r };
         render();
-      });
+      }).catch(function (e) { btnBack(t, _lbl); toast("Could not build the report \u2014 " + apiWhy(e) + ". Try again."); });
       return;
     }
     if (act === "tl-scan") { S.modal = modalToolScan(); render(); setTimeout(startScanner, 300); return; }
@@ -33760,10 +33804,10 @@ function viewCatalogue() {
         id: tr.id, code: normToolCode(tr.code), name: nm, brand: val("tl_brand"), model: val("tl_model"),
         serial: val("tl_serial"), value: val("tl_value"), dueDays: val("tl_due") || "30",
         status: "In godown", holder: "", holderType: "", holderMobile: "", site: "", issuedAt: ""
-      }).then(function () {
-        toast(tr.code + " registered.");
-        openToolByCode(tr.code);
       });
+      /* v6.9.401 - the tool is in S.data.tools the moment save() returns; open it now */
+      toast(tr.code + " registered.");
+      openToolByCode(tr.code);
       return;
     }
     if (act === "tl-give" || act === "tl-back") {
@@ -33775,7 +33819,7 @@ function viewCatalogue() {
         return String(x.name).trim().toLowerCase() === hn.trim().toLowerCase();
       })[0];
       if (give && !hrec) { toast("Pick a client, partner or staff member already in the app."); return; }
-      t.disabled = true; t.textContent = "...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "...";
       /* stamp where the handover happened - a custody record with no place is half a record */
       var withGeo = function (pos) {
         var body = {
@@ -33789,7 +33833,7 @@ function viewCatalogue() {
           toast(give ? tw.code + " is now with " + hn + "." : tw.code + " is back in the godown.");
           S.tool = null; S.modal = null;
           refresh();
-        });
+        }).catch(function (e) { btnBack(t, _lbl); toast("The handover was NOT recorded \u2014 " + apiWhy(e) + ". Nothing changed. Try again."); });
       };
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(withGeo, function () { withGeo(null); },
@@ -33817,11 +33861,11 @@ function viewCatalogue() {
       return;
     }
     if (act === "rt-recon") {
-      t.disabled = true; t.textContent = "Checking...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "Checking...";
       api("reconcile").then(function (r) {
         S.recon = (r && r.ok) ? r : { rows: [], stale: [] };
         render();
-      });
+      }).catch(function (e) { btnBack(t, _lbl); toast("Could not check the returns \u2014 " + apiWhy(e) + ". Try again."); });
       return;
     }
     /* ================= A TAP MUST NOT MOVE MONEY  (v6.9.348, 23 August 2026) =================
@@ -33859,7 +33903,7 @@ function viewCatalogue() {
           return;
         }
       }
-      t.disabled = true; t.textContent = "...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "...";
       /* v6.9.348 - the guard challans have had since v6.9.292 and returns never did. quietSync
          replaces S.data wholesale; without this, a pull taken before the move landed puts the
          old status straight back and the press looks as if it did nothing. */
@@ -33888,7 +33932,7 @@ function viewCatalogue() {
         toast("No answer from the server. The move was probably saved - it will show on the " +
               "next refresh. Nothing was lost.");
         render();
-      });
+      }).catch(function (e) { btnBack(t, _lbl); toast("The return was NOT moved \u2014 " + apiWhy(e) + ". Nothing changed. Try again."); });
       return;
     }
     /* v6.9.348 - AND A WAY BACK, because the press above is one a man will make by mistake and
@@ -33931,7 +33975,7 @@ function viewCatalogue() {
       if (!clientByName(rcl)) { toast("“" + rcl + "” isn’t a registered client — register it first."); return; }
       if (!(S.rt.items || []).length) { toast("Pick at least one product."); return; }
       var rcObj = clientByName(rcl) || {};
-      t.disabled = true; t.textContent = "Registering...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "Registering...";
       var rdrv = val("r_driver");
       var drec = (S.data.drivers || []).filter(function (x) {
         return String(x.name).trim().toLowerCase() === rdrv.trim().toLowerCase();
@@ -33947,12 +33991,18 @@ function viewCatalogue() {
           driver: rdrv, driverMobile: drec.mobile || "", vehicle: drec.vehicle || "",
           freight: val("r_freight") || 0, freightTo: "Energy World"
         };
-        return save("returns", rowR).then(function (r) {
-          if (!r) return;
-          S.rt = null; S.modal = null; S.recon = null;
-          toast("Return " + rowR.returnNo + " registered.");
-          render();
-        });
+        /* v6.9.401 - the number had to come from the server; the row does not have to go
+           back to it before the form closes. save() has merged it, journalled it and
+           repainted - it is as safe now as it will ever be. */
+        save("returns", rowR);
+        S.rt = null; S.modal = null; S.recon = null;
+        toast("Return " + rowR.returnNo + " registered.");
+        render();
+      }).catch(function (e) {
+        /* no number, no row - and no invented number either: a local "R01" would collide
+           with the next return the same day. Everything typed is still on the form. */
+        btnBack(t, _lbl);
+        toast("The return was NOT registered \u2014 " + apiWhy(e) + ". Everything typed is still here \u2014 press Register again.");
       });
       return;
     }
@@ -34029,20 +34079,20 @@ function viewCatalogue() {
         if (!(pi >= 0 && pi < profiles.length)) return;
         chosen = profiles[pi].gstin ? profiles[pi].name + " - " + profiles[pi].gstin : profiles[pi].name;
       }
-      t.disabled = true; t.textContent = "...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "...";
       api("billSend", { id: id, billTo: chosen }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Could not send."); render(); return; }
         bc.billStatus = "Sent for billing"; bc.billTo = chosen;
         toast("Sent to accounts for billing.");
         render(); quietSync();
-      });
+      }).catch(function (e) { btnBack(t, _lbl); toast("Not sent to accounts \u2014 " + apiWhy(e) + ". Try again."); });
       return;
     }
     if (act === "bill-no") {
       var bn2 = S.data.challans.filter(function (x) { return x.id === id; })[0];
       var no = window.prompt("Bill number for " + bn2.challanNo + "\nBilled to: " + (bn2.billTo || "-"));
       if (!no) return;
-      t.disabled = true; t.textContent = "...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "...";
       api("billNo", { id: id, billNo: no }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Could not save."); render(); return; }
         bn2.billNo = no; bn2.billStatus = "Billed";
@@ -34052,7 +34102,7 @@ function viewCatalogue() {
         }
         toast("Bill " + no + " recorded.");
         render(); quietSync();
-      });
+      }).catch(function (e) { btnBack(t, _lbl); toast("The bill number was NOT saved \u2014 " + apiWhy(e) + ". Try again."); });
       return;
     }
     if (act === "bill-add") {
@@ -34178,7 +34228,7 @@ function viewCatalogue() {
       if (!clientByName(ocl)) { toast("“" + ocl + "” isn’t a registered client — register it first."); return; }
       if (!odate) { toast("Give the date it was actually delivered."); return; }
       if (!(S.oc.items || []).length) { toast("Pick at least one product."); return; }
-      t.disabled = true; t.textContent = "Saving...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "Saving...";
       api("historicChallan", {
         client: ocl, date: odate, challanNo: val("o_no"), site: val("o_site"),
         billNo: val("o_bill"), brand: S.oc.brand, items: S.oc.items
@@ -34187,7 +34237,7 @@ function viewCatalogue() {
         S.oc = null; S.modal = null;
         toast("Saved " + r.challanNo + ". Nothing was sent to Telegram.");
         refresh();
-      });
+      }).catch(function (e) { btnBack(t, _lbl); toast("The old challan was NOT saved \u2014 " + apiWhy(e) + ". Everything typed is still here \u2014 press Save again."); });
       return;
     }
     if (act === "ch-brand" || act === "ch-fam" || act === "ch-brandclear" || act === "ch-famclear") {
@@ -35241,7 +35291,7 @@ function viewCatalogue() {
       t.style.display = "none";
       var _note = document.createElement("div");
       _note.className = "meta";
-      _note.style.cssText = "font-size:11px;color:#b45309;margin-top:2px";
+      _note.style.cssText = "font-size:12px;color:#b45309;margin-top:2px";
       _note.innerHTML = "A new site for this client. It is filed with the challan exactly as typed.";
       _par.insertBefore(_note, t.nextSibling);
       if (_box.focus) _box.focus();
