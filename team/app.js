@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.394";
+  var APP_VERSION = "6.9.395";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -16260,12 +16260,22 @@ function viewCatalogue() {
   /* One editable cell. Every number here is typed straight into the discount row it belongs to,
      because the alternative - "go to the Discounts screen and find it" - is the reason half of
      them are unset in the first place. */
-  function admCell(cl, brand, role, v) {
+  /* v6.9.395 - THE ONE CELL. Every rate box on every screen is drawn here: the owner's corner,
+     the executive rate card, and the read-only client list. Amber means "nobody has set this"
+     on all of them, because it is the same twelve characters of CSS. `attrs` is whatever the
+     save handler needs to find the box again; `ro` draws the value as text instead of a box. */
+  function gridBox(attrs, v, ro) {
     var miss = !(Number(v) > 0);
-    return '<input class="admr" data-cl="' + esc(cl) + '" data-b="' + esc(brand) + '" data-role="' + esc(role) + '" ' +
-      'inputmode="decimal" value="' + (miss ? "" : esc(v)) + '" placeholder="\u2014" ' +
-      'style="width:52px;text-align:center;padding:3px 4px;font-size:12px;border-radius:5px;border:1px solid ' +
-      (miss ? '#fcd34d;background:#fffbeb' : '#cbd5e1;background:#fff') + '"/>';
+    var st = 'width:52px;text-align:center;padding:3px 4px;font-size:12px;border-radius:5px;border:1px solid ' +
+      (miss ? '#fcd34d;background:#fffbeb' : '#cbd5e1;background:#fff');
+    if (ro) {
+      return '<span style="display:inline-block;' + st + (miss ? ';color:#b45309' : ';color:#0f172a;font-weight:600') + '">' +
+        (miss ? '\u2014' : esc(v)) + '</span>';
+    }
+    return '<input ' + attrs + ' inputmode="decimal" value="' + (miss ? "" : esc(v)) + '" placeholder="\u2014" style="' + st + '"/>';
+  }
+  function admCell(cl, brand, role, v, ro) {
+    return gridBox('class="admr" data-cl="' + esc(cl) + '" data-b="' + esc(brand) + '" data-role="' + esc(role) + '"', v, ro);
   }
   /* v6.9.350 - a rate with a start date says so, and one that replaced an earlier rate says
      that too. A dated rate that looked identical to an undated one would be a change he could
@@ -16281,7 +16291,7 @@ function viewCatalogue() {
       (older ? " \u00b7 " + older + " earlier rate" + (older === 1 ? "" : "s") + " kept" : "") +
       '</div>';
   }
-  function admBrandTable(cl) {
+  function admBrandTable(cl, ro) {
     var brands = admClientBrands(cl), line = admLineup(cl);
     if (!brands.length) {
       return '<div class="meta" style="font-size:12px;color:#64748b">Nothing delivered to this ' +
@@ -16301,11 +16311,12 @@ function viewCatalogue() {
       h += '<tr style="border-top:1px solid #e2e8f0;text-align:center">' +
         '<td style="text-align:left;padding:4px 6px 4px 0;font-weight:600;white-space:nowrap">' + esc(b) +
           admFromNote(cl, b) + '</td>' +
-        '<td style="padding:3px 5px">' + admCell(cl, b, "disc", d ? (Number(d.pct) || 0) : 0) + '</td>' +
+        '<td style="padding:3px 5px">' + admCell(cl, b, "disc", d ? (Number(d.pct) || 0) : 0, ro) + '</td>' +
         line.map(function (m) {
-          return '<td style="padding:3px 5px">' + admCell(cl, b, m.role, admRateOf(cl, b, m.role)) + '</td>';
+          return '<td style="padding:3px 5px">' + admCell(cl, b, m.role, admRateOf(cl, b, m.role), ro) + '</td>';
         }).join("") + '</tr>';
     });
+    if (ro) return h + '</table></div>';     /* v6.9.395 - the list view: no Save, no note */
     return h + '</table></div>' +
       '<div class="acts" style="margin-top:7px;gap:6px"><div class="grow"></div>' +
       '<button class="btn sm" data-act="adm-save" data-cl="' + esc(cl) + '">Save rates</button></div>' +
@@ -17100,31 +17111,36 @@ function viewCatalogue() {
          on the Brands master. Set once; every quote and every discount screen
          reads it from here. */
       var ecBrands = brandList();
+      /* v6.9.395 - "can we show screenshot 2 like screenshot 1". The paragraph is one sentence
+         with the rest behind How it works; the cells are gridBox, so an unset rate is an amber
+         dash and not a grey placeholder that reads as a value. Same header style as the owner's
+         corner. Nothing about what is saved or how it is read has changed. */
       h += '<div class="card"><h3 style="margin:0 0 4px">Sales executive rate card</h3>' +
-        '<div class="meta" style="margin-bottom:8px"><b>Optional, and only a suggestion.</b> What an executive is actually paid is the % you tick and type on each client &amp; brand below \u2014 the same way a partner\u2019s is set. ' +
-        'Fill this in and the app will <i>offer</i> that figure when you tick the box, so you are not working it out every time. ' +
-        '<b>Standard</b> is the discount you expect on that brand and <b>base</b> is what it pays; <b>per point</b> is how much the offer moves for each point of discount above or below the standard, so protecting price pays and giving it away costs. ' +
-        'Leave <b>cap</b> blank and it is capped at three times the base. Leave the whole row blank and nothing is suggested \u2014 you simply type the %.</div>' +
-        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:460px">' +
-        '<tr style="color:#94a3b8;font-size:10.5px;letter-spacing:.04em">' +
-        '<th style="text-align:left;padding:4px 6px">BRAND</th>' +
-        '<th style="padding:4px 6px">STANDARD %</th><th style="padding:4px 6px">BASE %</th>' +
-        '<th style="padding:4px 6px">PER POINT</th><th style="padding:4px 6px">CAP %</th>' +
-        '<th style="text-align:right;padding:4px 6px">AT STANDARD</th></tr>' +
+        '<div class="meta" style="margin-bottom:6px">Optional. A brand row filled in here is what the app <i>offers</i> ' +
+        'when you tick an executive on a client; the % you actually save on the client is what he is paid.</div>' +
+        '<details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12px;color:#0d766c">How it works</summary>' +
+        '<div class="meta" style="margin-top:4px"><b>Standard</b> is the discount you expect on that brand and <b>base</b> is what it pays; ' +
+        '<b>per point</b> is how much the offer moves for each point of discount above or below the standard, so protecting price pays and giving it away costs. ' +
+        'Leave <b>cap</b> blank and it is capped at three times the base. Leave the whole row blank and nothing is suggested \u2014 you simply type the %.</div></details>' +
+        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
+        '<tr style="color:#475569;text-align:center">' +
+        '<th style="text-align:left;font-weight:600;padding:2px 6px 4px 0">Brand</th>' +
+        '<th style="font-weight:600;padding:2px 5px 4px">Standard %</th><th style="font-weight:600;padding:2px 5px 4px">Base %</th>' +
+        '<th style="font-weight:600;padding:2px 5px 4px">Per point</th><th style="font-weight:600;padding:2px 5px 4px">Cap %</th>' +
+        '<th style="font-weight:600;padding:2px 0 4px 5px;text-align:right">At standard</th></tr>' +
         ecBrands.map(function (b) {
           var r = execCard(b) || {};
-          var box = function (f, v, ph) {
-            return '<input class="exc" data-b="' + esc(b) + '" data-f="' + f + '" inputmode="decimal" value="' +
-              esc(v == null ? "" : v) + '" placeholder="' + ph + '" style="width:64px;padding:5px 7px;text-align:center"/>';
+          var box = function (f, v) {
+            return gridBox('class="exc" data-b="' + esc(b) + '" data-f="' + f + '"', v == null ? "" : v);
           };
-          return '<tr style="border-top:1px solid #f1f5f9">' +
-            '<td style="padding:5px 6px"><b>' + esc(b) + '</b></td>' +
-            '<td style="padding:5px 6px;text-align:center">' + box("stdDisc", r.stdDisc, "45") + '</td>' +
-            '<td style="padding:5px 6px;text-align:center">' + box("execBase", r.execBase, "1") + '</td>' +
-            '<td style="padding:5px 6px;text-align:center">' + box("execShare", r.execShare, "0.1") + '</td>' +
-            '<td style="padding:5px 6px;text-align:center">' + box("execMax", r.execMax, "-") + '</td>' +
-            '<td style="padding:5px 6px;text-align:right;color:#0f766e"><b>' +
-              (execSet(b) ? esc(pctTxt(execRateAt(b, Number(r.stdDisc) || 0))) : '<span style="color:#cbd5e1">not set</span>') +
+          return '<tr style="border-top:1px solid #e2e8f0;text-align:center">' +
+            '<td style="text-align:left;padding:4px 6px 4px 0;font-weight:600;white-space:nowrap">' + esc(b) + '</td>' +
+            '<td style="padding:3px 5px">' + box("stdDisc", r.stdDisc) + '</td>' +
+            '<td style="padding:3px 5px">' + box("execBase", r.execBase) + '</td>' +
+            '<td style="padding:3px 5px">' + box("execShare", r.execShare) + '</td>' +
+            '<td style="padding:3px 5px">' + box("execMax", r.execMax) + '</td>' +
+            '<td style="padding:3px 0 3px 5px;text-align:right;color:#0f766e"><b>' +
+              (execSet(b) ? esc(pctTxt(execRateAt(b, Number(r.stdDisc) || 0))) : '<span style="color:#b45309;font-weight:500">\u2014</span>') +
             '</b></td></tr>';
         }).join("") +
         '</table></div>' +
@@ -17143,9 +17159,12 @@ function viewCatalogue() {
           var _eo = String(c.ownedBy || c.createdBy || "").trim();
           lines.push('<span style="color:#7c3aed">Sales executive' + (_eo ? ' (' + esc(_eo) + ')' : '') + ' incentive:</span> ' + fmtBW(s.exec));
         }
+        /* v6.9.395 - the same grid he sees in the owner's corner, read-only. `lines` above is
+           still built because the Telegram / WhatsApp summaries read it; the card no longer
+           draws it. */
         h += '<div class="card"><h3>' + esc(n) + (c.location ? ' <span class="pill teal">' + esc(c.location) + '</span>' : '') + '</h3>' +
-          '<div class="meta">' + lines.join('<br>') + '</div>' +
-          '<div class="acts"><button class="btn sm ghost" data-act="disc-edit" data-n="' + esc(n) + '">Edit</button></div></div>';
+          admBrandTable(n, true) +
+          '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="disc-edit" data-n="' + esc(n) + '">Edit</button></div></div>';
       });
       return h;
     }
@@ -30530,6 +30549,12 @@ function viewCatalogue() {
     if (act === "cat-save") {
       var pc = val("p_code");
       if (!pc) { toast("Product code is required."); return; }
+      /* v6.9.395 - found on the sweep after the rate-revision box: a price typed "abc" or
+         "12oo" was saved as typed and read back as 0, and a product priced at zero puts a
+         zero-rupee line on a challan. Blank is allowed - a net-price item has no list price -
+         but a price that is there must be a number. Same shape as pr-save and adm-save. */
+      var pPrice = String(val("p_price") || "").trim();
+      if (pPrice !== "" && !(nAmt(pPrice) > 0)) { toast("That price is not a number I can read: " + pPrice + ". Nothing was saved."); return; }
       t.disabled = true; t.textContent = "Saving...";
       var pForm = {
         code: pc, desc: val("p_desc"), family: val("p_fam"), category: val("p_cat"),
@@ -31636,7 +31661,7 @@ function viewCatalogue() {
         var v = String(inp.value || "").trim();
         if (!b || !f) return;
         exBy[b] = exBy[b] || {};
-        exBy[b][f] = v === "" ? "" : (Number(v) || 0);
+        exBy[b][f] = v === "" ? "" : nAmt(v);   /* v6.9.395 - the same reader as every other typed figure */
       });
       var exN = 0;
       Object.keys(exBy).forEach(function (b) {
