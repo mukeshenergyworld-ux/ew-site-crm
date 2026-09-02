@@ -93,11 +93,9 @@ for app, cfg in APPS.items():
     built[app] = raw
     if raw != orig:
         wrote.append((p, len(orig), len(raw)))
-        if not CHECK:
-            io.open(R + p, 'w', encoding='utf-8').write(raw)
 
 # ---- 3. THE PROOF ----
-bad = []
+bad, note = [], []
 for app, cfg in APPS.items():
     # judge the text the build PRODUCED, not the file on disk - otherwise --check compares
     #    the untouched file against itself and reports success having tested nothing, which is
@@ -109,7 +107,16 @@ for app, cfg in APPS.items():
     changed = sorted(n for n in set(before[app]) & set(after) if before[app][n] != after[n])
     if lost:    bad.append("%s LOST: %s" % (app, ", ".join(lost[:8])))
     if gained:  bad.append("%s GAINED: %s" % (app, ", ".join(gained[:8])))
-    if changed: bad.append("%s CHANGED: %s" % (app, ", ".join(changed[:8])))
+    # A CHANGED function is not automatically a fault. Changing the core is the whole point
+    # of having one, and when it changes, every app that carries it MUST change with it. What
+    # would be a fault is a function that changed into something the core does not say.
+    # So: a change is allowed if, and only if, the function now reads exactly as the core
+    # reads. That needs no list of exceptions to keep up to date - the core IS the list.
+    corefn = B.fn_map(core)
+    drift = [n for n in changed if n not in corefn or corefn[n] != after[n]]
+    fromcore = [n for n in changed if n not in drift]
+    if drift: bad.append("%s CHANGED and does NOT match core/ew-core.js: %s" % (app, ", ".join(drift[:8])))
+    if fromcore: note.append("%s took from the core: %s" % (app, ", ".join(fromcore)))
     # Did the build leave a stale copy of a CORE function behind? That is the only
     # duplication this tool can cause, so it is the only one it judges. (Counting every name
     # called the CRM broken over three NESTED helpers all fairly named `add`.)
@@ -120,9 +127,23 @@ for app, cfg in APPS.items():
 
 for p, a, b in wrote:
     print("  %-22s %d → %d chars" % (p, a, b))
+for l in note:
+    print("   " + l)
 if bad:
     print("\nBUILD REFUSED — the apps are NOT equivalent:")
     for l in bad: print("   " + l)
+    print("   Nothing was written.")
     sys.exit(1)
-print("\n%s: every function in all three apps is byte-identical to before." %
+
+# THE PROOF PASSED, so now - and only now - the files are touched. It used to write first
+# and judge afterwards, which left three apps carrying a refused build and a message saying
+# the build had been refused. The docstring at the top of this file has always promised
+# "the build is refused and nothing is written"; from here that is true.
+if not CHECK:
+    for app, cfg in APPS.items():
+        p = cfg['file']
+        if built[app] != B.read(p):
+            io.open(R + p, 'w', encoding='utf-8').write(built[app])
+print("\n%s: every function in all three apps is byte-identical to before, except the ones\n"
+      "listed above as taken from the core - and each of those now reads exactly as the core reads." %
       ("CHECK" if CHECK else "BUILT"))
