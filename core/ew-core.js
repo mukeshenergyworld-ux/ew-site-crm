@@ -42,12 +42,36 @@
         rq.onupgradeneeded = function () {
           try { rq.result.createObjectStore(IDB_STORE); } catch (e) {}
         };
-        rq.onsuccess = function () { fin(rq.result); };
+        /* ============ THE DOOR THAT LATCHED SHUT (v6.9.391) ============
+           The timeout below exists so the app never waits on storage to start. It answered
+           null - correctly - and then left that null CACHED IN _idbP, where it stood for the
+           rest of the page. Every later read and every later write got "this browser has no
+           IndexedDB" from a browser that has it and had merely been slow for one moment.
+
+           That is not a small window. v6.9.257 moved the catalogue, the offline book and the
+           logo cache into IndexedDB and REMOVES the localStorage copy once IndexedDB confirms
+           the write. So on a device that has already migrated, one slow open means: the
+           catalogue reads as absent, the saved book reads as absent, the logos read as absent,
+           and nothing saved during that whole session is kept. The app carries on and says
+           nothing, because every one of those paths is written to treat "not there" as normal.
+
+           Found on 1 Sep chasing an empty brand grid. An empty grid is what an empty PRODUCTS
+           looks like, and this is one of the ways PRODUCTS ends up empty.
+
+           A SLOW OPEN IS NOT AN ANSWER. If the door opens late, put the real door back. */
+        rq.onsuccess = function () {
+          if (done) _idbP = Promise.resolve(rq.result);
+          fin(rq.result);
+        };
+        /* onerror and onblocked ARE answers. A browser that refuses stays refused, and
+           re-opening it on every read would be noise. Only the timeout un-latches. */
         rq.onerror = function () { fin(null); };
         rq.onblocked = function () { fin(null); };
         /* Safari in private mode can leave open() hanging forever. The app must never wait
-           on storage to start - it falls back to localStorage and carries on. */
-        setTimeout(function () { fin(null); }, 2500);
+           on storage to start - it falls back to localStorage and carries on.
+           v6.9.391 - and _idbP is cleared, so the NEXT caller knocks again instead of
+           inheriting this one's shrug. */
+        setTimeout(function () { if (!done) { _idbP = null; fin(null); } }, 2500);
       } catch (e) { fin(null); }
     });
     return _idbP;
