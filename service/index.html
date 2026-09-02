@@ -22,14 +22,18 @@ a{color:#0f766e}
   box-shadow:0 2px 10px rgba(0,0,0,.15)}
 .top .t1{display:flex;align-items:center;gap:10px}
 .top h1{margin:0;font-size:16px;font-weight:800;letter-spacing:.02em;flex:1}
-.top .who{font-size:11.5px;color:#ccfbf1}
-.sync{font-size:11px;color:#ccfbf1}
+.top .who{font-size:12px;color:#ccfbf1}
+.sync{font-size:12px;color:#ccfbf1}
 .btn{appearance:none;border:1px solid #0f766e;background:#0f766e;color:#fff;border-radius:10px;
   padding:11px 15px;font-size:14.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
   min-height:44px;justify-content:center}
 .btn:active{transform:translateY(1px)}
 .btn.ghost{background:#fff;color:#0f766e}
-.btn.sm{padding:7px 11px;font-size:13px;border-radius:9px;min-height:36px}
+/* v1.11.3 - the 40px floor. Measured at 360: 33 of this app's 70 taps were under it -
+   the tab bar at 36, the chips at 29, the small buttons at 36, and the two header icons
+   at 21px tall because <button class="icon"> had no rule at all. */
+.btn.sm{padding:7px 11px;font-size:13px;border-radius:9px;min-height:40px;min-width:40px}
+button.icon{min-height:40px;min-width:40px;border:0;background:transparent;color:inherit;font-size:18px;cursor:pointer;border-radius:10px}
 .btn.gry{background:#fff;border-color:#cbd5e1;color:#334155}
 .btn.red{background:#b91c1c;border-color:#b91c1c;color:#fff}
 .btn.amb{background:#b45309;border-color:#b45309;color:#fff}
@@ -40,7 +44,7 @@ a{color:#0f766e}
 .stats{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 .stat{flex:1 1 46%;min-width:150px;background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:11px 13px}
 .stat .n{font-size:22px;font-weight:800;letter-spacing:-.02em}
-.stat .l{font-size:11.5px;color:#64748b;margin-top:2px}
+.stat .l{font-size:12px;color:#64748b;margin-top:2px}
 .stat.bad .n{color:#b91c1c}
 .stat.good .n{color:#0f766e}
 input,select,textarea{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;
@@ -54,7 +58,7 @@ input[type="checkbox"],input[type="radio"]{width:auto;padding:0;min-height:0;fle
 label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:520px){.grid2{grid-template-columns:1fr}}
-.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;
+.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700;
   background:#f1f5f9;color:#475569;vertical-align:middle;white-space:nowrap}
 .pill.red{background:#fee2e2;color:#b91c1c}
 /* THE LOGIN BANNER IS A SENTENCE, NOT A CHIP (17 Aug 2026). It borrowed .pill, which carries
@@ -104,7 +108,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .crumb .c{background:#ccfbf1;color:#0f766e;border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:700;cursor:pointer}
 .tile{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#fff;border:1px solid #e2e8f0;
   border-radius:12px;padding:11px 12px;margin-bottom:7px;cursor:pointer;font-size:14.5px;font-weight:700;color:#0f172a;min-height:52px}
-.tile .sub{font-size:11.5px;font-weight:600;color:#64748b;display:block;margin-top:2px}
+.tile .sub{font-size:12px;font-weight:600;color:#64748b;display:block;margin-top:2px}
 .tile img{width:44px;height:44px;object-fit:contain;border-radius:8px;background:#f8fafc;flex:0 0 auto}
 /* v1.19.0 - "add material brand view will ve small length box, like 2 to 3 brand again
    alphabatically in one line" and the same for the products inside. auto-fit does the
@@ -113,7 +117,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px;margin-bottom:7px}
 .gtile{display:block;width:100%;text-align:left;background:#fff;border:1px solid #e2e8f0;border-radius:12px;
   padding:9px 10px;cursor:pointer;font-size:13.5px;font-weight:800;color:#0f172a;min-height:56px;line-height:1.25}
-.gtile .sub{font-size:11px;font-weight:600;color:#64748b;display:block;margin-top:3px}
+.gtile .sub{font-size:12px;font-weight:600;color:#64748b;display:block;margin-top:3px}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:7px}
 /* He said "2 to 3 in one line", and he meant it as a maximum as well as a minimum. Left to
    auto-fill a 1200px laptop fitted SEVEN brands across, which is a wall of text, not a shelf.
@@ -121,7 +125,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 @media(min-width:620px){.grid,.pgrid{grid-template-columns:repeat(3,1fr)}}
 .pcard{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:8px 9px}
 .pcard .pn{font-weight:800;font-size:13px;line-height:1.25}
-.pcard .pm{font-size:10.5px;color:#64748b;font-weight:600;margin-top:2px}
+.pcard .pm{font-size:12px;color:#64748b;font-weight:600;margin-top:2px}
 .pcard img{width:100%;height:62px;object-fit:contain;border-radius:8px;background:#f8fafc;display:block}
 .pcard .step button{width:32px;height:34px;font-size:17px;border-radius:8px}
 .pcard .step input{width:100%;text-align:center;font-weight:800;padding:6px 2px}
@@ -135,7 +139,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    is ok". The red lives on the LABEL and stays there - it is how the field is found, not a
    warning that it is empty. The box keeps its size and does the empty/filled work itself. */
 .bookno{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:11px 0 2px}
-.bookno label{margin:0;font-size:11px;font-weight:800;letter-spacing:.02em;color:#b91c1c;
+.bookno label{margin:0;font-size:12px;font-weight:800;letter-spacing:.02em;color:#b91c1c;
   background:#fee2e2;border:1px solid #fecaca;border-radius:6px;padding:3px 8px;white-space:nowrap}
 /* 16px, not 14. Below 16px iOS zooms the whole page on focus and never zooms back out,
    and this is the one field the godown types by hand on every single challan. */
@@ -146,15 +150,23 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 /* executive bands: a solid teal strip per man, tap to open or shut */
 .exec{margin:14px 0 4px;padding:11px 13px;background:#0f766e;color:#fff;border-radius:11px;font-weight:700;
   font-size:14.5px;display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer}
-.exec .sub{font-size:11.5px;font-weight:600;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:999px;white-space:nowrap}
+.exec .sub{font-size:12px;font-weight:600;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:999px;white-space:nowrap}
 .exec .car{font-size:13px;opacity:.85}
 </style>
 <style>
 /* ---- Service-specific, on top of the estate's shared look ---- */
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0}
-.stat{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 4px;text-align:center}
+/* v1.11.3 - four FIXED columns overflowed a 360px phone by 114px: the third tile was cut off
+   and the fourth never seen. auto-fit gives two by two on a phone and four across on a Mac
+   (three-and-one, which 104px gave, left the fourth tile alone on its own row).
+   `min-width:0` is not decoration: the shared sheet above says `.stat{min-width:150px}`, and
+   a grid track may be told 104px all day - the tile inside it still refuses to be narrower
+   than 150. The first cut of this fix set the grid and left that floor standing; measured at
+   360 the page was still 390 wide, and the tab bar - fixed to the viewport - stretched to 390
+   with it, because a phone widens its layout viewport to fit whatever overflows. */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin:10px 0}
+.stat{min-width:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 4px;text-align:center}
 .stat .n{font-size:19px;font-weight:700;line-height:1.1}
-.stat .l{font-size:10px;color:#64748b;margin-top:2px}
+.stat .l{font-size:12px;color:#64748b;margin-top:2px}
 .stat.bad{border-color:#fecaca;background:#fef2f2}.stat.bad .n{color:#b91c1c}
 .stat.warn{border-color:#fde68a;background:#fffbeb}.stat.warn .n{color:#b45309}
 .sec{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#475569;margin:16px 0 6px}
@@ -169,7 +181,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .due.over{color:#b91c1c}.due.soon{color:#b45309}
 .amt{font-weight:700;font-size:14px;white-space:nowrap}
 .amt.bad{color:#b45309;font-weight:600;font-size:12px;white-space:nowrap}
-.pill{display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;margin-top:3px}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 7px;border-radius:999px;margin-top:3px}
 .pill.amc{background:#ccfbf1;color:#0f766e}
 .pill.got{background:#dcfce7;color:#166534}
 .pill.due{background:#fee2e2;color:#b91c1c}
@@ -185,7 +197,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .kvr{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
 .kvr:last-child{border-bottom:0}.kvr span{color:#64748b}.kvr b{text-align:right}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px}
-.chip{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;color:#334155}
+.chip{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;color:#334155;min-height:40px}
 .chip.on{background:#0f766e;border-color:#0f766e;color:#fff}
 .parts{background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden}
 .prow{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #f1f5f9}
@@ -200,12 +212,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    since this morning. Found by asking the browser for the computed colour, not by reading.
    The same shape of fault as the `.nav` rule above - an older answer left lying about under a
    name something new had taken. */
-.amccard{border:1.5px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin:10px 0}.amccard.on{border-color:#5eead4;background:#f0fdfa}.amccard.off{border-color:#e2e8f0;background:#f8fafc}.billbox{border:1px solid #e2e8f0;border-radius:11px;overflow:hidden;margin:10px 0}.bill{display:flex;align-items:baseline;gap:8px;padding:8px 11px;border-top:1px solid #eef2f7;font-size:13.5px}.bill:first-child{border-top:0}.bill span{flex:1;min-width:0}.bill b{font-variant-numeric:tabular-nums}.bill i{font-style:normal;font-size:11px;color:#64748b;min-width:92px;text-align:right}.bill.free b{text-decoration:line-through;color:#94a3b8}.bill.free i{color:#0f766e;font-weight:700}.bill.tot{background:#f8fafc;color:#0f172a;font-weight:800;font-size:15px}.bill.tot b{font-size:17px}.amcbox{background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px;margin:10px 0;font-size:13px;color:#0f766e}
+.amccard{border:1.5px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin:10px 0}.amccard.on{border-color:#5eead4;background:#f0fdfa}.amccard.off{border-color:#e2e8f0;background:#f8fafc}.billbox{border:1px solid #e2e8f0;border-radius:11px;overflow:hidden;margin:10px 0}.bill{display:flex;align-items:baseline;gap:8px;padding:8px 11px;border-top:1px solid #eef2f7;font-size:13.5px}.bill:first-child{border-top:0}.bill span{flex:1;min-width:0}.bill b{font-variant-numeric:tabular-nums}.bill i{font-style:normal;font-size:12px;color:#64748b;min-width:92px;text-align:right}.bill.free b{text-decoration:line-through;color:#94a3b8}.bill.free i{color:#0f766e;font-weight:700}.bill.tot{background:#f8fafc;color:#0f172a;font-weight:800;font-size:15px}.bill.tot b{font-size:17px}.amcbox{background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:12px;margin:10px 0;font-size:13px;color:#0f766e}
 .srch{margin:8px 0}.srch input{width:100%}
 .pad{padding:2px 2px 6px}
 .tabs{position:fixed;left:0;right:0;bottom:0;display:flex;background:#fff;border-top:1px solid #e2e8f0;
       padding-bottom:env(safe-area-inset-bottom)}
-.nav{flex:1;border:0;background:transparent;padding:11px 2px;font-size:12px;font-weight:600;color:#64748b}
+.nav{flex:1;min-width:0;border:0;background:transparent;padding:11px 2px;font-size:12px;font-weight:600;color:#64748b;min-height:44px}
 .nav.on{color:#0f766e;box-shadow:inset 0 2px 0 #0f766e}
 .wire{color:#94a3b8}
 .acts.col{flex-direction:column}
@@ -214,7 +226,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .lbrand{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#64748b}
 .lsub{font-size:30px;font-weight:700;color:#0f766e;margin-bottom:16px}
 .lmsg{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:9px 11px;font-size:13px;margin-bottom:10px}
-.lfoot{margin-top:14px;font-size:11px;color:#94a3b8;text-align:center}
+.lfoot{margin-top:14px;font-size:12px;color:#94a3b8;text-align:center}
 
 /* ---- ON A SCREEN WIDER THAN A HAND (v1.4.4) ----
    This app is built for a phone in a godown and that does not change. But the owner reads it
@@ -277,7 +289,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.11.2";
+  var APP_VERSION = "1.11.3";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -1483,7 +1495,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           '<div style="flex:1;min-width:0">' +
             '<div style="font-weight:800">' + l.length + ' ' + (l.length === 1 ? "record is" : "records are") +
               ' held on this phone' + (S.jrnDurable === false ? ' <span style="opacity:.85">(and this phone will not keep them)</span>' : '') + '</div>' +
-            '<div style="opacity:.9;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
+            '<div style="opacity:.9;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
               esc(err || "They will go up by themselves when there is signal.") + '</div>' +
           '</div>' +
           '<button class="btn sm" data-act="jrn-retry" style="background:#fff;color:#7c2d12;flex:none">Try now</button>' +
@@ -2616,10 +2628,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     h += '<label>Parts used</label>';
     if (v.parts && v.parts.length) {
       h += '<div class="prow" style="padding-bottom:2px"><div class="grow"><span class="muted" ' +
-        'style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase">Item</span></div>' +
-        '<span class="muted" style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;width:64px;text-align:center">Qty</span>' +
-        '<span class="muted" style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;width:64px;text-align:center">Rate</span>' +
-        '<span class="muted" style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;width:74px;text-align:right">Amount</span>' +
+        'style="font-size:12px;letter-spacing:.06em;text-transform:uppercase">Item</span></div>' +
+        '<span class="muted" style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;width:64px;text-align:center">Qty</span>' +
+        '<span class="muted" style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;width:64px;text-align:center">Rate</span>' +
+        '<span class="muted" style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;width:74px;text-align:right">Amount</span>' +
         '<span style="width:28px"></span></div>';
     }
     h += (v.parts && v.parts.length)
@@ -2934,7 +2946,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      link, so it opens the way every other document in this estate opens. */
   function picStrip(list, title) {
     if (!list.length) return "";
-    return '<div style="margin-top:6px"><div class="muted" style="font-size:11px;letter-spacing:.06em;' +
+    return '<div style="margin-top:6px"><div class="muted" style="font-size:12px;letter-spacing:.06em;' +
       'text-transform:uppercase">' + esc(title) + '</div>' +
       '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:4px">' +
       list.map(function (p) {
@@ -2972,7 +2984,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         return '<div class="card" style="padding:8px 10px;margin-bottom:6px">' +
           '<div style="font-weight:700;font-size:12.5px">' + esc(K.t) +
             (got[K.k] ? ' <span class="pill grn">✓ taken</span>' : '') + '</div>' +
-          '<div class="muted" style="font-size:11.5px;margin:2px 0 5px">' + esc(K.hint) + '</div>' +
+          '<div class="muted" style="font-size:12px;margin:2px 0 5px">' + esc(K.hint) + '</div>' +
           '<input type="file" accept="image/*" capture="environment" class="v-pic" ' +
             'data-kind="' + esc(K.k) + '"/></div>';
       }).join("");
