@@ -192,7 +192,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.46.4";
+  var APP_VERSION = "1.46.6";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -209,12 +209,36 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         rq.onupgradeneeded = function () {
           try { rq.result.createObjectStore(IDB_STORE); } catch (e) {}
         };
-        rq.onsuccess = function () { fin(rq.result); };
+        /* ============ THE DOOR THAT LATCHED SHUT (v6.9.391) ============
+           The timeout below exists so the app never waits on storage to start. It answered
+           null - correctly - and then left that null CACHED IN _idbP, where it stood for the
+           rest of the page. Every later read and every later write got "this browser has no
+           IndexedDB" from a browser that has it and had merely been slow for one moment.
+
+           That is not a small window. v6.9.257 moved the catalogue, the offline book and the
+           logo cache into IndexedDB and REMOVES the localStorage copy once IndexedDB confirms
+           the write. So on a device that has already migrated, one slow open means: the
+           catalogue reads as absent, the saved book reads as absent, the logos read as absent,
+           and nothing saved during that whole session is kept. The app carries on and says
+           nothing, because every one of those paths is written to treat "not there" as normal.
+
+           Found on 1 Sep chasing an empty brand grid. An empty grid is what an empty PRODUCTS
+           looks like, and this is one of the ways PRODUCTS ends up empty.
+
+           A SLOW OPEN IS NOT AN ANSWER. If the door opens late, put the real door back. */
+        rq.onsuccess = function () {
+          if (done) _idbP = Promise.resolve(rq.result);
+          fin(rq.result);
+        };
+        /* onerror and onblocked ARE answers. A browser that refuses stays refused, and
+           re-opening it on every read would be noise. Only the timeout un-latches. */
         rq.onerror = function () { fin(null); };
         rq.onblocked = function () { fin(null); };
         /* Safari in private mode can leave open() hanging forever. The app must never wait
-           on storage to start - it falls back to localStorage and carries on. */
-        setTimeout(function () { fin(null); }, 2500);
+           on storage to start - it falls back to localStorage and carries on.
+           v6.9.391 - and _idbP is cleared, so the NEXT caller knocks again instead of
+           inheriting this one's shrug. */
+        setTimeout(function () { if (!done) { _idbP = null; fin(null); } }, 2500);
       } catch (e) { fin(null); }
     });
     return _idbP;
@@ -623,9 +647,23 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
       .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
   }
+  /* v6.9.392 - num() is a second copy of nAmt(), and it stays a second copy ON PURPOSE.
+     It was briefly made an alias - one implementation, which sounds strictly better - and that
+     broke eleven test rigs at once: every one of them lifts a function out of this file by
+     brace-matching and runs it in a scope of its own dependencies, and num had been
+     self-contained since the day it was written. What needs protecting is that the two AGREE,
+     and t_onerule.js holds every spelling of this parser in every app to one body. A test is
+     the right tool for that; coupling two functions is not. */
+  function nAmt(v) {
+    if (typeof v === "number") return isFinite(v) ? v : 0;
+    var t = String(v === undefined || v === null ? "" : v).replace(/[^0-9.\-]/g, "");
+    var n = Number(t);
+    return isFinite(n) ? n : 0;
+  }
   function num(v) {
     if (typeof v === "number") return isFinite(v) ? v : 0;
-    var n = Number(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
+    var t = String(v === undefined || v === null ? "" : v).replace(/[^0-9.\-]/g, "");
+    var n = Number(t);
     return isFinite(n) ? n : 0;
   }
   function money(n) { return "₹" + Math.round(num(n)).toLocaleString("en-IN"); }
