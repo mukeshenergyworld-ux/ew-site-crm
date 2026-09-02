@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.393";
+  var APP_VERSION = "6.9.394";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3963,7 +3963,10 @@ window.addEventListener("beforeunload", function (ev) {
       '<button class="btn" data-act="comm-save" data-ch="' + esc(ch.id) + '">Commission &amp; generate</button></div>';
   }
 
-  function commPdfBase(title, ch, dateStr) {
+  /* v6.9.394 - tone: "red" for a return, anything else for the teal every other document has
+     always had. Optional, so no existing caller changes by a byte. */
+  function commPdfBase(title, ch, dateStr, tone) {
+    var _red = tone === "red";
     return loadFonts().then(function (f) {
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
       var uni = false;
@@ -3973,21 +3976,26 @@ window.addEventListener("beforeunload", function (ev) {
       }
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
       var W = 210, L = 16, R = W - 16;
-      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 34, "F");
-      doc.setFillColor(94, 234, 212); doc.rect(0, 34, W, 1.2, "F");
+      if (_red) { doc.setFillColor(127, 29, 29); } else { doc.setFillColor(11, 59, 54); }
+      doc.rect(0, 0, W, 34, "F");
+      if (_red) { doc.setFillColor(252, 165, 165); } else { doc.setFillColor(94, 234, 212); }
+      doc.rect(0, 34, W, 1.2, "F");
       if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 8, 30, 16); } catch (e) {} }
       doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(15);
       doc.text(title, R, 15, { align: "right" });
-      F("normal"); doc.setFontSize(8); doc.setTextColor(160, 205, 199);
+      F("normal"); doc.setFontSize(8);
+      if (_red) { doc.setTextColor(252, 202, 202); } else { doc.setTextColor(160, 205, 199); }
       doc.text("Energy World · Save Energy, Money & Earth", R, 22, { align: "right" });
       doc.text("Date: " + fullDate(dateStr), R, 27, { align: "right" });
       doc.setTextColor(17, 34, 45);
-      return { doc: doc, F: F, uni: uni, L: L, R: R, y: 46 };
+      return { doc: doc, F: F, uni: uni, L: L, R: R, y: 46, red: _red };
     });
   }
   function commCustomerBlock(b, ch) {
     var doc = b.doc, F = b.F, L = b.L, y = b.y;
-    F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108); doc.text("CUSTOMER", L, y);
+    F("bold"); doc.setFontSize(8.5);
+    if (b.red) { doc.setTextColor(185, 28, 28); } else { doc.setTextColor(13, 118, 108); }   /* v6.9.394 */
+    doc.text("CUSTOMER", L, y);
     F("normal"); doc.setTextColor(17, 34, 45); doc.setFontSize(10.5); y += 6;
     doc.text(String(ch.customerName || "-"), L, y);
     if (ch.site) { y += 5.5; doc.setFontSize(9); doc.setTextColor(100, 116, 139); doc.text("Site: " + ch.site, L, y); }
@@ -9268,10 +9276,19 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return Promise.all([loadLogo()]).then(function (lres) {
       var LG = [];
       return commPdfBase(ch._isReturn ? "MATERIAL RETURN & GOODS-IN RECEIPT" : "DELIVERY CHALLAN & RECEIPT",
-        ch, String(meta.at || "").slice(0, 10))
+        ch, String(meta.at || "").slice(0, 10), ch._isReturn ? "red" : "")
         .then(function (b) { b.LG = LG; return b; });
     }).then(function (b) {
       var doc = b.doc, F = b.F, L = b.L, R = b.R, y;   /* v6.9.275 - no LOGOS on a receipt */
+      /* ============ A RETURN IS NOT A DELIVERY (v6.9.394) ============
+         "all return must be in red words all, make is standard for all." The statement has drawn
+         a return in red since v6.9.240; this document never did - it hard-coded the delivery's
+         teal in seven places, so the paper that says the customer is OWED money looked identical
+         to the one that says he owes it. One palette, chosen here, read everywhere below. */
+      var ACC = ch._isReturn
+        ? { ink: [185, 28, 28],  tint: [254, 242, 242], edge: [254, 202, 202] }
+        : { ink: [13, 118, 108], tint: [240, 253, 250], edge: [153, 246, 228] };
+      var ink = function () { doc.setTextColor(ACC.ink[0], ACC.ink[1], ACC.ink[2]); };
 
       b.y = 43;                          /* v6.9.281 - 3 mm off the top, straight to the picture */
       var yc = commCustomerBlock(b, ch);
@@ -9295,12 +9312,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          two rows of three: what was sent, when it went, who carried it - then who wrote it, who
          released it, and who signed for it. */
       /* v6.9.281 - 27 mm instead of 36. Same six facts, same sizes, less air between them. */
-      doc.setFillColor(240, 253, 250); doc.rect(L, y - 4.5, R - L, 27, "F");
-      doc.setDrawColor(153, 246, 228); doc.setLineWidth(0.3); doc.rect(L, y - 4.5, R - L, 27);
+      doc.setFillColor(ACC.tint[0], ACC.tint[1], ACC.tint[2]); doc.rect(L, y - 4.5, R - L, 27, "F");
+      doc.setDrawColor(ACC.edge[0], ACC.edge[1], ACC.edge[2]); doc.setLineWidth(0.3); doc.rect(L, y - 4.5, R - L, 27);
       var CW = (R - L) / 3;
       var fact = function (lab, v, col, row) {
         var x = L + 3 + col * CW, yy = y + row * 11.6;
-        F("bold"); doc.setFontSize(7.2); doc.setTextColor(13, 118, 108);
+        F("bold"); doc.setFontSize(7.2); ink();
         doc.text(lab, x, yy);
         F("normal"); doc.setFontSize(9.2); doc.setTextColor(17, 34, 45);
         doc.text(doc.splitTextToSize(String(v || "-"), CW - 5)[0] || "-", x, yy + 5.4);
@@ -9373,7 +9390,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
            "The reason is written against each one.")
         : "Every line arrived in full.";
       var tallyColour = function () {
-        if (shortLines || excessLines) doc.setTextColor(180, 83, 9); else doc.setTextColor(13, 118, 108);
+        if (shortLines || excessLines) doc.setTextColor(180, 83, 9); else ink();
       };
       if (!prf.photo) {
         F("normal"); doc.setFontSize(8); tallyColour();
@@ -9392,7 +9409,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          could ever go, so it is kept in full, unchanged. */
       if (prf.photo) {
         if (y > 250) { doc.addPage(); y = 26; }
-        F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
+        F("bold"); doc.setFontSize(8.5); ink();
         var lead = ch._isReturn
           ? "RETURNED AND COUNTED IN AT THE GODOWN BY \u2014"
           : "RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION \u2014";
@@ -9410,7 +9427,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         y += 9;
       } else {
         if (y > 206) { doc.addPage(); y = 26; }
-        F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
+        F("bold"); doc.setFontSize(8.5); ink();
         doc.text(ch._isReturn
           ? "THE ABOVE MATERIAL WAS RETURNED AND COUNTED IN AT THE GODOWN"
           : "RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, y);
@@ -9454,7 +9471,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
            unreadable receipt is not evidence. That is the ONLY thing that still earns a second
            sheet - not a constant, and not the length of the item list on its own. */
         if (box.h < 78) { doc.addPage(); y = 26; box = fitTo(Math.min(214, BOT - FOOT - y - CAP)); }
-        F("bold"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
+        F("bold"); doc.setFontSize(8.5); ink();
         doc.text(ch._isReturn ? "THE GOODS-IN RECEIPT AS IT WAS SIGNED AT THE GODOWN"
                               : "THE RECEIPT AS IT CAME BACK FROM THE SITE", L, y);
         y += CAP;
@@ -18713,22 +18730,37 @@ function viewCatalogue() {
       '<div style="flex:1 1 320px;min-width:0">' +
       '<h3 style="margin:0 0 2px">Client ledger &mdash; ' + esc(cl) + '</h3>' +
       (_clMob ? '<div style="font-size:13px;margin-bottom:6px">☎ <a href="tel:' + esc(String(_clMob).replace(/[^\d+]/g, '')) + '" style="color:#0d766c;font-weight:600;text-decoration:none">' + esc(_clMob) + '</a></div>' : '') +
-      '<div class="meta" style="font-size:13.5px">' +
-      /* v6.9.368 - a MINUS opening balance is shown now too. It was hidden behind `> 0` while
-         being counted in `bal` all along, so on the two clients who carry one the line above
-         did not add up to the balance beside it. */
-      (opening > 0 ? 'Previous balance (b/f): <b>' + money(opening) + '</b>  &middot;  '
-       : opening < 0 ? 'Opening credit: <b style="color:#0f766e">' + money(-opening) + '</b>  &middot;  ' : '') +
-      'Billed (net): <b>' + money(allNet) + '</b>  &middot;  Received: <b>' + money(paid) + '</b>  &middot;  ' +
-      (retTotal > 0 ? 'Returns (&minus;): <b style="color:#dc2626">' + money(retTotal) + '</b>  &middot;  ' : '') +
+      /* ============ THE LEDGER AS A SUM, NOT A SENTENCE (v6.9.394) ============
+         HIS WORDS, with a screenshot: "this also to be shown in proper excel format, its very
+         confusing". It was one run-on line - five figures joined by dots - that wrapped wherever
+         the phone was wide enough to wrap it, so "Received:" sat on one line and its amount on
+         the next, and nothing on it said HOW the five became the sixth.
+
+         An account is a sum. Laid out as one, with the sign beside each line, the arithmetic is
+         on the screen instead of in his head: b/f + billed - received - returns = due. Same
+         figures, same conditions, same colours as before - only the shape changed.
+         v6.9.368's minus opening balance is still shown, as the first line, in green. */
+      '<table class="ledsum" style="border-collapse:collapse;font-size:13.5px;margin:2px 0 4px;min-width:min(100%,340px)">' +
+      (opening > 0
+        ? '<tr><td style="padding:2px 10px 2px 0;color:#475569">Previous balance (b/f)</td><td style="padding:2px 0;text-align:right"><b>' + money(opening) + '</b></td></tr>'
+        : opening < 0
+          ? '<tr><td style="padding:2px 10px 2px 0;color:#475569">Opening credit</td><td style="padding:2px 0;text-align:right;color:#0f766e"><b>&minus; ' + money(-opening) + '</b></td></tr>'
+          : '') +
+      '<tr><td style="padding:2px 10px 2px 0;color:#475569">' + (opening ? '+ ' : '') + 'Billed (net)</td><td style="padding:2px 0;text-align:right"><b>' + money(allNet) + '</b></td></tr>' +
+      '<tr><td style="padding:2px 10px 2px 0;color:#475569">&minus; Received</td><td style="padding:2px 0;text-align:right"><b>' + money(paid) + '</b></td></tr>' +
+      (retTotal > 0 ? '<tr><td style="padding:2px 10px 2px 0;color:#dc2626">&minus; Returns</td><td style="padding:2px 0;text-align:right;color:#dc2626"><b>' + money(retTotal) + '</b></td></tr>' : '') +
+      '<tr style="border-top:1.5px solid #99f6e4"><td style="padding:6px 10px 2px 0;color:#0f172a;font-weight:700">' +
+      (bal > 0.5 ? '= Due' : bal < -0.5 ? '= In credit' : '= Balance') + '</td>' +
+      '<td style="padding:6px 0 2px;text-align:right">' +
       (bal > 0.5
         ? dueAmt(bal, "lg")
         /* v6.9.360 - "Balance due: -514" reads like a fault. It is not: he is holding the man's
            money. Say that, and say it in the direction the money is actually pointing. */
         : bal < -0.5
-          ? '<b style="color:#0f766e">' + money(-bal) + ' in credit</b> ' +
-            '<span style="color:#64748b">\u2014 paid ahead, comes off the next delivery</span>'
-          : '<b style="color:#0d9488">Settled in full</b>') + '</div>' +
+          ? '<b style="color:#0f766e">' + money(-bal) + '</b>'
+          : '<b style="color:#0d9488">Settled in full</b>') + '</td></tr>' +
+      (bal < -0.5 ? '<tr><td colspan="2" style="padding:0 0 2px;color:#64748b;font-size:12px">paid ahead \u2014 comes off the next delivery</td></tr>' : '') +
+      '</table>' +
       /* v6.9.385 - and what the same customer looks like on the service side */
       svcLedgerLine(cl) +
       openingNote(cl) +
@@ -19352,7 +19384,25 @@ function viewCatalogue() {
            below the dark banner on page one; only the added pages start at the top. */
         if (perPage) {
           if (i) { doc.addPage(); y = pageMark(); }
-          else { y = HB + 9; }
+          /* ============ THE WORDS THAT SAT ON TOP OF THE TABLE (v6.9.394) ============
+             HIS WORDS, with a screenshot of Manish Singla's statement: "words overlapping in
+             pdf statement, and its confusing".
+
+             y = HB + 9 is an ABSOLUTE reset to just under the dark banner. It was right the day
+             it was written, when the first delivery genuinely was the first thing on the page.
+             Since then TWO blocks have been added above it and neither knew about this line:
+
+               - the Received / Returned / Still due bar, and the same three in words below it
+               - the SETTLED IN FULL band (v6.9.364)
+
+             Both draw, both advance y, and then this threw y away and painted the delivery table
+             straight over them. That is the green, blue and red stripe across his table header,
+             and "SETTLED IN FULL ... paid for and closed" sitting inside rows 3, 4 and 5.
+
+             max() keeps the promise the comment below makes - page one starts below the banner -
+             without unwriting anything already on the page. The block that draws next need not
+             know this line exists, which is the point. */
+          else { y = Math.max(HB + 9, y); }
         }
         else if (y > 262) { doc.addPage(); y = 20; }
         if (it.t === "C") { drawChallan(it.c); if (perPage) receiptBlock(it.c, false); }
