@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.395";
+  var APP_VERSION = "6.9.398";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -324,8 +324,13 @@
   }
   /* 2 prints as "2" and 1.5 as "1.5" - never "2.000". Used wherever a quantity is shown. */
   function qShow(v) { return String(Math.round((Number(v) || 0) * 1000) / 1000); }
-  function money(n) { return "\u20B9" + Math.round(Number(n) || 0).toLocaleString("en-IN"); }
-  function moneyAscii(n) { return "Rs. " + Math.round(Number(n) || 0).toLocaleString("en-IN"); }
+  /* v6.9.398 - nAmt, not Number. This is the function that puts a figure in front of a man,
+     and Number("25,000") is NaN, which `|| 0` drew as Rs 0. Challan and Service have read it
+     through num() for months; the CRM and the Payment app did not, so one stored amount drew
+     two different figures depending on which app was open. Never show zero for a number that
+     exists. (nAmt is declared later in the file; function declarations hoist.) */
+  function money(n) { return "\u20B9" + Math.round(nAmt(n)).toLocaleString("en-IN"); }
+  function moneyAscii(n) { return "Rs. " + Math.round(nAmt(n)).toLocaleString("en-IN"); }
   /* v6.9.181: money we are OWED is labelled DUE AMT, in caps, right beside the figure and
      highlighted. A red number on its own was ambiguous - it could be a bill value, a lost
      quote or an actual outstanding. One helper so the label looks the same everywhere.
@@ -4703,7 +4708,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var off = A.rows.filter(function (r) { return r.kind === "None"; });
     return commPdfBase("ANNUAL MAINTENANCE CONTRACT", { customerName: client }, today()).then(function (b) {
       var doc = b.doc, F = b.F, L = b.L, R = b.R;
-      var RS = function (n) { return "Rs." + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      var RS = function (n) { return "Rs." + Math.round(nAmt(n)).toLocaleString("en-IN"); };
       var T = function (v) { return pdfSafe(String(v == null ? "" : v)); };
       var y = 46;
       var need = function (n) {
@@ -12554,7 +12559,7 @@ function viewCatalogue() {
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
       /* v6.9.303: Math.round added. This printed the raw number, so the moment a
          quantity could be 1.5 a customer would have received "Rs.12,345.5". */
-      var R = function (n) { return (uni ? "\u20B9" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      var R = function (n) { return (uni ? "\u20B9" : "Rs.") + Math.round(nAmt(n)).toLocaleString("en-IN"); };
       var col = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
       var fill = function (c) { doc.setFillColor(c[0], c[1], c[2]); };
 
@@ -13107,7 +13112,7 @@ function viewCatalogue() {
       var col = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
       var fill = function (c) { doc.setFillColor(c[0], c[1], c[2]); };
       var draw = function (c) { doc.setDrawColor(c[0], c[1], c[2]); };
-      var R = function (n) { return "Rs. " + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      var R = function (n) { return "Rs. " + Math.round(nAmt(n)).toLocaleString("en-IN"); };
       var T = function (x) { return pdfSafe(x); };
       /* pdfSafe collapses runs of whitespace, so the text is cleaned BEFORE the
          letters are spaced out - otherwise the word gap and the letter gap become
@@ -14318,7 +14323,7 @@ function viewCatalogue() {
         uni = true;
       }
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
-      var RS = function (n) { return (uni ? "\u20B9" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      var RS = function (n) { return (uni ? "\u20B9" : "Rs.") + Math.round(nAmt(n)).toLocaleString("en-IN"); };
       var g = function (v) { doc.setTextColor(v, v, v); };
       var dg = function (v) { doc.setDrawColor(v, v, v); };
       var W = 297, H = 210, L = (small ? 6 : 10), R = (small ? 142.5 : W - 10);   /* R = content right edge; right half of the sheet stays blank when small */
@@ -19107,7 +19112,7 @@ function viewCatalogue() {
       var uni = false;
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
       var W = 210, L = 16, R = W - 16, HB = 25;
-      var RS = function (n) { return (uni ? "₹" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      var RS = function (n) { return (uni ? "₹" : "Rs.") + Math.round(nAmt(n)).toLocaleString("en-IN"); };
       var cust = clientByName(cl) || {};
       doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, HB, "F");
       doc.setFillColor(94, 234, 212); doc.rect(0, HB, W, 1.0, "F");
@@ -19329,7 +19334,10 @@ function viewCatalogue() {
          line a negative amount, then a Return total. */
       var drawReturn = function (r) {
         F("bold"); doc.setFontSize(8.6); doc.setTextColor(185, 28, 28);
-        doc.text("RETURN  " + String(r.returnNo) +
+        /* v6.9.398 - a return with no number printed "RETURN undefined" on the customer's
+           statement (seen on the sweep). Say what is true instead: there is a return, and it
+           has not been given a number. */
+        doc.text("RETURN  " + (r.returnNo ? String(r.returnNo) : "(no number yet)") +
           (r.challanNo ? "   \u00b7   against " + String(r.challanNo) : "") +
           "   \u00b7   " + fullDate(r.createdAt), L, y);
         if (r.site && String(r.site).trim()) {
@@ -19465,7 +19473,13 @@ function viewCatalogue() {
       })();
       if (retTot > 0) { doc.setTextColor(185, 28, 28); doc.text("Less material returns: -" + RS(retTot), L, y); y += 5; doc.setTextColor(100, 116, 139); }
       F("bold"); doc.setTextColor(17, 34, 45); doc.setFontSize(10.5);
-      doc.text("Balance due: " + RS(opening + allNet - paid - retTot), L, y); y += 6;
+      /* v6.9.398 - the SAME words the screen has used since v6.9.360. This printed
+         "Balance due: Rs.-7,942" under a summary line that already said "account is ahead by
+         Rs.7,942" - two drawings of one fact on one page, one of them reading like a fault.
+         He is holding the man's money; say that, in the direction the money is pointing. */
+      var _bal = opening + allNet - paid - retTot;
+      doc.text(_bal < -0.5 ? "In credit: " + RS(-_bal) + "   (paid ahead - comes off the next delivery)"
+             : _bal > 0.5 ? "Balance due: " + RS(_bal) : "Settled in full", L, y); y += 6;
 
       /* Authorised-distributor strip. The brand logos are drawn from the persistent cache (fetched
          + processed once per device, then reused instantly) - so there is NO live image download
@@ -20540,7 +20554,7 @@ function viewCatalogue() {
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
       var F = function (w) { doc.setFont(ppEmbed(doc), (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"); };
       var W = 297, L = 12, R = W - 12, HB = 22;
-      var RS = function (n) { return "Rs." + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      var RS = function (n) { return "Rs." + Math.round(nAmt(n)).toLocaleString("en-IN"); };
       doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, HB, "F");
       doc.setFillColor(94, 234, 212); doc.rect(0, HB, W, 0.9, "F");
       if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 5, 24, 12); } catch (e) { } }
@@ -20884,7 +20898,7 @@ function viewCatalogue() {
     "refund":  { label: "Refund \u2014 money returned to the client", sign: -1, note: "Refund to client" }
   };
   function payKindOf(p) {
-    if ((Number(p && p.amount) || 0) < 0) return "refund";
+    if (payAmt(p) < 0) return "refund";                   /* v6.9.398 */
     return /^advance/i.test(String((p && p.notes) || "")) ? "advance" : "in";
   }
   function readPayIn(client, kind) {
@@ -20942,9 +20956,19 @@ function viewCatalogue() {
 
   /* The only place a payment row is written. */
   function payWrite(p, gen, btn) {
+    /* v6.9.397 - THE DONE SCREEN IS DRAWN ON THE TAP, in its "saving" state, and settles in
+       place when the sheet answers. Before this the button sat locked on "Saving..." for the
+       whole round trip (measured 2 Sep: 1.4-2.8 s), and the screen he wanted - the receipt
+       number, the WhatsApp button - was withheld until then for no reason it needed to be:
+       receiptNo() is built from the row's own date and id, so it is the same number now as
+       later. Nothing here says "recorded" until the server has said so. */
+    unlockBtn(btn);
+    var _pGen = _mgen;
+    S.modal = modalPayDone(p, "saving"); render();
     var land = function (synced) {
-      unlockBtn(btn);
-      if (gen === _mgen) { S.modal = modalPayDone(p, synced); render(); }
+      /* still the same screen he was left on: settle the state where he can see it. Moved
+         on already: say it once, quietly, and repaint the background. */
+      if (_pGen === _mgen && S.modal) { S.modal = modalPayDone(p, synced); render(); }
       else { toast(synced ? "Payment recorded." : "Payment held on this phone."); renderBg(); }
     };
     save("payments", p).then(function (r) {
@@ -21013,7 +21037,7 @@ function viewCatalogue() {
   /* Indian numbering - crore, lakh, thousand. Written out so the figure and the words can never
      disagree, which is the only reason a receipt carries words at all. */
   function amountWords(n) {
-    n = Math.round(Number(n) || 0);
+    n = Math.round(nAmt(n));             /* v6.9.398 - "Zero Rupees only" under a real amount */
     if (n <= 0) return "Zero";
     var ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
       "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
@@ -21043,7 +21067,7 @@ function viewCatalogue() {
     return commPdfBase("PAYMENT RECEIPT", { customerName: p.client, site: p.siteName || "" }, p.date || today())
       .then(function (b) {
         var doc = b.doc, F = b.F, L = b.L, R = b.R, y = 46;
-        var Rs = function (n) { return (b.uni ? "₹" : "Rs. ") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+        var Rs = function (n) { return (b.uni ? "₹" : "Rs. ") + Math.round(nAmt(n)).toLocaleString("en-IN"); };
         F("bold"); doc.setFontSize(9.5); doc.setTextColor(13, 118, 108);
         doc.text("RECEIPT No. " + receiptNo(p), L, y);
         F("normal"); doc.setFontSize(9); doc.setTextColor(100, 116, 139);
@@ -21065,9 +21089,9 @@ function viewCatalogue() {
         F("normal"); doc.setFontSize(8.5); doc.setTextColor(13, 118, 108);
         doc.text("THE SUM OF", L + 7, y - 2);
         F("bold"); doc.setFontSize(17); doc.setTextColor(17, 34, 45);
-        doc.text(Rs(p.amount), L + 7, y + 7);
+        doc.text(Rs(payAmt(p)), L + 7, y + 7);          /* v6.9.398 - the ONE reader, as the ledger below */
         F("normal"); doc.setFontSize(8.5); doc.setTextColor(71, 85, 105);
-        doc.text(doc.splitTextToSize(amountWords(p.amount) + " Rupees only", R - L - 16)[0], L + 7, y + 14);
+        doc.text(doc.splitTextToSize(amountWords(payAmt(p)) + " Rupees only", R - L - 16)[0], L + 7, y + 14);
         y += 34;
         var rows = [["By", String(p.mode || "-")]];
         if (p.ref) rows.push([String(p.mode) === "Cheque" ? "Cheque no." : "Reference", String(p.ref)]);
@@ -21085,7 +21109,11 @@ function viewCatalogue() {
           ["Total billed", (led.opening || 0) + (led.billed || 0) + (led.freight || 0), 0],
           ["Received in all", led.paid || 0, 0],
           ["Returns credited", led.returned || 0, 0],
-          ["Balance outstanding", led.due || 0, 1]
+          /* v6.9.398 - a client who has paid more than he was billed is not "outstanding"
+             anything. The firm is holding his money, and the receipt says so, as a positive
+             figure with the right word on it. */
+          (led.due || 0) < 0 ? ["Advance held for him", -(led.due || 0), 1]
+                             : ["Balance outstanding", led.due || 0, 1]
         ];
         pos.forEach(function (r) {
           if (!r[1] && !r[2] && r[0] === "Returns credited") return;
@@ -21107,8 +21135,17 @@ function viewCatalogue() {
      nobody any effort. "Later" is a real option; the same receipt is always reachable again
      from the Receipts button on his card. */
   function modalPayDone(p, synced) {
-    var ok = (synced !== false);
-    return '<h2>' + (ok ? 'Payment recorded' : 'Held on this phone') + '</h2><p class="sub">' + esc(p.client) + ' &middot; ' + money(p.amount) + '</p>' +
+    /* v6.9.397 - three states, and the words are the whole point:
+         "saving"  the tap has just happened; the sheet has not answered  -> Saving to the sheet
+         true      the sheet has it                                       -> Payment recorded
+         false     the sheet refused or did not answer; the journal has it -> Held on this phone
+       The receipt number and the send buttons are the same in all three, because the number is
+       the row's own and the receipt is a true statement of money received whatever the wire did. */
+    var saving = (synced === "saving");
+    var ok = saving || (synced !== false);
+    return '<h2>' + (saving ? 'Payment noted' : ok ? 'Payment recorded' : 'Held on this phone') + '</h2>' +
+      '<p class="sub">' + esc(p.client) + ' &middot; ' + money(p.amount) +
+      (saving ? ' &middot; <span id="pay_state" style="color:#b45309;font-weight:700">Saving to the sheet\u2026</span>' : '') + '</p>' +
       '<div class="card"' + (ok ? '' : ' style="border-color:#fcd34d;background:#fffbeb"') + '><div class="meta">Receipt no. <b>' + esc(receiptNo(p)) + '</b><br>' +
       (ok ? 'Send it to him now. It looks professional, and it ends the &ldquo;I already paid that&rdquo; conversation before it starts.'
           : 'The team sheet did not answer, so this payment is held safely on this phone and goes up by itself when the signal is back. <b>Do not enter it again.</b>') +
@@ -21146,7 +21183,7 @@ function viewCatalogue() {
       }
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
       /* rounded, exactly like money() - the table and the balance box must not disagree by paise */
-      var R2 = function (n) { return (uni ? "\u20B9" : "Rs.") + Math.round(Number(n) || 0).toLocaleString("en-IN"); };
+      var R2 = function (n) { return (uni ? "\u20B9" : "Rs.") + Math.round(nAmt(n)).toLocaleString("en-IN"); };
       var W = 210, L = 14, Rt = W - 14, y = 0;
       doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 34, "F");
       doc.setFillColor(94, 234, 212); doc.rect(0, 34, W, 1.2, "F");
@@ -21205,9 +21242,13 @@ function viewCatalogue() {
       y += 4;
       doc.setFillColor(236, 253, 245); doc.roundedRect(112, y - 5, Rt - 112, 12, 1.5, 1.5, "F");
       doc.setTextColor(13, 118, 108); F("bold"); doc.setFontSize(8);
-      doc.text("Balance due", 116, y + 1.4);
+      /* v6.9.398 - the third document with "Balance due Rs.-7,942" on it. The screen has
+         said "In credit" since v6.9.360; the receipt and the statement say it from today;
+         this box now says the same. One fact, one set of words, wherever it is drawn. */
+      var _ld = l.due || 0;
+      doc.text(_ld < -0.5 ? "In credit (paid ahead)" : "Balance due", 116, y + 1.4);
       doc.setFontSize(11);
-      doc.text(R2(l.due), Rt - 2, y + 1.6, { align: "right" });
+      doc.text(R2(Math.abs(_ld) < 0.5 ? 0 : Math.abs(_ld)), Rt - 2, y + 1.6, { align: "right" });
       F("normal"); doc.setFontSize(6.4); doc.setTextColor(150, 163, 175);
       doc.text("Energy World  |  Panipat \u00b7 Sonipat \u00b7 Karnal", L, 290);
       return doc;
@@ -29317,23 +29358,42 @@ function viewCatalogue() {
      often somebody opens Scorecards is nobody's business but his, and it is not worth a
      round trip.
      --------------------------------------------------------------------------------- */
-  var NAVUSE_KEY = "ew_navuse_v1", NAVGRP_KEY = "ew_navgrp_v1";
+  var NAVUSE_KEY = "ew_navuse_v1";
+  /* ================= EIGHT TABS. ONE ROW.  (v6.9.396, 2 September 2026) =================
+     HIS WORDS: "every time it make confusing for me ... I want a simple solution." The
+     recommendation was written the same day; he answered "apply all".
+
+     He had three rows of navigation before any content - a "Your six" strip, five group pills
+     with counts, and the open group's chips - with "Clients" in two rows and "The brief" in two
+     rows. Forty-two screens behind five names that describe nothing he does. Every visit began
+     with a search.
+
+     One row now, named for the eight things the business does. The FIRST member of each group
+     is its home: tapping the group puts him ON that screen, not in front of a list of what is
+     inside. The rest of the group's screens show as chips under the row, home first and then
+     alphabetical (v6.9.300).
+
+     NOTHING IS TAKEN AWAY. All forty-two screens are here, each inside one of the eight, and
+     canSee() is untouched so every role reaches exactly what it could yesterday. What is gone
+     is the machinery for choosing a layout - "Your six", "All", the counts, the remembered
+     group. A man should not have to configure a menu.
+
+     Checked against his own device before it was written (ew_navuse_v1 since 27 Aug): HISAB 14,
+     Pending 7, Service 6, Leads 5, Clients 5, The brief 4, Challans 3, Health 3. */
   var NAV_GROUPS = [
-    ["Sell",    ["dash", "brief", "agent", "leads", "pitch", "brandfollow", "quotes", "followups", "clients", "partners"]],
-    ["Deliver", ["deliveries", "billing", "stock", "tools", "collections", "products"]],
-    ["Service", ["service", "spares"]],
-    ["Admin",   ["payrollhub", "discounts", "report", "scorecard", "pricing", "rules", "teampins"]],
-    ["Sync",    ["pending", "health", "dups"]]
+    ["HISAB",      ["billing", "payments", "dues"]],
+    ["Deliveries", ["challans", "returns", "stock"]],
+    ["Clients",    ["clients", "followups", "visits", "discounts", "customers"]],
+    ["Leads",      ["leads", "brandfollow", "quotes", "pitch", "agent", "winloss", "rules"]],
+    ["Service",    ["service", "spares"]],
+    ["Products",   ["products", "catalogue", "pricelist", "rates"]],
+    ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins", "tools"]],
+    ["Today",      ["dash", "brief", "pending", "health", "dups"]]
   ];
-  /* A new man's opening six. Not a guess - it is the first six screens each role's day
-     actually starts with. It drifts to his real habit within a fortnight of use. */
-  var NAV_SEED = {
-    admin:    ["dash", "brief", "challans", "quotes", "clients", "billing"],
-    sales:    ["dash", "leads", "quotes", "clients", "followups", "sites"],
-    accounts: ["dash", "billing", "collections", "challans", "clients", "payments"],
-    godown:   ["dash", "challans", "stock", "products", "returns", "tools"],
-    service:  ["dash", "service", "spares", "followups", "dues", "products"]
-  };
+  /* The four hub tabs (v6.9.330 and before) still render if something lands on them - the two
+     "Open Deliveries" buttons do - so they must light the right group. They are not listed as
+     chips: their members are. */
+  var NAV_HUB_GROUP = { deliveries: "Deliveries", collections: "HISAB", pricing: "Products", payrollhub: "Team" };
   function navWho() { return String(S.user || "-"); }
   function navUse() {
     try {
@@ -29355,55 +29415,43 @@ function viewCatalogue() {
   /* Which group a tab belongs to. Tabs that live in no group - Search, Sites, Customers and
      the rest reached from inside a screen - answer "", and the open group is left alone. */
   function navGroupOf(tab) {
+    if (NAV_HUB_GROUP[tab]) return NAV_HUB_GROUP[tab];
     for (var i = 0; i < NAV_GROUPS.length; i++) {
       if (NAV_GROUPS[i][1].indexOf(tab) >= 0) return NAV_GROUPS[i][0];
     }
     return "";
   }
+  /* The screens of a group this man may see: the home first, then the rest in the order he
+     reads them - alphabetical on the LABEL, never the key ("billing" is HISAB on screen). */
+  function navItemsOf(g, label) {
+    var vis = g[1].filter(function (k) { return canSee(k) && label[k]; });
+    if (vis.length < 2) return vis;
+    return [vis[0]].concat(vis.slice(1).sort(alphaBy(function (k) { return label[k]; })));
+  }
+  /* Where a tap on the group lands: its first screen this man can see. */
+  function navHome(gname) {
+    var g = NAV_GROUPS.filter(function (x) { return x[0] === gname; })[0];
+    if (!g) return "";
+    var vis = navItemsOf(g, TAB_LABEL);
+    return vis.length ? vis[0] : "";
+  }
+  /* The open group IS the group of the screen he is on. Nothing to remember, nothing to
+     configure, nothing that can disagree with the screen. A screen in no group - Search, the
+     dossier, the matrix - leaves the band where it was, so it does not flicker on a jump. */
   function navOpenGrp() {
-    if (S.navGrp === "ALL" || S.navGrp === "") return S.navGrp;
-    if (S.navGrp) return S.navGrp;
-    var g = navGroupOf(S.tab);
-    if (g) return g;
-    try { return String(localStorage.getItem(NAVGRP_KEY) || ""); } catch (e) { return ""; }
+    return navGroupOf(S.tab) || S.navGrp || "";
   }
   /* Called once per paint. Returns the group it moved the band to, or "" if it left
      the band alone - the return value is what makes this testable. */
   function navFollowTab() {
-    if (S._navSeenTab === S.tab) return "";   /* he opened a group chip; the tab did not move */
+    if (S._navSeenTab === S.tab) return "";
     S._navSeenTab = S.tab;
-    if (S.navGrp === "ALL") return "";        /* "All" is his explicit choice, not ours to undo */
     var g = navGroupOf(S.tab);
-    if (!g) return "";                        /* Search, Sites, Customers - leave the band as it was */
-    if (navOpenGrp() === g) return "";         /* already right */
+    if (!g || S.navGrp === g) return "";
     navSetGrp(g);
     return g;
   }
-  function navSetGrp(g) {
-    S.navGrp = g;
-    try { localStorage.setItem(NAVGRP_KEY, g === "ALL" ? "" : g); } catch (e) { }
-  }
-  /* The six. Sorted by how often he has opened each one; ties broken by his role's seed
-     order so a brand-new man gets a sensible strip rather than an alphabetical one. Only
-     tabs his role can see are eligible - the six can never become a back door. */
-  function navSix(label) {
-    var use = navUse(), seed = NAV_SEED[S.role] || NAV_SEED.admin;
-    var pool = {};
-    NAV_GROUPS.forEach(function (g) { g[1].forEach(function (k) { pool[k] = 1; }); });
-    seed.forEach(function (k) { pool[k] = 1; });
-    ["challans", "returns", "sites", "payments", "dues", "commission", "rates", "pricelist",
-      "catalogue", "payroll", "winloss", "visits", "customers"].forEach(function (k) { pool[k] = 1; });
-    var keys = Object.keys(pool).filter(function (k) { return label[k] && canSee(k); });
-    keys.sort(function (a, b) {
-      var ua = Number(use[a]) || 0, ub = Number(use[b]) || 0;
-      if (ua !== ub) return ub - ua;
-      var sa = seed.indexOf(a), sb = seed.indexOf(b);
-      if (sa < 0) sa = 99; if (sb < 0) sb = 99;
-      if (sa !== sb) return sa - sb;
-      return label[a] < label[b] ? -1 : 1;
-    });
-    return keys.slice(0, 6);
-  }
+  function navSetGrp(g) { S.navGrp = g; }
   /* Roll a member's badge up onto its group pill so a shut group can never swallow work. */
   function navGrpDot(items) {
     var hot = false;
@@ -29415,6 +29463,15 @@ function viewCatalogue() {
       } catch (e) { }
     });
     return hot ? '<span class="nvdot"></span>' : '';
+  }
+  /* ONE way to go to a screen, whether he tapped its chip or the group it lives in. */
+  function navGo(tab) {
+    S.tab = tab;
+    S.chOnly = "";        /* v6.9.388 - a filter must not outlive the visit that set it */
+    tabUse(S.tab);
+    try { navBump(S.tab); } catch (e) { }          /* the ruler - counted on his device only */
+    try { var _ng = navGroupOf(S.tab); if (_ng) navSetGrp(_ng); } catch (e) { }
+    S.q = ""; S.clq = ""; S.cvq = ""; S.qq = ""; render();
   }
   function navBtn(k, label) {
     var extra = "";
@@ -29428,38 +29485,28 @@ function viewCatalogue() {
   }
   function navHtmlBuild(label) {
     var open = navOpenGrp();
-    var six = navSix(label);
-    var h = '<div class="nvsix"><span class="grp">Your six</span>' +
-      six.map(function (k) { return navBtn(k, label); }).join("") + '</div>';
-
-    /* v6.9.300 - the groups themselves, and the tabs inside each, both alphabetical. The
-       tabs sort on the LABEL a man reads, never on the internal key: "billing" is HISAB on
-       screen, and sorting by the key would file it under B where nobody would look. */
-    var GROUPS = NAV_GROUPS.slice().sort(alphaBy(function (g) { return g[0]; }));
-    var itemsOf = function (g) {
-      return g[1].filter(function (k) { return canSee(k) && label[k]; })
-                 .sort(alphaBy(function (k) { return label[k]; }));
-    };
-
-    h += '<div class="nvrow">';
-    GROUPS.forEach(function (g) {
-      var items = itemsOf(g);
+    /* The eight, in the order the business runs - NOT alphabetical. v6.9.300 sorted the old
+       five because their names were arbitrary; these eight are an order he approved, with
+       the money first and the day last. A group none of his roles can see is not drawn. */
+    var h = '<div class="nvrow">';
+    NAV_GROUPS.forEach(function (g) {
+      var items = navItemsOf(g, label);
       if (!items.length) return;
-      var on = (open === "ALL" || open === g[0]);
+      var on = (open === g[0]);
       h += '<button class="nvg' + (on ? ' on' : '') + '" data-act="nav-grp" data-g="' + g[0] + '">' +
-        g[0] + '<i>' + items.length + '</i>' + (on ? '' : navGrpDot(items)) + '</button>';
+        g[0] + (on ? '' : navGrpDot(items)) + '</button>';
     });
-    h += '<button class="nvg alt' + (open === "ALL" ? ' on' : '') + '" data-act="nav-grp" data-g="ALL" ' +
-      'title="Show every tab at once, the way it used to look">All</button></div>';
-
-    if (open) {
-      GROUPS.forEach(function (g) {
-        if (open !== "ALL" && open !== g[0]) return;
-        var items = itemsOf(g);
-        if (!items.length) return;
-        h += '<div class="nvitems"><span class="grp">' + g[0] + '</span>' +
-          items.map(function (k) { return navBtn(k, label); }).join("") + '</div>';
-      });
+    h += '</div>';
+    /* THE OTHER screens inside the open group. Never the home: the group chip IS the home
+       (tapping it lands there), and rendered, "Today" lit above "Today" lit was furniture -
+       and "HISAB" above "HISAB" would have been the same. So: group chip lit and no chip lit
+       beneath means he is on the home; a chip lit beneath means he is on that screen. */
+    var cur = NAV_GROUPS.filter(function (g) { return g[0] === open; })[0];
+    if (cur) {
+      var items = navItemsOf(cur, label).slice(1);
+      if (items.length) {
+        h += '<div class="nvitems">' + items.map(function (k) { return navBtn(k, label); }).join("") + '</div>';
+      }
     }
     return h;
   }
@@ -29469,12 +29516,11 @@ function viewCatalogue() {
     s.textContent =
       /* the strip stops being a conveyor belt and becomes rows that wrap */
       "nav{flex-wrap:wrap!important;overflow-x:visible!important;padding:7px 10px 0!important;align-items:flex-start}" +
-      ".nvsix,.nvrow,.nvitems{display:flex;flex-wrap:wrap;align-items:center;gap:5px;width:100%}" +
-      ".nvsix{padding-bottom:7px;border-bottom:1px dashed #e2e8f0}" +
+      ".nvrow,.nvitems{display:flex;flex-wrap:wrap;align-items:center;gap:5px;width:100%}" +
       ".nvrow{padding:7px 0}" +
       ".nvitems{background:#f8fafc;border-top:1px solid #e2e8f0;margin:0 -10px;padding:8px 10px 9px}" +
-      ".nvsix .grp,.nvitems .grp{font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;" +
-      "color:#0f766e;background:#ccfbf1;border-radius:999px;padding:3px 8px;white-space:nowrap;margin-right:3px}" +
+      /* v6.9.396 - the eight are the one row that matters, so they are the bigger target */
+      "nav button.nvg{font-size:13.5px;padding:8px 14px;border-radius:10px}" +
       /* every nav item is a chip now - a real tap target, and it wraps */
       "nav button.nvb{background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:6px 12px;" +
       "font-family:inherit;font-size:13px;font-weight:600;color:#475569;cursor:pointer;white-space:nowrap;line-height:1.35}" +
@@ -29483,18 +29529,15 @@ function viewCatalogue() {
       /* group pills */
       "nav button.nvg{position:relative;background:#fff;border:1px solid #cbd5e1;border-radius:9px;padding:6px 11px;" +
       "font-family:inherit;font-size:12.5px;font-weight:700;color:#334155;cursor:pointer;white-space:nowrap;line-height:1.35}" +
-      "nav button.nvg i{font-style:normal;font-size:10px;font-weight:700;opacity:.55;margin-left:5px}" +
       "nav button.nvg:hover{border-color:#5eead4}" +
       "nav button.nvg.on{background:#0f766e;border-color:#0f766e;color:#fff}" +
-      "nav button.nvg.on i{opacity:.75}" +
-      "nav button.nvg.alt{font-weight:600;color:#64748b}" +
       ".nvdot{position:absolute;top:3px;right:4px;width:7px;height:7px;border-radius:50%;background:#dc2626;" +
       "box-shadow:0 0 0 2px #fff}" +
       /* a phone: slightly tighter, still no sideways swipe */
       "@media(max-width:560px){nav{padding:6px 8px 0!important}" +
       ".nvitems{margin:0 -8px;padding:7px 8px 8px}" +
       "nav button.nvb{font-size:12.5px;padding:6px 10px}" +
-      "nav button.nvg{font-size:12px;padding:6px 9px}}";
+      "nav button.nvg{font-size:12.5px;padding:7px 10px}}";
     document.head.appendChild(s);
   }
   /* v6.9.203 THE HEADER ON A PHONE.
@@ -30264,16 +30307,7 @@ function viewCatalogue() {
       try { window.scrollTo(0, 0); } catch (e) {}
       render(); return;
     }
-    if (act === "tab") {
-      S.tab = t.getAttribute("data-tab");
-      S.chOnly = "";        /* v6.9.388 - a filter must not outlive the visit that set it */
-      tabUse(S.tab);
-      /* counted on his own device, against his own name, so "Your six" becomes his six */
-      try { navBump(S.tab); } catch (e) { }
-      /* follow him into whichever group he landed in, so the open band is always the useful one */
-      try { var _ng = navGroupOf(S.tab); if (_ng && S.navGrp !== "ALL") navSetGrp(_ng); } catch (e) { }
-      S.q = ""; S.clq = ""; S.cvq = ""; S.qq = ""; render(); return;
-    }
+    if (act === "tab") { navGo(t.getAttribute("data-tab")); return; }
     if (act === "disc-jump") {
       /* v6.9.291 - the tab action clears S.q, which is the very thing the Discounts screen
          filters on, so this does not go through it. Set the tab and the filter together. */
@@ -30290,10 +30324,13 @@ function viewCatalogue() {
       if (_db.hadCh) S.modal = modalChallan();
       render(); return;
     }
+    /* v6.9.396 - a group is a place, not a drawer. Tapping it lands on its home screen;
+       there is nothing to open or close. */
     if (act === "nav-grp") {
       var _g = t.getAttribute("data-g") || "";
-      navSetGrp(navOpenGrp() === _g ? "" : _g);
-      render(); return;
+      var _home = navHome(_g);
+      if (_home) navGo(_home); else { navSetGrp(_g); render(); }
+      return;
     }
     if (act === "stock-add") { S.modal = modalStockAdd(t.getAttribute("data-type") || "in"); render(); return; }
     if (act === "stock-refresh") { STOCK_LOADED = false; STOCK_LOADING = false; S.stock = []; ensureStock(); toast("Refreshing stock…"); return; }
@@ -32461,23 +32498,26 @@ function viewCatalogue() {
       var coll = Number(val("v_coll")) || 0;
       var vdate = val("v_date");
       var veng = val("v_eng");
-      t.disabled = true; t.textContent = "Saving...";
+      /* v6.9.397 - TWO round trips, one after the other, with the form held open through both:
+         the install's next-service date was chained AFTER the visit's reply, though nothing
+         about it depends on that reply. Three to five seconds on a locked button, measured.
+         Both rows are complete on this device. Both are journaled by save() before the form
+         closes; the journal retries either one that does not land and Pending upload shows it
+         with its reason. The install is advanced on the device now, so the next screen he
+         opens already says when the next service is due. */
       save("visits", {
         id: "", createdBy: S.user, installId: ins.id, client: ins.client, area: ins.area || "",
         date: vdate, engineer: veng, type: val("v_type"), visitCharge: charge,
         saltBags: bags, saltAmt: saltAmt, partsUsed: parts.join(", "), partsAmt: partsAmt,
         total: total, collected: coll, balance: total - coll, notes: val("v_notes")
-      }).then(function (r) {
-        if (!r) return;
-        ins.lastService = vdate;
-        ins.nextService = addDays(vdate, Number(ins.cycleDays) || 60);
-        ins.engineer = veng;
-        save("installs", ins).then(function () {
-          S.modal = null;
-          toast("Visit logged. Next service " + ins.nextService + ".");
-          render();
-        });
       });
+      ins.lastService = vdate;
+      ins.nextService = addDays(vdate, Number(ins.cycleDays) || 60);
+      ins.engineer = veng;
+      save("installs", ins);
+      S.modal = null;
+      toast("Visit logged. Next service " + ins.nextService + ".");
+      render();
       return;
     }
 
@@ -33386,10 +33426,15 @@ function viewCatalogue() {
       if (!c) { toast("Pick a customer."); return; }
       var fuStage = val("m_stage");
       if (fuStage) saveClientStage(cname, fuStage, { mobile: c.mobile });
+      /* v6.9.397 - close on the tap. The row is complete on this device; save() has it in
+         memory and in the journal before this line runs, the sync banner shows whether it has
+         gone up, and save() itself says so if the sheet refuses. Holding the form open for the
+         round trip (1.4-2.8 s, measured) told him nothing it could not tell him afterwards. */
       save("followups", {
         id: "", createdBy: S.user, customerId: c.id, customerName: c.name,
         dueDate: val("m_due"), note: val("m_note"), status: "Open"
-      }).then(function (r) { if (r) closeAck(_gClick, "Follow-up added."); });
+      });
+      S.modal = null; toast("Follow-up added."); render();
       return;
     }
     if (act === "fu-done") {
