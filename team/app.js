@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.398";
+  var APP_VERSION = "6.9.400";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -512,7 +512,7 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","payments","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","dups","stock","brief"],
+    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","dups","stock","brief"],
     accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","dups","stock"],
     godown:   ["dash","returns","tools","challans","products","stock"],
     sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products","dups","brief"],
@@ -2468,7 +2468,7 @@ window.addEventListener("beforeunload", function (ev) {
       var hits = PRODUCTS.filter(function (p) {
         return (p.code + " " + p.desc + " " + p.family + " " + p.brand + " " + p.cat).toLowerCase().indexOf(q) >= 0;
       });
-      if (!hits.length) return h + '<div class="empty">Kuch nahi mila.</div>';
+      if (!hits.length) return h + '<div class="empty">Nothing in the catalogue matches that.</div>';   /* v6.9.399 - English */
       var cap = S.pvMore || 60;
       h += '<div class="meta">' + hits.length + ' mile' + (hits.length > cap ? ' - pehle ' + cap : "") + '</div>' +
         prodGrid(hits.slice(0, cap));
@@ -2502,7 +2502,7 @@ window.addEventListener("beforeunload", function (ev) {
                    list.some(function (p) { return !String(p.family || "").trim(); }), "Family");
     if (S.pvFam) list = list.filter(function (p) { return String(p.family || "").trim() === S.pvFam; });
 
-    if (!list.length) return h + '<div class="empty">Is chunav mein koi product nahi.</div>';
+    if (!list.length) return h + '<div class="empty">No product under this choice.</div>';   /* v6.9.399 - English */
     list = list.slice().sort(function (a, b) { return String(a.desc).localeCompare(String(b.desc)); });
     var cap2 = S.pvMore || 60;
     h += '<div class="meta" style="margin-top:8px">' + list.length + ' product' + (list.length > cap2 ? ' - pehle ' + cap2 : "") + '</div>' +
@@ -11999,7 +11999,7 @@ function viewPriceList() {
     return '<div class="empty">Price lists are for partners and accounts only.</div>';
   S.pl = S.pl || {};
   var bs = plBrands();
-  if (!bs.length) return '<div class="empty">No products loaded yet.</div>';
+  if (!bs.length) return catWait();          /* v6.9.399 - the one text, with its button */
   var picked = Object.keys(S.pl).filter(function (k) { return S.pl[k]; });
   var h = '<div class="card"><h3>Brand price list</h3>' +
     '<p class="sub">Pick one or more brands. The PDF carries the brand name and logo only ' +
@@ -20765,9 +20765,16 @@ function viewCatalogue() {
 
   function viewPayments() {
     var list = payLedgerList();
-    var totDue = list.reduce(function (a, x) { return a + x.l.due; }, 0);
+    /* v6.9.399 - TWO SUMS, NOT ONE. This netted every client's balance into a single figure,
+       so a man 7,942 in credit made another man's 50,000 read as 42,058 "outstanding from
+       clients" - which is neither what is owed nor what is held. One client's credit does not
+       reduce what another owes. Found on the screen sweep, where the fixture's one client was
+       in credit and the tile said "-7,942 DUE AMT". */
+    var totDue = 0, totCr = 0;
+    list.forEach(function (x) { var d = x.l.due || 0; if (d > 0.5) totDue += d; else if (d < -0.5) totCr += -d; });
     var h = '<div class="cards">' +
       '<div class="stat ' + (totDue > 0 ? "alert" : "") + '"><div class="n">' + money(totDue) + '</div><div class="l">DUE AMT &mdash; outstanding from clients</div></div>' +
+      (totCr > 0 ? '<div class="stat"><div class="n" style="color:#0f766e">' + money(totCr) + '</div><div class="l">Held in credit &mdash; paid ahead, comes off their next deliveries</div></div>' : '') +
       '<div class="stat"><div class="n">' + list.length + '</div><div class="l">Client ledgers</div></div>' +
       '</div>';
 
@@ -20802,7 +20809,7 @@ function viewCatalogue() {
        Only the list block repaints as you type, never the page: on a phone a full
        repaint drops the caret and shuts the keyboard halfway through a mobile number. */
     h += '<div class="row" style="margin-bottom:8px">' +
-      '<input class="grow" id="pay_q" placeholder="Client dhoondein - naam, phone, area, plumber..." value="' + esc(S.payq || "") + '"/>' +
+      '<input class="grow" id="pay_q" placeholder="Find a client - name, phone, area, plumber..." value="' + esc(S.payq || "") + '"/>' +
       '<button class="btn sm ghost" id="pay_qc" data-act="pay-qclear" style="' + (S.payq ? "" : "display:none") + '">Clear</button></div>';
 
     h += '<div class="empty" style="text-align:left;padding:0 0 12px">Only challans with a <b>signed material receipt</b> enter the ledger. Freight appears here when the client bears it.</div>';
@@ -23747,7 +23754,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -26225,10 +26232,30 @@ function viewCatalogue() {
       '<div class="foot-note">Signed in as ' + esc(S.user) + '</div></div></div>';
   }
 
+  /* ================= SIGN OUT MEANS SIGN OUT (v6.9.400) =================
+     Found on the inspection of 2 Sep. This removed the session key and nothing else: the
+     whole book (ew_snap_<user>, about a megabyte), the Face ID record - which holds the PIN in
+     plain text - and the logo cache all stayed on the phone after "Sign out". A phone handed
+     on after signing out still held everything. The Challan, Payment and Service apps have
+     wiped all three since they shipped; the CRM never did.
+
+     KEPT, deliberately: the unsynced journal (ew_pending_v1) and the receipt-photo queue
+     (ew_proof_v1). They are work that has not reached the sheet, and a sign-out must never be
+     the thing that loses it. If either is non-empty the man is told, in numbers, before the
+     screen changes - and the next sign-in on this phone will still upload them. */
   function logout() {
+    var held = 0, photos = 0;
+    try { held = pendCount(); } catch (e) {}
+    try { photos = (JSON.parse(bigGet("ew_proof_v1") || "[]") || []).length; } catch (e) {}
     try { localStorage.removeItem(STORE); } catch (e) {}
-    S.pin = ""; S.user = ""; S.role = "";
-    renderLogin();
+    try { localStorage.removeItem(BIO_KEY); } catch (e) {}
+    try { bigDel(snapKey()); } catch (e) {}
+    try { bigDel(LOGO_STORE); } catch (e) {}
+    S.pin = ""; S.user = ""; S.role = ""; S.data = null; S.warmStart = false;
+    renderLogin((held || photos)
+      ? "Signed out. " + (held ? held + " record(s)" : "") + (held && photos ? " and " : "") +
+        (photos ? photos + " receipt photo(s)" : "") + " not yet uploaded are kept on this phone and go up on the next sign-in."
+      : "Signed out on this phone.");
   }
 
   /* ================= A DELIVERY WAITING TO BE PASSED (v6.9.327) =================
@@ -29381,7 +29408,7 @@ function viewCatalogue() {
      Checked against his own device before it was written (ew_navuse_v1 since 27 Aug): HISAB 14,
      Pending 7, Service 6, Leads 5, Clients 5, The brief 4, Challans 3, Health 3. */
   var NAV_GROUPS = [
-    ["HISAB",      ["billing", "payments", "dues"]],
+    ["HISAB",      ["billing", "payments", "paidout", "dues"]],
     ["Deliveries", ["challans", "returns", "stock"]],
     ["Clients",    ["clients", "followups", "visits", "discounts", "customers"]],
     ["Leads",      ["leads", "brandfollow", "quotes", "pitch", "agent", "winloss", "rules"]],
@@ -29464,8 +29491,13 @@ function viewCatalogue() {
     });
     return hot ? '<span class="nvdot"></span>' : '';
   }
+  /* v6.9.399 - the four old hubs land on their first screen. Each drew its own toggle under
+     group chips that already offer the same screens - a second row saying what the row above
+     it said. The hub views are still in the file; nothing reaches them from the nav. */
+  var NAV_HUB_HOME = { deliveries: "challans", collections: "payments", pricing: "rates", payrollhub: "commission" };
   /* ONE way to go to a screen, whether he tapped its chip or the group it lives in. */
   function navGo(tab) {
+    if (NAV_HUB_HOME[tab]) tab = NAV_HUB_HOME[tab];
     S.tab = tab;
     S.chOnly = "";        /* v6.9.388 - a filter must not outlive the visit that set it */
     tabUse(S.tab);
@@ -29656,7 +29688,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -33482,18 +33514,18 @@ function viewCatalogue() {
        more than that. */
     if (act === "saathi-push") {
       if (!S.coMob) {
-        var m = window.prompt("Console ka mobile number (jo IncentiveConfig mein OWNER_MOBILE hai):", "");
+        var m = window.prompt("The Console's mobile number (OWNER_MOBILE in IncentiveConfig):", "");
         if (!m) return;
         S.coMob = String(m).replace(/\D/g, "").slice(-10);
       }
       if (!S.coPin) {
-        var pn = window.prompt("Console ka PIN:", "");
+        var pn = window.prompt("The Console's PIN:", "");
         if (!pn) { S.coMob = ""; return; }
         S.coPin = String(pn).trim();
       }
       var list = (S.data.associates || []).slice();
-      if (!list.length) { toast("Koi partner nahi mila."); return; }
-      toast("Saathi ko bhej raha hoon - " + list.length + " partner...");
+      if (!list.length) { toast("No partner found."); return; }
+      toast("Sending to Saathi - " + list.length + " partner(s)...");
 
       var okN = 0, failN = 0, ptsN = 0, i = 0;
       var step = function () {
@@ -33522,7 +33554,7 @@ function viewCatalogue() {
             /* a bad PIN would otherwise fail silently for every partner in turn */
             if (r && r.err && /PIN|record mein nahi/i.test(r.err)) {
               S.coPin = ""; S.coMob = ""; i = list.length;
-              toast("Ruk gaya: " + r.err);
+              toast("Stopped: " + r.err);
             }
           }
           setTimeout(step, 120);
@@ -35867,7 +35899,7 @@ function viewCatalogue() {
     VBUSY = true;
     verPut({ have: (verSeen().have || ""), want: String(v || ""), at: (new Date()).getTime() });
     var b = verBarEl();
-    b.innerHTML = "<div style='flex:1'>Naya version aa raha hai...</div>";
+    b.innerHTML = "<div style='flex:1'>A newer version is on its way...</div>";
     b.style.display = "flex";
 
     var done = false;
@@ -35901,13 +35933,13 @@ function viewCatalogue() {
       return String(x == null ? "" : x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     };
     b.innerHTML =
-      "<div style='flex:1;min-width:0'><b>Naya version aa gaya hai.</b> " +
-      esc2(note || "App ko ek baar refresh kar lein.") + "</div>" +
+      "<div style='flex:1;min-width:0'><b>A newer version is ready.</b> " +
+      esc2(note || "Refresh the app once.") + "</div>" +
       "<button onclick='ewVerWipe()' style='background:#fff;color:#2F6E5F;border:0;border-radius:8px;" +
-      "padding:8px 12px;font-weight:700;font-size:13px;min-height:34px'>Update karein</button>" +
+      "padding:8px 12px;font-weight:700;font-size:13px;min-height:34px'>Update</button>" +
       (force ? "" :
         "<button onclick='ewVerHide()' style='background:transparent;color:#DCEDE7;border:1px solid #6FA294;" +
-        "border-radius:8px;padding:8px 10px;font-size:13px;min-height:34px'>Baad mein</button>");
+        "border-radius:8px;padding:8px 10px;font-size:13px;min-height:34px'>Later</button>");
     b.style.display = "flex";
     if (force) setTimeout(function () { verWipe(VNEW); }, 6000);
   }
@@ -35919,7 +35951,7 @@ function viewCatalogue() {
     var v = String(r.ver), st = verSeen();
     if (st.want && st.want === v) {                     /* the refresh worked */
       verPut({ have: v });
-      try { toast("App update ho gaya."); } catch (e) { }
+      try { toast("The app is up to date."); } catch (e) { }
       return false;
     }
     if (!st.have) { verPut({ have: v }); return false; }  /* first run on this phone */
