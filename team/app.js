@@ -26,12 +26,36 @@
         rq.onupgradeneeded = function () {
           try { rq.result.createObjectStore(IDB_STORE); } catch (e) {}
         };
-        rq.onsuccess = function () { fin(rq.result); };
+        /* ============ THE DOOR THAT LATCHED SHUT (v6.9.391) ============
+           The timeout below exists so the app never waits on storage to start. It answered
+           null - correctly - and then left that null CACHED IN _idbP, where it stood for the
+           rest of the page. Every later read and every later write got "this browser has no
+           IndexedDB" from a browser that has it and had merely been slow for one moment.
+
+           That is not a small window. v6.9.257 moved the catalogue, the offline book and the
+           logo cache into IndexedDB and REMOVES the localStorage copy once IndexedDB confirms
+           the write. So on a device that has already migrated, one slow open means: the
+           catalogue reads as absent, the saved book reads as absent, the logos read as absent,
+           and nothing saved during that whole session is kept. The app carries on and says
+           nothing, because every one of those paths is written to treat "not there" as normal.
+
+           Found on 1 Sep chasing an empty brand grid. An empty grid is what an empty PRODUCTS
+           looks like, and this is one of the ways PRODUCTS ends up empty.
+
+           A SLOW OPEN IS NOT AN ANSWER. If the door opens late, put the real door back. */
+        rq.onsuccess = function () {
+          if (done) _idbP = Promise.resolve(rq.result);
+          fin(rq.result);
+        };
+        /* onerror and onblocked ARE answers. A browser that refuses stays refused, and
+           re-opening it on every read would be noise. Only the timeout un-latches. */
         rq.onerror = function () { fin(null); };
         rq.onblocked = function () { fin(null); };
         /* Safari in private mode can leave open() hanging forever. The app must never wait
-           on storage to start - it falls back to localStorage and carries on. */
-        setTimeout(function () { fin(null); }, 2500);
+           on storage to start - it falls back to localStorage and carries on.
+           v6.9.391 - and _idbP is cleared, so the NEXT caller knocks again instead of
+           inheriting this one's shrug. */
+        setTimeout(function () { if (!done) { _idbP = null; fin(null); } }, 2500);
       } catch (e) { fin(null); }
     });
     return _idbP;
@@ -114,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.390";
+  var APP_VERSION = "6.9.393";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2195,11 +2219,21 @@ window.addEventListener("beforeunload", function (ev) {
       .then(function (rows) {
         var items = parseCatalog(rows);
         if (items.length) {
+          /* v6.9.391 - READ BEFORE THE ASSIGNMENT. Every call site fires this and throws the
+             promise away (boot, the offline path, the tab change, the "added a product" path),
+             so a screen drawn while the catalogue was still in the air stayed empty for ever -
+             which is exactly what the challan builder did. Fixing the five call sites would
+             leave the sixth to be written wrong later; the function repaints itself instead.
+             Narrow on purpose: only when the catalogue went from NOTHING to something, so this
+             is at most one extra paint per page load, and render() carries the form snapshot
+             so a half-typed challan survives it. */
+          var _wasEmpty = !PRODUCTS.length;
           PRODUCTS = items;
           PRODLIST_HTML = null;
           _pcbCache = null;                 /* v6.9.373 - the brand map is derived from PRODUCTS */
           _catAt = Date.now();
           bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items }));
+          if (_wasEmpty) { try { render(); } catch (e) {} }
         }
         _catP = null;
       })
@@ -2410,12 +2444,12 @@ window.addEventListener("beforeunload", function (ev) {
       }
     } catch (e) {}
 
-    var h = '<div class="row"><input class="grow" id="q" placeholder="Code, naam, brand ya family se dhoondein..." value="' + esc(S.q) + '"/>' +
+    var h = '<div class="row"><input class="grow" id="q" placeholder="Search by code, name, brand or family..." value="' + esc(S.q) + '"/>' +
       '<button class="btn ghost" data-act="cat-reload">Reload</button></div>' +
       '<div class="meta" style="margin:-2px 0 6px">' + PRODUCTS.length + ' products' +
-      (loadedAt ? ' &middot; rate list ' + esc(loadedAt) + ' ko liya gaya' : "") + '</div>';
+      (loadedAt ? ' &middot; price list taken ' + esc(loadedAt) : "") + '</div>';
 
-    if (!PRODUCTS.length) return h + '<div class="empty">Catalogue abhi load nahi hua. Reload dabaiye.</div>';
+    if (!PRODUCTS.length) return h + catWait();          /* v6.9.391 - and in English */
 
     /* an open product wins over everything else on the screen */
     if (S.pvOpen) {
@@ -3169,7 +3203,7 @@ window.addEventListener("beforeunload", function (ev) {
     try {
       if (tab === "challans") return challanNet(r);
       if (tab === "returns") return returnNet(r);
-      if (tab === "payments") return Math.round(Number(r.amount) || 0);
+      if (tab === "payments") return Math.round(payAmt(r));
       if (tab === "quotes") return Math.round(Number(r.net) || 0);
       if (tab === "visits") return Math.round(nAmt(r.total) ||
         (nAmt(r.visitCharge) + nAmt(r.saltAmt) + nAmt(r.partsAmt)));
@@ -5913,6 +5947,30 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   }
   function brandProducts(brand) {
     return PRODUCTS.filter(function (p) { return realBrand(p) === brand; });
+  }
+  /* ============ AN EMPTY GRID IS NOT AN ANSWER (v6.9.391) ============
+     Reported 1 Sep, three words and a screenshot: "where gone brand names" - the challan
+     builder showing "1 TAP A BRAND" and nothing under it.
+
+     Nothing had gone. Measured on his own browser the same evening: 1,044 products in the
+     catalogue, version 2, written that afternoon, 23 brands that would have passed the
+     filter. The catalogue simply was not in memory YET, and three pickers choose their
+     brands with brandProducts(brand).length - so "the price list has not come down" and
+     "this business has no brands" draw the identical screen. He read the only meaning the
+     screen offered, which is that his brands were gone.
+
+     This is the fifth time a correct rule has been paired with a silent screen. One text,
+     one condition, used in all three pickers - so the next picker copies a line that is
+     already complete instead of half of one. */
+  function catWait() {
+    /* "it is on its way" was the first draft, and it is not always true - the boot fetch may
+       have already failed, or this phone may be offline. A screen that promises an arrival it
+       cannot see is the same fault in a friendlier voice. This says only what is certainly
+       true, and puts the one thing he can do about it under his thumb. */
+    return '<div class="empty">The price list has not come down to this phone yet, so there ' +
+      'are no brands to show. Nothing of yours is lost.' +
+      '<div style="margin-top:10px"><button class="btn ghost" data-act="cat-reload">' +
+      'Fetch the price list now</button></div></div>';
   }
   /* ============ ONE FAMILY, HOWEVER IT WAS TYPED (v6.9.297) ============
      Reported 17 Aug with a screenshot: two products entered under SS Elbow showed as TWO
@@ -15366,6 +15424,7 @@ function viewCatalogue() {
     }).slice().sort(alphaBy(function (br) { return br.brand; })).map(function (br) {
       return '<button class="chip ' + (z.brand === br.brand ? "on" : "") + '" data-act="rt-brand" data-brand="' + esc(br.brand) + '">' + esc(br.brand) + '</button>';
     }).join("") + '</div>';
+    if (!PRODUCTS.length) return h + catWait();          /* v6.9.391 */
     if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
     h += '<div class="chips">' + familyList(z.brand).map(function (f) {
       var n = brandProducts(z.brand).filter(function (p) { return famSame(p.family, f); }).length;
@@ -16563,13 +16622,13 @@ function viewCatalogue() {
          `billed` itself is untouched: it is still the gross value of what went out, because
          it is what the screens report and changing it would quietly change every figure. */
       collected += (S.data.payments || []).filter(function (p) { return dkey(p.client) === clLower; })
-        .reduce(function (a, p) { return a + nAmt(p.amount); }, 0);
+        .reduce(function (a, p) { return a + payAmt(p); }, 0);
       payBase += clientOpening(cl.name) + clBilled + clFreight - clReturned;
     });
     var ratio = payBase > 0 ? Math.min(1, collected / payBase) : 0;
     var payable = earned * ratio;
     var paid = S.data.commpay.filter(function (p) { return String(p.associate).toLowerCase() === payeeLower; })
-      .reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
+      .reduce(function (a, p) { return a + payAmt(p); }, 0);
     return { rows: rows, billed: billed, earned: earned, returned: returned, reversed: reversed,
       collected: collected, payBase: payBase, ratio: ratio, payable: payable, paid: paid, pending: payable - paid, sites: [] };
   }
@@ -17200,9 +17259,17 @@ function viewCatalogue() {
      Which is why every off-list line gets its OWN code. Two of them on one challan are two rows,
      not one row fought over by two quantity boxes - and a return of either can still find its
      own price. */
+  /* v6.9.392 - num() is a second copy of nAmt(), and it stays a second copy ON PURPOSE.
+     It was briefly made an alias - one implementation, which sounds strictly better - and that
+     broke eleven test rigs at once: every one of them lifts a function out of this file by
+     brace-matching and runs it in a scope of its own dependencies, and num had been
+     self-contained since the day it was written. What needs protecting is that the two AGREE,
+     and t_onerule.js holds every spelling of this parser in every app to one body. A test is
+     the right tool for that; coupling two functions is not. */
   function num(v) {
     if (typeof v === "number") return isFinite(v) ? v : 0;
-    var n = Number(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
+    var t = String(v === undefined || v === null ? "" : v).replace(/[^0-9.\-]/g, "");
+    var n = Number(t);
     return isFinite(n) ? n : 0;
   }
   function jobLine(desc, amt) {
@@ -17569,6 +17636,25 @@ function viewCatalogue() {
      screen disagreed by the whole opening balance, and the statement the customer was SENT was
      the one that had lost it. There is one reader now and every site uses it. */
   function clientOpening(name) { return nAmt((clientByName(name) || {}).openingAmt); }
+  /* v6.9.392 - AND ONE READER FOR A PAYMENT AMOUNT, for exactly the reason above.
+     Sixteen sites read it with raw Number(). A payment is typed by a man on a phone and lands
+     in the sheet as text, so "1,00,000" reads back as NaN, and every `|| 0` beside it turns
+     that into ZERO - a payment received, recorded, and then counted as nothing.
+
+     Where that would have shown: the client's HISAB ledger, the dues on the collection round,
+     the incentive ratio (collected / billed), the twice-weekly Telegram digest, the CSV export,
+     the duplicate-payment guard - and the STATEMENT PDF THAT IS SENT TO THE CUSTOMER. Every
+     one of them would have been wrong in the firm's favour, and the customer holding the
+     statement would have been the only person able to see it.
+
+     MEASURED 31 Aug on his own book: 26 payments, 164 openings, 141 freights - ZERO affected
+     today. Latent, not live. It stays latent only until somebody types a comma.
+     (Not re-counted today: his browser is not reachable this session. That measurement's date
+     is stated rather than implied, because a stale count presented as fresh is its own fault.)
+
+     hisabPayable read the same money TWICE, six lines apart - one line nAmt, the next Number.
+     That is what a rule without a single reader looks like after three months. */
+  function payAmt(p) { return nAmt((p || {}).amount); }
   function chFreight(c) { return String(c.freightTo) === "Client" ? nAmt(c.freight) : 0; }
   /* v6.9.325 - ONE EXPRESSION FOR WHAT A DELIVERY IS WORTH: net goods - which from v6.9.324
      has any further discount already taken off it - plus the freight the client is carrying.
@@ -19428,7 +19514,7 @@ function viewCatalogue() {
       .filter(function (p) { return p && p.client === client; })
       .map(function (p) {
         return { date: String(p.date || p.createdAt || "").slice(0, 10),
-                 amount: Number(p.amount) || 0,
+                 amount: payAmt(p),
                  mode: String(p.mode || "").trim(),
                  ref: String(p.ref || "").trim(),
                  notes: String(p.notes || "").trim() };
@@ -19456,7 +19542,7 @@ function viewCatalogue() {
     var pick = allocFor(p.id);
     return '<div style="font-size:11px;color:#0f766e;opacity:.9;margin-top:2px;white-space:normal">' +
       (pick && pick.length ? '<b>Pointed by hand:</b> ' : 'Went to: ') + esc(bits.join(" \u00b7 ")) +
-      (canSee("payments") && (Number(p.amount) || 0) > 0
+      (canSee("payments") && payAmt(p) > 0
         ? ' <span style="color:#0d9488;text-decoration:underline;cursor:pointer" data-act="pa-open" ' +
           'data-id="' + esc(p.id) + '" data-n="' + esc(p.client || "") + '">change</span>'
         : '') + '</div>';
@@ -19470,7 +19556,7 @@ function viewCatalogue() {
   function modalPayAlloc(payId) {
     var p = (S.data.payments || []).filter(function (x) { return String(x.id) === String(payId); })[0];
     if (!p) return "";
-    var cl = String(p.client || ""), amt = Number(p.amount) || 0;
+    var cl = String(p.client || ""), amt = payAmt(p);
     var w = settleWalk(cl);
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) {
       return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y";
@@ -19610,9 +19696,9 @@ function viewCatalogue() {
     try {
       save("audit", {
         id: "", createdAt: new Date().toISOString(), actor: S.user, action: ALLOC_ACT,
-        target: String(pay.client || "") + " / " + money(Number(pay.amount) || 0),
+        target: String(pay.client || "") + " / " + money(payAmt(pay)),
         detail: JSON.stringify({ pay: String(pay.id), client: String(pay.client || ""),
-                                 amount: Number(pay.amount) || 0, ids: (ids || []).map(String) }),
+                                 amount: payAmt(pay), ids: (ids || []).map(String) }),
         ip: ""
       });
     } catch (e) { }
@@ -19645,7 +19731,7 @@ function viewCatalogue() {
                 id: String(c.id), no: String(c.challanNo || ""), row: c });
     });
     (S.data.payments || []).filter(function (p) { return p && p.client === client; }).forEach(function (p) {
-      var a = Number(p.amount) || 0, neg = a < 0;
+      var a = payAmt(p), neg = a < 0;
       ev.push({ k: neg ? "D" : "C", d: String(p.date || p.createdAt || "").slice(0, 10), ord: 2,
                 kind: neg ? "refund" : "pay", amt: neg ? -a : a, id: String(p.id), row: p });
     });
@@ -20081,7 +20167,7 @@ function viewCatalogue() {
     var freight = chs.reduce(function (a, c) {
       return a + chFreight(c);
     }, 0);
-    var paid = pays.reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
+    var paid = pays.reduce(function (a, p) { return a + payAmt(p); }, 0);
     /* Old balance carried in when the client was first entered (money owed before the app). It is
        part of what they owe, so it rides in the dues and the HISAB balance. */
     var opening = nAmt((clientByName(client) || {}).openingAmt);
@@ -20518,7 +20604,7 @@ function viewCatalogue() {
     rows.forEach(function (r) {
       var p = r.p, live = !(r.cx && r.cx.on);
       out.push([receiptNo(p), p.date || "", p.client || "", p.siteName || "",
-        Math.round(Number(p.amount) || 0), p.mode || "", p.ref || "", p.createdBy || "",
+        Math.round(payAmt(p)), p.mode || "", p.ref || "", p.createdBy || "",
         live ? "Received" : "CANCELLED", live ? "" : (r.cx.reason || ""), live ? "" : (r.cx.note || "")]);
     });
     var tot = rows.reduce(function (a, r) { return a + ((r.cx && r.cx.on) ? 0 : Math.round(Number(r.p.amount) || 0)); }, 0);
@@ -20763,7 +20849,7 @@ function viewCatalogue() {
     return (S.data.payments || []).filter(function (x) {
       return String(x.client || "") === String(p.client || "") &&
         String(x.date || "") === String(p.date || "") &&
-        Math.round(Number(x.amount) || 0) === Math.round(Number(p.amount) || 0) &&
+        Math.round(payAmt(x)) === Math.round(payAmt(p)) &&
         String(x.mode || "") === String(p.mode || "");
     })[0] || null;
   }
@@ -20771,7 +20857,7 @@ function viewCatalogue() {
     return (S.data.commpay || []).filter(function (x) {
       return String(x.associate || "") === String(p.associate || "") &&
         String(x.date || "") === String(p.date || "") &&
-        Math.round(Number(x.amount) || 0) === Math.round(Number(p.amount) || 0);
+        Math.round(payAmt(x)) === Math.round(payAmt(p));
     })[0] || null;
   }
 
@@ -21030,7 +21116,7 @@ function viewCatalogue() {
         }
       });
       l.pays.forEach(function (p) {
-        lines.push({ d: dstr(p.date), p: "Payment received" + (p.mode ? " - " + p.mode : "") + (p.ref ? " [" + p.ref + "]" : ""), dr: 0, cr: Number(p.amount) || 0 });
+        lines.push({ d: dstr(p.date), p: "Payment received" + (p.mode ? " - " + p.mode : "") + (p.ref ? " [" + p.ref + "]" : ""), dr: 0, cr: payAmt(p) });
       });
       lines.sort(function (a, b) { return String(a.d).localeCompare(String(b.d)); });
 
@@ -25820,7 +25906,7 @@ function viewCatalogue() {
         '<br>' + esc(d10(c.createdAt)) + (c.amount ? '  \u00b7  ' + money(Number(c.amount) || 0) : '') + '</div></div>';
     });
     group("Payments", o.payments, function (p) {
-      return '<div class="card"><h3>' + money(Number(p.amount) || 0) +
+      return '<div class="card"><h3>' + money(payAmt(p)) +
         ' <span class="pill teal">' + esc(p.mode || "") + '</span></h3>' +
         '<div class="meta">' + esc(p.client || "") + '<br>' + esc(d10(p.date || p.createdAt)) +
         (p.ref ? '  \u00b7  ref ' + esc(p.ref) : '') + '</div></div>';
@@ -27154,7 +27240,7 @@ function viewCatalogue() {
     var pays = (S.data.payments || []).filter(function (p) { return briefIn(p.date, w) && briefMine(p.client); });
     var collected = { total: 0, count: pays.length, by: {} };
     pays.forEach(function (p) {
-      var amt = Number(p.amount) || 0;
+      var amt = payAmt(p);
       collected.total += amt;
       var e = scOwnerOf(p.client) || "(not assigned)";
       collected.by[e] = (collected.by[e] || 0) + amt;
@@ -27935,6 +28021,11 @@ function viewCatalogue() {
       return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
     }).slice().sort(alphaBy(function (br) { return br.brand; }));
 
+    /* v6.9.391 - gated on PRODUCTS, not on brands.length: a man with no brands set up and a
+       man whose price list has not arrived need different sentences, and only one of them is
+       ever true here. */
+    if (!PRODUCTS.length) return qbox + catWait();
+
     /* STEP 1 — no brand yet: show ONLY brands */
     if (!z.brand) {
       return qbox + '<div class="ew-picklabel"><span class="step">1</span>Tap a brand</div>' +
@@ -28023,6 +28114,7 @@ function viewCatalogue() {
     }).slice().sort(alphaBy(function (br) { return br.brand; })).map(function (br) {
       return '<button class="chip ' + (z.brand === br.brand ? "on" : "") + '" data-act="oc-brand" data-brand="' + esc(br.brand) + '">' + esc(br.brand) + '</button>';
     }).join("") + '</div>';
+    if (!PRODUCTS.length) return h + catWait();          /* v6.9.391 */
     if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
     h += '<div class="chips">' + familyList(z.brand).map(function (f) {
       return '<button class="chip ' + (famSame(z.family, f) ? "on" : "") + '" data-act="oc-fam" data-fam="' + esc(f) + '">' + esc(f) + '</button>';
@@ -28493,8 +28585,8 @@ function viewCatalogue() {
     var rows = paidRows();
     var thisM = ymLocal(new Date());
     var mTot = rows.filter(function (p) { return String(p.date || "").slice(0, 7) === thisM; })
-      .reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
-    var allTot = rows.reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
+      .reduce(function (a, p) { return a + payAmt(p); }, 0);
+    var allTot = rows.reduce(function (a, p) { return a + payAmt(p); }, 0);
     /* still to pay, across everybody - the same books the Incentives screen reads, so the two
        screens can never disagree about what is owed */
     var owed = 0, owedOk = true;
@@ -30312,7 +30404,10 @@ function viewCatalogue() {
     if (act === "pv-back")  { S.pvOpen = ""; render(); return; }
     if (act === "pv-more")  { S.pvMore = (S.pvMore || 60) + 60; render(); return; }
     if (act === "pay-qclear") { S.payq = ""; render(); return; }
-    if (act === "cat-reload") { toast("Reloading catalogue..."); loadCatalog(true).then(function () { toast(PRODUCTS.length + " products loaded."); renderBg(); }); return; }
+    /* v6.9.391 - render(), not renderBg(). renderBg DEFERS while a modal is open, and the
+       one place this button is most needed is inside an open challan builder with an empty
+       brand grid: he pressed it, the catalogue came down, and the screen did not move. */
+    if (act === "cat-reload") { toast("Fetching the price list..."); loadCatalog(true).then(function () { toast(PRODUCTS.length + " products loaded."); render(); }); return; }
 
     if (act === "nav-toggle") { S.navOpen = !S.navOpen; render(); return; }
     if (act === "nav-close") { S.navOpen = false; render(); return; }
@@ -33434,6 +33529,10 @@ function viewCatalogue() {
     if (act === "pr-add") {
       var pc = val("pr_code"), pr2 = val("pr_rate");
       if (!pc || !pr2) { toast("Pick a product and its new rate."); return; }
+      /* v6.9.393 - it only ever checked the box was not empty. "1,200" reads back as NaN on
+         the server and falls through to the BASE rate, so the one item he singled out is the
+         one item that does not move - and nothing on screen says so. */
+      if (!(nAmt(pr2) > 0)) { toast("That new rate is not a number I can read: " + pr2); return; }
       var pp2 = PRODUCTS.filter(function (p) { return p.label === pc || p.code === pc; })[0] || {};
       S.pr.brand = val("pr_brand"); S.pr.pct = val("pr_pct"); S.pr.from = val("pr_from"); S.pr.note = val("pr_note");
       S.pr.overrides.push({ code: pp2.code || pc, rate: pr2 });
@@ -33448,9 +33547,19 @@ function viewCatalogue() {
       var pb = val("pr_brand"), pf = val("pr_from");
       if (!pb) { toast("Pick the brand."); return; }
       if (!pf) { toast("Set the effective-from date."); return; }
+      /* v6.9.393 - this sent `val("pr_pct") || 0` with no check whatever, while adm-save six
+         thousand lines up has refused an out-of-range percent since v6.9.344. Same kind of
+         field, same screen, two behaviours. A "6%" typed here applied NOTHING and looked
+         saved. Said in the same voice as adm-save's: what is wrong, and that nothing moved. */
+      var pPct = String(val("pr_pct") || "").trim();
+      if (pPct !== "" && (!/^[+-]?[0-9]*\.?[0-9]+\s*%?$/.test(pPct) ||
+                          nAmt(pPct) < -100 || nAmt(pPct) > 100)) {
+        toast("The percentage must be a number between \u2212100 and 100. Nothing was saved.");
+        return;
+      }
       t.disabled = true; t.textContent = "Saving...";
       api("priceSave", {
-        brand: pb, pct: val("pr_pct") || 0, effectiveFrom: pf,
+        brand: pb, pct: pPct === "" ? 0 : nAmt(pPct), effectiveFrom: pf,
         overrides: S.pr.overrides || [], notes: val("pr_note")
       }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Could not save."); render(); return; }
