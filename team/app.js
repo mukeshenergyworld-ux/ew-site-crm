@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.403";
+  var APP_VERSION = "6.9.404";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -19137,8 +19137,48 @@ function viewCatalogue() {
     });
     return _pdfjsP;
   }
-  /* Every page of a PDF, as JPEGs about 1400 px wide - the same width the single preview used,
-     so a statement is no heavier per page than it was. */
+  /* ================= THE PHOTOGRAPH INSIDE THE DOCUMENT  (v6.9.404, 3 Sep 2026) =================
+     HIS WORDS, with Manish Singla's statement open: "no need to show challan twice, simply
+     challan on left side and signed receipt pic on right, why to show challan again above
+     receipt, this making it complicated".
+
+     The document on file is the one proofPdf builds: the challan sheet with the photograph of
+     the signed paper drawn under it (or on a second page, before v6.9.281). The statement's
+     right half drew that whole page - the challan a second time, and the photograph small
+     under it. The page is a DRAWING, and the photograph's box is in it: pdf.js hands back the
+     operator list, and an image painted through a transform has a rectangle. The largest image
+     on a page is the photograph (the logos are 26-30 mm strips). A save/transform/paint/restore
+     walk finds it; the page is then rendered at a scale that gives the photograph the whole
+     pixel budget, and that box is cut out and handed back as `photo` beside the page. */
+  function pdfPhotoBox(lib, ops, v1) {
+    var OPS = (lib && lib.OPS) || {}, fn = (ops && ops.fnArray) || [], args = (ops && ops.argsArray) || [];
+    var ctm = [1, 0, 0, 1, 0, 0], stack = [], best = null;
+    /* t applied first, then m - a `cm` inside a q...Q acts before everything outside it */
+    var mul = function (t, m) {
+      return [t[0] * m[0] + t[1] * m[2], t[0] * m[1] + t[1] * m[3],
+              t[2] * m[0] + t[3] * m[2], t[2] * m[1] + t[3] * m[3],
+              t[4] * m[0] + t[5] * m[2] + m[4], t[4] * m[1] + t[5] * m[3] + m[5]];
+    };
+    var pt = function (m, x, y) { return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]; };
+    for (var i = 0; i < fn.length; i++) {
+      var f = fn[i];
+      if (f === OPS.save) stack.push(ctm.slice());
+      else if (f === OPS.restore) { if (stack.length) ctm = stack.pop(); }
+      else if (f === OPS.transform) { var a = args[i]; if (a && a.length >= 6) ctm = mul([a[0], a[1], a[2], a[3], a[4], a[5]], ctm); }
+      else if (f === OPS.paintImageXObject || f === OPS.paintJpegXObject) {
+        var cs = [pt(ctm, 0, 0), pt(ctm, 1, 0), pt(ctm, 0, 1), pt(ctm, 1, 1)].map(function (p) { return v1.convertToViewportPoint(p[0], p[1]); });
+        var xs = cs.map(function (p) { return p[0]; }), ys = cs.map(function (p) { return p[1]; });
+        var x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
+        var box = { x: x0, y: y0, w: Math.max.apply(null, xs) - x0, h: Math.max.apply(null, ys) - y0 };
+        /* 90 pt = 32 mm: above every logo strip, below every photograph (78 mm tall at least) */
+        if (box.w >= 90 && box.h >= 90 && (!best || box.w * box.h > best.w * best.h)) best = box;
+      }
+    }
+    return best;
+  }
+  /* Every page of a PDF - as a JPEG about 1400 px wide when it has to stand for itself, and
+     with its photograph cut out beside it when it has one. A page that carries a photograph is
+     not encoded whole: nothing draws it. */
   function pdfPages(b64) {
     return pdfjsReady().then(function (lib) {
       if (!lib) return null;
@@ -19150,19 +19190,41 @@ function viewCatalogue() {
           if (n > pdf.numPages) return Promise.resolve(out);
           return pdf.getPage(n).then(function (pg) {
             var v1 = pg.getViewport({ scale: 1 });
-            var vp = pg.getViewport({ scale: Math.min(3, Math.max(1, 1400 / (v1.width || 595))) });
-            var cv = document.createElement("canvas");
-            cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
-            return pg.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise
-              .then(function () {
-                out.push({ src: cv.toDataURL("image/jpeg", 0.72), w: cv.width, h: cv.height });
+            return pg.getOperatorList().then(function (ops) { return pdfPhotoBox(lib, ops, v1); }, function () { return null; }).then(function (box) {
+              /* a page with a photograph is rendered THROUGH the photograph's box: the viewport
+                 is shifted so the box lands at the canvas origin and the canvas is the box's
+                 size, so the sheet around it costs nothing and the picture gets ~1200 px of
+                 width whatever fraction of the page it was drawn at (measured: 822 px when the
+                 whole page was rendered at the 3x cap; 1200 this way, from a 4 MB canvas) */
+              var scale, vp, cv;
+              if (box) {
+                scale = Math.max(1, Math.min(1200 / box.w, 1600 / box.h));
+                vp = pg.getViewport({ scale: scale, offsetX: -box.x * scale, offsetY: -box.y * scale });
+                cv = document.createElement("canvas");
+                cv.width = Math.max(1, Math.round(box.w * scale)); cv.height = Math.max(1, Math.round(box.h * scale));
+              } else {
+                scale = Math.min(3, Math.max(1, 1400 / (v1.width || 595)));
+                vp = pg.getViewport({ scale: scale });
+                cv = document.createElement("canvas");
+                cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+              }
+              return pg.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise.then(function () {
+                var page = { src: "", w: cv.width, h: cv.height, photo: null };
+                if (box && cv.width > 60 && cv.height > 60) page.photo = { src: cv.toDataURL("image/jpeg", 0.8), w: cv.width, h: cv.height };
+                if (!page.photo) page.src = cv.toDataURL("image/jpeg", 0.72);
+                out.push(page);
                 return one(n + 1);
               });
+            });
           });
         };
         return one(1);
       });
     }).catch(function () { return null; });
+  }
+  /* the photographs a document holds, in page order - a JPEG proof is its own photograph */
+  function rcptPhotos(rec) {
+    return ((rec && rec.pages) || []).map(function (p) { return p && p.photo; }).filter(Boolean);
   }
   /* {pages: [{src,w,h}...], whole: true} - whole is false when only the first page could be
      had, and the appendix then says so instead of claiming to be the receipt. */
@@ -19195,7 +19257,9 @@ function viewCatalogue() {
           if (!p) return attempt(n + 1);
           /* the raw file being an image means we hold the whole of it; the lh3 preview of a
              PDF is page one only, and must not claim otherwise */
-          RCPT_IMG[key] = { pages: [{ src: p.src, w: p.w, h: p.h }], whole: !!isFile };
+          /* v6.9.404 - the file being an image means it IS the photograph; the lh3 preview of a
+             PDF is a rendering of page one, and its photograph cannot be cut out of it */
+          RCPT_IMG[key] = { pages: [{ src: p.src, w: p.w, h: p.h, photo: isFile ? { src: p.src, w: p.w, h: p.h } : null }], whole: !!isFile };
           return RCPT_IMG[key];
         });
       }).catch(function () { return attempt(n + 1); });
@@ -19646,11 +19710,18 @@ function viewCatalogue() {
             return;
           }
           var maxH = FOOT - 16 - yy - 4, img = null, cap = "";
-          if (rec && rec.pages && rec.pages.length) {
+          /* v6.9.404 - "simply challan on left side and signed receipt pic on right": the
+             photograph out of the document, never the sheet that repeats the challan */
+          var photos = rcptPhotos(rec);
+          if (photos.length) {
+            img = photos[0];
+            cap = "The photograph of the signed paper, as it was filed - reproduced unaltered." +
+                  (photos.length > 1 ? " Another sheet follows on the next page." : "");
+          } else if (rec && rec.pages && rec.pages.length) {
             img = rec.pages[0];
             cap = rec.whole
-              ? (rec.pages.length > 1 ? "Sheet 1 of " + rec.pages.length + " - the other sheet" + (rec.pages.length > 2 ? "s follow" : " follows") + " on the next page. The receipt held on file, reproduced unaltered."
-                                      : "The receipt held on file, reproduced unaltered.")
+              ? (rec.pages.length > 1 ? "Sheet 1 of " + rec.pages.length + " - the other sheet" + (rec.pages.length > 2 ? "s follow" : " follows") + " on the next page. The document held on file, reproduced unaltered."
+                                      : "The document held on file, reproduced unaltered.")
               : "First sheet only - the full document, with the signed paper, is on file.";
           } else if (r.thumb) {
             var sz = TSZ[c.id] || null;
@@ -19691,12 +19762,14 @@ function viewCatalogue() {
           drawReceipt(c, isRet, top);
           y = top;
           drawLines(c, isRet, L, halfW, label);
-          /* the sheets after the first, two to a page, so a two-page document is shown whole */
-          var rec = RIMG[c.id];
-          if (rec && rec.pages && rec.pages.length > 1) {
-            var extra = rec.pages.slice(1), k = 0;
+          /* the sheets after the first, two to a page - the further photographs when the
+             document holds more than one, else the further pages of a document with none */
+          var rec = RIMG[c.id], _ph = rcptPhotos(rec);
+          var extra = _ph.length ? _ph.slice(1) : ((rec && rec.pages) || []).slice(1);
+          if (extra.length) {
+            var nAll = extra.length + 1, k = 0;
             while (k < extra.length) {
-              var yy0 = pageMark(label + "  ·  receipt sheets " + (k + 2) + (k + 2 < extra.length + 1 ? "-" + Math.min(k + 3, extra.length + 1) : "") + " of " + rec.pages.length);
+              var yy0 = pageMark(label + "  ·  receipt sheets " + (k + 2) + (k + 2 < nAll ? "-" + Math.min(k + 3, nAll) : "") + " of " + nAll);
               var pair = extra.slice(k, k + 2), colW = (R - L - 6) / 2;
               var boxes = pair.map(function (img) { return fitBox(img.w, img.h, colW, FOOT - 8 - yy0); });
               var span = boxes.reduce(function (a, bx) { return a + bx.w; }, 0) + 6 * (pair.length - 1);
@@ -19705,7 +19778,7 @@ function viewCatalogue() {
                 var bx = boxes[j]; if (j) xx += boxes[j - 1].w + 6;
                 try { doc.addImage(img.src, "JPEG", xx, yy0, bx.w, bx.h); doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(xx, yy0, bx.w, bx.h); } catch (e2) { }
                 F("normal"); doc.setFontSize(6.4); ink(PALE);
-                doc.text("Sheet " + (k + j + 2) + " of " + rec.pages.length, xx, Math.min(FOOT - 2, yy0 + bx.h + 3.4));
+                doc.text("Sheet " + (k + j + 2) + " of " + nAll, xx, Math.min(FOOT - 2, yy0 + bx.h + 3.4));
               });
               k += 2;
             }
