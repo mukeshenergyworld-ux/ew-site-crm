@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.46.7";
+  var APP_VERSION = "1.47.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -2195,6 +2195,47 @@ function discRowOn(client, brand, onYmd) {
      both on the line so that whichever way he answers is one condition, not an archaeology. */
   var JOB_CODE = "JOBWORK";
   function isJobLine(l) { return !!(l && (l.job === true || String(l.code || "") === JOB_CODE)); }
+  /* ================= SALT ON A CHALLAN IS A SERVICE CALL  (v1.47.0, 2 Sep 2026) =================
+     The CRM asks it since 6.9.402; this is the same question at the counter. isSaltLine and
+     chSaltBags are byte-for-byte the CRM's, so the two apps count a bag the same way:
+     TABSALT is sold by the kilo and a bag is SALT_BAG_KG. */
+  var SALT_BAG_KG = 25;
+  function isSaltLine(l) {
+    if (!l || isJobLine(l)) return false;
+    return String(l.code || "").toUpperCase() === "TABSALT" || /\bsalt\b/i.test(String(l.desc || ""));
+  }
+  function chSaltBags(lines) {
+    var bags = 0;
+    (lines || []).forEach(function (l) {
+      if (!isSaltLine(l)) return;
+      var q = nAmt(l.qty);
+      bags += /kg/i.test(String(l.unit || "")) || String(l.code || "").toUpperCase() === "TABSALT" ? q / SALT_BAG_KG : q;
+    });
+    return Math.round(bags * 10) / 10;
+  }
+  function chSaltBar() {
+    if (!S.ch) return "";
+    var bags = chSaltBags(S.ch.items);
+    if (!(bags > 0)) return "";
+    var yes = (S.ch.svcCall || "yes") === "yes";
+    return '<div class="card" style="border:1px solid #99f6e4;background:#f0fdfa;margin-top:8px">' +
+      '<div style="font-weight:700;font-size:14px;color:#0f766e;margin-bottom:3px">' + bags + ' bag' + (bags === 1 ? '' : 's') + ' of salt \u2014 is this a service call?</div>' +
+      '<div class="muted" style="color:#134e4a">If it is, it is written on the client\u2019s softener as a salt delivery: the machine\u2019s next service moves and its history shows it. ' +
+      'The office finds the machine from his name or his phone. The money stays on this challan; nothing is counted twice.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
+      '<button class="btn sm' + (yes ? '' : ' gry') + '" data-act="ch-svc" data-v="yes">Yes, it services the machine</button>' +
+      '<button class="btn sm' + (yes ? ' gry' : '') + '" data-act="ch-svc" data-v="no">No, just goods</button></div></div>';
+  }
+  /* the row, money-free, naming the challan - by number, or by id when the number is still to
+     come (see saveRow: a challan can be held without one). The server resolves the machine. */
+  function chSaltVisitRow(cObj, ref, bags) {
+    return {
+      id: "", createdBy: S.user, installId: "", client: cObj.name, area: cObj.area || "",
+      date: today(), engineer: "", type: "Salt delivery", visitCharge: 0, saltBags: bags, saltAmt: 0,
+      partsUsed: "", partsAmt: 0, total: 0, collected: 0, balance: 0,
+      notes: "Billed on challan " + ref + " \u2014 money is on HISAB"
+    };
+  }
   function jobLine(desc, amt) {
     return { code: JOB_CODE, desc: String(desc || "").trim(), unit: "job",
              qty: 1, rate: Math.round(num(amt)), brand: "", disc: 0, job: true };
@@ -3122,6 +3163,7 @@ function discRowOn(client, brand, onYmd) {
 
     /* v1.46.0 - beside the Save button, not up beside the fare box: that is where he is
        looking when he taps Create, and it is the tap this is answering. */
+    h += chSaltBar();
     h += chFreightBar();
     h += '<button class="btn full" data-act="ch-save" style="margin:14px 0 6px">' +
       (isEdit ? 'Save changes' : 'Create the challan') + '</button>' +
@@ -5307,6 +5349,10 @@ function discRowOn(client, brand, onYmd) {
     /* ---- save the challan ----
        Same row shape, same numbering endpoint and the same frozen discount as the CRM, so a
        challan made in the godown is indistinguishable from one made at the desk. */
+    if (act === "ch-svc") {
+      if (S.ch) S.ch.svcCall = t.getAttribute("data-v") === "no" ? "no" : "yes";
+      render(); return;
+    }
     if (act === "ch-fr-add") {
       var _fb = el("m_freight");
       if (_fb) { try { _fb.scrollIntoView({ block: "center" }); _fb.focus(); _fb.select(); } catch (e) {} }
@@ -5366,6 +5412,8 @@ function discRowOn(client, brand, onYmd) {
       /* v1.37.0 - "product" was right until job work existed. A challan for labour alone is a
          real thing and this message would have turned it away. */
       if (!lines.length) { toast("Add at least one line — material or job work."); return; }
+      /* v1.47.0 - the salt question, read here with everything else */
+      var saltBagsV = chSaltBags(lines), svcCallV = (z.svcCall || "yes");
       /* v1.46.0 - the fare, asked for once. See chFreightBar(). It sits ahead of the mintId,
          ahead of the disabled button, and a long way ahead of the challanNo call - so nothing
          has been taken when it stops, and nothing is lost if he walks away from it. The typed
@@ -5506,6 +5554,11 @@ function discRowOn(client, brand, onYmd) {
             }
           } else _list.push(saved);
           var shown = String(saved.challanNo || no || "");
+          /* v1.47.0 - salt on a softener client's challan is a service call, on his say-so.
+             A NEW challan only: an edit would write a second delivery for the same bags. */
+          if (!_editRow && saltBagsV > 0 && svcCallV === "yes") {
+            try { saveRow("visits", chSaltVisitRow(cObj, shown || ("#" + saved.id), saltBagsV)); } catch (eSv) { }
+          }
           /* the paper book's number goes after the delivery, never before it */
           var after = function () {
             bust(); S.ch = null; S.tab = "make"; render();
@@ -5517,7 +5570,8 @@ function discRowOn(client, brand, onYmd) {
                   ? "Challan " + shown + " updated" +
                     (_wasApproved ? " \u2014 back to draft, it must be passed again before dispatch." : " \u2014 still waiting to be passed.")
                   : "Challan " + shown + " created \u2014 waiting to be passed.") +
-                (manualV ? " Book no " + manualV + "." : ""));
+                (manualV ? " Book no " + manualV + "." : "") +
+                (!_editRow && saltBagsV > 0 && svcCallV === "yes" ? " " + saltBagsV + " bag(s) of salt written on his softener as a service call." : ""));
           };
           if (!manualV) { after(); return; }
           /* v1.9.0 - it used to call after() on all three paths, so a book number that never
