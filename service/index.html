@@ -289,7 +289,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.11.3";
+  var APP_VERSION = "1.12.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -1686,7 +1686,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return out;
   }
 
-  function installs() { return (S.data && S.data.installs) || []; }
+  /* v1.12.0 - a machine set aside in the CRM (a duplicate merged into the other record) leaves
+     this list too. visits() has honoured rec:cancel since v1.8.1; installs() never did, so after
+     a merge the engineer would still have been sent to the record that no longer counts. The
+     backend has sent rec:cancel rows to a service phone since V108. */
+  function installs() {
+    return ((S.data && S.data.installs) || []).filter(function (x) { return !isCancelled("installs", x.id); });
+  }
   /* ================= A VISIT SET ASIDE IS SET ASIDE HERE TOO (v1.8.1) ================
      The CRM can now mark a duplicate service visit as a double. If this app kept counting it,
      the two screens would show one customer two balances - which is exactly the fault that cost
@@ -2003,6 +2009,45 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function dgKey(s) {
     return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
   }
+  /* the last ten digits, so +91 / 0 / spaces / dashes all land on the same man */
+  function dgMob(s) {
+    var d = String(s == null ? "" : s).replace(/\D/g, "");
+    return d.length >= 10 ? d.slice(-10) : "";
+  }
+  /* ================= SAME PHONE, TWO NAMES, ONE MAN  (v1.12.0, 2 Sep 2026) =================
+     Byte-for-byte the CRM's svcDupPhones() and svcDupOthers() (t_svc_dups holds them equal), so
+     the two screens can never disagree about who is a duplicate. An engineer only holds his own
+     machines, so he sees the pairs he can see; the merge itself is the owner's, in the CRM. */
+  function svcDupPhones() {
+    var ins = ((S.data && S.data.installs) || []).filter(function (x) { return x && x.id && !isCancelled("installs", x.id); });
+    var byPh = {};
+    ins.forEach(function (x) { var p = dgMob(x.mobile); if (p) (byPh[p] = byPh[p] || []).push(x); });
+    var master = {};
+    ((S.data && S.data.clients) || []).forEach(function (c) {
+      if (!c || !String(c.name || "").trim()) return;
+      var p1 = dgMob(c.mobile), p2 = dgMob(c.mobile2);
+      if (p1 && !master[p1]) master[p1] = c;
+      if (p2 && !master[p2]) master[p2] = c;
+    });
+    var groups = [], byInst = {};
+    Object.keys(byPh).forEach(function (p) {
+      var rows = byPh[p], names = {};
+      rows.forEach(function (x) { names[dgKey(x.client)] = String(x.client || "").trim(); });
+      var m = master[p] || null;
+      var offMaster = m && rows.some(function (x) { return dgKey(x.client) !== dgKey(m.name); });
+      if (Object.keys(names).length < 2 && !offMaster) return;
+      var g = { phone: p, rows: rows.slice(), names: Object.keys(names).map(function (k) { return names[k]; }), master: m };
+      groups.push(g);
+      rows.forEach(function (x) { byInst[x.id] = g; });
+    });
+    return { groups: groups, byInst: byInst };
+  }
+  function svcDupOthers(g, inst) {
+    var out = [];
+    g.rows.forEach(function (x) { if (x.id !== inst.id && dgKey(x.client) !== dgKey(inst.client) && out.indexOf(x.client) < 0) out.push(x.client); });
+    if (g.master && dgKey(g.master.name) !== dgKey(inst.client) && out.indexOf(g.master.name) < 0) out.push(g.master.name + " (on the client master)");
+    return out;
+  }
   function clientVisitCharge(client) {
     var k = dgKey(client), best = 0;
     ((S.data && S.data.visits) || []).forEach(function (v) {
@@ -2192,9 +2237,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function insRow(ins) {
     var band = dueBand(ins), a = amcState(ins);
     var cls = band === "over" ? "over" : band === "soon" ? "soon" : band === "unset" ? "unset" : "";
-    return '<div class="card ' + cls + '" data-act="job" data-id="' + esc(ins.id) + '">' +
+    /* v1.12.0 - the same phone under another name, said on the row: the other record may be
+       the one that was serviced last week, and this one\u2019s "overdue" may be false */
+    var dg = null; try { dg = svcDupPhones().byInst[ins.id] || null; } catch (e) { dg = null; }
+    return '<div class="card ' + cls + '" data-act="job" data-id="' + esc(ins.id) + '"' + (dg ? ' style="border-color:#fecaca"' : '') + '>' +
       '<div class="row"><div class="grow">' +
         '<div class="ttl">' + esc(ins.client || "(no name)") + '</div>' +
+        (dg ? '<div class="meta" style="color:#b91c1c"><b>Same phone as ' + esc(svcDupOthers(dg, ins).join(" and ")) + '</b> \u2014 one man, two records. Check the other before treating this one as overdue; the owner merges them in the CRM.</div>' : '') +
         '<div class="meta">' + esc([ins.product, ins.model].filter(Boolean).join(" · ") || "machine not named") +
           (ins.serial ? ' &middot; #' + esc(ins.serial) : '') + '</div>' +
         '<div class="meta">' + esc(ins.area || NO_AREA) + (ins.mobile ? ' &middot; ' + esc(ins.mobile) : '') + '</div>' +
@@ -2493,7 +2542,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
          asked for the machine. Every fault and completed-work photo any engineer has taken was
          uploaded, stored, and never shown to anybody again. */
       picStrip(picsOf("receipt", v.id), "Signed receipt") +
+      picStrip(picsOf("salt", v.id), "Salt bags signed for") +
       picStrip(picsOf("visit", v.id), "On this visit") +
+      /* v1.12.0 - what is MISSING, in amber, until it is filed */
+      (g > 0 && !picsOf("receipt", v.id).length ? '<div class="pill due" style="margin-top:4px">no signed receipt</div>' : '') +
+      (num(v.saltBags) > 0 && !picsOf("salt", v.id).length ? '<div class="pill due" style="margin-top:4px">salt slip not photographed</div>' : '') +
       '</div><div class="right">' +
       '<div class="amt">' + esc(money9(dueAmt)) + '</div>' +
       (g > dueAmt ? '<div class="meta">' + esc(money9(g)) + ' of work</div>' : '') +
@@ -2605,7 +2658,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     h += '<label>Date</label><input id="v_date" type="date" value="' + esc(v.date || today()) + '"/>';
 
     /* --- salt, only where salt is a thing --- */
-    if (v.type === "Salt refill") {
+    /* v1.12.0 - the MACHINE makes salt a thing, not the word chosen for the visit. A softener's
+       periodic service nearly always puts bags in, and until today choosing "Service" hid the
+       salt boxes, so the bags went unrecorded and the salt slip was never asked for. */
+    if (v.type === "Salt refill" || (ins && /soft/i.test(String(ins.product || "") + " " + String(ins.model || "")) && v.type !== "Installation")) {
       h += '<div class="grid2">' +
         '<div><label>Salt bags</label><input id="v_bags" inputmode="numeric" value="' + esc(v.saltBags || "") + '"/></div>' +
         '<div><label>Salt amount</label><input id="v_saltamt" inputmode="numeric" value="' + esc(v.saltAmt || "") + '"/></div>' +
@@ -2917,6 +2973,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      for. */
   var PIC_KINDS = [
     { k: "receipt", t: "Signed service receipt", hint: "The paper the customer signed, with the amount on it. This is the one that settles an argument about a bill." },
+    /* v1.12.0 - "salt bag receipt": the slip he signed for the bags. Goods went in; a signature
+       says how many, the way a signed challan does for a delivery. */
+    { k: "salt",    t: "Salt bags signed for", hint: "The slip the customer signed for the bags of salt delivered - how many, and his signature." },
     { k: "fault",   t: "The fault",        hint: "What was wrong — the leak, the burnt card, the cracked housing." },
     { k: "done",    t: "Work done",        hint: "The machine running after the job. Your proof it was finished." },
     { k: "machine", t: "Machine & serial", hint: "The unit and its serial plate. Kept on the machine, not this visit — every future visit sees it." }
@@ -2936,7 +2995,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
          silently into the second one. */
       if (kind === "machine") return String(d.installId) === want && d.kind === "machine";
       if (kind === "receipt") return String(d.visitId) === want && d.kind === "receipt";
-      return String(d.visitId) === want && d.kind !== "machine" && d.kind !== "receipt";
+      if (kind === "salt") return String(d.visitId) === want && d.kind === "salt";
+      return String(d.visitId) === want && d.kind !== "machine" && d.kind !== "receipt" && d.kind !== "salt";
     }).map(function (a) {
       var d = {}; try { d = JSON.parse(a.detail || "{}"); } catch (e) { }
       return { kind: d.kind || "", url: d.url || "", thumb: d.thumb || "", by: d.by || a.actor || "", at: d.at || a.createdAt || "" };
@@ -3012,13 +3072,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      wrote it down: firing three uploads together on a bad line gets three timeouts instead of
      one success. Each one that lands is filed immediately, so a failure half way through never
      costs the ones already up. */
-  function picSend(pics, visitId, installId, client) {
+  function picSend(pics, visitId, installId, client, onEnd) {
     var done = 0, failed = 0;
     var step = function (i) {
       if (i >= pics.length) {
+        /* v1.12.0 - the audit row is in the journal; read it back so the strip and the amber
+           "not photographed" pill answer for what this phone has just filed */
         if (done) { bust(); renderBg(); }
         if (failed) toast(failed + " photo" + (failed > 1 ? "s" : "") + " did not go up. The visit is saved — the photo is not.");
         else if (done) toast(done + " photo" + (done > 1 ? "s" : "") + " filed.");
+        if (onEnd) { try { onEnd(done); } catch (e) { } }
         return;
       }
       var p = pics[i];
@@ -3028,7 +3091,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         .then(function (r) {
           if (!r || !r.ok || !r.url) { failed++; return step(i + 1); }
           var at = new Date().toISOString();
-          return saveRow("audit", {
+          var arow = {
             id: mintId("SP"), createdAt: at, actor: S.user || "",
             action: "service:photo",
             target: String(client || "") + " · " + ((picKind(p.kind) || {}).t || p.kind),
@@ -3036,12 +3099,49 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
               kind: p.kind, url: r.url, thumb: p.thumb || "", client: client || "",
               by: S.user || "", at: at }),
             ip: ""
-          }).then(function () { done++; step(i + 1); })
-            .catch(function () { failed++; step(i + 1); });
+          };
+          return saveRow("audit", arow).then(function () {
+            /* v1.12.0 - held on this phone at once, so the strip and the amber pill answer for
+               what was just filed instead of waiting for the next pull */
+            try { var _aa = (S.data.audit = S.data.audit || []); if (!_aa.some(function (x) { return x && x.id === arow.id; })) _aa.push(arow); } catch (eA) { }
+            done++; step(i + 1);
+          }).catch(function () { failed++; step(i + 1); });
         })
         .catch(function () { failed++; step(i + 1); });
     };
     step(0);
+  }
+
+  /* ============ THE TWO RECEIPTS, ASKED FOR BY NAME  (v1.12.0, 2 Sep 2026) ============
+     HIS WORDS: "its not asking visit receipt and salt bag receipt". It asks now - after the
+     save, as the only thing on the screen, one photograph each. A photo goes up the moment
+     it is taken (picSend, one at a time, filed as a service:photo audit row like every other
+     visit photograph). "No paper today" is allowed and remembered: the history row wears
+     "no signed receipt" in amber until one is filed. */
+  function sheetVisitReceipts() {
+    var r = S.rcp; if (!r) return "";
+    var asks = [{ k: "receipt", t: "The signed service receipt", why: (r.total > 0 ? money9(r.total) + " of work - " : "") + "his signature against what was done and what it cost." }];
+    if (r.bags > 0) asks.push({ k: "salt", t: r.bags + " bag" + (r.bags === 1 ? "" : "s") + " of salt signed for", why: "The slip he signed for the bags - how many went in, and his name." });
+    var left = asks.filter(function (a) { return !(r.got[a.k] || r.sent[a.k]); }).length;
+    return '<h2>Before you leave</h2>' +
+      '<div class="muted" style="margin-bottom:10px">' + esc(r.client || "") + ' &middot; the visit is saved. ' +
+      (left ? 'Two photographs settle every argument later: ' : 'Everything is on file. ') + '</div>' +
+      asks.map(function (a) {
+        var done = r.got[a.k] || r.sent[a.k], busy = r.busy[a.k];
+        return '<div class="card" style="padding:10px 12px;margin-bottom:8px;border-left:4px solid ' + (done ? '#0f766e' : '#f59e0b') + '">' +
+          '<div style="font-weight:700;font-size:14px">' + esc(a.t) + (done ? ' <span class="pill got">\u2713 on file</span>' : (busy ? ' <span class="pill">going up\u2026</span>' : '')) + '</div>' +
+          '<div class="muted" style="font-size:12.5px;margin:2px 0 8px">' + esc(a.why) + '</div>' +
+          (done ? '' : '<input type="file" accept="image/*" capture="environment" class="rc-pic" data-kind="' + esc(a.k) + '"/>') +
+          '</div>';
+      }).join("") +
+      '<div class="acts" style="margin-top:12px">' +
+      (left ? '<button class="btn gry" data-act="rc-none">No paper today</button>' : '') +
+      '<button class="btn" data-act="rc-done">' + (left ? 'Done' : 'Close') + '</button></div>';
+  }
+  function rcClose() {
+    S.rcp = null; S.sheet = null;
+    if (S.cxTellQueued) { S.cxTellQueued = false; S.sheet = sheetCxTell(); }
+    render();
   }
 
   function saveVisit() {
@@ -3070,7 +3170,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       return;
     }
 
-    S.sheet = null; S.vis = null;
+    /* v1.12.0 - the next screen is the two receipts. The photos already taken in the form
+       count as taken; the ones not yet taken are asked for by name. */
+    var _rcGot = {};
+    ((v.pics) || []).forEach(function (p) { _rcGot[p.kind] = 1; });
+    S.rcp = { visitId: row.id || "", installId: (ins && ins.id) || "", client: row.client || "",
+              total: visitTotal(row), bags: num(row.saltBags), got: _rcGot, sent: {}, busy: {} };
+    S.sheet = sheetVisitReceipts(); S.vis = null;
     toast("Visit saved" + (row.collected ? " — " + money9(row.collected) + " on you." : "."));
     render();
 
@@ -3094,7 +3200,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
                is where the send button lives. A message to a customer cannot be called back,
                which is the same reason the Payment app has never sent one either. */
             S.cxTell = { ref: _ref, name: cxWho(cRowOf(_ref)), mobile: cxMob((cRowOf(_ref) || {}).Mobile) };
-            S.sheet = sheetCxTell(); render();
+            /* v1.12.0 - if he is still photographing the receipts, this waits its turn */
+            if (S.rcp) { S.cxTellQueued = true; } else { S.sheet = sheetCxTell(); render(); }
           } else {
             toast("Visit saved. The complaint could not be closed — it stays on the list.");
           }
@@ -3111,7 +3218,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       catch (ePx) { toast("The visit is saved. The photos could not be sent."); }
     }
 
-    saveRow("visits", row).then(function () {
+    var _pv = saveRow("visits", row);
+    /* v1.12.0 - found by the receipts harness: a visit just saved was not on My work until the
+       next pull, because a journalled row only reaches S.data through applyJournal() at load.
+       The journal already has it; read it back now, so the screen says what the device knows. */
+    try { applyJournal(); } catch (eAJ) { }
+    _pv.then(function () {
       var upd = installAfter(ins, row);
       if (!upd) return null;
       /* keep the copy on this phone in step at once, so the due list stops nagging about a
@@ -3211,6 +3323,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       var ins = installById(id); if (!ins) return;
       S.job = ins.id; S.sheet = sheetJob(ins); render(); return;
     }
+    if (act === "rc-done") { rcClose(); return; }
+    if (act === "rc-none") {
+      var _rl = S.rcp ? (S.rcp.bags > 0 && !(S.rcp.got.salt || S.rcp.sent.salt) ? "the salt slip" : "the receipt") : "it";
+      rcClose(); toast("Saved without " + _rl + ". It shows in amber on this visit until a photo is filed."); return;
+    }
     if (act === "cx-tell-no") { S.cxTell = null; S.sheet = null; render(); return; }
     if (act === "cx-tell-go") {
       var tt = S.cxTell || {};
@@ -3301,6 +3418,22 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     /* v1.7.0 - a photograph, straight off the camera. Read into state, never into the DOM:
        the visit sheet repaints on every part added and every quantity changed, and a file
        input cannot be repopulated by a repaint - whatever was taken would simply be gone. */
+    /* v1.12.0 - a receipt photographed on the screen after the save goes up at once */
+    if (t && t.classList && t.classList.contains("rc-pic") && S.rcp) {
+      var rf = t.files && t.files[0], rk = t.getAttribute("data-kind") || "";
+      if (!rf || !rk) return;
+      S.rcp.busy[rk] = 1; S.sheet = sheetVisitReceipts(); render();
+      var _rc = S.rcp;
+      picRead(rf, rk).then(function (p) {
+        picSend([p], _rc.visitId, _rc.installId, _rc.client, function (okN) {
+          if (S.rcp === _rc) { _rc.busy[rk] = 0; if (okN) _rc.sent[rk] = 1; S.sheet = sheetVisitReceipts(); render(); }
+        });
+      }).catch(function () {
+        if (S.rcp === _rc) { _rc.busy[rk] = 0; S.sheet = sheetVisitReceipts(); render(); }
+        toast("That photo could not be read. Try taking it again.");
+      });
+      return;
+    }
     if (t && t.classList && t.classList.contains("v-pic") && S.vis) {
       var f = t.files && t.files[0];
       var kind = t.getAttribute("data-kind") || "";
