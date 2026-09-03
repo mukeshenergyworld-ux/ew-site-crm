@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.401";
+  var APP_VERSION = "6.9.403";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1549,6 +1549,7 @@
        (marking a brand Won, or a quote stamping its brands) must invalidate it immediately, or the
        very next read serves the row as it was a second ago. */
     if (tab === "pitch") _pitchIdx = null;
+    if (tab === "visits" || tab === "installs" || tab === "clients") _vmCache = null;   /* v6.9.402 */
     /* Send the FULL merged in-memory row, not just the handful of fields the caller passed. The
        backend writes the whole sheet row from whatever it receives - any column it is NOT sent is
        written blank - so a partial save would wipe the rest of the record (this is what blanked a
@@ -4451,13 +4452,10 @@ window.addEventListener("beforeunload", function (ev) {
      PENDING IS RECOMPUTED, NOT READ, exactly as the Service app does it - a `balance` column
      written months ago is a figure from months ago. And a cancelled visit is not pending. */
   function svcSummary(client) {
-    var k = dgKey(client);
-    var ins = (S.data.installs || []).filter(function (x) {
-      return dgKey(x.client) === k && !isCancelled("installs", x.id);
-    });
-    var vis = (S.data.visits || []).filter(function (x) {
-      return dgKey(x.client) === k && !isCancelled("visits", x.id);
-    });
+    /* v6.9.402 - through the resolver: his name, his phone, and the machines carrying either */
+    var kk = clientKeysOf(client);
+    var ins = (S.data.installs || []).filter(function (x) { return x && kk.insts[String(x.id)]; });
+    var vis = visitsOfClient(client);
     /* v6.9.386 - what the CONTRACT leaves the customer owing, not the gross of the work.
        One arithmetic, and it is the Service app's. */
     var insById = {};
@@ -5079,13 +5077,19 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     h += '<div class="row"><input class="grow" id="q" placeholder="Search client, area, engineer..." value="' + esc(S.q) + '"/>' +
       '<button class="btn" data-act="inst-new">+ New installation</button></div>';
     if (!list.length) h += '<div class="empty">No installations yet.</div>';
+    /* v6.9.402 - the same phone under two names is said ON THE CARD, where he is looking */
+    var _dupPh = svcDupPhones().byInst;
     list.forEach(function (x) {
       var d = dueLabel(x);
       var bal = S.data.visits.filter(function (v) { return v.installId === x.id; })
         .reduce(function (a, v) { return a + (Number(v.balance) || 0); }, 0);
-      h += '<div class="card"><h3>' + esc(x.client) + ' <span class="pill ' + d.k + '">' + d.t + '</span>' +
+      var _dg = _dupPh[x.id] || null, _dothers = _dg ? svcDupOthers(_dg, x) : [];
+      h += '<div class="card"' + (_dg ? ' style="border-color:#fca5a5"' : '') + '><h3>' + esc(x.client) + ' <span class="pill ' + d.k + '">' + d.t + '</span>' +
         (amcKind(x) !== "None" ? ' <span class="pill teal">AMC' + (x.amcEnd ? " to " + esc(dstr(x.amcEnd)) : "") + '</span>' : "") +
-        (bal > 0 ? ' ' + dueAmt(bal) : "") + '</h3>' +
+        (bal > 0 ? ' ' + dueAmt(bal) : "") +
+        (_dg ? ' <span class="pill" style="background:#fee2e2;color:#b91c1c">same phone twice</span>' : "") + '</h3>' +
+        (_dg ? '<div class="meta" style="color:#b91c1c;font-size:12.5px"><b>Same phone as ' + esc(_dothers.join(" and ")) + '.</b> One man, two records \u2014 his visits and his dues are split, and a reminder can fire for a machine serviced yesterday.' +
+          (roleIs("admin") ? '' : ' The owner can merge them from the CRM.') + '</div>' : '') +
         '<div class="meta">' + (function () {
           var ps = instProducts(x), lines = [];
           ps.forEach(function (p) {
@@ -5101,12 +5105,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         })() +
         '<br>' + esc(x.area || "") + (x.mobile ? ' &middot; ' + esc(x.mobile) : "") +
         '<br>Water: ' + esc(x.waterQuality || "-") + ' &middot; Engineer: ' + esc(x.engineer || "unassigned") +
-        (x.lastService ? '<br>Last service: ' + esc(d10(x.lastService)) : "") + '</div>' +
+        (x.lastService ? '<br>Last service: ' + esc(d10(x.lastService)) : "") +
+        (function () { var m = svcMissingCount(x.id); return m ? '<br><span style="color:#b45309;font-weight:600">' + m + ' visit' + (m === 1 ? '' : 's') + ' without a signed receipt or salt slip</span>' : ''; })() + '</div>' +
         '<div class="acts">' +
         (x.mobile ? '<a class="btn sm ghost" href="tel:' + esc(x.mobile) + '">Call</a>' : "") +
         '<button class="btn sm" data-act="visit-new" data-id="' + esc(x.id) + '">Log visit</button>' +
         '<button class="btn sm ghost" data-act="svc-ledger" data-n="' + esc(x.client) + '">Service hisab</button>' +
         (amcKind(x) !== "None" ? '<button class="btn sm ghost" data-act="amc-pdf" data-n="' + esc(x.client) + '" style="color:#0f766e">AMC sheet</button>' : "") +
+        (_dg && roleIs("admin") ? '<button class="btn sm" data-act="svc-merge-open" data-p="' + esc(_dg.phone) + '" style="background:#b91c1c;border-color:#b91c1c">Merge the two</button>' : "") +
         '<button class="btn sm ghost" data-act="inst-open" data-id="' + esc(x.id) + '">Edit</button></div></div>';
     });
     return h;
@@ -5156,12 +5162,18 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   */
   function viewDues() {
     var by = {};
+    _vmCache = null;
     S.data.visits.forEach(function (v) {
-      var b = Number(v.balance) || 0;
-      if (!by[v.client]) by[v.client] = { bal: 0, n: 0, last: "" };
-      by[v.client].bal += b;
-      by[v.client].n += 1;
-      if (!by[v.client].last || v.date > by[v.client].last) by[v.client].last = v.date;
+      if (isCancelled("visits", v.id)) return;
+      var b = visitPending(v, installById(v.installId) || null);
+      /* v6.9.402 - under the CLIENT-MASTER name, so his executive is found: the name typed on
+         the visit is resolved through his machine and his phone (visitMaster) */
+      var vk = visitMaster(v);
+      if (!by[vk]) by[vk] = { bal: 0, n: 0, last: "", names: {} };
+      by[vk].bal += b;
+      by[vk].n += 1;
+      by[vk].names[String(v.client || "")] = 1;
+      if (!by[vk].last || v.date > by[vk].last) by[vk].last = v.date;
     });
     var names = Object.keys(by).filter(function (k) { return by[k].bal > 0; })
       .sort(function (a, b) { return by[b].bal - by[a].bal; });
@@ -5199,16 +5211,19 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<span style="font-weight:400;color:#94a3b8;font-size:12.5px">' + mine.length + ' client(s)' + (open ? "" : " &middot; tap to view") + '</span></h3></div>';
       if (!open) return;
       mine.forEach(function (k) {
-        var vs = S.data.visits.filter(function (v) { return v.client === k && (Number(v.balance) || 0) > 0; })
+        var vs = visitsOfClient(k).filter(function (v) { return visitPending(v, installById(v.installId) || null) > 0; })
           .slice().sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
         var cm = (clientByName(k) || {}).mobile || "";
         h += '<div class="card" style="cursor:pointer;margin-left:12px;border-left:3px solid #99f6e4" ' +
           'data-act="' + (canBill ? "ch-hisab" : "svc-ledger") + '" data-cl="' + esc(k) + '" data-n="' + esc(k) + '">' +
-          '<h3>' + esc(k) + ' ' + dueAmt(by[k].bal) + '</h3><div class="meta">';
+          '<h3>' + esc(k) + ' ' + dueAmt(by[k].bal) + '</h3><div class="meta">' +
+          (function () { var oth = Object.keys(by[k].names).filter(function (n) { return dgKey(n) !== dgKey(k); }); return oth.length ? '<span style="color:#94a3b8">on the service book as ' + esc(oth.join(", ")) + '</span><br>' : ''; })();
         vs.forEach(function (v) {
+          var _rl = svcReceiptLine(v);
           h += esc(dstr(v.date)) + ' &middot; ' + esc(v.type) + ' &middot; billed ' + money(v.total) +
-            ', paid ' + money(v.collected) + ', <b>due ' + money(v.balance) + '</b>' +
-            (v.engineer ? ' &middot; <span style="color:#94a3b8">' + esc(v.engineer) + '</span>' : "") + '<br>';
+            ', paid ' + money(v.collected) + ', <b>due ' + money(visitPending(v, installById(v.installId) || null)) + '</b>' +
+            (v.engineer ? ' &middot; <span style="color:#94a3b8">' + esc(v.engineer) + '</span>' : "") +
+            (_rl ? ' &middot; ' + _rl : '') + '<br>';
         });
         h += '</div><div class="acts">' +
           (cm ? '<a class="btn sm ghost" href="tel:' + esc(cm) + '">Call</a>' : "") +
@@ -5222,17 +5237,66 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* ---- SERVICE LEDGER (service/AMC hisab, separate from the goods HISAB) ----
      Every service visit carries total (billed), collected (paid) and balance (due). A client's service
      ledger is the sum + list of their visits. Kept apart from the goods ledger so the two never mix. */
+  /* ================= WHICH VISITS ARE THIS MAN'S  (v6.9.402, 2 Sep 2026) =================
+     By his name, by his phone, and by the machines that carry either - never by the name
+     typed on the visit alone. Measured on his book: Ramesh's three visits and Rs 5,325 sat
+     under "Ramesh - Sheena Export" while his account, his card and his executive were
+     "Ramesh Chug - Sec 11", so HISAB showed him no service money and Client dues filed it
+     under Unassigned. One answer, used by the ledger, the dues screen, the statement and the
+     Service card. */
+  function clientKeysOf(name) {
+    var k = dgKey(name), names = {}, phones = {}, insts = {};
+    if (!k) return { names: names, phones: phones, insts: insts };
+    names[k] = 1;
+    var c = clientByName(name) || {};
+    [c.mobile, c.mobile2].forEach(function (m) { var p = dgMob(m); if (p) phones[p] = 1; });
+    var all = ((S.data && S.data.installs) || []).filter(function (x) { return x && x.id && !isCancelled("installs", x.id); });
+    all.forEach(function (x) {
+      var xk = dgKey(x.client), xp = dgMob(x.mobile);
+      if (xk === k || (xp && phones[xp])) { insts[x.id] = 1; if (xk) names[xk] = 1; if (xp) phones[xp] = 1; }
+    });
+    /* a second pass: a machine filed under a name the first pass reached through a phone */
+    all.forEach(function (x) { if (!insts[x.id] && names[dgKey(x.client)]) insts[x.id] = 1; });
+    return { names: names, phones: phones, insts: insts };
+  }
+  function visitsOfClient(name) {
+    var kk = clientKeysOf(name);
+    return ((S.data && S.data.visits) || []).filter(function (v) {
+      return v && !isCancelled("visits", v.id) && (kk.insts[String(v.installId || "")] || kk.names[dgKey(v.client)]);
+    });
+  }
+  /* the client-master name a visit belongs under - for grouping by executive */
+  var _vmCache = null;
+  function visitMaster(v) {
+    if (!_vmCache) {
+      _vmCache = { byInst: {}, byName: {}, byPhone: {} };
+      ((S.data && S.data.clients) || []).forEach(function (c) {
+        if (!c || !String(c.name || "").trim()) return;
+        var nk = dgKey(c.name); if (nk && !_vmCache.byName[nk]) _vmCache.byName[nk] = c.name;
+        [c.mobile, c.mobile2].forEach(function (m) { var p = dgMob(m); if (p && !_vmCache.byPhone[p]) _vmCache.byPhone[p] = c.name; });
+      });
+      ((S.data && S.data.installs) || []).forEach(function (x) {
+        if (!x || !x.id) return;
+        var m = _vmCache.byName[dgKey(x.client)] || _vmCache.byPhone[dgMob(x.mobile)] || "";
+        if (m) _vmCache.byInst[x.id] = m;
+      });
+    }
+    return _vmCache.byInst[String((v && v.installId) || "")] || _vmCache.byName[dgKey(v && v.client)] || String((v && v.client) || "");
+  }
   function serviceLedger(client) {
-    var vs = (S.data.visits || []).filter(function (v) { return v.client === client; })
+    var vs = visitsOfClient(client)
       .slice().sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
-    var billed = vs.reduce(function (a, v) { return a + (Number(v.total) || 0); }, 0);
-    var collected = vs.reduce(function (a, v) { return a + (Number(v.collected) || 0); }, 0);
-    var due = vs.reduce(function (a, v) { return a + (Number(v.balance) || 0); }, 0);
-    return { visits: vs, billed: billed, collected: collected, due: due };
+    var billed = vs.reduce(function (a, v) { return a + nAmt(v.total); }, 0);
+    var collected = vs.reduce(function (a, v) { return a + nAmt(v.collected); }, 0);
+    /* v6.9.402 - what the CONTRACT leaves him owing, not the stored balance: the same
+       visitPending() svcSummary() and the Service app use, so no screen can name a second figure */
+    var due = vs.reduce(function (a, v) { return a + visitPending(v, installById(v.installId) || null); }, 0);
+    return { visits: vs, billed: billed, collected: collected, due: Math.round(due) };
   }
   /* A compact service-ledger card + "View service hisab" button, reused in the goods HISAB and the
      Service tab. Renders nothing if the client has no service activity. */
   function serviceLedgerCard(client) {
+    _vmCache = null;
     var l = serviceLedger(client);
     if (!l.visits.length && !l.billed) return '';
     return '<div class="card" style="border-color:#c7d2fe;background:#eef2ff"><h3 style="margin:0 0 2px;font-size:14px">Service ledger</h3>' +
@@ -5257,7 +5321,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             '<td style="padding:5px 6px">' + esc(v.engineer || '') + '</td>' +
             '<td style="padding:5px 6px;text-align:right">' + money(v.total) + '</td>' +
             '<td style="padding:5px 6px;text-align:right">' + money(v.collected) + '</td>' +
-            '<td style="padding:5px 6px;text-align:right;font-weight:700;color:' + (due > 0 ? '#dc2626' : '#0d9488') + '">' + money(v.balance) + '</td></tr>';
+            '<td style="padding:5px 6px;text-align:right;font-weight:700;color:' + (due > 0 ? '#dc2626' : '#0d9488') + '">' + money(v.balance) + '</td></tr>' +
+            /* v6.9.402 - the paper behind the row, or its absence, on a line of its own */
+            (function () { var rl = svcReceiptLine(v); return rl ? '<tr style="background:' + (i % 2 ? '#f8fafc' : '#fff') + '"><td colspan="6" style="padding:0 6px 6px;font-size:12px">' + rl + '</td></tr>' : ''; })();
         }).join("") + '</tbody></table></div>';
     }
     h += '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
@@ -5497,6 +5563,88 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       })() + '</datalist>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="visit-save" data-id="' + esc(inst.id) + '">Save visit</button></div>';
+  }
+
+  /* ============ THE TWO RECEIPTS ON A VISIT  (v6.9.402, 2 Sep 2026) ============
+     HIS WORDS: "its not asking visit receipt and salt bag receipt". The Service app has filed a
+     visit's photographs as service:photo audit rows since v1.7.0 - the same channel as the
+     delivery proofs, no new column - and this app never read one. svcPics() reads them; the
+     screen after "Save visit" asks for the two that matter, by name; and every list of visits
+     says what is on file and, in amber, what is not. A photo never holds the visit back. */
+  var SVC_PIC = { receipt: "Signed service receipt", salt: "Salt bags signed for", fault: "The fault", done: "Work done", machine: "Machine & serial" };
+  function svcPics(kind, id) {
+    if (!id) return [];
+    var want = String(id);
+    return ((S.data && S.data.audit) || []).filter(function (a) {
+      if (!a || String(a.action || "") !== "service:photo") return false;
+      var d; try { d = JSON.parse(a.detail || "{}"); } catch (e) { return false; }
+      if (!d || !d.url) return false;
+      if (kind === "machine") return String(d.installId) === want && d.kind === "machine";
+      return String(d.visitId) === want && d.kind === kind;
+    }).map(function (a) {
+      var d = {}; try { d = JSON.parse(a.detail || "{}"); } catch (e) { }
+      return { kind: d.kind || "", url: d.url || "", thumb: d.thumb || "", by: d.by || a.actor || "", at: d.at || a.createdAt || "" };
+    }).sort(function (x, y) { return String(y.at).localeCompare(String(x.at)); });
+  }
+  /* one line per visit: what is on file, what is missing - used by every list of visits */
+  function svcReceiptLine(v) {
+    /* v6.9.402 - a salt delivery billed on a challan: the challan carries the signed receipt */
+    var _cno = visitChallanNo(v);
+    if (_cno) return '<span style="color:#0f766e;font-weight:600">on challan ' + esc(_cno) + '</span>';
+    var got = svcPics("receipt", v.id), salt = svcPics("salt", v.id), bags = nAmt(v.saltBags), tot = nAmt(v.total);
+    var bits = [];
+    if (got.length) bits.push('<a href="' + esc(got[0].url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600">\u2713 receipt</a>');
+    else if (tot > 0) bits.push('<span style="color:#b45309;font-weight:600">no signed receipt</span>');
+    if (bags > 0) bits.push(salt.length
+      ? '<a href="' + esc(salt[0].url) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600">\u2713 salt slip</a>'
+      : '<span style="color:#b45309;font-weight:600">salt slip not photographed</span>');
+    return bits.join(' \u00b7 ');
+  }
+  function svcMissingCount(installId) {
+    return (S.data.visits || []).filter(function (v) {
+      if (v.installId !== installId || isCancelled("visits", v.id) || visitChallanNo(v)) return false;
+      return (nAmt(v.total) > 0 && !svcPics("receipt", v.id).length) || (nAmt(v.saltBags) > 0 && !svcPics("salt", v.id).length);
+    }).length;
+  }
+  function modalVisitReceipts() {
+    var r = S.rcp; if (!r) return "";
+    var asks = [{ k: "receipt", t: "The signed service receipt", why: (r.total > 0 ? money(r.total) + " of work \u2014 " : "") + "the customer\u2019s signature against what was done and what it cost." }];
+    if (r.bags > 0) asks.push({ k: "salt", t: r.bags + " bag" + (r.bags === 1 ? "" : "s") + " of salt signed for", why: "The slip he signed for the bags \u2014 how many went in, and his name." });
+    var left = asks.filter(function (a) { return !r.sent[a.k]; }).length;
+    return '<h2>Before this visit is closed</h2><p class="sub">' + esc(r.client) + ' &middot; the visit is saved. ' + (left ? 'Attach the paper it left behind:' : 'Everything is on file.') + '</p>' +
+      asks.map(function (a) {
+        var done = r.sent[a.k], busy = r.busy[a.k];
+        return '<div class="card" style="padding:10px 12px;margin-bottom:8px;border-left:4px solid ' + (done ? '#0f766e' : '#f59e0b') + '">' +
+          '<div style="font-weight:700;font-size:14px">' + esc(a.t) + (done ? ' <span class="pill" style="background:#dcfce7;color:#166534">\u2713 on file</span>' : (busy ? ' <span class="pill">going up\u2026</span>' : '')) + '</div>' +
+          '<div class="meta" style="font-size:12.5px;margin:2px 0 8px">' + esc(a.why) + '</div>' +
+          (done ? '' : '<input type="file" accept="image/*" capture="environment" class="rc-pic" data-kind="' + esc(a.k) + '"/>') +
+          '</div>';
+      }).join("") +
+      '<div class="foot">' + (left ? '<button class="btn ghost" data-act="rc-none">No paper today</button>' : '') +
+      '<button class="btn" data-act="rc-done">' + (left ? 'Done' : 'Close') + '</button></div>';
+  }
+  /* one photograph up, one audit row - the Service app\u2019s picSend, in this app\u2019s words */
+  function svcPicSend(file, kind, r) {
+    r.busy[kind] = 1; S.modal = modalVisitReceipts(); render();
+    return Promise.all([shrinkPhoto(file, 1400, 0.7), shrinkPhoto(file, 96, 0.5)]).then(function (pair) {
+      if (!pair[0]) throw new Error("could not read that photo");
+      var nm = (kind + "-" + (r.visitId || "x") + "-" + Date.now() + ".jpg").replace(/[^\w.-]+/g, "_");
+      return api("pdfHost", { pdfBase64: pair[0], filename: nm, mime: "image/jpeg" }, 240000).then(function (h) {
+        if (!h || !h.ok || !h.url) throw new Error((h && h.error) || "the server gave no link back");
+        var at = new Date().toISOString();
+        return save("audit", { id: "", createdAt: at, actor: S.user || "", action: "service:photo",
+          target: String(r.client || "") + " \u00b7 " + (SVC_PIC[kind] || kind),
+          detail: JSON.stringify({ visitId: r.visitId, installId: r.installId, kind: kind, url: h.url, thumb: pair[1] || "", client: r.client, by: S.user || "", at: at }), ip: "" }, true);
+      });
+    }).then(function () {
+      r.busy[kind] = 0; r.sent[kind] = 1;
+      if (S.rcp === r) { S.modal = modalVisitReceipts(); render(); }
+      toast((SVC_PIC[kind] || "Photo") + " filed.");
+    }).catch(function (e) {
+      r.busy[kind] = 0;
+      if (S.rcp === r) { S.modal = modalVisitReceipts(); render(); }
+      toast("The photo did not go up \u2014 " + apiWhy(e) + ". The visit is saved; try the photo again.");
+    });
   }
 
   function clientById(id) { return S.data.clients.filter(function (c) { return c.id === id; })[0] || null; }
@@ -10080,7 +10228,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           (p && p.url
             ? '<a class="btn sm ghost" href="' + esc(p.url) + '" target="_blank" rel="noopener">Open</a>'
             : '<span class="pill due">uploading</span>') +
-          '<button class="btn sm ghost" data-act="ch-wa" data-id="' + esc(c.id) + '" style="color:#0f766e">Send</button></div>';
+          '<button class="btn sm ghost" data-act="ch-wa" data-id="' + esc(c.id) + '" style="color:#0f766e">Send</button>' + waExecBtn("ch-wa", c.customerName, 'data-id="' + esc(c.id) + '"') + '</div>';
       });
       if (on.length > CAP) h += '<div class="meta" style="margin-top:6px">Showing the newest ' + CAP + ' of ' + on.length + '.</div>';
       h += '</div>';
@@ -11331,7 +11479,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<select class="qs" data-id="' + esc(q.id) + '" style="width:auto;padding:5px 8px;font-size:12.5px">' + opts(QSTATUS, q.status) + '</select>' +
       '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
       '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal</button>' +
-      '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
+      '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' + waExecBtn("q-wa", q.client, 'data-id="' + esc(q.id) + '"') +
       /* v6.9.343 - a two-brand quote whose Green Heat Plus is sold and whose Pentair is
          deferred is not "Won" as a whole, and he still has material to send out today. The
          button follows whether ANY brand on it is won. */
@@ -11457,7 +11605,33 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     });
   }
 
-  function waShareQuote(id) {
+  /* ================= TO THE EXECUTIVE, ON WHATSAPP  (v6.9.402, 2 Sep 2026) =================
+     HIS WORDS: "make provision to send statement and other things or attachment to executive
+     whatsapp". Every document send that goes to a client can go to the executive assigned to
+     that client instead - his number from the Team sheet, the same hosted link, and a first
+     line saying whose document it is. data-to="exec" on the button is the whole switch. */
+  function waExecOf(clientName) {
+    var ex = execForClient(clientName); if (!ex) return null;
+    var m = (S.data.team || []).filter(function (u) { return u && dgKey(u.name) === dgKey(ex); })[0] || {};
+    var num = String(m.mobile || "").replace(/\D/g, ""); if (num.length === 10) num = "91" + num;
+    return { name: ex, num: num.length >= 12 ? num : "" };
+  }
+  /* the number and the message a send should use - the client's, or the executive's */
+  function waRoute(t, clientName, num, msg, doc) {
+    if (!t || !t.getAttribute || t.getAttribute("data-to") !== "exec") return { ok: true, num: num, msg: msg };
+    var ex = waExecOf(clientName);
+    if (!ex) { toast(String(clientName || "This client") + " has no executive assigned."); return { ok: false }; }
+    if (!ex.num) { toast(ex.name + " has no mobile on the Team sheet \u2014 add it under Team, then send."); return { ok: false }; }
+    return { ok: true, num: ex.num, msg: "For " + ex.name + " \u2014 " + doc + " of " + clientName + ":\n\n" + msg };
+  }
+  /* the small button beside a client send: "-> Imran". Drawn only when there is somebody. */
+  function waExecBtn(act, clientName, attrs) {
+    var ex = waExecOf(clientName); if (!ex) return "";
+    return '<button class="btn sm ghost" data-act="' + esc(act) + '" data-to="exec" ' + (attrs || "") +
+      ' title="Send this to ' + esc(ex.name) + ' on WhatsApp">\u2192 ' + esc(String(ex.name).split(" ")[0]) + '</button>';
+  }
+
+  function waShareQuote(id, t) {
     var wq = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
     if (!wq) return;
     var wcl = clientByName(wq.client) || {};
@@ -11467,7 +11641,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       "Amount: " + moneyAscii(wq.net) + " (GST as applicable). Valid for 30 days.\n" +
       "Please let us know if we may proceed.\n\nThank you,\nEnergy World";
     var fname = String(wq.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf";
-    waShareDoc(quotePdf(wq), fname, wnum, wmsg);
+    var wr = waRoute(t, wq.client, wnum, wmsg, "quotation " + wq.quoteNo); if (!wr.ok) return;
+    waShareDoc(quotePdf(wq), fname, wr.num, wr.msg);
   }
 
   /* ---- SENDING THE PROPOSAL ----
@@ -13728,7 +13903,7 @@ function viewCatalogue() {
   /* A photo is the only thing that actually defeats a spoofed GPS, so it is offered
      on every check-in. Resized on the phone before upload - nobody wants a 4MB JPEG
      going up on 4G. */
-  function shrinkPhoto(file) {
+  function shrinkPhoto(file, maxPx, qual) {
     return new Promise(function (res) {
       var fr = new FileReader();
       fr.onload = function () {
@@ -13749,14 +13924,14 @@ function viewCatalogue() {
              than colour, because lifting the contrast on a noisy photograph adds back more
              than dropping the chroma saves. Resolution and quality are the only real levers,
              and a written page is entirely legible at 900px. */
-          var max = 900;
+          var max = maxPx || 900;
           var sc = Math.min(1, max / Math.max(img.width, img.height));
           var c = document.createElement("canvas");
           c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
           var cx = c.getContext("2d");
           cx.fillStyle = "#ffffff"; cx.fillRect(0, 0, c.width, c.height);
           cx.drawImage(img, 0, 0, c.width, c.height);
-          res(c.toDataURL("image/jpeg", 0.50).split(",")[1]);
+          res(c.toDataURL("image/jpeg", qual || 0.50).split(",")[1]);
         };
         img.onerror = function () { res(null); };
         img.src = String(fr.result);
@@ -15827,7 +16002,7 @@ function viewCatalogue() {
            the man holding the photo, and the sales exec standing at the site is the man who has
            the customer's number open. Attach disappears once a receipt is on file. */
         ((st === "Dispatched" || st === "Received")
-          ? '<button class="btn sm ghost" data-act="ch-wa" data-id="' + esc(c.id) + '" style="color:#0f766e">Send</button>' +
+          ? '<button class="btn sm ghost" data-act="ch-wa" data-id="' + esc(c.id) + '" style="color:#0f766e">Send</button>' + waExecBtn("ch-wa", c.customerName, 'data-id="' + esc(c.id) + '"') +
             /* v6.9.212 - and it also goes the moment the receipt is attached, not only once
                Drive has confirmed it. Until now the card could say "waiting to upload" and offer
                "Attach receipt" in the same breath, which is how a man attaches the same paper
@@ -18347,9 +18522,8 @@ function viewCatalogue() {
 
        WHAT IS DELIBERATELY NOT REVERSED:
          * the client's STATEMENT PDF (hisabPdf) - an account is read down the page, oldest
-           to newest, and the SETTLED IN FULL band of v6.9.364 stands where the deliveries it
-           replaced would have been. Turning that upside down would make a running balance
-           impossible to follow.
+           to newest, with the balance after each line. Turning that upside down would make a
+           running balance impossible to follow.
          * the "still waiting" and "not in the account yet" cards - those are CHASE lists,
            where the oldest is the most urgent and belongs at the top.
          * the pick-list in modalPayAlloc - it is oldest-first because the allocation it is
@@ -18410,38 +18584,15 @@ function viewCatalogue() {
       return h + _oh;
     }
     var admin = roleIs("admin");
-    /* v6.9.364 - the deliveries this client has already paid for, folded away. HIS WORDS:
-       "we dont wnat to show to client 5 chllan whose payment receiveed". Folded, never
-       removed: the tick boxes, the totals and every figure below are computed over ALL of
-       them, so the account on this screen is the same account it was before the fold. */
-    var _done = settleDone(cl), _dvis = settleShown(cl);
-    var _dval = _done.reduce(function (a, r) { return a + r.amt; }, 0);
-    var _dlast = _done.reduce(function (a, r) { return r.date > a ? r.date : a; }, "");
-    if (_done.length) {
-      /* RENDERED AND LOOKED AT on a 430px screen: the caret was centred against a three-line
-         block and floated in the middle of the sentence, and "Cleared up to 05/03/2026" ran
-         on at the end of it. The date belongs in the headline - it is part of WHAT is folded -
-         and the caret belongs on the first line, beside the thing it opens. */
-      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px;cursor:pointer" ' +
-        'data-act="stl-show" data-n="' + esc(cl) + '">' +
-        '<div style="display:flex;gap:9px;align-items:flex-start;flex-wrap:nowrap">' +
-        '<span style="font-size:16px;color:#0d9488;line-height:1.35">' + (_dvis ? '&#9662;' : '&#9656;') + '</span>' +
-        '<div style="flex:1 1 auto;min-width:0">' +
-        '<b style="font-size:13.5px;color:#0f766e">' + _done.length + ' deliver' +
-          (_done.length === 1 ? 'y is' : 'ies are') + ' paid for' +
-          (_dlast ? ', up to ' + esc(dstr(_dlast)) : '') + ' &mdash; ' + money(_dval) + '</b>' +
-        '<div style="font-size:12px;color:#0f766e;opacity:.85;margin-top:2px">' +
-          /* the tap moves the PAPER too, and says so where the tap is - hisabPdf reads this
-             same settleShown(), so what he is looking at is what the client is sent. */
-          (_dvis ? 'Shown below, and back on the client\u2019s statement. Tap to fold them away.'
-                 : 'Folded away here, and left off the client\u2019s statement. Tap to see them.') +
-        '</div></div>' +
-        '<span class="pill" style="background:#ccfbf1;color:#0f766e;flex:0 0 auto">' + (_dvis ? 'Hide' : 'Show') + '</span>' +
-        '</div></div>';
-    }
+    /* v6.9.403 - the v6.9.364 fold card ("N deliveries are paid for ... Tap to see them") is
+       gone, on his word: "that settled thing not to be shown to client, better we delete that
+       for all, its confusing". Every delivery is drawn; a paid-for one carries its Settled pill
+       and starts UNTICKED (hisabTicked), and what is unticked folds into the statement's
+       "Balance brought forward" line with its sum written out. Nothing about what counts
+       changed: every total below is still accumulated over all of them. */
     var allNet = 0, selNet = 0, selGoods = 0, selCount = 0;
     chs.forEach(function (c) {
-      var sel = S.billSel[c.id] !== false;
+      var sel = hisabTicked(cl, "ch", c.id);
       var priced = pricedLines(c, cl);
       var sub = priced.reduce(function (a, x) { return a + x.amt; }, 0);
       /* v6.9.325 - a further discount taken when this delivery was passed. It is shown as its
@@ -18527,7 +18678,6 @@ function viewCatalogue() {
          settleWalk(). A settled delivery is FOLDED, not dropped - every total on this screen
          was accumulated above, before this line, over all of them. */
       var _stl = settleOf(cl, c.id);
-      var _fold = !!(_stl && _stl.state === "settled") && !_dvis;
       var _card = '<div class="card" style="padding:9px 12px' +
         (_stl && _stl.state === "settled" ? ';border-color:#99f6e4;background:#f7fffd' : '') +
         (sel ? '' : ';opacity:.5') + '">' +
@@ -18592,10 +18742,12 @@ function viewCatalogue() {
            him it IS missing. */
         cxCardBtn("challans", c.id) +
         '</div></div>' +
-        '<div style="flex:0 0 auto;text-align:right">' + billBlock + admChallanStrip(c) + '</div>' +
+        /* v6.9.403 - max-width:100%: measured at 390px, the owner's strip inside this column
+           set its width to 381px and the whole screen scrolled sideways. The label wraps now. */
+        '<div style="flex:0 0 auto;max-width:100%;min-width:0;text-align:right">' + billBlock + admChallanStrip(c) + '</div>' +
         '</div>' +
         (_chExp ? _ctbl : '') + '</div>';
-      if (!_fold) h += _card;
+      h += _card;
     });
     /* v6.9.121: booked-in material returns show here like a challan in reverse — a red card whose
        amounts are negative and which credit (reduce) the client's balance. Only "Received" returns. */
@@ -18652,13 +18804,18 @@ function viewCatalogue() {
         '</div>';
     });
     var rets = clientReturns(cl);
-    var retTotal = 0;
+    var retTotal = 0, retSelN = 0, retSelAmt = 0;
     /* v6.9.367 - and the returns with them. Leaving these oldest-first while the deliveries
        above them run newest-first would be two clocks on one screen. */
     rets.slice().sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).forEach(function (r) {
       var rl = returnLines(r);
       var rSub = rl.reduce(function (a, x) { return a + x.amt; }, 0);
       retTotal += rSub;
+      /* v6.9.403 - "provide option to tick and choose for return also as like of dispatch
+         challan". Same tick, same store, keyed "ret:<id>"; unticked, it folds into the
+         statement's brought-forward line like a delivery does. */
+      var rSel = hisabTicked(cl, "ret", r.id);
+      if (rSel) { retSelN++; retSelAmt += rSub; }
       /* v6.9.334 - HIS WORDS: "materila returned also be drop down like normal challan, in red
          color its ok". A delivery has folded away since v6.9.153; a return never did, so one
          thirteen-line return pushed the client ledger - the thing you actually came to read -
@@ -18696,11 +18853,11 @@ function viewCatalogue() {
          h3 pushed the money block onto its own line, where `text-align:right` inside a
          `flex:0 0 auto` box put "Credit to client" at the LEFT of the card. It read as a
          mistake. Everything on the left now lives inside the left column of that same row. */
-      h += '<div class="card" style="border-color:#fecaca;background:#fff7f7;padding:9px 12px">' +
+      h += '<div class="card" style="border-color:#fecaca;background:#fff7f7;padding:9px 12px' + (rSel ? '' : ';opacity:.5') + '">' +
         '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
         '<div style="flex:1 1 320px;min-width:0">' +
         '<h3 style="margin:0 0 6px;line-height:1.5">' +
-        '<span style="white-space:nowrap">' + esc(r.returnNo) + '</span>' +
+        '<label style="cursor:pointer;white-space:nowrap"><input type="checkbox" class="billsel" data-ch="' + esc(hisabTickKey("ret", r.id)) + '"' + (rSel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(r.returnNo || "Return") + '</label>' +
         ' <span class="pill due" style="background:#fee2e2;color:#b91c1c">Return</span>' +
         ' <span class="pill teal">' + esc(d10(r.createdAt)) + '</span>' + retEstPill(r) +
         (r.challanNo ? ' <span style="font-size:12px;color:#64748b">vs ' + esc(r.challanNo) + '</span>' : '') +
@@ -18731,7 +18888,7 @@ function viewCatalogue() {
         '</div></div>' +
         /* v6.9.351 - the money and the owner's strip: the right-hand column of the SAME row, so
            the buttons rise up beside them instead of starting below all seven lines. */
-        '<div style="flex:0 0 auto;text-align:right">' +
+        '<div style="flex:0 0 auto;max-width:100%;min-width:0;text-align:right">' +
           '<div style="font-size:12px;color:#b91c1c">Credit to client<br><b>&minus;' + money(rSub) + '</b></div>' +
           /* v6.9.348 - and what it takes back off the men, in the same place the delivery card
              shows what it gave them. */
@@ -18791,6 +18948,14 @@ function viewCatalogue() {
           ? '<b style="color:#0f766e">' + money(-bal) + '</b>'
           : '<b style="color:#0d9488">Settled in full</b>') + '</td></tr>' +
       (bal < -0.5 ? '<tr><td colspan="2" style="padding:0 0 2px;color:#64748b;font-size:12px">paid ahead \u2014 comes off the next delivery</td></tr>' : '') +
+      /* v6.9.402 - the service book under the goods sum, and ONE total. "service area amount
+         with client detail must also show in hisab section" - his executive chases one number. */
+      (_led.svcDue > 0.5
+        ? '<tr style="border-top:1px dashed #99f6e4"><td style="padding:6px 10px 2px 0;color:#475569">+ Service dues <span style="color:#94a3b8;font-size:12px">(' + _led.svcVisits + ' visit' + (_led.svcVisits === 1 ? '' : 's') + ', collected on the visit)</span></td>' +
+          '<td style="padding:6px 0 2px;text-align:right;color:#b91c1c"><b>' + money(_led.svcDue) + '</b></td></tr>' +
+          '<tr style="border-top:1.5px solid #99f6e4"><td style="padding:6px 10px 2px 0;color:#0f172a;font-weight:800">= To collect, goods and service</td>' +
+          '<td style="padding:6px 0 2px;text-align:right"><b style="color:#b91c1c;font-size:16px">' + money(bal + _led.svcDue) + '</b></td></tr>'
+        : '') +
       '</table>' +
       /* v6.9.385 - and what the same customer looks like on the service side */
       svcLedgerLine(cl) +
@@ -18804,7 +18969,7 @@ function viewCatalogue() {
           'title="Correct the balance carried over from the old books. Your PIN is checked by the server.">' +
           (opening ? '\u270e Change the previous balance' : '\u270e Set a previous balance') + '</button></div>'
         : '') +
-      payTable(cl) +
+      payTable(cl, true) +
       /* v6.9.360 - money can be entered from the ledger itself now, in all three directions.
          It was on the Payments screen only, which is a different tab and a different search. */
       (canSee("payments") ? '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:9px">' +
@@ -18814,22 +18979,36 @@ function viewCatalogue() {
         '<button class="btn sm ghost" data-act="pay-in" data-n="' + esc(cl) + '" data-k="refund" ' +
           'style="border-color:#fecaca;color:#b91c1c">\u2212 Refund to client</button>' +
         '</div>' : '') +
-      '<div style="margin-top:8px;font-size:14px">Statement: <b>' + selCount + '</b> of ' + chs.length + ' challan(s) ticked &mdash; <b>' + money(selNet) + '</b>' + (S.billGst ? ' + GST ' + money(gst) + ' = <b>' + money(selNet + gst) + '</b>' : '') + '</div>' +
+      /* v6.9.403 - what the paper will carry, and what folds into its first line. The ticks
+         on deliveries, returns and payments all read through hisabTicked; the brought-forward
+         figure here is the one hisabPdf prints, worked out the same way. */
+      (function () {
+        var _ps = payLines(cl), _pSel = _ps.filter(function (p) { return hisabTicked(cl, "pay", p.id); });
+        var _pSelAmt = _pSel.reduce(function (a, p) { return a + p.amount; }, 0), _pAll = _ps.reduce(function (a, p) { return a + p.amount; }, 0);
+        var _bf = opening + (allNet - selNet) - (retTotal - retSelAmt) - (_pAll - _pSelAmt);
+        var _off = (chs.length - selCount) + (rets.length - retSelN) + (_ps.length - _pSel.length);
+        return '<div style="margin-top:8px;font-size:13.5px;line-height:1.6">On the statement: <b>' + selCount + '</b> of ' + chs.length + ' deliver' + (chs.length === 1 ? 'y' : 'ies') +
+          (rets.length ? ' &middot; <b>' + retSelN + '</b> of ' + rets.length + ' return' + (rets.length === 1 ? '' : 's') : '') +
+          (_ps.length ? ' &middot; <b>' + _pSel.length + '</b> of ' + _ps.length + ' payment' + (_ps.length === 1 ? '' : 's') : '') +
+          ' ticked &mdash; deliveries <b>' + money(selNet) + '</b>' + (S.billGst ? ' + GST ' + money(gst) + ' = <b>' + money(selNet + gst) + '</b>' : '') +
+          '<br><span style="color:#64748b">Balance brought forward on the paper: <b style="color:#0f172a">' + money(_bf) + '</b>' +
+          (_off ? ' (' + _off + ' unticked entr' + (_off === 1 ? 'y folds' : 'ies fold') + ' into it, with the sum written out under it)' : ' (the previous balance; every entry is listed)') +
+          ' &middot; it closes to ' + money(bal) + ' either way.</span></div>';
+      })() +
       '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:10px">' +
       '<button class="btn sm ' + (S.billGst ? '' : 'ghost') + '" data-act="bill-gst">' + (S.billGst ? 'GST 18% ✓' : 'Add GST 18%') + '</button>' +
-      /* v6.9.239 - one page per challan with the signed receipt printed under it */
+      /* v6.9.403 - ONE tap where v6.9.239's per-page and v6.9.281's attach-receipts were: the
+         pages after the summary, one delivery each with its receipt beside it. On by default -
+         that is the statement he described; off gives the one-page copy. */
       '<button class="btn sm ' + (hisabPerPage() ? '' : 'ghost') + '" data-act="bill-perpage" ' +
-        'title="Give every ticked challan its own page in the PDF, with the signed receipt printed underneath it">' +
-        (hisabPerPage() ? '✓ One page per challan + receipt' : 'One page per challan + receipt') + '</button>' +
-      /* v6.9.281 - the signed receipts, attached to the end of the PDF in challan order */
-      '<button class="btn sm ' + (hisabReceipts() ? '' : 'ghost') + '" data-act="bill-receipts" ' +
-        'title="Add the signed receipt of every ticked challan to the end of the PDF, one per page, in challan order - so the client can print the statement and the proof together">' +
-        (hisabReceipts() ? '\u2713 Receipts attached' : 'Attach signed receipts') + '</button>' +
-      '<button class="btn sm ghost" data-act="bill-selall" data-v="1">Tick all</button>' +
-      '<button class="btn sm ghost" data-act="bill-selall" data-v="0">Untick all</button>' +
+        'title="After the summary page, one page per ticked delivery or return: its items on the left, the signed receipt on the right. Turn off for a one-page statement.">' +
+        (hisabPerPage() ? '\u2713 Item pages with receipts' : 'Item pages with receipts: off') + '</button>' +
+      '<button class="btn sm ghost" data-act="bill-selall" data-v="1" title="Every delivery, return and payment on the paper">Tick all</button>' +
+      '<button class="btn sm ghost" data-act="bill-selall" data-v="0" title="Nothing listed; everything folds into the brought-forward line">Untick all</button>' +
+      '<button class="btn sm ghost" data-act="bill-selall" data-v="d" title="Back to the default: only what cancels out exactly is left off">Default ticks</button>' +
       '<div class="grow"></div>' +
       (bal > 0 && canSee("payments") ? '<button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '">&#8377; Payment received</button>' : '') +
-      '<button class="btn sm ghost" data-act="bill-wa">WhatsApp statement</button>' +
+      '<button class="btn sm ghost" data-act="bill-wa">WhatsApp statement</button>' + waExecBtn("bill-wa", cl) +
       '<button class="btn sm ghost" data-act="bill-pdf">Download PDF (ticked)</button>' +
       /* v6.9.240 - everything, in date order, without touching the ticks */
       '<button class="btn sm ghost" data-act="bill-pdf" data-all="1" title="Every received challan and every booked-in return, in date order, whatever is ticked">Download all</button>' +
@@ -18840,27 +19019,17 @@ function viewCatalogue() {
 
   /* The statement/hisab PDF: header, customer, then each TICKED challan priced out, a statement
      total (+ optional GST), and the running account ledger (billed to date, received, balance). */
-  /* ---- ONE PAGE PER CHALLAN, WITH ITS RECEIPT (v6.9.239) ----
-     Optional. Off by default, so the statement anyone already sends is unchanged.
-     Switched on, every ticked challan gets a page of its own: what was delivered, what it
-     came to, and underneath it the signed paper that came back - so one sheet answers the
-     whole question about one delivery and can be handed over on its own.
-     Remembered on this device, like the incentive statement's rate choice. */
-  /* ---- ATTACH THE SIGNED RECEIPTS (v6.9.281) ----
-     Off by default: the statement most clients get should stay one short document. Switched on,
-     every ticked challan's signed receipt is added at the END, one per page, in the same order
-     the challans appear above - so a client who prints the PDF gets the account and the proof of
-     every delivery in one run, in the sequence he can follow. */
-  function hisabReceipts() {
-    try {
-      if (S.billRcpt == null) S.billRcpt = localStorage.getItem("ew_hisab_receipts") === "1";
-    } catch (e) { if (S.billRcpt == null) S.billRcpt = false; }
-    return !!S.billRcpt;
-  }
+  /* ---- ONE PAGE PER CHALLAN, WITH ITS RECEIPT (v6.9.239; the default since v6.9.403) ----
+     Every ticked delivery gets a page of its own: what was delivered, what it came to, and
+     beside it the signed paper that came back - so one sheet answers the whole question about
+     one delivery and can be handed over on its own. Remembered on this device. */
+  /* v6.9.403 - ON unless he has turned it off on this device. The item pages with the receipt
+     beside each delivery are the statement he described; v6.9.281's separate "attach receipts"
+     appendix is folded into them and its switch is gone. */
   function hisabPerPage() {
     try {
-      if (S.billPerPage == null) S.billPerPage = localStorage.getItem("ew_hisab_perpage") === "1";
-    } catch (e) { if (S.billPerPage == null) S.billPerPage = false; }
+      if (S.billPerPage == null) S.billPerPage = localStorage.getItem("ew_hisab_perpage") !== "0";
+    } catch (e) { if (S.billPerPage == null) S.billPerPage = true; }
     return !!S.billPerPage;
   }
   /* Fit a picture inside a box without stretching it. Returns the drawn size in mm.
@@ -19069,522 +19238,534 @@ function viewCatalogue() {
     });
   }
 
-  /* v6.9.240 - `all` ignores the ticks and takes every received challan, for the one-press
-     "download everything" the owner asked for. The ticks are not touched, so the screen is
-     exactly as he left it when the file has been made. */
+  /* ================= THE STATEMENT, REBUILT  (v6.9.403, 2 Sep 2026) =================
+     HIS WORDS, over four messages with Manish Singla's statement open, then "go with your
+     recommendation":
+       "this settled in full is confusing for client ... some client start asking what is this"
+       "summary at top like what is carry forwarded amt, then challan wise detail with return,
+        then net current balance, then in next pages challan detail with receipt, try to make
+        it in landscape like in half page challan detail remaining half page receipt pic"
+       "provide option to tick and choose for return also as like of dispatch challan"
+       "material return will also be shown in sequence as per entry date, not all to be shown
+        separately, also make provision to tick and select payments also, i think that settled
+        thing not to be shown to client, better we delete that for all"
+
+     WHAT WAS HERE. Portrait; a coloured bar; the v6.9.364 SETTLED IN FULL band - paid-for
+     deliveries folded into one line whose value went into the statement total - then every
+     open delivery printed in full with the returns in the same stream, the payments as a list
+     at the foot, and the receipts either as a thumbnail under each challan or as an appendix.
+     Four screens of paper to answer "how much do I owe, and for what", with a band on it that
+     a client had to ring up about.
+
+     WHAT THIS IS. A statement of account the way a bank prints one:
+
+       page 1   THE SUMMARY - balance brought forward, plus the deliveries on this statement,
+                less returns, less what was received, equals the balance now. The service book
+                beside it when it carries dues, and ONE figure to collect.
+                THE ACCOUNT - every delivery, return and payment as one dated list in the order
+                it happened, with the balance after each line.
+       page 2+  one delivery per landscape sheet: its lines and totals on the left half, the
+                signed receipt on the right half. A return gets the same page with its goods-in
+                receipt. The "Item pages with receipts" tap turns these off for a short copy.
+
+     THE TICKS DECIDE WHAT IS LISTED, AND THE ARITHMETIC ALWAYS CLOSES. Deliveries, returns and
+     payments each carry a tick on the HISAB screen. Whatever is unticked is not printed - it is
+     folded into "Balance brought forward" instead, and the sum that makes that figure is written
+     out under it, so the list walks from there to the same balance the screen shows whatever he
+     leaves off. Untouched ticks fold exactly the group that cancels out (hisabFoldDefault), so
+     by default the brought-forward figure is the balance from the old books and nothing more.
+     There is no other fold, and no band.
+
+     Built-in font and "Rs.", as before: the Unicode font took seconds and reloaded the tab. */
   function hisabPdf(cl, all) {
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }));
-    var selAll = chs.filter(function (c) { return all || S.billSel[c.id] !== false; })
-      .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
-    /* v6.9.364 - THE DELIVERIES HE HAS ALREADY PAID FOR COME OFF THE PAPER. HIS WORDS:
-       "we dont wnat to show to client 5 chllan whose payment receiveed".
-
-       They are replaced by ONE line that carries their count, their value and the date they
-       cleared, and that line's value goes into `grand` in their place - so the statement
-       total, the GST on it and the balance at the foot are the same figures they were before
-       any of this, to the rupee. A statement that quietly dropped five deliveries out of its
-       arithmetic would be a worse document than the long one it replaced.
-
-       The fold follows the screen: whatever he has open in HISAB is what the client is sent.
-       Tapping Show puts them all back on the paper, listed in full. */
-    var _paidSet = {};
-    if (!settleShown(cl)) settleDone(cl).forEach(function (r) { _paidSet[String(r.id)] = true; });
-    var sel = selAll.filter(function (c) { return !_paidSet[String(c.id)]; });
-    var selPaid = selAll.filter(function (c) { return !!_paidSet[String(c.id)]; });
-    var selPaidVal = selPaid.reduce(function (a, c) { return a + chValue(c); }, 0);
-    var selPaidTo = selPaid.reduce(function (a, c) {
-      var d = String(c.createdAt || "").slice(0, 10); return d > a ? d : a;
-    }, "");
-    var allNet = chs.reduce(function (a, c) { return a + chValue(c); }, 0);
-    /* The statement uses its OWN compact header (not the shared commPdfBase): a shorter band,
-       a small un-shouty "STATEMENT" label top-right, then the client's details and date beneath
-       it - so the client block need not repeat in the body. No company tagline. */
-    /* The statement uses jsPDF's built-in Helvetica and "Rs." - NOT the ~600KB DejaVu Unicode
-       font. Embedding that font took several seconds and bloated the file to ~550KB, spiking
-       memory enough to reload the tab (which is what signed people out). Helvetica builds the
-       statement in a blink at ~30KB. The trade is the rupee symbol shows as "Rs." here. */
+    var rets = clientReturns(cl).slice();
+    var pays = (S.data.payments || []).filter(function (p) { return p && p.client === cl; });
+    /* `all` is the one-press "everything, in date order" - every tick read as on, none touched */
+    var on = function (kind, x) { return all || hisabTicked(cl, kind, x.id); };
+    var chOn = [], chOff = [], rtOn = [], rtOff = [], pyOn = [], pyOff = [];
+    chs.forEach(function (c) { (on("ch", c) ? chOn : chOff).push(c); });
+    rets.forEach(function (r) { (on("ret", r) ? rtOn : rtOff).push(r); });
+    pays.forEach(function (p) { (on("pay", p) ? pyOn : pyOff).push(p); });
+    var sum = function (list, f) { return list.reduce(function (a, x) { return a + f(x); }, 0); };
+    var opening = clientOpening(cl);
+    /* THE BROUGHT-FORWARD FIGURE: the old-book balance plus everything left off this paper.
+       Every row of the account is in exactly one of the two sets, so the list below walks from
+       this figure to the balance the screen shows, whatever is ticked. */
+    var offDeliv = sum(chOff, chValue), offRet = sum(rtOff, returnNet), offPaid = sum(pyOff, payAmt);
+    var bf = opening + offDeliv - offRet - offPaid;
+    var onDeliv = sum(chOn, chValue), onRet = sum(rtOn, returnNet), onPaid = sum(pyOn, payAmt);
+    var bal = bf + onDeliv - onRet - onPaid;
+    var offN = chOff.length + rtOff.length + pyOff.length, offTo = "";
+    /* the deliveries' own dates - a payment's date on a line that counts deliveries misleads */
+    chOff.forEach(function (c) { var d = dstr(c.createdAt); if (d > offTo) offTo = d; });
+    /* net zero: what folds cancels out (or the whole figure is nil) - then, and only then, the
+       note may say it was paid for in full */
+    var offZero = Math.abs(offDeliv - offRet - offPaid) < 0.5 || Math.abs(bf) < 0.5;
+    var _hl = clientLedger(cl);
+    /* the account, in the order things happened: a delivery before a return before a payment
+       on the same day, so the balance column never dips below what it should */
+    var ev = [];
+    chOn.forEach(function (c) { ev.push({ t: "C", d: dstr(c.createdAt), ts: String(c.createdAt || ""), ord: 1, row: c }); });
+    rtOn.forEach(function (r) { ev.push({ t: "R", d: dstr(r.createdAt), ts: String(r.createdAt || ""), ord: 2, row: r }); });
+    pyOn.forEach(function (p) { ev.push({ t: "P", d: dstr(p.date || p.createdAt), ts: String(p.date || p.createdAt || ""), ord: 3, row: p }); });
+    ev.sort(function (a, b) { return a.d !== b.d ? a.d.localeCompare(b.d) : ((a.ord - b.ord) || a.ts.localeCompare(b.ts)); });
+    var sheets = ev.filter(function (e) { return e.t !== "P"; });
     var perPage = hisabPerPage();
-    /* returns travel in the same stream now, so their receipts are measured too */
-    var _measure = sel.concat(clientReturns(cl));
-    /* v6.9.281 - and their full-size receipts, if they are being attached */
-    var withRcpt = hisabReceipts();
+    var _measure = sheets.map(function (e) { return e.row; });
     return Promise.all([
       perPage ? thumbSizes(_measure) : Promise.resolve({}),
-      withRcpt ? receiptImages(_measure, function (d, tt) {
-        if (d < tt) toast("Fetching receipt " + d + " of " + tt + "\u2026");
+      perPage ? receiptImages(_measure, function (d, tt) {
+        if (d < tt) toast("Fetching receipt " + d + " of " + tt + "…");
       }) : Promise.resolve({})
     ]).then(function (_pre) {
       var TSZ = _pre[0], RIMG = _pre[1];
-      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
       var uni = false;
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
-      var W = 210, L = 16, R = W - 16, HB = 25;
-      var RS = function (n) { return (uni ? "₹" : "Rs.") + Math.round(nAmt(n)).toLocaleString("en-IN"); };
+      var W = 297, H = 210, L = 14, R = W - 14, HB = 22, FOOT = H - 12;
+      var RS = function (n) { return (uni ? "₹" : "Rs.") + Math.round(Math.abs(nAmt(n))).toLocaleString("en-IN"); };
+      /* a minus balance is money he holds for the client - written with the sign in front */
+      var RSs = function (n) { return (nAmt(n) < -0.5 ? "- " : "") + RS(n); };
+      var INK = [17, 34, 45], GREY = [100, 116, 139], TEAL = [13, 118, 108], RED = [185, 28, 28], AMBER = [146, 64, 14], PALE = [150, 163, 175];
+      var ink = function (c) { doc.setTextColor(c[0], c[1], c[2]); };
+      var fill = function (c) { doc.setFillColor(c[0], c[1], c[2]); };
       var cust = clientByName(cl) || {};
-      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, HB, "F");
-      doc.setFillColor(94, 234, 212); doc.rect(0, HB, W, 1.0, "F");
-      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 6, 26, 13); } catch (e) { } }
-      F("bold"); doc.setFontSize(7.4); doc.setTextColor(148, 210, 200);
-      doc.text("STATEMENT OF ACCOUNT", R, 7.5, { align: "right" });
-      F("bold"); doc.setFontSize(11.5); doc.setTextColor(255, 255, 255);
-      doc.text(String(cl), R, 13.6, { align: "right" });
-      F("normal"); doc.setFontSize(7.6); doc.setTextColor(172, 212, 205);
-      var line2 = [cust.area, cust.location].filter(Boolean).join(", ");
-      if (line2) { doc.text(line2, R, 18, { align: "right" }); }
-      var l3 = [cust.mobile ? "Mobile: " + cust.mobile : "", "Date: " + fullDate(today())].filter(Boolean).join("    ·    ");
-      doc.text(l3, R, 22.2, { align: "right" });
-      doc.setTextColor(17, 34, 45);
-      var y = HB + 9;
+      /* page one carries the dark banner; every page after it a thin marked line, so a sheet
+         torn off and handed over still says whose account it is */
+      var banner = function () {
+        fill([11, 59, 54]); doc.rect(0, 0, W, HB, "F");
+        fill([94, 234, 212]); doc.rect(0, HB, W, 1.0, "F");
+        if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 4.5, 26, 13); } catch (e) { } }
+        F("bold"); doc.setFontSize(7.4); doc.setTextColor(148, 210, 200);
+        doc.text("STATEMENT OF ACCOUNT", R, 7, { align: "right" });
+        F("bold"); doc.setFontSize(11.5); doc.setTextColor(255, 255, 255);
+        doc.text(pdfSafe(String(cl)), R, 12.8, { align: "right" });
+        F("normal"); doc.setFontSize(7.4); doc.setTextColor(172, 212, 205);
+        var l2 = [cust.area, cust.location].filter(Boolean).join(", ");
+        var l3 = [l2, cust.mobile ? "Mobile: " + cust.mobile : "", "Date: " + fullDate(today())].filter(Boolean).join("    ·    ");
+        doc.text(pdfSafe(l3), R, 18, { align: "right" });
+        ink(INK);
+        return HB + 9;
+      };
+      var pageMark = function (right) {
+        doc.addPage();
+        F("normal"); doc.setFontSize(7); ink([120, 130, 145]);
+        doc.text("Statement of account  ·  " + pdfSafe(String(cl)) + "  ·  " + fullDate(today()), L, 10);
+        if (right) doc.text(right, R, 10, { align: "right" });
+        doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.line(L, 12.5, R, 12.5);
+        ink(INK);
+        return 19;
+      };
+      var y = banner();
 
-      /* ================= WHERE THE ACCOUNT STANDS (v6.9.286) =================
-         The statement is the one document the customer actually reads, and it used to open with
-         a wall of line items and only say whether he was nearly settled or barely started on the
-         very last page. One bar, before anything else. The figures are the same ones the summary
-         at the foot prints - computed here from the same functions, not recomputed differently -
-         so the picture and the total can never disagree.
-         Colour never carries a number here: every segment is labelled. */
-      var _hl = clientLedger(cl);
-      var _hPaid = Math.max(0, Math.round(_hl.paid || 0));
-      var _hRet = Math.max(0, Math.round(clientReturns(cl).reduce(function (a, r) { return a + returnNet(r); }, 0)));
-      var _hOwed = Math.round(clientOpening(cl) + allNet - _hPaid - _hRet);
-      var _hTot = _hPaid + _hRet + Math.max(0, _hOwed);
-      if (_hTot > 0) {
-        var segs = [
-          { lab: "Received", v: _hPaid, ink: [0, 131, 0], white: true },
-          { lab: "Returned", v: _hRet, ink: [42, 120, 214], white: true },
-          { lab: _hOwed > 0 ? "Still due" : "In credit", v: Math.max(0, _hOwed), ink: [227, 73, 72], white: true }
-        ].filter(function (g) { return g.v > 0; });
-        var BW = R - L, GAPX = 0.6, BH = 8;
-        var avail = BW - GAPX * Math.max(0, segs.length - 1), cx = L;
-        segs.forEach(function (g) {
-          var w = Math.max(2, avail * (g.v / _hTot));
-          doc.setFillColor(g.ink[0], g.ink[1], g.ink[2]);
-          doc.rect(cx, y, w, BH, "F");
-          if (w >= 26) {
-            F("bold"); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
-            doc.text(g.lab + "  " + RS(g.v), cx + w / 2, y + 5.4, { align: "center" });
-          }
-          cx += w + GAPX;
-        });
-        y += BH + 4.5;
-        /* and the same three in words underneath, for the segments too narrow to label and for
-           anyone reading a photocopy */
-        F("normal"); doc.setFontSize(6.8); doc.setTextColor(110, 120, 132);
-        doc.text(segs.map(function (g) { return g.lab + " " + RS(g.v); }).join("     \u00b7     ") +
-                 (_hOwed < 0 ? "     \u00b7     account is ahead by " + RS(-_hOwed) : ""), L, y);
-        y += 7;
+      /* ================= THE SUMMARY ================= */
+      var svcOn = _hl.svcDue > 0.5;
+      var sumW = svcOn ? 168 : R - L, sx = L, sxA = L + sumW - 2;
+      F("bold"); doc.setFontSize(7.2); ink(GREY);
+      doc.text("WHERE THE ACCOUNT STANDS", sx, y); y += 5.6;
+      var line = function (label, amt, o) {
+        o = o || {};
+        F(o.bold ? "bold" : "normal"); doc.setFontSize(o.big ? 11 : 8.8); ink(o.ink || INK);
+        doc.text(label, sx + (o.indent || 0), y);
+        if (amt != null) doc.text(amt, sxA, y, { align: "right" });
+        y += o.big ? 6.6 : 5.4;
+        if (o.note) {
+          F("normal"); doc.setFontSize(6.9); ink(o.noteInk || GREY);
+          doc.splitTextToSize(o.note, sumW - 8).forEach(function (ln) { doc.text(ln, sx + 4, y - 1.4); y += 3.5; });
+          y += 1;
+        }
+      };
+      /* THE BROUGHT-FORWARD LINE SAYS WHAT IT IS MADE OF. A figure at the top of a statement
+         that the client cannot check is the thing he rings up about; the sum is written out. */
+      var bfNote = "";
+      if (offN) {
+        var parts = [];
+        if (Math.abs(opening) > 0.5) parts.push("the balance carried from the earlier account " + RSs(opening));
+        if (chOff.length) parts.push(chOff.length + " deliver" + (chOff.length === 1 ? "y" : "ies") + (offTo ? (chOff.length === 1 ? " of " : " up to ") + fullDate(offTo) : "") + " " + RS(offDeliv));
+        if (rtOff.length) parts.push("less " + rtOff.length + " return" + (rtOff.length === 1 ? "" : "s") + " " + RS(offRet));
+        if (pyOff.length) parts.push("less " + pyOff.length + " payment" + (pyOff.length === 1 ? "" : "s") + " received " + RS(offPaid));
+        bfNote = "Made up of " + parts.join(", ") + ". " +
+          (offZero && (chOff.length || pyOff.length)
+            ? "Those were paid for in full, so they are closed and not listed below."
+            : "Those entries are not listed below.") + " A line-by-line list is available on request.";
+      } else if (Math.abs(opening) > 0.5) {
+        bfNote = opening > 0 ? "Carried forward from the earlier account, before this statement."
+                             : "Paid ahead on the earlier account, before this statement.";
       }
-
-      /* Columns pulled a touch inside the right margin so AMOUNT never rides the page edge. */
-      var cA = R - 2, cN = R - 27, cD = R - 49, cR = R - 68, cQ = R - 87;
-      var sX = L + 1, pX = L + 7, prodW = cQ - pX - 5;
-      var head = function () {
-        doc.setFillColor(11, 59, 54); doc.rect(L, y - 3.8, R - L, 5.4, "F");
-        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.2);
-        doc.text("#", sX, y); doc.text("PRODUCT", pX, y); doc.text("QTY", cQ, y, { align: "right" });
-        doc.text("RATE", cR, y, { align: "right" }); doc.text("DISC", cD, y, { align: "right" });
-        doc.text("NET", cN, y, { align: "right" }); doc.text("AMOUNT", cA, y, { align: "right" });
-        y += 4.8;
-      };
-      /* Any page after the first carries no banner, so in per-page mode - where a single
-         sheet may be torn off and handed over - it says whose account it belongs to. */
-      var pageMark = function () {
-        F("normal"); doc.setFontSize(7); doc.setTextColor(120, 130, 145);
-        doc.text("Statement of account  \u00b7  " + pdfSafe(String(cl)), L, 12);
-        doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.line(L, 14.5, R, 14.5);
-        doc.setTextColor(17, 34, 45);
-        return 22;
-      };
-      var grand = 0, goodsGrand = 0;
-      /* THE RECEIPT BLOCK. Drawn under a challan's total in per-page mode: the signed paper
-         that came back, who signed it, when it was recorded, and where the full document
-         lives. When nothing was ever attached it says so in red rather than leaving a blank
-         space that reads like the paper is simply missing from this print. */
-      var receiptBlock = function (c, isRet) {
-        var r = chProofAny(c);
-        if (y + 56 > 282) { doc.addPage(); y = 20; }
-        y += 4;
-        doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3);
-        doc.line(L, y, R, y); y += 6;
-        F("bold"); doc.setFontSize(7.4); doc.setTextColor(isRet ? 185 : 13, isRet ? 28 : 118, isRet ? 28 : 108);
-        doc.text(isRet ? "GOODS-IN RECEIPT" : "SIGNED RECEIPT", L, y);
-        if (!r.has) {
-          /* v6.9.241 - a return can now carry its own signed paper, so a missing one is a
-             real gap on both sides and is said in red on both. */
-          F("normal"); doc.setFontSize(8.6); doc.setTextColor(185, 28, 28);
-          doc.text(isRet
-            ? "No signed goods-in receipt has been attached for this return."
-            : "No signed receipt has been attached for this delivery.", L, y + 6.5);
-          F("normal"); doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
-          doc.text(isRet
-            ? "The return is booked in and credited in this account; only the paper is missing."
-            : "The delivery is recorded and counted in this account; only the paper is missing.", L, y + 11.5);
-          y += 17;
-          return;
-        }
-        var top = y + 4, drewH = 0;
-        if (r.thumb) {
-          var sz = TSZ[c.id] || null;
-          var box = fitBox(sz && sz.w, sz && sz.h, 46, 46);
-          try {
-            doc.addImage("data:image/jpeg;base64," + r.thumb, "JPEG", L, top, box.w, box.h);
-            doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3);
-            doc.rect(L, top, box.w, box.h);
-            drewH = box.h;
-          } catch (e) { drewH = 0; }
-        }
-        var tx = drewH ? L + 52 : L;
-        var ty = top + 5;
-        F("bold"); doc.setFontSize(9); doc.setTextColor(isRet ? 185 : 13, isRet ? 28 : 118, isRet ? 28 : 108);
-        doc.text(isRet ? "Counted in at the godown" : "Received at site", tx, ty); ty += 5.5;
-        F("normal"); doc.setFontSize(8); doc.setTextColor(17, 34, 45);
-        if (r.by) { doc.text("Signed by: " + pdfSafe(String(r.by)), tx, ty); ty += 5; }
-        var p0 = challanProof(c.id);
-        if (p0 && p0.at) { doc.text("Recorded on: " + fullDate(String(p0.at).slice(0, 10)), tx, ty); ty += 5; }
-        doc.setFontSize(6.8); doc.setTextColor(120, 130, 145);
-        if (r.queued) {
-          doc.text("The full document is still uploading from the phone that took it.", tx, ty); ty += 4.4;
-        } else if (r.url) {
-          doc.text("Full delivery & receipt document:", tx, ty); ty += 3.8;
-          doc.setTextColor(13, 118, 108);
-          doc.splitTextToSize(String(r.url), R - tx).slice(0, 2).forEach(function (ln) { doc.text(ln, tx, ty); ty += 3.6; });
-        }
-        if (!drewH) {
-          doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
-          doc.text("(no photograph was stored with this receipt)", tx, ty); ty += 4;
-        }
-        y = Math.max(top + drewH, ty) + 4;
-      };
-      /* ================= ONE STREAM, IN THE ORDER THINGS HAPPENED (v6.9.240) ==========
-         Owner's instruction: a material return is not an appendix to the account, it is an
-         event in it. Challans and booked-in returns are now merged and printed in DATE
-         order, the return still in red exactly as before, and in per-page mode a return
-         gets a page and a receipt block of its own like any delivery. */
-      var drawChallan = function (c) {
-        F("bold"); doc.setFontSize(8.6); doc.setTextColor(13, 118, 108);
-        /* v6.9.240 - the paper book's number prints beside the app's own */
-        var _bk = manualNoFor(c);
-        doc.text(String(c.challanNo) + (_bk ? "   \u00b7   Book no " + pdfSafe(String(_bk)) : "") +
-          "   \u00b7   " + fullDate(c.createdAt), L, y);
-        /* v6.9.119: if the challan carries a Site/project, print it right-aligned on the same
-           header line so the statement shows which site each challan belongs to. */
-        if (c.site && String(c.site).trim()) {
-          F("normal"); doc.setFontSize(7.6); doc.setTextColor(100, 116, 139);
-          doc.text("Site: " + pdfSafe(String(c.site).trim()), R, y, { align: "right" });
-        }
-        y += 5;
-        head();
-        var priced = pricedLines(c, cl), sub = 0;
-        priced.forEach(function (x, idx) {
-          var lines = doc.splitTextToSize(pdfSafe(x.desc), prodW);
-          var nL = Math.min(lines.length, 2), rowH = nL > 1 ? 6.9 : 4.15;
-          if (y + rowH > 282) { doc.addPage(); y = 20; head(); }
-          if (idx % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 3.2, R - L, rowH, "F"); }
-          F("normal"); doc.setFontSize(6.8); doc.setTextColor(17, 34, 45);
-          doc.text(String(idx + 1), sX, y);
-          for (var li = 0; li < nL; li++) doc.text(lines[li], pX, y + li * 3.3);
-          doc.text(String(x.qty), cQ, y, { align: "right" });
-          doc.setTextColor(120, 120, 120);
-          doc.text(x.disc > 0 ? RS(x.rate) : "-", cR, y, { align: "right" });
-          doc.text(x.disc > 0 ? (x.disc + "%") : "-", cD, y, { align: "right" });
-          doc.setTextColor(17, 34, 45); doc.text(RS(x.dr), cN, y, { align: "right" });
-          F("bold"); doc.text(RS(x.amt), cA, y, { align: "right" }); F("normal");
-          y += rowH; sub += x.amt;
-        });
-        /* v6.9.325 - the further discount prints on the client's own statement too. It has to:
-           he is handed this paper, and a Challan total below the lines that does not add up
-           unless a concession is named is the sort of thing that starts an argument at a
-           counter. Same figure and same wording as the screen. */
-        var frt = chFreight(c), xOff = chFurtherOff(c, sub), chTotal = sub + frt - xOff;
-        if (frt > 0) {
-          if (y + 4.4 > 282) { doc.addPage(); y = 20; head(); }
-          F("normal"); doc.setFontSize(6.8); doc.setTextColor(146, 64, 14);
-          doc.text("Freight" + (c.driver ? " (" + c.driver + ")" : ""), pX, y);
-          doc.text(RS(frt), cA, y, { align: "right" }); y += 4.4;
-        }
-        if (xOff > 0) {
-          if (y + 4.4 > 282) { doc.addPage(); y = 20; head(); }
-          var _xn = (hisabStamp(c) && hisabStamp(c).extraNote) || "";
-          F("normal"); doc.setFontSize(6.8); doc.setTextColor(15, 118, 110);
-          doc.text("Further discount" + (_xn ? " (" + pdfSafe(_xn) + ")" : ""), pX, y);
-          doc.text("- " + RS(xOff), cA, y, { align: "right" }); y += 4.4;
-        }
-        grand += chTotal; goodsGrand += sub - xOff;
-        /* Challan total in a shaded band, text VERTICALLY CENTERED in the band. */
-        var tbY = y - 3.4, tbH = 6.4, tMid = tbY + tbH / 2 + 1.35;
-        doc.setFillColor(241, 245, 249); doc.rect(L, tbY, R - L, tbH, "F");
-        F("bold"); doc.setFontSize(8.2); doc.setTextColor(17, 34, 45);
-        doc.text("Challan total", cN, tMid, { align: "right" }); doc.text(RS(chTotal), cA, tMid, { align: "right" });
-        y = tbY + tbH + 3;
-        /* v6.9.364 - a delivery that is PART paid prints what has come off it. Without this
-           line a client looking at a folded statement would see a full-price delivery and no
-           sign of the 40,000 he has already put against it.
-
-           RENDERED AND LOOKED AT, which is why it is a strip and not a floating line: three
-           millimetres of white above it and five below put it almost exactly between two
-           deliveries, and it read as a note on the one BELOW - the single delivery it is not
-           about. Flush under the total band, tinted, indented from the same margin the band
-           uses, it belongs to the challan it is under and to nothing else. */
-        var _ps = settleOf(cl, c.id);
-        if (_ps && _ps.state === "part") {
-          var pbY = tbY + tbH, pbH = 5.6;
-          if (pbY + pbH > 286) { doc.addPage(); pbY = 20; }
-          doc.setFillColor(240, 253, 250); doc.rect(L, pbY, R - L, pbH, "F");
-          F("normal"); doc.setFontSize(6.8); doc.setTextColor(15, 118, 110);
-          doc.text("Part paid: " + RS(_ps.paid) + " already received against this delivery. " +
-                   RS(_ps.open) + " of it is still open.", L + 3, pbY + 3.7);
-          y = pbY + pbH + 4;
-        }
-      };
-
-      /* v6.9.122: a booked-in return printed as a challan in reverse - a red header, every
-         line a negative amount, then a Return total. */
-      var drawReturn = function (r) {
-        F("bold"); doc.setFontSize(8.6); doc.setTextColor(185, 28, 28);
-        /* v6.9.398 - a return with no number printed "RETURN undefined" on the customer's
-           statement (seen on the sweep). Say what is true instead: there is a return, and it
-           has not been given a number. */
-        doc.text("RETURN  " + (r.returnNo ? String(r.returnNo) : "(no number yet)") +
-          (r.challanNo ? "   \u00b7   against " + String(r.challanNo) : "") +
-          "   \u00b7   " + fullDate(r.createdAt), L, y);
-        if (r.site && String(r.site).trim()) {
-          F("normal"); doc.setFontSize(7.6); doc.setTextColor(150, 110, 110);
-          doc.text("Site: " + pdfSafe(String(r.site).trim()), R, y, { align: "right" });
-        }
-        y += 5;
-        var rhead = function () {
-          doc.setFillColor(127, 29, 29); doc.rect(L, y - 3.8, R - L, 5.4, "F");
-          doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.2);
-          doc.text("#", sX, y); doc.text("PRODUCT RETURNED", pX, y); doc.text("QTY", cQ, y, { align: "right" });
-          doc.text("RATE", cR, y, { align: "right" }); doc.text("DISC", cD, y, { align: "right" });
-          doc.text("NET", cN, y, { align: "right" }); doc.text("AMOUNT", cA, y, { align: "right" });
-          y += 4.8;
-        };
-        rhead();
-        var rl = returnLines(r), rsub = 0;
-        rl.forEach(function (x, idx) {
-          var lines = doc.splitTextToSize(pdfSafe(x.desc), prodW);
-          var nL = Math.min(lines.length, 2), rowH = nL > 1 ? 6.9 : 4.15;
-          if (y + rowH > 282) { doc.addPage(); y = 20; rhead(); }
-          if (idx % 2) { doc.setFillColor(254, 242, 242); doc.rect(L, y - 3.2, R - L, rowH, "F"); }
-          F("normal"); doc.setFontSize(6.8); doc.setTextColor(17, 34, 45);
-          doc.text(String(idx + 1), sX, y);
-          for (var li = 0; li < nL; li++) doc.text(lines[li], pX, y + li * 3.3);
-          doc.text(String(x.qty), cQ, y, { align: "right" });
-          doc.setTextColor(120, 120, 120);
-          doc.text(x.disc > 0 ? RS(x.rate) : "-", cR, y, { align: "right" });
-          doc.text(x.disc > 0 ? (x.disc + "%") : "-", cD, y, { align: "right" });
-          doc.text(RS(x.dr), cN, y, { align: "right" });
-          F("bold"); doc.setTextColor(185, 28, 28); doc.text("-" + RS(x.amt), cA, y, { align: "right" }); F("normal");
-          y += rowH; rsub += x.amt;
-        });
-        var rbY = y - 3.4, rbH = 6.4, rMid = rbY + rbH / 2 + 1.35;
-        doc.setFillColor(254, 226, 226); doc.rect(L, rbY, R - L, rbH, "F");
-        F("bold"); doc.setFontSize(8.2); doc.setTextColor(185, 28, 28);
-        doc.text("Return total", cN, rMid, { align: "right" }); doc.text("-" + RS(rsub), cA, rMid, { align: "right" });
-        y = rbY + rbH + 3;
-      };
-
-      /* Booked-in returns ("Received" only), which now travel in the same stream as the
-         challans instead of being appended after them. */
-      var retList = clientReturns(cl).slice();
-      if (!sel.length && !retList.length && !selPaid.length) {
-        doc.setFontSize(10); doc.setTextColor(120, 120, 120);
-        doc.text("No challans selected.", L, y); y += 6;
-      }
-      var stream = sel.map(function (c) { return { t: "C", d: String(c.createdAt || ""), c: c }; })
-        .concat(retList.map(function (r) { return { t: "R", d: String(r.createdAt || ""), r: r }; }))
-        .sort(function (a, b) { return a.d.localeCompare(b.d); });
-
-      /* v6.9.364 - the folded deliveries, as one line, before the open ones. It is drawn
-         whatever the per-page setting is, because it is not a delivery and has no receipt. */
-      if (selPaid.length) {
-        if (y + 16 > 282) { doc.addPage(); y = 20; }
-        doc.setFillColor(240, 253, 250); doc.rect(L, y - 4, R - L, 13.6, "F");
-        doc.setDrawColor(153, 246, 228); doc.setLineWidth(0.3); doc.rect(L, y - 4, R - L, 13.6, "S");
-        F("bold"); doc.setFontSize(8.6); doc.setTextColor(13, 118, 108);
-        doc.text("SETTLED IN FULL", L + 3, y + 0.6);
-        doc.text(RS(selPaidVal), R - 3, y + 0.6, { align: "right" });
-        F("normal"); doc.setFontSize(7); doc.setTextColor(15, 118, 110);
-        doc.text(selPaid.length + " deliver" + (selPaid.length === 1 ? "y" : "ies") +
-          (selPaidTo ? ", up to " + fullDate(selPaidTo) : "") +
-          " \u2014 paid for and closed. Listed in full on request.", L + 3, y + 5.6);
-        grand += selPaidVal;
-        goodsGrand += selPaid.reduce(function (a, c) { return a + challanNet(c); }, 0);
-        y += 17;
-      }
-      stream.forEach(function (it, i) {
-        /* in per-page mode each entry starts on a clean sheet. The FIRST one still sits
-           below the dark banner on page one; only the added pages start at the top. */
-        if (perPage) {
-          if (i) { doc.addPage(); y = pageMark(); }
-          /* ============ THE WORDS THAT SAT ON TOP OF THE TABLE (v6.9.394) ============
-             HIS WORDS, with a screenshot of Manish Singla's statement: "words overlapping in
-             pdf statement, and its confusing".
-
-             y = HB + 9 is an ABSOLUTE reset to just under the dark banner. It was right the day
-             it was written, when the first delivery genuinely was the first thing on the page.
-             Since then TWO blocks have been added above it and neither knew about this line:
-
-               - the Received / Returned / Still due bar, and the same three in words below it
-               - the SETTLED IN FULL band (v6.9.364)
-
-             Both draw, both advance y, and then this threw y away and painted the delivery table
-             straight over them. That is the green, blue and red stripe across his table header,
-             and "SETTLED IN FULL ... paid for and closed" sitting inside rows 3, 4 and 5.
-
-             max() keeps the promise the comment below makes - page one starts below the banner -
-             without unwriting anything already on the page. The block that draws next need not
-             know this line exists, which is the point. */
-          else { y = Math.max(HB + 9, y); }
-        }
-        else if (y > 262) { doc.addPage(); y = 20; }
-        if (it.t === "C") { drawChallan(it.c); if (perPage) receiptBlock(it.c, false); }
-        else { drawReturn(it.r); if (perPage) receiptBlock(it.r, true); }
-      });
-      if (y > 250 || (perPage && stream.length)) {
-        doc.addPage(); y = perPage ? pageMark() : 20;
-      }
-      var gst = S.billGst ? Math.round(grand * 0.18) : 0, paid = clientLedger(cl).paid;
-      doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(L, y - 1, R, y - 1); doc.setLineWidth(0.2); y += 5;
-      F("bold"); doc.setFontSize(11); doc.setTextColor(17, 34, 45);
-      doc.text("Statement total", cN, y, { align: "right" }); doc.text(RS(grand), cA, y, { align: "right" }); y += 6;
+      line("Balance brought forward", Math.abs(bf) < 0.5 && !offN && Math.abs(opening) < 0.5 ? "nil" : RSs(bf),
+           { bold: true, note: bfNote });
+      line("+  Deliveries on this statement  (" + chOn.length + ")", RSs(onDeliv));
+      var gst = S.billGst ? Math.round(onDeliv * 0.18) : 0;
       if (S.billGst) {
-        F("normal"); doc.setFontSize(9.5); doc.text("GST @ 18%", cN, y, { align: "right" }); doc.text(RS(gst), cA, y, { align: "right" }); y += 5.5;
-        F("bold"); doc.setFontSize(11); doc.text("Total incl. GST", cN, y, { align: "right" }); doc.text(RS(grand + gst), cA, y, { align: "right" }); y += 6;
+        line("GST @ 18% on those deliveries", RSs(gst), { indent: 6, ink: GREY });
+        line("Deliveries incl. GST", RSs(onDeliv + gst), { indent: 6, ink: GREY });
       }
-      var opening = clientOpening(cl);   /* v6.9.266 - the STATEMENT the customer is sent */
-      /* v6.9.121: booked-in material returns are a credit against the account, so the statement
-         balance matches the HISAB screen. */
-      var retTot = clientReturns(cl).reduce(function (a, r) { return a + returnNet(r); }, 0);
-      y += 4; F("normal"); doc.setFontSize(9.5); doc.setTextColor(100, 116, 139);
-      if (opening > 0) { doc.text("Previous balance (before app): " + RS(opening), L, y); y += 5; }
-      doc.text("Account billed to date (net): " + RS(allNet), L, y); y += 5;
-      doc.text("Received to date: " + RS(paid), L, y); y += 5;
-      /* v6.9.336 - itemised underneath, from the SAME payLines() the screen reads, so the
-         statement in the customer's hand and the ledger in the office cannot disagree. Core
-         Helvetica cannot draw anything outside Latin-1, so every free-text field goes through
-         pdfSafe - a UPI reference with a rupee sign in it would otherwise print as rubbish. */
-      (function () {
-        var _pl = payLines(cl);
-        if (!_pl.length) return;
-        doc.setFontSize(8.5);
-        _pl.forEach(function (p) {
-          if (y > 272) { doc.addPage(); y = 20; F("normal"); doc.setFontSize(8.5); doc.setTextColor(100, 116, 139); }
-          var tail = pdfSafe(p.mode || "not recorded") + (p.ref ? " / " + pdfSafe(p.ref) : "");
-          doc.text("    " + d10(p.date) + "   " + tail, L + 2, y);
-          doc.text(RS(p.amount), R, y, { align: "right" });
-          y += 4.2;
-        });
-        doc.setFontSize(9.5); y += 1.5;
-      })();
-      if (retTot > 0) { doc.setTextColor(185, 28, 28); doc.text("Less material returns: -" + RS(retTot), L, y); y += 5; doc.setTextColor(100, 116, 139); }
-      F("bold"); doc.setTextColor(17, 34, 45); doc.setFontSize(10.5);
-      /* v6.9.398 - the SAME words the screen has used since v6.9.360. This printed
-         "Balance due: Rs.-7,942" under a summary line that already said "account is ahead by
-         Rs.7,942" - two drawings of one fact on one page, one of them reading like a fault.
-         He is holding the man's money; say that, in the direction the money is pointing. */
-      var _bal = opening + allNet - paid - retTot;
-      doc.text(_bal < -0.5 ? "In credit: " + RS(-_bal) + "   (paid ahead - comes off the next delivery)"
-             : _bal > 0.5 ? "Balance due: " + RS(_bal) : "Settled in full", L, y); y += 6;
+      if (rtOn.length) line("–  Material returned  (" + rtOn.length + ")", RS(onRet), { ink: RED });
+      line("–  Received  (" + pyOn.length + " payment" + (pyOn.length === 1 ? "" : "s") + ")", RSs(onPaid), { ink: TEAL });
+      /* looked at: a rule 1.2mm under a baseline runs through the descenders of "payments" */
+      y += 3;
+      doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(sx, y - 4.4, sx + sumW, y - 4.4); doc.setLineWidth(0.2);
+      /* v6.9.398's words, kept: In credit / Balance due / Settled in full - one set of words
+         wherever the balance is drawn */
+      line(bal < -0.5 ? "=  IN CREDIT" : bal > 0.5 ? "=  BALANCE DUE" : "=  SETTLED IN FULL",
+           Math.abs(bal) < 0.5 ? "nil" : RS(bal),
+           { bold: true, big: true, ink: bal > 0.5 ? RED : TEAL,
+             note: bal < -0.5 ? "Paid ahead - this comes off the next delivery." : "" });
+      var sumBottom = y;
+      /* THE SERVICE BOOK, beside the goods - v6.9.402's "one total": the service visits still
+         carry money that is collected on the visit, and a man chasing the account needs one
+         figure that has both in it */
+      if (svcOn) {
+        var bx = L + sumW + 6, bw = R - bx, by0 = HB + 5, boxH = 31.6;
+        fill([255, 251, 235]); doc.setDrawColor(253, 230, 138); doc.setLineWidth(0.3);
+        doc.roundedRect(bx, by0, bw, boxH, 1.5, 1.5, "FD");
+        var yy = by0 + 6;
+        F("bold"); doc.setFontSize(7.2); ink([146, 64, 14]); doc.text("SERVICE VISITS", bx + 4, yy); yy += 5.4;
+        F("normal"); doc.setFontSize(8.2); ink(INK);
+        doc.text("Billed on " + _hl.svcVisits + " visit" + (_hl.svcVisits === 1 ? "" : "s"), bx + 4, yy); doc.text(RS(_hl.svcBilled), bx + bw - 4, yy, { align: "right" }); yy += 5;
+        doc.text("Received on the visits", bx + 4, yy); doc.text(RS(_hl.svcCollected), bx + bw - 4, yy, { align: "right" }); yy += 5;
+        F("bold"); ink(RED);
+        doc.text("Service still due", bx + 4, yy); doc.text(RS(_hl.svcDue), bx + bw - 4, yy, { align: "right" }); yy += 4.6;
+        F("normal"); doc.setFontSize(6.6); ink(GREY);
+        doc.text("Collected on the visit, not through this account.", bx + 4, yy);
+        fill([254, 226, 226]); doc.rect(bx, by0 + boxH, bw, 9.5, "F");
+        F("bold"); doc.setFontSize(8.2); ink(RED);
+        doc.text("TO COLLECT, GOODS AND SERVICE", bx + 4, by0 + boxH + 6);
+        doc.setFontSize(10.5); doc.text(RS(bal + _hl.svcDue), bx + bw - 4, by0 + boxH + 6.3, { align: "right" });
+        sumBottom = Math.max(sumBottom, by0 + boxH + 9.5 + 6);
+      }
+      y = sumBottom + 3;
 
-      /* Authorised-distributor strip. The brand logos are drawn from the persistent cache (fetched
-         + processed once per device, then reused instantly) - so there is NO live image download
-         at export time, which is what used to make the statement slow and reload the tab. Until
-         the cache is warm on a device we fall back to brand names as text; meanwhile logosReady()
-         warms it in the background for next time. */
+      /* ================= THE ACCOUNT, AS A DATED LIST ================= */
+      var cDt = L + 2, cP = L + 24, cDr = R - 76, cCr = R - 40, cBl = R - 2, partW = cDr - 18 - cP;
+      var LIMIT1 = H - 24, LIMITN = FOOT - 4;        /* page one keeps room for the letterhead strip */
+      var lim = LIMIT1;
+      var head = function () {
+        fill([11, 59, 54]); doc.rect(L, y - 3.8, R - L, 5.6, "F");
+        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.4);
+        doc.text("DATE", cDt, y); doc.text("PARTICULARS", cP, y);
+        doc.text("DEBIT (Rs.)", cDr, y, { align: "right" }); doc.text("CREDIT (Rs.)", cCr, y, { align: "right" });
+        doc.text("BALANCE (Rs.)", cBl, y, { align: "right" });
+        y += 5.4; ink(INK);
+      };
+      var need = function (h) {
+        if (y + h > lim) { y = pageMark("the account, continued"); lim = LIMITN; head(); }
+      };
+      F("bold"); doc.setFontSize(7.2); ink(GREY);
+      doc.text("THE ACCOUNT  ·  in the order things happened", L, y); y += 4.6;
+      head();
+      var run = bf, rowN = 0;
+      var row = function (dateTxt, parts, dr, cr, o) {
+        o = o || {};
+        F("normal"); doc.setFontSize(7.4);
+        var lines = doc.splitTextToSize(pdfSafe(parts), partW), nL = Math.min(lines.length, 2);
+        var rowH = nL > 1 ? 7.6 : 4.6;
+        need(rowH);
+        if (o.band) { fill(o.band); doc.rect(L, y - 3.3, R - L, rowH, "F"); }
+        else if (rowN % 2) { fill([248, 250, 252]); doc.rect(L, y - 3.3, R - L, rowH, "F"); }
+        rowN++;
+        ink(GREY); doc.text(dateTxt, cDt, y);
+        ink(o.ink || INK); F(o.bold ? "bold" : "normal");
+        for (var li = 0; li < nL; li++) doc.text(lines[li], cP, y + li * 3.4);
+        F(o.bold ? "bold" : "normal");
+        if (dr != null) { ink(o.ink || INK); doc.text(RS(dr), cDr, y, { align: "right" }); }
+        if (cr != null) { ink(o.ink || TEAL); doc.text(RS(cr), cCr, y, { align: "right" }); }
+        F("bold"); ink(run < -0.5 ? TEAL : INK); doc.text(RSs(run), cBl, y, { align: "right" });
+        y += rowH;
+      };
+      row("", "Balance brought forward" + (offN ? "  (see the summary above)" : ""), null, null, { bold: true });
+      if (!ev.length) {
+        F("normal"); doc.setFontSize(8); ink(GREY);
+        doc.text("Nothing is ticked for this statement.", cP, y + 1); y += 6;
+      }
+      ev.forEach(function (e) {
+        if (e.t === "C") {
+          var c = e.row, v = chValue(c), nIt = pricedLines(c, cl).length, bk = manualNoFor(c);
+          var txt = (v < -0.5 ? "Credit note " : "Delivery  ") + String(c.challanNo || "") +
+            (bk ? "  ·  Book no " + String(bk) : "") +
+            (c.site && String(c.site).trim() ? "  ·  " + String(c.site).trim() : "") +
+            "  ·  " + nIt + " item" + (nIt === 1 ? "" : "s") +
+            (chFreight(c) > 0 ? " + freight" : "");
+          run += v;
+          if (v < -0.5) row(fullDate(e.d), txt, null, -v, { ink: TEAL });
+          else row(fullDate(e.d), txt, v, null);
+        } else if (e.t === "R") {
+          var r = e.row, rv = returnNet(r), nR = returnLines(r).length;
+          run -= rv;
+          row(fullDate(e.d), "RETURN  " + (r.returnNo ? String(r.returnNo) : "(no number yet)") +
+            (r.challanNo ? "  ·  against " + String(r.challanNo) : "") +
+            "  ·  " + nR + " item" + (nR === 1 ? "" : "s") + " back at the godown", null, rv,
+            { ink: RED, band: [254, 242, 242] });
+        } else {
+          var p = e.row, pa = payAmt(p), pk = payKindOf(p);
+          var tail = [p.mode ? String(p.mode).trim() : "", p.ref ? String(p.ref).trim() : ""].filter(Boolean).join("  ·  ");
+          run -= pa;
+          if (pk === "refund") row(fullDate(e.d), "Refund paid to you" + (tail ? "  ·  " + tail : ""), -pa, null, { ink: RED });
+          else row(fullDate(e.d), (pk === "advance" ? "Advance received" : "Payment received") + (tail ? "  ·  " + tail : ""), null, pa, { ink: TEAL });
+        }
+      });
+      need(9);
+      y += 1.6;
+      doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(L, y - 3.4, R, y - 3.4); doc.setLineWidth(0.2);
+      y += 1.2;
+      F("bold"); doc.setFontSize(8.6); ink(bal > 0.5 ? RED : TEAL);
+      doc.text(bal < -0.5 ? "In credit  –  paid ahead, comes off the next delivery" : bal > 0.5 ? "Balance due" : "Settled in full", cP, y);
+      doc.text(Math.abs(bal) < 0.5 ? "nil" : RSs(bal), cBl, y, { align: "right" });
+      y += 6;
+      if (perPage && sheets.length) {
+        F("normal"); doc.setFontSize(6.9); ink(GREY);
+        doc.text("The pages that follow show each delivery and return listed above, with the signed receipt beside it.", cP, y);
+      }
+
+      /* the letterhead strip, on page one - the brand logos come from the persistent cache, so
+         nothing is downloaded while this is built; until it is warm the names print as text */
+      doc.setPage(1);
       logosReady();
-      if (y > 268) { doc.addPage(); y = 20; }
       var slots = PDF_LOGO_ORDER.map(function (n) { return logoFor(n); }).filter(function (s) { return s && s.src; });
-      F("bold"); doc.setFontSize(5); doc.setTextColor(120, 130, 140);
-      doc.text("AUTHORISED DISTRIBUTOR FOR", L, 277);
+      F("bold"); doc.setFontSize(5); ink([120, 130, 140]);
+      doc.text("AUTHORISED DISTRIBUTOR FOR", L, H - 20);
       if (slots.length >= 6) {
-        var GP = 1.2, BH = 6, y0 = 279, BW = (R - L - GP * (slots.length - 1)) / slots.length;
+        var GP = 1.2, BH = 6, y0 = H - 18.6, BW = (R - L - GP * (slots.length - 1)) / slots.length;
         slots.forEach(function (lg, i) {
-          var bx = L + i * (BW + GP);
-          doc.setDrawColor(216, 216, 216); doc.setLineWidth(0.18); doc.rect(bx, y0, BW, BH, "S");
+          var bx0 = L + i * (BW + GP);
+          doc.setDrawColor(216, 216, 216); doc.setLineWidth(0.18); doc.rect(bx0, y0, BW, BH, "S");
           var sc = Math.min((BW - 1.4) / lg.w, (BH - 1.4) / lg.h);
           var iw = lg.w * sc, ih = lg.h * sc;
-          try { doc.addImage(lg.src, "JPEG", bx + (BW - iw) / 2, y0 + (BH - ih) / 2, iw, ih); } catch (e) { }
+          try { doc.addImage(lg.src, "JPEG", bx0 + (BW - iw) / 2, y0 + (BH - ih) / 2, iw, ih); } catch (e) { }
         });
       } else {
-        F("bold"); doc.setFontSize(7.4); doc.setTextColor(90, 100, 110);
-        doc.splitTextToSize(PDF_LOGO_ORDER.join("   ·   "), R - L).forEach(function (ln, i) { doc.text(ln, L, 282 + i * 3.6); });
+        F("bold"); doc.setFontSize(7.4); ink([90, 100, 110]);
+        doc.text(PDF_LOGO_ORDER.join("   ·   "), L, H - 15);
       }
-      doc.setFontSize(6.6); doc.setTextColor(150, 163, 175); F("normal");
-      doc.text("Energy World  |  Panipat · Sonipat · Karnal    |    Statement of account, not a tax invoice.", L, 291);
+      doc.setPage(doc.internal.getNumberOfPages());
 
-      /* ================= THE SIGNED RECEIPTS, ATTACHED (v6.9.281) =================
-         In `stream` order, which is the order the challans are listed above - so page 4 of the
-         attachments answers the fourth line of the statement, and a client reading down the
-         account can turn straight to the paper for any of it. */
-      if (withRcpt) {
-        var rq = stream.filter(function (it) { return !!RIMG[(it.t === "C" ? it.c : it.r).id]; });
-        /* v6.9.378 - the sheets are counted, not the receipts. A two-page document used to be
-           announced as "3 of 9" and then show one page of itself; the count now says what a
-           man is actually holding. */
-        var rTot = 0;
-        rq.forEach(function (it) { rTot += RIMG[(it.t === "C" ? it.c : it.r).id].pages.length; });
-        var rSeen = 0;
-        rq.forEach(function (it) {
-          var rc = it.t === "C" ? it.c : it.r, rec = RIMG[rc.id];
-          rec.pages.forEach(function (img, pi) {
-            rSeen++;
-            doc.addPage();
-            doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, 14, "F");
-            F("bold"); doc.setFontSize(8.6); doc.setTextColor(255, 255, 255);
-            doc.text((it.t === "R" ? "GOODS-IN RECEIPT   " : "SIGNED RECEIPT   ") +
-                     pdfSafe(String(rc.challanNo || rc.returnNo || "")) +
-                     (rec.pages.length > 1 ? "   (sheet " + (pi + 1) + " of " + rec.pages.length + ")" : ""), L, 9);
-            F("normal"); doc.setFontSize(7.2); doc.setTextColor(160, 205, 199);
-            doc.text(pdfSafe(String(cl)) + "   \u00b7   " + fullDate(String(rc.createdAt || "").slice(0, 10)) +
-                     "   \u00b7   " + rSeen + " of " + rTot, R, 9, { align: "right" });
-            var rbox = fitBox(img.w, img.h, R - L, 262);
-            var rx = L + ((R - L) - rbox.w) / 2;
+      /* ================= ONE SHEET PER DELIVERY, RECEIPT BESIDE IT ================= */
+      if (perPage) {
+        var halfW = 132, x1 = L + halfW + 6, w1 = R - x1;
+        /* the item table, laid in a column [x0, x0+w] - the same columns the old full-width
+           statement had, closed up to half a page */
+        var drawLines = function (c, isRet, x0, w, right) {
+          var cA = x0 + w - 1, cN = cA - 17, cD = cN - 12, cR = cD - 13, cQ = cR - 12, sX = x0 + 1, pX = x0 + 5, prodW = cQ - pX - 6;
+          var hd = isRet ? [127, 29, 29] : [11, 59, 54];
+          var thead = function () {
+            fill(hd); doc.rect(x0, y - 3.8, w, 5.4, "F");
+            doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.2);
+            doc.text("#", sX, y); doc.text(isRet ? "PRODUCT RETURNED" : "PRODUCT", pX, y); doc.text("QTY", cQ, y, { align: "right" });
+            doc.text("RATE", cR, y, { align: "right" }); doc.text("DISC", cD, y, { align: "right" });
+            doc.text("NET", cN, y, { align: "right" }); doc.text("AMOUNT", cA, y, { align: "right" });
+            y += 4.8; ink(INK);
+          };
+          var more = function (h) {
+            if (y + h > FOOT - 2) { y = pageMark(right + "  ·  continued"); thead(); }
+          };
+          F("bold"); doc.setFontSize(8.8); ink(isRet ? RED : TEAL);
+          var _bk = isRet ? "" : manualNoFor(c);
+          doc.text((isRet ? "RETURN  " + (c.returnNo ? String(c.returnNo) : "(no number yet)") : String(c.challanNo || "")) +
+            (_bk ? "   ·   Book no " + pdfSafe(String(_bk)) : "") +
+            (isRet && c.challanNo ? "   ·   against " + pdfSafe(String(c.challanNo)) : "") +
+            "   ·   " + fullDate(c.createdAt), x0, y);
+          y += 4.2;
+          if (c.site && String(c.site).trim()) {
+            F("normal"); doc.setFontSize(7.4); ink(GREY);
+            doc.text("Site: " + pdfSafe(String(c.site).trim()), x0, y); y += 4.2;
+          }
+          y += 2;
+          thead();
+          var lines = isRet ? returnLines(c) : pricedLines(c, cl), sub = 0;
+          lines.forEach(function (x, idx) {
+            var dl = doc.splitTextToSize(pdfSafe(x.desc), prodW);
+            var nL = Math.min(dl.length, 2), rowH = nL > 1 ? 6.9 : 4.15;
+            more(rowH);
+            if (idx % 2) { fill(isRet ? [254, 242, 242] : [248, 250, 252]); doc.rect(x0, y - 3.2, w, rowH, "F"); }
+            F("normal"); doc.setFontSize(6.8); ink(INK);
+            doc.text(String(idx + 1), sX, y);
+            for (var li = 0; li < nL; li++) doc.text(dl[li], pX, y + li * 3.3);
+            doc.text(String(x.qty), cQ, y, { align: "right" });
+            ink([120, 120, 120]);
+            doc.text(x.disc > 0 ? RS(x.rate) : "-", cR, y, { align: "right" });
+            doc.text(x.disc > 0 ? (x.disc + "%") : "-", cD, y, { align: "right" });
+            ink(INK); doc.text(RS(x.dr), cN, y, { align: "right" });
+            F("bold"); ink(isRet ? RED : INK); doc.text((isRet ? "-" : "") + RS(x.amt), cA, y, { align: "right" }); F("normal");
+            y += rowH; sub += x.amt;
+          });
+          var total = sub;
+          if (!isRet) {
+            var frt = chFreight(c), xOff = chFurtherOff(c, sub);
+            total = sub + frt - xOff;
+            if (frt > 0) {
+              more(4.4); F("normal"); doc.setFontSize(6.8); ink(AMBER);
+              doc.text("Freight" + (c.driver ? " (" + pdfSafe(String(c.driver)) + ")" : ""), pX, y);
+              doc.text(RS(frt), cA, y, { align: "right" }); y += 4.4;
+            }
+            if (xOff > 0) {
+              more(4.4);
+              var _xn = (hisabStamp(c) && hisabStamp(c).extraNote) || "";
+              F("normal"); doc.setFontSize(6.8); ink([15, 118, 110]);
+              doc.text("Further discount" + (_xn ? " (" + pdfSafe(_xn) + ")" : ""), pX, y);
+              doc.text("- " + RS(xOff), cA, y, { align: "right" }); y += 4.4;
+            }
+          }
+          more(7);
+          var tbY = y - 3.4, tbH = 6.4, tMid = tbY + tbH / 2 + 1.35;
+          fill(isRet ? [254, 226, 226] : [241, 245, 249]); doc.rect(x0, tbY, w, tbH, "F");
+          F("bold"); doc.setFontSize(8.2); ink(isRet ? RED : INK);
+          doc.text(isRet ? "Return total" : "Challan total", cN, tMid, { align: "right" });
+          doc.text((isRet ? "-" : "") + RS(total), cA, tMid, { align: "right" });
+          y = tbY + tbH + 3;
+          /* v6.9.364's strip, kept: a delivery he has half paid says so under its own total */
+          if (!isRet) {
+            var _ps = settleOf(cl, c.id);
+            if (_ps && _ps.state === "part") {
+              fill([240, 253, 250]); doc.rect(x0, tbY + tbH, w, 5.6, "F");
+              F("normal"); doc.setFontSize(6.8); ink([15, 118, 110]);
+              doc.text("Part paid: " + RS(_ps.paid) + " already received against this delivery. " + RS(_ps.open) + " of it is still open.", x0 + 3, tbY + tbH + 3.7);
+              y = tbY + tbH + 5.6 + 4;
+            } else if (_ps && _ps.state === "settled") {
+              F("normal"); doc.setFontSize(6.8); ink([15, 118, 110]);
+              doc.text("Paid for in full.", x0 + 3, y); y += 4;
+            }
+          }
+        };
+        /* THE RECEIPT HALF. Says which of four things is true: the paper is here (drawn full
+           size), the paper is on file but only its preview could be had, the paper is still on
+           its way up from a phone, or no paper was ever attached - in red, because a missing
+           receipt is a gap on both sides of the counter. */
+        var drawReceipt = function (c, isRet, top) {
+          var r = chProofAny(c), rec = RIMG[c.id];
+          var yy = top;
+          F("bold"); doc.setFontSize(7.4); ink(isRet ? RED : TEAL);
+          doc.text(isRet ? "GOODS-IN RECEIPT" : "SIGNED RECEIPT", x1, yy); yy += 4;
+          if (!r.has) {
+            F("normal"); doc.setFontSize(8.6); ink(RED);
+            doc.text(isRet ? "No signed goods-in receipt has been attached for this return."
+                           : "No signed receipt has been attached for this delivery.", x1, yy + 4);
+            F("normal"); doc.setFontSize(6.6); ink(PALE);
+            doc.text(isRet ? "The return is booked in and credited in this account; only the paper is missing."
+                           : "The delivery is recorded and counted in this account; only the paper is missing.", x1, yy + 9);
+            return;
+          }
+          var maxH = FOOT - 16 - yy - 4, img = null, cap = "";
+          if (rec && rec.pages && rec.pages.length) {
+            img = rec.pages[0];
+            cap = rec.whole
+              ? (rec.pages.length > 1 ? "Sheet 1 of " + rec.pages.length + " - the other sheet" + (rec.pages.length > 2 ? "s follow" : " follows") + " on the next page. The receipt held on file, reproduced unaltered."
+                                      : "The receipt held on file, reproduced unaltered.")
+              : "First sheet only - the full document, with the signed paper, is on file.";
+          } else if (r.thumb) {
+            var sz = TSZ[c.id] || null;
+            img = { src: "data:image/jpeg;base64," + r.thumb, w: sz && sz.w, h: sz && sz.h };
+            maxH = Math.min(maxH, 90);
+            cap = r.queued ? "Preview from the phone that took it - the full document is still uploading."
+                           : "Preview only - the full document is on file and could not be fetched while this PDF was made.";
+          }
+          if (img) {
+            var box = fitBox(img.w, img.h, w1, maxH);
             try {
-              doc.addImage(img.src, "JPEG", rx, 20, rbox.w, rbox.h);
-              doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(rx, 20, rbox.w, rbox.h);
-            } catch (e) { }
-            F("normal"); doc.setFontSize(6.6); doc.setTextColor(150, 163, 175);
-            /* SAY WHICH OF THE TWO THIS IS. The old footnote said "the receipt held on file,
-               reproduced unaltered" under every page, including the ones that were only the
-               first sheet of a longer document - which is how a challan came to be presented
-               as a signed receipt. */
-            doc.text(rec.whole
-              ? "Attached to the statement of " + pdfSafe(String(cl)) +
-                ". This is the receipt held on file, reproduced unaltered."
-              : "Attached to the statement of " + pdfSafe(String(cl)) +
-                ". First sheet only \u2014 the full document, with the signed paper, is on file.",
-              L, 291);
-          });
+              doc.addImage(img.src, "JPEG", x1, yy, box.w, box.h);
+              doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(x1, yy, box.w, box.h);
+              yy += box.h + 4;
+            } catch (e) { img = null; }
+          }
+          if (!img) {
+            F("normal"); doc.setFontSize(7.4); ink(AMBER);
+            doc.text(r.queued ? "The signed receipt is still uploading from the phone that took it."
+                              : "On file, but it could not be fetched while this PDF was made -", x1, yy + 4);
+            if (!r.queued) doc.text("usually because it was filed only minutes ago. It can be produced.", x1, yy + 8);
+            yy += 13;
+          }
+          F("bold"); doc.setFontSize(7.6); ink(isRet ? RED : TEAL);
+          doc.text(isRet ? "Counted in at the godown" : "Received at site", x1, yy);
+          F("normal"); doc.setFontSize(7); ink(INK);
+          var p0 = challanProof(c.id);
+          var who = [r.by ? "Signed by: " + pdfSafe(String(r.by)) : "", p0 && p0.at ? "Recorded on: " + fullDate(String(p0.at).slice(0, 10)) : ""].filter(Boolean).join("     ·     ");
+          if (who) doc.text(who, x1 + 34, yy);
+          yy += 3.8;
+          if (cap) { doc.setFontSize(6.4); ink(PALE); doc.splitTextToSize(cap, w1).forEach(function (ln) { doc.text(ln, x1, yy); yy += 3.2; }); }
+        };
+        sheets.forEach(function (e, i) {
+          var isRet = e.t === "R", c = e.row;
+          var label = (isRet ? "Return " : "Delivery ") + (i + 1) + " of " + sheets.length;
+          y = pageMark(label);
+          var top = y;
+          drawReceipt(c, isRet, top);
+          y = top;
+          drawLines(c, isRet, L, halfW, label);
+          /* the sheets after the first, two to a page, so a two-page document is shown whole */
+          var rec = RIMG[c.id];
+          if (rec && rec.pages && rec.pages.length > 1) {
+            var extra = rec.pages.slice(1), k = 0;
+            while (k < extra.length) {
+              var yy0 = pageMark(label + "  ·  receipt sheets " + (k + 2) + (k + 2 < extra.length + 1 ? "-" + Math.min(k + 3, extra.length + 1) : "") + " of " + rec.pages.length);
+              var pair = extra.slice(k, k + 2), colW = (R - L - 6) / 2;
+              var boxes = pair.map(function (img) { return fitBox(img.w, img.h, colW, FOOT - 8 - yy0); });
+              var span = boxes.reduce(function (a, bx) { return a + bx.w; }, 0) + 6 * (pair.length - 1);
+              var x0 = L + Math.max(0, (R - L - span) / 2), xx = x0;
+              pair.forEach(function (img, j) {
+                var bx = boxes[j]; if (j) xx += boxes[j - 1].w + 6;
+                try { doc.addImage(img.src, "JPEG", xx, yy0, bx.w, bx.h); doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(xx, yy0, bx.w, bx.h); } catch (e2) { }
+                F("normal"); doc.setFontSize(6.4); ink(PALE);
+                doc.text("Sheet " + (k + j + 2) + " of " + rec.pages.length, xx, Math.min(FOOT - 2, yy0 + bx.h + 3.4));
+              });
+              k += 2;
+            }
+          }
         });
-        /* A receipt that is on file but would not come down is NOT left as a silent gap. One
-           was, in testing: a JPEG uploaded an hour earlier whose thumbnail Drive had not
-           rendered yet. Better to name it than to let somebody count the pages and wonder. */
-        var rmiss = stream.filter(function (it) {
-          var mc = it.t === "C" ? it.c : it.r;
-          return chProofAny(mc).has && !RIMG[mc.id];
-        });
-        if (rmiss.length) {
-          doc.addPage();
-          F("bold"); doc.setFontSize(10); doc.setTextColor(180, 83, 9);
-          doc.text("On file, but not attached to this copy", L, 24);
-          F("normal"); doc.setFontSize(8.4); doc.setTextColor(100, 116, 139);
-          doc.text("These receipts are held and can be produced. They could not be fetched while this " +
-                   "PDF was made \u2014 usually because the document was filed only minutes ago.", L, 31);
-          var my = 41;
-          rmiss.forEach(function (it) {
-            var mc = it.t === "C" ? it.c : it.r;
-            if (my > 280) { doc.addPage(); my = 24; }
-            F("normal"); doc.setFontSize(9); doc.setTextColor(17, 34, 45);
-            doc.text(pdfSafe(String(mc.challanNo || mc.returnNo || "")) + "   \u00b7   " +
-                     fullDate(String(mc.createdAt || "").slice(0, 10)), L, my);
-            my += 6;
-          });
-        }
+      }
+
+      /* the foot of every page, numbered against the whole, once the whole is known */
+      var nP = doc.internal.getNumberOfPages();
+      for (var pi = 1; pi <= nP; pi++) {
+        doc.setPage(pi);
+        F("normal"); doc.setFontSize(6.4); ink(PALE);
+        doc.text("Energy World  |  Panipat · Sonipat · Karnal    |    Statement of account, not a tax invoice.", L, H - 6);
+        doc.text("Page " + pi + " of " + nP, R, H - 6, { align: "right" });
       }
       return doc;
     });
+  }
+
+  /* ================= WHICH TICKS START TICKED  (v6.9.403) =================
+     A delivery, a return and a payment each carry a tick on the HISAB screen (S.billSel, keyed
+     by the row's id - returns as "ret:<id>", payments as "pay:<id>"). A tick he has touched is
+     his. One he has not is decided here: OFF for exactly the group that cancels out and nothing
+     else - deliveries paid for in full, together with the payments and returns that cleared them
+     and went nowhere else - so what folds into "Balance brought forward" is net zero, and the
+     figure printed there is the balance from the old books and nothing more.
+
+     "Nothing else" is the whole of it. A payment that cleared two old deliveries and part of a
+     new one is NOT folded, and neither are the two deliveries it cleared: fold them and the
+     client is handed a brought-forward figure that is neither his old balance nor anything he
+     can check, and he rings up to ask what it is - which is the call this replaces. Worked out
+     to a fixed point: drop a payment and the deliveries it touched come back; drop a delivery
+     and every credit that touched it is live again. Cached on the settleWalk it is read from, so
+     it lives and dies with _stlCache. */
+  function hisabFoldDefault(cl) {
+    var w = settleWalk(cl);
+    if (w._fold) return w._fold;
+    var debts = {};
+    w.rows.forEach(function (r) { if (r.amt > 0.4 && r.open <= 0.4) debts[String(r.id)] = true; });
+    var credits = {}, guard = 0, changed = true;
+    while (changed && guard++ < 60) {
+      changed = false; credits = {};
+      w.credits.forEach(function (c) {
+        var used = c.hits.reduce(function (a, x) { return a + x.amt; }, 0);
+        if (!c.hits.length || c.amt - used > 0.4) return;          /* still in hand: live */
+        if (c.hits.every(function (x) { return debts[String(x.id)]; })) credits[String(c.id)] = true;
+      });
+      w.rows.forEach(function (r) {
+        if (debts[String(r.id)] && !r.from.every(function (f) { return credits[String(f.id)]; })) { delete debts[String(r.id)]; changed = true; }
+      });
+    }
+    w._fold = { debts: debts, credits: credits };
+    return w._fold;
+  }
+  function hisabTickKey(kind, id) { return (kind === "ret" ? "ret:" : kind === "pay" ? "pay:" : "") + String(id || ""); }
+  function hisabTicked(cl, kind, id) {
+    var k = hisabTickKey(kind, id), v = S.billSel ? S.billSel[k] : undefined;
+    if (v === true || v === false) return v;
+    var f = hisabFoldDefault(cl), sid = String(id || "");
+    return !(f.debts[sid] || f.credits[sid]);
   }
 
   /* ---- WHAT HE PAID, WHEN, AND IN WHAT FORM  (v6.9.336) ----
@@ -19603,7 +19784,7 @@ function viewCatalogue() {
     return (S.data.payments || [])
       .filter(function (p) { return p && p.client === client; })
       .map(function (p) {
-        return { date: String(p.date || p.createdAt || "").slice(0, 10),
+        return { id: String(p.id || ""), date: String(p.date || p.createdAt || "").slice(0, 10),
                  amount: payAmt(p),
                  mode: String(p.mode || "").trim(),
                  ref: String(p.ref || "").trim(),
@@ -19688,7 +19869,7 @@ function viewCatalogue() {
       '<button class="btn" data-act="pa-save" data-id="' + esc(payId) + '">Save</button></div>';
   }
 
-  function payTable(client) {
+  function payTable(client, ticks) {
     var ps = payLines(client);
     if (!ps.length) return '';
     var tot = ps.reduce(function (a, p) { return a + p.amount; }, 0);
@@ -19696,11 +19877,21 @@ function viewCatalogue() {
        pointed it somewhere by hand; the pointing is his to change, and changing it moves no
        money at all - the balance is the same number before and after. */
     var _w = settleWalk(client);
+    /* v6.9.403 - "make provision to tick and select payments also". A tick per payment, on the
+       HISAB ledger only (ticks=true), keyed "pay:<id>" in the same S.billSel the deliveries use;
+       unticked, it folds into the statement's brought-forward line. */
+    var tick = function (p) {
+      if (!ticks) return '';
+      var on = hisabTicked(client, "pay", p.id);
+      return '<td style="padding:5px 4px 5px 7px;width:26px"><input type="checkbox" class="billsel" data-ch="' + esc(hisabTickKey("pay", p.id)) + '"' +
+        (on ? ' checked' : '') + ' title="On the client\u2019s statement" style="vertical-align:middle;transform:scale(1.25)"/></td>';
+    };
     return '<div style="margin-top:9px;border-top:1px dashed #99f6e4;padding-top:8px">' +
       '<div style="font-size:12.5px;font-weight:700;color:#0f766e;margin-bottom:5px">' +
-        'Payments received &mdash; ' + ps.length + '</div>' +
+        'Payments received &mdash; ' + ps.length + (ticks ? ' <span style="font-weight:400;color:#94a3b8">&middot; tick = on the statement</span>' : '') + '</div>' +
       '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
       '<thead><tr style="background:#ccfbf1;color:#0f766e">' +
+        (ticks ? '<th style="padding:5px 7px"></th>' : '') +
         '<th style="padding:5px 7px;text-align:left">Date</th>' +
         '<th style="padding:5px 7px;text-align:left">Form</th>' +
         '<th style="padding:5px 7px;text-align:left">Reference</th>' +
@@ -19709,7 +19900,8 @@ function viewCatalogue() {
         /* v6.9.360 - a refund is a payment with a minus. It must never look like money that came
            in, so it is red, signed, and named in its own row rather than left to arithmetic. */
         var k = payKindOf(p), neg = k === "refund";
-        return '<tr style="border-bottom:1px solid #d9f5ef;background:' + (neg ? '#fff5f5' : (i % 2 ? '#f6fffd' : '#fff')) + '">' +
+        return '<tr style="border-bottom:1px solid #d9f5ef;background:' + (neg ? '#fff5f5' : (i % 2 ? '#f6fffd' : '#fff')) + (ticks && !hisabTicked(client, "pay", p.id) ? ';opacity:.5' : '') + '">' +
+          tick(p) +
           '<td style="padding:5px 7px;white-space:nowrap">' + esc(dstr(p.date)) + payWentTo(_w, p) + '</td>' +
           '<td style="padding:5px 7px">' + (p.mode ? esc(p.mode) : '<span style="color:#94a3b8">not recorded</span>') +
             (neg ? ' <span class="pill" style="background:#fee2e2;color:#b91c1c;font-size:12px">refund</span>'
@@ -19719,7 +19911,7 @@ function viewCatalogue() {
             (neg ? '\u2212' + money(-p.amount) : money(p.amount)) + '</td></tr>';
       }).join("") +
       '</tbody><tfoot><tr style="background:#e2f5f1">' +
-        '<td colspan="3" style="padding:5px 7px;text-align:right;font-weight:700">' +
+        '<td colspan="' + (ticks ? 4 : 3) + '" style="padding:5px 7px;text-align:right;font-weight:700">' +
           (ps.some(function (p) { return payKindOf(p) === "refund"; }) ? 'Net received (after refunds)' : 'Total received') + '</td>' +
         '<td style="padding:5px 7px;text-align:right;font-weight:800;color:#0d9488">' + money(tot) + '</td>' +
       '</tr></tfoot></table></div></div>';
@@ -19904,10 +20096,6 @@ function viewCatalogue() {
       return r.kind === "ch" && r.amt > 0.4 && r.open <= 0.4;
     });
   }
-  /* Folded away by default - that is what he asked for. The tap is remembered per client for
-     as long as the screen is open and forgotten after, because the answer to "show me" is
-     almost always about the client in front of him. */
-  function settleShown(cl) { return !!(S.stlShow && S.stlShow[String(cl)]); }
 
   /* ================= A DEAD CHALLAN  (v6.9.369, 27 Aug 2026) =================
      HIS WORDS: "also make provision to alter or delete any challan with remarks, that show as
@@ -20265,7 +20453,20 @@ function viewCatalogue() {
        like a challan in reverse. Only "Received" returns count (goods actually back at the godown). */
     var rets = clientReturns(client);
     var returned = rets.reduce(function (a, r) { return a + returnNet(r); }, 0);
-    return { chs: chs, pays: pays, rets: rets, opening: opening, billed: billed, freight: freight, paid: paid, returned: returned, due: opening + billed + freight - paid - returned };
+    return ledgerExtras(client, { chs: chs, pays: pays, rets: rets, opening: opening, billed: billed, freight: freight, paid: paid, returned: returned, due: opening + billed + freight - paid - returned });
+  }
+  /* v6.9.402/403 - THE SERVICE BOOK BESIDE THE GOODS BOOK, through a hook. clientLedgerCalc
+     above is mirrored WORD FOR WORD into the backend, which prices deliveries and dues and has
+     no service book; so the goods rule ends by handing its result here, and this is the only
+     place the CRM adds to it. `due` is the goods figure it always was (every aging, chase and
+     statement line reads it unchanged); svcDue is what the visits still carry; toCollect is the
+     one number a man chasing money needs. Collected on the visit, as before - a payment here
+     does not settle a visit. The backend's ledgerExtras returns its argument untouched. */
+  function ledgerExtras(client, l) {
+    var svc = serviceLedger(client);
+    l.svcBilled = svc.billed; l.svcCollected = svc.collected; l.svcDue = svc.due; l.svcVisits = svc.visits.length;
+    l.toCollect = l.due + svc.due;
+    return l;
   }
 
   /* v6.9.128 — UNBILLED TRACKER. Value delivered (receipt in) but not yet turned into a tax bill
@@ -20300,7 +20501,7 @@ function viewCatalogue() {
     if (days >= 15) return { label: "Getting old", cls: "soon" };
     return { label: "Watch", cls: "teal" };
   }
-  function payReminder(name) {
+  function payReminder(name, t) {
     var l = clientLedger(name);
     var pcl = clientByName(name) || {};
     var pnum = String(pcl.mobile || "").replace(/\D/g, "");
@@ -20308,8 +20509,9 @@ function viewCatalogue() {
     var pmsg = "Dear " + name + ",\n\nGentle reminder from Energy World - an amount of " +
       moneyAscii(l.due) + " is currently outstanding on your account. Your ledger is attached.\n" +
       "Kindly arrange the payment at your convenience. Thank you.\n\nEnergy World";
+    var wr = waRoute(t, name, pnum, pmsg, "ledger and reminder"); if (!wr.ok) return;
     waShareDoc(loadLogo().then(function () { return ledgerPdf(name); }),
-      name.replace(/[^\w.-]/g, "_") + "_ledger.pdf", pnum, pmsg);
+      name.replace(/[^\w.-]/g, "_") + "_ledger.pdf", wr.num, wr.msg);
   }
 
   /* ---------------- payment history, for every client, downloadable  (v6.9.209) ----------------
@@ -20720,7 +20922,7 @@ function viewCatalogue() {
       '</div><div class="acts">';
     if (!dead) {
       h += '<button class="btn sm ghost" data-act="rc-pdf" data-p="' + esc(p.id) + '">Download</button>' +
-        '<button class="btn sm" data-act="rc-wa" data-p="' + esc(p.id) + '">WhatsApp</button>';
+        '<button class="btn sm" data-act="rc-wa" data-p="' + esc(p.id) + '">WhatsApp</button>' + waExecBtn("rc-wa", p.client, 'data-p="' + esc(p.id) + '"');
       /* v6.9.371 - one button, so a receipt reads the same as a delivery */
       if (p.id) h += cxCardBtn("payments", p.id);
     } else if (roleIs("admin") && p.id) {
@@ -20796,7 +20998,7 @@ function viewCatalogue() {
         var bk = payBucket(x.age);
         h += '<div class="acts" style="align-items:center;margin-top:8px"><b>' + esc(x.name) + '</b>' +
           '<span class="pill ' + bk.cls + '">' + money(x.l.due) + ' &middot; ' + x.age + 'd</span>' +
-          '<button class="btn sm" data-act="pay-wa" data-n="' + esc(x.name) + '">Remind</button>' +
+          '<button class="btn sm" data-act="pay-wa" data-n="' + esc(x.name) + '">Remind</button>' + waExecBtn("pay-wa", x.name, 'data-n="' + esc(x.name) + '"') +
           '<button class="btn sm ghost" data-act="pay-in" data-n="' + esc(x.name) + '">Payment received</button></div>';
       });
       h += '</div>';
@@ -20852,7 +21054,7 @@ function viewCatalogue() {
         (x.l.freight ? ' + freight ' + money(x.l.freight) : "") +
         '<br>Received ' + money(x.l.paid) + '</div>' +
         '<div class="acts"><button class="btn sm" data-act="pay-in" data-n="' + esc(x.name) + '">Payment received</button>' +
-        (x.l.due > 0 ? '<button class="btn sm ghost" data-act="pay-wa" data-n="' + esc(x.name) + '">Remind on WhatsApp</button>' : "") +
+        (x.l.due > 0 ? '<button class="btn sm ghost" data-act="pay-wa" data-n="' + esc(x.name) + '">Remind on WhatsApp</button>' + waExecBtn("pay-wa", x.name, 'data-n="' + esc(x.name) + '"') : "") +
         '<button class="btn sm ghost" data-act="rc-list" data-n="' + esc(x.name) + '">Receipts</button>' +
         '<button class="btn sm ghost" data-act="ledger-pdf" data-n="' + esc(x.name) + '">Ledger PDF</button></div></div>';
     });
@@ -21166,7 +21368,7 @@ function viewCatalogue() {
       '</div></div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Later</button>' +
       '<button class="btn ghost" data-act="rc-pdf" data-p="' + esc(p.id) + '">Download</button>' +
-      '<button class="btn" data-act="rc-wa" data-p="' + esc(p.id) + '">Send on WhatsApp</button></div>';
+      '<button class="btn" data-act="rc-wa" data-p="' + esc(p.id) + '">Send on WhatsApp</button>' + waExecBtn("rc-wa", p.client, 'data-p="' + esc(p.id) + '"') + '</div>';
   }
   function modalReceipts(client) {
     var rows = payHistRows(client);
@@ -21223,6 +21425,8 @@ function viewCatalogue() {
       /* v6.9.209: the brought-forward balance and the credited returns used to be missing from
          this table while the "Balance due" box below it included them - two different numbers on
          one page a customer is holding. Both belong in the running balance. */
+      /* v6.9.403 - `d` is the ISO key the sort needs; the page prints it through d10, because
+         "2026-09-01" on a customer's ledger is a fault that was on every copy ever sent */
       if (l.opening) {
         lines.push({ d: "", p: "Balance brought forward", dr: l.opening > 0 ? l.opening : 0, cr: l.opening < 0 ? -l.opening : 0 });
       }
@@ -21245,7 +21449,7 @@ function viewCatalogue() {
         if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, Rt - L, 7, "F"); }
         bal += ln.dr - ln.cr;
         doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(7.2);
-        doc.text(String(ln.d), L + 3, y);
+        doc.text(d10(ln.d), L + 3, y);
         doc.text(doc.splitTextToSize(ln.p, 78)[0], L + 26, y);
         if (ln.dr) doc.text(R2(ln.dr), Rt - 46, y, { align: "right" });
         if (ln.cr) doc.text(R2(ln.cr), Rt - 24, y, { align: "right" });
@@ -23212,6 +23416,99 @@ function viewCatalogue() {
     return out;
   }
 
+  /* ================= SAME PHONE, TWO NAMES, ONE MAN  (v6.9.402, 2 Sep 2026) =================
+     HIS WORDS: "ramesh chugh and ramesh sheena export both are same client having same phone
+     no, you must intimate me duplicate entry".
+
+     MEASURED on his book: one client on the master (Ramesh Chug - Sec 11, 9812083516) and two
+     machine records with that phone under two names - one carrying every visit and Rs 5,325,
+     the other saying 287 DAYS OVERDUE on a machine serviced the day before. svcDupClients()
+     above did raise the second name, on Today, matched on a first name. It never looked at the
+     phone. A phone is dialled; a name is typed on a doorstep. The phone is the key here.
+
+     Two shapes are raised: two or more machine records on one phone under different names, and
+     a machine whose phone belongs to a master client under another name (that one is raised
+     even when it is the only machine, because it is the account the money should sit on).
+     A client with two machines under ONE name is not raised - that is a man with two machines. */
+  function svcDupPhones() {
+    var ins = ((S.data && S.data.installs) || []).filter(function (x) { return x && x.id && !isCancelled("installs", x.id); });
+    var byPh = {};
+    ins.forEach(function (x) { var p = dgMob(x.mobile); if (p) (byPh[p] = byPh[p] || []).push(x); });
+    var master = {};
+    ((S.data && S.data.clients) || []).forEach(function (c) {
+      if (!c || !String(c.name || "").trim()) return;
+      var p1 = dgMob(c.mobile), p2 = dgMob(c.mobile2);
+      if (p1 && !master[p1]) master[p1] = c;
+      if (p2 && !master[p2]) master[p2] = c;
+    });
+    var groups = [], byInst = {};
+    Object.keys(byPh).forEach(function (p) {
+      var rows = byPh[p], names = {};
+      rows.forEach(function (x) { names[dgKey(x.client)] = String(x.client || "").trim(); });
+      var m = master[p] || null;
+      var offMaster = m && rows.some(function (x) { return dgKey(x.client) !== dgKey(m.name); });
+      if (Object.keys(names).length < 2 && !offMaster) return;
+      var g = { phone: p, rows: rows.slice(), names: Object.keys(names).map(function (k) { return names[k]; }), master: m };
+      groups.push(g);
+      rows.forEach(function (x) { byInst[x.id] = g; });
+    });
+    return { groups: groups, byInst: byInst };
+  }
+  /* the other name(s) this machine shares a phone with - what the card says */
+  function svcDupOthers(g, inst) {
+    var out = [];
+    g.rows.forEach(function (x) { if (x.id !== inst.id && dgKey(x.client) !== dgKey(inst.client) && out.indexOf(x.client) < 0) out.push(x.client); });
+    if (g.master && dgKey(g.master.name) !== dgKey(inst.client) && out.indexOf(g.master.name) < 0) out.push(g.master.name + " (on the client master)");
+    return out;
+  }
+  /* ONE SCREEN: which record is the right one. Everything the merge will do is said before the
+     button, in rupees and dates, because the button moves money between two names. */
+  function modalMergeMachines(phone) {
+    var g = svcDupPhones().groups.filter(function (x) { return x.phone === phone; })[0];
+    if (!g) return '<h2>Nothing to merge</h2><p class="sub">These records no longer share a phone.</p><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var vis = (S.data.visits || []).filter(function (v) { return !isCancelled("visits", v.id); });
+    var h = '<h2>One man, ' + g.rows.length + ' machine records</h2>' +
+      '<p class="sub">Phone ' + esc(phone) + (g.master ? ' &middot; on the client master as <b>' + esc(g.master.name) + '</b>' : ' &middot; not on the client master under any name') + '</p>' +
+      '<div class="meta" style="font-size:13px;margin-bottom:8px">Pick the record that is right. The other one\u2019s visits move onto it, its newest service date is kept, any blank on it is filled from the other, and the other is <b>set aside</b> \u2014 not deleted, readable in the cancelled list, and it can be brought back.</div>';
+    g.rows.forEach(function (x, i) {
+      var vs = vis.filter(function (v) { return v.installId === x.id; });
+      var due = vs.reduce(function (a, v) { return a + (nAmt(v.balance)); }, 0);
+      /* a <label> so one tap anywhere on the card ticks it; the sheet styles a label as a form
+         caption (12px, uppercase, muted), which is undone here - measured: the first cut shouted
+         every card in capitals */
+      h += '<label class="card" style="display:block;cursor:pointer;margin-bottom:8px;text-transform:none;letter-spacing:0;font-size:14px;font-weight:400;color:#0f172a;border-color:' + (i === 0 ? '#5eead4' : '#e2e8f0') + '">' +
+        '<div class="row" style="align-items:flex-start;gap:10px"><input type="radio" name="mg_keep" value="' + esc(x.id) + '"' + (i === 0 ? ' checked' : '') + ' style="margin-top:4px;width:18px;height:18px"/>' +
+        '<div class="grow"><b>' + esc(x.client) + '</b>' +
+        '<div class="meta" style="font-size:12.5px">' + esc([x.product, x.model].filter(Boolean).join(" ")) +
+        (x.installDate ? ' &middot; inst ' + esc(d10(x.installDate)) : '') +
+        ' &middot; every ' + esc(String(x.cycleDays || "?")) + ' days &middot; engineer ' + esc(x.engineer || "unassigned") + '</div>' +
+        '<div class="meta" style="font-size:12.5px">' + vs.length + ' visit(s)' + (vs.length ? ', last ' + esc(d10(x.lastService || vs[vs.length - 1].date || "")) : '') +
+        (due > 0 ? ' &middot; <b style="color:#b91c1c">' + money(due) + ' due</b>' : ' &middot; nothing due') +
+        ' &middot; next service ' + esc(x.nextService ? d10(x.nextService) : "not set") + '</div>' +
+        '<div class="meta" style="font-size:12px;color:#94a3b8">made ' + esc(d10(x.createdAt)) + ' by ' + esc(x.createdBy || "?") + ' &middot; ' + esc(x.id) + '</div>' +
+        '</div></div></label>';
+    });
+    if (g.master) {
+      h += '<label style="display:flex;gap:8px;align-items:center;margin:6px 0 2px;font-size:13px;text-transform:none;letter-spacing:0;font-weight:400;color:#0f172a"><input type="checkbox" id="mg_name" checked style="width:18px;height:18px;flex:0 0 18px"/> <span>' +
+        'File the kept record under the client-master name <b>' + esc(g.master.name) + '</b>, so his service money sits on the same account as his deliveries and under his executive. The old name is kept in the audit row.</span></label>';
+    }
+    h += '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="svc-merge-go" data-p="' + esc(phone) + '">Merge into the ticked record</button></div>';
+    return h;
+  }
+  /* the dashboard line - one sentence, only when there is something to answer */
+  function svcDupDashCard() {
+    if (!canSee("service")) return "";
+    var g; try { g = svcDupPhones().groups; } catch (e) { return ""; }
+    if (!g.length) return "";
+    return '<div class="card" style="border-color:#fed7aa;background:#fff7ed">' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Service book</b></div>' +
+      '<h3 style="font-size:16px;margin:4px 0 2px">' + g.length + ' phone number' + (g.length === 1 ? ' is' : 's are') + ' on the service book under two names</h3>' +
+      '<div class="meta" style="font-size:13px">' + g.map(function (x) { return esc(x.names.concat(x.master && x.names.indexOf(x.master.name) < 0 ? [x.master.name] : []).join(" / ")); }).slice(0, 3).join(" &middot; ") +
+      (g.length > 3 ? ' &middot; \u2026' : '') + '. One man, two records: his visits and his dues split between them, and a reminder can fire for a machine that was serviced yesterday.</div>' +
+      '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="tab" data-tab="service">Open Service</button></div></div>';
+  }
+
   /* What one bag of salt costs, from the price list and nowhere else. The spares row for a bag
      wins; failing that the master catalogue's per-kg rate times the pack size printed on the
      bag row. Returns 0 when the price list cannot answer - and then nothing is flagged, because
@@ -23226,6 +23523,70 @@ function viewCatalogue() {
     return kg > 0 ? Math.round(kg * SALT_BAG_KG) : 0;
   }
   function saltBagPrice() { return saltCatPrice(); }
+  /* ================= SALT ON A CHALLAN IS A SERVICE CALL  (v6.9.402, 2 Sep 2026) =================
+     HIS WORDS: "in crm challan entry in case of softner whenever its mention salt bag, ask is
+     it service call, if yes show it also in service area". The bags on a challan, counted the
+     way the visit form counts them: TABSALT is sold by the kilo and a bag is SALT_BAG_KG. */
+  function isSaltLine(l) {
+    if (!l || isJobLine(l)) return false;
+    return String(l.code || "").toUpperCase() === "TABSALT" || /\bsalt\b/i.test(String(l.desc || ""));
+  }
+  function chSaltBags(lines) {
+    var bags = 0;
+    (lines || []).forEach(function (l) {
+      if (!isSaltLine(l)) return;
+      var q = nAmt(l.qty);
+      bags += /kg/i.test(String(l.unit || "")) || String(l.code || "").toUpperCase() === "TABSALT" ? q / SALT_BAG_KG : q;
+    });
+    return Math.round(bags * 10) / 10;
+  }
+  /* the softener this client has on the installed base - by his name, or by his phone when
+     the service book spells him differently (the Ramesh case) */
+  function softenerFor(clientName) {
+    var k = dgKey(clientName), c = clientByName(clientName) || {}, ph = dgMob(c.mobile);
+    var all = ((S.data && S.data.installs) || []).filter(function (x) {
+      return x && x.id && !isCancelled("installs", x.id) && (dgKey(x.client) === k || (ph && dgMob(x.mobile) === ph));
+    });
+    return all.filter(function (x) { return /soft/i.test(String(x.product || "") + " " + String(x.model || "")); })[0] || null;
+  }
+  /* the challan a salt-delivery visit was billed on, read back out of its notes: the visits
+     sheet has no column for it and teamSaveLocked_ drops a field with no column */
+  function visitChallanNo(v) { var m = String((v && v.notes) || "").match(/^Billed on challan (\S+)/); return m ? m[1] : ""; }
+  /* the question, in the builder, beside the Create button */
+  function chSaltBar() {
+    if (!S.ch) return "";
+    var bags = chSaltBags(S.ch.items);
+    if (!(bags > 0)) return "";
+    var cn = S.ch.client || "", ins = cn ? softenerFor(cn) : null;
+    var yes = (S.ch.svcCall || "yes") === "yes";
+    return '<div class="card" style="border:1px solid #99f6e4;background:#f0fdfa;margin-top:8px">' +
+      '<div style="font-weight:700;font-size:14px;color:#0f766e;margin-bottom:3px">' + bags + ' bag' + (bags === 1 ? '' : 's') + ' of salt \u2014 is this a service call?</div>' +
+      '<div class="meta" style="font-size:12.5px;color:#134e4a">' +
+      (ins ? 'It is written on <b>' + esc(ins.client) + '</b>\u2019s softener' + (ins.model ? ' (' + esc(ins.model) + ')' : '') + ' as a salt delivery, so the machine\u2019s next service moves and its history shows it. '
+           : (cn ? '<b>' + esc(cn) + '</b> has no softener on the installed base yet \u2014 it is filed under his name, and the owner can add the machine later. ' : 'Pick the client and it is filed on his softener. ')) +
+      'The money stays on this challan; nothing is counted twice.</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
+      '<button class="btn sm' + (yes ? '' : ' ghost') + '" data-act="ch-svc" data-v="yes">Yes, it services the machine</button>' +
+      '<button class="btn sm' + (yes ? ' ghost' : '') + '" data-act="ch-svc" data-v="no">No, just goods</button></div></div>';
+  }
+  /* the row itself - money-free, naming its challan; the server finds the machine when the
+     phone did not and moves its service date (V113) */
+  function chSaltVisit(cn, no, bags, ins) {
+    var when = today();
+    var row = {
+      id: "", createdBy: S.user, installId: ins ? ins.id : "", client: cn, area: (ins && ins.area) || (clientByName(cn) || {}).area || "",
+      date: when, engineer: "", type: "Salt delivery", visitCharge: 0, saltBags: bags, saltAmt: 0,
+      partsUsed: "", partsAmt: 0, total: 0, collected: 0, balance: 0,
+      notes: "Billed on challan " + no + " \u2014 money is on HISAB"
+    };
+    save("visits", row, true);
+    if (ins && (!ins.lastService || String(ins.lastService) < when)) {
+      /* on this device now, so the Service screen stops saying "due"; the server writes the
+         same move durably when it accepts the row */
+      ins.lastService = when; ins.nextService = addDays(when, Number(ins.cycleDays) || 60);
+    }
+    return row;
+  }
   /* Visits whose salt figure disagrees with that price. Measured on his book: one bag billed at
      Rs 1,125 in June, at Rs 45 in July, and listed at Rs 450 - three prices for one thing. */
   function svcSaltGap() {
@@ -23234,6 +23595,7 @@ function viewCatalogue() {
     var rows = [];
     ((S.data && S.data.visits) || []).forEach(function (v) {
       if (isCancelled("visits", v.id)) return;
+      if (visitChallanNo(v)) return;          /* v6.9.402 - priced on the challan, not here */
       var bags = nAmt(v.saltBags);
       if (!(bags > 0)) return;
       var was = Math.round(nAmt(v.saltAmt)), should = Math.round(bags * bp);
@@ -23248,8 +23610,8 @@ function viewCatalogue() {
      what pressing it will do. Nothing is drawn at all when there is nothing to answer. */
   function svcCheckHtml() {
     if (!roleIs("admin")) return "";
-    var dv = svcDupVisits(), dc = svcDupClients(), sg = svcSaltGap();
-    if (!dv.length && !dc.length && !sg.rows.length) {
+    var dv = svcDupVisits(), dc = svcDupClients(), sg = svcSaltGap(), dp = svcDupPhones().groups;
+    if (!dv.length && !dc.length && !sg.rows.length && !dp.length) {
       return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;margin-top:12px">' +
         '<h3 style="margin:0;font-size:15px">Service check</h3>' +
         '<div class="meta" style="font-size:13px;color:#0f766e">\u2713 No duplicate visits, no unknown ' +
@@ -23262,6 +23624,16 @@ function viewCatalogue() {
       'change is written to the audit trail with your name on it, and a visit set aside can be ' +
       'brought back from the cancelled list.</div></div>';
 
+    /* ---- v6.9.402: one phone, two names ---- */
+    dp.forEach(function (g) {
+      h += '<div class="card" style="margin-top:8px">' +
+        '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Same phone, two names</b></div>' +
+        '<h3 style="font-size:15px;margin:3px 0 2px">' + esc(g.names.join(" / ")) + (g.master && g.names.indexOf(g.master.name) < 0 ? ' / ' + esc(g.master.name) : '') + '</h3>' +
+        '<div class="meta" style="font-size:12.5px">' + g.rows.length + ' machine record(s) on ' + esc(g.phone) +
+        (g.master ? ', whose client-master name is <b>' + esc(g.master.name) + '</b>' : ', and no client on the master has this phone') +
+        '. His visits and his dues are split between the names.</div>' +
+        '<div class="acts" style="margin-top:7px"><button class="btn sm" data-act="svc-merge-open" data-p="' + esc(g.phone) + '">Merge them</button></div></div>';
+    });
     /* ---- duplicate visits ---- */
     dv.forEach(function (g) {
       h += '<div class="card" style="margin-top:8px">' +
@@ -24049,6 +24421,7 @@ function viewCatalogue() {
     /* duplicate entries, if there are any left to answer */
     try { h += draftDashCard(); } catch (e) { console.warn("[draft] card:", e); }
     try { h += dupDashCard(); } catch (e) { console.warn("[dups] card:", e); }
+    try { h += svcDupDashCard(); } catch (e) { console.warn("[dups] service card:", e); }
 
     var dg = digestLines();
     h += '<div class="card"><h3>Team digest — today</h3>' +
@@ -26381,6 +26754,7 @@ function viewCatalogue() {
 
     try { h += draftDashCard(); } catch (e) { console.warn("[draft] card:", e); }
     try { h += dupDashCard(); } catch (e) { console.warn("[dups] card:", e); }
+    try { h += svcDupDashCard(); } catch (e) { console.warn("[dups] service card:", e); }
 
     var todo = overdue.concat(due);
     h += '<h3 style="margin:0 0 10px;font-size:15px">Today: ' + todo.length + ' to call</h3>';
@@ -26467,7 +26841,7 @@ function viewCatalogue() {
         '<div class="acts">' +
         '<button class="btn sm" data-act="q-pdf" data-id="' + esc(q.id) + '">Download PDF</button>' +
       '<button class="btn sm ghost" data-act="q-pres" data-id="' + esc(q.id) + '">Proposal</button>' +
-        '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' +
+        '<button class="btn sm ghost" data-act="q-tg" data-id="' + esc(q.id) + '">Telegram</button>' + waExecBtn("q-wa", q.client, 'data-id="' + esc(q.id) + '"') +
         '<button class="btn sm ghost" data-act="rad-status" data-id="' + esc(q.id) + '" data-s="Won">Won</button>' +
         '<button class="btn sm ghost" data-act="rad-status" data-id="' + esc(q.id) + '" data-s="Lost">Lost</button>' +
         '<button class="btn sm ghost" data-act="rad-snooze" data-id="' + esc(q.id) + '">Snooze</button>' +
@@ -28432,6 +28806,7 @@ function viewCatalogue() {
       '<label>Vehicle number</label><input id="m_veh" placeholder="fills in from the driver - change it only if he is in a different lorry today" value="' + esc((z && z.veh) || "") + '"/>' +
       /* v6.9.366 - beside the Save button and not up beside the fare box, because that is where
          he is looking when he taps Save and it is the tap this is answering. */
+      chSaltBar() +
       chFreightBar() +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="ch-save" data-stagebtn="' + (isEdit ? 'Save changes' : 'Create challan') + '">' +
@@ -30321,6 +30696,13 @@ function viewCatalogue() {
        challan used to wipe the whole form. Popups now close ONLY via their Cancel/Close button.
        The mask still swallows the click so the main screen stays inert underneath. */
     if (act === "mask") { return; }
+    if (act === "rc-done") { S.rcp = null; S.modal = null; render(); return; }
+    if (act === "rc-none") {
+      var _rl = S.rcp ? (S.rcp.bags > 0 && !S.rcp.sent.salt ? "the salt slip" : "the signed receipt") : "it";
+      S.rcp = null; S.modal = null; render();
+      toast("Saved without " + _rl + ". It shows in amber on this visit until a photo is filed.");
+      return;
+    }
     if (act === "close") {
       S.chx = null;   /* v6.9.356 - the job-work / off-list box never outlives its challan */
       /* cancelling a partner form that was opened FROM the client form goes back to the client
@@ -30508,6 +30890,84 @@ function viewCatalogue() {
        and it only ever raises a discount to the preset. */
     /* v6.9.380 - set aside one of a pair of visits recorded on the same machine on the same
        day. Same audit row a duplicate challan writes, same cancelled list, same undo. */
+    if (act === "svc-merge-open") {
+      if (!roleIs("admin")) { toast("Merging two machine records is the owner\u2019s decision."); return; }
+      S.modal = modalMergeMachines(t.getAttribute("data-p") || ""); render(); return;
+    }
+    if (act === "svc-merge-go") {
+      if (!roleIs("admin")) { toast("Merging two machine records is the owner\u2019s decision."); return; }
+      var mgP = t.getAttribute("data-p") || "";
+      var mgG = svcDupPhones().groups.filter(function (x) { return x.phone === mgP; })[0];
+      if (!mgG) { toast("These records no longer share a phone."); S.modal = null; render(); return; }
+      var mgKeepId = String((document.querySelector('input[name="mg_keep"]:checked') || {}).value || "");
+      var mgKeep = installById(mgKeepId);
+      if (!mgKeep) { toast("Tick the record to keep."); return; }
+      var mgOthers = mgG.rows.filter(function (x) { return x.id !== mgKeep.id; });
+      if (!mgOthers.length) { toast("There is only one record on this phone now."); S.modal = null; render(); return; }
+      var mgUseMaster = !!(mgG.master && el("mg_name") && el("mg_name").checked);
+      var mgName = mgUseMaster ? mgG.master.name : mgKeep.client;
+      var mgVis = (S.data.visits || []).filter(function (v) { return !isCancelled("visits", v.id); });
+      var mgMoving = [];
+      mgOthers.forEach(function (o) {
+        mgVis.forEach(function (v) { if (v.installId === o.id) mgMoving.push(v); });
+      });
+      var mgDue = mgMoving.reduce(function (a, v) { return a + nAmt(v.balance); }, 0);
+      var mgOnKeep = mgVis.filter(function (v) { return v.installId === mgKeep.id; });
+      var mgDueAll = mgDue + mgOnKeep.reduce(function (a, v) { return a + nAmt(v.balance); }, 0);
+      if (!window.confirm(
+        "Merge into " + mgKeep.client + "?\n\n" +
+        mgOthers.map(function (o) { return "\u2022 " + o.client + " is set aside (not deleted)"; }).join("\n") + "\n" +
+        (mgMoving.length ? "\u2022 " + mgMoving.length + " visit(s)" + (mgDue > 0 ? " carrying " + money(mgDue) + " due" : "") + " move onto the kept record\n" : "") +
+        (mgOnKeep.length ? "\u2022 the kept record\u2019s own " + mgOnKeep.length + " visit(s) stay on it" + (mgName !== mgKeep.client ? ", renamed to " + mgName : "") + "\n" : "") +
+        (mgDueAll > 0 ? "\u2022 " + money(mgDueAll) + " of service dues then sit on one account\n" : "") +
+        (mgName !== mgKeep.client ? "\u2022 the kept record is filed under the client-master name " + mgName + "\n" : "") +
+        "\u2022 the newest service date is kept and the next one recomputed\n\n" +
+        "Every figure is written to the audit trail with your name, and a set-aside record can be brought back.")) return;
+      var mgWas = JSON.parse(JSON.stringify(mgKeep));
+      /* the visits: same man, one machine now - his money follows him, nothing is re-priced */
+      mgMoving.forEach(function (v) {
+        v.installId = mgKeep.id; if (v.client !== mgName) v.client = mgName;
+        save("visits", v, true);
+      });
+      var mgRenamed = [];
+      if (mgName !== mgKeep.client) {
+        mgOnKeep.forEach(function (v) { if (v.client !== mgName) { v.client = mgName; mgRenamed.push(v.id); save("visits", v, true); } });
+      }
+      /* the survivor: fill what is blank from the other, keep the NEWEST service date */
+      mgOthers.forEach(function (o) {
+        ["mobile", "address", "area", "waterQuality", "engineer", "serial", "amcType", "amcAmount", "amcEnd"].forEach(function (f) {
+          if ((!mgKeep[f] || mgKeep[f] === "None") && o[f] && o[f] !== "None") mgKeep[f] = o[f];
+        });
+        if (o.lastService && (!mgKeep.lastService || String(o.lastService) > String(mgKeep.lastService))) mgKeep.lastService = o.lastService;
+      });
+      if (mgKeep.lastService) mgKeep.nextService = addDays(String(mgKeep.lastService).slice(0, 10), Number(mgKeep.cycleDays) || 60);
+      var mgOldName = mgKeep.client;
+      mgKeep.client = mgName;
+      mgKeep.notes = (mgKeep.notes ? String(mgKeep.notes) + " \u00b7 " : "") + "Merged " + today() + ": " +
+        mgOthers.map(function (o) { return o.client + " (" + o.id + ")"; }).join(", ") + (mgOldName !== mgName ? " \u00b7 was " + mgOldName : "");
+      save("installs", mgKeep, true);
+      /* the others are SET ASIDE - the same reversible mechanism a duplicate challan uses */
+      mgOthers.forEach(function (o) {
+        cxWriteQuiet("installs", o.id, o, "Duplicate of another record", "Merged into " + mgName + " (" + mgKeep.id + ")");
+      });
+      /* one audit row with everything it was before, so the merge can be read back and undone by hand */
+      try {
+        save("audit", { id: "", createdAt: new Date().toISOString(), actor: S.user, action: "svc:merge",
+          target: mgName, detail: JSON.stringify({
+            phone: mgP, kept: mgKeep.id,
+            keptWas: { client: mgWas.client, mobile: mgWas.mobile, area: mgWas.area, lastService: mgWas.lastService, nextService: mgWas.nextService, engineer: mgWas.engineer, cycleDays: mgWas.cycleDays, amcType: mgWas.amcType, notes: String(mgWas.notes || "").slice(0, 200) },
+            setAside: mgOthers.map(function (o) { return { id: o.id, client: o.client, lastService: o.lastService, nextService: o.nextService }; }),
+            visitsMoved: mgMoving.map(function (v) { return v.id; }), visitsRenamed: mgRenamed, name: mgName, wasName: mgOldName, dueMoved: mgDue, dueOnOne: mgDueAll
+          }).slice(0, 4000), ip: "" }, true);
+      } catch (e) { }
+      _cxCache = null; _baseCache = null; _amcCache = null;
+      try { splitCancelled(); } catch (e) { }
+      try { snapSave(); } catch (e) { }
+      S.modal = null;
+      toast("Merged. " + mgName + " has one machine record now" + (mgMoving.length ? ", with " + mgMoving.length + " visit(s) on it" : "") + ". The other is in the cancelled list.");
+      render();
+      return;
+    }
     if (act === "svc-dupcx") {
       if (!roleIs("admin")) { toast("Setting a visit aside is the owner's decision."); return; }
       var dvId = t.getAttribute("data-id");
@@ -31297,10 +31757,17 @@ function viewCatalogue() {
     if (act === "bill-gst") { S.billGst = !S.billGst; render(); return; }
     if (act === "bill-selall") {
       if (!S.billSel) S.billSel = {};
-      var bsv = t.getAttribute("data-v") === "1", bcl = hisabResolve(S.q);
+      var bsvA = t.getAttribute("data-v"), bcl = hisabResolve(S.q);
+      /* v6.9.403 - deliveries, returns and payments together. "d" forgets every touched tick
+         for this client, which puts the defaults back (hisabTicked decides them). */
+      var bsv = bsvA === "1" ? true : bsvA === "0" ? false : undefined;
+      var setK = function (k) { if (bsv === undefined) delete S.billSel[k]; else S.billSel[k] = bsv; };
       (S.data.challans || []).filter(function (c) { return c.customerName === bcl && String(c.receiptReceived).toUpperCase() === "Y"; })
-        .forEach(function (c) { S.billSel[c.id] = bsv; });
-      render(); return;
+        .forEach(function (c) { setK(hisabTickKey("ch", c.id)); });
+      clientReturns(bcl).forEach(function (r) { setK(hisabTickKey("ret", r.id)); });
+      (S.data.payments || []).filter(function (p) { return p && p.client === bcl; })
+        .forEach(function (p) { setK(hisabTickKey("pay", p.id)); });
+      keepScroll = true; render(); return;
     }
     /* ================= THE OWNER'S CORNER, WRITTEN  (v6.9.344) =================
        Onto the SAME discount row the Discounts screen writes, in the same shape - one row per
@@ -31413,7 +31880,8 @@ function viewCatalogue() {
       var wcl = hisabResolve(S.q), wc = clientByName(wcl) || {};
       var wnum = String(wc.mobile || "").replace(/\D/g, ""); if (wnum.length === 10) wnum = "91" + wnum;
       var wmsg = "Dear " + wcl + ",\n\nPlease find your Energy World statement (hisab) attached.\n\nThank you.\nEnergy World";
-      waShareDoc(loadLogo().then(function () { return hisabPdf(wcl); }), wcl.replace(/[^\w.-]/g, "_") + "_hisab.pdf", wnum, wmsg);
+      var wrS = waRoute(t, wcl, wnum, wmsg, "statement of account"); if (!wrS.ok) return;
+      waShareDoc(loadLogo().then(function () { return hisabPdf(wcl); }), wcl.replace(/[^\w.-]/g, "_") + "_hisab.pdf", wrS.num, wrS.msg);
       return;
     }
     if (act === "exec-xlsx") { execCardXlsx(t.getAttribute("data-k") || ""); return; }
@@ -31513,37 +31981,21 @@ function viewCatalogue() {
         : "Back to oldest first. The balance has not moved.");
       return;
     }
-    if (act === "stl-show") {
-      var _sn = t.getAttribute("data-n") || "";
-      if (!S.stlShow) S.stlShow = {};
-      S.stlShow[_sn] = !S.stlShow[_sn];
-      keepScroll = true; render();
-      return;
-    }
     if (act === "bill-perpage") {
       S.billPerPage = !hisabPerPage();
       try { localStorage.setItem("ew_hisab_perpage", S.billPerPage ? "1" : "0"); } catch (e) {}
       keepScroll = true; render();
       toast(S.billPerPage
-        ? "The PDF will now give each ticked challan its own page, with its signed receipt under it."
-        : "Back to the running statement - all challans one after another.");
-      return;
-    }
-    if (act === "bill-receipts") {
-      S.billRcpt = !hisabReceipts();
-      try { localStorage.setItem("ew_hisab_receipts", S.billRcpt ? "1" : "0"); } catch (e) { }
-      keepScroll = true; render();
-      toast(S.billRcpt
-        ? "The signed receipts will be added at the end of the PDF, in challan order. Each one takes a second or two to fetch."
-        : "Back to the statement on its own \u2014 no receipts attached.");
+        ? "After the summary page, each ticked delivery gets a page of its own with the signed receipt beside it."
+        : "One-page statement: the summary and the dated list only.");
       return;
     }
     if (act === "bill-pdf") {
       var pcl = hisabResolve(S.q);
       var pAll = t.getAttribute("data-all") === "1";
-      toast(hisabReceipts()
-        ? "Building the PDF and fetching the signed receipts\u2026"
-        : (pAll ? "Building the full hisab..." : "Building PDF..."));
+      toast(hisabPerPage()
+        ? "Building the statement and fetching the signed receipts\u2026"
+        : (pAll ? "Building the full statement\u2026" : "Building the statement\u2026"));
       loadLogo().then(function () { return hisabPdf(pcl, pAll); })
         .then(function (d) { d.save(pcl.replace(/[^\w.-]/g, "_") + "_hisab" + (pAll ? "_all" : "") + ".pdf"); })
         .catch(function () { toast("Could not build the PDF."); });
@@ -32580,17 +33032,21 @@ function viewCatalogue() {
          closes; the journal retries either one that does not land and Pending upload shows it
          with its reason. The install is advanced on the device now, so the next screen he
          opens already says when the next service is due. */
-      save("visits", {
+      var vrow = {
         id: "", createdBy: S.user, installId: ins.id, client: ins.client, area: ins.area || "",
         date: vdate, engineer: veng, type: val("v_type"), visitCharge: charge,
         saltBags: bags, saltAmt: saltAmt, partsUsed: parts.join(", "), partsAmt: partsAmt,
         total: total, collected: coll, balance: total - coll, notes: val("v_notes")
-      });
+      };
+      save("visits", vrow);              /* mints vrow.id on the way in */
       ins.lastService = vdate;
       ins.nextService = addDays(vdate, Number(ins.cycleDays) || 60);
       ins.engineer = veng;
       save("installs", ins);
-      S.modal = null;
+      /* v6.9.402 - the next screen asks for the paper: the signed receipt, and the salt slip
+         when bags went in. The visit is already journalled; a photo never holds it back. */
+      S.rcp = { visitId: vrow.id, installId: ins.id, client: ins.client, total: total, bags: bags, sent: {}, busy: {} };
+      S.modal = modalVisitReceipts();
       toast("Visit logged. Next service " + ins.nextService + ".");
       render();
       return;
@@ -33043,7 +33499,8 @@ function viewCatalogue() {
       var rmsg = "Hello " + rp.client + ",\n\nWe have received " + moneyAscii(rp.amount) +
         " by " + String(rp.mode || "").toLowerCase() + " on " + fullDate(rp.date) + ".\n" +
         "Receipt no. " + receiptNo(rp) + ".\n\nThank you,\nEnergy World";
-      waShareDoc(loadLogo().then(function () { return receiptPdf(rp); }), rfn, rnum, rmsg);
+      var wrR = waRoute(t, rp.client, rnum, rmsg, "receipt " + receiptNo(rp)); if (!wrR.ok) return;
+      waShareDoc(loadLogo().then(function () { return receiptPdf(rp); }), rfn, wrR.num, wrR.msg);
       return;
     }
     if (act === "ledger-pdf") {
@@ -33053,7 +33510,7 @@ function viewCatalogue() {
         .then(function (d) { d.save("Ledger_" + lc.replace(/[^\w.-]/g, "_") + ".pdf"); });
       return;
     }
-    if (act === "pay-wa") { payReminder(t.getAttribute("data-n")); return; }
+    if (act === "pay-wa") { payReminder(t.getAttribute("data-n"), t); return; }
     /* ---- THE AGENT. Every one of these is local-only or opens an app with a DRAFT.
        Nothing here sends a message, and nothing here deletes a business record. ---- */
     if (act === "ag-draft") {
@@ -33545,8 +34002,8 @@ function viewCatalogue() {
         .then(function (r) { if (r) closeAck(_gClick, "Snoozed to " + dstr(due) + "."); });
       return;
     }
-    if (act === "rad-wa") { waShareQuote(id); return; }
-    if (act === "q-wa") { waShareQuote(id); return; }
+    if (act === "rad-wa") { waShareQuote(id, t); return; }
+    if (act === "q-wa") { waShareQuote(id, t); return; }
 
     /* SEND THESE FIGURES TO SAATHI
        The number a plumber sees in his app has to be the number sitting on this
@@ -34240,6 +34697,12 @@ function viewCatalogue() {
       }).catch(function (e) { btnBack(t, _lbl); toast("The old challan was NOT saved \u2014 " + apiWhy(e) + ". Everything typed is still here \u2014 press Save again."); });
       return;
     }
+    if (act === "ch-svc") {
+      if (!S.ch) return;
+      S.ch.svcCall = t.getAttribute("data-v") === "no" ? "no" : "yes";
+      var restoreSv = keepFields(CH_FIELDS); keepScroll = true;
+      S.modal = modalChallan(); render(); restoreSv(); return;
+    }
     if (act === "ch-brand" || act === "ch-fam" || act === "ch-brandclear" || act === "ch-famclear") {
       var restoreC = keepFields(CH_FIELDS);
       if (act === "ch-brand") { S.ch.brand = t.getAttribute("data-brand"); S.ch.family = ""; S.ch.q = ""; }
@@ -34458,6 +34921,8 @@ function viewCatalogue() {
       var brandV = val("m_brand") || (S.ch && S.ch.brand) || "";
       var locV = val("m_loc"), freightV = val("m_freight") || 0, ftoV = val("m_fto");
       var discV = val("m_disc") || 0, discnoteV = val("m_discnote");
+      /* v6.9.402 - the salt question, read here with everything else */
+      var saltBagsV = chSaltBags(lines), svcCallV = (S.ch && S.ch.svcCall) || "yes";
 
       /* Make sure the driver exists in the master before the challan points at him. A driver
          typed as free text can never be totalled, so freight per driver would be guesswork. */
@@ -34604,7 +35069,13 @@ function viewCatalogue() {
              challan itself, never before: the delivery is the thing that matters and it must
              never be held up by a second write. */
           if (manualV) saveManualNo(no, (r && r.id) || "", manualV, cn);
-          toast("Challan " + no + " created - pending approval." + (manualV ? " Book no " + manualV + " noted." : ""));
+          /* v6.9.402 - salt on a softener client's challan is a service call, on his say-so */
+          var _svIns = null;
+          if (saltBagsV > 0 && svcCallV === "yes") {
+            try { _svIns = softenerFor(cn); chSaltVisit(cn, no, saltBagsV, _svIns); } catch (eSv) { console.warn("[salt visit]", eSv); }
+          }
+          toast("Challan " + no + " created - pending approval." + (manualV ? " Book no " + manualV + " noted." : "") +
+                (saltBagsV > 0 && svcCallV === "yes" ? " " + saltBagsV + " bag(s) of salt written on " + (_svIns ? "his softener" : "his service record") + "." : ""));
           /* first-challan setup prompt (admin can set it; others get a reminder to ask admin) */
           if (firstSetup) {
             /* v6.9.274 - this challan's lines are ALREADY frozen at 0, because the preset is
@@ -35116,6 +35587,8 @@ function viewCatalogue() {
       if (nw.length === 10) nw = "91" + nw;
       var msgw = "Namaste " + String(chw.customerName || "") + ",\n\nMaterial delivered against challan " +
         String(chw.challanNo || "") + (chw.site ? " at " + chw.site : "") + ".\n\nEnergy World";
+      var wrC = waRoute(t, chw.customerName, nw, msgw, "challan " + String(chw.challanNo || "")); if (!wrC.ok) return;
+      nw = wrC.num; msgw = wrC.msg;
       var pw = challanProof(chw.id);
       if (pw && pw.url) {
         window.open("https://wa.me/" + nw + "?text=" +
@@ -35234,6 +35707,12 @@ function viewCatalogue() {
 
   document.addEventListener("change", function (e) {
     var t = e.target;
+    /* v6.9.402 - a receipt photographed on the screen after a visit is saved goes up at once */
+    if (t && t.classList && t.classList.contains("rc-pic") && S.rcp) {
+      var rf = t.files && t.files[0], rk = t.getAttribute("data-kind") || "";
+      if (rf && rk) svcPicSend(rf, rk, S.rcp);
+      return;
+    }
 
     /* "+ Add new" chosen on the client form's plumber/architect dropdown: park the half-filled
        client form, open the partner form (mobile compulsory), and come back with him selected. */
