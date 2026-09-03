@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.404";
+  var APP_VERSION = "6.9.405";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1742,7 +1742,7 @@ window.addEventListener("beforeunload", function (ev) {
   /* Read every big key into memory once, before the first paint, and bring across whatever
      the old box is still holding. Migration is one-way and only ever ADDS: the localStorage
      copy is dropped after IndexedDB has it, never before. */
-  var BIG_KEYS = ["ew_team_catalog", "ew_logos_v2", "ew_proof_v1"];
+  var BIG_KEYS = ["ew_team_catalog", "ew_logos_v2", "ew_proof_v1", "ew_rcpt_v1"];
   function bigPreload(extra) {
     var keys = BIG_KEYS.concat(extra || []);
     return Promise.all(keys.map(function (k) {
@@ -19056,6 +19056,87 @@ function viewCatalogue() {
      Cached by URL for the session: he will export the same statement two or three times while
      deciding what to tick, and the second export should be instant. */
   var RCPT_IMG = {};
+  /* ================= A RECEIPT IS FETCHED ONCE PER DEVICE  (v6.9.405, 3 Sep 2026) ============
+     HIS WORDS: "we have to work to make it simple and more responsiveness."
+
+     MEASURED on his machine and his book first: nothing the app draws is slow (HISAB renders in
+     150 ms, a thirteen-delivery ledger in 184 ms). The wire is: a call that does NOTHING takes
+     a median 2.56 s. The statement walks it once per receipt, and Manish Singla has fifteen
+     sheets with fifteen receipts - about fourteen seconds, every time, on every device, in
+     every session, because RCPT_IMG dies with the page. His book holds 111 receipt documents
+     and he has 51 statements to re-send.
+
+     A receipt does not change, so it is fetched once and kept - the same rule and the same
+     bigSet/bigGet machinery the brand logos have used since v6.9.311.
+
+     KEYED BY THE DRIVE URL, which is what RCPT_IMG has always keyed on. A receipt replaced
+     through v6.9.339 gets a NEW url with its new proof row, so a stale entry cannot be served
+     in place of a replacement - that is the property that makes this safe, and it is why the
+     key is not the challan id.
+
+     A FAILURE IS NEVER WRITTEN HERE. RCPT_IMG holds null for the session when a document will
+     not come down; putting that on the device would turn one bad minute on Drive into a
+     permanent "no receipt on file" on a client's statement.
+
+     AND IT IS BOUNDED. On 23 August his own phone was found holding 20.8 MB of stale app.js
+     copies - a cache with no ceiling is how that happens. Least-recently-used goes first. */
+  var RCPT_STORE = "ew_rcpt_v1", RCPT_MAX_BYTES = 12 * 1024 * 1024, RCPT_MAX_N = 60;
+  var RCPT_META = {};                       /* url -> {at, bytes} for the LRU, mirrored on disk */
+  var _rcptDirty = false, _rcptTimer = null;
+  function rcptBytes(rec) {
+    var n = 0;
+    ((rec && rec.pages) || []).forEach(function (p) {
+      n += String((p && p.src) || "").length;
+      n += String((p && p.photo && p.photo.src) || "").length;
+    });
+    return n;
+  }
+  function rcptRestore() {
+    try {
+      var c = JSON.parse(bigGet(RCPT_STORE) || "null");
+      if (!c || !c.e) return 0;
+      var n = 0;
+      Object.keys(c.e).forEach(function (u) {
+        var x = c.e[u];
+        if (!x || !x.pages || !x.pages.length) return;
+        if (RCPT_IMG[u] === undefined) RCPT_IMG[u] = { pages: x.pages, whole: !!x.whole };
+        RCPT_META[u] = { at: Number(x.at) || 0, bytes: Number(x.bytes) || rcptBytes(x) };
+        n++;
+      });
+      return n;
+    } catch (e) { return 0; }
+  }
+  /* Written after a build, not after every receipt: twenty receipts in one statement are one
+     write of one object, which is what the 2.5 s wire time is being spent to avoid repeating. */
+  function rcptSave() {
+    _rcptDirty = false;
+    try {
+      var urls = Object.keys(RCPT_META).sort(function (a, b) { return (RCPT_META[b].at || 0) - (RCPT_META[a].at || 0); });
+      var e = {}, bytes = 0, kept = 0;
+      urls.forEach(function (u) {
+        var rec = RCPT_IMG[u];
+        if (!rec || !rec.pages || !rec.pages.length) return;          /* never write a failure */
+        var b = RCPT_META[u].bytes || rcptBytes(rec);
+        if (kept >= RCPT_MAX_N || bytes + b > RCPT_MAX_BYTES) { delete RCPT_META[u]; return; }
+        e[u] = { pages: rec.pages, whole: !!rec.whole, at: RCPT_META[u].at || 0, bytes: b };
+        bytes += b; kept++;
+      });
+      bigSet(RCPT_STORE, JSON.stringify({ v: 1, at: Date.now(), e: e }));
+    } catch (e) { }
+  }
+  function rcptKeep(url, rec) {
+    if (!url || !rec || !rec.pages || !rec.pages.length) return;
+    RCPT_META[url] = { at: Date.now(), bytes: rcptBytes(rec) };
+    _rcptDirty = true;
+    if (_rcptTimer) clearTimeout(_rcptTimer);
+    _rcptTimer = setTimeout(function () { _rcptTimer = null; if (_rcptDirty) rcptSave(); }, 1200);
+  }
+  function rcptTouch(url) { if (RCPT_META[url]) { RCPT_META[url].at = Date.now(); _rcptDirty = true; } }
+  function rcptHeld() {
+    var n = 0, b = 0;
+    Object.keys(RCPT_META).forEach(function (u) { n++; b += RCPT_META[u].bytes || 0; });
+    return { n: n, kb: Math.round(b / 1024) };
+  }
   /* What Google actually answers, measured on his own receipts:
        a receipt PDF   -> lh3 .../d/<id>=w1400 renders page one as 1024 x 1448. Good.
        a receipt JPEG  -> the same URL can 404, because the preview is generated lazily and for a
@@ -19232,7 +19313,8 @@ function viewCatalogue() {
     var r = chProofAny(c);
     if (!r.has || !r.url) return Promise.resolve(null);
     var key = String(r.url);
-    if (RCPT_IMG[key] !== undefined) return Promise.resolve(RCPT_IMG[key]);
+    /* v6.9.405 - held from a previous statement, on this device, and free */
+    if (RCPT_IMG[key] !== undefined) { rcptTouch(key); return Promise.resolve(RCPT_IMG[key]); }
     /* THE FILE FIRST, the preview only as a fallback. rcptUrls has always listed both; the
        order was preview-first, which is what turned a two-page document into one page. */
     var tries = rcptUrls(key).slice().reverse();
@@ -19248,6 +19330,7 @@ function viewCatalogue() {
           return pdfPages(x.b64).then(function (pp) {
             if (!pp || !pp.length) return attempt(n + 1);
             RCPT_IMG[key] = { pages: pp, whole: true };
+            rcptKeep(key, RCPT_IMG[key]);
             return RCPT_IMG[key];
           });
         }
@@ -19260,6 +19343,7 @@ function viewCatalogue() {
           /* v6.9.404 - the file being an image means it IS the photograph; the lh3 preview of a
              PDF is a rendering of page one, and its photograph cannot be cut out of it */
           RCPT_IMG[key] = { pages: [{ src: p.src, w: p.w, h: p.h, photo: isFile ? { src: p.src, w: p.w, h: p.h } : null }], whole: !!isFile };
+          rcptKeep(key, RCPT_IMG[key]);
           return RCPT_IMG[key];
         });
       }).catch(function () { return attempt(n + 1); });
@@ -19271,6 +19355,10 @@ function viewCatalogue() {
     var q = (list || []).filter(function (c) { var r = chProofAny(c); return r.has && r.url; });
     var out = {}, i = 0, done = 0;
     if (!q.length) return Promise.resolve(out);
+    /* v6.9.405 - the ones already on this device cost nothing, and the toast should not count
+       them as work: "Fetching receipt 1 of 15" on a statement that fetches two is a lie. */
+    var held = q.filter(function (c) { var r = chProofAny(c); return RCPT_IMG[String(r.url)] !== undefined; }).length;
+    if (held) { try { toast(held === q.length ? "Receipts already on this device \u2014 building\u2026" : held + " of " + q.length + " receipts already here; fetching " + (q.length - held) + "\u2026"); } catch (e) { } }
     var lane = function () {
       if (i >= q.length) return Promise.resolve();
       var c = q[i++];
@@ -19281,7 +19369,10 @@ function viewCatalogue() {
         return lane();
       });
     };
-    return Promise.all([lane(), lane(), lane()]).then(function () { return out; });
+    return Promise.all([lane(), lane(), lane()]).then(function () {
+      if (_rcptDirty) { if (_rcptTimer) { clearTimeout(_rcptTimer); _rcptTimer = null; } rcptSave(); }
+      return out;
+    });
   }
   function thumbSizes(list) {
     return Promise.all((list || []).map(function (c) {
@@ -24338,6 +24429,17 @@ function viewCatalogue() {
             '), which holds gigabytes. A receipt can no longer run out of room here.'
           : 'This browser has no big store, so everything is squeezed into the 5 MB box. ' +
             'If a receipt refuses to attach, pull down to refresh and try again.') + '</div>' +
+        /* v6.9.405 - the receipts held for the statement. Measured before it was built: a
+           no-op call to the backend takes a median 2.56 s on his line, and a statement used
+           to walk it once per receipt - fifteen of them for Manish Singla, every time. */
+        (function () {
+          var r = rcptHeld();
+          if (!r.n) return '';
+          return '<div class="meta" style="margin-top:5px;color:#0f766e">\u2713 ' + r.n +
+            ' signed receipt' + (r.n === 1 ? '' : 's') + ' held here for the statement (' +
+            r.kb.toLocaleString("en-IN") + ' KB). They are fetched once per device and re-used, ' +
+            'so sending the same statement again is instant. The oldest are dropped past 60 or 12 MB.</div>';
+        })() +
         '</div>';
     })();
 
@@ -36304,6 +36406,9 @@ function viewCatalogue() {
          app fetched every one of them again anyway.
          This is the first moment the cache can actually be read. */
       try { restoreLogoCache(); } catch (e) { }
+      /* v6.9.405 - and the receipts, for the same reason and at the same moment: read any
+         earlier and IndexedDB is not open yet, which is the v6.9.263 regression above. */
+      try { rcptRestore(); } catch (e) { }
       boot2(sess);
     });
   })();
