@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.31.2";
+  var APP_VERSION = "1.32.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -965,7 +965,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      shipped and it was right to: money is computed from `discounts`, and a due worked out from
      four fresh tabs and one that has not landed yet is a WRONG figure on the screen of the app
      whose whole job is saying what a man owes. 326 rows between them. */
-  var KEEP_FAST = ["clients", "challans", "payments", "returns", "discounts", "brandmap"];
+  var KEEP_FAST = ["clients", "challans", "payments", "returns", "discounts", "brandmap", "installs", "visits", "team"];   /* v1.32.0 - the service book, and the team for the executive's number */
   var KEEP_REST = ["audit"];
   var KEEP = KEEP_FAST.concat(KEEP_REST);
 
@@ -2024,10 +2024,15 @@ function cancelMap() {
                           returnValue: retVal, returnUnpriced: retUnp });
       r.promise = promiseFor(c.name);
       r.follows = followFor(c.name).length;
+      /* v1.32.0 - the service book beside the goods: r.due stays the goods figure every bucket
+         and score reads; svcDue is what his visits still owe; toCollect is the one number */
+      var _sv = svcOf([c.name].concat(_aliasOf[lower(c.name)] || []), c);
+      r.svcDue = _sv.due; r.svcBilled = _sv.billed; r.svcCollected = _sv.collected; r.svcVisits = _sv.visits; r.machines = _sv.machines;
+      r.toCollect = r.due + r.svcDue;
       r.bucket = bucketOf(r, t);
       r.score = chaseScore(r, t);
       return r;
-    }).filter(function (r) { return r.due > 500; });
+    }).filter(function (r) { return r.due > 500 || r.svcDue > 0.5; });
     out.sort(function (a, b) { return b.score - a.score || b.due - a.due; });
     _rowsCache = out;
     return out;
@@ -2072,6 +2077,106 @@ function cancelMap() {
 
   function seesAll() { return roleIs("admin") || roleIs("accounts"); }
   function canWrite() { return seesAll(); }
+  /* ================= THE SERVICE BOOK, ON THE CHASING PHONE  (v1.32.0, 2 Sep 2026) =================
+     What a visit still owes is the Service app's arithmetic, copied whole (t_svcmoney holds the
+     five functions byte-identical), so this phone can never name a figure that phone would not. */
+  function dgMob(s) {
+    var d = String(s == null ? "" : s).replace(/\D/g, "");
+    return d.length >= 10 ? d.slice(-10) : "";
+  }
+  function amcKind(ins) {
+    var t = lower(String((ins && ins.amcType) || "")).replace(/[^a-z ]+/g, " ");
+    if (!t.replace(/\s+/g, "") || / none /.test(" " + t + " ")) return "None";
+    /* ---- "VISIT-BASED" IS NOT A CONTRACT (v1.4.2, 20 Aug 2026) ----
+       Asked what the word meant on Ramesh - Sheena Export's row, he answered: "without AMC
+       case, Rs 600 per visit, salt cost as spares as per actual". So it records how the man
+       PAYS, not what he is covered for - and the app was reading it as a contract, which made
+       his visit charge and his salt free. On his own book that is Rs 600 given away on every
+       single call, for as long as nobody looked.
+
+       THE GUARD IS DELIBERATE. A real contract that happens to mention its visits - "AMC with
+       spares, 2 visits a year" - must NOT be cancelled by the word. Only a row that says
+       'visit' and says nothing whatever about what it covers is read as no contract. */
+    var says = /without|w\/o|excl|with spare|incl|full/.test(t);
+    if (!says && / visit/.test(" " + t)) return "None";
+    if (/without|w\/o|excl/.test(t)) return "AMC without spares";
+    if (/with spare|incl|full/.test(t)) return "AMC with spares";
+    return "AMC without spares";
+  }
+  function amcLiveOn(ins, date) {
+    if (!ins || amcKind(ins) === "None") return false;
+    var d = String(date || today()).slice(0, 10);
+    /* ---- THE CONTRACT STARTS AFTER THE MACHINE IS IN (v1.4.1, 20 Aug 2026) ----
+       His words: "AMC start after installation, so that no issue".
+
+       Until this line existed only the END date was checked, so a contract signed in June and
+       running to next March made a service done in JANUARY look covered - work the customer
+       had already paid for in cash, quietly written off against a contract that did not exist
+       on the day. Nothing on any screen would ever have said so.
+
+       There is no amcStart column and there does not need to be one, because he has just said
+       what the start is: the machine going in. `installDate` is the floor.
+
+       IT IS `<=`, NOT `<`. The contract starts AFTER the installation, so the install day
+       itself is not covered - which is the whole of "so that no issue". The Installation job
+       type is still charged separately in amcCover(); the two rules agree, and belt-and-braces
+       on a money question is not waste. A backdated install record would otherwise slip
+       through the date rule and the type rule would still catch it.
+
+       NO INSTALL DATE RECORDED MEANS NO FLOOR. Refusing cover because the office never typed a
+       date would charge a customer who holds a perfectly good contract - the wrong way round,
+       and not his fault.
+
+       AND NOT commDate, WHICH ALSO EXISTS. The CRM keeps a commissioning date per product and
+       uses `commDate || installDate` for the warranty and the service clock. It is deliberately
+       NOT used here, for three reasons: he said "installation"; commDate lives only inside
+       productsJson and is not a column on the row this app reads; and commissioning is the
+       LATER of the two, so using install date is the more generous floor - the gap between the
+       machine going in and it being started is a gap in which the only visit possible is the
+       commissioning itself, and amcCover() charges type "Installation" regardless of date. */
+    var start = String(ins.installDate || "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(start) && d <= start) return false;
+    var end = String(ins.amcEnd || "").slice(0, 10);
+    /* no end date recorded is treated as live, exactly as amcState has always treated it */
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) return true;
+    return end >= d;
+  }
+  function amcCover(ins, type, date) {
+    var kind = amcKind(ins);
+    var live = amcLiveOn(ins, date);
+    var none = { visit: false, salt: false, parts: false, kind: kind, live: live };
+    if (!ins || !live) return none;
+    if (String(type || "") === "Installation") return none;
+    return { visit: true, salt: true, parts: kind === "AMC with spares", kind: kind, live: true };
+  }
+  function visitDue(v, ins) {
+    var c = amcCover(ins, v && v.type, v && v.date);
+    return (c.visit ? 0 : num(v.visitCharge)) +
+           (c.salt  ? 0 : num(v.saltAmt)) +
+           (c.parts ? 0 : num(v.partsAmt));
+  }
+  function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.collected)); }
+  /* which visits are this man's: his names (the family clientDue already folds), his phone,
+     and the machines that carry either. A machine filed under another spelling of him is
+     reached through the phone - the Ramesh case on the CRM, the same rule here. */
+  function svcOf(names, client) {
+    var d = S.data || {}, fam = {}, phones = {}, insts = {};
+    (names || []).forEach(function (n) { if (String(n || "").trim()) fam[lower(n)] = 1; });
+    [client && client.mobile, client && client.mobile2].forEach(function (m) { var p = dgMob(m); if (p) phones[p] = 1; });
+    var all = (d.installs || []).filter(function (x) { return x && x.id && !isCancelled("installs", x.id); });
+    all.forEach(function (x) { var xp = dgMob(x.mobile); if (fam[lower(x.client)] || (xp && phones[xp])) { insts[String(x.id)] = x; fam[lower(x.client)] = 1; if (xp) phones[xp] = 1; } });
+    all.forEach(function (x) { if (!insts[String(x.id)] && fam[lower(x.client)]) insts[String(x.id)] = x; });
+    var vis = (d.visits || []).filter(function (v) {
+      return v && !isCancelled("visits", v.id) && (insts[String(v.installId || "")] || fam[lower(v.client)]);
+    }).sort(function (a, b) { return String(a.date || "").localeCompare(String(b.date || "")); });
+    var due = 0, billed = 0, got = 0;
+    vis.forEach(function (v) {
+      var ins = insts[String(v.installId || "")] || null;
+      due += visitPending(v, ins); billed += num(v.total); got += num(v.collected);
+    });
+    return { visits: vis, due: Math.round(due), billed: Math.round(billed), collected: Math.round(got), machines: Object.keys(insts).length };
+  }
+
   function rowFor(name) {
     var k = String(name || "").trim().toLowerCase();
     return rows().filter(function (r) { return String(r.name).trim().toLowerCase() === k; })[0] || null;
@@ -2369,13 +2474,15 @@ function cancelMap() {
 
   function statTiles() {
     var l = rows(), t = today();
-    var tot = l.reduce(function (a, r) { return a + r.due; }, 0);
+    var tot = l.reduce(function (a, r) { return a + r.toCollect; }, 0);
+    var svcTot = l.reduce(function (a, r) { return a + r.svcDue; }, 0);   /* v1.32.0 */
     var over = l.reduce(function (a, r) { return a + r.overdue + r.oldBook; }, 0);
     var due2day = l.filter(function (r) { return r.promise && r.promise.date === t; });
     var broken = l.filter(function (r) { return r.promise && r.promise.date && r.promise.date < t; });
     var promised = due2day.reduce(function (a, r) { return a + r.due; }, 0);
     return '<div class="stats">' +
-      '<div class="stat bad"><div class="n">' + shortMoney(tot) + '</div><div class="l">Outstanding · ' + l.length + ' client' + (l.length === 1 ? '' : 's') + '</div></div>' +
+      '<div class="stat bad"><div class="n">' + shortMoney(tot) + '</div><div class="l">Outstanding · ' + l.length + ' client' + (l.length === 1 ? '' : 's') +
+        (svcTot > 0.5 ? '<br><span style="color:#b45309">of which service ' + shortMoney(svcTot) + '</span>' : '') + '</div></div>' +
       '<div class="stat bad"><div class="n">' + shortMoney(over) + '</div><div class="l">Past ' + CREDIT_DAYS + ' days, or old book</div>' +
         '<div class="bar"><i style="width:' + (tot > 0 ? Math.min(100, Math.round(over / tot * 100)) : 0) + '%"></i></div></div>' +
       '<div class="stat good"><div class="n">' + shortMoney(promised) + '</div><div class="l">Promised for today · ' + due2day.length + '</div></div>' +
@@ -2429,8 +2536,10 @@ function cancelMap() {
           (r.mobile ? '' : ' <span class="pill red">no mobile</span>') +
           (r.owner ? ' <span class="pill">' + esc(r.owner) + '</span>' : '') + '</div>' +
       '</div>' +
-      '<div style="text-align:right"><div class="big" style="color:' + tone + '">' + money(r.due) + '</div>' +
+      '<div style="text-align:right"><div class="big" style="color:' + tone + '">' + money(r.toCollect) + '</div>' +
         (r.overdue > 0 ? '<div class="muted" style="color:#b91c1c">' + money(r.overdue) + ' past term</div>' : '') +
+        /* v1.32.0 - when both books carry money, say which is which under the one total */
+        (r.svcDue > 0.5 ? '<div class="muted">' + (r.due > 0.5 ? 'goods ' + money(r.due) + ' · ' : '') + '<b style="color:#b45309">service ' + money(r.svcDue) + '</b></div>' : '') +
       '</div></div></div>' +
       (open ? clientBody(r, t) : '') +
       '</div>';
@@ -2542,6 +2651,34 @@ function cancelMap() {
                              : '<div class="muted">no mode or reference recorded</div>') + '</div>' +
                 '<div style="font-weight:700;color:#0f766e">' + money(p.amount) + '</div></div>';
             }).join("") + '</div>'
+          : '') +
+        '</div>';
+    }
+
+    /* ---- v1.32.0 - SERVICE, VISIT BY VISIT. Collected on the visit by the engineer; this list
+       is what is still owed, so the man chasing goods money knows the whole of what to ask for. */
+    if (r.svcVisits && r.svcVisits.length) {
+      var sOpen = expOn(r.name, "svc");
+      var _insOf = function (v) { return (S.data.installs || []).filter(function (x) { return x.id === v.installId; })[0] || null; };
+      h += '<div style="margin-bottom:9px">' +
+        expRow(r.name, "svc", "Service visits",
+          r.svcVisits.length + " visit" + (r.svcVisits.length === 1 ? "" : "s") + (r.svcDue > 0.5 ? " \u00b7 <b style=\"color:#b45309\">" + money(r.svcDue) + " owed</b>" : " \u00b7 nothing owed")) +
+        (sOpen
+          ? '<div style="background:#fff;border:1px solid #e2e8f0;border-top:0;border-radius:0 0 10px 10px;overflow:hidden;margin-top:-6px;padding-top:6px">' +
+            r.svcVisits.slice().reverse().map(function (v) {
+              var pend = visitPending(v, _insOf(v)), bits = [];
+              if (v.engineer) bits.push(esc(v.engineer));
+              if (num(v.saltBags)) bits.push(num(v.saltBags) + ' bag' + (num(v.saltBags) === 1 ? '' : 's') + ' salt');
+              var _bc = String(v.notes || "").match(/^Billed on challan (\S+)/);
+              if (_bc) bits.push('billed on challan ' + esc(_bc[1]));
+              else if (num(v.collected)) bits.push('took ' + money(v.collected));
+              return '<div class="row" style="padding:7px 10px;border-top:1px solid #f1f5f9">' +
+                '<div class="grow"><b style="font-size:12.5px">' + esc(dstr(String(v.date || "").slice(0, 10))) + ' \u00b7 ' + esc(v.type || "visit") + '</b>' +
+                (bits.length ? '<div class="muted">' + bits.join(' \u00b7 ') + '</div>' : '') + '</div>' +
+                '<div style="font-weight:700;color:' + (pend > 0.5 ? '#b91c1c' : '#0f766e') + '">' + (pend > 0.5 ? money(pend) + ' owed' : (num(v.total) ? 'settled' : '\u2014')) + '</div></div>';
+            }).join("") +
+            '<div class="muted" style="padding:7px 10px;border-top:1px solid #f1f5f9">Service money is taken by the engineer on the visit and written there. A payment recorded here settles goods, not a visit.</div>' +
+            '</div>'
           : '') +
         '</div>';
     }
@@ -2687,7 +2824,7 @@ function cancelMap() {
       '<div style="font-size:17px;font-weight:800;margin-top:2px">' +
       (said.length + broke.length ? (said.length + broke.length) + ' to ring on a promise' : 'No promises outstanding today') + '</div>' +
       '<div style="font-size:12.5px;opacity:.9;margin-top:3px">then the ' + rest.length + ' worst of the rest — ' +
-      money(said.concat(broke).concat(rest).reduce(function (a, r) { return a + r.due; }, 0)) + ' in all</div></div>';
+      money(said.concat(broke).concat(rest).reduce(function (a, r) { return a + r.toCollect; }, 0)) + ' in all</div></div>';   /* v1.32.0 - goods and service, one figure */
     var sec = function (title, arr, note) {
       if (!arr.length) return "";
       return '<div class="muted" style="font-weight:700;margin:14px 2px 2px">' + esc(title) +
@@ -3161,16 +3298,33 @@ function cancelMap() {
 
   /* Build, host, and put the link in his WhatsApp. The blank tab is opened inside the
      click or the phone blocks it. */
-  function sendHisab(name) {
+  /* v1.32.0 - the executive assigned to a client, with his number off the Team sheet: the
+     statement can go to him as well as to the customer ("send statement ... to executive
+     whatsapp", 2 Sep 2026). Nobody, or no number, is said out loud rather than dialled blank. */
+  function execOf(name) {
+    var c = clientRow(name) || {}; var ex = String(c.ownedBy || c.createdBy || "").trim(); if (!ex) return null;
+    var m = ((S.data && S.data.team) || []).filter(function (u) { return u && lower(u.name) === lower(ex); })[0] || {};
+    var num = String(m.mobile || "").replace(/\D/g, ""); if (num.length === 10) num = "91" + num;
+    return { name: ex, num: num.length >= 12 ? num : "" };
+  }
+  function sendHisab(name, toExec) {
     var r = rowFor(name); if (!r) return;
     var n = String(r.mobile || "").replace(/\D/g, "");
-    if (!n) { mbAsk(name); return; }
-    if (n.length === 10) n = "91" + n;
+    var ex = toExec ? execOf(name) : null;
+    if (toExec) {
+      if (!ex) { toast(name + " has no executive assigned."); return; }
+      if (!ex.num) { toast(ex.name + " has no mobile on the Team sheet \u2014 the office adds it under Team."); return; }
+      n = ex.num;
+    } else {
+      if (!n) { mbAsk(name); return; }
+      if (n.length === 10) n = "91" + n;
+    }
     var win = window.open("", "_blank");
     toast("Building his statement…");
     var msg = "Namaste " + r.name + ",\n\nAs requested, your Energy World statement of account as on " +
       dstr(today()) + ".\nBalance: Rs " + Math.round(r.due).toLocaleString("en-IN") +
       "\n\nKindly confirm, or tell us if anything does not agree with your books.\n\nEnergy World";
+    if (ex) msg = "For " + ex.name + " \u2014 statement of account of " + r.name + ":\n\n" + msg;
     var fname = String(r.name).replace(/[^\w.-]+/g, "_") + "_hisab.pdf";
     statementPdf(r).then(function (doc) {
       var b64 = doc.output("datauristring").split(",")[1];
@@ -3269,6 +3423,10 @@ function cancelMap() {
       '<button class="btn grn" data-act="send-go" data-k="' + esc(kind) + '" data-n="' + esc(name) + '"' +
         (extra ? ' data-a="' + esc(extra.amt) + '" data-m="' + esc(extra.mode) + '" data-d="' + esc(extra.dt) + '" data-b="' + esc(Math.round(extra.bal)) + '"' : '') +
         '>' + esc(k.verb) + '</button>' +
+      /* v1.32.0 - or to his executive, with the same link */
+      (kind === "hisab" && execOf(name)
+        ? '<button class="btn gry" data-act="send-go" data-k="hisab" data-n="' + esc(name) + '" data-to="exec">\u2192 ' + esc(String(execOf(name).name).split(" ")[0]) + '</button>'
+        : '') +
       '<button class="btn gry" data-act="close">Cancel</button></div>' +
       '<div class="muted" style="margin-top:8px">WhatsApp opens with this message ready. You still press send there.</div>';
   }
@@ -3593,7 +3751,7 @@ function cancelMap() {
       var sk = t.getAttribute("data-k"), sn = t.getAttribute("data-n");
       S.sheet = null; render();
       if (sk === "reminder") { waSend(sn); return; }
-      if (sk === "hisab") { sendHisab(sn); return; }
+      if (sk === "hisab") { sendHisab(sn, t.getAttribute("data-to") === "exec"); return; }
       if (sk === "oldbook") { obWaGo(sn); return; }
       if (sk === "receipt") {
         rcWaGo(sn, EWnum(t.getAttribute("data-a")), t.getAttribute("data-m"),
