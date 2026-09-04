@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.405";
+  var APP_VERSION = "6.9.408";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -13895,7 +13895,7 @@ function viewCatalogue() {
       api("siteVisit", { siteId: siteId, purpose: purpose || "", photoB64: photoB64 || "" }).then(function () {
         toast("Location blocked - visit logged as UNVERIFIED.");
         refresh();
-      });
+      }, function (e) { toast("Location blocked AND the server did not answer \u2014 " + apiWhy(e) + ". The visit was NOT logged."); });
     }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
   }
   function geoPending(site) { return !site.lat || !site.lng; }
@@ -14821,7 +14821,7 @@ function viewCatalogue() {
       if (!r || !r.ok) { toast((r && r.error) || "Tool not found."); return; }
       S.tool = { t: r.tool, chain: r.chain || [], days: r.heldDays || 0 };
       S.modal = modalTool(); render();
-    });
+    }, function (e) { toast("Could not look that tool up \u2014 " + apiWhy(e) + ". Try again."); });
   }
 
   function modalTool() {
@@ -24693,7 +24693,10 @@ function viewCatalogue() {
         try { beatStart(); } catch (e) {}          /* v6.9.314 - from here it asks on its own */
         S.tab = myTabs()[0];
         loadCatalog(); refresh();
-      });
+      /* v6.9.406 - the .catch below is on the WEBAUTHN promise, not on this call. Without a
+         rejection handler here, a face that unlocked fine on a bad line left the login screen
+         sitting there saying nothing at all. */
+      }, function (e) { renderLogin("Signed in on this device, but the server did not answer \u2014 " + apiWhy(e) + ". Try again, or use your PIN."); });
     }).catch(function () { toast("Biometric check failed - use your PIN."); });
   }
 
@@ -26365,111 +26368,63 @@ function viewCatalogue() {
      Products and partners are searched locally (already loaded); clients/quotes/challans/sites
      come from the server search (which enforces per-executive scoping). Results open in a modal
      so the search works from any tab without leaving the current screen. */
+  /* v6.9.408 - THE SAME ENGINE AS THE SEARCH SCREEN. This used to ask the office for clients,
+     quotes, challans and sites and show nothing for them until the answer arrived - so with no
+     signal the top bar found nothing, and even with a signal it never found a payment, a cheque
+     reference, a paper book number, a driver, a vehicle, or a client by the firm he is billed
+     under, because the server search does not look at any of those. uniHits() reads the book
+     that is already on this phone and answers at once; the office is asked in the background
+     and only ADDS what the phone did not have. The popup stays, so he does not lose the screen
+     he was standing on. */
   function runGlobalSearch() {
     var qv = String(S.gq || "").trim();
     if (qv.length < 2) { toast("Type at least 2 characters."); return; }
-    var lq = qv.toLowerCase();
-    var products = PRODUCTS.filter(function (p) {
-      return (p.code + " " + p.desc + " " + p.family + " " + p.brand + " " + p.cat).toLowerCase().indexOf(lq) > -1;
-    }).slice(0, 25);
-    var partners = (S.data.associates || []).filter(function (a) {
-      return Object.keys(a).map(function (k) { return a[k]; }).join(" ").toLowerCase().indexOf(lq) > -1;
-    }).slice(0, 25);
-    S.sres = { clients: [], quotes: [], challans: [], sites: [], products: products, partners: partners, loading: true, q: qv };
+    S.sq = qv;                 /* one query - the Search screen shows the same one */
+    S.sres = null; S.sBusy = true;
     S.modal = modalSearchResults(); render();
     api("search", { q: qv }).then(function (r) {
-      if (r && r.ok) { S.sres.clients = r.clients || []; S.sres.quotes = r.quotes || []; S.sres.challans = r.challans || []; S.sres.sites = r.sites || []; }
-      S.sres.loading = false;
+      if (String(S.sq || "").trim() !== qv) return;   /* he has typed on - this answer is stale */
+      S.sres = (r && r.ok) ? r : { clients: [], quotes: [], challans: [], sites: [] };
+      S.sBusy = false;
       if (S.modal) { S.modal = modalSearchResults(); render(); }
-    }).catch(function () { S.sres.loading = false; if (S.modal) { S.modal = modalSearchResults(); render(); } });
+    }, function () {
+      if (String(S.sq || "").trim() !== qv) return;
+      S.sBusy = false;
+      if (S.modal) { S.modal = modalSearchResults(); render(); }
+    });
   }
 
+  /* v6.9.408 - the popup is now the Search screen's own two renderers, so the top bar and the
+     screen can never again disagree about what this book contains. What the popup had and the
+     screen did not - the duplicate guard, and "Everything about him" - is kept here; what the
+     screen had and the popup did not - payments, drivers, book numbers, firms billed under,
+     and an answer with no signal - now works from the top bar on every screen. */
   function modalSearchResults() {
-    var r = S.sres || {};
-    var HH = 'style="margin:14px 0 8px;font-size:14px"';
-    /* v6.9.299 - .prow / .noimg live in the picker stylesheet, which this modal never
-       needed before it carried a thumbnail. Without this the picture would be full width. */
+    var qv = String(S.sq || S.gq || "").trim();
     ensurePickerCss();
-    var h = '<h2>Search &mdash; &ldquo;' + esc(r.q || S.gq || "") + '&rdquo;</h2>';
-    var counts = (r.clients || []).length + (r.quotes || []).length + (r.challans || []).length +
-      (r.sites || []).length + (r.products || []).length + (r.partners || []).length;
-    h += '<div class="meta" style="margin-bottom:4px">' + counts + ' result(s)' + (r.loading ? ' &middot; searching your records…' : '') + '</div>';
-    h += '<div style="max-height:60vh;overflow:auto;margin:0 -4px;padding:0 4px">';
-
-    if ((r.clients || []).length) h += '<h3 ' + HH + '>Clients</h3>';
-    (r.clients || []).forEach(function (c) {
-      if (!c.own) {
-        h += '<div class="card" style="border:1.5px solid #f87171;background:#fef2f2"><h3>' + esc(c.name) +
-          ' <span class="pill due">another executive</span></h3><div class="meta">Registered on <b>' + esc(c.on) +
-          '</b> by another executive.<br><b style="color:#dc2626">Already on another executive’s book — coordinate, do not double-quote.</b></div></div>';
-        return;
-      }
-      /* v6.9.316 - the way out of "four cards on four screens" */
-      h += '<div class="card"><h3>' + esc(c.name) + ' <span class="pill teal">' + esc(c.location || "") + '</span></h3>' +
-        '<div class="meta">' + esc([c.mobile, c.mobile2].filter(Boolean).join("  ·  ")) +
-        (c.area ? '<br>' + esc(c.area) : "") + '<br>Added ' + esc(c.on) + ' by ' + esc(c.by) + '</div>' +
-        '<div class="acts"><button class="btn sm" data-act="dg-open" data-who="' + esc(c.name) + '">Everything about him</button>' +
-        '<button class="btn sm ghost" data-act="bb-open" data-n="' + esc(c.name) + '">Brands</button></div></div>';
-    });
-
-    if ((r.quotes || []).length) h += '<h3 ' + HH + '>Quotations</h3>';
-    (r.quotes || []).forEach(function (q) {
-      var mine = q.own;
-      h += '<div class="card"' + (mine ? '' : ' style="border:1.5px solid #f87171;background:#fef2f2"') + '>' +
-        '<h3>' + esc(q.no) + ' <span class="pill ' + (mine ? 'teal' : 'due') + '">' + (mine ? esc(q.status || "") : 'another executive') + '</span></h3>' +
-        '<div class="meta">' + esc(q.client || "") + (mine && q.brand ? ' &middot; ' + esc(q.brand) : "") +
-        (mine && q.total ? '<br>' + money(q.total) : "") + '<br>' + esc(q.on) + ' by ' + esc(q.by) +
-        (mine ? "" : '<br><b style="color:#dc2626">Already quoted by ' + esc(q.by || 'another executive') + ' — do not double-quote.</b>') + '</div></div>';
-    });
-
-    if ((r.challans || []).length) h += '<h3 ' + HH + '>Challans</h3>';
-    (r.challans || []).forEach(function (c) {
-      h += '<div class="card"><h3>' + esc(c.no) + ' <span class="pill teal">' + esc(c.status || "Draft") + '</span></h3>' +
-        '<div class="meta">' + esc(c.client || "") + (c.site ? ' &middot; ' + esc(c.site) : "") +
-        (c.own && c.amount ? '<br>' + money(c.amount) : "") + '<br>' + esc(c.on) + ' by ' + esc(c.by) + '</div></div>';
-    });
-
-    if ((r.products || []).length) h += '<h3 ' + HH + '>Products</h3>';
-    (r.products || []).forEach(function (p) {
-      /* v6.9.299 - the master search showed a product with no picture, while the quote
-         picker beside it showed one. The same product, two screens, two answers. It uses the
-         SAME picCell as every other list, so a photograph that appears in one appears in all
-         of them - and a missing or broken one says which it is here too, rather than being
-         the only screen in the app that stays quiet about it. */
-      h += '<div class="card"><div class="plist"><div class="prow" style="border:0;padding:0">' +
-        picCell(p) +
-        '<div class="pinfo"><h3 style="margin:0">' + esc(p.desc || p.family) +
-          ' <span class="pill teal">' + money(p.price) + '</span></h3>' +
-        '<div class="meta">' + esc(p.code) + (p.brand ? ' &middot; ' + esc(p.brand) : "") +
-          (p.unit ? ' &middot; ' + esc(p.unit) : "") + '</div></div>' +
-        '</div></div></div>';
-    });
-
-    if ((r.partners || []).length) h += '<h3 ' + HH + '>Partners</h3>';
-    (r.partners || []).forEach(function (a) {
-      h += '<div class="card"><h3>' + esc(a.name || "-") + (a.role || a.type ? ' <span class="pill teal">' + esc(a.role || a.type) + '</span>' : "") + '</h3>' +
-        '<div class="meta">' + esc([a.mobile, a.location || a.area].filter(Boolean).join("  ·  ")) +
-        '</div><div class="acts"><button class="btn sm" data-act="dg-open" data-who="' + esc(a.name || "") + '">Everything about him</button>' +
-        (a.mobile ? '<a class="btn sm ghost" href="tel:' + esc(a.mobile) + '">Call</a>' : "") + '</div></div>';
-    });
-
-    if ((r.sites || []).length) h += '<h3 ' + HH + '>Sites</h3>';
-    (r.sites || []).forEach(function (x) {
-      h += '<div class="card"><h3>' + esc(x.name) + ' <span class="pill teal">' + esc(x.stage || "") + '</span></h3>' +
-        '<div class="meta">' + esc(x.client || "") + '</div></div>';
-    });
-
-    /* v6.9.316 - one way in that does not depend on WHICH card matched. He searched a man
-       and got four cards in four categories; this button is the same query asked as "who is
-       this to us", which is the question he was actually asking. */
-    if (counts && !r.loading) {
+    var local = uniHits(qv);
+    var n = uniCount(local);
+    var h = '<h2>Search &mdash; &ldquo;' + esc(qv) + '&rdquo;</h2>' +
+      '<div class="meta" style="margin-bottom:4px">' +
+      (n ? n + ' on this phone' : 'Nothing on this phone') +
+      (S.sBusy ? ' &middot; asking the office too&hellip;' : '') + '</div>' +
+      '<div style="max-height:60vh;overflow:auto;margin:0 -4px;padding:0 4px">';
+    if (n) h += uniHtml(local, qv);
+    else if (!S.sBusy && !(S.sres && (S.sres.clients || []).length)) h +=
+      '<div class="empty">Nothing on this phone matches <b>' + esc(qv) + '</b>.<br>' +
+      'It looked at client names and every firm they are billed under, challan and book ' +
+      'numbers, cheque references, quotations, sites, drivers, vehicles, partners and ' +
+      'products.</div>';
+    h += serverExtraHtml(local, qv);
+    /* v6.9.316 - one way in that does not depend on WHICH card matched. He searched a man and
+       got four cards in four categories; this is the same query asked as "who is this to us". */
+    if (n) {
       h += '<div class="card" style="margin-top:12px;background:#f0fdfa;border-color:#99f6e4">' +
-        '<h3>Everything about &ldquo;' + esc(r.q || "") + '&rdquo;</h3>' +
+        '<h3>Everything about &ldquo;' + esc(qv) + '&rdquo;</h3>' +
         '<div class="meta">His sites, the sites under him, brands, challans, quotes, money and ' +
         'service &mdash; on one screen, month by month.</div>' +
-        '<div class="acts"><button class="btn sm" data-act="dg-open" data-who="' + esc(r.q || "") + '">Open it</button></div></div>';
+        '<div class="acts"><button class="btn sm" data-act="dg-open" data-who="' + esc(qv) + '">Open it</button></div></div>';
     }
-    if (!counts && !r.loading) h += '<div class="empty">Nothing found.</div>';
     h += '</div><div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
     return h;
   }
@@ -26600,10 +26555,18 @@ function viewCatalogue() {
       return '<div class="card"><h3>' + esc(a.name || "") + '</h3><div class="meta">' +
         esc([a.role, a.mobile, a.area].filter(Boolean).join("  \u00b7  ")) + '</div></div>';
     });
+    /* v6.9.408 - with a picture, like every other list. v6.9.299 fixed exactly this ("the same
+       product, two screens, two answers") in the search POPUP and left the screen showing a
+       product with no photograph. picCell also says whether a picture is missing or broken,
+       instead of being the one list in the app that stays quiet about it. */
     group("Products", o.products, function (p) {
-      return '<div class="card"><h3>' + esc(p.desc || p.code) + '</h3><div class="meta">' +
-        esc([p.code, p.brand, p.family].filter(Boolean).join("  \u00b7  ")) +
-        (p.price ? '  \u00b7  ' + money(p.price) : '') + '</div></div>';
+      return '<div class="card"><div class="plist"><div class="prow" style="border:0;padding:0">' +
+        picCell(p) +
+        '<div class="pinfo"><h3 style="margin:0">' + esc(p.desc || p.code) +
+          (p.price ? ' <span class="pill teal">' + money(p.price) + '</span>' : '') + '</h3>' +
+        '<div class="meta">' + esc([p.code, p.brand, p.family].filter(Boolean).join("  \u00b7  ")) +
+        (p.unit ? '  \u00b7  ' + esc(p.unit) : '') + '</div></div>' +
+        '</div></div></div>';
     });
     return h;
   }
@@ -26625,7 +26588,21 @@ function viewCatalogue() {
     });
   }
 
+  /* ============ NOT REACHABLE, AND THAT IS NOT A BUG  (v6.9.408) ============
+     Nothing in this app can open this screen. "search" is in TAB_TABS but in no role's
+     ROLE_TABS list, in none of the eight nav groups and in no FREE_TAB, so canSee("search")
+     is false for every role - the owner included - and renderCore's guard would send him to
+     Today even if something set S.tab to it. That has been true since v6.9.396.
+
+     It is kept because it is the reference rendering of the universal search, and because
+     its two halves are anything but dead: uniHits() and uniHtml() are what the TOP-BAR box
+     has run since v6.9.408, from every screen in the app, with or without a signal.
+
+     If it is ever put back on the menu, the one thing it does that the top bar does not is
+     type LIVE - the results block repaints on every letter. Do not "fix" this screen without
+     first checking that anything can open it. */
   function viewSearch() {
+    ensurePickerCss();   /* v6.9.408 - uniHtml's product row carries a thumbnail now */
     var h = '<div class="row"><input class="grow" id="sq" ' +
       'placeholder="Anything &mdash; a man, his firm, a challan or book no, a cheque no, a product" ' +
       'value="' + esc(S.sq) + '"/></div>' +
@@ -26673,9 +26650,21 @@ function viewCatalogue() {
     var have = {};
     (local.clients || []).forEach(function (c) { have[dkey(c.name)] = 1; });
     var extra = (r.clients || []).filter(function (c) { return !have[dkey(c.name)]; });
-    if (!extra.length) return "";
-    return '<h3 style="margin:18px 0 8px;font-size:14px">Also on the firm\u2019s book ' +
-      '<span class="pill soon">' + extra.length + '</span></h3>' +
+    /* v6.9.408 - the office answers with quotes, challans and sites as well, and this function
+       threw all three away, so the warning that stops two men quoting the same site - "already
+       quoted by X" - reached the popup only and never this screen. Now every record the office
+       holds that this phone does not is shown, whatever kind it is. */
+    var haveQ = {}, haveC = {}, haveS = {};
+    (local.quotes || []).forEach(function (x) { haveQ[String(x.quoteNo || "").toLowerCase()] = 1; });
+    (local.challans || []).forEach(function (x) { haveC[String(x.challanNo || "").toLowerCase()] = 1; });
+    (local.sites || []).forEach(function (x) { haveS[dkey(x.name)] = 1; });
+    var xq = (r.quotes || []).filter(function (x) { return !haveQ[String(x.no || "").toLowerCase()]; });
+    var xc = (r.challans || []).filter(function (x) { return !haveC[String(x.no || "").toLowerCase()]; });
+    var xs = (r.sites || []).filter(function (x) { return !haveS[dkey(x.name)]; });
+    var tot = extra.length + xq.length + xc.length + xs.length;
+    if (!tot) return "";
+    var out = '<h3 style="margin:18px 0 8px;font-size:14px">Also on the firm\u2019s book ' +
+      '<span class="pill soon">' + tot + '</span></h3>' +
       '<div class="meta" style="margin:-4px 0 8px">Not in your own copy &mdash; these are other ' +
       'executives\u2019 records.</div>' +
       extra.map(function (c) {
@@ -26686,6 +26675,26 @@ function viewCatalogue() {
           '<span style="color:#94a3b8">Do not enter this client again &mdash; ask the office for ' +
           'his details.</span></div></div>';
       }).join("");
+    out += xq.map(function (x) {
+      return '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>' + esc(x.no || "") +
+        ' <span class="pill soon">' + (x.own ? esc(x.status || "quotation") : 'another executive') + '</span></h3>' +
+        '<div class="meta">' + esc(x.client || "") + (x.brand ? ' &middot; ' + esc(x.brand) : '') +
+        '<br>' + esc(x.on || "") + (x.by ? ' by ' + esc(x.by) : '') +
+        (x.own ? '' : '<br><b style="color:#b45309">Already quoted by ' + esc(x.by || "another executive") +
+          ' &mdash; do not double-quote.</b>') + '</div></div>';
+    }).join("");
+    out += xc.map(function (x) {
+      return '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>' + esc(x.no || "") +
+        ' <span class="pill soon">' + esc(x.status || "Draft") + '</span></h3>' +
+        '<div class="meta">' + esc(x.client || "") + (x.site ? ' &middot; ' + esc(x.site) : '') +
+        '<br>' + esc(x.on || "") + (x.by ? ' by ' + esc(x.by) : '') + '</div></div>';
+    }).join("");
+    out += xs.map(function (x) {
+      return '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>' + esc(x.name || "") +
+        (x.stage ? ' <span class="pill soon">' + esc(x.stage) + '</span>' : '') + '</h3>' +
+        '<div class="meta">' + esc(x.client || "") + '</div></div>';
+    }).join("");
+    return out;
   }
 
   function renderLogin(err) {
@@ -29968,11 +29977,20 @@ function viewCatalogue() {
 
      Checked against his own device before it was written (ew_navuse_v1 since 27 Aug): HISAB 14,
      Pending 7, Service 6, Leads 5, Clients 5, The brief 4, Challans 3, Health 3. */
+  /* ============ v6.9.407 - LEADS BEFORE CLIENTS, AND QUOTES UNDER BOTH ============
+     HIS WORDS: "Show leads tab before client, as leads once won turn to client / show quotes
+     option under client also, now its only shown under leads."
+
+     He gave the reason for the order himself: a name is a lead before it is a client, and the
+     row read the business backwards. And quoting is not the leads screen's private work - it
+     is how a lead becomes a client AND how a client buys the next brand, which is the whole
+     of the cross-sell. So "quotes" is a member of both. navGroupOf below keeps the band where
+     he tapped it from, so a screen in two groups cannot make the row jump under his thumb. */
   var NAV_GROUPS = [
     ["HISAB",      ["billing", "payments", "paidout", "dues"]],
     ["Deliveries", ["challans", "returns", "stock"]],
-    ["Clients",    ["clients", "followups", "visits", "discounts", "customers"]],
     ["Leads",      ["leads", "brandfollow", "quotes", "pitch", "agent", "winloss", "rules"]],
+    ["Clients",    ["clients", "followups", "quotes", "visits", "discounts", "customers"]],
     ["Service",    ["service", "spares"]],
     ["Products",   ["products", "catalogue", "pricelist", "rates"]],
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins", "tools"]],
@@ -30002,8 +30020,16 @@ function viewCatalogue() {
   }
   /* Which group a tab belongs to. Tabs that live in no group - Search, Sites, Customers and
      the rest reached from inside a screen - answer "", and the open group is left alone. */
-  function navGroupOf(tab) {
+  function navGroupOf(tab, prefer) {
     if (NAV_HUB_GROUP[tab]) return NAV_HUB_GROUP[tab];
+    /* v6.9.407 - a screen may belong to two groups (Quotes is the leads' work and the
+       clients' work both). The group he is ALREADY IN wins, so the row does not throw
+       itself somewhere else the moment he taps a chip inside it. */
+    if (prefer) {
+      for (var p = 0; p < NAV_GROUPS.length; p++) {
+        if (NAV_GROUPS[p][0] === prefer && NAV_GROUPS[p][1].indexOf(tab) >= 0) return prefer;
+      }
+    }
     for (var i = 0; i < NAV_GROUPS.length; i++) {
       if (NAV_GROUPS[i][1].indexOf(tab) >= 0) return NAV_GROUPS[i][0];
     }
@@ -30027,14 +30053,14 @@ function viewCatalogue() {
      configure, nothing that can disagree with the screen. A screen in no group - Search, the
      dossier, the matrix - leaves the band where it was, so it does not flicker on a jump. */
   function navOpenGrp() {
-    return navGroupOf(S.tab) || S.navGrp || "";
+    return navGroupOf(S.tab, S.navGrp) || S.navGrp || "";
   }
   /* Called once per paint. Returns the group it moved the band to, or "" if it left
      the band alone - the return value is what makes this testable. */
   function navFollowTab() {
     if (S._navSeenTab === S.tab) return "";
     S._navSeenTab = S.tab;
-    var g = navGroupOf(S.tab);
+    var g = navGroupOf(S.tab, S.navGrp);
     if (!g || S.navGrp === g) return "";
     navSetGrp(g);
     return g;
@@ -30060,10 +30086,11 @@ function viewCatalogue() {
   function navGo(tab) {
     if (NAV_HUB_HOME[tab]) tab = NAV_HUB_HOME[tab];
     S.tab = tab;
+    S.modal = null;       /* v6.9.408 - going somewhere closes the popup you went from */
     S.chOnly = "";        /* v6.9.388 - a filter must not outlive the visit that set it */
     tabUse(S.tab);
     try { navBump(S.tab); } catch (e) { }          /* the ruler - counted on his device only */
-    try { var _ng = navGroupOf(S.tab); if (_ng) navSetGrp(_ng); } catch (e) { }
+    try { var _ng = navGroupOf(S.tab, S.navGrp); if (_ng) navSetGrp(_ng); } catch (e) { }
     S.q = ""; S.clq = ""; S.cvq = ""; S.qq = ""; render();
   }
   function navBtn(k, label) {
@@ -30751,7 +30778,9 @@ function viewCatalogue() {
         toast("PIN updated.");
         S.tab = myTabs()[0];
         loadCatalog(); refresh();
-      });
+      /* v6.9.406 - renderPinChange was right here for saying what went wrong and was never
+         wired to a dead line. A man must never be left unsure whether his PIN changed. */
+      }, function (e) { renderPinChange("The server did not answer \u2014 " + apiWhy(e) + ". Your PIN has NOT been changed. Try again."); });
       return;
     }
     if (act === "tp-reset") {
@@ -31278,7 +31307,7 @@ function viewCatalogue() {
       api("teamDelete", { tab: "brands", id: id }).then(function (r) {
         if (r && r.ok) { toast("Brand \"" + bb.brand + "\" removed."); refresh(); }
         else { toast((r && r.error) || "Could not remove."); }
-      });
+      }, function (e) { toast("The server did not answer \u2014 " + apiWhy(e) + ". The brand is unchanged."); });
       return;
     }
 
@@ -32329,7 +32358,10 @@ function viewCatalogue() {
     if (act === "health-refresh") { toast("Re-scanning…"); refresh(); return; }
     if (act === "pend-backup") { exportPending(); return; }
     if (act === "disc-edit") { S.q = t.getAttribute("data-n"); render(); return; }
-    if (act === "disc-back") { S.q = ""; render(); return; }
+    /* ===== AND ITS TWIN, REMOVED THE SAME DAY =====
+       `if (act === "disc-back") { S.q = ""; render(); return; }` - the version before the one
+       1,400 lines above, which puts him back on the screen he came from AND re-opens the
+       challan he had half typed. Also unreachable, for the same reason. */
     /* v6.9.218 - set aside the duplicate quote rows. Admin only, and it uses the SAME cancel
        mechanism as a cancelled challan: an audit row per record, the row lifted out of the live
        list, and a "Bring it back" button waiting at the bottom of this very screen. */
@@ -33423,7 +33455,15 @@ function viewCatalogue() {
       return;
     }
     if (act === "s-go") { uniAsk(val("sq")); return; }   /* kept: an old button still works */
-    if (act === "bb-open") { S.brandClient = t.getAttribute("data-n"); S.tab = "brandboard"; render(); return; }
+    /* ===== A HANDLER THAT COULD NEVER RUN, REMOVED 4 Sep 2026 (v6.9.408) =====
+       `if (act === "bb-open") { S.brandClient = ...; S.tab = "brandboard"; render(); return; }`
+       stood here. There is another one 1,600 lines above it, and the first match wins - so
+       this had been dead since v6.9.289 replaced the jump-to-a-screen with modalBrandBulk(),
+       which opens the brand board as a popup and leaves the form underneath alone.
+
+       It cost an hour on 4 September: a fix was written into THIS block, the browser showed
+       no change, and the file gave no hint that the line was unreachable. t_dead_taps.js
+       section 4 now fails the whole rig if any act is handled twice, in any app. */
     if (act === "bb-back") { S.brandClient = ""; S.tab = "clients"; render(); return; }
     if (act === "p-loc") {
       var nl = t.getAttribute("data-l");
@@ -34079,7 +34119,7 @@ function viewCatalogue() {
       api("geoReset", { siteId: id }).then(function (r) {
         toast(r && r.ok ? "Location cleared. It can be set again on site." : ((r && r.error) || "Failed."));
         refresh();
-      });
+      }, function (e) { toast("The server did not answer \u2014 " + apiWhy(e) + ". The location is unchanged."); });
       return;
     }
 
