@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.408";
+  var APP_VERSION = "6.9.409";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7286,7 +7286,18 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
         (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
         (openQ ? ' <span class="pill soon">' + openQ + ' in play</span>' : "") +
-        (c.mobile ? ' <span style="color:#94a3b8;font-size:12px;white-space:nowrap">' + esc(c.mobile) + '</span>' : "") +
+        /* v6.9.409 - AND SAY WHEN THERE IS NO NUMBER. Two of the three gaps on this card
+           already shout - "Stage ?" above and "PL/AR - Enter Detail" on the right - and the
+           third, which is the one that stops every other thing working, was drawn as nothing
+           at all. 27 of 166 clients have no number (measured 4 Sep): one in six who cannot be
+           rung, cannot be chased for money and cannot be sent a statement. The lead card
+           above carries the same line, and a lead nobody can telephone is not a lead at all,
+           so both get it - one edit, two cards, the way the two cards were written. */
+        (c.mobile
+          ? ' <span style="color:#94a3b8;font-size:12px;white-space:nowrap">' + esc(c.mobile) + '</span>'
+          : ' <span class="pill" data-act="cl-open" data-id="' + esc(c.id) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer;font-weight:800" title="No phone number - ' +
+            esc((GAP_FIELDS.filter(function (f) { return f.k === "mobile"; })[0] || {}).why || "") +
+            '. Tap to type it.">Phone ?</span>') +
         '</div>' +
         '<div class="lc-right">' + partnerBadge(c, "plumber") + partnerBadge(c, "architect") +
         (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
@@ -7595,7 +7606,18 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
            the site, so without one he is on no selling screen whatsoever. Tap to add it. */
         (siteForClient(c.name) ? "" :
           ' <span class="pill" data-act="cl-addsite" data-n="' + esc(c.name) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer;font-weight:800" title="This client has no site, so the pitch board and the brand leads cannot see him at all - tap to add one">+ Add site</span>') +
-        (c.mobile ? ' <span style="color:#94a3b8;font-size:12px;white-space:nowrap">' + esc(c.mobile) + '</span>' : "") +
+        /* v6.9.409 - AND SAY WHEN THERE IS NO NUMBER. Two of the three gaps on this card
+           already shout - "Stage ?" above and "PL/AR - Enter Detail" on the right - and the
+           third, which is the one that stops every other thing working, was drawn as nothing
+           at all. 27 of 166 clients have no number (measured 4 Sep): one in six who cannot be
+           rung, cannot be chased for money and cannot be sent a statement. The lead card
+           above carries the same line, and a lead nobody can telephone is not a lead at all,
+           so both get it - one edit, two cards, the way the two cards were written. */
+        (c.mobile
+          ? ' <span style="color:#94a3b8;font-size:12px;white-space:nowrap">' + esc(c.mobile) + '</span>'
+          : ' <span class="pill" data-act="cl-open" data-id="' + esc(c.id) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer;font-weight:800" title="No phone number - ' +
+            esc((GAP_FIELDS.filter(function (f) { return f.k === "mobile"; })[0] || {}).why || "") +
+            '. Tap to type it.">Phone ?</span>') +
         /* The money sits right beside the phone number on purpose: the number you would call and the
            reason you would call him, read as one line. */
         (due > 0.5 ? ' ' + dueAmt(due) : "") +
