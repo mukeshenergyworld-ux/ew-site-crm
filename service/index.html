@@ -289,7 +289,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.12.0";
+  var APP_VERSION = "1.12.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -1452,6 +1452,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       step();
     }
 
+  /* v1.12.1 - what "Try now" means: forget the back-off and go this second. The ticker halves
+     its own rate after a failure (_flushSkip), which is right for a phone in a basement and
+     wrong when a man is standing there asking for it. */
+  function flushNow() { _flushFails = 0; _flushSkip = 0; flushSoon(); }
   function flushSoon() {
       if (!jrnCount()) { _flushFails = 0; _flushSkip = 0; return; }
       try { if (navigator && navigator.onLine === false) return; } catch (e) {}
@@ -3316,6 +3320,23 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     }
     if (act === "close")   { S.sheet = null; S.vis = null; S.q = ""; render(); return; }
     if (act === "refresh") { pull(true); return; }
+    /* ================= FIVE BUTTONS THAT DID NOTHING  (v1.12.1, 3 Sep 2026) =================
+       Found by scanning every data-act this app EMITS against the acts its router HANDLES.
+       These five were drawn and never received - each name appeared exactly once in the whole
+       file, on the button. The Challan app and the Payment app carry the same five buttons and
+       handle all of them; only this app was given the furniture without the wiring.
+
+       The worst of them is jrn-retry: the bar says a visit has not reached the office and
+       offers "Try now", and tapping it did nothing at all while the work sat on the phone. */
+    if (act === "ver-go")    { updateNow("ew-service-"); return; }
+    if (act === "ver-later") { S.newVer = ""; render(); return; }
+    if (act === "crash-retry") { location.replace(location.pathname + "?u=" + Date.now()); return; }
+    if (act === "crash-fresh") {
+      /* only THIS app's shell and worker. All seven apps share one origin, so a blanket wipe
+         here would take the other six down with it. */
+      updateNow("ew-service-"); return;
+    }
+    if (act === "jrn-retry") { flushNow(); toast("Trying now\u2026"); return; }
     if (act === "menu")    { S.sheet = sheetMenu(); render(); return; }
     if (act === "signout") { signOut(); return; }
 
