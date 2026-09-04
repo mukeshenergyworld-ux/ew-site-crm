@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.409";
+  var APP_VERSION = "6.9.415";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1885,6 +1885,40 @@ window.addEventListener("beforeunload", function (ev) {
     for (i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;
   }
+  /* ================= WHO A FOLLOW-UP IS ABOUT  (v6.9.411, 4 Sep 2026) =================
+     `customers` is an early-version register that `clients` replaced - v6.9.288 said so in
+     this file, forty lines above modalFollowup, and then left modalFollowup reading it. On his
+     book S.data.customers has ZERO rows and S.data.clients has 166, so the follow-up form's
+     Customer dropdown was EMPTY and fu-save refused with "Pick a customer". His follow-up
+     table holds one row, marked Done, due 23 July, and his first stated job is following
+     customers up. That is the whole reason.
+
+     One reader now, for every screen that asks who a follow-up is about: the client book,
+     scoped exactly as every other list is, PLUS anything still in the legacy register so no
+     row that used to resolve stops resolving. Nothing is deleted. */
+  function fuPeople() {
+    var out = [], seen = {};
+    var add = function (c) {
+      if (!c || !String(c.name || "").trim()) return;
+      var k = dkey(c.name); if (seen[k]) return;
+      seen[k] = 1; out.push(c);
+    };
+    (S.data.clients || []).forEach(function (c) {
+      if (!seesAllClients() && !isMineClient(c.name)) return;
+      add(c);
+    });
+    (S.data.customers || []).forEach(add);       /* the old register, still read */
+    return out.sort(alphaBy(function (c) { return String(c.name || ""); }));
+  }
+  /* By id first - it is the record's real identity, and old followups rows carry a customers
+     id - then by name, which is what every row written since carries. "" means nobody. */
+  function fuPerson(id, name) {
+    var i;
+    var all = (S.data.clients || []).concat(S.data.customers || []);
+    if (id) { for (i = 0; i < all.length; i++) if (all[i] && all[i].id === id) return all[i]; }
+    if (name) { var k = dkey(name); for (i = 0; i < all.length; i++) if (all[i] && dkey(all[i].name) === k) return all[i]; }
+    return null;
+  }
   function daysTo(d) {
     if (!d) return 9999;
     return Math.round((new Date(dstr(d) + "T00:00:00") - new Date(today() + "T00:00:00")) / 86400000);
@@ -1924,6 +1958,40 @@ window.addEventListener("beforeunload", function (ev) {
       return qSilentDays(q) >= RADAR_MIN && !quoteSnoozed(q);
     });
     return list.sort(function (a, b) { return qSilentDays(b) - qSilentDays(a); });
+  }
+  /* ================= THE QUOTATIONS NOBODY IS CHASING  (v6.9.410) =================
+     radarQuotes above reads ["Sent","Negotiating"] only. MEASURED on his book 4 Sep 2026:
+     70 quotations, of which 65 are Draft - so the radar, the red badge and The brief's
+     "going quiet" band were all computed over three of them.
+
+     A Draft is not proof nothing was sent: every quote goes to the Telegram group the moment
+     it is saved, and it may well have been forwarded on WhatsApp. It is proof that NOBODY HAS
+     SAID SO IN THE BOOK, which is the same thing as nobody chasing it.
+
+     A REVISION IS NOT AN UNSENT QUOTE. Revising writes a new row carrying parentId = the old
+     row's id and leaves the old row at Draft, so without this every revised quote would be
+     counted and chased twice. */
+  function qAgeDays(q) {
+    var d = q && q.createdAt;
+    return d ? -daysTo(d) : -1;                 /* -1 = no date on the row at all */
+  }
+  function unsentQuotes() {
+    var qs = (S.data.quotes || []);
+    var superseded = {};
+    qs.forEach(function (q) { if (q && q.parentId) superseded[String(q.parentId)] = 1; });
+    return qs.filter(function (q) {
+      if (!q || String(q.status || "Draft") !== "Draft") return false;
+      if (superseded[String(q.id)]) return false;
+      if (!seesAllClients() && !isMineClient(q.client)) return false;
+      return true;
+    }).sort(function (a, b) { return qAgeDays(b) - qAgeDays(a); });
+  }
+  function unsentStats() {
+    var u = unsentQuotes();
+    var val = u.reduce(function (a, q) { return a + (Number(q.net) || 0); }, 0);
+    var ages = u.map(qAgeDays).filter(function (d) { return d >= 0; });
+    return { n: u.length, val: val, oldest: ages.length ? Math.max.apply(null, ages) : 0,
+             nodate: u.length - ages.length, list: u };
   }
   function radarBadge() {
     var n = radarQuotes().length;
@@ -2761,15 +2829,57 @@ window.addEventListener("beforeunload", function (ev) {
     }).map(function (st) { return { st: st, days: siteActivityDays(st) }; })
       .sort(function (a, b) { return b.days - a.days; });
   }
-  function partnerLastContactDays(name) {
-    var nm = String(name).toLowerCase(), latest = "";
-    (S.data.challans || []).forEach(function (c) { if (String(c.associate || "").toLowerCase() === nm) { var d = String(c.createdAt || "").slice(0, 10); if (d > latest) latest = d; } });
-    (S.data.sitevisits || []).forEach(function (v) {
-      var st = (S.data.sites || []).filter(function (s) { return s.id === v.siteId; })[0];
-      if (st && [st.architect, st.plumber, st.builder].some(function (x) { return String(x || "").toLowerCase() === nm; })) { var d = dstr(v.date); if (d > latest) latest = d; }
+  /* ============ WHEN WE LAST TOUCHED THIS MAN  (v6.9.412, 4 Sep 2026) ============
+     MEASURED on his book: this read three tables and all three are empty. Of 151 challans,
+     TWO carry c.associate; sitevisits has 0 rows; commpay has 1. So for 329 of his 331
+     partners it answered null, null is filtered out, and coldPartners() - the whole "who has
+     gone quiet" list, and his fifth stated job - was an empty list computed from nothing.
+
+     The app knew where these men were the entire time: 63 partners are named on a live CLIENT
+     record (plumber / architect / builder / PMC) and 52 on a site, and 151 deliveries have
+     gone to those clients. A delivery to a site where this plumber works IS contact with that
+     plumber - it is the commonest contact this business has.
+
+     Built as ONE map in one pass. Per-partner it was 331 x 151 challans x a client lookup,
+     inside a sort. Cleared with every other derived cache in render(). */
+  var _pcCache = null;
+  function partnerContactMap() {
+    if (_pcCache) return _pcCache;
+    var m = {};
+    /* dkey, not toLowerCase - the app's own name key, which also COLLAPSES the spaces. The
+       reader this replaced matched on a bare toLowerCase with no trim at all, so a plumber
+       typed "Sonu  Kumar" on a client card was a different man from "Sonu Kumar" in the
+       partner list, for ever and silently. Both sides go through dkey now. */
+    var touch = function (n, d) {
+      if (!n || !d) return;
+      var k = dkey(n); if (!k) return;
+      if (!m[k] || d > m[k]) m[k] = d;
+    };
+    /* who is on each client, once */
+    var onClient = {};
+    (S.data.clients || []).forEach(function (c) {
+      var names = [c.plumber, c.architect, c.builder, c.pmc].filter(function (x) { return String(x || "").trim(); });
+      if (names.length) onClient[dkey(c.name)] = names;
     });
-    (S.data.commpay || []).forEach(function (p) { if (String(p.associate || "").toLowerCase() === nm) { var d = dstr(p.date); if (d > latest) latest = d; } });
-    return latest ? -daysTo(latest) : null;
+    (S.data.challans || []).forEach(function (c) {
+      var d = String(c.createdAt || "").slice(0, 10); if (!d) return;
+      touch(c.associate, d);
+      (onClient[dkey(c.customerName)] || []).forEach(function (n) { touch(n, d); });
+    });
+    var siteById = {};
+    (S.data.sites || []).forEach(function (s) { if (s && s.id) siteById[s.id] = s; });
+    (S.data.sitevisits || []).forEach(function (v) {
+      var st = siteById[v.siteId]; if (!st) return;
+      var d = dstr(v.date); if (!d) return;
+      [st.architect, st.plumber, st.builder].forEach(function (n) { touch(n, d); });
+    });
+    (S.data.commpay || []).forEach(function (p) { touch(p.associate, dstr(p.date)); });
+    _pcCache = m;
+    return m;
+  }
+  function partnerLastContactDays(name) {
+    var d = partnerContactMap()[dkey(name)];
+    return d ? -daysTo(d) : null;
   }
   function coldPartners() {
     return (S.data.associates || []).map(function (a) { return { a: a, days: partnerLastContactDays(a.name) }; })
@@ -7643,7 +7753,22 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '</div>' +
         '<div class="lc-right">' + partnerBadge(c, "plumber") + partnerBadge(c, "architect") +
         (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
+        /* v6.9.411 - a follow-up started from where the work is. One tap: his name is already
+           chosen, his stage is already known, and the date is already in the box. */
+        '<button class="btn sm ghost" data-act="fu-for" data-n="' + esc(c.name) + '" data-days="3">Follow up</button>' +
         '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>' +
+        /* v6.9.413 - TYPE IT HERE. Only while the Missing details filter is on, and only for a
+           record that has no number: 27 numbers should be 27 taps and 27 keyboards, not 27
+           client forms of thirty fields each. */
+        (S.clNoMob && !String(c.mobile || "").trim()
+          ? '<div style="flex:1 1 100%;display:flex;gap:6px;align-items:center;margin-top:7px;' +
+              'border-top:1px dashed #fecaca;padding-top:7px">' +
+            '<input class="clph" id="clph_' + esc(c.id) + '" inputmode="numeric" autocomplete="off" ' +
+              'placeholder="His mobile number" style="flex:1 1 auto;min-width:0;padding:7px 10px;' +
+              'border:1px solid #cbd5e1;border-radius:8px;font-size:14px"/>' +
+            '<button class="btn sm" data-act="cl-ph-save" data-id="' + esc(c.id) + '">Save</button>' +
+            '</div>'
+          : "") +
         brandBoard(c.name, true) + '</div>';
     }
 
@@ -7698,7 +7823,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        trying to share the area chips and the search box below - those belong to the card view. */
     ensureCompactCss();
     h += '<div class="row" style="margin-bottom:8px">' + cvSeg() + '<div class="grow"></div></div>';
-    if (cvMode() === "compact") {
+    /* v6.9.415 - NOT while he is working through the Missing details list. Compact is a tree
+       grouped by customer and the full card is behind a tap; "Phone ?" and the box to type the
+       number into are ON the full card, so in compact the worklist drew neither. Found by
+       driving it in a browser. cvMode() is not written to - leave the filter and he is back in
+       whichever view he chose. */
+    if (cvMode() === "compact" && !S.clNoMob) {
       var cvC = function () { var q = cvQ(); return cvHtml("clients", all.filter(function (c) { return cvMatch(c, q); })); };
       return h + cvSearchRow(all.length, all.length === 1 ? "client" : "clients", cvC) +
         tidyBanner() + '<div id="cv_list">' + cvC() + '</div>';
@@ -11516,6 +11646,21 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           '<button class="btn sm' + (_lr ? " ghost" : "") + '" data-act="quote-lost" data-id="' + esc(q.id) + '">' + (_lr ? "Change reason" : "Why lost?") + '</button>';
       })() : "") +
       '<button class="btn sm ghost" data-act="qz-revise" data-id="' + esc(q.id) + '">Revise</button></div>' +
+      /* v6.9.410 - the two taps, and ONLY while he is working through the never-sent list.
+         On the ordinary book they would be two more buttons on every card, which is the
+         opposite of what he asked for on 2 September. */
+      (S.qUnsent && String(q.status || "Draft") === "Draft"
+        ? '<div style="flex:1 1 100%;border-top:1px dashed #fecaca;margin-top:7px;padding-top:7px;' +
+            'display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
+          '<span class="meta" style="font-size:12px;flex:1 1 auto">' +
+            (qAgeDays(q) >= 0
+              ? 'Raised <b>' + qAgeDays(q) + ' days</b> ago and never marked sent.'
+              : '<b style="color:#b45309">This row has no date on it at all</b> &mdash; the number says ' +
+                esc(q.quoteNo || "") + ', the column is empty.') + '</span>' +
+          '<button class="btn sm" data-act="q-sent" data-id="' + esc(q.id) + '">Sent</button>' +
+          '<button class="btn sm ghost" data-act="q-notreq" data-id="' + esc(q.id) + '">Not required</button>' +
+          '</div>'
+        : "") +
       '</div></div>';
   }
 
@@ -11536,6 +11681,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      keyboard stay exactly where they were. */
   function quotesBodyHtml() {
     var list = quoteSearchList();
+    /* v6.9.410 - "Work through them" narrows the book to exactly the never-sent ones, oldest
+       first, and each row carries the two taps. The search box still works on top of it. */
+    if (S.qUnsent) {
+      var _keep = {}; list.forEach(function (x) { _keep[String(x.id)] = 1; });
+      list = unsentQuotes().filter(function (q) { return _keep[String(q.id)]; });
+    }
     var qq = String(S.qq || "").replace(/^\s+|\s+$/g, "");
     if (!list.length) {
       return '<div class="empty">Nothing in the quote book matches <b>' + esc(qq) + '</b>.' +
@@ -11548,7 +11699,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       h += '<div class="meta" style="margin:0 0 7px;font-size:12.5px">Showing <b>' + list.length +
         '</b> of ' + tot + ' quote' + (tot !== 1 ? "s" : "") + ' &middot; matching <b>' + esc(qq) + '</b></div>';
     }
-    if (cvMode() === "compact") return h + tidyBanner() + qvHtml(list, quoteCardHtml);
+    /* v6.9.410 - WORKING THROUGH THEM IS A LIST, NOT A TREE. Compact is what a man lands on
+       (v6.9.183) and it groups the book by customer, with every quote card behind a tap - and
+       the two taps that end a never-sent quotation live ON the card. Found by driving it in a
+       browser: the band opened a tree with nothing to press. */
+    if (cvMode() === "compact" && !S.qUnsent) return h + tidyBanner() + qvHtml(list, quoteCardHtml);
 
     /* Admin / accounts read the quote book grouped by the sales executive who owns the client, and
        within each exec by outcome (Won / Lost / In play). A sales exec (list already filtered to
@@ -11580,11 +11735,38 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return h;
   }
 
+  /* v6.9.410 - the band. Loud, because Rs 1.8 crore of priced work that nobody is chasing is
+     the loudest thing in this book, and until today no screen in the app mentioned it. */
+  function unsentBandHtml() {
+    var u = unsentStats();
+    if (!u.n) return "";
+    if (S.qUnsent) {
+      return '<div class="card" style="border-color:#fca5a5;background:#fff5f5">' +
+        '<h3 style="margin:0">Never marked sent <span class="pill due">' + u.n + '</span></h3>' +
+        '<div class="meta" style="margin-top:3px">' + money(u.val) + ' of priced work. ' +
+        'Two taps each: <b>Sent</b> puts it into the follow-up radar, <b>Not required</b> closes ' +
+        'it with a reason. Both are statuses you could always set - what was missing was being ' +
+        'told there were ' + u.n + '.</div>' +
+        '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="q-unsent-off">Show the whole book</button></div></div>';
+    }
+    return '<div class="card" style="border-color:#fca5a5;background:#fff5f5">' +
+      '<h3 style="margin:0">' + u.n + ' quotation' + (u.n === 1 ? '' : 's') +
+      ' never marked sent <span class="pill due">' + money(u.val) + '</span></h3>' +
+      '<div class="meta" style="margin-top:3px">Priced work, sitting at <b>Draft</b>' +
+      (u.oldest > 0 ? ' &mdash; the oldest is <b>' + u.oldest + ' days</b> old' : '') +
+      (u.nodate ? ' &middot; ' + u.nodate + ' with no date on the row at all' : '') + '.<br>' +
+      '<b>The follow-up radar cannot see a Draft.</b> The red badge, and the &ldquo;going quiet&rdquo; ' +
+      'band in The brief, only ever read quotations marked <b>Sent</b> or <b>Negotiating</b> ' +
+      '&mdash; so nobody is chasing these, and nobody can be asked to.</div>' +
+      '<div class="acts" style="margin-top:8px">' +
+      '<button class="btn sm" data-act="q-unsent">Work through them</button></div></div>';
+  }
   function viewQuotes() {
     if (S.qz) return viewQzWizard();
     ensureCompactCss(); ensureQuoteCss();
     ensurePickerCss();   /* exec band (.ch-exec) + sub-strip (.ch-client) styling */
     var h = '<div class="row">' + cvSeg() + '<div class="grow"></div><button class="btn" data-act="qz-new">+ New quote</button></div>';
+    h += unsentBandHtml();
     var all = quoteAllList();
     if (!all.length) { h += '<div class="empty">No quotes yet. Every quote is versioned - revising keeps the old one.</div>'; return h; }
 
@@ -15100,7 +15282,16 @@ function viewCatalogue() {
     var collRate = billed > 0.5 ? paid / billed : 1;
     var overduePct = due > 0.5 ? overdue / due : 0;
 
-    var newClients = (S.data.customers || []).filter(function (c) {
+    /* v6.9.411 - FROM THE CLIENT BOOK. This read S.data.customers, the register `clients`
+       replaced, which holds zero rows - so the Scorecard area "New clients", worth 10% of
+       every executive's score against a default target of 3 a month, scored 0 for everybody,
+       every month, for ever. A tenth of a man's rating, wrong, from an empty table.
+
+       READ IT KNOWING WHAT createdAt IS: the day the ROW was entered, not the day the man
+       became a customer. His book was entered in July (77) and August (79), so those two
+       months read high for everybody; September (2 so far) and everything after it are real.
+       The area's own words - "Clients added this month" - are exactly what it measures. */
+    var newClients = (S.data.clients || []).filter(function (c) {
       return String(c.createdAt || "").slice(0, 7) === month && String(c.ownedBy || c.createdBy || "").trim() === exec;
     }).length;
     var svc = (S.data.installs || []).filter(function (x) {
@@ -17396,6 +17587,35 @@ function viewCatalogue() {
         : ' <span style="color:#94a3b8">No plumber / architect / builder / PMC is linked to this client, so there is no incentive to set. Add one on the client’s record to set partner incentives here.</span>') +
       '<br><span style="color:#0f766e;font-weight:600">Fill in every brand you need, then tap <b>Save &amp; back</b> — nothing is saved until you do.</span>' +
       '</div>';
+    /* ============ ONE TAP FOR ALL OF THEM  (v6.9.414) ============
+       MEASURED: of 352 discount rows on his book, 155 carry a plumber rate and 72 an architect
+       rate; the SALES EXECUTIVE rate is on TWO. Not indifference - arithmetic. The tick and the
+       % are per client AND per brand, and his brand list is twenty-five long.
+
+       This fills the form. It writes nothing: the screen's save has been deliberately deferred
+       since it was built, and disc-saveall is still the only place an edit reaches the sheet,
+       still with the "effective from" question. He sees what it did before he saves it. */
+    (function () {
+      var _exOnN = brands.filter(function (b) { return execOnFor(cl, b); }).length;
+      var _exWho2 = execForClient(cl);
+      var _cardN = brands.filter(function (b) { return execSet(b); }).length;
+      h += '<div class="card" style="border-color:#ddd6fe;background:#faf5ff;padding:10px 12px">' +
+        '<h3 style="margin:0 0 3px;font-size:13px">Sales executive incentive' +
+          (_exWho2 ? ' &mdash; ' + esc(_exWho2) : ' <span style="color:#b45309">&mdash; no executive is assigned to this client</span>') +
+        '</h3>' +
+        '<div class="meta" style="margin-bottom:7px">Set on <b>' + _exOnN + '</b> of ' + brands.length +
+          ' brand' + (brands.length === 1 ? '' : 's') + ' for this client. ' +
+          (_cardN ? 'Leave the box empty to take the rate card\u2019s own figure for each brand (' + _cardN + ' brand' + (_cardN === 1 ? ' has' : 's have') + ' one).'
+                  : 'The rate card is empty, so type a % here.') +
+        '</div>' +
+        '<div class="acts" style="align-items:center;margin:0">' +
+        '<input id="exall" inputmode="decimal" placeholder="%" style="width:86px;padding:7px 10px"/>' +
+        '<button class="btn sm" data-act="ex-all-on">Set on every brand</button>' +
+        '<button class="btn sm ghost" data-act="ex-all-off">Clear every one</button>' +
+        '</div>' +
+        '<div class="meta" style="margin-top:6px;font-size:12px;color:#7c3aed">Nothing is saved until you tap <b>Save &amp; back</b> below \u2014 this only fills the boxes.</div>' +
+        '</div>';
+    })();
     brands.forEach(function (b) {
       var d = discRow(cl, b);
       var im = incMap(d);
@@ -18393,6 +18613,43 @@ function viewCatalogue() {
       '</div></div>';
   }
 
+  /* ============ THE DAY'S WORK, ON THE DOOR HE ACTUALLY WALKS THROUGH  (v6.9.412) ============
+     MEASURED on his own device since 27 August: 62 screen opens, HISAB 14 - more than twice
+     anything else - The brief 4, Incentives (where the partner list lives) 0.
+
+     Every one of these four is already computed, correctly, on a screen he does not open. So
+     they are offered here, only when they are not zero, each one tap from the screen that
+     holds it. Nothing is moved and nothing is duplicated: The brief, the radar and the
+     Incentives screen are all untouched. This is a doorway, not a second copy. */
+  function hisabDayBand() {
+    var rows = [];
+    try {
+      var rq = radarQuotes().length;
+      if (rq) rows.push({ tab: "followups", n: rq, txt: "quotation" + (rq === 1 ? "" : "s") + " to chase", why: "sent, and no word for " + RADAR_MIN + "+ days" });
+    } catch (e) { }
+    try {
+      var us = unsentStats();
+      if (us.n) rows.push({ tab: "quotes", n: us.n, txt: "never marked sent", why: money(us.val) + " of priced work the radar cannot see" });
+    } catch (e) { }
+    try {
+      var mineF = function (f) { return seesAllClients() || f.createdBy === S.user || isMineClient(f.customerName); };
+      var op = openFollowups().filter(mineF).filter(function (f) { return daysTo(f.dueDate) <= 0; });
+      if (op.length) rows.push({ tab: "dash", n: op.length, txt: "follow-up" + (op.length === 1 ? "" : "s") + " to make", why: "due today or overdue" });
+    } catch (e) { }
+    try {
+      var cp = coldPartners().length;
+      if (cp) rows.push({ tab: "partners", n: cp, txt: "partner" + (cp === 1 ? "" : "s") + " gone quiet", why: "no delivery, visit or payout for " + COLD_PARTNER + "+ days" });
+    } catch (e) { }
+    if (!rows.length) return "";
+    return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px">' +
+      '<h3 style="margin:0 0 5px;font-size:13px">Today, besides the money</h3>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
+      rows.map(function (r) {
+        return '<button class="btn sm ghost" data-act="tab" data-tab="' + esc(r.tab) + '" ' +
+          'style="background:#fff;border-color:#99f6e4" title="' + esc(r.why) + '">' +
+          '<b>' + r.n + '</b> ' + esc(r.txt) + '</button>';
+      }).join("") + '</div></div>';
+  }
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
     var cl = hisabResolve(S.q);
@@ -18402,7 +18659,7 @@ function viewCatalogue() {
       (S.q ? '<button class="btn sm ghost" data-act="bill-clear">\u2190 All clients</button>' : '') +
       '<input class="grow" id="q" placeholder="Type a client to bill (then Enter)..." list="billclients" value="' + esc(S.q) + '"/><button class="btn" data-act="bill-go">Show</button></div>' +
       '<datalist id="billclients">' + billNames.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
-      hisabNotStampedBand();
+      hisabDayBand() + hisabNotStampedBand();
     if (cl && !isMineClient(cl)) return h + '<div class="empty"><b>' + esc(cl) + '</b> is assigned to another sales executive, so their hisab is not open to you. You can view and follow up on the clients assigned to you.</div>';
     if (!S.q) {
       var outs = hisabOutstanding();
@@ -26967,7 +27224,10 @@ function viewCatalogue() {
     if (!todo.length) h += '<div class="empty">Nothing due. Add a follow-up so nobody slips.</div>';
     todo.sort(function (a, b) { return daysTo(a.dueDate) - daysTo(b.dueDate); });
     todo.forEach(function (f) {
-      var c = custById(f.customerId);
+      /* v6.9.411 - by id OR by name, across both registers. This was custById alone, which
+         answers null for every row on his book, so the card that exists to make him ring a man
+         showed neither the man's number nor his stage. */
+      var c = fuPerson(f.customerId, f.customerName);
       var d = daysTo(f.dueDate);
       h += '<div class="card">' +
         '<h3>' + esc(f.customerName || "(customer)") +
@@ -27927,7 +28187,12 @@ function viewCatalogue() {
       var dups = 0;
       try { dups = dupScan().groups.filter(function (g) { return !g.settled; }).length; } catch (e4) { }
       var toComm = 0; try { toComm = commPending().length; } catch (e5) { }
-      owner = { drafts: drafts, unbilled: unb, dups: dups, commission: toComm };
+      /* v6.9.410 - the priced work nobody is chasing. It cannot come from `quotes` above:
+         that is radarQuotes(), which reads Sent/Negotiating only and therefore could never
+         mention a Draft. Measured on his book the day this was written: 65, Rs 1,81,68,738. */
+      var unsentQ = { n: 0, val: 0 };
+      try { var _us = unsentStats(); unsentQ = { n: _us.n, val: _us.val, oldest: _us.oldest }; } catch (e6) { }
+      owner = { drafts: drafts, unbilled: unb, dups: dups, commission: toComm, unsent: unsentQ };
     }
 
     /* G. AMCs standing open - a warranty ending with nothing done, an offer nobody answered,
@@ -28284,6 +28549,13 @@ function viewCatalogue() {
         if (pl.owner.unbilled.count) { any++; ob += briefRow("Delivered but not billed", '<b style="color:#b91c1c">' + money(pl.owner.unbilled.val) + '</b>', pl.owner.unbilled.count + " challan(s) — goods gone, no bill raised."); }
         if (pl.owner.commission) { any++; ob += briefRow("Products waiting to be commissioned", '<b>' + pl.owner.commission + '</b>', "The warranty clock does not start until they are."); }
         if (pl.owner.dups) { any++; ob += briefRow("Duplicate customers to settle", '<b>' + pl.owner.dups + '</b>', "Money and history split across copies of the same man."); }
+        if (pl.owner.unsent && pl.owner.unsent.n) {
+          any++;
+          ob += briefRow("Quotations never marked sent", '<b style="color:#b91c1c">' + money(pl.owner.unsent.val) + '</b>',
+            pl.owner.unsent.n + " quotation(s) sitting at Draft" +
+            (pl.owner.unsent.oldest > 0 ? ", the oldest " + pl.owner.unsent.oldest + " days old" : "") +
+            " \u2014 the follow-up radar cannot see a Draft, so nobody is chasing them.");
+        }
         if (!any) ob = briefEmpty("Nothing is waiting on you. Everything is with the team.");
         h += briefCard("Only you can clear these", "Decisions no executive can take on your behalf.", null, ob, any ? "warn" : "good");
       }
@@ -28550,14 +28822,17 @@ function viewCatalogue() {
 
   function modalFollowup(f) {
     f = f || {};
-    var cs = S.data.customers.map(function (c) { return c.name; });
-    var pre = f.customerId ? (custById(f.customerId) || {}).name : "";
+    /* v6.9.411 - the CLIENT book, not the dead customers register. This dropdown was empty on
+       his device, which is why there is one follow-up in the whole book. */
+    var cs = fuPeople().map(function (c) { return c.name; });
+    var pre = String(f.customerName || "") ||
+              (f.customerId ? (fuPerson(f.customerId, "") || {}).name : "");
     return '<h2>New follow-up</h2><p class="sub">Nothing gets forgotten if it has a date.</p>' +
       '<label>Customer</label><select id="m_cust">' + opts(cs, pre) + '</select>' +
       /* You are about to ring him. Know what he is building before you do. */
       stageChips("m_stage", clientStage(pre), "Stage of his site") +
-      '<label>Follow up on</label><input id="m_due" type="date" value="' + esc(f.dueDate || today()) + '"/>' +
-      '<label>What to do / discuss</label><textarea id="m_note">' + esc(f.note) + '</textarea>' +
+      '<label>Follow up on</label><input id="m_due" type="date" value="' + esc(f.dueDate || addDays(today(), 3)) + '"/>' +
+      '<label>What to do / discuss</label><textarea id="m_note">' + esc(f.note || "") + '</textarea>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="fu-save" data-stagebtn="Save">' +
       (clientStage(pre) ? 'Save' : 'Save without stage') + '</button></div>';
@@ -30309,7 +30584,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null;
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pcCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
        yesterday's money, which is the worst thing this app can do. */
@@ -31573,6 +31848,38 @@ function viewCatalogue() {
       var ce = S.data.clients.filter(function (x) { return x.id === id; })[0];
       S.clEditing = ce || null;
       try { S.billDraft = JSON.parse((ce && ce.billingJson) || "[]"); } catch (e) { S.billDraft = []; } S.modal = modalClient(clientById(id)); render(); return; }
+    /* v6.9.413 - one field, on the row, with the two guards a phone number needs. */
+    if (act === "cl-ph-save") {
+      var _cp = (S.data.clients || []).filter(function (x) { return x.id === id; })[0];
+      if (!_cp) { toast("That client is no longer on the list. Refresh and try again."); return; }
+      var _pin = el("clph_" + id);
+      var _praw = _pin ? String(_pin.value || "").trim() : "";
+      if (!_praw) { toast("Type his number first."); return; }
+      var _pnum = dgMob(_praw);
+      if (!_pnum) { toast("\u201c" + _praw + "\u201d is not a ten-digit mobile number."); return; }
+      /* two clients on one number is the very fault the Duplicate check screen exists to find,
+         and this is the screen where it would be created. Say whose it is; refuse. */
+      var _pown = null;
+      (S.data.clients || []).forEach(function (x) {
+        if (x.id === _cp.id || _pown) return;
+        if (dgMob(x.mobile) === _pnum || dgMob(x.mobile2) === _pnum) _pown = x;
+      });
+      if (_pown) {
+        toast("That number is already on " + (_pown.name || "another client") +
+              "'s record. If they are the same man, merge them on Duplicate check.");
+        return;
+      }
+      /* the row that came down, with ONE field changed - the backend writes the whole row */
+      _cp.mobile = _pnum;
+      /* no cache is dropped here on purpose. A phone number moves no money, so _clDueCache is
+         not the cache of anything that changed; save("clients", ...) already drops _vmCache
+         (the service phone map, the one cache a number IS of), and the render() below repaints
+         through viewClients, which drops the client caches itself. */
+      save("clients", _cp).then(function (r) {
+        if (r) toast(_cp.name + " \u2014 " + _pnum + " saved.");
+      }, function (e) { toast("Not saved \u2014 " + apiWhy(e) + ". It will go up when the line is back."); });
+      render(); return;
+    }
     if (act === "cl-save") {
       var cn = val("c_name");
       if (!cn) { toast("Client name is required."); return; }
@@ -32469,6 +32776,31 @@ function viewCatalogue() {
       render();
       return;
     }
+    /* v6.9.414 - fills the boxes on the screen he is looking at. No save, by design: the one
+       place a discount edit reaches the sheet is disc-saveall, below. */
+    if (act === "ex-all-on" || act === "ex-all-off") {
+      var _exOn = (act === "ex-all-on");
+      var _exTyped = _exOn ? String((el("exall") && el("exall").value) || "").trim() : "";
+      var _exN = 0;
+      document.querySelectorAll(".exon").forEach(function (bx) {
+        var _bk = bx.getAttribute("data-key");
+        var _wrap = el("exw_" + _bk), _box = el("exi_" + _bk);
+        bx.checked = _exOn;
+        if (_wrap) _wrap.style.display = _exOn ? "flex" : "none";
+        if (!_box) return;
+        if (!_exOn) { _box.value = ""; _exN++; return; }
+        /* the typed % if he gave one; otherwise the rate card's own suggestion for THAT brand,
+           which is what the tick already offers one at a time (data-sug) */
+        var _v = _exTyped !== "" ? _exTyped : String(bx.getAttribute("data-sug") || "");
+        if (_v === "" || Number(_v) === 0) return;      /* no figure anywhere - leave it be */
+        _box.value = _v; _exN++;
+      });
+      toast(_exOn
+        ? (_exN ? _exN + " brand" + (_exN === 1 ? "" : "s") + " filled in. Read them, then Save & back."
+                : "No % typed and no rate card to take one from \u2014 nothing was filled in.")
+        : "Cleared on " + _exN + " brand" + (_exN === 1 ? "" : "s") + ". Save & back to write it.");
+      return;
+    }
     if (act === "disc-saveall") {
       if (!roleIs("admin")) { toast("Only admin can set discounts."); return; }
       if (!clientByName(S.q)) { toast("Discounts can only be set for an existing client."); return; }
@@ -32785,6 +33117,31 @@ function viewCatalogue() {
         })
       };
       S.modal = modalChallan(); render(); return;
+    }
+    /* ===== v6.9.410 - the two taps that end a never-sent quotation ===== */
+    if (act === "q-unsent") { S.qUnsent = true; S.qq = ""; render(); return; }
+    if (act === "q-unsent-off") { S.qUnsent = false; render(); return; }
+    if (act === "q-sent") {
+      var _qsn = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
+      if (!_qsn) { toast("That quotation is no longer on the list. Refresh and try again."); return; }
+      if (String(_qsn.status) === "Sent") { toast("Already marked sent."); return; }
+      _qsn.status = "Sent";
+      /* the SERVER stamps updatedAt (the client strips it before sending), so the silence
+         clock restarts here and the radar picks it up in RADAR_MIN days - "ask him on
+         Tuesday", not "this is already cold". */
+      save("quotes", _qsn).then(function (r) {
+        if (r) toast("Marked sent \u2014 it is in the follow-up radar now.");
+      }, function (e) { toast("Not saved \u2014 " + apiWhy(e) + ". It will go up when the line is back."); });
+      render(); return;
+    }
+    if (act === "q-notreq") {
+      var _qnr = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
+      if (!_qnr) { toast("That quotation is no longer on the list. Refresh and try again."); return; }
+      _qnr.status = "Lost";
+      save("quotes", _qnr).then(function (r) { if (r) toast("Closed."); },
+        function (e) { toast("Not saved \u2014 " + apiWhy(e) + "."); });
+      /* the SAME door a lost brand already uses - the reason is knowable for thirty seconds */
+      S.modal = modalQuoteLost(_qnr.id); render(); return;
     }
     if (act === "qz-revise") {
       var old = S.data.quotes.filter(function (q) { return q.id === id; })[0];
@@ -34190,9 +34547,22 @@ function viewCatalogue() {
     }
 
     if (act === "fu-new") { S.modal = modalFollowup(id ? { customerId: id } : null); render(); return; }
+    /* v6.9.411 - the same form, opened from a card with the answers already in it. Generic on
+       purpose (data-n, data-days, data-note) so any screen can offer a follow-up without a
+       second form being written for it. */
+    if (act === "fu-for") {
+      S.modal = modalFollowup({
+        customerName: t.getAttribute("data-n") || "",
+        dueDate: addDays(today(), Number(t.getAttribute("data-days")) || 3),
+        note: t.getAttribute("data-note") || ""
+      });
+      render(); return;
+    }
     if (act === "fu-save") {
       var cname = val("m_cust");
-      var c = S.data.customers.filter(function (x) { return x.name === cname; })[0];
+      /* v6.9.411 - resolved across the client book AND the legacy register, the same way the
+         form now offers them. It used to look only at S.data.customers, which is empty. */
+      var c = fuPerson("", cname);
       if (!c) { toast("Pick a customer."); return; }
       var fuStage = val("m_stage");
       if (fuStage) saveClientStage(cname, fuStage, { mobile: c.mobile });
