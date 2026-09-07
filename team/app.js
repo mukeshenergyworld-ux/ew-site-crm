@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.420";
+  var APP_VERSION = "6.9.421";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -12041,13 +12041,18 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
       h += bucketedBrandCard();
       h += emptyBrandCard();
-      brandList().forEach(function (b) {
-        var n = brandProducts(b).length;
+      /* v6.9.421 - ONE CARD PER BRAND WAS TWENTY-FIVE CARDS. A full-width card with a heading
+         and a Choose button, twenty-five times, is about 2,300px of scrolling to reach a brand
+         at the bottom of the alphabet; the same tiles the challan builder uses are about 450.
+         The client's preset discount still rides on the tile, because on this screen it is the
+         thing that decides which brand to open. */
+      ensurePickerCss();
+      h += '<div class="ew-pickgrid">' + brandList().map(function (b) {
         var d = clientDiscount(z.client, b);
-        h += '<div class="card"><h3>' + esc(b) + ' <span class="pill">' + n + ' products</span>' +
-          (d ? ' <span class="pill teal">' + d + '% preset</span>' : "") + '</h3>' +
-          '<div class="acts"><button class="btn sm" data-act="qz-brand" data-brand="' + esc(b) + '">Choose</button></div></div>';
-      });
+        return brandTile(b, "qz-brand",
+          '<span class="cnt">' + brandProducts(b).length + '</span>' +
+          (d ? '<span class="cnt" style="background:#b45309">' + esc(pctTxt(d)) + '</span>' : ''));
+      }).join("") + '</div>';
       return h;
     }
 
@@ -15835,11 +15840,15 @@ function viewCatalogue() {
   }
 
   function rtPicker() {
+    ensurePickerCss();
     var z = S.rt;
-    var h = '<div class="row" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
+    /* v6.9.421 - the same tiles as the challan builder, with the brand's mark and its product
+       count. It was plain chips with no count: a brand holding 178 products looked exactly like
+       one holding 1. */
+    var h = '<div class="ew-pickgrid" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
       return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
     }).slice().sort(alphaBy(function (br) { return br.brand; })).map(function (br) {
-      return '<button class="chip ' + (z.brand === br.brand ? "on" : "") + '" data-act="rt-brand" data-brand="' + esc(br.brand) + '">' + esc(br.brand) + '</button>';
+      return brandTile(br.brand, "rt-brand", null, z.brand === br.brand);
     }).join("") + '</div>';
     if (!PRODUCTS.length) return h + catWait();          /* v6.9.391 */
     if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
@@ -29122,6 +29131,42 @@ function viewCatalogue() {
   /* One-time injection of the picker styles. The site's base CSS lives in index.html; rather than
      ship a second file, the new brand/category picker brings its own styles the first time it draws
      so the whole change stays inside app.js. */
+  /* v6.9.421 - ONE MARK FOR A BRAND, DRAWN THE SAME WAY ON EVERY PICKER.
+     The logo if this device has it - 14 of his 25 brands, already cached in IndexedDB and until
+     now read by nothing but the PDF builders. Otherwise two letters on a colour worked out from
+     the name itself: no list to maintain, and the same brand is the same colour on every screen
+     and on every phone, for ever, because the name is the only input. */
+  function brandHue(b) {
+    var k = dkey(b), n = 7;
+    for (var i = 0; i < k.length; i++) n = (n * 31 + k.charCodeAt(i)) % 360;
+    return n;
+  }
+  function brandMark(b) {
+    var h = brandHue(b);
+    var ini = String(b || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
+    var disc = '<span class="bmk ini" style="background:hsl(' + h + ',62%,93%);color:hsl(' + h +
+      ',55%,30%);border-color:hsl(' + h + ',50%,80%)">' + esc(ini) + '</span>';
+    var lg = null; try { lg = logoFor(b); } catch (e) { lg = null; }
+    if (!(lg && lg.src)) return disc;
+    /* THE LETTERS ARE ALWAYS THERE, UNDERNEATH. A cached logo that will not decode would
+       otherwise leave an empty white square with nothing in it at all - which is worse than no
+       logo, because an empty box says the brand has no name. */
+    return '<span class="bmkwrap">' + disc +
+      '<img class="bmk over" src="' + esc(lg.src) + '" alt="" loading="lazy" ' +
+      'onerror="this.style.display=\'none\'"/></span>';
+  }
+  /* One brand tile: mark, name, and how many products are behind it. The count was on the
+     challan builder's tiles and on nothing else - a man on the return form could not tell a
+     brand with 178 products from one with 1. */
+  function brandTile(b, act, extra, on) {
+    /* `on` matters on the return and old-delivery forms, which show all three levels at once
+       and so must say which brand is open. The challan builder replaces the list with the next
+       step, so nothing there is ever "on". */
+    return '<button class="ew-pickbtn brand' + (on ? " on" : "") + '" data-act="' + esc(act) +
+      '" data-brand="' + esc(b) + '">' +
+      brandMark(b) + '<span>' + esc(b) + '</span>' +
+      (extra || '<span class="cnt">' + brandProducts(b).length + '</span>') + '</button>';
+  }
   function ensurePickerCss() {
     if (document.getElementById("ew_pick_css")) return;
     var s = document.createElement("style");
@@ -29132,7 +29177,22 @@ function viewCatalogue() {
       ".ew-pickgrid{display:flex;flex-wrap:wrap;gap:8px}" +
       ".ew-pickbtn{border:1.5px solid #cbd5e1;background:#fff;border-radius:11px;padding:11px 15px;font-size:14px;font-weight:600;cursor:pointer;color:#0f172a;display:inline-flex;align-items:center;gap:7px;line-height:1}" +
       ".ew-pickbtn.brand{border-color:#0d9488;color:#0f766e;background:#f0fdfa}" +
+      /* v6.9.421 - the brand's own logo, or two letters on a colour taken from its name */
+      ".bmkwrap{position:relative;display:inline-flex;flex:0 0 auto;line-height:0}" +
+      ".bmkwrap .bmk.over{position:absolute;left:0;top:0;width:100%;height:100%}" +
+      ".ew-pickbtn .bmk{width:26px;height:26px;flex:0 0 26px;border-radius:7px;object-fit:contain;" +
+        "background:#fff;border:1px solid #e2e8f0;padding:1px}" +
+      /* v6.9.421 - 12px, not 11. Two letters in a 26px disc is a mark and not prose, but the
+         rule "nothing readable below 12px" has no exceptions worth arguing over and they fit. */
+      ".ew-pickbtn .bmk.ini{display:inline-flex;align-items:center;justify-content:center;" +
+        "font-size:12px;font-weight:800;border-width:1.5px;border-style:solid;padding:0}" +
+      ".ew-crumb .bmk{width:22px;height:22px;flex:0 0 22px;border-radius:5px;object-fit:contain;" +
+        "background:#fff;border:1px solid #e2e8f0;padding:1px}" +
+      ".ew-crumb .bmk.ini{display:inline-flex;align-items:center;justify-content:center;" +
+        "font-size:12px;font-weight:800;border-width:1.5px;border-style:solid;padding:0}" +
       ".ew-pickbtn.brand:active,.ew-pickbtn.brand:hover{background:#ccfbf1}" +
+      ".ew-pickbtn.brand.on{background:#0f766e;color:#fff;border-color:#0f766e}" +
+      ".ew-pickbtn.brand.on .cnt{background:#fff;color:#0f766e}" +
       ".ew-pickbtn.cat{border-color:#a5b4fc;color:#3730a3;background:#eef2ff}" +
       ".ew-pickbtn.cat:active,.ew-pickbtn.cat:hover{background:#e0e7ff}" +
       ".ew-pickbtn .cnt{background:#0f766e;color:#fff;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:700}" +
@@ -29292,7 +29352,7 @@ function viewCatalogue() {
     if (!z.brand) {
       return qbox + '<div class="ew-picklabel"><span class="step">1</span>Tap a brand</div>' +
         '<div class="ew-pickgrid">' + brands.map(function (br) {
-          return '<button class="ew-pickbtn brand" data-act="ch-brand" data-brand="' + esc(br.brand) + '">' + esc(br.brand) + '</button>';
+          return brandTile(br.brand, "ch-brand");
         }).join("") + '</div>';
     }
 
@@ -29309,7 +29369,9 @@ function viewCatalogue() {
     var _keepMsg = "Goes back to the list of brands. Everything already picked stays on the challan.";
     var bar = qbox + '<div class="ew-pickbar">' +
       '<button class="ew-crumb" data-act="ch-brandclear" title="' + esc(_keepMsg) + '">' +
-      '<span class="tag">Brand</span> ' + esc(z.brand) + ' <span class="cx">&#10005;</span></button>' +
+      /* v6.9.421 - the mark stays with him through the category and quantity steps, so the
+         brand he is standing in is identifiable without reading it. */
+      brandMark(z.brand) + '<span class="tag">Brand</span> ' + esc(z.brand) + ' <span class="cx">&#10005;</span></button>' +
       (z.family ? '<button class="ew-crumb" data-act="ch-famclear" title="Goes back to this brand’s categories. Nothing picked is lost."><span class="tag">Category</span> ' + esc(z.family) + ' <span class="cx">&#10005;</span></button>' : '') +
       (_anyPicked
         ? '<button class="ew-crumb" data-act="ch-brandclear" title="' + esc(_keepMsg) + '" ' +
@@ -29370,16 +29432,19 @@ function viewCatalogue() {
   }
 
   function ocPicker() {
+    ensurePickerCss();
     var z = S.oc;
-    var h = '<div class="row" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
+    var h = '<div class="ew-pickgrid" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
       return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
     }).slice().sort(alphaBy(function (br) { return br.brand; })).map(function (br) {
-      return '<button class="chip ' + (z.brand === br.brand ? "on" : "") + '" data-act="oc-brand" data-brand="' + esc(br.brand) + '">' + esc(br.brand) + '</button>';
+      return brandTile(br.brand, "oc-brand", null, z.brand === br.brand);
     }).join("") + '</div>';
     if (!PRODUCTS.length) return h + catWait();          /* v6.9.391 */
     if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
+    /* v6.9.421 - and a count on the category, which this one alone did not have. */
     h += '<div class="chips">' + familyList(z.brand).map(function (f) {
-      return '<button class="chip ' + (famSame(z.family, f) ? "on" : "") + '" data-act="oc-fam" data-fam="' + esc(f) + '">' + esc(f) + '</button>';
+      var n = brandProducts(z.brand).filter(function (p) { return famSame(p.family, f); }).length;
+      return '<button class="chip ' + (famSame(z.family, f) ? "on" : "") + '" data-act="oc-fam" data-fam="' + esc(f) + '">' + esc(f) + ' <b>' + n + '</b></button>';
     }).join("") + '</div>';
     if (!z.family) return h + '<div class="empty">Pick a family above.</div>';
     h += '<div class="plist">';
