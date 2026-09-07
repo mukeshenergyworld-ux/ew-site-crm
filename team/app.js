@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.426";
+  var APP_VERSION = "6.9.434";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -341,6 +341,16 @@
      exists. (nAmt is declared later in the file; function declarations hoist.) */
   function money(n) { return "\u20B9" + Math.round(nAmt(n)).toLocaleString("en-IN"); }
   function moneyAscii(n) { return "Rs. " + Math.round(nAmt(n)).toLocaleString("en-IN"); }
+  /* v6.9.429 - THE SIGN GOES IN FRONT OF THE MONEY, NOT INSIDE IT.
+     hisabMiniPdf has done this since v6.9.403 - "a credit balance reads '- Rs.1,05,674' and
+     never 'Rs.-1,05,674' with the minus buried inside the number" - but the two tables on the
+     SCREEN were still calling money() straight, so the payment history printed a client who is
+     paid ahead as "\u20B9-1,55,674". A minus wedged between the rupee sign and the first digit is
+     the easiest thing on a statement to miss, and missing it turns credit into debt. */
+  function moneySgn(n) {
+    var v = nAmt(n);
+    return (v < -0.5 ? "\u2212 " : "") + "\u20B9" + Math.round(Math.abs(v)).toLocaleString("en-IN");
+  }
   /* v6.9.181: money we are OWED is labelled DUE AMT, in caps, right beside the figure and
      highlighted. A red number on its own was ambiguous - it could be a bill value, a lost
      quote or an actual outstanding. One helper so the label looks the same everywhere.
@@ -18664,7 +18674,7 @@ function viewCatalogue() {
         '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f766e") + '">' +
           (r.credit == null ? "" : money(r.credit)) + '</td>' +
         '<td style="' + num + '"><b style="color:' + (r.kind === "ret" ? "#b91c1c" : (r.bal < -0.5 ? "#0f766e" : "#0f172a")) + '">' +
-          money(Math.abs(r.bal) < 0.5 ? 0 : r.bal) + '</b></td></tr>';
+          moneySgn(Math.abs(r.bal) < 0.5 ? 0 : r.bal) + '</b></td></tr>';
     });
     return '<div class="card" style="border-color:#cbd5e1;padding:10px 12px">' +
       '<div class="acts" style="align-items:baseline;margin:0 0 2px;gap:8px;flex-wrap:wrap">' +
@@ -19245,12 +19255,12 @@ function viewCatalogue() {
       }
       var _oh = '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 4px">Client ledger &mdash; ' + esc(cl) + '</h3>' +
         '<div class="meta" style="font-size:13.5px">' +
-        (_l0.opening ? 'Opening balance: <b style="color:' + (_l0.opening < 0 ? '#0d9488' : '#dc2626') + '">' + money(_l0.opening) + (_l0.opening < 0 ? ' (advance / credit)' : '') + '</b> &middot; ' : '') +
+        (_l0.opening ? 'Opening balance: <b style="color:' + (_l0.opening < 0 ? '#0d9488' : '#dc2626') + '">' + money(Math.abs(_l0.opening)) + (_l0.opening < 0 ? ' (advance / credit)' : '') + '</b> &middot; ' : '') +
         'Received: <b>' + money(_l0.paid) + '</b> &middot; ' +
         (_l0.returned > 0 ? 'Returns (&minus;): <b style="color:#dc2626">' + money(_l0.returned) + '</b> &middot; ' : '') +
         (_l0.due > 0.5
           ? dueAmt(_l0.due, "lg")
-          : 'Balance: <b style="color:#0d9488">' + money(_l0.due) + (_l0.due < -0.5 ? ' (in credit)' : '') + '</b>') + '</div>' +
+          : 'Balance: <b style="color:#0d9488">' + money(Math.abs(_l0.due)) + (_l0.due < -0.5 ? ' (in credit)' : '') + '</b>') + '</div>' +
         /* v6.9.336 - and here too. A client whose only activity is a payment against an opening
            balance is EXACTLY the man who needs to see which payment landed. */
         openingNote(cl) +
@@ -21769,12 +21779,17 @@ function viewCatalogue() {
       (p.siteName ? ' &middot; ' + esc(p.siteName) : "") +
       (p.ref ? ' &middot; ref ' + esc(p.ref) : "") +
       (p.createdBy ? '<br>Entered by ' + esc(p.createdBy) : "") +
+      payFixNote(p) +                       /* v6.9.427 - and what was corrected on it, if anything */
       (dead ? '<br><b>Cancelled</b>' + (r.cx.reason ? ' \u2014 ' + esc(r.cx.reason) : "") +
         (r.cx.by ? ' by ' + esc(r.cx.by) : "") + (r.cx.note ? '<br>' + esc(r.cx.note) : "") : "") +
       '</div><div class="acts">';
     if (!dead) {
       h += '<button class="btn sm ghost" data-act="rc-pdf" data-p="' + esc(p.id) + '">Download</button>' +
         '<button class="btn sm" data-act="rc-wa" data-p="' + esc(p.id) + '">WhatsApp</button>' + waExecBtn("rc-wa", p.client, 'data-p="' + esc(p.id) + '"');
+      /* v6.9.427 - the owner can correct HOW it came in. Not the amount: that is a cancel. */
+      if (p.id && roleIs("admin")) {
+        h += '<button class="btn sm ghost" data-act="pay-fix" data-p="' + esc(p.id) + '">Correct mode / ref</button>';
+      }
       /* v6.9.371 - one button, so a receipt reads the same as a delivery */
       if (p.id) h += cxCardBtn("payments", p.id);
     } else if (roleIs("admin") && p.id) {
@@ -21785,22 +21800,90 @@ function viewCatalogue() {
 
   /* The whole book of receipts, every client, newest first. */
   function payHistHtml() {
-    var rows = payHistRows("");
+    /* v6.9.428 - HIS COLUMNS: "payment date, type, remarks, client name, amount, balnce amt",
+       one line each. Thirty-one payments were thirty-one tall cards of four lines and four
+       buttons, and a man looking for one receipt scrolled past all of them.
+
+       THE BUTTONS ARE NOT LOST: the row opens, the same way every row on the dossier has opened
+       since 6.9.419, and the card with Download / WhatsApp / Correct / Cancel is drawn under
+       the row he pressed. */
+    var pcl = String(S.payWho || "").trim();
+    var rows = payHistRows(pcl);
     var live = rows.filter(function (r) { return !(r.cx && r.cx.on); });
     var tot = live.reduce(function (a, r) { return a + (Number(r.p.amount) || 0); }, 0);
-    var h = '<div class="card"><h3>Payment history \u2014 every client</h3>' +
+    var names = {};
+    payHistRows("").forEach(function (r) { var n = String(r.p.client || "").trim(); if (n) names[n] = 1; });
+    var h = '<div class="card"><h3>Payment history \u2014 ' + (pcl ? esc(pcl) : 'every client') + '</h3>' +
       '<div class="meta">' + live.length + ' payment(s) totalling ' + money(tot) +
       (rows.length - live.length ? ' &middot; ' + (rows.length - live.length) + ' cancelled, shown struck through' : "") +
-      '<br>Newest first. The download opens straight in Excel.</div>' +
-      '<div class="acts"><button class="btn sm" data-act="pay-csv">Download all (CSV)</button>' +
+      '<br>Newest first. Tap a row to open its receipt \u2014 with the full remark, the amount and every button on it. ' +
+      '<span style="color:#94a3b8">Six columns do not fit a phone: slide the table sideways for the money, or tap the line.</span></div>' +
+      /* CLIENT WISE. payHistRows() has always taken a client; the screen simply never offered
+         one. The total, the table and the CSV all follow this box. */
+      '<div class="row" style="margin-top:8px">' +
+      '<input class="grow" id="paywho" list="paywholist" placeholder="One client only \u2014 type a name\u2026" value="' + esc(pcl) + '"/>' +
+      '<button class="btn sm" data-act="paywho-go">Show</button>' +
+      (pcl ? '<button class="btn sm ghost" data-act="paywho-clear">All clients</button>' : '') + '</div>' +
+      '<datalist id="paywholist">' + Object.keys(names).sort().map(function (n) {
+        return '<option value="' + esc(n) + '"></option>'; }).join("") + '</datalist>' +
+      '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="pay-csv"' +
+        (pcl ? ' data-n="' + esc(pcl) + '"' : '') + '>Download ' + (pcl ? 'his' : 'all') + ' (CSV)</button>' +
       '<button class="btn sm ghost" data-act="pay-hist">Hide history</button></div></div>';
-    if (!rows.length) return h + '<div class="empty">No payment has been recorded yet.</div>';
-    var shown = rows.slice(0, 300), lastD = "";
-    shown.forEach(function (r) {
-      var d = String(r.p.date || "");
-      if (d !== lastD) { lastD = d; h += '<div class="meta" style="margin:12px 0 4px;font-weight:700">' + esc(fullDate(d)) + '</div>'; }
-      h += payHistCard(r, true);
+    if (!rows.length) {
+      return h + '<div class="empty">' + (pcl ? 'No payment recorded for <b>' + esc(pcl) + '</b> yet.'
+        : 'No payment has been recorded yet.') + '</div>';
+    }
+    var shown = rows.slice(0, 300);
+    var TH = function (t, right) {
+      return '<th style="padding:5px 6px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' +
+        (right ? 'right' : 'left') + '">' + esc(t) + '</th>';
+    };
+    h += '<div class="card" style="padding:8px 10px"><div style="overflow-x:auto;-webkit-overflow-scrolling:touch">' +
+      '<table style="border-collapse:collapse;font-size:12.5px;min-width:100%">' +
+      '<tr style="background:#0b3b36">' + TH("PAYMENT DATE") + TH("TYPE") + TH("REMARKS") +
+        (pcl ? "" : TH("CLIENT NAME")) + TH("AMOUNT", 1) + TH("BALANCE NOW", 1) + '</tr>';
+    shown.forEach(function (r, i) {
+      var p = r.p, dead = !!(r.cx && r.cx.on);
+      /* BALANCE NOW, and the word is doing work: a running balance down a list of thirty-one
+         CLIENTS' payments would be arithmetic about nothing. This is clientLedger's own `due` -
+         the figure his hisab and his statement print - as it stands today. */
+      var due = 0; try { due = (clientLedger(p.client) || {}).due || 0; } catch (e) { due = 0; }
+      var cell = 'padding:4px 6px;white-space:nowrap;border-top:1px solid #e2e8f0' + (dead ? ';text-decoration:line-through' : '');
+      var num = cell + ';text-align:right;font-variant-numeric:tabular-nums';
+      h += '<tr class="payrow" data-act="pay-row" data-p="' + esc(p.id || "") + '" ' +
+        'style="cursor:pointer;background:' + (dead ? '#fef2f2' : (i % 2 ? '#f8fafc' : '#fff')) + '">' +
+        '<td style="' + cell + ';color:' + (dead ? '#b91c1c' : '#64748b') + ';font-size:12px">' +
+          esc(String(d10(p.date)).replace(/^(\d{2}\/\d{2}\/)\d{2}(\d{2})$/, "$1$2")) + '</td>' +
+        '<td style="' + cell + ';font-size:12px"><span class="pill" title="' + esc(p.mode || "") + '">' +
+          esc(payModeShort(p.mode)) + '</span>' +
+          (dead ? ' <span class="pill due">Cancelled</span>' : '') + '</td>' +
+        /* v6.9.430 - ONE LINE MEANS ONE LINE. A remark like "chq 445120 PNB, cleared" wrapped to
+           four lines on a 390px phone and a three-receipt book became 240px tall - which is the
+           very thing the table replaced. It is clipped here and printed in full in the card the
+           row opens, and the title carries it for a mouse. */
+        '<td style="' + cell + ';color:#475569"' +
+          (p.ref || p.notes ? ' title="' + esc(p.ref || p.notes) + '"' : '') + '>' +
+          /* max-width on a <td> is advice the table layout is free to ignore, and it did -
+             the remarks column took its natural width and the table went from 651 to 790px.
+             The clip has to be on a block INSIDE the cell. */
+          '<div style="max-width:min(220px,38vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+          esc(p.ref || p.notes || "") + '</div></td>' +
+        (pcl ? "" : '<td style="' + cell + ';font-weight:700">' + esc(p.client || "") + '</td>') +
+        '<td style="' + num + ';font-weight:700;color:' + (dead ? '#b91c1c' : '#0f766e') + '">' + money(p.amount) + '</td>' +
+        '<td style="' + num + ';color:' + (due > 0.5 ? '#b91c1c' : '#0f766e') + '"' +
+        (due < -0.5 ? ' title="In credit \u2014 he has paid ahead"' : '') + '>' +
+          (Math.abs(due) < 0.5 ? 'nil' : moneySgn(due)) + '</td></tr>';
+      if (S.payOpen === p.id) {
+        h += '<tr><td colspan="' + (pcl ? 5 : 6) + '" style="padding:0 0 8px;background:#f8fafc">' + payHistCard(r, false) + '</td></tr>';
+      }
     });
+    h += '</table></div>' +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:6px">' +
+      '<b>Balance now</b> is what that client owes today \u2014 the same figure his hisab shows. ' +
+      'It is not a running total down this list, because these are different clients. ' +
+      'A figure with a <b>\u2212</b> in front is money we are holding for him: he has paid ahead.' +
+      (pcl ? ' The client column is not printed here because every line on it is <b>' + esc(pcl) + '</b>.' : '') +
+      '</div></div>';
     if (rows.length > shown.length) {
       h += '<div class="empty">Showing the latest ' + shown.length + ' of ' + rows.length +
         '. The CSV download has every one of them.</div>';
@@ -21824,6 +21907,225 @@ function viewCatalogue() {
     return list;
   }
 
+  /* ============ COLLECTION RADAR AS A SHEET  (v6.9.433, 7 Sep 2026) ============
+     HIS WORDS: "collection radar also zig zag, must be managed professionally in excel like
+     sheet ... with more tools".
+
+     It was thirty-seven rows of <b>name</b> + pill + three buttons, all inline - so every row
+     started its buttons at a different x and the eye had no column to run down. Worse, a list
+     of people who owe money is not a list: it is a receivables report, and a receivables report
+     has ageing, an owner, a last-payment date and a total.
+
+     ONE BUILDER, THREE READERS: rdrRows() decides what is on the list and in what order, and
+     the screen, the Excel file and the CSV all read it. They can never disagree.
+
+     THE AGEING IS NOT RECOMPUTED HERE. clientAging() already buckets a client's unpaid money
+     0-30 / 31-60 / 61-90 / 90+, applies his own credit days, and settles credits against the
+     oldest bills first. This screen only reads it. */
+  var RDR_HEAD = ["Client", "Due amt", "Oldest", "0-30 days", "31-60", "61-90", "90+ days",
+                  "Last payment", "Days since", "Owner", "Mobile"];
+  var RDR_BANDS = [["all", "All"], ["d90", "90+ days"], ["d60", "61-90"], ["d30", "31-60"], ["cur", "0-30"]];
+  var RDR_SORTS = [["old", "Oldest money first"], ["due", "Most owed"], ["quiet", "Longest since a payment"], ["name", "Client A-Z"]];
+
+  /* the most recent payment on the account - the single most useful fact when chasing */
+  function rdrLastPay(l) {
+    var best = null;
+    ((l && l.pays) || []).forEach(function (p) {
+      var d = String(p.date || p.createdAt || "").slice(0, 10);
+      if (!d) return;
+      if (!best || d > best.date) best = { date: d, amt: payAmt(p) };
+    });
+    return best;
+  }
+
+  function rdrRows() {
+    var out = payLedgerList().filter(function (x) { return x.l.due > 0 && x.age >= PAY_MIN; })
+      .map(function (x) {
+        var ag = clientAging(x.name), lp = rdrLastPay(x.l), ex = waExecOf(x.name);
+        var cl = clientByName(x.name) || {};
+        return { name: x.name, due: x.l.due, age: x.age, ag: ag, oldest: ag.oldest || 0, lp: lp,
+                 since: lp ? -daysTo(lp.date) : null,
+                 owner: (ex && ex.name) || String(cl.ownedBy || ""), mobile: String(cl.mobile || "") };
+      });
+    var band = String(S.rdBand || "all");
+    if (band !== "all") {
+      out = out.filter(function (r) {
+        return band === "d90" ? r.oldest > 90 : band === "d60" ? (r.oldest > 60 && r.oldest <= 90)
+             : band === "d30" ? (r.oldest > 30 && r.oldest <= 60) : r.oldest <= 30;
+      });
+    }
+    var own = String(S.rdOwner || "");
+    if (own) out = out.filter(function (r) { return dgKey(r.owner) === dgKey(own); });
+    var q = String(S.rdQ || "").trim().toLowerCase();
+    if (q) out = out.filter(function (r) {
+      var c = clientByName(r.name);
+      return c ? cvMatch(c, q) : String(r.name).toLowerCase().indexOf(q) > -1;
+    });
+    var so = String(S.rdSort || "old");
+    out.sort(function (a, b) {
+      if (so === "due") return b.due - a.due;
+      if (so === "name") return String(a.name).localeCompare(String(b.name));
+      if (so === "quiet") return (b.since == null ? 1e9 : b.since) - (a.since == null ? 1e9 : a.since);
+      return (b.oldest - a.oldest) || (b.due - a.due);
+    });
+    return out;
+  }
+
+  /* every executive who owns somebody on the chase list, so the filter offers only real names */
+  function rdrOwners() {
+    var seen = {}, out = [];
+    payLedgerList().filter(function (x) { return x.l.due > 0 && x.age >= PAY_MIN; }).forEach(function (x) {
+      var ex = waExecOf(x.name), cl = clientByName(x.name) || {};
+      var n = (ex && ex.name) || String(cl.ownedBy || ""); if (!n || seen[dgKey(n)]) return;
+      seen[dgKey(n)] = 1; out.push(n);
+    });
+    return out.sort();
+  }
+
+  function rdrTotals(rows) {
+    var t = { due: 0, cur: 0, d30: 0, d60: 0, d90: 0 };
+    rows.forEach(function (r) {
+      t.due += r.due; t.cur += r.ag.b.cur; t.d30 += r.ag.b.d30; t.d60 += r.ag.b.d60; t.d90 += r.ag.b.d90;
+    });
+    return t;
+  }
+
+  function rdrSheet(r) {
+    return [r.name, Math.round(r.due), r.oldest, Math.round(r.ag.b.cur), Math.round(r.ag.b.d30),
+            Math.round(r.ag.b.d60), Math.round(r.ag.b.d90),
+            r.lp ? fullDate(r.lp.date) : "never", r.since == null ? "" : r.since,
+            r.owner || "", r.mobile || ""];
+  }
+
+  function rdrXlsx() {
+    var rows = rdrRows();
+    if (!rows.length) { toast("Nothing to chase on this filter."); return; }
+    var t = rdrTotals(rows);
+    var out = [RDR_HEAD.map(function (x) { return { v: x, s: XL.HEAD }; })];
+    rows.forEach(function (r) {
+      var c = rdrSheet(r);
+      out.push([c[0], { v: c[1], s: XL.BOLD }, c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9], c[10]]);
+    });
+    out.push([]);
+    out.push([{ v: "TOTAL · " + rows.length + " client(s)", s: XL.BAND }, { v: Math.round(t.due), s: XL.BAND },
+              { v: "", s: XL.BAND }, { v: Math.round(t.cur), s: XL.BAND }, { v: Math.round(t.d30), s: XL.BAND },
+              { v: Math.round(t.d60), s: XL.BAND }, { v: Math.round(t.d90), s: XL.BAND },
+              { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }]);
+    out.push([]);
+    out.push(["Energy World · collection radar · built " + fullDate(today()) +
+              " · ageing is on unpaid deliveries, credits settled against the oldest bill first."]);
+    dlXlsx("Collection_radar_" + today() + ".xlsx", "Collection radar", out,
+           [26, 13, 9, 12, 12, 12, 12, 14, 11, 16, 14]);
+  }
+
+  function rdrCsv() {
+    var rows = rdrRows();
+    if (!rows.length) { toast("Nothing to chase on this filter."); return; }
+    var out = [RDR_HEAD];
+    rows.forEach(function (r) { out.push(rdrSheet(r)); });
+    dlCsv("Collection_radar_" + today() + ".csv", out);
+  }
+
+  /* ---- and on the screen ---- */
+  function rdrHtml() {
+    var rows = rdrRows();
+    var t = rdrTotals(rows), owners = rdrOwners();
+    var chip = function (act, extra, on, label) {
+      return '<button class="chip' + (on ? " on" : "") + '" data-act="' + act + '" ' + extra + '>' + label + '</button>';
+    };
+    var h = '<div class="card" style="border-color:#fca5a5;background:#fff"><h3 style="margin:0 0 2px">Collection radar ' +
+      '<span class="pill due">' + rows.length + ' to chase</span> ' +
+      '<span class="pill" style="background:#fee2e2;color:#b91c1c">' + money(t.due) + '</span></h3>' +
+      '<div class="meta">Billed a while ago, still unpaid — one line each, oldest money first. ' +
+      'Remind sends a polite WhatsApp with the ledger attached. ' +
+      '<span style="color:#94a3b8">Ageing counts from each delivery, and a payment settles the oldest bill first.</span></div>';
+
+    /* ---- the tools ---- */
+    h += '<div class="chips" style="margin:8px 0 2px">' +
+      '<span class="meta" style="align-self:center;font-size:12px;font-weight:700;color:#64748b">SORT</span>' +
+      RDR_SORTS.map(function (x) {
+        return chip("rdr-sort", 'data-v="' + x[0] + '"', String(S.rdSort || "old") === x[0], esc(x[1]));
+      }).join("") + '</div>' +
+      '<div class="chips" style="margin:0 0 2px">' +
+      '<span class="meta" style="align-self:center;font-size:12px;font-weight:700;color:#64748b">OLDEST</span>' +
+      RDR_BANDS.map(function (x) {
+        return chip("rdr-band", 'data-v="' + x[0] + '"', String(S.rdBand || "all") === x[0], esc(x[1]));
+      }).join("") + '</div>' +
+      (owners.length > 1 ? '<div class="chips" style="margin:0 0 2px">' +
+        '<span class="meta" style="align-self:center;font-size:12px;font-weight:700;color:#64748b">OWNER</span>' +
+        chip("rdr-owner", 'data-v=""', !S.rdOwner, "Everyone") +
+        owners.map(function (n) {
+          return chip("rdr-owner", 'data-v="' + esc(n) + '"', dgKey(S.rdOwner || "") === dgKey(n), esc(n));
+        }).join("") + '</div>' : "") +
+      '<div class="row" style="margin:4px 0 8px">' +
+      '<input class="grow" id="rdr_q" placeholder="Find on this list — name, phone, area, plumber…" value="' + esc(S.rdQ || "") + '"/>' +
+      '<button class="btn sm" data-act="rdr-find">Find</button>' +
+      (S.rdQ ? '<button class="btn sm ghost" data-act="rdr-qclear">Clear</button>' : '') + '</div>' +
+      '<div class="acts" style="margin:0 0 8px;gap:6px;flex-wrap:wrap">' +
+      '<button class="btn sm ghost" data-act="rdr-age">' + (S.rdAge ? '▾ Hide ageing' : '▸ Show ageing (0-30 / 31-60 / 61-90 / 90+)') + '</button>' +
+      '<button class="btn sm ghost" data-act="rdr-xlsx">&#8681; Excel</button>' +
+      '<button class="btn sm ghost" data-act="rdr-csv">&#8681; CSV</button>' +
+      '<button class="btn sm ghost" data-act="rdr-fold">' + (S.rdShut ? '▸ Show the list' : '▾ Hide the list') + '</button></div>';
+
+    if (S.rdShut) return h + '</div>';
+    if (!rows.length) {
+      return h + '<div class="empty" style="margin:0">Nothing on this filter. ' +
+        (S.rdBand !== "all" || S.rdOwner || S.rdQ ? 'Widen it above.' : 'Every account is inside its credit window.') + '</div></div>';
+    }
+
+    var TH = function (x, right) {
+      return '<th style="padding:5px 6px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' +
+        (right ? 'right' : 'left') + '">' + esc(x) + '</th>';
+    };
+    h += '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">' +
+      '<table style="border-collapse:collapse;font-size:12.5px;min-width:100%">' +
+      '<tr style="background:#7f1d1d">' + TH("CLIENT") + TH("DUE AMT", 1) + TH("OLDEST", 1) +
+      (S.rdAge ? TH("0-30", 1) + TH("31-60", 1) + TH("61-90", 1) + TH("90+", 1) : "") +
+      TH("LAST PAYMENT") + TH("OWNER") + TH("CHASE IT") + '</tr>';
+    var cell = 'padding:5px 6px;white-space:nowrap;border-top:1px solid #fecaca';
+    var num = cell + ';text-align:right;font-variant-numeric:tabular-nums';
+    rows.forEach(function (r, i) {
+      var d = r.oldest, tone = d > 90 ? "#b91c1c" : d > 60 ? "#c2410c" : d > CREDIT_DAYS ? "#92400e" : "#166534";
+      h += '<tr style="background:' + (i % 2 ? '#fff7f7' : '#fff') + '">' +
+        '<td style="' + cell + ';font-weight:700;max-width:210px;overflow:hidden;text-overflow:ellipsis" title="' + esc(r.name) + '">' +
+          esc(r.name) + '</td>' +
+        '<td style="' + num + ';font-weight:800;color:#b91c1c">' + money(r.due) + '</td>' +
+        '<td style="' + num + ';color:' + tone + ';font-weight:700">' + (d ? d + 'd' : '—') + '</td>' +
+        (S.rdAge ? '<td style="' + num + ';color:#166534">' + (r.ag.b.cur > 0.5 ? money(r.ag.b.cur) : '') + '</td>' +
+                   '<td style="' + num + ';color:#92400e">' + (r.ag.b.d30 > 0.5 ? money(r.ag.b.d30) : '') + '</td>' +
+                   '<td style="' + num + ';color:#c2410c">' + (r.ag.b.d60 > 0.5 ? money(r.ag.b.d60) : '') + '</td>' +
+                   '<td style="' + num + ';color:#b91c1c;font-weight:700">' + (r.ag.b.d90 > 0.5 ? money(r.ag.b.d90) : '') + '</td>' : "") +
+        '<td style="' + cell + ';color:#475569;font-size:12px">' +
+          (r.lp ? esc(fullDate(r.lp.date)) + ' · ' + money(r.lp.amt) +
+                  ' <span style="color:#94a3b8">(' + r.since + 'd)</span>'
+                : '<span style="color:#b45309;font-weight:600">never paid</span>') + '</td>' +
+        '<td style="' + cell + ';color:#475569;font-size:12px">' + esc(r.owner || '—') + '</td>' +
+        '<td style="' + cell + '">' +
+          '<button class="btn sm" data-act="pay-wa" data-n="' + esc(r.name) + '">Remind</button> ' +
+          waExecBtn("pay-wa", r.name, 'data-n="' + esc(r.name) + '"') + ' ' +
+          /* v6.9.433 - no Ledger button here on purpose: Remind already sends the ledger PDF
+             with the message, and this column was 344px of a 1038px card. The ledger, the
+             receipts and everything else are on the client's own card further down. */
+          '<button class="btn sm ghost" data-act="pay-in" data-n="' + esc(r.name) + '">\u20B9 In</button>' +
+        '</td></tr>';
+    });
+    /* the total line, where a sheet keeps it */
+    h += '<tr style="background:#7f1d1d;color:#fff">' +
+      '<td style="' + cell + ';font-weight:800;color:#fff">TOTAL · ' + rows.length + ' client(s)</td>' +
+      '<td style="' + num + ';font-weight:800;color:#fff">' + money(t.due) + '</td>' +
+      '<td style="' + num + '"></td>' +
+      (S.rdAge ? '<td style="' + num + ';color:#fff">' + money(t.cur) + '</td>' +
+                 '<td style="' + num + ';color:#fff">' + money(t.d30) + '</td>' +
+                 '<td style="' + num + ';color:#fff">' + money(t.d60) + '</td>' +
+                 '<td style="' + num + ';color:#fff;font-weight:800">' + money(t.d90) + '</td>' : "") +
+      '<td style="' + cell + '"></td><td style="' + cell + '"></td><td style="' + cell + '"></td></tr>';
+    h += '</table></div>' +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:6px">' +
+      'A sheet this wide does not fit a phone — slide the table sideways, or send yourself the Excel. ' +
+      'The file always carries every column and every row on this filter, whatever the screen is showing.</div>';
+    return h + '</div>';
+  }
+
   function viewPayments() {
     var list = payLedgerList();
     /* v6.9.399 - TWO SUMS, NOT ONE. This netted every client's balance into a single figure,
@@ -21839,22 +22141,8 @@ function viewCatalogue() {
       '<div class="stat"><div class="n">' + list.length + '</div><div class="l">Client ledgers</div></div>' +
       '</div>';
 
-    /* Collection radar: overdue clients bubble to the top, oldest first. */
-    var overdue = list.filter(function (x) { return x.l.due > 0 && x.age >= PAY_MIN; })
-      .sort(function (a, b) { return b.age - a.age; });
-    if (overdue.length) {
-      h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><h3>Collection radar ' +
-        '<span class="pill due">' + overdue.length + ' to chase</span></h3>' +
-        '<div class="meta">Billed a while ago, still unpaid. One tap sends a polite WhatsApp reminder with the ledger attached.</div>';
-      overdue.forEach(function (x) {
-        var bk = payBucket(x.age);
-        h += '<div class="acts" style="align-items:center;margin-top:8px"><b>' + esc(x.name) + '</b>' +
-          '<span class="pill ' + bk.cls + '">' + money(x.l.due) + ' &middot; ' + x.age + 'd</span>' +
-          '<button class="btn sm" data-act="pay-wa" data-n="' + esc(x.name) + '">Remind</button>' + waExecBtn("pay-wa", x.name, 'data-n="' + esc(x.name) + '"') +
-          '<button class="btn sm ghost" data-act="pay-in" data-n="' + esc(x.name) + '">Payment received</button></div>';
-      });
-      h += '</div>';
-    }
+    /* v6.9.433 - the radar is a sheet now; rdrHtml() draws it, filters it and downloads it. */
+    if (list.filter(function (x) { return x.l.due > 0 && x.age >= PAY_MIN; }).length) h += rdrHtml();
 
     h += '<div class="acts" style="margin-bottom:10px">' +
       '<button class="btn sm ' + (S.payHist ? '' : 'ghost') + '" data-act="pay-hist">' +
@@ -22078,7 +22366,7 @@ function viewCatalogue() {
       '<input id="pi_amt" inputmode="numeric" value="' +
         (_pk === "in" ? Math.round(l.due > 0 ? l.due : 0) : (K.sign < 0 && l.due < -0.5 ? Math.round(-l.due) : "")) + '"/>' +
       '<div class="grid2"><div><label>Date</label><input id="pi_date" type="date" max="' + today() + '" value="' + today() + '"/></div>' +
-      '<div><label>Mode</label><select id="pi_mode">' + opts(["Cash", "Bank transfer", "Cheque", "UPI"], "Bank transfer") + '</select></div></div>';
+      '<div><label>Mode</label><select id="pi_mode">' + opts(PAY_MODES, "Bank transfer") + '</select></div></div>';
     /* Only asked when there is a real choice to make - one site needs no question. */
     if (sites.length > 1) {
       h += '<label>Against which site</label><select id="pi_site"><option value="">Not tied to one site</option>' +
@@ -22123,6 +22411,85 @@ function viewCatalogue() {
   /* Derived from the payment's own id, so every payment ever recorded - including the ones saved
      long before this screen existed - already has a receipt number, with no migration and no
      second sequence to keep in step with the server. */
+  /* v6.9.427 - ONE LIST OF MODES, so the form that RECORDS a payment and the form that
+     CORRECTS one can never offer different words for the same thing. */
+  /* v6.9.431 - the column only has room for a word. "Bank transfer" as a pill was 96px of a
+     390px phone; the card the row opens still prints the mode in full. */
+  function payModeShort(m) {
+    var t = String(m || "").trim();
+    return /^bank/i.test(t) ? "Bank" : /^cheque|^check/i.test(t) ? "Cheque" : t;
+  }
+  var PAY_MODES = ["Cash", "Bank transfer", "Cheque", "UPI"];
+
+  /* ================= CORRECTING A LABEL, NOT A FIGURE (v6.9.427) =================
+     HIS QUESTION: "if payment received via bank and its wrongly entered as cash, how to change
+     it, or how to change amount, this is by admin only".
+
+     The AMOUNT is cancel-and-re-enter, and stays so: a receipt with a number on it has gone to
+     the customer. Cash to Bank moves no money at all - it is a label on the same rupees - and
+     making him cancel for that burns a receipt number he may be holding and puts a CANCELLED
+     row on an account where nothing went wrong.
+
+     Every correction is an audit row. Nothing overwrites silently: what it was, what it became,
+     who and when, kept for ever and printed on the card. */
+  var _pfxCache = null;
+  function payFixMap() {
+    if (_pfxCache) return _pfxCache;
+    var m = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "payment:mode") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.pid) return;
+      var prev = m[d.pid];
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[d.pid] = { at: r.createdAt || "", by: r.actor || "",
+                     fromMode: String(d.fromMode || ""), toMode: String(d.toMode || ""),
+                     fromRef: String(d.fromRef || ""), toRef: String(d.toRef || "") };
+      }
+    });
+    _pfxCache = m;
+    return m;
+  }
+  function payFixOf(id) { return id ? (payFixMap()[String(id)] || null) : null; }
+  function payFixNote(p) {
+    var f = payFixOf(p && p.id);
+    if (!f) return "";
+    var bits = [];
+    if (f.fromMode !== f.toMode) bits.push(esc(f.fromMode || "(blank)") + " \u2192 " + esc(f.toMode || "(blank)"));
+    if (f.fromRef !== f.toRef) bits.push("ref " + esc(f.fromRef || "(blank)") + " \u2192 " + esc(f.toRef || "(blank)"));
+    if (!bits.length) return "";
+    return '<br><span style="color:#b45309">Corrected: ' + bits.join(" \u00b7 ") +
+      (f.by ? " by " + esc(f.by) : "") + (f.at ? " on " + esc(d10(f.at)) : "") + '</span>';
+  }
+  function modalPayFix(id) {
+    var p = (S.data.payments || []).filter(function (x) { return x.id === id; })[0];
+    if (!p || !roleIs("admin")) {
+      return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    }
+    return '<h2>Correct how it came in</h2>' +
+      '<p class="sub">Receipt ' + esc(receiptNo(p)) + ' \u00b7 ' + esc(p.client || "") + '</p>' +
+      '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 11px">' +
+      '<div class="meta" style="font-size:12.5px">' +
+      '<b>' + money(p.amount) + '</b> received on <b>' + esc(fullDate(p.date)) + '</b>' +
+      (p.createdBy ? ' \u00b7 entered by ' + esc(p.createdBy) : '') + '</div></div>' +
+      '<div class="grid2" style="margin-top:10px">' +
+      '<div><label>How it came in</label><select id="pf_mode">' + opts(PAY_MODES, p.mode || "Cash") + '</select></div>' +
+      '<div><label>Reference (cheque / UTR)</label><input id="pf_ref" value="' + esc(p.ref || "") + '"/></div>' +
+      '</div>' +
+      '<div class="card" style="border-color:#fde68a;background:#fffbeb;margin-top:10px;padding:9px 11px">' +
+      '<div class="meta" style="font-size:12.5px;color:#92400e">' +
+      'Only <b>how the money came in</b> can be corrected here. Cash to Bank moves no money \u2014 it is ' +
+      'a label on the same rupees \u2014 so the receipt keeps its number <b>' + esc(receiptNo(p)) + '</b> ' +
+      'and the copy already with the customer stays valid.<br><br>' +
+      'The <b>amount</b>, the <b>date</b> and the <b>client</b> are not on this form. If one of those ' +
+      'is wrong the receipt must be <b>cancelled</b> and entered again \u2014 the customer is holding a ' +
+      'piece of paper with that figure on it.<br><br>' +
+      'What it was and what it became is written to the audit trail and shown on the receipt card.' +
+      '</div></div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="pf-save" data-p="' + esc(p.id) + '">Save the correction</button></div>';
+  }
   function receiptNo(p) {
     var d = String(p.date || "").replace(/-/g, "").slice(2);
     /* six digits off the id, zero-padded: a day's worth of receipts can never collide, and a
@@ -31182,7 +31549,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null;
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pfxCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
        yesterday's money, which is the worst thing this app can do. */
@@ -34736,6 +35103,57 @@ function viewCatalogue() {
       return;
     }
 
+    /* v6.9.433 - the radar's tools. Every one of them only changes what is SHOWN. */
+    if (act === "rdr-sort") { S.rdSort = t.getAttribute("data-v") || "old"; keepScroll = true; render(); return; }
+    if (act === "rdr-band") { S.rdBand = t.getAttribute("data-v") || "all"; keepScroll = true; render(); return; }
+    if (act === "rdr-owner") { S.rdOwner = t.getAttribute("data-v") || ""; keepScroll = true; render(); return; }
+    if (act === "rdr-age") { S.rdAge = !S.rdAge; keepScroll = true; render(); return; }
+    if (act === "rdr-fold") { S.rdShut = !S.rdShut; keepScroll = true; render(); return; }
+    if (act === "rdr-find") { S.rdQ = String(val("rdr_q") || "").trim(); keepScroll = true; render(); return; }
+    if (act === "rdr-qclear") { S.rdQ = ""; keepScroll = true; render(); return; }
+    if (act === "rdr-xlsx") { rdrXlsx(); return; }
+    if (act === "rdr-csv") { rdrCsv(); return; }
+
+    /* v6.9.428 - one client at a time, and a row that opens. Neither writes anything. */
+    if (act === "paywho-go") { S.payWho = String(val("paywho") || "").trim(); S.payOpen = null; render(); return; }
+    if (act === "paywho-clear") { S.payWho = ""; S.payOpen = null; render(); return; }
+    if (act === "pay-row") {
+      var prId = t.getAttribute("data-p") || "";
+      S.payOpen = (S.payOpen === prId) ? null : prId;
+      keepScroll = true; render(); return;
+    }
+    if (act === "pay-fix") {
+      if (!roleIs("admin")) { toast("Correcting a receipt is the owner\u2019s."); return; }
+      S.modal = modalPayFix(t.getAttribute("data-p") || ""); render(); return;
+    }
+    /* v6.9.427 - the payload is {id, mode, ref} and NOTHING else. save() merges it into the row
+       it already holds, so there is no path here that can touch a rupee even by accident. */
+    if (act === "pf-save") {
+      if (!roleIs("admin")) { toast("Correcting a receipt is the owner\u2019s."); return; }
+      var pfId = t.getAttribute("data-p") || "";
+      var pfRow = (S.data.payments || []).filter(function (x) { return x.id === pfId; })[0];
+      if (!pfRow) { toast("That receipt is not on this device \u2014 pull down to refresh."); return; }
+      var pfMode = String(val("pf_mode") || "").trim();
+      var pfRef = String(val("pf_ref") || "").trim();
+      if (!pfMode) { toast("Pick how the money came in."); return; }
+      var wasMode = String(pfRow.mode || ""), wasRef = String(pfRow.ref || "");
+      if (pfMode === wasMode && pfRef === wasRef) { toast("Nothing changed."); return; }
+      save("payments", { id: pfId, mode: pfMode, ref: pfRef });
+      save("audit", {
+        id: mintId("PF"),   /* v6.9.434 - through the one minter, like every other row */
+        createdAt: new Date().toISOString(), actor: S.user || "",
+        action: "payment:mode",
+        target: receiptNo(pfRow) + " / " + String(pfRow.client || ""),
+        detail: JSON.stringify({ pid: pfId, fromMode: wasMode, toMode: pfMode,
+                                 fromRef: wasRef, toRef: pfRef })
+      });
+      _pfxCache = null;
+      S.modal = null;
+      toast("Receipt " + receiptNo(pfRow) + ": " + (wasMode || "(blank)") + " \u2192 " + pfMode +
+            ". The amount and the receipt number are unchanged.");
+      setTimeout(render, 120);
+      return;
+    }
     if (act === "pay-hist") { S.payHist = !S.payHist; S.modal = null; render(); return; }
     if (act === "pay-csv") { payCsv(t.getAttribute("data-n") || ""); return; }
     if (act === "rc-list") { S.modal = modalReceipts(t.getAttribute("data-n")); render(); return; }
