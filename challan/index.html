@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.47.0";
+  var APP_VERSION = "1.48.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -4702,6 +4702,37 @@ function discRowOn(client, brand, onYmd) {
   });
 
   /* One wrapper, so all 38 call sites are covered without any of them remembering to be. */
+
+  /* v1.48.0 - KEEP HIS PLACE. This whole screen is rebuilt with one innerHTML assignment, which
+     throws away the bottom sheet's scroll position: tapping a brand in the picker sent him back
+     to the top of the form every time. Captured on every paint and restored whenever the screen
+     is still the same screen.
+
+     WHICH SHEET IS THIS, not what does it currently say: S.sheet is a string of html that
+     changes on every repaint - a chip goes dark, a category list appears - so comparing the
+     strings would answer "a different sheet" exactly when the answer must be "the same one".
+     Every sheet in this file opens with its own <h2>. A different one still starts at the top. */
+  function sheetKey(m) {
+    var x = String(m || "").match(/<h2[^>]*>([\s\S]{0,90}?)<\/h2>/);
+    return x ? x[1].replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim() : "";
+  }
+  var _placePrev = null, _placeTab = null;
+  function placeGrab() {
+    var el2 = document.querySelector(".sheet .inner");
+    return { top: el2 ? el2.scrollTop : 0, win: (window.scrollY || window.pageYOffset || 0),
+             key: sheetKey(_placePrev), tab: _placeTab };
+  }
+  function placePut(p, nowSheet, nowTab) {
+    try {
+      if (p.top > 0 && nowSheet && p.key && sheetKey(nowSheet) === p.key) {
+        var el2 = document.querySelector(".sheet .inner");
+        if (el2) el2.scrollTop = p.top;
+      }
+      if (p.win > 0 && p.tab === nowTab) window.scrollTo(0, p.win);
+    } catch (e) { }
+    _placePrev = nowSheet; _placeTab = nowTab;
+  }
+
   function render() {
     try { renderBody(); }
     catch (e) { crashHandle("render", e); }
@@ -4715,6 +4746,7 @@ function discRowOn(client, brand, onYmd) {
     var f = 0; if (S.data) { try { f = frRows().reduce(function (a, g) { return a + g.heldN; }, 0); } catch (e) { f = 0; } }
     if (S.data && !S.dp && !_dpTried) { _dpTried = true; dpPull().then(function (g) { if (g) render(); }); }
     var hb = 0; if (S.data && roleIs("admin")) { try { hb = hisabPending().length; } catch (e) { hb = 0; } }
+    var _place = placeGrab();
     el("root").innerHTML = header() +
       '<div class="wrap">' + bodyHtml() + '</div>' +
       '<div class="nav">' +
@@ -4736,6 +4768,7 @@ function discRowOn(client, brand, onYmd) {
       '</div>' +
       '<div id="ew_sync_banner" style="display:none"></div>' +
       (S.sheet ? '<div class="sheet" data-act="close-bg"><div class="inner" data-stop="1">' + S.sheet + '</div></div>' : '');
+    placePut(_place, S.sheet, S.tab);
     wireInputs();
     jrnPaint(); syncBottomVar();
   }
