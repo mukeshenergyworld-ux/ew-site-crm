@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.434";
+  var APP_VERSION = "6.9.435";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1392,7 +1392,7 @@
           (a cancelled challan), the memory is dropped and the server wins. It can therefore never
           drag a challan backwards and never resurrect one that was cancelled. */
   var _moving = 0, _moved = {}, MOVED_TTL = 300000;
-  function chMoveRemember(id, to, by) { _moved[String(id)] = { to: to, by: by || "", at: Date.now() }; }
+  function chMoveRemember(id, to, by) { if (id && to) _moved[String(id)] = { to: to, by: by || "", at: Date.now() }; }
   function chMoveForget(id) { delete _moved[String(id)]; }
   /* ================= A RETURN MOVE SURVIVES A STALE PULL  (v6.9.348) =================
      Challans got this on 15 August, after "i have to approve challan 2 to 3 times". Returns
@@ -36965,10 +36965,37 @@ function viewCatalogue() {
       /* v6.9.390 - noTg: this pair means to dispatch a second later, so the backend must not
          post a "not dispatched yet" message to the group and then edit it away again. If the
          dispatch half fails, pHalf() asks for that message explicitly - see there. */
-      api("challanMove", { id: id, to: "Approved", approvePin: ppin, noTg: 1 }).then(function (r1) {
+      /* ---- ONE ROUND TRIP WHERE THERE WERE TWO  (v6.9.435, 7 Sep 2026) ----
+         HIS WORDS, about the godown app: "pass and dispatch process in very slop ... make it
+         fast and effective". Both apps pass the same way and both make TWO calls, and this
+         backend's CHEAPEST call - teamStamp, one property read, no sheet touched - is 2.1
+         seconds from his machine, measured. A pass is therefore never under four.
+
+         `andDispatch` asks the server to stamp the approval AND release it in the same call.
+         A server that does not know the word moves it to Approved and says so, and the second
+         call below runs exactly as it always has - so this is correct against either version
+         and takes two seconds off the day the backend is updated. The reply's own `status` is
+         what decides, not a version number we would have to keep in step. */
+      api("challanMove", { id: id, to: "Approved", approvePin: ppin, andDispatch: 1, noTg: 1 }).then(function (r1) {
         if (!r1 || !r1.ok) { pBack(r1 && r1.error); return; }
         pc.approvedBy = r1.by || S.user;
         chMoveRemember(id, "Approved", r1.by || S.user);
+        if (String(r1.status || "") === "Dispatched") {
+          /* the server did both. Everything below that follows a successful dispatch, once. */
+          S.chMoving[id] = false; pDone();
+          chMoveRemember(id, "Dispatched", r1.by || S.user);
+          S.dispatchSent = S.dispatchSent || {};
+          if (S.dispatchSent[id]) return;
+          S.dispatchSent[id] = true;
+          return sendChallanPdf(pc, "TG_DISPATCH",
+            "<b>DISPATCH: " + pc.challanNo + "</b>\n" + pc.customerName +
+            (pc.driver ? "\nDriver: " + pc.driver : "") +
+            "\nPassed by <b>" + (pc.approvedBy || S.user) + "</b>", pc.approvedBy || S.user)
+            .then(function (tg) {
+              if (!tg || !tg.ok) toast("Dispatched — but the Telegram message did not go. Download the PDF and send it manually.");
+            })
+            .catch(function () { toast("Dispatched — Telegram send failed. Download the PDF and send it manually."); });
+        }
         return api("challanMove", { id: id, to: "Dispatched", approvePin: ppin }).then(function (r2) {
           S.chMoving[id] = false; pDone();
           if (!r2 || !r2.ok) { pHalf(r2 && r2.error); return; }
