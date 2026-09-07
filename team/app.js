@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.424";
+  var APP_VERSION = "6.9.426";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -150,6 +150,16 @@
      keepScroll=true before render() preserves the open modal's scroll position across the rebuild,
      so the user stays on the product they were editing. */
   var keepScroll = false;
+  /* v6.9.426 - WHICH FORM IS THIS, not what does it currently say. S.modal is a string of html
+     that changes on every repaint (a chip goes dark, a list appears), so comparing the strings
+     answers "a different form" precisely when the answer must be "the same one". Every modal in
+     this file opens with its own <h2>; two paints of one form share it and two different forms
+     do not. */
+  function modalKey(m) {
+    var x = String(m || "").match(/<h2[^>]*>([\s\S]{0,90}?)<\/h2>/);
+    return x ? x[1].replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim() : "";
+  }
+  var _lastPaintTab = null;
   var PRODUCTS = [];
   var CAT_KEY = "ew_team_catalog";
   /* Bumped whenever a new column is read out of the catalogue. A cache written by
@@ -18562,112 +18572,230 @@ function viewCatalogue() {
   /* ================= THE ACCOUNT AT THE TOP OF HIS OWN SCREEN (v6.9.424) =================
      Built from the same three books hisabPdf reads and totalled the same way, so the closing
      figure here IS the `due` the card above it prints. The tick boxes below decide what goes on
-     the PDF; this is the whole account and says so. */
-  function hisabSummaryCard(cl, chs) {
-    var list = (chs || []).slice().sort(function (a, b) {
-      return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
-    });
+     the PDF; this is the whole account and says so.
+
+     v6.9.425 - HIS COLUMNS, IN HIS ORDER: "Date, Challan No, PTRS, Supply/Return, Book No,
+     Debit, Credit, Balance". What was one stacked cell is now four columns that line up down
+     the page, which is the point of a statement - you read a column, not a paragraph.
+
+     ONE BUILDER BEHIND ALL THREE. This produces the rows once; the screen, the Excel file and
+     the PDF all render the same array. Three functions each walking the challan book would be
+     three chances for a screen and a file he sends a customer to disagree about one account. */
+  function hisabMiniRows(cl) {
+    var chs = dedupeChallans((S.data.challans || []).filter(function (c) {
+      return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y";
+    }));
     var rets = clientReturns(cl) || [];
     var pays = (S.data.payments || []).filter(function (p) { return p && p.client === cl; });
     var led = clientLedger(cl) || {};
     var opening = Number(led.opening) || 0;
-    if (!list.length && !rets.length && !pays.length && !opening) return "";
     var ev = [];
-    list.forEach(function (c) { ev.push({ t: "C", d: dstr(c.createdAt), ts: String(c.createdAt || ""), ord: 1, row: c }); });
+    chs.forEach(function (c) { ev.push({ t: "C", d: dstr(c.createdAt), ts: String(c.createdAt || ""), ord: 1, row: c }); });
     rets.forEach(function (r) { ev.push({ t: "R", d: dstr(r.createdAt), ts: String(r.createdAt || ""), ord: 2, row: r }); });
     pays.forEach(function (p) { ev.push({ t: "P", d: dstr(p.date || p.createdAt), ts: String(p.date || p.createdAt || ""), ord: 3, row: p }); });
+    /* the PDF's own tie-break, word for word: a delivery before a return before a payment on
+       one day, so a running balance never dips below what it should */
     ev.sort(function (a, b) { return a.d !== b.d ? a.d.localeCompare(b.d) : ((a.ord - b.ord) || a.ts.localeCompare(b.ts)); });
-
-    var num = 'style="padding:4px 4px;text-align:right;white-space:nowrap;border-top:1px solid #e2e8f0;font-variant-numeric:tabular-nums"';
-    var run = opening, rowN = 0, h = "";
-    var row = function (dt, parts, dr, cr, tone) {
-      var bg = tone === "ret" ? "#fef2f2" : (rowN % 2 ? "#f8fafc" : "#fff");
-      rowN++;
-      h += '<tr style="background:' + bg + '">' +
-        /* dd/mm/yy, not dd/mm/yyyy: two characters buy the particulars column the room it
-           needs at 390px, and the year is still on the row. */
-        '<td style="padding:4px 4px;color:#64748b;border-top:1px solid #e2e8f0;font-size:12px;white-space:nowrap">' +
-          esc(String(dt).replace(/^(\d{2}\/\d{2}\/)\d{2}(\d{2})$/, "$1$2")) + '</td>' +
-        '<td style="padding:4px 4px;border-top:1px solid #e2e8f0;overflow-wrap:anywhere">' + parts + '</td>' +
-        '<td ' + num + '>' + (dr == null ? "" : money(dr)) + '</td>' +
-        '<td ' + num + ' >' + (cr == null ? "" : '<span style="color:#0f766e">' + money(cr) + '</span>') + '</td>' +
-        '<td ' + num + '><b style="color:' + (run < -0.5 ? "#0f766e" : "#0f172a") + '">' + money(Math.abs(run) < 0.5 ? 0 : run) + '</b></td>' +
-        '</tr>';
-    };
-    row("", '<b>Balance brought forward</b>' +
-      (opening ? '' : ' <span style="color:#94a3b8;font-size:12px">nothing carried over</span>'), null, null);
+    var run = opening, out = [];
+    out.push({ kind: "bf", date: "", no: "", ptrs: "Balance brought forward", type: "", book: "",
+               debit: null, credit: null, bal: run });
     ev.forEach(function (e) {
       if (e.t === "C") {
-        var c = e.row, v = chValue(c), nIt = pricedLines(c, cl).length, bk = manualNoFor(c);
+        var c = e.row, v = chValue(c), nIt = pricedLines(c, cl).length;
         run += v;
-        /* THE BOOK NUMBER IS THE POINT OF THIS TABLE, so it is a chip and not a footnote - and
-           where there is none it says so, because a blank reads as "checked, none" and this
-           column exists precisely to be checked. */
-        /* THE BOOK NUMBER ON ITS OWN LINE. Measured at 390px with everything on one: the
-           particulars column held the row open and pushed CREDIT and BALANCE off the screen -
-           and a screenshot he sends a customer with the balance column missing is the one
-           thing this table cannot afford. */
-        row(d10(c.createdAt),
-          '<b>' + esc(c.challanNo || "") + '</b>' +
-          '<div style="font-size:12px;margin-top:1px">' +
-          (bk ? '<span style="background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;border-radius:5px;' +
-                'padding:0 5px;font-weight:700">Book no ' + esc(bk) + '</span>'
-              : '<span style="color:#b45309;font-weight:600">no book no</span>') +
-          '<span style="color:#94a3b8"> \u00b7 ' + nIt + ' item' + (nIt === 1 ? '' : 's') +
-          (chFreight(c) > 0 ? ' + freight' : '') +
-          (c.site && String(c.site).trim() ? ' \u00b7 ' + esc(String(c.site).trim()) : '') + '</span></div>',
-          v < -0.5 ? null : v, v < -0.5 ? -v : null);
+        out.push({ kind: "ch", date: d10(c.createdAt), no: String(c.challanNo || ""),
+          ptrs: nIt + " item" + (nIt === 1 ? "" : "s") + (chFreight(c) > 0 ? " + freight" : "") +
+                (c.site && String(c.site).trim() ? " · " + String(c.site).trim() : ""),
+          type: v < -0.5 ? "Credit note" : "Supply", book: String(manualNoFor(c) || ""),
+          debit: v < -0.5 ? null : v, credit: v < -0.5 ? -v : null, bal: run, id: c.id });
       } else if (e.t === "R") {
         var r = e.row, rv = returnNet(r), nR = returnLines(r).length;
         run -= rv;
-        row(d10(r.createdAt),
-          '<b style="color:#b91c1c">RETURN ' + esc(r.returnNo || "(no number yet)") + '</b>' +
-          (r.challanNo ? '<span style="color:#94a3b8;font-size:12px"> \u00b7 against ' + esc(r.challanNo) + '</span>' : '') +
-          '<span style="color:#94a3b8;font-size:12px"> \u00b7 ' + nR + ' item' + (nR === 1 ? '' : 's') + ' back at the godown</span>',
-          null, rv, "ret");
+        out.push({ kind: "ret", date: d10(r.createdAt), no: String(r.returnNo || "(no number yet)"),
+          ptrs: nR + " item" + (nR === 1 ? "" : "s") + " back at the godown" +
+                (r.challanNo ? " · against " + String(r.challanNo) : ""),
+          type: "Return", book: "", debit: null, credit: rv, bal: run, id: r.id });
       } else {
         var p = e.row, pa = payAmt(p), pk = payKindOf(p);
-        var tail = [p.mode ? String(p.mode).trim() : "", p.ref ? String(p.ref).trim() : ""].filter(Boolean).join(" \u00b7 ");
+        var tail = [p.mode ? String(p.mode).trim() : "", p.ref ? String(p.ref).trim() : ""].filter(Boolean).join(" · ");
         run -= pa;
-        if (pk === "refund") row(d10(p.date || p.createdAt), '<b>Refund paid to you</b>' + (tail ? '<span style="color:#94a3b8;font-size:12px"> \u00b7 ' + esc(tail) + '</span>' : ''), -pa, null);
-        else row(d10(p.date || p.createdAt),
-          '<b>' + (pk === "advance" ? "Advance received" : "Payment received") + '</b>' +
-          (tail ? '<span style="color:#94a3b8;font-size:12px"> \u00b7 ' + esc(tail) + '</span>' : ''), null, pa);
+        out.push({ kind: "pay", date: d10(p.date || p.createdAt), no: "",
+          ptrs: tail || "", type: pk === "refund" ? "Refund" : (pk === "advance" ? "Advance" : "Payment"),
+          book: "", debit: pk === "refund" ? -pa : null, credit: pk === "refund" ? null : pa, bal: run, id: p.id });
       }
     });
-    var bal = run;
-    var withBk = list.filter(function (c) { return !!manualNoFor(c); }).length;
+    return { rows: out, bal: run, opening: opening, chs: chs, rets: rets, pays: pays,
+             withBook: chs.filter(function (c) { return !!manualNoFor(c); }).length };
+  }
+  var MINI_HEAD = ["Date", "Challan No", "PTRS", "Supply/Return", "Book No", "Debit", "Credit", "Balance"];
+  function hisabMiniLine(bal) {
+    return bal < -0.5 ? "In credit — paid ahead, comes off the next delivery"
+         : bal > 0.5 ? "Balance due" : "Settled in full";
+  }
+  function hisabSummaryCard(cl, chs) {
+    var m = hisabMiniRows(cl);
+    if (m.rows.length < 2 && !m.opening) return "";
+    var nD = m.chs.length;
+    /* v6.9.425 - EIGHT COLUMNS ON ONE LINE DO NOT FIT A PHONE, and it is better to say so than
+       to shrink the figures until nobody can read them. Five columns needed every trick to make
+       332px in 6.9.424; these eight need about 700, so on a phone the table scrolls sideways -
+       which is exactly why the two buttons below it are not decoration. */
+    var num = 'padding:4px 6px;text-align:right;white-space:nowrap;border-top:1px solid #e2e8f0;font-variant-numeric:tabular-nums';
+    var cell = 'padding:4px 6px;white-space:nowrap;border-top:1px solid #e2e8f0';
+    var h = '';
+    m.rows.forEach(function (r, i) {
+      var bg = r.kind === "ret" ? "#fef2f2" : (r.kind === "bf" ? "#fff" : (i % 2 ? "#f8fafc" : "#fff"));
+      var tone = r.kind === "ret" ? "#b91c1c" : (r.kind === "pay" ? "#0f766e" : "#0f172a");
+      h += '<tr style="background:' + bg + '">' +
+        /* v6.9.425 - "show return is red". A return credits the account, so its figures were
+           drawn in the same teal a payment is - and on a statement the two mean opposite things:
+           one is goods coming back, the other is money coming in. He reads the colour before he
+           reads the word, so a return is red all the way across its row. */
+        '<td style="' + cell + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#64748b") + ';font-size:12px">' + esc(r.date) + '</td>' +
+        '<td style="' + cell + ';font-weight:700;color:' + tone + '">' + esc(r.no) + '</td>' +
+        '<td style="' + cell + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#475569") + '">' +
+          (r.kind === "bf" ? '<b style="color:#0f172a">' + esc(r.ptrs) + '</b>' : esc(r.ptrs)) + '</td>' +
+        '<td style="' + cell + ';color:' + tone + ';font-weight:600;font-size:12px">' + esc(r.type) + '</td>' +
+        '<td style="' + cell + ';font-size:12px">' +
+          (r.book ? '<span style="background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;border-radius:5px;padding:0 5px;font-weight:700">' + esc(r.book) + '</span>'
+                  : (r.kind === "ch" ? '<span style="color:#b45309;font-weight:600">no book no</span>' : '')) + '</td>' +
+        '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f172a") + '">' +
+          (r.debit == null ? "" : money(r.debit)) + '</td>' +
+        '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f766e") + '">' +
+          (r.credit == null ? "" : money(r.credit)) + '</td>' +
+        '<td style="' + num + '"><b style="color:' + (r.kind === "ret" ? "#b91c1c" : (r.bal < -0.5 ? "#0f766e" : "#0f172a")) + '">' +
+          money(Math.abs(r.bal) < 0.5 ? 0 : r.bal) + '</b></td></tr>';
+    });
     return '<div class="card" style="border-color:#cbd5e1;padding:10px 12px">' +
       '<div class="acts" style="align-items:baseline;margin:0 0 2px;gap:8px;flex-wrap:wrap">' +
-      '<h3 style="margin:0;font-size:13.5px" class="grow">' + esc(cl) + ' \u2014 the account</h3>' +
-      '<span class="pill">' + list.length + ' deliver' + (list.length === 1 ? 'y' : 'ies') + '</span>' +
-      (rets.length ? '<span class="pill" style="background:#fee2e2;color:#b91c1c">' + rets.length + ' return' + (rets.length === 1 ? '' : 's') + '</span>' : '') +
-      (pays.length ? '<span class="pill teal">' + pays.length + ' payment' + (pays.length === 1 ? '' : 's') + '</span>' : '') +
+      '<h3 style="margin:0;font-size:13.5px" class="grow">' + esc(cl) + ' — the account</h3>' +
+      '<span class="pill">' + nD + ' deliver' + (nD === 1 ? 'y' : 'ies') + '</span>' +
+      (m.rets.length ? '<span class="pill" style="background:#fee2e2;color:#b91c1c">' + m.rets.length + ' return' + (m.rets.length === 1 ? '' : 's') + '</span>' : '') +
+      (m.pays.length ? '<span class="pill teal">' + m.pays.length + ' payment' + (m.pays.length === 1 ? '' : 's') + '</span>' : '') +
       '</div>' +
       '<div class="meta" style="margin-bottom:7px;font-size:12px">Every delivery, return and payment, in the order they happened &mdash; the same shape as the statement PDF, so both tell him one story. ' +
-      '<b>' + withBk + ' of ' + list.length + '</b> deliver' + (list.length === 1 ? 'y carries' : 'ies carry') + ' its paper book number.' +
-      (withBk < list.length ? ' <span style="color:#b45309">Tap <b>+ Book no</b> on a card below to fill one in.</span>' : '') +
+      '<b>' + m.withBook + ' of ' + nD + '</b> deliver' + (nD === 1 ? 'y carries' : 'ies carry') + ' its paper book number.' +
+      (m.withBook < nD ? ' <span style="color:#b45309">Tap <b>+ Book no</b> on a card below to fill one in.</span>' : '') +
+      ' <span style="color:#94a3b8">Eight columns do not fit a phone — slide the table sideways, or send the file instead.</span>' +
       '</div>' +
-      /* table-layout:fixed, and a challan number allowed to break. MEASURED at 390px with the
-         columns sized by content: the table wanted 466px in a 332px box, so DEBIT, CREDIT and
-         BALANCE hung off the right - and a screenshot he sends a customer with the balance
-         column missing is worse than no screenshot at all. Five columns, all in the frame; a
-         long number like JAGDISH134/180826/002 wraps instead of pushing the money away. */
-      '<div style="overflow-x:auto"><table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12.5px">' +
-      '<colgroup><col style="width:58px"/><col/><col style="width:58px"/><col style="width:58px"/><col style="width:67px"/></colgroup>' +
-      '<tr style="background:#0b3b36">' +
-      '<th style="padding:5px 4px;font-weight:700;font-size:12px;color:#fff;text-align:left">DATE</th>' +
-      '<th style="padding:5px 4px;font-weight:700;font-size:12px;color:#fff;text-align:left">PARTICULARS</th>' +
-      '<th style="padding:5px 4px;font-weight:700;font-size:12px;color:#fff;text-align:right">DEBIT</th>' +
-      '<th style="padding:5px 4px;font-weight:700;font-size:12px;color:#fff;text-align:right">CREDIT</th>' +
-      '<th style="padding:5px 4px;font-weight:700;font-size:12px;color:#fff;text-align:right">BALANCE</th></tr>' +
-      h + '</table></div>' +
-      '<div class="acts" style="margin-top:8px;align-items:baseline;border-top:2px solid #0d766c;padding-top:7px">' +
-      '<span class="grow" style="font-weight:700;font-size:13px;color:' + (bal > 0.5 ? "#b91c1c" : "#0f766e") + '">' +
-      (bal < -0.5 ? "In credit \u2014 paid ahead, comes off the next delivery" : bal > 0.5 ? "Balance due" : "Settled in full") + '</span>' +
-      '<span style="font-weight:800;font-size:15px;color:' + (bal > 0.5 ? "#b91c1c" : "#0f766e") + '">' +
-      (Math.abs(bal) < 0.5 ? "nil" : money(Math.abs(bal))) + '</span></div>' +
-      '</div>';
+      /* v6.9.425 - HE ASKED TO BE ABLE TO HIDE IT: on a client with eighteen lines the account
+         pushes the delivery cards a long way down and he does not always want it open. The state
+         is kept in S so it survives a repaint and follows him from client to client - a <details>
+         springs back open on every render. The balance and the two download buttons stay visible
+         when it is shut, because those are the reasons to look. */
+      '<div class="acts" style="margin:0 0 6px">' +
+      '<button class="btn sm ghost" data-act="mini-fold">' +
+        (S.miniShut ? '\u25b8 Show the ' + (m.rows.length - 1) + ' line' + (m.rows.length === 2 ? '' : 's')
+                    : '\u25be Hide the account') + '</button></div>' +
+      (S.miniShut ? '' :
+      '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;font-size:12.5px;min-width:100%">' +
+      '<tr style="background:#0b3b36">' + MINI_HEAD.map(function (t, i) {
+        return '<th style="padding:5px 6px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' +
+          (i >= 5 ? 'right' : 'left') + '">' + esc(t.toUpperCase()) + '</th>';
+      }).join("") + '</tr>' + h + '</table></div>') +
+      '<div class="acts" style="margin-top:8px;align-items:baseline;border-top:2px solid #0d766c;padding-top:7px;flex-wrap:wrap;gap:8px">' +
+      '<span class="grow" style="font-weight:700;font-size:13px;color:' + (m.bal > 0.5 ? "#b91c1c" : "#0f766e") + '">' +
+      esc(hisabMiniLine(m.bal)) + '</span>' +
+      '<span style="font-weight:800;font-size:15px;color:' + (m.bal > 0.5 ? "#b91c1c" : "#0f766e") + '">' +
+      (Math.abs(m.bal) < 0.5 ? "nil" : money(Math.abs(m.bal))) + '</span></div>' +
+      '<div class="acts" style="margin-top:7px;gap:6px;flex-wrap:wrap">' +
+      '<button class="btn sm ghost" data-act="mini-xlsx" data-n="' + esc(cl) + '">&#8681; Excel</button>' +
+      '<button class="btn sm ghost" data-act="mini-pdf" data-n="' + esc(cl) + '">&#8681; PDF</button>' +
+      '<span class="meta" style="align-self:center;font-size:12px;color:#94a3b8">The same eight columns, as a file — better to send than a screenshot.</span>' +
+      '</div></div>';
+  }
+
+  /* ---- THE SAME ROWS AS A REAL EXCEL FILE (v6.9.425) ---- */
+  function hisabMiniXlsx(cl) {
+    var m = hisabMiniRows(cl);
+    if (!m.rows.length) { toast("Nothing on this account yet."); return; }
+    var out = [MINI_HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
+    m.rows.forEach(function (r) {
+      out.push([r.date, r.no, r.ptrs, r.type, r.book,
+                r.debit == null ? "" : Math.round(r.debit),
+                r.credit == null ? "" : Math.round(r.credit),
+                { v: Math.round(r.bal), s: XL.BOLD }]);
+    });
+    out.push([]);
+    out.push([{ v: hisabMiniLine(m.bal), s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
+              { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
+              { v: Math.round(Math.abs(m.bal)), s: XL.BAND }]);
+    out.push([]);
+    out.push(["Energy World · " + cl + " · built " + fullDate(today()) +
+              " · every delivery, return and payment on this account."]);
+    dlXlsx("Hisab_" + String(cl).replace(/[^\w.-]/g, "_") + "_" + today() + ".xlsx",
+           String(cl).slice(0, 28), out, [11, 24, 30, 13, 16, 13, 13, 14]);
+  }
+
+  /* ---- AND AS A PDF, on the letterhead (v6.9.425) ----
+     Landscape, for the same reason execCardPdf is: eight columns will not go on a portrait page
+     without shrinking the figures to something nobody can read at a counter. */
+  function hisabMiniPdf(cl) {
+    var m = hisabMiniRows(cl);
+    if (!m.rows.length) { toast("Nothing on this account yet."); return; }
+    return loadLogo().then(function () {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+      var F = function (w) { doc.setFont(ppEmbed(doc), (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"); };
+      var W = 297, H = 210, L = 12, R = W - 12, HB = 22;
+      /* v6.9.403's rule, followed here too: the amount is drawn from its absolute value and the
+         SIGN is written in front of it, so a credit balance reads "- Rs.1,05,674" and never
+         "Rs.-1,05,674" with the minus buried inside the number. */
+      var RS = function (n) { return "Rs." + Math.round(Math.abs(nAmt(n))).toLocaleString("en-IN"); };
+      var RSs = function (n) { return (nAmt(n) < -0.5 ? "- " : "") + RS(n); };
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, HB, "F");
+      doc.setFillColor(94, 234, 212); doc.rect(0, HB, W, 0.9, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 5, 24, 12); } catch (e) { } }
+      F("bold"); doc.setFontSize(11.5); doc.setTextColor(255, 255, 255);
+      doc.text(pdfSafe(String(cl).toUpperCase()), R, 10, { align: "right" });
+      F("normal"); doc.setFontSize(7.6); doc.setTextColor(172, 212, 205);
+      doc.text("Statement of account   ·   " + fullDate(today()), R, 15.5, { align: "right" });
+      doc.text(m.chs.length + " deliveries · " + m.rets.length + " returns · " + m.pays.length + " payments", R, 19.5, { align: "right" });
+      /* the last column is pulled 1mm off the right edge - right-aligned AT R the heading sat
+         flush against the band and read as clipped. */
+      var cX = [L, L + 20, L + 62, L + 132, L + 158, R - 63, R - 33, R - 1];
+      var y = HB + 10;
+      var head = function () {
+        doc.setFillColor(11, 59, 54); doc.rect(L, y - 4.4, R - L, 6.2, "F");
+        F("bold"); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
+        MINI_HEAD.forEach(function (t, i) {
+          if (i >= 5) doc.text(t.toUpperCase(), cX[i], y, { align: "right" });
+          else doc.text(t.toUpperCase(), cX[i] + 1, y);
+        });
+        y += 6.4; doc.setTextColor(17, 34, 45);
+      };
+      head();
+      var n = 0;
+      m.rows.forEach(function (r) {
+        if (y > H - 16) { doc.addPage(); y = 16; head(); }
+        if (r.kind === "ret") { doc.setFillColor(254, 242, 242); doc.rect(L, y - 3.2, R - L, 4.8, "F"); }
+        else if (n % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 3.2, R - L, 4.8, "F"); }
+        n++;
+        F(r.kind === "bf" ? "bold" : "normal"); doc.setFontSize(7.2);
+        if (r.kind === "ret") doc.setTextColor(185, 28, 28); else doc.setTextColor(17, 34, 45);
+        var put = function (i, v, wid) {
+          if (v === "" || v == null) return;
+          var s = doc.splitTextToSize(pdfSafe(String(v)), wid)[0] || "";
+          if (i >= 5) doc.text(s, cX[i], y, { align: "right" }); else doc.text(s, cX[i] + 1, y);
+        };
+        put(0, r.date, 19); put(1, r.no, 41); put(2, r.ptrs, 69); put(3, r.type, 25); put(4, r.book, 40);
+        put(5, r.debit == null ? "" : RS(r.debit), 30);
+        if (r.credit != null) { doc.setTextColor(13, 118, 108); put(6, RS(r.credit), 30); doc.setTextColor(17, 34, 45); }
+        F("bold"); put(7, RSs(r.bal), 30);
+        y += 4.8;
+      });
+      if (y > H - 20) { doc.addPage(); y = 18; }
+      doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(L, y, R, y); y += 5.4;
+      F("bold"); doc.setFontSize(9.4);
+      if (m.bal > 0.5) doc.setTextColor(185, 28, 28); else doc.setTextColor(13, 118, 108);
+      doc.text(pdfSafe(hisabMiniLine(m.bal)), L + 1, y);
+      doc.text(Math.abs(m.bal) < 0.5 ? "nil" : RS(Math.abs(m.bal)), R, y, { align: "right" });
+      y += 6;
+      F("normal"); doc.setFontSize(6.6); doc.setTextColor(120, 130, 140);
+      doc.text("Energy World · every delivery, return and payment on this account, in the order they happened. " +
+               "Book numbers are from the paper challan book.", L + 1, y);
+      doc.save("Hisab_" + String(cl).replace(/[^\w.-]/g, "_") + "_" + today() + ".pdf");
+      toast("Statement downloaded.");
+    }).catch(function () { toast("Could not build the file on this device."); });
   }
 
   /* ---- RAISE THE NEXT DELIVERY WHERE YOU CHECKED THE LAST ONE (v6.9.235) ----
@@ -31135,6 +31263,7 @@ function viewCatalogue() {
     h += '</div>';
     /* bump the modal generation whenever a DIFFERENT form is shown, so a save that started under an
        earlier form knows the user has moved on and must not close the new one. */
+    var _preShown = _shownModal;    /* v6.9.426 - read before the line below overwrites it */
     if (S.modal) {
       if (S.modal !== _shownModal) { _mgen++; _shownModal = S.modal; }
       /* v6.9.190: a sticky way out, pinned to the top of the popup's own scroll box. The popup
@@ -31148,10 +31277,23 @@ function viewCatalogue() {
     }
     else { _shownModal = null; S.bgPending = false; }
 
-    var _msTop = null;
-    if (keepScroll) { var _msOld = document.querySelector(".modal"); if (_msOld) _msTop = _msOld.scrollTop; }
+    /* v6.9.426 - CAPTURED ON EVERY PAINT, restored whenever the screen is still the same
+       screen. This used to run only when a handler had remembered to set keepScroll, which
+       fifteen of them do and the product picker - the most-used control in the app - did not. */
+    var _sameForm = !!(S.modal && _preShown && modalKey(_preShown) === modalKey(S.modal));
+    var _sameTab = (_lastPaintTab === S.tab);
+    var _msTop = 0, _winTop = 0;
+    var _msOld = document.querySelector(".modal"); if (_msOld) _msTop = _msOld.scrollTop;
+    try { _winTop = window.scrollY || window.pageYOffset || 0; } catch (e) { }
     document.getElementById("root").innerHTML = h;
-    if (_msTop != null) { var _msNew = document.querySelector(".modal"); if (_msNew) _msNew.scrollTop = _msTop; }
+    if ((_sameForm || keepScroll) && _msTop > 0) {
+      var _msNew = document.querySelector(".modal");
+      if (_msNew) _msNew.scrollTop = _msTop;
+    }
+    /* the page behind, on the same screen. A tab change has never been meant to land him
+       halfway down the next one, so that is left exactly as it was. */
+    if (_sameTab && _winTop > 0) { try { window.scrollTo(0, _winTop); } catch (e) { } }
+    _lastPaintTab = S.tab;
     keepScroll = false;
     document.body.classList.toggle("navopen", !!S.navOpen);
 
@@ -32938,6 +33080,12 @@ function viewCatalogue() {
       return;
     }
     if (act === "exec-xlsx") { execCardXlsx(t.getAttribute("data-k") || ""); return; }
+    /* v6.9.425 - the mini statement as a file. Both read hisabMiniRows, which is the same
+       array the screen draws, so a file he sends can never disagree with the screen he
+       read it off. Neither writes anything. */
+    if (act === "mini-fold") { S.miniShut = !S.miniShut; render(); return; }
+    if (act === "mini-xlsx") { hisabMiniXlsx(t.getAttribute("data-n") || ""); return; }
+    if (act === "mini-pdf") { hisabMiniPdf(t.getAttribute("data-n") || ""); return; }
     if (act === "exec-pdf") {
       var _ek = t.getAttribute("data-k") || "";
       if (!canExecCard(_ek)) { toast("That is not your list."); return; }
