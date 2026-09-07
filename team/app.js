@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.436";
+  var APP_VERSION = "6.9.437";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -19474,6 +19474,10 @@ function viewCatalogue() {
         /* v6.9.336 - and here too. A client whose only activity is a payment against an opening
            balance is EXACTLY the man who needs to see which payment landed. */
         openingNote(cl) +
+        /* v6.9.437 - and the signed paper here above all: a client whose ONLY entry is an old
+           balance has no delivery and no rate on file, so the purchase order or the signed
+           quotation is the only document that says what was agreed with him at all. */
+        '<div style="margin-top:8px">' + agrStrip(cl) + '</div>' +
         /* v6.9.368 - and here above all: a client whose ONLY entry is an old balance is exactly
            the man whose old balance needs correcting, and this branch is the only screen he has. */
         (canSetOpening()
@@ -19887,6 +19891,14 @@ function viewCatalogue() {
         '<button class="btn sm ghost" data-act="pay-in" data-n="' + esc(cl) + '" data-k="refund" ' +
           'style="border-color:#fecaca;color:#b91c1c">\u2212 Refund to client</button>' +
         '</div>' : '') +
+      /* v6.9.437 - AND THE SIGNED PAPER, HERE TOO.
+         6.9.436 put it on the rate screens, which is where a rate is TYPED. He pointed at this
+         card - the client ledger - and said "make provision have, show tab to attach PO or
+         Signed Agreement", and he is right: this is the screen he is on when he is looking at
+         what a man owes, and the purchase order behind that figure is the first thing anyone
+         asks for. Same strip, same one builder - nothing here is a second copy that could
+         disagree with the rate screen about what was signed. */
+      '<div style="margin-top:8px">' + agrStrip(cl) + '</div>' +
       /* v6.9.403 - what the paper will carry, and what folds into its first line. The ticks
          on deliveries, returns and payments all read through hisabTicked; the brought-forward
          figure here is the one hisabPdf prints, worked out the same way. */
