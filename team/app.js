@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.435";
+  var APP_VERSION = "6.9.436";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -16877,13 +16877,220 @@ function viewCatalogue() {
     });
     return h + '</table></div>';
   }
+  /* ================= THE PAPER THAT FIXED THE RATE  (v6.9.436, 7 Sep 2026) ==========
+     HIS WORDS: "make provision to attached client agreement copy attach or you can say client
+     PO or signed quote attach, as to check on single click what finalized at what rate".
+
+     The discount screen has always said what a client's rate IS. Nothing on it said what was
+     AGREED, on paper, on a date, by whom - so an argument about a rate came down to memory. A
+     signed quotation, a purchase order or a rate agreement is the only thing that settles one.
+
+     NO NEW COLUMN IS ASKED OF THE SHEET. This is filed exactly the way the old-hisab page has
+     been filed since v6.9.214 and a delivery receipt since v6.9.210: the document goes to Drive
+     through pdfHost, and the record is an audit row. A field with no column is silently dropped
+     by the backend - the trap that has cost this estate time before - so nothing here invents one.
+
+     AND THE RATES TRAVEL WITH IT. A link to a PDF answers "what did we sign"; it does not answer
+     "what did we sign it AT" without opening it. So the brand rates as they stood at the moment
+     of attaching are written onto the row, and the strip prints them beside the link. When a
+     standing rate is later changed, the strip says so in red against the paper - which is the
+     whole question he asked.
+
+     ADMIN ONLY, and not by a screen check alone: the backend's ROLE_WRITE lets only admin write
+     to the audit tab at all, so an executive's attempt would be refused at the server too. */
+  var AGR_KINDS = ["Signed quotation", "Purchase order", "Rate agreement", "Email / WhatsApp confirmation", "Other paper"];
+  var _agrCache = null, _agrUp = null;
+
+  function agrRowsAll() {
+    if (_agrCache) return _agrCache;
+    var out = [];
+    (S.data.audit || []).forEach(function (a) {
+      if (String(a.action || "") !== "client:agreement") return;
+      var d; try { d = JSON.parse(a.detail || "{}"); } catch (e) { return; }
+      if (!d || !d.client) return;
+      out.push({
+        id: String(a.id || ""), client: String(d.client || ""), kind: String(d.kind || ""),
+        ref: String(d.ref || ""), docDate: String(d.docDate || ""), from: String(d.from || ""),
+        till: String(d.till || ""), note: String(d.note || ""), url: String(d.url || ""),
+        rates: (d.rates && d.rates.length) ? d.rates : [],
+        by: String(a.actor || ""), at: String(a.createdAt || d.at || "")
+      });
+    });
+    out.sort(function (x, y) { return String(y.at).localeCompare(String(x.at)); });
+    _agrCache = out;
+    return out;
+  }
+  function agrRows(client) {
+    var t = dgKey(client || "");
+    return agrRowsAll().filter(function (r) { return dgKey(r.client) === t; });
+  }
+  function agrLatest(client) { return agrRows(client)[0] || null; }
+
+  /* what the app charges this client today, brand by brand - the figure the paper is compared to */
+  function agrRatesNow(cl) {
+    var out = [];
+    admClientBrands(cl).forEach(function (b) {
+      var d = discRow(cl, b), p = d ? (Number(d.pct) || 0) : 0;
+      if (p > 0) out.push({ brand: String(b), pct: p });
+    });
+    return out.sort(function (a, b) { return String(a.brand).localeCompare(String(b.brand)); });
+  }
+  /* v6.9.436 - the comparison, and it is the reason the rates are stored at all. Returns only
+     the brands where the paper and today's standing rate DISAGREE. */
+  function agrDrift(r) {
+    var now = {}, out = [];
+    agrRatesNow(r.client).forEach(function (x) { now[dkey(x.brand)] = Number(x.pct) || 0; });
+    (r.rates || []).forEach(function (x) {
+      var k = dkey(x.brand), was = Number(x.pct) || 0;
+      if (!(k in now)) { out.push({ brand: x.brand, was: was, is: null }); return; }
+      if (Math.abs(now[k] - was) > 0.001) out.push({ brand: x.brand, was: was, is: now[k] });
+    });
+    return out;
+  }
+
+  function agrRateChips(rates) {
+    if (!rates || !rates.length) return '<span style="color:#94a3b8">no rate written on it</span>';
+    return rates.map(function (x) {
+      return '<span class="pill" style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0">' +
+        esc(x.brand) + ' <b>' + pctTxt(x.pct) + '</b></span>';
+    }).join(" ");
+  }
+
+  /* ---- ONE CLICK, ON THE RATE SCREEN ITSELF ---- */
+  function agrStrip(cl) {
+    var rows = agrRows(cl), top = rows[0] || null;
+    var add = roleIs("admin")
+      ? '<button class="btn sm ghost" data-act="agr-open" data-n="' + esc(cl) + '">' +
+        (top ? '+ Attach another' : '&#128206; Attach the paper') + '</button>' : "";
+    if (!top) {
+      return '<div style="border:1px dashed #cbd5e1;border-radius:9px;padding:7px 9px;margin:0 0 7px">' +
+        '<div class="meta" style="font-size:12px">' +
+        '<b>No signed paper on file.</b> The rates below are what the app charges — nothing here ' +
+        'says what was agreed, on a date, by whom.' + (add ? ' ' : '') + '</div>' +
+        (add ? '<div class="acts" style="margin-top:5px">' + add + '</div>' : '') + '</div>';
+    }
+    var dr = agrDrift(top);
+    return '<div style="border:1px solid #a7f3d0;background:#f0fdfa;border-radius:9px;padding:7px 9px;margin:0 0 7px">' +
+      '<div class="acts" style="align-items:baseline;gap:7px;flex-wrap:wrap;margin:0">' +
+      '<b style="font-size:12.5px;color:#065f46">' + esc(top.kind || "Paper on file") + '</b>' +
+      (top.ref ? '<span class="pill">' + esc(top.ref) + '</span>' : '') +
+      (top.docDate ? '<span class="meta" style="font-size:12px">' + esc(fullDate(top.docDate)) + '</span>' : '') +
+      '<div class="grow"></div>' +
+      (top.url ? '<button class="btn sm" data-act="agr-see" data-u="' + esc(top.url) + '">Open it &#8599;</button>' : '') +
+      (rows.length > 1 ? '<button class="btn sm ghost" data-act="agr-list" data-n="' + esc(cl) + '">All ' + rows.length + '</button>' : '') +
+      add + '</div>' +
+      '<div class="meta" style="font-size:12px;margin-top:5px">Agreed at: ' + agrRateChips(top.rates) +
+      (top.till ? ' <span style="color:#b45309">· valid till ' + esc(fullDate(top.till)) + '</span>' : '') +
+      '<br><span style="color:#94a3b8">Attached by ' + esc(top.by || "?") + ' on ' + esc(fullDate(top.at)) + '.' +
+      (top.note ? ' ' + esc(top.note) : '') + '</span></div>' +
+      (dr.length
+        ? '<div class="meta" style="font-size:12px;margin-top:5px;color:#b91c1c"><b>What the app charges now does not match the paper:</b> ' +
+          dr.map(function (x) {
+            return esc(x.brand) + ' ' + pctTxt(x.was) + ' → ' + (x.is == null ? 'no rate set' : pctTxt(x.is));
+          }).join(" · ") + '</div>'
+        : '') +
+      '</div>';
+  }
+
+  function modalAgrList(cl) {
+    var rows = agrRows(cl);
+    var h = '<h2>Papers on file — ' + esc(cl) + '</h2>' +
+      '<p class="sub">' + rows.length + ' document(s), newest first. Nothing is ever removed: a newer ' +
+      'paper supersedes an older one by being newer, and the old one stays exactly as it was written.</p>';
+    if (!rows.length) h += '<div class="empty">Nothing attached yet.</div>';
+    rows.forEach(function (r, i) {
+      h += '<div class="card" style="padding:9px 11px;margin-bottom:7px' + (i ? ';opacity:.85' : '') + '">' +
+        '<div class="acts" style="align-items:baseline;gap:7px;flex-wrap:wrap;margin:0">' +
+        '<b>' + esc(r.kind || "Paper") + '</b>' + (r.ref ? '<span class="pill">' + esc(r.ref) + '</span>' : '') +
+        (i === 0 ? '<span class="pill teal">the one in force</span>' : '<span class="pill">superseded</span>') +
+        '<div class="grow"></div>' +
+        (r.url ? '<button class="btn sm" data-act="agr-see" data-u="' + esc(r.url) + '">Open &#8599;</button>' : '') +
+        '</div>' +
+        '<div class="meta" style="font-size:12px;margin-top:4px">' +
+        (r.docDate ? 'Dated ' + esc(fullDate(r.docDate)) + ' · ' : '') +
+        (r.from ? 'effective ' + esc(fullDate(r.from)) + ' · ' : '') +
+        (r.till ? 'valid till ' + esc(fullDate(r.till)) + ' · ' : '') +
+        'attached by ' + esc(r.by || "?") + ' on ' + esc(fullDate(r.at)) + '</div>' +
+        '<div class="meta" style="font-size:12px;margin-top:4px">' + agrRateChips(r.rates) + '</div>' +
+        (r.note ? '<div class="meta" style="font-size:12px;margin-top:3px">' + esc(r.note) + '</div>' : '') +
+        '</div>';
+    });
+    return h + '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+  }
+
+  function modalAgrAdd(cl) {
+    if (!roleIs("admin")) {
+      return '<h2>Admin only</h2><p class="sub">The papers that fix a rate are attached by a partner. ' +
+        'The server refuses this write from any other role, so this is not only a screen rule.</p>' +
+        '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    }
+    var g = S.agr || {};
+    var rates = g.rates || agrRatesNow(cl).map(function (x) { return { brand: x.brand, pct: x.pct, on: true }; });
+    if (!S.agr) S.agr = { client: cl, rates: rates };
+    S.agr.rates = rates;
+    return '<h2>Attach the paper — ' + esc(cl) + '</h2>' +
+      '<p class="sub">The signed quotation, purchase order or rate agreement. One click on his rate ' +
+      'screen will open it, and the rates you tick below are written onto the record beside it — ' +
+      'so the paper answers <b>what was finalised at what rate</b> without being opened.</p>' +
+      '<div class="grid2">' +
+      '<div><label>What is it</label><select id="agr_kind">' + opts(AGR_KINDS, g.kind || AGR_KINDS[0]) + '</select></div>' +
+      '<div><label>Its number (PO no, quote no)</label><input id="agr_ref" value="' + esc(g.ref || "") + '" placeholder="e.g. PO-4471"/></div>' +
+      '<div><label>Dated</label><input id="agr_date" type="date" value="' + esc(g.docDate || today()) + '"/></div>' +
+      '<div><label>Valid till (optional)</label><input id="agr_till" type="date" value="' + esc(g.till || "") + '"/></div>' +
+      '</div>' +
+      '<label style="margin-top:8px">A note (optional)</label>' +
+      '<input id="agr_note" value="' + esc(g.note || "") + '" placeholder="e.g. agreed with Ar Himanshu on site"/>' +
+      '<label style="margin-top:8px">The rates this paper fixes</label>' +
+      '<div class="meta" style="font-size:12px;margin-bottom:4px">Taken from his standing discounts. Untick anything the paper does not cover, and correct a figure the paper states differently.</div>' +
+      '<div id="agr_rates">' + (rates.length
+        ? rates.map(function (x, i) {
+            return '<div class="acts" style="align-items:center;gap:7px;margin:0 0 4px">' +
+              '<input type="checkbox" class="agr-on" data-i="' + i + '"' + (x.on ? ' checked' : '') + '/>' +
+              '<b class="grow" style="font-size:13px">' + esc(x.brand) + '</b>' +
+              '<input class="agr-pct" data-i="' + i + '" value="' + esc(String(x.pct)) + '" ' +
+              'inputmode="decimal" style="width:80px;text-align:right"/><span style="font-size:13px">%</span></div>';
+          }).join("")
+        : '<div class="meta" style="font-size:12px;color:#b45309">No standing discount is set for this client yet, so no rate can be written onto the paper. Set his brand rates first, or attach the paper now and it will simply carry the link.</div>') + '</div>' +
+      '<label style="margin-top:8px">The document</label>' +
+      '<input type="file" id="agr_file" accept="application/pdf,image/*" ' +
+      'style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
+      '<div id="agr_file_note" class="meta" style="margin-top:4px;color:#94a3b8">' + agrFileSay() + '</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="agr-cancel">Cancel</button>' +
+      '<button class="btn" id="agr_btn" data-act="agr-save" data-n="' + esc(cl) + '">Attach it</button></div>';
+  }
+  function agrFileSay() {
+    var f = S.agr && S.agr.file;
+    if (!f) return "A PDF, or a photograph of the signed page. A photo is wrapped into a PDF before it goes up.";
+    return "Chosen: <b>" + esc(f.name || "the file") + "</b> · " +
+      Math.round(String(f.b64 || "").length / 1024) + " KB";
+  }
+  function agrNote(html, color) {
+    var n = el("agr_file_note"); if (!n) return;
+    n.innerHTML = html; n.style.color = color || "#94a3b8";
+  }
+  function agrReadRates() {
+    var out = [];
+    [].forEach.call(document.querySelectorAll("#agr_rates .agr-on"), function (cb) {
+      var i = Number(cb.getAttribute("data-i"));
+      var src = (S.agr && S.agr.rates && S.agr.rates[i]) || null; if (!src) return;
+      var pe = document.querySelector('#agr_rates .agr-pct[data-i="' + i + '"]');
+      var pct = pe ? (Number(String(pe.value).replace(/[^\d.]/g, "")) || 0) : Number(src.pct) || 0;
+      if (cb.checked) out.push({ brand: src.brand, pct: pct });
+    });
+    return out;
+  }
+
   function admBrandTable(cl, ro) {
     var sp = admBrandSplit(cl), line = admLineup(cl);
     if (!sp.took.length && !sp.other.length) {
-      return '<div class="meta" style="font-size:12px;color:#64748b">Nothing delivered to this ' +
+      /* v6.9.436 - the paper still belongs here. A client with no brand priced yet is exactly
+         the one whose signed quotation is the only rate anybody has. */
+      return agrStrip(cl) + '<div class="meta" style="font-size:12px;color:#64748b">Nothing delivered to this ' +
         'client yet, so there is no brand to price.</div>';
     }
-    var h = "";
+    /* v6.9.436 - ABOVE the rates, because it is the answer to "what did we agree" and the
+       table below is only the answer to "what do we charge". */
+    var h = agrStrip(cl);
     if (sp.took.length) {
       h += '<div style="font-size:12px;font-weight:700;color:#0f766e;margin:0 0 3px">' +
         'What he has taken \u00b7 ' + sp.took.length + ' brand' + (sp.took.length === 1 ? '' : 's') +
@@ -17770,6 +17977,9 @@ function viewCatalogue() {
     var ROLE_LABEL = { plumber: "Plumber", architect: "Architect", builder: "Builder", pmc: "PMC" };
     var anyPartner = ["plumber", "architect", "builder", "pmc"].some(function (r) { return String(cObj[r] || "").trim(); });
     h += '<div class="row"><button class="btn sm ghost" data-act="disc-back">&larr; All discount clients</button></div>' +
+      /* v6.9.436 - the signed paper sits at the TOP of the screen where the rates are typed.
+         This is the screen he meant: "as to check on single click what finalized at what rate". */
+      agrStrip(cl) +
       '<div class="empty" style="text-align:left;padding:6px 0 10px">Brand-wise discount for <b>' + esc(cl) + '</b>. Used by the quote builder, new challans and the billing screen.' +
       (anyPartner
         ? ' Below each discount, set the incentive % for this client’s partner(s) on that brand — each earns on the net (post-discount) sale.'
@@ -31549,7 +31759,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pfxCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null;
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pfxCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null; _agrCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
        yesterday's money, which is the worst thing this app can do. */
@@ -31979,6 +32189,35 @@ function viewCatalogue() {
         });
       });
     }
+    /* v6.9.436 - the signed paper. Read on the change event, never at save time: a repaint
+       empties a file input, and the man would press Attach with nothing chosen. Same two kinds
+       the old-hisab box takes - a PDF goes up as it is, a photograph is wrapped into a PDF. */
+    var agEl = el("agr_file");
+    if (agEl) {
+      agEl.addEventListener("change", function (e) {
+        var f = e.target.files && e.target.files[0];
+        if (!f) return;
+        var k = fileKind(f);
+        if (k !== "pdf" && k !== "image") {
+          if (S.agr) S.agr.file = null;
+          agrNote("Only a PDF or a photo can be stored. Open it, Save as PDF, and attach that.", "#b45309");
+          return;
+        }
+        agrNote("Reading the file…", "#94a3b8");
+        (k === "pdf" ? fileB64(f) : shrinkPhoto(f)).then(function (b64) {
+          if (!b64) {
+            if (S.agr) S.agr.file = null;
+            agrNote("That file could not be read — try picking it again.", "#b45309");
+            return;
+          }
+          if (S.agr) S.agr.file = { b64: b64, name: f.name || "agreement", kind: k };
+          agrNote(agrFileSay(), "#0f766e");
+        }).catch(function () {
+          agrNote("That file could not be read — try picking it again.", "#b45309");
+        });
+      });
+    }
+
     /* Stock import: read an uploaded Tally CSV export and jump straight to the review step. */
     var impf = el("imp_file");
     if (impf) {
@@ -35100,6 +35339,80 @@ function viewCatalogue() {
       }
       if (!piRow) { unlockBtn(t); toast("That entry has gone stale \u2014 open it again."); return; }
       payWrite(piRow, _gClick, t);
+      return;
+    }
+
+    /* ---- THE PAPER THAT FIXED THE RATE  (v6.9.436) ---- */
+    if (act === "agr-open") {
+      var agN = t.getAttribute("data-n") || "";
+      S.agr = { client: agN, rates: agrRatesNow(agN).map(function (x) { return { brand: x.brand, pct: x.pct, on: true }; }) };
+      S.modal = modalAgrAdd(agN); render(); return;
+    }
+    if (act === "agr-cancel") { S.agr = null; S.modal = null; render(); return; }
+    if (act === "agr-list") { S.modal = modalAgrList(t.getAttribute("data-n") || ""); render(); return; }
+    if (act === "agr-see") {
+      var agU = t.getAttribute("data-u") || "";
+      if (!agU) { toast("This record carries no link."); return; }
+      try { window.open(agU, "_blank", "noopener"); } catch (e) { toast("Could not open it — copy the link from the record."); }
+      return;
+    }
+    if (act === "agr-save") {
+      if (!roleIs("admin")) { toast("A partner attaches the papers that fix a rate."); return; }
+      var agCl = t.getAttribute("data-n") || "";
+      var agF = S.agr && S.agr.file;
+      if (!agF || !agF.b64) { agrNote("Pick the document first — a PDF or a photo of the signed page.", "#b45309"); unlockBtn(t); return; }
+      if (_agrUp) {
+        toast("It is already going up — " + Math.round((Date.now() - _agrUp.t0) / 1000) +
+              "s so far. Pressing again only slows it down.");
+        unlockBtn(t); return;
+      }
+      var agKind = val("agr_kind") || AGR_KINDS[0];
+      var agRef = val("agr_ref"), agDate = val("agr_date") || today();
+      var agTill = val("agr_till"), agNote2 = val("agr_note");
+      var agRates = agrReadRates();
+      _agrUp = { t0: Date.now() };
+      var agKb = Math.round(String(agF.b64 || "").length / 1024);
+      agrNote("Going up… " + agKb + " KB. Leave this open.", "#94a3b8");
+      (agF.kind === "pdf"
+        ? Promise.resolve(agF.b64)
+        : imgToPdf(agF.b64, String(agCl) + " — " + agKind).then(function (d) {
+            return d.output("datauristring").split(",")[1];
+          })
+      ).then(function (b64a) {
+        return api("pdfHost", {
+          pdfBase64: b64a,
+          filename: "AGREEMENT-" + String(agCl).replace(/[^\w.-]+/g, "-") + "-" + agDate + ".pdf"
+        }, 240000);
+      }).then(function (r) {
+        if (!r || !r.ok || !r.url) {
+          throw new Error((r && r.error) ? String(r.error) : "the server took the file but sent no link back");
+        }
+        var nowA = new Date().toISOString();
+        return save("audit", {
+          id: mintId("AG"), createdAt: nowA, actor: S.user || "",
+          action: "client:agreement", target: String(agCl) + (agRef ? " / " + agRef : ""),
+          detail: JSON.stringify({
+            client: agCl, kind: agKind, ref: agRef, docDate: agDate, from: agDate,
+            till: agTill, note: agNote2, url: r.url, at: nowA, rates: agRates
+          }), ip: ""
+        }, true).then(function () {
+          var secA = Math.round((Date.now() - _agrUp.t0) / 1000);
+          _agrUp = null; _agrCache = null; S.agr = null; S.modal = null;
+          render();
+          toast("Attached in " + secA + "s — " + agKind + " for " + agCl + ", with " +
+                agRates.length + " rate(s) written onto it.");
+        });
+      }).catch(function (err) {
+        /* SAY WHAT HAPPENED, and keep the file: api() words its own failures, and throwing that
+           away is the fault the receipt queue carried until v6.9.265. Nothing is lost - the
+           document is still chosen and Attach can be pressed again. */
+        var secB = _agrUp ? Math.round((Date.now() - _agrUp.t0) / 1000) : 0;
+        _agrUp = null; unlockBtn(t);
+        var whyA = (err && err.message) ? String(err.message) : "the server gave no link back";
+        agrNote('<b style="color:#b45309">Not gone up — ' + esc(whyA) + '</b> (after ' + secB +
+                's, ' + agKb + ' KB). Nothing was lost and the document is still chosen — ' +
+                'press <b>Attach it</b> to try again.', "#b45309");
+      });
       return;
     }
 
