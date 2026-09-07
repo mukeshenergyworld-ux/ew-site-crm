@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.421";
+  var APP_VERSION = "6.9.422";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -12047,11 +12047,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          The client's preset discount still rides on the tile, because on this screen it is the
          thing that decides which brand to open. */
       ensurePickerCss();
-      h += '<div class="ew-pickgrid">' + brandList().map(function (b) {
+      /* the client's preset discount stays on the chip: on THIS screen it is the thing that
+         decides which brand to open. */
+      h += '<div class="chips">' + brandList().map(function (b) {
         var d = clientDiscount(z.client, b);
-        return brandTile(b, "qz-brand",
-          '<span class="cnt">' + brandProducts(b).length + '</span>' +
-          (d ? '<span class="cnt" style="background:#b45309">' + esc(pctTxt(d)) + '</span>' : ''));
+        return '<button class="chip bchip" data-act="qz-brand" data-brand="' + esc(b) + '">' +
+          brandDot(b) + esc(b) + '<b>' + brandProducts(b).length + '</b>' +
+          (d ? '<b style="color:#b45309">' + esc(pctTxt(d)) + '</b>' : '') + '</button>';
       }).join("") + '</div>';
       return h;
     }
@@ -15845,10 +15847,10 @@ function viewCatalogue() {
     /* v6.9.421 - the same tiles as the challan builder, with the brand's mark and its product
        count. It was plain chips with no count: a brand holding 178 products looked exactly like
        one holding 1. */
-    var h = '<div class="ew-pickgrid" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
+    var h = '<div class="chips" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
       return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
     }).slice().sort(alphaBy(function (br) { return br.brand; })).map(function (br) {
-      return brandTile(br.brand, "rt-brand", null, z.brand === br.brand);
+      return brandPickChip(br.brand, "rt-brand", z.brand === br.brand);
     }).join("") + '</div>';
     if (!PRODUCTS.length) return h + catWait();          /* v6.9.391 */
     if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
@@ -29141,31 +29143,37 @@ function viewCatalogue() {
     for (var i = 0; i < k.length; i++) n = (n * 31 + k.charCodeAt(i)) % 360;
     return n;
   }
-  function brandMark(b) {
-    var h = brandHue(b);
-    var ini = String(b || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 2).toUpperCase() || "?";
-    var disc = '<span class="bmk ini" style="background:hsl(' + h + ',62%,93%);color:hsl(' + h +
-      ',55%,30%);border-color:hsl(' + h + ',50%,80%)">' + esc(ini) + '</span>';
-    var lg = null; try { lg = logoFor(b); } catch (e) { lg = null; }
-    if (!(lg && lg.src)) return disc;
-    /* THE LETTERS ARE ALWAYS THERE, UNDERNEATH. A cached logo that will not decode would
-       otherwise leave an empty white square with nothing in it at all - which is worse than no
-       logo, because an empty box says the brand has no name. */
-    return '<span class="bmkwrap">' + disc +
-      '<img class="bmk over" src="' + esc(lg.src) + '" alt="" loading="lazy" ' +
-      'onerror="this.style.display=\'none\'"/></span>';
+  /* v6.9.422 - A DOT, NOT A LOGO. He looked at the logo tiles and said no: "we dont want logo
+     to be entered here ... small boxes, that looks simple and easy to understand". He is right
+     that a 26px logo identifies nothing and that fourteen brands having one and eleven not made
+     the row ragged. The dot carries the same idea in 9px: the hue is hashed from the name, so a
+     brand is the same colour on every screen and every phone for ever, and a brand added next
+     year is coloured with nobody maintaining a list. Saturated on purpose - it has to read on
+     white and on the dark green of a selected chip. */
+  function brandDot(b) {
+    return '<span class="bdot" style="background:hsl(' + brandHue(b) + ',58%,52%)"></span>';
   }
-  /* One brand tile: mark, name, and how many products are behind it. The count was on the
-     challan builder's tiles and on nothing else - a man on the return form could not tell a
-     brand with 178 products from one with 1. */
-  function brandTile(b, act, extra, on) {
-    /* `on` matters on the return and old-delivery forms, which show all three levels at once
-       and so must say which brand is open. The challan builder replaces the list with the next
-       step, so nothing there is ever "on". */
-    return '<button class="ew-pickbtn brand' + (on ? " on" : "") + '" data-act="' + esc(act) +
-      '" data-brand="' + esc(b) + '">' +
-      brandMark(b) + '<span>' + esc(b) + '</span>' +
-      (extra || '<span class="cnt">' + brandProducts(b).length + '</span>') + '</button>';
+  /* THE CONTROL IN HIS SCREENSHOT. .chip is what the return form has always drawn; the only
+     thing it lacked was the colour and, on some screens, the count. */
+  /* v6.9.422 - brandPickChip, NOT brandChip: that name has belonged since the brand board was
+     built to the WON / LOST / QUOTED mark drawn beside a brand on a client's board, and a second
+     function of the same name in this one scope silently replaces the first. The board would
+     have called this with a pitch row and drawn nonsense. Caught by t_dead_taps' new rule that
+     no function may be declared twice - the same shape of fault as dg-open two releases ago. */
+  /* NAME AND DOT, NO COUNT - which is his screenshot exactly: the brand row carries no number
+     and the CATEGORY row carries them all. Measured at 390px: with a count on every brand the
+     twenty-five ran to ELEVEN lines, which is worse than the tile grid it replaced; without,
+     they fit in far fewer and the number he actually needs is one tap away on the category
+     that holds it. `extra` is for the quote screen, where the client's preset discount is the
+     thing that decides which brand to open. */
+  function brandPickChip(b, act, on, extra) {
+    return '<button class="chip bchip' + (on ? " on" : "") + '" data-act="' + esc(act) +
+      '" data-brand="' + esc(b) + '">' + brandDot(b) + esc(b) + (extra || "") + '</button>';
+  }
+  function famChip(brand, f, on) {
+    var n = brandProducts(brand).filter(function (p) { return famSame(p.family, f); }).length;
+    return '<button class="chip fchip' + (on ? " on" : "") + '" data-act="' +
+      (on ? "ch-famclear" : "ch-fam") + '" data-fam="' + esc(f) + '">' + esc(f) + '<b>' + n + '</b></button>';
   }
   function ensurePickerCss() {
     if (document.getElementById("ew_pick_css")) return;
@@ -29177,19 +29185,15 @@ function viewCatalogue() {
       ".ew-pickgrid{display:flex;flex-wrap:wrap;gap:8px}" +
       ".ew-pickbtn{border:1.5px solid #cbd5e1;background:#fff;border-radius:11px;padding:11px 15px;font-size:14px;font-weight:600;cursor:pointer;color:#0f172a;display:inline-flex;align-items:center;gap:7px;line-height:1}" +
       ".ew-pickbtn.brand{border-color:#0d9488;color:#0f766e;background:#f0fdfa}" +
-      /* v6.9.421 - the brand's own logo, or two letters on a colour taken from its name */
-      ".bmkwrap{position:relative;display:inline-flex;flex:0 0 auto;line-height:0}" +
-      ".bmkwrap .bmk.over{position:absolute;left:0;top:0;width:100%;height:100%}" +
-      ".ew-pickbtn .bmk{width:26px;height:26px;flex:0 0 26px;border-radius:7px;object-fit:contain;" +
-        "background:#fff;border:1px solid #e2e8f0;padding:1px}" +
-      /* v6.9.421 - 12px, not 11. Two letters in a 26px disc is a mark and not prose, but the
-         rule "nothing readable below 12px" has no exceptions worth arguing over and they fit. */
-      ".ew-pickbtn .bmk.ini{display:inline-flex;align-items:center;justify-content:center;" +
-        "font-size:12px;font-weight:800;border-width:1.5px;border-style:solid;padding:0}" +
-      ".ew-crumb .bmk{width:22px;height:22px;flex:0 0 22px;border-radius:5px;object-fit:contain;" +
-        "background:#fff;border:1px solid #e2e8f0;padding:1px}" +
-      ".ew-crumb .bmk.ini{display:inline-flex;align-items:center;justify-content:center;" +
-        "font-size:12px;font-weight:800;border-width:1.5px;border-style:solid;padding:0}" +
+      /* v6.9.422 - the dot, and the two chip families. A brand row and a category row must
+         never be mistaken for each other, so the category chips are tinted. */
+      ".chip.bchip,.chip.fchip{display:inline-flex;align-items:center;gap:6px}" +
+      ".bdot{width:9px;height:9px;flex:0 0 9px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.85)}" +
+      ".chip.fchip{border-color:#c7d2fe;color:#3730a3;background:#f5f6ff}" +
+      ".chip.fchip b{color:#818cf8}" +
+      ".chip.fchip:hover{border-color:#6366f1}" +
+      ".chip.fchip.on{background:#4338ca;border-color:#4338ca;color:#fff}" +
+      ".chip.fchip.on b{color:#c7d2fe}" +
       ".ew-pickbtn.brand:active,.ew-pickbtn.brand:hover{background:#ccfbf1}" +
       ".ew-pickbtn.brand.on{background:#0f766e;color:#fff;border-color:#0f766e}" +
       ".ew-pickbtn.brand.on .cnt{background:#fff;color:#0f766e}" +
@@ -29348,55 +29352,39 @@ function viewCatalogue() {
        ever true here. */
     if (!PRODUCTS.length) return qbox + catWait();
 
-    /* STEP 1 — no brand yet: show ONLY brands */
+    /* v6.9.422 - EVERY LEVEL ON THE SCREEN AT ONCE, which is what he asked for and is how the
+       return form has always worked. The stepped version replaced the brand row with the
+       category row, so putting two elbows from another brand on the same challan meant finding
+       a crumb and pressing an x that reads as "undo" - v6.9.273 papered over that with a button
+       saying "+ Add from another brand". With the brand row still on the screen there is
+       nothing to paper over: the next brand is simply there.
+
+       The two crumb actions are not lost. THE SELECTED CHIP CARRIES THEM - tapping the open
+       brand closes it - so ch-brandclear and ch-famclear are still drawn and still handled,
+       which is the rule t_dead_taps enforces in both directions. Neither has ever touched
+       z.items, so nothing already picked can be lost by pressing one. */
+    var _picked = ((z.items || []).length > 0);
+    var h = qbox + '<div class="ew-picklabel"><span class="step">1</span>Brand</div>' +
+      '<div class="chips">' + brands.map(function (br) {
+        var on = (z.brand === br.brand);
+        return brandPickChip(br.brand, on ? "ch-brandclear" : "ch-brand", on);
+      }).join("") + '</div>';
     if (!z.brand) {
-      return qbox + '<div class="ew-picklabel"><span class="step">1</span>Tap a brand</div>' +
-        '<div class="ew-pickgrid">' + brands.map(function (br) {
-          return brandTile(br.brand, "ch-brand");
-        }).join("") + '</div>';
+      return h + '<div class="empty" style="padding:14px 12px">Tap a brand above.</div>';
     }
-
-    /* brand chosen — a breadcrumb bar; tap a crumb's × to go back a level */
-    /* v6.9.273 - AND AN EXPLICIT WAY TO ADD SOMETHING FROM ANOTHER BRAND.
-       Clearing the brand crumb has always returned to the list of brands without disturbing a
-       single picked line - ch-brandclear touches brand and family and never items. But a small ×
-       on a crumb reads as "undo", not as "add something else", and on a challan raised from a
-       quote every other word on the screen says this delivery IS the quote. So a man fitting a
-       LEO booster that needs two elbows and a union had no reason to believe he could put them on
-       the same challan, and good reason to fear that pressing × would throw the pump away.
-       Same action, said out loud, and only once there is something to protect. */
-    var _anyPicked = ((z.items || []).length > 0);
-    var _keepMsg = "Goes back to the list of brands. Everything already picked stays on the challan.";
-    var bar = qbox + '<div class="ew-pickbar">' +
-      '<button class="ew-crumb" data-act="ch-brandclear" title="' + esc(_keepMsg) + '">' +
-      /* v6.9.421 - the mark stays with him through the category and quantity steps, so the
-         brand he is standing in is identifiable without reading it. */
-      brandMark(z.brand) + '<span class="tag">Brand</span> ' + esc(z.brand) + ' <span class="cx">&#10005;</span></button>' +
-      (z.family ? '<button class="ew-crumb" data-act="ch-famclear" title="Goes back to this brand’s categories. Nothing picked is lost."><span class="tag">Category</span> ' + esc(z.family) + ' <span class="cx">&#10005;</span></button>' : '') +
-      (_anyPicked
-        ? '<button class="ew-crumb" data-act="ch-brandclear" title="' + esc(_keepMsg) + '" ' +
-          'style="border-color:#99f6e4;background:#f0fdfa;color:#0f766e;font-weight:700">' +
-          '+ Add from another brand</button>'
-        : '') +
-      '</div>' +
-      (_anyPicked
-        ? '<div class="meta" style="font-size:12px;margin:3px 2px 0;color:#64748b">' +
-          'Fittings, elbows, valves — anything the job needs can go on the same challan. ' +
-          'The ' + (z.items || []).length + ' line(s) already picked stay where they are.</div>'
+    var fams = familyList(z.brand);
+    h += '<div class="ew-picklabel"><span class="step">2</span>' + esc(z.brand) +
+      ' &middot; ' + fams.length + ' categor' + (fams.length === 1 ? 'y' : 'ies') + '</div>' +
+      '<div class="chips">' + fams.map(function (f) {
+        return famChip(z.brand, f, famSame(z.family, f));
+      }).join("") + '</div>' +
+      (_picked
+        ? '<div class="meta" style="font-size:12px;margin:-8px 2px 8px;color:#64748b">' +
+          'Anything the job needs can go on the same challan &mdash; tap another brand above and ' +
+          'the ' + (z.items || []).length + ' line(s) already picked stay where they are.</div>'
         : '');
-
-    /* STEP 2 — brand but no category: show ONLY that brand's categories */
-    if (!z.family) {
-      var fams = familyList(z.brand);
-      return bar + '<div class="ew-picklabel"><span class="step">2</span>Tap a category in ' + esc(z.brand) + ' &middot; ' + fams.length + '</div>' +
-        '<div class="ew-pickgrid">' + fams.map(function (f) {
-          var n = brandProducts(z.brand).filter(function (p) { return famSame(p.family, f); }).length;
-          return '<button class="ew-pickbtn cat" data-act="ch-fam" data-fam="' + esc(f) + '">' + esc(f) + ' <span class="cnt">' + n + '</span></button>';
-        }).join("") + '</div>';
-    }
-
-    /* STEP 3 — products in the chosen brand+category */
-    var h = bar + '<div class="ew-picklabel"><span class="step">3</span>Set quantities</div><div class="plist">';
+    if (!z.family) return h + '<div class="empty" style="padding:14px 12px">Tap a category above.</div>';
+    h += '<div class="ew-picklabel"><span class="step">3</span>Set quantities</div><div class="plist">';
     brandProducts(z.brand).filter(function (p) { return famSame(p.family, z.family); }).forEach(function (p) {
       h += chProw(p, z);
     });
@@ -29434,10 +29422,10 @@ function viewCatalogue() {
   function ocPicker() {
     ensurePickerCss();
     var z = S.oc;
-    var h = '<div class="ew-pickgrid" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
+    var h = '<div class="chips" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
       return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
     }).slice().sort(alphaBy(function (br) { return br.brand; })).map(function (br) {
-      return brandTile(br.brand, "oc-brand", null, z.brand === br.brand);
+      return brandPickChip(br.brand, "oc-brand", z.brand === br.brand);
     }).join("") + '</div>';
     if (!PRODUCTS.length) return h + catWait();          /* v6.9.391 */
     if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
