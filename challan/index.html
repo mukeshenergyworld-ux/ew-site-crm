@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.48.0";
+  var APP_VERSION = "1.49.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1332,6 +1332,51 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 
      `brands` is gone from the list entirely: S.data.brands is not read anywhere in this app.
      It was coming down every pull and being thrown away. */
+  /* ================= A PASS MUST SURVIVE A PULL  (v1.49.0, 7 Sep 2026) =================
+     HIS WORDS: "pass and dispatch process in very slop and also bouncing back many time, i
+     have to click many time, make it fast and effective".
+
+     MEASURED, on this app, against a backend answering at the speed his does (the CHEAPEST
+     call this backend has, teamStamp, is ~2.1s from his machine): press Pass, let the
+     30-second heartbeat fire a pull WHILE the move is in the air, and the challan comes back
+     reading APPROVAL PENDING. He presses it again. That is the whole complaint.
+
+     THE CRM FIXED EXACTLY THIS ON 15 AUGUST (v6.9.292/348), after "i have to approve challan
+     2 to 3 times". This app never got it. mergeBook() does `S.data[k] = r[k]` - a wholesale
+     replacement - and nothing here re-applied a move the server had already confirmed.
+
+     The CRM's two guards, brought over unchanged in shape:
+       1. `_moving` counts moves in flight; the heartbeat, the come-back-to-the-app pull and
+          pull() itself all wait, exactly as they already wait for an open form.
+       2. every server-CONFIRMED move is remembered for five minutes and re-applied after any
+          wholesale replacement - but ONLY FORWARDS. If the server has caught up, or somebody
+          moved it further on, or the status is not in the flow at all (a cancelled challan),
+          the memory is dropped and the server wins. It can never drag a challan backwards and
+          never resurrect a cancelled one. */
+  var CH_FLOW = ["Draft", "Approved", "Dispatched", "Received", "Billed"];
+  var _moving = 0, _moved = {}, MOVED_TTL = 300000;
+  function chMoveRemember(id, to, by) { if (id && to) _moved[String(id)] = { to: to, by: by || "", at: Date.now() }; }
+  function chMoveForget(id) { delete _moved[String(id)]; }
+  function applyMoves() {
+    if (!S.data) return;
+    var now = Date.now(), fixed = 0, arr = S.data.challans || [];
+    Object.keys(_moved).forEach(function (id) {
+      var m = _moved[id];
+      if (now - m.at > MOVED_TTL) { delete _moved[id]; return; }
+      var row = null;
+      for (var i = 0; i < arr.length; i++) { if (arr[i] && String(arr[i].id) === id) { row = arr[i]; break; } }
+      if (!row) return;                                  /* missing entirely - applyConfirmed's job */
+      var want = CH_FLOW.indexOf(String(m.to || ""));
+      var have = CH_FLOW.indexOf(String(row.status || ""));
+      if (want < 0 || have < 0) { delete _moved[id]; return; }   /* cancelled/unknown - server wins */
+      if (have >= want) { delete _moved[id]; return; }           /* caught up, or moved further on */
+      row.status = m.to;                                          /* forward only, never back */
+      if (m.by && !row.approvedBy) row.approvedBy = m.by;
+      fixed++;
+    });
+    if (fixed) { try { console.warn("[EW] re-applied " + fixed + " confirmed challan move(s) a re-sync had not caught up with"); } catch (x) { } }
+  }
+
   var KEEP_FAST = ["clients","sites","drivers","discounts","brandmap","associates"];
   var KEEP_REST = ["challans","returns","audit","pitch"];
   /* v1.11.0 - "pitch" is not free: one row per client per brand. It is pulled because without
@@ -5822,15 +5867,57 @@ function discRowOn(client, brand, onYmd) {
       var pin2 = window.prompt("Enter your PIN to PASS this challan\n\n" + String(c2.challanNo || "") + " — " +
         String(c2.customerName || "") + "\n\nThis releases material. It is not a formality.");
       if (!pin2) { toast("Nothing was passed."); return; }
-      t.disabled = true; t.textContent = "Passing…";
-      api("challanMove", { id: c2.id, to: "Approved", approvePin: pin2 }).then(function (r) {
-        if (!r || !r.ok) {
-          t.disabled = false; t.textContent = "Pass it";
-          toast((r && r.error) || "The server refused it. Nothing changed.");
+      /* ---- PAINT FIRST, CONFIRM BEHIND  (v1.49.0) ----
+         "make it fast and effective". It cannot be made fast: this backend's CHEAPEST call is
+         ~2.1s from his machine, and a pass was TWO of them one after the other. What can be
+         made fast is the SCREEN. The CRM has worked this way since v6.9.292 - the row moves the
+         instant he taps, the server is told behind, and it is put back only if the server
+         actually refuses. He is never again watching a button say "Passing..." for six seconds.
+
+         And the move is REMEMBERED (see applyMoves above), so a pull that was already in the
+         air when he tapped can no longer put APPROVAL PENDING back on a challan he has passed. */
+      var pPrev = String(c2.status || ""), pPrevBy = String(c2.approvedBy || "");
+      c2.status = "Dispatched"; c2.approvedBy = S.user; c2.approvedAt = new Date().toISOString();
+      chMoveRemember(c2.id, "Dispatched", S.user);
+      _moving++;
+      var pDone = function () { if (_moving > 0) _moving--; };
+      var pBack = function (msg) {
+        c2.status = pPrev; c2.approvedBy = pPrevBy; chMoveForget(c2.id);
+        pDone(); bust(); render(); toast(msg || "The server refused it — nothing changed.");
+      };
+      var pHalf = function (msg) {
+        /* the pass landed, the dispatch did not. Say the truth: Approved, with its own door. */
+        c2.status = "Approved"; chMoveRemember(c2.id, "Approved", S.user);
+        pDone(); bust(); render();
+        toast(msg || (String(c2.challanNo || "It") + " is passed but NOT dispatched. Press Dispatch on it."));
+      };
+      bust(); render(); toast(String(c2.challanNo || "The challan") + " passed and dispatched.");
+
+      /* ---- ONE ROUND TRIP WHERE THERE WERE TWO ----
+         `andDispatch` asks the server to stamp the approval AND release it in the same call.
+         A backend that does not know the word simply moves it to Approved and says so, and the
+         second call below runs exactly as it always did - so this is correct against either
+         version of the server, and gets ~2 seconds back the day the backend is updated. */
+      api("challanMove", { id: c2.id, to: "Approved", approvePin: pin2, andDispatch: 1, noTg: 1 }).then(function (r) {
+        if (!r || !r.ok) { pBack((r && r.error) || "The server refused it. Nothing changed."); return; }
+        c2.approvedBy = (r && r.by) || S.user;
+        if (String(r.status || "") === "Dispatched") {      /* the server did both - nothing more to send */
+          pDone(); chMoveRemember(c2.id, "Dispatched", r.by || S.user); bust(); render();
+          S.dispatchSent = S.dispatchSent || {};
+          if (!S.dispatchSent[c2.id]) {
+            S.dispatchSent[c2.id] = true;
+            tgChallan(c2, "TG_DISPATCH", tgCaption(c2)).catch(function () {
+              toast("Dispatched. The dispatch bot did not answer — use Send to Telegram on the strip.");
+            });
+          }
+          if (!tgSent(c2)) {
+            tgChallan(c2, "TG_CHALLAN", tgCaption(c2)).then(function (tr) {
+              if (tr && tr.ok) { c2.tgMsg = c2.tgMsg || "sent"; bust(); render(); }
+            }).catch(function () { });
+          }
           return;
         }
-        c2.status = "Approved"; c2.approvedBy = (r && r.by) || S.user; c2.approvedAt = new Date().toISOString();
-        bust(); render(); toast(String(c2.challanNo || "The challan") + " passed.");
+        chMoveRemember(c2.id, "Approved", r.by || S.user);
         /* ---- AND DISPATCHED, IN THE SAME TAP (v1.42.0) ----
            "now approve and dispatch are same thing not different on."
 
@@ -5842,11 +5929,9 @@ function discRowOn(client, brand, onYmd) {
            button - the same door a challan raised before today already uses. A half-finished
            pass is visible and finishable, never silent. */
         api("challanMove", { id: c2.id, to: "Dispatched", approvePin: pin2 }).then(function (r2) {
-          if (!r2 || !r2.ok) {
-            toast(String(c2.challanNo || "It") + " is passed but NOT dispatched. Press Dispatch on it.");
-            return;
-          }
-          c2.status = "Dispatched"; bust(); render();
+          if (!r2 || !r2.ok) { pHalf(r2 && r2.error); return; }
+          pDone();
+          c2.status = "Dispatched"; chMoveRemember(c2.id, "Dispatched", r2.by || S.user); bust(); render();
           /* tgSent() reads c.tgMsg, which the TG_CHALLAN send above has just set - so it can
              never be the guard for THIS send. Its own guard, in memory, set BEFORE the call so
              two near-simultaneous taps cannot both pass it. */
@@ -5858,8 +5943,11 @@ function discRowOn(client, brand, onYmd) {
             });
           }
         }).catch(function () {
-          toast(String(c2.challanNo || "It") + " is passed. The dispatch did not get an answer \u2014 " +
-                "check the strip before pressing Dispatch again.");
+          /* No answer at all. The row STAYS moved and he is told plainly not to do it twice: a
+             deadline is a fact about how long WE waited, not about what the server did. */
+          pDone();
+          toast(String(c2.challanNo || "It") + " is passed. The dispatch did not get an answer — " +
+                "it may already be done. Do NOT press it again; the next refresh shows the truth.");
         });
         /* ---- AND NOW IT GOES TO TELEGRAM (v1.32.0) ----
            "once approved it will auto send to telegram bot, no its not sending on approval."
@@ -5883,8 +5971,11 @@ function discRowOn(client, brand, onYmd) {
           });
         }
       }).catch(function () {
-        t.disabled = false; t.textContent = "Pass it";
-        toast("No signal — nothing was changed. Try again.");
+        /* v1.49.0 - the row stays moved, for the same reason as above: the server may well
+           have done it. The memory holds it for five minutes and the next pull tells the truth. */
+        pDone();
+        toast("Sent, but the server did not answer in time. It may already be done — do NOT " +
+              "do it again. The next refresh will show the truth.");
       });
       return;
     }
@@ -6076,6 +6167,9 @@ function discRowOn(client, brand, onYmd) {
 
   function pull(loud) {
     if (_pulling) { if (loud) toast("Already pulling\u2026"); return _pulling; }
+    /* v1.49.0 - and never on top of a move this app has not heard back about. The refresh
+       arrow says so rather than quietly doing nothing. */
+    if (_moving) { if (loud) toast("A challan is still being passed \u2014 one moment."); return null; }
     var snap = snapLoad();
     if (snap && !S.data) { S.data = snap; applyJournal(); render(); }
     S.busy = true;
@@ -6117,13 +6211,13 @@ function discRowOn(client, brand, onYmd) {
       /* the whole book arrived on the first call - take the rest of it and do not ask again */
       if (bookHas(r, KEEP_REST)) {
         mergeBook(r, KEEP_REST); restTook();
-        jrnReconcile(); applyJournal();          /* the full book is in hand - see below */
+        jrnReconcile(); applyJournal(); applyMoves();   /* v1.49.0 - and a confirmed move outlives a stale copy */
         S.syncAt = Date.now(); S.busy = false; _pulling = null;
         snapSave(); flushSoon(); render();
         if (loud) toast("Up to date" + (wireSay() ? " (" + wireSay() + ")" : "") + ".");
         return false;
       }
-      applyJournal(); snapSave(); render();
+      applyJournal(); applyMoves(); snapSave(); render();   /* v1.49.0 */
       if (loud) toast("Names and rates are up to date" + (wireSay() ? " (" + wireSay() + ")" : "") +
                       ". Delivery history is still coming.");
       return true;
@@ -6146,7 +6240,7 @@ function discRowOn(client, brand, onYmd) {
            v1.28.0 - and it runs HERE, after part two, never after part one: challans and
            audit are the tabs the journal writes into, and reconciling against a half-book
            would be asking whether a record landed while holding back the answer. */
-        jrnReconcile(); applyJournal();
+        jrnReconcile(); applyJournal(); applyMoves();   /* v1.49.0 */
         S.syncAt = Date.now(); snapSave(); flushSoon(); render();
         if (loud) toast("Up to date.");
       });
@@ -6163,6 +6257,7 @@ function discRowOn(client, brand, onYmd) {
     beatStart();
     if (!S.user || !S.data) return;
     if (S.sheet || S.ch || S.rt) return;
+    if (_moving) return;                        /* v1.49.0 - a pass in flight is not a moment to pull */
     /* v1.28.0 - THE 60-SECOND GUARD IS GONE, at the owner's instruction.
        It read `if (Date.now() - S.syncAt < 60000) return;`. It was there to stop a man
        flicking between apps from spending a backend call every few seconds, and it cost him
@@ -6254,6 +6349,7 @@ function discRowOn(client, brand, onYmd) {
     if (document.hidden) return true;
     if (!S.user || !S.data) return true;
     if (S.sheet || S.ch || S.rt) return true;   /* a form is open */
+    if (_moving) return true;                   /* v1.49.0 - nor while a pass is in the air */
     if (_pulling) return true;
     return false;
   }
