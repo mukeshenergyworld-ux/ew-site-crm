@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.418";
+  var APP_VERSION = "6.9.420";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -26334,9 +26334,21 @@ function viewCatalogue() {
     var d = String(s == null ? "" : s).replace(/\D/g, "");
     return d.length >= 10 ? d.slice(-10) : "";
   }
+  /* v6.9.420 - READ THE DATE, NOT THE SENTENCE. This called d10(), which renders a date for a
+     human to read - "2026-07-28" comes back as "28/07/2026" - and then took seven characters
+     off the front of it. So the key was "28/07/2": the table headed "Month by month" grouped by
+     DAY, and dgMonthName, finding no "-" to split on, fell back to month 1 and printed "Jan" on
+     every row of every dossier. On his book: 86 dossiers, 182 rows drawn for 125 real months,
+     30 of them showing more rows than they have months. */
   function dgMonth(v) {
-    var s = dstr(d10(v));
-    return s && s.length >= 7 ? s.slice(0, 7) : "";
+    var s = String(v || "").trim(); if (!s) return "";
+    var iso = s.match(/^(\d{4})-(\d{2})/);            /* 2026-07-28, or an ISO stamp */
+    if (iso) return iso[1] + "-" + iso[2];
+    var dmy = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);  /* 28/07/2026, already rendered */
+    if (dmy) return dmy[3] + "-" + dmy[2];
+    var d = new Date(s);
+    if (isNaN(d.getTime())) return "";                /* no month rather than a wrong one */
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
   }
   function dgMonthName(m) {
     if (!m) return "no date";
@@ -26511,6 +26523,127 @@ function viewCatalogue() {
     return '<div class="card" style="margin-top:10px"><h3>' + esc(title) +
       ' <span class="pill">' + rows.length + '</span></h3>' +
       rows.map(fn).join("") + '</div>';
+  }
+  /* v6.9.419 - A ROW THAT OPENS, AND LOOKS LIKE ONE.
+     264 record rows across 130 dossiers were drawn as plain text: the screen said what had
+     happened and then made him type the quotation number into another screen to see it. The
+     inner html of every dgList row is unchanged - this only wraps it in something pressable,
+     with a chevron so it reads as pressable before it is pressed. */
+  function ensureDgCss() {
+    if (document.getElementById("ew_dg_css")) return;
+    var s = document.createElement("style");
+    s.id = "ew_dg_css";
+    s.textContent =
+      ".dgrow{display:flex;align-items:center;gap:8px;border-top:1px solid #eef2f7;cursor:pointer;" +
+        "border-radius:7px;margin:0 -6px;padding:0 6px}" +
+      ".dgrow:hover,.dgrow:active{background:#f0fdfa}" +
+      ".dgrow>.dgin{flex:1 1 auto;min-width:0}" +
+      ".dgrow>.dgin>.meta{border-top:none!important}" +
+      ".dgrow>.dgx{flex:0 0 auto;color:#94a3b8;font-size:19px;line-height:1;padding:0 2px}" +
+      ".dgrow:hover>.dgx,.dgrow:active>.dgx{color:#0f766e}";
+    document.head.appendChild(s);
+  }
+  function dgTap(kind, attrs, inner) {
+    ensureDgCss();
+    return '<div class="dgrow" data-act="dg-rec" data-k="' + esc(kind) + '" ' + (attrs || "") + '>' +
+      '<div class="dgin">' + inner + '</div><span class="dgx">&#8250;</span></div>';
+  }
+  /* ONE RECORD, ON TOP OF THE DOSSIER. Close and he is back on the row he pressed - which is
+     why this is a modal and not a jump: fourteen rows is a list to read through, not a place to
+     be thrown out of. Each one still carries the way to its own screen for anything that acts. */
+  function dgKV(rows) {
+    return '<div style="margin-top:8px">' + rows.filter(function (r) { return r && r[1] !== "" && r[1] != null; })
+      .map(function (r) {
+        return '<div style="display:flex;gap:10px;padding:5px 0;border-top:1px solid #eef2f7;font-size:13px">' +
+          '<span style="flex:0 0 118px;color:#64748b">' + esc(r[0]) + '</span>' +
+          '<span style="flex:1 1 auto;min-width:0"><b>' + r[1] + '</b></span></div>';
+      }).join("") + '</div>';
+  }
+  function modalDgRec(kind, id, n2) {
+    var foot = function (btns) {
+      return '<div class="foot"><button class="btn ghost" data-act="close">Close</button>' + (btns || "") + '</div>';
+    };
+    var goTab = function (tab, label) {
+      return '<button class="btn" data-act="dg-recgo" data-t="' + esc(tab) + '" data-n="' + esc(n2 || "") + '">' + esc(label) + '</button>';
+    };
+    if (kind === "challan") {
+      var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      if (!c) return '<h2>Not found</h2>' + foot();
+      return '<h2>' + esc(c.challanNo || "Delivery") + '</h2>' +
+        '<p class="sub">' + esc(c.customerName || "") + (c.site ? ' \u00b7 ' + esc(c.site) : '') + '</p>' +
+        dgKV([
+          ["Status", esc(c.status || "Draft") + (String(c.receiptReceived).toUpperCase() === "Y" ? ' \u00b7 <span style="color:#0f766e">receipt in</span>' : '')],
+          ["Raised", esc(dstr(d10(c.createdAt))) + (c.createdBy ? " by " + esc(c.createdBy) : "")],
+          ["Value", money(dgNum(c.amount))],
+          ["Freight", dgNum(c.freight) ? money(dgNum(c.freight)) + " \u00b7 " + esc(c.freightTo || "Client") : ""],
+          ["Driver", c.driver ? esc(c.driver) + (c.vehicle ? " \u00b7 " + esc(c.vehicle) : "") : ""],
+          ["Bill no.", c.billNo ? esc(c.billNo) : ""]
+        ]) +
+        '<div style="margin-top:10px">' + challanItemsTable(c) + '</div>' +
+        foot(canSee("billing") ? '<button class="btn" data-act="ch-hisab" data-cl="' + esc(c.customerName || "") + '">Open his HISAB</button>' : "");
+    }
+    if (kind === "quote") {
+      var q = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
+      if (!q) return '<h2>Not found</h2>' + foot();
+      return '<h2>' + esc(q.quoteNo || "Quotation") + '</h2>' +
+        '<p class="sub">' + esc(q.client || "") + (q.siteName ? ' \u00b7 ' + esc(q.siteName) : '') + '</p>' +
+        dgKV([
+          ["Status", esc(q.status || "Draft")],
+          ["Brands", esc(q.brand || "")],
+          ["Raised", esc(dstr(d10(q.createdAt))) + (q.createdBy ? " by " + esc(q.createdBy) : "")],
+          ["List price", dgNum(q.gross) ? money(dgNum(q.gross)) : ""],
+          ["Discount", dgNum(q.discountPct) ? esc(pctTxt(dgNum(q.discountPct))) : ""],
+          ["Net", dgNum(q.net) ? money(dgNum(q.net)) : ""],
+          ["With GST", dgNum(q.total) ? money(dgNum(q.total)) : ""],
+          ["Valid till", q.validTill ? esc(dstr(d10(q.validTill))) : ""],
+          ["Note", q.notes ? esc(q.notes) : ""]
+        ]) +
+        foot(goTab("quotes", "Open the quote book"));
+    }
+    if (kind === "payment") {
+      var p = (S.data.payments || []).filter(function (x) { return x.id === id; })[0];
+      if (!p) return '<h2>Not found</h2>' + foot();
+      return '<h2>' + money(dgNum(p.amount)) + ' received</h2>' +
+        '<p class="sub">' + esc(p.client || "") + '</p>' +
+        dgKV([
+          ["On", esc(dstr(d10(p.date || p.createdAt)))],
+          ["How", esc(p.mode || "")],
+          ["Reference", p.ref ? esc(p.ref) : ""],
+          ["Entered by", p.createdBy ? esc(p.createdBy) : ""],
+          ["Site", p.siteName ? esc(p.siteName) : ""],
+          ["Note", p.notes ? esc(p.notes) : ""]
+        ]) +
+        foot(canSee("billing") ? '<button class="btn" data-act="ch-hisab" data-cl="' + esc(p.client || "") + '">Open his HISAB</button>' : "");
+    }
+    if (kind === "followup") {
+      var f = (S.data.followups || []).filter(function (x) { return x.id === id; })[0];
+      if (!f) return '<h2>Not found</h2>' + foot();
+      return '<h2>Follow-up</h2>' +
+        '<p class="sub">' + esc(f.customerName || "") + '</p>' +
+        dgKV([
+          ["Due", esc(dstr(d10(f.dueDate || f.createdAt)))],
+          ["Status", esc(f.status || "Open")],
+          ["What to do", esc(f.note || "")],
+          ["Set by", f.createdBy ? esc(f.createdBy) : ""],
+          ["Done", f.doneAt ? esc(dstr(d10(f.doneAt))) : ""]
+        ]) +
+        foot(goTab("followups", "Open follow-ups"));
+    }
+    if (kind === "svisit") {
+      var v = (S.data.sitevisits || []).filter(function (x) { return x.id === id; })[0];
+      if (!v) return '<h2>Not found</h2>' + foot();
+      return '<h2>Site visit</h2>' +
+        '<p class="sub">' + esc(v.client || v.clientName || "") + '</p>' +
+        dgKV([
+          ["On", esc(dstr(d10(v.date || v.createdAt)))],
+          ["Purpose", esc(v.purpose || "")],
+          ["By", v.createdBy ? esc(v.createdBy) : ""],
+          ["Checked", v.verified ? esc(v.verified) : ""],
+          ["Note", v.notes ? esc(v.notes) : ""]
+        ]) +
+        foot(goTab("visits", "Open site visits"));
+    }
+    return '<h2>Not found</h2>' + foot();
   }
 
   function viewDossier() {
@@ -26696,7 +26829,12 @@ function viewCatalogue() {
       var won = d.pitch.filter(function (p) { return String(p.status) === "Won"; });
       var lost = d.pitch.filter(function (p) { return String(p.status) === "Lost"; });
       var quo = d.pitch.filter(function (p) { return String(p.status) === "Quoted"; });
-      h += '<div class="card" style="margin-top:12px"><h3>Brands</h3><div class="meta">' +
+      /* v6.9.419 - the brand board for this client, which is where a Won/Quoted/Lost is
+         changed. modalBrandBulk already draws every brand for one name; nothing new. */
+      h += '<div class="card" style="margin-top:12px"><h3>Brands</h3>' +
+        '<div class="acts" style="margin:-2px 0 6px"><button class="btn sm ghost" data-act="bb-open" ' +
+        'data-n="' + esc(nm[0] || q) + '">Open the brand board</button></div>' +
+        '<div class="meta">' +
         (won.length ? '<div style="margin-bottom:4px"><b style="color:#0f766e">Won</b> &mdash; ' +
           won.map(function (p) { return esc(p.brand); }).join(", ") + '</div>' : '') +
         (quo.length ? '<div style="margin-bottom:4px"><b style="color:#b45309">Quoted</b> &mdash; ' +
@@ -26711,42 +26849,51 @@ function viewCatalogue() {
       return function (a, b) { return String(dstr(d10(b[k] || b.createdAt))).localeCompare(String(dstr(d10(a[k] || a.createdAt)))); };
     };
     h += dgList("Challans", d.challans.slice().sort(byDateDesc("createdAt")), function (c) {
-      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+      return dgTap("challan", 'data-id="' + esc(c.id) + '"',
+        '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
         '<b>' + esc(c.challanNo || "(no number yet)") + '</b> ' +
         '<span class="pill">' + esc(c.status || "") + '</span> &middot; ' + money(dgNum(c.amount)) +
-        ' &middot; ' + esc(dstr(d10(c.createdAt))) + (c.createdBy ? ' &middot; by ' + esc(c.createdBy) : '') + '</div>';
+        ' &middot; ' + esc(dstr(d10(c.createdAt))) + (c.createdBy ? ' &middot; by ' + esc(c.createdBy) : '') + '</div>');
     });
     h += dgList("Quotes", d.quotes.slice().sort(byDateDesc("createdAt")), function (x) {
-      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+      return dgTap("quote", 'data-id="' + esc(x.id) + '" data-n="' + esc(x.quoteNo || "") + '"',
+        '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
         '<b>' + esc(x.quoteNo || "-") + '</b> ' + esc(x.brand || "") +
         ' <span class="pill">' + esc(x.status || "") + '</span> &middot; ' + money(dgNum(x.total)) +
-        ' &middot; ' + esc(dstr(d10(x.createdAt))) + '</div>';
+        ' &middot; ' + esc(dstr(d10(x.createdAt))) + '</div>');
     });
     h += dgList("Payments", d.payments.slice().sort(byDateDesc("date")), function (p) {
-      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+      return dgTap("payment", 'data-id="' + esc(p.id) + '"',
+        '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
         '<b>' + money(dgNum(p.amount)) + '</b> &middot; ' + esc(p.mode || "") +
-        ' &middot; ' + esc(dstr(d10(p.date || p.createdAt))) + (p.ref ? ' &middot; ' + esc(p.ref) : '') + '</div>';
+        ' &middot; ' + esc(dstr(d10(p.date || p.createdAt))) + (p.ref ? ' &middot; ' + esc(p.ref) : '') + '</div>');
     });
     h += dgList("Machines and AMC", d.installs, function (i) {
-      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+      return dgTap("install", 'data-id="' + esc(i.id) + '"',
+        '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
         '<b>' + esc(i.product || "-") + '</b>' + (i.model ? ' ' + esc(i.model) : '') +
         (i.amcType ? ' <span class="pill teal">' + esc(i.amcType) + '</span>' : '') +
-        (i.nextService ? ' &middot; next service ' + esc(dstr(d10(i.nextService))) : '') + '</div>';
+        (i.nextService ? ' &middot; next service ' + esc(dstr(d10(i.nextService))) : '') + '</div>');
     });
+    /* a service visit belongs to a machine - open the machine, which is where its whole
+       history, its AMC and its next service date live. */
     h += dgList("Service visits", d.visits.slice().sort(byDateDesc("date")), function (v) {
-      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+      return dgTap("install", 'data-id="' + esc(v.installId || "") + '"',
+        '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
         esc(dstr(d10(v.date || v.createdAt))) + ' &middot; ' + esc(v.type || "") +
         (v.engineer ? ' &middot; ' + esc(v.engineer) : '') +
-        (dgNum(v.total) ? ' &middot; ' + money(dgNum(v.total)) : '') + '</div>';
+        (dgNum(v.total) ? ' &middot; ' + money(dgNum(v.total)) : '') + '</div>');
     });
     h += dgList("Site visits", d.svisits.slice().sort(byDateDesc("date")), function (v) {
-      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+      return dgTap("svisit", 'data-id="' + esc(v.id) + '"',
+        '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
         esc(dstr(d10(v.date || v.createdAt))) + (v.purpose ? ' &middot; ' + esc(v.purpose) : '') +
-        (v.createdBy ? ' &middot; ' + esc(v.createdBy) : '') + '</div>';
+        (v.createdBy ? ' &middot; ' + esc(v.createdBy) : '') + '</div>');
     });
     h += dgList("Follow-ups", d.followups, function (f) {
-      return '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
-        esc(dstr(d10(f.dueDate || f.createdAt))) + ' &middot; ' + esc(f.note || f.purpose || "") + '</div>';
+      return dgTap("followup", 'data-id="' + esc(f.id) + '"',
+        '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
+        esc(dstr(d10(f.dueDate || f.createdAt))) + ' &middot; ' + esc(f.note || f.purpose || "") + '</div>');
     });
     return h;
   }
@@ -31961,6 +32108,36 @@ function viewCatalogue() {
     if (act === "cv-qclear") { S.cvq = ""; render(); return; }
     if (act === "cl-new") {
       S.billDraft = []; S.clEditing = null; S.modal = modalClient(null); render(); return; }
+    /* v6.9.419 - ONE DOOR FOR EVERY DOSSIER ROW. It reads and draws; it writes nothing.
+       A record with its own modal already in this file uses that modal - a second view of a
+       machine would be a second thing to keep true. */
+    /* v6.9.419 - NOT "dg-open": that act has opened the dossier itself since the screen was
+       built, and this if-chain would have shadowed it - pressing "everything about X" would
+       have drawn a record detail for a record with no id. t_dead_taps' rule that no act may be
+       handled twice caught it before it shipped, which is the whole reason that rule exists. */
+    if (act === "dg-rec") {
+      var dgK = t.getAttribute("data-k") || "";
+      var dgI = t.getAttribute("data-id") || "";
+      if (dgK === "install") {
+        var _ins = installById(dgI);
+        if (!_ins) { toast("That machine is not on this device \u2014 pull down to refresh."); return; }
+        S.modal = modalInstall(_ins); render(); return;
+      }
+      S.modal = modalDgRec(dgK, dgI, t.getAttribute("data-n") || "");
+      render(); return;
+    }
+    /* The one button each detail carries: the record's own screen, for anything that acts on
+       it. The quote book filters on S.qq, so it lands on that quotation and not on seventy. */
+    if (act === "dg-recgo") {
+      var dgT = t.getAttribute("data-t") || "";
+      var dgN = t.getAttribute("data-n") || "";
+      if (!canSee(dgT)) { toast("That screen is not available for your role."); return; }
+      S.modal = null; S.tab = dgT;
+      if (dgT === "quotes") S.qq = dgN; else S.q = "";
+      try { tabUse(S.tab); navBump(S.tab); } catch (e) { }
+      try { window.scrollTo(0, 0); } catch (e) { }
+      render(); return;
+    }
     if (act === "cl-open") {
       var ce = S.data.clients.filter(function (x) { return x.id === id; })[0];
       S.clEditing = ce || null;
