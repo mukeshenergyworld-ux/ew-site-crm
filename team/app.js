@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.415";
+  var APP_VERSION = "6.9.418";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -16625,21 +16625,78 @@ function viewCatalogue() {
   /* Every brand this client actually buys - from the lines of his receipted deliveries, which is
      where the money is - plus any brand already carrying a discount row for him, so a rate set
      ahead of the first order is visible rather than waiting for one. */
+  /* v6.9.416 - WHAT HE ACTUALLY TOOK. Every brand on a challan for this client that has LEFT
+     DRAFT - Approved, Dispatched or Received - keyed by brand, carrying how many deliveries
+     it appears on and what the LAST one was billed at.
+
+     TWO DELIBERATE CHOICES, both his question answered literally:
+
+     (a) NOT "receipt received". His words were "when a brand added challan and dispatched".
+         A dispatched delivery is a decision already taken - the goods have gone - and he needs
+         the rate on the screen then, not when the signed receipt comes back. On his book today
+         this moves nothing: of 151 challans, 146 are received and one more is approved-and-
+         received; two sit at Dispatched and one at Approved, and every brand on them was
+         already listed through a discount row. It closes the gap before it bites.
+
+     (b) A DRAFT IS NOT A DECISION, so it is not counted. Nothing in this business is ever
+         deleted, so a draft abandoned half-typed would otherwise leave a brand on this panel
+         for ever with nobody able to take it off.
+
+     The discount read here is the challan's OWN FROZEN LINE DISCOUNT, not pricedLines' - which
+     falls back to the rate in force TODAY when a line carries none, and would therefore print
+     today's rate as though it were what the customer was billed. A line with nothing frozen
+     says so instead. */
+  var _admTkCache = null;
+  function admTakenMap(cl) {
+    var key = dkey(cl); if (!key) return {};
+    _admTkCache = _admTkCache || {};
+    if (_admTkCache[key]) return _admTkCache[key];
+    var out = {};
+    dedupeChallans((S.data.challans || []).filter(function (c) {
+      return dkey(c.customerName) === key &&
+        ["Approved", "Dispatched", "Received"].indexOf(String(c.status || "")) >= 0;
+    })).sort(function (a, b) {
+      return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+    }).forEach(function (c) {
+      var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+      var here = {};
+      items.forEach(function (i) {
+        if (isJobLine(i)) return;
+        var b = String(i.brand || productBrandByCode(i.code) || c.brand || "").trim();
+        var k = dkey(b); if (!b || !k) return;
+        var e = out[k] || (out[k] = { brand: b, n: 0, no: "", day: "", discs: {} });
+        if (!here[k]) { here[k] = 1; e.n++; e.no = c.challanNo || ""; e.day = String(c.createdAt || ""); e.discs = {}; }
+        e.discs[(i.disc != null && i.disc !== "") ? String(Number(i.disc) || 0) : "?"] = 1;
+      });
+    });
+    _admTkCache[key] = out;
+    return out;
+  }
+  /* Unchanged in what it RETURNS - taken brands plus any brand carrying a discount row - because
+     admEarnRows tests "has this man a rate on any of them" over exactly this list, and widening
+     or narrowing it would change what the earnings table says. The split below is presentation. */
   function admClientBrands(cl) {
     var seen = {}, out = [];
     var add = function (b) {
       b = String(b || "").trim(); var k = dkey(b);
       if (!b || seen[k]) return; seen[k] = 1; out.push(b);
     };
-    dedupeChallans((S.data.challans || []).filter(function (c) {
-      return dkey(c.customerName) === dkey(cl) && String(c.receiptReceived).toUpperCase() === "Y";
-    })).forEach(function (c) {
-      pricedLines(c, cl).forEach(function (x) { if (!x.job) add(x.brand || c.brand); });
-    });
+    var tk = admTakenMap(cl);
+    Object.keys(tk).forEach(function (k) { add(tk[k].brand); });
     (S.data.discounts || []).forEach(function (d) {
       if (dkey(d.client) === dkey(cl)) add(d.brand);
     });
     return out.sort(function (a, b) { return a.localeCompare(b); });
+  }
+  /* THE TWO PARTS HE ASKED FOR. Measured before it was built: 130 of his 352 discount rows are
+     on a brand the client has taken and 222 are not, so on 45 clients this panel was mostly
+     rates for goods that never moved, mixed in with the ones that did and looking identical. */
+  function admBrandSplit(cl) {
+    var tk = admTakenMap(cl), took = [], other = [];
+    admClientBrands(cl).forEach(function (b) {
+      if (tk[dkey(b)]) took.push(b); else other.push(b);
+    });
+    return { took: took, other: other, map: tk };
   }
   /* The men who earn on this client today: the partners named on his record, and his executive.
      Same source as incLineup - deliberately, so the panel and the stamp screen name the same
@@ -16691,12 +16748,26 @@ function viewCatalogue() {
       (older ? " \u00b7 " + older + " earlier rate" + (older === 1 ? "" : "s") + " kept" : "") +
       '</div>';
   }
-  function admBrandTable(cl, ro) {
-    var brands = admClientBrands(cl), line = admLineup(cl);
-    if (!brands.length) {
-      return '<div class="meta" style="font-size:12px;color:#64748b">Nothing delivered to this ' +
-        'client yet, so there is no brand to price.</div>';
-    }
+  /* v6.9.416 - WHAT THE LAST DELIVERY OF THIS BRAND WAS ACTUALLY BILLED AT, and whether there
+     is a standing rate behind it. His sentence "when a brand added challan and dispatched, must
+     show its discount here" is answered here rather than by the box above: the box holds the
+     rate IN FORCE, this line holds what the customer was CHARGED. They are different questions
+     and on 26 brand-lines of his book they have different answers - 21 of them delivered at no
+     discount at all with nothing on file, Rs 1,37,409 of Accessory to Atul Garg among them. */
+  function admTookNote(cl, b, e) {
+    if (!e) return "";
+    var has = !!discRow(cl, b);
+    var nums = Object.keys(e.discs).filter(function (x) { return x !== "?"; }).map(Number)
+      .sort(function (x, y) { return x - y; });
+    var txt = e.n + (e.n === 1 ? " delivery" : " deliveries");
+    if (!nums.length) txt += " \u00b7 no discount recorded on the lines";
+    else txt += " \u00b7 last billed at " + pctTxt(nums[0]) +
+      (nums[nums.length - 1] !== nums[0] ? "\u2013" + pctTxt(nums[nums.length - 1]) : "");
+    var col = "#94a3b8";
+    if (!has) { col = "#b91c1c"; txt += " \u00b7 no rate on file"; }
+    return '<div style="font-size:12px;color:' + col + ';margin-top:1px">' + esc(txt) + '</div>';
+  }
+  function admGrid(cl, brands, line, ro, tk) {
     var h = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">' +
       '<tr style="color:#475569;text-align:center">' +
       '<th style="text-align:left;font-weight:600;padding:2px 6px 4px 0">Brand</th>' +
@@ -16708,21 +16779,62 @@ function viewCatalogue() {
       }).join("") + '</tr>';
     brands.forEach(function (b) {
       var d = discRow(cl, b);
+      /* v6.9.418 - THE NOTES GO ON THEIR OWN ROW, and this took three looks at a photograph.
+         The brand cell carried white-space:nowrap from the days it held nothing but a name;
+         inherited by a line of prose it made the first column as wide as the whole sentence and
+         pushed Disc % and every incentive column off a 390px screen. Letting the name wrap
+         fixed that and created the next one: the sentence then ran to five lines inside a
+         column as narrow as the word "Accessory", and one brand cost half a screen. A note
+         about a row belongs UNDER the row. */
       h += '<tr style="border-top:1px solid #e2e8f0;text-align:center">' +
-        '<td style="text-align:left;padding:4px 6px 4px 0;font-weight:600;white-space:nowrap">' + esc(b) +
-          admFromNote(cl, b) + '</td>' +
+        '<td style="text-align:left;padding:4px 6px 2px 0;font-weight:600">' + esc(b) + '</td>' +
         '<td style="padding:3px 5px">' + admCell(cl, b, "disc", d ? (Number(d.pct) || 0) : 0, ro) + '</td>' +
         line.map(function (m) {
           return '<td style="padding:3px 5px">' + admCell(cl, b, m.role, admRateOf(cl, b, m.role), ro) + '</td>';
         }).join("") + '</tr>';
+      var note = admFromNote(cl, b) + (tk ? admTookNote(cl, b, tk[dkey(b)]) : "");
+      if (note) {
+        h += '<tr><td colspan="' + (2 + line.length) + '" style="padding:0 0 4px 0;text-align:left">' +
+          note + '</td></tr>';
+      }
     });
-    if (ro) return h + '</table></div>';     /* v6.9.395 - the list view: no Save, no note */
-    return h + '</table></div>' +
+    return h + '</table></div>';
+  }
+  function admBrandTable(cl, ro) {
+    var sp = admBrandSplit(cl), line = admLineup(cl);
+    if (!sp.took.length && !sp.other.length) {
+      return '<div class="meta" style="font-size:12px;color:#64748b">Nothing delivered to this ' +
+        'client yet, so there is no brand to price.</div>';
+    }
+    var h = "";
+    if (sp.took.length) {
+      h += '<div style="font-size:12px;font-weight:700;color:#0f766e;margin:0 0 3px">' +
+        'What he has taken \u00b7 ' + sp.took.length + ' brand' + (sp.took.length === 1 ? '' : 's') +
+        ' on his challans</div>' + admGrid(cl, sp.took, line, ro, sp.map);
+    } else {
+      h += '<div class="meta" style="font-size:12px;color:#64748b;margin-bottom:4px">' +
+        'Nothing delivered to this client yet \u2014 every rate below was set ahead of a first order.</div>';
+    }
+    /* BEHIND A FOLD, and counted on the fold itself. On Ajay Kansal ji this holds 24 rows
+       against one real brand, and on Rajesh Kalra - Orlov 23 against two. Nothing is removed:
+       176 of these 222 rows across his book carry a number he typed on purpose, so that a quote
+       for a brand not yet bought is priced right. They are simply not the same question. */
+    if (sp.other.length) {
+      h += '<details style="margin-top:8px"' + (sp.took.length ? '' : ' open') + '>' +
+        '<summary style="cursor:pointer;font-size:12px;font-weight:600;color:#475569">' +
+        'Other brands \u00b7 ' + sp.other.length + ' \u2014 a rate on file, nothing taken yet' +
+        '</summary><div style="margin-top:5px">' + admGrid(cl, sp.other, line, ro, null) + '</div></details>';
+    }
+    if (ro) return h;                        /* v6.9.395 - the list view: no Save, no note */
+    return h +
       '<div class="acts" style="margin-top:7px;gap:6px"><div class="grow"></div>' +
+      '<button class="btn sm ghost" data-act="disc-jump" data-n="' + esc(cl) + '" data-back="statement" ' +
+      'title="The full discount screen, where every brand can be priced - including ones he has never taken">' +
+      'All brands\u2026</button>' +
       '<button class="btn sm" data-act="adm-save" data-cl="' + esc(cl) + '">Save rates</button></div>' +
       '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:3px">An amber box is a rate ' +
       'nobody has set: that man earns <b>nothing</b> on that brand. A blank saves as 0, which is a ' +
-      'decision and is remembered as one.</div>';
+      'decision and is remembered as one. Saving reads both parts, open or folded.</div>';
   }
   /* Who earns, and what he has actually earned on this client - through incentiveBook itself, so
      this and his incentive card can never print two different figures for one man. */
@@ -17475,7 +17587,7 @@ function viewCatalogue() {
     /* v6.9.291 - he came here mid-challan. Say so, and give him the way back. */
     if (S.discBack && S.discBack.n) {
       h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px;margin-top:8px">' +
-        '<button class="btn sm" data-act="disc-back">&larr; Back to the challan for ' + esc(S.discBack.n) + '</button>' +
+        '<button class="btn sm" data-act="disc-back">&larr; Back to ' + esc(S.discBack.back === "statement" ? "the statement" : "the challan") + ' for ' + esc(S.discBack.n) + '</button>' +
         (S.discBack.hadCh
           ? '<div class="meta" style="margin-top:5px">The lines you had already picked are still there — nothing was lost.</div>'
           : '') +
@@ -30584,7 +30696,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pcCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null;
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
        yesterday's money, which is the worst thing this app can do. */
@@ -31263,7 +31375,12 @@ function viewCatalogue() {
     if (act === "disc-jump") {
       /* v6.9.291 - the tab action clears S.q, which is the very thing the Discounts screen
          filters on, so this does not go through it. Set the tab and the filter together. */
-      S.discBack = { n: t.getAttribute("data-n") || "", tab: S.tab, hadCh: !!(S.ch && (S.ch.items || []).length) };
+      /* v6.9.416 - the banner used to say "back to the challan" whichever screen he came from,
+         and the owner's corner sits on HISAB. It goes back to the right place either way -
+         `tab` was always carried - but it named the wrong one out loud. */
+      S.discBack = { n: t.getAttribute("data-n") || "", tab: S.tab,
+        back: t.getAttribute("data-back") || "challan",
+        hadCh: !!(S.ch && (S.ch.items || []).length) };
       S.modal = null;
       S.tab = "discounts";
       S.q = S.discBack.n;
