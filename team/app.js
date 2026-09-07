@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.422";
+  var APP_VERSION = "6.9.423";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9704,7 +9704,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var tallyColour = function () {
         if (shortLines || excessLines) doc.setTextColor(180, 83, 9); else ink();
       };
-      if (!prf.photo) {
+      if (!prfPhotoList(prf).length) {
         F("normal"); doc.setFontSize(8); tallyColour();
         doc.text(tally, L, y);
         y += 8;
@@ -9719,7 +9719,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          So: when there is a photograph, this is one line - who received it, and where his hand
          actually is. When there is NO photograph the ruled block is the only place a signature
          could ever go, so it is kept in full, unchanged. */
-      if (prf.photo) {
+      if (prfPhotoList(prf).length) {
         if (y > 250) { doc.addPage(); y = 26; }
         F("bold"); doc.setFontSize(8.5); ink();
         var lead = ch._isReturn
@@ -9758,7 +9758,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
       /* The photograph of the paper. Drawn to its own shape, not stretched into a fixed box - a
          receipt squashed out of proportion is a receipt somebody argues about. */
-      if (prf.photo) {
+      /* v6.9.423 - EVERY PHOTOGRAPH ON THE RECEIPT, not just the first. One lorry unloaded in
+         two lots, or a signed paper that runs to three sheets, is one delivery and belongs in
+         one document. Each picture still gets the room the page has left and still earns a
+         fresh sheet only when it would otherwise be too small to read; the caption numbers
+         them, because a man arguing three months later needs to know none is missing. */
+      var _phs = prfPhotoList(prf);
+      _phs.forEach(function (ph, _pi) {
         /* ================= FIT IT TO THE ROOM THAT IS LEFT (v6.9.281) =================
            This used to scale the picture to a fixed 214 mm and then ask whether it fitted. It
            never did - 214 mm is three quarters of an A4 page - so the photograph took a sheet of
@@ -9766,7 +9772,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
            page has left after the paperwork, and the width follows the picture's own shape. */
         var MAXW = R - L, PW = 3, PH = 4;
         try {
-          var ip = doc.getImageProperties("data:image/jpeg;base64," + prf.photo);
+          var ip = doc.getImageProperties("data:image/jpeg;base64," + ph);
           if (ip && ip.width && ip.height) { PW = ip.width; PH = ip.height; }
         } catch (e) { }
         /* FOOT is the closing note's own room: three lines at 3.8 mm plus a bottom margin.
@@ -9784,16 +9790,17 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
            sheet - not a constant, and not the length of the item list on its own. */
         if (box.h < 78) { doc.addPage(); y = 26; box = fitTo(Math.min(214, BOT - FOOT - y - CAP)); }
         F("bold"); doc.setFontSize(8.5); ink();
-        doc.text(ch._isReturn ? "THE GOODS-IN RECEIPT AS IT WAS SIGNED AT THE GODOWN"
-                              : "THE RECEIPT AS IT CAME BACK FROM THE SITE", L, y);
+        doc.text((ch._isReturn ? "THE GOODS-IN RECEIPT AS IT WAS SIGNED AT THE GODOWN"
+                               : "THE RECEIPT AS IT CAME BACK FROM THE SITE") +
+                 (_phs.length > 1 ? "  \u00b7  " + (_pi + 1) + " OF " + _phs.length : ""), L, y);
         y += CAP;
         var ix = L + (MAXW - box.w) / 2;
         try {
-          doc.addImage("data:image/jpeg;base64," + prf.photo, "JPEG", ix, y, box.w, box.h);
+          doc.addImage("data:image/jpeg;base64," + ph, "JPEG", ix, y, box.w, box.h);
           doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(ix, y, box.w, box.h);
           y += box.h + 5.5;
         } catch (e) { }
-      }
+      });
 
       /* ================= NO LOGO STRIP ON A RECEIPT (v6.9.275) =================
          MEASURED on 15 Aug, on the machine that could not upload:
@@ -9978,6 +9985,25 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     } catch (e) { return ""; }
   }
   /* the source for a rebuild: the one we stored if we have it, else the one inside the document */
+  /* v6.9.423 - ONE READER FOR "THE PHOTOGRAPHS ON THIS RECEIPT". Everything that used to say
+     prf.photo still works: a receipt with one photograph is a list of one, and an entry written
+     before today has no `photos` at all and reads back as its single photo. Nothing needs
+     migrating and nothing old changes shape. */
+  var PRF_MAX_PHOTOS = 4;
+  /* The sentence under the box. It counts, because "Photo attached." after picking four is
+     a man wondering which one it kept. */
+  function prfPhotoSay(o) {
+    var n = prfPhotoList(o).length;
+    if (!n) return "";
+    return n === 1 ? "Photo attached."
+      : n + " photographs attached \u2014 they go on the same receipt, one below the other.";
+  }
+  function prfPhotoList(o) {
+    if (!o) return [];
+    var a = (o.photos && o.photos.length) ? o.photos.slice() : [];
+    if (!a.length && o.photo) a = [o.photo];
+    return a.filter(function (x) { return !!x; }).slice(0, PRF_MAX_PHOTOS);
+  }
   function prfSourcePhoto(e) {
     if (e && e.photo) return String(e.photo);
     return prfPhotoFromPdf(e && e.b64);
@@ -10065,13 +10091,24 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (!step) return Promise.resolve(false);
     var ch = proofSubject(e.chId);
     if (!ch) return Promise.resolve(false);
-    return prfReencode(src, step).then(function (small) {
+    /* v6.9.423 - EVERY page comes down the ladder, not just the first. A receipt with three
+       photographs that shrank only its first would go up missing two of them, which is worse
+       than not going up at all. `src` stays the first photograph so the last-resort step, and
+       every reader written before today, behave exactly as they did. */
+    var srcAll = prfPhotoList(e);
+    if (!srcAll.length) srcAll = [src];
+    return Promise.all(srcAll.map(function (p) { return prfReencode(p, step); }))
+      .then(function (smalls) {
+      smalls = smalls.filter(function (x) { return !!x; });
+      var small = smalls[0];
       if (!small) return false;
       /* v6.9.278 - the last step sends the photograph itself. No jsPDF, no table, no logos -
-         just the picture of the signed paper, which is the part that settles an argument. */
+         just the picture of the signed paper, which is the part that settles an argument.
+         v6.9.423 - and with several, it is the FIRST one. That is a real loss and it is said
+         out loud in the queue below rather than passed off as the whole receipt. */
       var made = step.jpg
         ? Promise.resolve({ b64: small, jpg: true })
-        : proofPdf(ch, { rows: proofRows(ch), photo: small, sig: "" },
+        : proofPdf(ch, { rows: proofRows(ch), photo: small, photos: smalls, sig: "" },
                    { by: e.by || "", at: e.at || "", geo: "", actor: e.actor || "" })
             .then(function (d) { return { b64: d.output("datauristring").split(",")[1], jpg: false }; });
       return made
@@ -10097,7 +10134,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             else x.fname = String(x.fname || "receipt").replace(/-photo\.jpg$/i, ".pdf");
             if (o.restart) { x.tries = 0; x.lastTry = 0; }   /* the failures were not its fault */
             x.err = (out.jpg
-                      ? "sent as the photograph alone, without the document ("
+                      ? ((smalls.length > 1)
+                          ? "sent as the FIRST photograph alone, without the document and without the other " +
+                            (smalls.length - 1) + " ("
+                          : "sent as the photograph alone, without the document (")
                       : o.restart ? "rebuilt at full size - the size was never the problem ("
                       : o.same ? "rebuilt at the smaller layout ("
                       : "too big for this connection - rebuilt smaller (") +
@@ -10252,7 +10292,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        an empty string on anything it cannot do, and an empty string simply means the card shows
        the seal without a picture. Nothing about the delivery waits on it. */
     Promise.all([
-      proofPdf(ch, { rows: rows, photo: prf.photo || "", sig: prf.sig || "" }, meta),
+      proofPdf(ch, { rows: rows, photo: prf.photo || "", photos: prfPhotoList(prf), sig: prf.sig || "" }, meta),
       proofThumb(prf.photo || "")
     ]).then(function (both) {
       var d = both[0], th = String(both[1] || "");
@@ -10271,7 +10311,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         /* v6.9.339 - the url of the receipt this one replaces, when it is a replacement.
            Empty on a first attach, which is every proof written before today. */
         replaces: String(prf.replaces || ""),
-        photo: String(prf.photo || ""), shrinks: 0, build: PRF_BUILD,
+        photo: String(prf.photo || ""),
+        /* v6.9.423 - and the rest of them, so a receipt that has to be rebuilt smaller is
+           rebuilt with every page still on it. */
+        photos: prfPhotoList(prf), shrinks: 0, build: PRF_BUILD,
         fname: (ch._isReturn ? "RETURN-" : "DELIVERY-") + String(ch.challanNo || cid).replace(/[^\w.-]+/g, "-") + ".pdf",
         b64: b64
       });
@@ -10321,10 +10364,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          PDFs saved by "Save all to this computer" is exactly equivalent to picking the original
          photo - it goes through the same shrink and the same queue. That is what lets a receipt
          stuck in one browser be sent from another. */
-      '<input type="file" id="prf_photo" accept="image/*,application/pdf,.pdf" ' +
+      '<input type="file" id="prf_photo" accept="image/*,application/pdf,.pdf" multiple ' +
       'style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
       '<div id="prf_photo_note" class="meta" style="margin-top:4px;color:' + ((S.prf && S.prf.photo) ? "#0f766e" : "#94a3b8") + '">' +
-      ((S.prf && S.prf.photo) ? "Photo attached." : "A photo from the camera or gallery \u2014 or a receipt PDF saved from this app.") + '</div>' +
+      ((S.prf && S.prf.photo) ? prfPhotoSay(S.prf)
+        : "A photo from the camera or gallery \u2014 or a receipt PDF saved from this app. Pick more than one and they go on the same receipt.") + '</div>' +
       '</div>' +
       '<div class="foot"><button class="btn ghost" data-act="prf-cancel">Cancel</button>' +
       '<button class="btn" data-act="prf-save">Attach receipt</button></div>';
@@ -10543,10 +10587,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       /* v6.9.210: capture="environment" is gone. It forced the camera open and hid the gallery,
          and the photo of the receipt is nearly always already in the gallery - the driver sent it
          on WhatsApp. Camera or gallery, whichever one it is in. */
-      '<input type="file" id="alt_photo" accept="image/*" ' +
+      /* v6.9.423 - more than one, on his word. A lorry unloaded in two lots, or a signed
+         paper that runs to three sheets, is ONE delivery and belongs in one document. */
+      '<input type="file" id="alt_photo" accept="image/*" multiple ' +
       'style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
       '<div id="alt_photo_note" class="meta" style="margin-top:4px;color:' + (S.alt.photo ? "#0f766e" : "#94a3b8") + '">' +
-      (S.alt.photo ? "Photo attached." : "Optional \u2014 but it is the one thing a customer cannot argue with.") + '</div>' +
+      (S.alt.photo ? prfPhotoSay(S.alt) : "Optional \u2014 but it is the one thing a customer cannot argue with. You can pick more than one.") + '</div>' +
       '<label style="margin-top:8px">His signature</label>' +
       '<canvas id="alt_sig" width="600" height="200" ' +
       'style="width:100%;height:96px;background:#fff;border:1px dashed #94a3b8;border-radius:8px;touch-action:none;display:block"></canvas>' +
@@ -31212,16 +31258,22 @@ function viewCatalogue() {
     var phEl = el("alt_photo");
     if (phEl) {
       phEl.addEventListener("change", function (e) {
-        var f = e.target.files && e.target.files[0];
+        /* v6.9.423 - all of them, shrunk together, and the cap said out loud rather than
+           discovered. photo stays the FIRST so every reader written before today is unmoved. */
+        var fs = [].slice.call((e.target.files || []), 0, PRF_MAX_PHOTOS);
+        var over = ((e.target.files || []).length > PRF_MAX_PHOTOS);
         var note = el("alt_photo_note");
-        if (!f) return;
-        if (note) { note.textContent = "Shrinking the photo\u2026"; note.style.color = "#94a3b8"; }
-        shrinkPhoto(f).then(function (b64) {
-          if (S.alt) S.alt.photo = b64 || "";
+        if (!fs.length) return;
+        if (note) { note.textContent = fs.length > 1 ? "Shrinking " + fs.length + " photos\u2026" : "Shrinking the photo\u2026"; note.style.color = "#94a3b8"; }
+        Promise.all(fs.map(function (f) { return shrinkPhoto(f); })).then(function (list) {
+          list = list.filter(function (x) { return !!x; });
+          if (S.alt) { S.alt.photos = list; S.alt.photo = list[0] || ""; }
           var n2 = el("alt_photo_note");
           if (!n2) return;
-          if (b64) { n2.textContent = "Photo attached."; n2.style.color = "#0f766e"; }
-          else { n2.textContent = "That file could not be read \u2014 try taking it again."; n2.style.color = "#b45309"; }
+          if (list.length) {
+            n2.textContent = prfPhotoSay(S.alt) + (over ? " Only the first " + PRF_MAX_PHOTOS + " were taken." : "");
+            n2.style.color = over ? "#b45309" : "#0f766e";
+          } else { n2.textContent = "That file could not be read \u2014 try taking it again."; n2.style.color = "#b45309"; }
         });
       });
     }
@@ -31232,7 +31284,13 @@ function viewCatalogue() {
     var pfEl = el("prf_photo");
     if (pfEl) {
       pfEl.addEventListener("change", function (e) {
-        var f = e.target.files && e.target.files[0];
+        /* v6.9.423 - several photographs, or ONE saved receipt PDF. Mixing a PDF into a
+           multi-pick would mean deciding whether its extracted photo comes first or last and
+           what happens when two PDFs are chosen; a saved receipt is a repair path, not a
+           day-to-day one, so the first file decides which of the two this is. */
+        var fsP = [].slice.call((e.target.files || []), 0, PRF_MAX_PHOTOS);
+        var overP = ((e.target.files || []).length > PRF_MAX_PHOTOS);
+        var f = fsP[0];
         var note = el("prf_photo_note");
         if (!f) return;
         /* v6.9.271 - the same field now takes a receipt PDF this app made earlier. The
@@ -31247,15 +31305,18 @@ function viewCatalogue() {
               if (!ph) return null;
               /* re-encode it at today's size, exactly as a fresh photograph would be */
               return prfReencode(ph, PRF_STEPS[0]);
-            })
-          : shrinkPhoto(f);
-        got.then(function (b64) {
-          if (S.prf) S.prf.photo = b64 || "";
+            }).then(function (one) { return one ? [one] : []; })
+          : Promise.all(fsP.map(function (x) { return shrinkPhoto(x); }));
+        got.then(function (list) {
+          list = (list || []).filter(function (x) { return !!x; });
+          var b64 = list[0] || "";
+          if (S.prf) { S.prf.photos = list; S.prf.photo = b64; }
           var n3 = el("prf_photo_note");
           if (!n3) return;
           if (b64) {
-            n3.textContent = isPdf ? "Receipt read from the saved file." : "Photo attached.";
-            n3.style.color = "#0f766e";
+            n3.textContent = isPdf ? "Receipt read from the saved file." :
+              (prfPhotoSay(S.prf) + (overP ? " Only the first " + PRF_MAX_PHOTOS + " were taken." : ""));
+            n3.style.color = (overP && !isPdf) ? "#b45309" : "#0f766e";
           } else {
             n3.textContent = isPdf
               ? "That PDF has no photograph in it — pick the original photo instead."
@@ -36107,7 +36168,9 @@ function viewCatalogue() {
           return;
         }
       }
-      var prf = { by: S.alt.by || "", photo: S.alt.photo || "", sig: S.alt.sig || "", rows: (S.alt.rows || []).slice() };
+      /* v6.9.423 - every photograph he picked, not only the first. */
+      var prf = { by: S.alt.by || "", photo: S.alt.photo || "", photos: prfPhotoList(S.alt),
+                  sig: S.alt.sig || "", rows: (S.alt.rows || []).slice() };
       var cid = S.alt.id;
       /* Optimistic save: update the challan locally and close the screen instantly, so the user
          never waits on the two (slow) Apps Script round-trips. The save then runs in the
@@ -36501,6 +36564,7 @@ function viewCatalogue() {
       if (!S.prf) return;
       var pby = el("prf_by") ? String(el("prf_by").value || "").trim() : "";
       var pph = S.prf.photo || "";
+      var pphs = prfPhotoList(S.prf);   /* v6.9.423 */
       var pcid = S.prf.id;
       var prepl = S.prf.replaces || "";   /* v6.9.339 - "" unless this is a replacement */
       if (!pph && !pby) { toast("Add the photo of the receipt, or at least the name of whoever signed it."); return; }
@@ -36509,7 +36573,7 @@ function viewCatalogue() {
       render();
       /* Behind the screen, never in front of it. The document is built on this phone and queued;
          it goes up on its own and survives being closed, exactly like the older proof queue. */
-      try { proofStart(pcid, { by: pby, photo: pph, sig: "", rows: null, replaces: prepl }); } catch (e) { }
+      try { proofStart(pcid, { by: pby, photo: pph, photos: pphs, sig: "", rows: null, replaces: prepl }); } catch (e) { }
       /* v6.9.259 - the photograph of a signed receipt IS the evidence the goods arrived, but
          attaching it never moved the delivery's status - so the money stayed off the client's
          hisab and nothing said so. It is offered here, with the consequence spelled out in
