@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.423";
+  var APP_VERSION = "6.9.424";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18559,6 +18559,117 @@ function viewCatalogue() {
       money(ex - t.limit) + ' over limit</span>';
   }
 
+  /* ================= THE ACCOUNT AT THE TOP OF HIS OWN SCREEN (v6.9.424) =================
+     Built from the same three books hisabPdf reads and totalled the same way, so the closing
+     figure here IS the `due` the card above it prints. The tick boxes below decide what goes on
+     the PDF; this is the whole account and says so. */
+  function hisabSummaryCard(cl, chs) {
+    var list = (chs || []).slice().sort(function (a, b) {
+      return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+    });
+    var rets = clientReturns(cl) || [];
+    var pays = (S.data.payments || []).filter(function (p) { return p && p.client === cl; });
+    var led = clientLedger(cl) || {};
+    var opening = Number(led.opening) || 0;
+    if (!list.length && !rets.length && !pays.length && !opening) return "";
+    var ev = [];
+    list.forEach(function (c) { ev.push({ t: "C", d: dstr(c.createdAt), ts: String(c.createdAt || ""), ord: 1, row: c }); });
+    rets.forEach(function (r) { ev.push({ t: "R", d: dstr(r.createdAt), ts: String(r.createdAt || ""), ord: 2, row: r }); });
+    pays.forEach(function (p) { ev.push({ t: "P", d: dstr(p.date || p.createdAt), ts: String(p.date || p.createdAt || ""), ord: 3, row: p }); });
+    ev.sort(function (a, b) { return a.d !== b.d ? a.d.localeCompare(b.d) : ((a.ord - b.ord) || a.ts.localeCompare(b.ts)); });
+
+    var num = 'style="padding:4px 4px;text-align:right;white-space:nowrap;border-top:1px solid #e2e8f0;font-variant-numeric:tabular-nums"';
+    var run = opening, rowN = 0, h = "";
+    var row = function (dt, parts, dr, cr, tone) {
+      var bg = tone === "ret" ? "#fef2f2" : (rowN % 2 ? "#f8fafc" : "#fff");
+      rowN++;
+      h += '<tr style="background:' + bg + '">' +
+        /* dd/mm/yy, not dd/mm/yyyy: two characters buy the particulars column the room it
+           needs at 390px, and the year is still on the row. */
+        '<td style="padding:4px 4px;color:#64748b;border-top:1px solid #e2e8f0;font-size:12px;white-space:nowrap">' +
+          esc(String(dt).replace(/^(\d{2}\/\d{2}\/)\d{2}(\d{2})$/, "$1$2")) + '</td>' +
+        '<td style="padding:4px 4px;border-top:1px solid #e2e8f0;overflow-wrap:anywhere">' + parts + '</td>' +
+        '<td ' + num + '>' + (dr == null ? "" : money(dr)) + '</td>' +
+        '<td ' + num + ' >' + (cr == null ? "" : '<span style="color:#0f766e">' + money(cr) + '</span>') + '</td>' +
+        '<td ' + num + '><b style="color:' + (run < -0.5 ? "#0f766e" : "#0f172a") + '">' + money(Math.abs(run) < 0.5 ? 0 : run) + '</b></td>' +
+        '</tr>';
+    };
+    row("", '<b>Balance brought forward</b>' +
+      (opening ? '' : ' <span style="color:#94a3b8;font-size:12px">nothing carried over</span>'), null, null);
+    ev.forEach(function (e) {
+      if (e.t === "C") {
+        var c = e.row, v = chValue(c), nIt = pricedLines(c, cl).length, bk = manualNoFor(c);
+        run += v;
+        /* THE BOOK NUMBER IS THE POINT OF THIS TABLE, so it is a chip and not a footnote - and
+           where there is none it says so, because a blank reads as "checked, none" and this
+           column exists precisely to be checked. */
+        /* THE BOOK NUMBER ON ITS OWN LINE. Measured at 390px with everything on one: the
+           particulars column held the row open and pushed CREDIT and BALANCE off the screen -
+           and a screenshot he sends a customer with the balance column missing is the one
+           thing this table cannot afford. */
+        row(d10(c.createdAt),
+          '<b>' + esc(c.challanNo || "") + '</b>' +
+          '<div style="font-size:12px;margin-top:1px">' +
+          (bk ? '<span style="background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;border-radius:5px;' +
+                'padding:0 5px;font-weight:700">Book no ' + esc(bk) + '</span>'
+              : '<span style="color:#b45309;font-weight:600">no book no</span>') +
+          '<span style="color:#94a3b8"> \u00b7 ' + nIt + ' item' + (nIt === 1 ? '' : 's') +
+          (chFreight(c) > 0 ? ' + freight' : '') +
+          (c.site && String(c.site).trim() ? ' \u00b7 ' + esc(String(c.site).trim()) : '') + '</span></div>',
+          v < -0.5 ? null : v, v < -0.5 ? -v : null);
+      } else if (e.t === "R") {
+        var r = e.row, rv = returnNet(r), nR = returnLines(r).length;
+        run -= rv;
+        row(d10(r.createdAt),
+          '<b style="color:#b91c1c">RETURN ' + esc(r.returnNo || "(no number yet)") + '</b>' +
+          (r.challanNo ? '<span style="color:#94a3b8;font-size:12px"> \u00b7 against ' + esc(r.challanNo) + '</span>' : '') +
+          '<span style="color:#94a3b8;font-size:12px"> \u00b7 ' + nR + ' item' + (nR === 1 ? '' : 's') + ' back at the godown</span>',
+          null, rv, "ret");
+      } else {
+        var p = e.row, pa = payAmt(p), pk = payKindOf(p);
+        var tail = [p.mode ? String(p.mode).trim() : "", p.ref ? String(p.ref).trim() : ""].filter(Boolean).join(" \u00b7 ");
+        run -= pa;
+        if (pk === "refund") row(d10(p.date || p.createdAt), '<b>Refund paid to you</b>' + (tail ? '<span style="color:#94a3b8;font-size:12px"> \u00b7 ' + esc(tail) + '</span>' : ''), -pa, null);
+        else row(d10(p.date || p.createdAt),
+          '<b>' + (pk === "advance" ? "Advance received" : "Payment received") + '</b>' +
+          (tail ? '<span style="color:#94a3b8;font-size:12px"> \u00b7 ' + esc(tail) + '</span>' : ''), null, pa);
+      }
+    });
+    var bal = run;
+    var withBk = list.filter(function (c) { return !!manualNoFor(c); }).length;
+    return '<div class="card" style="border-color:#cbd5e1;padding:10px 12px">' +
+      '<div class="acts" style="align-items:baseline;margin:0 0 2px;gap:8px;flex-wrap:wrap">' +
+      '<h3 style="margin:0;font-size:13.5px" class="grow">' + esc(cl) + ' \u2014 the account</h3>' +
+      '<span class="pill">' + list.length + ' deliver' + (list.length === 1 ? 'y' : 'ies') + '</span>' +
+      (rets.length ? '<span class="pill" style="background:#fee2e2;color:#b91c1c">' + rets.length + ' return' + (rets.length === 1 ? '' : 's') + '</span>' : '') +
+      (pays.length ? '<span class="pill teal">' + pays.length + ' payment' + (pays.length === 1 ? '' : 's') + '</span>' : '') +
+      '</div>' +
+      '<div class="meta" style="margin-bottom:7px;font-size:12px">Every delivery, return and payment, in the order they happened &mdash; the same shape as the statement PDF, so both tell him one story. ' +
+      '<b>' + withBk + ' of ' + list.length + '</b> deliver' + (list.length === 1 ? 'y carries' : 'ies carry') + ' its paper book number.' +
+      (withBk < list.length ? ' <span style="color:#b45309">Tap <b>+ Book no</b> on a card below to fill one in.</span>' : '') +
+      '</div>' +
+      /* table-layout:fixed, and a challan number allowed to break. MEASURED at 390px with the
+         columns sized by content: the table wanted 466px in a 332px box, so DEBIT, CREDIT and
+         BALANCE hung off the right - and a screenshot he sends a customer with the balance
+         column missing is worse than no screenshot at all. Five columns, all in the frame; a
+         long number like JAGDISH134/180826/002 wraps instead of pushing the money away. */
+      '<div style="overflow-x:auto"><table style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12.5px">' +
+      '<colgroup><col style="width:58px"/><col/><col style="width:58px"/><col style="width:58px"/><col style="width:67px"/></colgroup>' +
+      '<tr style="background:#0b3b36">' +
+      '<th style="padding:5px 4px;font-weight:700;font-size:12px;color:#fff;text-align:left">DATE</th>' +
+      '<th style="padding:5px 4px;font-weight:700;font-size:12px;color:#fff;text-align:left">PARTICULARS</th>' +
+      '<th style="padding:5px 4px;font-weight:700;font-size:12px;color:#fff;text-align:right">DEBIT</th>' +
+      '<th style="padding:5px 4px;font-weight:700;font-size:12px;color:#fff;text-align:right">CREDIT</th>' +
+      '<th style="padding:5px 4px;font-weight:700;font-size:12px;color:#fff;text-align:right">BALANCE</th></tr>' +
+      h + '</table></div>' +
+      '<div class="acts" style="margin-top:8px;align-items:baseline;border-top:2px solid #0d766c;padding-top:7px">' +
+      '<span class="grow" style="font-weight:700;font-size:13px;color:' + (bal > 0.5 ? "#b91c1c" : "#0f766e") + '">' +
+      (bal < -0.5 ? "In credit \u2014 paid ahead, comes off the next delivery" : bal > 0.5 ? "Balance due" : "Settled in full") + '</span>' +
+      '<span style="font-weight:800;font-size:15px;color:' + (bal > 0.5 ? "#b91c1c" : "#0f766e") + '">' +
+      (Math.abs(bal) < 0.5 ? "nil" : money(Math.abs(bal))) + '</span></div>' +
+      '</div>';
+  }
+
   /* ---- RAISE THE NEXT DELIVERY WHERE YOU CHECKED THE LAST ONE (v6.9.235) ----
      Owner's instruction: while looking at a client's hisab you should be able to raise
      the next challan, or book material coming back, without walking over to Deliveries
@@ -18980,6 +19091,7 @@ function viewCatalogue() {
            what order the cards are painted in. */
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }))
       .sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
+    h += hisabSummaryCard(cl, chs);      /* v6.9.424 - the account, before the cards */
     h += hisabNewBar(cl, chs);
     h += hisabPendingCard(cl);
     if (!chs.length) {
