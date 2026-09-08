@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.442";
+  var APP_VERSION = "6.9.443";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -19002,6 +19002,26 @@ function viewCatalogue() {
   function miniRcptInk(k) {
     return k === "yes" ? "#0f766e" : k === "onway" ? "#b45309" : k === "no" ? "#b91c1c" : "#94a3b8";
   }
+  /* v6.9.443 - HIS WORDS: "make provion to click pending and attach receipt from here only".
+     The word Pending IS the button. It opens modalProof(id) - the same screen the delivery
+     card's "Attach receipt" opens, and the same one that files a return's goods-in receipt,
+     because proofSubject() resolves either kind by id.
+
+     Only Pending. "On its way" means the paper is already photographed and queued on a phone;
+     offering to attach it again would send a man to photograph the same paper twice, which is
+     the whole reason that middle state exists. */
+  function miniRcptCell(r) {
+    var w = miniRcptWord(r.rcpt), ink = miniRcptInk(r.rcpt);
+    if (r.rcpt !== "no" || !r.id || !canProof()) {
+      return '<span style="color:' + ink + '">' + esc(w) + '</span>';
+    }
+    return '<button class="btn sm" data-act="ch-proof" data-id="' + esc(r.id) + '" ' +
+      'title="Attach the ' + (r.kind === "ret" ? 'goods-in' : 'signed delivery') +
+      ' receipt for this ' + (r.kind === "ret" ? 'return' : 'delivery') + '" ' +
+      'style="padding:1px 8px;font-size:12px;font-weight:700;background:#fff;color:' + ink +
+      ';border:1px solid ' + ink + ';border-radius:6px;white-space:nowrap">&#128206; ' +
+      esc(w) + '</button>';
+  }
   function hisabMiniLine(bal) {
     return bal < -0.5 ? "In credit — paid ahead, comes off the next delivery"
          : bal > 0.5 ? "Balance due" : "Settled in full";
@@ -19048,8 +19068,7 @@ function viewCatalogue() {
               'border:1px ' + (r.book ? 'solid #cbd5e1' : 'dashed #cbd5e1') + ';border-radius:6px;' +
               'background:' + (r.book ? '#f1f5f9' : '#fff') + ';color:' + (r.book ? '#334155' : '#b45309') + '"/>'
             : (r.book ? '<span style="background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;border-radius:5px;padding:0 5px;font-weight:700">' + esc(r.book) + '</span>' : '')) + '</td>' +
-        '<td style="' + cell + ';font-size:12px;font-weight:600;color:' + miniRcptInk(r.rcpt) + '">' +
-          esc(miniRcptWord(r.rcpt)) + '</td>' +
+        '<td style="' + cell + ';font-size:12px;font-weight:600">' + miniRcptCell(r) + '</td>' +
         '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f172a") + '">' +
           (r.debit == null ? "" : money(r.debit)) + '</td>' +
         '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f766e") + '">' +
@@ -19069,7 +19088,9 @@ function viewCatalogue() {
       (m.withBook < nD ? ' <span style="color:#b45309">Type it straight into the <b>BOOK NO</b> column below \u2014 it saves itself and shows on the challan too.</span>' : '') +
       ' <span id="mini_rcptcount"><b>' + m.withRcpt + ' of ' + nD + '</b></span> ' +
       (m.withRcpt === nD ? '<span style="color:#0f766e">carry a signed receipt.</span>'
-                         : '<span style="color:#b91c1c">carry a signed receipt \u2014 the rest are marked Pending in the RECEIPT column.</span>') +
+                         : '<span style="color:#b91c1c">carry a signed receipt \u2014 ' + (canProof()
+                             ? 'tap <b>Pending</b> in the RECEIPT column to attach one.'
+                             : 'the rest are marked Pending in the RECEIPT column.') + '</span>') +
       /* v6.9.442 - and the returns, counted separately, because a goods-in receipt is a different
          piece of paper signed by a different man at the other end of the journey. */
       (m.rets.length
