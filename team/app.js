@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.437";
+  var APP_VERSION = "6.9.438";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -532,7 +532,7 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","dups","stock","brief"],
+    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","changelog","dups","stock","brief"],
     accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","dups","stock"],
     godown:   ["dash","returns","tools","challans","products","stock"],
     sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products","dups","brief"],
@@ -885,13 +885,16 @@
      the same challan; it simply was not being asked. The newest version of a record replaces
      the older one - which is right, since save() journals the whole merged row, so the newer
      entry contains everything the older one did. */
-  function pendPut(pk, tab, row) {
+  function pendPut(pk, tab, row, chg) {
     var l = pendLoad().filter(function (x) {
       if (x.pk === pk) return false;
       if (x.tab === tab && natEq(x.row, row)) return false;
       return true;
     });
-    l.push({ pk: pk, tab: tab, row: row, at: Date.now(), err: "" }); pendStore(l);
+    /* v6.9.438 - the change record rides in the journal too. A challan edited in a basement and
+       sent an hour later must still say who edited it and when he did - not when the signal
+       came back. `chg.at` is the moment of the edit and is never restamped. */
+    l.push({ pk: pk, tab: tab, row: row, chg: chg || null, at: Date.now(), err: "" }); pendStore(l);
   }
   function pendMark(pk, err) { var l = pendLoad(); l.forEach(function (x) { if (x.pk === pk) x.err = err; }); pendStore(l); }
   function pendDrop(pk) { pendStore(pendLoad().filter(function (x) { return x.pk !== pk; })); }
@@ -1005,7 +1008,7 @@
       }
       var e = l2[i];
       var payload = Object.assign({}, e.row); delete payload._lid;
-      api("teamSave", { tab: e.tab, row: payload }).then(function (r) {
+      api("teamSave", e.chg ? { tab: e.tab, row: payload, chg: e.chg } : { tab: e.tab, row: payload }).then(function (r) {
         if (r && r.ok) {
           var arr = S.data[e.tab] || []; for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { Object.assign(arr[j], r.row); break; } }
           pendDrop(e.pk); okCount++;          /* list shifted left — same index now holds the next record */
@@ -1520,6 +1523,113 @@
         .then(function () { return api("challanNo", { client: client }); });
     });
   }
+  /* ================= WHO CHANGED WHAT, AND WHEN  (v6.9.438, 8 Sep 2026) ==============
+     HIS WORDS: "maintain log of everything changed that who change what at what time, access
+     to admin only".
+
+     WHAT WAS ALREADY THERE, MEASURED BEFORE BUILDING ANYTHING. The audit trail holds 649 rows
+     over 35 working days since 14 July - about 19 a day - written at 33 named places in this
+     file plus a handful on the server. It covers the SPECIAL events: a cancellation, a credit
+     override, a repricing, a book number, a receipt. It does not cover an ordinary edit. A
+     man's mobile number, a challan's freight, a client's opening balance could all be changed
+     with nothing anywhere to say who did it.
+
+     WHY THIS DOES NOT GO IN THE AUDIT TRAIL. That trail is 638 KB of the 1,678 KB every admin
+     downloads at login, and it is downloaded WHOLE. Logging every edit into it would add about
+     a megabyte every two months to a payload he already feels the weight of. So the change log
+     is its own sheet, and it is NOT part of the book: it is asked for when he opens the screen,
+     filtered and paged. It can grow to a hundred thousand rows without costing anyone a byte
+     at login.
+
+     ONE CHOKEPOINT. Every tab in this app writes through save(). The record is computed there,
+     from the row that is ALREADY in memory against the one being written, so it says what
+     actually changed rather than what was sent - and it rides on the SAME request as the save
+     it describes. No second round trip, and it cannot get out of step: if the save lands the
+     log lands, and an offline save that retries carries its record with it.
+
+     IT MUST NEVER BREAK A SAVE. Everything here is wrapped: if the diff throws for any reason,
+     the save goes up exactly as it does today, carrying no record. A log is worth a great deal;
+     it is not worth one lost challan. */
+  var CHG_SKIP = { updatedAt: 1, __hay: 1, _lid: 1, _lines: 1, _phs: 1 };
+  /* a field whose VALUE has no business in a log: photographs, signatures, base64, and the
+     item block, which is a paragraph of JSON. The NAME is recorded; the content never is. */
+  var CHG_BLOB = /json$|^photo|^photos$|^sig$|^thumb$|b64|^detail$|^items$|^pdf/i;
+  /* ---- A PIN NEVER GOES IN A LOG. Found on review before this shipped, not after. ----
+     tp-setpin and tp-reset both write a staff record through save():
+
+         save("team", Object.assign({}, tu, { pin: temp, pinSet: "N" }));
+
+     so the plain diff would have written  pin  ""  ->  "3456"  into a second Google Sheet, in
+     readable form, for every PIN this business ever sets. The backend has always been careful
+     here - teamSave_ audits a staff change as "PIN reset (forced change: yes)" and never the
+     value - and a log that sits beside that code must not be less careful than it.
+
+     THE FACT IS STILL RECORDED. The field name appears, so the log says a PIN was changed, by
+     whom, at what time; neither the old value nor the new one is anywhere in it. pinSet is not
+     matched and stays readable, because Y/N is not a secret and is the useful half. */
+  var CHG_SECRET = /pin$|token|secret|password|apikey|^key$/i;
+  var CHG_MAX = 900;
+
+  function chgVal(v) {
+    if (v == null) return "";
+    var t = String(v);
+    if (t.length > 60) t = t.slice(0, 57) + "…";
+    return t;
+  }
+  /* what CHANGED, comparing only the fields the caller is actually writing - which is the same
+     rule the backend merges by: a key the payload carries is written, a key it does not carry
+     keeps its cell. Comparing anything else would log edits nobody made. */
+  function chgDiff(before, row) {
+    var out = [];
+    Object.keys(row || {}).forEach(function (k) {
+      if (CHG_SKIP[k]) return;
+      var a = (before || {})[k], b = row[k];
+      if (String(a == null ? "" : a) === String(b == null ? "" : b)) return;
+      if (CHG_SECRET.test(k)) { out.push({ f: k, from: "", to: "", secret: 1 }); return; }
+      if (CHG_BLOB.test(k)) { out.push({ f: k, from: "", to: "", blob: 1 }); return; }
+      out.push({ f: k, from: chgVal(a), to: chgVal(b) });
+    });
+    return out;
+  }
+  /* the human name of the record, so the log reads as a sentence and not as an id */
+  function chgLabel(tab, r) {
+    if (!r) return "";
+    if (tab === "challans") return String(r.challanNo || "") + (r.customerName ? " · " + r.customerName : "");
+    if (tab === "returns") return String(r.returnNo || "") + (r.customerName ? " · " + r.customerName : "");
+    if (tab === "payments") return String(r.client || "") + (r.amount ? " · " + money(r.amount) : "");
+    if (tab === "quotes") return String(r.quoteNo || "") + (r.client ? " · " + r.client : "");
+    if (tab === "discounts") return String(r.client || "") + " · " + String(r.brand || "");
+    if (tab === "clients" || tab === "customers") return String(r.name || "");
+    if (tab === "team") return String(r.name || "");
+    if (tab === "audit") return String(r.action || "") + " · " + String(r.target || "");
+    return String(r.name || r.title || r.client || r.id || "");
+  }
+  /* The record that rides with the save. Returns null when there is nothing to say - a save
+     that changed nothing writes no line, or the log would fill with noise on every repaint. */
+  function chgMake(tab, before, row, isNew, full) {
+    try {
+      var fields = isNew ? [] : chgDiff(before, row);
+      if (!isNew && !fields.length) return null;
+      var det = JSON.stringify(fields);
+      if (det.length > CHG_MAX) det = JSON.stringify(fields.slice(0, 8)).slice(0, CHG_MAX);
+      return {
+        at: new Date().toISOString(),
+        who: String(S.user || ""),
+        app: "CRM",
+        tab: String(tab || ""),
+        recId: String((row && row.id) || ""),
+        /* v6.9.438 - the label comes off the MERGED row, never the patch. A caller writing
+           { id, mode, ref } on a payment carries no client name, and the log would have read
+           "payment ·" with nothing after it - which is the one thing a log must not do. The
+           DIFF still reads the patch, because that is what the backend merges by. */
+        label: chgLabel(tab, full || row).slice(0, 80),
+        action: isNew ? "create" : "edit",
+        fields: (isNew ? ["(new record)"] : fields.map(function (x) { return x.f; })).join(", ").slice(0, 200),
+        detail: det
+      };
+    } catch (e) { return null; }
+  }
+
   function save(tab, row, quiet) {
     /* v6.9.124 — DUPLICATE FIX: every NEW row (no server id yet) is given a STABLE client-generated
        id that IS sent to the server. The backend upserts by id, so if a create is ever delivered
@@ -1559,6 +1669,10 @@
     var list = (S.data[tab] = S.data[tab] || []);
     var idx = -1;
     for (var k = 0; k < list.length; k++) { if (list[k] && ((row.id && list[k].id === row.id) || (row._lid && list[k]._lid === row._lid))) { idx = k; break; } }
+    /* v6.9.438 - the BEFORE copy, taken while there still is one. One line later Object.assign
+       has already written over it, and the log would compare the row with itself. */
+    var _chgBefore = null, _chgNew = (idx < 0);
+    try { if (idx >= 0) _chgBefore = Object.assign({}, list[idx]); } catch (e) { }
     if (idx >= 0) Object.assign(list[idx], row); else { list.push(row); idx = list.length - 1; }
     /* v6.9.304 - the search haystack hangs off the row and must die WITH the edit. An
        in-place Object.assign keeps the old __hay, so a firm name added to "Bills under" a
@@ -1577,16 +1691,20 @@
        change applied) means a save can only ever CHANGE the mentioned fields and can never blank the
        others. Safe whether the backend merges or overwrites. */
     var fullRow = list[idx] || row;
+    /* v6.9.438 - computed HERE, from the row as the caller wrote it, and carried on the same
+       request. Wrapped, because a log must never be the thing that loses a challan. */
+    var _chg = null;
+    try { _chg = chgMake(tab, _chgBefore, row, _chgNew, fullRow); } catch (e) { _chg = null; }
     S.pending = (S.pending || 0) + 1;
     var pk = "pk" + (++_pkSeq) + "_" + (row.id || row._lid || "x");
-    pendPut(pk, tab, fullRow);        // journal the FULL row so an offline retry is safe too
+    pendPut(pk, tab, fullRow, _chg);  // journal the FULL row so an offline retry is safe too
     /* A "quiet" save (used by the discount / incentive editor) skips the repaint so the field being
        typed in is never torn down mid-edit and focus can never jump to the search box. The row is
        already in memory and journaled, so nothing is lost. */
     if (!quiet) renderBg();
     var payload = Object.assign({}, fullRow); delete payload._lid;   // local-only key never leaves the device
     var done = function () { S.pending = Math.max(0, (S.pending || 1) - 1); };
-    return api("teamSave", { tab: tab, row: payload }).then(function (r) {
+    return api("teamSave", _chg ? { tab: tab, row: payload, chg: _chg } : { tab: tab, row: payload }).then(function (r) {
       if (!r || !r.ok) {
         done(); pendMark(pk, (r && r.error) || "server refused it");
         toast("Not synced yet - kept safe on this device, will retry.");
@@ -25574,7 +25692,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["changelog", "Change log"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -25663,6 +25781,163 @@ function viewCatalogue() {
       h += '<div class="acts" style="margin-top:9px"><button class="btn sm ghost" data-act="tabuse-clear">Start counting again</button></div>';
     }
     return h + '</div>';
+  }
+
+  /* ================= THE CHANGE LOG, READ ON DEMAND  (v6.9.438) =================
+     Deliberately NOT part of the book. teamGet already carries 1,678 KB to every admin at
+     login and 638 KB of that is the audit trail; a log of every edit would double it inside a
+     quarter. This screen asks the server for one page at a time, filtered, and holds nothing.
+
+     So it is the one screen in this app that can be EMPTY because the server has not been
+     updated yet, and it says so in those words rather than showing a blank list that reads
+     like "nothing has ever been changed". */
+  var _clgRows = null, _clgAt = 0, _clgBusy = false, _clgErr = "";
+  function clgFilters() {
+    return {
+      who: String(S.clgWho || ""), tab: String(S.clgTab || ""),
+      q: String(S.clgQ || ""), days: Number(S.clgDays || 7)
+    };
+  }
+  function clgLoad(force) {
+    if (_clgBusy) return;
+    if (!force && _clgRows && Date.now() - _clgAt < 60000) return;
+    _clgBusy = true; _clgErr = "";
+    var f = clgFilters();
+    api("changeLogGet", { who: f.who, tab: f.tab, q: f.q, days: f.days, limit: 300 }, 60000)
+      .then(function (r) {
+        _clgBusy = false; _clgAt = Date.now();
+        if (!r || !r.ok) {
+          _clgRows = [];
+          _clgErr = (r && r.error) ? String(r.error) : "the server does not know this question yet";
+          renderBg(); return;
+        }
+        _clgRows = (r.rows || []).slice();
+        renderBg();
+      })
+      .catch(function (e) {
+        _clgBusy = false; _clgRows = [];
+        _clgErr = (e && e.message) ? String(e.message) : "no answer from the server";
+        renderBg();
+      });
+  }
+  function clgWhoList() {
+    var seen = {}, out = [];
+    (S.data.team || []).forEach(function (u) { if (u && u.name && !seen[u.name]) { seen[u.name] = 1; out.push(u.name); } });
+    return out.sort();
+  }
+  var CLG_TABS = [["", "Everything"], ["challans", "Deliveries"], ["payments", "Payments"],
+                  ["clients", "Clients"], ["discounts", "Rates"], ["returns", "Returns"],
+                  ["quotes", "Quotes"], ["team", "Team"]];
+  var CLG_DAYS = [[1, "Today"], [7, "7 days"], [30, "30 days"], [90, "90 days"], [3650, "Everything"]];
+
+  function viewChangeLog() {
+    if (!roleIs("admin")) {
+      return '<div class="empty">The change log is a partner\'s screen. It names who altered what, ' +
+        'and that is not a thing to leave open on a counter.</div>';
+    }
+    clgLoad(false);
+    var f = clgFilters();
+    var chip = function (act, v, on, label) {
+      return '<button class="chip' + (on ? " on" : "") + '" data-act="' + act + '" data-v="' + esc(String(v)) + '">' + esc(label) + '</button>';
+    };
+    var h = '<div class="card"><h3 style="margin:0 0 2px">Change log</h3>' +
+      '<div class="meta">Every record this app writes, with the man who wrote it and the moment he did. ' +
+      '<b>Partners only.</b><br>' +
+      '<span style="color:#94a3b8">It is not part of the book that comes down at login — it is asked for ' +
+      'when you open this screen, so it can grow for years without making the app slower.</span></div>' +
+      '<div class="chips" style="margin:8px 0 2px">' +
+      '<span class="meta" style="align-self:center;font-size:12px;font-weight:700;color:#64748b">WHEN</span>' +
+      CLG_DAYS.map(function (d) { return chip("clg-days", d[0], f.days === d[0], d[1]); }).join("") + '</div>' +
+      '<div class="chips" style="margin:0 0 2px">' +
+      '<span class="meta" style="align-self:center;font-size:12px;font-weight:700;color:#64748b">WHAT</span>' +
+      CLG_TABS.map(function (t) { return chip("clg-tab", t[0], f.tab === t[0], t[1]); }).join("") + '</div>' +
+      '<div class="chips" style="margin:0 0 2px">' +
+      '<span class="meta" style="align-self:center;font-size:12px;font-weight:700;color:#64748b">WHO</span>' +
+      chip("clg-who", "", !f.who, "Everyone") +
+      clgWhoList().map(function (n) { return chip("clg-who", n, f.who === n, n); }).join("") + '</div>' +
+      '<div class="row" style="margin:4px 0 8px">' +
+      '<input class="grow" id="clg_q" placeholder="Find a record — a challan number, a client, a field…" value="' + esc(f.q) + '"/>' +
+      '<button class="btn sm" data-act="clg-find">Find</button>' +
+      (f.q ? '<button class="btn sm ghost" data-act="clg-qclear">Clear</button>' : '') + '</div>' +
+      '<div class="acts" style="margin:0"><button class="btn sm ghost" data-act="clg-refresh">' +
+      (_clgBusy ? 'Asking the server…' : '&#8635; Refresh') + '</button>' +
+      (_clgRows && _clgRows.length ? '<button class="btn sm ghost" data-act="clg-csv">&#8681; CSV</button>' : '') +
+      '</div></div>';
+
+    if (_clgBusy && !_clgRows) return h + '<div class="empty">Asking the server for the log…</div>';
+    if (_clgErr) {
+      return h + '<div class="card" style="border-color:#fde68a;background:#fffbeb"><b style="color:#92400e">' +
+        'The server could not answer: ' + esc(_clgErr) + '</b>' +
+        '<div class="meta" style="font-size:12.5px;color:#92400e;margin-top:5px">' +
+        'The app has been recording every change since v6.9.438 — each one rides up with the save it ' +
+        'describes. Reading them back needs the two small additions to the Apps Script that are written ' +
+        'up in the project note. Until they are pasted, this screen has nothing to read, and it says so ' +
+        'rather than showing an empty list that would read like "nothing was ever changed".</div></div>';
+    }
+    var rows = _clgRows || [];
+    if (!rows.length) {
+      return h + '<div class="empty">Nothing changed in this window. Widen it above.</div>';
+    }
+    var TH = function (x) {
+      return '<th style="padding:5px 6px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:left">' + esc(x) + '</th>';
+    };
+    h += '<div class="card" style="padding:8px 10px"><div style="overflow-x:auto;-webkit-overflow-scrolling:touch">' +
+      '<table style="border-collapse:collapse;font-size:12.5px;min-width:100%">' +
+      '<tr style="background:#0b3b36">' + TH("WHEN") + TH("WHO") + TH("WHAT") + TH("WHICH RECORD") + TH("CHANGED") + '</tr>';
+    var cell = 'padding:4px 6px;white-space:nowrap;border-top:1px solid #e2e8f0';
+    rows.slice(0, 300).forEach(function (r, i) {
+      var isNew = String(r.action || "") === "create";
+      h += '<tr style="background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' +
+        '<td style="' + cell + ';color:#64748b;font-size:12px">' + esc(clgWhen(r.at)) + '</td>' +
+        '<td style="' + cell + ';font-weight:700">' + esc(r.who || "?") + '</td>' +
+        '<td style="' + cell + ';font-size:12px"><span class="pill' + (isNew ? ' teal' : '') + '">' +
+          esc((isNew ? "new " : "") + clgTabName(r.tab)) + '</span></td>' +
+        '<td style="' + cell + ';max-width:230px;overflow:hidden;text-overflow:ellipsis" title="' + esc(r.label || r.recId || "") + '">' +
+          esc(r.label || r.recId || "") + '</td>' +
+        '<td style="' + cell.replace("white-space:nowrap", "white-space:normal") + ';color:#475569;max-width:420px">' +
+          clgFieldsHtml(r) + '</td></tr>';
+    });
+    h += '</table></div>' +
+      '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:6px">' +
+      rows.length + ' change(s) in this window. Photographs, signatures and the item block are ' +
+      'recorded by NAME only — the log says a receipt photo changed, never what was in it. ' +
+      '<b>A PIN is never recorded at all:</b> the log says one was changed, by whom and when, and ' +
+      'the value is in no second place.</div></div>';
+    return h;
+  }
+  function clgTabName(t) {
+    var m = { challans: "delivery", returns: "return", payments: "payment", clients: "client",
+              discounts: "rate", quotes: "quote", team: "team", audit: "audit", customers: "lead" };
+    return m[String(t || "")] || String(t || "record");
+  }
+  function clgWhen(at) {
+    var s2 = String(at || ""); if (!s2) return "";
+    var d = new Date(s2); if (isNaN(d.getTime())) return s2.slice(0, 16);
+    return d10(s2) + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+  function clgFieldsHtml(r) {
+    var f = [];
+    try { f = JSON.parse(r.detail || "[]"); } catch (e) { f = []; }
+    if (String(r.action || "") === "create") return '<span style="color:#0f766e">the record was created</span>';
+    if (!f.length) return esc(String(r.fields || ""));
+    return f.slice(0, 6).map(function (x) {
+      if (x.secret) return '<span class="pill" style="background:#fef3c7;color:#92400e">' + esc(x.f) +
+        ' <span style="color:#b45309">changed \u2014 the value is not recorded anywhere</span></span>';
+      if (x.blob) return '<span class="pill">' + esc(x.f) + ' <span style="color:#94a3b8">replaced</span></span>';
+      return '<span class="pill"><b>' + esc(x.f) + '</b> ' +
+        '<span style="color:#b91c1c">' + esc(x.from || "(blank)") + '</span> &rarr; ' +
+        '<span style="color:#0f766e">' + esc(x.to || "(blank)") + '</span></span>';
+    }).join(" ") + (f.length > 6 ? ' <span style="color:#94a3b8">+' + (f.length - 6) + ' more</span>' : '');
+  }
+  function clgCsv() {
+    var rows = _clgRows || [];
+    if (!rows.length) { toast("Nothing to download on this filter."); return; }
+    var out = [["When", "Who", "What", "Which record", "Action", "Fields", "Detail"]];
+    rows.forEach(function (r) {
+      out.push([clgWhen(r.at), r.who || "", clgTabName(r.tab), r.label || r.recId || "",
+                r.action || "", r.fields || "", r.detail || ""]);
+    });
+    dlCsv("Change_log_" + today() + ".csv", out);
   }
 
   function viewHealth() {
@@ -31478,7 +31753,7 @@ function viewCatalogue() {
     ["Service",    ["service", "spares"]],
     ["Products",   ["products", "catalogue", "pricelist", "rates"]],
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins", "tools"]],
-    ["Today",      ["dash", "brief", "pending", "health", "dups"]]
+    ["Today",      ["dash", "brief", "pending", "health", "changelog", "dups"]]
   ];
   /* The four hub tabs (v6.9.330 and before) still render if something lands on them - the two
      "Open Deliveries" buttons do - so they must light the right group. They are not listed as
@@ -31786,7 +32061,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, dups: viewDups, stock: viewStock, brief: viewBrief };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, changelog: viewChangeLog, dups: viewDups, stock: viewStock, brief: viewBrief };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -35353,6 +35628,15 @@ function viewCatalogue() {
       payWrite(piRow, _gClick, t);
       return;
     }
+
+    /* ---- THE CHANGE LOG  (v6.9.438). Every one only changes what is ASKED FOR. ---- */
+    if (act === "clg-days") { S.clgDays = Number(t.getAttribute("data-v")) || 7; clgLoad(true); keepScroll = true; render(); return; }
+    if (act === "clg-tab") { S.clgTab = t.getAttribute("data-v") || ""; clgLoad(true); keepScroll = true; render(); return; }
+    if (act === "clg-who") { S.clgWho = t.getAttribute("data-v") || ""; clgLoad(true); keepScroll = true; render(); return; }
+    if (act === "clg-find") { S.clgQ = String(val("clg_q") || "").trim(); clgLoad(true); keepScroll = true; render(); return; }
+    if (act === "clg-qclear") { S.clgQ = ""; clgLoad(true); keepScroll = true; render(); return; }
+    if (act === "clg-refresh") { clgLoad(true); keepScroll = true; render(); return; }
+    if (act === "clg-csv") { clgCsv(); return; }
 
     /* ---- THE PAPER THAT FIXED THE RATE  (v6.9.436) ---- */
     if (act === "agr-open") {
