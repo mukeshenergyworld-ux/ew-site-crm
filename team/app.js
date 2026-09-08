@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.443";
+  var APP_VERSION = "6.9.444";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14723,6 +14723,10 @@ function viewCatalogue() {
      lorry. A receipt is the proof that settles an argument; it should not be attachable
      by the person it would exonerate. */
   function canProof()   { return roleAny(["admin","accounts"]); }
+  /* v6.9.444 - who may record a GST bill against a delivery. The card has gated its button on
+     admin-or-accounts since the billing queue was built; the HANDLER never checked, so the
+     hidden button was the only lock. This is the rule, and the handler reads it. */
+  function canBill()    { return roleAny(["admin","accounts"]); }
 
   /* ================= A DELIVERY THAT HAS ARRIVED  (v6.9.387, 31 August 2026) ===========
      HIS WORDS, with 23/08/2026/008 on the screen: "receipt attached then why this dispatch
@@ -16407,7 +16411,7 @@ function viewCatalogue() {
            delivered challan can be tied to its invoice number - the basis for tallying stock later.
            Other roles keep the hand-off ("Send for billing") that puts it in the accounts queue. */
         (st === "Received"
-          ? ((roleIs("admin") || roleIs("accounts"))
+          ? (canBill()
               ? '<button class="btn sm ' + (c.billNo ? 'act-billedit' : 'act-bill') + '" data-act="bill-detail" data-id="' + esc(c.id) + '">' + (c.billNo ? 'Edit bill' : 'Add billing detail') + '</button>'
               : (!c.billStatus ? '<button class="btn sm act-billsend" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : ""))
           : "") +
@@ -18943,7 +18947,7 @@ function viewCatalogue() {
     ev.sort(function (a, b) { return a.d !== b.d ? a.d.localeCompare(b.d) : ((a.ord - b.ord) || a.ts.localeCompare(b.ts)); });
     var run = opening, out = [];
     out.push({ kind: "bf", date: "", no: "", ptrs: "Balance brought forward", type: "", book: "",
-               rcpt: "", debit: null, credit: null, bal: run });
+               rcpt: "", bill: null, debit: null, credit: null, bal: run });
     ev.forEach(function (e) {
       if (e.t === "C") {
         var c = e.row, v = chValue(c), nIt = pricedLines(c, cl).length;
@@ -18955,6 +18959,12 @@ function viewCatalogue() {
           /* v6.9.440 - through chProofAny, the same reader the challan list and the statement
              PDF use, so the column and the paper can never disagree about one delivery. */
           rcpt: (function () { var pf = chProofAny(c); return !pf.has ? "no" : (pf.queued ? "onway" : "yes"); })(),
+          /* v6.9.444 - HIS WORDS: "show one more column of GST Bill Detail". What the billing
+             screen wrote on the challan, read back: the bill number and the day it was recorded,
+             or the fact that it went to accounts, or nothing. MEASURED on his book the day this
+             was written: 170 received deliveries, 0 with a bill number. */
+          bill: { no: String(c.billNo || "").trim(), at: d10(c.billedAt), to: String(c.billTo || "").trim(),
+                  st: String(c.billStatus || "").trim() },
           debit: v < -0.5 ? null : v, credit: v < -0.5 ? -v : null, bal: run, id: c.id });
       } else if (e.t === "R") {
         var r = e.row, rv = returnNet(r), nR = returnLines(r).length;
@@ -18971,20 +18981,21 @@ function viewCatalogue() {
              RAVI0000/270726/R01, which is the return in the screenshot he sent. */
           type: "Return", book: "",
           rcpt: (function () { var pv = chProofAny(retProofView(r)); return !pv.has ? "no" : (pv.queued ? "onway" : "yes"); })(),
-          debit: null, credit: rv, bal: run, id: r.id });
+          bill: null, debit: null, credit: rv, bal: run, id: r.id });
       } else {
         var p = e.row, pa = payAmt(p), pk = payKindOf(p);
         var tail = [p.mode ? String(p.mode).trim() : "", p.ref ? String(p.ref).trim() : ""].filter(Boolean).join(" · ");
         run -= pa;
         out.push({ kind: "pay", date: d10(p.date || p.createdAt), no: "",
           ptrs: tail || "", type: pk === "refund" ? "Refund" : (pk === "advance" ? "Advance" : "Payment"),
-          book: "", rcpt: "", debit: pk === "refund" ? -pa : null, credit: pk === "refund" ? null : pa, bal: run, id: p.id });
+          book: "", rcpt: "", bill: null, debit: pk === "refund" ? -pa : null, credit: pk === "refund" ? null : pa, bal: run, id: p.id });
       }
     });
     return { rows: out, bal: run, opening: opening, chs: chs, rets: rets, pays: pays,
              withBook: chs.filter(function (c) { return !!manualNoFor(c); }).length,
              withRcpt: chs.filter(function (c) { return chProofAny(c).has; }).length,
-             retRcpt: rets.filter(function (r) { return chProofAny(retProofView(r)).has; }).length };
+             retRcpt: rets.filter(function (r) { return chProofAny(retProofView(r)).has; }).length,
+             withBill: chs.filter(function (c) { return !!String(c.billNo || "").trim(); }).length };
   }
   /* v6.9.440 - HIS WORDS: "show one more column of receipt Attached or pending, attached in
      Green and Pending in red". The signed paper is the thing an argument about a delivery ends
@@ -18995,7 +19006,15 @@ function viewCatalogue() {
      receipt still sitting on the phone that photographed it from one on Drive. Calling that
      "Attached" would be a claim about a document nobody else can open yet; calling it "Pending"
      would send a man to photograph the same paper twice. So it is amber and says "On its way". */
-  var MINI_HEAD = ["Date", "Challan No", "PTRS", "Supply/Return", "Book No", "Receipt", "Debit", "Credit", "Balance"];
+  var MINI_HEAD = ["Date", "Challan No", "PTRS", "Supply/Return", "Book No", "Receipt", "GST Bill", "Debit", "Credit", "Balance"];
+  /* v6.9.444 - the number of columns, as a word, read off the header. Two sentences on this screen
+     say how many there are and both had gone stale by hand - "eight" survived the ninth AND the
+     tenth column under the file buttons. A number a man has to remember to change is a number
+     that will be wrong; this one cannot be. */
+  function MINI_COUNT_WORD() {
+    var w = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+    return w[MINI_HEAD.length] || String(MINI_HEAD.length);
+  }
   function miniRcptWord(k) {
     return k === "yes" ? "Attached" : k === "onway" ? "On its way" : k === "no" ? "Pending" : "";
   }
@@ -19010,6 +19029,37 @@ function viewCatalogue() {
      Only Pending. "On its way" means the paper is already photographed and queued on a phone;
      offering to attach it again would send a man to photograph the same paper twice, which is
      the whole reason that middle state exists. */
+  /* v6.9.444 - THE GST BILL, as words for a file and as a cell for the screen. The file gets the
+     bill number and its date, or the state; the screen gets the same, and for a man who may
+     record one, the cell IS the way in - modalBill(id), the same screen the delivery card's
+     "Add billing detail" opens. Nothing new is drawn to record a bill; the column is a shorter
+     road to the screen that already does it. */
+  function miniBillWord(b) {
+    if (!b) return "";
+    if (b.no) return b.no + (b.at ? " \u00b7 " + b.at : "");
+    if (/^sent/i.test(b.st)) return "Sent for billing" + (b.to ? " \u00b7 " + b.to : "");
+    return "Not billed";
+  }
+  function miniBillCell(r) {
+    var b = r.bill;
+    if (!b || r.kind !== "ch") return "";
+    var may = canBill() && !!r.id;
+    var open = may ? ' data-act="bill-detail" data-id="' + esc(r.id) + '"' : "";
+    if (b.no) {
+      return '<span' + open + ' title="' + esc((b.to ? 'Billed under ' + b.to + '. ' : '') + (may ? 'Tap to edit.' : '')) + '"' +
+        ' style="color:#0f766e;font-weight:700' + (may ? ';cursor:pointer;text-decoration:underline dotted' : '') + '">' +
+        esc(b.no) + '</span>' + (b.at ? '<span style="color:#64748b"> \u00b7 ' + esc(b.at) + '</span>' : '');
+    }
+    if (/^sent/i.test(b.st)) {
+      return '<span' + open + ' title="' + esc('With accounts for billing' + (b.to ? ' \u2014 ' + b.to : '') + (may ? '. Tap to record the bill.' : '')) + '"' +
+        ' style="color:#b45309;font-weight:600' + (may ? ';cursor:pointer' : '') + '">with accounts</span>';
+    }
+    if (!may) return '<span style="color:#94a3b8">not billed</span>';
+    return '<button class="btn sm" data-act="bill-detail" data-id="' + esc(r.id) + '" ' +
+      'title="Record the GST bill raised for this delivery \u2014 number, date and the name it is billed under" ' +
+      'style="padding:1px 8px;font-size:12px;font-weight:700;font-family:inherit;background:#fff;color:#b45309;' +
+      'border:1px dashed #cbd5e1;border-radius:6px;white-space:nowrap">+ bill</button>';
+  }
   function miniRcptCell(r) {
     var w = miniRcptWord(r.rcpt), ink = miniRcptInk(r.rcpt);
     if (r.rcpt !== "no" || !r.id || !canProof()) {
@@ -19069,6 +19119,7 @@ function viewCatalogue() {
               'background:' + (r.book ? '#f1f5f9' : '#fff') + ';color:' + (r.book ? '#334155' : '#b45309') + '"/>'
             : (r.book ? '<span style="background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;border-radius:5px;padding:0 5px;font-weight:700">' + esc(r.book) + '</span>' : '')) + '</td>' +
         '<td style="' + cell + ';font-size:12px;font-weight:600">' + miniRcptCell(r) + '</td>' +
+        '<td style="' + cell + ';font-size:12px">' + miniBillCell(r) + '</td>' +
         '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f172a") + '">' +
           (r.debit == null ? "" : money(r.debit)) + '</td>' +
         '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f766e") + '">' +
@@ -19098,7 +19149,15 @@ function viewCatalogue() {
           (m.retRcpt === m.rets.length ? '<span style="color:#0f766e"> carry a goods-in receipt.</span>'
                                        : '<span style="color:#b91c1c"> carry a goods-in receipt.</span>')
         : '') +
-      ' <span style="color:#94a3b8">Nine columns do not fit a phone — slide the table sideways, or send the file instead.</span>' +
+      /* v6.9.444 - and the bills. Measured the day this was written: 170 received deliveries on
+         his book, none with a bill number - so this line will read "0 of N" on every client until
+         accounts starts recording them, and it says where to do that. */
+      ' <span id="mini_billcount"><b>' + m.withBill + ' of ' + nD + '</b></span> ' +
+      (m.withBill === nD ? '<span style="color:#0f766e">carry a GST bill number.</span>'
+                         : '<span style="color:#b45309">carry a GST bill number' + (canBill()
+                             ? ' \u2014 tap <b>+ bill</b> in the GST BILL column to record one.'
+                             : '.') + '</span>') +
+      ' <span style="color:#94a3b8">' + MINI_COUNT_WORD().replace(/^./, function (c) { return c.toUpperCase(); }) + ' columns do not fit a phone — slide the table sideways, or send the file instead.</span>' +
       '</div>' +
       /* v6.9.425 - HE ASKED TO BE ABLE TO HIDE IT: on a client with eighteen lines the account
          pushes the delivery cards a long way down and he does not always want it open. The state
@@ -19113,7 +19172,9 @@ function viewCatalogue() {
       '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;font-size:12.5px;min-width:100%">' +
       '<tr style="background:#0b3b36">' + MINI_HEAD.map(function (t, i) {
         return '<th style="padding:5px 6px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' +
-          (i >= 6 ? 'right' : 'left') + '">' + esc(t.toUpperCase()) + '</th>';
+          /* v6.9.444 - the three money columns are the LAST three, whatever sits before them.
+             Written as "i >= 6" this right-aligned GST BILL the moment it became the seventh. */
+          (i >= MINI_HEAD.length - 3 ? 'right' : 'left') + '">' + esc(t.toUpperCase()) + '</th>';
       }).join("") + '</tr>' + h + '</table></div>') +
       '<div class="acts" style="margin-top:8px;align-items:baseline;border-top:2px solid #0d766c;padding-top:7px;flex-wrap:wrap;gap:8px">' +
       '<span class="grow" style="font-weight:700;font-size:13px;color:' + (m.bal > 0.5 ? "#b91c1c" : "#0f766e") + '">' +
@@ -19123,7 +19184,7 @@ function viewCatalogue() {
       '<div class="acts" style="margin-top:7px;gap:6px;flex-wrap:wrap">' +
       '<button class="btn sm ghost" data-act="mini-xlsx" data-n="' + esc(cl) + '">&#8681; Excel</button>' +
       '<button class="btn sm ghost" data-act="mini-pdf" data-n="' + esc(cl) + '">&#8681; PDF</button>' +
-      '<span class="meta" style="align-self:center;font-size:12px;color:#94a3b8">The same eight columns, as a file — better to send than a screenshot.</span>' +
+      '<span class="meta" style="align-self:center;font-size:12px;color:#94a3b8">The same ' + MINI_COUNT_WORD() + ' columns, as a file — better to send than a screenshot.</span>' +
       '</div></div>';
   }
 
@@ -19133,7 +19194,7 @@ function viewCatalogue() {
     if (!m.rows.length) { toast("Nothing on this account yet."); return; }
     var out = [MINI_HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
     m.rows.forEach(function (r) {
-      out.push([r.date, r.no, r.ptrs, r.type, r.book, miniRcptWord(r.rcpt),
+      out.push([r.date, r.no, r.ptrs, r.type, r.book, miniRcptWord(r.rcpt), miniBillWord(r.bill),
                 r.debit == null ? "" : Math.round(r.debit),
                 r.credit == null ? "" : Math.round(r.credit),
                 { v: Math.round(r.bal), s: XL.BOLD }]);
@@ -19177,13 +19238,19 @@ function viewCatalogue() {
       /* v6.9.440 - nine columns now. PTRS gives up 8mm and BOOK NO 4mm to make room for
          RECEIPT; the three money columns keep every millimetre they had, because a clipped
          figure on a statement is the one thing this page must never do. */
-      var cX = [L, L + 20, L + 62, L + 124, L + 148, L + 172, R - 63, R - 33, R - 1];
+      /* v6.9.444 - TEN. GST BILL sits between RECEIPT and DEBIT. CHALLAN NO gives up 9mm, PTRS
+         8mm, TYPE 6mm, BOOK NO 6mm, RECEIPT 8mm - and the three money columns keep every
+         millimetre they had. (The first cut took 18mm off PTRS and "against JAGDISH134/..." lost
+         its challan number; rendered, seen, and the dead space in TYPE and BOOK NO given back.) A right-aligned figure reaches LEFT from its anchor, so GST BILL is
+         cut off 17mm short of DEBIT's anchor, which is what "Rs.1,49,817" needs at 7.2pt. Rendered
+         with pdftoppm and looked at before this shipped. */
+      var cX = [L, L + 18, L + 51, L + 100, L + 123, L + 141, L + 163, R - 63, R - 33, R - 1];
       var y = HB + 10;
       var head = function () {
         doc.setFillColor(11, 59, 54); doc.rect(L, y - 4.4, R - L, 6.2, "F");
         F("bold"); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
         MINI_HEAD.forEach(function (t, i) {
-          if (i >= 6) doc.text(t.toUpperCase(), cX[i], y, { align: "right" });
+          if (i >= 7) doc.text(t.toUpperCase(), cX[i], y, { align: "right" });
           else doc.text(t.toUpperCase(), cX[i] + 1, y);
         });
         y += 6.4; doc.setTextColor(17, 34, 45);
@@ -19200,20 +19267,35 @@ function viewCatalogue() {
         var put = function (i, v, wid) {
           if (v === "" || v == null) return;
           var s = doc.splitTextToSize(pdfSafe(String(v)), wid)[0] || "";
-          if (i >= 6) doc.text(s, cX[i], y, { align: "right" }); else doc.text(s, cX[i] + 1, y);
+          if (i >= 7) doc.text(s, cX[i], y, { align: "right" }); else doc.text(s, cX[i] + 1, y);
         };
-        put(0, r.date, 19); put(1, r.no, 41); put(2, r.ptrs, 61); put(3, r.type, 23); put(4, r.book, 23);
+        /* v6.9.444 - a return's PTRS reads "1 item back at the godown · against RAVI0000/270726/R01",
+           which no column on this page has ever held: splitTextToSize drops the whole last WORD,
+           so the paper said "· against" and nothing after it - since 6.9.425, seen only now the
+           page was rendered for the tenth column. On the paper the phrase is shortened before the
+           challan number is, because the number is the fact. */
+        var _ptrs = String(r.ptrs || "");
+        if (doc.getTextWidth(_ptrs) > 47) _ptrs = _ptrs.replace(" back at the godown \u00b7 against ", " back \u00b7 vs ");
+        put(0, r.date, 17); put(1, r.no, 32); put(2, _ptrs, 48); put(3, r.type, 22); put(4, r.book, 17);
         if (r.rcpt) {
           var _wasInk = r.kind === "ret" ? [185, 28, 28] : [17, 34, 45];
           if (r.rcpt === "yes") doc.setTextColor(15, 118, 110);
           else if (r.rcpt === "onway") doc.setTextColor(180, 83, 9);
           else doc.setTextColor(185, 28, 28);
-          put(5, miniRcptWord(r.rcpt), 24);
+          put(5, miniRcptWord(r.rcpt), 21);
           doc.setTextColor(_wasInk[0], _wasInk[1], _wasInk[2]);
         }
-        put(6, r.debit == null ? "" : RS(r.debit), 30);
-        if (r.credit != null) { doc.setTextColor(13, 118, 108); put(7, RS(r.credit), 30); doc.setTextColor(17, 34, 45); }
-        F("bold"); put(8, RSs(r.bal), 30);
+        if (r.bill) {
+          var _bInk = r.kind === "ret" ? [185, 28, 28] : [17, 34, 45];
+          if (r.bill.no) doc.setTextColor(15, 118, 110);
+          else if (/^sent/i.test(r.bill.st)) doc.setTextColor(180, 83, 9);
+          else doc.setTextColor(148, 163, 184);
+          put(6, r.bill.no ? r.bill.no + (r.bill.at ? " " + r.bill.at : "") : (/^sent/i.test(r.bill.st) ? "Sent for billing" : "Not billed"), 29);
+          doc.setTextColor(_bInk[0], _bInk[1], _bInk[2]);
+        }
+        put(7, r.debit == null ? "" : RS(r.debit), 30);
+        if (r.credit != null) { doc.setTextColor(13, 118, 108); put(8, RS(r.credit), 30); doc.setTextColor(17, 34, 45); }
+        F("bold"); put(9, RSs(r.bal), 30);
         y += 4.8;
       });
       if (y > H - 20) { doc.addPage(); y = 18; }
@@ -37143,6 +37225,8 @@ function viewCatalogue() {
        with the client filled in. Registering a client must never cost him the form he was on. */
     if (act === "bill-clear") { S.q = ""; render(); return; }
     if (act === "bill-detail") {
+      /* v6.9.444 - hiding a button is a courtesy, not a lock. The rule is here. */
+      if (!canBill()) { toast("A GST bill is recorded by accounts or the owner."); return; }
       S.modal = modalBill(id); render(); return;
     }
     if (act === "bill-save") {
