@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.438";
+  var APP_VERSION = "6.9.440";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1550,6 +1550,9 @@
      IT MUST NEVER BREAK A SAVE. Everything here is wrapped: if the diff throws for any reason,
      the save goes up exactly as it does today, carrying no record. A log is worth a great deal;
      it is not worth one lost challan. */
+  /* the only thing that differs between the four apps: a name, which is DATA. Every
+     function below is byte-identical in all four and t_apps_agree holds them so. */
+  var CHG_APP = "CRM";
   var CHG_SKIP = { updatedAt: 1, __hay: 1, _lid: 1, _lines: 1, _phs: 1 };
   /* a field whose VALUE has no business in a log: photographs, signatures, base64, and the
      item block, which is a paragraph of JSON. The NAME is recorded; the content never is. */
@@ -1615,7 +1618,7 @@
       return {
         at: new Date().toISOString(),
         who: String(S.user || ""),
-        app: "CRM",
+        app: CHG_APP,
         tab: String(tab || ""),
         recId: String((row && row.id) || ""),
         /* v6.9.438 - the label comes off the MERGED row, never the patch. A caller writing
@@ -8274,15 +8277,19 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      overwritten, so a wrong number typed in a hurry is corrected by a newer row and the
      old one stays on the sheet as the record of what was first entered. A blank clears it
      (a row carrying an empty number wins by being newer) - it does not delete anything. */
-  function saveManualNo(chNo, chId, no, client) {
+  function saveManualNo(chNo, chId, no, client, quiet) {
     _mnoCache = null;
+    /* v6.9.439 - `quiet` skips the repaint, and is used by the box typed straight into the
+       statement: a full redraw would take the caret out of the NEXT box he is about to fill,
+       which is the fault this app has already been bitten by on the mobile-number field. The
+       button path passes nothing and behaves exactly as it always has. */
     return save("audit", {
       id: "M-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
       createdAt: new Date().toISOString(), actor: S.user || "",
       action: "challan:manualno",
       target: String(chNo || chId || "") + " / " + String(client || ""),
       detail: JSON.stringify({ chNo: String(chNo || ""), chId: String(chId || ""), no: String(no == null ? "" : no).trim() })
-    });
+    }, !!quiet);
   }
   function manualNoChip(c, small) {
     var v = manualNoFor(c);
@@ -18936,7 +18943,7 @@ function viewCatalogue() {
     ev.sort(function (a, b) { return a.d !== b.d ? a.d.localeCompare(b.d) : ((a.ord - b.ord) || a.ts.localeCompare(b.ts)); });
     var run = opening, out = [];
     out.push({ kind: "bf", date: "", no: "", ptrs: "Balance brought forward", type: "", book: "",
-               debit: null, credit: null, bal: run });
+               rcpt: "", debit: null, credit: null, bal: run });
     ev.forEach(function (e) {
       if (e.t === "C") {
         var c = e.row, v = chValue(c), nIt = pricedLines(c, cl).length;
@@ -18945,6 +18952,9 @@ function viewCatalogue() {
           ptrs: nIt + " item" + (nIt === 1 ? "" : "s") + (chFreight(c) > 0 ? " + freight" : "") +
                 (c.site && String(c.site).trim() ? " · " + String(c.site).trim() : ""),
           type: v < -0.5 ? "Credit note" : "Supply", book: String(manualNoFor(c) || ""),
+          /* v6.9.440 - through chProofAny, the same reader the challan list and the statement
+             PDF use, so the column and the paper can never disagree about one delivery. */
+          rcpt: (function () { var pf = chProofAny(c); return !pf.has ? "no" : (pf.queued ? "onway" : "yes"); })(),
           debit: v < -0.5 ? null : v, credit: v < -0.5 ? -v : null, bal: run, id: c.id });
       } else if (e.t === "R") {
         var r = e.row, rv = returnNet(r), nR = returnLines(r).length;
@@ -18952,20 +18962,36 @@ function viewCatalogue() {
         out.push({ kind: "ret", date: d10(r.createdAt), no: String(r.returnNo || "(no number yet)"),
           ptrs: nR + " item" + (nR === 1 ? "" : "s") + " back at the godown" +
                 (r.challanNo ? " · against " + String(r.challanNo) : ""),
-          type: "Return", book: "", debit: null, credit: rv, bal: run, id: r.id });
+          type: "Return", book: "", rcpt: "", debit: null, credit: rv, bal: run, id: r.id });
       } else {
         var p = e.row, pa = payAmt(p), pk = payKindOf(p);
         var tail = [p.mode ? String(p.mode).trim() : "", p.ref ? String(p.ref).trim() : ""].filter(Boolean).join(" · ");
         run -= pa;
         out.push({ kind: "pay", date: d10(p.date || p.createdAt), no: "",
           ptrs: tail || "", type: pk === "refund" ? "Refund" : (pk === "advance" ? "Advance" : "Payment"),
-          book: "", debit: pk === "refund" ? -pa : null, credit: pk === "refund" ? null : pa, bal: run, id: p.id });
+          book: "", rcpt: "", debit: pk === "refund" ? -pa : null, credit: pk === "refund" ? null : pa, bal: run, id: p.id });
       }
     });
     return { rows: out, bal: run, opening: opening, chs: chs, rets: rets, pays: pays,
-             withBook: chs.filter(function (c) { return !!manualNoFor(c); }).length };
+             withBook: chs.filter(function (c) { return !!manualNoFor(c); }).length,
+             withRcpt: chs.filter(function (c) { return chProofAny(c).has; }).length };
   }
-  var MINI_HEAD = ["Date", "Challan No", "PTRS", "Supply/Return", "Book No", "Debit", "Credit", "Balance"];
+  /* v6.9.440 - HIS WORDS: "show one more column of receipt Attached or pending, attached in
+     Green and Pending in red". The signed paper is the thing an argument about a delivery ends
+     with, and the account he reads every day did not say whether it was on file.
+
+     THREE STATES, NOT TWO, and the middle one is why: chProofAny() has answered "has the signed
+     paper come back for this delivery" in one place since v6.9.236, and it distinguishes a
+     receipt still sitting on the phone that photographed it from one on Drive. Calling that
+     "Attached" would be a claim about a document nobody else can open yet; calling it "Pending"
+     would send a man to photograph the same paper twice. So it is amber and says "On its way". */
+  var MINI_HEAD = ["Date", "Challan No", "PTRS", "Supply/Return", "Book No", "Receipt", "Debit", "Credit", "Balance"];
+  function miniRcptWord(k) {
+    return k === "yes" ? "Attached" : k === "onway" ? "On its way" : k === "no" ? "Pending" : "";
+  }
+  function miniRcptInk(k) {
+    return k === "yes" ? "#0f766e" : k === "onway" ? "#b45309" : k === "no" ? "#b91c1c" : "#94a3b8";
+  }
   function hisabMiniLine(bal) {
     return bal < -0.5 ? "In credit — paid ahead, comes off the next delivery"
          : bal > 0.5 ? "Balance due" : "Settled in full";
@@ -18994,9 +19020,26 @@ function viewCatalogue() {
         '<td style="' + cell + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#475569") + '">' +
           (r.kind === "bf" ? '<b style="color:#0f172a">' + esc(r.ptrs) + '</b>' : esc(r.ptrs)) + '</td>' +
         '<td style="' + cell + ';color:' + tone + ';font-weight:600;font-size:12px">' + esc(r.type) + '</td>' +
+        /* v6.9.439 - HIS WORDS: "make provision that we can enter book no here only, that will
+           auto update in challan". He was looking at five deliveries, none of them carrying a
+           book number, and the only way in was to scroll past the table to a card and press
+           "+ Book no" five times.
+           It is a BOX now, in the column it belongs to. It writes through saveManualNo - the
+           same one writer the card's button uses - so the number appears on the card, the
+           challan, the statement and the PDF at once, and nothing is ever overwritten: the
+           audit row is appended and the newest wins. */
         '<td style="' + cell + ';font-size:12px">' +
-          (r.book ? '<span style="background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;border-radius:5px;padding:0 5px;font-weight:700">' + esc(r.book) + '</span>'
-                  : (r.kind === "ch" ? '<span style="color:#b45309;font-weight:600">no book no</span>' : '')) + '</td>' +
+          (r.kind === "ch"
+            ? '<input class="bkin" data-id="' + esc(r.id || "") + '" data-no="' + esc(r.no || "") +
+              '" data-cl="' + esc(cl) + '" value="' + esc(r.book || "") + '" ' +
+              'placeholder="+ book no" title="From the paper challan book, e.g. CH41-6/8/26. ' +
+              'Type it and press Enter — it saves itself and shows on the challan too." ' +
+              'style="width:104px;padding:2px 6px;font-size:12px;font-weight:700;font-family:inherit;' +
+              'border:1px ' + (r.book ? 'solid #cbd5e1' : 'dashed #cbd5e1') + ';border-radius:6px;' +
+              'background:' + (r.book ? '#f1f5f9' : '#fff') + ';color:' + (r.book ? '#334155' : '#b45309') + '"/>'
+            : (r.book ? '<span style="background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;border-radius:5px;padding:0 5px;font-weight:700">' + esc(r.book) + '</span>' : '')) + '</td>' +
+        '<td style="' + cell + ';font-size:12px;font-weight:600;color:' + miniRcptInk(r.rcpt) + '">' +
+          esc(miniRcptWord(r.rcpt)) + '</td>' +
         '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f172a") + '">' +
           (r.debit == null ? "" : money(r.debit)) + '</td>' +
         '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f766e") + '">' +
@@ -19012,8 +19055,11 @@ function viewCatalogue() {
       (m.pays.length ? '<span class="pill teal">' + m.pays.length + ' payment' + (m.pays.length === 1 ? '' : 's') + '</span>' : '') +
       '</div>' +
       '<div class="meta" style="margin-bottom:7px;font-size:12px">Every delivery, return and payment, in the order they happened &mdash; the same shape as the statement PDF, so both tell him one story. ' +
-      '<b>' + m.withBook + ' of ' + nD + '</b> deliver' + (nD === 1 ? 'y carries' : 'ies carry') + ' its paper book number.' +
-      (m.withBook < nD ? ' <span style="color:#b45309">Tap <b>+ Book no</b> on a card below to fill one in.</span>' : '') +
+      '<span id="mini_bookcount"><b>' + m.withBook + ' of ' + nD + '</b></span> deliver' + (nD === 1 ? 'y carries' : 'ies carry') + ' its paper book number.' +
+      (m.withBook < nD ? ' <span style="color:#b45309">Type it straight into the <b>BOOK NO</b> column below \u2014 it saves itself and shows on the challan too.</span>' : '') +
+      ' <span id="mini_rcptcount"><b>' + m.withRcpt + ' of ' + nD + '</b></span> ' +
+      (m.withRcpt === nD ? '<span style="color:#0f766e">carry a signed receipt.</span>'
+                         : '<span style="color:#b91c1c">carry a signed receipt \u2014 the rest are marked Pending in the RECEIPT column.</span>') +
       ' <span style="color:#94a3b8">Eight columns do not fit a phone — slide the table sideways, or send the file instead.</span>' +
       '</div>' +
       /* v6.9.425 - HE ASKED TO BE ABLE TO HIDE IT: on a client with eighteen lines the account
@@ -19029,7 +19075,7 @@ function viewCatalogue() {
       '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;font-size:12.5px;min-width:100%">' +
       '<tr style="background:#0b3b36">' + MINI_HEAD.map(function (t, i) {
         return '<th style="padding:5px 6px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' +
-          (i >= 5 ? 'right' : 'left') + '">' + esc(t.toUpperCase()) + '</th>';
+          (i >= 6 ? 'right' : 'left') + '">' + esc(t.toUpperCase()) + '</th>';
       }).join("") + '</tr>' + h + '</table></div>') +
       '<div class="acts" style="margin-top:8px;align-items:baseline;border-top:2px solid #0d766c;padding-top:7px;flex-wrap:wrap;gap:8px">' +
       '<span class="grow" style="font-weight:700;font-size:13px;color:' + (m.bal > 0.5 ? "#b91c1c" : "#0f766e") + '">' +
@@ -19049,7 +19095,7 @@ function viewCatalogue() {
     if (!m.rows.length) { toast("Nothing on this account yet."); return; }
     var out = [MINI_HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
     m.rows.forEach(function (r) {
-      out.push([r.date, r.no, r.ptrs, r.type, r.book,
+      out.push([r.date, r.no, r.ptrs, r.type, r.book, miniRcptWord(r.rcpt),
                 r.debit == null ? "" : Math.round(r.debit),
                 r.credit == null ? "" : Math.round(r.credit),
                 { v: Math.round(r.bal), s: XL.BOLD }]);
@@ -19057,12 +19103,12 @@ function viewCatalogue() {
     out.push([]);
     out.push([{ v: hisabMiniLine(m.bal), s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
               { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
-              { v: Math.round(Math.abs(m.bal)), s: XL.BAND }]);
+              { v: "", s: XL.BAND }, { v: Math.round(Math.abs(m.bal)), s: XL.BAND }]);
     out.push([]);
     out.push(["Energy World · " + cl + " · built " + fullDate(today()) +
               " · every delivery, return and payment on this account."]);
     dlXlsx("Hisab_" + String(cl).replace(/[^\w.-]/g, "_") + "_" + today() + ".xlsx",
-           String(cl).slice(0, 28), out, [11, 24, 30, 13, 16, 13, 13, 14]);
+           String(cl).slice(0, 28), out, [11, 24, 30, 13, 16, 12, 13, 13, 14]);
   }
 
   /* ---- AND AS A PDF, on the letterhead (v6.9.425) ----
@@ -19090,13 +19136,16 @@ function viewCatalogue() {
       doc.text(m.chs.length + " deliveries · " + m.rets.length + " returns · " + m.pays.length + " payments", R, 19.5, { align: "right" });
       /* the last column is pulled 1mm off the right edge - right-aligned AT R the heading sat
          flush against the band and read as clipped. */
-      var cX = [L, L + 20, L + 62, L + 132, L + 158, R - 63, R - 33, R - 1];
+      /* v6.9.440 - nine columns now. PTRS gives up 8mm and BOOK NO 4mm to make room for
+         RECEIPT; the three money columns keep every millimetre they had, because a clipped
+         figure on a statement is the one thing this page must never do. */
+      var cX = [L, L + 20, L + 62, L + 124, L + 148, L + 172, R - 63, R - 33, R - 1];
       var y = HB + 10;
       var head = function () {
         doc.setFillColor(11, 59, 54); doc.rect(L, y - 4.4, R - L, 6.2, "F");
         F("bold"); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
         MINI_HEAD.forEach(function (t, i) {
-          if (i >= 5) doc.text(t.toUpperCase(), cX[i], y, { align: "right" });
+          if (i >= 6) doc.text(t.toUpperCase(), cX[i], y, { align: "right" });
           else doc.text(t.toUpperCase(), cX[i] + 1, y);
         });
         y += 6.4; doc.setTextColor(17, 34, 45);
@@ -19113,12 +19162,20 @@ function viewCatalogue() {
         var put = function (i, v, wid) {
           if (v === "" || v == null) return;
           var s = doc.splitTextToSize(pdfSafe(String(v)), wid)[0] || "";
-          if (i >= 5) doc.text(s, cX[i], y, { align: "right" }); else doc.text(s, cX[i] + 1, y);
+          if (i >= 6) doc.text(s, cX[i], y, { align: "right" }); else doc.text(s, cX[i] + 1, y);
         };
-        put(0, r.date, 19); put(1, r.no, 41); put(2, r.ptrs, 69); put(3, r.type, 25); put(4, r.book, 40);
-        put(5, r.debit == null ? "" : RS(r.debit), 30);
-        if (r.credit != null) { doc.setTextColor(13, 118, 108); put(6, RS(r.credit), 30); doc.setTextColor(17, 34, 45); }
-        F("bold"); put(7, RSs(r.bal), 30);
+        put(0, r.date, 19); put(1, r.no, 41); put(2, r.ptrs, 61); put(3, r.type, 23); put(4, r.book, 23);
+        if (r.rcpt) {
+          var _wasInk = r.kind === "ret" ? [185, 28, 28] : [17, 34, 45];
+          if (r.rcpt === "yes") doc.setTextColor(15, 118, 110);
+          else if (r.rcpt === "onway") doc.setTextColor(180, 83, 9);
+          else doc.setTextColor(185, 28, 28);
+          put(5, miniRcptWord(r.rcpt), 24);
+          doc.setTextColor(_wasInk[0], _wasInk[1], _wasInk[2]);
+        }
+        put(6, r.debit == null ? "" : RS(r.debit), 30);
+        if (r.credit != null) { doc.setTextColor(13, 118, 108); put(7, RS(r.credit), 30); doc.setTextColor(17, 34, 45); }
+        F("bold"); put(8, RSs(r.bal), 30);
         y += 4.8;
       });
       if (y > H - 20) { doc.addPage(); y = 18; }
@@ -32476,6 +32533,57 @@ function viewCatalogue() {
         });
       });
     }
+    /* ================= THE BOOK NUMBER, TYPED WHERE IT IS READ  (v6.9.439) =============
+       On `change`, which fires on Enter and on leaving the box - so he can fill five of them
+       with Enter, Enter, Enter and never look away from the column.
+
+       NO REPAINT. saveManualNo is called quiet, and the two things that must change on screen
+       are changed by hand: the box's own look, and the "0 of 5" line above it. A full redraw
+       here would take the caret out of the next box, which is the exact fault this app already
+       carries a comment about on the mobile-number field.
+
+       It writes through the SAME saveManualNo the card's button uses, so the number is on the
+       challan card, the statement and the PDF the moment it lands. Nothing is overwritten -
+       the audit row is appended and the newest one wins. */
+    [].forEach.call(document.querySelectorAll("input.bkin"), function (bx) {
+      if (bx._bkWired) return;
+      bx._bkWired = 1;
+      bx.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") { ev.preventDefault(); bx.blur(); }
+      });
+      bx.addEventListener("change", function () {
+        var bId = bx.getAttribute("data-id") || "";
+        var bNo = bx.getAttribute("data-no") || "";
+        var bCl = bx.getAttribute("data-cl") || "";
+        var was = manualNoFor({ id: bId, challanNo: bNo });
+        var now = String(bx.value || "").trim();
+        if (now === String(was || "")) return;              /* nothing typed, nothing written */
+        bx.disabled = true;
+        saveManualNo(bNo, bId, now, bCl, true).then(function () {
+          bx.disabled = false;
+          bx.value = now;
+          bx.style.border = "1px " + (now ? "solid #cbd5e1" : "dashed #cbd5e1");
+          bx.style.background = now ? "#f1f5f9" : "#fff";
+          bx.style.color = now ? "#334155" : "#b45309";
+          /* the count line, corrected in place */
+          try {
+            var n = 0, t2 = 0;
+            [].forEach.call(document.querySelectorAll("input.bkin"), function (o) {
+              t2++; if (String(o.value || "").trim()) n++;
+            });
+            var lab = document.getElementById("mini_bookcount");
+            if (lab) lab.innerHTML = "<b>" + n + " of " + t2 + "</b>";
+          } catch (e2) { }
+          toast(now ? ("Book no " + now + " noted against " + (bNo || "the challan") + ".")
+                    : ("Book number cleared for " + (bNo || "the challan") + "."));
+        }).catch(function () {
+          bx.disabled = false;
+          bx.style.borderColor = "#b91c1c";
+          toast("That did not save — it is kept on this device and will go up by itself.");
+        });
+      });
+    });
+
     /* v6.9.436 - the signed paper. Read on the change event, never at save time: a repaint
        empties a file input, and the man would press Attach with nothing chosen. Same two kinds
        the old-hisab box takes - a PDF goes up as it is, a photograph is wrapped into a PDF. */
