@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.34.0";
+  var APP_VERSION = "1.35.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1431,14 +1431,24 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      shipped as a latent fault closed, not a number corrected - and the day that challan is
      signed for, the two apps will still agree. */
   function challanNet(c) {
+    /* v1.35.0 - THE LINES ARE PRICED BY pricedLines, THE CRM'S, VERBATIM. What stood here read
+       the brand off the paper (i.brand || c.brand). ATUL4000/200726/001 is filed under
+       "Accessory" - a catalogue bucket, not a brand - with no brand and no frozen discount on
+       any of its twenty lines, so this app found no discount row and billed Rs 1,37,809 for
+       goods the CRM values at Rs 91,719. The customer's statement carries the CRM's figure.
+       pricedLines asks the catalogue what brand a code is, finds Heliroma, applies his 35%.
+
+       And if the catalogue is not on this phone yet, a line with neither a brand nor a frozen
+       discount would still fall to the paper's brand - so ask for it, the same courtesy the
+       return path has had since v1.25.0. It fills PRODUCTS and repaints; the figure corrects
+       itself a moment later instead of standing wrong until the next return needs pricing. */
     var items = [];
     try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
-    var goods = items.reduce(function (s, i) {
-      var rate = num(i.rate), qty = num(i.qty);
-      var brand = isJobLine(i) ? "" : String(i.brand || c.brand || "");
-      var disc = (i.disc != null && i.disc !== "") ? num(i.disc) : clientDiscount(c.customerName, brand);
-      return s + qty * Math.round(rate * (1 - disc / 100));
-    }, 0);
+    if (!PRODUCTS.length && items.some(function (i) {
+          return i && !isJobLine(i) && !i.brand && (i.disc == null || i.disc === ""); })) {
+      try { retPriceReady(); } catch (e) {}
+    }
+    var goods = pricedLines(c, c.customerName).reduce(function (s, x) { return s + x.amt; }, 0);
     /* v1.26.2 - less whatever was taken off at the counter, exactly as the CRM does it. */
     var off = hisabExtraOf(c);
     var net = goods > 0 ? Math.max(0, goods - Math.min(Math.max(0, off), goods)) : goods;
@@ -1575,7 +1585,7 @@ function cancelMap() {
      lets one of them drift, which is the whole reason this app was pricing a return
      differently from the app that raised it. */
   var CAT_KEY = "ew_team_catalog", CAT_V = 2;
-  var PRODUCTS = [], _catP = null;
+  var PRODUCTS = [], _catP = null, _pcbCache = null;   /* v1.35.0 - code -> brand, derived from PRODUCTS */
   /* what the CRM left on the shelf. Never fetched here on the ordinary path. */
   function catFromShelf() {
     try {
@@ -1669,7 +1679,7 @@ function cancelMap() {
       .then(function (rows) {
         var items = parseCatalog(rows);
         if (items.length) {
-          PRODUCTS = items;
+          PRODUCTS = items; _pcbCache = null;
           try { bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items })); } catch (e) {}
           try { bust(); } catch (e) {}
           try { render(); } catch (e) {}
@@ -1677,6 +1687,39 @@ function cancelMap() {
         _catP = null;                  /* an answer we could not use is a reason to try again */
       })
       .catch(function () { _catP = null; });
+  }
+  /* v1.35.0 - THE CRM'S OWN TEXT, BYTE FOR BYTE. t_apps_agree.js refuses a release in which
+     either of these differs from team/app.js by one byte, and t_ledger_agree.js drives both
+     apps' whole balance over one book and asserts the same rupee for every client. Read
+     patch_collect_1350.py for the Rs 45,690 that was chased because they were not here. */
+  function productBrandByCode(code) {
+    if (!_pcbCache) {
+      _pcbCache = {};
+      (PRODUCTS || []).forEach(function (p) {
+        if (!p || !p.code) return;
+        var b = realBrand(p);
+        if (b) _pcbCache[String(p.code)] = b;
+      });
+    }
+    return _pcbCache[String(code == null ? "" : code)] || "";
+  }
+  function pricedLines(c, cl) {
+    var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+    var priced = items.map(function (i) {
+      var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0;
+      /* v6.9.323 - a job line has NO brand, and must not be lent the challan's. Left to the
+         fallback it would inherit whichever brand the first material line happened to carry,
+         and then be priced against that brand's client discount - a discount on labour, taken
+         from a brand that had nothing to do with it. */
+      var bBrand = isJobLine(i) ? "" :
+        (i.brand || productBrandByCode(i.code) || c.brand || "");
+      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscount(cl, bBrand);
+      var dr = Math.round(rate * (1 - disc / 100));
+      return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
+               amt: qty * dr, job: isJobLine(i) };
+    });
+    priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
+    return priced;
   }
   function dkey(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
   function realBrand(p) {
@@ -4452,7 +4495,7 @@ function cancelMap() {
        and no network at all. Where it is genuinely absent - a phone that has only ever opened
        this app - retPriceReady() fetches it ONCE, in the background, and only if a return
        actually has a line that needs it. Nothing waits on it and no screen is blocked. */
-    bigPreload([SNAP + "_" + S.user, JRN_KEY, CAT_KEY]).then(function () { catFromShelf(); verWatch(); boot2(sess); });
+    bigPreload([SNAP + "_" + S.user, JRN_KEY, CAT_KEY]).then(function () { catFromShelf(); _pcbCache = null; verWatch(); boot2(sess); });
   })();
 
   function boot2(sess) {
