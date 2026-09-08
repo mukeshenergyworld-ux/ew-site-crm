@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.49.0";
+  var APP_VERSION = "1.50.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1157,7 +1157,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     return pre.then(function () {
       var payload = Object.assign({}, e.row);
       delete payload._lid;
-      return api("teamSave", { tab: e.tab, row: payload });
+      return api("teamSave", e.chg ? { tab: e.tab, row: payload, chg: e.chg } : { tab: e.tab, row: payload });
     });
   }
 
@@ -1274,6 +1274,100 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     S.sheet = sheetDetails(name); render();
   }
 
+  /* ================= WHO CHANGED WHAT, AND WHEN  (Challan, 8 Sep 2026) =================
+     HIS WORDS, after the CRM got this in 6.9.438: "do for all apps".
+
+     The record is IDENTICAL to the CRM's, function for function and character for character -
+     t_apps_agree holds them so. One shape means one sheet, one screen and one answer; the only
+     thing that differs is the app name on the row, which is exactly the field that should.
+
+     Computed in saveRow(), against the copy this app already holds, and carried on the SAME
+     request as the save it describes. It rides in the journal too, so a record written in a
+     godown with no signal still says who wrote it and WHEN HE WROTE IT - not when the signal
+     came back.
+
+     AND IT NEVER BREAKS A SAVE. Everything is wrapped: if the diff throws, the save goes up
+     exactly as it does today, carrying no record.
+
+     A PIN IS NEVER IN IT. This app cannot set one, but the rule is copied rather than reasoned
+     about, because the day it can is not the day to remember. */
+  /* the only thing that differs between the four apps: a name, which is DATA. Every
+     function below is byte-identical in all four and t_apps_agree holds them so. */
+  var CHG_APP = "Challan";
+  var CHG_SKIP = { updatedAt: 1, __hay: 1, _lid: 1, _lines: 1, _phs: 1 };
+  /* a field whose VALUE has no business in a log: photographs, signatures, base64, and the
+     item block, which is a paragraph of JSON. The NAME is recorded; the content never is. */
+  var CHG_BLOB = /json$|^photo|^photos$|^sig$|^thumb$|b64|^detail$|^items$|^pdf/i;
+  /* ---- A PIN NEVER GOES IN A LOG. Found on review before this shipped, not after. ----
+     tp-setpin and tp-reset both write a staff record through save():
+
+         save("team", Object.assign({}, tu, { pin: temp, pinSet: "N" }));
+
+     so the plain diff would have written  pin  ""  ->  "3456"  into a second Google Sheet, in
+     readable form, for every PIN this business ever sets. The backend has always been careful
+     here - teamSave_ audits a staff change as "PIN reset (forced change: yes)" and never the
+     value - and a log that sits beside that code must not be less careful than it.
+
+     THE FACT IS STILL RECORDED. The field name appears, so the log says a PIN was changed, by
+     whom, at what time; neither the old value nor the new one is anywhere in it. pinSet is not
+     matched and stays readable, because Y/N is not a secret and is the useful half. */
+  var CHG_SECRET = /pin$|token|secret|password|apikey|^key$/i;
+  var CHG_MAX = 900;
+
+  function chgVal(v) {
+    if (v == null) return "";
+    var t = String(v);
+    if (t.length > 60) t = t.slice(0, 57) + "…";
+    return t;
+  }
+  function chgDiff(before, row) {
+    var out = [];
+    Object.keys(row || {}).forEach(function (k) {
+      if (CHG_SKIP[k]) return;
+      var a = (before || {})[k], b = row[k];
+      if (String(a == null ? "" : a) === String(b == null ? "" : b)) return;
+      if (CHG_SECRET.test(k)) { out.push({ f: k, from: "", to: "", secret: 1 }); return; }
+      if (CHG_BLOB.test(k)) { out.push({ f: k, from: "", to: "", blob: 1 }); return; }
+      out.push({ f: k, from: chgVal(a), to: chgVal(b) });
+    });
+    return out;
+  }
+  function chgLabel(tab, r) {
+    if (!r) return "";
+    if (tab === "challans") return String(r.challanNo || "") + (r.customerName ? " · " + r.customerName : "");
+    if (tab === "returns") return String(r.returnNo || "") + (r.customerName ? " · " + r.customerName : "");
+    if (tab === "payments") return String(r.client || "") + (r.amount ? " · " + money(r.amount) : "");
+    if (tab === "quotes") return String(r.quoteNo || "") + (r.client ? " · " + r.client : "");
+    if (tab === "discounts") return String(r.client || "") + " · " + String(r.brand || "");
+    if (tab === "clients" || tab === "customers") return String(r.name || "");
+    if (tab === "team") return String(r.name || "");
+    if (tab === "audit") return String(r.action || "") + " · " + String(r.target || "");
+    return String(r.name || r.title || r.client || r.id || "");
+  }
+  function chgMake(tab, before, row, isNew, full) {
+    try {
+      var fields = isNew ? [] : chgDiff(before, row);
+      if (!isNew && !fields.length) return null;
+      var det = JSON.stringify(fields);
+      if (det.length > CHG_MAX) det = JSON.stringify(fields.slice(0, 8)).slice(0, CHG_MAX);
+      return {
+        at: new Date().toISOString(),
+        who: String(S.user || ""),
+        app: CHG_APP,
+        tab: String(tab || ""),
+        recId: String((row && row.id) || ""),
+        /* v6.9.438 - the label comes off the MERGED row, never the patch. A caller writing
+           { id, mode, ref } on a payment carries no client name, and the log would have read
+           "payment ·" with nothing after it - which is the one thing a log must not do. The
+           DIFF still reads the patch, because that is what the backend merges by. */
+        label: chgLabel(tab, full || row).slice(0, 80),
+        action: isNew ? "create" : "edit",
+        fields: (isNew ? ["(new record)"] : fields.map(function (x) { return x.f; })).join(", ").slice(0, 200),
+        detail: det
+      };
+    } catch (e) { return null; }
+  }
+
   function saveRow(tab, row, opts) {
     /* v1.10.0 - JOURNAL FIRST, THEN THE SERVER. Never the other way round: the whole point
        is that the record survives this tab being discarded one second after the tap.
@@ -1291,8 +1385,18 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    date the server stamped itself. Stamping it at birth closes it: the backend's own line
    is `row.createdAt = row.createdAt || now`, so ours is simply the one that gets used. */
     if (!String(r2.createdAt || "").trim()) r2.createdAt = new Date().toISOString();
+    /* v1.50.0 - the change record, against the copy this app already holds. Computed BEFORE the
+       journal so it goes into the journal with it, and wrapped so it can never break a save. */
+    var _chg = null;
+    try {
+      var _bef = null, _arr = (S.data && S.data[tab]) || [], _i;
+      for (_i = 0; _i < _arr.length; _i++) {
+        if (_arr[_i] && String(_arr[_i].id) === String(r2.id) && String(r2.id || "")) { _bef = _arr[_i]; break; }
+      }
+      _chg = chgMake(tab, _bef, row, !_bef, r2);
+    } catch (e) { _chg = null; }
     var e = jrnPut({ pk: "P-" + Date.now() + "-" + (++_jrnSeq), kind: "row", tab: tab, row: r2,
-                     noFor: opts.noFor || "", by: S.user || "", at: Date.now(), err: "", tries: 0 });
+                     chg: _chg, noFor: opts.noFor || "", by: S.user || "", at: Date.now(), err: "", tries: 0 });
     return jrnSend(e).then(function (r) {
       if (r && r.ok) { jrnDrop(e.pk); return { ok: true, row: r.row || r2, held: false }; }
       jrnMark(e.pk, (r && r.error) || "the server refused it");
