@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.445";
+  var APP_VERSION = "6.9.446";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3903,6 +3903,7 @@ window.addEventListener("beforeunload", function (ev) {
       var wonVal = ps.reduce(function (a, p) { return a + (Number(p.won) || 0); }, 0);
       return { brand: r.brand, line: r.line, won: won, lost: lost, missed: missed, rate: (won + lost) ? Math.round(won * 100 / (won + lost)) : null, val: wonVal };
     }).sort(function (a, b) { return b.missed - a.missed; });
+    if (!rows.length) return h + '<div class="empty">Nothing to score yet - win rates appear here once the pitch rules are set and quotes are marked Won or Lost.</div>';
     rows.forEach(function (x) {
       h += '<div class="card"><h3>' + esc(x.brand) +
         (x.rate === null ? ' <span class="pill">no result yet</span>' : ' <span class="pill ' + (x.rate >= 50 ? "Won" : "Lost") + '">' + x.rate + '% win</span>') +
@@ -3914,6 +3915,7 @@ window.addEventListener("beforeunload", function (ev) {
 
   function viewRules() {
     var h = '<div class="empty" style="text-align:left;padding:0 0 12px"><b>This is the rulebook.</b> PITCH BY is the last stage at which the sale can still be made - after it, the wall is closed. SUPPLY AT is when material goes to site. Correct these and the whole app follows.</div>';
+    if (!(S.data.rules || []).length) h += '<div class="empty">No pitch rules yet. Each brand needs one line here - which stage to pitch it by, and which stage it is supplied at - before the pitch board can light up.</div>';
     S.data.rules.forEach(function (r) {
       h += '<div class="card"><h3>' + esc(r.brand) + '</h3><div class="meta">' + esc(r.line) +
         (r.why ? '<br><i>' + esc(r.why) + '</i>' : "") + '</div>' +
@@ -4217,14 +4219,14 @@ window.addEventListener("beforeunload", function (ev) {
         '<input class="cm-wm" data-idx="' + x.idx + '" inputmode="numeric" value="' + esc(wm) + '" style="width:60px;padding:6px 8px;font-size:13px"/>' +
         '<span style="font-size:12px;color:#64748b">months</span></div>';
     }).join("");
-    return '<h2>Commission products</h2>' +
+    return '<h2>Certify install</h2>' +
       '<p class="sub">' + esc(ch.customerName || "") + (ch.site ? ' &middot; ' + esc(ch.site) : "") + ' &middot; ' + esc(ch.challanNo || "") + '</p>' +
       '<div class="grid2"><div><label>Commissioning date</label><input id="cm_date" type="date" value="' + today() + '"/></div>' +
       '<div><label>Engineer</label><select id="cm_eng">' + opts(SVC_ENGINEERS, SVC_ENGINEERS[0]) + '</select></div></div>' +
       '<label style="margin-top:8px">Serial number and warranty, per product</label>' +
       '<div class="meta" style="font-size:12px;color:#94a3b8;margin:2px 0 6px">You are standing in front of the machine now &mdash; this is the only easy moment to read the serial off it. A warranty claim later is made against this number.</div>' + rows +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      '<button class="btn" data-act="comm-save" data-ch="' + esc(ch.id) + '">Commission &amp; generate</button></div>';
+      '<button class="btn" data-act="comm-save" data-ch="' + esc(ch.id) + '">Certify &amp; generate</button></div>';
   }
 
   /* v6.9.394 - tone: "red" for a return, anything else for the teal every other document has
@@ -5287,14 +5289,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       cs += '</div>';
     }
     if (pend.length) {
-      cs += '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><h3>To commission <span class="pill due">' + pend.length + '</span></h3>' +
+      cs += '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><h3>To certify <span class="pill due">' + pend.length + '</span></h3>' +
         '<div class="meta">Delivered products that need on-site commissioning. Enter the date to issue the certificate + warranty card.</div>';
       pend.forEach(function (c) {
         var names = commItemsOf(c).filter(function (x) { return !(x.i.comm && x.i.comm.date); }).map(function (x) { return x.cat.label; });
         cs += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(c.customerName || "") + '</b>' +
           (c.site ? ' <span style="color:#94a3b8;font-size:12px">' + esc(c.site) + '</span>' : "") +
           '<br><span style="font-size:12px;color:#64748b">' + esc(c.challanNo || "") + ' &middot; ' + esc(names.join(", ")) + '</span></div>' +
-          '<button class="btn sm" data-act="comm-open" data-ch="' + esc(c.id) + '">Commission</button></div>';
+          '<button class="btn sm" data-act="comm-open" data-ch="' + esc(c.id) + '">Certify install</button></div>';
       });
       cs += '</div>';
     }
@@ -5377,6 +5379,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var missing = S.data.spares.filter(function (x) { return !Number(x.price); }).length;
     var h = '<div class="row"><input class="grow" id="q" placeholder="Search spares..." value="' + esc(S.q) + '"/></div>';
     if (missing) h += '<div class="empty" style="text-align:left;padding:0 0 12px"><b>' + missing + ' spare(s) have no price yet.</b> Set them - the app will not guess a price for you.</div>';
+    /* v6.9.446 - an empty list says so. The sweep of 8 Sep found this screen drawing a search box
+       over nothing and leaving him to guess whether the spares had loaded. */
+    if (!list.length) h += ((S.data.spares || []).length
+      ? '<div class="empty">No spare matches that search.</div>'
+      : '<div class="empty">No spares registered yet. A spare appears here the moment it is added to the spares sheet, with its price.</div>');
     list.forEach(function (x) {
       h += '<div class="card"><h3>' + esc(x.name) + ' <span class="pill">' + esc(x.category) + '</span></h3>' +
         '<div class="meta">' + esc(x.code) + ' &middot; per ' + esc(x.unit) + '</div>' +
@@ -8457,7 +8464,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
       '<h3 style="margin:0 0 2px">' + list.length + ' delivery' + (list.length === 1 ? '' : 'ies') +
       ' stamped for hisab but not actually counted</h3>' +
-      '<div class="meta" style="color:#7f1d1d">' + money(tot) + ' in all. These carry an ADD TO HISAB ' +
+      '<div class="meta" style="color:#7f1d1d">' + money(tot) + ' in all. These carry a Finalise ' +
       'stamp, but the delivery itself was never marked <b>received</b> — and hisab counts a ' +
       'delivery only when it is. So this money is <b>not on the client’s account</b>. Marking it ' +
       'received puts it there; nothing else is needed.</div>' +
@@ -8565,7 +8572,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       (live ? 'background:#0b3b36;border-color:#0b3b36'
             : 'background:#fff;color:#0b3b36;border-color:#0b3b36;border-style:dashed') + '"' +
       (live ? '' : ' title="Not counted yet \u2014 this delivery is not marked received."') +
-      '>ADD TO HISAB</button>';
+      '>Finalise</button>';
   }
   /* A delivery that is waiting for the owner's eye: received, paper in, not stamped. */
   /* v6.9.342 - what happens when he presses it on a delivery nobody has marked received.
@@ -8580,11 +8587,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
       '<div class="meta" style="color:#7f1d1d;font-size:13px;line-height:1.55">' +
       'This delivery is <b>not marked received</b>, and hisab counts a delivery only when it is.' +
-      '<br><br>Stamping it now would put an <b>in hisab</b> mark on this card while the ' +
+      '<br><br>Finalising it now would put a <b>finalised</b> mark on this card while the ' +
       money(chValue(c)) + ' stayed <b>off ' + esc(c.customerName || "his") + '\u2019s account</b> ' +
       '&mdash; the card saying one thing and the statement another. That is the fault found on ' +
       'Punit Jain\u2019s challan on 15 August, and it is worth one extra tap to not repeat it.' +
-      '<br><br>Mark it received. Then ADD TO HISAB does exactly what it says.</div></div>' +
+      '<br><br>Mark it received. Then Finalise does exactly what it says.</div></div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
       '<button class="btn" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button></div>';
   }
@@ -8647,13 +8654,17 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       /* v6.9.388 - into the QUEUE, not into the whole delivery book. This line used to promise
          "Tap to open Deliveries" and then leave him to find them. */
       'data-act="ch-queue">' +
-      '<h3 style="color:#991b1b;margin:0">' + list.length + ' deliver' + (list.length === 1 ? 'y is' : 'ies are') +
-        ' waiting for ADD TO HISAB <span class="pill due">' + money(worth) + '</span></h3>' +
+      /* v6.9.446 - FINALISE. His words: "if amount is added to statement before clicking a challan
+         add to hisab then what is use of add to hisab". The money is on the account because the
+         customer signed for the goods - his own decision in v6.9.250 - and this band says so first,
+         then says exactly what is still open. */
+      '<h3 style="color:#991b1b;margin:0">' + list.length + ' deliver' + (list.length === 1 ? 'y' : 'ies') +
+        ' to finalise <span class="pill due">' + money(worth) + '</span></h3>' +
       '<div class="meta" style="color:#7f1d1d;font-size:12.5px;line-height:1.55;margin-top:6px">' +
-      (oldest ? 'The oldest has been waiting <b>' + oldest + (oldest === 1 ? ' day' : ' days') + '</b>. ' : '') +
-      'They are already on the client&rsquo;s account &mdash; what is <b>not</b> fixed is who earns ' +
-      'on them. Until a delivery is stamped the incentive follows whoever the client&rsquo;s partner ' +
-      'is <i>today</i>, so changing a partner moves the earnings on all of these at once.' +
+      'The customer already owes for ' + (list.length === 1 ? 'this' : 'these') + ' &mdash; the goods are signed for. ' +
+      'Still open: <b>who earns the incentive</b>, and whether a <b>further discount</b> was given. ' +
+      'Finalising fixes both; until then a change of partner moves the earnings on ' + (list.length === 1 ? 'it' : 'all of them') + '.' +
+      (oldest ? ' The oldest has waited <b>' + oldest + (oldest === 1 ? ' day' : ' days') + '</b>.' : '') +
       '<br><b>Tap to open the list</b> &mdash; just these, oldest first.</div></div>';
   }
   function hisabPendingList() {
@@ -8714,14 +8725,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return ' <span class="pill" style="background:#fee2e2;color:#b91c1c" ' +
         'title="Stamped by ' + esc(st.by || "") + ', but this delivery was never marked received - ' +
         'so hisab does not count it. Mark it received to put the money on his account.">' +
-        'stamped &mdash; NOT in hisab</span>';
+        'not finalised</span>';
     }
-    return ' <span class="pill Won" title="Added to hisab by ' + esc(st.by || "") +
-      (st.at ? ' on ' + esc(String(st.at).slice(0, 10)) : "") + '">in hisab</span>' +
+    return ' <span class="pill Won" title="Finalised by ' + esc(st.by || "") +
+      (st.at ? ' on ' + esc(String(st.at).slice(0, 10)) : "") + '">finalised</span>' +
       /* v6.9.342 - and if it went in without a signed receipt, the card SAYS so and carries
          his reason. A quiet exception is one nobody can audit; a loud one is a decision. */
       (st.noProof ? ' <span class="pill" style="background:#fef3c7;color:#92400e" ' +
-        'title="Passed into hisab with no signed receipt. Reason given: ' + esc(st.noProof) + '">' +
+        'title="Finalised with no signed receipt. Reason given: ' + esc(st.noProof) + '">' +
         'no paper</span>' : "");
   }
   /* ================= WHO EARNS ON THIS ONE DELIVERY (v6.9.324) =================
@@ -8897,7 +8908,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var cl = c.customerName || "";
     var miss = hisabBrandsMissingDisc(c);
     var p = chProofAny(c);
-    var h = '<h2>Check receipt &amp; Add to HISAB &mdash; ' + esc(c.challanNo || "") + '</h2>' +
+    var h = '<h2>Check the receipt &amp; finalise &mdash; ' + esc(c.challanNo || "") + '</h2>' +
       '<p class="sub">' + esc(cl) + (c.site ? ' &middot; ' + esc(c.site) : "") +
       ' &middot; receipt ' + (!p.has ? '<b style="color:#b45309">not on file</b>'
                                  : (p.queued ? '<b>on this phone, still uploading</b>' : '<b>on file</b>')) +
@@ -9165,7 +9176,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
     return h +
       '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
-      '<button class="btn" data-act="hsb-confirm" data-id="' + esc(c.id) + '">Add to HISAB</button></div>';
+      '<button class="btn" data-act="hsb-confirm" data-id="' + esc(c.id) + '">Finalise</button></div>';
   }
 
   /* Writing it. The discount decisions go first and the stamp last, so a stamp can never
@@ -16361,7 +16372,7 @@ function viewCatalogue() {
       (canHisabRole()
         ? '<div class="stat' + (hq.length ? ' alert' : '') + '" data-act="ch-queue" style="cursor:pointer" ' +
           'title="Deliveries whose receipt is in and which have not been stamped. Tap to work through them.">' +
-          '<div class="n">' + hq.length + '</div><div class="l">Waiting for hisab</div></div>'
+          '<div class="n">' + hq.length + '</div><div class="l">To finalise</div></div>'
         : '') +
       '</div>';
     /* v6.9.128: delivered-but-not-billed banner, so bills get raised (a delivered challan with no bill
@@ -16510,13 +16521,13 @@ function viewCatalogue() {
       if (!hq.length) {
         /* SAY IT, do not draw an empty screen. The estate has hidden four things in silence
            already and he has had to ask where each went. */
-        return h + '<div class="empty ok" style="margin-top:10px"><b>Nothing is waiting for ADD TO HISAB.</b>' +
+        return h + '<div class="empty ok" style="margin-top:10px"><b>Nothing to finalise.</b>' +
           '<br>Every delivery with its receipt in has been stamped, so who earns on each one is ' +
           'written down and cannot move if a partner changes.</div>' +
           '<div class="row" style="margin-top:10px">' + back + '</div>';
       }
       h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
-        '<h3 style="color:#991b1b;margin:0">Waiting for ADD TO HISAB &mdash; ' + hq.length +
+        '<h3 style="color:#991b1b;margin:0">To finalise &mdash; ' + hq.length +
           ' deliver' + (hq.length === 1 ? 'y' : 'ies') +
           ' <span class="pill due">' + money(hqWorth) + '</span></h3>' +
         '<div class="meta" style="color:#7f1d1d;font-size:12.5px;line-height:1.55;margin-top:6px">' +
@@ -17287,7 +17298,7 @@ function viewCatalogue() {
         '<div class="meta" style="font-size:12px;color:#475569">Nobody is named as ' +
         free.map(incRoleLabel).map(function (x) { return x.toLowerCase(); }).join(", ") +
         ' on this client. Naming one here is <b>permanent</b> \u2014 it is his role on every future ' +
-        'delivery. It does not touch a delivery already passed into hisab, which froze its own line-up.</div>';
+        'delivery. It does not touch a delivery already finalised, which froze its own line-up.</div>';
       free.forEach(function (r) {
         var list = (r === "exec") ? execs : assoc;
         h += '<div class="row" style="gap:8px;align-items:center;margin:7px 0 0">' +
@@ -17371,7 +17382,7 @@ function viewCatalogue() {
       'OWNER ONLY \u00b7 NOT ON THE STATEMENT</span>' +
       '<button class="btn sm ghost" data-act="adm-ch" data-id="' + esc(c.id) + '" ' +
       'style="font-size:12px;padding:2px 8px;flex:0 0 auto">Set rates</button></div>' + body +
-      (stamp ? '<div style="color:#94a3b8;font-size:12px">frozen when it was passed into hisab</div>' : '') +
+      (stamp ? '<div style="color:#94a3b8;font-size:12px">frozen when it was finalised</div>' : '') +
       '</div>';
   }
   /* ---- WHAT A RETURN TAKES BACK  (v6.9.348, 23 August 2026) ----
@@ -17422,7 +17433,7 @@ function viewCatalogue() {
         '\u2212' + money(tot) + ' in all</div>' : '') +
       /* the long sentence moves into the tooltip: on the card it is four words */
       '<div style="color:#94a3b8;font-size:12px" title="' +
-      (rCh ? 'Reversed against the delivery this material came back from' + (stamp ? ", on the line-up frozen when it was passed into hisab." : ".")
+      (rCh ? 'Reversed against the delivery this material came back from' + (stamp ? ", on the line-up frozen when it was finalised." : ".")
            : 'This return names no challan, so the incentive is reversed against whoever the client record names today - which may not be who earned it.') +
       '">' +
       (rCh ? 'vs ' + esc(rCh.challanNo || "its delivery") : 'vs client record') +
@@ -17440,7 +17451,7 @@ function viewCatalogue() {
       '<p class="sub">' + esc(cl) + (c.site ? ' &middot; ' + esc(c.site) : "") + '</p>' + admSeal() +
       '<div class="meta" style="font-size:12.5px;margin-bottom:8px">Only the brands on this ' +
       'delivery. What you set here is the <b>client&rsquo;s</b> preset for that brand, so it applies to ' +
-      'every future delivery too &mdash; and to this one, unless it has already been passed into hisab, ' +
+      'every future delivery too &mdash; and to this one, unless it has already been finalised, ' +
       'which froze its line-up.</div>' +
       '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
       '<tr style="color:#475569;text-align:center">' +
@@ -18536,7 +18547,7 @@ function viewCatalogue() {
       (fromYmd ? " (on or after " + fullDate(fromYmd) + ")" : "") + ".\n\n" + show +
       "\n\nTotal " + money(total) + " off what this client owes." +
       (inH.length ? "\n\n\u26a0 " + inH.length + " of these " +
-        (inH.length > 1 ? "have" : "has") + " already been passed into hisab \u2014 " +
+        (inH.length > 1 ? "have" : "has") + " already been finalised \u2014 " +
         "re-pricing changes a bill the client may already hold." : "") +
       "\n\nRe-price " + (hits.length > 1 ? "them" : "it") + " now?\n" +
       "Cancel leaves every delivery exactly as it is, and you will not be asked again.")) {
@@ -19216,30 +19227,18 @@ function viewCatalogue() {
           'background:' + (clientGstin(cl) ? '#f0fdfa' : '#fff') + ';color:' + (clientGstin(cl) ? '#0f766e' : '#b45309') + '"/>'
         : (clientGstin(cl) ? '<span class="pill teal" title="GSTIN">GSTIN ' + esc(clientGstin(cl)) + '</span>' : '')) +
       '</div>' +
-      '<div class="meta" style="margin-bottom:7px;font-size:12px">Every delivery, return and payment, in the order they happened &mdash; the same shape as the statement PDF, so both tell him one story. ' +
-      '<span id="mini_bookcount"><b>' + m.withBook + ' of ' + nD + '</b></span> deliver' + (nD === 1 ? 'y carries' : 'ies carry') + ' its paper book number.' +
-      (m.withBook < nD ? ' <span style="color:#b45309">Type it straight into the <b>BOOK NO</b> column below \u2014 it saves itself and shows on the challan too.</span>' : '') +
-      ' <span id="mini_rcptcount"><b>' + m.withRcpt + ' of ' + nD + '</b></span> ' +
-      (m.withRcpt === nD ? '<span style="color:#0f766e">carry a signed receipt.</span>'
-                         : '<span style="color:#b91c1c">carry a signed receipt \u2014 ' + (canProof()
-                             ? 'tap <b>Pending</b> in the RECEIPT column to attach one.'
-                             : 'the rest are marked Pending in the RECEIPT column.') + '</span>') +
-      /* v6.9.442 - and the returns, counted separately, because a goods-in receipt is a different
-         piece of paper signed by a different man at the other end of the journey. */
-      (m.rets.length
-        ? ' <b>' + m.retRcpt + ' of ' + m.rets.length + '</b> return' + (m.rets.length === 1 ? '' : 's') +
-          (m.retRcpt === m.rets.length ? '<span style="color:#0f766e"> carry a goods-in receipt.</span>'
-                                       : '<span style="color:#b91c1c"> carry a goods-in receipt.</span>')
-        : '') +
-      /* v6.9.444 - and the bills. Measured the day this was written: 170 received deliveries on
-         his book, none with a bill number - so this line will read "0 of N" on every client until
-         accounts starts recording them, and it says where to do that. */
-      ' <span id="mini_billcount"><b>' + m.withBill + ' of ' + nD + '</b></span> ' +
-      (m.withBill === nD ? '<span style="color:#0f766e">carry a GST bill number.</span>'
-                         : '<span style="color:#b45309">carry a GST bill number' + (canBill()
-                             ? ' \u2014 tap <b>+ bill</b> in the GST BILL column to record one.'
-                             : '.') + '</span>') +
-      ' <span style="color:#94a3b8">' + MINI_COUNT_WORD().replace(/^./, function (c) { return c.toUpperCase(); }) + ' columns do not fit a phone — slide the table sideways, or send the file instead.</span>' +
+      /* v6.9.446 - ONE LINE OF COUNTS, ONE OF INSTRUCTION. Book numbers (6.9.439), receipts
+         (6.9.440), returns (6.9.442) and GST bills (6.9.444) each added a sentence, and each was
+         right on its day; together they were a wall. The three ids stay - the boxes correct them
+         in place without a repaint. Green when complete, amber when not. */
+      '<div class="meta" style="margin-bottom:7px;font-size:12px">' +
+      '<span style="white-space:nowrap"><b>Book numbers</b> <span id="mini_bookcount" style="color:' + (m.withBook === nD ? '#0f766e' : '#b45309') + '"><b>' + m.withBook + ' of ' + nD + '</b></span></span>' +
+      ' &middot; <span style="white-space:nowrap"><b>Receipts</b> <span id="mini_rcptcount" style="color:' + (m.withRcpt === nD ? '#0f766e' : '#b91c1c') + '"><b>' + m.withRcpt + ' of ' + nD + '</b></span>' +
+      (m.rets.length ? ' deliveries, <span style="color:' + (m.retRcpt === m.rets.length ? '#0f766e' : '#b91c1c') + '"><b>' + m.retRcpt + ' of ' + m.rets.length + '</b></span> return' + (m.rets.length === 1 ? '' : 's') : '') + '</span>' +
+      ' &middot; <span style="white-space:nowrap"><b>GST bills</b> <span id="mini_billcount" style="color:' + (m.withBill === nD ? '#0f766e' : '#b45309') + '"><b>' + m.withBill + ' of ' + nD + '</b></span></span>' +
+      '<br><span style="color:#64748b">' +
+      (canHisabRole() ? 'Type a book number, tap <b>Pending</b> to attach a receipt, tap <b>+ bill</b> to record a GST bill &mdash; each saves itself. ' : '') +
+      MINI_COUNT_WORD().replace(/^./, function (c) { return c.toUpperCase(); }) + ' columns do not fit a phone &mdash; slide the table sideways, or send the file.</span>' +
       '</div>' +
       /* v6.9.425 - HE ASKED TO BE ABLE TO HIDE IT: on a client with eighteen lines the account
          pushes the delivery cards a long way down and he does not always want it open. The state
@@ -19462,7 +19461,7 @@ function viewCatalogue() {
     if (!c || String(c.receiptReceived || "").toUpperCase() !== "Y" || inHisab(c)) return "";
     return ' <span class="pill" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5" ' +
       'title="Received, and never stamped to HISAB. The money is on the client\u2019s account, but ' +
-      'who earns on this delivery is not fixed until it is stamped.">NOT IN HISAB</span>';
+      'who earns on this delivery is not fixed until it is finalised.">Not finalised</span>';
   }
   function hisabPendingCard(cl) {
     var pend = (S.data.challans || []).filter(function (c) {
@@ -25944,7 +25943,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -26151,9 +26150,7 @@ function viewCatalogue() {
     var on = rows.filter(function (r) { return !!S.bkTick[r.id]; }).length;
 
     var h = '<div class="card"><h3 style="margin:0 0 2px">Book numbers typed into the site box</h3>' +
-      '<div class="meta">His words: <i>"that code starting from CH, like CH52-15/7/26, these all are ' +
-      'book no, fix these for all clients"</i>.<br>' +
-      'Every delivery whose <b>site</b> box holds something shaped like a paper book number. Filing one ' +
+      '<div class="meta">Every delivery whose <b>site</b> box holds something shaped like a paper book number. Filing one ' +
       'puts it in the BOOK NO column of the statement, on the challan card and in the PDF — through ' +
       'the same writer the <b>+ Book no</b> button uses, so nothing is ever overwritten.</div>';
 
@@ -26251,7 +26248,7 @@ function viewCatalogue() {
     };
     var h = '<div class="card"><h3 style="margin:0 0 2px">Change log</h3>' +
       '<div class="meta">Every record this app writes, with the man who wrote it and the moment he did. ' +
-      '<b>Partners only.</b><br>' +
+      '<b>Owner only.</b><br>' +
       '<span style="color:#94a3b8">It is not part of the book that comes down at login — it is asked for ' +
       'when you open this screen, so it can grow for years without making the app slower.</span></div>' +
       '<div class="chips" style="margin:8px 0 2px">' +
@@ -27696,6 +27693,7 @@ function viewCatalogue() {
       return '<button class="chip ' + (S.pRole === r ? "on" : "") + '" data-act="p-role" data-r="' + esc(r) + '">' +
         esc(r) + ' <b>' + roleCount[r] + '</b></button>';
     }).join("") + '</div>';
+    if (!roles.length && !q) return h + '<div class="empty">No partners registered yet. A plumber, architect, builder or PMC appears here the moment he is added, and his incentive follows the clients he brings.</div>';
     if (!S.pRole && !q) return h + '<div class="empty">Pick a trade above.</div>';
 
     /* step 2 - the town */
@@ -31534,7 +31532,7 @@ function viewCatalogue() {
   function viewCollections() {
     return subHub([["payments", "Received", viewPayments],
                    ["commission", "Paid out", viewPaidOut],
-                   ["dues", "Client dues", viewDues]], "collSub", "coll-sub");
+                   ["dues", "Service dues", viewDues]], "collSub", "coll-sub");
   }
   function viewPricing() {
     return subHub([["rates", "Rate revision", viewRates], ["pricelist", "Price list PDF", viewPriceList], ["catalogue", "Catalogue", viewCatalogue]], "priceSub", "price-sub");
@@ -36535,8 +36533,8 @@ function viewCatalogue() {
       var _hid = t.getAttribute("data-id");
       var _hc = (S.data.challans || []).filter(function (x) { return x.id === _hid; })[0];
       if (!_hc) { toast("That challan is not on this device yet - pull down to refresh."); return; }
-      if (!canHisabRole()) { toast("Only the owner or accounts adds a delivery to hisab."); return; }
-      if (inHisab(_hc)) { toast("That delivery is already in hisab."); return; }
+      if (!canHisabRole()) { toast("Only the owner or accounts finalises a delivery."); return; }
+      if (inHisab(_hc)) { toast("That delivery is already finalised."); return; }
       /* v6.9.342 - the missing paper is no longer a refusal; it becomes a question inside the
          screen. The missing RECEIVED still is, and now it explains itself instead of being a
          toast that scrolls away. A button is not a rule: this is the same test made where the
@@ -36602,7 +36600,7 @@ function viewCatalogue() {
       var hid = t.getAttribute("data-id");
       var hc = (S.data.challans || []).filter(function (x) { return x.id === hid; })[0];
       if (!hc) { toast("That challan is not on this device yet - pull down to refresh."); return; }
-      if (!canHisabRole()) { toast("Only the owner or accounts adds a delivery to hisab."); return; }
+      if (!canHisabRole()) { toast("Only the owner or accounts finalises a delivery."); return; }
       var hOwn = roleIs("admin");
       /* checked again at the moment of writing: the status can change between opening this
          screen and pressing the button, and that is exactly how the bad stamp got written */
@@ -36617,7 +36615,7 @@ function viewCatalogue() {
         hNoProof = String((el("hsb_noproof") && el("hsb_noproof").value) || "").trim();
         if (hNoProof.length < 4) {
           toast("There is no signed receipt on this delivery \u2014 say in one line why it is going " +
-                "into hisab without one. Nothing was stamped.");
+                "finalised without one. Nothing was stamped.");
           return;
         }
       }
@@ -36734,7 +36732,7 @@ function viewCatalogue() {
       S.modal = null;
       _hsbCache = null;
       render();
-      toast("Challan " + (hc.challanNo || "") + " added to hisab." +
+      toast("Challan " + (hc.challanNo || "") + " finalised." +
         (hxAmt > 0 ? " " + money(hxAmt) + " further discount taken off." : "") +
         (hOff.length ? " No incentive on it for " + hOff.map(function (x) { return x.name; }).join(", ") + "." : "") +
         (hset.length ? " Discount set for " + hset.join(", ") + "." : "") +
