@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.447";
+  var APP_VERSION = "6.9.448";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18935,39 +18935,9 @@ function viewCatalogue() {
     return { calls: list.length, broken: broken, live: live, last: list[0] || null };
   }
 
-  function creditGateText(g, ch) {
-    var L = [];
-    L.push("CREDIT STOP - " + g.name);
-    L.push(String(ch.challanNo || "") + (ch.site ? "  /  " + ch.site : ""));
-    L.push("");
-    L.push("Already owing (delivered, unpaid) . " + moneyAscii(g.ag.due));
-    if (g.ag.oldest) L.push("Oldest unpaid money . . . . . . . . " + g.ag.oldest + " days");
-    if (g.ag.overdue > 0.5) L.push("Past " + g.days + " days . . . . . . . . . . . . " + moneyAscii(g.ag.overdue));
-    if (g.road > 0.5) L.push("Out on the road, not signed for . . " + moneyAscii(g.road));
-    L.push("This challan . . . . . . . . . . . . " + moneyAscii(g.now));
-    L.push("-----------------------------------");
-    L.push("Standing at his site if released . . " + moneyAscii(g.exposure));
-    L.push(g.limit > 0 ? "His credit limit . . . . . . . . . . " + moneyAscii(g.limit)
-                       : "No credit limit is set for him.");
-    /* v6.9.244 - and what he has actually been saying when he is rung */
-    var _ch = collectHistory(g.name);
-    if (_ch.calls) {
-      L.push("");
-      L.push("What he says when he is rung:");
-      if (_ch.broken > 0) {
-        L.push("  He has named " + _ch.broken + " date" + (_ch.broken === 1 ? "" : "s") + " and kept none of them.");
-      }
-      if (_ch.live) L.push("  He has now said " + fullDate(_ch.live.date) + ".");
-      if (_ch.last && _ch.last.note) L.push("  Last note: " + pdfSafe(_ch.last.note));
-      if (!_ch.broken && !_ch.live) L.push("  " + _ch.calls + " call" + (_ch.calls === 1 ? "" : "s") + " logged, no date named.");
-    }
-    L.push("");
-    L.push("Why you are being stopped: " + g.reasons.join(", and ") + ".");
-    L.push("");
-    L.push("Press OK only if you have decided to send it anyway.");
-    L.push("The decision is recorded under your name.");
-    return L.join("\n");
-  }
+  /* creditGateText (v6.9.193-v6.9.447) drew these figures in ASCII dot-leaders for window.confirm.
+     Its only reader was that dialog; creditGateHtml (below the pass sheet) draws the same figures
+     as a table for askSheet(). */
   /* Headroom at a glance on the Payments screen. Costs nothing for the clients who have no
      limit set - it returns before it touches the ageing. */
   function creditPill(name) {
@@ -29235,6 +29205,105 @@ function viewCatalogue() {
       '<button class="btn danger" data-act="logout">Sign out</button></div>';
   }
 
+  /* ================= ONE QUESTION, IN THE APP'S OWN SHEET  (v6.9.448, 8 Sep 2026) ==========
+     C2 of the inspection of 8 Sep: 46 system dialogs in this app and none in the companion apps.
+     window.confirm on a phone is slow to appear, blocks every other event while it is up, is the
+     easiest thing on a small screen to mis-tap - and it cannot show a table, a colour or a bold
+     figure, which is why the credit stop was drawn in ASCII dot-leaders until today.
+
+     askSheet(o) draws the question in the modal every other question in this app is asked in, and
+     returns a Promise<boolean>. Yes resolves true; Cancel, Close and the scrim resolve false. The
+     resolver is a closure variable, never in S. A second question asked while one is open closes
+     the first as "no" - a question nobody can see must not sit there waiting to fire.
+
+       o.title  the question, as a heading      o.sub    one line under it (optional)
+       o.body   html - the figures and words    o.yes    the button that does it (default "Yes")
+       o.no     the button that does not (default "Cancel")   o.danger  red Yes button
+
+     Modelled on S.dupAsk, the one question this app already asked in its own sheet. */
+  /* named askSheet, not ask: the click handler declares `var ask = window.prompt(...)` twice (the
+     room-name prompts), and a var is hoisted over the whole handler - so a plain ask() called
+     from inside it is undefined at the moment of the tap. Found by run_crm_pass.mjs: "ask is not
+     a function" on the return's Received button, while the credit stop (called through
+     askCreditStop, a top-level function) worked. */
+  var _ask = null;
+  function sheetAsk(o) {
+    return '<h2>' + o.title + '</h2>' +
+      (o.sub ? '<p class="sub">' + o.sub + '</p>' : '') +
+      '<div style="font-size:13.5px;line-height:1.5">' + (o.body || "") + '</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">' + (o.no || 'Cancel') + '</button>' +
+      '<button class="btn' + (o.danger ? ' danger' : '') + '" data-act="ask-yes">' + (o.yes || 'Yes') + '</button></div>';
+  }
+  function askSheet(o) {
+    return new Promise(function (resolve) {
+      if (_ask) { var prev = _ask; _ask = null; try { prev(false); } catch (e) {} }
+      _ask = resolve;
+      S.modal = sheetAsk(o); render();
+    });
+  }
+  function askDone(answer) {
+    var r = _ask; _ask = null;
+    S.modal = null; render();
+    if (r) r(!!answer);
+  }
+
+  /* THE CREDIT STOP, AS A TABLE (v6.9.448). The same figures creditGateText drew in ASCII since
+     v6.9.193 / v6.9.244, laid out as figures should be: labels left, rupees right, the exposure in
+     bold, the reason in red. creditGate() is untouched - this only draws what it decides. */
+  function creditGateHtml(g, ch) {
+    var row = function (k, v, strong) {
+      return '<tr><td style="padding:3px 0;color:#475569">' + k + '</td>' +
+        '<td style="padding:3px 0 3px 10px;text-align:right;white-space:nowrap' + (strong ? ';font-weight:800' : '') + '">' + v + '</td></tr>';
+    };
+    var h = '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      row('Already owing (delivered, unpaid)', money(g.ag.due)) +
+      (g.ag.oldest ? row('Oldest unpaid money', g.ag.oldest + ' days') : '') +
+      (g.ag.overdue > 0.5 ? row('Past ' + g.days + ' days', money(g.ag.overdue)) : '') +
+      (g.road > 0.5 ? row('Out on the road, not signed for', money(g.road)) : '') +
+      row('This challan', money(g.now)) +
+      '<tr><td colspan="2" style="border-top:1px solid #cbd5e1;padding:0"></td></tr>' +
+      row('Standing at his site if released', money(g.exposure), true) +
+      row('His credit limit', g.limit > 0 ? money(g.limit) : '<span style="color:#64748b">none set</span>') +
+      '</table>';
+    /* v6.9.244 - and what he has actually been saying when he is rung */
+    var _ch = collectHistory(g.name);
+    if (_ch.calls) {
+      h += '<div class="card" style="margin:8px 0 0;padding:8px 12px;border-color:#fde68a;background:#fffbeb;font-size:12.5px">' +
+        '<b>What he says when he is rung</b><br>' +
+        (_ch.broken > 0 ? 'He has named ' + _ch.broken + ' date' + (_ch.broken === 1 ? '' : 's') + ' and kept none of them.<br>' : '') +
+        (_ch.live ? 'He has now said <b>' + esc(fullDate(_ch.live.date)) + '</b>.<br>' : '') +
+        (_ch.last && _ch.last.note ? 'Last note: ' + esc(_ch.last.note) + '<br>' : '') +
+        (!_ch.broken && !_ch.live ? _ch.calls + ' call' + (_ch.calls === 1 ? '' : 's') + ' logged, no date named.' : '') +
+        '</div>';
+    }
+    h += '<div style="margin-top:8px;color:#b91c1c"><b>Why you are being stopped:</b> ' + esc(g.reasons.join(", and ")) + '.</div>' +
+      '<div class="meta" style="margin-top:6px;font-size:12.5px">Release it only if you have decided to send it anyway. The decision is recorded under your name.</div>';
+    return h;
+  }
+  /* the override, written once and the same way from both doors - it used to be typed out
+     twice with a hand-minted id; mintId carries the per-session counter (t_mintid.js) */
+  function creditOverrideRow(g, ch) {
+    save("audit", {
+      id: mintId("C"),
+      createdAt: new Date().toISOString(), actor: S.user || "", action: "credit:override",
+      target: String(ch.challanNo || ch.id) + " / " + String(ch.customerName || ""),
+      detail: JSON.stringify({
+        due: Math.round(g.ag.due), onRoad: Math.round(g.road),
+        challan: Math.round(g.now), exposure: Math.round(g.exposure),
+        limit: g.limit, days: g.days, oldest: g.ag.oldest,
+        overdue: Math.round(g.ag.overdue), why: g.reasons.join(" + ")
+      }), ip: ""
+    }, true);
+  }
+  function askCreditStop(g, ch) {
+    return askSheet({
+      title: 'Credit stop — ' + esc(g.name),
+      sub: esc(String(ch.challanNo || "")) + (ch.site ? ' &middot; ' + esc(ch.site) : ''),
+      body: creditGateHtml(g, ch),
+      yes: 'Release anyway', no: 'Hold it', danger: true
+    });
+  }
+
   function logout() {
     var held = 0, photos = 0;
     try { held = pendCount(); } catch (e) {}
@@ -33672,7 +33741,10 @@ function viewCatalogue() {
       toast("Saved without " + _rl + ". It shows in amber on this visit until a photo is filed.");
       return;
     }
+    if (act === "ask-yes") { askDone(true); return; }
     if (act === "close") {
+      /* v6.9.448 - a question closed any way but Yes is a "no", and the caller is told */
+      if (_ask) { askDone(false); return; }
       S.chx = null;   /* v6.9.356 - the job-work / off-list box never outlives its challan */
       /* cancelling a partner form that was opened FROM the client form goes back to the client
          form with everything still typed - never dumps the user's half-entered lead. */
@@ -37636,18 +37708,30 @@ function viewCatalogue() {
       if (!rrec0) { toast("That return is not on this device yet - pull down to refresh."); return; }
       if (rto === "Received") {
         var rAmt = returnNet(rrec0), rWho = rrec0.customerName || "this client";
-        if (!window.confirm(
-          "Is this material actually back in the godown?\n\n" +
-          (rrec0.returnNo || "This return") + "  \u00b7  " + rWho + "\n" +
-          moneyAscii(rAmt) + " will be CREDITED to his account the moment you say yes, and the " +
-          "incentive on it comes back off whoever earned it.\n\n" +
-          "Press Cancel if the goods have not reached the godown yet - the return stays exactly " +
-          "where it is and nothing is lost.")) {
-          toast("Left as it is. Nothing was credited.");
-          return;
-        }
+        /* v6.9.448 - asked in the app's own sheet, with the rupees in bold */
+        askSheet({
+          title: 'Is this material actually back in the godown?',
+          sub: esc(rrec0.returnNo || "This return") + ' &middot; ' + esc(rWho),
+          body: '<b>' + money(rAmt) + '</b> will be <b>credited</b> to his account the moment you say yes, and the ' +
+            'incentive on it comes back off whoever earned it.<br><br>' +
+            'Press <b>Not yet</b> if the goods have not reached the godown — the return stays exactly ' +
+            'where it is and nothing is lost.',
+          yes: 'Yes, it is back', no: 'Not yet'
+        }).then(function (yes) {
+          if (!yes) { toast("Left as it is. Nothing was credited."); return; }
+          rtDoMove(id, rto);
+        });
+        return;
       }
-      var _lbl = t.textContent; t.disabled = true; t.textContent = "...";
+      rtDoMove(id, rto);
+      return;
+    }
+    /* ---- the move itself, one function for the tap and the sheet (v6.9.448). The button is
+       looked up afresh: the sheet has repainted the screen, so the element the tap landed on
+       is gone, and a disabled ghost of it would tell nobody anything. */
+    function rtDoMove(id, rto) {
+      var t = document.querySelector('[data-act="rt-move"][data-id="' + id + '"][data-to="' + rto + '"]');
+      var _lbl = t ? t.textContent : ""; if (t) { t.disabled = true; t.textContent = "..."; }
       /* v6.9.348 - the guard challans have had since v6.9.292 and returns never did. quietSync
          replaces S.data wholesale; without this, a pull taken before the move landed puts the
          old status straight back and the press looks as if it did nothing. */
@@ -37676,8 +37760,7 @@ function viewCatalogue() {
         toast("No answer from the server. The move was probably saved - it will show on the " +
               "next refresh. Nothing was lost.");
         render();
-      }).catch(function (e) { btnBack(t, _lbl); toast("The return was NOT moved \u2014 " + apiWhy(e) + ". Nothing changed. Try again."); });
-      return;
+      }).catch(function (e) { if (t) btnBack(t, _lbl); toast("The return was NOT moved \u2014 " + apiWhy(e) + ". Nothing changed. Try again."); });
     }
     /* v6.9.348 - AND A WAY BACK, because the press above is one a man will make by mistake and
        a return wrongly credited is money on a client's account that should not be there.
@@ -38433,15 +38516,28 @@ function viewCatalogue() {
          A man in a hurry can still confirm; he is only asked to say out loud that this receipt
          will stand on nothing but his own word. */
       if (!S.alt.by && !S.alt.photo && !S.alt.sig) {
-        if (!window.confirm(
-          "No name, no photograph and no signature.\n\n" +
-          "This receipt will then stand on nothing but your own word. If the customer disputes " +
-          "the quantity months later, there is nothing to show him.\n\n" +
-          "Press OK to confirm it anyway.")) {
-          toast("Nothing confirmed \u2014 add the receiver's name, a photo, or his signature.");
-          return;
-        }
+        /* v6.9.448 - in the app's own sheet. "Go back" returns him to the receipt form with
+           every quantity, reason and name still in it (altReadBack put them in S.alt first). */
+        askSheet({
+          title: 'No name, no photograph and no signature',
+          body: 'This receipt will then stand on nothing but your own word. If the customer disputes ' +
+            'the quantity months later, there is nothing to show him.',
+          yes: 'Confirm it anyway', no: 'Go back', danger: true
+        }).then(function (yes) {
+          if (!yes) {
+            S.modal = modalAlter(); render();
+            toast("Nothing confirmed \u2014 add the receiver's name, a photo, or his signature.");
+            return;
+          }
+          altCommit(changed);
+        });
+        return;
       }
+      altCommit(changed);
+      return;
+    }
+    /* ---- the receipt, written - one function for the tap and the sheet (v6.9.448) ---- */
+    function altCommit(changed) {
       /* v6.9.423 - every photograph he picked, not only the first. */
       var prf = { by: S.alt.by || "", photo: S.alt.photo || "", photos: prfPhotoList(S.alt),
                   sig: S.alt.sig || "", rows: (S.alt.rows || []).slice() };
@@ -38481,7 +38577,6 @@ function viewCatalogue() {
             quietSync();
           });
         }).catch(fail);
-      return;
     }
     /* ================= PASS & DISPATCH, ONE TAP  (v6.9.337) =================
        HIS WORDS: "now approve and dispatch are same thing not different on".
@@ -38512,27 +38607,28 @@ function viewCatalogue() {
       if (S.chMoving[id]) { toast("Still saving " + pc.challanNo + " \u2014 one moment."); return; }
 
       var pg = creditGate(pc);
-      if (pg.stop) {
-        if (!window.confirm(creditGateText(pg, pc))) { toast("Held. Nothing was passed."); return; }
-        save("audit", {
-          id: "C-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
-          createdAt: new Date().toISOString(), actor: S.user || "", action: "credit:override",
-          target: String(pc.challanNo || pc.id) + " / " + String(pc.customerName || ""),
-          detail: JSON.stringify({
-            due: Math.round(pg.ag.due), onRoad: Math.round(pg.road),
-            challan: Math.round(pg.now), exposure: Math.round(pg.exposure),
-            limit: pg.limit, days: pg.days, oldest: pg.ag.oldest,
-            overdue: Math.round(pg.ag.overdue), why: pg.reasons.join(" + ")
-          }), ip: ""
-        }, true);
-      }
-
       /* v6.9.447 - ONE TAP once the PIN is held. The first pass after opening the app puts the
          app's own sheet up; every one after that goes straight through. window.prompt is gone:
          a system dialog on a phone is slow to appear, blocks every other event while it is up,
          and is the easiest thing on a small screen to mis-tap. Same code as Challan 1.51.0. */
-      if (!passPinHave()) { _passAsk = String(id || ""); _passAskAct = "ch-pass"; S.modal = sheetPassPin(pc, "ch-pass"); render(); return; }
-      doPass(pc, passPinGet());
+      var goPass = function () {
+        if (chArrived(pc)) { toast("The receipt for " + pc.challanNo + " is already in \u2014 this delivery has arrived."); return; }
+        if (S.chMoving[id]) { toast("Still saving " + pc.challanNo + " \u2014 one moment."); return; }
+        if (!passPinHave()) { _passAsk = String(id || ""); _passAskAct = "ch-pass"; S.modal = sheetPassPin(pc, "ch-pass"); render(); return; }
+        doPass(pc, passPinGet());
+      };
+      if (pg.stop) {
+        /* v6.9.448 - the credit stop in the app's own sheet: the figures as a table, the reason
+           in red, Hold it / Release anyway. He is never blocked; a release is written under his
+           own name before the pass runs, exactly as the dialog's OK was. */
+        askCreditStop(pg, pc).then(function (yes) {
+          if (!yes) { toast("Held. Nothing was passed."); return; }
+          creditOverrideRow(pg, pc);
+          goPass();
+        });
+        return;
+      }
+      goPass();
       return;
     }
     /* ---- THE WAY OUT, AND IT IS HIS HAND ON IT  (v6.9.387) ----
@@ -38551,16 +38647,25 @@ function viewCatalogue() {
       if (!canProof()) { toast("Only accounts or the owner may file a receipt."); return; }
       if (!chStatusBehind(ca)) { toast("Nothing to correct on " + (ca.challanNo || "this challan") + "."); return; }
       var rAt = String(ca.receiptAt || "").slice(0, 10);
-      if (!window.confirm(
-        (ca.challanNo || "") + "  -  " + (ca.customerName || "") + "\n\n" +
-        "The signed receipt for this delivery is already on file" +
-        (rAt ? ", filed " + fullDate(rAt) : "") + ", but the status column still reads \"" +
-        (ca.status || "Draft") + "\".\n\n" +
-        "This moves the status to Received. It changes NOTHING else - not the receipt, not the " +
-        "date it was filed, not a rupee. Your balance has counted this delivery all along, " +
-        "because hisab counts the receipt and never the status.\n\nPress OK to correct it.")) {
-        toast("Left as it is."); return;
-      }
+      /* v6.9.448 - in the app's own sheet; the words are the dialog's */
+      askSheet({
+        title: 'Correct the status to Received?',
+        sub: esc(ca.challanNo || "") + ' &middot; ' + esc(ca.customerName || ""),
+        body: 'The signed receipt for this delivery is already on file' +
+          (rAt ? ', filed <b>' + esc(fullDate(rAt)) + '</b>' : '') + ', but the status column still reads <b>' +
+          esc(ca.status || "Draft") + '</b>.<br><br>' +
+          'This moves the status to Received. It changes <b>nothing else</b> — not the receipt, not the ' +
+          'date it was filed, not a rupee. Your balance has counted this delivery all along, ' +
+          'because hisab counts the receipt and never the status.',
+        yes: 'Correct it', no: 'Leave it'
+      }).then(function (yes) {
+        if (!yes) { toast("Left as it is."); return; }
+        chStatusFix(ca);
+      });
+      return;
+    }
+    /* ---- the correction itself (v6.9.448) - STATUS and nothing else; see ch-arrived ---- */
+    function chStatusFix(ca) {
       var prevSt = ca.status;
       ca.status = "Received";
       render();
@@ -38586,7 +38691,6 @@ function viewCatalogue() {
         }
         toast("Status corrected. The receipt and its date are untouched.");
       }).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
-      return;
     }
     if (act === "ch-move") {
       var to = t.getAttribute("data-to");
@@ -38605,23 +38709,6 @@ function viewCatalogue() {
          money past his days, the approver is shown the account and asked to decide. He is never
          blocked. If he releases anyway, that is written to the audit sheet under his own name,
          quietly, and nothing else about the challan changes. */
-      if (to === "Approved") {
-        var cgate = creditGate(ch2);
-        if (cgate.stop) {
-          if (!window.confirm(creditGateText(cgate, ch2))) { toast("Held. Nothing was approved."); return; }
-          save("audit", {
-            id: "C-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
-            createdAt: new Date().toISOString(), actor: S.user || "", action: "credit:override",
-            target: String(ch2.challanNo || ch2.id) + " / " + String(ch2.customerName || ""),
-            detail: JSON.stringify({
-              due: Math.round(cgate.ag.due), onRoad: Math.round(cgate.road),
-              challan: Math.round(cgate.now), exposure: Math.round(cgate.exposure),
-              limit: cgate.limit, days: cgate.days, oldest: cgate.ag.oldest,
-              overdue: Math.round(cgate.ag.overdue), why: cgate.reasons.join(" + ")
-            }), ip: ""
-          }, true);
-        }
-      }
       if (to === "Approved" || to === "Dispatched") {
         /* In-flight lock: while a move for this challan is being saved, ignore further taps on it.
            Stops a double-tap (or an impatient re-tap during a slow save) firing two moves — the
@@ -38630,8 +38717,24 @@ function viewCatalogue() {
         if (S.chMoving[id]) { toast("Still saving " + ch2.challanNo + " — one moment."); return; }
         /* v6.9.447 - the same held PIN as the pass. A challan sitting at Approved is dispatched
            with one tap too, once the PIN has been given for this app opening. */
-        if (!passPinHave()) { _passAsk = String(id || ""); _passAskAct = (to === "Approved" ? "ch-approve" : "ch-dispatch"); S.modal = sheetPassPin(ch2, _passAskAct); render(); return; }
-        doMove(ch2, to, passPinGet());
+        var goMove = function () {
+          if (S.chMoving[id]) { toast("Still saving " + ch2.challanNo + " — one moment."); return; }
+          if (!passPinHave()) { _passAsk = String(id || ""); _passAskAct = (to === "Approved" ? "ch-approve" : "ch-dispatch"); S.modal = sheetPassPin(ch2, _passAskAct); render(); return; }
+          doMove(ch2, to, passPinGet());
+        };
+        if (to === "Approved") {
+          var cgate = creditGate(ch2);
+          if (cgate.stop) {
+            /* v6.9.448 - the same sheet as the pass's; see askCreditStop */
+            askCreditStop(cgate, ch2).then(function (yes) {
+              if (!yes) { toast("Held. Nothing was approved."); return; }
+              creditOverrideRow(cgate, ch2);
+              goMove();
+            });
+            return;
+          }
+        }
+        goMove();
         return;
       }
       /* SNAPPY: flip instantly, validate in the background, revert on refusal (no full refresh). */
@@ -38700,13 +38803,19 @@ function viewCatalogue() {
       var rsub = proofSubject(id);
       var rold = chProofAny(rsub || { id: id });
       if (!rold.has || rold.queued) { toast("There is no receipt on file to change yet."); return; }
-      if (!window.confirm(
-        "Replace the receipt on " + String((rsub && rsub.challanNo) || "this delivery") + "?\n\n" +
-        "You will photograph the right one next.\n\n" +
-        "The one on file now is KEPT - nothing is deleted. The new photograph becomes the one " +
-        "every screen shows, and the old one stays in the audit trail with the new one naming it.")) return;
-      S.prf = { id: id, by: rold.by || "", photo: "", replaces: rold.url || "" };
-      S.modal = modalProof(id); render(); return;
+      /* v6.9.448 - in the app's own sheet */
+      askSheet({
+        title: 'Replace the receipt on ' + esc(String((rsub && rsub.challanNo) || "this delivery")) + '?',
+        body: 'You will photograph the right one next.<br><br>' +
+          'The one on file now is <b>kept</b> — nothing is deleted. The new photograph becomes the one ' +
+          'every screen shows, and the old one stays in the audit trail with the new one naming it.',
+        yes: 'Replace it', no: 'Keep it'
+      }).then(function (yes) {
+        if (!yes) return;
+        S.prf = { id: id, by: rold.by || "", photo: "", replaces: rold.url || "" };
+        S.modal = modalProof(id); render();
+      });
+      return;
     }
     if (act === "prf-cancel") { S.prf = null; S.modal = null; render(); return; }
     if (act === "prf-list") { S.modal = modalProofList(); render(); return; }
@@ -38732,14 +38841,18 @@ function viewCatalogue() {
       var _pc = (S.data.challans || []).filter(function (x) { return x.id === pcid; })[0];
       if (_pc && !hisabCounts(_pc) && String(_pc.status || "") === "Dispatched") {
         setTimeout(function () {
-          if (window.confirm(
-            "The receipt is attached to " + (_pc.challanNo || "this delivery") + ".\n\n" +
-            "It is still marked DISPATCHED, so hisab does not count it \u2014 " +
-            money(_pc.amount) + " is not on " + (_pc.customerName || "his") + " account.\n\n" +
-            "Mark it received now?")) {
+          /* v6.9.448 - in the app's own sheet */
+          askSheet({
+            title: 'Mark it received now?',
+            sub: esc(_pc.challanNo || "this delivery") + ' &middot; ' + esc(_pc.customerName || ""),
+            body: 'The receipt is attached. It is still marked <b>Dispatched</b>, so hisab does not count it — ' +
+              '<b>' + money(_pc.amount) + '</b> is not on ' + esc(_pc.customerName || "his") + '\u2019s account.',
+            yes: 'Mark it received', no: 'Not now'
+          }).then(function (yes) {
+            if (!yes) return;
             S.alt = { id: pcid, rows: null, by: pby, photo: "", sig: "" };
             S.modal = modalAlter(); render();
-          }
+          });
         }, 400);
       }
       return;
