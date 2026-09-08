@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.441";
+  var APP_VERSION = "6.9.442";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18962,7 +18962,16 @@ function viewCatalogue() {
         out.push({ kind: "ret", date: d10(r.createdAt), no: String(r.returnNo || "(no number yet)"),
           ptrs: nR + " item" + (nR === 1 ? "" : "s") + " back at the godown" +
                 (r.challanNo ? " · against " + String(r.challanNo) : ""),
-          type: "Return", book: "", rcpt: "", debit: null, credit: rv, bal: run, id: r.id });
+          /* v6.9.442 - HIS WORDS: "show receipt status for material return also". A return has
+             its own signed paper - the goods-in receipt the godown takes when the material comes
+             back - and it is filed through the very same queue and the very same audit row as a
+             delivery's. retProofView() has turned a return into a challan-shaped object since
+             v6.9.352 for exactly this reason, so chProofAny answers for it unchanged. MEASURED on
+             his book, 8 Sep: 5 of his 7 returns carry one; the two that do not include
+             RAVI0000/270726/R01, which is the return in the screenshot he sent. */
+          type: "Return", book: "",
+          rcpt: (function () { var pv = chProofAny(retProofView(r)); return !pv.has ? "no" : (pv.queued ? "onway" : "yes"); })(),
+          debit: null, credit: rv, bal: run, id: r.id });
       } else {
         var p = e.row, pa = payAmt(p), pk = payKindOf(p);
         var tail = [p.mode ? String(p.mode).trim() : "", p.ref ? String(p.ref).trim() : ""].filter(Boolean).join(" · ");
@@ -18974,7 +18983,8 @@ function viewCatalogue() {
     });
     return { rows: out, bal: run, opening: opening, chs: chs, rets: rets, pays: pays,
              withBook: chs.filter(function (c) { return !!manualNoFor(c); }).length,
-             withRcpt: chs.filter(function (c) { return chProofAny(c).has; }).length };
+             withRcpt: chs.filter(function (c) { return chProofAny(c).has; }).length,
+             retRcpt: rets.filter(function (r) { return chProofAny(retProofView(r)).has; }).length };
   }
   /* v6.9.440 - HIS WORDS: "show one more column of receipt Attached or pending, attached in
      Green and Pending in red". The signed paper is the thing an argument about a delivery ends
@@ -19060,7 +19070,14 @@ function viewCatalogue() {
       ' <span id="mini_rcptcount"><b>' + m.withRcpt + ' of ' + nD + '</b></span> ' +
       (m.withRcpt === nD ? '<span style="color:#0f766e">carry a signed receipt.</span>'
                          : '<span style="color:#b91c1c">carry a signed receipt \u2014 the rest are marked Pending in the RECEIPT column.</span>') +
-      ' <span style="color:#94a3b8">Eight columns do not fit a phone — slide the table sideways, or send the file instead.</span>' +
+      /* v6.9.442 - and the returns, counted separately, because a goods-in receipt is a different
+         piece of paper signed by a different man at the other end of the journey. */
+      (m.rets.length
+        ? ' <b>' + m.retRcpt + ' of ' + m.rets.length + '</b> return' + (m.rets.length === 1 ? '' : 's') +
+          (m.retRcpt === m.rets.length ? '<span style="color:#0f766e"> carry a goods-in receipt.</span>'
+                                       : '<span style="color:#b91c1c"> carry a goods-in receipt.</span>')
+        : '') +
+      ' <span style="color:#94a3b8">Nine columns do not fit a phone — slide the table sideways, or send the file instead.</span>' +
       '</div>' +
       /* v6.9.425 - HE ASKED TO BE ABLE TO HIDE IT: on a client with eighteen lines the account
          pushes the delivery cards a long way down and he does not always want it open. The state
