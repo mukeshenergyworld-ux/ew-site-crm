@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.446";
+  var APP_VERSION = "6.9.447";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17751,7 +17751,7 @@ function viewCatalogue() {
       return '<button class="btn sm ' + (S.pRole === r ? "" : "ghost") + '" data-act="p-role" data-r="' + esc(r) + '">' + esc(r) + '</button>';
     }).join("") + '<button class="btn sm ' + (S.pRole ? "ghost" : "") + '" data-act="p-role" data-r="">All</button>' +
       '<div class="grow"></div>' +
-      '<button class="btn sm ghost" data-act="saathi-push" title="Send these figures to the EW Saathi app">Saathi ko bhejein</button>' +
+      '<button class="btn sm ghost" data-act="saathi-push" title="Send these figures to the EW Saathi app">Send to Saathi</button>' +
       '<button class="btn" data-act="as-new">+ New partner</button></div>';
 
     /* Leaderboard: rank partners by whichever metric matters right now. */
@@ -21720,6 +21720,8 @@ function viewCatalogue() {
     if (!c) return "";
     var cur = clientOpening(name), hist = openingChanges(name);
     var l = clientLedger(name);
+    /* v6.9.447 - Back from the PIN sheet lands here with what he had typed still in the boxes */
+    var pend = (S.opPend && S.opPend.n === name) ? S.opPend : null;
     return '<h2>' + (cur ? 'Change' : 'Set') + ' the previous balance</h2>' +
       '<p class="sub">' + esc(name) + '</p>' +
       '<div class="card" style="border-color:#fecaca;background:#fef2f2;padding:10px 12px">' +
@@ -21734,12 +21736,12 @@ function viewCatalogue() {
       (l.returned > 0 ? ' &middot; returns ' + money(l.returned) : '') +
       '<br><b>Balance today ' + money(l.due) + '</b></div></div>' +
       '<label>New previous balance</label>' +
-      '<input id="op_amt" inputmode="decimal" value="' + esc(cur ? Math.round(cur) : "") + '" ' +
+      '<input id="op_amt" inputmode="decimal" value="' + esc(pend ? pend.neu : (cur ? Math.round(cur) : "")) + '" ' +
         'placeholder="what he actually owed before the app"/>' +
       '<div class="meta" style="font-size:12px;margin-top:3px">A minus means <b>you</b> were ' +
       'holding his money.</div>' +
       '<label>Why it is being changed</label>' +
-      '<input id="op_why" placeholder="e.g. old book re-checked, 6,000 receipt was missed"/>' +
+      '<input id="op_why" placeholder="e.g. old book re-checked, 6,000 receipt was missed" value="' + esc(pend ? pend.why : "") + '"/>' +
       (hist.length
         ? '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:9px 12px;margin-top:9px">' +
           '<div style="font-size:12.5px;font-weight:700;color:#92400e;margin-bottom:3px">' +
@@ -26629,6 +26631,7 @@ function viewCatalogue() {
     }).then(function (cred) {
       localStorage.setItem(BIO_KEY, JSON.stringify({ id: b64u(cred.rawId), user: S.user, pin: S.pin }));
       toast("Face ID / fingerprint enabled on this device.");
+      if (S.modal && modalKey(S.modal) === "This phone") S.modal = modalAccount();   /* v6.9.447 */
       render();
     }).catch(function () { toast("Could not enable biometric unlock."); });
   }
@@ -26662,6 +26665,7 @@ function viewCatalogue() {
     localStorage.removeItem(BIO_KEY);
       try { bigDel(snapKey()); } catch (e) { }
     toast("Biometric unlock removed from this device.");
+    if (S.modal && modalKey(S.modal) === "This phone") S.modal = modalAccount();   /* v6.9.447 */
     render();
   }
 
@@ -28871,6 +28875,7 @@ function viewCatalogue() {
   }
 
   function doLogin() {
+    passPinClear();   /* v6.9.447 - the next man's first pass asks again */
     var pin = val("lp"), name = val("ln");
     if (!name) { renderLogin("Enter your name."); return; }
     if (!pin) { renderLogin("Enter your PIN."); return; }
@@ -28892,13 +28897,18 @@ function viewCatalogue() {
   function renderPinChange(err) {
     document.getElementById("root").innerHTML =
       '<div class="login-wrap"><div class="login">' +
-      '<h1>Set your own PIN</h1>' +
-      '<p>You are signed in with a temporary PIN. Choose a private one before you continue - nobody else should know it.</p>' +
+      '<h1>' + (String(S.pinSet).toUpperCase() === "Y" ? 'Change your PIN' : 'Set your own PIN') + '</h1>' +
+      '<p>' + (String(S.pinSet).toUpperCase() === "Y"
+        ? 'The PIN you sign in with, on every phone. Nobody else should know it.'
+        : 'You are signed in with a temporary PIN. Choose a private one before you continue - nobody else should know it.') + '</p>' +
       (err ? '<div class="loginmsg">' + esc(err) + '</div>' : '') +
       '<label>New PIN (4-8 digits)</label><input id="np1" type="password" inputmode="numeric"/>' +
       '<label>Repeat new PIN</label><input id="np2" type="password" inputmode="numeric"/>' +
       '<div style="height:18px"></div>' +
       '<button class="btn full" data-act="pin-save">Save PIN</button>' +
+      /* v6.9.447 - a way back, for a man who tapped Change my PIN and thought better of it. Only
+         when the PIN is already his own: a temporary PIN must still be replaced before he goes on. */
+      (String(S.pinSet).toUpperCase() === "Y" ? '<div style="height:8px"></div><button class="btn full ghost" data-act="pin-later">Not now</button>' : '') +
       '<div class="foot-note">Signed in as ' + esc(S.user) + '</div></div></div>';
   }
 
@@ -28913,6 +28923,318 @@ function viewCatalogue() {
      (ew_proof_v1). They are work that has not reached the sheet, and a sign-out must never be
      the thing that loses it. If either is non-empty the man is told, in numbers, before the
      screen changes - and the next sign-in on this phone will still upload them. */
+  /* ================= ONE PIN, NOT ONE PIN PER CHALLAN  (v6.9.447, 8 Sep 2026) ==========
+     HIS WORDS, about the godown app on the morning of 8 Sep: "i have press pass and enter 2 to
+     three times also have to enter pin, fix it for single click process, its very slow". Challan
+     1.51.0 answered it there the same morning; the inspection of the whole CRM that afternoon
+     found the CRM still passing the slow way - press, wait for a system dialog, type, OK - per
+     challan, and he passes them in runs. This is the same code, brought across.
+
+     THE CONTROL STAYS. He was asked, and chose: the PIN is typed ONCE PER APP OPENING. The first
+     pass after the app starts asks for it; every pass after that is one tap. A phone picked up
+     off the counter by somebody else is a phone that has to be handed a PIN before it can release
+     material, which is the whole reason the control exists.
+
+     IT IS NEVER WRITTEN DOWN. _passPin lives in a closure variable and nowhere else - not
+     localStorage, not IndexedDB, not the journal. Closing the tab, reloading, signing out or
+     pressing Lock forgets it. (The session PIN in localStorage is the LOGIN one and is a separate
+     thing; this is the re-confirmation, and a re-confirmation kept on disk would not be one.)
+
+     AND IT IS THE APP'S OWN SHEET, not window.prompt. A system dialog on a phone is slow to
+     appear, blocks every other event while it is up, and is the easiest thing on a small screen
+     to mis-tap. The sheet is the same modal every other question in this app is asked in.
+
+     The five helpers below are byte-identical to the Challan app's, and t_apps_agree.js holds
+     them so: a rule about who may release material that drifts between the two apps is the
+     class of fault this estate has already paid for three times. */
+  /* which challan raised the sheet, AND what he had pressed - a challan sitting at
+     Approved is DISPATCHED, not passed, and resuming the wrong one of the two would
+     re-stamp approvedBy with whoever happened to be typing. */
+  var _passPin = "", _passAt = 0, _passAsk = null, _passAskAct = "";
+  function passPinHave() { return !!_passPin; }
+  function passPinGet() { return _passPin; }
+  function passPinSet(p) { _passPin = String(p || ""); _passAt = Date.now(); }
+  function passPinClear() { _passPin = ""; _passAt = 0; }
+  function passPinSince() {
+    if (!_passAt) return "";
+    var m = Math.round((Date.now() - _passAt) / 60000);
+    return m < 1 ? "just now" : m + " minute" + (m === 1 ? "" : "s") + " ago";
+  }
+  /* THE SHEET SAYS WHAT THE BUTTON DOES (the Challan app's t_ch1350 rule, held since 1.35.0): a
+     DISPATCH is described in words about what is true - the material has left the godown - and
+     not in the approval's words, because they are different facts and hisab counts the second.
+     Drawn in this app's own modal chrome; the words are the Challan app's, and t_crm_pass.js
+     reads both sheets and holds the sentences that matter identical. */
+  function sheetPassPin(c, act) {
+    var isDisp = String(act || "") === "ch-dispatch";
+    return '<h2>Your PIN, once</h2>' +
+      '<p class="sub">' +
+      (c ? '<b>' + esc(String(c.challanNo || "")) + '</b> — ' + esc(String(c.customerName || "")) + '<br>' : '') +
+      (isDisp ? 'This says the material has <b>left the godown</b>. It is not a formality.'
+              : 'Passing releases material. It is not a formality.') + '</p>' +
+      '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px">' +
+      '<div class="meta" style="font-size:12.5px">Type it once and every challan you pass after this is <b>one tap</b>, ' +
+      'until you close the app. It is never written to this phone — closing the tab forgets it, ' +
+      'and <b>Lock</b> on the account screen forgets it at once.</div></div>' +
+      '<label>PIN</label>' +
+      '<input id="pass_pin" type="password" inputmode="numeric" autocomplete="off" ' +
+      'style="font-size:18px;letter-spacing:.3em;text-align:center" placeholder="••••"/>' +
+      '<div id="pass_pin_note" class="meta" style="font-size:12.5px;margin-top:6px"></div>' +
+      '<div class="foot"><button class="btn" data-act="pass-pin-go">' + (isDisp ? 'Dispatch it' : 'Pass it') + '</button>' +
+      '<button class="btn ghost" data-act="close">Cancel</button></div>';
+  }
+  /* the same sheet for the two money edits that ask a PIN - the previous balance and a pre-set
+     discount. These are asked EVERY time, on purpose: a figure of that size is not a run of
+     passes, and what the sheet removes is the system dialog, not the asking. */
+  function sheetMoneyPin(title, lines, boxId, goAct, goLabel, backAct) {
+    return '<h2>' + title + '</h2>' +
+      '<p class="sub">' + lines + '</p>' +
+      '<label>PIN</label>' +
+      '<input id="' + boxId + '" type="password" inputmode="numeric" autocomplete="off" ' +
+      'style="font-size:18px;letter-spacing:.3em;text-align:center" placeholder="••••"/>' +
+      '<div id="' + boxId + '_note" class="meta" style="font-size:12.5px;margin-top:6px"></div>' +
+      '<div class="foot"><button class="btn" data-act="' + goAct + '" style="background:#b91c1c;border-color:#b91c1c">' + goLabel + '</button>' +
+      '<button class="btn ghost" data-act="' + (backAct || "close") + '">' + (backAct ? 'Back' : 'Cancel') + '</button></div>';
+  }
+  function pinNote(boxId, msg) {
+    var n = el(boxId + "_note");
+    if (n) { n.textContent = msg; n.style.color = "#b91c1c"; }
+    var b = el(boxId);
+    if (b) { try { b.value = ""; b.focus(); } catch (e) {} }
+  }
+
+  /* ================= ONE PASS, ONE PLACE  (v6.9.447) =================
+     Lifted whole out of the ch-pass handler so the tap and the PIN sheet call the SAME code.
+     Two copies of a path that releases material is two chances for them to disagree about what
+     "passed" means. Everything the handler checks first - role, arrived, in flight, the credit
+     gate - stays in the handler: this is the move, and only the move. */
+  function doPass(pc, ppin) {
+    var pPrev = pc.status, pPrevBy = pc.approvedBy || "";
+    pc.status = "Dispatched"; pc.approvedBy = S.user;
+    toast("Passed and dispatched.");
+    render();
+    S.chMoving[pc.id] = true;
+    _moving++;
+    var pDone = function () { if (_moving > 0) _moving--; };
+    var pBack = function (msg) {
+      pc.status = pPrev; pc.approvedBy = pPrevBy; chMoveForget(pc.id);
+      /* v6.9.447 - if it was the PIN the server refused, the held one is wrong and every later
+         tap would fail against it in silence, writing a "Wrong PIN" audit row each time.
+         Forget it, so the next tap asks again. */
+      if (/pin/i.test(String(msg || ""))) passPinClear();
+      S.chMoving[pc.id] = false; pDone(); toast(msg || "Could not pass it \u2014 reverted."); render();
+    };
+    var pHalf = function (msg) {
+      /* the pass landed, the dispatch did not. Show the truth: Approved, with its own door. */
+      pc.status = "Approved"; chMoveRemember(pc.id, "Approved", S.user);
+      S.chMoving[pc.id] = false; pDone();
+      toast(msg || (pc.challanNo + " is passed but NOT dispatched. Press Dispatch on it."));
+      /* ---- AND THE GROUP IS TOLD  (v6.9.390) ----
+         HIS WORDS: "sometimes some challan left undispatched". THIS is where they come from -
+         two calls, one PIN, and the second one fails. Until now the only trace was a toast on
+         one phone, which is gone the moment he changes screen. Now the dispatch group gets the
+         challan with a live button on it, and that button stays there until it really leaves.
+         Best effort: if this does not go, nothing is worse than it was a minute ago. */
+      try { api("tgDispatchPost", { id: pc.id }); } catch (e) {}
+      render();
+    };
+
+    /* v6.9.390 - noTg: this pair means to dispatch a second later, so the backend must not
+       post a "not dispatched yet" message to the group and then edit it away again. If the
+       dispatch half fails, pHalf() asks for that message explicitly - see there. */
+    /* ---- ONE ROUND TRIP WHERE THERE WERE TWO  (v6.9.435, 7 Sep 2026) ----
+       HIS WORDS, about the godown app: "pass and dispatch process in very slop ... make it
+       fast and effective". Both apps pass the same way and both make TWO calls, and this
+       backend's CHEAPEST call - teamStamp, one property read, no sheet touched - is 2.1
+       seconds from his machine, measured. A pass is therefore never under four.
+
+       `andDispatch` asks the server to stamp the approval AND release it in the same call.
+       A server that does not know the word moves it to Approved and says so, and the second
+       call below runs exactly as it always has - so this is correct against either version
+       and takes two seconds off the day the backend is updated. The reply's own `status` is
+       what decides, not a version number we would have to keep in step. */
+    api("challanMove", { id: pc.id, to: "Approved", approvePin: ppin, andDispatch: 1, noTg: 1 }).then(function (r1) {
+      if (!r1 || !r1.ok) { pBack(r1 && r1.error); return; }
+      pc.approvedBy = r1.by || S.user;
+      chMoveRemember(pc.id, "Approved", r1.by || S.user);
+      if (String(r1.status || "") === "Dispatched") {
+        /* the server did both. Everything below that follows a successful dispatch, once. */
+        S.chMoving[pc.id] = false; pDone();
+        chMoveRemember(pc.id, "Dispatched", r1.by || S.user);
+        S.dispatchSent = S.dispatchSent || {};
+        if (S.dispatchSent[pc.id]) return;
+        S.dispatchSent[pc.id] = true;
+        return sendChallanPdf(pc, "TG_DISPATCH",
+          "<b>DISPATCH: " + pc.challanNo + "</b>\n" + pc.customerName +
+          (pc.driver ? "\nDriver: " + pc.driver : "") +
+          "\nPassed by <b>" + (pc.approvedBy || S.user) + "</b>", pc.approvedBy || S.user)
+          .then(function (tg) {
+            if (!tg || !tg.ok) toast("Dispatched — but the Telegram message did not go. Download the PDF and send it manually.");
+          })
+          .catch(function () { toast("Dispatched — Telegram send failed. Download the PDF and send it manually."); });
+      }
+      return api("challanMove", { id: pc.id, to: "Dispatched", approvePin: ppin }).then(function (r2) {
+        S.chMoving[pc.id] = false; pDone();
+        if (!r2 || !r2.ok) { pHalf(r2 && r2.error); return; }
+        chMoveRemember(pc.id, "Dispatched", r2.by || S.user);
+        /* the dispatch bot gets exactly one copy, guard set BEFORE the send */
+        S.dispatchSent = S.dispatchSent || {};
+        if (S.dispatchSent[pc.id]) return;
+        S.dispatchSent[pc.id] = true;
+        sendChallanPdf(pc, "TG_DISPATCH",
+          "<b>DISPATCH: " + pc.challanNo + "</b>\n" + pc.customerName +
+          (pc.driver ? "\nDriver: " + pc.driver : "") +
+          "\nPassed by <b>" + (pc.approvedBy || S.user) + "</b>", pc.approvedBy || S.user)
+          .then(function (tg) {
+            if (!tg || !tg.ok) toast("Dispatched \u2014 but the Telegram message did not go. Download the PDF and send it manually.");
+          })
+          .catch(function () { toast("Dispatched \u2014 Telegram send failed. Download the PDF and send it manually."); });
+      });
+    }).catch(function () {
+      /* No answer at all. The row STAYS moved and he is told plainly not to do it twice -
+         the same rule as v6.9.312: a deadline is a fact about how long WE waited, not about
+         what the server did. */
+      S.chMoving[pc.id] = false; pDone();
+      chMoveRemember(pc.id, "Dispatched", S.user);
+      toast("Sent, but the server did not answer in time. It may already be done \u2014 do NOT " +
+            "do it again. The next refresh will show the truth.");
+      render();
+    });
+  }
+  /* and the single move - Approved on its own (no button draws it since v6.9.337, kept for a
+     caller that still asks) or Dispatched from a challan already sitting at Approved. */
+  function doMove(ch2, to, pin) {
+    /* SNAPPY: flip the status and redraw INSTANTLY so approving many challans feels immediate.
+       The server still validates the PIN in the background; if it refuses, we revert the row
+       and tell the user. No quietSync round-trip on success - the local state already matches. */
+    var prevStatus = ch2.status, prevBy = ch2.approvedBy || "";
+    ch2.status = to;
+    if (to === "Approved") { ch2.approvedBy = S.user; toast("Approved."); }
+    else { toast("Dispatched."); }
+    render();
+    S.chMoving[ch2.id] = true;
+    _moving++;                       /* v6.9.292 - quietSync waits while this is in flight */
+    var _mdone = function () { if (_moving > 0) _moving--; };
+    /* ===== REFUSED IS NOT THE SAME AS NO ANSWER (v6.9.312) =====
+       He reported: "i have to approve challan 2 to 3 times, like approved show dispatch,
+       suddenly again go back to approve".
+
+       This is why. On ANY failure - including the deadline simply expiring - the row was
+       put back and he was told it had not happened. But a deadline is a fact about how
+       long WE waited, not about what the SERVER did. challanMove holds a lock, rewrites
+       the row and (on a receipt) called Telegram; when that ran past 30 seconds the app
+       announced the approval had failed for material that was, on the sheet, approved.
+       So he approved it again. Same shape as "No signal - nothing was recorded", which
+       this estate has already been bitten by once in the Payment app.
+
+       refuse() is for an answer we actually got - wrong PIN, not your role. That is known,
+       so the row goes back.
+       unsure() is for no answer at all. The row STAYS moved, the memory is kept so a pull
+       taken before the write cannot undo it, and he is told plainly not to do it twice. */
+    var refuse = function (msg) {
+      ch2.status = prevStatus; ch2.approvedBy = prevBy;
+      chMoveForget(ch2.id);              /* the server said no - nothing to re-apply */
+      if (/pin/i.test(String(msg || ""))) passPinClear();   /* v6.9.447 - a refused PIN is forgotten */
+      toast(msg || ("Could not " + (to === "Approved" ? "approve" : "dispatch") + " - reverted."));
+      render();
+    };
+    var unsure = function () {
+      chMoveRemember(ch2.id, to, S.user); /* keep it: the server may well have done it */
+      toast((to === "Approved" ? "Approval" : "Dispatch") + " sent, but the server did not " +
+            "answer in time. It may already be done \u2014 do NOT do it again. The next " +
+            "refresh will show the truth.");
+      render();
+    };
+    var revert = refuse;
+    api("challanMove", { id: ch2.id, to: to, approvePin: pin }).then(function (r) {
+      S.chMoving[ch2.id] = false; _mdone();
+      if (!r || !r.ok) { revert(r && r.error); return; }
+      /* v6.9.292 - the server has confirmed it. Remember it, so a teamGet answering from a
+         copy taken before this write cannot put the row back to Draft and make him type his
+         PIN again for material already released. */
+      chMoveRemember(ch2.id, to, r.by || S.user);
+      if (to === "Approved") { ch2.approvedBy = r.by || S.user; render(); return; }
+      /* Notify the dispatch bot AT MOST ONCE per challan. Even if an earlier attempt looked like
+         it failed and the user dispatched again, the bot gets exactly one copy. Set the guard
+         BEFORE sending so two near-simultaneous sends can never both pass it. */
+      S.dispatchSent = S.dispatchSent || {};
+      if (S.dispatchSent[ch2.id]) { toast("Already sent to dispatch bot."); return; }
+      S.dispatchSent[ch2.id] = true;
+      sendChallanPdf(ch2, "TG_DISPATCH",
+        "<b>DISPATCH: " + ch2.challanNo + "</b>\n" + ch2.customerName +
+        (ch2.driver ? "\nDriver: " + ch2.driver : "") +
+        "\nApproved by <b>" + (ch2.approvedBy || r.by) + "</b>", ch2.approvedBy || r.by)
+        .then(function (tg) {
+          if (tg && tg.ok) { toast("Sent to dispatch bot."); }
+          else { toast("Dispatched — but the Telegram message didn't go. Download the PDF and send it manually."); }
+        })
+        .catch(function () { toast("Dispatched — Telegram send failed. Download the PDF and send it manually."); });
+    }).catch(function () { S.chMoving[ch2.id] = false; _mdone(); unsure(); });
+  }
+
+  /* v6.9.447 - the write behind a pre-set discount change, one place for the tap and the sheet */
+  function discLineApply(chId, code, raw0) {
+    var bch = (S.data.challans || []).filter(function (x) { return x.id === chId; })[0];
+    if (!bch) { render(); return; }
+    var bitems = []; try { bitems = JSON.parse(bch.itemsJson || "[]"); } catch (e) { bitems = []; }
+    var bit = bitems.filter(function (x) { return x.code === code; })[0];
+    if (!bit) { render(); return; }
+    /* v6.9.209: clamped. 100 typed by mistake zeroed the line; a minus sign over-billed him. */
+    /* ============ 44.5 IS A DISCOUNT (v6.9.379, 30 Aug 2026) ============
+       HIS WORDS: "make provision that we can enter discount like 44.5 , decimal its not
+       supporting now". Math.round() turned 44.5 into 45 the moment he left the box - and
+       said nothing, so the number he typed simply was not the number that was billed.
+
+       The box was already inputmode="decimal" and the client's PRESET has always taken a
+       decimal (disc-saveall stores Number(g.pct)), as has every incentive rate - his plumber
+       is on 4.2%. This one line was the only place a discount was forced to a whole number.
+       Two decimal places, which is a paisa on a lakh, and the clamp is unchanged. */
+    var _raw = num(raw0);
+    var _nd = Math.max(0, Math.min(90, Math.round(_raw * 100) / 100));
+    if (Math.abs(_nd - _raw) > 0.0001) toast("Discount kept within 0-90%.");
+    bit.disc = _nd; bch.itemsJson = JSON.stringify(bitems); save("challans", bch); render();
+  }
+
+  /* ================= THIS PHONE  (v6.9.447) =================
+     The Challan app's sheetAccount, in this app's modal chrome: who is signed in, what this phone
+     can do, Face ID on or off, the PIN held for passing (and the way to forget it), the owner's
+     own PIN, and Sign out. One button in the header opens it; nothing here is offered on every
+     screen any more. */
+  function modalAccount() {
+    var on = !!bioSaved();
+    return '<h2>This phone</h2>' +
+      '<p class="sub">Signed in as <b>' + esc(S.user) + '</b> &middot; ' + esc(S.role) + '</p>' +
+      '<div class="card" style="border-color:' + (on ? '#99f6e4' : '#e2e8f0') + ';background:' + (on ? '#f0fdfa' : '#fff') + ';padding:10px 12px">' +
+        '<div style="font-weight:700">Face ID / fingerprint ' + (on ? '<span class="pill teal">on</span>' : '<span class="pill">off</span>') + '</div>' +
+        '<div class="meta" style="font-size:12.5px">' + (bioAvailable()
+          ? 'The phone’s own lock in front of the app. Your fingerprint never leaves this phone.'
+          : 'This phone or browser cannot do it. Your PIN still works.') + '</div>' +
+        (bioAvailable() ? '<div class="acts" style="margin-top:6px">' + (on
+          ? '<button class="btn sm ghost" data-act="bio-off">Turn it off</button>'
+          : '<button class="btn sm" data-act="bio-on">Turn it on</button>') + '</div>' : '') +
+      '</div>' +
+      /* the way to forget the held PIN on purpose, before walking away from the counter.
+         Only drawn when there is one to forget. */
+      (passPinHave()
+        ? '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:10px 12px">' +
+          '<div style="font-weight:700">Your PIN is held for passing <span class="pill">' +
+          esc(passPinSince()) + '</span></div>' +
+          '<div class="meta" style="font-size:12.5px">Every pass is one tap until the app is closed. It is in memory only ' +
+          'and was never written to this phone.</div>' +
+          '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="pass-lock">Lock it now</button></div></div>'
+        : '') +
+      /* v6.9.231 - only the owner sets PINs, so the self-service button is his alone. The
+         server refuses the same thing for anyone else; this only hides a button that would
+         always have failed. */
+      (roleIs("admin")
+        ? '<div class="card" style="padding:10px 12px"><div style="font-weight:700">Your PIN</div>' +
+          '<div class="meta" style="font-size:12.5px">The one you sign in with. Team members’ PINs are set under Team.</div>' +
+          '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="pin-change">Change my PIN</button></div></div>'
+        : '') +
+      '<div class="foot"><button class="btn ghost" data-act="close">Close</button>' +
+      '<button class="btn danger" data-act="logout">Sign out</button></div>';
+  }
+
   function logout() {
     var held = 0, photos = 0;
     try { held = pendCount(); } catch (e) {}
@@ -28922,6 +29244,8 @@ function viewCatalogue() {
     try { bigDel(snapKey()); } catch (e) {}
     try { bigDel(LOGO_STORE); } catch (e) {}
     S.pin = ""; S.user = ""; S.role = ""; S.data = null; S.warmStart = false;
+    passPinClear();   /* v6.9.447 - a held pass PIN never outlives the man who typed it */
+    S.modal = null;   /* v6.9.447 - Sign out is on the account sheet now; the sheet must not outlive the sign-in */
     renderLogin((held || photos)
       ? "Signed out. " + (held ? held + " record(s)" : "") + (held && photos ? " and " : "") +
         (photos ? photos + " receipt photo(s)" : "") + " not yet uploaded are kept on this phone and go up on the next sign-in."
@@ -32493,15 +32817,17 @@ function viewCatalogue() {
       'style="flex:1;min-width:110px;max-width:380px;margin:0 14px;padding:9px 14px;border:1px solid #cbd5e1;border-radius:20px;font-size:14px;outline:none;background:#fff"/>' +
       '<div class="who"><b>' + esc(S.user) + '</b><span class="pill teal">' + esc(S.role) + '</span>' +
       '<div style="margin-top:4px;display:flex;gap:4px;justify-content:flex-end">' +
-      (bioAvailable() ? (bioSaved()
-        ? '<button class="btn sm ghost" data-act="bio-off">Face ID on</button>'
-        : '<button class="btn sm ghost" data-act="bio-on">Enable Face ID</button>') : '') +
       '<button class="btn sm" data-act="app-refresh" title="Reload the app fresh — latest version and all updates">&#8635; Refresh</button>' +
-      /* v6.9.231 - only the owner sets PINs, so the self-service button is his alone.
-         The server refuses the same thing for anyone else; this only hides a button
-         that would always have failed. */
-      (roleIs("admin") ? '<button class="btn sm ghost" data-act="pin-change">PIN</button>' : '') +
-      '<button class="btn sm ghost" data-act="logout">Sign out</button></div></div></div>';
+      /* ================= ONE BUTTON WHERE THERE WERE FOUR  (v6.9.447, 8 Sep 2026) ==========
+         Measured on the inspection of 8 Sep: at 390px about 43% of the first screen was chrome,
+         and this row - Enable Face ID, Refresh, PIN, Sign out - was a third of that, with
+         "Enable Face ID" offered on every screen for ever. Adding the one-tap pass's Lock
+         wrapped it onto a second line (run_crm_pass.mjs, 02_after_first.png). Face ID, the
+         held PIN's Lock, PIN and Sign out now live on the account sheet - the Challan app's
+         "This phone", brought across - and Refresh stays, because it is the one he taps. */
+      '<button class="btn sm ghost" data-act="account" title="This phone: Face ID, your PIN, Lock, Sign out">' +
+        'Account' + (passPinHave() ? ' <span class="pill" style="background:#fef3c7;color:#92400e;margin-left:2px">PIN held</span>' : '') + '</button>' +
+      '</div></div></div>';
 
     var label = {};
     tabs.forEach(function (t) { label[t[0]] = t[1]; });
@@ -32981,6 +33307,22 @@ function viewCatalogue() {
       }).catch(function () { boxFail(bx); });
     });
 
+    /* v6.9.447 - the three PIN sheets: the box takes focus and Enter presses the button, as the
+       system dialog's Enter did. Wired once per paint; the box is new each time. */
+    var wirePin = function (boxId, goAct) {
+      var pb = el(boxId);
+      if (!pb || pb._pinWired) return;
+      pb._pinWired = 1;
+      pb.addEventListener("keydown", function (ev) {
+        if (ev.key !== "Enter") return;
+        ev.preventDefault();
+        var gb = document.querySelector('[data-act="' + goAct + '"]');
+        if (gb) gb.click();
+      });
+      try { pb.focus(); } catch (e) {}
+    };
+    wirePin("pass_pin", "pass-pin-go"); wirePin("op_pin", "op-pin-go"); wirePin("disc_pin", "disc-pin-go");
+
     /* v6.9.436 - the signed paper. Read on the change event, never at save time: a repaint
        empties a file input, and the man would press Attach with nothing chosen. Same two kinds
        the old-hisab box takes - a PDF goes up as it is, a photograph is wrapped into a PDF. */
@@ -33218,6 +33560,107 @@ function viewCatalogue() {
       render(); return;
     }
     if (act === "logout") { logout(); return; }
+    /* ---- THE PIN, ONCE PER APP OPENING  (v6.9.447) ---- */
+    if (act === "pass-lock") {
+      passPinClear();
+      if (S.modal && modalKey(S.modal) === "This phone") S.modal = modalAccount();   /* the card goes */
+      render();
+      toast("Locked. The next pass will ask for your PIN."); return;
+    }
+    if (act === "account") { S.modal = modalAccount(); render(); return; }
+    if (act === "pin-later") { if (String(S.pinSet).toUpperCase() === "Y") { S.modal = null; render(); } return; }
+    if (act === "pass-pin-go") {
+      var pv = el("pass_pin") ? String(el("pass_pin").value || "").trim() : "";
+      if (!pv) { pinNote("pass_pin", "Type your PIN first."); return; }
+      passPinSet(pv);
+      var pAgain = _passAsk, pAct = _passAskAct;
+      _passAsk = null; _passAskAct = "";
+      S.modal = null; render();
+      /* he pressed a button, not "type a PIN" - so finish the button he pressed. A challan at
+         Approved was DISPATCHED, and resuming it as a pass would re-stamp approvedBy. The cheap
+         guards run again: the seconds spent typing are seconds a receipt could have landed in. */
+      var c9 = pAgain ? (S.data.challans || []).filter(function (x) { return String(x.id) === String(pAgain); })[0] : null;
+      if (!c9) return;
+      if (chArrived(c9)) { toast("The receipt for " + c9.challanNo + " is already in — this delivery has arrived."); return; }
+      S.chMoving = S.chMoving || {};
+      if (S.chMoving[c9.id]) { toast("Still saving " + c9.challanNo + " — one moment."); return; }
+      if (pAct === "ch-dispatch") { doMove(c9, "Dispatched", passPinGet()); return; }
+      if (pAct === "ch-approve") { doMove(c9, "Approved", passPinGet()); return; }
+      doPass(c9, passPinGet());
+      return;
+    }
+    /* ---- the previous balance: the PIN typed in the app's own sheet, checked by the server ---- */
+    if (act === "op-pin-back") {
+      var opb = S.opPend;
+      S.modal = opb ? modalOpening(opb.n) : null; render(); return;
+    }
+    if (act === "op-pin-go") {
+      if (!canSetOpening()) { toast("Only the owner can change a previous balance."); return; }
+      var opP = S.opPend;
+      if (!opP) { S.modal = null; render(); return; }
+      var opN = opP.n, opC = clientByName(opN);
+      if (!opC) { toast("That client is no longer on this screen."); S.opPend = null; S.modal = null; render(); return; }
+      var opOld = opP.old, opNew = opP.neu, opWhy = opP.why;
+      var opPin = el("op_pin") ? String(el("op_pin").value || "").trim() : "";
+      if (!opPin) { pinNote("op_pin", "Type your PIN first. Nothing was changed."); return; }
+      /* ===== THE PIN, ON ITS OWN SHEET (v6.9.447). HE TYPES IT, THE SERVER CHECKS IT, NOBODY STORES IT.
+         Still the LAST thing before the write - the form is behind this sheet and the figure
+         cannot sit in a field while he is called away. Checked through teamAuth, which runs the
+         same pinRowMatch_ that guards releasing material at the godown - against HIS OWN row on
+         the team sheet. Nothing in this handler compares a PIN locally, and nothing holds one. */
+      var opBtn = t; if (opBtn) { opBtn.disabled = true; opBtn.textContent = "Checking…"; }
+      api("teamAuth", { pin: opPin, ua: navigator.userAgent }).then(function (r) {
+        /* Wrong PIN, or a name the sheet does not know. Say which, and change nothing. */
+        if (!r || !r.ok) {
+          if (opBtn) { opBtn.disabled = false; opBtn.textContent = "Change it"; }
+          pinNote("op_pin", (r && r.error) || "Wrong PIN. Nothing was changed."); return;
+        }
+        /* The role is read off the SERVER'S reply, not off S.role - so a local role that has
+           been tampered with cannot walk past this. Belt and braces on the one screen that can
+           move Rs 8,00,799 with one number. */
+        var sRole = String((r.user && r.user.role) || "").toLowerCase();
+        if (sRole.indexOf("admin") < 0) {
+          if (opBtn) { opBtn.disabled = false; opBtn.textContent = "Change it"; }
+          pinNote("op_pin", "The server says this sign-in is not the owner's. Nothing was changed.");
+          return;
+        }
+        /* THE TRAIL FIRST, THEN THE FIGURE. The row carries BOTH numbers, so it can be held
+           against the sheet afterwards and checked. Nothing is deleted: the old balance lives
+           on in this row for as long as the audit tab does. */
+        save("audit", {
+          id: "", createdAt: new Date().toISOString(), actor: S.user, action: OPEN_ACT,
+          target: opN + " / previous balance",
+          detail: JSON.stringify({ client: opN, old: opOld, neu: opNew,
+                                   moved: opNew - opOld, why: opWhy }),
+          ip: ""
+        });
+        save("clients", Object.assign({}, opC, { openingAmt: String(opNew) }));
+        _opnCache = null; _stlCache = null; _clDueCache = null; _hsbCache = null;
+        try { snapSave(); } catch (e) { }
+        S.opPend = null;
+        S.modal = null;
+        render();
+        toast("Previous balance for " + opN + " is now " + money(opNew) +
+              " (was " + money(opOld) + "). The change is on the record with your name on it.");
+      }).catch(function () {
+        if (opBtn) { opBtn.disabled = false; opBtn.textContent = "Change it"; }
+        pinNote("op_pin", "Could not reach the server to check your PIN. NOTHING was changed — try again when there is signal.");
+      });
+      return;
+    }
+    /* ---- a pre-set discount: the PIN in the app's own sheet, three minutes of edits per PIN ---- */
+    if (act === "disc-pin-go") {
+      if (!roleIs("admin")) return;
+      var dpd = S.discPend;
+      if (!dpd) { S.modal = null; render(); return; }
+      var dpin = el("disc_pin") ? String(el("disc_pin").value || "").trim() : "";
+      if (!dpin) { pinNote("disc_pin", "Type your PIN first. The discount is unchanged."); return; }
+      if (String(dpin) !== String(S.pin)) { pinNote("disc_pin", "PIN incorrect — discount not changed."); return; }
+      S.discPinAt = Date.now();
+      S.discPend = null; S.modal = null;
+      discLineApply(dpd.chId, dpd.code, dpd.value);
+      return;
+    }
     /* Clicking the dimmed background no longer closes a popup - a stray click while making a
        challan used to wipe the whole form. Popups now close ONLY via their Cancel/Close button.
        The mask still swallows the click so the main screen stays inert underneath. */
@@ -34498,6 +34941,7 @@ function viewCatalogue() {
     }
     if (act === "op-open") {
       if (!canSetOpening()) { toast("Only the owner can change a previous balance."); return; }
+      S.opPend = null;
       S.modal = modalOpening(t.getAttribute("data-n") || ""); render(); return;
     }
     if (act === "op-save") {
@@ -34512,55 +34956,20 @@ function viewCatalogue() {
       var opWhy = String(val("op_why") || "").trim();
       if (opWhy.length < 4) { toast("Say in a few words why it is being changed. It goes on the record beside the figure."); return; }
       if (opNew === opOld) { toast("That is the figure it already carries. Nothing changed."); return; }
-      /* ===== THE PIN. HE TYPES IT, THE SERVER CHECKS IT, NOBODY STORES IT =====
-         Asked here and not on the form, so it is the LAST thing before the write and cannot sit
-         in a field while he is called away. Checked through teamAuth, which runs the same
-         pinRowMatch_ that guards releasing material at the godown - against HIS OWN row on the
-         team sheet. Nothing in this app compares a PIN locally, and this does not either. */
-      /* v6.9.368 - the prompt shows the RESULTING BALANCE, not just the size of the move.
-         Rendered and looked at first: the form says "Balance today Rs 10,049" and then asked him
-         to commit to a figure whose effect on that number he had to work out in his head. The
-         balance is what he actually cares about, so it is on the last screen before the write.
-         moneyAscii, because a window.prompt is not HTML and "Rs." is what it can show. */
+      /* v6.9.447 - THE PIN IS ASKED ON ITS OWN SHEET, not in window.prompt. Still the LAST thing
+         before the write, still checked by the server against his own row (op-pin-go), still
+         never compared or kept on this device. What he typed on the form rides in S.opPend so
+         Back returns him to it with nothing lost. The sheet shows the RESULTING BALANCE, not
+         just the size of the move - the balance is the number he actually cares about. */
       var opDue = clientLedger(opN).due, opWill = opDue + (opNew - opOld);
-      var opPin = window.prompt(
-        "Enter your PIN to change the previous balance\n\n" + opN +
-        "\n" + moneyAscii(opOld) + "  ->  " + moneyAscii(opNew) +
-        "\n\nWhat he owes moves by " + moneyAscii(Math.abs(opNew - opOld)) + ".\n" +
-        "Balance would go from " + moneyAscii(opDue) + " to " + moneyAscii(opWill) + ".");
-      if (!opPin) { toast("Nothing was changed."); return; }
-      toast("Checking your PIN…");
-      api("teamAuth", { pin: opPin, ua: navigator.userAgent }).then(function (r) {
-        /* Wrong PIN, or a name the sheet does not know. Say which, and change nothing. */
-        if (!r || !r.ok) { toast((r && r.error) || "Wrong PIN. Nothing was changed."); return; }
-        /* The role is read off the SERVER'S reply, not off S.role - so a local role that has
-           been tampered with cannot walk past this. Belt and braces on the one screen that can
-           move Rs 8,00,799 with one number. */
-        var sRole = String((r.user && r.user.role) || "").toLowerCase();
-        if (sRole.indexOf("admin") < 0) {
-          toast("The server says this sign-in is not the owner's. Nothing was changed.");
-          return;
-        }
-        /* THE TRAIL FIRST, THEN THE FIGURE. The row carries BOTH numbers, so it can be held
-           against the sheet afterwards and checked. Nothing is deleted: the old balance lives
-           on in this row for as long as the audit tab does. */
-        save("audit", {
-          id: "", createdAt: new Date().toISOString(), actor: S.user, action: OPEN_ACT,
-          target: opN + " / previous balance",
-          detail: JSON.stringify({ client: opN, old: opOld, neu: opNew,
-                                   moved: opNew - opOld, why: opWhy }),
-          ip: ""
-        });
-        save("clients", Object.assign({}, opC, { openingAmt: String(opNew) }));
-        _opnCache = null; _stlCache = null; _clDueCache = null; _hsbCache = null;
-        try { snapSave(); } catch (e) { }
-        S.modal = null;
-        render();
-        toast("Previous balance for " + opN + " is now " + money(opNew) +
-              " (was " + money(opOld) + "). The change is on the record with your name on it.");
-      }).catch(function () {
-        toast("Could not reach the server to check your PIN. NOTHING was changed — try again when there is signal.");
-      });
+      S.opPend = { n: opN, old: opOld, neu: opNew, why: opWhy, due: opDue, will: opWill };
+      S.modal = sheetMoneyPin("Your PIN to change the previous balance",
+        '<b>' + esc(opN) + '</b><br>' + money(opOld) + ' &rarr; <b>' + money(opNew) + '</b><br>' +
+        'What he owes moves by <b>' + money(Math.abs(opNew - opOld)) + '</b>. ' +
+        'Balance would go from ' + money(opDue) + ' to <b>' + money(opWill) + '</b>.<br>' +
+        '<span style="color:#64748b">Checked by the server against your own record. Cancelling changes nothing.</span>',
+        "op_pin", "op-pin-go", "Change it", "op-pin-back");
+      render();
       return;
     }
     if (act === "pa-open") {
@@ -36909,8 +37318,9 @@ function viewCatalogue() {
       var step = function () {
         if (i >= list.length) {
           S.coPin = failN ? "" : S.coPin;
-          toast(okN + " partner bheje" + (failN ? ", " + failN + " reh gaye" : "") +
-                ". Kul " + ptsN + " point.");
+          /* v6.9.447 - English, as every screen of this app is (house rule: Hinglish is Saathi's) */
+          toast(okN + " partner(s) sent" + (failN ? ", " + failN + " did not go" : "") +
+                ". " + ptsN + " points in all.");
           return;
         }
         var a = list[i++];
@@ -38117,98 +38527,12 @@ function viewCatalogue() {
         }, true);
       }
 
-      var ppin = window.prompt("Enter your PIN to PASS AND DISPATCH" +
-        "\n\n" + pc.challanNo + " - " + pc.customerName +
-        "\n\nThis releases material. It is not a formality.");
-      if (!ppin) return;
-
-      var pPrev = pc.status, pPrevBy = pc.approvedBy || "";
-      pc.status = "Dispatched"; pc.approvedBy = S.user;
-      toast("Passed and dispatched.");
-      render();
-      S.chMoving[id] = true;
-      _moving++;
-      var pDone = function () { if (_moving > 0) _moving--; };
-      var pBack = function (msg) {
-        pc.status = pPrev; pc.approvedBy = pPrevBy; chMoveForget(id);
-        S.chMoving[id] = false; pDone(); toast(msg || "Could not pass it \u2014 reverted."); render();
-      };
-      var pHalf = function (msg) {
-        /* the pass landed, the dispatch did not. Show the truth: Approved, with its own door. */
-        pc.status = "Approved"; chMoveRemember(id, "Approved", S.user);
-        S.chMoving[id] = false; pDone();
-        toast(msg || (pc.challanNo + " is passed but NOT dispatched. Press Dispatch on it."));
-        /* ---- AND THE GROUP IS TOLD  (v6.9.390) ----
-           HIS WORDS: "sometimes some challan left undispatched". THIS is where they come from -
-           two calls, one PIN, and the second one fails. Until now the only trace was a toast on
-           one phone, which is gone the moment he changes screen. Now the dispatch group gets the
-           challan with a live button on it, and that button stays there until it really leaves.
-           Best effort: if this does not go, nothing is worse than it was a minute ago. */
-        try { api("tgDispatchPost", { id: id }); } catch (e) {}
-        render();
-      };
-
-      /* v6.9.390 - noTg: this pair means to dispatch a second later, so the backend must not
-         post a "not dispatched yet" message to the group and then edit it away again. If the
-         dispatch half fails, pHalf() asks for that message explicitly - see there. */
-      /* ---- ONE ROUND TRIP WHERE THERE WERE TWO  (v6.9.435, 7 Sep 2026) ----
-         HIS WORDS, about the godown app: "pass and dispatch process in very slop ... make it
-         fast and effective". Both apps pass the same way and both make TWO calls, and this
-         backend's CHEAPEST call - teamStamp, one property read, no sheet touched - is 2.1
-         seconds from his machine, measured. A pass is therefore never under four.
-
-         `andDispatch` asks the server to stamp the approval AND release it in the same call.
-         A server that does not know the word moves it to Approved and says so, and the second
-         call below runs exactly as it always has - so this is correct against either version
-         and takes two seconds off the day the backend is updated. The reply's own `status` is
-         what decides, not a version number we would have to keep in step. */
-      api("challanMove", { id: id, to: "Approved", approvePin: ppin, andDispatch: 1, noTg: 1 }).then(function (r1) {
-        if (!r1 || !r1.ok) { pBack(r1 && r1.error); return; }
-        pc.approvedBy = r1.by || S.user;
-        chMoveRemember(id, "Approved", r1.by || S.user);
-        if (String(r1.status || "") === "Dispatched") {
-          /* the server did both. Everything below that follows a successful dispatch, once. */
-          S.chMoving[id] = false; pDone();
-          chMoveRemember(id, "Dispatched", r1.by || S.user);
-          S.dispatchSent = S.dispatchSent || {};
-          if (S.dispatchSent[id]) return;
-          S.dispatchSent[id] = true;
-          return sendChallanPdf(pc, "TG_DISPATCH",
-            "<b>DISPATCH: " + pc.challanNo + "</b>\n" + pc.customerName +
-            (pc.driver ? "\nDriver: " + pc.driver : "") +
-            "\nPassed by <b>" + (pc.approvedBy || S.user) + "</b>", pc.approvedBy || S.user)
-            .then(function (tg) {
-              if (!tg || !tg.ok) toast("Dispatched — but the Telegram message did not go. Download the PDF and send it manually.");
-            })
-            .catch(function () { toast("Dispatched — Telegram send failed. Download the PDF and send it manually."); });
-        }
-        return api("challanMove", { id: id, to: "Dispatched", approvePin: ppin }).then(function (r2) {
-          S.chMoving[id] = false; pDone();
-          if (!r2 || !r2.ok) { pHalf(r2 && r2.error); return; }
-          chMoveRemember(id, "Dispatched", r2.by || S.user);
-          /* the dispatch bot gets exactly one copy, guard set BEFORE the send */
-          S.dispatchSent = S.dispatchSent || {};
-          if (S.dispatchSent[id]) return;
-          S.dispatchSent[id] = true;
-          sendChallanPdf(pc, "TG_DISPATCH",
-            "<b>DISPATCH: " + pc.challanNo + "</b>\n" + pc.customerName +
-            (pc.driver ? "\nDriver: " + pc.driver : "") +
-            "\nPassed by <b>" + (pc.approvedBy || S.user) + "</b>", pc.approvedBy || S.user)
-            .then(function (tg) {
-              if (!tg || !tg.ok) toast("Dispatched \u2014 but the Telegram message did not go. Download the PDF and send it manually.");
-            })
-            .catch(function () { toast("Dispatched \u2014 Telegram send failed. Download the PDF and send it manually."); });
-        });
-      }).catch(function () {
-        /* No answer at all. The row STAYS moved and he is told plainly not to do it twice -
-           the same rule as v6.9.312: a deadline is a fact about how long WE waited, not about
-           what the server did. */
-        S.chMoving[id] = false; pDone();
-        chMoveRemember(id, "Dispatched", S.user);
-        toast("Sent, but the server did not answer in time. It may already be done \u2014 do NOT " +
-              "do it again. The next refresh will show the truth.");
-        render();
-      });
+      /* v6.9.447 - ONE TAP once the PIN is held. The first pass after opening the app puts the
+         app's own sheet up; every one after that goes straight through. window.prompt is gone:
+         a system dialog on a phone is slow to appear, blocks every other event while it is up,
+         and is the easiest thing on a small screen to mis-tap. Same code as Challan 1.51.0. */
+      if (!passPinHave()) { _passAsk = String(id || ""); _passAskAct = "ch-pass"; S.modal = sheetPassPin(pc, "ch-pass"); render(); return; }
+      doPass(pc, passPinGet());
       return;
     }
     /* ---- THE WAY OUT, AND IT IS HIS HAND ON IT  (v6.9.387) ----
@@ -38304,75 +38628,10 @@ function viewCatalogue() {
            thing that used to send the dispatch bot TWO copies. */
         S.chMoving = S.chMoving || {};
         if (S.chMoving[id]) { toast("Still saving " + ch2.challanNo + " — one moment."); return; }
-        var pin = window.prompt("Enter your PIN to " + (to === "Approved" ? "APPROVE" : "DISPATCH") +
-          "\n\n" + ch2.challanNo + " - " + ch2.customerName +
-          "\n\nThis releases material. It is not a formality.");
-        if (!pin) return;
-        /* SNAPPY: flip the status and redraw INSTANTLY so approving many challans feels immediate.
-           The server still validates the PIN in the background; if it refuses, we revert the row
-           and tell the user. No quietSync round-trip on success - the local state already matches. */
-        var prevStatus = ch2.status, prevBy = ch2.approvedBy || "";
-        ch2.status = to;
-        if (to === "Approved") { ch2.approvedBy = S.user; toast("Approved."); }
-        else { toast("Dispatched."); }
-        render();
-        S.chMoving[id] = true;
-        _moving++;                       /* v6.9.292 - quietSync waits while this is in flight */
-        var _mdone = function () { if (_moving > 0) _moving--; };
-        /* ===== REFUSED IS NOT THE SAME AS NO ANSWER (v6.9.312) =====
-           He reported: "i have to approve challan 2 to 3 times, like approved show dispatch,
-           suddenly again go back to approve".
-
-           This is why. On ANY failure - including the deadline simply expiring - the row was
-           put back and he was told it had not happened. But a deadline is a fact about how
-           long WE waited, not about what the SERVER did. challanMove holds a lock, rewrites
-           the row and (on a receipt) called Telegram; when that ran past 30 seconds the app
-           announced the approval had failed for material that was, on the sheet, approved.
-           So he approved it again. Same shape as "No signal - nothing was recorded", which
-           this estate has already been bitten by once in the Payment app.
-
-           refuse() is for an answer we actually got - wrong PIN, not your role. That is known,
-           so the row goes back.
-           unsure() is for no answer at all. The row STAYS moved, the memory is kept so a pull
-           taken before the write cannot undo it, and he is told plainly not to do it twice. */
-        var refuse = function (msg) {
-          ch2.status = prevStatus; ch2.approvedBy = prevBy;
-          chMoveForget(id);              /* the server said no - nothing to re-apply */
-          toast(msg || ("Could not " + (to === "Approved" ? "approve" : "dispatch") + " - reverted."));
-          render();
-        };
-        var unsure = function () {
-          chMoveRemember(id, to, S.user); /* keep it: the server may well have done it */
-          toast((to === "Approved" ? "Approval" : "Dispatch") + " sent, but the server did not " +
-                "answer in time. It may already be done \u2014 do NOT do it again. The next " +
-                "refresh will show the truth.");
-          render();
-        };
-        var revert = refuse;
-        api("challanMove", { id: id, to: to, approvePin: pin }).then(function (r) {
-          S.chMoving[id] = false; _mdone();
-          if (!r || !r.ok) { revert(r && r.error); return; }
-          /* v6.9.292 - the server has confirmed it. Remember it, so a teamGet answering from a
-             copy taken before this write cannot put the row back to Draft and make him type his
-             PIN again for material already released. */
-          chMoveRemember(id, to, r.by || S.user);
-          if (to === "Approved") { ch2.approvedBy = r.by || S.user; render(); return; }
-          /* Notify the dispatch bot AT MOST ONCE per challan. Even if an earlier attempt looked like
-             it failed and the user dispatched again, the bot gets exactly one copy. Set the guard
-             BEFORE sending so two near-simultaneous sends can never both pass it. */
-          S.dispatchSent = S.dispatchSent || {};
-          if (S.dispatchSent[id]) { toast("Already sent to dispatch bot."); return; }
-          S.dispatchSent[id] = true;
-          sendChallanPdf(ch2, "TG_DISPATCH",
-            "<b>DISPATCH: " + ch2.challanNo + "</b>\n" + ch2.customerName +
-            (ch2.driver ? "\nDriver: " + ch2.driver : "") +
-            "\nApproved by <b>" + (ch2.approvedBy || r.by) + "</b>", ch2.approvedBy || r.by)
-            .then(function (tg) {
-              if (tg && tg.ok) { toast("Sent to dispatch bot."); }
-              else { toast("Dispatched — but the Telegram message didn't go. Download the PDF and send it manually."); }
-            })
-            .catch(function () { toast("Dispatched — Telegram send failed. Download the PDF and send it manually."); });
-        }).catch(function () { S.chMoving[id] = false; _mdone(); unsure(); });
+        /* v6.9.447 - the same held PIN as the pass. A challan sitting at Approved is dispatched
+           with one tap too, once the PIN has been given for this app opening. */
+        if (!passPinHave()) { _passAsk = String(id || ""); _passAskAct = (to === "Approved" ? "ch-approve" : "ch-dispatch"); S.modal = sheetPassPin(ch2, _passAskAct); render(); return; }
+        doMove(ch2, to, passPinGet());
         return;
       }
       /* SNAPPY: flip instantly, validate in the background, revert on refusal (no full refresh). */
@@ -38828,33 +39087,23 @@ function viewCatalogue() {
       if (!bit) return;
       /* v6.9.123: a pre-set discount can only be changed in HISAB after a PIN confirmation. The PIN
          is the same one used to sign in (the user types it — never stored in the box). One confirm
-         unlocks discount edits for 3 minutes so a multi-line change is not nagged on every field. */
+         unlocks discount edits for 3 minutes so a multi-line change is not nagged on every field.
+         v6.9.447 - asked in the app's own sheet, not window.prompt; the typed value waits in
+         S.discPend and is applied by disc-pin-go. The repaint under the sheet puts the box back
+         to the stored discount, which is the truth until the PIN is right. */
       var _now = Date.now();
       if (!(S.discPinAt && (_now - S.discPinAt) < 180000)) {
-        var dpin = window.prompt("Enter your PIN to change a pre-set discount.\n\n" +
-          bch.customerName + " — " + (bit.desc || bit.code || "") + "\nNew discount: " + (Number(t.value) || 0) + "%\n\n" +
-          "Discounts are pre-set — changing one is a deliberate action.");
-        if (!dpin || String(dpin) !== String(S.pin)) {
-          if (dpin) toast("PIN incorrect — discount not changed.");
-          render();   /* redraw reverts the box to the stored discount */
-          return;
-        }
-        S.discPinAt = _now;
+        S.discPend = { chId: bch.id, code: bit.code, value: String(t.value || "") };
+        S.modal = sheetMoneyPin("Your PIN to change a pre-set discount",
+          '<b>' + esc(bch.customerName) + '</b> \u2014 ' + esc(bit.desc || bit.code || "") + '<br>' +
+          'New discount: <b>' + (Number(t.value) || 0) + '%</b><br>' +
+          '<span style="color:#64748b">Discounts are pre-set \u2014 changing one is a deliberate action. ' +
+          'One PIN unlocks discount changes for three minutes.</span>',
+          "disc_pin", "disc-pin-go", "Change it", "");
+        render();
+        return;
       }
-      /* v6.9.209: clamped. 100 typed by mistake zeroed the line; a minus sign over-billed him. */
-      /* ============ 44.5 IS A DISCOUNT (v6.9.379, 30 Aug 2026) ============
-         HIS WORDS: "make provision that we can enter discount like 44.5 , decimal its not
-         supporting now". Math.round() turned 44.5 into 45 the moment he left the box - and
-         said nothing, so the number he typed simply was not the number that was billed.
-
-         The box was already inputmode="decimal" and the client's PRESET has always taken a
-         decimal (disc-saveall stores Number(g.pct)), as has every incentive rate - his plumber
-         is on 4.2%. This one line was the only place a discount was forced to a whole number.
-         Two decimal places, which is a paisa on a lakh, and the clamp is unchanged. */
-      var _raw = num(t.value);
-      var _nd = Math.max(0, Math.min(90, Math.round(_raw * 100) / 100));
-      if (Math.abs(_nd - _raw) > 0.0001) toast("Discount kept within 0-90%.");
-      bit.disc = _nd; bch.itemsJson = JSON.stringify(bitems); save("challans", bch); render();
+      discLineApply(bch.id, bit.code, t.value);
       return;
     }
     if (t.classList && (t.classList.contains("dsc") || t.classList.contains("incp"))) {
