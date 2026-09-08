@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.440";
+  var APP_VERSION = "6.9.441";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -532,7 +532,7 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","changelog","dups","stock","brief"],
+    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","changelog","booksweep","dups","stock","brief"],
     accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","dups","stock"],
     godown:   ["dash","returns","tools","challans","products","stock"],
     sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products","dups","brief"],
@@ -25749,7 +25749,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["changelog", "Change log"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Client dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -25886,6 +25886,163 @@ function viewCatalogue() {
                   ["clients", "Clients"], ["discounts", "Rates"], ["returns", "Returns"],
                   ["quotes", "Quotes"], ["team", "Team"]];
   var CLG_DAYS = [[1, "Today"], [7, "7 days"], [30, "30 days"], [90, "90 days"], [3650, "Everything"]];
+
+  /* ================= THE BOOK NUMBERS TYPED INTO THE SITE BOX  (v6.9.441) ============
+     HIS WORDS, pointing at a statement where the PTRS column read "4 items + freight ·
+     CH52-15/7/26": "that code starting from CH, like CH52-15/7/26, CH18-30/7/26, these all are
+     book no, fix these for all clients".
+
+     MEASURED ON HIS OWN BOOK BEFORE ANY OF THIS WAS WRITTEN, 8 September:
+       · 169 challans, 49 with something in the site box, and 40 of those are book numbers.
+       · 39 of the 40 are the code and nothing else.
+       · ONE is mixed: "Eldeco { CH18-26/6/26)" - a real site AND a book number in one box. A
+         blind sweep would have lost the word Eldeco.
+       · ONE CLASHES: JAGDISH134/280726/002 already has CH91-14/7/26 filed, and its site box
+         says CH9-14/7/26. One of those is a typo and only he knows which.
+       · one is lower case (ch38-5/8/26), which is a book number too.
+
+     That is why this is a screen and not a sweep. Nothing is written until he presses the
+     button, the clash arrives UNTICKED, and every line shows what is there now beside what
+     would be filed.
+
+     IT WRITES THROUGH saveManualNo - the one writer the card's button and the statement's box
+     both use - so nothing is overwritten: the audit row is appended and the newest wins. THE
+     SITE BOX IS NOT TOUCHED unless he ticks the second box himself, and even then the mixed
+     one keeps "Eldeco" rather than being blanked. */
+  var BK_RE = /(?:^|[\s,;·|(){}\[\]\/-])((?:ch|CH|Ch|cH)\s*-?\s*\d{1,4}\s*-\s*\d{1,2}\/\d{1,2}\/\d{2,4})/;
+  function bkSplit(site) {
+    var t = String(site || "").trim();
+    if (!t) return null;
+    var m = t.match(BK_RE);
+    if (!m) return null;
+    var code = String(m[1]).trim();
+    var rest = t.replace(m[1], "").replace(/^[\s,;·|(){}\[\]\/-]+/, "")
+                .replace(/[\s,;·|(){}\[\]\/-]+$/, "").trim();
+    return { code: code, rest: rest };
+  }
+  function bkFind() {
+    var out = [];
+    (S.data.challans || []).forEach(function (c) {
+      var sp = bkSplit(c.site);
+      if (!sp) return;
+      var filed = manualNoFor(c);
+      out.push({ id: String(c.id || ""), no: String(c.challanNo || ""), cl: String(c.customerName || ""),
+                 site: String(c.site || ""), code: sp.code, rest: sp.rest, filed: String(filed || ""),
+                 state: !filed ? "new" : (filed === sp.code ? "same" : "clash") });
+    });
+    out.sort(function (a, b) { return String(a.cl).localeCompare(String(b.cl)) || String(a.no).localeCompare(String(b.no)); });
+    return out;
+  }
+  function bkTicked(id) {
+    if (!S.bkTick) return null;
+    return S.bkTick[id];
+  }
+  function bkDefaultTicks(rows) {
+    var t = {};
+    rows.forEach(function (r) { t[r.id] = (r.state === "new"); });   /* a clash arrives UNTICKED */
+    return t;
+  }
+
+  function viewBookSweep() {
+    if (!roleIs("admin")) {
+      return '<div class="empty">Filing book numbers against deliveries is a partner\'s job.</div>';
+    }
+    var rows = bkFind();
+    if (!S.bkTick) S.bkTick = bkDefaultTicks(rows);
+    var nNew = rows.filter(function (r) { return r.state === "new"; }).length;
+    var nSame = rows.filter(function (r) { return r.state === "same"; }).length;
+    var nClash = rows.filter(function (r) { return r.state === "clash"; }).length;
+    var nMix = rows.filter(function (r) { return !!r.rest; }).length;
+    var on = rows.filter(function (r) { return !!S.bkTick[r.id]; }).length;
+
+    var h = '<div class="card"><h3 style="margin:0 0 2px">Book numbers typed into the site box</h3>' +
+      '<div class="meta">His words: <i>"that code starting from CH, like CH52-15/7/26, these all are ' +
+      'book no, fix these for all clients"</i>.<br>' +
+      'Every delivery whose <b>site</b> box holds something shaped like a paper book number. Filing one ' +
+      'puts it in the BOOK NO column of the statement, on the challan card and in the PDF — through ' +
+      'the same writer the <b>+ Book no</b> button uses, so nothing is ever overwritten.</div>';
+
+    if (!rows.length) {
+      return h + '<div class="empty">Nothing on this book has a book number in its site box. ' +
+        'Either they have all been filed, or none was ever typed there.</div></div>';
+    }
+
+    h += '<div class="cards" style="margin-top:8px">' +
+      '<div class="stat"><div class="n">' + rows.length + '</div><div class="l">Found</div></div>' +
+      '<div class="stat"><div class="n" style="color:#0f766e">' + nNew + '</div><div class="l">No book number yet — ready to file</div></div>' +
+      (nSame ? '<div class="stat"><div class="n">' + nSame + '</div><div class="l">Already filed, and the same</div></div>' : '') +
+      (nClash ? '<div class="stat alert"><div class="n">' + nClash + '</div><div class="l">Clash — filed one thing, site box says another</div></div>' : '') +
+      '</div>';
+
+    if (nClash) {
+      h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2;padding:10px 12px">' +
+        '<b style="color:#b91c1c">' + nClash + ' delivery(ies) already carry a DIFFERENT book number.</b>' +
+        '<div class="meta" style="font-size:12.5px;color:#b91c1c;margin-top:4px">One of the two is a ' +
+        'typo and only you know which. They arrive <b>unticked</b>. Tick one only if the site box is ' +
+        'the right one — the number already filed stays on the sheet either way, as the record of ' +
+        'what was first entered.</div></div>';
+    }
+    if (nMix) {
+      h += '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:10px 12px">' +
+        '<b style="color:#92400e">' + nMix + ' box holds a real site name AND a book number.</b>' +
+        '<div class="meta" style="font-size:12.5px;color:#92400e;margin-top:4px">Shown in the SITE ' +
+        'column below. If you also tidy the site box, what is left of the name is kept — it is ' +
+        'never blanked.</div></div>';
+    }
+
+    h += '<div class="acts" style="margin:8px 0"><button class="btn sm ghost" data-act="bks-all">Tick every ready one</button>' +
+      '<button class="btn sm ghost" data-act="bks-none">Untick all</button>' +
+      '<div class="grow"></div>' +
+      '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:#b45309">' +
+      '<input type="checkbox" id="bks_site"' + (S.bkAlsoSite ? ' checked' : '') + ' data-act="bks-site"/>' +
+      'Also tidy the site box</label></div>' +
+      (S.bkAlsoSite
+        ? '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:9px 11px"><div class="meta" style="font-size:12.5px;color:#92400e">' +
+          'The book number will be <b>removed from the site box</b> on every ticked delivery. Where the box ' +
+          'holds a name as well, only the code goes. This is the one thing here that CHANGES a delivery ' +
+          'record rather than adding to the trail — leave it off and the site boxes stay exactly as they are.' +
+          '<br><br>Writing a site rewrites the whole delivery row, so this half needs a <b>fresh copy of ' +
+          'the book</b>: on a copy older than ten minutes it is refused and says so, rather than putting ' +
+          'back whatever the godown has changed since. The book numbers themselves are safe on any copy — ' +
+          'they are an appended row carrying nothing but the number.' +
+          (bookIsFresh() ? '' : '<br><b style="color:#b91c1c">This copy is ' + esc(bookAge(bookTs()).txt) +
+            ' — press the refresh arrow before ticking this.</b>') +
+          '</div></div>'
+        : '') +
+      '</div>';
+
+    var TH = function (x) {
+      return '<th style="padding:5px 6px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:left">' + esc(x) + '</th>';
+    };
+    h += '<div class="card" style="padding:8px 10px"><div style="overflow-x:auto;-webkit-overflow-scrolling:touch">' +
+      '<table style="border-collapse:collapse;font-size:12.5px;min-width:100%">' +
+      '<tr style="background:#0b3b36">' + TH("FILE?") + TH("CLIENT") + TH("CHALLAN NO") +
+      TH("WHAT THE SITE BOX HOLDS") + TH("BOOK NO TO FILE") + TH("ALREADY FILED") + '</tr>';
+    var cell = 'padding:4px 6px;white-space:nowrap;border-top:1px solid #e2e8f0';
+    rows.forEach(function (r, i) {
+      var bg = r.state === "clash" ? "#fef2f2" : (r.rest ? "#fffbeb" : (i % 2 ? "#f8fafc" : "#fff"));
+      h += '<tr style="background:' + bg + '">' +
+        '<td style="' + cell + '"><input type="checkbox" class="bkchk" data-act="bks-tick" data-id="' +
+          esc(r.id) + '"' + (S.bkTick[r.id] ? ' checked' : '') + '/></td>' +
+        '<td style="' + cell + ';font-weight:700;max-width:190px;overflow:hidden;text-overflow:ellipsis">' + esc(r.cl) + '</td>' +
+        '<td style="' + cell + ';font-size:12px;color:#475569">' + esc(r.no) + '</td>' +
+        '<td style="' + cell + ';max-width:230px;overflow:hidden;text-overflow:ellipsis" title="' + esc(r.site) + '">' +
+          esc(r.site) + (r.rest ? ' <span class="pill" style="background:#fef3c7;color:#92400e">keeps "' + esc(r.rest) + '"</span>' : '') + '</td>' +
+        '<td style="' + cell + ';font-weight:700;color:#0f766e">' + esc(r.code) + '</td>' +
+        '<td style="' + cell + ';font-size:12px;color:' + (r.state === "clash" ? "#b91c1c" : "#94a3b8") + '">' +
+          (r.filed ? esc(r.filed) + (r.state === "clash" ? ' ← differs' : ' · same') : '—') + '</td></tr>';
+    });
+    h += '</table></div></div>';
+
+    h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><div class="acts" style="align-items:center">' +
+      '<b class="grow" style="font-size:13.5px">' + on + ' of ' + rows.length + ' ticked</b>' +
+      '<button class="btn" data-act="bks-file" data-n="' + on + '">' +
+      (S.bkBusy ? esc(S.bkBusy) : 'File ' + on + ' book number' + (on === 1 ? '' : 's')) + '</button></div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:5px">They go up one at a time — this server ' +
+      'answers in about two seconds and firing forty at once makes every one of them slower. You can ' +
+      'leave this screen; what has gone up has gone up.</div></div>';
+    return h;
+  }
 
   function viewChangeLog() {
     if (!roleIs("admin")) {
@@ -31810,7 +31967,7 @@ function viewCatalogue() {
     ["Service",    ["service", "spares"]],
     ["Products",   ["products", "catalogue", "pricelist", "rates"]],
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins", "tools"]],
-    ["Today",      ["dash", "brief", "pending", "health", "changelog", "dups"]]
+    ["Today",      ["dash", "brief", "pending", "health", "changelog", "booksweep", "dups"]]
   ];
   /* The four hub tabs (v6.9.330 and before) still render if something lands on them - the two
      "Open Deliveries" buttons do - so they must light the right group. They are not listed as
@@ -32118,7 +32275,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, changelog: viewChangeLog, dups: viewDups, stock: viewStock, brief: viewBrief };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -35734,6 +35891,76 @@ function viewCatalogue() {
       }
       if (!piRow) { unlockBtn(t); toast("That entry has gone stale \u2014 open it again."); return; }
       payWrite(piRow, _gClick, t);
+      return;
+    }
+
+    /* ---- THE BOOK NUMBERS IN THE SITE BOX  (v6.9.441) ---- */
+    if (act === "bks-tick") {
+      var bkId = t.getAttribute("data-id") || "";
+      if (!S.bkTick) S.bkTick = {};
+      S.bkTick[bkId] = !S.bkTick[bkId];
+      keepScroll = true; render(); return;
+    }
+    if (act === "bks-all") {
+      S.bkTick = {}; bkFind().forEach(function (r) { if (r.state !== "same") S.bkTick[r.id] = true; });
+      keepScroll = true; render(); return;
+    }
+    if (act === "bks-none") { S.bkTick = {}; keepScroll = true; render(); return; }
+    if (act === "bks-site") { S.bkAlsoSite = !S.bkAlsoSite; keepScroll = true; render(); return; }
+    if (act === "bks-file") {
+      if (!roleIs("admin")) { toast("A partner files book numbers."); return; }
+      if (S.bkBusy) { toast("It is already going up — " + S.bkBusy); unlockBtn(t); return; }
+      var bkRows = bkFind().filter(function (r) { return !!(S.bkTick || {})[r.id]; });
+      if (!bkRows.length) { toast("Nothing is ticked."); unlockBtn(t); return; }
+      /* ONE AT A TIME. This backend answers the cheapest call it has in about two seconds
+         (measured 7 Sep: 2141 / 2334 / 1673 ms); forty at once makes every one of them slower
+         and is how a queue of forty becomes forty timeouts. */
+      /* ---- FOUND ON REVIEW, BEFORE THIS SHIPPED ----
+         The book-number half is an audit row: append-only, carrying nothing but the number, safe
+         on any copy of the book however old. Tidying the SITE BOX is a different animal. save()
+         deliberately sends the whole merged row (v6.9.124/365 - a partial write would blank every
+         column it did not carry), so writing `site` on a challan pushes THIS TAB'S WHOLE COPY of
+         that delivery back to the sheet. On a copy taken an hour ago that would quietly undo a
+         freight or a status the godown changed since - forty times over, in one press.
+         So the tidy half, and only the tidy half, requires a fresh book. bookIsFresh() is the
+         same ten-minute test the + Book no chip already uses to decide whether it may say a
+         number is absent. */
+      var bkAlso = !!S.bkAlsoSite, bkDone = 0, bkFail = 0, bkSkipSite = 0;
+      if (bkAlso && !bookIsFresh()) {
+        S.bkBusy = null; unlockBtn(t);
+        toast("This copy of the book is " + bookAge(bookTs()).txt + ". Press the refresh arrow " +
+              "first \u2014 tidying the site box rewrites the whole delivery row, and an old copy " +
+              "would put back whatever the godown has changed since.");
+        render(); return;
+      }
+      var step = function (i) {
+        if (i >= bkRows.length) {
+          S.bkBusy = null; S.bkTick = null;
+          toast(bkDone + " book number" + (bkDone === 1 ? "" : "s") + " filed" +
+                (bkFail ? ", " + bkFail + " held on this device — they will go up by themselves" : "") +
+                (bkSkipSite ? ". " + bkSkipSite + " site box(es) left alone — they had changed since this list was drawn" : "") + ".");
+          render(); return;
+        }
+        var r = bkRows[i];
+        S.bkBusy = "Filing " + (i + 1) + " of " + bkRows.length + "…";
+        renderBg();
+        saveManualNo(r.no, r.id, r.code, r.cl, true).then(function () {
+          bkDone++;
+          /* the site box, ONLY if he asked, and never blanked where a name is in it */
+          if (bkAlso) {
+            var row = (S.data.challans || []).filter(function (c) { return String(c.id) === r.id; })[0];
+            /* and only where the box still holds exactly what was shown on the screen. If it has
+               changed under him since the list was drawn, that delivery keeps its site and is
+               counted, rather than being written over on the strength of a stale screen. */
+            if (row && String(row.site || "").trim() === String(r.site).trim()) {
+              return save("challans", { id: r.id, site: r.rest }, true);
+            }
+            bkSkipSite++;
+          }
+        }).catch(function () { bkFail++; })
+          .then(function () { step(i + 1); });
+      };
+      step(0);
       return;
     }
 
