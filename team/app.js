@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.444";
+  var APP_VERSION = "6.9.445";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18629,6 +18629,59 @@ function viewCatalogue() {
      screen disagreed by the whole opening balance, and the statement the customer was SENT was
      the one that had lost it. There is one reader now and every site uses it. */
   function clientOpening(name) { return nAmt((clientByName(name) || {}).openingAmt); }
+  /* ================= THE OLD BOOK'S NUMBER, AND BOTH GSTINs  (v6.9.445) =================
+     HIS WORDS: "show old book no and gst no here also, for all clients". Three facts, three
+     homes, one rule each. See patch_gstin_oldbook.py for why none of them is a new column. */
+  function clientGstin(name) {
+    var c = clientByName(name) || {}, p = [];
+    try { p = JSON.parse(c.billingJson || "[]") || []; } catch (e) { p = []; }
+    var hit = p.filter(function (x) { return x && String(x.gstin || "").trim(); })[0];
+    return hit ? String(hit.gstin).trim().toUpperCase() : "";
+  }
+  /* newest audit row wins - the convention every audit-backed fact in this app follows */
+  function auditNewest(action, keyOf, wantKey) {
+    var best = null;
+    (S.data && S.data.audit || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== action) return;
+      var d; try { d = JSON.parse(a.detail || "{}"); } catch (e) { return; }
+      if (!d) return;
+      if (wantKey != null && keyOf(d, a) !== wantKey) return;
+      if (!best || String(a.createdAt || "") >= String(best.at || "")) best = { at: a.createdAt || "", d: d };
+    });
+    return best ? best.d : null;
+  }
+  function clientOldBookNo(name) {
+    var d = auditNewest("client:oldbook", function (d) { return dgKey(d.name); }, dgKey(name));
+    return d ? String(d.no || "").trim() : "";
+  }
+  function firmGstin() {
+    var d = auditNewest("firm:gstin", function () { return "firm"; }, "firm");
+    return d ? String(d.gstin || "").trim().toUpperCase() : "";
+  }
+  function auditFact(action, target, detail) {
+    var now = new Date().toISOString();
+    return save("audit", {
+      id: mintId("AF"),
+      createdAt: now, actor: S.user || "", action: action,
+      target: target, detail: JSON.stringify(Object.assign({ at: now }, detail)), ip: ""
+    }, true);
+  }
+  function saveOldBookNo(name, no) {
+    return auditFact("client:oldbook", String(name || ""), { name: String(name || ""), no: String(no || "").trim() });
+  }
+  function saveFirmGstin(g) {
+    return auditFact("firm:gstin", "Energy World", { gstin: String(g || "").trim().toUpperCase() });
+  }
+  /* the client's GSTIN goes where the billing screen already keeps it: the first profile */
+  function saveClientGstin(name, g) {
+    var c = clientByName(name);
+    if (!c || !c.id) return Promise.reject(new Error("no client"));
+    var p = []; try { p = JSON.parse(c.billingJson || "[]") || []; } catch (e) { p = []; }
+    g = String(g || "").trim().toUpperCase();
+    if (!p.length) p.push({ name: String(c.name || name), gstin: g });
+    else p[0] = Object.assign({}, p[0], { gstin: g });
+    return save("clients", { id: c.id, name: c.name, billingJson: JSON.stringify(p) }, true);
+  }
   /* v6.9.392 - AND ONE READER FOR A PAYMENT AMOUNT, for exactly the reason above.
      Sixteen sites read it with raw Number(). A payment is typed by a man on a phone and lands
      in the sheet as text, so "1,00,000" reads back as NaN, and every `|| 0` beside it turns
@@ -18938,6 +18991,13 @@ function viewCatalogue() {
     var pays = (S.data.payments || []).filter(function (p) { return p && p.client === cl; });
     var led = clientLedger(cl) || {};
     var opening = Number(led.opening) || 0;
+    return hisabRowsFrom(cl, chs, rets, pays, opening, "");
+  }
+  /* v6.9.445 - THE ROW BUILDER, given its lists. hisabMiniRows hands it the whole account; the
+     customer statement (hisabPdf) hands it the TICKED lists and its own brought-forward figure,
+     which already folds the off-statement items in. One builder, so the screen, the Excel, the
+     mini PDF and the statement the customer gets cannot disagree about one line. */
+  function hisabRowsFrom(cl, chs, rets, pays, opening, bfTail) {
     var ev = [];
     chs.forEach(function (c) { ev.push({ t: "C", d: dstr(c.createdAt), ts: String(c.createdAt || ""), ord: 1, row: c }); });
     rets.forEach(function (r) { ev.push({ t: "R", d: dstr(r.createdAt), ts: String(r.createdAt || ""), ord: 2, row: r }); });
@@ -18946,7 +19006,9 @@ function viewCatalogue() {
        one day, so a running balance never dips below what it should */
     ev.sort(function (a, b) { return a.d !== b.d ? a.d.localeCompare(b.d) : ((a.ord - b.ord) || a.ts.localeCompare(b.ts)); });
     var run = opening, out = [];
-    out.push({ kind: "bf", date: "", no: "", ptrs: "Balance brought forward", type: "", book: "",
+    /* v6.9.445 - the old book's number rides in BOOK NO on the brought-forward line, so the
+       screen, the Excel and the PDF all print it through the one field they already read. */
+    out.push({ kind: "bf", date: "", no: "", ptrs: "Balance brought forward" + String(bfTail || ""), type: "", book: String(clientOldBookNo(cl) || ""),
                rcpt: "", bill: null, debit: null, credit: null, bal: run });
     ev.forEach(function (e) {
       if (e.t === "C") {
@@ -19117,7 +19179,17 @@ function viewCatalogue() {
               'style="width:104px;padding:2px 6px;font-size:12px;font-weight:700;font-family:inherit;' +
               'border:1px ' + (r.book ? 'solid #cbd5e1' : 'dashed #cbd5e1') + ';border-radius:6px;' +
               'background:' + (r.book ? '#f1f5f9' : '#fff') + ';color:' + (r.book ? '#334155' : '#b45309') + '"/>'
-            : (r.book ? '<span style="background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;border-radius:5px;padding:0 5px;font-weight:700">' + esc(r.book) + '</span>' : '')) + '</td>' +
+            : (r.kind === "bf" && canHisabRole()
+              /* v6.9.445 - HIS WORDS: "show old book no". The old paper ledger's page or account
+                 number, typed where it is read - the same box every delivery line has had since
+                 6.9.439 - and printed beside Balance brought forward on the statement. */
+              ? '<input class="obkin" data-cl="' + esc(cl) + '" value="' + esc(r.book || "") + '" ' +
+                'placeholder="+ old book no" title="Where this account sits in the old paper ledger \u2014 page or account number. ' +
+                'Type it and press Enter \u2014 it saves itself and prints beside Balance brought forward on the statement." ' +
+                'style="width:132px;padding:2px 6px;font-size:12px;font-weight:700;font-family:inherit;' +
+                'border:1px ' + (r.book ? 'solid #cbd5e1' : 'dashed #cbd5e1') + ';border-radius:6px;' +
+                'background:' + (r.book ? '#f1f5f9' : '#fff') + ';color:' + (r.book ? '#334155' : '#b45309') + '"/>'
+              : (r.book ? '<span style="background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;border-radius:5px;padding:0 5px;font-weight:700">' + esc(r.book) + '</span>' : ''))) + '</td>' +
         '<td style="' + cell + ';font-size:12px;font-weight:600">' + miniRcptCell(r) + '</td>' +
         '<td style="' + cell + ';font-size:12px">' + miniBillCell(r) + '</td>' +
         '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f172a") + '">' +
@@ -19133,6 +19205,16 @@ function viewCatalogue() {
       '<span class="pill">' + nD + ' deliver' + (nD === 1 ? 'y' : 'ies') + '</span>' +
       (m.rets.length ? '<span class="pill" style="background:#fee2e2;color:#b91c1c">' + m.rets.length + ' return' + (m.rets.length === 1 ? '' : 's') + '</span>' : '') +
       (m.pays.length ? '<span class="pill teal">' + m.pays.length + ' payment' + (m.pays.length === 1 ? '' : 's') + '</span>' : '') +
+      /* v6.9.445 - HIS WORDS: "show ... gst no". The client's GSTIN, from the billing profile
+         the billing screen keeps; a box for accounts and the owner, a chip for anyone else.
+         MEASURED the day this was written: 3 of 167 clients had one on file. */
+      (canHisabRole()
+        ? '<input class="gstin_in" data-cl="' + esc(cl) + '" value="' + esc(clientGstin(cl)) + '" placeholder="+ GSTIN" ' +
+          'title="The client\'s GSTIN. It prints under his name on the statement. Type it and press Enter." ' +
+          'maxlength="15" style="width:150px;padding:2px 6px;font-size:12px;font-weight:700;font-family:inherit;letter-spacing:.02em;' +
+          'border:1px ' + (clientGstin(cl) ? 'solid #99f6e4' : 'dashed #cbd5e1') + ';border-radius:6px;' +
+          'background:' + (clientGstin(cl) ? '#f0fdfa' : '#fff') + ';color:' + (clientGstin(cl) ? '#0f766e' : '#b45309') + '"/>'
+        : (clientGstin(cl) ? '<span class="pill teal" title="GSTIN">GSTIN ' + esc(clientGstin(cl)) + '</span>' : '')) +
       '</div>' +
       '<div class="meta" style="margin-bottom:7px;font-size:12px">Every delivery, return and payment, in the order they happened &mdash; the same shape as the statement PDF, so both tell him one story. ' +
       '<span id="mini_bookcount"><b>' + m.withBook + ' of ' + nD + '</b></span> deliver' + (nD === 1 ? 'y carries' : 'ies carry') + ' its paper book number.' +
@@ -19185,6 +19267,15 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="mini-xlsx" data-n="' + esc(cl) + '">&#8681; Excel</button>' +
       '<button class="btn sm ghost" data-act="mini-pdf" data-n="' + esc(cl) + '">&#8681; PDF</button>' +
       '<span class="meta" style="align-self:center;font-size:12px;color:#94a3b8">The same ' + MINI_COUNT_WORD() + ' columns, as a file — better to send than a screenshot.</span>' +
+      /* v6.9.445 - Energy World's OWN GSTIN, typed once by the owner and printed under the logo on
+         every statement. Never guessed: until it is typed here the statement prints none. */
+      (roleIs("admin")
+        ? '<div style="flex-basis:100%;margin-top:4px;font-size:12px;color:' + (firmGstin() ? '#64748b' : '#b45309') + '">' +
+          (firmGstin() ? 'Statements carry Energy World\'s GSTIN ' : 'Energy World\'s GSTIN is not on file \u2014 type it once and it prints on every statement: ') +
+          '<input class="firmgst_in" value="' + esc(firmGstin()) + '" placeholder="Energy World GSTIN" maxlength="15" ' +
+          'style="width:160px;padding:2px 6px;font-size:12px;font-weight:700;font-family:inherit;letter-spacing:.02em;' +
+          'border:1px ' + (firmGstin() ? 'solid #cbd5e1' : 'dashed #cbd5e1') + ';border-radius:6px;background:' + (firmGstin() ? '#f1f5f9' : '#fff') + '"/></div>'
+        : '') +
       '</div></div>';
   }
 
@@ -19213,6 +19304,75 @@ function viewCatalogue() {
   /* ---- AND AS A PDF, on the letterhead (v6.9.425) ----
      Landscape, for the same reason execCardPdf is: eight columns will not go on a portrait page
      without shrinking the figures to something nobody can read at a counter. */
+
+  /* ================= THE ACCOUNT TABLE, DRAWN ONCE  (v6.9.445) =================
+     HIS WORDS: "this is good format print as it is in customer statement pdf". The ten columns
+     the screen shows - lifted out of the mini PDF so the customer statement draws the very same
+     table at its own margins. g carries the page: L, R, the starting y, the font and money
+     helpers, a limit and a pageBreak() that returns the y to continue at. Returns the y below
+     the last row.
+
+     Widths come from the column anchors, not from a hand-kept list: each text column runs to
+     1mm short of the next, and GST BILL stops 17mm short of DEBIT's anchor - the room a
+     right-aligned "Rs.10,00,000" reaches back over at 7.2pt - whatever the margins are. */
+  function drawAccountTable(doc, m, g) {
+    var L = g.L, R = g.R, y = g.y, F = g.F, RS = g.RS, RSs = g.RSs;
+    var cX = [L, L + 18, L + 51, L + 100, L + 123, L + 141, L + 163, R - 63, R - 33, R - 1];
+    var wid = function (i) { return i === 6 ? (cX[7] - cX[6] - 17) : (cX[i + 1] - cX[i] - 1); };
+    var head = function () {
+      doc.setFillColor(11, 59, 54); doc.rect(L, y - 4.4, R - L, 6.2, "F");
+      F("bold"); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
+      MINI_HEAD.forEach(function (t, i) {
+        if (i >= MINI_HEAD.length - 3) doc.text(t.toUpperCase(), cX[i], y, { align: "right" });
+        else doc.text(t.toUpperCase(), cX[i] + 1, y);
+      });
+      y += 6.4; doc.setTextColor(17, 34, 45);
+    };
+    head();
+    var n = 0;
+    m.rows.forEach(function (r) {
+      if (y > (g.limitOf ? g.limitOf() : g.limit)) { y = g.pageBreak(); head(); }
+      if (r.kind === "ret") { doc.setFillColor(254, 242, 242); doc.rect(L, y - 3.2, R - L, 4.8, "F"); }
+      else if (n % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 3.2, R - L, 4.8, "F"); }
+      n++;
+      F(r.kind === "bf" ? "bold" : "normal"); doc.setFontSize(7.2);
+      if (r.kind === "ret") doc.setTextColor(185, 28, 28); else doc.setTextColor(17, 34, 45);
+      var put = function (i, v, w) {
+        if (v === "" || v == null) return;
+        var t = doc.splitTextToSize(pdfSafe(String(v)), w)[0] || "";
+        if (i >= 7) doc.text(t, cX[i], y, { align: "right" }); else doc.text(t, cX[i] + 1, y);
+      };
+      /* v6.9.444 - a return's PTRS reads "1 item back at the godown · against RAVI0000/270726/R01",
+         which no column on this page has ever held: splitTextToSize drops the whole last WORD,
+         so the paper said "· against" and nothing after it - since 6.9.425, seen only when the
+         page was rendered for the tenth column. On the paper the phrase is shortened before the
+         challan number is, because the number is the fact. */
+      var _ptrs = String(r.ptrs || "");
+      if (doc.getTextWidth(_ptrs) > wid(2) - 1) _ptrs = _ptrs.replace(" back at the godown \u00b7 against ", " back \u00b7 vs ");
+      put(0, r.date, wid(0)); put(1, r.no, wid(1)); put(2, _ptrs, wid(2)); put(3, r.type, wid(3)); put(4, r.book, wid(4));
+      if (r.rcpt) {
+        var _wasInk = r.kind === "ret" ? [185, 28, 28] : [17, 34, 45];
+        if (r.rcpt === "yes") doc.setTextColor(15, 118, 110);
+        else if (r.rcpt === "onway") doc.setTextColor(180, 83, 9);
+        else doc.setTextColor(185, 28, 28);
+        put(5, miniRcptWord(r.rcpt), wid(5));
+        doc.setTextColor(_wasInk[0], _wasInk[1], _wasInk[2]);
+      }
+      if (r.bill) {
+        var _bInk = r.kind === "ret" ? [185, 28, 28] : [17, 34, 45];
+        if (r.bill.no) doc.setTextColor(15, 118, 110);
+        else if (/^sent/i.test(r.bill.st)) doc.setTextColor(180, 83, 9);
+        else doc.setTextColor(148, 163, 184);
+        put(6, r.bill.no ? r.bill.no + (r.bill.at ? " " + r.bill.at : "") : (/^sent/i.test(r.bill.st) ? "Sent for billing" : "Not billed"), wid(6));
+        doc.setTextColor(_bInk[0], _bInk[1], _bInk[2]);
+      }
+      put(7, r.debit == null ? "" : RS(r.debit), 30);
+      if (r.credit != null) { doc.setTextColor(13, 118, 108); put(8, RS(r.credit), 30); doc.setTextColor(17, 34, 45); }
+      F("bold"); put(9, RSs(r.bal), 30);
+      y += 4.8;
+    });
+    return y;
+  }
   function hisabMiniPdf(cl) {
     var m = hisabMiniRows(cl);
     if (!m.rows.length) { toast("Nothing on this account yet."); return; }
@@ -19231,7 +19391,7 @@ function viewCatalogue() {
       F("bold"); doc.setFontSize(11.5); doc.setTextColor(255, 255, 255);
       doc.text(pdfSafe(String(cl).toUpperCase()), R, 10, { align: "right" });
       F("normal"); doc.setFontSize(7.6); doc.setTextColor(172, 212, 205);
-      doc.text("Statement of account   ·   " + fullDate(today()), R, 15.5, { align: "right" });
+      doc.text("Statement of account   ·   " + (clientGstin(cl) ? "GSTIN " + clientGstin(cl) + "   ·   " : "") + fullDate(today()), R, 15.5, { align: "right" });
       doc.text(m.chs.length + " deliveries · " + m.rets.length + " returns · " + m.pays.length + " payments", R, 19.5, { align: "right" });
       /* the last column is pulled 1mm off the right edge - right-aligned AT R the heading sat
          flush against the band and read as clipped. */
@@ -19244,60 +19404,9 @@ function viewCatalogue() {
          its challan number; rendered, seen, and the dead space in TYPE and BOOK NO given back.) A right-aligned figure reaches LEFT from its anchor, so GST BILL is
          cut off 17mm short of DEBIT's anchor, which is what "Rs.1,49,817" needs at 7.2pt. Rendered
          with pdftoppm and looked at before this shipped. */
-      var cX = [L, L + 18, L + 51, L + 100, L + 123, L + 141, L + 163, R - 63, R - 33, R - 1];
-      var y = HB + 10;
-      var head = function () {
-        doc.setFillColor(11, 59, 54); doc.rect(L, y - 4.4, R - L, 6.2, "F");
-        F("bold"); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
-        MINI_HEAD.forEach(function (t, i) {
-          if (i >= 7) doc.text(t.toUpperCase(), cX[i], y, { align: "right" });
-          else doc.text(t.toUpperCase(), cX[i] + 1, y);
-        });
-        y += 6.4; doc.setTextColor(17, 34, 45);
-      };
-      head();
-      var n = 0;
-      m.rows.forEach(function (r) {
-        if (y > H - 16) { doc.addPage(); y = 16; head(); }
-        if (r.kind === "ret") { doc.setFillColor(254, 242, 242); doc.rect(L, y - 3.2, R - L, 4.8, "F"); }
-        else if (n % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 3.2, R - L, 4.8, "F"); }
-        n++;
-        F(r.kind === "bf" ? "bold" : "normal"); doc.setFontSize(7.2);
-        if (r.kind === "ret") doc.setTextColor(185, 28, 28); else doc.setTextColor(17, 34, 45);
-        var put = function (i, v, wid) {
-          if (v === "" || v == null) return;
-          var s = doc.splitTextToSize(pdfSafe(String(v)), wid)[0] || "";
-          if (i >= 7) doc.text(s, cX[i], y, { align: "right" }); else doc.text(s, cX[i] + 1, y);
-        };
-        /* v6.9.444 - a return's PTRS reads "1 item back at the godown · against RAVI0000/270726/R01",
-           which no column on this page has ever held: splitTextToSize drops the whole last WORD,
-           so the paper said "· against" and nothing after it - since 6.9.425, seen only now the
-           page was rendered for the tenth column. On the paper the phrase is shortened before the
-           challan number is, because the number is the fact. */
-        var _ptrs = String(r.ptrs || "");
-        if (doc.getTextWidth(_ptrs) > 47) _ptrs = _ptrs.replace(" back at the godown \u00b7 against ", " back \u00b7 vs ");
-        put(0, r.date, 17); put(1, r.no, 32); put(2, _ptrs, 48); put(3, r.type, 22); put(4, r.book, 17);
-        if (r.rcpt) {
-          var _wasInk = r.kind === "ret" ? [185, 28, 28] : [17, 34, 45];
-          if (r.rcpt === "yes") doc.setTextColor(15, 118, 110);
-          else if (r.rcpt === "onway") doc.setTextColor(180, 83, 9);
-          else doc.setTextColor(185, 28, 28);
-          put(5, miniRcptWord(r.rcpt), 21);
-          doc.setTextColor(_wasInk[0], _wasInk[1], _wasInk[2]);
-        }
-        if (r.bill) {
-          var _bInk = r.kind === "ret" ? [185, 28, 28] : [17, 34, 45];
-          if (r.bill.no) doc.setTextColor(15, 118, 110);
-          else if (/^sent/i.test(r.bill.st)) doc.setTextColor(180, 83, 9);
-          else doc.setTextColor(148, 163, 184);
-          put(6, r.bill.no ? r.bill.no + (r.bill.at ? " " + r.bill.at : "") : (/^sent/i.test(r.bill.st) ? "Sent for billing" : "Not billed"), 29);
-          doc.setTextColor(_bInk[0], _bInk[1], _bInk[2]);
-        }
-        put(7, r.debit == null ? "" : RS(r.debit), 30);
-        if (r.credit != null) { doc.setTextColor(13, 118, 108); put(8, RS(r.credit), 30); doc.setTextColor(17, 34, 45); }
-        F("bold"); put(9, RSs(r.bal), 30);
-        y += 4.8;
-      });
+      /* v6.9.445 - the table is drawAccountTable's, shared with the customer statement */
+      var y = drawAccountTable(doc, m, { L: L, R: R, y: HB + 10, F: F, RS: RS, RSs: RSs,
+        pageBreak: function () { doc.addPage(); return 16; }, limit: H - 16 });
       if (y > H - 20) { doc.addPage(); y = 18; }
       doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(L, y, R, y); y += 5.4;
       F("bold"); doc.setFontSize(9.4);
@@ -20713,8 +20822,15 @@ function viewCatalogue() {
         doc.text(pdfSafe(String(cl)), R, 12.8, { align: "right" });
         F("normal"); doc.setFontSize(7.4); doc.setTextColor(172, 212, 205);
         var l2 = [cust.area, cust.location].filter(Boolean).join(", ");
-        var l3 = [l2, cust.mobile ? "Mobile: " + cust.mobile : "", "Date: " + fullDate(today())].filter(Boolean).join("    ·    ");
+        /* v6.9.445 - the client's GSTIN under his name. "not on file" is the truth for 164 of
+           167 today, and a registered customer who reads it will supply his. */
+        var gstC = clientGstin(cl);
+        var l3 = [l2, cust.mobile ? "Mobile: " + cust.mobile : "", "GSTIN: " + (gstC || "not on file"),
+                  "Date: " + fullDate(today())].filter(Boolean).join("    ·    ");
         doc.text(pdfSafe(l3), R, 18, { align: "right" });
+        /* and Energy World's own, under the logo - only once it has been typed, never guessed */
+        var gstF = firmGstin();
+        if (gstF) { F("normal"); doc.setFontSize(6.8); doc.setTextColor(172, 212, 205); doc.text("GSTIN " + pdfSafe(gstF), L, 20.6); }
         ink(INK);
         return HB + 9;
       };
@@ -20758,10 +20874,12 @@ function viewCatalogue() {
         bfNote = "Made up of " + parts.join(", ") + ". " +
           (offZero && (chOff.length || pyOff.length)
             ? "Those were paid for in full, so they are closed and not listed below."
-            : "Those entries are not listed below.") + " A line-by-line list is available on request.";
+            : "Those entries are not listed below.") + " A line-by-line list is available on request." +
+          (clientOldBookNo(cl) ? "  Old book no " + clientOldBookNo(cl) + "." : "");
       } else if (Math.abs(opening) > 0.5) {
-        bfNote = opening > 0 ? "Carried forward from the earlier account, before this statement."
-                             : "Paid ahead on the earlier account, before this statement.";
+        bfNote = (opening > 0 ? "Carried forward from the earlier account, before this statement."
+                              : "Paid ahead on the earlier account, before this statement.") +
+                 (clientOldBookNo(cl) ? "  Old book no " + clientOldBookNo(cl) + "." : "");
       }
       line("Balance brought forward", Math.abs(bf) < 0.5 && !offN && Math.abs(opening) < 0.5 ? "nil" : RSs(bf),
            { bold: true, note: bfNote });
@@ -20807,74 +20925,31 @@ function viewCatalogue() {
       }
       y = sumBottom + 3;
 
-      /* ================= THE ACCOUNT, AS A DATED LIST ================= */
-      var cDt = L + 2, cP = L + 24, cDr = R - 76, cCr = R - 40, cBl = R - 2, partW = cDr - 18 - cP;
+      /* ================= THE ACCOUNT, IN THE TEN COLUMNS THE SCREEN SHOWS  (v6.9.445) =========
+         HIS WORDS: "this is good format print as it is in customer statement pdf". Until now this
+         page folded the challan number, the book number, the site and the item count into one
+         PARTICULARS sentence. It is drawAccountTable's table now - the one the screen, the Excel
+         and the mini PDF draw - over the TICKED lists, starting from the brought-forward figure
+         above, which already folds the off-statement items in. Not a rupee moves. */
+      var cP = L + 24, cBl = R - 1;
       var LIMIT1 = H - 24, LIMITN = FOOT - 4;        /* page one keeps room for the letterhead strip */
       var lim = LIMIT1;
-      var head = function () {
-        fill([11, 59, 54]); doc.rect(L, y - 3.8, R - L, 5.6, "F");
-        doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(6.4);
-        doc.text("DATE", cDt, y); doc.text("PARTICULARS", cP, y);
-        doc.text("DEBIT (Rs.)", cDr, y, { align: "right" }); doc.text("CREDIT (Rs.)", cCr, y, { align: "right" });
-        doc.text("BALANCE (Rs.)", cBl, y, { align: "right" });
-        y += 5.4; ink(INK);
-      };
       var need = function (h) {
-        if (y + h > lim) { y = pageMark("the account, continued"); lim = LIMITN; head(); }
+        if (y + h > lim) { y = pageMark("the account, continued"); lim = LIMITN; }
       };
       F("bold"); doc.setFontSize(7.2); ink(GREY);
       doc.text("THE ACCOUNT  ·  in the order things happened", L, y); y += 4.6;
-      head();
-      var run = bf, rowN = 0;
-      var row = function (dateTxt, parts, dr, cr, o) {
-        o = o || {};
-        F("normal"); doc.setFontSize(7.4);
-        var lines = doc.splitTextToSize(pdfSafe(parts), partW), nL = Math.min(lines.length, 2);
-        var rowH = nL > 1 ? 7.6 : 4.6;
-        need(rowH);
-        if (o.band) { fill(o.band); doc.rect(L, y - 3.3, R - L, rowH, "F"); }
-        else if (rowN % 2) { fill([248, 250, 252]); doc.rect(L, y - 3.3, R - L, rowH, "F"); }
-        rowN++;
-        ink(GREY); doc.text(dateTxt, cDt, y);
-        ink(o.ink || INK); F(o.bold ? "bold" : "normal");
-        for (var li = 0; li < nL; li++) doc.text(lines[li], cP, y + li * 3.4);
-        F(o.bold ? "bold" : "normal");
-        if (dr != null) { ink(o.ink || INK); doc.text(RS(dr), cDr, y, { align: "right" }); }
-        if (cr != null) { ink(o.ink || TEAL); doc.text(RS(cr), cCr, y, { align: "right" }); }
-        F("bold"); ink(run < -0.5 ? TEAL : INK); doc.text(RSs(run), cBl, y, { align: "right" });
-        y += rowH;
-      };
-      row("", "Balance brought forward" + (offN ? "  (see the summary above)" : ""), null, null, { bold: true });
+      /* the old book's number rides in the BOOK NO column of this row, through the row builder;
+         the summary above names it in words. Rendered and seen: writing it into PTRS as well
+         printed it twice and clipped the first. */
+      var mm = hisabRowsFrom(cl, chOn, rtOn, pyOn, bf, "");   /* the summary above says what it is made of */
+      y += 4.4;                                        /* the band is drawn 4.4mm above its baseline */
+      y = drawAccountTable(doc, mm, { L: L, R: R, y: y, F: F, RS: RS, RSs: RSs, limitOf: function () { return lim; },
+        pageBreak: function () { var ny = pageMark("the account, continued"); lim = LIMITN; return ny + 4.4; } });
       if (!ev.length) {
         F("normal"); doc.setFontSize(8); ink(GREY);
         doc.text("Nothing is ticked for this statement.", cP, y + 1); y += 6;
       }
-      ev.forEach(function (e) {
-        if (e.t === "C") {
-          var c = e.row, v = chValue(c), nIt = pricedLines(c, cl).length, bk = manualNoFor(c);
-          var txt = (v < -0.5 ? "Credit note " : "Delivery  ") + String(c.challanNo || "") +
-            (bk ? "  ·  Book no " + String(bk) : "") +
-            (c.site && String(c.site).trim() ? "  ·  " + String(c.site).trim() : "") +
-            "  ·  " + nIt + " item" + (nIt === 1 ? "" : "s") +
-            (chFreight(c) > 0 ? " + freight" : "");
-          run += v;
-          if (v < -0.5) row(fullDate(e.d), txt, null, -v, { ink: TEAL });
-          else row(fullDate(e.d), txt, v, null);
-        } else if (e.t === "R") {
-          var r = e.row, rv = returnNet(r), nR = returnLines(r).length;
-          run -= rv;
-          row(fullDate(e.d), "RETURN  " + (r.returnNo ? String(r.returnNo) : "(no number yet)") +
-            (r.challanNo ? "  ·  against " + String(r.challanNo) : "") +
-            "  ·  " + nR + " item" + (nR === 1 ? "" : "s") + " back at the godown", null, rv,
-            { ink: RED, band: [254, 242, 242] });
-        } else {
-          var p = e.row, pa = payAmt(p), pk = payKindOf(p);
-          var tail = [p.mode ? String(p.mode).trim() : "", p.ref ? String(p.ref).trim() : ""].filter(Boolean).join("  ·  ");
-          run -= pa;
-          if (pk === "refund") row(fullDate(e.d), "Refund paid to you" + (tail ? "  ·  " + tail : ""), -pa, null, { ink: RED });
-          else row(fullDate(e.d), (pk === "advance" ? "Advance received" : "Payment received") + (tail ? "  ·  " + tail : ""), null, pa, { ink: TEAL });
-        }
-      });
       need(9);
       y += 1.6;
       doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(L, y - 3.4, R, y - 3.4); doc.setLineWidth(0.2);
@@ -32859,6 +32934,53 @@ function viewCatalogue() {
           toast("That did not save — it is kept on this device and will go up by itself.");
         });
       });
+    });
+
+    /* v6.9.445 - three more boxes on the account, wired the same way: change, save quiet, restyle
+       in place, never a repaint under the caret. */
+    var wireBox = function (cls, onChange) {
+      [].forEach.call(document.querySelectorAll("input." + cls), function (bx) {
+        if (bx._bkWired) return;
+        bx._bkWired = 1;
+        bx.addEventListener("keydown", function (ev) { if (ev.key === "Enter") { ev.preventDefault(); bx.blur(); } });
+        bx.addEventListener("change", function () { onChange(bx); });
+      });
+    };
+    var boxDone = function (bx, now, okInk, okBg, okBorder) {
+      bx.disabled = false; bx.value = now;
+      bx.style.border = "1px " + (now ? "solid " + (okBorder || "#cbd5e1") : "dashed #cbd5e1");
+      bx.style.background = now ? (okBg || "#f1f5f9") : "#fff";
+      bx.style.color = now ? (okInk || "#334155") : "#b45309";
+    };
+    var boxFail = function (bx) { bx.disabled = false; bx.style.borderColor = "#b91c1c"; toast("That did not save \u2014 it is kept on this device and will go up by itself."); };
+    wireBox("obkin", function (bx) {
+      var cl = bx.getAttribute("data-cl") || "", now = String(bx.value || "").trim();
+      if (now === clientOldBookNo(cl)) return;
+      bx.disabled = true;
+      saveOldBookNo(cl, now).then(function () {
+        boxDone(bx, now);
+        toast(now ? "Old book no " + now + " noted for " + cl + ". It prints beside Balance brought forward." : "Old book number cleared for " + cl + ".");
+      }).catch(function () { boxFail(bx); });
+    });
+    wireBox("gstin_in", function (bx) {
+      var cl = bx.getAttribute("data-cl") || "", now = String(bx.value || "").trim().toUpperCase();
+      if (now === clientGstin(cl)) return;
+      if (now && !/^[0-9A-Z]{15}$/.test(now)) { bx.style.borderColor = "#b91c1c"; toast("A GSTIN is 15 letters and digits."); return; }
+      bx.disabled = true;
+      saveClientGstin(cl, now).then(function () {
+        boxDone(bx, now, "#0f766e", "#f0fdfa", "#99f6e4");
+        toast(now ? "GSTIN noted for " + cl + ". It prints under the name on the statement." : "GSTIN cleared for " + cl + ".");
+      }).catch(function () { boxFail(bx); });
+    });
+    wireBox("firmgst_in", function (bx) {
+      var now = String(bx.value || "").trim().toUpperCase();
+      if (now === firmGstin()) return;
+      if (now && !/^[0-9A-Z]{15}$/.test(now)) { bx.style.borderColor = "#b91c1c"; toast("A GSTIN is 15 letters and digits."); return; }
+      bx.disabled = true;
+      saveFirmGstin(now).then(function () {
+        boxDone(bx, now);
+        toast(now ? "Energy World's GSTIN noted. It prints under the logo on every statement." : "Energy World's GSTIN cleared from statements.");
+      }).catch(function () { boxFail(bx); });
     });
 
     /* v6.9.436 - the signed paper. Read on the change event, never at save time: a repaint
