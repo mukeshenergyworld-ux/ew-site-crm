@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.50.0";
+  var APP_VERSION = "1.51.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3652,6 +3652,192 @@ function discRowOn(client, brand, onYmd) {
   }
 
   /* ---------- the account screen ---------- */
+  /* ================= ONE PASS, ONE PLACE  (v1.51.0) =================
+     Lifted whole out of the ch-approve handler so the tap and the PIN sheet call the SAME code.
+     Two copies of a path that releases material is two chances for them to disagree about what
+     "passed" means - and the sheet exists precisely so that the second, third and tenth pass
+     never touch the first branch again. */
+  function doPass(c2, pin2) {
+    /* ---- PAINT FIRST, CONFIRM BEHIND  (v1.49.0) ----
+       "make it fast and effective". It cannot be made fast: this backend's CHEAPEST call is
+       ~2.1s from his machine, and a pass was TWO of them one after the other. What can be
+       made fast is the SCREEN. The CRM has worked this way since v6.9.292 - the row moves the
+       instant he taps, the server is told behind, and it is put back only if the server
+       actually refuses. He is never again watching a button say "Passing..." for six seconds.
+
+       And the move is REMEMBERED (see applyMoves above), so a pull that was already in the
+       air when he tapped can no longer put APPROVAL PENDING back on a challan he has passed. */
+    var pPrev = String(c2.status || ""), pPrevBy = String(c2.approvedBy || "");
+    c2.status = "Dispatched"; c2.approvedBy = S.user; c2.approvedAt = new Date().toISOString();
+    chMoveRemember(c2.id, "Dispatched", S.user);
+    _moving++;
+    var pDone = function () { if (_moving > 0) _moving--; };
+    var pBack = function (msg) {
+      c2.status = pPrev; c2.approvedBy = pPrevBy; chMoveForget(c2.id);
+      /* v1.51.0 - if it was the PIN the server refused, the held one is wrong and every later
+         tap would fail against it in silence. Forget it, so the next tap asks again. */
+      if (/pin/i.test(String(msg || ""))) passPinClear();
+      pDone(); bust(); render(); toast(msg || "The server refused it — nothing changed.");
+    };
+    var pHalf = function (msg) {
+      /* the pass landed, the dispatch did not. Say the truth: Approved, with its own door. */
+      c2.status = "Approved"; chMoveRemember(c2.id, "Approved", S.user);
+      pDone(); bust(); render();
+      toast(msg || (String(c2.challanNo || "It") + " is passed but NOT dispatched. Press Dispatch on it."));
+    };
+    bust(); render(); toast(String(c2.challanNo || "The challan") + " passed and dispatched.");
+
+    /* ---- ONE ROUND TRIP WHERE THERE WERE TWO ----
+       `andDispatch` asks the server to stamp the approval AND release it in the same call.
+       A backend that does not know the word simply moves it to Approved and says so, and the
+       second call below runs exactly as it always did - so this is correct against either
+       version of the server, and gets ~2 seconds back the day the backend is updated. */
+    api("challanMove", { id: c2.id, to: "Approved", approvePin: pin2, andDispatch: 1, noTg: 1 }).then(function (r) {
+      if (!r || !r.ok) { pBack((r && r.error) || "The server refused it. Nothing changed."); return; }
+      c2.approvedBy = (r && r.by) || S.user;
+      if (String(r.status || "") === "Dispatched") {      /* the server did both - nothing more to send */
+        pDone(); chMoveRemember(c2.id, "Dispatched", r.by || S.user); bust(); render();
+        S.dispatchSent = S.dispatchSent || {};
+        if (!S.dispatchSent[c2.id]) {
+          S.dispatchSent[c2.id] = true;
+          tgChallan(c2, "TG_DISPATCH", tgCaption(c2)).catch(function () {
+            toast("Dispatched. The dispatch bot did not answer — use Send to Telegram on the strip.");
+          });
+        }
+        if (!tgSent(c2)) {
+          tgChallan(c2, "TG_CHALLAN", tgCaption(c2)).then(function (tr) {
+            if (tr && tr.ok) { c2.tgMsg = c2.tgMsg || "sent"; bust(); render(); }
+          }).catch(function () { });
+        }
+        return;
+      }
+      chMoveRemember(c2.id, "Approved", r.by || S.user);
+      /* ---- AND DISPATCHED, IN THE SAME TAP (v1.42.0) ----
+         "now approve and dispatch are same thing not different on."
+
+         Sent as a SECOND call rather than one Draft -> Dispatched move, deliberately: the
+         server stamps approvedBy when it is asked for "Approved", and a released load with
+         nobody's name on it is not a thing to find out afterwards. Known behaviour, no guess.
+
+         If this second call fails the challan simply sits at Approved with its own Dispatch
+         button - the same door a challan raised before today already uses. A half-finished
+         pass is visible and finishable, never silent. */
+      api("challanMove", { id: c2.id, to: "Dispatched", approvePin: pin2 }).then(function (r2) {
+        if (!r2 || !r2.ok) { pHalf(r2 && r2.error); return; }
+        pDone();
+        c2.status = "Dispatched"; chMoveRemember(c2.id, "Dispatched", r2.by || S.user); bust(); render();
+        /* tgSent() reads c.tgMsg, which the TG_CHALLAN send above has just set - so it can
+           never be the guard for THIS send. Its own guard, in memory, set BEFORE the call so
+           two near-simultaneous taps cannot both pass it. */
+        S.dispatchSent = S.dispatchSent || {};
+        if (!S.dispatchSent[c2.id]) {
+          S.dispatchSent[c2.id] = true;
+          tgChallan(c2, "TG_DISPATCH", tgCaption(c2)).catch(function () {
+            toast("Dispatched. The dispatch bot did not answer \u2014 use Send to Telegram on the strip.");
+          });
+        }
+      }).catch(function () {
+        /* No answer at all. The row STAYS moved and he is told plainly not to do it twice: a
+           deadline is a fact about how long WE waited, not about what the server did. */
+        pDone();
+        toast(String(c2.challanNo || "It") + " is passed. The dispatch did not get an answer — " +
+              "it may already be done. Do NOT press it again; the next refresh shows the truth.");
+      });
+      /* ---- AND NOW IT GOES TO TELEGRAM (v1.32.0) ----
+         "once approved it will auto send to telegram bot, no its not sending on approval."
+
+         He was right, and the reason is that the send was never in this app. The CRM has
+         done it since v6.9.106 - sendChallanPdf(r, "TG_CHALLAN", ...) sits in its approve
+         handler. But approving moved to this app months ago and is done from the accounts
+         desk here, and this handler called challanMove and stopped. So every challan passed
+         the way they are actually passed went to Telegram never.
+
+         It is deliberately AFTER the toast and outside the success path's own promise: the
+         challan is passed the moment the server says so, and a Telegram group that is down
+         must not make a man think the approval failed. If the send fails he is told, and the
+         Send to Telegram button on the strip is the hand crank. */
+      if (!tgSent(c2)) {
+        tgChallan(c2, "TG_CHALLAN", tgCaption(c2)).then(function (tr) {
+          if (tr && tr.ok) { c2.tgMsg = c2.tgMsg || "sent"; bust(); render(); }
+          else toast("Passed, but Telegram did not take it. Use Send to Telegram on the strip.");
+        }).catch(function () {
+          toast("Passed. Telegram did not answer \u2014 use Send to Telegram on the strip.");
+        });
+      }
+    }).catch(function () {
+      /* v1.49.0 - the row stays moved, for the same reason as above: the server may well
+         have done it. The memory holds it for five minutes and the next pull tells the truth. */
+      pDone();
+      toast("Sent, but the server did not answer in time. It may already be done — do NOT " +
+            "do it again. The next refresh will show the truth.");
+    });
+  }
+
+  /* ================= ONE PIN, NOT ONE PIN PER CHALLAN  (v1.51.0, 8 Sep 2026) ==========
+     HIS WORDS: "i have press pass and enter 2 to three times also have to enter pin, fix it for
+     single click process, its very slow, we have to work hardly on challan entry process
+     simplification and responsiveness".
+
+     MEASURED FIRST, because the obvious theory was wrong. The backend audits every refused
+     approval as "Wrong PIN on dispatch approval", and his book holds 15 of them - ALL of them in
+     July and on 11 August, none since. Those were the salted-hash migration (the v91 fix). So the
+     server is NOT rejecting him today: what he is describing is the number of ACTIONS a pass
+     costs. Press Pass, wait for a system dialog, type four digits, press Enter - per challan, and
+     he passes them in runs.
+
+     WHAT CHANGED, and what deliberately did not.
+
+     THE CONTROL STAYS. He was asked, and chose: the PIN is typed ONCE PER APP OPENING. The first
+     pass after the app starts asks for it; every pass after that is one tap. A phone picked up
+     off the counter by somebody else is a phone that has to be handed a PIN before it can release
+     material, which is the whole reason the control exists.
+
+     IT IS NEVER WRITTEN DOWN. _passPin lives in a closure variable and nowhere else - not
+     localStorage, not IndexedDB, not the journal. Closing the tab, reloading, or pressing Lock
+     forgets it. (The session PIN in localStorage is the LOGIN one and is a separate thing; this
+     is the re-confirmation, and re-confirmation kept on disk would not be one.)
+
+     AND IT IS THE APP'S OWN SHEET, not window.prompt. A system dialog on a phone is slow to
+     appear, blocks every other event while it is up, and is the easiest thing on a small screen
+     to mis-tap. The sheet is the same one every other question in this app is asked in. */
+  /* which challan raised the sheet, AND what he had pressed - a challan sitting at
+     Approved is DISPATCHED, not passed, and resuming the wrong one of the two would
+     re-stamp approvedBy with whoever happened to be typing. */
+  var _passPin = "", _passAt = 0, _passAsk = null, _passAskAct = "";
+  function passPinHave() { return !!_passPin; }
+  function passPinGet() { return _passPin; }
+  function passPinSet(p) { _passPin = String(p || ""); _passAt = Date.now(); }
+  function passPinClear() { _passPin = ""; _passAt = 0; }
+  function passPinSince() {
+    if (!_passAt) return "";
+    var m = Math.round((Date.now() - _passAt) / 60000);
+    return m < 1 ? "just now" : m + " minute" + (m === 1 ? "" : "s") + " ago";
+  }
+  /* v1.51.0 - THE SHEET SAYS WHAT THE BUTTON DOES. Caught by t_ch1350, which has held since
+     v1.35.0 that a DISPATCH is described in words about what is true - the material has left the
+     godown - and not in the approval's words, "because they are different facts and hisab counts
+     the second one". Folding both buttons into one sheet had quietly flattened that. */
+  function sheetPassPin(c, act) {
+    var isDisp = String(act || "") === "ch-dispatch";
+    return '<h2>Your PIN, once</h2>' +
+      '<div class="muted" style="margin-bottom:10px">' +
+      (c ? '<b>' + esc(String(c.challanNo || "")) + '</b> — ' + esc(String(c.customerName || "")) + '<br>' : '') +
+      (isDisp ? 'This says the material has <b>left the godown</b>. It is not a formality.'
+              : 'Passing releases material. It is not a formality.') + '</div>' +
+      '<div class="card" style="margin-top:0;border-color:#99f6e4;background:#f0fdfa">' +
+      '<div class="muted">Type it once and every challan you pass after this is <b>one tap</b>, ' +
+      'until you close the app. It is never written to this phone — closing the tab forgets it, ' +
+      'and <b>Lock</b> on the account screen forgets it at once.</div></div>' +
+      '<label style="display:block;margin-top:10px;font-weight:700">PIN</label>' +
+      '<input id="pass_pin" type="password" inputmode="numeric" autocomplete="off" ' +
+      'style="width:100%;padding:11px;font-size:18px;letter-spacing:.3em;text-align:center;' +
+      'border:1px solid #cbd5e1;border-radius:10px" placeholder="••••"/>' +
+      '<div id="pass_pin_note" class="muted" style="margin-top:6px"></div>' +
+      '<div class="acts" style="margin-top:12px"><button class="btn gry" data-act="close">Cancel</button>' +
+      '<div class="grow"></div>' +
+      '<button class="btn" data-act="pass-pin-go">' + (isDisp ? 'Dispatch it' : 'Pass it') + '</button></div>';
+  }
+
   function sheetAccount() {
     var on = !!bioSaved();
     return '<h2>This phone</h2>' +
@@ -3668,10 +3854,50 @@ function discRowOn(client, brand, onYmd) {
           ? '<button class="btn sm gry" data-act="bio-off">Turn it off</button>'
           : '<button class="btn sm" data-act="bio-on">Turn it on</button>') + '</div>' : '') +
       '</div>' +
+      /* v1.51.0 - and the way to forget the held PIN on purpose, before walking away from the
+         counter. Only drawn when there is one to forget. */
+      (passPinHave()
+        ? '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
+          '<div style="font-weight:700">Your PIN is held for passing <span class="pill">' +
+          esc(passPinSince()) + '</span></div>' +
+          '<div class="muted">Every pass is one tap until the app is closed. It is in memory only ' +
+          'and was never written to this phone.</div>' +
+          '<div class="acts"><button class="btn sm gry" data-act="pass-lock">Lock it now</button></div></div>'
+        : '') +
       '<div class="acts" style="margin-top:12px"><button class="btn gry" data-act="close">Close</button>' +
       '<div class="grow"></div>' +
       '<button class="btn red" data-act="signout">Sign out</button></div>';
   }
+  /* v1.51.0 - THE DISPATCH, LIFTED OUT OF THE BUTTON. It used to live inside the ch-dispatch
+     handler and reach for `t`, the button that was pressed - so resuming it after the PIN
+     sheet meant finding that button in the DOM and clicking it synthetically. If the list had
+     moved under him there was no button, and he was told to press it AGAIN. He asked for one
+     click. This takes the button as an optional argument and works without one. */
+  function doDispatch(cd, dpin, btn) {
+    if (!cd) return;
+    if (!dpin) { toast("Nothing was changed."); return; }
+    var dOff = function (label) { if (btn) { btn.disabled = false; btn.textContent = label; } };
+    if (btn) { btn.disabled = true; btn.textContent = "Sending\u2026"; }
+    api("challanMove", { id: cd.id, to: "Dispatched", approvePin: dpin }).then(function (r) {
+      if (!r || !r.ok) {
+        dOff("Dispatch");
+        var dm = (r && r.error) || "";
+        /* the same self-healing the pass has: if it was the PIN the server refused, the held
+           one is wrong and every later tap would fail against it in silence, writing another
+           "Wrong PIN" audit row each time. Forget it, so the next tap asks again. */
+        if (/pin/i.test(String(dm))) passPinClear();
+        toast(dm || "The server refused it. Nothing changed.");
+        return;
+      }
+      cd.status = "Dispatched";
+      bust(); render();
+      toast(String(cd.challanNo || "The challan") + " dispatched \u2014 the receipt can go on now.");
+    }).catch(function () {
+      dOff("Dispatch");
+      toast("No signal \u2014 nothing was changed. Try again.");
+    });
+  }
+
   /* ================= THE CHALLAN ON PAPER =================
      A delivery document, not a quotation: no prices and no pictures. Prices live in the
      ledger, not in the driver's hand. This mirrors the CRM's own challan print. */
@@ -4092,6 +4318,11 @@ function discRowOn(client, brand, onYmd) {
     try { localStorage.removeItem(BIO_KEY); } catch (e) {}
     try { bigDel(SNAP + "_" + S.user); } catch (e) {}
     S.user = ""; S.pin = ""; S.role = ""; forgetBook(); S.sheet = null; S.ch = null; S.rt = null;
+    /* v1.51.0 - AND THE HELD PIN. It belongs to the man who typed it, not to the phone. The
+       server checks an approve PIN against the REQUESTING user's own record, so one left
+       behind here would be refused for the next man and audit_ would write "Wrong PIN" under
+       HIS name for a PIN he never typed. */
+    passPinClear();
     renderLogin("Signed out on this phone.");
   }
 
@@ -5162,6 +5393,31 @@ function discRowOn(client, brand, onYmd) {
       setTimeout(go, 2500);                    /* never hang on a stuck cache */
       return;
     }
+    /* ---- THE PIN, ONCE PER APP OPENING  (v1.51.0) ---- */
+    if (act === "pass-lock") {
+      passPinClear(); S.sheet = sheetAccount(); render();
+      toast("Locked. The next pass will ask for your PIN."); return;
+    }
+    if (act === "pass-pin-go") {
+      var pv = el("pass_pin") ? String(el("pass_pin").value || "").trim() : "";
+      if (!pv) {
+        var pn = el("pass_pin_note");
+        if (pn) { pn.textContent = "Type your PIN first."; pn.style.color = "#b91c1c"; }
+        return;
+      }
+      passPinSet(pv);
+      var pAgain = _passAsk, pAct = _passAskAct;
+      _passAsk = null; _passAskAct = "";
+      S.sheet = null; render();
+      /* he pressed a button, not "type a PIN" - so finish the button he pressed. A challan at
+         Approved was DISPATCHED, and resuming it as a pass would re-stamp approvedBy. */
+      var c9 = pAgain ? chFind(pAgain) : null;
+      if (!c9) return;
+      if (pAct === "ch-dispatch") { doDispatch(c9, passPinGet(), null); return; }
+      doPass(c9, passPinGet());
+      return;
+    }
+
     if (act === "account") { S.sheet = sheetAccount(); render(); return; }
     if (act === "bio-go")  { bioUnlock(); return; }
     if (act === "bio-on")  { bioEnrol(); return; }
@@ -5921,24 +6177,10 @@ function discRowOn(client, brand, onYmd) {
       if (!cd) { toast("Could not find that challan on this phone."); return; }
       if (chHeld(cd)) { toast("This one is still held on this phone. It has to go up first."); return; }
       if (chStatus(cd) !== "Approved") { toast("Only a passed challan can be dispatched."); return; }
-      var dpin = window.prompt("Enter your PIN to DISPATCH this challan\n\n" +
-        String(cd.challanNo || "") + " \u2014 " + String(cd.customerName || "") +
-        "\n\nThis says the material has left the godown.");
-      if (!dpin) { toast("Nothing was changed."); return; }
-      t.disabled = true; t.textContent = "Sending\u2026";
-      api("challanMove", { id: cd.id, to: "Dispatched", approvePin: dpin }).then(function (r) {
-        if (!r || !r.ok) {
-          t.disabled = false; t.textContent = "Dispatch";
-          toast((r && r.error) || "The server refused it. Nothing changed.");
-          return;
-        }
-        cd.status = "Dispatched";
-        bust(); render();
-        toast(String(cd.challanNo || "The challan") + " dispatched \u2014 the receipt can go on now.");
-      }).catch(function () {
-        t.disabled = false; t.textContent = "Dispatch";
-        toast("No signal \u2014 nothing was changed. Try again.");
-      });
+      /* v1.51.0 - the same held PIN. A challan sitting at Approved is dispatched with one tap
+         too, once the PIN has been given for this app opening. */
+      if (!passPinHave()) { _passAsk = String(cd.id || ""); _passAskAct = "ch-dispatch"; S.sheet = sheetPassPin(cd, "ch-dispatch"); render(); return; }
+      doDispatch(cd, passPinGet(), t);
       return;
     }
 
@@ -5968,119 +6210,12 @@ function discRowOn(client, brand, onYmd) {
          The CRM asks for the PIN again at exactly this moment and says why: approving releases
          real material, and it is not a formality. A phone in a pocket in the godown should not be
          able to do it with one tap. */
-      var pin2 = window.prompt("Enter your PIN to PASS this challan\n\n" + String(c2.challanNo || "") + " — " +
-        String(c2.customerName || "") + "\n\nThis releases material. It is not a formality.");
-      if (!pin2) { toast("Nothing was passed."); return; }
-      /* ---- PAINT FIRST, CONFIRM BEHIND  (v1.49.0) ----
-         "make it fast and effective". It cannot be made fast: this backend's CHEAPEST call is
-         ~2.1s from his machine, and a pass was TWO of them one after the other. What can be
-         made fast is the SCREEN. The CRM has worked this way since v6.9.292 - the row moves the
-         instant he taps, the server is told behind, and it is put back only if the server
-         actually refuses. He is never again watching a button say "Passing..." for six seconds.
-
-         And the move is REMEMBERED (see applyMoves above), so a pull that was already in the
-         air when he tapped can no longer put APPROVAL PENDING back on a challan he has passed. */
-      var pPrev = String(c2.status || ""), pPrevBy = String(c2.approvedBy || "");
-      c2.status = "Dispatched"; c2.approvedBy = S.user; c2.approvedAt = new Date().toISOString();
-      chMoveRemember(c2.id, "Dispatched", S.user);
-      _moving++;
-      var pDone = function () { if (_moving > 0) _moving--; };
-      var pBack = function (msg) {
-        c2.status = pPrev; c2.approvedBy = pPrevBy; chMoveForget(c2.id);
-        pDone(); bust(); render(); toast(msg || "The server refused it — nothing changed.");
-      };
-      var pHalf = function (msg) {
-        /* the pass landed, the dispatch did not. Say the truth: Approved, with its own door. */
-        c2.status = "Approved"; chMoveRemember(c2.id, "Approved", S.user);
-        pDone(); bust(); render();
-        toast(msg || (String(c2.challanNo || "It") + " is passed but NOT dispatched. Press Dispatch on it."));
-      };
-      bust(); render(); toast(String(c2.challanNo || "The challan") + " passed and dispatched.");
-
-      /* ---- ONE ROUND TRIP WHERE THERE WERE TWO ----
-         `andDispatch` asks the server to stamp the approval AND release it in the same call.
-         A backend that does not know the word simply moves it to Approved and says so, and the
-         second call below runs exactly as it always did - so this is correct against either
-         version of the server, and gets ~2 seconds back the day the backend is updated. */
-      api("challanMove", { id: c2.id, to: "Approved", approvePin: pin2, andDispatch: 1, noTg: 1 }).then(function (r) {
-        if (!r || !r.ok) { pBack((r && r.error) || "The server refused it. Nothing changed."); return; }
-        c2.approvedBy = (r && r.by) || S.user;
-        if (String(r.status || "") === "Dispatched") {      /* the server did both - nothing more to send */
-          pDone(); chMoveRemember(c2.id, "Dispatched", r.by || S.user); bust(); render();
-          S.dispatchSent = S.dispatchSent || {};
-          if (!S.dispatchSent[c2.id]) {
-            S.dispatchSent[c2.id] = true;
-            tgChallan(c2, "TG_DISPATCH", tgCaption(c2)).catch(function () {
-              toast("Dispatched. The dispatch bot did not answer — use Send to Telegram on the strip.");
-            });
-          }
-          if (!tgSent(c2)) {
-            tgChallan(c2, "TG_CHALLAN", tgCaption(c2)).then(function (tr) {
-              if (tr && tr.ok) { c2.tgMsg = c2.tgMsg || "sent"; bust(); render(); }
-            }).catch(function () { });
-          }
-          return;
-        }
-        chMoveRemember(c2.id, "Approved", r.by || S.user);
-        /* ---- AND DISPATCHED, IN THE SAME TAP (v1.42.0) ----
-           "now approve and dispatch are same thing not different on."
-
-           Sent as a SECOND call rather than one Draft -> Dispatched move, deliberately: the
-           server stamps approvedBy when it is asked for "Approved", and a released load with
-           nobody's name on it is not a thing to find out afterwards. Known behaviour, no guess.
-
-           If this second call fails the challan simply sits at Approved with its own Dispatch
-           button - the same door a challan raised before today already uses. A half-finished
-           pass is visible and finishable, never silent. */
-        api("challanMove", { id: c2.id, to: "Dispatched", approvePin: pin2 }).then(function (r2) {
-          if (!r2 || !r2.ok) { pHalf(r2 && r2.error); return; }
-          pDone();
-          c2.status = "Dispatched"; chMoveRemember(c2.id, "Dispatched", r2.by || S.user); bust(); render();
-          /* tgSent() reads c.tgMsg, which the TG_CHALLAN send above has just set - so it can
-             never be the guard for THIS send. Its own guard, in memory, set BEFORE the call so
-             two near-simultaneous taps cannot both pass it. */
-          S.dispatchSent = S.dispatchSent || {};
-          if (!S.dispatchSent[c2.id]) {
-            S.dispatchSent[c2.id] = true;
-            tgChallan(c2, "TG_DISPATCH", tgCaption(c2)).catch(function () {
-              toast("Dispatched. The dispatch bot did not answer \u2014 use Send to Telegram on the strip.");
-            });
-          }
-        }).catch(function () {
-          /* No answer at all. The row STAYS moved and he is told plainly not to do it twice: a
-             deadline is a fact about how long WE waited, not about what the server did. */
-          pDone();
-          toast(String(c2.challanNo || "It") + " is passed. The dispatch did not get an answer — " +
-                "it may already be done. Do NOT press it again; the next refresh shows the truth.");
-        });
-        /* ---- AND NOW IT GOES TO TELEGRAM (v1.32.0) ----
-           "once approved it will auto send to telegram bot, no its not sending on approval."
-
-           He was right, and the reason is that the send was never in this app. The CRM has
-           done it since v6.9.106 - sendChallanPdf(r, "TG_CHALLAN", ...) sits in its approve
-           handler. But approving moved to this app months ago and is done from the accounts
-           desk here, and this handler called challanMove and stopped. So every challan passed
-           the way they are actually passed went to Telegram never.
-
-           It is deliberately AFTER the toast and outside the success path's own promise: the
-           challan is passed the moment the server says so, and a Telegram group that is down
-           must not make a man think the approval failed. If the send fails he is told, and the
-           Send to Telegram button on the strip is the hand crank. */
-        if (!tgSent(c2)) {
-          tgChallan(c2, "TG_CHALLAN", tgCaption(c2)).then(function (tr) {
-            if (tr && tr.ok) { c2.tgMsg = c2.tgMsg || "sent"; bust(); render(); }
-            else toast("Passed, but Telegram did not take it. Use Send to Telegram on the strip.");
-          }).catch(function () {
-            toast("Passed. Telegram did not answer \u2014 use Send to Telegram on the strip.");
-          });
-        }
-      }).catch(function () {
-        /* v1.49.0 - the row stays moved, for the same reason as above: the server may well
-           have done it. The memory holds it for five minutes and the next pull tells the truth. */
-        pDone();
-        toast("Sent, but the server did not answer in time. It may already be done — do NOT " +
-              "do it again. The next refresh will show the truth.");
-      });
+      /* v1.51.0 - ONE TAP once the PIN is held. The first pass after opening the app puts the
+         app's own sheet up; every one after that goes straight through. window.prompt is gone:
+         a system dialog on a phone is slow to appear, blocks every other event while it is up,
+         and is the easiest thing on a small screen to mis-tap. */
+      if (!passPinHave()) { _passAsk = String(c2.id || ""); _passAskAct = "ch-approve"; S.sheet = sheetPassPin(c2, "ch-approve"); render(); return; }
+      doPass(c2, passPinGet());
       return;
     }
 
@@ -6197,6 +6332,8 @@ function discRowOn(client, brand, onYmd) {
     var name = val("ln"), pin = val("lp");
     if (!name) { renderLogin("Enter your name."); return; }
     if (!pin)  { renderLogin("Enter your PIN."); return; }
+    /* v1.51.0 - whoever is signing in now, nothing is held for him yet. */
+    passPinClear();
     S.user = name; S.pin = pin;
     renderLogin("");
     var _sb = el("root") && el("root").querySelector('[data-act="login"]');
