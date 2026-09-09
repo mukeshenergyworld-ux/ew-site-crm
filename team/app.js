@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.455";
+  var APP_VERSION = "6.9.456";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -19231,12 +19231,31 @@ function viewCatalogue() {
         ? dueAmt(m.bal, "lg")   /* v6.9.449 - the DUE AMT badge, one look for owed money across every tab (v6.9.181) */
         : '<span style="font-weight:800;font-size:15px;color:#0f766e">' + (Math.abs(m.bal) < 0.5 ? "nil" : money(Math.abs(m.bal))) + '</span>') + '</div>' +
       '<div class="acts" style="margin-top:7px;gap:6px;flex-wrap:wrap">' +
-      '<button class="btn sm ghost" data-act="mini-xlsx" data-n="' + esc(cl) + '">&#8681; Excel</button>' +
-      /* v6.9.449 - ONE PDF. This button IS the customer statement now - the ticked entries, the
-         item pages with their receipts, both GSTINs. The summary-only PDF (hisabMiniPdf, 6.9.425)
-         printed the same table as the statement's first page since 6.9.445, so there were two
-         buttons for one paper; he chose one. Excel stays: it is the table as cells. */
-      '<button class="btn sm ghost" data-act="bill-pdf" data-n="' + esc(cl) + '" title="The customer statement: the ticked entries, one page per delivery with its signed receipt, both GSTINs.">&#8681; PDF</button>' +
+      /* v6.9.456 - TWO PAPERS, EACH WITH ITS OWN BUTTON. His words: "sometimes we have to send
+         only statement pdf not detailed hisab". Until now the account had one PDF button whose
+         meaning came from a switch on the BILLING screen, remembered on the device - so taking a
+         plain statement once meant setting a mode and remembering to unset it. Each button says
+         what it builds and passes it (hisabPdf's third argument), so neither changes the other,
+         and the switch on the billing screen still governs the WhatsApp send exactly as before. */
+      '<div style="flex-basis:100%;display:flex;flex-wrap:wrap;gap:10px">' +
+      ['<div style="flex:1 1 165px;min-width:165px;border:1px solid #e2e8f0;border-radius:10px;padding:8px 9px">' +
+         '<div style="font-weight:800;font-size:12.5px;color:#334155">Statement only</div>' +
+         '<div class="acts" style="gap:6px;margin-top:6px">' +
+         '<button class="btn sm ghost" data-act="bill-pdf" data-n="' + esc(cl) + '" data-pp="0" ' +
+           'title="The ' + MINI_COUNT_WORD() + ' columns on one paper - the account and nothing else.">&#8681; PDF</button>' +
+         '<button class="btn sm ghost" data-act="mini-xlsx" data-n="' + esc(cl) + '" ' +
+           'title="The same ' + MINI_COUNT_WORD() + ' columns as cells.">&#8681; Excel</button></div>' +
+         '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:5px">The account, nothing else.</div>' +
+       '</div>',
+       '<div style="flex:1 1 165px;min-width:165px;border:1px solid #e2e8f0;border-radius:10px;padding:8px 9px">' +
+         '<div style="font-weight:800;font-size:12.5px;color:#334155">Full hisab &middot; with receipts</div>' +
+         '<div class="acts" style="gap:6px;margin-top:6px">' +
+         '<button class="btn sm ghost" data-act="bill-pdf" data-n="' + esc(cl) + '" data-pp="1" ' +
+           'title="The statement, then one page per delivery: its items on the left, the signed receipt on the right.">&#8681; PDF</button>' +
+         '<button class="btn sm ghost" data-act="full-xlsx" data-n="' + esc(cl) + '" ' +
+           'title="Every row with its own item lines under it, and a link to each signed receipt.">&#8681; Excel</button></div>' +
+         '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:5px">Every delivery&rsquo;s items and its signed receipt.</div>' +
+       '</div>'].join("") + '</div>' +
       /* v6.9.449 - and the way to correct the brought-forward figure, on the account it is a line
          of, rather than a card below that repeated the account's sum. Owner only; the server
          checks his PIN (see op-save / op-pin-go). */
@@ -19245,7 +19264,7 @@ function viewCatalogue() {
           'title="Correct the balance carried over from the old books. Your PIN is checked by the server.">' +
           (m.opening ? '\u270e Previous balance' : '\u270e Set a previous balance') + '</button>'
         : '') +
-      '<span class="meta" style="align-self:center;font-size:12px;color:#94a3b8">The same ' + MINI_COUNT_WORD() + ' columns, as a file — better to send than a screenshot.</span>' +
+      '<span class="meta" style="align-self:center;font-size:12px;color:#94a3b8">A file is better to send than a screenshot.</span>' +
       /* v6.9.445 - Energy World's OWN GSTIN, typed once by the owner and printed under the logo on
          every statement. Never guessed: until it is typed here the statement prints none. */
       (roleIs("admin")
@@ -19278,6 +19297,63 @@ function viewCatalogue() {
               " · every delivery, return and payment on this account."]);
     dlXlsx("Hisab_" + String(cl).replace(/[^\w.-]/g, "_") + "_" + today() + ".xlsx",
            String(cl).slice(0, 28), out, [11, 24, 30, 13, 16, 12, 13, 13, 14]);
+  }
+
+  /* ---- THE FULL HISAB AS CELLS (v6.9.456) ----
+     His words: "Full Hisab with recipt PDF & Excel". The PDF has had the item pages with the
+     signed receipt beside each delivery since v6.9.403; this is the same thing as a spreadsheet.
+
+     A spreadsheet cannot hold a photograph, so the receipt travels as its LINK - the same URL the
+     receipt column opens on screen - and each delivery's own lines sit under it. DEBIT, CREDIT and
+     BALANCE are written on the account rows ONLY: an item line leaves them empty, so the money
+     columns still walk to the balance and nothing is counted twice. */
+  function hisabFullXlsx(cl) {
+    var m = hisabMiniRows(cl);
+    if (!m.rows.length) { toast("Nothing on this account yet."); return; }
+    var chById = {}, rtById = {};
+    (S.data.challans || []).forEach(function (c) { chById[c.id] = c; });
+    (clientReturns(cl) || []).forEach(function (r) { rtById[r.id] = r; });
+    var HEAD = MINI_HEAD.concat(["Item", "Code", "Qty", "Rate", "Disc %", "Line amount", "Receipt link"]);
+    var pad = ["", "", "", "", "", "", ""];
+    var out = [HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
+    var nLines = 0;
+    m.rows.forEach(function (r) {
+      var src = r.kind === "ch" ? chById[r.id] : (r.kind === "ret" ? rtById[r.id] : null);
+      var link = "";
+      if (src) {
+        var pf = chProofAny(r.kind === "ret" ? retProofView(src) : src);
+        link = pf.has && pf.url ? String(pf.url) : "";
+      }
+      out.push([r.date, r.no, r.ptrs, r.type, r.book, miniRcptWord(r.rcpt), miniBillWord(r.bill),
+                r.debit == null ? "" : Math.round(r.debit),
+                r.credit == null ? "" : Math.round(r.credit),
+                { v: Math.round(r.bal), s: XL.BOLD },
+                "", "", "", "", "", "", link]);
+      if (!src) return;
+      var lines = r.kind === "ch" ? pricedLines(src, cl) : returnLines(src);
+      lines.forEach(function (i) {
+        nLines++;
+        out.push(["", "", "    \u00b7 " + String(i.desc || i.code || ""), "", "", "", "", "", "", "",
+                  String(i.desc || i.code || ""), String(i.code || ""),
+                  Number(i.qty) || 0, Math.round(Number(i.rate) || 0), Number(i.disc) || 0,
+                  Math.round(Number(i.amt) || 0), ""]);
+      });
+      /* the fare is on the delivery's value (chValue) and is not one of its lines, so it is
+         written as its own line rather than left to be the difference nobody can account for */
+      if (r.kind === "ch" && chFreight(src) > 0) {
+        nLines++;
+        out.push(["", "", "    \u00b7 Freight", "", "", "", "", "", "", "",
+                  "Freight", "", "", "", "", Math.round(chFreight(src)), ""]);
+      }
+    });
+    out.push([]);
+    out.push([{ v: hisabMiniLine(m.bal), s: XL.BAND }].concat([1,2,3,4,5,6,7,8].map(function () { return { v: "", s: XL.BAND }; }))
+             .concat([{ v: Math.round(Math.abs(m.bal)), s: XL.BAND }]));
+    out.push([]);
+    out.push(["Energy World \u00b7 " + cl + " \u00b7 built " + fullDate(today()) +
+              " \u00b7 every delivery, return and payment on this account, each with its own lines and a link to its signed receipt."]);
+    dlXlsx("Hisab_full_" + String(cl).replace(/[^\w.-]/g, "_") + "_" + today() + ".xlsx",
+           String(cl).slice(0, 28), out, [11, 24, 30, 13, 16, 12, 13, 13, 14, 14, 30, 14, 8, 10, 8, 14, 40]);
   }
 
   /* ---- AND AS A PDF, on the letterhead (v6.9.425) ----
@@ -20734,7 +20810,11 @@ function viewCatalogue() {
      There is no other fold, and no band.
 
      Built-in font and "Rs.", as before: the Unicode font took seconds and reloaded the tab. */
-  function hisabPdf(cl, all) {
+  /* v6.9.456 - THE THIRD ARGUMENT. true or false says which paper to build; undefined keeps the
+     device switch (hisabPerPage), so the billing screen, its Download all and the WhatsApp send
+     are untouched. The account's own four buttons always pass one, so a statement taken "just
+     this once" cannot change what the next one looks like. */
+  function hisabPdf(cl, all, pp) {
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }));
     var rets = clientReturns(cl).slice();
     var pays = (S.data.payments || []).filter(function (p) { return p && p.client === cl; });
@@ -20768,7 +20848,7 @@ function viewCatalogue() {
     pyOn.forEach(function (p) { ev.push({ t: "P", d: dstr(p.date || p.createdAt), ts: String(p.date || p.createdAt || ""), ord: 3, row: p }); });
     ev.sort(function (a, b) { return a.d !== b.d ? a.d.localeCompare(b.d) : ((a.ord - b.ord) || a.ts.localeCompare(b.ts)); });
     var sheets = ev.filter(function (e) { return e.t !== "P"; });
-    var perPage = hisabPerPage();
+    var perPage = (pp === true || pp === false) ? pp : hisabPerPage();
     var _measure = sheets.map(function (e) { return e.row; });
     return Promise.all([
       perPage ? thumbSizes(_measure) : Promise.resolve({}),
@@ -35511,6 +35591,8 @@ function viewCatalogue() {
     if (act === "mini-fold") { S.miniShut = !S.miniShut; render(); return; }
     if (act === "rates-fold") { S.ratesOpen = !S.ratesOpen; keepScroll = true; render(); return; }
     if (act === "mini-xlsx") { hisabMiniXlsx(t.getAttribute("data-n") || ""); return; }
+    /* v6.9.456 - the full hisab as cells; the statement-only Excel above is unchanged */
+    if (act === "full-xlsx") { hisabFullXlsx(t.getAttribute("data-n") || ""); return; }
     if (act === "exec-pdf") {
       var _ek = t.getAttribute("data-k") || "";
       if (!canExecCard(_ek)) { toast("That is not your list."); return; }
@@ -35585,11 +35667,15 @@ function viewCatalogue() {
     if (act === "bill-pdf") {
       var pcl = t.getAttribute("data-n") || hisabResolve(S.q);   /* v6.9.449 - the account's button names its client */
       var pAll = t.getAttribute("data-all") === "1";
-      toast(hisabPerPage()
-        ? "Building the statement and fetching the signed receipts\u2026"
+      /* v6.9.456 - data-pp says which paper; without it the device switch decides, as before */
+      var _ppA = t.getAttribute("data-pp");
+      var pPer = _ppA === "1" ? true : (_ppA === "0" ? false : undefined);
+      var pWant = pPer === undefined ? hisabPerPage() : pPer;
+      toast(pWant
+        ? "Building the full hisab and fetching the signed receipts\u2026"
         : (pAll ? "Building the full statement\u2026" : "Building the statement\u2026"));
-      loadLogo().then(function () { return hisabPdf(pcl, pAll); })
-        .then(function (d) { d.save(pcl.replace(/[^\w.-]/g, "_") + "_hisab" + (pAll ? "_all" : "") + ".pdf"); })
+      loadLogo().then(function () { return hisabPdf(pcl, pAll, pPer); })
+        .then(function (d) { d.save(pcl.replace(/[^\w.-]/g, "_") + (pWant ? "_hisab" : "_statement") + (pAll ? "_all" : "") + ".pdf"); })
         .catch(function () { toast("Could not build the PDF."); });
       return;
     }
