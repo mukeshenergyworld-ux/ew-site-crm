@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.456";
+  var APP_VERSION = "6.9.457";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8672,7 +8672,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          customer signed for the goods - his own decision in v6.9.250 - and this band says so first,
          then says exactly what is still open. */
       '<h3 style="color:#991b1b;margin:0">' + list.length + ' deliver' + (list.length === 1 ? 'y' : 'ies') +
-        ' to finalise <span class="pill due">' + money(worth) + '</span></h3>' +
+        /* v6.9.457 - moneySgn, not money. A credit note is a negative delivery (hisabRowsFrom
+           has read v < -0.5 as "Credit note" since v6.9.445), so a queue whose net is negative
+           printed the sign INSIDE the money - the one thing the house rule forbids. Found by
+           re-pointing run_ledger_agree, red since before 6.9.450. */
+        ' to finalise <span class="pill due">' + moneySgn(worth) + '</span></h3>' +
       '<div class="meta" style="color:#7f1d1d;font-size:12.5px;line-height:1.55;margin-top:6px">' +
       'The customer already owes for ' + (list.length === 1 ? 'this' : 'these') + ' &mdash; the goods are signed for. ' +
       'Still open: <b>who earns the incentive</b>, and whether a <b>further discount</b> was given. ' +
@@ -29349,6 +29353,46 @@ function viewCatalogue() {
     if (r) r(!!answer);
   }
 
+  /* ================= AND ONE FOR "WHICH OF THESE?"  (v6.9.457, 9 Sep 2026) =================
+     askSheet answers yes or no; promptSheet takes one typed line and always draws a box. A
+     question with three honest answers - which paper to send, or don't send - fits neither, and
+     the browser has never had a dialog for it at all.
+
+     chooseSheet(o) -> Promise<string|null>: the value of the button he pressed, or null when the
+     sheet is closed any way but a choice - the same contract promptSheet's Cancel has, and it
+     means the same thing: DO NOTHING. o = { title, sub, body, choices:[{v,label,note}], cancel }.
+     The first choice is the solid button, the rest ghosts; each may carry a note under its label,
+     because "which paper" is a question a man answers better when the two are described. One
+     pending chooser at a time - a second answers the first with null. The paint writes nothing. */
+  var _cho = null;
+  function sheetChoose(o) {
+    return '<h2>' + o.title + '</h2>' +
+      (o.sub ? '<p class="sub">' + o.sub + '</p>' : '') +
+      (o.body ? '<div style="font-size:13.5px;line-height:1.5">' + o.body + '</div>' : '') +
+      (o.choices || []).map(function (c, i) {
+        return '<button class="btn full' + (i ? ' ghost' : '') + '" data-act="choose-go" data-v="' + esc(c.v) + '" ' +
+          /* display:block, because .btn is a centring flex row and the note would sit BESIDE the
+             label rather than under it - measured on the render: "Full hisab . with receipts"
+             wrapped to three lines in a column half the sheet wide */
+          'style="display:block;width:100%;margin-top:8px;text-align:left;line-height:1.35;font-size:15px">' + esc(c.label) +
+          (c.note ? '<span style="display:block;font-weight:400;font-size:12.5px;opacity:.85;margin-top:2px">' + esc(c.note) + '</span>' : '') +
+          '</button>';
+      }).join("") +
+      '<div class="foot"><button class="btn ghost" data-act="close">' + (o.cancel || 'Not now') + '</button></div>';
+  }
+  function chooseSheet(o) {
+    return new Promise(function (resolve) {
+      if (_cho) { var prev = _cho; _cho = null; try { prev(null); } catch (e) {} }
+      _cho = resolve;
+      S.modal = sheetChoose(o); render();
+    });
+  }
+  function chooseDone(v) {
+    var r = _cho; _cho = null;
+    S.modal = null; render();
+    if (r) r(v == null ? null : String(v));
+  }
+
   /* ================= ONE IN-APP SHEET FOR EVERY "TYPE ONE LINE"  (v6.9.452, 9 Sep 2026) ======
      The yes/no questions went to askSheet in 6.9.448; the prompts that ask for one line - a book
      number, a room name, a reason - still opened window.prompt: the browser's grey box, which on
@@ -34275,6 +34319,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "ask-yes") { askDone(true); return; }
+    if (act === "choose-go") { chooseDone(t.getAttribute("data-v")); return; }   /* v6.9.457 */
     /* v6.9.452 - the typed line is read BEFORE promptDone repaints the box away */
     if (act === "prompt-ok") { var _pv = el("prompt_in"); promptDone(_pv ? String(_pv.value) : ""); return; }
     if (act === "prompt-alt") { promptDone(_prmAlt == null ? "" : _prmAlt); return; }   /* v6.9.453 */
@@ -34283,6 +34328,8 @@ function viewCatalogue() {
       if (_ask) { askDone(false); return; }
       /* v6.9.452 - a prompt closed any way but OK is null - "write nothing", as Cancel was */
       if (_prm) { promptDone(null); return; }
+      /* v6.9.457 - and a chooser closed without a choice is null: send nothing, do nothing */
+      if (_cho) { chooseDone(null); return; }
       S.chx = null;   /* v6.9.356 - the job-work / off-list box never outlives its challan */
       /* cancelling a partner form that was opened FROM the client form goes back to the client
          form with everything still typed - never dumps the user's half-entered lead. */
@@ -35581,7 +35628,29 @@ function viewCatalogue() {
       var wnum = String(wc.mobile || "").replace(/\D/g, ""); if (wnum.length === 10) wnum = "91" + wnum;
       var wmsg = "Dear " + wcl + ",\n\nPlease find your Energy World statement (hisab) attached.\n\nThank you.\nEnergy World";
       var wrS = waRoute(t, wcl, wnum, wmsg, "statement of account"); if (!wrS.ok) return;
-      waShareDoc(loadLogo().then(function () { return hisabPdf(wcl); }), wcl.replace(/[^\w.-]/g, "_") + "_hisab.pdf", wrS.num, wrS.msg);
+      /* v6.9.457 - HIS WORDS, for 6.9.456: "sometimes we have to SEND only statement pdf not
+         detailed hisab". That release gave the choice to the download buttons and left this one -
+         the way he actually sends - obeying the billing screen's device switch. It asks now, and
+         the answer governs THIS send only: the switch is not read and never written, so nothing
+         here changes what the next statement or download looks like. Closed without a choice
+         sends nothing. */
+      chooseSheet({
+        title: "Which paper for " + esc(wcl) + "?",
+        sub: "It goes to WhatsApp as soon as it is built.",
+        choices: [
+          { v: "stmt", label: "Statement only",
+            note: "The " + MINI_COUNT_WORD() + " columns on one paper \u2014 the account and nothing else." },
+          { v: "full", label: "Full hisab \u00b7 with receipts",
+            note: "The statement, then a page per delivery with its signed receipt." }
+        ],
+        cancel: "Don\u2019t send"
+      }).then(function (pick) {
+        if (!pick) return;
+        var wPer = pick === "full";
+        toast(wPer ? "Building the full hisab and fetching the signed receipts\u2026" : "Building the statement\u2026");
+        waShareDoc(loadLogo().then(function () { return hisabPdf(wcl, false, wPer); }),
+                   wcl.replace(/[^\w.-]/g, "_") + (wPer ? "_hisab" : "_statement") + ".pdf", wrS.num, wrS.msg);
+      });
       return;
     }
     if (act === "exec-xlsx") { execCardXlsx(t.getAttribute("data-k") || ""); return; }
