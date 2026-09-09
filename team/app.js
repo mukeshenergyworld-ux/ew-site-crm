@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.449";
+  var APP_VERSION = "6.9.450";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7970,7 +7970,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     /* Compact is a whole different read of the same list, so it returns early rather than
        trying to share the area chips and the search box below - those belong to the card view. */
     ensureCompactCss();
-    h += '<div class="row" style="margin-bottom:8px">' + cvSeg() + '<div class="grow"></div></div>';
+    h += '<div class="row" style="margin-bottom:8px">' + cvSeg(true) + '<div class="grow"></div></div>';
+    /* v6.9.450 - THE REGISTER. HIS WORDS: "List of client generation from database, we can complete
+       all details if pending there only like client address etc, that will auto update everywhere,
+       need client list data area wise." One line per client, city -> area, the blanks as boxes. */
+    if (clListOn()) return h + viewClientRegister(all);
     /* v6.9.415 - NOT while he is working through the Missing details list. Compact is a tree
        grouped by customer and the full card is behind a tap; "Phone ?" and the box to type the
        number into are ON the full card, so in compact the worklist drew neither. Found by
@@ -27052,11 +27056,24 @@ function viewCatalogue() {
     });
     return { live: live, open: open, done: done };
   }
-  function cvSeg() {
-    var m = cvMode();
+  /* v6.9.450 - a third segment, LIST, on the Clients screen only (withList). It is its own switch
+     (S.clList), not a third value of cvMode: Compact / Expand are shared with Leads and Quotes, and
+     a register of clients means nothing on either of those. Remembered per phone. */
+  var CL_LIST_KEY = "ew_cl_list";
+  function clListOn() {
+    if (S.clList === undefined) { try { S.clList = localStorage.getItem(CL_LIST_KEY) === "1"; } catch (e) { S.clList = false; } }
+    return !!S.clList;
+  }
+  function clListSet(on) {
+    S.clList = !!on;
+    try { localStorage.setItem(CL_LIST_KEY, on ? "1" : "0"); } catch (e) { }
+  }
+  function cvSeg(withList) {
+    var m = cvMode(), lst = withList && clListOn();
     return '<span class="cv-seg">' +
-      '<button class="' + (m === "compact" ? "on" : "") + '" data-act="cv-mode" data-m="compact">Compact</button>' +
-      '<button class="' + (m === "expand" ? "on" : "") + '" data-act="cv-mode" data-m="expand">Expand</button>' +
+      '<button class="' + (!lst && m === "compact" ? "on" : "") + '" data-act="cv-mode" data-m="compact">Compact</button>' +
+      '<button class="' + (!lst && m === "expand" ? "on" : "") + '" data-act="cv-mode" data-m="expand">Expand</button>' +
+      (withList ? '<button class="' + (lst ? "on" : "") + '" data-act="cv-mode" data-m="list">List</button>' : '') +
       '</span>';
   }
   /* v6.9.184: the search Compact was missing. It is the reason a man had to drop back to
@@ -29311,6 +29328,131 @@ function viewCatalogue() {
       '<div class="acts" style="align-items:center;gap:8px;flex-wrap:wrap">' +
       '<button class="btn sm ghost" data-act="rates-fold" style="border-color:#fecaca;color:#7f1d1d">▸ Rates &amp; who earns</button>' +
       '<span class="meta" style="font-size:12.5px">' + say + ' &middot; earns: ' + earn + '</span></div></div>';
+  }
+
+  /* ================= THE CLIENT REGISTER, AREA-WISE  (v6.9.450, 9 Sep 2026) =================
+     HIS WORDS: "List of client generation from database, we can complete all details if pending
+     there only like client address etc, that will auto update everywhere, need client list data
+     area wise."
+
+     MEASURED FIRST, on his book that morning: 167 clients - 85 with no address, 27 with no mobile,
+     25 with no area, 1 with no city; 109 missing at least one, 58 complete; 42 distinct areas.
+
+     One line per client, grouped city -> area (cvPlace, the same resolver the Compact tree uses, so
+     the two views never file one man under two colonies). Mobile, area and address are BOXES - the
+     account's box pattern (6.9.439-449): type, Enter, it saves itself, the box restyles in place,
+     never a repaint under the caret. Each writes the client row through save("clients"), the row
+     every other screen reads - the phone in HISAB's header, the WhatsApp route, the statement's
+     address, the Compact tree's grouping. That is what "auto update everywhere" already means in
+     this estate: one row, many readers, and the register is one more reader that can also write.
+
+     The area box offers the city's own colonies (areasIn) so a fourth spelling of Sector 11 is not
+     typed by accident; anything else typed is kept as typed - the owner's word, not the picker's. */
+  function clientRegisterRows(all) {
+    var rows = (all || []).map(function (c) {
+      var p = cvPlace(c);
+      return { c: c, city: p.district, area: p.area, due: clientDue(c.name) };
+    });
+    rows.sort(function (a, b) {
+      var k = function (r) { return (r.city === "Not set" ? "~~" : r.city.toLowerCase()) + "|" + (r.area === "Not set" ? "~~" : r.area.toLowerCase()); };
+      var ka = k(a), kb = k(b);
+      if (ka !== kb) return ka < kb ? -1 : 1;
+      return alpha(String(a.c.name || ""), String(b.c.name || ""));
+    });
+    return rows;
+  }
+  function clientRegisterGaps(all) {
+    var g = { mob: 0, area: 0, addr: 0, any: 0 };
+    (all || []).forEach(function (c) {
+      var m = !String(c.mobile || "").trim(), a = !String(c.area || "").trim(), d = !String(c.address || "").trim();
+      if (m) g.mob++; if (a) g.area++; if (d) g.addr++; if (m || a || d) g.any++;
+    });
+    return g;
+  }
+  function clBox(c, f, placeholder, extra, w) {
+    var v = String(c[f] || "").trim();
+    /* an id, so formSnap/formRestore carry a half-typed value and the caret across a background
+       repaint (a heartbeat pull lands while he is typing an address) - they key on the id */
+    return '<input class="clbx" id="clbx_' + f + '_' + esc(c.id) + '" data-id="' + esc(c.id) + '" data-f="' + f + '" value="' + esc(v) + '" placeholder="' + placeholder + '" ' +
+      (extra || '') + ' autocomplete="off" style="' + (w || '') + 'padding:3px 7px;font-size:12.5px;font-family:inherit;border-radius:6px;min-width:0;' +
+      'border:1px ' + (v ? 'solid #cbd5e1' : 'dashed #d97706') + ';background:' + (v ? '#fff' : '#fffbeb') + ';color:' + (v ? '#0f172a' : '#b45309') + '"/>';
+  }
+  function viewClientRegister(all) {
+    var rows = clientRegisterRows(all), g = clientRegisterGaps(all);
+    var areasN = {}; rows.forEach(function (r) { areasN[r.city + "|" + r.area] = 1; });
+    var h = '<div class="card" style="padding:10px 12px">' +
+      '<div class="acts" style="align-items:baseline;gap:8px;flex-wrap:wrap;margin:0">' +
+      '<h3 style="margin:0;font-size:13.5px" class="grow">The register &mdash; ' + all.length + ' client' + (all.length === 1 ? '' : 's') + ', ' + Object.keys(areasN).length + ' area' + (Object.keys(areasN).length === 1 ? '' : 's') + '</h3>' +
+      '<button class="btn sm ghost" data-act="cl-xlsx">&#8681; Excel</button></div>' +
+      '<div class="meta" style="font-size:12px;margin-top:4px">' +
+      '<span id="clreg_gaps" style="color:' + (g.any ? '#b45309' : '#0f766e') + '"><b>' + g.any + '</b> missing something &middot; ' +
+      '<b>' + g.mob + '</b> no mobile &middot; <b>' + g.area + '</b> no area &middot; <b>' + g.addr + '</b> no address</span>' +
+      '<br><span style="color:#64748b">Type into an amber box and press Enter &mdash; it saves itself, and every screen that shows this client reads the same record. Tap a name for the full form.</span>' +
+      '</div></div>';
+    if (!rows.length) return h + '<div class="empty">No clients on this list yet.</div>';
+    var lastCity = null, lastArea = null, openArea = false;
+    var cityId = function (x) { return String(x || "").replace(/[^A-Za-z0-9]/g, "_"); };
+    var lists = {};
+    rows.forEach(function (r) {
+      if (r.city !== lastCity) {
+        if (openArea) { h += '</div>'; openArea = false; }
+        lastCity = r.city; lastArea = null;
+        var cc = cvColor(r.city), nC = rows.filter(function (x) { return x.city === r.city; }).length;
+        h += '<div class="cv-exec" style="background:' + cc[0] + ';margin-top:10px"><span class="cv-en">' + esc(r.city === "Not set" ? "No city yet" : r.city) + '</span>' +
+          '<span class="cv-tags">' + cvTag(nC + (nC === 1 ? " client" : " clients"), "rgba(255,255,255,.22)", "#fff") + '</span></div>';
+        /* one datalist per city: its own colonies, for the area boxes below */
+        if (r.city !== "Not set" && !lists[r.city]) {
+          lists[r.city] = 1;
+          h += '<datalist id="clreg_areas_' + cityId(r.city) + '">' + areasIn(r.city).map(function (a) { return '<option value="' + esc(a) + '"></option>'; }).join("") + '</datalist>';
+        }
+      }
+      if (r.area !== lastArea) {
+        if (openArea) h += '</div>';
+        lastArea = r.area; openArea = true;
+        var inArea = rows.filter(function (x) { return x.city === r.city && x.area === r.area; });
+        var aDue = inArea.reduce(function (t, x) { return t + x.due; }, 0), ac = cvColor(r.city);
+        h += '<div class="cv-area" style="color:' + ac[0] + ';margin-top:6px"><span class="cv-an">' + esc(r.area === "Not set" ? "No area yet" : r.area) + '</span>' +
+          '<span class="cv-tags">' + cvTag(inArea.length, ac[1], ac[0]) + (aDue > 0.5 ? dueAmt(aDue) : "") + '</span></div>' +
+          '<div class="clreg-area" style="border-left:3px solid ' + ac[1] + ';margin:0 0 4px 2px;padding-left:6px">';
+      }
+      var c = r.c;
+      h += '<div class="clreg-row" style="padding:6px 0;border-bottom:1px solid #e2e8f0">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<button class="cv-nm" data-act="cl-open" data-id="' + esc(c.id) + '" style="font-size:13.5px">' + esc(c.name) + '</button>' +
+        (String(c.ownedBy || "").trim() ? '<span class="meta" style="font-size:12px;color:#64748b">' + esc(c.ownedBy) + '</span>' : '') +
+        '<span class="grow"></span>' + (r.due > 0.5 ? dueAmt(r.due) : '<span class="cv-ok">no dues</span>') + '</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;align-items:center">' +
+        clBox(c, "mobile", "+ mobile", 'inputmode="numeric"', 'width:118px;') +
+        clBox(c, "area", "+ area", (r.city !== "Not set" ? 'list="clreg_areas_' + cityId(r.city) + '"' : ''), 'width:150px;') +
+        clBox(c, "address", "+ address", '', 'flex:1 1 180px;') +
+        '</div></div>';
+    });
+    if (openArea) h += '</div>';
+    return h;
+  }
+  /* the write behind a register box - outside the paint, so renderCore itself still writes nothing
+     (t_keepplace holds that); the row is the one that came down, with one field changed */
+  function saveClientRow(cr) { return save("clients", cr); }
+  /* the same register as a file - city, area, then every column a man asks for on the phone */
+  function clientRegisterXlsx() {
+    var all = S.data.clients.filter(function (c) { return isClient(c.name); });
+    if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });
+    var rows = clientRegisterRows(all);
+    if (!rows.length) { toast("No clients to list."); return; }
+    var HEAD = ["City", "Area", "Client", "Mobile", "Mobile 2", "Address", "Executive", "Type", "Segment",
+                "Plumber", "Architect", "Builder", "Due", "Previous balance", "Credit limit", "Credit days", "GSTIN", "Old book no"];
+    var out = [HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
+    var blank = function (v) { var t = String(v || "").trim(); return t ? t : { v: "", s: XL.NONE }; };
+    rows.forEach(function (r) {
+      var c = r.c;
+      out.push([r.city === "Not set" ? { v: "", s: XL.NONE } : r.city, r.area === "Not set" ? { v: "", s: XL.NONE } : r.area,
+                c.name, blank(c.mobile), String(c.mobile2 || ""), blank(c.address), String(c.ownedBy || ""),
+                String(c.type || ""), String(c.segment || ""), String(c.plumber || ""), String(c.architect || ""), String(c.builder || ""),
+                { v: Math.round(r.due), s: r.due > 0.5 ? XL.BOLD : XL.PLAIN }, Math.round(nAmt(c.openingAmt)),
+                Number(c.creditLimit) || "", Number(c.creditDays) || "", String(clientGstin(c.name) || ""), String(clientOldBookNo(c.name) || "")]);
+    });
+    dlXlsx("Clients_by_area_" + today() + ".xlsx", "Clients", out,
+      [12, 20, 30, 13, 13, 40, 16, 12, 12, 16, 16, 16, 12, 14, 12, 10, 17, 12]);
   }
 
   function logout() {
@@ -33402,6 +33544,39 @@ function viewCatalogue() {
         toast(raw3 ? cl3 + " may hold money " + raw3 + " days before the credit stop names it." : "Credit days for " + cl3 + " back to the company\u2019s " + CREDIT_DAYS + ".");
       }).catch(function () { boxFail(bx); });
     });
+    /* v6.9.450 - the register's boxes: mobile, area, address. Change -> validate -> save the row
+       with one field changed (the backend writes the whole row) -> restyle in place -> the gaps
+       line corrected without a repaint. A mobile is checked exactly as cl-ph-save checks it: ten
+       digits, and not already on another man's record. */
+    wireBox("clbx", function (bx) {
+      var cid = bx.getAttribute("data-id") || "", f = bx.getAttribute("data-f") || "";
+      var cr = (S.data.clients || []).filter(function (x) { return x.id === cid; })[0];
+      if (!cr || !f) { toast("That client is no longer on the list. Refresh and try again."); return; }
+      var raw = String(bx.value || "").trim(), now = raw;
+      if (f === "mobile" && raw) {
+        now = dgMob(raw);
+        if (!now) { bx.style.borderColor = "#b91c1c"; toast("\u201c" + raw + "\u201d is not a ten-digit mobile number."); return; }
+        var own = null;
+        (S.data.clients || []).forEach(function (x) { if (x.id === cr.id || own) return; if (dgMob(x.mobile) === now || dgMob(x.mobile2) === now) own = x; });
+        if (own) { bx.style.borderColor = "#b91c1c"; toast("That number is already on " + (own.name || "another client") + "'s record. If they are the same man, merge them on Duplicate check."); return; }
+      }
+      if (now === String(cr[f] || "").trim()) { bx.value = now; return; }
+      bx.disabled = true;
+      cr[f] = now;
+      saveClientRow(cr).then(function () {
+        boxDone(bx, now, "#0f172a", "#fff", "#cbd5e1");
+        if (!now) { bx.style.border = "1px dashed #d97706"; bx.style.background = "#fffbeb"; bx.style.color = "#b45309"; }
+        var gl = el("clreg_gaps");
+        if (gl) {
+          var all2 = S.data.clients.filter(function (c) { return isClient(c.name); });
+          if (!seesAllClients()) all2 = all2.filter(function (c) { return isMineClient(c.name); });
+          var g2 = clientRegisterGaps(all2);
+          gl.innerHTML = '<b>' + g2.any + '</b> missing something &middot; <b>' + g2.mob + '</b> no mobile &middot; <b>' + g2.area + '</b> no area &middot; <b>' + g2.addr + '</b> no address';
+          gl.style.color = g2.any ? '#b45309' : '#0f766e';
+        }
+        toast(cr.name + " \u2014 " + (f === "mobile" ? "mobile" : f) + (now ? " saved. Every screen that shows him reads it now." : " cleared."));
+      }).catch(function () { boxFail(bx); });
+    });
     wireBox("firmgst_in", function (bx) {
       var now = String(bx.value || "").trim().toUpperCase();
       if (now === firmGstin()) return;
@@ -34364,7 +34539,13 @@ function viewCatalogue() {
     }
 
     /* ---- compact / expand (v6.9.178) ---- */
-    if (act === "cv-mode") { cvSetMode(t.getAttribute("data-m")); render(); return; }
+    if (act === "cv-mode") {
+      var _cvm = t.getAttribute("data-m");
+      /* v6.9.450 - List is the Clients screen's own switch; Compact / Expand turn it off */
+      if (_cvm === "list") { clListSet(true); } else { clListSet(false); cvSetMode(_cvm); }
+      render(); return;
+    }
+    if (act === "cl-xlsx") { clientRegisterXlsx(); return; }
     if (act === "qv-cli") {
       var qvK = t.getAttribute("data-k") || "";
       if (!S.qvOpen) S.qvOpen = {};
