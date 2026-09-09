@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.448";
+  var APP_VERSION = "6.9.449";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -19196,6 +19196,12 @@ function viewCatalogue() {
           'border:1px ' + (clientGstin(cl) ? 'solid #99f6e4' : 'dashed #cbd5e1') + ';border-radius:6px;' +
           'background:' + (clientGstin(cl) ? '#f0fdfa' : '#fff') + ';color:' + (clientGstin(cl) ? '#0f766e' : '#b45309') + '"/>'
         : (clientGstin(cl) ? '<span class="pill teal" title="GSTIN">GSTIN ' + esc(clientGstin(cl)) + '</span>' : '')) +
+      /* v6.9.449 - HIS WORDS: "show credit limit somewhere on hisab section, so to assign and
+         change from here only". The same two columns the client form has carried since v6.9.193
+         (creditLimit, creditDays), as boxes on the account for the owner - and beside them the
+         pill the Payments screen has drawn since v6.9.193: how much room is left, or how far over.
+         The credit stop reads these live, so a limit typed here gates the next pass. */
+      creditTermsBoxes(cl) +
       '</div>' +
       /* v6.9.446 - ONE LINE OF COUNTS, ONE OF INSTRUCTION. Book numbers (6.9.439), receipts
          (6.9.440), returns (6.9.442) and GST bills (6.9.444) each added a sentence, and each was
@@ -19230,11 +19236,24 @@ function viewCatalogue() {
       '<div class="acts" style="margin-top:8px;align-items:baseline;border-top:2px solid #0d766c;padding-top:7px;flex-wrap:wrap;gap:8px">' +
       '<span class="grow" style="font-weight:700;font-size:13px;color:' + (m.bal > 0.5 ? "#b91c1c" : "#0f766e") + '">' +
       esc(hisabMiniLine(m.bal)) + '</span>' +
-      '<span style="font-weight:800;font-size:15px;color:' + (m.bal > 0.5 ? "#b91c1c" : "#0f766e") + '">' +
-      (Math.abs(m.bal) < 0.5 ? "nil" : money(Math.abs(m.bal))) + '</span></div>' +
+      (m.bal > 0.5
+        ? dueAmt(m.bal, "lg")   /* v6.9.449 - the DUE AMT badge, one look for owed money across every tab (v6.9.181) */
+        : '<span style="font-weight:800;font-size:15px;color:#0f766e">' + (Math.abs(m.bal) < 0.5 ? "nil" : money(Math.abs(m.bal))) + '</span>') + '</div>' +
       '<div class="acts" style="margin-top:7px;gap:6px;flex-wrap:wrap">' +
       '<button class="btn sm ghost" data-act="mini-xlsx" data-n="' + esc(cl) + '">&#8681; Excel</button>' +
-      '<button class="btn sm ghost" data-act="mini-pdf" data-n="' + esc(cl) + '">&#8681; PDF</button>' +
+      /* v6.9.449 - ONE PDF. This button IS the customer statement now - the ticked entries, the
+         item pages with their receipts, both GSTINs. The summary-only PDF (hisabMiniPdf, 6.9.425)
+         printed the same table as the statement's first page since 6.9.445, so there were two
+         buttons for one paper; he chose one. Excel stays: it is the table as cells. */
+      '<button class="btn sm ghost" data-act="bill-pdf" data-n="' + esc(cl) + '" title="The customer statement: the ticked entries, one page per delivery with its signed receipt, both GSTINs.">&#8681; PDF</button>' +
+      /* v6.9.449 - and the way to correct the brought-forward figure, on the account it is a line
+         of, rather than a card below that repeated the account's sum. Owner only; the server
+         checks his PIN (see op-save / op-pin-go). */
+      (canSetOpening()
+        ? '<button class="btn sm ghost" data-act="op-open" data-n="' + esc(cl) + '" style="border-color:#fecaca;color:#b91c1c" ' +
+          'title="Correct the balance carried over from the old books. Your PIN is checked by the server.">' +
+          (m.opening ? '\u270e Previous balance' : '\u270e Set a previous balance') + '</button>'
+        : '') +
       '<span class="meta" style="align-self:center;font-size:12px;color:#94a3b8">The same ' + MINI_COUNT_WORD() + ' columns, as a file — better to send than a screenshot.</span>' +
       /* v6.9.445 - Energy World's OWN GSTIN, typed once by the owner and printed under the logo on
          every statement. Never guessed: until it is typed here the statement prints none. */
@@ -19342,54 +19361,10 @@ function viewCatalogue() {
     });
     return y;
   }
-  function hisabMiniPdf(cl) {
-    var m = hisabMiniRows(cl);
-    if (!m.rows.length) { toast("Nothing on this account yet."); return; }
-    return loadLogo().then(function () {
-      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
-      var F = function (w) { doc.setFont(ppEmbed(doc), (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"); };
-      var W = 297, H = 210, L = 12, R = W - 12, HB = 22;
-      /* v6.9.403's rule, followed here too: the amount is drawn from its absolute value and the
-         SIGN is written in front of it, so a credit balance reads "- Rs.1,05,674" and never
-         "Rs.-1,05,674" with the minus buried inside the number. */
-      var RS = function (n) { return "Rs." + Math.round(Math.abs(nAmt(n))).toLocaleString("en-IN"); };
-      var RSs = function (n) { return (nAmt(n) < -0.5 ? "- " : "") + RS(n); };
-      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, HB, "F");
-      doc.setFillColor(94, 234, 212); doc.rect(0, HB, W, 0.9, "F");
-      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 5, 24, 12); } catch (e) { } }
-      F("bold"); doc.setFontSize(11.5); doc.setTextColor(255, 255, 255);
-      doc.text(pdfSafe(String(cl).toUpperCase()), R, 10, { align: "right" });
-      F("normal"); doc.setFontSize(7.6); doc.setTextColor(172, 212, 205);
-      doc.text("Statement of account   ·   " + (clientGstin(cl) ? "GSTIN " + clientGstin(cl) + "   ·   " : "") + fullDate(today()), R, 15.5, { align: "right" });
-      doc.text(m.chs.length + " deliveries · " + m.rets.length + " returns · " + m.pays.length + " payments", R, 19.5, { align: "right" });
-      /* the last column is pulled 1mm off the right edge - right-aligned AT R the heading sat
-         flush against the band and read as clipped. */
-      /* v6.9.440 - nine columns now. PTRS gives up 8mm and BOOK NO 4mm to make room for
-         RECEIPT; the three money columns keep every millimetre they had, because a clipped
-         figure on a statement is the one thing this page must never do. */
-      /* v6.9.444 - TEN. GST BILL sits between RECEIPT and DEBIT. CHALLAN NO gives up 9mm, PTRS
-         8mm, TYPE 6mm, BOOK NO 6mm, RECEIPT 8mm - and the three money columns keep every
-         millimetre they had. (The first cut took 18mm off PTRS and "against JAGDISH134/..." lost
-         its challan number; rendered, seen, and the dead space in TYPE and BOOK NO given back.) A right-aligned figure reaches LEFT from its anchor, so GST BILL is
-         cut off 17mm short of DEBIT's anchor, which is what "Rs.1,49,817" needs at 7.2pt. Rendered
-         with pdftoppm and looked at before this shipped. */
-      /* v6.9.445 - the table is drawAccountTable's, shared with the customer statement */
-      var y = drawAccountTable(doc, m, { L: L, R: R, y: HB + 10, F: F, RS: RS, RSs: RSs,
-        pageBreak: function () { doc.addPage(); return 16; }, limit: H - 16 });
-      if (y > H - 20) { doc.addPage(); y = 18; }
-      doc.setDrawColor(13, 118, 108); doc.setLineWidth(0.5); doc.line(L, y, R, y); y += 5.4;
-      F("bold"); doc.setFontSize(9.4);
-      if (m.bal > 0.5) doc.setTextColor(185, 28, 28); else doc.setTextColor(13, 118, 108);
-      doc.text(pdfSafe(hisabMiniLine(m.bal)), L + 1, y);
-      doc.text(Math.abs(m.bal) < 0.5 ? "nil" : RS(Math.abs(m.bal)), R, y, { align: "right" });
-      y += 6;
-      F("normal"); doc.setFontSize(6.6); doc.setTextColor(120, 130, 140);
-      doc.text("Energy World · every delivery, return and payment on this account, in the order they happened. " +
-               "Book numbers are from the paper challan book.", L + 1, y);
-      doc.save("Hisab_" + String(cl).replace(/[^\w.-]/g, "_") + "_" + today() + ".pdf");
-      toast("Statement downloaded.");
-    }).catch(function () { toast("Could not build the file on this device."); });
-  }
+  /* hisabMiniPdf (6.9.425-6.9.448) - the account as a one-page PDF - is retired: since 6.9.445 the
+     statement (hisabPdf) prints the same table through the same drawAccountTable, so there were
+     two buttons for one paper. He chose one. Declared in REMOVED. */
+
 
   /* ---- RAISE THE NEXT DELIVERY WHERE YOU CHECKED THE LAST ONE (v6.9.235) ----
      Owner's instruction: while looking at a client's hisab you should be able to raise
@@ -19812,7 +19787,8 @@ function viewCatalogue() {
            what order the cards are painted in. */
     var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }))
       .sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
-    h += hisabSummaryCard(cl, chs);      /* v6.9.424 - the account, before the cards */
+    var _acct = hisabSummaryCard(cl, chs);      /* v6.9.424 - the account, before the cards */
+    h += _acct;
     h += hisabNewBar(cl, chs);
     h += hisabPendingCard(cl);
     if (!chs.length) {
@@ -19836,14 +19812,16 @@ function viewCatalogue() {
       if (!_l0.opening && !_pending.length && !(_l0.rets || []).length && !_dead0.length) {
         return h + '<div class="empty">No received challans for <b>' + esc(cl) + '</b> yet. A challan lands here automatically once its receipt is confirmed.</div>';
       }
-      var _oh = '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 4px">Client ledger &mdash; ' + esc(cl) + '</h3>' +
-        '<div class="meta" style="font-size:13.5px">' +
+      var _oh = '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 4px">Payments &amp; the statement &mdash; ' + esc(cl) + '</h3>' +
+        /* v6.9.449 - the figures only when the account above could not be drawn (no opening
+           balance and fewer than two lines); otherwise they are its last line already */
+        (_acct ? '' : '<div class="meta" style="font-size:13.5px">' +
         (_l0.opening ? 'Opening balance: <b style="color:' + (_l0.opening < 0 ? '#0d9488' : '#dc2626') + '">' + money(Math.abs(_l0.opening)) + (_l0.opening < 0 ? ' (advance / credit)' : '') + '</b> &middot; ' : '') +
         'Received: <b>' + money(_l0.paid) + '</b> &middot; ' +
         (_l0.returned > 0 ? 'Returns (&minus;): <b style="color:#dc2626">' + money(_l0.returned) + '</b> &middot; ' : '') +
         (_l0.due > 0.5
           ? dueAmt(_l0.due, "lg")
-          : 'Balance: <b style="color:#0d9488">' + money(Math.abs(_l0.due)) + (_l0.due < -0.5 ? ' (in credit)' : '') + '</b>') + '</div>' +
+          : 'Balance: <b style="color:#0d9488">' + money(Math.abs(_l0.due)) + (_l0.due < -0.5 ? ' (in credit)' : '') + '</b>') + '</div>') +
         /* v6.9.336 - and here too. A client whose only activity is a payment against an opening
            balance is EXACTLY the man who needs to see which payment landed. */
         openingNote(cl) +
@@ -19853,7 +19831,7 @@ function viewCatalogue() {
         '<div style="margin-top:8px">' + agrStrip(cl) + '</div>' +
         /* v6.9.368 - and here above all: a client whose ONLY entry is an old balance is exactly
            the man whose old balance needs correcting, and this branch is the only screen he has. */
-        (canSetOpening()
+        (canSetOpening() && !_acct
           ? '<div class="acts" style="margin-top:7px"><button class="btn sm ghost" data-act="op-open" ' +
             'data-n="' + esc(cl) + '" style="border-color:#fecaca;color:#b91c1c">' +
             (_l0.opening ? '\u270e Change the previous balance' : '\u270e Set a previous balance') + '</button></div>'
@@ -20201,7 +20179,12 @@ function viewCatalogue() {
     h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
       '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">' +
       '<div style="flex:1 1 320px;min-width:0">' +
-      '<h3 style="margin:0 0 2px">Client ledger &mdash; ' + esc(cl) + '</h3>' +
+      /* v6.9.449 - HIS WORDS: "if everything shown in customer account above then whats need
+         to show below". The sum that stood here - b/f, billed, received, returns, due - was the
+         account's last line again, and the previous-balance button under it is on the account
+         now. What is left is what the account does not carry: the payments with their ticks and
+         allocation, the money buttons, the signed paper, and the statement's controls. */
+      '<h3 style="margin:0 0 2px">Payments &amp; the statement &mdash; ' + esc(cl) + '</h3>' +
       (_clMob ? '<div style="font-size:13px;margin-bottom:6px">☎ <a href="tel:' + esc(String(_clMob).replace(/[^\d+]/g, '')) + '" style="color:#0d766c;font-weight:600;text-decoration:none">' + esc(_clMob) + '</a></div>' : '') +
       /* ============ THE LEDGER AS A SUM, NOT A SENTENCE (v6.9.394) ============
          HIS WORDS, with a screenshot: "this also to be shown in proper excel format, its very
@@ -20213,47 +20196,17 @@ function viewCatalogue() {
          on the screen instead of in his head: b/f + billed - received - returns = due. Same
          figures, same conditions, same colours as before - only the shape changed.
          v6.9.368's minus opening balance is still shown, as the first line, in green. */
-      '<table class="ledsum" style="border-collapse:collapse;font-size:13.5px;margin:2px 0 4px;min-width:min(100%,340px)">' +
-      (opening > 0
-        ? '<tr><td style="padding:2px 10px 2px 0;color:#475569">Previous balance (b/f)</td><td style="padding:2px 0;text-align:right"><b>' + money(opening) + '</b></td></tr>'
-        : opening < 0
-          ? '<tr><td style="padding:2px 10px 2px 0;color:#475569">Opening credit</td><td style="padding:2px 0;text-align:right;color:#0f766e"><b>&minus; ' + money(-opening) + '</b></td></tr>'
-          : '') +
-      '<tr><td style="padding:2px 10px 2px 0;color:#475569">' + (opening ? '+ ' : '') + 'Billed (net)</td><td style="padding:2px 0;text-align:right"><b>' + money(allNet) + '</b></td></tr>' +
-      '<tr><td style="padding:2px 10px 2px 0;color:#475569">&minus; Received</td><td style="padding:2px 0;text-align:right"><b>' + money(paid) + '</b></td></tr>' +
-      (retTotal > 0 ? '<tr><td style="padding:2px 10px 2px 0;color:#dc2626">&minus; Returns</td><td style="padding:2px 0;text-align:right;color:#dc2626"><b>' + money(retTotal) + '</b></td></tr>' : '') +
-      '<tr style="border-top:1.5px solid #99f6e4"><td style="padding:6px 10px 2px 0;color:#0f172a;font-weight:700">' +
-      (bal > 0.5 ? '= Due' : bal < -0.5 ? '= In credit' : '= Balance') + '</td>' +
-      '<td style="padding:6px 0 2px;text-align:right">' +
-      (bal > 0.5
-        ? dueAmt(bal, "lg")
-        /* v6.9.360 - "Balance due: -514" reads like a fault. It is not: he is holding the man's
-           money. Say that, and say it in the direction the money is actually pointing. */
-        : bal < -0.5
-          ? '<b style="color:#0f766e">' + money(-bal) + '</b>'
-          : '<b style="color:#0d9488">Settled in full</b>') + '</td></tr>' +
-      (bal < -0.5 ? '<tr><td colspan="2" style="padding:0 0 2px;color:#64748b;font-size:12px">paid ahead \u2014 comes off the next delivery</td></tr>' : '') +
-      /* v6.9.402 - the service book under the goods sum, and ONE total. "service area amount
-         with client detail must also show in hisab section" - his executive chases one number. */
+      /* v6.9.402 - the service book, ONE line: "service area amount with client detail must also
+         show in hisab section" - his executive chases one number. The goods account above does
+         not carry service, so this is the one figure the card below still adds. */
       (_led.svcDue > 0.5
-        ? '<tr style="border-top:1px dashed #99f6e4"><td style="padding:6px 10px 2px 0;color:#475569">+ Service dues <span style="color:#94a3b8;font-size:12px">(' + _led.svcVisits + ' visit' + (_led.svcVisits === 1 ? '' : 's') + ', collected on the visit)</span></td>' +
-          '<td style="padding:6px 0 2px;text-align:right;color:#b91c1c"><b>' + money(_led.svcDue) + '</b></td></tr>' +
-          '<tr style="border-top:1.5px solid #99f6e4"><td style="padding:6px 10px 2px 0;color:#0f172a;font-weight:800">= To collect, goods and service</td>' +
-          '<td style="padding:6px 0 2px;text-align:right"><b style="color:#b91c1c;font-size:16px">' + money(bal + _led.svcDue) + '</b></td></tr>'
+        ? '<div style="font-size:13.5px;margin:4px 0 2px">Service dues <span style="color:#94a3b8;font-size:12px">(' + _led.svcVisits + ' visit' + (_led.svcVisits === 1 ? '' : 's') + ', collected on the visit)</span> ' +
+          '<b style="color:#b91c1c">' + money(_led.svcDue) + '</b> &middot; <b>= To collect, goods and service</b> <b style="color:#b91c1c;font-size:15px">' + money(bal + _led.svcDue) + '</b></div>'
         : '') +
-      '</table>' +
       /* v6.9.385 - and what the same customer looks like on the service side */
       svcLedgerLine(cl) +
       openingNote(cl) +
-      /* v6.9.368 - and the way to correct it, on the one line it belongs to. Owner only, and
-         the button says which it is: there is nothing to CHANGE on a client who never carried
-         an old balance, but there is something to SET. */
-      (canSetOpening()
-        ? '<div class="acts" style="margin-top:7px"><button class="btn sm ghost" data-act="op-open" ' +
-          'data-n="' + esc(cl) + '" style="border-color:#fecaca;color:#b91c1c" ' +
-          'title="Correct the balance carried over from the old books. Your PIN is checked by the server.">' +
-          (opening ? '\u270e Change the previous balance' : '\u270e Set a previous balance') + '</button></div>'
-        : '') +
+      /* v6.9.449 - the previous-balance button is on the account above (see hisabSummaryCard) */
       payTable(cl, true) +
       /* v6.9.360 - money can be entered from the ledger itself now, in all three directions.
          It was on the Payments screen only, which is a different tab and a different search. */
@@ -20302,10 +20255,10 @@ function viewCatalogue() {
       '<div class="grow"></div>' +
       (bal > 0 && canSee("payments") ? '<button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '">&#8377; Payment received</button>' : '') +
       '<button class="btn sm ghost" data-act="bill-wa">WhatsApp statement</button>' + waExecBtn("bill-wa", cl) +
-      '<button class="btn sm ghost" data-act="bill-pdf">Download PDF (ticked)</button>' +
+      /* v6.9.449 - the ticked statement is the account's PDF button now (one paper, one button) */
       /* v6.9.240 - everything, in date order, without touching the ticks */
       '<button class="btn sm ghost" data-act="bill-pdf" data-all="1" title="Every received challan and every booked-in return, in date order, whatever is ticked">Download all</button>' +
-      '</div></div>' + admLedgerPanel(cl) + '</div></div>';
+      '</div></div>' + admLedgerFold(cl) + '</div></div>';
     h += serviceLedgerCard(cl);
     return h;
   }
@@ -29304,6 +29257,62 @@ function viewCatalogue() {
     });
   }
 
+  /* ================= CREDIT TERMS, ON THE ACCOUNT  (v6.9.449) =================
+     Two boxes for the owner - the limit in rupees, the days - and the headroom pill beside them.
+     They write the client's own creditLimit / creditDays through save(), exactly as the client
+     form's boxes have since v6.9.193, so the two screens can never disagree; creditTerms() reads
+     the row live, so the credit stop gates the very next pass on the new figure. Blank means
+     what it always meant: no limit, the company's days. */
+  function creditTermsBoxes(cl) {
+    var c = clientByName(cl) || {};
+    var lim = Math.max(0, Number(c.creditLimit) || 0), dys = Math.max(0, Number(c.creditDays) || 0);
+    var pill = creditPill(cl);
+    if (!roleIs("admin")) {
+      return (lim ? '<span class="pill" title="Credit limit">limit ' + money(lim) + '</span>' : '') + pill;
+    }
+    var box = 'padding:2px 6px;font-size:12px;font-weight:700;font-family:inherit;border-radius:6px;';
+    return '<span style="white-space:nowrap;font-size:12px;color:#475569">Credit limit ' +
+      '<input class="credlim_in" data-cl="' + esc(cl) + '" inputmode="numeric" value="' + (lim ? esc(String(Math.round(lim))) : '') + '" placeholder="none" ' +
+      'title="How much of our material may stand at his site unpaid. Blank is no limit. Type it and press Enter — the next pass is gated on it." ' +
+      'style="width:88px;text-align:right;' + box + 'border:1px ' + (lim ? 'solid #bfdbfe' : 'dashed #cbd5e1') + ';background:' + (lim ? '#eff6ff' : '#fff') + '"/>' +
+      ' &middot; days <input class="creddays_in" data-cl="' + esc(cl) + '" inputmode="numeric" value="' + (dys ? esc(String(dys)) : '') + '" placeholder="' + CREDIT_DAYS + '" ' +
+      'title="How long he may hold money before the credit stop names it. Blank is the company’s ' + CREDIT_DAYS + ' days." ' +
+      'style="width:40px;text-align:center;' + box + 'border:1px ' + (dys ? 'solid #bfdbfe' : 'dashed #cbd5e1') + ';background:' + (dys ? '#eff6ff' : '#fff') + '"/>' +
+      '<span id="credpill">' + pill + '</span></span>';
+  }
+  function saveCreditTerms(cl, patch) {
+    var c = clientByName(cl);
+    if (!c) return Promise.reject(new Error("That client is no longer on this screen."));
+    /* no cache to drop: a limit or a day count changes no due figure - creditTerms() reads the row
+       live, and the pill beside the boxes is redrawn by the caller */
+    return save("clients", Object.assign({}, c, patch));
+  }
+
+  /* ================= RATES & WHO EARNS, BEHIND ONE LINE  (v6.9.449) =================
+     The owner-only panel - discount and incentive by brand, who earns, the partner pickers - is
+     setup, not the day's work, and it was ~900 px at the foot of every account. One line now,
+     which says what needs doing; a tap opens the panel it always was (admLedgerPanel, unchanged).
+     The state is in S so it survives a repaint and follows him from client to client. */
+  function admLedgerFold(cl) {
+    if (!roleIs("admin")) return "";
+    if (S.ratesOpen) {
+      return '<div style="flex:1 1 100%;min-width:0">' +
+        '<div class="acts" style="margin:0 0 6px"><button class="btn sm ghost" data-act="rates-fold">▾ Hide rates &amp; who earns</button></div>' +
+        admLedgerPanel(cl) + '</div>';
+    }
+    var sp = admBrandSplit(cl), line = admLineup(cl);
+    var noDisc = sp.took.filter(function (b) { return !(clientDiscount(cl, b) > 0); }).length;
+    var say = sp.took.length
+      ? sp.took.length + ' brand' + (sp.took.length === 1 ? '' : 's') + ' on his challans' +
+        (noDisc ? ', <span style="color:#b45309;font-weight:700">' + noDisc + ' without a discount</span>' : ', every one priced')
+      : 'nothing delivered yet';
+    var earn = line.length ? line.map(function (m) { return esc(m.name); }).join(", ") : '<span style="color:#b45309;font-weight:700">nobody named</span>';
+    return '<div style="flex:1 1 100%;min-width:0;border:1px solid #fecaca;background:#fff;border-radius:10px;padding:8px 11px;font-size:12.5px">' +
+      '<div class="acts" style="align-items:center;gap:8px;flex-wrap:wrap">' +
+      '<button class="btn sm ghost" data-act="rates-fold" style="border-color:#fecaca;color:#7f1d1d">▸ Rates &amp; who earns</button>' +
+      '<span class="meta" style="font-size:12.5px">' + say + ' &middot; earns: ' + earn + '</span></div></div>';
+  }
+
   function logout() {
     var held = 0, photos = 0;
     try { held = pendCount(); } catch (e) {}
@@ -33365,6 +33374,34 @@ function viewCatalogue() {
         toast(now ? "GSTIN noted for " + cl + ". It prints under the name on the statement." : "GSTIN cleared for " + cl + ".");
       }).catch(function () { boxFail(bx); });
     });
+    /* v6.9.449 - the credit terms, wired the same way: change, save quiet, restyle in place,
+       and the headroom pill redrawn beside them. The credit stop reads the row live. */
+    wireBox("credlim_in", function (bx) {
+      var cl2 = bx.getAttribute("data-cl") || "";
+      var raw = String(bx.value || "").trim();
+      var c2 = clientByName(cl2) || {};
+      var now = raw ? String(Math.round(Math.max(0, nAmt(raw)))) : "";
+      if (now === String(c2.creditLimit || "")) { bx.value = now; return; }
+      bx.disabled = true;
+      saveCreditTerms(cl2, { creditLimit: now }).then(function () {
+        boxDone(bx, now, "#1e3a8a", "#eff6ff", "#bfdbfe");
+        var pl = el("credpill"); if (pl) pl.innerHTML = creditPill(cl2);
+        toast(now ? "Credit limit for " + cl2 + " is " + money(Number(now)) + ". The next pass is gated on it." : "Credit limit cleared for " + cl2 + " \u2014 no limit.");
+      }).catch(function () { boxFail(bx); });
+    });
+    wireBox("creddays_in", function (bx) {
+      var cl3 = bx.getAttribute("data-cl") || "";
+      var raw3 = String(bx.value || "").replace(/\D/g, "");
+      var c3 = clientByName(cl3) || {};
+      if (raw3 && (Number(raw3) < 1 || Number(raw3) > 365)) { bx.style.borderColor = "#b91c1c"; toast("Credit days: 1 to 365, or blank for the company\u2019s " + CREDIT_DAYS + "."); return; }
+      if (raw3 === String(c3.creditDays || "")) { bx.value = raw3; return; }
+      bx.disabled = true;
+      saveCreditTerms(cl3, { creditDays: raw3 }).then(function () {
+        boxDone(bx, raw3, "#1e3a8a", "#eff6ff", "#bfdbfe");
+        var pl3 = el("credpill"); if (pl3) pl3.innerHTML = creditPill(cl3);
+        toast(raw3 ? cl3 + " may hold money " + raw3 + " days before the credit stop names it." : "Credit days for " + cl3 + " back to the company\u2019s " + CREDIT_DAYS + ".");
+      }).catch(function () { boxFail(bx); });
+    });
     wireBox("firmgst_in", function (bx) {
       var now = String(bx.value || "").trim().toUpperCase();
       if (now === firmGstin()) return;
@@ -34997,8 +35034,8 @@ function viewCatalogue() {
        array the screen draws, so a file he sends can never disagree with the screen he
        read it off. Neither writes anything. */
     if (act === "mini-fold") { S.miniShut = !S.miniShut; render(); return; }
+    if (act === "rates-fold") { S.ratesOpen = !S.ratesOpen; keepScroll = true; render(); return; }
     if (act === "mini-xlsx") { hisabMiniXlsx(t.getAttribute("data-n") || ""); return; }
-    if (act === "mini-pdf") { hisabMiniPdf(t.getAttribute("data-n") || ""); return; }
     if (act === "exec-pdf") {
       var _ek = t.getAttribute("data-k") || "";
       if (!canExecCard(_ek)) { toast("That is not your list."); return; }
@@ -35071,7 +35108,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "bill-pdf") {
-      var pcl = hisabResolve(S.q);
+      var pcl = t.getAttribute("data-n") || hisabResolve(S.q);   /* v6.9.449 - the account's button names its client */
       var pAll = t.getAttribute("data-all") === "1";
       toast(hisabPerPage()
         ? "Building the statement and fetching the signed receipts\u2026"
