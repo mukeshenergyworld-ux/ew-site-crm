@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.453";
+  var APP_VERSION = "6.9.454";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2315,7 +2315,12 @@ window.addEventListener("beforeunload", function (ev) {
     var t = ev && ev.target;
     /* v6.9.356 - the challan's product search. Only the picker is redrawn, so the cursor stays
        in the box and the half-filled form around it is not disturbed. */
-    if (t && t.id === "ch_q") { if (S.ch) { S.ch.q = t.value; repaintChPick(t); } return; }
+    /* v6.9.454 - every picker's search (ch_q, rt_q, oc_q, qz_q): the box's own picker is redrawn */
+    if (t && /^(ch|rt|oc|qz)_q$/.test(String(t.id || ""))) {
+      var _pp = t.id.slice(0, 2), _pz = pickState(_pp);
+      if (_pz) { _pz.q = t.value; repaintPick(_pp, t); }
+      return;
+    }
     if (t && t.id === "inc_q") { incFilter(); return; }
     if (t && t.id === "hsb_extra") {
       var nx = document.getElementById("hsb_noextra");
@@ -12274,9 +12279,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
     if (z.step === 3) {
       var chosen = qzBrands(z);
-      h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="2">+ Add brand</button>' +
-        '<span class="pill teal">' + esc(z.brand) + '</span>' +
-        (chosen.length ? '<span class="pmeta" style="font-size:12px;color:#64748b">in quote: ' + esc(chosen.join(", ")) + '</span>' : '') +
+      /* v6.9.454 - "+ Add brand" is gone: the brand row is on this step (prodPicker), so another
+         brand is one tap, as on the challan */
+      h += '<div class="row">' +
+        '<span class="pmeta" style="font-size:12.5px;color:#64748b;flex:1 1 auto">' + (chosen.length ? 'in quote: ' + esc(chosen.join(", ")) : 'Pick a brand and its products below.') + '</span>' +
         '<div class="grow"></div>' +
         '<button class="btn" data-act="qz-step" data-step="4">Discount (' + (z.items || []).length + ')</button></div>';
 
@@ -12349,70 +12355,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       }
       h += '</div></div>';
 
-      /* One compact product row - reused by the family list and the code search below. */
-      var qzProw = function (p) {
-        var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
-        return '<div class="prow ' + (ex ? "picked" : "") + '">' +
-          picCell(p) +
-          '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
-          '<div class="pmeta">' + esc(p.code) + ' &middot; ' + money(p.price) + ' / ' + esc(p.unit) +
-          (p.brand && p.brand !== z.brand ? ' &middot; ' + esc(p.brand) : '') +
-          /* if this product is already in other rooms, say so - otherwise the box
-             reading "1" while the line really carries three looks like a bug */
-          (ex && qzRoomsOf(ex).length ? '<br><span style="color:#0f766e">' + esc(qzRoomLabel(ex)) + '</span>' : '') +
-          '</div></div>' +
-          '<div class="pqty">' +
-          '<button class="stp" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
-          '<input class="qz-q" data-code="' + esc(p.code) + '" inputmode="decimal" value="' + esc(ex ? (z.room ? (qzRq(ex)[z.room] ? qShow(qzRq(ex)[z.room]) : "") : qShow(ex.qty)) : "") + '" placeholder="0"/>' +
-          '<button class="stp" data-act="qz-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
-          '</div></div>';
-      };
-
-      /* Search straight to a product by its code (or a word in its name) without hunting
-         through the family chips. A code is unique across the catalogue, so this looks at
-         every product - adding a hit from another brand just starts that brand in the quote. */
-      h += '<div class="row" style="margin:8px 0 2px">' +
-        '<input id="qz_code" class="grow" autocomplete="off" placeholder="Search any product — code, name, category or brand" value="' + esc(z.codeq || "") + '"/>' +
-        '<button class="btn sm" data-act="qz-code-go">Find</button>' +
-        (z.codeq ? ' <button class="btn sm ghost" data-act="qz-code-clear">Clear</button>' : '') + '</div>';
-
-      if (z.codeq && String(z.codeq).trim()) {
-        var qc = String(z.codeq).trim().toLowerCase();
-        /* v6.9.255 - the same fields as the brand-step search, so a word that finds a
-           product on one screen finds it on the other. It used to be code and name only,
-           so "LEO" or "booster" found nothing here either. */
-        var hits = PRODUCTS.filter(function (p) {
-          return (String(p.code || "") + " " + String(p.desc || "") + " " + String(p.cat || "") + " " +
-                  String(p.family || "") + " " + String(p.brand || "")).toLowerCase().indexOf(qc) > -1;
-        }).slice(0, 40);
-        h += '<div class="plist">';
-        if (!hits.length) h += '<div class="empty">No product matches "' + esc(z.codeq) + '".</div>';
-        hits.forEach(function (p) { h += qzProw(p); });
-        h += '</div>';
-        return h;
-      }
-
-      /* a brand you distribute but have not catalogued yet: say so plainly instead of an empty
-         "pick a family" with no families under it */
-      if (!brandProducts(z.brand).length) {
-        return h + '<div class="empty" style="text-align:left">No products loaded for <b>' + esc(z.brand) + '</b> yet. Add them under <b>Products</b> (Catalogue) and they will appear here to quote. You can still set this brand’s discount &amp; incentive on the <b>Discounts</b> screen and chase it under <b>Brand follow-up</b>.</div>';
-      }
-      /* families as small horizontal chips, not a vertical wall of cards */
-      var fams = familyList(z.brand);
-      h += '<div class="chips">' + fams.map(function (f) {
-        var n = brandProducts(z.brand).filter(function (p) { return famSame(p.family, f); }).length;
-        return '<button class="chip ' + (famSame(z.family, f) ? "on" : "") + '" data-act="qz-fam" data-fam="' + esc(f) + '">' +
-          esc(f) + ' <b>' + n + '</b></button>';
-      }).join("") + '</div>';
-
-      if (!z.family) return h + '<div class="empty">Pick a family above, or search by code.</div>';
-
-      /* compact product rows: pic, name, price, stepper - all on one line */
-      h += '<div class="plist">';
-      brandProducts(z.brand).filter(function (p) { return famSame(p.family, z.family); }).forEach(function (p) {
-        h += qzProw(p);
-      });
-      h += '</div>';
+      /* v6.9.454 - the one picker (prodPicker): the brand row, the tinted categories, the live
+         search and the rows are the challan's. The quote's own meta line, per-room quantity and
+         preset-discount chip ride on PICKERS.qz; qz-qty and qz-q write exactly as before. */
+      h += '<div id="qz_pick">' + prodPicker(z, PICKERS.qz) + '</div>' + pickedTable(z, PICKERS.qz);
       return h;
     }
 
@@ -16054,7 +16000,8 @@ function viewCatalogue() {
       opts(["Excess at site", "Damaged", "Wrong item supplied", "Client cancelled", "Other"], "Excess at site") + '</select>' +
       '<h3 style="margin:14px 0 4px;font-size:14px">Material coming back ' +
       '<span class="pill teal">' + (z.items || []).length + ' picked</span></h3>' +
-      rtPicker() +
+      '<div id="rt_pick">' + rtPicker() + '</div>' +
+      pickedTable(z, PICKERS.rt) +
       '<div class="grid2" style="margin-top:10px">' +
       '<div>' + strictDriverField("r_driver", (z && z.driver) || "", "Pickup driver") + '</div>' +
       '<div><label>Freight on the return</label><input id="r_freight" inputmode="numeric" value="0"/></div>' +
@@ -16063,39 +16010,8 @@ function viewCatalogue() {
       '<button class="btn" data-act="rt-save">Register return</button></div>';
   }
 
-  function rtPicker() {
-    ensurePickerCss();
-    var z = S.rt;
-    /* v6.9.421 - the same tiles as the challan builder, with the brand's mark and its product
-       count. It was plain chips with no count: a brand holding 178 products looked exactly like
-       one holding 1. */
-    var h = '<div class="chips" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
-      return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
-    }).slice().sort(alphaBy(function (br) { return br.brand; })).map(function (br) {
-      return brandPickChip(br.brand, "rt-brand", z.brand === br.brand);
-    }).join("") + '</div>';
-    if (!PRODUCTS.length) return h + catWait();          /* v6.9.391 */
-    if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
-    h += '<div class="chips">' + familyList(z.brand).map(function (f) {
-      var n = brandProducts(z.brand).filter(function (p) { return famSame(p.family, f); }).length;
-      return '<button class="chip ' + (famSame(z.family, f) ? "on" : "") + '" data-act="rt-fam" data-fam="' + esc(f) + '">' + esc(f) + ' <b>' + n + '</b></button>';
-    }).join("") + '</div>';
-    if (!z.family) return h + '<div class="empty">Pick a family above.</div>';
-    h += '<div class="plist">';
-    brandProducts(z.brand).filter(function (p) { return famSame(p.family, z.family); }).forEach(function (p) {
-      var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
-      h += '<div class="prow ' + (ex ? "picked" : "") + '">' +
-        picCell(p) +
-        '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
-        '<div class="pmeta">' + esc(p.code) + ' &middot; ' + esc(p.unit) + '</div></div>' +
-        '<div class="pqty">' +
-        '<button class="stp" data-act="rt-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
-        '<input class="rt-q" data-code="' + esc(p.code) + '" inputmode="decimal" value="' + esc(ex ? qShow(ex.qty) : "") + '" placeholder="0"/>' +
-        '<button class="stp" data-act="rt-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
-        '</div></div>';
-    });
-    return h + '</div>';
-  }
+  /* v6.9.454 - the one picker (prodPicker); this form's own state and acts */
+  function rtPicker() { return prodPicker(S.rt, PICKERS.rt); }
 
   /* Deliveries hub: Challans + Material returns are one lifecycle, so they share a screen with
      a small sub-tab switch instead of two top-level tabs. Each sub-view is unchanged. */
@@ -31543,10 +31459,11 @@ function viewCatalogue() {
     return '<button class="chip bchip' + (on ? " on" : "") + '" data-act="' + esc(act) +
       '" data-brand="' + esc(b) + '">' + brandDot(b) + esc(b) + (extra || "") + '</button>';
   }
-  function famChip(brand, f, on) {
+  /* v6.9.454 - pre names the form (ch / rt / oc / qz): the same chip on every picker */
+  function famChip(pre, brand, f, on) {
     var n = brandProducts(brand).filter(function (p) { return famSame(p.family, f); }).length;
     return '<button class="chip fchip' + (on ? " on" : "") + '" data-act="' +
-      (on ? "ch-famclear" : "ch-fam") + '" data-fam="' + esc(f) + '">' + esc(f) + '<b>' + n + '</b></button>';
+      (on ? pre + "-famclear" : pre + "-fam") + '" data-fam="' + esc(f) + '">' + esc(f) + '<b>' + n + '</b></button>';
   }
   function ensurePickerCss() {
     if (document.getElementById("ew_pick_css")) return;
@@ -31591,7 +31508,7 @@ function viewCatalogue() {
       ".plist .prow .pname{font-size:13.5px;font-weight:600;line-height:1.25}" +
       ".plist .prow .pmeta{font-size:12px;color:#94a3b8}" +
       ".plist .prow .pqty{flex:0 0 auto;display:flex;align-items:center;gap:6px}" +
-      ".plist .prow .pqty .ch-q,.plist .prow .pqty .rt-q{width:56px;text-align:center}" +
+      ".plist .prow .pqty .ch-q,.plist .prow .pqty .rt-q,.plist .prow .pqty .oc-q,.plist .prow .pqty .qz-q{width:56px;text-align:center}" +
       /* Colour-coded stage actions, so Approve / Dispatch / Receipt / Billing read apart at a glance.
          Blue = authorise, Orange = releases material, Teal = goods in, Purple/Indigo = billing. */
       ".btn.act-approve{background:#2563eb!important;border-color:#2563eb!important;color:#fff!important}" +
@@ -31662,107 +31579,197 @@ function viewCatalogue() {
               String(p.family || "") + " " + String(p.cat || "")).toLowerCase().indexOf(s) >= 0;
     }).slice(0, 60);
   }
+  /* ================= ONE PRODUCT PICKER  (v6.9.454, 9 Sep 2026) =================
+     HIS WORDS, with the quote wizard's Products step on screen: "quote making product selection
+     should also be like challan make, make it universal for product selection everywhere".
+
+     MEASURED: four pickers - chPicker (the challan: live search, the brand row always on screen,
+     tinted category chips with counts, rows with a quantity box), rtPicker (the return: chips,
+     no search), ocPicker (the old delivery: chips, no search, no quantity box) and the quote
+     wizard's own (one brand as a pill, "+ Add brand" back to step 2, a search that needed a Find
+     button, plain chips). Every improvement made to one had to be made four times, or was made
+     once and missed three: the live search of v6.9.356 and the brand row of v6.9.422 reached
+     the challan only.
+
+     prodPicker(z, P) is the challan's picker with its names taken out. z is the form's own state
+     (brand, family, q, items); P names the form - its act prefix, its box, its quantity class,
+     what the meta line says, and for the quote the per-room quantity and the preset discount on
+     the brand chip. What a tap or a typed quantity WRITES is each form's own handler, untouched:
+     only the drawing is shared. */
+  var PICKERS = {
+    ch: { pre: "ch", box: "ch_pick", qid: "ch_q", qcls: "ch-q", noun: "challan", offList: true,
+          meta: function (p) { return esc(p.code) + ' &middot; ' + esc(p.unit) + (p.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : ''); },
+          /* the challan's three special line kinds on the picked table (v6.9.356): a job-work
+             line, a line worked out by hand, a line not in the price list - each says what it is */
+          fixedQty: function (i) { return isJobLine(i) || isManualLine(i); },
+          lineNote: function (i) {
+            return isManualLine(i)
+              ? '<span class="pill" style="background:#e0e7ff;color:#3730a3;font-size:12px">worked out by hand</span>' +
+                ' <span style="font-size:12px;color:' + ((Number(i.rate) || 0) < 0 ? '#b91c1c' : '#94a3b8') + '">' +
+                ((Number(i.rate) || 0) < 0 ? '−' + money(-(Number(i.rate) || 0)) + ' off' : money(Number(i.rate) || 0) + ' on') +
+                ' · no discount · ' + (i.brand ? esc(i.brand) : 'earns nobody') + '</span>'
+              : isJobLine(i)
+                ? '<span class="pill" style="background:#ede9fe;color:#5b21b6;font-size:12px">job work</span>' +
+                  ' <span style="font-size:12px;color:#94a3b8">' + money(Number(i.rate) || 0) + ' · no discount, earns nobody</span>'
+                : isOtherLine(i)
+                  ? '<span class="pill" style="background:#fef3c7;color:#92400e;font-size:12px">not in the price list</span>' +
+                    ' <span style="font-size:12px;color:#94a3b8">' + esc(i.brand || "no brand") + ' · ' + money(Number(i.rate) || 0) + ' each</span>'
+                  : '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + '</span>';
+          } },
+    rt: { pre: "rt", box: "rt_pick", qid: "rt_q", qcls: "rt-q", noun: "return",
+          meta: function (p) { return esc(p.code) + ' &middot; ' + esc(p.unit) + (p.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : ''); } },
+    oc: { pre: "oc", box: "oc_pick", qid: "oc_q", qcls: "oc-q", noun: "delivery",
+          meta: function (p) { return esc(p.code) + ' &middot; ' + money(p.price) + (p.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : ''); } },
+    qz: { pre: "qz", box: "qz_pick", qid: "qz_q", qcls: "qz-q", noun: "quote",
+          /* the quote's own meta: the price, the unit, the brand when it is not the open one, and
+             the rooms the line is already in - otherwise a box reading "1" while the line carries
+             three looks like a bug */
+          meta: function (p, ex, z) {
+            return esc(p.code) + ' &middot; ' + money(p.price) + ' / ' + esc(p.unit) +
+              (p.brand && realBrand(p) !== z.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : '') +
+              (ex && qzRoomsOf(ex).length ? '<br><span style="color:#0f766e">' + esc(qzRoomLabel(ex)) + '</span>' : '');
+          },
+          qty: function (ex, z) { return ex ? (z.room ? (qzRq(ex)[z.room] ? qShow(qzRq(ex)[z.room]) : "") : qShow(ex.qty)) : ""; },
+          /* the picked table's second line: code, price, brand, and the rooms the line is in */
+          lineNote: function (i) {
+            return '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + ' · ' + money(i.price) + (i.brand ? ' · ' + esc(i.brand) : '') +
+              (i.optional ? ' · <span style="color:#b45309">option</span>' : '') + '</span>' +
+              (qzRoomsOf(i).length ? '<br><span style="font-size:12px;color:#0f766e">' + esc(qzRoomLabel(i)) + '</span>' : '');
+          },
+          /* the preset discount on the chip; amber on the open (teal) chip, orange on a white one -
+             measured on the first render: orange on teal was the one thing on the row hard to read */
+          brandExtra: function (b, z, on) { var d = clientDiscount(z.client, b); return d ? '<b style="color:' + (on ? '#fde68a' : '#b45309') + '">' + esc(pctTxt(d)) + '</b>' : ''; } }
+  };
+  function pickState(pre) { return pre === "ch" ? S.ch : pre === "rt" ? S.rt : pre === "oc" ? S.oc : pre === "qz" ? S.qz : null; }
   /* One product row, so a search hit and a shelf item are the same thing on screen and the
      same +/- and quantity box work on both without either being told about the other. */
-  function chProw(p, z) {
+  function pickRow(P, p, z) {
     var ex = ((z && z.items) || []).filter(function (i) { return i.code === p.code; })[0];
+    var qv = P.qty ? P.qty(ex, z) : (ex ? qShow(ex.qty) : "");
     return '<div class="prow ' + (ex ? "picked" : "") + '">' +
       picCell(p) +
       '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
-      '<div class="pmeta">' + esc(p.code) + ' &middot; ' + esc(p.unit) +
-      (p.brand ? ' &middot; ' + esc(realBrand(p) || p.brand) : '') + '</div></div>' +
+      '<div class="pmeta">' + P.meta(p, ex, z) + '</div></div>' +
       '<div class="pqty">' +
-      '<button class="stp" data-act="ch-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
-      '<input class="ch-q" data-code="' + esc(p.code) + '" inputmode="decimal" value="' + esc(ex ? qShow(ex.qty) : "") + '" placeholder="0"/>' +
-      '<button class="stp" data-act="ch-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
+      '<button class="stp" data-act="' + P.pre + '-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
+      '<input class="' + P.qcls + '" data-code="' + esc(p.code) + '" inputmode="decimal" value="' + esc(qv) + '" placeholder="0"/>' +
+      '<button class="stp" data-act="' + P.pre + '-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
       '</div></div>';
   }
-  /* Repaints ONLY the picker. A full modal rebuild on every keystroke would take the cursor
-     with it, and the challan form around it is full of things he has already typed. */
-  function repaintChPick(focus) {
-    var box = document.getElementById("ch_pick");
+  function chProw(p, z) { return pickRow(PICKERS.ch, p, z); }
+  /* THE LINES PICKED SO FAR, under the picker, a quantity box and a minus each. HIS WORDS, with
+     the quote's Products step on screen: "how to edit product qty while making [quote], its not
+     showing". The challan has drawn this table since it was written; the quote never had it, so a
+     quantity could only be changed by finding the product's category again. One table now, on
+     every form; the challan's special line kinds and the quote's rooms ride on the profiles. */
+  function pickedTable(z, P) {
+    var picked = ((z && z.items) || []).slice().sort(function (a, b) { return (Number(b.qty) || 0) - (Number(a.qty) || 0); });
+    if (!picked.length) return "";
+    return '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e2e8f0">' +
+      '<thead><tr style="background:#0b3b36;color:#fff">' +
+      '<th style="padding:7px 8px;text-align:left;width:36px">#</th>' +
+      '<th style="padding:7px 8px;text-align:left">Product</th>' +
+      '<th style="padding:7px 8px;text-align:center;width:96px">Qty</th>' +
+      '<th style="width:38px"></th></tr></thead><tbody>' +
+      picked.map(function (i, idx) {
+        var fixed = P.fixedQty ? P.fixedQty(i) : false;
+        return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (idx % 2 ? '#f8fafc' : '#fff') + '">' +
+          '<td style="padding:6px 8px;color:#64748b;font-weight:700">' + (idx + 1) + '</td>' +
+          '<td style="padding:6px 8px"><b>' + esc(i.desc) + '</b><br>' +
+          (P.lineNote ? P.lineNote(i, z) : '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + '</span>') + '</td>' +
+          '<td style="padding:4px 6px;text-align:center">' +
+          (fixed
+            ? '<span style="font-weight:700;color:#64748b" title="One amount, not a quantity">1</span>'
+            : '<input class="' + P.qcls + '" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(P.qty ? P.qty(i, z) : qShow(i.qty)) + '" style="width:76px;text-align:center;padding:7px;font-size:15px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px"/>') + '</td>' +
+          '<td style="text-align:center"><button class="stp" data-act="' + P.pre + '-qty" data-code="' + esc(i.code) + '" data-d="-1" title="reduce by one">&minus;</button></td>' +
+          '</tr>';
+      }).join("") +
+      '</tbody></table></div>' +
+      '<div style="text-align:right;font-size:12.5px;color:#64748b;margin-top:5px">' +
+      '<b>' + picked.length + '</b> line(s) &middot; <b>' +
+      picked.reduce(function (a, i) { return a + (Number(i.qty) || 0); }, 0) + '</b> units total</div>';
+  }
+  /* Repaints ONLY the picker. A full rebuild on every keystroke would take the cursor with it,
+     and the form around it is full of things he has already typed. */
+  function repaintPick(pre, focus) {
+    var P = PICKERS[pre], z = pickState(pre);
+    if (!P || !z) return;
+    var box = document.getElementById(P.box);
     if (!box) return;
     var pos = null;
-    if (focus && focus.id === "ch_q") { try { pos = [focus.selectionStart, focus.selectionEnd]; } catch (e) {} }
-    box.innerHTML = chPicker();
-    var q = document.getElementById("ch_q");
-    if (q && focus && focus.id === "ch_q") {
+    if (focus && focus.id === P.qid) { try { pos = [focus.selectionStart, focus.selectionEnd]; } catch (e) {} }
+    box.innerHTML = prodPicker(z, P);
+    var q = document.getElementById(P.qid);
+    if (q && focus && focus.id === P.qid) {
       q.focus();
       if (pos) { try { q.setSelectionRange(pos[0], pos[1]); } catch (e) {} }
     }
   }
-  function chPicker() {
+  function repaintChPick(focus) { repaintPick("ch", focus); }
+  function prodPicker(z, P) {
     ensurePickerCss();
-    var z = S.ch;
-    var qs = String((z && z.q) || "");
-    var qbox = '<div style="margin:9px 0 4px"><input id="ch_q" value="' + esc(qs) + '" ' +
+    z = z || {};
+    var qs = String(z.q || "");
+    var qbox = '<div style="margin:9px 0 4px"><input id="' + P.qid + '" value="' + esc(qs) + '" autocomplete="off" ' +
       'placeholder="Search a product by name, code or brand\u2026" ' +
-      'style="width:100%;padding:9px 11px;font-size:14px;border:1px solid #cbd5e1;border-radius:8px"/></div>';
+      'style="width:100%;box-sizing:border-box;padding:9px 11px;font-size:14px;border:1px solid #cbd5e1;border-radius:8px"/></div>';
     if (qs.trim().length >= 2) {
       var hits = chProdsMatching(qs);
       if (!hits.length) {
         return qbox + '<div class="meta" style="padding:10px 2px;color:#b45309">Nothing in the ' +
           'catalogue matches \u201c' + esc(qs) + '\u201d \u2014 name, code or brand. If it is a ' +
-          'genuinely new product, add it to the catalogue; if it is a one-off, use ' +
-          '<b>+ Item not in the price list</b> above.</div>';
+          'genuinely new product, add it to the catalogue' +
+          (P.offList ? '; if it is a one-off, use <b>+ Item not in the price list</b> above' : '') + '.</div>';
       }
       return qbox + '<div class="meta" style="margin:0 2px 6px;color:#64748b">' + hits.length +
         (hits.length === 60 ? '+' : '') + ' match' + (hits.length === 1 ? '' : 'es') +
-        ' anywhere in the catalogue \u2014 set a quantity and it is on the challan. ' +
+        ' anywhere in the catalogue \u2014 set a quantity and it is on the ' + P.noun + '. ' +
         'Clear the box to go back to browsing by brand.</div>' +
-        '<div class="plist">' + hits.map(function (p) { return chProw(p, z); }).join("") + '</div>';
+        '<div class="plist">' + hits.map(function (p) { return pickRow(P, p, z); }).join("") + '</div>';
     }
-    /* v6.9.303 - "manage alphabatically everywhere". This read S.data.brands in SHEET-ROW
-       order, so the challan's brand step came out Huliot HT PRO, Heliroma, FIMA, Stellar...
-       6.9.300 sorted the brand lists that go through brandList(); these five pickers read the
-       tab directly and were missed. Sorted on a COPY - the sheet order is untouched. */
+    /* v6.9.303 - "manage alphabatically everywhere". Sorted on a COPY - the sheet order is untouched. */
     var brands = (S.data.brands || []).filter(function (br) {
       return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
     }).slice().sort(alphaBy(function (br) { return br.brand; }));
-
     /* v6.9.391 - gated on PRODUCTS, not on brands.length: a man with no brands set up and a
-       man whose price list has not arrived need different sentences, and only one of them is
-       ever true here. */
+       man whose price list has not arrived need different sentences. */
     if (!PRODUCTS.length) return qbox + catWait();
-
-    /* v6.9.422 - EVERY LEVEL ON THE SCREEN AT ONCE, which is what he asked for and is how the
-       return form has always worked. The stepped version replaced the brand row with the
-       category row, so putting two elbows from another brand on the same challan meant finding
-       a crumb and pressing an x that reads as "undo" - v6.9.273 papered over that with a button
-       saying "+ Add from another brand". With the brand row still on the screen there is
-       nothing to paper over: the next brand is simply there.
-
-       The two crumb actions are not lost. THE SELECTED CHIP CARRIES THEM - tapping the open
-       brand closes it - so ch-brandclear and ch-famclear are still drawn and still handled,
-       which is the rule t_dead_taps enforces in both directions. Neither has ever touched
-       z.items, so nothing already picked can be lost by pressing one. */
+    /* v6.9.422 - EVERY LEVEL ON THE SCREEN AT ONCE. The selected chip closes itself, so the
+       clear acts are still drawn and still handled (t_dead_taps, both directions). Neither has
+       ever touched z.items, so nothing already picked can be lost by pressing one. */
     var _picked = ((z.items || []).length > 0);
     var h = qbox + '<div class="ew-picklabel"><span class="step">1</span>Brand</div>' +
       '<div class="chips">' + brands.map(function (br) {
         var on = (z.brand === br.brand);
-        return brandPickChip(br.brand, on ? "ch-brandclear" : "ch-brand", on);
+        return brandPickChip(br.brand, on ? P.pre + "-brandclear" : P.pre + "-brand", on, P.brandExtra ? P.brandExtra(br.brand, z, on) : "");
       }).join("") + '</div>';
     if (!z.brand) {
       return h + '<div class="empty" style="padding:14px 12px">Tap a brand above.</div>';
+    }
+    /* a brand you distribute but have not catalogued yet: say so plainly instead of an empty
+       "pick a category" with nothing under it (the quote's sentence since v6.9.2xx, everyone's now) */
+    if (!brandProducts(z.brand).length) {
+      return h + '<div class="empty" style="text-align:left">No products loaded for <b>' + esc(z.brand) + '</b> yet. Add them under <b>Products</b> (Catalogue) and they will appear here. You can still set this brand\u2019s discount &amp; incentive on the <b>Discounts</b> screen and chase it under <b>Brand follow-up</b>.</div>';
     }
     var fams = familyList(z.brand);
     h += '<div class="ew-picklabel"><span class="step">2</span>' + esc(z.brand) +
       ' &middot; ' + fams.length + ' categor' + (fams.length === 1 ? 'y' : 'ies') + '</div>' +
       '<div class="chips">' + fams.map(function (f) {
-        return famChip(z.brand, f, famSame(z.family, f));
+        return famChip(P.pre, z.brand, f, famSame(z.family, f));
       }).join("") + '</div>' +
       (_picked
         ? '<div class="meta" style="font-size:12px;margin:-8px 2px 8px;color:#64748b">' +
-          'Anything the job needs can go on the same challan &mdash; tap another brand above and ' +
+          'Anything the job needs can go on the same ' + P.noun + ' &mdash; tap another brand above and ' +
           'the ' + (z.items || []).length + ' line(s) already picked stay where they are.</div>'
         : '');
     if (!z.family) return h + '<div class="empty" style="padding:14px 12px">Tap a category above.</div>';
     h += '<div class="ew-picklabel"><span class="step">3</span>Set quantities</div><div class="plist">';
     brandProducts(z.brand).filter(function (p) { return famSame(p.family, z.family); }).forEach(function (p) {
-      h += chProw(p, z);
+      h += pickRow(P, p, z);
     });
     return h + '</div>';
   }
+  function chPicker() { return prodPicker(S.ch, PICKERS.ch); }
 
   /* Old material, typed in from the books. Deliberately its own form and not a tick-box on the
      live challan screen: a "do not notify" checkbox sitting next to a real challan is a mis-tap
@@ -31787,42 +31794,14 @@ function viewCatalogue() {
       '</div>' +
       '<h3 style="margin:14px 0 4px;font-size:14px">Products ' +
       '<span class="pill teal">' + (z.items || []).length + ' picked</span></h3>' +
-      ocPicker() +
+      '<div id="oc_pick">' + ocPicker() + '</div>' +
+      pickedTable(z, PICKERS.oc) +
       '<div class="foot"><button class="btn ghost" data-act="oc-close">Cancel</button>' +
       '<button class="btn" data-act="oc-save">Save old delivery (sends nothing)</button></div>';
   }
 
-  function ocPicker() {
-    ensurePickerCss();
-    var z = S.oc;
-    var h = '<div class="chips" style="margin-top:6px">' + (S.data.brands || []).filter(function (br) {
-      return String(br.active || "Y").toUpperCase() !== "N" && brandProducts(br.brand).length;
-    }).slice().sort(alphaBy(function (br) { return br.brand; })).map(function (br) {
-      return brandPickChip(br.brand, "oc-brand", z.brand === br.brand);
-    }).join("") + '</div>';
-    if (!PRODUCTS.length) return h + catWait();          /* v6.9.391 */
-    if (!z.brand) return h + '<div class="empty">Pick a brand.</div>';
-    /* v6.9.421 - and a count on the category, which this one alone did not have. */
-    h += '<div class="chips">' + familyList(z.brand).map(function (f) {
-      var n = brandProducts(z.brand).filter(function (p) { return famSame(p.family, f); }).length;
-      return '<button class="chip ' + (famSame(z.family, f) ? "on" : "") + '" data-act="oc-fam" data-fam="' + esc(f) + '">' + esc(f) + ' <b>' + n + '</b></button>';
-    }).join("") + '</div>';
-    if (!z.family) return h + '<div class="empty">Pick a family above.</div>';
-    h += '<div class="plist">';
-    brandProducts(z.brand).filter(function (p) { return famSame(p.family, z.family); }).forEach(function (p) {
-      var ex = (z.items || []).filter(function (i) { return i.code === p.code; })[0];
-      h += '<div class="prow ' + (ex ? "picked" : "") + '">' +
-        picCell(p) +
-        '<div class="pinfo"><div class="pname">' + esc(p.desc) + '</div>' +
-        '<div class="pmeta">' + esc(p.code) + ' &middot; ' + money(p.price) + '</div></div>' +
-        '<div class="pqty">' +
-        '<button class="stp" data-act="oc-qty" data-code="' + esc(p.code) + '" data-d="-1">&minus;</button>' +
-        '<b>' + (ex ? ex.qty : 0) + '</b>' +
-        '<button class="stp" data-act="oc-qty" data-code="' + esc(p.code) + '" data-d="1">+</button>' +
-        '</div></div>';
-    });
-    return h + '</div>';
-  }
+  /* v6.9.454 - the one picker (prodPicker); this form's own state and acts */
+  function ocPicker() { return prodPicker(S.oc, PICKERS.oc); }
 
   /* v6.9.131: shown right after a client's first challan is created. Routes to the Discounts screen for
      that client, where BOTH the pre-set brand discount and the partner (plumber/architect) incentive rate
@@ -31911,44 +31890,7 @@ function viewCatalogue() {
       '</h3>' +
       chExtraBox() +
       '<div id="ch_pick">' + chPicker() + '</div>' +
-      (picked.length
-        ? '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e2e8f0">' +
-            '<thead><tr style="background:#0b3b36;color:#fff">' +
-            '<th style="padding:7px 8px;text-align:left;width:36px">#</th>' +
-            '<th style="padding:7px 8px;text-align:left">Product</th>' +
-            '<th style="padding:7px 8px;text-align:center;width:96px">Qty</th>' +
-            '<th style="width:38px"></th></tr></thead><tbody>' +
-            picked.map(function (i, idx) {
-              return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (idx % 2 ? '#f8fafc' : '#fff') + '">' +
-                '<td style="padding:6px 8px;color:#64748b;font-weight:700">' + (idx + 1) + '</td>' +
-                /* v6.9.356 - a raw code under the description is right for a catalogue line and
-                   useless for the other two. JOBWORK says nothing a man wants to read, and
-                   X-1787504013919 says less than nothing. Each line now says what it is. */
-                '<td style="padding:6px 8px"><b>' + esc(i.desc) + '</b><br>' +
-                (isManualLine(i)
-                  ? '<span class="pill" style="background:#e0e7ff;color:#3730a3;font-size:12px">worked out by hand</span>' +
-                    ' <span style="font-size:12px;color:' + ((Number(i.rate) || 0) < 0 ? '#b91c1c' : '#94a3b8') + '">' +
-                    ((Number(i.rate) || 0) < 0 ? '\u2212' + money(-(Number(i.rate) || 0)) + ' off' : money(Number(i.rate) || 0) + ' on') +
-                    ' \u00b7 no discount \u00b7 ' + (i.brand ? esc(i.brand) : 'earns nobody') + '</span>'
-                : isJobLine(i)
-                  ? '<span class="pill" style="background:#ede9fe;color:#5b21b6;font-size:12px">job work</span>' +
-                    ' <span style="font-size:12px;color:#94a3b8">' + money(Number(i.rate) || 0) + ' \u00b7 no discount, earns nobody</span>'
-                  : isOtherLine(i)
-                    ? '<span class="pill" style="background:#fef3c7;color:#92400e;font-size:12px">not in the price list</span>' +
-                      ' <span style="font-size:12px;color:#94a3b8">' + esc(i.brand || "no brand") + ' \u00b7 ' + money(Number(i.rate) || 0) + ' each</span>'
-                    : '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + '</span>') + '</td>' +
-                '<td style="padding:4px 6px;text-align:center">' +
-                ((isJobLine(i) || isManualLine(i))
-                  ? '<span style="font-weight:700;color:#64748b" title="One amount, not a quantity">1</span>'
-                  : '<input class="ch-q" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(qShow(i.qty)) + '" style="width:76px;text-align:center;padding:7px;font-size:15px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px"/>') + '</td>' +
-                '<td style="text-align:center"><button class="stp" data-act="ch-qty" data-code="' + esc(i.code) + '" data-d="-1" title="reduce by one">&minus;</button></td>' +
-                '</tr>';
-            }).join("") +
-            '</tbody></table></div>' +
-            '<div style="text-align:right;font-size:12.5px;color:#64748b;margin-top:5px">' +
-            '<b>' + picked.length + '</b> line(s) &middot; <b>' +
-            picked.reduce(function (a, i) { return a + (Number(i.qty) || 0); }, 0) + '</b> units total</div>'
-        : "") +
+      pickedTable(z, PICKERS.ch) +   /* v6.9.454 - the one picked-lines table (pickedTable) */
 
       '<div class="grid2" style="margin-top:10px">' +
       '<div><label>Freight / tempo fare</label><input id="m_freight" inputmode="numeric" value="' + esc((z && z.freight != null) ? z.freight : 0) + '"/></div>' +
@@ -33540,11 +33482,7 @@ function viewCatalogue() {
     }
     /* quote builder code search: hold the text as it is typed (no re-render, so focus stays),
        and run the search on Enter. Not auto-focused - that would steal focus off the +/- taps. */
-    var qzc = el("qz_code");
-    if (qzc) {
-      qzc.addEventListener("input", function (e) { if (S.qz) S.qz.codeq = e.target.value; });
-      qzc.addEventListener("keyup", function (e) { if (e.key === "Enter") render(); });
-    }
+    /* v6.9.454 - the quote's product search is the live one (qz_q, wired with the other pickers') */
     /* the brand-step search, same rule: hold it as it is typed so focus is never torn out
        from under a thumb, and run it on Enter */
     var qzb = el("qz_bq");
@@ -36002,7 +35940,7 @@ function viewCatalogue() {
       if (bb === null) return;
       var bcl = clientByName(bn);
       S.qz = { step: 3, location: (bcl && bcl.location) || "", client: bn, clientObj: bcl || null,
-        items: [], brandDisc: 0, brandDiscs: {}, brand: bb, family: "", codeq: "" };
+        items: [], brandDisc: 0, brandDiscs: {}, brand: bb, family: "", q: "" };
       S.qz.brandDiscs[bb] = clientDiscount(bn, bb);
       S.modal = null; S.tab = "quotes"; render(); return;
     }
@@ -36012,7 +35950,7 @@ function viewCatalogue() {
       if (!lc) return;
       var lbr = resolveBrand(lc.name, t.getAttribute("data-brand"), "lead-quote", ' data-id="' + esc(lc.id) + '"');
       if (lbr === null) return;
-      S.qz = { step: 3, location: lc.location, client: lc.name, clientObj: lc, items: [], brandDisc: 0, brandDiscs: {}, brand: lbr, family: "", codeq: "" };
+      S.qz = { step: 3, location: lc.location, client: lc.name, clientObj: lc, items: [], brandDisc: 0, brandDiscs: {}, brand: lbr, family: "", q: "" };
       S.qz.brandDiscs[lbr] = clientDiscount(lc.name, lbr);
       S.tab = "quotes"; render(); return;
     }
@@ -36024,7 +35962,7 @@ function viewCatalogue() {
       var mbr = t.getAttribute("data-brand");
       var mcl = clientByName(mSite.client) || null;
       S.qz = { step: 3, location: (mcl && mcl.location) || "", client: mSite.client,
-        clientObj: mcl, items: [], brandDisc: 0, brandDiscs: {}, brand: mbr, family: "", codeq: "" };
+        clientObj: mcl, items: [], brandDisc: 0, brandDiscs: {}, brand: mbr, family: "", q: "" };
       S.qz.brandDiscs[mbr] = clientDiscount(mSite.client, mbr);
       S.tab = "quotes"; render(); return;
     }
@@ -36051,10 +35989,13 @@ function viewCatalogue() {
       if (S.qz.brandDiscs[bch] === undefined) S.qz.brandDiscs[bch] = clientDiscount(S.qz.client, bch);
       /* v6.9.255 - a brand opened FROM a search keeps the search, so the products he was
          looking at are the products in front of him rather than a category list to re-hunt */
-      S.qz.family = ""; S.qz.codeq = String(t.getAttribute("data-q") || "");
+      S.qz.family = ""; S.qz.q = String(t.getAttribute("data-q") || "");   /* v6.9.454 - z.q, as every picker's */
       S.qz.step = 3; render(); return;
     }
-    if (act === "qz-fam") { S.qz.family = t.getAttribute("data-fam"); S.qz.codeq = ""; render(); return; }
+    if (act === "qz-fam") { S.qz.family = t.getAttribute("data-fam"); S.qz.q = ""; keepScroll = true; render(); return; }
+    /* v6.9.454 - the open chip closes it, as on the challan; nothing picked is touched */
+    if (act === "qz-brandclear") { S.qz.brand = ""; S.qz.family = ""; keepScroll = true; render(); return; }
+    if (act === "qz-famclear") { S.qz.family = ""; keepScroll = true; render(); return; }
     if (act === "qz-bq-go") { var bqb = el("qz_bq"); if (bqb && S.qz) S.qz.bq = bqb.value; render(); return; }
     if (act === "qz-bq-clear") { if (S.qz) S.qz.bq = ""; render(); return; }
     /* v6.9.255 - promote a catalogue group to a real brand. TWO writes, in order: the
@@ -36091,8 +36032,7 @@ function viewCatalogue() {
       });
       return;
     }
-    if (act === "qz-code-go") { var qcb = el("qz_code"); if (qcb && S.qz) S.qz.codeq = qcb.value; render(); return; }
-    if (act === "qz-code-clear") { if (S.qz) S.qz.codeq = ""; render(); return; }
+    /* v6.9.454 - qz-code-go / qz-code-clear are gone with the Find button: the search is live */
     if (act === "qz-gst") { if (S.qz) S.qz.gst = !S.qz.gst; render(); return; }
     if (act === "qz-nototal") { if (S.qz) S.qz.noTotal = !S.qz.noTotal; render(); return; }
     if (act === "qz-opt") {
@@ -38225,10 +38165,12 @@ function viewCatalogue() {
       return;
     }
     if (act === "rt-new") { S.rt = { brand: "", family: "", items: [] }; S.modal = modalReturn(); render(); return; }
-    if (act === "rt-brand" || act === "rt-fam") {
+    if (act === "rt-brand" || act === "rt-fam" || act === "rt-brandclear" || act === "rt-famclear") {
       var restoreR = keepFields(RT_FIELDS);
-      if (act === "rt-brand") { S.rt.brand = t.getAttribute("data-brand"); S.rt.family = ""; }
-      else { S.rt.family = t.getAttribute("data-fam"); }
+      if (act === "rt-brand") { S.rt.brand = t.getAttribute("data-brand"); S.rt.family = ""; S.rt.q = ""; }
+      else if (act === "rt-fam") { S.rt.family = t.getAttribute("data-fam"); }
+      else if (act === "rt-brandclear") { S.rt.brand = ""; S.rt.family = ""; }   /* v6.9.454 - the open chip closes it */
+      else { S.rt.family = ""; }
       S.modal = modalReturn(); render(); restoreR(); return;
     }
     if (act === "rt-qty") {
@@ -38602,10 +38544,12 @@ function viewCatalogue() {
     }
     if (act === "oc-new") { S.oc = { brand: "", family: "", items: [] }; S.modal = modalOldChallan(); render(); return; }
     if (act === "oc-close") { S.oc = null; S.modal = null; render(); return; }
-    if (act === "oc-brand" || act === "oc-fam") {
+    if (act === "oc-brand" || act === "oc-fam" || act === "oc-brandclear" || act === "oc-famclear") {
       var keepOc = keepFields(["o_client", "o_date", "o_no", "o_site", "o_bill"]);
-      if (act === "oc-brand") { S.oc.brand = t.getAttribute("data-brand"); S.oc.family = ""; }
-      else { S.oc.family = t.getAttribute("data-fam"); }
+      if (act === "oc-brand") { S.oc.brand = t.getAttribute("data-brand"); S.oc.family = ""; S.oc.q = ""; }
+      else if (act === "oc-fam") { S.oc.family = t.getAttribute("data-fam"); }
+      else if (act === "oc-brandclear") { S.oc.brand = ""; S.oc.family = ""; }   /* v6.9.454 */
+      else { S.oc.family = ""; }
       S.modal = modalOldChallan(); render(); keepOc(); return;
     }
     if (act === "oc-qty") {
@@ -39866,6 +39810,24 @@ function viewCatalogue() {
       var restoreChQ = keepFields(CH_FIELDS);
       keepScroll = true;
       S.modal = modalChallan(); render(); restoreChQ();
+      return;
+    }
+    /* v6.9.454 - the old delivery's picker has a quantity box now (it had a bold count and two
+       buttons); typed, it writes the line with its rate exactly as oc-qty does */
+    if (t.classList && t.classList.contains("oc-q") && S.oc) {
+      var ocCode = t.getAttribute("data-code");
+      var ocQ = qnum(t.value);
+      var ocProd = PRODUCTS.filter(function (x) { return x.code === ocCode; })[0] || {};
+      var ocRow = (S.oc.items || []).filter(function (i) { return i.code === ocCode; })[0];
+      if (ocRow) {
+        if (ocQ <= 0) S.oc.items = S.oc.items.filter(function (i) { return i.code !== ocCode; });
+        else ocRow.qty = ocQ;
+      } else if (ocQ > 0) {
+        S.oc.items.push({ code: ocCode, desc: ocProd.desc || ocCode, unit: ocProd.unit || "No's", qty: ocQ, rate: ocProd.price || 0 });
+      }
+      var restoreOcQ = keepFields(["o_client", "o_date", "o_no", "o_site", "o_bill"]);
+      keepScroll = true;
+      S.modal = modalOldChallan(); render(); restoreOcQ();
       return;
     }
     if (t.classList && t.classList.contains("rt-q") && S.rt) {
