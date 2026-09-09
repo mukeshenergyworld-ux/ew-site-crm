@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.450";
+  var APP_VERSION = "6.9.451";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -19107,6 +19107,20 @@ function viewCatalogue() {
       'style="padding:1px 8px;font-size:12px;font-weight:700;font-family:inherit;background:#fff;color:#b45309;' +
       'border:1px dashed #cbd5e1;border-radius:6px;white-space:nowrap">+ bill</button>';
   }
+  /* v6.9.451 - THE NUMBER IS THE WAY IN. A received delivery's card and a counted return's card
+     live behind their rows now (see _acctCards, above viewBilling); the CHALLAN NO cell opens
+     the sheet. The cell and not the row, because the row holds a box (book no) and two buttons
+     (Pending, + bill) that must keep their own taps. The brought-forward line and a payment
+     line have no card, so their cells stay plain text. */
+  function miniNoCell(r, cell, tone) {
+    var can = (r.kind === "ch" || r.kind === "ret") && !!r.id;
+    if (!can) return '<td style="' + cell + ';font-weight:700;color:' + tone + '">' + esc(r.no) + '</td>';
+    return '<td data-act="acct-open" data-id="' + esc(r.id) + '" title="' +
+      (r.kind === "ret" ? 'Open this return: what came back, the goods-in receipt, what it credits'
+                        : 'Open this delivery: its items, the signed receipt, copy, return, cancel') + '" ' +
+      'style="' + cell + ';font-weight:700;color:' + tone + ';cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px">' +
+      esc(r.no) + '</td>';
+  }
   function miniRcptCell(r) {
     var w = miniRcptWord(r.rcpt), ink = miniRcptInk(r.rcpt);
     if (r.rcpt !== "no" || !r.id || !canProof()) {
@@ -19143,7 +19157,7 @@ function viewCatalogue() {
            one is goods coming back, the other is money coming in. He reads the colour before he
            reads the word, so a return is red all the way across its row. */
         '<td style="' + cell + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#64748b") + ';font-size:12px">' + esc(r.date) + '</td>' +
-        '<td style="' + cell + ';font-weight:700;color:' + tone + '">' + esc(r.no) + '</td>' +
+        miniNoCell(r, cell, tone) +     /* v6.9.451 - tap the number, open the card */
         '<td style="' + cell + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#475569") + '">' +
           (r.kind === "bf" ? '<b style="color:#0f172a">' + esc(r.ptrs) + '</b>' : esc(r.ptrs)) + '</td>' +
         '<td style="' + cell + ';color:' + tone + ';font-weight:600;font-size:12px">' + esc(r.type) + '</td>' +
@@ -19217,6 +19231,8 @@ function viewCatalogue() {
       (m.rets.length ? ' deliveries, <span style="color:' + (m.retRcpt === m.rets.length ? '#0f766e' : '#b91c1c') + '"><b>' + m.retRcpt + ' of ' + m.rets.length + '</b></span> return' + (m.rets.length === 1 ? '' : 's') : '') + '</span>' +
       ' &middot; <span style="white-space:nowrap"><b>GST bills</b> <span id="mini_billcount" style="color:' + (m.withBill === nD ? '#0f766e' : '#b45309') + '"><b>' + m.withBill + ' of ' + nD + '</b></span></span>' +
       '<br><span style="color:#64748b">' +
+      /* v6.9.451 - the cards are behind the rows now, and this is the only place that says so */
+      'Tap a <b>challan number</b> to open that delivery or return. ' +
       (canHisabRole() ? 'Type a book number, tap <b>Pending</b> to attach a receipt, tap <b>+ bill</b> to record a GST bill &mdash; each saves itself. ' : '') +
       MINI_COUNT_WORD().replace(/^./, function (c) { return c.toUpperCase(); }) + ' columns do not fit a phone &mdash; slide the table sideways, or send the file.</span>' +
       '</div>' +
@@ -19630,9 +19646,67 @@ function viewCatalogue() {
           '<b>' + r.n + '</b> ' + esc(r.txt) + '</button>';
       }).join("") + '</div></div>';
   }
+  /* ================= THE CARDS BEHIND THE ROWS  (v6.9.451, 9 Sep 2026) =================
+     HIS WORDS, 8 Sep, with the account open: "if everything shown in customer account above
+     then whats need to show below" - and, asked how: fold them into the account, tap a row to
+     open that delivery's card as a sheet.
+
+     MEASURED on the fixture account (3 deliveries, 2 returns, 1 payment) at 390px before this:
+     4,767px tall, and the five cards under the account were 2,025px of it - 42% of the screen
+     saying again, one card at a time, what the ten-column table above had already said in a
+     row each. The rows stay; the cards go behind them.
+
+     THE CARD IS NOT CHANGED, IT IS MOVED. viewBilling still builds every received-delivery card
+     and every counted-return card exactly as it did - tick, book no, pills, signed receipt,
+     Copy / Return / Attach receipt / Cancel, the bill block, the owner's strip, the items with
+     their discount boxes - and puts it in _acctCards[id] instead of on the screen. The CHALLAN
+     NO cell of the row is the way in (miniNoCell). One store, filled on every paint, so what
+     the sheet shows is what this paint knows.
+
+     THE SHEET STAYS LIVE. A tick, a discount, a book number or a receipt inside the sheet ends
+     in render(); viewBilling rebuilds the card and acctSheetSync puts the fresh one back into
+     the open sheet - if the sheet is still this entry's. modalKey decides that: a sheet opened
+     FROM it (Add bill, Attach receipt, the discount PIN) has its own <h2> and is left alone;
+     when that one closes there is no modal, and the account is where he lands, with the row
+     already updated. Cancelling the delivery from its own sheet empties its card, and the
+     sheet closes with it. */
+  var _acctCards = {};
+  function acctEntryOf(id) {
+    var c = (S.data.challans || []).filter(function (x) { return x && x.id === id; })[0];
+    if (c) return { kind: "ch", row: c, no: String(c.challanNo || ""), when: d10(c.createdAt) };
+    var r = (S.data.returns || []).filter(function (x) { return x && x.id === id; })[0];
+    if (r) return { kind: "ret", row: r, no: String(r.returnNo || "(no number yet)"), when: d10(r.createdAt) };
+    return null;
+  }
+  /* the sheet's title, and therefore its modalKey: "Delivery <no>" or "Return <no>" */
+  function acctSheetHead(id) {
+    var e = acctEntryOf(id);
+    return e ? '<h2>' + (e.kind === "ret" ? 'Return ' : 'Delivery ') + esc(e.no) + '</h2>' : '';
+  }
+  function modalAcctEntry(id) {
+    var e = acctEntryOf(id), card = _acctCards[id];
+    if (!e || !card) return null;
+    /* the sub is the client alone: the card under it already carries the date pill, the site
+       pill and, on a return, "vs <challan>" - measured on the first render, the sub said all
+       three a second time two lines above them */
+    return acctSheetHead(id) +
+      '<p class="sub">' + esc(String(e.row.customerName || "")) + '</p>' +
+      card +
+      '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+  }
+  function acctSheetSync() {
+    if (!S.acctOpen) return;
+    if (S.modal && modalKey(S.modal) === modalKey(acctSheetHead(S.acctOpen))) {
+      if (_acctCards[S.acctOpen]) S.modal = modalAcctEntry(S.acctOpen);
+      else { S.modal = null; S.acctOpen = null; }   /* the entry left the account - so does its sheet */
+    } else if (!S.modal) {
+      S.acctOpen = null;                            /* closed, or a sheet opened from it has closed */
+    }
+  }
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
     var cl = hisabResolve(S.q);
+    _acctCards = {};                                /* v6.9.451 - filled below, one card per received row */
     var billNames = hisabClientNames();
     if (!seesAllClients()) billNames = billNames.filter(function (n) { return isMineClient(n); });
     var h = '<div class="row">' +
@@ -19848,6 +19922,7 @@ function viewCatalogue() {
          challans never saw his unapproved ones at all. */
       _oh += deadChallanCards(cl);
       _oh += serviceLedgerCard(cl);
+      acctSheetSync();      /* v6.9.451 - no cards here; an open sheet closes with its entry */
       return h + _oh;
     }
     var admin = roleIs("admin");
@@ -19906,7 +19981,9 @@ function viewCatalogue() {
           'max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
           'vertical-align:middle">' + esc(c.site) + '</span>'
         : '';
-      var _chExp = !!(S.chExp && S.chExp[c.id]);
+      /* v6.9.451 - no _chExp: the card is a sheet about this one delivery now (see _acctCards),
+         and its items are always drawn on it. S.chExp / ch-detail still fold the Deliveries
+         tab's cards and the pending-return card below, exactly as before. */
       var _rc = chProofAny(c);
       var _ctbl = '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0">' +
         '<thead><tr style="background:#0b3b36;color:#fff">' +
@@ -19954,7 +20031,10 @@ function viewCatalogue() {
         /* v6.9.345 - nowrap. With everything now on one line the label was the first thing the
            browser broke, and it broke it BETWEEN the tick box and the challan number - a tick
            box floating alone above the number it belongs to. */
-        '<label style="cursor:pointer;font-size:15px;white-space:nowrap"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(c.challanNo) + '</label>' +
+        /* v6.9.451 - the number is the sheet's title now; the label says what the tick does.
+           text-transform:none - the page's <label> rule uppercases form labels, and a sentence
+           in caps on a sheet reads as a shout (measured: "ON THE STATEMENT"). */
+        '<label style="cursor:pointer;font-size:13.5px;white-space:nowrap;text-transform:none;letter-spacing:0;color:#334155;margin:0"><input type="checkbox" class="billsel" data-ch="' + esc(c.id) + '"' + (sel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>On the statement</label>' +
         manualNoCell(c) +
         ' <span class="pill teal">' + esc(d10(c.createdAt)) + '</span>' +
         chDatePill(c) +
@@ -19976,7 +20056,8 @@ function viewCatalogue() {
         /* v6.9.345 - ONE row of actions where there were two. Show items, the total, Copy,
            Return and Attach receipt all sit together and wrap on a narrow screen. */
         '<div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px">' +
-        '<button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '">' + (_chExp ? '&#9662; Hide items' : '&#9656; Show ' + priced.length + ' item(s)') + '</button>' +
+        /* v6.9.451 - the items are on the sheet below; the count stands where the toggle was */
+        '<span style="font-size:13px;color:#64748b;white-space:nowrap">' + priced.length + ' item' + (priced.length === 1 ? '' : 's') + '</span>' +
         '<span style="font-size:13px;color:#334155;white-space:nowrap">Total <b>' + money(chTotal) + '</b></span>' +
         /* v6.9.235 - the old challan you are looking at is the fastest way to raise the
            next one. Copy repeats the same client, site and products into a NEW challan;
@@ -20013,8 +20094,9 @@ function viewCatalogue() {
            set its width to 381px and the whole screen scrolled sideways. The label wraps now. */
         '<div style="flex:0 0 auto;max-width:100%;min-width:0;text-align:right">' + billBlock + admChallanStrip(c) + '</div>' +
         '</div>' +
-        (_chExp ? _ctbl : '') + '</div>';
-      h += _card;
+        _ctbl + '</div>';
+      /* v6.9.451 - kept for the sheet, not drawn here; its row on the account opens it */
+      _acctCards[c.id] = _card;
     });
     /* v6.9.121: booked-in material returns show here like a challan in reverse — a red card whose
        amounts are negative and which credit (reduce) the client's balance. Only "Received" returns. */
@@ -20089,7 +20171,7 @@ function viewCatalogue() {
          off the bottom of the screen. Same mechanism as the delivery, deliberately: the same
          act, the same S.chExp store keyed by row id, the same default of shut. Only the colour
          differs, because a credit should still look like a credit. */
-      var _rExp = !!(S.chExp && S.chExp[r.id]);
+      /* v6.9.451 - no _rExp: a sheet about one return always shows what came back (see _acctCards) */
       var rrows = rl.map(function (x, idx) {
         return '<tr style="border-bottom:1px solid #fecaca;background:' + (idx % 2 ? '#fff5f5' : '#fff') + '">' +
           '<td style="padding:5px 6px;color:#64748b">' + (idx + 1) + '</td>' +
@@ -20120,11 +20202,11 @@ function viewCatalogue() {
          h3 pushed the money block onto its own line, where `text-align:right` inside a
          `flex:0 0 auto` box put "Credit to client" at the LEFT of the card. It read as a
          mistake. Everything on the left now lives inside the left column of that same row. */
-      h += '<div class="card" style="border-color:#fecaca;background:#fff7f7;padding:9px 12px' + (rSel ? '' : ';opacity:.5') + '">' +
+      _acctCards[r.id] = '<div class="card" style="border-color:#fecaca;background:#fff7f7;padding:9px 12px' + (rSel ? '' : ';opacity:.5') + '">' +
         '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
         '<div style="flex:1 1 320px;min-width:0">' +
         '<h3 style="margin:0 0 6px;line-height:1.5">' +
-        '<label style="cursor:pointer;white-space:nowrap"><input type="checkbox" class="billsel" data-ch="' + esc(hisabTickKey("ret", r.id)) + '"' + (rSel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>' + esc(r.returnNo || "Return") + '</label>' +
+        '<label style="cursor:pointer;font-size:13.5px;white-space:nowrap;text-transform:none;letter-spacing:0;color:#334155;margin:0"><input type="checkbox" class="billsel" data-ch="' + esc(hisabTickKey("ret", r.id)) + '"' + (rSel ? ' checked' : '') + ' style="vertical-align:middle;margin-right:7px;transform:scale(1.25)"/>On the statement</label>' +
         ' <span class="pill due" style="background:#fee2e2;color:#b91c1c">Return</span>' +
         ' <span class="pill teal">' + esc(d10(r.createdAt)) + '</span>' + retEstPill(r) +
         (r.challanNo ? ' <span style="font-size:12px;color:#64748b">vs ' + esc(r.challanNo) + '</span>' : '') +
@@ -20134,9 +20216,8 @@ function viewCatalogue() {
           (chProofAny(r).has ? proofSealFor(r, 40) : noProofPill()) + '</span>' +
         '</h3>' +
         '<div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px">' +
-          '<button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(r.id) + '" ' +
-            'style="border-color:#fecaca;color:#b91c1c">' +
-            (_rExp ? '&#9662; Hide items' : '&#9656; Show ' + rl.length + ' item(s)') + '</button>' +
+          /* v6.9.451 - the items are on the sheet below; the count stands where the toggle was */
+          '<span style="font-size:13px;color:#b91c1c;white-space:nowrap">' + rl.length + ' item' + (rl.length === 1 ? '' : 's') + ' back</span>' +
           (!chProofAny(r).has && canSee("returns") && canProof()
             ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(r.id) + '" style="background:#b91c1c;border-color:#b91c1c" title="Photograph the paper signed at the godown when this material was counted back in">&#128206; Attach goods-in receipt</button>'
             : '') +
@@ -20161,15 +20242,14 @@ function viewCatalogue() {
              shows what it gave them. */
           admReturnStrip(r) +
         '</div></div>' +
-        (!_rExp ? '' :
-        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #fecaca">' +
+        '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #fecaca">' +
         '<thead><tr style="background:#7f1d1d;color:#fff">' +
         '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product returned</th>' +
         '<th style="padding:6px;text-align:center;width:40px">Qty</th><th style="padding:6px;text-align:right;width:66px">Rate</th>' +
         '<th style="padding:6px;text-align:center;width:56px">Disc%</th><th style="padding:6px;text-align:right;width:72px">Net rate</th>' +
         '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' + rrows +
         '</tbody><tfoot><tr style="background:#fee2e2"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Return total</td>' +
-        '<td style="padding:6px;text-align:right;font-weight:800;color:#b91c1c">&minus;' + money(rSub) + '</td></tr></tfoot></table></div>') + '</div>';
+        '<td style="padding:6px;text-align:right;font-weight:800;color:#b91c1c">&minus;' + money(rSub) + '</td></tr></tfoot></table></div>' + '</div>';
     });
     /* v6.9.369 - the dead ones, under the live ones and above the ledger card. Under, because
        they are history and not work; above the ledger, because the ledger is the summary and a
@@ -20241,9 +20321,9 @@ function viewCatalogue() {
           (rets.length ? ' &middot; <b>' + retSelN + '</b> of ' + rets.length + ' return' + (rets.length === 1 ? '' : 's') : '') +
           (_ps.length ? ' &middot; <b>' + _pSel.length + '</b> of ' + _ps.length + ' payment' + (_ps.length === 1 ? '' : 's') : '') +
           ' ticked &mdash; deliveries <b>' + money(selNet) + '</b>' + (S.billGst ? ' + GST ' + money(gst) + ' = <b>' + money(selNet + gst) + '</b>' : '') +
-          '<br><span style="color:#64748b">Balance brought forward on the paper: <b style="color:#0f172a">' + money(_bf) + '</b>' +
+          '<br><span style="color:#64748b">Balance brought forward on the paper: <b style="color:#0f172a">' + moneySgn(_bf) + '</b>' +
           (_off ? ' (' + _off + ' unticked entr' + (_off === 1 ? 'y folds' : 'ies fold') + ' into it, with the sum written out under it)' : ' (the previous balance; every entry is listed)') +
-          ' &middot; it closes to ' + money(bal) + ' either way.</span></div>';
+          ' &middot; it closes to ' + moneySgn(bal) + ' either way.</span></div>';   /* v6.9.451 - the sign in front (moneySgn), as in the table above */
       })() +
       '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:10px">' +
       '<button class="btn sm ' + (S.billGst ? '' : 'ghost') + '" data-act="bill-gst">' + (S.billGst ? 'GST 18% ✓' : 'Add GST 18%') + '</button>' +
@@ -20264,6 +20344,7 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="bill-pdf" data-all="1" title="Every received challan and every booked-in return, in date order, whatever is ticked">Download all</button>' +
       '</div></div>' + admLedgerFold(cl) + '</div></div>';
     h += serviceLedgerCard(cl);
+    acctSheetSync();        /* v6.9.451 - the open sheet, refreshed from this paint's card */
     return h;
   }
 
@@ -35057,6 +35138,14 @@ function viewCatalogue() {
     if (act === "dues-grp") {
       var dgk = t.getAttribute("data-k"); S.duesExp = S.duesExp || {};
       S.duesExp[dgk] = t.getAttribute("data-open") !== "1"; render(); return;
+    }
+    /* v6.9.451 - a row on the account opens its card as a sheet. The card is this paint's, from
+       _acctCards; a row with no card (a return on a client with no received delivery, whose
+       branch builds none) says so instead of opening nothing. */
+    if (act === "acct-open") {
+      var _ao = String(id || "");
+      if (!_acctCards[_ao]) { toast("Nothing more to show for this one here \u2014 it is counted on the account above."); return; }
+      S.acctOpen = _ao; S.modal = modalAcctEntry(_ao); render(); return;
     }
     if (act === "ch-detail") {
       var cid = t.getAttribute("data-id"); S.chExp = S.chExp || {};
