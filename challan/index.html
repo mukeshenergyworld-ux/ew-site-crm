@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.51.0";
+  var APP_VERSION = "1.52.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3271,9 +3271,14 @@ function discRowOn(client, brand, onYmd) {
           '<div class="muted">' + (isJobLine(l)
             ? 'Job work / Labour charges'
             : (isOtherLine(l) ? 'Not in the price list · ' + esc(l.brand || "no brand") : esc(l.code)) +
-              ' · ' + num(l.qty) + ' ' + esc(l.unit || "") +
+              ' · ' + esc(l.unit || "") +
               ' × ' + money(l.rate) + (d ? ' &minus;' + d + '%' : '')) + '</div></div>' +
-          '<div style="font-weight:800;white-space:nowrap">' + money(net) + '</div>' +
+          /* v1.52.0 - the quantity is a box on the line itself; it was words, and a change meant
+             finding the product on its shelf again. A job is one job and keeps no box. */
+          (isJobLine(l) ? '' :
+            '<input class="ln-qty" data-i="' + i + '" inputmode="decimal" value="' + esc(num(l.qty)) + '" ' +
+            'aria-label="Quantity" style="width:58px;flex:0 0 58px;text-align:center;font-weight:800;padding:8px 4px"/>') +
+          '<div style="font-weight:800;white-space:nowrap;min-width:64px;text-align:right">' + money(net) + '</div>' +
           '<button class="btn sm gry" data-act="ln-del" data-i="' + i + '">&times;</button></div>';
       }).join("");
       h += '<div class="row" style="margin-top:9px"><div class="grow muted">' + lines.length + ' line' + (lines.length === 1 ? '' : 's') + '</div>' +
@@ -3580,8 +3585,11 @@ function discRowOn(client, brand, onYmd) {
       h += lines.map(function (l, i) {
         return '<div class="line"><div class="grow">' +
           '<div style="font-weight:700;font-size:13.5px">' + esc(l.desc) + '</div>' +
-          '<div class="muted">' + esc(l.code) + ' · ' + num(l.qty) + ' ' + esc(l.unit || "") + ' × ' + money(l.rate) + '</div></div>' +
-          '<div style="font-weight:800;white-space:nowrap">' + money(num(l.qty) * num(l.rate)) + '</div>' +
+          '<div class="muted">' + esc(l.code) + ' · ' + esc(l.unit || "") + ' × ' + money(l.rate) + '</div></div>' +
+          /* v1.52.0 - the quantity is a box on the line, as on the challan */
+          '<input class="rln-qty" data-i="' + i + '" inputmode="decimal" value="' + esc(num(l.qty)) + '" ' +
+            'aria-label="Quantity" style="width:58px;flex:0 0 58px;text-align:center;font-weight:800;padding:8px 4px"/>' +
+          '<div style="font-weight:800;white-space:nowrap;min-width:64px;text-align:right">' + money(num(l.qty) * num(l.rate)) + '</div>' +
           '<button class="btn sm gry" data-act="rln-del" data-i="' + i + '">&times;</button></div>';
       }).join("");
       h += '<div class="row" style="margin-top:9px"><div class="grow muted">' + lines.length + ' line' + (lines.length === 1 ? '' : 's') + '</div>' +
@@ -5306,6 +5314,24 @@ function discRowOn(client, brand, onYmd) {
     if (pq) pq.addEventListener("input", function () { S.pick.q = pq.value; repaintPicker(pq); });
     Array.prototype.forEach.call(document.querySelectorAll(".pk-qty"), function (i) {
       i.addEventListener("change", function () { setQty(i.getAttribute("data-code"), i.value); repaintPicker(null); });
+    });
+    /* v1.52.0 - the line's own box on the challan and the return: the same num() as the picker's
+       box, so 1.5 stays 1.5; 0 takes the line off exactly as its x does. Wired ONCE per box:
+       repaintPicker() redraws only the picker's body and then calls wireInputs() over the whole
+       page, so the line boxes under the open sheet would collect a listener per tap in the picker -
+       and a 0 typed with two listeners would take two lines off. */
+    Array.prototype.forEach.call(document.querySelectorAll(".ln-qty,.rln-qty"), function (i) {
+      if (i._ewWired) return;
+      i._ewWired = true;
+      i.addEventListener("change", function () {
+        var into = i.classList.contains("rln-qty") ? S.rt : S.ch;
+        var at = Number(i.getAttribute("data-i"));
+        if (!into || !into.items || !into.items[at]) return;
+        var qn = num(i.value);
+        if (qn <= 0) into.items.splice(at, 1);
+        else into.items[at] = Object.assign({}, into.items[at], { qty: qn });
+        repaint();
+      });
     });
   }
 
