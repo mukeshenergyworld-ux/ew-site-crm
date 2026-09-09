@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.53.0";
+  var APP_VERSION = "1.53.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3246,6 +3246,19 @@ function discRowOn(client, brand, onYmd) {
         (z.stock.text
           ? '<div style="margin-top:6px;white-space:pre-wrap;font-size:14px;line-height:1.35">' + esc(z.stock.text) + '</div>'
           : '<div class="muted" style="margin-top:6px">A photo &mdash; open the order in the group to read it.</div>') +
+        /* v1.53.1 - who the order names, read off this phone's own client list */
+        (function () {
+          if (z.client) return '';
+          var hits = stockHits(z.stock.text);
+          if (!hits.length) return '<div class="muted" style="margin-top:8px">Search his name below \u2014 the order does not name anyone this phone knows.</div>';
+          return '<div class="muted" style="margin-top:9px;font-weight:700">The order names:</div>' +
+            hits.map(function (c) {
+              return '<button class="tile" data-act="cp-pick" data-p="m" data-n="' + esc(c.name) + '" style="margin-top:5px">' +
+                '<div class="grow">' + esc(c.name) +
+                '<span class="sub">' + esc([c.location, c.area, c.mobile].filter(Boolean).join(" \u00b7 ") || "no district on his record") +
+                '</span></div><span class="pill">&#8250;</span></button>';
+            }).join("");
+        })() +
         '<div class="muted" style="margin-top:8px">When this challan is created the order is marked done in the group, with the challan number.</div>' +
         '</div>';
     }
@@ -6674,12 +6687,39 @@ function discRowOn(client, brand, onYmd) {
       try { history.replaceState(null, "", location.pathname + (location.hash || "")); } catch (e) {}
     } catch (e) {}
   }
-  /* the typist's first words - up to the first dash, comma, colon or line - go into the
-     search-any-client box (gq, the box that searches everyone, v1.20.0), so his tiles are on
-     the screen before a key is pressed; the whole order stays on the form to be read */
-  function stockGuess(text) {
-    var t = String(text || "").split(/[\n\-\u2013\u2014,:(\u00b7]/)[0].replace(/\s+/g, " ").trim();
-    return t.length > 30 ? t.slice(0, 30).trim() : t;
+  /* v1.53.1 - WHO THE ORDER IS FOR, read off the book rather than guessed from the first words.
+     Measured on ten real-shaped orders, the first-words guess was right four times: the name is
+     first in "Gurpreet Singh - 20 bags salt" and nowhere near first in "20 bags salt for Gurpreet
+     Singh", "Kal subah Rajesh Kalra ko 5 elbow bhejna hai" or "urgent - 4 valve - Mohit Orlov
+     Hotel", where it searched for "urgent" and said "Nobody by that" - which reads as the app
+     failing rather than as a bad guess.
+
+     The phone already holds every client. So every client whose NAME or SHORT NAME appears
+     anywhere in the order is offered as a one-tap button. Nothing is picked silently: a delivery
+     filed against the wrong man is the one mistake this must not make. Longest name first, so
+     "Gurpreet Singh Builder" beats "Gurpreet Singh" when the order says the longer one. */
+  function stockHits(text) {
+    var t = " " + lower(text).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ") + " ";
+    if (t.length < 4) return [];
+    var out = [];
+    clients().forEach(function (c) {
+      var nm = lower(c.name).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+      var sn = lower(c.shortName).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+      /* a short name is a code (SPACE2028) - anything under five characters matches half the book */
+      var hit = (nm.length >= 4 && t.indexOf(" " + nm + " ") >= 0) ||
+                (sn.length >= 5 && t.indexOf(" " + sn + " ") >= 0);
+      /* HALF A NAME, when the book keeps the site on the end of it: "Rajesh Kalra - Orlov" is
+         written in the group as "Rajesh Kalra". Only the part before the dash, and only when it
+         is two words or more - "Mohit - Orlov Hotel" would otherwise be matched by the word
+         Mohit alone, which is a first name and belongs to more than one man. */
+      if (!hit) {
+        var head = lower(String(c.name).split(/[-–—,(]/)[0]).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+        if (head.length >= 6 && head.indexOf(" ") > 0 && t.indexOf(" " + head + " ") >= 0) hit = true;
+      }
+      if (hit) out.push(c);
+    });
+    out.sort(function (a, b) { return String(b.name).length - String(a.name).length; });
+    return out.slice(0, 4);
   }
   function stockApply() {
     var o = S.stockOrder;
@@ -6688,7 +6728,7 @@ function discRowOn(client, brand, onYmd) {
     o.applied = true;
     S.tab = "make"; S.sheet = null; S.q = "";
     S.ch = { client:"", site:"", siteNew:false, items:[], freight:"", fto:"Client",
-             driver:"", veh:"", manual:"", dist:"", area:"", cq:"", gq: stockGuess(o.text),
+             driver:"", veh:"", manual:"", dist:"", area:"", cq:"", gq:"",
              stock: { ref: o.ref, text: o.text, by: o.by } };
     return true;
   }
