@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.452";
+  var APP_VERSION = "6.9.453";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5994,18 +5994,22 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      "we agreed this from the first of the month" is the commonest correction there is - but a
      date in the FUTURE is refused, because a rate that has not started yet would leave today's
      deliveries reading the old row and nobody would understand why. */
+  /* v6.9.453 - a Promise now: the same three answers (a date, "" for undated, null for closed),
+     asked in the app's own sheet with a DATE box and "no date" as its own button. The two callers
+     decide every row first, ask once, then write. */
   function askEffectiveFrom(what) {
-    var d = window.prompt(
-      "From which date does the new " + (what || "rate") + " apply?\n\n" +
-      "Deliveries BEFORE this date keep the rate they were made at - nothing already earned " +
-      "moves. Leave it as today if it starts now.\n\n" +
-      "Type a date as YYYY-MM-DD, or leave blank to apply it to everything as before:", today());
-    if (d === null) return null;                       /* cancelled - write nothing */
-    var v = String(d).trim();
-    if (!v) return "";                                 /* blank - undated, as every old row is */
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { toast("Write the date as YYYY-MM-DD, e.g. " + today() + "."); return null; }
-    if (v > today()) { toast("A rate cannot start in the future \u2014 today\u2019s deliveries would still read the old one."); return null; }
-    return v;
+    return promptSheet({ title: "From which date does the new " + esc(what || "rate") + " apply?",
+      body: "Deliveries <b>before</b> this date keep the rate they were made at \u2014 nothing already earned moves. Leave it as today if it starts now.",
+      type: "date", value: today(), max: today(), ok: "From this date",
+      alt: { label: "No date \u2014 apply to everything, as before", value: "" } })
+    .then(function (d) {
+      if (d === null) return null;                       /* closed - write nothing */
+      var v = String(d).trim();
+      if (!v) return "";                                 /* undated, as every old row is */
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { toast("Write the date as YYYY-MM-DD, e.g. " + today() + "."); return null; }
+      if (v > today()) { toast("A rate cannot start in the future \u2014 today\u2019s deliveries would still read the old one."); return null; }
+      return v;
+    });
   }
   /* Did anything about this row's money actually change? Asking for an effective date when he
      only re-saved the same numbers would be a question with no purpose, and a question with no
@@ -10808,18 +10812,22 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           render();
         });
       }
-      var msg = "";
+      /* v6.9.453 - the app's own sheet. When the client form is still up (registering from inside
+         a challan), it is held and put back on Go back with everything typed. */
+      var body = "";
       if (phone.length) {
-        msg += "This NUMBER is already saved against:\n\n" +
-          phone.map(function (h) { return "  \u2022 " + h.name + " (" + h.kind + (h.role ? " - " + h.role : "") + ")"; }).join("\n") +
-          "\n\nIf that is the same person, cancel and edit him instead of adding him twice.\n";
+        body += '<b>This number is already saved against:</b><br>' +
+          phone.map(function (h) { return "&bull; " + esc(h.name) + " (" + esc(h.kind) + (h.role ? " - " + esc(h.role) : "") + ")"; }).join("<br>") +
+          '<br><span style="color:#64748b">If that is the same person, go back and edit him instead of adding him twice.</span>';
       }
       if (name.length) {
-        msg += (msg ? "\n" : "") + "This NAME already exists:\n\n" +
-          name.slice(0, 6).map(function (h) { return "  \u2022 " + h.name + " - " + (h.mobile || "no number") + " (" + h.kind + ")"; }).join("\n") +
-          "\n\nDifferent person in a different town? Carry on.\n";
+        body += (body ? "<br><br>" : "") + '<b>This name already exists:</b><br>' +
+          name.slice(0, 6).map(function (h) { return "&bull; " + esc(h.name) + " - " + esc(h.mobile || "no number") + " (" + esc(h.kind) + ")"; }).join("<br>") +
+          '<br><span style="color:#64748b">Different person in a different town? Carry on.</span>';
       }
-      return window.confirm(msg + "\nSave anyway?") ? "go" : "stop";
+      var hold = formHold();
+      return askSheet({ title: "Looks like a duplicate", danger: true, yes: "Save anyway", no: "Go back", body: body })
+        .then(function (yes) { if (yes) return "go"; formBack(hold); return "stop"; });
     }).catch(function () { return "go"; });   /* never block a save because the check failed */
   }
 
@@ -14551,6 +14559,10 @@ function viewCatalogue() {
       '<p class="sub">' + esc(site.name) + '</p>' +
       (setLoc ? '<div class="card" style="border-color:#fde68a;background:#fffbeb"><div class="meta"><b>Only do this while standing at the site.</b> It fixes the location permanently, and every future visit is measured from it. Never from the office.</div></div>' : "") +
       '<label>What was this visit for?</label><input id="ck_purpose" placeholder="e.g. measurement, follow-up, delivery check"/>' +
+      /* v6.9.453 - the question that was a window.confirm after the button, asked on the form
+         itself: a tick. A sheet after the button would have thrown away the photo he chose. */
+      (setLoc ? '<label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13.5px;color:#7c2d12;margin:10px 0 4px;cursor:pointer">' +
+        '<input type="checkbox" id="ck_here" style="transform:scale(1.25)"/> I am standing at this site now</label>' : '') +
       '<label>Site photo (optional - this is your proof)</label>' +
       '<div class="meta" style="margin-bottom:6px">Goes to the EW Daily Report bot with the GPS pin, client and time. Kept in Telegram, not on this phone.</div>' +
       '<input id="ck_photo" type="file" accept="image/*" capture="environment"/>' +
@@ -16164,6 +16176,32 @@ function viewCatalogue() {
       '<label>Bill number</label><input id="b_no" value="' + esc(c.billNo || "") + '" placeholder="Invoice / bill no."/>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="bill-save" data-id="' + esc(id) + '">Save billing</button></div>';
+  }
+
+  /* v6.9.453 - "Send for billing", for the roles that cannot record the bill themselves (a sales
+     executive, the godown). It asked the billing party's name in one, two or three window.prompts
+     - a numbered menu to type a number into, on a phone. This is the same picker the billing
+     screen (modalBill) has: the client's billing names, or a new one with its GSTIN, remembered
+     on the client as before (v6.9.207: only when the client has an id). */
+  function modalBillSend(id) {
+    var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0] || {};
+    var cl = clientByName(c.customerName) || {};
+    var profiles = [];
+    try { profiles = JSON.parse(cl.billingJson || "[]"); } catch (e) { profiles = []; }
+    var profOpts = profiles.map(function (p, i) {
+      var v = p.gstin ? p.name + " - " + p.gstin : p.name;
+      return '<option value="' + esc(v) + '"' + (i === 0 ? ' selected' : '') + '>' + esc(v) + '</option>';
+    }).join("");
+    return '<h2>Send for billing</h2>' +
+      '<p class="sub">' + esc(c.challanNo || "") + ' &middot; ' + esc(c.customerName || "") + ' &middot; goes to accounts to raise the bill</p>' +
+      '<label>Billed under (party name / GSTIN)</label>' +
+      '<select id="bs_to">' + profOpts + '<option value="__new"' + (profiles.length ? '' : ' selected') + '>+ New billing name...</option></select>' +
+      '<div class="grid2" style="margin-top:6px">' +
+      '<div><label>New billing name (if not in the list)</label><input id="bs_newname" placeholder="Name on the invoice"/></div>' +
+      '<div><label>GSTIN (optional)</label><input id="bs_newgst" placeholder="GSTIN" maxlength="15"/></div></div>' +
+      (profiles.length ? '' : '<div class="meta" style="margin-top:6px">Nothing is saved against this client yet \u2014 the name is remembered for next time.</div>') +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="bill-send-go" data-id="' + esc(id) + '">Send for billing</button></div>';
   }
 
   /* Owner-only PIN reset. It only ever CLEARS a teammate's PIN (pin + pinSet columns); it never
@@ -29319,21 +29357,25 @@ function viewCatalogue() {
     var box = o.multiline
       ? '<textarea id="prompt_in" rows="3" placeholder="' + esc(o.placeholder || "") + '" ' +
         'style="width:100%;box-sizing:border-box;font-size:15px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-family:inherit">' + esc(o.value || "") + '</textarea>'
-      : '<input id="prompt_in" type="text" value="' + esc(o.value || "") + '" placeholder="' + esc(o.placeholder || "") + '"' +
+      : '<input id="prompt_in" type="' + esc(o.type || "text") + '" value="' + esc(o.value || "") + '" placeholder="' + esc(o.placeholder || "") + '"' +
         (o.inputmode ? ' inputmode="' + esc(o.inputmode) + '"' : '') + (o.maxlength ? ' maxlength="' + (Number(o.maxlength) || 200) + '"' : '') +
+        (o.max ? ' max="' + esc(o.max) + '"' : '') + (o.min ? ' min="' + esc(o.min) + '"' : '') +
         ' autocomplete="off" style="width:100%;box-sizing:border-box;font-size:16px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-family:inherit"/>';
     return '<h2>' + o.title + '</h2>' +
       (o.sub ? '<p class="sub">' + o.sub + '</p>' : '') +
       (o.body ? '<div style="font-size:13.5px;line-height:1.5;margin-bottom:10px">' + o.body + '</div>' : '') +
       box +
       (o.hint ? '<div class="meta" style="margin-top:6px;font-size:12px">' + o.hint + '</div>' : '') +
+      /* v6.9.453 - a second answer that is not the box: "no date", "as before" */
+      (o.alt ? '<div style="margin-top:10px"><button class="btn ghost" data-act="prompt-alt" style="width:100%">' + o.alt.label + '</button></div>' : '') +
       '<div class="foot"><button class="btn ghost" data-act="close">' + (o.cancel || 'Cancel') + '</button>' +
       '<button class="btn' + (o.danger ? ' danger' : '') + '" data-act="prompt-ok">' + (o.ok || 'Save') + '</button></div>';
   }
+  var _prmAlt = null;
   function promptSheet(o) {
     return new Promise(function (resolve) {
       if (_prm) { var prev = _prm; _prm = null; try { prev(null); } catch (e) {} }
-      _prm = resolve;
+      _prm = resolve; _prmAlt = o.alt ? String(o.alt.value == null ? "" : o.alt.value) : null;
       S.modal = sheetPrompt(o); render();
       var b = el("prompt_in"); if (b && b.select && !o.multiline) { try { b.select(); } catch (e) {} }
     });
@@ -29342,6 +29384,109 @@ function viewCatalogue() {
     var r = _prm; _prm = null;
     S.modal = null; render();
     if (r) r(v);
+  }
+
+  /* ================= A QUESTION ASKED FROM INSIDE A FORM  (v6.9.453, 9 Sep 2026) ==========
+     askSheet and promptSheet put their sheet where the form was - there is one S.modal - so when
+     the answer is No the form must come back exactly as he left it: what he typed, what he
+     ticked, the select he picked, and a product row he added after the paint. formHold takes
+     the form's LIVE markup (not the string it was first drawn from, which would lose that row)
+     and every field's current value, keyed by id or, failing an id, by tag / type / name / class
+     / data-attributes and its ordinal among its twins; formBack re-opens the form and puts every
+     value back, overwriting - unlike formRestore (6.9.426), which is for a background repaint of
+     the same form and fills only blanks. A file input cannot be put back by any code, so the one
+     form that has one (check-in) asks nothing after it: its question is a tick box on the form.
+     A password box is never held. */
+  /* ---- SEND THESE FIGURES TO SAATHI (the body of the saathi-push handler since v6.9.2xx, lifted
+     unchanged in v6.9.453 so the sheet below can call it after the PIN is typed) ---- */
+  function saathiPushRun() {
+    var list = (S.data.associates || []).slice();
+    if (!list.length) { toast("No partner found."); return; }
+    toast("Sending to Saathi - " + list.length + " partner(s)...");
+
+    var okN = 0, failN = 0, ptsN = 0, i = 0;
+    var step = function () {
+      if (i >= list.length) {
+        S.coPin = failN ? "" : S.coPin;
+        /* v6.9.447 - English, as every screen of this app is (house rule: Hinglish is Saathi's) */
+        toast(okN + " partner(s) sent" + (failN ? ", " + failN + " did not go" : "") +
+              ". " + ptsN + " points in all.");
+        return;
+      }
+      var a = list[i++];
+      var b = partnerBook(a.name);
+      var rows = (b.rows || []).filter(function (r) { return Number(r.inc) > 0; })
+        .map(function (r) {
+          return { ch: r.no, code: "", qty: "", amt: Number(r.inc) || 0,
+                   status: "Pending", date: r.ymd, client: r.client, brand: r.brand };
+        });
+      fetch(CO_GAS, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "ledgerPush", mobile: S.coMob, pin: S.coPin,
+                               assocId: a.id, name: a.name, rows: rows })
+      }).then(function (r) { return r.json(); }).then(function (r) {
+        if (r && r.ok) { okN++; ptsN += Number(r.points) || 0; }
+        else {
+          failN++;
+          /* a bad PIN would otherwise fail silently for every partner in turn */
+          if (r && r.err && /PIN|record mein nahi/i.test(r.err)) {
+            S.coPin = ""; S.coMob = ""; i = list.length;
+            toast("Stopped: " + r.err);
+          }
+        }
+        setTimeout(step, 120);
+      })["catch"](function () { failN++; setTimeout(step, 300); });
+    };
+    step();
+  }
+  function modalSaathiPush() {
+    return '<h2>Send these figures to Saathi</h2>' +
+      '<p class="sub">The Console\u2019s own mobile and PIN \u2014 held for this session only, never stored.</p>' +
+      '<label>The Console\u2019s mobile (OWNER_MOBILE in IncentiveConfig)</label>' +
+      '<input id="co_mob" inputmode="numeric" maxlength="10" value="' + esc(S.coMob || "") + '" placeholder="10 digits"/>' +
+      '<label>The Console\u2019s PIN</label>' +
+      '<input id="co_pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN"/>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn" data-act="saathi-push-go">Send</button></div>';
+  }
+  function formKeyOf(e, seen) {
+    if (e.id) return "#" + e.id;
+    var k = e.tagName + "|" + String(e.type || "") + "|" + String(e.name || "") + "|" + String(e.className || "");
+    var at = e.attributes;
+    for (var i = 0; i < at.length; i++) if (at[i].name.indexOf("data-") === 0) k += "|" + at[i].name + "=" + at[i].value;
+    seen[k] = (seen[k] || 0) + 1;
+    return k + "|#" + seen[k];
+  }
+  function formHold() {
+    var box = null; try { box = S.modal ? document.querySelector(".modal") : document.getElementById("root"); } catch (e) { box = null; }
+    if (!box) return null;
+    var h = { modal: null, v: {} }, seen = {};
+    if (S.modal) {
+      try { var cl = box.cloneNode(true); var x = cl.querySelector(".modalx"); if (x) x.parentNode.removeChild(x); h.modal = cl.innerHTML; }
+      catch (e) { h.modal = S.modal; }
+    }
+    var list = box.querySelectorAll("input,select,textarea");
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i], ty = String(e.type || "").toLowerCase();
+      if (ty === "file" || ty === "password") continue;
+      h.v[formKeyOf(e, seen)] = (ty === "checkbox" || ty === "radio") ? !!e.checked : String(e.value == null ? "" : e.value);
+    }
+    return h;
+  }
+  function formBack(h) {
+    if (!h) return;
+    if (h.modal) { S.modal = h.modal; render(); }
+    var box = null; try { box = h.modal ? document.querySelector(".modal") : document.getElementById("root"); } catch (e) { box = null; }
+    if (!box) return;
+    var seen = {}, list = box.querySelectorAll("input,select,textarea");
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i], ty = String(e.type || "").toLowerCase();
+      if (ty === "file" || ty === "password") continue;
+      var k = formKeyOf(e, seen);
+      if (!(k in h.v)) continue;
+      try { if (ty === "checkbox" || ty === "radio") e.checked = !!h.v[k]; else e.value = h.v[k]; } catch (x) {}
+    }
   }
 
   /* THE CREDIT STOP, AS A TABLE (v6.9.448). The same figures creditGateText drew in ASCII since
@@ -33733,6 +33878,7 @@ function viewCatalogue() {
     /* v6.9.452 - and the one-line prompt's box: Enter is OK, as it was in the system dialog. A
        multi-line box keeps Enter for a new line and only takes focus. */
     (function () { var pb = el("prompt_in"); if (!pb) return; if (pb.tagName === "TEXTAREA") { try { pb.focus(); } catch (e) {} return; } wirePin("prompt_in", "prompt-ok"); })();
+    if (el("co_pin")) wirePin("co_pin", "saathi-push-go");   /* v6.9.453 - the Console's PIN box: Enter sends */
 
     /* v6.9.436 - the signed paper. Read on the change event, never at save time: a repaint
        empties a file input, and the man would press Attach with nothing chosen. Same two kinds
@@ -34096,6 +34242,7 @@ function viewCatalogue() {
     if (act === "ask-yes") { askDone(true); return; }
     /* v6.9.452 - the typed line is read BEFORE promptDone repaints the box away */
     if (act === "prompt-ok") { var _pv = el("prompt_in"); promptDone(_pv ? String(_pv.value) : ""); return; }
+    if (act === "prompt-alt") { promptDone(_prmAlt == null ? "" : _prmAlt); return; }   /* v6.9.453 */
     if (act === "close") {
       /* v6.9.448 - a question closed any way but Yes is a "no", and the caller is told */
       if (_ask) { askDone(false); return; }
@@ -34316,15 +34463,19 @@ function viewCatalogue() {
       var mgDue = mgMoving.reduce(function (a, v) { return a + nAmt(v.balance); }, 0);
       var mgOnKeep = mgVis.filter(function (v) { return v.installId === mgKeep.id; });
       var mgDueAll = mgDue + mgOnKeep.reduce(function (a, v) { return a + nAmt(v.balance); }, 0);
-      if (!window.confirm(
-        "Merge into " + mgKeep.client + "?\n\n" +
-        mgOthers.map(function (o) { return "\u2022 " + o.client + " is set aside (not deleted)"; }).join("\n") + "\n" +
-        (mgMoving.length ? "\u2022 " + mgMoving.length + " visit(s)" + (mgDue > 0 ? " carrying " + money(mgDue) + " due" : "") + " move onto the kept record\n" : "") +
-        (mgOnKeep.length ? "\u2022 the kept record\u2019s own " + mgOnKeep.length + " visit(s) stay on it" + (mgName !== mgKeep.client ? ", renamed to " + mgName : "") + "\n" : "") +
-        (mgDueAll > 0 ? "\u2022 " + money(mgDueAll) + " of service dues then sit on one account\n" : "") +
-        (mgName !== mgKeep.client ? "\u2022 the kept record is filed under the client-master name " + mgName + "\n" : "") +
-        "\u2022 the newest service date is kept and the next one recomputed\n\n" +
-        "Every figure is written to the audit trail with your name, and a set-aside record can be brought back.")) return;
+      /* v6.9.453 - the app's own sheet; the merge form held and put back on Go back */
+      var mgHold = formHold();
+      askSheet({ title: "Merge into " + esc(mgKeep.client) + "?", yes: "Merge them", no: "Go back",
+        body: '<div style="line-height:1.6">' +
+          mgOthers.map(function (o) { return "&bull; <b>" + esc(o.client) + "</b> is set aside (not deleted)"; }).join("<br>") +
+          (mgMoving.length ? "<br>&bull; " + mgMoving.length + " visit" + (mgMoving.length === 1 ? "" : "s") + (mgDue > 0 ? " carrying <b>" + money(mgDue) + "</b> due" : "") + " move onto the kept record" : "") +
+          (mgOnKeep.length ? "<br>&bull; the kept record\u2019s own " + mgOnKeep.length + " visit" + (mgOnKeep.length === 1 ? "" : "s") + " stay on it" + (mgName !== mgKeep.client ? ", renamed to " + esc(mgName) : "") : "") +
+          (mgDueAll > 0 ? "<br>&bull; <b>" + money(mgDueAll) + "</b> of service dues then sit on one account" : "") +
+          (mgName !== mgKeep.client ? "<br>&bull; the kept record is filed under the client-master name <b>" + esc(mgName) + "</b>" : "") +
+          "<br>&bull; the newest service date is kept and the next one recomputed</div>" +
+          '<div class="meta" style="margin-top:8px">Every figure is written to the audit trail with your name, and a set-aside record can be brought back.</div>' })
+      .then(function (yes) {
+      if (!yes) { formBack(mgHold); return; }
       var mgWas = JSON.parse(JSON.stringify(mgKeep));
       /* the visits: same man, one machine now - his money follows him, nothing is re-priced */
       mgMoving.forEach(function (v) {
@@ -34368,6 +34519,7 @@ function viewCatalogue() {
       S.modal = null;
       toast("Merged. " + mgName + " has one machine record now" + (mgMoving.length ? ", with " + mgMoving.length + " visit(s) on it" : "") + ". The other is in the cancelled list.");
       render();
+      });
       return;
     }
     if (act === "svc-dupcx") {
@@ -35308,10 +35460,10 @@ function viewCatalogue() {
       }
       /* v6.9.350 - ASK ONCE, for the whole save, and only if a money figure actually moved.
          Asking per brand would be five prompts to change five rows he thinks of as one decision. */
-      var admFrom = "", admAsked = false;
-      var admN = 0, admStop = false;
+      /* v6.9.453 - every row is decided FIRST, the date asked once (a sheet, a Promise), the rows
+         written after. The rows, their ids and the audit are exactly what 6.9.350 wrote. */
+      var admFrom = "", admN = 0, admJobs = [];
       Object.keys(admG).forEach(function (k) {
-        if (admStop) return;
         var g = admG[k], exd = discRow(admCl, g.brand);
         var notes = incMap(exd);
         var pct = (g.vals.disc === undefined)
@@ -35330,28 +35482,35 @@ function viewCatalogue() {
           } else if (n > 0) { notes[role] = n; } else { delete notes[role]; }
         });
         if (!discChanged(exd, pct, notes)) return;      /* nothing moved - no row, no question */
-        if (!admAsked) {
-          admAsked = true;
-          var _f = askEffectiveFrom("discount / incentive");
-          if (_f === null) { admStop = true; return; }   /* cancelled */
-          admFrom = _f;
-        }
-        if (admFrom) notes.from = admFrom; else delete notes.from;
-        var notesStr = Object.keys(notes).length ? JSON.stringify(notes) : "";
-        if ((pct === "" || pct === 0) && !notesStr && !exd) return;
-        /* v6.9.350 - A DATED CHANGE IS A NEW ROW. The old rate keeps its own row and the
-           deliveries it covered keep it; overwriting would rewrite what a partner earned on
-           every challan since the first one. An undated change still edits in place, exactly as
-           it always has, so a man correcting a typo does not litter the sheet. */
-        save("discounts", { id: (admFrom ? mintId("D") : ((exd ? exd.id : "") || mintId("D"))),
-          client: admCl, brand: g.brand, pct: pct, notes: notesStr }, true);
-        admN++;
+        admJobs.push({ g: g, exd: exd, pct: pct, notes: notes });
       });
-      if (admStop) { toast("Nothing was saved."); return; }
-      S.modal = null;
-      toast(admN ? ("Saved " + admN + " brand line" + (admN > 1 ? "s" : "") + " for " + admCl + ".")
-                 : "Nothing to save.");
-      setTimeout(render, 120);
+      var admWrite = function () {
+        admJobs.forEach(function (j) {
+          var g = j.g, exd = j.exd, pct = j.pct, notes = j.notes;
+          if (admFrom) notes.from = admFrom; else delete notes.from;
+          var notesStr = Object.keys(notes).length ? JSON.stringify(notes) : "";
+          if ((pct === "" || pct === 0) && !notesStr && !exd) return;
+          /* v6.9.350 - A DATED CHANGE IS A NEW ROW. The old rate keeps its own row and the
+             deliveries it covered keep it; overwriting would rewrite what a partner earned on
+             every challan since the first one. An undated change still edits in place, exactly as
+             it always has, so a man correcting a typo does not litter the sheet. */
+          save("discounts", { id: (admFrom ? mintId("D") : ((exd ? exd.id : "") || mintId("D"))),
+            client: admCl, brand: g.brand, pct: pct, notes: notesStr }, true);
+          admN++;
+        });
+        S.modal = null;
+        toast(admN ? ("Saved " + admN + " brand line" + (admN > 1 ? "s" : "") + " for " + admCl + ".")
+                   : "Nothing to save.");
+        setTimeout(render, 120);
+      };
+      if (!admJobs.length) { admWrite(); return; }
+      /* the owner's per-challan sheet is a form; on Cancel it comes back as he left it */
+      var admHold = formHold();
+      askEffectiveFrom("discount / incentive").then(function (_f) {
+        if (_f === null) { toast("Nothing was saved."); formBack(admHold); return; }
+        admFrom = _f;
+        admWrite();
+      });
       return;
     }
     /* Naming a partner or an executive ON THE CLIENT RECORD - permanent, and the screen says so.
@@ -35784,11 +35943,10 @@ function viewCatalogue() {
         groups[k] = groups[k] || { client: cl, brand: br };
         groups[k].execVal = String(el.value || "").trim();
       });
-      /* v6.9.350 - one question for the whole save, asked only if a figure actually moved. */
-      var dsFrom = "", dsAsked = false, dsStop = false;
-      var saved = 0, touched = [];
+      /* v6.9.350 - one question for the whole save, asked only if a figure actually moved.
+         v6.9.453 - decided first, asked once in a sheet, written after (see adm-save). */
+      var dsJobs = [];
       Object.keys(groups).forEach(function (k) {
-        if (dsStop) return;
         var g = groups[k], exd = discRow(g.client, g.brand);
         var pct = g.pctSet ? (g.pct === "" ? "" : (Number(g.pct) || 0)) : (exd && exd.pct != null ? exd.pct : "");
         var notes = incMap(exd);           // start from what's stored, overlay the on-screen roles
@@ -35804,30 +35962,38 @@ function viewCatalogue() {
           }
         }
         if (!discChanged(exd, pct, notes)) return;      /* nothing moved - no row, no question */
-        if (!dsAsked) {
-          dsAsked = true;
-          var _df = askEffectiveFrom("discount / incentive");
-          if (_df === null) { dsStop = true; return; }
-          dsFrom = _df;
-        }
-        if (dsFrom) notes.from = dsFrom; else delete notes.from;
-        var notesStr = Object.keys(notes).length ? JSON.stringify(notes) : "";
-        var isEmpty = (pct === "" || pct === 0) && !notesStr;
-        if (isEmpty && !exd) return;       // don't create a blank row for a brand never touched
-        /* v6.9.350 - dated changes append; undated ones edit in place as they always have */
-        save("discounts", { id: (dsFrom ? mintId("D") : ((exd ? exd.id : "") || mintId("D"))),
-          client: g.client, brand: g.brand, pct: pct, notes: notesStr }, true);
-        touched.push({ client: g.client, brand: g.brand, pct: pct });
-        saved++;
+        dsJobs.push({ g: g, exd: exd, pct: pct, notes: notes });
       });
-      if (dsStop) { toast("Nothing was saved."); return; }
-      setTimeout(function () {
-        S.q = ""; render();
-        toast(saved ? ("Saved " + saved + " brand line" + (saved > 1 ? "s" : "") + " for this client.") : "Nothing to save.");
-        /* v6.9.379 - and NOW the re-price question, once, while he still has the change in mind.
-           After the render, so the confirm does not sit on top of a half-drawn screen. */
-        if (saved) setTimeout(function () { try { repriceOffer(touched, dsFrom); } catch (e) {} }, 60);
-      }, 120);
+      var dsWrite = function (dsFrom) {
+        var saved = 0, touched = [];
+        dsJobs.forEach(function (j) {
+          var g = j.g, exd = j.exd, pct = j.pct, notes = j.notes;
+          if (dsFrom) notes.from = dsFrom; else delete notes.from;
+          var notesStr = Object.keys(notes).length ? JSON.stringify(notes) : "";
+          var isEmpty = (pct === "" || pct === 0) && !notesStr;
+          if (isEmpty && !exd) return;       // don't create a blank row for a brand never touched
+          /* v6.9.350 - dated changes append; undated ones edit in place as they always have */
+          save("discounts", { id: (dsFrom ? mintId("D") : ((exd ? exd.id : "") || mintId("D"))),
+            client: g.client, brand: g.brand, pct: pct, notes: notesStr }, true);
+          touched.push({ client: g.client, brand: g.brand, pct: pct });
+          saved++;
+        });
+        setTimeout(function () {
+          S.q = ""; render();
+          toast(saved ? ("Saved " + saved + " brand line" + (saved > 1 ? "s" : "") + " for this client.") : "Nothing to save.");
+          /* v6.9.379 - and NOW the re-price question, once, while he still has the change in mind.
+             After the render, so the sheet does not sit on top of a half-drawn screen. */
+          if (saved) setTimeout(function () { try { repriceOffer(touched, dsFrom); } catch (e) {} }, 60);
+        }, 120);
+      };
+      if (!dsJobs.length) { dsWrite(""); return; }
+      /* the Discounts screen is a view; what he typed is already in dsJobs, and on Cancel the
+         boxes are put back as he left them */
+      var dsHold = formHold();
+      askEffectiveFrom("discount / incentive").then(function (_df) {
+        if (_df === null) { toast("Nothing was saved."); formBack(dsHold); return; }
+        dsWrite(_df);
+      });
       return;
     }
     if (act === "board-quote") {
@@ -37419,8 +37585,12 @@ function viewCatalogue() {
       var pn = val("vp_pend");
       var ps = S.data.sites.filter(function (x) { return x.name === pn; })[0];
       if (!ps) { toast("Pick a site."); return; }
-      if (!window.confirm("Fix " + ps.name + " to where you are standing NOW?\n\nThis is permanent. Sales cannot change it afterwards.")) return;
-      S.modal = modalVisitDetail(ps); render(); return;
+      /* v6.9.453 - the app's own sheet; the pick form held and put back on Not now */
+      var vpHold = formHold();
+      askSheet({ title: "Fix " + esc(ps.name) + " to where you are standing now?", danger: true, yes: "Yes, I am at the site", no: "Not now",
+        body: "This is permanent. Sales cannot change it afterwards." })
+      .then(function (yes) { if (!yes) { formBack(vpHold); return; } S.modal = modalVisitDetail(ps); render(); });
+      return;
     }
     if (act === "vp-any") {
       var an2 = val("vp_any");
@@ -37701,7 +37871,8 @@ function viewCatalogue() {
     if (act === "setgeo") { S.modal = modalCheckIn(siteById(id), true); render(); return; }
     if (act === "ck-go") {
       var setLoc = t.getAttribute("data-set") === "1";
-      if (setLoc && !window.confirm("Confirm you are standing AT this site.\n\nThis fixes its location permanently.")) return;
+      /* v6.9.453 - the tick on the form is the confirmation (see modalCheckIn) */
+      if (setLoc && !(el("ck_here") && el("ck_here").checked)) { toast("Tick \u201cI am standing at this site now\u201d first \u2014 this fixes its location permanently."); return; }
       var purpose = val("ck_purpose");
       var f = el("ck_photo");
       var file = f && f.files && f.files[0];
@@ -37802,55 +37973,21 @@ function viewCatalogue() {
        out, not when a challan is raised, and an app should never promise a man
        more than that. */
     if (act === "saathi-push") {
-      if (!S.coMob) {
-        var m = window.prompt("The Console's mobile number (OWNER_MOBILE in IncentiveConfig):", "");
-        if (!m) return;
-        S.coMob = String(m).replace(/\D/g, "").slice(-10);
-      }
-      if (!S.coPin) {
-        var pn = window.prompt("The Console's PIN:", "");
-        if (!pn) { S.coMob = ""; return; }
-        S.coPin = String(pn).trim();
-      }
-      var list = (S.data.associates || []).slice();
-      if (!list.length) { toast("No partner found."); return; }
-      toast("Sending to Saathi - " + list.length + " partner(s)...");
-
-      var okN = 0, failN = 0, ptsN = 0, i = 0;
-      var step = function () {
-        if (i >= list.length) {
-          S.coPin = failN ? "" : S.coPin;
-          /* v6.9.447 - English, as every screen of this app is (house rule: Hinglish is Saathi's) */
-          toast(okN + " partner(s) sent" + (failN ? ", " + failN + " did not go" : "") +
-                ". " + ptsN + " points in all.");
-          return;
-        }
-        var a = list[i++];
-        var b = partnerBook(a.name);
-        var rows = (b.rows || []).filter(function (r) { return Number(r.inc) > 0; })
-          .map(function (r) {
-            return { ch: r.no, code: "", qty: "", amt: Number(r.inc) || 0,
-                     status: "Pending", date: r.ymd, client: r.client, brand: r.brand };
-          });
-        fetch(CO_GAS, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ action: "ledgerPush", mobile: S.coMob, pin: S.coPin,
-                                 assocId: a.id, name: a.name, rows: rows })
-        }).then(function (r) { return r.json(); }).then(function (r) {
-          if (r && r.ok) { okN++; ptsN += Number(r.points) || 0; }
-          else {
-            failN++;
-            /* a bad PIN would otherwise fail silently for every partner in turn */
-            if (r && r.err && /PIN|record mein nahi/i.test(r.err)) {
-              S.coPin = ""; S.coMob = ""; i = list.length;
-              toast("Stopped: " + r.err);
-            }
-          }
-          setTimeout(step, 120);
-        })["catch"](function () { failN++; setTimeout(step, 300); });
-      };
-      step();
+      /* v6.9.453 - the Console's mobile and PIN in one sheet (he types the PIN into a password
+         box; both are held in S for this session exactly as before, never stored), not two
+         window.prompts. The push itself is saathiPushRun(), untouched. */
+      if (!S.coMob || !S.coPin) { S.modal = modalSaathiPush(); render(); return; }
+      saathiPushRun();
+      return;
+    }
+    if (act === "saathi-push-go") {
+      var _cm = String(val("co_mob") || "").replace(/\D/g, "").slice(-10);
+      var _cp = String(val("co_pin") || "").trim();
+      if (_cm.length < 10) { toast("The Console\u2019s mobile is ten digits."); return; }
+      if (!_cp) { toast("Type the Console\u2019s PIN."); return; }
+      S.coMob = _cm; S.coPin = _cp;
+      S.modal = null; render();
+      saathiPushRun();
       return;
     }
 
@@ -38300,72 +38437,69 @@ function viewCatalogue() {
       var dupes = (S.data.challans || []).filter(function (x) {
         return x.id !== id && String(x.billNo || "").trim() && String(x.billNo).trim().toLowerCase() === billNo.toLowerCase();
       }).map(function (x) { return x.challanNo; });
-      if (dupes.length && !window.confirm("Bill " + billNo + " is already on:\n\n" + dupes.join("\n") +
-        "\n\nSave it on " + bch.challanNo + " too?\n(Fine for a consolidated bill; cancel if it's a typo.)")) return;
-      /* Optimistic + journaled full-row save, so the billing detail can't be lost. */
-      S.modal = null;
-      var _bnow = today();
-      var updated = Object.assign({}, bch, { billTo: billTo, billNo: billNo, billStatus: "Billed", billedAt: bch.billedAt || _bnow, billedBy: S.user });
-      Object.assign(bch, { billTo: billTo, billNo: billNo, billStatus: "Billed", billedAt: bch.billedAt || _bnow, billedBy: S.user });
-      toast("Bill " + billNo + " recorded on " + bch.challanNo + ".");
-      render();
-      save("challans", updated).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
+      var billSaveGo = function () {
+        /* Optimistic + journaled full-row save, so the billing detail can't be lost. */
+        S.modal = null;
+        var _bnow = today();
+        var updated = Object.assign({}, bch, { billTo: billTo, billNo: billNo, billStatus: "Billed", billedAt: bch.billedAt || _bnow, billedBy: S.user });
+        Object.assign(bch, { billTo: billTo, billNo: billNo, billStatus: "Billed", billedAt: bch.billedAt || _bnow, billedBy: S.user });
+        toast("Bill " + billNo + " recorded on " + bch.challanNo + ".");
+        render();
+        save("challans", updated).catch(function () { toast("Kept safe on this device - will sync on next refresh."); });
+      };
+      if (dupes.length) {
+        /* v6.9.453 - the app's own sheet, the bill form held and put back on Go back */
+        var _bsHold = formHold();
+        askSheet({ title: "Bill " + esc(billNo) + " is already on " + dupes.length + " other deliver" + (dupes.length === 1 ? "y" : "ies"),
+          yes: "Save it here too", no: "Go back",
+          body: dupes.map(function (d) { return "&bull; " + esc(d); }).join("<br>") +
+            '<br><br><span style="color:#64748b">Fine for a consolidated bill; go back if it is a typo.</span>' })
+        .then(function (yes) { if (!yes) { formBack(_bsHold); return; } billSaveGo(); });
+        return;
+      }
+      billSaveGo();
       return;
     }
     if (act === "bill-send") {
+      var bc0 = S.data.challans.filter(function (x) { return x.id === id; })[0];
+      if (!bc0) return;
+      /* v6.9.453 - the picker, not one to three window.prompts */
+      S.modal = modalBillSend(id); render(); return;
+    }
+    if (act === "bill-send-go") {
       var bc = S.data.challans.filter(function (x) { return x.id === id; })[0];
       if (!bc) return;
       var cl2 = clientByName(bc.customerName) || {};
       var profiles = [];
       try { profiles = JSON.parse(cl2.billingJson || "[]"); } catch (e) { }
-      var chosen;
-      if (!profiles.length) {
-        /* first challan for this client - ask now and remember it for next time */
-        var nm = window.prompt("Which name is " + bc.customerName + " billed under?\n\n" +
-          "Nothing is saved against this client yet, so this will be remembered for next time.");
-        if (!nm) return;
-        var gst = window.prompt("GSTIN for " + nm + "?\n(leave blank if none)") || "";
+      var chosen, bsSel = val("bs_to");
+      if (bsSel && bsSel !== "__new") { chosen = bsSel; }
+      else {
+        var nm = String(val("bs_newname") || "").trim();
+        if (!nm) { toast("Pick a billing name, or type a new one."); return; }
+        var gst = String(val("bs_newgst") || "").trim().toUpperCase();
         chosen = gst ? nm + " - " + gst : nm;
-        profiles.push({ name: nm, gstin: gst });
         /* v6.9.207: only if we actually found the client. With no id this minted a brand-new,
            nameless client row every time a bill went out for an unregistered name. */
-        if (cl2.id) save("clients", { id: cl2.id, name: cl2.name, billingJson: JSON.stringify(profiles) });
-      } else if (profiles.length === 1) {
-        chosen = profiles[0].gstin ? profiles[0].name + " - " + profiles[0].gstin : profiles[0].name;
-        if (!window.confirm("Bill " + bc.challanNo + " to " + chosen + "?")) return;
-      } else {
-        var menu = profiles.map(function (p, i) { return (i + 1) + ". " + p.name + (p.gstin ? " (" + p.gstin + ")" : ""); }).join("\n");
-        var pick = window.prompt("Which name is this billed under?\n\n" + menu + "\n\nType the number.");
-        var pi = Number(pick) - 1;
-        if (!(pi >= 0 && pi < profiles.length)) return;
-        chosen = profiles[pi].gstin ? profiles[pi].name + " - " + profiles[pi].gstin : profiles[pi].name;
+        if (cl2.id && !profiles.some(function (p) { return (p.gstin ? p.name + " - " + p.gstin : p.name) === chosen; })) {
+          profiles.push({ name: nm, gstin: gst });
+          save("clients", { id: cl2.id, name: cl2.name, billingJson: JSON.stringify(profiles) });
+        }
       }
-      var _lbl = t.textContent; t.disabled = true; t.textContent = "...";
+      var _lbl = t.textContent; t.disabled = true; t.textContent = "Sending...";
       api("billSend", { id: id, billTo: chosen }).then(function (r) {
-        if (!r || !r.ok) { toast((r && r.error) || "Could not send."); render(); return; }
+        if (!r || !r.ok) { btnBack(t, _lbl); toast((r && r.error) || "Could not send."); return; }
         bc.billStatus = "Sent for billing"; bc.billTo = chosen;
+        S.modal = null;
         toast("Sent to accounts for billing.");
         render(); quietSync();
       }).catch(function (e) { btnBack(t, _lbl); toast("Not sent to accounts \u2014 " + apiWhy(e) + ". Try again."); });
       return;
     }
-    if (act === "bill-no") {
-      var bn2 = S.data.challans.filter(function (x) { return x.id === id; })[0];
-      var no = window.prompt("Bill number for " + bn2.challanNo + "\nBilled to: " + (bn2.billTo || "-"));
-      if (!no) return;
-      var _lbl = t.textContent; t.disabled = true; t.textContent = "...";
-      api("billNo", { id: id, billNo: no }).then(function (r) {
-        if (!r || !r.ok) { toast((r && r.error) || "Could not save."); render(); return; }
-        bn2.billNo = no; bn2.billStatus = "Billed";
-        if (r.alsoOn && r.alsoOn.length) {
-          window.alert("Careful - bill " + no + " is already on:\n\n" + r.alsoOn.join("\n") +
-            "\n\nSaved anyway. If that is a consolidated bill, fine. If it is a typo, fix it.");
-        }
-        toast("Bill " + no + " recorded.");
-        render(); quietSync();
-      }).catch(function (e) { btnBack(t, _lbl); toast("The bill number was NOT saved \u2014 " + apiWhy(e) + ". Try again."); });
-      return;
-    }
+    /* v6.9.453 - the "bill-no" handler that stood here (a window.prompt for a bill number and a
+       window.alert when it was already on another challan) had no button pointing at it since
+       the billing screen (modalBill, v6.9.116) took over; bill-save carries the same duplicate
+       check as a sheet. Removed with its two dialogs. */
     if (act === "bill-add") {
       var bn = val("c_billname");
       if (!bn) { toast("Type the name on the bill."); return; }
@@ -39446,19 +39580,37 @@ function viewCatalogue() {
     /* builder: a lighter partner — allow adding a name on the spot (no mobile needed). It becomes a
        reusable, consistently-spelled option next time via partnerNames' site scan. */
     if (t.id === "s_build" && t.value === "__new__") {
-      var nb = String(window.prompt("New builder name") || "").trim();
-      if (!nb) { t.value = ""; return; }
-      var dup = Array.prototype.slice.call(t.options).filter(function (o) { return o.value === nb; })[0];
-      if (!dup) { var ob = document.createElement("option"); ob.value = nb; ob.textContent = nb; t.insertBefore(ob, t.options[1] || null); }
-      t.value = nb; return;
+      /* v6.9.453 - the app's own sheet; the site form held and put back, the option on its select */
+      var sbHold = formHold();
+      promptSheet({ title: "New builder", sub: "A name is enough \u2014 no mobile needed. It is offered again, spelled the same, next time.", placeholder: "Builder name", ok: "Add the builder" })
+      .then(function (nbAsk) {
+        formBack(sbHold);
+        var sel = el("s_build"); if (!sel) return;
+        var nb = String(nbAsk || "").trim();
+        if (!nb) { sel.value = ""; return; }
+        var dup = Array.prototype.slice.call(sel.options).filter(function (o) { return o.value === nb; })[0];
+        if (!dup) { var ob = document.createElement("option"); ob.value = nb; ob.textContent = nb; sel.insertBefore(ob, sel.options[1] || null); }
+        sel.value = nb;
+      });
+      return;
     }
     /* Service/AMC: register a new serviceable brand on the spot (per product row). */
     if (t.classList && t.classList.contains("ip-brand") && t.value === "__newbrand__") {
-      var nbr = String(window.prompt("New serviceable brand to register") || "").trim();
-      if (!nbr) { t.value = ""; return; }
-      var dupB = Array.prototype.slice.call(t.options).filter(function (o) { return o.value.toLowerCase() === nbr.toLowerCase(); })[0];
-      if (!dupB) { var obr = document.createElement("option"); obr.value = nbr; obr.textContent = nbr; t.insertBefore(obr, t.options[t.options.length - 1] || null); }
-      t.value = nbr; return;
+      /* v6.9.453 - the app's own sheet; the install form held (rows added after the paint
+         included) and put back, the option on the very row he was on */
+      var ibIdx = Array.prototype.slice.call(document.querySelectorAll(".ip-brand")).indexOf(t);
+      var ibHold = formHold();
+      promptSheet({ title: "New serviceable brand", sub: "Registered on the spot, for this product and every later one.", placeholder: "Brand name", ok: "Register it" })
+      .then(function (nbrAsk) {
+        formBack(ibHold);
+        var sel = document.querySelectorAll(".ip-brand")[ibIdx]; if (!sel) return;
+        var nbr = String(nbrAsk || "").trim();
+        if (!nbr) { sel.value = ""; return; }
+        var dupB = Array.prototype.slice.call(sel.options).filter(function (o) { return o.value.toLowerCase() === nbr.toLowerCase(); })[0];
+        if (!dupB) { var obr = document.createElement("option"); obr.value = nbr; obr.textContent = nbr; sel.insertBefore(obr, sel.options[sel.options.length - 1] || null); }
+        sel.value = nbr;
+      });
+      return;
     }
     /* Service/AMC: picking the won client fills in their saved mobile / area / address. */
     if (t.id === "i_client") {
@@ -39522,26 +39674,35 @@ function viewCatalogue() {
     /* + Add new location / area, right inside the dropdown */
     if (t.id === "c_loc" || t.id === "m_aloc") {
       if (t.value === "+ Add new location") {
-        var nl = String(window.prompt("New location (city) name") || "").trim();
-        if (!nl) { t.value = (S.clEditing && S.clEditing.location) || ""; return; }
-        if (t.id === "c_loc") {
-          /* preserve the whole half-filled client form across the save's repaint, then reselect
-             the new city — the old code blanked everything typed so far. */
-          var vals = clFormVals(); vals.c_loc = nl;
-          save("areas", { id: "", location: nl, area: "" }, true).then(function () {
-            S.modal = modalClient(S.clEditing || null); render();
-            clFormRestore(vals);
-            var sel = el("c_loc");
-            if (sel && sel.value !== nl) { var o = document.createElement("option"); o.value = nl; o.textContent = nl; sel.appendChild(o); sel.value = nl; }
-            /* the cascade does not fire on a programmatic set, so follow the new district by hand
-               or the Area box would still be offering the previous city's colonies */
-            var aSel0 = el("c_area");
-            if (aSel0) aSel0.innerHTML = opts([""].concat(areasIn2(nl), ["+ Register new area"]), "");
-            toast("Location added: " + nl);
-          });
-        } else {
-          save("areas", { id: "", location: nl, area: "" }, true).then(function () { toast("Location added: " + nl); });
-        }
+        /* v6.9.453 - the app's own sheet; the form (client or partner) held and put back first,
+           so clFormVals reads what he typed and the partner form keeps its fields too */
+        var nlId = t.id, nlHold = formHold();
+        promptSheet({ title: "New location (city)", placeholder: "City name", ok: "Add the location" })
+        .then(function (nlAsk) {
+          formBack(nlHold);
+          var nl = String(nlAsk || "").trim();
+          var sel0 = el(nlId);
+          if (!nl) { if (sel0) sel0.value = (nlId === "c_loc" && S.clEditing && S.clEditing.location) || ""; return; }
+          if (nlId === "c_loc") {
+            /* preserve the whole half-filled client form across the save's repaint, then reselect
+               the new city — the old code blanked everything typed so far. */
+            var vals = clFormVals(); vals.c_loc = nl;
+            save("areas", { id: "", location: nl, area: "" }, true).then(function () {
+              S.modal = modalClient(S.clEditing || null); render();
+              clFormRestore(vals);
+              var sel = el("c_loc");
+              if (sel && sel.value !== nl) { var o = document.createElement("option"); o.value = nl; o.textContent = nl; sel.appendChild(o); sel.value = nl; }
+              /* the cascade does not fire on a programmatic set, so follow the new district by hand
+                 or the Area box would still be offering the previous city's colonies */
+              var aSel0 = el("c_area");
+              if (aSel0) aSel0.innerHTML = opts([""].concat(areasIn2(nl), ["+ Register new area"]), "");
+              toast("Location added: " + nl);
+            });
+          } else {
+            if (sel0 && sel0.value !== nl) { var o2 = document.createElement("option"); o2.value = nl; o2.textContent = nl; sel0.insertBefore(o2, sel0.options[sel0.options.length - 1] || null); sel0.value = nl; }
+            save("areas", { id: "", location: nl, area: "" }, true).then(function () { toast("Location added: " + nl); });
+          }
+        });
         return;
       }
       /* BOTH forms cascade now: pick the district, the area list follows it.
