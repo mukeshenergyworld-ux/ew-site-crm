@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.457";
+  var APP_VERSION = "6.9.459";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -13159,15 +13159,61 @@ function viewCatalogue() {
           _rooms.sort();
         }
         var _bul = _dl.bullets.map(function (b) { return pdfSafe(b); });
-        if (_rooms.length) _bul.unshift(pdfSafe("For: " + _rooms.join(", ")));
+        /* v6.9.459 - the "For: ..." bullet is how the room reached the paper when there was one
+           flat table. With the table drawn room by room the band above the line already says it,
+           so it would be the same words twice; it is added below only if nothing is grouped. */
         return { title: pdfSafe(_dl.title) + (i.optional ? "   [OPTIONAL - NOT ADDED TO VALUE]" : ""),
-          bullets: _bul,
+          bullets: _bul, roomBul: _rooms.length ? pdfSafe("For: " + _rooms.join(", ")) : "",
+          rq: _rq,
           code: pdfSafe(i.code), pic: pics[idx], dim: PIC_DIM[i.pic] || null,
           unit: i.unit || "No's", optional: i.optional ? 1 : 0,
           qty: i.qty, price: i.price, disc: d, net: net, total: Math.round(net * i.qty) };   /* v6.9.303 */
       });
       var ordered = rows.filter(function (r) { return r.disc > 0; }).sort(function (a, b) { return b.disc - a.disc; })
         .concat(rows.filter(function (r) { return r.disc <= 0; }));
+
+      /* ============ ROOM BY ROOM (v6.9.459) ============
+         His words: "pdf must show bathroom wise item selected total and grand total below".
+
+         The rooms are read off each line's own rq map, in the order the rooms first appear across
+         the quote - which is the order he added them, not the alphabet, so "Bathroom 1" before
+         "Bathroom 10" and a room named later stays later. A line in two rooms is emitted TWICE,
+         each copy carrying only that room's quantity and that room's amount, so the room totals
+         sum to the grand total with nothing double-counted and nothing lost. Lines with no room
+         at all fall into one last group rather than disappearing.
+
+         roomOrder is empty when not one line names a room - and then nothing below changes what
+         the paper has always looked like. */
+      var roomOrder = [], roomSeen = {};
+      ordered.forEach(function (r) {
+        if (!r.rq) return;
+        for (var k in r.rq) {
+          if (k && (Number(r.rq[k]) || 0) > 0 && !roomSeen[k]) { roomSeen[k] = 1; roomOrder.push(k); }
+        }
+      });
+      var grouped = roomOrder.length > 0;
+      /* every line, once per room it is in; the copy carries that room's qty and amount */
+      var groups = [];
+      if (grouped) {
+        roomOrder.forEach(function (rm) {
+          var list = [];
+          ordered.forEach(function (r) {
+            var n = (r.rq && Number(r.rq[rm])) || 0;
+            if (n > 0) list.push(Object.assign({}, r, { qty: n, total: Math.round(r.net * n) }));
+          });
+          if (list.length) groups.push({ room: rm, rows: list });
+        });
+        var loose = ordered.filter(function (r) {
+          if (!r.rq) return true;
+          for (var k in r.rq) if (k && (Number(r.rq[k]) || 0) > 0) return false;
+          return true;
+        });
+        if (loose.length) groups.push({ room: "", rows: loose });
+      } else {
+        /* ungrouped: the room bullet is the only place a room can show, so it goes back on */
+        ordered.forEach(function (r) { if (r.roomBul) r.bullets = [r.roomBul].concat(r.bullets); });
+        groups.push({ room: "", rows: ordered });
+      }
       /* option lines are printed with their own price but never added into the sub-total */
       var subTotal = rows.reduce(function (a, r) { return a + (r.optional ? 0 : r.total); }, 0);
       /* Some projects must show 18% GST spelled out on the quote. The flag rides along inside
@@ -13291,7 +13337,10 @@ function viewCatalogue() {
       };
       head();
 
-      ordered.forEach(function (r, i) {
+      /* v6.9.459 - the row drawing is a function now, called once per row per room. Not one line
+         of what it draws changed: the group loop hands it a row whose qty and total are already
+         that room's, so the drawing has no idea it is inside a group. */
+      var drawRow = function (r, i) {
         /* ONE description. The catalogue repeats the spec inside the description, and
            printing both made every row a wall of duplicated text. */
         /* DESC_W is derived from the column positions, not guessed. The unit column is
@@ -13368,6 +13417,36 @@ function viewCatalogue() {
 
         y += hgt;
         doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.line(L, y - 2.8, Rt, y - 2.8);
+      };
+
+      /* the table itself: a band per room, its lines, and that room's total */
+      var _sn = 0;
+      groups.forEach(function (g, gi) {
+        if (grouped) {
+          /* a band needs its name AND at least one line under it on the same page - a room
+             heading alone at the foot of a page is a promise the page does not keep */
+          if (y + 16 > 272) { doc.addPage(); y = 20; head(); }
+          fill([236, 253, 250]); doc.rect(L, y - 3.6, Rt - L, 7.4, "F");
+          fill(MINT); doc.rect(L, y - 3.6, 1.6, 7.4, "F");
+          col([13, 118, 108]); F("bold"); doc.setFontSize(7);
+          doc.text(pdfSafe(g.room || "Not assigned to a room"), X.item, y + 1.1);
+          var _gn = g.rows.length;
+          col([90, 120, 116]); F("normal"); doc.setFontSize(5.8);
+          doc.text(_gn + (_gn === 1 ? " item" : " items"), X.unit, y + 1.1, { align: "right" });
+          y += 8.6;
+        }
+        g.rows.forEach(function (r) { drawRow(r, _sn++); });
+        if (grouped) {
+          var gTot = g.rows.reduce(function (a, r) { return a + (r.optional ? 0 : r.total); }, 0);
+          if (y + 9 > 278) { doc.addPage(); y = 20; head(); }
+          fill([248, 250, 252]); doc.rect(L, y - 3.2, Rt - L, 7, "F");
+          doc.setDrawColor(203, 213, 225); doc.line(L, y - 3.2, Rt, y - 3.2);
+          col([51, 65, 85]); F("bold"); doc.setFontSize(6.4);
+          doc.text(pdfSafe((g.room || "Not assigned to a room") + " \u2014 total"), X.item, y + 1);
+          col(INK); F("bold"); doc.setFontSize(7);
+          doc.text(R(gTot), X.amt, y + 1, { align: "right" });
+          y += 9.4;
+        }
       });
 
       /* ---- sub-total. Either "{ GST as Actual }" (default) or a spelled-out 18% GST block. ----
@@ -29673,8 +29752,56 @@ function viewCatalogue() {
 
      The area box offers the city's own colonies (areasIn) so a fourth spelling of Sector 11 is not
      typed by accident; anything else typed is kept as typed - the owner's word, not the picker's. */
+  /* ================= THE REGISTER, BY BRAND  (v6.9.458, 9 Sep 2026) =================
+     His words: "if i want to download Huliot Clients, or to select multiple brands and download
+     client of that brand ... if i want to check prospect client for FIMA ... that file will
+     include which brand already installed that site."
+
+     One control answers both. Tick brands, then say what to do with them: TOOK IT (won) or NOT
+     YET (still open). "Open" is the Brand follow-up screen's own word - none or live -
+     so Won, Lost and Not required all drop off there and here alike, and the two screens can
+     never disagree about who is worth ringing. ANY of the ticked brands, not all: his answer,
+     asked before this was built.
+
+     regBrandsOn() is the ticked list, always in the order the chips are drawn, so the sentence
+     on the screen, the Excel's title row and the PDF's header all read the same. */
+  function regBrandsOn() {
+    var on = S.regB || {};
+    return followBrandList().filter(function (b) { return on[b]; });
+  }
+  function regModeIs() { return S.regMode === "want" ? "want" : "has"; }
+  /* does this client pass the filter? no brands ticked = everybody, unchanged */
+  function regKeep(name) {
+    var on = regBrandsOn();
+    if (!on.length) return true;
+    var want = regModeIs() === "want";
+    for (var i = 0; i < on.length; i++) {
+      var st = clientGroupState(name, on[i]);
+      if (want ? (st === "none" || st === "live") : (st === "won")) return true;
+    }
+    return false;
+  }
+  /* the ticked brands this client is still open for - the "why he is on this list" column */
+  function regOpenFor(name) {
+    if (regModeIs() !== "want") return [];
+    return regBrandsOn().filter(function (b) {
+      var st = clientGroupState(name, b);
+      return st === "none" || st === "live";
+    });
+  }
+  /* what the file is a list of, in one line - written on the screen, in the Excel and on the PDF,
+     so a printout can never lie about what it contains */
+  function regFilterLine() {
+    var on = regBrandsOn();
+    if (!on.length) return "";
+    return (regModeIs() === "want"
+      ? "Still to sell: " + on.join(" or ")
+      : "Took: " + on.join(" or "));
+  }
   function clientRegisterRows(all) {
-    var rows = (all || []).map(function (c) {
+    /* v6.9.458 - the brand filter, applied once here, so the screen, the Excel and the PDF are
+       three views of ONE list and cannot show different clients */
+    var rows = (all || []).filter(function (c) { return regKeep(c.name); }).map(function (c) {
       var p = cvPlace(c);
       return { c: c, city: p.district, area: p.area, due: clientDue(c.name) };
     });
@@ -29703,17 +29830,49 @@ function viewCatalogue() {
       'border:1px ' + (v ? 'solid #cbd5e1' : 'dashed #d97706') + ';background:' + (v ? '#fff' : '#fffbeb') + ';color:' + (v ? '#0f172a' : '#b45309') + '"/>';
   }
   function viewClientRegister(all) {
-    var rows = clientRegisterRows(all), g = clientRegisterGaps(all);
+    var rows = clientRegisterRows(all), g = clientRegisterGaps(rows.map(function (r) { return r.c; }));
     var areasN = {}; rows.forEach(function (r) { areasN[r.city + "|" + r.area] = 1; });
+    var onB = regBrandsOn(), want = regModeIs() === "want", fLine = regFilterLine();
     var h = '<div class="card" style="padding:10px 12px">' +
       '<div class="acts" style="align-items:baseline;gap:8px;flex-wrap:wrap;margin:0">' +
-      '<h3 style="margin:0;font-size:13.5px" class="grow">The register &mdash; ' + all.length + ' client' + (all.length === 1 ? '' : 's') + ', ' + Object.keys(areasN).length + ' area' + (Object.keys(areasN).length === 1 ? '' : 's') + '</h3>' +
-      '<button class="btn sm ghost" data-act="cl-xlsx">&#8681; Excel</button></div>' +
-      '<div class="meta" style="font-size:12px;margin-top:4px">' +
+      '<h3 style="margin:0;font-size:13.5px" class="grow">The register &mdash; ' + rows.length +
+        (onB.length ? ' of ' + all.length : '') + ' client' + (rows.length === 1 ? '' : 's') + ', ' +
+        Object.keys(areasN).length + ' area' + (Object.keys(areasN).length === 1 ? '' : 's') + '</h3>' +
+      '<button class="btn sm ghost" data-act="cl-xlsx">&#8681; Excel</button>' +
+      /* v6.9.458 - "make provision for list pdf download" */
+      '<button class="btn sm ghost" data-act="cl-pdf">&#8681; PDF</button></div>' +
+      /* ---- v6.9.458 - the brand filter ---- */
+      '<div style="margin-top:8px;border-top:1px solid #e2e8f0;padding-top:8px">' +
+      '<div class="acts" style="gap:6px;flex-wrap:wrap;align-items:center;margin:0">' +
+      '<span class="meta" style="font-size:12px;color:#334155;font-weight:700">By brand</span>' +
+      '<button class="btn sm ' + (want ? 'ghost' : '') + '" data-act="reg-mode" data-m="has" ' +
+        'title="Clients who have already taken a ticked brand">Took it</button>' +
+      '<button class="btn sm ' + (want ? '' : 'ghost') + '" data-act="reg-mode" data-m="want" ' +
+        'title="Clients a ticked brand is still open with - the Brand follow-up rule: won, lost and not-required all drop off">Not yet &mdash; chase it</button>' +
+      (onB.length ? '<button class="btn sm ghost" data-act="reg-clear" style="border-color:#fecaca;color:#b91c1c">Clear</button>' : '') +
+      '</div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:5px;margin-top:6px">' +
+      followBrandList().map(function (b) {
+        var on = !!(S.regB || {})[b];
+        return '<button class="btn sm ' + (on ? '' : 'ghost') + '" data-act="reg-brand" data-brand="' + esc(b) + '" ' +
+          'style="font-size:12.5px;padding:5px 9px">' + (on ? '&#10003; ' : '') + esc(b) + '</button>';
+      }).join("") + '</div>' +
+      '<div class="meta" style="font-size:12px;margin-top:6px;color:' + (onB.length ? '#0f766e' : '#64748b') + '">' +
+      (onB.length
+        ? '<b>' + rows.length + '</b> of ' + all.length + ' &mdash; ' + esc(fLine) +
+          (want ? '. A name drops off here the moment that brand is marked Won, Lost or Not required, exactly as on Brand follow-up.' : '.') +
+          ' Both files carry every brand each client has already taken.'
+        : 'Tick a brand to narrow the list &mdash; and both files always say which brands each client has already taken.') +
+      '</div></div>' +
+      '<div class="meta" style="font-size:12px;margin-top:6px">' +
       '<span id="clreg_gaps" style="color:' + (g.any ? '#b45309' : '#0f766e') + '"><b>' + g.any + '</b> missing something &middot; ' +
       '<b>' + g.mob + '</b> no mobile &middot; <b>' + g.area + '</b> no area &middot; <b>' + g.addr + '</b> no address</span>' +
       '<br><span style="color:#64748b">Type into an amber box and press Enter &mdash; it saves itself, and every screen that shows this client reads the same record. Tap a name for the full form.</span>' +
       '</div></div>';
+    if (onB.length && !rows.length) {
+      return h + '<div class="empty"><b>Nobody.</b><br>' +
+        esc(fLine) + ' matches no client on your book. Try another brand, or the other button.</div>';
+    }
     if (!rows.length) return h + '<div class="empty">No clients on this list yet.</div>';
     var lastCity = null, lastArea = null, openArea = false;
     var cityId = function (x) { return String(x || "").replace(/[^A-Za-z0-9]/g, "_"); };
@@ -29750,11 +29909,104 @@ function viewCatalogue() {
         clBox(c, "mobile", "+ mobile", 'inputmode="numeric"', 'width:118px;') +
         clBox(c, "area", "+ area", (r.city !== "Not set" ? 'list="clreg_areas_' + cityId(r.city) + '"' : ''), 'width:150px;') +
         clBox(c, "address", "+ address", '', 'flex:1 1 180px;') +
-        '</div></div>';
+        '</div>' +
+        /* v6.9.458 - what he has already taken, on the row. "executive must have in mind which
+           brand we have already supplied" - and the ticked brands he is still open for, so the
+           chase list says why each name is on it. SORTED: clientWonBrands returns them in the
+           order they were won, which reads as random on a page of forty rows; a man scanning the
+           column for "Huliot" needs it in the same place on every line. */
+        (function () {
+          var took = clientWonBrands(c.name).slice().sort(alpha), open = regOpenFor(c.name);
+          if (!took.length && !open.length) return '';
+          return '<div class="meta" style="font-size:12px;margin-top:3px;line-height:1.5">' +
+            (took.length ? '<span style="color:#0f766e">Has: <b>' + esc(took.join(", ")) + '</b></span>' : '<span style="color:#94a3b8">No brand taken yet</span>') +
+            (open.length ? ' &middot; <span style="color:#b45309">chase: <b>' + esc(open.join(", ")) + '</b></span>' : '') +
+            '</div>';
+        })() +
+        '</div>';
     });
     if (openArea) h += '</div>';
     return h;
   }
+  /* ---- THE REGISTER AS PAPER (v6.9.458) ----
+     "make provision for list pdf download". The field copy: city -> area, and the columns a man
+     standing at a counter needs - who, where, his number, what he owes, and WHAT HE ALREADY HAS.
+     The filter is written into the header, so a printout can never lie about what it is a list of.
+     Landscape for the same reason every other list here is: the brand column needs the room. */
+  function clientRegisterPdf() {
+    var all = S.data.clients.filter(function (c) { return isClient(c.name); });
+    if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });
+    var rows = clientRegisterRows(all);
+    if (!rows.length) { toast("No clients on this list to print."); return; }
+    var fl = regFilterLine();
+    return loadLogo().then(function () {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+      var F = function (w) { doc.setFont(ppEmbed(doc), (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"); };
+      var W = 297, L = 12, R = W - 12, HB = 22;
+      var RS = function (n) { return "Rs." + Math.round(nAmt(n)).toLocaleString("en-IN"); };
+      doc.setFillColor(11, 59, 54); doc.rect(0, 0, W, HB, "F");
+      doc.setFillColor(94, 234, 212); doc.rect(0, HB, W, 0.9, "F");
+      if (LOGO_B64) { try { doc.addImage(LOGO_B64, "JPEG", L, 5, 24, 12); } catch (e) { } }
+      F("bold"); doc.setFontSize(11.5); doc.setTextColor(255, 255, 255);
+      doc.text("CLIENT REGISTER", R, 10, { align: "right" });
+      F("normal"); doc.setFontSize(7.6); doc.setTextColor(172, 212, 205);
+      doc.text(rows.length + " client(s)   \u00b7   " + fullDate(today()), R, 15.5, { align: "right" });
+      doc.text(fl ? pdfSafe(fl) : "Every client on the book", R, 19.5, { align: "right" });
+
+      var cols = [
+        { k: "name", h: "CLIENT", w: 46, a: "left" },
+        { k: "mobile", h: "MOBILE", w: 24, a: "left" },
+        /* the group header two lines up already says the city and the area, so the row spends its
+           30mm on the ADDRESS instead - what a man standing in the colony actually needs */
+        { k: "addr", h: "ADDRESS", w: 30, a: "left" },
+        { k: "exec", h: "EXECUTIVE", w: 24, a: "left" },
+        { k: "due", h: "DUE", w: 22, a: "right", b: 1 },
+        { k: "has", h: "BRANDS ALREADY SUPPLIED", w: 74, a: "left" },
+        { k: "open", h: "STILL TO SELL", w: 53, a: "left" }
+      ];
+      var xs = [], acc = L;
+      cols.forEach(function (c) { xs.push(acc); acc += c.w; });
+      var y = HB + 8;
+      var head = function () {
+        doc.setFillColor(11, 59, 54); doc.rect(L, y - 4, R - L, 6, "F");
+        F("bold"); doc.setFontSize(6); doc.setTextColor(255, 255, 255);
+        cols.forEach(function (c, i) { doc.text(c.h, xs[i] + 1.5, y); });
+        y += 5.4;
+      };
+      head();
+      var lastCity = null, lastArea = null, n = 0;
+      rows.forEach(function (r) {
+        if (y > 188) { doc.addPage(); y = 18; lastCity = null; lastArea = null; head(); }
+        if (r.city !== lastCity || r.area !== lastArea) {
+          lastCity = r.city; lastArea = r.area;
+          doc.setFillColor(236, 253, 245); doc.rect(L, y - 3.4, R - L, 5.2, "F");
+          F("bold"); doc.setFontSize(6.6); doc.setTextColor(15, 118, 110);
+          doc.text(pdfSafe((r.city === "Not set" ? "No city yet" : r.city) + "   \u00b7   " +
+                   (r.area === "Not set" ? "no area yet" : r.area)), xs[0] + 1.5, y);
+          y += 5.6;
+          if (y > 188) { doc.addPage(); y = 18; lastCity = null; lastArea = null; head(); }
+        }
+        var c = r.c;
+        var v = { name: c.name, mobile: String(c.mobile || "\u2014"), addr: String(c.address || "\u2014"),
+                  exec: String(c.ownedBy || "\u2014"), due: r.due > 0.5 ? RS(r.due) : "\u2014",
+                  has: clientWonBrands(c.name).slice().sort(alpha).join(", ") || "nothing yet", open: regOpenFor(c.name).join(", ") };
+        if (n % 2) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 3.2, R - L, 4.8, "F"); }
+        doc.setFontSize(6.6);
+        cols.forEach(function (col, i) {
+          F(col.b ? "bold" : "normal");
+          doc.setTextColor(col.b && r.due > 0.5 ? 185 : 17, col.b && r.due > 0.5 ? 28 : 34, col.b && r.due > 0.5 ? 28 : 45);
+          var txt = doc.splitTextToSize(pdfSafe(String(v[col.k] || "")), col.w - 3)[0] || "";
+          doc.text(txt, col.a === "right" ? xs[i] + col.w - 1.5 : xs[i] + 1.5, y, { align: col.a === "right" ? "right" : "left" });
+        });
+        y += 4.8; n++;
+      });
+      F("normal"); doc.setFontSize(6.4); doc.setTextColor(150, 163, 175);
+      doc.text("Energy World  |  " + (fl ? pdfSafe(fl) + "  |  " : "") +
+               "Built from the app on " + fullDate(today()) + ". Internal working list \u2014 not for a client.", L, 203);
+      return doc;
+    });
+  }
+
   /* the write behind a register box - outside the paint, so renderCore itself still writes nothing
      (t_keepplace holds that); the row is the one that came down, with one field changed */
   function saveClientRow(cr) { return save("clients", cr); }
@@ -29764,20 +30016,28 @@ function viewCatalogue() {
     if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });
     var rows = clientRegisterRows(all);
     if (!rows.length) { toast("No clients to list."); return; }
-    var HEAD = ["City", "Area", "Client", "Mobile", "Mobile 2", "Address", "Executive", "Type", "Segment",
+    /* v6.9.458 - two columns more, and they are the point of the whole thing: what he has
+       already taken, and (on a chase list) which ticked brand he is still open for */
+    var HEAD = ["City", "Area", "Client", "Brands already supplied", "Still to sell", "Mobile", "Mobile 2", "Address", "Executive", "Type", "Segment",
                 "Plumber", "Architect", "Builder", "Due", "Previous balance", "Credit limit", "Credit days", "GSTIN", "Old book no"];
     var out = [HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
     var blank = function (v) { var t = String(v || "").trim(); return t ? t : { v: "", s: XL.NONE }; };
     rows.forEach(function (r) {
       var c = r.c;
       out.push([r.city === "Not set" ? { v: "", s: XL.NONE } : r.city, r.area === "Not set" ? { v: "", s: XL.NONE } : r.area,
-                c.name, blank(c.mobile), String(c.mobile2 || ""), blank(c.address), String(c.ownedBy || ""),
+                c.name, blank(clientWonBrands(c.name).slice().sort(alpha).join(", ")), regOpenFor(c.name).join(", "),
+                blank(c.mobile), String(c.mobile2 || ""), blank(c.address), String(c.ownedBy || ""),
                 String(c.type || ""), String(c.segment || ""), String(c.plumber || ""), String(c.architect || ""), String(c.builder || ""),
                 { v: Math.round(r.due), s: r.due > 0.5 ? XL.BOLD : XL.PLAIN }, Math.round(nAmt(c.openingAmt)),
                 Number(c.creditLimit) || "", Number(c.creditDays) || "", String(clientGstin(c.name) || ""), String(clientOldBookNo(c.name) || "")]);
     });
-    dlXlsx("Clients_by_area_" + today() + ".xlsx", "Clients", out,
-      [12, 20, 30, 13, 13, 40, 16, 12, 12, 16, 16, 16, 12, 14, 12, 10, 17, 12]);
+    /* the filter in the file name and on a line of its own, so a sheet mailed on is never
+       mistaken for the whole book */
+    var fl = regFilterLine();
+    if (fl) { out.push([]); out.push([{ v: "This list: " + fl + " \u00b7 " + rows.length + " client(s) \u00b7 built " + fullDate(today()), s: XL.BAND }]); }
+    dlXlsx("Clients" + (fl ? "_" + regBrandsOn().join("-").replace(/[^\w-]/g, "") + (regModeIs() === "want" ? "_to_sell" : "_took") : "_by_area") +
+           "_" + today() + ".xlsx", "Clients", out,
+      [12, 20, 30, 34, 22, 13, 13, 40, 16, 12, 12, 16, 16, 16, 12, 14, 12, 10, 17, 12]);
   }
 
   function logout() {
@@ -34947,6 +35207,23 @@ function viewCatalogue() {
       render(); return;
     }
     if (act === "cl-xlsx") { clientRegisterXlsx(); return; }
+    /* v6.9.458 - the register as paper, and the brand filter behind both files */
+    if (act === "cl-pdf") {
+      toast("Building the register\u2026");
+      var _rp = clientRegisterPdf();
+      if (!_rp) return;
+      _rp.then(function (d) { d.save("Client_register_" + today() + ".pdf"); })
+         .catch(function () { toast("Could not build the PDF."); });
+      return;
+    }
+    if (act === "reg-brand") {
+      var _rb = t.getAttribute("data-brand") || "";
+      S.regB = S.regB || {};
+      if (S.regB[_rb]) delete S.regB[_rb]; else S.regB[_rb] = 1;
+      keepScroll = true; render(); return;
+    }
+    if (act === "reg-mode") { S.regMode = t.getAttribute("data-m") === "want" ? "want" : "has"; keepScroll = true; render(); return; }
+    if (act === "reg-clear") { S.regB = {}; keepScroll = true; render(); return; }
     if (act === "qv-cli") {
       var qvK = t.getAttribute("data-k") || "";
       if (!S.qvOpen) S.qvOpen = {};
