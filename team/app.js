@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.454";
+  var APP_VERSION = "6.9.455";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -11515,6 +11515,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     for (var k in rq) if (k && (Number(rq[k]) || 0) > 0) out.push(k);
     return out.sort();
   }
+  /* v6.9.455 - every bucket a line's quantity sits in, the blank one included: what a TOTAL
+     typed for the line can honestly be applied to (one bucket) or not (two or more) */
+  function qzBuckets(i) {
+    var rq = qzRq(i), out = [];
+    for (var k in rq) if ((Number(rq[k]) || 0) > 0) out.push(k);
+    return out.sort();
+  }
   function qzRoomAdd(i, room, delta) {
     var rq = qzRq(i), k = String(room || "");
     /* v6.9.303: rounded - the + and - buttons step by one, but the figure they are
@@ -12416,8 +12423,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
               var lineNet = Math.round(i.qty * i.price * (1 - (Number(d) || 0) / 100));
               h += '<div class="prow">' +
                 '<div class="pinfo"><div class="pname">' + esc(i.desc) + '</div>' +
-                '<div class="pmeta">' + qShow(i.qty) + ' \u00d7 ' + money(i.price) + '  \u2192  <b>' + money(lineNet) + '</b></div></div>' +
+                '<div class="pmeta">' + qShow(i.qty) + ' \u00d7 ' + money(i.price) + '  \u2192  <b>' + money(lineNet) + '</b>' +
+                (qzRoomsOf(i).length ? '<br><span style="color:#0f766e">' + esc(qzRoomLabel(i)) + '</span>' : '') + '</div></div>' +
                 '<div class="pqty">' +
+                /* v6.9.455 - the quantity is a box here too (the line's total) */
+                '<input class="qz-qt" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(qShow(i.qty)) + '" title="Quantity" style="width:56px;text-align:center"/>' +
+                '<span class="pill" style="background:#f1f5f9;color:#64748b">qty</span>' +
                 '<input class="qz-d" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(i.disc === undefined ? "" : i.disc) + '" placeholder="' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '" style="width:52px"/>' +
                 '<span class="pill">%</span></div></div>';
             });
@@ -12476,7 +12487,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
                 : '<span style="color:#b45309">No room set</span>') +
               ' <button class="btn sm ghost" data-act="qz-room-edit" data-code="' + esc(i.code) + '" style="font-size:12px;padding:1px 6px">Room</button></div>' +
             '<button class="btn sm ghost" data-act="qz-opt" data-code="' + esc(i.code) + '" style="margin-top:3px;font-size:12px;padding:2px 8px">' + (opt ? '&#9745; Optional — not in total' : '&#9744; Mark as option') + '</button></td>' +
-          '<td ' + tdR + '>' + qShow(i.qty) + '</td>' +
+          /* v6.9.455 - the quantity is a box on the review too (the line's total) */
+          '<td ' + tdR + '><input class="qz-qt" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(qShow(i.qty)) + '" title="Quantity" ' +
+            'style="width:56px;text-align:center;padding:4px 5px;font-size:13px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px;font-family:inherit"/></td>' +
           '<td ' + tdR + '>' + money(i.price) + '</td>' +
           '<td ' + tdR + '>' + (Number(d) || 0) + (ov ? '<span style="color:#0f766e">*</span>' : '') + '</td>' +
           '<td ' + tdR + '>' + money(dr) + '</td>' +
@@ -31630,6 +31643,10 @@ function viewCatalogue() {
               (ex && qzRoomsOf(ex).length ? '<br><span style="color:#0f766e">' + esc(qzRoomLabel(ex)) + '</span>' : '');
           },
           qty: function (ex, z) { return ex ? (z.room ? (qzRq(ex)[z.room] ? qShow(qzRq(ex)[z.room]) : "") : qShow(ex.qty)) : ""; },
+          /* v6.9.455 - the picked-lines table edits the line's TOTAL (qz-qt / qz-qtm), not the
+             open room's share: a line with 3 in the kitchen read as an empty box while the
+             bathroom was open */
+          tableQcls: "qz-qt", tableMinus: "qz-qtm",
           /* the picked table's second line: code, price, brand, and the rooms the line is in */
           lineNote: function (i) {
             return '<span style="font-size:12px;color:#94a3b8">' + esc(i.code) + ' · ' + money(i.price) + (i.brand ? ' · ' + esc(i.brand) : '') +
@@ -31680,8 +31697,8 @@ function viewCatalogue() {
           '<td style="padding:4px 6px;text-align:center">' +
           (fixed
             ? '<span style="font-weight:700;color:#64748b" title="One amount, not a quantity">1</span>'
-            : '<input class="' + P.qcls + '" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(P.qty ? P.qty(i, z) : qShow(i.qty)) + '" style="width:76px;text-align:center;padding:7px;font-size:15px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px"/>') + '</td>' +
-          '<td style="text-align:center"><button class="stp" data-act="' + P.pre + '-qty" data-code="' + esc(i.code) + '" data-d="-1" title="reduce by one">&minus;</button></td>' +
+            : '<input class="' + (P.tableQcls || P.qcls) + '" data-code="' + esc(i.code) + '" inputmode="decimal" value="' + esc(qShow(i.qty)) + '" style="width:76px;text-align:center;padding:7px;font-size:15px;font-weight:700;border:1px solid #cbd5e1;border-radius:6px"/>') + '</td>' +
+          '<td style="text-align:center"><button class="stp" data-act="' + (P.tableMinus || (P.pre + "-qty")) + '" data-code="' + esc(i.code) + '" data-d="-1" title="reduce by one">&minus;</button></td>' +
           '</tr>';
       }).join("") +
       '</tbody></table></div>' +
@@ -36124,6 +36141,20 @@ function viewCatalogue() {
       });
       return;
     }
+    /* v6.9.455 - the picked-lines table's minus: one off the line's TOTAL, same rule as qz-qt */
+    if (act === "qz-qtm") {
+      var tmCode = t.getAttribute("data-code");
+      var tmIt = (S.qz.items || []).filter(function (x) { return x.code === tmCode; })[0];
+      if (!tmIt) return;
+      var tmB = qzBuckets(tmIt);
+      if (tmB.length > 1) {
+        toast(String(tmIt.desc || tmIt.code) + " is split across " + tmB.length + " rooms (" + qzRoomLabel(tmIt) + ") \u2014 change it room by room: the Room button, or the Products step with that room open.");
+        return;
+      }
+      qzRoomAdd(tmIt, tmB[0] || "", -1);
+      if (tmIt.qty <= 0) S.qz.items = S.qz.items.filter(function (x) { return x.code !== tmCode; });
+      keepScroll = true; render(); return;
+    }
     if (act === "qz-qty") {
       var code = t.getAttribute("data-code");
       var delta = Number(t.getAttribute("data-d"));
@@ -39772,6 +39803,23 @@ function viewCatalogue() {
       m.brand = t.value;
       save("brandmap", m).then(function (r) { if (r) toast(m.catalogValue + " -> " + (m.brand || "unmapped")); });
       return;
+    }
+    /* v6.9.455 - the line's TOTAL, typed on the Discount step, the Review table or the picked-lines
+       table. One bucket (a room, or none): set it. Two or more rooms: refused with the rooms named -
+       a total typed over a split has no honest answer, and the app will not guess which room gets
+       fewer. qzRoomSet keeps the v6.9.303 rule: 0.5 stays 0.5, 0 removes the line. */
+    if (t.classList && t.classList.contains("qz-qt") && S.qz) {
+      var tqCode = t.getAttribute("data-code"), tq = qnum(t.value);
+      var tqIt = (S.qz.items || []).filter(function (x) { return x.code === tqCode; })[0];
+      if (!tqIt) return;
+      var tqB = qzBuckets(tqIt);
+      if (tqB.length > 1) {
+        toast(String(tqIt.desc || tqIt.code) + " is split across " + tqB.length + " rooms (" + qzRoomLabel(tqIt) + ") \u2014 change it room by room: the Room button, or the Products step with that room open.");
+        keepScroll = true; render(); return;
+      }
+      qzRoomSet(tqIt, tqB[0] || "", tq);
+      if (tqIt.qty <= 0) S.qz.items = S.qz.items.filter(function (x) { return x.code !== tqCode; });
+      keepScroll = true; render(); return;
     }
     if (t.classList && t.classList.contains("qz-q") && S.qz) {
       var code = t.getAttribute("data-code");
