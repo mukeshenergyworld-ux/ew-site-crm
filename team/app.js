@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.451";
+  var APP_VERSION = "6.9.452";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18539,22 +18539,25 @@ function viewCatalogue() {
     hits.sort(function (a, b) { return String(a.ymd).localeCompare(String(b.ymd)); });
     var total = hits.reduce(function (a, h) { return a + h.g.diff; }, 0);
     var inH = hits.filter(function (h) { return inHisab(h.c); });
-    var show = hits.slice(0, 8).map(function (h) {
+    /* v6.9.452 - the app's own sheet, not window.confirm; the deliveries as rows, not dot-leaders */
+    var show = '<table style="width:100%;border-collapse:collapse;font-size:13px">' + hits.slice(0, 8).map(function (h) {
       var l = h.g.lines[0];
-      return "\u2022 " + (h.c.challanNo || "?") + "   " + fullDate(h.ymd) + "   " +
-             l.frozen + "% \u2192 " + l.preset + "%   " + money(h.g.diff) + " less";
-    }).join("\n");
-    if (hits.length > 8) show += "\n  \u2026 and " + (hits.length - 8) + " more";
-    if (!window.confirm(
-      hits[0].c.customerName + " \u2014 the discount you just saved is higher than the one " +
-      (hits.length > 1 ? hits.length + " deliveries were" : "one delivery was") + " priced at" +
-      (fromYmd ? " (on or after " + fullDate(fromYmd) + ")" : "") + ".\n\n" + show +
-      "\n\nTotal " + money(total) + " off what this client owes." +
-      (inH.length ? "\n\n\u26a0 " + inH.length + " of these " +
-        (inH.length > 1 ? "have" : "has") + " already been finalised \u2014 " +
-        "re-pricing changes a bill the client may already hold." : "") +
-      "\n\nRe-price " + (hits.length > 1 ? "them" : "it") + " now?\n" +
-      "Cancel leaves every delivery exactly as it is, and you will not be asked again.")) {
+      return '<tr><td style="padding:2px 6px 2px 0;font-weight:700;white-space:nowrap">' + esc(h.c.challanNo || "?") + '</td>' +
+        '<td style="padding:2px 6px;color:#64748b;white-space:nowrap">' + esc(fullDate(h.ymd)) + '</td>' +
+        '<td style="padding:2px 6px;white-space:nowrap">' + l.frozen + '% \u2192 ' + l.preset + '%</td>' +
+        '<td style="padding:2px 0;text-align:right;white-space:nowrap;color:#b91c1c">' + money(h.g.diff) + ' less</td></tr>';
+    }).join("") + '</table>' + (hits.length > 8 ? '<div class="meta">\u2026 and ' + (hits.length - 8) + ' more</div>' : '');
+    askSheet({ title: "Re-price " + (hits.length > 1 ? hits.length + " deliveries" : "one delivery") + " at the new discount?",
+      yes: "Re-price " + (hits.length > 1 ? "them" : "it"), no: "Leave them as they are",
+      sub: esc(hits[0].c.customerName) + " \u2014 the discount you just saved is higher than the one " +
+        (hits.length > 1 ? "these deliveries were" : "this delivery was") + " priced at" +
+        (fromYmd ? " (on or after " + esc(fullDate(fromYmd)) + ")" : "") + ".",
+      body: show + '<div style="margin-top:8px">Total <b style="color:#b91c1c">' + money(total) + '</b> off what this client owes.</div>' +
+        (inH.length ? '<div style="margin-top:8px;color:#b45309">\u26a0 ' + inH.length + ' of these ' + (inH.length > 1 ? 'have' : 'has') +
+          ' already been finalised \u2014 re-pricing changes a bill the client may already hold.</div>' : '') +
+        '<div class="meta" style="margin-top:8px">Leaving them keeps every delivery exactly as it is, and you will not be asked again.</div>' })
+    .then(function (yes) {
+    if (!yes) {
       toast("Left as they are \u2014 nothing was re-priced.");
       return;
     }
@@ -18578,6 +18581,7 @@ function viewCatalogue() {
       toast(hits.length + " deliver" + (hits.length > 1 ? "ies" : "y") + " re-priced \u2014 " +
             money(total) + " off " + hits[0].c.customerName + "\u2019s account.");
       renderBg();
+    });
     });
   }
   /* ================= THE NAG CAME OFF THE DELIVERY CARD (v6.9.379, 30 Aug 2026) ==========
@@ -29298,6 +29302,48 @@ function viewCatalogue() {
     if (r) r(!!answer);
   }
 
+  /* ================= ONE IN-APP SHEET FOR EVERY "TYPE ONE LINE"  (v6.9.452, 9 Sep 2026) ======
+     The yes/no questions went to askSheet in 6.9.448; the prompts that ask for one line - a book
+     number, a room name, a reason - still opened window.prompt: the browser's grey box, which on
+     a phone sits over the wrong screen, cannot show what it is asking about, cannot be styled and
+     cannot be tested. Measured before this: 17 window.prompt and 18 window.confirm left.
+
+     promptSheet(o) -> Promise<string|null>: what he typed, or null when the sheet was closed any
+     way but its OK button - and null means "write nothing", exactly as window.prompt's Cancel did.
+     o = { title, sub, body, value, placeholder, inputmode, maxlength, ok, cancel, danger, hint,
+     multiline }. Enter in the box presses OK (wirePin, as the PIN boxes); a default value is
+     selected so typing replaces it, as the system dialog did. One pending prompt at a time - a
+     second one answers the first with null. The paint writes nothing here: the caller does. */
+  var _prm = null;
+  function sheetPrompt(o) {
+    var box = o.multiline
+      ? '<textarea id="prompt_in" rows="3" placeholder="' + esc(o.placeholder || "") + '" ' +
+        'style="width:100%;box-sizing:border-box;font-size:15px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-family:inherit">' + esc(o.value || "") + '</textarea>'
+      : '<input id="prompt_in" type="text" value="' + esc(o.value || "") + '" placeholder="' + esc(o.placeholder || "") + '"' +
+        (o.inputmode ? ' inputmode="' + esc(o.inputmode) + '"' : '') + (o.maxlength ? ' maxlength="' + (Number(o.maxlength) || 200) + '"' : '') +
+        ' autocomplete="off" style="width:100%;box-sizing:border-box;font-size:16px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-family:inherit"/>';
+    return '<h2>' + o.title + '</h2>' +
+      (o.sub ? '<p class="sub">' + o.sub + '</p>' : '') +
+      (o.body ? '<div style="font-size:13.5px;line-height:1.5;margin-bottom:10px">' + o.body + '</div>' : '') +
+      box +
+      (o.hint ? '<div class="meta" style="margin-top:6px;font-size:12px">' + o.hint + '</div>' : '') +
+      '<div class="foot"><button class="btn ghost" data-act="close">' + (o.cancel || 'Cancel') + '</button>' +
+      '<button class="btn' + (o.danger ? ' danger' : '') + '" data-act="prompt-ok">' + (o.ok || 'Save') + '</button></div>';
+  }
+  function promptSheet(o) {
+    return new Promise(function (resolve) {
+      if (_prm) { var prev = _prm; _prm = null; try { prev(null); } catch (e) {} }
+      _prm = resolve;
+      S.modal = sheetPrompt(o); render();
+      var b = el("prompt_in"); if (b && b.select && !o.multiline) { try { b.select(); } catch (e) {} }
+    });
+  }
+  function promptDone(v) {
+    var r = _prm; _prm = null;
+    S.modal = null; render();
+    if (r) r(v);
+  }
+
   /* THE CREDIT STOP, AS A TABLE (v6.9.448). The same figures creditGateText drew in ASCII since
      v6.9.193 / v6.9.244, laid out as figures should be: labels left, rupees right, the exposure in
      bold, the reason in red. creditGate() is untouched - this only draws what it decides. */
@@ -33684,6 +33730,9 @@ function viewCatalogue() {
       try { pb.focus(); } catch (e) {}
     };
     wirePin("pass_pin", "pass-pin-go"); wirePin("op_pin", "op-pin-go"); wirePin("disc_pin", "disc-pin-go");
+    /* v6.9.452 - and the one-line prompt's box: Enter is OK, as it was in the system dialog. A
+       multi-line box keeps Enter for a new line and only takes focus. */
+    (function () { var pb = el("prompt_in"); if (!pb) return; if (pb.tagName === "TEXTAREA") { try { pb.focus(); } catch (e) {} return; } wirePin("prompt_in", "prompt-ok"); })();
 
     /* v6.9.436 - the signed paper. Read on the change event, never at save time: a repaint
        empties a file input, and the man would press Attach with nothing chosen. Same two kinds
@@ -33814,13 +33863,18 @@ function viewCatalogue() {
       var u = (S.data.team || []).filter(function (x) { return x.id === id; })[0];
       if (!u) { toast("Team member not found."); return; }
       if (!u.id) { toast("This member has no id - reset in the sheet."); return; }
-      if (!window.confirm("Block sign-in for " + u.name + "?\n\nTheir PIN is cleared, so they cannot sign in at all until you set a new one with the Set PIN button. Nothing else on their record changes and no work of theirs is touched.")) return;
+      /* v6.9.452 - the app's own sheet, not window.confirm */
+      askSheet({ title: "Block sign-in for " + esc(u.name) + "?", danger: true, yes: "Block sign-in", no: "Leave it",
+        body: "Their PIN is cleared, so they cannot sign in at all until you set a new one with <b>Set PIN</b>.<br><br>Nothing else on their record changes and no work of theirs is touched." })
+      .then(function (yes) {
+      if (!yes) return;
       /* Clear pin + pinSet, forcing a fresh PIN at next login. Send the FULL known member row (not
          just the two fields) so that even if the backend ever wrote whole rows instead of merging
          fields, a reset could never blank someone's name / role / mobile. */
       save("team", Object.assign({}, u, { pin: "", pinSet: "N" }));
       toast(u.name + " cannot sign in until you set a new PIN.");
       render();
+      });
       return;
     }
     if (act === "tp-setpin") {
@@ -33910,10 +33964,15 @@ function viewCatalogue() {
       var mob = String(tu.mobile || "").replace(/\D/g, "");
       if (mob.length < 4) { toast("No mobile on file - can't make a temp PIN. Add a mobile first."); return; }
       var temp = mob.slice(-4);
-      if (!window.confirm("Give " + tu.name + " a temporary PIN of " + temp + " (last 4 of their mobile)?\n\nThey must change it to their own private PIN the first time they sign in. Tell them this temp PIN.")) return;
+      /* v6.9.452 - the app's own sheet, not window.confirm */
+      askSheet({ title: "Give " + esc(tu.name) + " a temporary PIN?", yes: "Set the temporary PIN", no: "Not now",
+        body: "The temporary PIN is <b>" + esc(temp) + "</b> \u2014 the last four digits of their mobile.<br><br>They must change it to their own private PIN the first time they sign in. Tell them this temporary PIN." })
+      .then(function (yes) {
+      if (!yes) return;
       save("team", Object.assign({}, tu, { pin: temp, pinSet: "N" }));
       toast(tu.name + ": temp PIN " + temp + " set - they must change it at first login.");
       render();
+      });
       return;
     }
     if (act === "tabuse-clear") {
@@ -34035,9 +34094,13 @@ function viewCatalogue() {
       return;
     }
     if (act === "ask-yes") { askDone(true); return; }
+    /* v6.9.452 - the typed line is read BEFORE promptDone repaints the box away */
+    if (act === "prompt-ok") { var _pv = el("prompt_in"); promptDone(_pv ? String(_pv.value) : ""); return; }
     if (act === "close") {
       /* v6.9.448 - a question closed any way but Yes is a "no", and the caller is told */
       if (_ask) { askDone(false); return; }
+      /* v6.9.452 - a prompt closed any way but OK is null - "write nothing", as Cancel was */
+      if (_prm) { promptDone(null); return; }
       S.chx = null;   /* v6.9.356 - the job-work / off-list box never outlives its challan */
       /* cancelling a partner form that was opened FROM the client form goes back to the client
          form with everything still typed - never dumps the user's half-entered lead. */
@@ -34312,15 +34375,17 @@ function viewCatalogue() {
       var dvId = t.getAttribute("data-id");
       var dvRow = ((S.data && S.data.visits) || []).filter(function (x) { return x.id === dvId; })[0];
       if (!dvRow) { toast("Not found."); return; }
-      if (!window.confirm(
-        "Set this visit aside as a duplicate?\n\n" +
-        String(dvRow.client || "") + "\n" + fullDate(String(dvRow.date || "").slice(0, 10)) +
-        "  \u00b7  " + String(dvRow.engineer || "") + "  \u00b7  " + money(cxValue("visits", dvRow)) +
-        "\n\n" + String(dvRow.client || "This customer") + " will owe " +
-        money(cxValue("visits", dvRow)) + " LESS.\n\n" +
-        "Nothing is deleted. It stays readable in the cancelled list and can be brought back.")) return;
-      cxWrite("visits", dvRow.id, dvRow, "Duplicate of another record", "Same machine, same day");
-      toast("Set aside \u2014 " + money(cxValue("visits", dvRow)) + " off " + String(dvRow.client || "") + "\u2019s service account.");
+      /* v6.9.452 - the app's own sheet, not window.confirm */
+      askSheet({ title: "Set this visit aside as a duplicate?", danger: true, yes: "Set it aside", no: "Keep it",
+        body: '<b>' + esc(String(dvRow.client || "")) + '</b><br>' + esc(fullDate(String(dvRow.date || "").slice(0, 10))) +
+          ' &middot; ' + esc(String(dvRow.engineer || "")) + ' &middot; ' + money(cxValue("visits", dvRow)) +
+          '<br><br>' + esc(String(dvRow.client || "This customer")) + ' will owe <b>' + money(cxValue("visits", dvRow)) + ' less</b>.' +
+          '<br><br><span style="color:#64748b">Nothing is deleted. It stays readable in the cancelled list and can be brought back.</span>' })
+      .then(function (yes) {
+        if (!yes) return;
+        cxWrite("visits", dvRow.id, dvRow, "Duplicate of another record", "Same machine, same day");
+        toast("Set aside \u2014 " + money(cxValue("visits", dvRow)) + " off " + String(dvRow.client || "") + "\u2019s service account.");
+      });
       return;
     }
     /* Re-price the salt on one visit at the price list. The visit row is rewritten - it is a
@@ -34332,16 +34397,18 @@ function viewCatalogue() {
       var sg2 = svcSaltGap();
       var hit = sg2.rows.filter(function (r) { return r.v.id === sfId; })[0];
       if (!hit) { toast("Nothing to correct on that visit."); return; }
-      if (!window.confirm(
-        "Correct the salt on this visit to the price list?\n\n" +
-        String(hit.v.client || "") + "  \u00b7  " + fullDate(String(hit.v.date || "").slice(0, 10)) + "\n" +
-        hit.bags + " bag(s) at " + money(sg2.price) + "\n\n" +
-        "salt   " + money(hit.was) + "  \u2192  " + money(hit.should) + "\n" +
-        "bill   " + money(hit.wasTotal) + "  \u2192  " + money(hit.nowTotal) + "\n\n" +
-        (hit.diff > 0
-          ? "He will owe " + money(hit.diff) + " MORE than he was told. Tell him before the next statement."
-          : "He will owe " + money(-hit.diff) + " LESS than he was told.") +
-        "\n\nWhat it says now is kept in the audit trail.")) return;
+      /* v6.9.452 - the app's own sheet, not window.confirm; the two figures as a sum, not a line */
+      askSheet({ title: "Correct the salt to the price list?", yes: "Correct it", no: "Leave it",
+        sub: esc(String(hit.v.client || "")) + " &middot; " + esc(fullDate(String(hit.v.date || "").slice(0, 10))) + " &middot; " + hit.bags + " bag" + (hit.bags === 1 ? "" : "s") + " at " + money(sg2.price),
+        body: '<table style="border-collapse:collapse;font-size:13.5px">' +
+          '<tr><td style="padding:2px 10px 2px 0;color:#475569">Salt</td><td style="text-align:right">' + money(hit.was) + '</td><td style="padding:0 8px;color:#94a3b8">\u2192</td><td style="text-align:right;font-weight:700">' + money(hit.should) + '</td></tr>' +
+          '<tr><td style="padding:2px 10px 2px 0;color:#475569">Bill</td><td style="text-align:right">' + money(hit.wasTotal) + '</td><td style="padding:0 8px;color:#94a3b8">\u2192</td><td style="text-align:right;font-weight:700">' + money(hit.nowTotal) + '</td></tr></table>' +
+          '<div style="margin-top:8px">' + (hit.diff > 0
+            ? 'He will owe <b style="color:#b91c1c">' + money(hit.diff) + ' more</b> than he was told. Tell him before the next statement.'
+            : 'He will owe <b style="color:#0f766e">' + money(-hit.diff) + ' less</b> than he was told.') + '</div>' +
+          '<div class="meta" style="margin-top:6px">What it says now is kept in the audit trail.</div>' })
+      .then(function (yes) {
+      if (!yes) return;
       var nv = Object.assign({}, hit.v, {
         saltAmt: hit.should,
         total: hit.nowTotal,
@@ -34357,6 +34424,7 @@ function viewCatalogue() {
         }, true);
         toast("Salt corrected \u2014 " + String(hit.v.client || "") + " now " + money(hit.nowTotal) + ".");
         renderBg();
+      });
       });
       return;
     }
@@ -34400,7 +34468,14 @@ function viewCatalogue() {
       var cp2 = val("rm_code"), fp2 = val("rm_fam"), to = val("rm_to");
       if (!cp2 && !fp2) { toast("Give a code or family prefix."); return; }
       if (!to) { toast("Pick the brand to move them to."); return; }
-      if (!window.confirm("Move matching products to " + to + "? This edits the master catalogue sheet.")) return;
+      /* v6.9.452 - the app's own sheet, not window.confirm. The two prefixes and the brand live in
+         the screen's own boxes, which the sheet's repaint empties - so they are snapshotted first
+         (formSnap, keyed by id) and put back if he says Not yet. */
+      var _rmSnap = formSnap();
+      askSheet({ title: "Move the matching products to " + esc(to) + "?", yes: "Move them", no: "Not yet",
+        body: "This edits the master catalogue sheet." + (cp2 ? "<br>Code prefix <b>" + esc(cp2) + "</b>" : "") + (fp2 ? "<br>Family prefix <b>" + esc(fp2) + "</b>" : "") })
+      .then(function (yes) {
+      if (!yes) { formRestore(_rmSnap); return; }
       var _lbl = t.textContent; t.disabled = true; t.textContent = "Moving...";
       api("catalogRemap", { codePrefix: cp2, familyPrefix: fp2, toBrand: to }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Move failed."); render(); return; }
@@ -34408,6 +34483,7 @@ function viewCatalogue() {
         toast(r.moved + " product(s) moved to " + to + ".");
         loadCatalog().then(function () { refresh(); });
       }).catch(function (e) { btnBack(t, _lbl); toast("The products were NOT moved \u2014 " + apiWhy(e) + ". Preview again before retrying."); });
+      });
       return;
     }
     if (act === "br-list") { var _bb = t.getAttribute("data-b"); S.brandOpen = S.brandOpen || {}; S.brandOpen[_bb] = !S.brandOpen[_bb]; render(); return; }
@@ -34429,7 +34505,7 @@ function viewCatalogue() {
          that is obvious from the row. Say what goes with it, in words, first. */
       var _eb = emptyBrands().filter(function (x) { return x.id === id; })[0];
       var _ties = _eb ? emptyBrandTies(_eb) : [];
-      var _msg = "Remove the brand \"" + bb.brand + "\"?\n\n";
+      var _msg = "";
       _msg += _ties.length
         ? "It is still in use: " + _ties.join(", ") + ".\n\n" +
           "Those records keep the name written on them and are NOT touched, but the brand " +
@@ -34438,11 +34514,16 @@ function viewCatalogue() {
           "use Edit instead."
         : "It carries no products and is used nowhere - no quote, no challan, no discount, " +
           "never pitched. Nothing is lost.";
-      if (!window.confirm(_msg)) return;
-      api("teamDelete", { tab: "brands", id: id }).then(function (r) {
-        if (r && r.ok) { toast("Brand \"" + bb.brand + "\" removed."); refresh(); }
-        else { toast((r && r.error) || "Could not remove."); }
-      }, function (e) { toast("The server did not answer \u2014 " + apiWhy(e) + ". The brand is unchanged."); });
+      /* v6.9.452 - the app's own sheet, not window.confirm */
+      askSheet({ title: 'Remove the brand \u201c' + esc(bb.brand) + '\u201d?', danger: true, yes: "Remove it", no: "Keep it",
+        body: esc(_msg).replace(/\n\n/g, "<br><br>") })
+      .then(function (yes) {
+        if (!yes) return;
+        api("teamDelete", { tab: "brands", id: id }).then(function (r) {
+          if (r && r.ok) { toast("Brand \"" + bb.brand + "\" removed."); refresh(); }
+          else { toast((r && r.error) || "Could not remove."); }
+        }, function (e) { toast("The server did not answer \u2014 " + apiWhy(e) + ". The brand is unchanged."); });
+      });
       return;
     }
 
@@ -34482,13 +34563,18 @@ function viewCatalogue() {
     }
     if (act === "pr-del") {
       var code = t.getAttribute("data-code");
-      if (!window.confirm("Remove " + code + " from the master price list?")) return;
+      /* v6.9.452 - the app's own sheet, not window.confirm */
+      askSheet({ title: "Remove " + esc(code) + " from the master price list?", danger: true, yes: "Remove it", no: "Keep it",
+        body: "It stops being offered on quotes and challans. Nothing already written on a document changes." })
+      .then(function (yes) {
+      if (!yes) return;
       api("catalogDelete", { code: code }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Delete failed."); return; }
         catalogForget(code);              /* v6.9.246 - no full re-download */
         toast("Removed from catalogue.");
         renderBg();
       }).catch(function () { toast("No signal \u2014 nothing was removed."); });
+      });
       return;
     }
 
@@ -35096,10 +35182,15 @@ function viewCatalogue() {
       var nrn = t.getAttribute("data-n");
       var nrb = resolveBrand(nrn, t.getAttribute("data-brand"), "board-nr", "");
       if (nrb === null) return;
-      var why = window.prompt("Why is " + nrb + " not required for " + nrn + "?\n(e.g. already has it, competitor tied up, not in scope)");
-      if (why === null) return;
-      saveBrandStatus(nrn, nrb, "", { status: "Not required", note: why });
-      S.modal = null; toast(nrb + " marked Not required."); render(); return;
+      /* v6.9.452 - the app's own sheet, not window.prompt */
+      promptSheet({ title: "Why is " + esc(nrb) + " not required for " + esc(nrn) + "?",
+        placeholder: "already has it \u00b7 competitor tied up \u00b7 not in scope", ok: "Mark Not required" })
+      .then(function (why) {
+        if (why === null) return;
+        saveBrandStatus(nrn, nrb, "", { status: "Not required", note: why });
+        S.modal = null; toast(nrb + " marked Not required."); render();
+      });
+      return;
     }
     if (act === "bf-pdf") {
       var _bfb = t.getAttribute("data-brand") || S.bf;
@@ -35453,23 +35544,31 @@ function viewCatalogue() {
       var ce = prfLoad().filter(function (x) { return x.pk === cpk; })[0];
       if (!ce) { toast("That one is already gone."); renderBg(); return; }
       var cp = prfOnServer(ce);
-      if (!cp) { toast("Not yet \\u2014 that receipt is not on the server, so this device is holding the only copy."); return; }
-      if (!window.confirm("Remove the copy of " + (ce.no || "this receipt") + " held on this device?\n\n" +
-        "The signed document itself stays on the server and on the challan \\u2014 this only clears " +
-        "the upload queue on this computer.")) return;
-      prfDrop(cpk); _prfCache = null; renderBg(); syncBanner();
-      toast("Cleared. The receipt is still on " + (ce.no || "the challan") + ".");
+      /* v6.9.452 - the dash was written "\\u2014" (double-escaped) here since v6.9.294, so the toast
+         showed six characters and not a dash; and the question is the app's own sheet now */
+      if (!cp) { toast("Not yet \u2014 that receipt is not on the server, so this device is holding the only copy."); return; }
+      askSheet({ title: "Remove the copy of " + esc(ce.no || "this receipt") + " held on this device?", yes: "Remove the copy", no: "Keep it",
+        body: "The signed document itself stays on the server and on the challan \u2014 this only clears the upload queue on this computer." })
+      .then(function (yes) {
+        if (!yes) return;
+        prfDrop(cpk); _prfCache = null; renderBg(); syncBanner();
+        toast("Cleared. The receipt is still on " + (ce.no || "the challan") + ".");
+      });
       return;
     }
     if (act === "prf-clearsafe") {
       var safe = prfLoad().filter(function (x) { return !!prfOnServer(x); });
       if (!safe.length) { toast("None of them are on the server yet \\u2014 nothing is safe to clear."); return; }
-      if (!window.confirm(safe.length + " receipt(s) are already filed on the server. Clear those copies " +
-        "from this device?\n\n" + safe.map(function (x) { return "\\u2022 " + (x.no || "?"); }).join("\n") +
-        "\n\nThe documents themselves stay on their challans. Anything NOT yet on the server is left alone.")) return;
-      safe.forEach(function (x) { prfDrop(x.pk); });
-      _prfCache = null; renderBg(); syncBanner();
-      toast("Cleared " + safe.length + ". " + (prfCount() ? prfCount() + " still waiting to upload." : "Nothing left waiting."));
+      /* v6.9.452 - the app's own sheet, not window.confirm (and the bullets were "\\u2022", double-escaped) */
+      askSheet({ title: "Clear " + safe.length + " receipt" + (safe.length === 1 ? "" : "s") + " already filed on the server?", yes: "Clear the copies", no: "Keep them",
+        body: safe.map(function (x) { return "&bull; " + esc(x.no || "?"); }).join("<br>") +
+          '<br><br><span style="color:#64748b">The documents themselves stay on their challans. Anything not yet on the server is left alone.</span>' })
+      .then(function (yes) {
+        if (!yes) return;
+        safe.forEach(function (x) { prfDrop(x.pk); });
+        _prfCache = null; renderBg(); syncBanner();
+        toast("Cleared " + safe.length + ". " + (prfCount() ? prfCount() + " still waiting to upload." : "Nothing left waiting."));
+      });
       return;
     }
     if (act === "line-test") { runLineTest(); return; }
@@ -35801,11 +35900,11 @@ function viewCatalogue() {
       var cv = String(t.getAttribute("data-cv") || "").trim();
       if (!cv) return;
       var nice = cv.replace(/\s*(pumps?|items?)\s*$/i, "").replace(/\s+/g, " ").trim() || cv;
-      var ask = window.prompt(
-        "Make \"" + cv + "\" a brand of its own.\n\n" +
-        "Its products stop sitting in the miscellaneous drawer and start appearing when a quote " +
-        "asks for a brand. You can then set its discount and incentive like any other.\n\n" +
-        "Name it:", nice);
+      /* v6.9.452 - the app's own sheet, not window.prompt */
+      promptSheet({ title: 'Make \u201c' + esc(cv) + '\u201d a brand of its own',
+        body: "Its products stop sitting in the miscellaneous drawer and start appearing when a quote asks for a brand. You can then set its discount and incentive like any other.",
+        sub: "Name it:", value: nice, ok: "Make it a brand" })
+      .then(function (ask) {
       if (ask === null) return;
       var bn = String(ask).trim();
       if (!bn) { toast("A brand needs a name."); return; }
@@ -35823,6 +35922,7 @@ function viewCatalogue() {
       };
       if (exB) { after(); return; }
       save("brands", { id: "", brand: bn, active: "Y" }).then(function (r) { if (r) after(); });
+      });
       return;
     }
     if (act === "qz-code-go") { var qcb = el("qz_code"); if (qcb && S.qz) S.qz.codeq = qcb.value; render(); return; }
@@ -35845,23 +35945,31 @@ function viewCatalogue() {
       keepScroll = true; render(); return;
     }
     if (act === "qz-room-new") {
-      var ask2 = window.prompt("Name the room\n\nMaster Bathroom, PDR, Kitchen, Terrace...", "");
-      if (ask2 === null) return;
-      var nm2 = String(ask2).trim();
-      if (!nm2) return;
-      S.qz.rooms = S.qz.rooms || [];
-      if (S.qz.rooms.indexOf(nm2) < 0) S.qz.rooms.push(nm2);
-      S.qz.room = nm2;
-      keepScroll = true; render(); return;
+      /* v6.9.452 - the app's own sheet, not window.prompt */
+      promptSheet({ title: "Name the room", placeholder: "Master Bathroom, PDR, Kitchen, Terrace\u2026", ok: "Add the room" })
+      .then(function (ask2) {
+        if (ask2 === null) return;
+        var nm2 = String(ask2).trim();
+        if (!nm2) return;
+        S.qz.rooms = S.qz.rooms || [];
+        if (S.qz.rooms.indexOf(nm2) < 0) S.qz.rooms.push(nm2);
+        S.qz.room = nm2;
+        keepScroll = true; render();
+      });
+      return;
     }
     if (act === "qz-room-rename") {
       var rOld = t.getAttribute("data-r") || "";
-      var ask3 = window.prompt("Rename this room\n\nEverything filed under it moves with the name.", rOld);
-      if (ask3 === null) return;
-      var nm3 = String(ask3).trim();
-      if (!nm3 || nm3 === rOld) return;
-      qzRoomRename(S.qz, rOld, nm3);
-      keepScroll = true; render(); return;
+      /* v6.9.452 - the app's own sheet, not window.prompt */
+      promptSheet({ title: "Rename this room", sub: "Everything filed under it moves with the name.", value: rOld, ok: "Rename" })
+      .then(function (ask3) {
+        if (ask3 === null) return;
+        var nm3 = String(ask3).trim();
+        if (!nm3 || nm3 === rOld) return;
+        qzRoomRename(S.qz, rOld, nm3);
+        keepScroll = true; render();
+      });
+      return;
     }
     if (act === "qz-room-copy") {
       var rFrom = t.getAttribute("data-r") || "";
@@ -35894,16 +36002,21 @@ function viewCatalogue() {
       var rit = (S.qz.items || []).filter(function (x) { return x.code === rcode; })[0];
       if (!rit) return;
       var cur = qzRoomsOf(rit);
-      var ask = window.prompt("Which room is this line for?\n\nOne name puts the whole line in that room. Leave blank to clear.", cur.length === 1 ? cur[0] : "");
-      if (ask === null) return;
-      var nm = String(ask).trim();
-      /* the whole line moves - a line that needs splitting across rooms is built
-         room by room on the Products step, which is where the + button lives */
-      var mv = {}; mv[nm] = rit.qty;
-      rit.rq = mv;
-      qzRqSync(rit);
-      keepScroll = true;
-      render(); return;
+      /* v6.9.452 - the app's own sheet, not window.prompt */
+      promptSheet({ title: "Which room is this line for?", sub: "One name puts the whole line in that room. Leave it blank to clear.",
+        value: cur.length === 1 ? cur[0] : "", placeholder: "Master Bathroom", ok: "Move the line" })
+      .then(function (ask) {
+        if (ask === null) return;
+        var nm = String(ask).trim();
+        /* the whole line moves - a line that needs splitting across rooms is built
+           room by room on the Products step, which is where the + button lives */
+        var mv = {}; mv[nm] = rit.qty;
+        rit.rq = mv;
+        qzRqSync(rit);
+        keepScroll = true;
+        render();
+      });
+      return;
     }
     if (act === "qz-qty") {
       var code = t.getAttribute("data-code");
@@ -36111,14 +36224,19 @@ function viewCatalogue() {
         if (r && r.__timeout) { toast("Duplicate check timed out - saving anyway."); qzDoSave(); return; }
         var others = ((r && r.clashes) || []).filter(function (x) { return !x.mine; });
         if (!others.length) { qzDoSave(); return; }
-        var msg = "WARNING - this client has already been quoted these products by someone else:\n\n";
-        others.slice(0, 6).forEach(function (x) {
-          msg += "- " + x.desc + "\n  " + (uniRupee() ? "\u20B9" : "Rs.") + x.price + " at " + x.disc + "% off, on " + x.date +
-            "\n  by " + x.by + " (" + x.quoteNo + ", " + x.status + ")\n\n";
+        /* v6.9.452 - the app's own sheet, not window.confirm; each clash on its own lines */
+        askSheet({ title: "Already quoted by someone else", danger: true, yes: "Save anyway", no: "Go back",
+          sub: "This client has already been quoted these products:",
+          body: others.slice(0, 6).map(function (x) {
+              return '<div style="margin:0 0 8px"><b>' + esc(x.desc) + '</b><br>' +
+                (uniRupee() ? "\u20B9" : "Rs.") + esc(x.price) + ' at ' + esc(x.disc) + '% off, on ' + esc(x.date) +
+                '<br><span style="color:#64748b">by ' + esc(x.by) + ' (' + esc(x.quoteNo) + ', ' + esc(x.status) + ')</span></div>';
+            }).join("") +
+            '<div style="font-weight:700;color:#b91c1c">A client must never get two different prices from Energy World.</div>' })
+        .then(function (yes) {
+          if (yes) { qzDoSave(); }
+          else { z.dupChecked = false; render(); }
         });
-        msg += "A client must never get two different prices from Energy World.\n\nContinue anyway?";
-        if (window.confirm(msg)) { qzDoSave(); }
-        else { z.dupChecked = false; render(); }
       }).catch(function (e) {
         z.dupChecked = true;
         toast("Duplicate check skipped (" + ((e && e.message) || "network") + ") - saving.");
@@ -37552,11 +37670,16 @@ function viewCatalogue() {
     }
 
     if (act === "geo-reset") {
-      if (!window.confirm("Clear this site\u2019s GPS?\n\nOnly do this if it was set at the wrong place. The next person standing at the site will fix it again.")) return;
-      api("geoReset", { siteId: id }).then(function (r) {
-        toast(r && r.ok ? "Location cleared. It can be set again on site." : ((r && r.error) || "Failed."));
-        refresh();
-      }, function (e) { toast("The server did not answer \u2014 " + apiWhy(e) + ". The location is unchanged."); });
+      /* v6.9.452 - the app's own sheet, not window.confirm */
+      askSheet({ title: "Clear this site\u2019s GPS?", danger: true, yes: "Clear it", no: "Leave it",
+        body: "Only do this if it was set at the wrong place. The next person standing at the site will fix it again." })
+      .then(function (yes) {
+        if (!yes) return;
+        api("geoReset", { siteId: id }).then(function (r) {
+          toast(r && r.ok ? "Location cleared. It can be set again on site." : ((r && r.error) || "Failed."));
+          refresh();
+        }, function (e) { toast("The server did not answer \u2014 " + apiWhy(e) + ". The location is unchanged."); });
+      });
       return;
     }
 
@@ -38076,11 +38199,12 @@ function viewCatalogue() {
       if (!roleIs("admin")) { toast("Only the owner can put a booked-in return back."); return; }
       var urec = (S.data.returns || []).filter(function (x) { return x.id === id; })[0];
       if (!urec) { toast("That return is not on this device yet - pull down to refresh."); return; }
-      var uWhy = window.prompt(
-        "Put " + (urec.returnNo || "this return") + " back to \"Raised\"?\n\n" +
-        moneyAscii(returnNet(urec)) + " comes OFF " + (urec.customerName || "his") + "'s credit " +
-        "again, and the incentive goes back to whoever had it.\n\n" +
-        "Say in one line why (it is kept against the return):", "booked in by mistake - not back yet");
+      /* v6.9.452 - the app's own sheet, not window.prompt; the reason is the box */
+      promptSheet({ title: "Put " + esc(urec.returnNo || "this return") + " back to Raised?", danger: true,
+        body: '<b>' + money(returnNet(urec)) + '</b> comes <b>off</b> ' + esc(urec.customerName || "his") + '\u2019s credit again, and the incentive goes back to whoever had it.',
+        sub: "Say in one line why \u2014 it is kept against the return.",
+        value: "booked in by mistake - not back yet", ok: "Put it back", cancel: "Leave it" })
+      .then(function (uWhy) {
       if (uWhy === null) { toast("Left as it is."); return; }
       if (String(uWhy).trim().length < 4) { toast("Say in one line why. Nothing was changed."); return; }
       _moving++;
@@ -38101,6 +38225,7 @@ function viewCatalogue() {
         toast("Put back to Raised. The credit is off his account again.");
         S.recon = null; render();
       }, function () { _udone(); toast("No answer from the server. Nothing was changed."); render(); });
+      });
       return;
     }
     if (act === "rt-save") {
@@ -38481,17 +38606,20 @@ function viewCatalogue() {
       var bkNo  = t.getAttribute("data-no") || "";
       var bkCl  = t.getAttribute("data-cl") || "";
       var bkCur = manualNoFor({ id: id, challanNo: bkNo });
-      var bkAsk = window.prompt(
-        "Paper challan book number for " + (bkNo || "this challan") +
-        "\n\nExactly as it is written in the book, e.g. CH41-6/8/26." +
-        "\nLeave it blank to clear it.", bkCur);
-      if (bkAsk === null) return;                    /* Cancel changes nothing */
-      var bkNew = String(bkAsk).trim();
-      if (bkNew === String(bkCur || "")) { toast("Unchanged."); return; }
-      saveManualNo(bkNo, id, bkNew, bkCl);
-      toast(bkNew ? ("Book no " + bkNew + " noted against " + (bkNo || "the challan") + ".")
-                  : "Book number cleared.");
-      render(); return;
+      /* v6.9.452 - the app's own sheet, not window.prompt */
+      promptSheet({ title: "Book number for " + esc(bkNo || "this challan"),
+        sub: "From the paper challan book, exactly as it is written there \u2014 e.g. CH41-6/8/26. Leave it blank to clear it.",
+        value: bkCur, placeholder: "CH41-6/8/26", ok: "Note it" })
+      .then(function (bkAsk) {
+        if (bkAsk === null) return;                  /* closed - changes nothing */
+        var bkNew = String(bkAsk).trim();
+        if (bkNew === String(bkCur || "")) { toast("Unchanged."); return; }
+        saveManualNo(bkNo, id, bkNew, bkCl);
+        toast(bkNew ? ("Book no " + bkNew + " noted against " + (bkNo || "the challan") + ".")
+                    : "Book number cleared.");
+        render();
+      });
+      return;
     }
     if (act === "ch-exp") {
       S.chExp = S.chExp || {};
