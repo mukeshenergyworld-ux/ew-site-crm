@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.52.0";
+  var APP_VERSION = "1.53.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3238,6 +3238,17 @@ function discRowOn(client, brand, onYmd) {
         'carry over to changed contents.</div>';
     }
 
+    /* v1.53.0 - the order this challan is being made for, from the Stock Dispatch group */
+    if (z.stock && z.stock.ref) {
+      h += '<div class="card" style="border-color:#a7f3d0;background:#ecfdf5">' +
+        '<div style="font-weight:800">&#128203; Order from the Stock Dispatch group</div>' +
+        '<div class="muted" style="margin-top:2px">typed by ' + esc(z.stock.by || "?") + '</div>' +
+        (z.stock.text
+          ? '<div style="margin-top:6px;white-space:pre-wrap;font-size:14px;line-height:1.35">' + esc(z.stock.text) + '</div>'
+          : '<div class="muted" style="margin-top:6px">A photo &mdash; open the order in the group to read it.</div>') +
+        '<div class="muted" style="margin-top:8px">When this challan is created the order is marked done in the group, with the challan number.</div>' +
+        '</div>';
+    }
     h += clientPicker(z, cl);
 
     /* v1.24.0 - "challan app challan making process should be exact like crm".
@@ -4298,6 +4309,7 @@ function discRowOn(client, brand, onYmd) {
         S.user = r.user.name; S.role = String(r.user.role || "").toLowerCase();
         if (!roleAny(ALLOWED)) { S.pin = ""; renderLogin(notForYou(S.user, S.role)); S.role = ""; return; }
         try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: saved.pin, role: S.role })); } catch (e) {}
+        stockApply();                     /* v1.53.0 */
         startFlushTicker();
         pull(false);
       });
@@ -6024,6 +6036,17 @@ function discRowOn(client, brand, onYmd) {
             try { saveRow("visits", chSaltVisitRow(cObj, shown || ("#" + saved.id), saltBagsV)); } catch (eSv) { }
           }
           /* the paper book's number goes after the delivery, never before it */
+          /* v1.53.0 - the order this challan came from is closed in the group. Best effort: a
+             miss leaves the order on the bot's list, where a thumbs-up closes it - never a second
+             challan, never a blocked save. A NEW challan only: an edit answers no order. */
+          var _stk = (!_editRow && z.stock && z.stock.ref) ? z.stock : null;
+          if (_stk) {
+            try {
+              api("stockMsgDone", { ref: _stk.ref, challanNo: shown, id: saved.id || "", text: _stk.text || "", by: _stk.by || "" })
+                .catch(function () {});
+            } catch (eStk) {}
+            S.stockOrder = null;
+          }
           var after = function () {
             bust(); S.ch = null; S.tab = "make"; render();
             toast(r.held
@@ -6373,6 +6396,7 @@ function discRowOn(client, brand, onYmd) {
         return;
       }
       try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: pin, role: S.role })); } catch (e) {}
+      stockApply();                       /* v1.53.0 */
       startFlushTicker();
       pull(false);
     }).catch(function (e) { S.pin = ""; renderLogin(loginWhy(e)); });
@@ -6637,6 +6661,39 @@ function discRowOn(client, brand, onYmd) {
     }, 6000);
   }
 
+  /* v1.53.0 - AN ORDER FROM THE STOCK DISPATCH GROUP. The bot's "not yet dispatched" list
+     links here with the order: ?so=<chat>:<msg>&st=<its words>&sb=<who typed it>. Read once,
+     the URL cleaned at once so a reload cannot open a second form for the same order; applied
+     by stockApply() the moment the man is signed in and allowed to make a challan. */
+  function stockRead() {
+    try {
+      var q = new URLSearchParams(location.search || "");
+      var so = String(q.get("so") || "");
+      if (!/^-?\d+:\d+$/.test(so)) return;
+      S.stockOrder = { ref: so, text: String(q.get("st") || "").slice(0, 400), by: String(q.get("sb") || "").slice(0, 80), applied: false };
+      try { history.replaceState(null, "", location.pathname + (location.hash || "")); } catch (e) {}
+    } catch (e) {}
+  }
+  /* the typist's first words - up to the first dash, comma, colon or line - go into the
+     search-any-client box (gq, the box that searches everyone, v1.20.0), so his tiles are on
+     the screen before a key is pressed; the whole order stays on the form to be read */
+  function stockGuess(text) {
+    var t = String(text || "").split(/[\n\-\u2013\u2014,:(\u00b7]/)[0].replace(/\s+/g, " ").trim();
+    return t.length > 30 ? t.slice(0, 30).trim() : t;
+  }
+  function stockApply() {
+    var o = S.stockOrder;
+    if (!o || o.applied || !S.user) return false;
+    if (!canMake()) { o.applied = true; toast("This order needs a challan, and making one is done by the godown or the office."); return false; }
+    o.applied = true;
+    S.tab = "make"; S.sheet = null; S.q = "";
+    S.ch = { client:"", site:"", siteNew:false, items:[], freight:"", fto:"Client",
+             driver:"", veh:"", manual:"", dist:"", area:"", cq:"", gq: stockGuess(o.text),
+             stock: { ref: o.ref, text: o.text, by: o.by } };
+    return true;
+  }
+  stockRead();
+
   (function boot() {
     var sess = null;
     try { sess = JSON.parse(localStorage.getItem(STORE) || "null"); } catch (e) {}
@@ -6680,6 +6737,7 @@ function discRowOn(client, brand, onYmd) {
         renderLogin(notForYou(S.user, S.role)); S.role = ""; return;
       }
       try { localStorage.setItem(STORE, JSON.stringify({ user: S.user, pin: sess.pin, role: S.role })); } catch (e) {}
+      stockApply();                       /* v1.53.0 - an order from the group, if the link brought him */
       if (S.data) render();
     }).catch(function () {});
 
