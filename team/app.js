@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.462";
+  var APP_VERSION = "6.9.463";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -10868,6 +10868,94 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      is standing in that one man's account wondering where the balance came from. */
   function hisabAskCard(name) { return hdLine(name, { quiet: true }); }
 
+  /* ================= THE OLD HISABS STILL TO ATTACH, AS A WORK LIST  (v6.9.463) ============
+     HIS WORDS, with the card on screen: "show in excel systematically and give option to attach
+     here only".
+
+     MEASURED: 36 names on his book, drawn as 36 pills over six wrapped lines, each a tap that
+     opened the thirty-field client form. Nothing said what the man owes NOW as against what he
+     came over with - which is the whole of deciding whose statement to chase first - nor whose
+     client he is, nor where.
+
+     ONE ROW BUILDER, read by the card and by the spreadsheet, so the file can never disagree
+     with the screen it was taken from. */
+  function hdMissRows() {
+    return hisabDocMissing().map(function (c) {
+      var op = nAmt(c.openingAmt), due = clientDue(c.name);
+      return {
+        id: String(c.id || ""), name: String(c.name || ""), mobile: String(c.mobile || ""),
+        where: [String(c.area || ""), String(c.location || "")].filter(function (x) { return x; }).join(", "),
+        exec: String(c.ownedBy || c.createdBy || ""),
+        opening: op, asOn: String(c.openingAsOn || ""), due: due,
+        /* how much of what he STILL owes is the old book. 100% means this one statement is the
+           whole argument; 12% means it is a corner of it and the deliveries are the rest. */
+        share: due > 0.5 ? Math.max(0, Math.min(100, Math.round(op / due * 100))) : 0
+      };
+    });
+  }
+  function hdMissCard() {
+    var rows = hdMissRows();
+    if (!rows.length) return "";
+    var totOp = rows.reduce(function (a, r) { return a + r.opening; }, 0);
+    var totDue = rows.reduce(function (a, r) { return a + r.due; }, 0);
+    return '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
+      '<h3 style="margin:0 0 2px;font-size:13px">' + rows.length + ' old client(s) owe money with no old hisab attached</h3>' +
+      '<div class="meta" style="margin-bottom:6px">' + money(totOp) + ' came over from the old books; ' +
+      money(totDue) + ' of it is still owed. Attach a man’s statement and his balance can be ' +
+      'explained without anybody opening the spreadsheet again. <b>Attach</b> opens the form here — ' +
+      'his card is not needed.</div>' +
+      '<div class="acts" style="margin:0 0 8px"><button class="btn sm ghost" data-act="hdmiss-xlsx" ' +
+      'title="The same list as an Excel file, in the same order">↓ Excel</button>' +
+      '<span class="meta" style="align-self:center;font-size:12px">biggest old balance first</span></div>' +
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr style="background:#fef3c7;color:#92400e">' +
+      '<th style="padding:6px 8px;text-align:left">Client</th>' +
+      '<th style="padding:6px 8px;text-align:left">Executive</th>' +
+      '<th style="padding:6px 8px;text-align:right">Came over with</th>' +
+      '<th style="padding:6px 8px;text-align:right">Owes now</th>' +
+      '<th style="padding:6px 8px;text-align:center">Old book</th>' +
+      '<th style="padding:6px 8px"></th></tr></thead><tbody>' +
+      rows.map(function (r, i) {
+        return '<tr style="border-bottom:1px solid #fef3c7;background:' + (i % 2 ? '#fffdf5' : '#fff') + '">' +
+          '<td style="padding:7px 8px"><div style="font-weight:600;color:#92400e">' + esc(r.name) + '</div>' +
+          (r.mobile ? '<div style="font-size:12px;color:#b45309">☎ ' + esc(r.mobile) + '</div>' : '') +
+          (r.where ? '<div style="font-size:12px;color:#b45309">' + esc(r.where) + '</div>' : '') + '</td>' +
+          '<td style="padding:7px 8px;font-size:12.5px;color:#92400e">' + esc(r.exec || "—") + '</td>' +
+          '<td style="padding:7px 8px;text-align:right;color:#92400e">' + money(r.opening) +
+          (r.asOn ? '<div style="font-size:12px;color:#b45309">as on ' + esc(d10(r.asOn)) + '</div>' : '') + '</td>' +
+          '<td style="padding:7px 8px;text-align:right;font-weight:800;color:#b91c1c">' + money(r.due) + '</td>' +
+          '<td style="padding:7px 8px;text-align:center;font-size:12.5px;color:#92400e">' + r.share + '%</td>' +
+          '<td style="padding:7px 8px;text-align:right;white-space:nowrap">' +
+          '<button class="btn sm" data-act="hd-open" data-id="' + esc(r.id) + '" ' +
+          'style="background:#0d9488;border-color:#0d9488">Attach</button> ' +
+          '<button class="btn sm ghost" data-act="bill-open" data-n="' + esc(r.name) + '">Hisab</button></td></tr>';
+      }).join("") + '</tbody></table></div></div>';
+  }
+  function hdMissXlsx() {
+    var rows = hdMissRows();
+    if (!rows.length) { toast("Every old client with money owing has his statement on file — nothing to download."); return; }
+    var HEAD = ["Client", "Mobile", "Where", "Executive", "Came over with", "As on", "Owes now",
+                "Old book as % of what he owes", "Client id"];
+    var out = [HEAD.map(function (h) { return { v: h, s: XL.HEAD }; })];
+    rows.forEach(function (r) {
+      out.push([r.name, r.mobile, r.where, r.exec, r.opening, r.asOn ? dstr(r.asOn) : "",
+                { v: r.due, s: XL.BOLD },
+                { v: r.share, s: r.share >= 90 ? XL.LOST : r.share >= 50 ? XL.NONE : XL.PLAIN },
+                r.id]);
+    });
+    out.push([]);
+    out.push([{ v: "TOTAL · " + rows.length + " client(s)", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
+              { v: "", s: XL.BAND },
+              { v: rows.reduce(function (a, r) { return a + r.opening; }, 0), s: XL.BAND }, { v: "", s: XL.BAND },
+              { v: rows.reduce(function (a, r) { return a + r.due; }, 0), s: XL.BAND },
+              { v: "", s: XL.BAND }, { v: "", s: XL.BAND }]);
+    out.push([]);
+    out.push(["A name leaves this list the day his statement goes up OR the day his money clears, whichever comes first."]);
+    out.push(["Energy World · built " + fullDate(today()) + " · internal working list, not for a client."]);
+    dlXlsx("Old_hisab_to_attach_" + today() + ".xlsx", "To attach", out,
+           [34, 15, 22, 18, 16, 12, 16, 14, 22]);
+  }
+
   /* BOTH PAPERS, WHEREVER EITHER IS DRAWN. o.noHisab where hisabAskCard already stands on the
      same screen - the HISAB screen says each thing once (v6.9.449). */
   function docStrip(cl, o) {
@@ -19210,6 +19298,76 @@ function viewCatalogue() {
     });
     return { b: b, oldest: oldest, overdue: overdue, due: b.cur + b.d30 + b.d60 + b.d90 };
   }
+  /* ================= THE DUES, BIFURCATED  (v6.9.463) =================
+     HIS WORDS: "bifercate this also professionally with tags or something, like credit limit,
+     pending from 60 days, more than 2 lac pending slab, like this".
+
+     MEASURED: 47 rows under one executive, Rs 56,60,003, each carrying a name, an age and three
+     figures. Nothing said which of them is over the credit HE set, which has never paid a
+     rupee, or which is still nothing but the old book - and all three are already in the data.
+
+     THE AGE IS NOT A TAG. agePill has said it on every row since v6.9.127, and a chip reading
+     "90+ d" beside a pill reading "90+ d" is exactly what he objected to in v6.9.449. Age is a
+     FILTER here, which is the half he cannot do at all today.
+
+     Every tag is a pure read of the row and the client record. No new column, no new sheet. */
+  var DUE_BIG = 200000, DUE_MID = 100000;
+  var DUE_TAGS = [
+    { k: "limit", lbl: "Over his limit", row: true, bg: "#fee2e2", fg: "#b91c1c",
+      why: "What he owes is past the credit limit set on his own record.",
+      hit: function (r) { var lim = nAmt((clientByName(r.name) || {}).creditLimit); return lim > 0 && r.due > lim + 0.5; } },
+    { k: "d90", lbl: "90+ days", row: false, bg: "#fee2e2", fg: "#b91c1c",
+      why: "His oldest unpaid money is more than 90 days old.",
+      hit: function (r) { return !!(r.ag && r.ag.oldest > 90); } },
+    { k: "d60", lbl: "60+ days", row: false, bg: "#ffedd5", fg: "#c2410c",
+      why: "His oldest unpaid money is more than 60 days old.",
+      hit: function (r) { return !!(r.ag && r.ag.oldest > 60); } },
+    { k: "big", lbl: "2 lakh and over", row: true, bg: "#fecaca", fg: "#7f1d1d",
+      why: "He owes two lakh or more.",
+      hit: function (r) { return r.due >= DUE_BIG; } },
+    { k: "mid", lbl: "1 - 2 lakh", row: true, bg: "#fed7aa", fg: "#9a3412",
+      why: "He owes between one and two lakh.",
+      hit: function (r) { return r.due >= DUE_MID && r.due < DUE_BIG; } },
+    { k: "nil", lbl: "Nothing received", row: true, bg: "#e0e7ff", fg: "#3730a3",
+      why: "Not one rupee has been received from him against any of it.",
+      hit: function (r) { return !(r.paid > 0.5); } },
+    /* LOOKED AT ON THE RENDER, and the first wording was not true. It read "Only the old book"
+       and fired when the opening balance was at least what he still owes - which caught Gaurav
+       Goel, whose 3,28,033 is 2,28,033 of old book AND a 1,00,000 delivery. Payments clear the
+       OLDEST first, so what is actually knowable is whether any of the opening is still unpaid,
+       and that is what it says now. */
+    { k: "old", lbl: "Old book unpaid", row: true, bg: "#e2e8f0", fg: "#475569",
+      why: "Part of what he owes is still the balance he came over with - payments clear the oldest first.",
+      hit: function (r) { var op = clientOpening(r.name); return op > 0.5 && r.paid < op - 0.5; } }
+  ];
+  function dueTagOf(k) { return DUE_TAGS.filter(function (t) { return t.k === k; })[0] || null; }
+  /* the chips ON a row: the ones marked row:true, in the order above, so the money slab always
+     sits after the limit and never before it */
+  function dueTagChips(r) {
+    return DUE_TAGS.filter(function (t) { return t.row && t.hit(r); }).map(function (t) {
+      return '<span title="' + esc(t.why) + '" style="background:' + t.bg + ';color:' + t.fg +
+        ';border-radius:999px;padding:1px 7px;font-size:12px;font-weight:700;white-space:nowrap;' +
+        'display:inline-block;margin:3px 4px 0 0">' + t.lbl + '</span>';
+    }).join("");
+  }
+  /* the bar above the list. Each chip carries its OWN count and total, worked out over the whole
+     list, so he can see the size of a slab without opening it. */
+  function dueTagBar(all) {
+    var cur = String(S.dueTag || "");
+    var chip = function (k, lbl, n, amt, on, bg, fg) {
+      return '<button class="btn sm' + (on ? '' : ' ghost') + '" data-act="due-tag" data-k="' + esc(k) + '" ' +
+        'style="margin:0 6px 6px 0' + (on ? ';background:' + fg + ';border-color:' + fg : ';border-color:' + fg + ';color:' + fg) + '">' +
+        esc(lbl) + ' <span style="opacity:.85;font-weight:600">' + n + ' · ' + money(amt) + '</span></button>';
+    };
+    var tot = all.reduce(function (a, r) { return a + r.due; }, 0);
+    var h = '<div style="margin-top:9px">' + chip("", "All", all.length, tot, !cur, "#334155", "#334155");
+    DUE_TAGS.forEach(function (t) {
+      var hits = all.filter(t.hit);
+      if (!hits.length) return;                       /* a slab nobody is in is not a button */
+      h += chip(t.k, t.lbl, hits.length, hits.reduce(function (a, r) { return a + r.due; }, 0), cur === t.k, t.bg, t.fg);
+    });
+    return h + '</div>';
+  }
   /* Small coloured pill for a client's oldest unpaid money — green fresh, amber 31-60, orange 61-90,
      red 90+ (the "chase hard" band). */
   function agePill(ag) {
@@ -20159,25 +20317,18 @@ function viewCatalogue() {
     if (!S.q) {
       var outs = hisabOutstanding();
       if (!seesAllClients()) outs = outs.filter(function (r) { return isMineClient(r.name); });
+      /* v6.9.463 - the age is worked out HERE, before the tag filter, because two of the tags
+         read it. The pass further down that used to do it is gone with this line. */
+      outs.forEach(function (r) { r.ag = clientAging(r.name); });
+      var outsAll = outs, _dueT = dueTagOf(String(S.dueTag || ""));
+      if (_dueT) outs = outs.filter(_dueT.hit);
       var credits = hisabCredits();
       if (!seesAllClients()) credits = credits.filter(function (r) { return isMineClient(r.name); });
       /* v6.9.210 - old clients who still owe money and whose old-book statement was never
          attached. Partner only, and it empties itself: a name leaves this list either when the
          statement goes up or when the money clears, whichever happens first. */
-      if (roleIs("admin")) {
-        var hdm = hisabDocMissing();
-        if (hdm.length) {
-          h += '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
-            '<h3 style="margin:0 0 2px;font-size:13px">' + hdm.length + ' old client(s) owe money with no old hisab attached</h3>' +
-            '<div class="meta" style="margin-bottom:6px">Attach each one\u2019s statement from the old books, so the balance can be explained without opening the spreadsheet. Tap a name to open his card.</div>' +
-            hdm.slice(0, 40).map(function (hc) {
-              return '<span class="pill" data-act="cl-open" data-id="' + esc(hc.id) + '" style="background:#fef3c7;color:#92400e;cursor:pointer;margin:2px 4px 2px 0;display:inline-block">' +
-                esc(hc.name) + ' &middot; ' + money(nAmt(hc.openingAmt)) + '</span>';
-            }).join("") +
-            (hdm.length > 40 ? '<div class="meta" style="margin-top:6px">and ' + (hdm.length - 40) + ' more.</div>' : "") +
-            '</div>';
-        }
-      }
+      /* v6.9.463 - a work list with its figures, its Excel and an Attach that stays here */
+      if (roleIs("admin")) h += hdMissCard();
       h += hisabWaitingCard() + retWaitingCard() + twinWaitingCard() + cxAskWaitingCard();
       if (!outs.length && !credits.length) return h + '<div class="empty">No outstanding balances &mdash; every received challan is fully paid. Type a client above to view their hisab.</div>';
       var oh = '';
@@ -20187,13 +20338,19 @@ function viewCatalogue() {
       var gtot = function (k) { return groups[k].reduce(function (s, r) { return s + r.due; }, 0); };
       var gkeys = Object.keys(groups).sort(function (a, b) { return gtot(b) - gtot(a); });
       var totalDue = outs.reduce(function (a, r) { return a + r.due; }, 0);
-      /* v6.9.127: age every outstanding client and total the buckets for the summary strip. */
-      outs.forEach(function (r) { r.ag = clientAging(r.name); });
+      /* v6.9.127: the buckets for the summary strip. v6.9.463 - the ageing is already on each
+         row (worked out above the tag filter), so this pass only totals it. */
       var agg = { cur: 0, d30: 0, d60: 0, d90: 0 };
       outs.forEach(function (r) { agg.cur += r.ag.b.cur; agg.d30 += r.ag.b.d30; agg.d60 += r.ag.b.d60; agg.d90 += r.ag.b.d90; });
       var overdueTot = outs.reduce(function (a, r) { return a + (r.ag ? r.ag.overdue : 0); }, 0);
-      oh += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3>DUE AMT &mdash; ' + money(totalDue) + ' across ' + outs.length + ' client(s)</h3>' +
-        '<div class="meta" style="font-size:13px">Grouped by sales executive &middot; net of pre-set discounts. Tap a client to open their hisab.</div>' +
+      oh += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3>DUE AMT &mdash; ' + money(totalDue) + ' across ' + outs.length + ' client(s)' +
+        (_dueT ? ' <span class="pill" style="background:' + _dueT.bg + ';color:' + _dueT.fg + '">' + esc(_dueT.lbl) + '</span>' : '') + '</h3>' +
+        '<div class="meta" style="font-size:13px">Grouped by sales executive &middot; net of pre-set discounts. Tap a client to open their hisab.' +
+        (_dueT ? ' <b>Showing only: ' + esc(_dueT.lbl.toLowerCase()) + '</b> \u2014 ' + esc(_dueT.why) +
+                 ' The whole list is ' + money(outsAll.reduce(function (a, r) { return a + r.due; }, 0)) +
+                 ' across ' + outsAll.length + '.' : '') + '</div>' +
+        /* v6.9.463 - the slabs, each with its own count and total */
+        dueTagBar(outsAll) +
         /* v6.9.242 - the collection app. A separate app on purpose: this screen is for
            reading the account, that one is for working through the calls. */
         '<div class="acts" style="margin-top:9px"><a class="btn sm" href="../collect/" target="_blank" rel="noopener" ' +
@@ -20231,7 +20388,8 @@ function viewCatalogue() {
             var _mob = (clientByName(r.name) || {}).mobile || '';
             return '<tr style="border-bottom:1px solid #eef2f7;cursor:pointer;background:' + (i % 2 ? '#f8fafc' : '#fff') + '" data-act="bill-open" data-n="' + esc(r.name) + '">' +
               '<td style="padding:7px 8px"><div style="font-weight:600;color:#0d766c">' + esc(r.name) + '</div>' +
-                (_mob ? '<div style="font-size:12px;color:#94a3b8">☎ ' + esc(_mob) + '</div>' : '') + '</td>' +
+                (_mob ? '<div style="font-size:12px;color:#94a3b8">☎ ' + esc(_mob) + '</div>' : '') +
+                dueTagChips(r) + '</td>' +
               '<td style="padding:7px 8px;text-align:center">' + agePill(r.ag) + '</td>' +
               '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.net) + '</td>' +
               '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.paid) + '</td>' +
@@ -36245,6 +36403,13 @@ function viewCatalogue() {
       return;
     }
     if (act === "exec-xlsx") { execCardXlsx(t.getAttribute("data-k") || ""); return; }
+    /* v6.9.463 - the old hisabs still to attach, as a spreadsheet, and the slab filter */
+    if (act === "hdmiss-xlsx") { hdMissXlsx(); return; }
+    if (act === "due-tag") {
+      var _dk = t.getAttribute("data-k") || "";
+      S.dueTag = (String(S.dueTag || "") === _dk) ? "" : _dk;   /* tapping the one that is on turns it off */
+      render(); return;
+    }
     /* v6.9.425 - the mini statement as a file. Both read hisabMiniRows, which is the same
        array the screen draws, so a file he sends can never disagree with the screen he
        read it off. Neither writes anything. */
