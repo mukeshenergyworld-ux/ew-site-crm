@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.463";
+  var APP_VERSION = "6.9.464";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -15159,6 +15159,71 @@ function viewCatalogue() {
      THE RULE, IN ONE PLACE: a delivery whose receipt is in HAS ARRIVED, whatever the status
      column says. Nothing may offer to send it again, and nothing may move it backwards. */
   function chArrived(c) { return String((c && c.receiptReceived) || "").toUpperCase() === "Y"; }
+
+  /* ================= A LOAD STANDING IN THE GODOWN  (v6.9.464) =================
+     HIS WORDS: "Challan pending to approve, show to admin and accounts on CRM also, highlighted
+     on every page unless its if approved, to avoid delay in dispatch".
+
+     MEASURED on 6.9.463: a challan awaiting approval was counted in three places and every one
+     had to be gone to - a tile on the OWNER'S Today screen, a tile on the Deliveries screen, and
+     a line in the brief. The office could work all morning in HISAB with a load standing in the
+     godown and nothing on the screen would say so.
+
+     ONE reader for who is waiting, so the band, the queue and the tiles cannot disagree about
+     it - the same rule the finalise queue has followed since v6.9.388. Oldest first, because
+     this is a list to be emptied. A challan whose receipt is already in is NOT waiting on
+     anybody, whatever its status column says (chArrived) - that is the v6.9.387 lesson, and it
+     is why this is not simply a filter on "Draft". */
+  function apprWaiting() {
+    return dedupeChallans((S.data.challans || []).filter(function (c) {
+      return (String(c.status || "Draft")) === "Draft" && !chArrived(c);
+    })).sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
+  }
+  /* how long the oldest has stood, in the unit a man actually thinks in. Under a day it is
+     hours, because "waiting 3 hours" and "waiting 1 day" are different problems. */
+  function apprWaitSay(list) {
+    var oldest = 0;
+    (list || []).forEach(function (c) {
+      var t = Date.parse(c.createdAt || "");
+      if (isFinite(t)) oldest = Math.max(oldest, Date.now() - t);
+    });
+    if (!oldest) return { ms: 0, txt: "", bad: false };
+    var hrs = Math.floor(oldest / 3600000), days = Math.floor(hrs / 24);
+    if (days >= 1) return { ms: oldest, txt: days + (days === 1 ? " day" : " days"), bad: true };
+    if (hrs >= 1) return { ms: oldest, txt: hrs + (hrs === 1 ? " hour" : " hours"), bad: hrs >= 4 };
+    return { ms: oldest, txt: "under an hour", bad: false };
+  }
+  /* THE BAND, ON EVERY SCREEN. Drawn into <main> by renderCore, above whatever view is up.
+     Two roles, as he named them - and every one of them can pass a challan, so nobody is shown
+     a thing he cannot act on. It draws nothing at all when nothing is waiting, which is his
+     "unless its if approved". */
+  function apprStrip() {
+    if (!roleAny(["admin", "accounts"])) return "";
+    var list = apprWaiting();
+    if (!list.length) return "";
+    /* not on the queue it sends him to - that screen already IS this list */
+    if (S.tab === "challans" && S.chOnly === "draft") return "";
+    var w = apprWaitSay(list), worth = list.reduce(function (a, c) { return a + chValue(c); }, 0);
+    var names = list.slice(0, 3).map(function (c) {
+      return '<span class="pill" style="background:#fff;color:#991b1b;border:1px solid #fca5a5">' +
+        esc(c.challanNo || "no number yet") + (c.customerName ? ' &middot; ' + esc(c.customerName) : '') + '</span>';
+    }).join(" ");
+    return '<div class="card" style="border:2px solid ' + (w.bad ? '#dc2626' : '#fbbf24') + ';background:' +
+      (w.bad ? '#fef2f2' : '#fffbeb') + ';cursor:pointer" data-act="ch-approve-q">' +
+      '<div class="acts" style="align-items:baseline;gap:8px;flex-wrap:wrap;margin:0">' +
+      '<h3 style="margin:0;color:' + (w.bad ? '#991b1b' : '#92400e') + '">&#9888; ' + list.length +
+      ' challan' + (list.length === 1 ? '' : 's') + ' waiting to be passed' +
+      (worth > 0.5 ? ' <span class="pill due">' + money(worth) + '</span>' : '') + '</h3>' +
+      '<div class="grow"></div>' +
+      '<button class="btn sm" data-act="ch-approve-q" style="background:' + (w.bad ? '#b91c1c' : '#b45309') +
+      ';border-color:' + (w.bad ? '#b91c1c' : '#b45309') + '">Pass them now &rarr;</button></div>' +
+      '<div class="meta" style="font-size:12.5px;color:' + (w.bad ? '#7f1d1d' : '#92400e') + ';margin-top:6px;line-height:1.5">' +
+      (w.txt ? 'The oldest has been standing <b>' + esc(w.txt) + '</b>. ' : '') +
+      'The godown cannot dispatch until these are passed.</div>' +
+      '<div style="margin-top:7px;line-height:2">' + names +
+      (list.length > 3 ? ' <span class="meta" style="font-size:12px">and ' + (list.length - 3) + ' more</span>' : '') +
+      '</div></div>';
+  }
   /* Arrived, but the status column has not caught up. Deliberately NOT a list of the stages
      before "Received": a blank status, or one this app has never heard of, is also behind. */
   function chStatusBehind(c) {
@@ -16779,7 +16844,7 @@ function viewCatalogue() {
     }
     /* v6.9.388 - not inside the queue: the band and the queue's own header would say the same
        thing twice, one under the other. */
-    if (S.chOnly !== "hisab") h += hisabNotStampedBand();
+    if (S.chOnly !== "hisab" && S.chOnly !== "draft") h += hisabNotStampedBand();   /* v6.9.464 */
     h += hisabMismatchCard();
     h += '<div class="row">' +
       (roleIs("admin") ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
@@ -16903,6 +16968,30 @@ function viewCatalogue() {
        not a book to be browsed: the exec/client grouping that makes the full list readable is
        exactly what makes one card hard to find in it. Every card is the ordinary card, so
        ADD TO HISAB is where it always is and nothing about stamping changes. */
+    /* ---- THE APPROVAL QUEUE (v6.9.464). Flat and OLDEST FIRST, the same shape and the same
+       reasoning as the finalise queue below: a list to be emptied is not a book to be browsed.
+       Every card is the ordinary challan card, so Pass & Dispatch is exactly where it always is
+       and nothing about approving changes. */
+    if (S.chOnly === "draft" && canApprove()) {
+      var aq = apprWaiting();
+      var aqBack = '<button class="btn sm ghost" data-act="ch-approve-q" data-off="1">Show all deliveries</button>';
+      if (!aq.length) {
+        return h + '<div class="empty ok" style="margin-top:10px"><b>Nothing waiting to be passed.</b>' +
+          '<br>Every challan made has been approved, so nothing is standing in the godown for want of a signature.</div>' +
+          '<div class="row" style="margin-top:10px">' + aqBack + '</div>';
+      }
+      var aqW = apprWaitSay(aq), aqWorth = aq.reduce(function (a, c) { return a + chValue(c); }, 0);
+      h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
+        '<h3 style="color:#991b1b;margin:0">To pass &mdash; ' + aq.length + ' challan' + (aq.length === 1 ? '' : 's') +
+        (aqWorth > 0.5 ? ' <span class="pill due">' + money(aqWorth) + '</span>' : '') + '</h3>' +
+        '<div class="meta" style="color:#7f1d1d;font-size:12.5px;line-height:1.55;margin-top:6px">' +
+        (aqW.txt ? 'Oldest first. The oldest has been standing <b>' + esc(aqW.txt) + '</b>. ' : 'Oldest first. ') +
+        'The godown cannot dispatch until each one is passed.</div>' +
+        '<div class="row" style="margin-top:8px">' + aqBack + '</div></div>';
+      aq.forEach(function (c) { h += challanCardHtml(c); });
+      return h;
+    }
+
     if (S.chOnly === "hisab" && canHisabRole()) {
       var hqWorth = hq.reduce(function (a, c) { return a + chValue(c); }, 0);
       var hqOld = 0;
@@ -32574,7 +32663,7 @@ function viewCatalogue() {
     box.innerHTML = prodPicker(z, P);
     var q = document.getElementById(P.qid);
     if (q && focus && focus.id === P.qid) {
-      q.focus();
+      try { q.focus({ preventScroll: true }); } catch (eF) { q.focus(); }   /* v6.9.464 - put the caret back, not the page */
       if (pos) { try { q.setSelectionRange(pos[0], pos[1]); } catch (e) {} }
     }
   }
@@ -33269,7 +33358,9 @@ function viewCatalogue() {
         try { lost = !document.activeElement || document.activeElement === document.body; } catch (x) { }
         if (lost) {
           var f = null; try { f = document.getElementById(snap.focus); } catch (x) { }
-          if (f) { try { f.focus(); f.setSelectionRange(snap.s0, snap.s1); } catch (x) { } }
+          /* v6.9.464 - preventScroll: this restores where he was TYPING, so the page must not move */
+          if (f) { try { f.focus({ preventScroll: true }); } catch (x0) { try { f.focus(); } catch (x1) { } }
+                   try { f.setSelectionRange(snap.s0, snap.s1); } catch (x) { } }
         }
       }
     } catch (e) { }
@@ -34161,7 +34252,11 @@ function viewCatalogue() {
         '<button class="btn sm ghost" data-act="crash-log">View crash log</button>' +
         '<button class="btn sm ghost" data-act="reload-app">Reload app</button></div></div>';
     }
-    h += '<main>' + body +
+    /* v6.9.464 - HIS WORDS: "highlighted on every page unless its if approved". Above the view,
+       inside <main>, so it is the first thing on every screen and nothing else moved to make
+       room for it. It draws nothing when nothing is waiting. */
+    var _appr = ""; try { _appr = apprStrip(); } catch (eAp) { _appr = ""; }
+    h += '<main>' + _appr + body +
       '<div class="foot-note">Energy World Team <span data-act="crash-log" style="cursor:pointer;border-bottom:1px dotted #cbd5e1;display:inline-block;padding:13px 6px;margin:-13px 0" title="View crash log">v' + APP_VERSION + '</span> &middot; data lives in your Google Sheet</div></main>';
 
     h += '</div>';
@@ -34208,7 +34303,11 @@ function viewCatalogue() {
       /* Only grab focus when the box is empty (a fresh search). Once a client is loaded — e.g. while
          editing that client's discounts / incentives — leave focus where the user put it so a
          background repaint can never yank the caret back up to the search box. */
-      if (!q.value) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+      /* v6.9.464 - preventScroll. THIS LINE is what kept undoing v6.9.426's scroll restore:
+         focus() scrolls its element into view, the box is at the top of the screen, so every
+         paint with an empty box dragged him back to the top - on background paints too, so it
+         looked like whatever he had last touched did it. The caret still lands in the box. */
+      if (!q.value) { try { q.focus({ preventScroll: true }); } catch (eF) { q.focus(); } q.setSelectionRange(q.value.length, q.value.length); }
     }
     /* v6.9.175 client search: repaint ONLY the list block, never the whole page, so the caret and
        the phone keyboard stay put while typing. */
@@ -35110,6 +35209,13 @@ function viewCatalogue() {
     /* v6.9.388 - one action for both doors into the queue: the red band and the tile. It also
        switches to the Deliveries tab, because the band is drawn on the dashboard and on HISAB
        as well and a filter that leaves you on another screen has done nothing. */
+    /* v6.9.464 - the same door as ch-queue, onto the approval list */
+    if (act === "ch-approve-q") {
+      S.chOnly = t.getAttribute("data-off") ? "" : "draft";
+      if (S.tab !== "challans") { S.tab = "challans"; try { tabUse(S.tab); navBump(S.tab); } catch (e) {} }
+      try { window.scrollTo(0, 0); } catch (e) {}
+      render(); return;
+    }
     if (act === "ch-queue") {
       S.chOnly = t.getAttribute("data-off") ? "" : "hisab";
       if (S.tab !== "challans") { S.tab = "challans"; try { tabUse(S.tab); navBump(S.tab); } catch (e) {} }
