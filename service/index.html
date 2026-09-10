@@ -289,7 +289,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.14.0";
+  var APP_VERSION = "1.14.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -3430,7 +3430,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         var body = el("root").querySelector(".body");
         if (body) { body.innerHTML = bodyHtml(); wireInputs(); }
       });
-      if (S.q) { q.focus(); try { q.setSelectionRange(q.value.length, q.value.length); } catch (e) {} }
+      /* v1.14.1 - preventScroll; see the CRM's v6.9.464 note. */
+      if (S.q) { try { q.focus({ preventScroll: true }); } catch (e0) { q.focus(); }
+                 try { q.setSelectionRange(q.value.length, q.value.length); } catch (e) {} }
     }
   }
 
