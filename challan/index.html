@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.53.2";
+  var APP_VERSION = "1.54.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1777,17 +1777,26 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      incentive. A man standing at the counter with material on a trolley is the worst possible
      place for that decision, so this app refuses and names who to ring. It does not offer a
      way to mark it here, on purpose. */
+  /* ---- v1.54.0 - AND HE MAY BE FILED UNDER MORE THAN ONE NAME ----
+     A client whose only delivery was booked under the name he was later merged OUT of read as
+     "is not a client yet - no delivery has ever gone to him and no brand is marked Won" on the
+     godown phone, with the material already on the trolley. The CRM's client book has folded a
+     merge since v6.9.317; this app matched the name exactly. Same refusal, same wording, same
+     "an empty answer is not a no" lock below it - it just knows his other names now. */
   function isClientC(name) {
-    var t = String(name || "").trim().toLowerCase();
-    if (!t) return false;
+    var lc = function (x) { return String(x == null ? "" : x).trim().toLowerCase(); };
+    var own = lc(name);
+    if (!own) return false;
+    var names = [own];
+    dupFamily(name).forEach(function (x) { var k = lc(x); if (k && names.indexOf(k) < 0) names.push(k); });
     var ch = challans();
     for (var i = 0; i < ch.length; i++) {
-      if (ch[i] && String(ch[i].customerName || "").trim().toLowerCase() === t) return true;
+      if (ch[i] && names.indexOf(lc(ch[i].customerName)) >= 0) return true;
     }
     var pt = (S.data && S.data.pitch) || [];
     for (var j = 0; j < pt.length; j++) {
       if (pt[j] && String(pt[j].status || "") === "Won" &&
-          String(pt[j].clientName || "").trim().toLowerCase() === t) return true;
+          names.indexOf(lc(pt[j].clientName)) >= 0) return true;
     }
     return false;
   }
@@ -2010,10 +2019,98 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      incMap(), discScore(), discStamp(), discPick(), discRow() and clientDiscount() are the
      CRM's own bodies, byte for byte, and t_apps_agree.js holds them that way. A second
      implementation of a money rule is a second answer waiting to happen. */
+  /* ============ ONE MAN, ONE NAME - the CRM's own merge machinery, byte for byte ============
+     Not reimplemented. t_apps_agree.js holds every function below identical to team/app.js,
+     because two readings of "are these two names one man" is two answers to what a client
+     owes, and this estate has paid for that shape four times. The map is built from the
+     audit rows this phone already holds and cached until the next book arrives. */
+  var DUP_ACTIONS = { "dup:keep": 1, "dup:fix": 1, "dup:manage": 1, "dup:reopen": 1 };
+  var _aliasCache = null;
+  function dupDecisions() {
+    return (S.data.audit || []).filter(function (r) {
+      return r && DUP_ACTIONS[String(r.action || "")];
+    }).map(function (r) {
+      var det = {};
+      try { det = JSON.parse(r.detail || "{}") || {}; } catch (e) { det = {}; }
+      return {
+        id: r.id, at: r.createdAt, by: r.actor,
+        kind: String(r.action).slice(4),                 /* keep | fix | manage */
+        ids: String(r.target || "").split(/\s+/).filter(Boolean),
+        det: det
+      };
+    }).sort(function (a, b) { return String(a.at || "") < String(b.at || "") ? -1 : 1; });
+  }
+  function dupAliasMap() {
+    if (_aliasCache) return _aliasCache;
+    var byName = {}, aliasOf = {};
+    dupDecisions().forEach(function (d) {
+      /* later rows override earlier ones - this list arrives oldest first */
+      if (d.kind === "reopen" || d.kind === "keep") {
+        /* BOTH INDEXES, OR THEY COME APART ONLY HALFWAY. The first version of this deleted the
+           alias and left the reverse list alone, so dupMainName() correctly said "his own man
+           again" while dupFamily() still handed clientDue() two names to add up - the money
+           stayed merged after he had said they were different people. Caught by t_merge.js,
+           which totals the book on both sides of a reopen. */
+        Object.keys(byName).forEach(function (k) {
+          var v = byName[k];
+          if ((d.ids || []).indexOf(v.id) < 0 && (d.ids || []).indexOf(v.mainId) < 0) return;
+          var mk = dgKey(v.main);
+          aliasOf[mk] = (aliasOf[mk] || []).filter(function (x) { return dgKey(x) !== k; });
+          if (!aliasOf[mk].length) delete aliasOf[mk];
+          delete byName[k];
+        });
+        return;
+      }
+      if (d.kind !== "fix") return;
+      var mn = String((d.det && d.det.mainName) || "").trim();
+      if (!mn) return;
+      ((d.det && d.det.aliases) || []).forEach(function (a) {
+        var an = String(a.name || "").trim();
+        if (!an || dgKey(an) === dgKey(mn)) return;
+        byName[dgKey(an)] = { main: mn, alias: an, id: String(a.id || ""), mainId: String((d.det && d.det.main) || ""), at: d.at, by: d.by };
+        (aliasOf[dgKey(mn)] = aliasOf[dgKey(mn)] || []).push(an);
+      });
+    });
+    _aliasCache = { byName: byName, aliasOf: aliasOf };
+    return _aliasCache;
+  }
+  function dupMainName(n) {
+    var hit = dupAliasMap().byName[dgKey(n)];
+    return hit ? hit.main : String(n == null ? "" : n).trim();
+  }
+  function dupIsAlias(n) { return !!dupAliasMap().byName[dgKey(n)]; }
+  /* the main name AND every other name he was entered under, main first */
+  function dupFamily(n) {
+    var main = dupMainName(n);
+    var others = dupAliasMap().aliasOf[dgKey(main)] || [];
+    return [main].concat(others.filter(function (x) { return dgKey(x) !== dgKey(main); }));
+  }
+  function dgKey(s) {
+    return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  }
   function dkey(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
+  /* v1.54.0 / v1.36.0 - the rate follows the man, not the name on the paper. The reason is
+     written out in team/app.js above this function; the body is that one, byte for byte. */
   function discRowsFor(client, brand) {
-    var c = dkey(client), b = dkey(brand);
-    return (S.data.discounts || []).filter(function (x) { return dkey(x.client) === c && dkey(x.brand) === b; });
+    var b = dkey(brand), all = (S.data && S.data.discounts) || [];
+    var pick = function (nm) {
+      var c = dkey(nm);
+      return all.filter(function (x) { return dkey(x.client) === c && dkey(x.brand) === b; });
+    };
+    var own = pick(client);
+    if (own.length) return own;
+    /* not one man under two names - there is nothing further to look at. MEASURED on his book
+       on 10 Sep 2026: 167 clients, THREE live aliases, so this is the answer 164 times out of
+       167 and it is the line that must stay cheap */
+    var am = dupAliasMap(), k = dgKey(client);
+    if (!am.byName[k] && !am.aliasOf[k]) return own;
+    var fam = dupFamily(client);
+    for (var i = 0; i < fam.length; i++) {
+      if (dgKey(fam[i]) === k) continue;
+      var r = pick(fam[i]);
+      if (r.length) return r;
+    }
+    return own;
   }
   function incMap(row) {
     try { var m = JSON.parse((row && row.notes) || "{}"); return (m && typeof m === "object") ? m : {}; } catch (e) { return {}; }
@@ -2257,7 +2354,7 @@ function discRowOn(client, brand, onYmd) {
 
   /* v1.20.0: the delivery-book client list dies with the book too - a client the office
      added an hour ago must not be invisible because the first paint cached the old set. */
-  function bust() { _mnCache = null; _proofCache = null; _dtCache = null; bustBookClients(); }
+  function bust() { _mnCache = null; _proofCache = null; _dtCache = null; _aliasCache = null; bustBookClients(); }
 
   /* v1.9.1 - remembered on the record itself. chRow() calls chLines three times per card and
      byExec()'s sort comparator calls chValue O(n log n) times, each re-running JSON.parse over
