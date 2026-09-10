@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.35.0";
+  var APP_VERSION = "1.35.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -3843,7 +3843,10 @@ function cancelMap() {
       if (q2.value !== v) q2.value = v;
       if (keepFocus) {
         try { q2.setSelectionRange(pos, pos); } catch (e) {}
-        q2.focus();
+        /* v1.35.1 - preventScroll: the list repaints as he types, and focus() was scrolling the
+           box back into view on every keystroke. His words: "in every app cursor must stay
+           where it is clicked". */
+        try { q2.focus({ preventScroll: true }); } catch (e0) { q2.focus(); }
       }
       q2.addEventListener("input", function (e) { S.q = e.target.value; repaintList(true); });
       q2.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
