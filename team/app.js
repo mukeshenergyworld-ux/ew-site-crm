@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.461";
+  var APP_VERSION = "6.9.462";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2889,7 +2889,7 @@ window.addEventListener("beforeunload", function (ev) {
         (a.closed ? ' <span class="pill">' + a.closed + ' window(s) closed</span>' : "") + '</h3>' +
         '<div class="meta">' + esc(x.client || "") + (x.city ? ' &middot; ' + esc(x.city) : "") +
         '<br>Stage: <b>' + esc(x.stage || "-") + '</b>' +
-        (lastV ? '<br>Last visit: ' + esc(dstr(lastV.date)) + ' by ' + esc(lastV.createdBy) : '') +
+        (lastV ? '<br>Last visit: ' + esc(d10(lastV.date)) + ' by ' + esc(lastV.createdBy) : '') +
         (x.owner ? '<br>Owner: ' + esc(x.owner) : "") +
         (x.architect || x.plumber ? '<br>' + esc([x.architect, x.plumber, x.builder].filter(Boolean).join(" / ")) : "") + '</div>' +
         '<div class="acts">' +
@@ -3493,6 +3493,75 @@ window.addEventListener("beforeunload", function (ev) {
       " · " + String(r.type || "") + " · " + money(cxValue("visits", r));
     if (tab === "installs") return String(r.client || "") + (r.area ? " · " + r.area : "");
     return String(r.mobile || "") + (r.location ? " · " + r.location : "");
+  }
+
+  /* ================= ANYTHING CANCELLED, ON HIS OWN ACCOUNT  (v6.9.462) =================
+     HIS WORDS: "anything cancelled whether challan or any, show at last of hisab section of
+     related client".
+
+     MEASURED on 6.9.461: of the nine kinds this app can cancel, the HISAB screen showed one -
+     a cancelled challan - and showed it in the MIDDLE. A cancelled payment, return, quote,
+     service visit or installation for the same man appeared nowhere on his account.
+
+     Each tab names its client in its own field, and there is no other place that knows all
+     nine, so this is that place. */
+  function cxClientOf(tab, r) {
+    if (!r) return "";
+    if (tab === "challans" || tab === "returns") return String(r.customerName || "");
+    if (tab === "pitch") return String(r.clientName || (siteById(r.siteId) || {}).client || "");
+    if (tab === "clients") return String(r.name || "");
+    return String(r.client || "");
+  }
+  /* his cancelled records, newest first. famHas (v6.9.461) so a row cancelled under a name he
+     was later merged out of is still his; the client's OWN cancelled record is left out,
+     because a man whose record is cancelled is not a man whose account is open on screen. */
+  function cxForClient(cl) {
+    var h = famHas(cl);
+    return cancelledRows().filter(function (r) {
+      return r.tab !== "clients" && h(cxClientOf(r.tab, r.row));
+    });
+  }
+  /* THE BAND, AT THE VERY BOTTOM. The dead DELIVERIES keep the fuller card v6.9.369 measured at
+     430px - a delivery has a value, a site and a date worth reading - and everything else is one
+     compact line, the same shape the Cancelled records screen uses. The sentence that says none
+     of it counts is said ONCE, here, and not once per card: "if everything shown in customer
+     account above then whats need to show below" (v6.9.449) is the same lesson. */
+  function cxClientBand(cl) {
+    var rows = cxForClient(cl);
+    if (!rows.length) return "";
+    var ch = deadChallanCards(cl);
+    var rest = rows.filter(function (r) { return r.tab !== "challans"; });
+    var kinds = {};
+    rows.forEach(function (r) { kinds[CANCEL_TABS[r.tab] || r.tab] = (kinds[CANCEL_TABS[r.tab] || r.tab] || 0) + 1; });
+    /* "2 × Payment received", not "2 payment receiveds". CANCEL_TABS names a kind in the app's
+       own words - "Payment received", "Site (lead)", "Material return" - and an s glued to the end
+       is wrong in two of the nine. A count and a multiplication sign needs no English rules. */
+    var kindLine = Object.keys(kinds).map(function (k) { return kinds[k] + " × " + k; }).join(" · ");
+    return '<div style="margin-top:14px;border-top:2px dashed #cbd5e1;padding-top:11px">' +
+      '<h3 style="margin:0 0 3px;font-size:13.5px;color:#64748b">Cancelled &mdash; ' + rows.length +
+      ' record' + (rows.length === 1 ? '' : 's') + ' for ' + esc(cl) + '</h3>' +
+      '<div class="meta" style="font-size:12.5px;color:#64748b;margin-bottom:8px">' + esc(kindLine) +
+      '. None of it counts: not in the balance above, not on his statement, and no incentive on any of it. ' +
+      'Nothing was deleted either &mdash; a cancelled record keeps its number, so this app and the paper ' +
+      'book still agree. Newest first.</div>' +
+      ch +
+      rest.map(function (r) {
+        return '<div class="card" style="border:1px dashed #cbd5e1;background:#f8fafc;padding:8px 12px;margin-bottom:6px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">' +
+          '<div style="flex:1 1 200px;min-width:0">' +
+          '<b style="font-size:13px;color:#64748b;text-decoration:line-through">' + esc(r.label || r.id) + '</b> ' +
+          '<span class="pill" style="background:#e2e8f0;color:#475569">' + esc(CANCEL_TABS[r.tab] || r.tab) + '</span>' +
+          (r.sub ? '<div class="meta" style="font-size:12px;color:#64748b">' + esc(r.sub) + '</div>' : '') +
+          '<div class="meta" style="font-size:12px;color:#64748b"><b>Cancelled' +
+          (r.by ? ' by ' + esc(r.by) : '') + (r.at ? ' on ' + esc(d10(r.at)) : '') + '.</b> ' +
+          esc(r.reason || 'No reason recorded') + (r.note ? ' — ' + esc(r.note) : '') + '</div></div>' +
+          (roleIs("admin")
+            ? '<button class="btn sm ghost" data-act="cx-undo" data-tab="' + esc(r.tab) + '" data-id="' + esc(r.id) + '" ' +
+              'title="Put this record back exactly as it was">Bring it back</button>'
+            : '') +
+          '</div></div>';
+      }).join("") +
+      '</div>';
   }
 
   function cancelledRows() {
@@ -5343,7 +5412,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         .reduce(function (a, v) { return a + (Number(v.balance) || 0); }, 0);
       var _dg = _dupPh[x.id] || null, _dothers = _dg ? svcDupOthers(_dg, x) : [];
       h += '<div class="card"' + (_dg ? ' style="border-color:#fca5a5"' : '') + '><h3>' + esc(x.client) + ' <span class="pill ' + d.k + '">' + d.t + '</span>' +
-        (amcKind(x) !== "None" ? ' <span class="pill teal">AMC' + (x.amcEnd ? " to " + esc(dstr(x.amcEnd)) : "") + '</span>' : "") +
+        (amcKind(x) !== "None" ? ' <span class="pill teal">AMC' + (x.amcEnd ? " to " + esc(d10(x.amcEnd)) : "") + '</span>' : "") +
         (bal > 0 ? ' ' + dueAmt(bal) : "") +
         (_dg ? ' <span class="pill" style="background:#fee2e2;color:#b91c1c">same phone twice</span>' : "") + '</h3>' +
         (_dg ? '<div class="meta" style="color:#b91c1c;font-size:12.5px"><b>Same phone as ' + esc(_dothers.join(" and ")) + '.</b> One man, two records \u2014 his visits and his dues are split, and a reminder can fire for a machine serviced yesterday.' +
@@ -5483,7 +5552,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           (function () { var oth = Object.keys(by[k].names).filter(function (n) { return dgKey(n) !== dgKey(k); }); return oth.length ? '<span style="color:#94a3b8">on the service book as ' + esc(oth.join(", ")) + '</span><br>' : ''; })();
         vs.forEach(function (v) {
           var _rl = svcReceiptLine(v);
-          h += esc(dstr(v.date)) + ' &middot; ' + esc(v.type) + ' &middot; billed ' + money(v.total) +
+          h += esc(d10(v.date)) + ' &middot; ' + esc(v.type) + ' &middot; billed ' + money(v.total) +
             ', paid ' + money(v.collected) + ', <b>due ' + money(visitPending(v, installById(v.installId) || null)) + '</b>' +
             (v.engineer ? ' &middot; <span style="color:#94a3b8">' + esc(v.engineer) + '</span>' : "") +
             (_rl ? ' &middot; ' + _rl : '') + '<br>';
@@ -5579,7 +5648,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         l.visits.map(function (v, i) {
           var due = Number(v.balance) || 0;
           return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' +
-            '<td style="padding:5px 6px">' + esc(dstr(v.date)) + '</td>' +
+            '<td style="padding:5px 6px">' + esc(d10(v.date)) + '</td>' +
             '<td style="padding:5px 6px">' + esc(v.type || '') + '</td>' +
             '<td style="padding:5px 6px">' + esc(v.engineer || '') + '</td>' +
             '<td style="padding:5px 6px;text-align:right">' + money(v.total) + '</td>' +
@@ -14863,7 +14932,7 @@ function viewCatalogue() {
     return '<h2>' + (vs.length ? "Revisit" : "First visit") + '</h2>' +
       '<p class="sub">' + esc(site.name) + (d !== null ? '  \u00b7  ' + d + 'm from the site' : "") + '</p>' +
       (vs.length ? '<div class="card"><div class="meta"><b>' + vs.length + ' previous visit(s)</b><br>Last: ' +
-        esc(dstr(vs[vs.length - 1].date)) + ' by ' + esc(vs[vs.length - 1].createdBy) + '</div></div>' : "") +
+        esc(d10(vs[vs.length - 1].date)) + ' by ' + esc(vs[vs.length - 1].createdBy) + '</div></div>' : "") +
       '<label>Who did you see?</label>' +
       '<div class="row" id="vd_types">' +
       ["Site", "Plumber", "Architect", "PMC", "Builder"].map(function (t2) {
@@ -18191,7 +18260,7 @@ function viewCatalogue() {
               g.rows.map(function (r) {
                 /* a booked-in return is shown for what it is: a line that took money back */
                 return '<tr style="border-top:1px solid #f1f5f9' + (r.ret ? ';background:#fef2f2' : '') + '">' +
-                  '<td style="padding:4px 2px;color:#64748b;white-space:nowrap">' + esc(dstr(r.ymd)) + '</td>' +
+                  '<td style="padding:4px 2px;color:#64748b;white-space:nowrap">' + esc(d10(r.ymd)) + '</td>' +
                   '<td style="padding:4px 6px">' + (r.ret ? '<span style="color:#dc2626;font-weight:700">RETURN </span>' : '') +
                     esc(r.no || "") + (r.brand ? ' <span style="color:#94a3b8">' + esc(r.brand) + '</span>' : '') + '</td>' +
                   '<td style="padding:4px 2px;text-align:right;color:#64748b;white-space:nowrap">' + money(r.base) + '</td>' +
@@ -18235,7 +18304,7 @@ function viewCatalogue() {
     var outs = S.data.commpay.filter(function (p) { return p.associate === name; });
     if (!outs.length) h += '<div class="empty">Nothing paid out yet.</div>';
     outs.forEach(function (p) {
-      h += '<div class="card"><div class="meta">' + esc(dstr(p.date)) + ' &middot; ' + money(p.amount) +
+      h += '<div class="card"><div class="meta">' + esc(d10(p.date)) + ' &middot; ' + money(p.amount) +
         (p.mode ? ' &middot; ' + esc(p.mode) : "") + ' &middot; by ' + esc(p.createdBy || "") + '</div></div>';
     });
     return h;
@@ -20292,8 +20361,8 @@ function viewCatalogue() {
       /* The "not in the account yet" card is drawn once, above, for BOTH branches
          (see hisabPendingCard) - it used to exist only here, so a client WITH received
          challans never saw his unapproved ones at all. */
-      _oh += deadChallanCards(cl);
       _oh += serviceLedgerCard(cl);
+      _oh += cxClientBand(cl);   /* v6.9.462 - last, and every kind, not only the challans */
       acctSheetSync();      /* v6.9.451 - no cards here; an open sheet closes with its entry */
       return h + _oh;
     }
@@ -20623,10 +20692,9 @@ function viewCatalogue() {
         '</tbody><tfoot><tr style="background:#fee2e2"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Return total</td>' +
         '<td style="padding:6px;text-align:right;font-weight:800;color:#b91c1c">&minus;' + money(rSub) + '</td></tr></tfoot></table></div>' + '</div>';
     });
-    /* v6.9.369 - the dead ones, under the live ones and above the ledger card. Under, because
-       they are history and not work; above the ledger, because the ledger is the summary and a
-       summary comes last. */
-    h += deadChallanCards(cl);
+    /* v6.9.369 put the dead ones under the live ones and above the ledger card. v6.9.462 takes
+       them further down still, on his word - "show at last of hisab section" - and they no
+       longer travel alone: cxClientBand carries every kind, at the very bottom of this screen. */
     var _led = clientLedger(cl), paid = _led.paid, opening = _led.opening || 0, bal = opening + allNet - paid - retTotal;
     var gst = S.billGst ? Math.round(selNet * 0.18) : 0;
     var _clMob = (clientByName(cl) || {}).mobile || '';
@@ -20716,6 +20784,10 @@ function viewCatalogue() {
       '<button class="btn sm ghost" data-act="bill-pdf" data-all="1" title="Every received challan and every booked-in return, in date order, whatever is ticked">Download all</button>' +
       '</div></div>' + admLedgerFold(cl) + '</div></div>';
     h += serviceLedgerCard(cl);
+    /* v6.9.462 - HIS WORDS: "anything cancelled whether challan or any, show at last of hisab
+       section of related client". Last means last: after the ledger, after the statement's
+       controls, after the service book. */
+    h += cxClientBand(cl);
     acctSheetSync();        /* v6.9.451 - the open sheet, refreshed from this paint's card */
     return h;
   }
@@ -21672,7 +21744,7 @@ function viewCatalogue() {
     var src = w.byPay[String(payId)] || { hits: [] };
     var auto = {}; (src.hits || []).forEach(function (x) { auto[String(x.id)] = x.amt; });
     return '<h2>What did this payment pay for?</h2>' +
-      '<p class="sub">' + esc(cl) + ' &middot; ' + money(amt) + ' on ' + esc(dstr(p.date || p.createdAt)) +
+      '<p class="sub">' + esc(cl) + ' &middot; ' + money(amt) + ' on ' + esc(d10(p.date || p.createdAt)) +
         (p.mode ? ' &middot; ' + esc(p.mode) : '') + '</p>' +
       '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px">' +
       '<div class="meta" style="font-size:12.5px;color:#0f766e">Leave everything unticked and the app ' +
@@ -21737,7 +21809,7 @@ function viewCatalogue() {
         var k = payKindOf(p), neg = k === "refund";
         return '<tr style="border-bottom:1px solid #d9f5ef;background:' + (neg ? '#fff5f5' : (i % 2 ? '#f6fffd' : '#fff')) + (ticks && !hisabTicked(client, "pay", p.id) ? ';opacity:.5' : '') + '">' +
           tick(p) +
-          '<td style="padding:5px 7px;white-space:nowrap">' + esc(dstr(p.date)) + payWentTo(_w, p) + '</td>' +
+          '<td style="padding:5px 7px;white-space:nowrap">' + esc(d10(p.date)) + payWentTo(_w, p) + '</td>' +
           '<td style="padding:5px 7px">' + (p.mode ? esc(p.mode) : '<span style="color:#94a3b8">not recorded</span>') +
             (neg ? ' <span class="pill" style="background:#fee2e2;color:#b91c1c;font-size:12px">refund</span>'
                  : k === "advance" ? ' <span class="pill" style="background:#ccfbf1;color:#0f766e;font-size:12px">advance</span>' : '') + '</td>' +
@@ -21989,12 +22061,13 @@ function viewCatalogue() {
         (c.site ? ' <span style="font-size:12px;color:#94a3b8">' + esc(c.site) + '</span>' : '') +
         '</h3>' +
         '<div class="meta" style="font-size:12.5px;color:#64748b">' +
-        '<b>Cancelled' + (cx.by ? ' by ' + esc(cx.by) : '') + (cx.at ? ' on ' + esc(dstr(cx.at)) : '') + '.</b> ' +
+        '<b>Cancelled' + (cx.by ? ' by ' + esc(cx.by) : '') + (cx.at ? ' on ' + esc(d10(cx.at)) : '') + '.</b> ' +
         (cx.reason ? esc(cx.reason) : 'No reason recorded') +
         (cx.note ? ' &mdash; ' + esc(cx.note) : '') +
-        '<br>Was worth <b style="text-decoration:line-through">' + money(val) + '</b>. ' +
-        'It counts for nothing now: not in the balance above, not on his statement, and no ' +
-        'incentive on it. The number stays used, so this app and the paper book still agree.' +
+        /* v6.9.462 - the rest of this sentence ("counts for nothing... the number stays used")
+           is now said ONCE by cxClientBand, at the head of the section these cards sit in.
+           Repeating it on every dead delivery is the fault v6.9.449 was raised about. */
+        '<br>Was worth <b style="text-decoration:line-through">' + money(val) + '</b>.' +
         '</div>' +
         /* Bringing one back is the owner's, and it already exists - cx-undo, the same machinery
            the Cancelled records screen uses. Put here so he need not go and find that screen. */
@@ -22088,7 +22161,7 @@ function viewCatalogue() {
     if (!l) return "";
     var n = openingChanges(name).length;
     return '<div style="font-size:12px;color:#92400e;margin-top:2px">' +
-      'Previous balance changed ' + esc(dstr(l.at)) + ' by <b>' + esc(l.by || "?") + '</b>' +
+      'Previous balance changed ' + esc(d10(l.at)) + ' by <b>' + esc(l.by || "?") + '</b>' +
       ' — was ' + money(l.old) + ', now ' + money(l.neu) +
       (l.why ? ' · ' + esc(l.why) : '') +
       (n > 1 ? ' <span style="opacity:.75">(' + n + ' changes in all)</span>' : '') + '</div>';
@@ -22127,7 +22200,7 @@ function viewCatalogue() {
           '<div style="font-size:12.5px;font-weight:700;color:#92400e;margin-bottom:3px">' +
           'Changed before &mdash; ' + hist.length + '</div>' +
           hist.slice(0, 6).map(function (h) {
-            return '<div style="font-size:12px;color:#92400e">' + esc(dstr(h.at)) + ' &middot; ' +
+            return '<div style="font-size:12px;color:#92400e">' + esc(d10(h.at)) + ' &middot; ' +
               esc(h.by || "?") + ' &middot; ' + money(h.old) + ' → ' + money(h.neu) +
               (h.why ? ' &middot; ' + esc(h.why) : '') + '</div>';
           }).join("") +
@@ -25351,7 +25424,7 @@ function viewCatalogue() {
     if (settledView && g.prior) {
       h += '<div class="meta" style="font-size:12.5px;color:#0f766e;margin-top:4px">Answered <b>' +
         esc({ keep: "keep separate", fix: "same person", manage: "one customer, many sites" }[g.prior.kind] || g.prior.kind) +
-        '</b> by ' + esc(g.prior.by || "someone") + (g.prior.at ? ' on ' + esc(dstr(g.prior.at)) : '') + '.</div>';
+        '</b> by ' + esc(g.prior.by || "someone") + (g.prior.at ? ' on ' + esc(d10(g.prior.at)) : '') + '.</div>';
     }
     h += g.recs.map(function (r) { return dupRecRow(r, g, false); }).join("");
 
@@ -26395,7 +26468,7 @@ function viewCatalogue() {
     var h = '<div class="card"><h3 style="margin:0 0 2px">Which screens you actually open</h3>' +
       '<div class="meta" style="font-size:12.5px">Counted on this device only &mdash; never sent anywhere, never in the sheet. ' +
       'Your role carries <b>' + mine.length + '</b> screens. ' +
-      (total ? 'Since ' + esc(dstr(since)) + ' (' + days + ' day' + (days > 1 ? 's' : '') + ') you have opened <b>' +
+      (total ? 'Since ' + esc(d10(since)) + ' (' + days + ' day' + (days > 1 ? 's' : '') + ') you have opened <b>' +
                names.length + '</b> of them, <b>' + total + '</b> times.'
              : 'Nothing counted yet &mdash; it starts from your next tap.') + '</div>';
     if (names.length) {
@@ -28541,7 +28614,7 @@ function viewCatalogue() {
         '<p class="sub">' + esc(c.customerName || "") + (c.site ? ' \u00b7 ' + esc(c.site) : '') + '</p>' +
         dgKV([
           ["Status", esc(c.status || "Draft") + (String(c.receiptReceived).toUpperCase() === "Y" ? ' \u00b7 <span style="color:#0f766e">receipt in</span>' : '')],
-          ["Raised", esc(dstr(d10(c.createdAt))) + (c.createdBy ? " by " + esc(c.createdBy) : "")],
+          ["Raised", esc(d10(c.createdAt)) + (c.createdBy ? " by " + esc(c.createdBy) : "")],
           ["Value", money(dgNum(c.amount))],
           ["Freight", dgNum(c.freight) ? money(dgNum(c.freight)) + " \u00b7 " + esc(c.freightTo || "Client") : ""],
           ["Driver", c.driver ? esc(c.driver) + (c.vehicle ? " \u00b7 " + esc(c.vehicle) : "") : ""],
@@ -28558,12 +28631,12 @@ function viewCatalogue() {
         dgKV([
           ["Status", esc(q.status || "Draft")],
           ["Brands", esc(q.brand || "")],
-          ["Raised", esc(dstr(d10(q.createdAt))) + (q.createdBy ? " by " + esc(q.createdBy) : "")],
+          ["Raised", esc(d10(q.createdAt)) + (q.createdBy ? " by " + esc(q.createdBy) : "")],
           ["List price", dgNum(q.gross) ? money(dgNum(q.gross)) : ""],
           ["Discount", dgNum(q.discountPct) ? esc(pctTxt(dgNum(q.discountPct))) : ""],
           ["Net", dgNum(q.net) ? money(dgNum(q.net)) : ""],
           ["With GST", dgNum(q.total) ? money(dgNum(q.total)) : ""],
-          ["Valid till", q.validTill ? esc(dstr(d10(q.validTill))) : ""],
+          ["Valid till", q.validTill ? esc(d10(q.validTill)) : ""],
           ["Note", q.notes ? esc(q.notes) : ""]
         ]) +
         foot(goTab("quotes", "Open the quote book"));
@@ -28574,7 +28647,7 @@ function viewCatalogue() {
       return '<h2>' + money(dgNum(p.amount)) + ' received</h2>' +
         '<p class="sub">' + esc(p.client || "") + '</p>' +
         dgKV([
-          ["On", esc(dstr(d10(p.date || p.createdAt)))],
+          ["On", esc(d10(p.date || p.createdAt))],
           ["How", esc(p.mode || "")],
           ["Reference", p.ref ? esc(p.ref) : ""],
           ["Entered by", p.createdBy ? esc(p.createdBy) : ""],
@@ -28589,11 +28662,11 @@ function viewCatalogue() {
       return '<h2>Follow-up</h2>' +
         '<p class="sub">' + esc(f.customerName || "") + '</p>' +
         dgKV([
-          ["Due", esc(dstr(d10(f.dueDate || f.createdAt)))],
+          ["Due", esc(d10(f.dueDate || f.createdAt))],
           ["Status", esc(f.status || "Open")],
           ["What to do", esc(f.note || "")],
           ["Set by", f.createdBy ? esc(f.createdBy) : ""],
-          ["Done", f.doneAt ? esc(dstr(d10(f.doneAt))) : ""]
+          ["Done", f.doneAt ? esc(d10(f.doneAt)) : ""]
         ]) +
         foot(goTab("followups", "Open follow-ups"));
     }
@@ -28603,7 +28676,7 @@ function viewCatalogue() {
       return '<h2>Site visit</h2>' +
         '<p class="sub">' + esc(v.client || v.clientName || "") + '</p>' +
         dgKV([
-          ["On", esc(dstr(d10(v.date || v.createdAt)))],
+          ["On", esc(d10(v.date || v.createdAt))],
           ["Purpose", esc(v.purpose || "")],
           ["By", v.createdBy ? esc(v.createdBy) : ""],
           ["Checked", v.verified ? esc(v.verified) : ""],
@@ -28821,47 +28894,47 @@ function viewCatalogue() {
         '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
         '<b>' + esc(c.challanNo || "(no number yet)") + '</b> ' +
         '<span class="pill">' + esc(c.status || "") + '</span> &middot; ' + money(dgNum(c.amount)) +
-        ' &middot; ' + esc(dstr(d10(c.createdAt))) + (c.createdBy ? ' &middot; by ' + esc(c.createdBy) : '') + '</div>');
+        ' &middot; ' + esc(d10(c.createdAt)) + (c.createdBy ? ' &middot; by ' + esc(c.createdBy) : '') + '</div>');
     });
     h += dgList("Quotes", d.quotes.slice().sort(byDateDesc("createdAt")), function (x) {
       return dgTap("quote", 'data-id="' + esc(x.id) + '" data-n="' + esc(x.quoteNo || "") + '"',
         '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
         '<b>' + esc(x.quoteNo || "-") + '</b> ' + esc(x.brand || "") +
         ' <span class="pill">' + esc(x.status || "") + '</span> &middot; ' + money(dgNum(x.total)) +
-        ' &middot; ' + esc(dstr(d10(x.createdAt))) + '</div>');
+        ' &middot; ' + esc(d10(x.createdAt)) + '</div>');
     });
     h += dgList("Payments", d.payments.slice().sort(byDateDesc("date")), function (p) {
       return dgTap("payment", 'data-id="' + esc(p.id) + '"',
         '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
         '<b>' + money(dgNum(p.amount)) + '</b> &middot; ' + esc(p.mode || "") +
-        ' &middot; ' + esc(dstr(d10(p.date || p.createdAt))) + (p.ref ? ' &middot; ' + esc(p.ref) : '') + '</div>');
+        ' &middot; ' + esc(d10(p.date || p.createdAt)) + (p.ref ? ' &middot; ' + esc(p.ref) : '') + '</div>');
     });
     h += dgList("Machines and AMC", d.installs, function (i) {
       return dgTap("install", 'data-id="' + esc(i.id) + '"',
         '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
         '<b>' + esc(i.product || "-") + '</b>' + (i.model ? ' ' + esc(i.model) : '') +
         (i.amcType ? ' <span class="pill teal">' + esc(i.amcType) + '</span>' : '') +
-        (i.nextService ? ' &middot; next service ' + esc(dstr(d10(i.nextService))) : '') + '</div>');
+        (i.nextService ? ' &middot; next service ' + esc(d10(i.nextService)) : '') + '</div>');
     });
     /* a service visit belongs to a machine - open the machine, which is where its whole
        history, its AMC and its next service date live. */
     h += dgList("Service visits", d.visits.slice().sort(byDateDesc("date")), function (v) {
       return dgTap("install", 'data-id="' + esc(v.installId || "") + '"',
         '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
-        esc(dstr(d10(v.date || v.createdAt))) + ' &middot; ' + esc(v.type || "") +
+        esc(d10(v.date || v.createdAt)) + ' &middot; ' + esc(v.type || "") +
         (v.engineer ? ' &middot; ' + esc(v.engineer) : '') +
         (dgNum(v.total) ? ' &middot; ' + money(dgNum(v.total)) : '') + '</div>');
     });
     h += dgList("Site visits", d.svisits.slice().sort(byDateDesc("date")), function (v) {
       return dgTap("svisit", 'data-id="' + esc(v.id) + '"',
         '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
-        esc(dstr(d10(v.date || v.createdAt))) + (v.purpose ? ' &middot; ' + esc(v.purpose) : '') +
+        esc(d10(v.date || v.createdAt)) + (v.purpose ? ' &middot; ' + esc(v.purpose) : '') +
         (v.createdBy ? ' &middot; ' + esc(v.createdBy) : '') + '</div>');
     });
     h += dgList("Follow-ups", d.followups, function (f) {
       return dgTap("followup", 'data-id="' + esc(f.id) + '"',
         '<div class="meta" style="padding:5px 0;border-top:1px solid #eef2f7">' +
-        esc(dstr(d10(f.dueDate || f.createdAt))) + ' &middot; ' + esc(f.note || f.purpose || "") + '</div>');
+        esc(d10(f.dueDate || f.createdAt)) + ' &middot; ' + esc(f.note || f.purpose || "") + '</div>');
     });
     return h;
   }
@@ -30523,7 +30596,7 @@ function viewCatalogue() {
       var lbl = d < 0 ? Math.abs(d) + 'd overdue' : (d === 0 ? 'due today' : 'in ' + d + 'd');
       h += '<div class="card"><h3>' + esc(f.customerName || "(customer)") +
         ' <span class="pill ' + (d < 0 ? 'due' : (d === 0 ? 'soon' : '')) + '">' + lbl + '</span></h3>' +
-        '<div class="meta">' + esc(f.note || "-") + '<br>Due ' + esc(dstr(f.dueDate)) + ' &middot; ' + esc(f.createdBy || "") + '</div>' +
+        '<div class="meta">' + esc(f.note || "-") + '<br>Due ' + esc(d10(f.dueDate)) + ' &middot; ' + esc(f.createdBy || "") + '</div>' +
         '<div class="acts"><button class="btn sm" data-act="fu-done" data-id="' + esc(f.id) + '">Mark done</button></div></div>';
     });
     if (done.length) {
