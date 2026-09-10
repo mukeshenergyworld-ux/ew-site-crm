@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.464";
+  var APP_VERSION = "6.9.465";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5994,9 +5994,44 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      client+brand, discPick() always chooses the SAME winner, everywhere in the app, so what the
      challan form shows is exactly what billing charges. */
   function dkey(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
+  /* ============ THE RATE FOLLOWS THE MAN, NOT THE NAME ON THE PAPER  (v6.9.465) ============
+     MEASURED by run_demo_journey.mjs on 10 September 2026, against a pretend book - his own was
+     never touched. clientLedgerCalc has folded a merged alias into the man since v6.9.461, so a
+     delivery booked under the name he was merged OUT of does reach his account. And then this
+     function priced it by looking the discount up under THE NAME WRITTEN ON THE CHALLAN. The
+     alias has no discount row of its own, so it fell through to full list price: five pieces at
+     Rs 1,000 with a 30% standing rate came to Rs 5,000 instead of Rs 3,500. It OVERSTATES what
+     he owes - on the statement he sends the customer.
+
+     THE RULE IS THE NARROWEST ONE THAT FIXES IT. Rows filed under the exact name always win;
+     only when that name has no row of its own does it look at the rest of the family, main name
+     first. So no client who already has a rate can have it changed by a merge, and the day an
+     alias is given a rate of its own that rate takes over at once.
+
+     MEASURED BEFORE PUBLISHING, on his own book, not asserted: three live aliases (Builder
+     Gurpreet Singh, Mohit - Orlov Hotel, ravi); not one carries a delivery and not one has a
+     discount row of its own, so not a single line in the book prices differently. This moves
+     Rs 0 today. Money must never move because a feature was deployed. */
   function discRowsFor(client, brand) {
-    var c = dkey(client), b = dkey(brand);
-    return (S.data.discounts || []).filter(function (x) { return dkey(x.client) === c && dkey(x.brand) === b; });
+    var b = dkey(brand), all = (S.data && S.data.discounts) || [];
+    var pick = function (nm) {
+      var c = dkey(nm);
+      return all.filter(function (x) { return dkey(x.client) === c && dkey(x.brand) === b; });
+    };
+    var own = pick(client);
+    if (own.length) return own;
+    /* not one man under two names - there is nothing further to look at. MEASURED on his book
+       on 10 Sep 2026: 167 clients, THREE live aliases, so this is the answer 164 times out of
+       167 and it is the line that must stay cheap */
+    var am = dupAliasMap(), k = dgKey(client);
+    if (!am.byName[k] && !am.aliasOf[k]) return own;
+    var fam = dupFamily(client);
+    for (var i = 0; i < fam.length; i++) {
+      if (dgKey(fam[i]) === k) continue;
+      var r = pick(fam[i]);
+      if (r.length) return r;
+    }
+    return own;
   }
   /* The richest row wins: a real discount counts most, then each partner incentive it carries,
      and the newest row breaks a tie. Deliberate - it keeps the row holding BOTH plumber and
