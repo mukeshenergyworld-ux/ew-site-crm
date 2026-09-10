@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.460";
+  var APP_VERSION = "6.9.461";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7681,6 +7681,68 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var others = dupAliasMap().aliasOf[dgKey(main)] || [];
     return [main].concat(others.filter(function (x) { return dgKey(x) !== dgKey(main); }));
   }
+  /* ================= THE NAMES ONE MAN'S MONEY IS BOOKED UNDER  (v6.9.461) =================
+     ONE reader for "does this row belong to this man", so clientLedgerCalc and hisabOutstanding
+     cannot disagree about it - the exact fault this release closes, one level up.
+
+     TWO MATCHING RULES, DELIBERATELY:
+       his own name  - EXACTLY, as every ledger here has matched it since it was written. To
+                       loosen it would move real balances for the 158 clients with no alias, in
+                       a release about the 6 who have one.
+       an alias      - trimmed and lower-cased, which is how clientDue() has folded the family
+                       since v6.9.317. A merged man gains exactly what the client book already
+                       said he owed, and not a rupee more.
+     An unmerged client takes the fast path and never builds a map at all. */
+  /* the five readers every money screen uses. Each is famRow's rule and nothing else, so no
+     screen can collect a different set of rows from the ledger. */
+  function famHas(cl) { return famRow(cl).has; }
+  function famChallansIn(cl) {
+    var h = famHas(cl);
+    return dedupeChallans((S.data.challans || []).filter(function (c) {
+      return h(c.customerName) && String(c.receiptReceived).toUpperCase() === "Y";
+    }));
+  }
+  function famPays(cl) { var h = famHas(cl); return (S.data.payments || []).filter(function (p) { return p && h(p.client); }); }
+  function famRets(cl) { return famReturns(famRow(cl)); }
+  function famOpen(cl) { return famOpening(famRow(cl)); }
+
+  function famRow(client) {
+    var fam = dupFamily(client);
+    if (fam.length < 2) {
+      return { names: fam, merged: false, has: function (nm) { return nm === client; } };
+    }
+    var lc = function (x) { return String(x == null ? "" : x).trim().toLowerCase(); };
+    var set = {};
+    fam.forEach(function (x) { set[lc(x)] = 1; });
+    return {
+      names: fam, merged: true,
+      has: function (nm) { return nm === client || !!set[lc(nm)]; }
+    };
+  }
+  /* the opening balances of the family, each client row counted once */
+  function famOpening(fr) {
+    var seen = {}, out = 0;
+    fr.names.forEach(function (nm) {
+      var c0 = clientByName(nm); if (!c0) return;
+      var k = String(c0.id || c0.name || "");
+      if (seen[k]) return; seen[k] = 1;
+      out += nAmt(c0.openingAmt);
+    });
+    return out;
+  }
+  /* every booked-in return of the family, deduped by row id */
+  function famReturns(fr) {
+    if (!fr.merged) return clientReturns(fr.names[0]);
+    var seen = {}, out = [];
+    fr.names.forEach(function (nm) {
+      clientReturns(nm).forEach(function (r) {
+        var k = String(r.id || (r.returnNo + "|" + r.createdAt));
+        if (seen[k]) return; seen[k] = 1; out.push(r);
+      });
+    });
+    return out;
+  }
+
   /* the sentence a man reads on the card, so the join is never silent */
   function dupAlsoSay(n) {
     var a = dupAliasMap().byName[dgKey(n)];
@@ -15662,9 +15724,9 @@ function viewCatalogue() {
     var billed = 0, paid = 0, overdue = 0, due = 0;
     (hisabClientNames() || []).forEach(function (nm) {
       if (scOwnerOf(nm) !== exec) return;
-      var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === nm && String(c.receiptReceived).toUpperCase() === "Y"; }));
+      var chs = famChallansIn(nm);                          /* v6.9.461 */
       var net = chs.reduce(function (a, c) { return a + chValue(c); }, 0);
-      var cl = clientByName(nm) || {}, opening = nAmt(cl.openingAmt);   /* v6.9.266 */
+      var cl = clientByName(nm) || {}, opening = famOpen(nm);   /* v6.9.266 nAmt; v6.9.461 the family */
       var l = clientLedger(nm), ret = clientReturns(nm).reduce(function (a, r) { return a + returnNet(r); }, 0);
       billed += net + opening; paid += (l.paid || 0);
       var d0 = net + opening - (l.paid || 0) - ret; if (d0 > 0.5) due += d0;
@@ -18829,7 +18891,14 @@ function viewCatalogue() {
        (minus), so include any NON-ZERO opening, not only positive. */
     (S.data.clients || []).forEach(function (c) { if (nAmt(c.openingAmt) !== 0) add(c.name); });   /* v6.9.266 */
     (S.data.payments || []).forEach(function (p) { add(p.client); });
-    return out.sort();
+    /* v6.9.461 - A MERGED ALIAS IS NOT A SECOND MAN ON THE MONEY SCREEN. His rows are read into
+       the man he was merged into (famRow), so leaving the alias on this list would count the
+       same rupee twice in the DUE AMT total, the ageing, the radar and the digest - every total
+       built on this list. The client book has known this since v6.9.317, where clientDue()
+       returns 0 for an alias for exactly the same reason. Nothing is hidden: the name still
+       finds the man (hisabResolve), and his card still says which names he was entered under
+       (dupAlsoSay). */
+    return out.filter(function (n) { return !dupIsAlias(n); }).sort();
   }
   /* Resolve a typed name to a real billable client name: exact (case/space-tolerant) first,
      then a unique partial match, so "atul" finds "Atul Garg / Hukam Chand Garg". "" if none/ambiguous. */
@@ -18839,6 +18908,13 @@ function viewCatalogue() {
     var names = hisabClientNames();
     var exact = names.filter(function (n) { return n.trim().toLowerCase() === q; });
     if (exact.length) return exact[0];
+    /* v6.9.461 - the name he was merged OUT of is a name people will keep typing for years, and
+       it is no longer on the list above. It still finds him. */
+    if (dupIsAlias(q)) {
+      var mn2 = dupMainName(q);
+      var onList = names.filter(function (n) { return dgKey(n) === dgKey(mn2); });
+      if (onList.length) return onList[0];
+    }
     var part = names.filter(function (n) { return n.toLowerCase().indexOf(q) >= 0; });
     return part.length === 1 ? part[0] : "";
   }
@@ -18994,13 +19070,19 @@ function viewCatalogue() {
      payments received), tagged with the sales executive who owns the client. */
   function hisabOutstanding() {
     return hisabClientNames().map(function (nm) {
-      var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === nm && String(c.receiptReceived).toUpperCase() === "Y"; }));
+      /* v6.9.461 - THE SAME FAMILY, THE SAME WAY. This list took `paid` from clientLedger and
+         worked out the other three itself; the day the ledger folded a merged alias and this did
+         not, one man's row would have carried a folded payment against an unfolded delivery.
+         chValue(c) is challanNet(c) + chFreight(c) - the ledger's billed + freight - so the two
+         are the same arithmetic on the same rows, and the overview total agrees with each account. */
+      var fr = famRow(nm);
+      var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return fr.has(c.customerName) && String(c.receiptReceived).toUpperCase() === "Y"; }));
       var net = chs.reduce(function (a, c) { return a + chValue(c); }, 0);
       var paid = clientLedger(nm).paid, cl = clientByName(nm) || {};
-      var opening = nAmt(cl.openingAmt);   /* v6.9.266 - was Number(), which is NaN on "1,48,000" */
+      var opening = famOpening(fr);   /* v6.9.266 nAmt (was Number, NaN on "1,48,000"); v6.9.461 the family */
       /* v6.9.121: booked-in material returns credit the client, so they come off the outstanding
          here too — keeping the overview total in step with each client's HISAB balance. */
-      var returned = clientReturns(nm).reduce(function (a, r) { return a + returnNet(r); }, 0);
+      var returned = famReturns(fr).reduce(function (a, r) { return a + returnNet(r); }, 0);
       /* No explicit sales-exec set yet -> falls to whoever entered the client. Billed includes
          any old balance brought forward, so Billed - Received - Returns = Outstanding stays consistent. */
       return { name: nm, owner: cl.ownedBy || cl.createdBy || "", net: net + opening, paid: paid, returned: returned, due: net + opening - paid - returned };
@@ -19024,9 +19106,7 @@ function viewCatalogue() {
      OLDEST deliveries first (FIFO), so what remains is bucketed by the age of the delivery it belongs
      to. The opening balance carried in from before the app is treated as the oldest debt. */
   function clientAging(name) {
-    var chs = dedupeChallans((S.data.challans || []).filter(function (c) {
-      return c.customerName === name && String(c.receiptReceived).toUpperCase() === "Y";
-    }));
+    var chs = famChallansIn(name);                          /* v6.9.461 */
     var cl = clientByName(name) || {};
     var items = [], opening = nAmt(cl.openingAmt);
     if (opening > 0) items.push({ age: 99999, amt: opening });      // brought-forward = oldest
@@ -19091,8 +19171,9 @@ function viewCatalogue() {
      only a received challan enters HISAB - but it is out of the godown and unpaid, so it is
      real exposure. Ignoring it is how a client quietly goes double his limit in one week. */
   function chOnRoad(name, skipId) {
+    var _fh = famHas(name);                                 /* v6.9.461 */
     return dedupeChallans((S.data.challans || []).filter(function (c) {
-      return c.customerName === name && String(c.receiptReceived).toUpperCase() !== "Y" &&
+      return _fh(c.customerName) && String(c.receiptReceived).toUpperCase() !== "Y" &&
         c.id !== skipId && (c.status === "Approved" || c.status === "Dispatched");
     })).reduce(function (a, c) { return a + challanNet(c) + chFreight(c); }, 0);
   }
@@ -19185,11 +19266,9 @@ function viewCatalogue() {
      the PDF all render the same array. Three functions each walking the challan book would be
      three chances for a screen and a file he sends a customer to disagree about one account. */
   function hisabMiniRows(cl) {
-    var chs = dedupeChallans((S.data.challans || []).filter(function (c) {
-      return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y";
-    }));
-    var rets = clientReturns(cl) || [];
-    var pays = (S.data.payments || []).filter(function (p) { return p && p.client === cl; });
+    var chs = famChallansIn(cl);                          /* v6.9.461 - the man, not the name */
+    var rets = famRets(cl) || [];
+    var pays = famPays(cl);
     var led = clientLedger(cl) || {};
     var opening = Number(led.opening) || 0;
     return hisabRowsFrom(cl, chs, rets, pays, opening, "");
@@ -19721,8 +19800,9 @@ function viewCatalogue() {
       'who earns on this delivery is not fixed until it is finalised.">Not finalised</span>';
   }
   function hisabPendingCard(cl) {
+    var _fh = famHas(cl);                                   /* v6.9.461 */
     var pend = (S.data.challans || []).filter(function (c) {
-      return c.customerName === cl && String(c.receiptReceived).toUpperCase() !== "Y";
+      return _fh(c.customerName) && String(c.receiptReceived).toUpperCase() !== "Y";
     });
     if (!pend.length) return "";
     var rank = { Draft: 0, Approved: 1, Dispatched: 2 };
@@ -20155,7 +20235,7 @@ function viewCatalogue() {
            overriding is oldest-first, and the two must read the same way.
          * settleWalk() itself, which is date-ordered arithmetic and has nothing to do with
            what order the cards are painted in. */
-    var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }))
+    var chs = famChallansIn(cl)                             /* v6.9.461 - the account card */
       .sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
     var _acct = hisabSummaryCard(cl, chs);      /* v6.9.424 - the account, before the cards */
     h += _acct;
@@ -20173,7 +20253,7 @@ function viewCatalogue() {
          hisabPendingCard, so this list exists only to decide whether there is anything worth
          showing at all. */
       var _pending = (S.data.challans || []).filter(function (c) {
-        return c.customerName === cl && String(c.receiptReceived).toUpperCase() !== "Y";
+        return famHas(cl)(c.customerName) && String(c.receiptReceived).toUpperCase() !== "Y";
       });
       /* v6.9.369 - a client whose ONLY challan was cancelled lands here, and used to be told
          there was nothing at all for him. There is: a dead one, and the question he is ringing
@@ -21060,9 +21140,9 @@ function viewCatalogue() {
      are untouched. The account's own four buttons always pass one, so a statement taken "just
      this once" cannot change what the next one looks like. */
   function hisabPdf(cl, all, pp) {
-    var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y"; }));
-    var rets = clientReturns(cl).slice();
-    var pays = (S.data.payments || []).filter(function (p) { return p && p.client === cl; });
+    var chs = famChallansIn(cl);                          /* v6.9.461 */
+    var rets = famRets(cl).slice();
+    var pays = famPays(cl);
     /* `all` is the one-press "everything, in date order" - every tick read as on, none touched */
     var on = function (kind, x) { return all || hisabTicked(cl, kind, x.id); };
     var chOn = [], chOff = [], rtOn = [], rtOff = [], pyOn = [], pyOff = [];
@@ -21538,8 +21618,7 @@ function viewCatalogue() {
      what was received - which is the whole point, since the customer holds the PDF and the
      office holds the screen. Sorted oldest first: a ledger is read down the page. */
   function payLines(client) {
-    return (S.data.payments || [])
-      .filter(function (p) { return p && p.client === client; })
+    return famPays(client)                                 /* v6.9.461 */
       .map(function (p) {
         return { id: String(p.id || ""), date: String(p.date || p.createdAt || "").slice(0, 10),
                  amount: payAmt(p),
@@ -21586,9 +21665,8 @@ function viewCatalogue() {
     if (!p) return "";
     var cl = String(p.client || ""), amt = payAmt(p);
     var w = settleWalk(cl);
-    var chs = dedupeChallans((S.data.challans || []).filter(function (c) {
-      return c.customerName === cl && String(c.receiptReceived).toUpperCase() === "Y";
-    })).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+    var chs = famChallansIn(cl)                             /* v6.9.461 */
+      .sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
     var pick = allocFor(payId) || [];
     var pk = {}; pick.forEach(function (x) { pk[String(x)] = true; });
     var src = w.byPay[String(payId)] || { hits: [] };
@@ -21755,10 +21833,8 @@ function viewCatalogue() {
     client = String(client || "");
     if (!_stlCache) _stlCache = {};
     if (_stlCache[client]) return _stlCache[client];
-    var chs = dedupeChallans((S.data.challans || []).filter(function (c) {
-      return c.customerName === client && String(c.receiptReceived).toUpperCase() === "Y";
-    }));
-    var ev = [], op = clientOpening(client);
+    var chs = famChallansIn(client);                       /* v6.9.461 */
+    var ev = [], op = famOpen(client);
     /* The opening balance has no date and is older than everything, so it sorts first on an
        empty string and is settled first. A MINUS opening balance is money he already held. */
     if (op > 0.4) ev.push({ k: "D", d: "", ord: 0, kind: "open", amt: op, id: "OPENING" });
@@ -21769,12 +21845,12 @@ function viewCatalogue() {
                 kind: cr ? "chcr" : "ch", amt: cr ? -v : v,
                 id: String(c.id), no: String(c.challanNo || ""), row: c });
     });
-    (S.data.payments || []).filter(function (p) { return p && p.client === client; }).forEach(function (p) {
+    famPays(client).forEach(function (p) {                 /* v6.9.461 */
       var a = payAmt(p), neg = a < 0;
       ev.push({ k: neg ? "D" : "C", d: String(p.date || p.createdAt || "").slice(0, 10), ord: 2,
                 kind: neg ? "refund" : "pay", amt: neg ? -a : a, id: String(p.id), row: p });
     });
-    clientReturns(client).forEach(function (r) {
+    famRets(client).forEach(function (r) {                 /* v6.9.461 */
       ev.push({ k: "C", d: String(r.createdAt || "").slice(0, 10), ord: 2, kind: "ret",
                 amt: returnNet(r), id: String(r.id), no: String(r.returnNo || ""), row: r });
     });
@@ -21886,9 +21962,9 @@ function viewCatalogue() {
      holds them - so that half needs no code at all, and t_dead_challan.js asserts it stays
      that way rather than trusting that it will. */
   function deadChallans(cl) {
-    var q = dkey(cl);
+    var _fh = famHas(cl), q = dkey(cl);                     /* v6.9.461 */
     return (((S.cancelled || {}).challans) || [])
-      .filter(function (c) { return c && dkey(c.customerName) === q; })
+      .filter(function (c) { return c && (_fh(c.customerName) || dkey(c.customerName) === q); })
       .map(function (c) { return { row: c, cx: cancelInfo("challans", c.id) || {} }; })
       .sort(function (a, b) {
         return String(b.row.createdAt || "").localeCompare(String(a.row.createdAt || ""));
@@ -22102,9 +22178,7 @@ function viewCatalogue() {
       /* Only the men who owe something. A report card of 55 clients where 9 owe nothing is a
          report card nobody reads to the end. */
       if (!(l.due > 0.5)) return;
-      var chs = dedupeChallans((S.data.challans || []).filter(function (x) {
-        return x.customerName === nm && String(x.receiptReceived).toUpperCase() === "Y";
-      }));
+      var chs = famChallansIn(nm);                          /* v6.9.461 */
       var lastCh = chs.reduce(function (a, x) {
         var d = String(x.createdAt || "").slice(0, 10); return d > a ? d : a;
       }, "");
@@ -22195,10 +22269,15 @@ function viewCatalogue() {
     return (_ledCache[_lk] = clientLedgerCalc(client));
   }
   function clientLedgerCalc(client) {
+    /* v6.9.461 - ONE MAN, ONE LEDGER. A delivery booked under a name he was later merged out of
+       is his delivery; the client book (clientDue, v6.9.317) and the Payment app have both said
+       so for a month, and the statement he SENDS a customer did not. famRow() holds the rule.
+       An unmerged client is matched exactly as before - see the note on famRow. */
+    var _fr = famRow(client);
     var chs = dedupeChallans(S.data.challans.filter(function (c) {
-      return c.customerName === client && String(c.receiptReceived).toUpperCase() === "Y";
+      return _fr.has(c.customerName) && String(c.receiptReceived).toUpperCase() === "Y";
     }));
-    var pays = S.data.payments.filter(function (p) { return p.client === client; });
+    var pays = S.data.payments.filter(function (p) { return _fr.has(p.client); });
     /* Dues are now on the NET (post-discount) value, matching the HISAB statement. */
     var billed = chs.reduce(function (a, c) { return a + challanNet(c); }, 0);
     var freight = chs.reduce(function (a, c) {
@@ -22207,10 +22286,10 @@ function viewCatalogue() {
     var paid = pays.reduce(function (a, p) { return a + payAmt(p); }, 0);
     /* Old balance carried in when the client was first entered (money owed before the app). It is
        part of what they owe, so it rides in the dues and the HISAB balance. */
-    var opening = nAmt((clientByName(client) || {}).openingAmt);
+    var opening = famOpening(_fr);            /* v6.9.461 - each family row once */
     /* v6.9.121: booked-in material returns are a credit — they reduce what the client owes, exactly
        like a challan in reverse. Only "Received" returns count (goods actually back at the godown). */
-    var rets = clientReturns(client);
+    var rets = famReturns(_fr);               /* v6.9.461 */
     var returned = rets.reduce(function (a, r) { return a + returnNet(r); }, 0);
     return ledgerExtras(client, { chs: chs, pays: pays, rets: rets, opening: opening, billed: billed, freight: freight, paid: paid, returned: returned, due: opening + billed + freight - paid - returned });
   }
@@ -22246,9 +22325,9 @@ function viewCatalogue() {
      the client's ledger PDF attached. */
   var PAY_MIN = 7;
   function payAge(name) {
-    var latest = "";
+    var latest = "", _fh = famHas(name);                    /* v6.9.461 */
     S.data.challans.forEach(function (c) {
-      if (c.customerName === name && String(c.receiptReceived).toUpperCase() === "Y") {
+      if (_fh(c.customerName) && String(c.receiptReceived).toUpperCase() === "Y") {
         var d = String(c.createdAt || "").slice(0, 10);
         if (d > latest) latest = d;
       }
