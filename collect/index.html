@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.35.1";
+  var APP_VERSION = "1.36.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1486,44 +1486,72 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
 function dgKey(s) {
     return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
   }
-  var _dupCache = null;
+  /* ============ ONE MAN, ONE NAME - the CRM's own merge machinery, byte for byte ============
+     Not reimplemented. t_apps_agree.js holds every function below identical to team/app.js,
+     because two readings of "are these two names one man" is two answers to what a client
+     owes, and this estate has paid for that shape four times. The map is built from the
+     audit rows this phone already holds and cached until the next book arrives. */
+  var DUP_ACTIONS = { "dup:keep": 1, "dup:fix": 1, "dup:manage": 1, "dup:reopen": 1 };
+  var _aliasCache = null;
+  function dupDecisions() {
+    return (S.data.audit || []).filter(function (r) {
+      return r && DUP_ACTIONS[String(r.action || "")];
+    }).map(function (r) {
+      var det = {};
+      try { det = JSON.parse(r.detail || "{}") || {}; } catch (e) { det = {}; }
+      return {
+        id: r.id, at: r.createdAt, by: r.actor,
+        kind: String(r.action).slice(4),                 /* keep | fix | manage */
+        ids: String(r.target || "").split(/\s+/).filter(Boolean),
+        det: det
+      };
+    }).sort(function (a, b) { return String(a.at || "") < String(b.at || "") ? -1 : 1; });
+  }
   function dupAliasMap() {
-    if (_dupCache) return _dupCache;
-    var byName = {};
-    ((S.data && S.data.audit) || []).slice().sort(function (a, b) {
-      return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
-    }).forEach(function (r) {
-      var act = String((r && r.action) || "");
-      if (act !== "dup:fix" && act !== "dup:keep" && act !== "dup:reopen") return;
-      var d = {};
-      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
-      if (act !== "dup:fix") {
-        /* he changed his mind - every alias named by this decision comes apart again */
-        var ids = d.ids || [];
+    if (_aliasCache) return _aliasCache;
+    var byName = {}, aliasOf = {};
+    dupDecisions().forEach(function (d) {
+      /* later rows override earlier ones - this list arrives oldest first */
+      if (d.kind === "reopen" || d.kind === "keep") {
+        /* BOTH INDEXES, OR THEY COME APART ONLY HALFWAY. The first version of this deleted the
+           alias and left the reverse list alone, so dupMainName() correctly said "his own man
+           again" while dupFamily() still handed clientDue() two names to add up - the money
+           stayed merged after he had said they were different people. Caught by t_merge.js,
+           which totals the book on both sides of a reopen. */
         Object.keys(byName).forEach(function (k) {
           var v = byName[k];
-          if (ids.indexOf(v.id) < 0 && ids.indexOf(v.mainId) < 0) return;
+          if ((d.ids || []).indexOf(v.id) < 0 && (d.ids || []).indexOf(v.mainId) < 0) return;
+          var mk = dgKey(v.main);
+          aliasOf[mk] = (aliasOf[mk] || []).filter(function (x) { return dgKey(x) !== k; });
+          if (!aliasOf[mk].length) delete aliasOf[mk];
           delete byName[k];
         });
         return;
       }
-      var mn = String(d.mainName || "").trim();
+      if (d.kind !== "fix") return;
+      var mn = String((d.det && d.det.mainName) || "").trim();
       if (!mn) return;
-      (d.aliases || []).forEach(function (a) {
+      ((d.det && d.det.aliases) || []).forEach(function (a) {
         var an = String(a.name || "").trim();
         if (!an || dgKey(an) === dgKey(mn)) return;
-        byName[dgKey(an)] = { main: mn, id: String(a.id || ""), mainId: String(d.main || "") };
+        byName[dgKey(an)] = { main: mn, alias: an, id: String(a.id || ""), mainId: String((d.det && d.det.main) || ""), at: d.at, by: d.by };
+        (aliasOf[dgKey(mn)] = aliasOf[dgKey(mn)] || []).push(an);
       });
     });
-    _dupCache = { byName: byName };
-    return _dupCache;
+    _aliasCache = { byName: byName, aliasOf: aliasOf };
+    return _aliasCache;
   }
-  /* the name this man is really filed under - byte-identical with the CRM's */
-function dupMainName(n) {
+  function dupMainName(n) {
     var hit = dupAliasMap().byName[dgKey(n)];
     return hit ? hit.main : String(n == null ? "" : n).trim();
   }
   function dupIsAlias(n) { return !!dupAliasMap().byName[dgKey(n)]; }
+  /* the main name AND every other name he was entered under, main first */
+  function dupFamily(n) {
+    var main = dupMainName(n);
+    var others = dupAliasMap().aliasOf[dgKey(main)] || [];
+    return [main].concat(others.filter(function (x) { return dgKey(x) !== dgKey(main); }));
+  }
 
   /* ============ A CANCELLED RECORD IS CANCELLED IN THIS APP TOO (v1.26.0) ============
      MEASURED ON HIS OWN BOOK, 29 Aug 2026. Dr Danish Pritam Arora:
@@ -1734,9 +1762,28 @@ function cancelMap() {
     return /^\d{4}-\d{2}-\d{2}$/.test(f) ? f : "";
   }
   function discStamp(d) { var m = String((d && d.id) || "").match(/(\d{10,})/); return m ? Number(m[1]) : 0; }
+  /* v1.54.0 / v1.36.0 - the rate follows the man, not the name on the paper. The reason is
+     written out in team/app.js above this function; the body is that one, byte for byte. */
   function discRowsFor(client, brand) {
-    var c = dkey(client), b = dkey(brand);
-    return (S.data.discounts || []).filter(function (x) { return dkey(x.client) === c && dkey(x.brand) === b; });
+    var b = dkey(brand), all = (S.data && S.data.discounts) || [];
+    var pick = function (nm) {
+      var c = dkey(nm);
+      return all.filter(function (x) { return dkey(x.client) === c && dkey(x.brand) === b; });
+    };
+    var own = pick(client);
+    if (own.length) return own;
+    /* not one man under two names - there is nothing further to look at. MEASURED on his book
+       on 10 Sep 2026: 167 clients, THREE live aliases, so this is the answer 164 times out of
+       167 and it is the line that must stay cheap */
+    var am = dupAliasMap(), k = dgKey(client);
+    if (!am.byName[k] && !am.aliasOf[k]) return own;
+    var fam = dupFamily(client);
+    for (var i = 0; i < fam.length; i++) {
+      if (dgKey(fam[i]) === k) continue;
+      var r = pick(fam[i]);
+      if (r.length) return r;
+    }
+    return own;
   }
   function discRowOn(client, brand, onYmd) {
     var rows = discRowsFor(client, brand);
@@ -3862,7 +3909,7 @@ function cancelMap() {
      bust() runs on the fast merge in both pull paths, before anything reads it again, so one
      line here covers every route the book takes in. A cancellation cache that is not dropped
      shows a cancelled payment as live, which is the exact fault this release exists to fix. */
-  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; _hxCache = null; _dupCache = null; }
+  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; _hxCache = null; _aliasCache = null; }
 
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest("[data-act]");
