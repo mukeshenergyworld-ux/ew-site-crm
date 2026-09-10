@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.459";
+  var APP_VERSION = "6.9.460";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -10643,45 +10643,165 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     }).sort(function (a, b) { return nAmt(b.openingAmt) - nAmt(a.openingAmt); });
   }
 
-  /* v6.9.214 - HIS WORDS: "when checking client hisab, ask to attach old hisab if client
-     entered with old pending payment".
-     The list on the HISAB front page is a partner's to-do list. This is the same question asked
-     at the moment it actually matters - while somebody is standing in that one man's account
-     wondering where the balance came from. Three states, and only three:
-       on file  -> a link to it, for everybody. Opening the old page in front of the client is
-                   worth more than any reminder ever will be.
-       missing, and he still owes -> a partner is asked to attach it, with the button that opens
-                   his card. A partner only, because the attach control itself is partner-only and
-                   a nag nobody is able to act on is just noise on the screen.
-       settled  -> nothing at all. The asking stops the day the money clears. */
-  function hisabAskCard(name) {
-    var c = clientByName(name);
+  /* ================= WHAT IS ATTACHED, AND FOR WHAT THING  (v6.9.460) =================
+     HIS WORDS, with the Attach-the-paper form open in front of him:
+       "attach old hisab provion have gone, better to show way here
+        and show on page what is attacehd for what thing"
+
+     MEASURED BEFORE CHANGING ANYTHING. It had not gone; from where he was standing it had
+     never been there. Four ways lead to the old hisab in 6.9.459 and every one of them ends
+     at the same door - the client form's "Migrating from the old books" box, eleven fields
+     down a thirty-field form:
+         the client list chip "Old hisab ?"                -> cl-open -> that form
+         the HISAB page "N old client(s) owe money"        -> cl-open -> that form
+         hisabAskCard on his account                       -> cl-open -> that form
+         the client form itself                            -> the file box inside the box
+     and three of the four are only drawn for a man who carries an opening balance AND still
+     owes money on it. The RATE screen - which is where the Attach-the-paper button lives -
+     never mentions the old hisab at all.
+
+     So a client's papers are drawn as a set now, each under one line saying WHAT IT ANSWERS,
+     and the old hisab has a door of its own (hd-open -> modalHisabDoc) that does not go
+     through the client form. Nothing is duplicated: hisabAskCard, which has stood at the top
+     of the HISAB screen since v6.9.214, IS this line now - same three states, same words,
+     one builder. */
+  function docTag(t, c) {
+    /* 12px is the floor this app holds everywhere (t_v401); a label is not an exception. */
+    return '<div style="font-size:12px;font-weight:800;letter-spacing:.03em;color:' +
+      (c || "#64748b") + ';margin:0 0 3px">' + t + '</div>';
+  }
+  /* THE OLD HISAB, AS ONE LINE. Four states:
+       on file            -> a real 40px target to open it, for everybody. Opening the old page
+                             in front of the client is worth more than any reminder ever will be.
+       owes, missing      -> amber, with the figure and the door. A partner only, because the
+                             attach itself is partner-only and a nag nobody can act on is noise.
+       settled, missing   -> the same door, quiet. The MONEY cleared; the history did not, and
+                             v6.9.214 drew nothing here, which is why the door looked gone.
+       never carried over -> the door, quiet - or nothing at all where o.quiet says so, which is
+                             the HISAB screen, opened all day for clients this cannot concern. */
+  function hdLine(cl, o) {
+    o = o || {};
+    var c = clientByName(cl);
     if (!c || !c.id) return "";
-    var hd = hisabDoc(c.id);
+    var hd = hisabDoc(c.id), adm = roleIs("admin");
+    var back = o.back ? ' data-back="' + esc(o.back) + '"' : "";
+    var door = function (label, solid) {
+      return '<button class="btn sm' + (solid ? '' : ' ghost') + '" data-act="hd-open" data-id="' +
+        esc(c.id) + '"' + back + '>' + label + '</button>';
+    };
     if (hd && hd.url) {
       /* v6.9.214 - a real target, not a line of coloured text. The browser rig measured the bare
          link at 15px tall: that is a thumb hitting nothing on a phone, and this is the one thing
          on this card he will actually tap when a client questions his balance. */
       return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 10px">' +
+        docTag("Where his old balance came from", "#0f766e") +
         '<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">' +
         '<a href="' + esc(hd.url) + '" target="_blank" rel="noopener" class="btn sm" ' +
         'style="background:#0d9488;border-color:#0d9488;color:#fff;text-decoration:none;' +
         'display:inline-flex;align-items:center;min-height:40px;padding:5px 12px;box-sizing:border-box">' +
         'Open his old hisab &#8599;</a>' +
-        '<div class="meta grow" style="font-size:12px;min-width:0">The statement from the old books is on file' +
+        (adm ? door("Attach a newer one") : "") +
+        /* the sentence takes the whole next row (flex-basis:100%) rather than being squeezed into
+           whatever is left beside two buttons - measured at 390px, it was a 4-word-wide column. */
+        '<div class="meta" style="font-size:12px;flex:1 1 100%;min-width:0">The statement from the old books is on file' +
         (hd.note ? ' &middot; ' + esc(hd.note) : "") + '.</div></div></div>';
     }
-    if (!(nAmt(c.openingAmt) > 0)) return "";
-    if (!(clientDue(c.name) > 0.5)) return "";
-    if (!roleIs("admin")) return "";
-    return '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
-      '<h3 style="margin:0 0 2px;font-size:13px">Old hisab not attached</h3>' +
-      '<div class="meta" style="font-size:12.5px;margin-bottom:7px"><b>' + esc(c.name) +
-      '</b> came over from the old books carrying <b>' + money(nAmt(c.openingAmt)) + '</b> pending' +
-      (c.openingAsOn ? ' as on ' + esc(d10(c.openingAsOn)) : "") +
-      ', and the statement from those books is not on file. Attach it once, and this balance can be' +
-      ' explained to him without anybody opening the old spreadsheet again.</div>' +
-      '<button class="btn sm" data-act="cl-open" data-id="' + esc(c.id) + '">Attach the old hisab</button></div>';
+    if (!adm) return "";
+    var op = nAmt(c.openingAmt), owed = clientDue(c.name);
+    if (op > 0 && owed > 0.5) {
+      return '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
+        docTag("Where his old balance came from", "#b45309") +
+        '<h3 style="margin:0 0 2px;font-size:13px">Old hisab not attached</h3>' +
+        '<div class="meta" style="font-size:12.5px;margin-bottom:7px"><b>' + esc(c.name) +
+        '</b> came over from the old books carrying <b>' + money(op) + '</b> pending' +
+        (c.openingAsOn ? ' as on ' + esc(d10(c.openingAsOn)) : "") +
+        ', and the statement from those books is not on file. Attach it once, and this balance can be' +
+        ' explained to him without anybody opening the old spreadsheet again.</div>' +
+        door("Attach the old hisab", true) + '</div>';
+    }
+    if (o.quiet && !(op > 0)) return "";
+    return '<div style="border:1px dashed #cbd5e1;border-radius:9px;padding:7px 9px;margin:0 0 7px">' +
+      /* the label is the question the paper answers, so for a man who never carried a balance it
+         must not claim there is one - it names the document instead. */
+      docTag(op > 0 ? "Where his old balance came from" : "The statement from his old books") +
+      '<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">' +
+      /* 220px basis: beside the button on a laptop, its own row on a phone (390 - padding leaves
+         372, and 220 + 8 + a 150px button does not fit - which is the point). */
+      '<span class="meta" style="font-size:12px;flex:1 1 220px;min-width:0"><b>Old hisab &mdash; nothing attached.</b> ' +
+      (op > 0
+        ? 'He came over from the old books and has since cleared that balance. The statement still says where it came from.'
+        : 'He was entered here rather than carried over from the old books, so there may be nothing to attach.') +
+      '</span>' + door("Attach the old hisab") + '</div></div>';
+  }
+  /* v6.9.214, still: the same question asked at the moment it actually matters - while somebody
+     is standing in that one man's account wondering where the balance came from. */
+  function hisabAskCard(name) { return hdLine(name, { quiet: true }); }
+
+  /* BOTH PAPERS, WHEREVER EITHER IS DRAWN. o.noHisab where hisabAskCard already stands on the
+     same screen - the HISAB screen says each thing once (v6.9.449). */
+  function docStrip(cl, o) {
+    return agrStrip(cl) + ((o && o.noHisab) ? "" : hdLine(cl, o));
+  }
+
+  /* A DOOR OF ITS OWN. The same uploader the client form uses - the same file input id, the
+     same note line, the same hd-attach - so there is one place that reads a hisab file and one
+     place that sends it, not two that can disagree. And the OTHER paper is drawn underneath,
+     because the whole complaint was that a man cannot tell from a form which document he is
+     looking at. */
+  function modalHisabDoc(cid, back) {
+    var c = (S.data.clients || []).filter(function (x) { return x.id === cid; })[0];
+    if (!c) {
+      return '<h2>Old hisab</h2><p class="sub">That client is not in the book on this device.</p>' +
+        '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    }
+    if (!roleIs("admin")) {
+      /* v6.9.460 - and NOT "the server refuses this from any other role". Measured against the
+         live backend: since V107 every role may write an audit row, and pdfHost asks who you
+         are, not what you are. The screen rule is real; the claim about the server would not
+         have been. See the note on modalAgrAdd, which carried that sentence. */
+      return '<h2>A partner attaches this</h2><p class="sub">The statement from the old books is ' +
+        'filed against the client by a partner, so the one everybody opens stays the one that was ' +
+        'sent. Ask the office to attach it.</p>' +
+        '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    }
+    var hd = hisabDoc(c.id), op = nAmt(c.openingAmt);
+    return '<h2>Attach the old hisab &mdash; ' + esc(c.name) + '</h2>' +
+      '<p class="sub">His statement from the old books: the paper that answers <b>where the balance ' +
+      'he arrived with came from</b>. Hosted once and opened from his account after that, so nobody ' +
+      'opens the old spreadsheet in front of him again.</p>' +
+      (hd && hd.url
+        ? '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 10px">' +
+          '<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<a href="' + esc(hd.url) + '" target="_blank" rel="noopener" class="btn sm" ' +
+          'style="background:#0d9488;border-color:#0d9488;color:#fff;text-decoration:none;' +
+          'display:inline-flex;align-items:center;min-height:40px;padding:5px 12px;box-sizing:border-box">' +
+          'Open the one on file &#8599;</a>' +
+          '<div class="meta grow" style="font-size:12px;min-width:0">Attached by ' + esc(hd.by || "?") +
+          (hd.at || hd.createdAt ? ' on ' + esc(fullDate(hd.at || hd.createdAt)) : "") +
+          (hd.note ? ' &middot; ' + esc(hd.note) : "") +
+          '. Attaching another makes that one current &mdash; nothing is deleted.</div></div></div>'
+        : '') +
+      '<div class="meta" style="font-size:12.5px;margin:8px 0 0">' +
+      (op > 0
+        ? '<b>' + esc(c.name) + '</b> came over carrying <b>' + money(op) + '</b>' +
+          (c.openingAsOn ? ' as on ' + esc(d10(c.openingAsOn)) : "") + '.'
+        : 'No opening balance is recorded against him, so there may be nothing to attach. It is ' +
+          'stored all the same if there is.') + '</div>' +
+      '<label style="margin-top:8px">The document</label>' +
+      '<input type="file" id="c_hisab" accept="application/pdf,image/*" ' +
+      'style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
+      '<div id="c_hisab_note" class="meta" style="margin-top:4px;color:#94a3b8">' + hdNoteHtml() + '</div>' +
+      '<label style="margin-top:8px">A note (optional)</label>' +
+      '<input id="c_hisab_txt" placeholder="e.g. as on 31-03-2026"/>' +
+      '<div style="margin-top:12px;padding-top:9px;border-top:1px dashed #cbd5e1">' +
+      '<div class="meta" style="font-size:12px;margin-bottom:5px">The other paper a client can carry ' +
+      'is the one that fixed his <b>rate</b> &mdash; a different document answering a different question:</div>' +
+      agrStrip(c.name) + '</div>' +
+      '<div class="foot">' +
+      (back === "agr"
+        ? '<button class="btn ghost" data-act="agr-open" data-n="' + esc(c.name) + '">&larr; Back to the rate paper</button>'
+        : '<button class="btn ghost" data-act="close">Cancel</button>') +
+      '<button class="btn" data-act="hd-attach" data-id="' + esc(c.id) + '">Attach the old hisab</button></div>';
   }
 
   /* ---- the signature pad ----
@@ -17158,6 +17278,7 @@ function viewCatalogue() {
         (top ? '+ Attach another' : '&#128206; Attach the paper') + '</button>' : "";
     if (!top) {
       return '<div style="border:1px dashed #cbd5e1;border-radius:9px;padding:7px 9px;margin:0 0 7px">' +
+        docTag("What was agreed, and at what rate") +          /* v6.9.460 - what this paper is FOR */
         '<div class="meta" style="font-size:12px">' +
         '<b>No signed paper on file.</b> The rates below are what the app charges — nothing here ' +
         'says what was agreed, on a date, by whom.' + (add ? ' ' : '') + '</div>' +
@@ -17165,6 +17286,7 @@ function viewCatalogue() {
     }
     var dr = agrDrift(top);
     return '<div style="border:1px solid #a7f3d0;background:#f0fdfa;border-radius:9px;padding:7px 9px;margin:0 0 7px">' +
+      docTag("What was agreed, and at what rate", "#0f766e") +  /* v6.9.460 */
       '<div class="acts" style="align-items:baseline;gap:7px;flex-wrap:wrap;margin:0">' +
       '<b style="font-size:12.5px;color:#065f46">' + esc(top.kind || "Paper on file") + '</b>' +
       (top.ref ? '<span class="pill">' + esc(top.ref) + '</span>' : '') +
@@ -17214,8 +17336,17 @@ function viewCatalogue() {
 
   function modalAgrAdd(cl) {
     if (!roleIs("admin")) {
-      return '<h2>Admin only</h2><p class="sub">The papers that fix a rate are attached by a partner. ' +
-        'The server refuses this write from any other role, so this is not only a screen rule.</p>' +
+      /* v6.9.460 - THE OLD WORDS WERE: "The server refuses this write from any other role, so
+         this is not only a screen rule." MEASURED against the live backend before touching it:
+         it does not. Since V107 EVERY role may write an audit row - the only thing the server
+         does is turn an upsert over another man's row into a new row - and pdfHost asks
+         whether you are signed in, not what role you hold. So the sentence claimed a lock that
+         is not there, and a claim like that is worse than no claim: it is the reason nobody
+         goes looking. The screen rule is real and stands. A real server gate on
+         client:agreement and client:hisab belongs in the backend and is written down as owed. */
+      return '<h2>A partner attaches this</h2><p class="sub">The papers that fix a rate are filed ' +
+        'by a partner, so the one everybody opens stays the one that was signed. Ask the office to ' +
+        'attach it.</p>' +
         '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
     }
     var g = S.agr || {};
@@ -17249,6 +17380,14 @@ function viewCatalogue() {
       '<input type="file" id="agr_file" accept="application/pdf,image/*" ' +
       'style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
       '<div id="agr_file_note" class="meta" style="margin-top:4px;color:#94a3b8">' + agrFileSay() + '</div>' +
+      /* v6.9.460 - HIS WORDS: "attach old hisab provion have gone, better to show way here".
+         The way, from the form he had open, and a line saying why they are two papers and not
+         one. What is typed above is kept while he is across there (agrGrab / S.agrHop). */
+      '<div style="margin-top:12px;padding-top:9px;border-top:1px dashed #cbd5e1">' +
+      '<div class="meta" style="font-size:12px;margin-bottom:5px">This one is the <b>rate</b> paper. ' +
+      'The other document a client can carry is his <b>old hisab</b> &mdash; they answer different questions, ' +
+      'and nothing typed above is lost if you step across:</div>' +
+      hdLine(cl, { back: "agr" }) + '</div>' +
       '<div class="foot"><button class="btn ghost" data-act="agr-cancel">Cancel</button>' +
       '<button class="btn" id="agr_btn" data-act="agr-save" data-n="' + esc(cl) + '">Attach it</button></div>';
   }
@@ -17273,18 +17412,41 @@ function viewCatalogue() {
     });
     return out;
   }
+  /* v6.9.460 - HE STEPS ACROSS TO THE OLD HISAB AND COMES BACK. Nothing is sent by this; it
+     only stops the form emptying itself on the way. Every field is read from the DOM only if
+     the DOM still has it, so a call made after the form is gone cannot blank what it holds. */
+  function agrGrab() {
+    if (!S.agr) return;
+    try {
+      var g = function (idd, cur) { return el(idd) ? String(el(idd).value || "") : (cur == null ? "" : cur); };
+      S.agr.kind = g("agr_kind", S.agr.kind);
+      S.agr.ref = g("agr_ref", S.agr.ref);
+      S.agr.docDate = g("agr_date", S.agr.docDate);
+      S.agr.till = g("agr_till", S.agr.till);
+      S.agr.note = g("agr_note", S.agr.note);
+      if (document.querySelector("#agr_rates .agr-on")) {
+        var picked = {};
+        agrReadRates().forEach(function (x) { picked[dkey(x.brand)] = x.pct; });
+        (S.agr.rates || []).forEach(function (r) {
+          var k = dkey(r.brand);
+          if (k in picked) { r.on = true; r.pct = picked[k]; } else { r.on = false; }
+        });
+      }
+    } catch (e) { }
+  }
 
   function admBrandTable(cl, ro) {
     var sp = admBrandSplit(cl), line = admLineup(cl);
     if (!sp.took.length && !sp.other.length) {
       /* v6.9.436 - the paper still belongs here. A client with no brand priced yet is exactly
          the one whose signed quotation is the only rate anybody has. */
-      return agrStrip(cl) + '<div class="meta" style="font-size:12px;color:#64748b">Nothing delivered to this ' +
+      return docStrip(cl) + '<div class="meta" style="font-size:12px;color:#64748b">Nothing delivered to this ' +
         'client yet, so there is no brand to price.</div>';
     }
     /* v6.9.436 - ABOVE the rates, because it is the answer to "what did we agree" and the
-       table below is only the answer to "what do we charge". */
-    var h = agrStrip(cl);
+       table below is only the answer to "what do we charge".
+       v6.9.460 - and the old hisab beside it, which this screen never mentioned at all. */
+    var h = docStrip(cl);
     if (sp.took.length) {
       h += '<div style="font-size:12px;font-weight:700;color:#0f766e;margin:0 0 3px">' +
         'What he has taken \u00b7 ' + sp.took.length + ' brand' + (sp.took.length === 1 ? '' : 's') +
@@ -18173,7 +18335,7 @@ function viewCatalogue() {
     h += '<div class="row"><button class="btn sm ghost" data-act="disc-back">&larr; All discount clients</button></div>' +
       /* v6.9.436 - the signed paper sits at the TOP of the screen where the rates are typed.
          This is the screen he meant: "as to check on single click what finalized at what rate". */
-      agrStrip(cl) +
+      docStrip(cl) +          /* v6.9.460 - the old hisab too; this screen never named it */
       '<div class="empty" style="text-align:left;padding:6px 0 10px">Brand-wise discount for <b>' + esc(cl) + '</b>. Used by the quote builder, new challans and the billing screen.' +
       (anyPartner
         ? ' Below each discount, set the incentive % for this client’s partner(s) on that brand — each earns on the net (post-discount) sale.'
@@ -37691,10 +37853,15 @@ function viewCatalogue() {
     /* ---- THE PAPER THAT FIXED THE RATE  (v6.9.436) ---- */
     if (act === "agr-open") {
       var agN = t.getAttribute("data-n") || "";
-      S.agr = { client: agN, rates: agrRatesNow(agN).map(function (x) { return { brand: x.brand, pct: x.pct, on: true }; }) };
+      /* v6.9.460 - coming BACK from the old hisab is not a fresh start. Only a deliberate hop
+         keeps the half-filled form (S.agrHop, set by hd-open); closing this form and opening
+         it again still clears it, so a document picked days ago can never go up by surprise. */
+      var agKeep = !!(S.agrHop && S.agr && dgKey(String(S.agr.client || "")) === dgKey(agN));
+      S.agrHop = false;
+      if (!agKeep) S.agr = { client: agN, rates: agrRatesNow(agN).map(function (x) { return { brand: x.brand, pct: x.pct, on: true }; }) };
       S.modal = modalAgrAdd(agN); render(); return;
     }
-    if (act === "agr-cancel") { S.agr = null; S.modal = null; render(); return; }
+    if (act === "agr-cancel") { S.agr = null; S.agrHop = false; S.modal = null; render(); return; }
     if (act === "agr-list") { S.modal = modalAgrList(t.getAttribute("data-n") || ""); render(); return; }
     if (act === "agr-see") {
       var agU = t.getAttribute("data-u") || "";
@@ -37743,7 +37910,7 @@ function viewCatalogue() {
           }), ip: ""
         }, true).then(function () {
           var secA = Math.round((Date.now() - _agrUp.t0) / 1000);
-          _agrUp = null; _agrCache = null; S.agr = null; S.modal = null;
+          _agrUp = null; _agrCache = null; S.agr = null; S.agrHop = false; S.modal = null;
           render();
           toast("Attached in " + secA + "s — " + agKind + " for " + agCl + ", with " +
                 agRates.length + " rate(s) written onto it.");
@@ -39859,6 +40026,15 @@ function viewCatalogue() {
       waShareDoc(loadLogo().then(function () { return challanPdf(chw, chw.approvedBy || ""); }),
         String(chw.challanNo || "challan").replace(/[^\w.-]/g, "_") + ".pdf", nw, msgw);
       return;
+    }
+    /* v6.9.460 - THE OLD HISAB HAS A DOOR OF ITS OWN. Every way to it used to end at the
+       client form's migration box, eleven fields down a thirty-field form, and three of the
+       four ways were only drawn for a man who still owed on an opening balance. */
+    if (act === "hd-open") {
+      if (!roleIs("admin")) { toast("A partner attaches the statement from the old books."); return; }
+      var hBack = t.getAttribute("data-back") || "";
+      if (hBack === "agr") { agrGrab(); S.agrHop = true; }
+      S.modal = modalHisabDoc(id, hBack); render(); return;
     }
     /* ---- the old hisab, attached to a client (v6.9.210) ----
        Uploaded on its own, without saving the client, so a half-filled form is never at risk. */
