@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.54.0";
+  var APP_VERSION = "1.55.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3606,8 +3606,36 @@ function discRowOn(client, brand, onYmd) {
     var mn = manualNoFor(c), pf = proofFor(c), st = chStatus(c), held = chHeld(c);
     var ex = chExec(c), open = S.open && String(S.open) === String(c.id);
     var waiting = (st === "Draft" && !held);
+    /* ====== WHAT HAS GONE STOPS SHOUTING (1.55.0, 11 Sep 2026) ======
+       HIS WORDS this morning, after the twice-daily Telegram roll-call was stopped: "we just
+       want show a dispatch button on every challan, clicking it make it blur or strikeout and
+       mark dispatched."
+
+       THE BUTTON WAS ALREADY THERE - a Draft carries "Pass & Dispatch", an Approved one carries
+       "Dispatch". What was NOT there is the second half: rendered at 390px with one challan in
+       each of the five states, a challan that had gone looked identical to one that had not.
+       Same white card, same opacity 1, four letters different in a pill. Nothing for the eye to
+       skip.
+
+       NOT A BLUR AND NOT A STRIKETHROUGH, AND HE WAS TOLD WHY BEFORE HE CHOSE.
+       - A blur hides the challan number, which is the one thing a man at the counter reads.
+       - A LINE THROUGH SOMETHING ALREADY MEANS CANCELLED across this estate: a cancelled
+         challan number (team/app.js 22340), a lost brand (6931), a dead payment (23105, 23182),
+         the old rate before a discount (9146). Striking a dispatched challan would tell anyone
+         who uses the CRM that it had been cancelled.
+       So: the card fades, the number stays crisp, and the pill gains a tick.
+
+       AND IT FADES ONLY WHEN THERE IS NOTHING LEFT TO DO ON IT - gone AND the signed receipt in.
+       He was shown both rules side by side at 390px and chose this one. A challan that has gone
+       and is still MISSING its receipt stays bright, because that is the next job on it: 40 of
+       them, Rs 9,29,502, oldest 50 days. Fading those would put the RECEIPT PENDING pill behind
+       the same veil as the work it is announcing - and the count beside it would go on saying
+       five while the screen showed none. Billed is no exception; the receipt is still owed. */
+    var gone = (st === "Dispatched" || st === "Received" || st === "Billed");
+    var finished = (gone && !!pf);
     return '<div class="card" style="padding:11px 12px' +
-        (waiting ? ';border-color:#fecaca;background:#fffafa' : '') + '">' +
+        (waiting ? ';border-color:#fecaca;background:#fffafa' : '') +
+        (finished ? ';opacity:.6;background:#fafafa;border-color:#eef2f7' : '') + '">' +
       '<div class="row"><div class="grow">' +
         '<div style="font-weight:800;font-size:14.5px">' + esc(c.customerName || "-") +
           /* the executive, right beside the client, because that is the question the godown
@@ -3620,7 +3648,7 @@ function discRowOn(client, brand, onYmd) {
         '<div style="margin-top:5px">' +
           (held ? '<span class="pill amb">Held on this phone</span> ' : '') +
           (st === "Draft" ? '<span class="pill red">APPROVAL PENDING</span>'
-                          : '<span class="pill grn">' + esc(st) + '</span>') +
+                          : '<span class="pill grn">' + (gone ? '\u2713 ' : '') + esc(st) + '</span>') +
           (pf ? ' <span class="pill grn">Receipt attached</span>'
               : (canAttachYet(st) ? ' <span class="pill red">RECEIPT PENDING</span>'
                                   : ' <span class="pill amb">No receipt yet</span>')) +
