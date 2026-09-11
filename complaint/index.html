@@ -136,6 +136,11 @@ select{
 
 .foot{text-align:center;font-size:12px;color:var(--ink-60);margin-top:22px;line-height:1.6;}
 .foot a{color:var(--teal-700);text-decoration:none;font-weight:600;}
+/* A TELEPHONE NUMBER IS ONE WORD. Rendered at 390px on 11 Sep 2026 the office number broke
+   across two lines in the middle - "+91 94666" above and "00611" below - on the ticket screen,
+   which is the exact screen a customer reads when he wants to ring instead of wait. Every
+   tel: link on this page, wherever it sits. */
+a[href^="tel:"]{white-space:nowrap;}
 
 /* ---- Success ticket ---- */
 .ticket{display:none;}
@@ -196,7 +201,7 @@ select{
     </div>
     <button id="hRef" type="button" title="Load this page fresh"
       style="margin-left:auto;background:rgba(0,0,0,.06);color:inherit;border:0;border-radius:10px;
-             width:34px;height:34px;font-size:16px;line-height:1;cursor:pointer">&#8635;</button>
+             width:44px;height:44px;font-size:17px;line-height:1;cursor:pointer">&#8635;</button>
   </div>
 </div>
 
@@ -322,7 +327,7 @@ var GAS_URL = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjm
    answered and this one said "no version in the file". Without it nobody can tell whether a
    customer is looking at today's form or one from three weeks ago - and this is the one app
    whose users are customers, who will not be asked to refresh. */
-var BUILD = "2026.08.17-1";
+var BUILD = "2026.09.11-1";
 
 var state = { category:"", urgency:"normal" };
 
