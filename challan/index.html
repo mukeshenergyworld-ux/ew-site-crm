@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.55.0";
+  var APP_VERSION = "1.55.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3632,7 +3632,29 @@ function discRowOn(client, brand, onYmd) {
        the same veil as the work it is announcing - and the count beside it would go on saying
        five while the screen showed none. Billed is no exception; the receipt is still owed. */
     var gone = (st === "Dispatched" || st === "Received" || st === "Billed");
-    var finished = (gone && !!pf);
+    /* ====== 1.55.1 - I ASKED THE WRONG QUESTION, AND HIS BOOK SAYS 34 ======
+       1.55.0 faded on proofFor(c) - an actual challan:proof audit row. THIS APP SETTLED THAT
+       QUESTION AGAINST ME IN v1.8.0, and the reasoning is thirty lines above missingReceipts():
+       "the AND was the whole trouble. A challan whose paper was filed but whose receiptReceived
+       never moved satisfied !proofFor(c) === false and so dropped OFF this list - the one list
+       that would have caught it... The flag is now the only question asked."
+
+       MEASURED on his own book, 12 Sep 2026, out of the app's own snapshot: 180 challans, 177 of
+       them gone, 792 audit rows, 148 proof rows.
+         141  flag Y and a proof row       - agree, and were faded
+          34  flag Y and NO proof row      - DISAGREE. 1.55.0 left every one of them BRIGHT
+           0  proof row and no flag        - never happens
+           2  neither                      - agree, genuinely still owed
+       The 34 are the pre-v1.8.0 backlog that note describes - July challans (VISHAL5000/210726,
+       RAVI0000/210726) whose paper was filed before a proof row was written at all.
+
+       WHAT IT COST, stated plainly: nothing was hidden - the error went the safe way. What it did
+       was leave 34 finished challans shouting, while the "Receipt pending" chip above them - which
+       asks the FLAG - counted 2. The screen and the count would have disagreed by 34, which is the
+       exact fault my own note in 1.55.0 claimed to be avoiding.
+
+       So it asks what the chip asks and what missingReceipts() asks: ONE question, the flag. */
+    var finished = (gone && String(c.receiptReceived || "").toUpperCase() === "Y");
     return '<div class="card" style="padding:11px 12px' +
         (waiting ? ';border-color:#fecaca;background:#fffafa' : '') +
         (finished ? ';opacity:.6;background:#fafafa;border-color:#eef2f7' : '') + '">' +
@@ -3647,8 +3669,15 @@ function discRowOn(client, brand, onYmd) {
           ' \u00b7 ' + esc(dstr(d10(c.createdAt))) + (c.site ? ' \u00b7 ' + esc(c.site) : '') + '</div>' +
         '<div style="margin-top:5px">' +
           (held ? '<span class="pill amb">Held on this phone</span> ' : '') +
+          /* 1.55.1 - AND A CANCELLED CHALLAN WAS WEARING A GREEN PILL. chStatus returns whatever
+             the row says, and every status but Draft was drawn green, so "Cancelled" arrived in the
+             colour of a thing that had gone well - and since 1.55.0 it also sat at full brightness
+             beside faded finished ones, reading as live work. His book holds none today (175
+             Received, 2 Dispatched, 2 Approved, 1 Draft), so this is a latent lie, not a live one -
+             but it is one line. */
           (st === "Draft" ? '<span class="pill red">APPROVAL PENDING</span>'
-                          : '<span class="pill grn">' + (gone ? '\u2713 ' : '') + esc(st) + '</span>') +
+            : st === "Cancelled" ? '<span class="pill red">CANCELLED</span>'
+            : '<span class="pill grn">' + (gone ? '\u2713 ' : '') + esc(st) + '</span>') +
           (pf ? ' <span class="pill grn">Receipt attached</span>'
               : (canAttachYet(st) ? ' <span class="pill red">RECEIPT PENDING</span>'
                                   : ' <span class="pill amb">No receipt yet</span>')) +
