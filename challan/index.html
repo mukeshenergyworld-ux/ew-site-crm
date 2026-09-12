@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.56.0";
+  var APP_VERSION = "1.57.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3666,6 +3666,54 @@ function discRowOn(client, brand, onYmd) {
      paper is on file and can be produced in an argument three months later. So every count in
      this app now asks THIS pair of functions and nothing else. If the question ever changes, it
      changes here, once. */
+  /* ================= WHO DID WHAT, ON THE FACE OF THE CARD (1.57.0) =================
+     HIS WORDS, 12 Sep 2026: "on every challan, both in CRM and challan app, for all, show
+     challan created by on date, challan approved by on date, receipt attached by on date … so
+     to check who doing how much effort and also easilly found who created what and who approved
+     what without clicking details."
+
+     THREE LINES, ALWAYS OPEN, FOR EVERY ROLE. Every one of them is read off data that was
+     already being written and MEASURED as populated before this was built: createdBy 180/180
+     and createdAt 180/180; approvedBy 179 and approvedAt 175; and the receipt's own audit row
+     already carries its actor and its time, which is where "attached by" comes from - there has
+     never been a column for it and there does not need to be one.
+
+     A STAGE THAT HAS NOT HAPPENED SAYS SO. An empty line would read as a missing name; "not
+     passed yet" is the truth and it is the same red the pills use. And a stage that happened
+     with no name recorded says "name not recorded" rather than printing a blank, because 1 of
+     180 challans has an approvedAt with no approvedBy and pretending otherwise is how a man
+     gets blamed for something he did not do. */
+  function trailRow(label, who, when, tone) {
+    var col = tone === "bad" ? "#b91c1c" : (tone === "good" ? "#0f766e" : "#334155");
+    return '<div style="display:flex;gap:6px;line-height:1.5">' +
+      '<div class="muted" style="font-size:12px;min-width:58px;flex:0 0 auto">' + label + '</div>' +
+      '<div style="font-size:12px;color:' + col + ';min-width:0">' +
+        (who ? '<b>' + esc(who) + '</b>' : '') +
+        (who && when ? ' \u00b7 ' : '') +
+        (when ? esc(dstr(d10(when))) : '') +
+      '</div></div>';
+  }
+  function chTrail(c) {
+    var st = chStatus(c), pf = proofFor(c);
+    var none = function (v) { return !String(v == null ? "" : v).trim(); };
+    var rows = [];
+    rows.push(trailRow("Made", none(c.createdBy) ? "name not recorded" : c.createdBy, c.createdAt, ""));
+    if (none(c.approvedAt) && none(c.approvedBy)) {
+      rows.push(trailRow("Passed", st === "Draft" ? "not passed yet" : "not recorded", "", "bad"));
+    } else {
+      rows.push(trailRow("Passed", none(c.approvedBy) ? "name not recorded" : c.approvedBy, c.approvedAt, ""));
+    }
+    if (pf) {
+      rows.push(trailRow("Receipt", none(pf.actor || pf.by) ? "name not recorded" : (pf.actor || pf.by), pf.at, "good"));
+    } else if (canAttachYet(st)) {
+      rows.push(trailRow("Receipt", "not attached yet", "", "bad"));
+    } else {
+      rows.push(trailRow("Receipt", "not due until it has gone", "", ""));
+    }
+    return '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0">' +
+      rows.join("") + '</div>';
+  }
+
   function receiptIn(c)   { return !!proofFor(c); }
   function receiptOwed(c) { return canAttachYet(chStatus(c)) && !receiptIn(c); }
 
@@ -3826,6 +3874,7 @@ function discRowOn(client, brand, onYmd) {
         '<div style="text-align:right"><div class="big">' + money(chValue(c)) + '</div>' +
         '<div class="muted">' + chLines(c).length + ' line' + (chLines(c).length === 1 ? '' : 's') + '</div></div>' +
       '</div>' +
+      chTrail(c) +
       (open ? chDetail(c) : '') +
       '<div class="acts">' +
         /* v1.32.0 - the details come FIRST, before any button that downloads anything */
