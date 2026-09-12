@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.55.2";
+  var APP_VERSION = "1.56.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -2347,8 +2347,11 @@ function discRowOn(client, brand, onYmd) {
          it for want of the flag. The flag is now the only question asked. Filing a receipt sets
          it (markReceived), so this changes nothing for anything filed from v1.8.0 on; what it
          does is surface every delivery filed BEFORE it, which is exactly the backlog that needs
-         looking at. */
-      return String(c.receiptReceived || "").toUpperCase() !== "Y";
+         looking at.
+         1.56.0 - and it asks receiptOwed() now, which asks for the PHOTOGRAPH. On his book that
+         is 36 rather than 4. v1.8.0's worry was a challan with a photograph whose flag never
+         moved; measured 12 Sep, his book has ZERO of those, and 34 of the opposite. */
+      return receiptOwed(c);
     }).sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
   }
 
@@ -2829,9 +2832,7 @@ function discRowOn(client, brand, onYmd) {
   function chFiltered(kind) {
     var list = challans().filter(recent);
     if (kind === "draft")   return list.filter(isDraft);
-    if (kind === "noproof") return list.filter(function (c) {
-      return String(c.receiptReceived || "").toUpperCase() !== "Y";
-    });
+    if (kind === "noproof") return list.filter(receiptOwed);
     if (kind === "mine")    return list.filter(function (c) { return lower(c.createdBy) === lower(S.user); });
     return list;
   }
@@ -2859,9 +2860,7 @@ function discRowOn(client, brand, onYmd) {
     return groups.map(function (g) {
       var open = bandIsOpen(g.name);
       var val = g.list.reduce(function (a, c) { return a + chValue(c); }, 0);
-      var noRc = g.list.filter(function (c) {
-        return String(c.receiptReceived || "").toUpperCase() !== "Y";
-      }).length;
+      var noRc = g.list.filter(receiptOwed).length;
       var draft = g.list.filter(isDraft).length;
       return '<div class="exec" data-act="band" data-n="' + esc(g.name) + '">' +
           '<span class="car">' + (open ? '&#9662;' : '&#9656;') + '</span>' +
@@ -2977,7 +2976,7 @@ function discRowOn(client, brand, onYmd) {
     challans().forEach(function (c) {
       if (lower(c.customerName) !== nm) return;
       if (String(c.status || "") === "Cancelled") return;
-      if (String(c.receiptReceived || "").toUpperCase() !== "Y") o.noReceipt++;
+      if (receiptOwed(c)) o.noReceipt++;
       if (String(c.billNo || "").trim()) return;          /* billed - not our business here */
       o.n++;
       o.rs += chValue(c);
@@ -3303,17 +3302,22 @@ function discRowOn(client, brand, onYmd) {
           'Ask the office to check what your name is allowed to see.</div>' +
           '<div class="acts" style="margin-top:10px">' +
           '<button class="btn sm ghost" data-act="refresh">Try pulling again</button></div></div>') +
-        searchBox() + statBar() + chChips();
+        searchBox() + dayCard() + statBar() + chChips();
       if (!list.length) {
         return h + '<div class="empty">Nothing here' +
           (f === "all" ? ' in the last 60 days.' : ' under that heading.') + '</div>' +
           showAllBar(hidden, 'than 60 days');
       }
       var val3 = list.reduce(function (a, c) { return a + chValue(c); }, 0);
+      /* 1.56.0 - AND THE STRAP HAS TO TELL THE TRUTH ABOUT THE ORDER. Seen on the render, not
+         in the source: this said "newest first" over the chase list, which is deliberately
+         oldest-day-first. A line that describes the screen wrongly is worse than no line. */
       h += '<div class="muted" style="font-weight:700;margin:8px 2px 4px">' +
         list.length + ' challan' + (list.length === 1 ? '' : 's') + ' · ' + money(val3) +
-        ' · newest first</div>';
-      h += execBands(list);
+        (f === "noproof" ? ' · oldest day first' : ' · newest first') + '</div>';
+      /* 1.56.0 - the receipts chip is a CHASE list, so it is grouped by the day the material
+         went out and the oldest day is at the top. Everything else stays exec-banded. */
+      h += (f === "noproof" ? receiptBands(list) : execBands(list));
       return h + showAllBar(hidden, 'than 60 days');
     }
     var cl = clientByName(z.client) || {};
@@ -3523,12 +3527,102 @@ function discRowOn(client, brand, onYmd) {
       '</div>';
   }
 
+  /* the date box types a day straight in. Bound after every paint, like every other input on
+     this screen, because render() replaces the node. */
+  function bindDayPick() {
+    var el = document.getElementById("dayPick");
+    if (!el) return;
+    el.onchange = function () {
+      var v = String(el.value || "").slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) { S.day = v; render(); }
+    };
+  }
+
   function statBar() {
     var p = pendingApproval().length, m = missingReceipts().length;
     return '<div class="stats">' +
       '<div class="stat ' + (p ? 'bad' : 'good') + '"><div class="n">' + p + '</div><div class="l">Waiting to be passed</div></div>' +
-      '<div class="stat ' + (m ? 'bad' : 'good') + '"><div class="n">' + m + '</div><div class="l">No signed receipt yet</div></div>' +
+      '<div class="stat ' + (m ? 'bad' : 'good') + '"><div class="n">' + m + '</div><div class="l">No signed receipt on file</div></div>' +
       '</div>';
+  }
+
+  /* ================= WHAT WENT OUT ON A DAY (1.56.0) =================
+     HIS WORDS: "provide a seprate section of Challan Generated and passed today, or date wise
+     challan generated for godown, accounts and admin."
+
+     One card, four numbers, any day. Default today; the arrows walk a day at a time and the box
+     takes a date. Every stamp it reads is a real column on the challans sheet and MEASURED as
+     populated on his book before this was built: createdAt 180/180, approvedAt 175, dispatchedAt
+     172, receiptAt 170.
+
+     WHY IT IS NOT A NEW TAB. The three roles who need it - godown, accounts, admin - already
+     land on this screen, and a day's work is not a different subject from the list below it. A
+     tab would be a second place to look at the same book. */
+  function dayCard() {
+    var day = S.day || today();
+    var all = challans();
+    var on = function (f) { return all.filter(function (c) { return dayOf(c[f]) === day; }); };
+    var gen = on("createdAt"), pas = on("approvedAt"), dis = on("dispatchedAt"), rcp = on("receiptAt");
+    var sum = function (l) { return l.reduce(function (a, c) { return a + chValue(c); }, 0); };
+    var cell = function (l, label) {
+      return '<div style="flex:1 1 46%;min-width:132px;padding:7px 9px;border:1px solid #e2e8f0;' +
+        'border-radius:10px;background:' + (l.length ? '#f8fafc' : '#fff') + '">' +
+        '<div style="font-size:19px;font-weight:800;line-height:1.1">' + l.length + '</div>' +
+        /* 12px, not 11.5. t_v401 has enforced "nothing readable below 12px in any of the four
+           apps" since 6.9.401, and it caught this label the first time the rig ran over it. */
+        '<div class="muted" style="font-size:12px;margin-top:1px">' + label + '</div>' +
+        (l.length ? '<div style="font-size:12px;font-weight:700;margin-top:2px">' + money(sum(l)) + '</div>' : '') +
+        '</div>';
+    };
+    return '<div class="card" style="padding:11px 12px">' +
+      '<div class="row" style="align-items:center;gap:7px">' +
+        '<button class="btn sm gry" data-act="day-prev" title="the day before">&#8592;</button>' +
+        '<input type="date" id="dayPick" value="' + esc(day) + '" ' +
+          'style="flex:1;min-width:0;font-size:14px;padding:8px 9px;border:1.5px solid #e2e8f0;border-radius:10px">' +
+        '<button class="btn sm gry" data-act="day-next" title="the day after">&#8594;</button>' +
+      '</div>' +
+      '<div class="muted" style="font-weight:700;margin:8px 2px 6px">' +
+        (day === today() ? 'Today' : dstr(day)) + '</div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:7px">' +
+        cell(gen, 'Challans generated') + cell(pas, 'Passed') +
+        cell(dis, 'Dispatched') + cell(rcp, 'Receipts filed') +
+      '</div>' +
+      (day !== today() ? '<div class="acts" style="margin-top:9px">' +
+        '<button class="btn sm gry" data-act="day-today">Back to today</button></div>' : '') +
+      '</div>';
+  }
+
+  /* ================= THE RECEIPTS TO COLLECT, DAY BY DAY (1.56.0) =================
+     HIS WORDS: "a dedicated section for date wise List of pending receivings to be attachd for
+     Godown, accounts and admin, flag them red to all."
+
+     OLDEST DAY FIRST, and that is the whole point: a chase list is not a news feed. The 53-day
+     old one is the one that will be argued about, so it is at the top, not buried under this
+     morning's. Every other chip still reads newest-first through execBands. */
+  function receiptBands(list) {
+    var days = {}, order = [];
+    list.forEach(function (c) {
+      var k = dayOf(c.createdAt) || "(no date)";
+      if (!days[k]) { days[k] = []; order.push(k); }
+      days[k].push(c);
+    });
+    order.sort();                                   /* oldest day first */
+    return order.map(function (k) {
+      var l = days[k];
+      var val = l.reduce(function (a, c) { return a + chValue(c); }, 0);
+      var age = k === "(no date)" ? 0 : Math.max(0, Math.floor((Date.now() - Date.parse(k + "T00:00:00")) / 86400000));
+      return '<div class="card" style="padding:9px 11px;margin:10px 0 6px;border-color:#fecaca;background:#fffafa">' +
+          '<div class="row" style="align-items:baseline;gap:8px">' +
+            '<div style="font-weight:800;font-size:14.5px;color:#b91c1c">' +
+              (k === "(no date)" ? "No date on the challan" : dstr(k)) + '</div>' +
+            '<div class="grow"></div>' +
+            '<div style="font-weight:800">' + money(val) + '</div>' +
+          '</div>' +
+          '<div class="muted" style="margin-top:2px">' + l.length + ' receipt' + (l.length === 1 ? '' : 's') +
+            ' still to collect' + (age ? ' \u00b7 <b style="color:#b91c1c">' + age + ' day' + (age === 1 ? '' : 's') + ' out</b>' : '') +
+          '</div></div>' +
+        newestFirst(l).map(chRow).join("");
+    }).join("");
   }
 
   /* ---- WHOSE CLIENT IS IT (20 Aug 2026) ----
@@ -3550,6 +3644,44 @@ function discRowOn(client, brand, onYmd) {
      dispatched, no need to show at this stage". He is right and it is not only clutter: a
      signed receipt attached to a draft is a receipt for material still on the shelf. */
   var RECEIPT_FROM = ["Dispatched", "Received", "Billed"];
+
+  /* ================= ONE QUESTION ABOUT A RECEIPT, ASKED IN ONE PLACE (1.56.0) =============
+     HIS WORDS, 12 Sep 2026: "we are missing challan receiving, not able to track them strictly
+     … motive is that we cant miss any receivings."
+
+     HE IS RIGHT, AND THE REASON IS NOT A MISSING SCREEN. The screen exists. What was wrong is
+     that it counted a DIFFERENT THING from the red pill on the cards underneath it. There are
+     two signals in this app and they are not the same:
+         receiptReceived === "Y"   somebody ticked the row
+         a challan:proof row       there is an actual PHOTOGRAPH on file, with a url
+
+     MEASURED on his own book, 12 Sep, out of the app's own snapshot: 180 challans, 177 gone.
+         36 have gone with NO PHOTOGRAPH - Rs 11,43,012, oldest 53 days,
+            35 of them over a week old and 18 over a month.
+         THE CHIP SAID 4.
+     Four counts in this file asked the tick; every card asked for the photograph. So he looked
+     at the top of the screen, read 4, and 36 were outstanding. That is how you miss a receiving.
+
+     HE WAS ASKED WHICH NUMBER HE WANTED and chose the photograph: "received" means the signed
+     paper is on file and can be produced in an argument three months later. So every count in
+     this app now asks THIS pair of functions and nothing else. If the question ever changes, it
+     changes here, once. */
+  function receiptIn(c)   { return !!proofFor(c); }
+  function receiptOwed(c) { return canAttachYet(chStatus(c)) && !receiptIn(c); }
+
+  /* A DAY IS A LOCAL DAY. createdAt is stored as an ISO instant, so d10() hands back its UTC
+     date - and in IST (UTC+5:30) anything stamped between midnight and 05:30 belongs to the
+     PREVIOUS UTC date. A "generated today" card built on d10() would quietly lose the early
+     morning every single day. MEASURED before writing it: his book has ZERO challans in that
+     window - nobody here writes one at 2 a.m. - so this is latent, not live, and the row display
+     is deliberately left as it is. The new day card uses this. */
+  function dayOf(v) {
+    var t = Date.parse(String(v == null ? "" : v));
+    if (!t) return d10(v);
+    var x = new Date(t);
+    return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" +
+           String(x.getDate()).padStart(2, "0");
+  }
   function canAttachYet(st) { return RECEIPT_FROM.indexOf(String(st || "")) >= 0; }
 
   /* ---- HAS THIS ONE ALREADY GONE TO TELEGRAM ----
@@ -5345,6 +5477,7 @@ function discRowOn(client, brand, onYmd) {
       (S.sheet ? '<div class="sheet" data-act="close-bg"><div class="inner" data-stop="1">' + S.sheet + '</div></div>' : '');
     placePut(_place, S.sheet, S.tab);
     wireInputs();
+    bindDayPick();                    /* 1.56.0 - render() replaces the node, so rebind the box */
     jrnPaint(); syncBottomVar();
   }
 
@@ -5647,6 +5780,16 @@ function discRowOn(client, brand, onYmd) {
     if (act === "tab")     { S.tab = t.getAttribute("data-t"); S.sheet = null; S.q = ""; S.allTime = false; render(); return; }
     if (act === "qclear")  { S.q = ""; render(); return; }
     if (act === "ch-filter") { S.chFilter = t.getAttribute("data-f"); render(); return; }
+    /* ---- the day card (1.56.0). A day is a LOCAL day - see dayOf(). ---- */
+    if (act === "day-prev" || act === "day-next") {
+      var base = Date.parse((S.day || today()) + "T12:00:00");   /* midday, so no DST or tz edge
+                                                                    can push a step onto the
+                                                                    wrong side of midnight */
+      var step = (act === "day-next" ? 1 : -1) * 86400000;
+      S.day = dayOf(new Date(base + step).toISOString());
+      render(); return;
+    }
+    if (act === "day-today") { S.day = today(); render(); return; }
     if (act === "band")    { bandToggle(t.getAttribute("data-n")); render(); return; }
     if (act === "alltime") { S.allTime = true; render(); return; }
 
