@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.465";
+  var APP_VERSION = "6.9.466";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -16889,7 +16889,58 @@ function viewCatalogue() {
 
     /* One challan's card (compact summary + expandable detail). Factored out so the very same card
        can be dropped under whichever client it belongs to in the grouped layout below. */
-    function challanCardHtml(c) {
+      /* ============ WHO DID WHAT, ON THE FACE OF THE CARD (v6.9.466) ============
+       HIS WORDS, 12 Sep 2026: "on every challan, both in CRM and challan app, for all, show
+       challan created by on date, challan approved by on date, receipt attached by on date …
+       so to check who doing how much effort and also easilly found who created what and who
+       approved what WITHOUT CLICKING DETAILS."
+
+       IT WAS THERE AND IT WAS BEHIND THE FOLD. madeLine - "Created by X · approved by Y" -
+       was built inside `if (open)`, so it only ever appeared once the card had been expanded,
+       and it carried NO DATES at all. Both are fixed here: three lines, always open, with the
+       date on each, and the old madeLine is gone rather than left to say the same thing twice
+       one fold lower.
+
+       Every field was MEASURED as populated on his book before this was built: createdBy
+       180/180, createdAt 180/180, approvedBy 179, approvedAt 175. "Attached by" comes off the
+       receipt's own audit row, which has always carried its actor and its time - there has
+       never been a column for it and there does not need to be one.
+
+       A STAGE THAT HAS NOT HAPPENED SAYS SO, in the red the pills use. And a stage that
+       happened with no name says "name not recorded" rather than printing a blank: one of his
+       180 challans has an approvedAt and no approvedBy, and a blank there is how a man gets
+       blamed for something he did not do. Byte-for-byte the same three rows as the Challan
+       app's chTrail. */
+    function chTrailRow(label, who, when, tone) {
+      var col = tone === "bad" ? "#b91c1c" : (tone === "good" ? "#0f766e" : "#334155");
+      return '<div style="display:flex;gap:6px;line-height:1.5">' +
+        '<div style="font-size:12px;color:#64748b;min-width:62px;flex:0 0 auto">' + label + '</div>' +
+        '<div style="font-size:12px;color:' + col + ';min-width:0">' +
+          (who ? '<b>' + esc(who) + '</b>' : '') + (who && when ? ' &middot; ' : '') +
+          (when ? esc(fullDate(when)) : '') + '</div></div>';
+    }
+    function chTrailHtml(c) {
+      var st = String(c.status || "Draft"), pf = challanProof(c.id);
+      var gone = ["Dispatched", "Received", "Billed"].indexOf(st) >= 0;
+      var none = function (v) { return !String(v == null ? "" : v).trim(); };
+      var rows = [chTrailRow("Made", none(c.createdBy) ? "name not recorded" : c.createdBy, c.createdAt, "")];
+      if (none(c.approvedAt) && none(c.approvedBy)) {
+        rows.push(chTrailRow("Passed", st === "Draft" ? "not passed yet" : "not recorded", "", "bad"));
+      } else {
+        rows.push(chTrailRow("Passed", none(c.approvedBy) ? "name not recorded" : c.approvedBy, c.approvedAt, ""));
+      }
+      if (pf) {
+        rows.push(chTrailRow("Receipt", none(pf.actor || pf.by) ? "name not recorded" : (pf.actor || pf.by), pf.at, "good"));
+      } else if (gone) {
+        rows.push(chTrailRow("Receipt", "not attached yet", "", "bad"));
+      } else {
+        rows.push(chTrailRow("Receipt", "not due until it has gone", "", ""));
+      }
+      return '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0">' +
+        rows.join("") + '</div>';
+    }
+
+  function challanCardHtml(c) {
       var st = c.status || "Draft";
       var cls = st === "Received" ? "Won" : (st === "Draft" ? "due" : "teal");
       var open = !!(S.chExp && S.chExp[c.id]);
@@ -16983,15 +17034,21 @@ function viewCatalogue() {
           var chat = tm.split("/")[0], msg = tm.split("/")[1];
           if (chat.indexOf("-100") === 0) chat = chat.slice(4);
           return ' &middot; <a href="https://t.me/c/' + esc(chat) + '/' + esc(msg) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600;text-decoration:none">Telegram &#8599;</a>';
-        })() + proofLink(c) + '</div>';
+        })() + proofLink(c) + '</div>' +
+        /* v6.9.466 - always open, for every role. See chTrailHtml. */
+        chTrailHtml(c);
 
       if (open) {
         var billLine = (c.billNo ? 'Bill <b>' + esc(c.billNo) + '</b>' + (c.billTo ? ' to ' + esc(c.billTo) : "") :
           (String(c.billStatus) === "Sent for billing" ? '<span style="color:#b45309">With accounts for billing' + (c.billTo ? ' - ' + esc(c.billTo) : "") + '</span>' : ""));
         var freightLine = (c.freight ? 'Freight ' + money(c.freight) + ' (' + esc(c.freightTo || "Client") + ') &middot; ' + esc(c.driver || "no driver") : "");
-        var madeLine = 'Created by ' + esc(c.createdBy || "") + (c.approvedBy ? ' &middot; approved by <b>' + esc(c.approvedBy) + '</b>' : "");
+        /* v6.9.466 - madeLine is GONE. It said "Created by X · approved by Y" with no dates and
+           only once the card was expanded, which is the exact complaint. The trail above says
+           the same thing with dates and says it without a tap, so keeping this would be drawing
+           one fact twice. It was a LOCAL VARIABLE, not a function, so the REMOVED register in
+           lift.js does not apply - nothingLost() confirms no function was lost. */
         out += '<div class="meta" style="margin-top:4px">' +
-          [billLine, freightLine, madeLine].filter(function (x) { return x; }).join('<br>') +
+          [billLine, freightLine].filter(function (x) { return x; }).join('<br>') +
           '</div>' + challanItemsTable(c);
       }
 
@@ -23615,13 +23672,59 @@ function viewCatalogue() {
      always a double tap or a re-entry of something already in the book - so we stop and ask
      rather than quietly writing it.  Cancelled rows are not in S.data, so a payment he already
      set aside will never block him from entering the correct one. */
+  /* ====== AND A PAYMENT STILL IN FLIGHT IS ALSO IN THE BOOK (v6.9.466) ======
+     HIS WORDS, 12 Sep 2026: "make a seprate payment verification section for accounts only …
+     so to avoid duplicate paymetn entry."
+
+     MEASURED BEFORE BUILDING ANYTHING, on his own book: 33 payments, and EXACTLY ONE duplicate
+     in the whole of it -
+         Dr Danish Pritam Arora  Rs 1,00,000  Cash  31 Jul  ref "by Vivek from office"
+         P-1785670038625-747  written 2026-08-02T11:27:21.366Z
+         P-1785670040623-106  written 2026-08-02T11:27:22.338Z
+     NINE HUNDRED AND SEVENTY-TWO MILLISECONDS APART. Same client, same date, same amount, same
+     mode, same reference. It was a DOUBLE TAP.
+
+     AND THE GUARD ABOVE WOULD HAVE CAUGHT IT - it asks all four of those questions - except
+     that it reads S.data.payments, and the first row was not in S.data.payments yet. This
+     backend's cheapest call is 2.1 seconds (measured 7 Sep); the second tap came at 0.97. The
+     guard was looking at a book that did not yet contain the thing it was looking for.
+
+     So the register below remembers the SIGNATURE of a payment from the moment its save is sent
+     until the moment it lands, and payTwin treats that as being in the book - which it is, on
+     its way. Nothing else changes: the same sheet asks the same question, and "Yes, a second
+     separate payment" still writes it.
+
+     ZERO such pairs exist anywhere else in his book - not in the commission payouts, not in 180
+     challans, not in the returns. One double tap, once, and this is the second of it. */
+  var _payFlight = {};
+  function paySigOf(p) {
+    return [dkey(p && p.client), String((p && p.date) || ""),
+            Math.round(payAmt(p)), dkey(p && p.mode)].join("|");
+  }
+  function payFlightSet(p)  { _payFlight[paySigOf(p)] = Date.now(); }
+  function payFlightDone(p) { delete _payFlight[paySigOf(p)]; }
+  function payFlightHas(p) {
+    var sig = paySigOf(p), t = _payFlight[sig];
+    if (!t) return false;
+    /* a save that never landed must not lock the signature for ever. land() always runs, even on
+       a throw, so this is only a belt against a path nobody has found yet. */
+    if (Date.now() - t > 30000) { delete _payFlight[sig]; return false; }
+    return true;
+  }
   function payTwin(p) {
-    return (S.data.payments || []).filter(function (x) {
+    var inBook = (S.data.payments || []).filter(function (x) {
       return String(x.client || "") === String(p.client || "") &&
         String(x.date || "") === String(p.date || "") &&
         Math.round(payAmt(x)) === Math.round(payAmt(p)) &&
         String(x.mode || "") === String(p.mode || "");
     })[0] || null;
+    if (inBook) return inBook;
+    /* on its way to the sheet, and therefore already entered */
+    if (payFlightHas(p)) {
+      return { __flight: true, client: p.client, date: p.date, amount: p.amount,
+               mode: p.mode, ref: p.ref, id: "" };
+    }
+    return null;
   }
   function poTwin(p) {
     return (S.data.commpay || []).filter(function (x) {
@@ -23650,9 +23753,11 @@ function viewCatalogue() {
        receiptNo() is built from the row's own date and id, so it is the same number now as
        later. Nothing here says "recorded" until the server has said so. */
     unlockBtn(btn);
+    payFlightSet(p);                 /* v6.9.466 - from here it counts as entered. See payTwin. */
     var _pGen = _mgen;
     S.modal = modalPayDone(p, "saving"); render();
     var land = function (synced) {
+      payFlightDone(p);
       /* still the same screen he was left on: settle the state where he can see it. Moved
          on already: say it once, quietly, and repaint the background. */
       if (_pGen === _mgen && S.modal) { S.modal = modalPayDone(p, synced); render(); }
@@ -38219,7 +38324,12 @@ function viewCatalogue() {
           unlockBtn(t); _payPend = piRow;
           S.modal = modalDupStop("This looks like the same payment again", piRow.client,
             [money(twin.amount) + " by " + esc(String(twin.mode || "")) + " on " + esc(fullDate(twin.date)),
-             "Receipt " + esc(receiptNo(twin)) + (twin.ref ? " &middot; ref " + esc(twin.ref) : "")],
+             /* v6.9.466 - one still on its way has no receipt number yet, and saying "Receipt
+                (none)" to a man who has just double-tapped is worse than saying what is true. */
+             twin.__flight
+               ? "Sent a moment ago, still going to the sheet" +
+                 (twin.ref ? " &middot; ref " + esc(twin.ref) : "")
+               : "Receipt " + esc(receiptNo(twin)) + (twin.ref ? " &middot; ref " + esc(twin.ref) : "")],
             "pi-force", "Yes, a second separate payment");
           render(); return;
         }
