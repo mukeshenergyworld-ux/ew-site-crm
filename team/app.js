@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.466";
+  var APP_VERSION = "6.9.467";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -40169,10 +40169,27 @@ function viewCatalogue() {
             else toast("First delivery to " + cn + " — ask a partner to set their discount & incentive.");
           }
           render();
-          sendChallanPdf(r, "TG_CHALLAN",
-            "<b>Challan " + no + "</b>\n" + cn + (siteName ? " - " + siteName : "") +
-            "\nCreated by <b>" + S.user + "</b>\n\n<i>PENDING APPROVAL</i>", null)
-            .then(function (tg) { toast(tg && tg.ok ? "Sent to challan bot." : "Saved, but Telegram send failed."); });
+          /* ============ ONE CHALLAN, ONE SEND, ONE GROUP (v6.9.467, 12 Sep 2026) ============
+             HIS WORDS: "i want challan only to be send once to telegram bot, now i think its
+             twice, one on creation and one on approved" - and "challan go to telegram bot only
+             when approved, its not required to send challan to bot on challan creation."
+
+             HE WAS RIGHT, AND I TOLD HIM HE WAS NOT. I had checked the Challan app's create
+             path, found no Telegram call in it, and said so. The send was HERE, in the CRM's
+             create handler, captioned "PENDING APPROVAL". Counted properly, a challan raised in
+             the CRM and passed in the Challan app went to Telegram THREE times: TG_CHALLAN on
+             creation, then TG_CHALLAN again and TG_DISPATCH on approval.
+
+             ALL THAT IS LEFT IS THE DISPATCH SEND, ON APPROVAL. He chose that group for a
+             reason that settles it: it is where the Dispatched button has to live for the
+             godown to press it on the phone in his hand. A record group holding a second copy
+             of every challan is a place to look and nothing to do.
+
+             AND NOTHING IS LOST BY IT. A challan pending approval is already visible to
+             everyone who can act on it: the Approve screen, the "Waiting to be passed" count on
+             the Challan app's home, and the red APPROVAL PENDING pill on its own card. What the
+             group added was a PDF of a challan nobody may act on yet. */
+          if (!firstSetup) toast("Challan " + no + " created - it goes to the dispatch group when it is passed.");
         });
       }).catch(function (e) {
         if (chSaved) { toast("Challan saved. Something after it did not finish - pull down to refresh."); return; }
