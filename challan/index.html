@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.55.1";
+  var APP_VERSION = "1.55.2";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3632,29 +3632,37 @@ function discRowOn(client, brand, onYmd) {
        the same veil as the work it is announcing - and the count beside it would go on saying
        five while the screen showed none. Billed is no exception; the receipt is still owed. */
     var gone = (st === "Dispatched" || st === "Received" || st === "Billed");
-    /* ====== 1.55.1 - I ASKED THE WRONG QUESTION, AND HIS BOOK SAYS 34 ======
-       1.55.0 faded on proofFor(c) - an actual challan:proof audit row. THIS APP SETTLED THAT
-       QUESTION AGAINST ME IN v1.8.0, and the reasoning is thirty lines above missingReceipts():
-       "the AND was the whole trouble. A challan whose paper was filed but whose receiptReceived
-       never moved satisfied !proofFor(c) === false and so dropped OFF this list - the one list
-       that would have caught it... The flag is now the only question asked."
+    /* ====== WHICH QUESTION IS "IS THE RECEIPT IN" - SETTLED, WITH THE NUMBERS (1.55.2) ======
+       THIS FLIPPED ONCE AND MUST NOT FLIP AGAIN, so the whole chain is here.
 
-       MEASURED on his own book, 12 Sep 2026, out of the app's own snapshot: 180 challans, 177 of
-       them gone, 792 audit rows, 148 proof rows.
-         141  flag Y and a proof row       - agree, and were faded
-          34  flag Y and NO proof row      - DISAGREE. 1.55.0 left every one of them BRIGHT
-           0  proof row and no flag        - never happens
-           2  neither                      - agree, genuinely still owed
-       The 34 are the pre-v1.8.0 backlog that note describes - July challans (VISHAL5000/210726,
-       RAVI0000/210726) whose paper was filed before a proof row was written at all.
+       There are TWO signals in this app and they are not the same thing:
+         receiptReceived === "Y"   somebody marked the goods acknowledged
+         a challan:proof row       there is an actual PHOTOGRAPH on file, with a url
 
-       WHAT IT COST, stated plainly: nothing was hidden - the error went the safe way. What it did
-       was leave 34 finished challans shouting, while the "Receipt pending" chip above them - which
-       asks the FLAG - counted 2. The screen and the count would have disagreed by 34, which is the
-       exact fault my own note in 1.55.0 claimed to be avoiding.
+       MEASURED on his own book, 12 Sep 2026, out of the app's own snapshot - 180 challans, 177
+       of them gone, 792 audit rows, 148 proof rows:
+         141  flag Y and a photograph
+          34  flag Y and NO photograph
+           0  a photograph and no flag
+           2  neither
 
-       So it asks what the chip asks and what missingReceipts() asks: ONE question, the flag. */
-    var finished = (gone && String(c.receiptReceived || "").toUpperCase() === "Y");
+       1.55.1 moved this line to the FLAG, on the strength of the v1.8.0 note above
+       missingReceipts() - "the flag is now the only question asked". THAT WAS WRONG, and it was
+       wrong on his own words: pending item 12 of his own list is "40 SIGNED DELIVERIES WITH NO
+       PHOTOGRAPH, Rs 9,29,502, oldest 50 days - now visible as Pending in red in the RECEIPT
+       column". Those 40 ARE these 34. A missing photograph is work he is chasing, the card's own
+       receipt pill already says so in red, and fading them would have hidden Rs 9,29,502 of it.
+
+       AND v1.8.0's reason does not apply here anyway: it changed missingReceipts() so that a
+       challan with a photograph but no flag could not slip off that list. His book has ZERO of
+       those. The case that actually occurs is the other one, where the flag over-reports.
+
+       SO THE FADE ASKS FOR THE PHOTOGRAPH, and it now agrees with the red pill three lines below
+       on the same card. What does NOT agree is the "Receipt pending" CHIP above the list, which
+       counts the flag and therefore says 2 where the cards show 36 red. THAT is the real fault
+       this review found, it is his number to define, and it is his to decide - not something to
+       change under him. */
+    var finished = (gone && !!pf);
     return '<div class="card" style="padding:11px 12px' +
         (waiting ? ';border-color:#fecaca;background:#fffafa' : '') +
         (finished ? ';opacity:.6;background:#fafafa;border-color:#eef2f7' : '') + '">' +
