@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.471";
+  var APP_VERSION = "6.9.474";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -15844,6 +15844,24 @@ function viewCatalogue() {
     });
   }
 
+  /* ============ THE FLAG IS RELEASED WHEN THE SEND FAILS  (v6.9.474) ============
+     S.dispatchSent was set BEFORE the send and never cleared, so it recorded an INTENTION to
+     send and was then read as a record that the send had happened. One failed send and that
+     challan could never be posted again from this browser - and doMove answered the next tap
+     with "Already sent to dispatch bot.", which was the opposite of the truth.
+
+     Releasing it is safe because the real guard is on the SERVER and always was:
+     tgDispatchPost_ refuses when the row's tgMsg is already filled, which is durable, shared by
+     every phone and survives a reload. This flag only ever had to stop two taps in one second. */
+  function tgSentFlag(id, on) {
+    S.dispatchSent = S.dispatchSent || {};
+    if (on) S.dispatchSent[id] = true; else delete S.dispatchSent[id];
+  }
+  /* v6.9.474 - and a challan whose tgMsg the SERVER has already filled is on the group whatever
+     this phone remembers, so a fresh tab never re-posts one it did not send itself. */
+  function tgAlreadyOn(c) {
+    return !!String((c && c.tgMsg) || "").trim();
+  }
   function sendChallanPdf(c, bot, caption, approver) {
     return loadLogo().then(function () { return challanPdf(c, approver); }).then(function (d) {
       return api("tgSend", { bot: bot, pdfBase64: d.output("datauristring").split(",")[1],
@@ -17085,6 +17103,63 @@ function viewCatalogue() {
       rows.join("") + '</div>';
   }
 
+  /* ============ PASSED, AND STILL STANDING IN THE GODOWN  (v6.9.473) ============
+     A challan at "Approved" has been passed - somebody typed a PIN and released the material -
+     and never dispatched. It is the ONE state in the flow that nothing watched: healthScan has
+     followed Draft since 3 days and Dispatched since 7, and never this.
+
+     MEASURED the day this shipped: four of them, Rs 1,31,038, the oldest 41 days, and one of
+     them was the challan he was looking for.
+
+     Read from the SERVER's status, never from a flag on the phone. That is the whole point: the
+     phone is what was wrong today - doPass() shows Dispatched before the server answers - so a
+     band built on anything the phone remembers would have hidden exactly the same challan. This
+     one clears itself the moment the row really moves, including when it turns out the dispatch
+     landed after all and only the reply was lost. */
+  function chStuckApproved() {
+    return (S.data.challans || []).filter(function (c) {
+      return String(c.status || "") === "Approved" && !c.cancelled;
+    }).filter(function (c) {
+      return seesAllClients() || isMineClient(c.customerName);
+    }).map(function (c) {
+      return { c: c, age: Math.max(0, -daysTo(String(c.createdAt || "").slice(0, 10))) };
+    }).sort(function (a, b) { return b.age - a.age; });
+  }
+  function chStuckApprovedBand() {
+    var L = chStuckApproved();
+    if (!L.length) return "";
+    var tot = L.reduce(function (t, x) { return t + (chValue(x.c) || 0); }, 0);
+    var old = L[0].age;
+    var h = '<div class="card" id="ch_appr_band" style="border-color:#fecaca;background:#fef2f2;padding:10px 12px">' +
+      '<div style="font-weight:800;font-size:13.5px;color:#b91c1c">' +
+      L.length + ' challan' + (L.length === 1 ? '' : 's') + ' passed but NOT dispatched &middot; ' +
+      esc(money(tot)) + '</div>' +
+      '<div class="meta" style="font-size:12px;color:#7f1d1d;margin-top:3px">' +
+      'The PIN was typed and the material was released, and the dispatch never went through &mdash; ' +
+      'usually because the second call got no answer while the phone had already moved on. ' +
+      'They are on nobody\'s account and in nobody\'s list until they are dispatched' +
+      (old >= 1 ? '. The oldest has been standing <b>' + old + ' day' + (old === 1 ? '' : 's') + '</b>' : '') +
+      '.</div>';
+    L.forEach(function (x) {
+      var c = x.c;
+      h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;' +
+        'padding-top:6px;border-top:1px solid #fecaca">' +
+        '<button class="cv-nm" data-act="acct-open" data-id="' + esc(c.id) + '" ' +
+        'style="font-size:13px;font-weight:700;color:#b91c1c" title="' + esc(String(c.challanNo || "")) + '">' +
+        esc(chNoShort(String(c.challanNo || ""), d10(c.createdAt))) + '</button>' +
+        '<span style="font-size:12.5px;color:#0f172a">' + esc(String(c.customerName || "")) + '</span>' +
+        '<span class="meta" style="font-size:12px;color:#7f1d1d">' +
+        (x.age === 0 ? 'today' : x.age + ' day' + (x.age === 1 ? '' : 's')) + '</span>' +
+        '<span class="grow"></span>' +
+        '<b style="font-size:12.5px;color:#b91c1c">' + esc(money(chValue(c))) + '</b>' +
+        (canApprove() && !chArrived(c)
+          ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" ' +
+            'data-to="Dispatched" title="Release it now. The same one move the card offers.">Dispatch</button>'
+          : '') +
+        '</div>';
+    });
+    return h + '</div>';
+  }
   function viewChallans() {
     ensurePickerCss();   /* stage-action colours + picker styles must exist on the list view too */
     /* v6.9.247 - the challan app. A separate app on purpose: this screen is the whole delivery
@@ -17108,7 +17183,11 @@ function viewCatalogue() {
     }).sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
     var h = chAppLink + '<div class="cards">' +
       '<div class="stat ' + (by("Draft") ? "alert" : "") + '"><div class="n">' + by("Draft") + '</div><div class="l">Awaiting approval</div></div>' +
-      '<div class="stat"><div class="n">' + by("Approved") + '</div><div class="l">Approved, to dispatch</div></div>' +
+      /* v6.9.473 - IT WAS DRAWN QUIET. A four sat here for six weeks looking like a number
+         rather than Rs 1,31,038 of material nobody had released. It alerts now, and it leads to
+         the band instead of leading nowhere. */
+      '<div class="stat' + (by("Approved") ? ' alert' : '') + '"' + (by("Approved") ? ' data-act="ch-appr" style="cursor:pointer" title="Passed but not dispatched. Tap to see them."' : '') +
+        '><div class="n">' + by("Approved") + '</div><div class="l">Approved, to dispatch</div></div>' +
       '<div class="stat"><div class="n">' + by("Dispatched") + '</div><div class="l">Awaiting receipt</div></div>' +
       '<div class="stat"><div class="n">' + by("Received") + '</div><div class="l">Receipt in</div></div>' +
       /* ---- A PLACE OF ITS OWN FOR THE HISAB QUEUE  (v6.9.388, 1 September 2026) ----
@@ -17140,6 +17219,9 @@ function viewCatalogue() {
     /* v6.9.388 - not inside the queue: the band and the queue's own header would say the same
        thing twice, one under the other. */
     if (S.chOnly !== "hisab" && S.chOnly !== "draft") h += hisabNotStampedBand();   /* v6.9.464 */
+    /* v6.9.473 - ABOVE the finalise band on purpose: this one is material that never left the
+       godown, and that is a worse fact than a delivery waiting to be stamped. */
+    if (S.chOnly !== "hisab" && S.chOnly !== "draft") h += chStuckApprovedBand();
     h += hisabMismatchCard();
     h += '<div class="row">' +
       (roleIs("admin") ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
@@ -17244,6 +17326,21 @@ function viewCatalogue() {
           var chat = tm.split("/")[0], msg = tm.split("/")[1];
           if (chat.indexOf("-100") === 0) chat = chat.slice(4);
           return ' &middot; <a href="https://t.me/c/' + esc(chat) + '/' + esc(msg) + '" target="_blank" rel="noopener" style="color:#0f766e;font-weight:600;text-decoration:none">Telegram &#8599;</a>';
+        })() +
+        /* ---- v6.9.474 - AND WHEN IT IS NOT THERE, SAY SO ----
+           Since v6.9.106 this line has drawn a Telegram link when tgMsg is set and NOTHING when
+           it is not, so a challan whose message never went looked exactly like one whose message
+           had. That is how 13/09/2026/100 left the godown with the group never told. */
+        (function () {
+          if (tgAlreadyOn(c)) return "";
+          if (["Dispatched", "Received", "Billed"].indexOf(st) < 0) return "";
+          return ' &middot; <span style="color:#b45309;font-weight:600">not on the dispatch group</span>' +
+            (canApprove()
+              ? ' <button class="btn sm" data-act="ch-tgsend" data-id="' + esc(c.id) + '" ' +
+                'title="Post this challan to the dispatch group now. The server refuses a second copy, so this is safe to press." ' +
+                'style="padding:1px 8px;font-size:12px;font-weight:700;font-family:inherit;background:#fff;color:#b45309;' +
+                'border:1px solid #b45309;border-radius:6px;white-space:nowrap">Send to the group</button>'
+              : '');
         })() + proofLink(c) + '</div>' +
         /* v6.9.466 - always open, for every role. See chTrailHtml. */
         chTrailHtml(c);
@@ -19909,7 +20006,8 @@ function viewCatalogue() {
     /* v6.9.445 - the old book's number rides in BOOK NO on the brought-forward line, so the
        screen, the Excel and the PDF all print it through the one field they already read. */
     out.push({ kind: "bf", date: "", no: "", ptrs: "Balance brought forward" + String(bfTail || ""), type: "", book: String(clientOldBookNo(cl) || ""),
-               rcpt: "", bill: null, debit: null, credit: null, bal: run });
+               rcpt: "", bill: null, debit: null, credit: null, bal: run,
+               mby: "", aby: "", old: false });
     ev.forEach(function (e) {
       if (e.t === "C") {
         var c = e.row, v = chValue(c), nIt = pricedLines(c, cl).length;
@@ -19927,7 +20025,12 @@ function viewCatalogue() {
              was written: 170 received deliveries, 0 with a bill number. */
           bill: { no: String(c.billNo || "").trim(), at: d10(c.billedAt), to: String(c.billTo || "").trim(),
                   st: String(c.billStatus || "").trim() },
-          debit: v < -0.5 ? null : v, credit: v < -0.5 ? -v : null, bal: run, id: c.id });
+          debit: v < -0.5 ? null : v, credit: v < -0.5 ? -v : null, bal: run, id: c.id,
+          /* v6.9.472 - who raised it, and who passed it into the account. The stamp's actor is
+             the same one hisabOwed() waits for, so this column and the gate can never disagree. */
+          mby: String(c.createdBy || ""),
+          aby: (function () { var st = hisabStamp(c); return (st && st.by) ? String(st.by) : ""; })(),
+          old: hisabPreExisting(c) });
       } else if (e.t === "R") {
         var r = e.row, rv = returnNet(r), nR = returnLines(r).length;
         run -= rv;
@@ -19943,14 +20046,22 @@ function viewCatalogue() {
              RAVI0000/270726/R01, which is the return in the screenshot he sent. */
           type: "Return", book: "",
           rcpt: (function () { var pv = chProofAny(retProofView(r)); return !pv.has ? "no" : (pv.queued ? "onway" : "yes"); })(),
-          bill: null, debit: null, credit: rv, bal: run, id: r.id });
+          bill: null, debit: null, credit: rv, bal: run, id: r.id,
+          /* a return is a credit and is not gated by the finalise window, so it has a man who
+             raised it and nobody who passed it - said plainly rather than left looking unpassed */
+          mby: String(r.createdBy || ""), aby: "", old: true });
       } else {
         var p = e.row, pa = payAmt(p), pk = payKindOf(p);
         var tail = [p.mode ? String(p.mode).trim() : "", p.ref ? String(p.ref).trim() : ""].filter(Boolean).join(" · ");
         run -= pa;
         out.push({ kind: "pay", date: d10(p.date || p.createdAt), no: "",
           ptrs: tail || "", type: pk === "refund" ? "Refund" : (pk === "advance" ? "Advance" : "Payment"),
-          book: "", rcpt: "", bill: null, debit: pk === "refund" ? -pa : null, credit: pk === "refund" ? null : pa, bal: run, id: p.id });
+          book: "", rcpt: "", bill: null, debit: pk === "refund" ? -pa : null, credit: pk === "refund" ? null : pa, bal: run, id: p.id,
+          /* v6.9.472 - for money coming IN, "passed by" is the accounts check of v6.9.470. An
+             un-check is a later audit row, so v.off means nobody is standing behind it today. */
+          mby: String(p.createdBy || ""),
+          aby: (function () { var v = payVerifyRow(p); return (v && !v.off && v.by) ? String(v.by) : ""; })(),
+          old: payVerifyPre(p) });
       }
     });
     return { rows: out, bal: run, opening: opening, chs: chs, rets: rets, pays: pays,
@@ -19973,9 +20084,90 @@ function viewCatalogue() {
      say how many there are and both had gone stale by hand - "eight" survived the ninth AND the
      tenth column under the file buttons. A number a man has to remember to change is a number
      that will be wrong; this one cannot be. */
-  function MINI_COUNT_WORD() {
+  function MINI_COUNT_WORD(n) {
     var w = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
-    return w[MINI_HEAD.length] || String(MINI_HEAD.length);
+    var k = (n === undefined || n === null) ? MINI_HEAD.length : Number(n);
+    return w[k] || String(k);
+  }
+  /* ============ THE SCREEN HAS TWO COLUMNS THE CUSTOMER MUST NOT GET  (v6.9.472) ============
+     HIS WORDS: "add two more column , created by / approved by".
+
+     MINI_HEAD IS DELIBERATELY NOT TOUCHED. It is the list the statement PDF and the
+     Statement-only Excel are built from - the paper a CUSTOMER receives - and which of our men
+     raised a challan and which one passed it is our business, not his. A customer reading
+     "Gautam / Mukesh" beside his own delivery learns nothing he needs and something about how
+     we work. So the screen gets its own list, and the two go before the money because the
+     right-align rule on this table is "the last three columns", whatever sits in front of them.
+
+     Where the two facts come from, both already in the book, neither invented here:
+       MADE BY   - the challan's own createdBy. The delivery card has called it PREPARED BY
+                   since long before this, and a return carries the same field.
+       PASSED BY - the actor on the challan:hisab audit row. That is the finalise stamp, the
+                   second pair of eyes the gate of v6.9.469 waits for before a rupee reaches a
+                   customer's statement; for a PAYMENT it is the accounts check of v6.9.470.
+     So this column is not a new fact. It is the gate and the check, finally visible on the one
+     screen he reads every day. */
+  var MINI_HEAD2 = MINI_HEAD.slice(0, 7).concat(["Made by", "Passed by"], MINI_HEAD.slice(7));
+  /* ---------------- THE NUMBER WITHOUT THE DATE (v6.9.472) ----------------
+     HIS WORDS: "short down challan no".
+
+     BY SUBTRACTION ONLY. Nothing is invented, nothing renamed, nothing stored: the segments of
+     the number that ARE this row's date are dropped, because the first column of the same row
+     already says the date. Everything else is kept exactly as it was minted.
+
+     LAKSHAY003/250726/001  ->  LAKSHAY003/001
+     23/08/2026/015         ->  015
+     RAVI0000/270726/R01    ->  RAVI0000/R01
+     anything that does not carry this row's date  ->  returned untouched
+
+     The full number stays on the cell as its tooltip, in both Excel files, on the statement PDF,
+     on the challan itself and in every search. This is a way of DRAWING a number, not a new one. */
+  function chNoShort(no, dmy) {
+    var s = String(no == null ? "" : no).replace(/^\s+|\s+$/g, "");
+    var d = String(dmy == null ? "" : dmy).replace(/^\s+|\s+$/g, "");
+    if (!s || d.length !== 10) return s;
+    var dd = d.slice(0, 2), mm = d.slice(3, 5), yyyy = d.slice(6, 10), yy = yyyy.slice(2);
+    /* every shape a date takes inside a number this business mints */
+    var forms = [dd + mm + yy, yy + mm + dd, yyyy + mm + dd,
+                 dd + "/" + mm + "/" + yyyy, dd + "/" + mm + "/" + yy];
+    var parts = s.split("/"), keep = [], i, j, hit, dropped = false;
+    for (i = 0; i < parts.length; i++) {
+      /* a dd/mm/yyyy inside a slash-separated number is THREE parts, so try the widest first */
+      hit = 0;
+      for (j = 3; j >= 1; j--) {
+        if (i + j <= parts.length && forms.indexOf(parts.slice(i, i + j).join("/")) >= 0) { hit = j; break; }
+      }
+      if (hit) { i += hit - 1; dropped = true; continue; }
+      keep.push(parts[i]);
+    }
+    /* never hand back nothing: a number that is ONLY its date keeps its last segment */
+    if (!dropped || !keep.length) return s;
+    return keep.join("/");
+  }
+  /* first name only - the column has to fit beside nine others, and the full name is on the cell */
+  function miniWho1(n) {
+    var t = String(n == null ? "" : n).replace(/^\s+|\s+$/g, "");
+    if (!t) return "";
+    return t.split(/\s+/)[0] || t;
+  }
+  /* v6.9.472 - a row from before the finalise window (13 Aug) or before the accounts check
+     (13 Sep) has NOBODY to name. It says so. Drawing a blank there would read as "nobody
+     bothered", and inventing a name would be worse than either. */
+  function miniWhoCell(r, cell, f) {
+    var full = String((r && r[f]) || "").replace(/^\s+|\s+$/g, "");
+    if (full) {
+      return '<td style="' + cell + ';font-size:12px;color:#475569" title="' + esc(full) + '">' +
+        esc(miniWho1(full)) + '</td>';
+    }
+    if (!r || r.kind === "bf") return '<td style="' + cell + '"></td>';
+    if (f === "aby" && r.old) {
+      return '<td style="' + cell + ';font-size:12px;color:#94a3b8" title="' +
+        esc(r.kind === "pay"
+          ? "Entered before the accounts check began, so it counts as checked"
+          : "On the books before the finalise window, so it was never stamped") +
+        '">before</td>';
+    }
+    return '<td style="' + cell + ';font-size:12px;color:#cbd5e1">&mdash;</td>';
   }
   function miniRcptWord(k) {
     return k === "yes" ? "Attached" : k === "onway" ? "On its way" : k === "no" ? "Pending" : "";
@@ -20029,12 +20221,18 @@ function viewCatalogue() {
      line have no card, so their cells stay plain text. */
   function miniNoCell(r, cell, tone) {
     var can = (r.kind === "ch" || r.kind === "ret") && !!r.id;
-    if (!can) return '<td style="' + cell + ';font-weight:700;color:' + tone + '">' + esc(r.no) + '</td>';
-    return '<td data-act="acct-open" data-id="' + esc(r.id) + '" title="' +
+    /* v6.9.472 - drawn short, opened and searched and printed in full. The tooltip carries the
+       whole number whenever anything was taken off it, so a man who wants the minted number can
+       always read it without leaving the row. */
+    var full = String(r.no || ""), shortNo = chNoShort(full, r.date);
+    var head = (shortNo !== full ? full + " \u2014 " : "");
+    if (!can) return '<td style="' + cell + ';font-weight:700;color:' + tone + '"' +
+      (head ? ' title="' + esc(full) + '"' : '') + '>' + esc(shortNo) + '</td>';
+    return '<td data-act="acct-open" data-id="' + esc(r.id) + '" title="' + esc(head +
       (r.kind === "ret" ? 'Open this return: what came back, the goods-in receipt, what it credits'
-                        : 'Open this delivery: its items, the signed receipt, copy, return, cancel') + '" ' +
+                        : 'Open this delivery: its items, the signed receipt, copy, return, cancel')) + '" ' +
       'style="' + cell + ';font-weight:700;color:' + tone + ';cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px">' +
-      esc(r.no) + '</td>';
+      esc(shortNo) + '</td>';
   }
   function miniRcptCell(r) {
     var w = miniRcptWord(r.rcpt), ink = miniRcptInk(r.rcpt);
@@ -20060,8 +20258,11 @@ function viewCatalogue() {
        to shrink the figures until nobody can read them. Five columns needed every trick to make
        332px in 6.9.424; these eight need about 700, so on a phone the table scrolls sideways -
        which is exactly why the two buttons below it are not decoration. */
-    var num = 'padding:4px 6px;text-align:right;white-space:nowrap;border-top:1px solid #e2e8f0;font-variant-numeric:tabular-nums';
-    var cell = 'padding:4px 6px;white-space:nowrap;border-top:1px solid #e2e8f0';
+    /* v6.9.472 - "made it slightly compact". 4px/6px -> 3px/5px: two pixels a row off the
+       height and two off every column's width, on a table that already had to scroll sideways
+       before two columns were added to it. */
+    var num = 'padding:3px 5px;text-align:right;white-space:nowrap;border-top:1px solid #e2e8f0;font-variant-numeric:tabular-nums';
+    var cell = 'padding:3px 5px;white-space:nowrap;border-top:1px solid #e2e8f0';
     var h = '';
     m.rows.forEach(function (r, i) {
       var bg = r.kind === "ret" ? "#fef2f2" : (r.kind === "bf" ? "#fff" : (i % 2 ? "#f8fafc" : "#fff"));
@@ -20106,6 +20307,9 @@ function viewCatalogue() {
               : (r.book ? '<span style="background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;border-radius:5px;padding:0 5px;font-weight:700">' + esc(r.book) + '</span>' : ''))) + '</td>' +
         '<td style="' + cell + ';font-size:12px;font-weight:600">' + miniRcptCell(r) + '</td>' +
         '<td style="' + cell + ';font-size:12px">' + miniBillCell(r) + '</td>' +
+        /* v6.9.472 - who made it, who passed it. Screen only: MINI_HEAD, which the customer's
+           statement is built from, does not carry these and must not. */
+        miniWhoCell(r, cell, "mby") + miniWhoCell(r, cell, "aby") +
         '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f172a") + '">' +
           (r.debit == null ? "" : money(r.debit)) + '</td>' +
         '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f766e") + '">' +
@@ -20149,7 +20353,9 @@ function viewCatalogue() {
       /* v6.9.451 - the cards are behind the rows now, and this is the only place that says so */
       'Tap a <b>challan number</b> to open that delivery or return. ' +
       (canHisabRole() ? 'Type a book number, tap <b>Pending</b> to attach a receipt, tap <b>+ bill</b> to record a GST bill &mdash; each saves itself. ' : '') +
-      MINI_COUNT_WORD().replace(/^./, function (c) { return c.toUpperCase(); }) + ' columns do not fit a phone &mdash; slide the table sideways, or send the file.</span>' +
+      /* v6.9.472 - the SCREEN's count, not the statement's: the two lists differ now, and the
+         sentence that says how many columns there are has gone stale by hand twice already. */
+      MINI_COUNT_WORD(MINI_HEAD2.length).replace(/^./, function (c) { return c.toUpperCase(); }) + ' columns do not fit a phone &mdash; slide the table sideways, or send the file. <b>Made by</b> and <b>Passed by</b> are ours &mdash; neither goes on the customer\'s statement.</span>' +
       '</div>' +
       /* v6.9.425 - HE ASKED TO BE ABLE TO HIDE IT: on a client with eighteen lines the account
          pushes the delivery cards a long way down and he does not always want it open. The state
@@ -20161,12 +20367,16 @@ function viewCatalogue() {
         (S.miniShut ? '\u25b8 Show the ' + (m.rows.length - 1) + ' line' + (m.rows.length === 2 ? '' : 's')
                     : '\u25be Hide the account') + '</button></div>' +
       (S.miniShut ? '' :
-      '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;font-size:12.5px;min-width:100%">' +
-      '<tr style="background:#0b3b36">' + MINI_HEAD.map(function (t, i) {
-        return '<th style="padding:5px 6px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' +
+      /* v6.9.472 - "reduce font size if its comfortable": 12.5px -> 12px AND NO FURTHER. t_v401
+         has held a 12px floor across every app since 6.9.401, and this table is read at a counter,
+         sideways, on a phone. The floor answers the question, not my eye. */
+      '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;font-size:12px;min-width:100%">' +
+      '<tr style="background:#0b3b36">' + MINI_HEAD2.map(function (t, i) {
+        return '<th style="padding:4px 5px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' +
           /* v6.9.444 - the three money columns are the LAST three, whatever sits before them.
-             Written as "i >= 6" this right-aligned GST BILL the moment it became the seventh. */
-          (i >= MINI_HEAD.length - 3 ? 'right' : 'left') + '">' + esc(t.toUpperCase()) + '</th>';
+             Written as "i >= 6" this right-aligned GST BILL the moment it became the seventh.
+             v6.9.472 - and it kept holding when MADE BY and PASSED BY went in at 7 and 8. */
+          (i >= MINI_HEAD2.length - 3 ? 'right' : 'left') + '">' + esc(t.toUpperCase()) + '</th>';
       }).join("") + '</tr>' + h + '</table></div>') +
       '<div class="acts" style="margin-top:8px;align-items:baseline;border-top:2px solid #0d766c;padding-top:7px;flex-wrap:wrap;gap:8px">' +
       '<span class="grow" style="font-weight:700;font-size:13px;color:' + (m.bal > 0.5 ? "#b91c1c" : "#0f766e") + '">' +
@@ -26821,14 +27031,20 @@ function viewCatalogue() {
     chs.forEach(function (c) { var n = String(c.challanNo || "").trim(); if (n) (byNo[n] = byNo[n] || []).push(c); });
     var dup = Object.keys(byNo).filter(function (n) { return byNo[n].length > 1; })
       .map(function (n) { return { no: n, rows: byNo[n] }; });
-    var stuckDraft = [], stuckDisp = [];
+    var stuckDraft = [], stuckDisp = [], stuckAppr = [];
     chs.forEach(function (c) {
       var age = Math.max(0, -daysTo(String(c.createdAt || "").slice(0, 10)));
       if (String(c.status || "Draft") === "Draft" && age >= 3) stuckDraft.push({ c: c, age: age });
+      /* v6.9.473 - THE STATE NOTHING WATCHED. Draft since 3 days, Dispatched since 7, and
+         Approved never - which is how Rs 1,31,038 stood passed-and-undispatched, the oldest for
+         41 days, with a quiet tile counting it. A day is the threshold because a pass and a
+         dispatch are seconds apart when they work. */
+      else if (String(c.status) === "Approved" && age >= 1) stuckAppr.push({ c: c, age: age });
       else if (String(c.status) === "Dispatched" && age >= 7) stuckDisp.push({ c: c, age: age });
     });
     stuckDraft.sort(function (a, b) { return b.age - a.age; });
     stuckDisp.sort(function (a, b) { return b.age - a.age; });
+    stuckAppr.sort(function (a, b) { return b.age - a.age; });
     var unb = unbilledStats();
     var neg = [];
     hisabClientNames().forEach(function (n) { var d = clientLedger(n).due; if (d < -0.5) neg.push({ name: n, due: d }); });
@@ -30305,34 +30521,33 @@ function viewCatalogue() {
         /* the server did both. Everything below that follows a successful dispatch, once. */
         S.chMoving[pc.id] = false; pDone();
         chMoveRemember(pc.id, "Dispatched", r1.by || S.user);
-        S.dispatchSent = S.dispatchSent || {};
-        if (S.dispatchSent[pc.id]) return;
-        S.dispatchSent[pc.id] = true;
+        if (tgAlreadyOn(pc) || (S.dispatchSent || {})[pc.id]) return;
+        tgSentFlag(pc.id, true);
         return sendChallanPdf(pc, "TG_DISPATCH",
           "<b>DISPATCH: " + pc.challanNo + "</b>\n" + pc.customerName +
           (pc.driver ? "\nDriver: " + pc.driver : "") +
           "\nPassed by <b>" + (pc.approvedBy || S.user) + "</b>", pc.approvedBy || S.user)
           .then(function (tg) {
-            if (!tg || !tg.ok) toast("Dispatched — but the Telegram message did not go. Download the PDF and send it manually.");
+            /* v6.9.474 - a failed send RELEASES the flag, so the next tap really sends */
+            if (!tg || !tg.ok) { tgSentFlag(pc.id, false); toast("Dispatched — the dispatch group was NOT told. Press Send to the group on the challan."); }
           })
-          .catch(function () { toast("Dispatched — Telegram send failed. Download the PDF and send it manually."); });
+          .catch(function () { tgSentFlag(pc.id, false); toast("Dispatched — the dispatch group was NOT told. Press Send to the group on the challan."); });
       }
       return api("challanMove", { id: pc.id, to: "Dispatched", approvePin: ppin }).then(function (r2) {
         S.chMoving[pc.id] = false; pDone();
         if (!r2 || !r2.ok) { pHalf(r2 && r2.error); return; }
         chMoveRemember(pc.id, "Dispatched", r2.by || S.user);
         /* the dispatch bot gets exactly one copy, guard set BEFORE the send */
-        S.dispatchSent = S.dispatchSent || {};
-        if (S.dispatchSent[pc.id]) return;
-        S.dispatchSent[pc.id] = true;
+        if (tgAlreadyOn(pc) || (S.dispatchSent || {})[pc.id]) return;
+        tgSentFlag(pc.id, true);
         sendChallanPdf(pc, "TG_DISPATCH",
           "<b>DISPATCH: " + pc.challanNo + "</b>\n" + pc.customerName +
           (pc.driver ? "\nDriver: " + pc.driver : "") +
           "\nPassed by <b>" + (pc.approvedBy || S.user) + "</b>", pc.approvedBy || S.user)
           .then(function (tg) {
-            if (!tg || !tg.ok) toast("Dispatched \u2014 but the Telegram message did not go. Download the PDF and send it manually.");
+            if (!tg || !tg.ok) { tgSentFlag(pc.id, false); toast("Dispatched \u2014 the dispatch group was NOT told. Press Send to the group on the challan."); }
           })
-          .catch(function () { toast("Dispatched \u2014 Telegram send failed. Download the PDF and send it manually."); });
+          .catch(function () { tgSentFlag(pc.id, false); toast("Dispatched \u2014 the dispatch group was NOT told. Press Send to the group on the challan."); });
       });
     }).catch(function () {
       /* No answer at all. The row STAYS moved and he is told plainly not to do it twice -
@@ -30401,18 +30616,21 @@ function viewCatalogue() {
       /* Notify the dispatch bot AT MOST ONCE per challan. Even if an earlier attempt looked like
          it failed and the user dispatched again, the bot gets exactly one copy. Set the guard
          BEFORE sending so two near-simultaneous sends can never both pass it. */
-      S.dispatchSent = S.dispatchSent || {};
-      if (S.dispatchSent[ch2.id]) { toast("Already sent to dispatch bot."); return; }
-      S.dispatchSent[ch2.id] = true;
+      /* v6.9.474 - it used to say "Already sent to dispatch bot." off a flag that only meant
+         SOMEBODY TRIED. Now the row's own tgMsg - written by the server when it really posted -
+         is what may say that, and the phone's flag only stops a second tap in the same second. */
+      if (tgAlreadyOn(ch2)) { toast("It is already on the dispatch group."); return; }
+      if ((S.dispatchSent || {})[ch2.id]) return;
+      tgSentFlag(ch2.id, true);
       sendChallanPdf(ch2, "TG_DISPATCH",
         "<b>DISPATCH: " + ch2.challanNo + "</b>\n" + ch2.customerName +
         (ch2.driver ? "\nDriver: " + ch2.driver : "") +
         "\nApproved by <b>" + (ch2.approvedBy || r.by) + "</b>", ch2.approvedBy || r.by)
         .then(function (tg) {
           if (tg && tg.ok) { toast("Sent to dispatch bot."); }
-          else { toast("Dispatched — but the Telegram message didn't go. Download the PDF and send it manually."); }
+          else { tgSentFlag(ch2.id, false); toast("Dispatched — the dispatch group was NOT told. Press Send to the group on the challan."); }
         })
-        .catch(function () { toast("Dispatched — Telegram send failed. Download the PDF and send it manually."); });
+        .catch(function () { tgSentFlag(ch2.id, false); toast("Dispatched — the dispatch group was NOT told. Press Send to the group on the challan."); });
     }).catch(function () { S.chMoving[ch2.id] = false; _mdone(); unsure(); });
   }
 
@@ -35961,6 +36179,38 @@ function viewCatalogue() {
       if (S.tab !== "challans") { S.tab = "challans"; try { tabUse(S.tab); navBump(S.tab); } catch (e) {} }
       try { window.scrollTo(0, 0); } catch (e) {}
       render(); return;
+    }
+    /* v6.9.473 - the tile takes him to the band rather than to a filter: the band already
+       carries the money, the age and the Dispatch button on every row, which a filtered list of
+       cards does not. */
+    /* v6.9.474 - send one challan to the dispatch group by hand. The server's own tgMsg guard
+       is what makes this safe to press twice; this is a way to RECOVER a send that failed, which
+       until now needed the PDF downloaded and forwarded by hand. */
+    if (act === "ch-tgsend") {
+      var _tc = (S.data.challans || []).filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
+      if (!_tc) return;
+      if (!canApprove()) { toast("Only a man who may pass a challan sends it to the group."); return; }
+      if (tgAlreadyOn(_tc)) { toast("It is already on the dispatch group."); render(); return; }
+      tgSentFlag(_tc.id, true);
+      toast("Sending to the dispatch group...");
+      sendChallanPdf(_tc, "TG_DISPATCH",
+        "<b>DISPATCH: " + _tc.challanNo + "</b>\n" + _tc.customerName +
+        (_tc.driver ? "\nDriver: " + _tc.driver : "") +
+        "\nPassed by <b>" + (_tc.approvedBy || S.user) + "</b>", _tc.approvedBy || S.user)
+        .then(function (tg) {
+          if (tg && tg.ok) { toast("On the dispatch group."); quietSync(); }
+          else { tgSentFlag(_tc.id, false); toast("It did not go. Try again, or download the PDF and send it by hand."); }
+          render();
+        })
+        .catch(function () { tgSentFlag(_tc.id, false); toast("It did not go. Try again, or download the PDF and send it by hand."); render(); });
+      return;
+    }
+    if (act === "ch-appr") {
+      try {
+        var _ab = document.getElementById("ch_appr_band");
+        if (_ab) { _ab.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+      } catch (e) { }
+      return;
     }
     if (act === "ch-queue") {
       S.chOnly = t.getAttribute("data-off") ? "" : "hisab";
