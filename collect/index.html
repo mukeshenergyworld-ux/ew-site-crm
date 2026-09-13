@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.36.0";
+  var APP_VERSION = "1.37.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1919,6 +1919,57 @@ function cancelMap() {
     return Object.keys(seen).map(function (k) { return seen[k]; });
   }
 
+  /* ============ FINALISE IS THE GATE  (v1.37.0, 13 September 2026) ============
+     HIS WORDS: "work on this", then "go". A delivery stops counting as money owed until the
+     owner has opened it and pressed Finalise. This app keeps its OWN figures - it does not ask
+     the server for a due, it works one out - so the rule has to be here too, or the man chasing
+     money and the man looking at the CRM disagree about the same rupee. That is the 8 September
+     fault, Rs 45,690, and it took two weeks to find.
+
+     Everything raised before HISAB_STAMP_FROM counts as already finalised: the old book is the
+     old book, no migration, no row written. MEASURED on his book the night it shipped: 176
+     deliveries with the receipt in, 79 from before the cut-off, 97 finalised, ZERO waiting -
+     so not one rupee moved on the day.
+
+     Lifted from the Challan app, which already carries this and already guards on S.data
+     because it renders before the book has arrived. */
+  var HISAB_STAMP_FROM = "2026-08-13";
+  var _hsbCache = null;
+  function hisabStampMap() {
+    if (_hsbCache) return _hsbCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "challan:hisab") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.chId) return;
+      var prev = m[d.chId];
+      /* newest row wins, the same convention as every other audit-backed fact here */
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[d.chId] = { at: r.createdAt || "", by: r.actor || d.by || "" };
+      }
+    });
+    _hsbCache = m;
+    return m;
+  }
+  function hisabStamp(c) { return (c && c.id) ? (hisabStampMap()[c.id] || null) : null; }
+  function hisabPreExisting(c) {
+    var at = String((c && c.createdAt) || "");
+    return !!at && at.slice(0, 10) < HISAB_STAMP_FROM;
+  }
+  function inHisab(c) { return !!hisabStamp(c) || hisabPreExisting(c); }
+  function hisabCounts(c) {
+    return String((c && c.receiptReceived) || "").toUpperCase() === "Y";
+  }
+  var HISAB_GATE = true;
+  /* THE STAMPS ARE AUDIT ROWS, and the Payment app fetches the audit trail in the SECOND half of
+     a staged pull. For those seconds - and for the whole of a first load on a new phone - asking
+     the gate would read "nothing has been finalised" and quietly UNDERSTATE every client's due.
+     An understated due is the worst shape of wrong there is: nobody chases what the screen says
+     is not owed. The gate stands down until the stamps are in hand. */
+  function hisabBookReady() { return !!(S.data && S.data.audit && S.data.audit.length); }
+  function hisabOwed(c) { return hisabCounts(c) && (!HISAB_GATE || !hisabBookReady() || inHisab(c)); }
+
   /* ---- ONE CLIENT'S POSITION ----
      Returns everything the screen and the reminder need, and nothing it does not. */
   function clientDue(opts) {
@@ -1936,9 +1987,10 @@ function cancelMap() {
     /* v1.26.0 - and NOT cancelled. All three, because all three move the balance: a cancelled
        delivery over-bills him, a cancelled payment under-chases him, a cancelled return credits
        goods that never came back. */
+    /* v1.37.0 - hisabOwed, not the receipt alone. The same line the CRM's ledger uses. */
     var challans = dedupe((opts.challans || []).filter(function (c) {
       return _mine(c.customerName) &&
-             String(c.receiptReceived || "").toUpperCase() === "Y" &&
+             hisabOwed(c) &&
              !isCancelled("challans", c.id);
     })).sort(function (a, b) { return d10(a.createdAt).localeCompare(d10(b.createdAt)); });
 
@@ -3342,9 +3394,11 @@ function cancelMap() {
     /* v1.26.0 - the statement is the evidence FOR the balance, so it obeys the same three
        exclusions. A statement that lists a payment the balance does not count is a statement
        the client will win an argument with. */
+    /* v1.37.0 - the statement lists exactly what the balance counts, or the client wins the
+       argument. Same question as clientDue above. */
     dedupe((d.challans || []).filter(function (c) {
       return String(c.customerName || "").trim().toLowerCase() === k &&
-             String(c.receiptReceived || "").toUpperCase() === "Y" &&
+             hisabOwed(c) &&
              !isCancelled("challans", c.id);
     })).forEach(function (c) {
       out.push({ ymd: d10(c.createdAt), what: "Delivery " + (c.challanNo || ""),
@@ -3909,7 +3963,10 @@ function cancelMap() {
      bust() runs on the fast merge in both pull paths, before anything reads it again, so one
      line here covers every route the book takes in. A cancellation cache that is not dropped
      shows a cancelled payment as live, which is the exact fault this release exists to fix. */
-  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; _hxCache = null; _aliasCache = null; }
+  /* v1.37.0 - _hsbCache with them. It is built from the audit trail, which arrives in the
+     SECOND half of a staged pull: a map built before that half lands is an EMPTY map, and an
+     empty map means "nothing is finalised", which understates every due on the screen. */
+  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; _hxCache = null; _aliasCache = null; _hsbCache = null; }
 
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest("[data-act]");
