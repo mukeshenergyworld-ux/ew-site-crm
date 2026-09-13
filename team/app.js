@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.469";
+  var APP_VERSION = "6.9.470";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -23338,6 +23338,167 @@ function viewCatalogue() {
   /* Live rows and cancelled rows together, newest first.  A cancelled payment is SHOWN, struck
      through and labelled - a history that quietly drops the entry he cancelled is exactly the
      kind of history nobody trusts. */
+  /* ============ A SECOND PAIR OF EYES ON EVERY PAYMENT  (v6.9.470, 13 Sep 2026) ============
+     HIS WORDS: "make a seprate payment verification section for accounts only, so to verifiy
+     payment entered in crm, mark for all once verified by accounts, unless show payment
+     verification pending from accounts, so to avoid duplicate paymetn entry."
+
+     MEASURED ON HIS BOOK BEFORE BUILDING IT: 33 payments, Rs 38,50,133, from 16 June to
+     9 September, and ALL THIRTY-THREE ENTERED BY MUKESH VERMA HIMSELF. So this will be quiet
+     today, and he was told so. It earns its keep the day somebody else enters one - which is
+     what the Payment app is for - and it earns it today in one way: a double tap puts two
+     identical rows side by side on this screen, flagged, which is the exact fault that got past
+     every other guard on 2 August.
+
+     IT IS NOT A GATE ON THE MONEY, and that is deliberate. A payment that stopped reducing what
+     a client owes until somebody ticked it would have a customer chased for money he has already
+     paid - the worst shape of wrong there is. A payment counts the moment it is entered, exactly
+     as before. This records that a second person looked.
+
+     THE FACT IS AN AUDIT ROW, newest wins, and un-verifying writes ANOTHER row rather than
+     removing one - the same convention as every other audit-backed fact in this file.
+
+     THE OLD BOOK IS THE OLD BOOK: anything dated before PAY_VERIFY_FROM counts as checked. Same
+     rule and same reasoning as HISAB_STAMP_FROM, and measured: zero of his 33 light up. */
+  var PAY_VERIFY_FROM = "2026-09-13";
+  var _pvCache = null;
+  function payVerifyMap() {
+    if (_pvCache) return _pvCache;
+    var m = {};
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "payment:verify") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.payId) return;
+      var prev = m[d.payId];
+      if (!prev || String(r.createdAt || "") >= String(prev.at || "")) {
+        m[d.payId] = { at: r.createdAt || "", by: r.actor || d.by || "", off: !!d.off };
+      }
+    });
+    _pvCache = m;
+    return m;
+  }
+  function payVerifyRow(p) { return (p && p.id) ? (payVerifyMap()[p.id] || null) : null; }
+  /* everything already on the books when this shipped - checked the old way, never asked about */
+  function payVerifyPre(p) {
+    var d = String((p && (p.date || p.createdAt)) || "");
+    return !!d && d.slice(0, 10) < PAY_VERIFY_FROM;
+  }
+  function payVerified(p) {
+    if (payVerifyPre(p)) return true;
+    var r = payVerifyRow(p);
+    return !!r && !r.off;
+  }
+  function canVerifyPay() { return roleAny(["admin", "accounts"]); }
+
+  /* THE DUPLICATE FLAG, and it is the whole point of the screen. Same client, same day, same
+     amount, same mode - the four questions payTwin has asked at entry since v6.9.113. This asks
+     them of what is ALREADY in the book, so a pair that slipped past entry (his 972-millisecond
+     double tap did) is put side by side where a man can see it. */
+  function payDupOf(p) {
+    return (S.data.payments || []).filter(function (x) {
+      return x.id !== p.id &&
+        dkey(x.client) === dkey(p.client) &&
+        String(x.date || "") === String(p.date || "") &&
+        Math.round(payAmt(x)) === Math.round(payAmt(p)) &&
+        dkey(x.mode) === dkey(p.mode);
+    });
+  }
+  /* live, in date order, oldest first - the oldest unchecked receipt is the one to look at */
+  function payUnverifiedList() {
+    return (S.data.payments || []).filter(function (p) {
+      return !payVerified(p) && (seesAllClients() || isMineClient(p.client));
+    }).sort(function (a, b) {
+      return String(a.date || "").localeCompare(String(b.date || "")) ||
+             String(a.id || "").localeCompare(String(b.id || ""));
+    });
+  }
+  /* SHOWN TO EVERY ROLE, not only to accounts - "unless show payment verification pending from
+     accounts" is his instruction, and its whole purpose is that the man about to enter a second
+     copy sees the first one sitting there. */
+  function payVerifyPill(p) {
+    if (payVerifyPre(p)) return "";
+    var r = payVerifyRow(p);
+    if (r && !r.off) {
+      return ' <span class="pill Won" title="Checked by ' + esc(r.by || "accounts") +
+        (r.at ? " on " + esc(fullDate(r.at)) : "") + '">checked \u2713</span>';
+    }
+    return ' <span class="pill due" title="Nobody in accounts has checked this receipt yet. ' +
+      'The money is counted either way - this says only that a second pair of eyes has not seen it.">' +
+      'not checked</span>';
+  }
+
+  function payVerifySave(p, off) {
+    _pvCache = null;
+    var now = new Date().toISOString();
+    return save("audit", {
+      /* mintId, not the clock by hand: t_mintid holds a ratchet on how many places still do that
+         and it may only ever go down. The counter inside it is what makes two taps in the same
+         millisecond impossible to confuse - which is precisely the fault this whole feature
+         exists to catch. */
+      id: mintId("PV"),
+      createdAt: now, actor: S.user || "",
+      action: "payment:verify",
+      target: receiptNo(p) + " / " + String(p.client || ""),
+      detail: JSON.stringify({ payId: p.id, no: receiptNo(p), client: p.client || "",
+        date: p.date || "", amount: Math.round(payAmt(p)), mode: p.mode || "",
+        by: S.user || "", at: now, off: !!off })
+    }, true);
+  }
+
+  /* The section itself. Accounts and the owner only - his words, "for accounts only". */
+  function payVerifyHtml() {
+    if (!canVerifyPay()) return "";
+    var list = payUnverifiedList();
+    if (!list.length) {
+      return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+        '<b style="color:#0f766e">Every receipt has been checked</b>' +
+        '<div class="meta" style="color:#0f766e;font-size:12.5px;margin-top:3px">' +
+        'Nothing is waiting. A receipt entered from today onwards appears here until somebody ' +
+        'in accounts has looked at it.</div></div>';
+    }
+    var worth = list.reduce(function (a, p) { return a + payAmt(p); }, 0);
+    var dups = list.filter(function (p) { return payDupOf(p).length > 0; }).length;
+    var h = '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
+      '<h3 style="color:#991b1b;margin:0">' + list.length + ' receipt' + (list.length === 1 ? '' : 's') +
+        ' to check <span class="pill due">' + moneySgn(worth) + '</span></h3>' +
+      '<div class="meta" style="color:#7f1d1d;font-size:12.5px;line-height:1.55;margin-top:6px">' +
+      'The money is already on the client\u2019s account \u2014 <b>checking does not move a rupee</b>. ' +
+      'It records that a second person looked at the receipt, so the same payment does not get ' +
+      'entered twice.' +
+      (dups ? ' <b>' + dups + ' of them match another receipt exactly</b> \u2014 same client, same ' +
+              'day, same amount, same mode. Look at those first.' : '') +
+      '</div></div>';
+
+    list.slice(0, 60).forEach(function (p) {
+      var twins = payDupOf(p);
+      h += '<div class="card" style="padding:9px 11px' + (twins.length ? ';border-color:#fca5a5' : '') + '">' +
+        '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">' +
+          '<b style="font-size:13px">' + esc(p.client || "(no client)") + '</b>' +
+          '<b style="white-space:nowrap;font-size:14px">' + money(payAmt(p)) + '</b></div>' +
+        '<div class="meta" style="font-size:12.5px;margin-top:2px">' +
+          esc(d10(p.date)) + ' &middot; ' + esc(p.mode || "mode not recorded") +
+          (p.ref ? ' &middot; ' + esc(p.ref) : '') +
+          '<br>Receipt ' + esc(receiptNo(p)) + ' &middot; entered by <b>' + esc(p.createdBy || "name not recorded") + '</b>' +
+        '</div>' +
+        (twins.length
+          ? '<div class="meta" style="font-size:12.5px;color:#b91c1c;margin-top:4px"><b>Same client, ' +
+            'same day, same amount, same mode as ' + twins.length + ' other receipt' +
+            (twins.length === 1 ? '' : 's') + '</b> (' +
+            twins.map(function (t) { return esc(receiptNo(t)); }).join(", ") +
+            '). If the screen hung and it was pressed twice, cancel one \u2014 do not check both.</div>'
+          : '') +
+        '<div class="acts" style="margin-top:8px">' +
+          '<button class="btn sm" data-act="pay-verify" data-p="' + esc(p.id) + '">Checked \u2014 it is right</button>' +
+          '<button class="btn sm ghost" data-act="pay-row" data-p="' + esc(p.id) + '">Open the receipt</button>' +
+        '</div></div>';
+    });
+    if (list.length > 60) {
+      h += '<div class="meta" style="margin-top:6px">Showing the 60 oldest of ' + list.length + '.</div>';
+    }
+    return h;
+  }
+
   function payHistRows(client) {
     var out = [];
     (S.data.payments || []).forEach(function (x) { out.push({ p: x, cx: null }); });
@@ -23391,6 +23552,15 @@ function viewCatalogue() {
       /* v6.9.427 - the owner can correct HOW it came in. Not the amount: that is a cancel. */
       if (p.id && roleIs("admin")) {
         h += '<button class="btn sm ghost" data-act="pay-fix" data-p="' + esc(p.id) + '">Correct mode / ref</button>';
+      }
+      /* v6.9.470 - and the second pair of eyes, on the receipt itself. Accounts and the owner
+         only; an un-check is the owner's alone, and it writes a row rather than removing one. */
+      if (p.id && canVerifyPay() && !payVerifyPre(p)) {
+        h += payVerified(p)
+          ? (roleIs("admin")
+              ? '<button class="btn sm ghost" data-act="pay-unverify" data-p="' + esc(p.id) + '">Un-check it</button>'
+              : '')
+          : '<button class="btn sm" data-act="pay-verify" data-p="' + esc(p.id) + '">Checked \u2014 it is right</button>';
       }
       /* v6.9.371 - one button, so a receipt reads the same as a delivery */
       if (p.id) h += cxCardBtn("payments", p.id);
@@ -23458,7 +23628,7 @@ function viewCatalogue() {
           esc(String(d10(p.date)).replace(/^(\d{2}\/\d{2}\/)\d{2}(\d{2})$/, "$1$2")) + '</td>' +
         '<td style="' + cell + ';font-size:12px"><span class="pill" title="' + esc(p.mode || "") + '">' +
           esc(payModeShort(p.mode)) + '</span>' +
-          (dead ? ' <span class="pill due">Cancelled</span>' : '') + '</td>' +
+          (dead ? ' <span class="pill due">Cancelled</span>' : payVerifyPill(p)) + '</td>' +
         /* v6.9.430 - ONE LINE MEANS ONE LINE. A remark like "chq 445120 PNB, cleared" wrapped to
            four lines on a 390px phone and a three-receipt book became 240px tall - which is the
            very thing the table replaced. It is clipped here and printed in full in the card the
@@ -23742,6 +23912,10 @@ function viewCatalogue() {
       (totCr > 0 ? '<div class="stat"><div class="n" style="color:#0f766e">' + money(totCr) + '</div><div class="l">Held in credit &mdash; paid ahead, comes off their next deliveries</div></div>' : '') +
       '<div class="stat"><div class="n">' + list.length + '</div><div class="l">Client ledgers</div></div>' +
       '</div>';
+
+    /* v6.9.470 - ABOVE the radar, because an unchecked receipt is a question about what he has
+       already been paid and the radar is about what he has not. Accounts and the owner only. */
+    h += payVerifyHtml();
 
     /* v6.9.433 - the radar is a sheet now; rdrHtml() draws it, filters it and downloads it. */
     if (list.filter(function (x) { return x.l.due > 0 && x.age >= PAY_MIN; }).length) h += rdrHtml();
@@ -34529,7 +34703,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pfxCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null; _agrCache = null;
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pfxCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null; _agrCache = null; _pvCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
     /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
        yesterday's money, which is the worst thing this app can do. */
@@ -38761,6 +38935,24 @@ function viewCatalogue() {
             ". The amount and the receipt number are unchanged.");
       setTimeout(render, 120);
       return;
+    }
+    /* ---- A SECOND PAIR OF EYES  (v6.9.470) ----
+       Checked at the moment of the tap and not only when the button was drawn: a screen can be
+       built once and pressed later, which is how the bad hisab stamp of v6.9.259 got written. */
+    if (act === "pay-verify" || act === "pay-unverify") {
+      var pvId = t.getAttribute("data-p") || "";
+      var pvP = (S.data.payments || []).filter(function (x) { return x.id === pvId; })[0];
+      if (!pvP) { toast("That receipt is not on this device yet - pull down to refresh."); return; }
+      if (!canVerifyPay()) { toast("Only accounts or the owner checks a receipt."); return; }
+      if (act === "pay-unverify" && !roleIs("admin")) { toast("Only the owner can un-check one."); return; }
+      if (payVerifyPre(pvP)) { toast("This one is from before checking began - it counts as checked."); return; }
+      var pvOff = (act === "pay-unverify");
+      if (!pvOff && payVerified(pvP)) { toast("Already checked."); return; }
+      if (pvOff && !payVerified(pvP)) { toast("It is not checked, so there is nothing to undo."); return; }
+      payVerifySave(pvP, pvOff);
+      toast(pvOff ? "Un-checked. The reason is in the audit trail, and nothing was deleted."
+                  : (receiptNo(pvP) + " checked."));
+      keepScroll = true; render(); return;
     }
     if (act === "pay-hist") { S.payHist = !S.payHist; S.modal = null; render(); return; }
     if (act === "pay-csv") { payCsv(t.getAttribute("data-n") || ""); return; }
