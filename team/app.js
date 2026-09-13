@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.470";
+  var APP_VERSION = "6.9.471";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -31480,6 +31480,17 @@ function viewCatalogue() {
     var sign = "\n\nRegards,\n" + (S.user || "Energy World") + "\nEnergy World, Panipat / Sonipat";
     var lines = (a.lines || []).map(function (l) { return "- " + l; }).join("\n");
     if (a.kind === "closing") {
+      /* v6.9.471 - ONE MESSAGE, EVERY BRAND CLOSING ON THAT SITE. Nine cards for Sourabh meant
+         nine messages to one man about one project; nobody sends those, so nine sales were lost
+         to the shape of a list. The single-brand wording below is untouched and is what a lone
+         window still gets. */
+      if (a.brands && a.brands.length > 1) {
+        return head + site + " is at the " + a.stage + " stage. Several things have to be decided " +
+          "at this stage, because once it is closed they cannot go into this project at all:\n" +
+          a.brands.map(function (bn) { return "- " + bn; }).join("\n") +
+          "\n\nMay I send you one quotation covering these today? I can bring samples across if " +
+          "you would like to see them first." + sign;
+      }
       return head + site + " is at the " + a.stage + " stage, so this is the last window for " +
         a.brand + ". Once this stage is closed the material cannot go into this project at all.\n\n" +
         "May I send you a quotation for " + (a.line || a.brand) + " today?" + sign;
@@ -31866,7 +31877,11 @@ function viewCatalogue() {
         out.push(mk("closing", 100, "CLOSES NOW", r.brand + " closes at " + (st.name || "site"),
           "The pitch window for " + r.brand + " ends at stage " + r.pitchBy + " and this site is at stage " + sn +
           ". After this the sale is gone for this project.",
-          { key: "closing|" + st.id + "|" + sn + "|" + r.brand, brand: r.brand, line: r.line || r.brand }));
+          /* v6.9.471 - `by` is the stage the window ENDS at. The sheet reads it to tell a
+             last-chance brand (by === stageNo) from one that closes at the next stage, which is
+             the difference between today and this week and was only ever in the prose. */
+          { key: "closing|" + st.id + "|" + sn + "|" + r.brand, brand: r.brand,
+            by: Number(r.pitchBy) || 0, line: r.line || r.brand }));
       });
 
       var post = String(stage).toLowerCase().indexOf("post-handover") >= 0;
@@ -31952,6 +31967,204 @@ function viewCatalogue() {
       '</div></div>';
   }
 
+  /* ============ 199 CARDS THAT ARE 43 PHONE CALLS  (v6.9.471, 13 Sep 2026) ============
+     HIS WORDS, with a screenshot of "Do today 277": "make it more compact, may be in excel brand
+     wise, or something like that. attractive, professional way."
+
+     MEASURED ON HIS BOOK FIRST, and the measurement IS the design: 199 of the 277 are brand
+     windows closing, and they come from FORTY-THREE SITES. The worst carry NINE BRANDS EACH -
+     Sourabh, sagar narang, Subham Goel, Shidarth and Ar.Gurjinder Singh, nine apiece. So the
+     list was never long. IT WAS REPEATED: nine cards for one man, same client, same site, same
+     stage, same four buttons, each asking for a separate message about a different brand.
+
+     A man cannot do 277 things. He can make forty-three phone calls. */
+  var AG_SHEET_TOP = 15;
+  function agClosingGroups(rows) {
+    var by = {}, order = [];
+    rows.forEach(function (a) {
+      var k = a.siteId || a.siteName || "?";
+      if (!by[k]) {
+        by[k] = { siteId: a.siteId, siteName: a.siteName, client: a.client, stage: a.stage,
+                  stageNo: a.stageNo, contacts: a.contacts || [], lines: [], brands: [], keys: [] };
+        order.push(k);
+      }
+      by[k].brands.push({ brand: a.brand, line: a.line || a.brand,
+                          last: Number(a.by || 0) === Number(a.stageNo || 0), by: Number(a.by || 0) });
+      by[k].keys.push(a.key);
+    });
+    var out = order.map(function (k) {
+      var g = by[k];
+      g.brands.sort(function (x, y) { return (y.last ? 1 : 0) - (x.last ? 1 : 0) || x.brand.localeCompare(y.brand); });
+      g.lastN = g.brands.filter(function (x) { return x.last; }).length;
+      g.lines = g.brands.map(function (x) { return x.line; });
+      return g;
+    });
+    /* THE ONES WHERE MOST IS ABOUT TO BE LOST, FIRST. Last-chance brands outrank everything;
+       after that, the site carrying the most windows. */
+    out.sort(function (a, b) {
+      return b.lastN - a.lastN || b.brands.length - a.brands.length ||
+             String(a.siteName || "").localeCompare(String(b.siteName || ""));
+    });
+    return out;
+  }
+
+  /* one chip per brand. RED means the window ends at this very stage; amber means the next one.
+     Colour alone is never the message - the strap under the sheet says which is which in words,
+     because a man who cannot separate red from amber still has to be able to work. */
+  function agBrandChip(x) {
+    return '<span class="pill" style="font-size:12px;background:' + (x.last ? '#fee2e2' : '#fef3c7') +
+      ';color:' + (x.last ? '#b91c1c' : '#92400e') + '" title="' + esc(x.brand) +
+      ' - window ends at stage ' + x.by + '">' + esc(x.brand) + '</span>';
+  }
+
+  /* the merged action behind ONE message for a whole site. Registered in AG_INDEX so the draft
+     screen and its "write to somebody else" switch work on it exactly as on any other. */
+  function agSiteAction(g) {
+    var a = { key: "closingsite|" + (g.siteId || g.siteName), kind: "closing", prio: 100,
+              tag: "CLOSES NOW", title: g.brands.length + " closing at " + (g.siteName || "site"),
+              why: "", siteId: g.siteId, siteName: g.siteName, client: g.client,
+              stage: g.stage, stageNo: g.stageNo, contacts: g.contacts, lines: g.lines,
+              brands: g.brands.map(function (x) { return x.brand; }),
+              brand: g.brands[0] ? g.brands[0].brand : "", line: g.lines.join(", "),
+              keys: g.keys };
+    AG_INDEX[a.key] = a;
+    return a;
+  }
+
+  function agSheetHtml(rows) {
+    var groups = agClosingGroups(rows);
+    if (!groups.length) return "";
+    var brandN = rows.length, lastN = 0, byBrand = {}, order = [];
+    groups.forEach(function (g) { lastN += g.lastN; });
+    rows.forEach(function (a) {
+      var k = a.brand || "(brand)";
+      if (!byBrand[k]) { byBrand[k] = { brand: k, by: Number(a.by || 0), sites: [], last: 0 }; order.push(k); }
+      byBrand[k].sites.push(a.siteName || "(site)");
+      if (Number(a.by || 0) === Number(a.stageNo || 0)) byBrand[k].last++;
+    });
+    var mode = (S.agFold === "brand") ? "brand" : "site";
+
+    var h = '<div class="card" style="border-color:#fca5a5;background:#fef2f2;padding:10px 12px">' +
+      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap">' +
+        '<b style="color:#991b1b;font-size:15px">' + brandN + ' windows closing</b>' +
+        '<span class="pill due">' + groups.length + ' site' + (groups.length === 1 ? '' : 's') + ' to call</span>' +
+      '</div>' +
+      '<div class="meta" style="color:#7f1d1d;font-size:12.5px;line-height:1.55;margin-top:5px">' +
+        'These are not ' + brandN + ' jobs. They are <b>' + groups.length + ' conversations</b> \u2014 one site ' +
+        'carries every brand closing on it, and one message covers the lot. ' +
+        '<b>' + lastN + '</b> end at this exact stage (red); the rest end at the next one (amber).' +
+      '</div>' +
+      '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px">' +
+        '<button class="btn sm' + (mode === "site" ? '' : ' ghost') + '" data-act="ag-fold" data-m="site">By site</button>' +
+        '<button class="btn sm' + (mode === "brand" ? '' : ' ghost') + '" data-act="ag-fold" data-m="brand">By brand</button>' +
+        '<button class="btn sm ghost" data-act="ag-xls">Excel</button>' +
+      '</div></div>';
+
+    if (mode === "brand") {
+      /* HIS WORDS: "may be in excel brand wise". On his book this is the line that matters:
+         Inair 29 sites and TOTO 29, against MEA 5 - the same afternoon spent on the first two
+         is worth six times the last. */
+      h += '<div class="card" style="padding:8px 10px"><div style="overflow-x:auto;-webkit-overflow-scrolling:touch">' +
+        '<table style="border-collapse:collapse;font-size:12.5px;min-width:100%">' +
+        '<tr style="background:#0b3b36;color:#fff;text-align:left">' +
+          '<th style="padding:5px 6px;white-space:nowrap">BRAND</th>' +
+          '<th style="padding:5px 6px;white-space:nowrap">CLOSES BY</th>' +
+          '<th style="padding:5px 6px;text-align:right;white-space:nowrap">SITES</th>' +
+          '<th style="padding:5px 6px;text-align:right;white-space:nowrap">LAST CHANCE</th></tr>';
+      order.map(function (k) { return byBrand[k]; })
+        .sort(function (a, b) { return b.sites.length - a.sites.length || a.brand.localeCompare(b.brand); })
+        .forEach(function (r) {
+          h += '<tr style="border-top:1px solid #e2e8f0">' +
+            '<td style="padding:5px 6px;font-weight:700">' + esc(r.brand) + '</td>' +
+            '<td style="padding:5px 6px;color:#475569;white-space:nowrap">stage ' + r.by + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;font-weight:700">' + r.sites.length + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;font-weight:700;color:' +
+              (r.last ? '#b91c1c' : '#94a3b8') + '">' + r.last + '</td></tr>';
+        });
+      h += '</table></div>' +
+        '<div class="meta" style="font-size:12px;color:#64748b;margin-top:6px">' +
+        'Sorted by how many sites each brand is about to be lost on. <b>Last chance</b> is the ' +
+        'count whose window ends at that site\u2019s current stage \u2014 after it, the sale is gone for ' +
+        'that project.</div></div>';
+      return h;
+    }
+
+    /* v6.9.471 - FORTY-THREE BLOCKS IS THIRTY THOUSAND PIXELS. They are already sorted worst
+       first - most last-chance windows, then most brands - so the top AG_SHEET_TOP are the
+       morning's work and the rest are one tap away. Nothing is hidden and the button says how
+       many, because a man must never be shown a number he cannot get to. */
+    var shown = S.agAll ? groups : groups.slice(0, AG_SHEET_TOP);
+    shown.forEach(function (g) {
+      /* v6.9.471 - A NAME IS NOT A VERB. "Ar.Gurjinder Singh" in a row of buttons reads as a
+         label somebody forgot to finish; "Call client" says what the tap does and is the same
+         width every time, which is what lets a column of forty-three be scanned. The name is
+         already on the line above, and it is in the tooltip. */
+      var who = (g.contacts || []).slice(0, 2).map(function (c) {
+        var lbl = "Call " + String(c.role || "").toLowerCase().replace(/[^a-z ]/g, "");
+        return c.mobile
+          ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '" title="' + esc(c.name || "") + '">' +
+            esc(lbl.trim() || "Call") + '</a>'
+          : '<span class="pill" style="font-size:12px" title="No mobile saved">' +
+            esc(c.role || "contact") + ' \u2014 no number</span>';
+      }).join(" ");
+      h += '<div class="card" style="padding:9px 11px;border-color:' + (g.lastN ? '#fca5a5' : '#fde68a') + '">' +
+        '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap">' +
+          '<b style="font-size:13.5px">' + esc(g.siteName || "(site)") + '</b>' +
+          '<span class="pill due" style="font-size:12px">' + g.brands.length + ' closing' +
+            (g.lastN ? ' \u00b7 ' + g.lastN + ' last chance' : '') + '</span>' +
+        '</div>' +
+        '<div class="meta" style="font-size:12.5px;margin-top:1px">' +
+          (g.client ? esc(g.client) + ' \u00b7 ' : '') + esc(g.stage || "") +
+          (g.stageNo ? ' (stage ' + g.stageNo + ' of 13)' : '') + '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">' +
+          g.brands.map(agBrandChip).join("") + '</div>' +
+        /* the two that are decisions, full size; the three that are housekeeping, quieter and
+           on their own line. Three rows of equal buttons made every block look like a form. */
+        '<div class="acts" style="flex-wrap:wrap;gap:6px;margin-top:8px">' +
+          '<button class="btn sm" data-act="ag-draft-site" data-s="' + esc(g.siteId || "") + '">One message, all ' + g.brands.length + '</button>' +
+          who + '</div>' +
+        '<div class="acts" style="flex-wrap:wrap;gap:6px;margin-top:5px">' +
+          (g.siteId ? '<button class="btn sm ghost" data-act="matrix" data-id="' + esc(g.siteId) + '">Matrix</button>' : '') +
+          '<button class="btn sm ghost" data-act="ag-snooze-many" data-k="' + esc(g.keys.join("~~")) + '">Snooze 7d</button>' +
+          '<button class="btn sm ghost" data-act="ag-done-many" data-k="' + esc(g.keys.join("~~")) + '">Done</button>' +
+        '</div></div>';
+    });
+    if (groups.length > shown.length) {
+      h += '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="ag-all">' +
+        'Show the other ' + (groups.length - shown.length) + ' site' +
+        ((groups.length - shown.length) === 1 ? '' : 's') + '</button></div>';
+    } else if (S.agAll && groups.length > AG_SHEET_TOP) {
+      h += '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="ag-all">' +
+        'Show only the most urgent ' + AG_SHEET_TOP + '</button></div>';
+    }
+    return h;
+  }
+
+  /* HIS WORDS: "may be in excel brand wise". One row per site AND brand, so it sorts and filters
+     in Excel however he wants it - by brand, by stage, by client. */
+  function agClosingXlsx() {
+    var rows = [];
+    try {
+      agScan().filter(function (a) { return !a.mute && a.kind === "closing"; }).forEach(function (a) {
+        var c = (a.contacts || [])[0] || {};
+        rows.push([a.brand || "", "stage " + Number(a.by || 0),
+                   (Number(a.by || 0) === Number(a.stageNo || 0)) ? "LAST CHANCE" : "closes next stage",
+                   a.siteName || "", a.client || "", a.stage || "", Number(a.stageNo || 0),
+                   c.name || "", c.mobile || "", a.line || a.brand || ""]);
+      });
+    } catch (e) { rows = []; }
+    if (!rows.length) { toast("Nothing is closing - nothing to download."); return; }
+    rows.sort(function (x, y) {
+      return String(x[0]).localeCompare(String(y[0])) || String(x[3]).localeCompare(String(y[3]));
+    });
+    var HEAD = ["Brand", "Window closes at", "Urgency", "Site", "Client", "Stage", "Stage no",
+                "Contact", "Mobile", "What to quote"];
+    var out = [HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
+    rows.forEach(function (r) { out.push(r); });
+    dlXlsx("Closing_windows_" + today() + ".xlsx", "Closing now", out,
+      [16, 16, 18, 26, 24, 26, 9, 20, 14, 30]);
+  }
+
   function viewAgent() {
     var all = agScan();
     var live = all.filter(function (a) { return !a.mute; });
@@ -31992,7 +32205,12 @@ function viewCatalogue() {
       var rows = live.filter(function (a) { return agBand(a) === bi; });
       if (!rows.length) return;
       h += '<h3 style="margin:18px 0 8px;font-size:15px">' + b.t + ' <span class="pill">' + rows.length + '</span></h3>';
-      rows.forEach(function (a) { h += agCard(a, b); });
+      /* v6.9.471 - the closing windows fold into one sheet; everything else is still a card,
+         because everything else really is one job each. */
+      var closing = rows.filter(function (a) { return a.kind === "closing"; });
+      var rest = rows.filter(function (a) { return a.kind !== "closing"; });
+      if (closing.length) h += agSheetHtml(closing);
+      rest.forEach(function (a) { h += agCard(a, b); });
     });
 
     if (muted.length) {
@@ -39114,6 +39332,32 @@ function viewCatalogue() {
       toast("Marked done. It returns when this site moves to its next stage."); render(); return;
     }
     if (act === "ag-unmute") { agMemDrop(t.getAttribute("data-k")); toast("Back on the list."); render(); return; }
+    /* ---- v6.9.471: the closing sheet ---- */
+    if (act === "ag-fold") { S.agFold = (t.getAttribute("data-m") === "brand") ? "brand" : "site"; keepScroll = true; render(); return; }
+    if (act === "ag-all") { S.agAll = !S.agAll; keepScroll = true; render(); return; }
+    if (act === "ag-xls") { agClosingXlsx(); return; }
+    if (act === "ag-draft-site") {
+      var agS = t.getAttribute("data-s") || "";
+      var agG = agClosingGroups(agScan().filter(function (x) {
+        return !x.mute && x.kind === "closing" && String(x.siteId || "") === agS;
+      }))[0];
+      if (!agG) { toast("That site just changed \u2014 refreshing the list."); render(); return; }
+      S.agWho = 0; S.modal = modalAgentDraft(agSiteAction(agG), 0); render(); return;
+    }
+    /* a whole site in one tap. Every key is muted on its own, so a brand that comes back later
+       comes back on its own and nothing is lost by folding them together on the screen. */
+    if (act === "ag-snooze-many" || act === "ag-done-many") {
+      var agKs = String(t.getAttribute("data-k") || "").split("~~").filter(Boolean);
+      if (!agKs.length) { toast("Nothing to change."); return; }
+      agKs.forEach(function (k) {
+        agMemPut(k, act === "ag-done-many" ? { kind: "done", at: today() }
+                                           : { kind: "snooze", until: addDays(today(), 7), at: today() });
+      });
+      toast(agKs.length + (act === "ag-done-many"
+        ? " marked done. They return when the site moves to its next stage."
+        : " snoozed for 7 days \u2014 they come back on their own."));
+      render(); return;
+    }
 
     if (act === "visit-start") { startVisit(); return; }
     if (act === "cal-prev" || act === "cal-next") {
