@@ -9,6 +9,39 @@
 // exists to remove. A worker updates on a byte difference; it does not need a new cache to
 // do it.
 var CACHE = "ew-team-v11";
+/* ---- THE SIGNED RECEIPTS  (13 Sep 2026) ----
+   Their own store, because they are big and they never change, and CAPPED, because an uncapped
+   pile of 400 KB photographs on a godown phone is a different fault rather than a fix. A signed
+   receipt is not a document that gets edited; the newest RECEIPT_KEEP are worth holding and the
+   rest can be fetched again. */
+var RCPT = "ew-team-receipts-v1";
+var RECEIPT_KEEP = 40;
+function isReceiptUrl(u) {
+  return /(^|\.)lh3\.googleusercontent\.com\//.test(u) ||
+         /drive\.google\.com\/thumbnail/.test(u);
+}
+function ewReceipt(req) {
+  return caches.open(RCPT).then(function (c) {
+    return c.match(req).then(function (hit) {
+      if (hit) return hit;
+      return fetch(req).then(function (r) {
+        /* an opaque response is what a cross-origin image IS. status is 0 and that is normal:
+           it draws in an <img> perfectly well and it is the only thing there is to keep. */
+        if (r && (r.type === "opaque" || r.ok)) {
+          var cp = r.clone();
+          c.put(req, cp).then(function () {
+            return c.keys().then(function (ks) {
+              /* oldest first - keys() hands them back in insertion order */
+              var over = ks.length - RECEIPT_KEEP;
+              if (over > 0) return Promise.all(ks.slice(0, over).map(function (k) { return c.delete(k); }));
+            });
+          }).catch(function () {});
+        }
+        return r;
+      });
+    });
+  }).catch(function () { return fetch(req); });
+}
 
 /* ===== A DEADLINE ON THE NETWORK (15 Aug 2026) =====
    This worker was network-first with no timeout, and so were the other four. The comment above
@@ -186,8 +219,11 @@ self.addEventListener("activate", function (e) {
        one app was therefore wiping the shells of the other six - which then opened to a white
        screen the next time a phone was somewhere with no signal, and got blamed for it. An
        app may only ever clear its OWN older versions. */
+    /* RCPT is named here on purpose: it starts with "ew-team-" like everything this app owns,
+       so without this line this worker would delete its own receipt store on every activate -
+       which is every time a new build lands. */
     return Promise.all(ks.filter(function (k) {
-      return k !== CACHE && k.indexOf("ew-team-") === 0;
+      return k !== CACHE && k !== RCPT && k.indexOf("ew-team-") === 0;
     }).map(function (k) { return caches.delete(k); }));
   }).then(ewPurge).then(function () { return self.clients.claim(); }));
 });
@@ -210,6 +246,9 @@ self.addEventListener("fetch", function (e) {
     return;
   }
 
+  // a signed receipt: its own capped store, kept even though it is opaque
+  if (isReceiptUrl(url)) { e.respondWith(ewReceipt(e.request)); return; }
+
   // everything else (icons, logo, fonts) can come from cache
   e.respondWith(
     caches.match(e.request).then(function (hit) {
@@ -218,7 +257,10 @@ self.addEventListener("fetch", function (e) {
           ewKeep(e.request, r);
         }
         return r;
-      }).catch(function () { return hit; });
+      /* `hit` is undefined here whenever nothing was cached, and respondWith(undefined) does not
+         mean "let it fail" - it THROWS in the worker and the browser reports a hard network
+         error. Response.error() says the true thing without throwing. */
+      }).catch(function () { return hit || Response.error(); });
     })
   );
 });

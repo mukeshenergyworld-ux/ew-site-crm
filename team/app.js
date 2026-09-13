@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.468";
+  var APP_VERSION = "6.9.469";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8664,6 +8664,33 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function hisabCounts(c) {
     return String((c && c.receiptReceived) || "").toUpperCase() === "Y";
   }
+  /* ============ FINALISE IS THE GATE  (v6.9.469, 13 September 2026) ============
+     HIS WORDS: "work on this", and then "go".
+
+     hisabCounts is "the paper is in". hisabOwed is "and the owner has looked at it". The two are
+     deliberately separate: hisabCounts is the gate on the finalise window ITSELF, and folding
+     the stamp into it would mean a challan could never be stamped at all - a deadlock.
+
+     MEASURED THE NIGHT IT SHIPPED: 176 deliveries with the receipt in (Rs 90,57,881), 79 from
+     before the cut-off, 97 finalised, and ZERO waiting. Not one rupee moved on the day.
+
+     ONE SWITCH, AND IT IS NAMED. Set HISAB_GATE to false and every figure goes back to counting
+     on the receipt, exactly as it did up to 6.9.468 - no patch, no deploy of this file's logic,
+     nobody needed. A change to how every rupee in the business is counted must be reversible by
+     the man whose money it is.
+
+     AND IT IS DELIBERATELY NOT ASKED EVERYWHERE. The credit gate, the ageing clock and the
+     delivered-not-billed figure all still count a delivery the moment it is signed for, because
+     each of them exists to PROTECT him and a gate would only make them quieter. See the note on
+     hisabNotStampedBand. */
+  var HISAB_GATE = true;
+  /* THE STAMPS ARE AUDIT ROWS, and the Payment app fetches the audit trail in the SECOND half of
+     a staged pull. For those seconds - and for the whole of a first load on a new phone - asking
+     the gate would read "nothing has been finalised" and quietly UNDERSTATE every client's due.
+     An understated due is the worst shape of wrong there is: nobody chases what the screen says
+     is not owed. The gate stands down until the stamps are in hand. */
+  function hisabBookReady() { return !!(S.data && S.data.audit && S.data.audit.length); }
+  function hisabOwed(c) { return hisabCounts(c) && (!HISAB_GATE || !hisabBookReady() || inHisab(c)); }
   /* A stamp on a delivery that is not counted. Nothing is auto-corrected: the fix is to mark
      the delivery received, which is a decision about goods, not about a pill. */
   function hisabStampedNotCounted() {
@@ -8877,11 +8904,21 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
            has read v < -0.5 as "Credit note" since v6.9.445), so a queue whose net is negative
            printed the sign INSIDE the money - the one thing the house rule forbids. Found by
            re-pointing run_ledger_agree, red since before 6.9.450. */
-        ' to finalise <span class="pill due">' + moneySgn(worth) + '</span></h3>' +
+        /* v6.9.469 - THE BAND MEANS SOMETHING ELSE NOW. Until today the money was already on the
+           customer's account and this band listed paperwork; with the gate on, this IS the money
+           that is not on any statement and will not be chased. A band that kept the old words
+           would be the screen telling him the opposite of what the ledger does. */
+        (HISAB_GATE ? ' not on any statement yet ' : ' to finalise ') +
+        '<span class="pill due">' + moneySgn(worth) + '</span></h3>' +
       '<div class="meta" style="color:#7f1d1d;font-size:12.5px;line-height:1.55;margin-top:6px">' +
-      'The customer already owes for ' + (list.length === 1 ? 'this' : 'these') + ' &mdash; the goods are signed for. ' +
-      'Still open: <b>who earns the incentive</b>, and whether a <b>further discount</b> was given. ' +
-      'Finalising fixes both; until then a change of partner moves the earnings on ' + (list.length === 1 ? 'it' : 'all of them') + '.' +
+      (HISAB_GATE
+        ? ('This money is <b>not on the customer\u2019s account</b> and nothing will chase it. ' +
+           'The goods are signed for, so it already counts against his <b>credit limit</b> \u2014 ' +
+           'finalising is what puts it on his statement, and settles <b>who earns the incentive</b> ' +
+           'and whether a <b>further discount</b> was given.')
+        : ('The customer already owes for ' + (list.length === 1 ? 'this' : 'these') + ' &mdash; the goods are signed for. ' +
+           'Still open: <b>who earns the incentive</b>, and whether a <b>further discount</b> was given. ' +
+           'Finalising fixes both; until then a change of partner moves the earnings on ' + (list.length === 1 ? 'it' : 'all of them') + '.')) +
       (oldest ? ' The oldest has waited <b>' + oldest + (oldest === 1 ? ' day' : ' days') + '</b>.' : '') +
       '<br><b>Tap to open the list</b> &mdash; just these, oldest first.</div></div>';
   }
@@ -9166,7 +9203,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return '<div class="card" style="padding:9px 11px">' +
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
         '<b>Who did what</b></div>' +
-      chTrailHtml(c).replace('margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0', 'margin-top:5px') +
+      chTrailHtml(c, "margin-top:5px") +
       '</div>';
   }
 
@@ -9187,6 +9224,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function hisabStanding(c, cl) {
     var due = clientLedger(cl).due;
     var delta = challanNet(c) + chFreight(c);
+    /* v6.9.469 - WITH THE GATE ON THIS DELIVERY IS NOT IN `due` YET, so `due` IS the before and
+       the after is what it becomes. Without the gate it is already counted, so the before is
+       `due` with it taken back out. Same three numbers either way and the arithmetic is checked
+       against the ledger in run_finalise390 - but reading them off the wrong end would put the
+       delivery on the screen twice. */
+    if (HISAB_GATE && !inHisab(c)) return { before: due, delta: delta, after: due + delta };
     return { before: due - delta, delta: delta, after: due };
   }
   function hisabStandingHtml(c, cl) {
@@ -9206,10 +9249,17 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         row("This delivery", st.delta, "hsb_delta", false) +
         row("After", st.after, "hsb_after", true) +
       '</div>' +
+      /* v6.9.469 - this paragraph was TRUE up to 6.9.468 and is false with the gate on. It is the
+         one sentence on the screen that tells him what pressing the button does, so it follows
+         the switch rather than being left to rot. */
       '<div class="meta" style="font-size:12px;color:#64748b;margin-top:5px;line-height:1.45">' +
-        'It already counts &mdash; a delivery goes on his account the moment the receipt is filed, ' +
-        'not when this button is pressed. Finalising is the check. A further discount below is the ' +
-        'only thing on this screen that moves the figure.</div>' +
+        (HISAB_GATE
+          ? ('<b>Finalising is what puts this on his account.</b> Until then it is not on any ' +
+             'statement and nothing chases it &mdash; though the goods are signed for, so it already ' +
+             'counts against his credit limit. The \u201cafter\u201d above is what he will owe once you press it.')
+          : ('It already counts &mdash; a delivery goes on his account the moment the receipt is filed, ' +
+             'not when this button is pressed. Finalising is the check. A further discount below is the ' +
+             'only thing on this screen that moves the figure.')) + '</div>' +
       '</div>';
   }
 
@@ -17011,7 +17061,7 @@ function viewCatalogue() {
         (who ? '<b>' + esc(who) + '</b>' : '') + (who && when ? ' &middot; ' : '') +
         (when ? esc(fullDate(when)) : '') + '</div></div>';
   }
-  function chTrailHtml(c) {
+  function chTrailHtml(c, wrapStyle) {
     var st = String(c.status || "Draft"), pf = challanProof(c.id);
     var gone = ["Dispatched", "Received", "Billed"].indexOf(st) >= 0;
     var none = function (v) { return !String(v == null ? "" : v).trim(); };
@@ -17028,7 +17078,10 @@ function viewCatalogue() {
     } else {
       rows.push(chTrailRow("Receipt", "not due until it has gone", "", ""));
     }
-    return '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0">' +
+    /* v6.9.469 - the wrapper is an ARGUMENT. The finalise window used to reach in and
+       find-and-replace this style string; that works until somebody edits it by one character,
+       and then it silently matches nothing and the box grows a stray line. */
+    return '<div style="' + (wrapStyle || "margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0") + '">' +
       rows.join("") + '</div>';
   }
 
@@ -19571,7 +19624,9 @@ function viewCatalogue() {
          chValue(c) is challanNet(c) + chFreight(c) - the ledger's billed + freight - so the two
          are the same arithmetic on the same rows, and the overview total agrees with each account. */
       var fr = famRow(nm);
-      var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return fr.has(c.customerName) && String(c.receiptReceived).toUpperCase() === "Y"; }));
+      /* v6.9.469 - the same question as the ledger, asked the same way. If these two ever ask
+         differently, the overview total and the account disagree by exactly one delivery. */
+      var chs = dedupeChallans((S.data.challans || []).filter(function (c) { return fr.has(c.customerName) && hisabOwed(c); }));
       var net = chs.reduce(function (a, c) { return a + chValue(c); }, 0);
       var paid = clientLedger(nm).paid, cl = clientByName(nm) || {};
       var opening = famOpening(fr);   /* v6.9.266 nAmt (was Number, NaN on "1,48,000"); v6.9.461 the family */
@@ -22843,8 +22898,10 @@ function viewCatalogue() {
        so for a month, and the statement he SENDS a customer did not. famRow() holds the rule.
        An unmerged client is matched exactly as before - see the note on famRow. */
     var _fr = famRow(client);
+    /* v6.9.469 - hisabOwed, not the receipt alone: the money waits until the owner has looked.
+       ONE LINE, and HISAB_GATE turns it off. */
     var chs = dedupeChallans(S.data.challans.filter(function (c) {
-      return _fr.has(c.customerName) && String(c.receiptReceived).toUpperCase() === "Y";
+      return _fr.has(c.customerName) && hisabOwed(c);
     }));
     var pays = S.data.payments.filter(function (p) { return _fr.has(p.client); });
     /* Dues are now on the NET (post-discount) value, matching the HISAB statement. */
