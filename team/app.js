@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.474";
+  var APP_VERSION = "6.9.475";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17116,6 +17116,46 @@ function viewCatalogue() {
      band built on anything the phone remembers would have hidden exactly the same challan. This
      one clears itself the moment the row really moves, including when it turns out the dispatch
      landed after all and only the reply was lost. */
+  /* ============ A QUEUE IS A TRIP, AND A TRIP HAS A WAY BACK  (v6.9.475) ============
+     HIS WORDS: "after completing every task cursor must stay where it was when last clicked,
+     make this standard for all".
+
+     v6.9.388 moves him to Deliveries when he opens a queue, and that reasoning still stands: the
+     band is drawn on the dashboard and on HISAB too, so setting a filter and leaving him on
+     another screen would do nothing at all. What it never did was bring him back. He was
+     standing on a client's account halfway down HISAB, and closing the queue put him at the top
+     of a screen he had not asked for.
+
+     One place remembers the trip, one place walks it back, and both doors into both queues go
+     through them - so no handler can be the one that forgets. */
+  var _qFrom = null;
+  function chQueueEnter(mode) {
+    if (S.tab !== "challans") {
+      var y = 0; try { y = window.scrollY || window.pageYOffset || 0; } catch (e) { }
+      _qFrom = { tab: S.tab, q: S.q, y: y };
+      S.tab = "challans";
+      try { tabUse(S.tab); navBump(S.tab); } catch (e) { }
+      /* a screen he has just arrived on starts at the top - that part was always right */
+      try { window.scrollTo(0, 0); } catch (e) { }
+    }
+    /* ALREADY ON DELIVERIES: he can see the band he is tapping, so there is nowhere to travel
+       to and nothing may move under his thumb. The forced scroll to the top was wrong here from
+       the day it was written. */
+    else { keepScroll = true; }
+    S.chOnly = mode;
+    render();
+  }
+  function chQueueLeave() {
+    S.chOnly = "";
+    if (!_qFrom) { keepScroll = true; render(); return; }
+    var f = _qFrom; _qFrom = null;
+    S.tab = f.tab; S.q = f.q;
+    try { tabUse(S.tab); navBump(S.tab); } catch (e) { }
+    render();
+    /* render() only restores a scroll when the tab did not change, which is right for a tab TAP
+       and wrong for a return journey. Put him back by hand, after the paint. */
+    try { setTimeout(function () { try { window.scrollTo(0, f.y); } catch (e) { } }, 0); } catch (e) { }
+  }
   function chStuckApproved() {
     return (S.data.challans || []).filter(function (c) {
       return String(c.status || "") === "Approved" && !c.cancelled;
@@ -34940,6 +34980,10 @@ function viewCatalogue() {
     S.tab = tab;
     S.modal = null;       /* v6.9.408 - going somewhere closes the popup you went from */
     S.chOnly = "";        /* v6.9.388 - a filter must not outlive the visit that set it */
+    /* v6.9.475 - and neither may the way back. He tapped a tab himself: that IS where he wants
+       to be, and a Show-all button that later threw him somewhere else would be worse than the
+       fault this fixed. */
+    _qFrom = null;
     tabUse(S.tab);
     try { navBump(S.tab); } catch (e) { }          /* the ruler - counted on his device only */
     try { var _ng = navGroupOf(S.tab, S.navGrp); if (_ng) navSetGrp(_ng); } catch (e) { }
@@ -36175,10 +36219,8 @@ function viewCatalogue() {
        as well and a filter that leaves you on another screen has done nothing. */
     /* v6.9.464 - the same door as ch-queue, onto the approval list */
     if (act === "ch-approve-q") {
-      S.chOnly = t.getAttribute("data-off") ? "" : "draft";
-      if (S.tab !== "challans") { S.tab = "challans"; try { tabUse(S.tab); navBump(S.tab); } catch (e) {} }
-      try { window.scrollTo(0, 0); } catch (e) {}
-      render(); return;
+      if (t.getAttribute("data-off")) { chQueueLeave(); return; }
+      chQueueEnter("draft"); return;
     }
     /* v6.9.473 - the tile takes him to the band rather than to a filter: the band already
        carries the money, the age and the Dispatch button on every row, which a filtered list of
@@ -36213,10 +36255,8 @@ function viewCatalogue() {
       return;
     }
     if (act === "ch-queue") {
-      S.chOnly = t.getAttribute("data-off") ? "" : "hisab";
-      if (S.tab !== "challans") { S.tab = "challans"; try { tabUse(S.tab); navBump(S.tab); } catch (e) {} }
-      try { window.scrollTo(0, 0); } catch (e) {}
-      render(); return;
+      if (t.getAttribute("data-off")) { chQueueLeave(); return; }
+      chQueueEnter("hisab"); return;
     }
     if (act === "tab") { navGo(t.getAttribute("data-tab")); return; }
     if (act === "disc-jump") {
