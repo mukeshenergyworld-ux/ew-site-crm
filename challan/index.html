@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.58.0";
+  var APP_VERSION = "1.59.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -5220,6 +5220,38 @@ function discRowOn(client, brand, onYmd) {
       '</div>';
   }
 
+  /* ---- THE PAPER, BIG ENOUGH TO READ  (v1.59.0) ----
+     This screen had a button saying "Open the signed receipt" and nothing to look at, on the
+     one screen whose whole job is that a human being looked at the paper. MEASURED on his own
+     book: the copy the app carries is 90 x 120 pixels - it proves a photograph exists and it
+     cannot be read. driveImg(), already in this file, turns the Drive link into the real image;
+     measured at 1024 x 1448 on three of his 152 receipts, taken from the two ends and the
+     middle. The small one stands in while the big one loads, and the link stays, because the
+     original is the original. Same drawing as the CRM's hisabReceiptPic. */
+  function hisabReceiptPic(p) {
+    if (!p) return "";
+    var big = p.url ? driveImg(p.url, 1200) : "";
+    var small = p.thumb ? ('data:image/jpeg;base64,' + p.thumb) : "";
+    var src = big || small;
+    if (!src) {
+      return '<div class="frnote amb"><b>The receipt is on the phone it was photographed on</b>' +
+        '<br>It goes up on the next refresh. Nothing is lost - but there is no picture to look ' +
+        'at here yet.</div>';
+    }
+    return '<div class="card">' +
+      '<div class="muted" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase">' +
+        '<b>The signed receipt</b>' + ((p.by || p.actor) ? ' &middot; <span style="text-transform:none;letter-spacing:0">signed by ' + esc(p.by || p.actor) + '</span>' : '') +
+      '</div>' +
+      '<div style="margin-top:7px;background:#0f172a;border-radius:10px;overflow:hidden;' +
+           'display:flex;align-items:center;justify-content:center">' +
+        '<img src="' + esc(src) + '" alt="the signed receipt" loading="lazy" ' +
+             'style="max-width:100%;max-height:300px;object-fit:contain;display:block"/>' +
+      '</div>' +
+      (p.url ? '<div style="margin-top:7px"><a class="btn sm gry" href="' + esc(p.url) +
+        '" target="_blank" rel="noopener">Open the full receipt &#8599;</a></div>' : "") +
+      '</div>';
+  }
+
   function sheetAddToHisab(id) {
     var c = chFind(id) || (challans().filter(function (x) { return String(x.id) === String(id); })[0]);
     if (!c) return '<h2>Not found</h2><div class="acts"><button class="btn" data-act="close">Close</button></div>';
@@ -5230,8 +5262,11 @@ function discRowOn(client, brand, onYmd) {
       (c.site ? ' &middot; ' + esc(c.site) : "") + ' &middot; ' + esc(money(chValue(c))) +
       '<br>Check the paper first &mdash; this is the last look before the delivery counts as ' +
       'part of his hisab.</div>' +
-      (pf && pf.url ? '<div style="margin:0 0 12px"><a class="btn sm gry" href="' + esc(pf.url) +
-        '" target="_blank" rel="noopener">Open the signed receipt &#8599;</a></div>' : "");
+      hisabReceiptPic(pf) +
+      '<div class="card"><div class="muted" style="font-size:12px;letter-spacing:.08em;' +
+        'text-transform:uppercase"><b>Who did what</b></div>' +
+        chTrail(c).replace('margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0', 'margin-top:5px') +
+      '</div>';
     if (!miss.length) {
       h += '<div class="frnote grn">Every brand on this challan already has a discount set for ' +
         esc(c.customerName || "") + '. Nothing left to decide.</div>';
@@ -5304,7 +5339,14 @@ function discRowOn(client, brand, onYmd) {
       '<div class="row" style="gap:10px;flex-wrap:wrap;margin-top:8px;align-items:center">' +
         '<input id="hsb_extra" inputmode="decimal" placeholder="Amount off (\u20B9)" ' +
           'data-goods="' + Math.round(_goods) + '" data-frt="' + Math.round(_frt) + '" ' +
-          'style="flex:1 1 150px;min-width:130px"/>' +
+          'style="flex:1 1 130px;min-width:120px"/>' +
+        /* v1.59.0 - "we also want for % dist on total provision also". Two boxes, one question.
+           WHAT IS STORED IS STILL THE RUPEE AMOUNT, so a stamp written here and a stamp written
+           in the CRM are the same record. A percent OF THE GOODS: freight is a cost recovered
+           from the client, not a thing to give a discount on. */
+        '<span class="muted" style="font-size:12.5px;white-space:nowrap">or</span>' +
+        '<input id="hsb_extrapc" inputmode="decimal" placeholder="% off goods" ' +
+          'style="flex:1 1 110px;min-width:100px"/>' +
         '<span id="hsb_extrapct" class="muted" style="font-size:12px;white-space:nowrap">&mdash;</span>' +
         '<label style="display:flex;align-items:center;gap:7px;margin:0;white-space:nowrap;font-weight:700;' +
           'cursor:pointer"><input type="checkbox" id="hsb_noextra" style="width:19px;height:19px;flex:0 0 auto"/> ' +
@@ -5559,7 +5601,22 @@ function discRowOn(client, brand, onYmd) {
            (v > g ? ' &mdash; <b style="color:#b91c1c">more than the goods</b>' : ""))
         : "&mdash;";
     }
+    /* v1.59.0 - the percent box follows the amount, EXCEPT while he is typing in it: writing
+       into the box a man's cursor is sitting in is how a "5" turns into "5.0" under his hand. */
+    var pcEl = el("hsb_extrapc");
+    if (pcEl && document.activeElement !== pcEl) {
+      pcEl.value = (v > 0 && g > 0) ? String(Math.round(v / g * 1000) / 10) : "";
+    }
     if (tot) tot.textContent = money(g + f - (v > 0 ? v : 0));
+    /* v1.59.0 - WORD FOR WORD THE CRM's. The two lines below paint a before/after strip that
+       this app does not draw - it has no payments and no ledger, so it cannot say what a client
+       owes without inventing it. They find nothing here and do nothing, and ONE function serves
+       both screens, which is the whole point. */
+    var dEl = el("hsb_delta"), aEl = el("hsb_after");
+    var before = Math.round(Number(box.getAttribute("data-before")) || 0);
+    var delta = g + f - (v > 0 ? v : 0);
+    if (dEl) dEl.textContent = money(delta);
+    if (aEl) aEl.textContent = money(before + delta);
   }
 
   /* ================= NO FREIGHT ON THIS ONE?  (v1.46.0, 27 Aug 2026) =================
@@ -5592,13 +5649,27 @@ function discRowOn(client, brand, onYmd) {
       '</div></div>';
   }
   function wireInputs() {
-    var hx = el("hsb_extra"), hxn = el("hsb_noextra");
+    var hx = el("hsb_extra"), hxn = el("hsb_noextra"), hpc = el("hsb_extrapc");
     if (hx) hx.addEventListener("input", function () {
       if (hxn && hxn.checked && String(hx.value || "").trim()) hxn.checked = false;
       hsbExtraPaint();
     });
+    /* v1.59.0 - the same question asked the other way round. It writes the rupee amount into the
+       box beside it and then lets the ONE painter do the rest, so there is one arithmetic on
+       this screen and not two. */
+    if (hpc) hpc.addEventListener("input", function () {
+      if (hxn && hxn.checked && String(hpc.value || "").trim()) hxn.checked = false;
+      if (hx) {
+        var gg = Math.round(Number(hx.getAttribute("data-goods")) || 0);
+        var pc = Number(String(hpc.value || "").replace(/[^0-9.\-]/g, ""));
+        hx.value = (isFinite(pc) && pc > 0 && gg > 0) ? String(Math.round(gg * pc / 100)) : "";
+      }
+      hsbExtraPaint();
+    });
     if (hxn) hxn.addEventListener("change", function () {
-      if (hxn.checked && hx) hx.value = "";
+      /* BOTH boxes: a tick reading "no further discount" over a box still reading 5 is a screen
+         arguing with itself about money. */
+      if (hxn.checked) { if (hx) hx.value = ""; if (hpc) hpc.value = ""; }
       hsbExtraPaint();
     });
     var keep = [["m_site","site"],["m_freight","freight"],["m_veh","veh"],
