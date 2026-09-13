@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.59.0";
+  var APP_VERSION = "1.60.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3693,7 +3693,7 @@ function discRowOn(client, brand, onYmd) {
         (when ? esc(dstr(d10(when))) : '') +
       '</div></div>';
   }
-  function chTrail(c) {
+  function chTrail(c, wrapStyle) {
     var st = chStatus(c), pf = proofFor(c);
     var none = function (v) { return !String(v == null ? "" : v).trim(); };
     var rows = [];
@@ -3710,7 +3710,10 @@ function discRowOn(client, brand, onYmd) {
     } else {
       rows.push(trailRow("Receipt", "not due until it has gone", "", ""));
     }
-    return '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0">' +
+    /* v1.60.0 - the wrapper is an ARGUMENT, for the same reason the CRM's is: the finalise
+       sheet used to find-and-replace this style string, which fails silently the day it is
+       edited. */
+    return '<div style="' + (wrapStyle || "margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0") + '">' +
       rows.join("") + '</div>';
   }
 
@@ -5265,7 +5268,7 @@ function discRowOn(client, brand, onYmd) {
       hisabReceiptPic(pf) +
       '<div class="card"><div class="muted" style="font-size:12px;letter-spacing:.08em;' +
         'text-transform:uppercase"><b>Who did what</b></div>' +
-        chTrail(c).replace('margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0', 'margin-top:5px') +
+        chTrail(c, "margin-top:5px") +
       '</div>';
     if (!miss.length) {
       h += '<div class="frnote grn">Every brand on this challan already has a discount set for ' +
