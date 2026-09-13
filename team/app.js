@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.467";
+  var APP_VERSION = "6.9.468";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2282,7 +2282,22 @@ window.addEventListener("beforeunload", function (ev) {
            (v > g ? ' &mdash; <b style="color:#b91c1c">more than the goods</b>' : ""))
         : "&mdash;";
     }
+    /* v6.9.468 - the percent box follows the amount, EXCEPT while he is typing in it: writing
+       into the box a man's cursor is sitting in is how a "5" turns into "5.0" under his hand. */
+    var pcEl = el("hsb_extrapc");
+    if (pcEl && document.activeElement !== pcEl) {
+      pcEl.value = (v > 0 && g > 0) ? String(Math.round(v / g * 1000) / 10) : "";
+    }
     if (tot) tot.textContent = money(g + f - (v > 0 ? v : 0));
+    /* v6.9.468 - and so does what the client will owe. One arithmetic, not two: the same g, f
+       and v that move the delivery total move the "after" underneath it. */
+    var dEl = el("hsb_delta"), aEl = el("hsb_after");
+    var before = Math.round(Number(box.getAttribute("data-before")) || 0);
+    var delta = g + f - (v > 0 ? v : 0);
+    if (dEl) dEl.textContent = money(delta);
+    if (aEl) aEl.textContent = money(before + delta);
+    /* "before" is not touched: it is what he owes WITHOUT this delivery, and a discount on
+       this delivery cannot change what he owed before it. */
   }
   /* v6.9.330 - hide the rows that do not match, in place. No state, no repaint. */
   function incFilter() {
@@ -2327,6 +2342,21 @@ window.addEventListener("beforeunload", function (ev) {
       if (nx && nx.checked && String(t.value || "").trim()) nx.checked = false;
       hsbExtraPaint(); return;
     }
+    /* v6.9.468 - the same question asked the other way round. A percent of the GOODS, because
+       that is what a discount is a percent of; freight is a cost recovered, not a thing to
+       discount. It writes the rupee amount into the box beside it and then lets the one
+       existing painter do the rest - so there is one arithmetic on this screen, not two. */
+    if (t && t.id === "hsb_extrapc") {
+      var nx2 = document.getElementById("hsb_noextra");
+      if (nx2 && nx2.checked && String(t.value || "").trim()) nx2.checked = false;
+      var amtBox = document.getElementById("hsb_extra");
+      if (amtBox) {
+        var gg = Math.round(Number(amtBox.getAttribute("data-goods")) || 0);
+        var pc = Number(String(t.value || "").replace(/[^0-9.\-]/g, ""));
+        amtBox.value = (isFinite(pc) && pc > 0 && gg > 0) ? String(Math.round(gg * pc / 100)) : "";
+      }
+      hsbExtraPaint(); return;
+    }
     if (!t || t.id !== "p_pic") return;
     var h = document.getElementById("p_pic_hint");
     if (h) h.textContent = PIC_HINT[picProblem(t.value)] || "";
@@ -2353,7 +2383,12 @@ window.addEventListener("beforeunload", function (ev) {
       return;
     }
     if (!t || t.id !== "hsb_noextra") return;
-    if (t.checked) { var ex = document.getElementById("hsb_extra"); if (ex) ex.value = ""; }
+    /* v6.9.468 - BOTH boxes. Leaving the percent behind would tick "no further discount" over a
+       box still reading 5, which is a screen disagreeing with itself about money. */
+    if (t.checked) {
+      var ex = document.getElementById("hsb_extra"); if (ex) ex.value = "";
+      var pc2 = document.getElementById("hsb_extrapc"); if (pc2) pc2.value = "";
+    }
     hsbExtraPaint();
   });
 
@@ -9060,6 +9095,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var d = discRow(cl, b);
       return {
         brand: b, value: byBrand[b],
+        /* v6.9.468 - IS THERE A BOX FOR THIS ONE? hisabBrandsMissingDisc, which builds the
+           boxes, filters on presRealBrand - so "Accessory" and "Net price" are never asked
+           about: they are not brands and have no discount by design. This table counted them
+           anyway and painted them red, so the screen printed "1 brand has no discount set -
+           decide it below" directly above "Nothing left to decide". Two lines, one screen,
+           opposite answers, and a man sent looking for a control that does not exist. */
+        real: presRealBrand(b),
         disc: d ? (Number(d.pct) || 0) : null,      /* null means NOT SET, 0 means "no discount", set */
         per: (lineup || []).map(function (m) {
           var r = (m.role === "exec") ? execRateFor(cl, b) : incRate(cl, b, m.role);
@@ -9073,7 +9115,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       };
     });
     return { rows: rows, job: job,
-             noDisc: rows.filter(function (r) { return r.disc === null; }).length,
+             /* only what there is a box for - see `real` above */
+             noDisc: rows.filter(function (r) { return r.disc === null && r.real; }).length,
              noRate: rows.reduce(function (n, r) {
                return n + r.per.filter(function (p) { return !p.rated && p.earns; }).length;
              }, 0),
@@ -9083,6 +9126,91 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
              earners: (lineup || []).filter(function (m) {
                return (m.role !== "exec") || execEarns(m.name);
              }).length };
+  }
+
+  /* ---- THE PAPER, BIG ENOUGH TO READ  (v6.9.468) ----
+     There was a button here saying "Open the signed receipt" and nothing to look at, on the
+     one screen whose whole job is that a human being looked at the paper. MEASURED on his own
+     book: the copy the app carries is 90 x 120 pixels - it proves a photograph exists and it
+     cannot be read. driveImg(), which this app has had since 6.9.298, turns the Drive link
+     into the real image; measured at 1024 x 1448 on three of his 152 receipts, taken from the
+     two ends and the middle. The 90 x 120 stands underneath while the big one loads, and the
+     link stays, because the original is the original. */
+  function hisabReceiptPic(p) {
+    if (!p || !p.has) return "";
+    var big = p.url ? driveImg(p.url, 1200) : "";
+    var small = p.thumb ? ('data:image/jpeg;base64,' + p.thumb) : "";
+    var src = big || small;
+    if (!src) {
+      return '<div class="card" style="padding:9px 11px;border-style:dashed;color:#92400e;background:#fffbeb">' +
+        '<b>The receipt is on the phone it was photographed on</b>' +
+        '<div class="meta" style="font-size:12px;color:#92400e">It goes up on the next refresh. ' +
+        'Nothing is lost - but there is no picture to look at here yet.</div></div>';
+    }
+    return '<div class="card" style="padding:9px 11px">' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
+        '<b>The signed receipt</b>' + (p.by ? ' &middot; <span style="text-transform:none;letter-spacing:0">signed by ' + esc(p.by) + '</span>' : '') +
+      '</div>' +
+      '<div style="margin-top:7px;background:#0f172a;border-radius:10px;overflow:hidden;' +
+           'display:flex;align-items:center;justify-content:center">' +
+        '<img src="' + esc(src) + '" alt="the signed receipt" loading="lazy" ' +
+             'style="max-width:100%;max-height:300px;object-fit:contain;display:block"/>' +
+      '</div>' +
+      (p.url ? '<div style="margin-top:7px"><a class="btn sm ghost" href="' + esc(p.url) +
+        '" target="_blank" rel="noopener">Open the full receipt &#8599;</a></div>' : "") +
+      '</div>';
+  }
+
+  /* the same three lines the challan card draws, from the same function - see chTrailHtml */
+  function chTrailBox(c) {
+    return '<div class="card" style="padding:9px 11px">' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
+        '<b>Who did what</b></div>' +
+      chTrailHtml(c).replace('margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0', 'margin-top:5px') +
+      '</div>';
+  }
+
+  /* ---- WHAT HE OWES, BEFORE AND AFTER THIS DELIVERY  (v6.9.468) ----
+     HIS WORDS: "in corner also show total pending amount of client before this challan and
+     after this challan."
+
+     AND THE CORRECTION THAT HAS TO GO WITH IT. He also said finalising is what "finally adds
+     it to client hisab". It is not: clientLedgerCalc counts every challan whose
+     receiptReceived is "Y" and never looks at the stamp, so this delivery landed on his
+     account the moment the receipt went in. That rule is mirrored word for word into the
+     backend and read by the aging, the chase list, the statement he sends the customer and
+     the Payment app - so the screen says what is true rather than the other way round.
+
+     BEFORE is therefore today's figure with this delivery taken back out, and AFTER is
+     today's figure. The delta is challanNet + chFreight, which is exactly what the ledger
+     added, further discount and all - not `goods`, which ignores it. */
+  function hisabStanding(c, cl) {
+    var due = clientLedger(cl).due;
+    var delta = challanNet(c) + chFreight(c);
+    return { before: due - delta, delta: delta, after: due };
+  }
+  function hisabStandingHtml(c, cl) {
+    var st = hisabStanding(c, cl);
+    var row = function (lab, val, id, strong) {
+      return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;' +
+        (strong ? 'border-top:1px solid #cbd5e1;margin-top:4px;padding-top:4px' : '') + '">' +
+        '<span style="font-size:12.5px;color:#475569">' + lab + '</span>' +
+        '<span' + (id ? ' id="' + id + '"' : '') + ' style="font-weight:' + (strong ? '800' : '700') +
+          ';font-size:' + (strong ? '15px' : '13px') + ';color:#0f172a;white-space:nowrap">' + money(val) + '</span></div>';
+    };
+    return '<div class="card" style="padding:9px 11px;background:#f8fafc">' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
+        '<b>What ' + esc(cl || "this client") + ' owes</b></div>' +
+      '<div style="margin-top:5px">' +
+        row("Before this delivery", st.before, "hsb_before", false) +
+        row("This delivery", st.delta, "hsb_delta", false) +
+        row("After", st.after, "hsb_after", true) +
+      '</div>' +
+      '<div class="meta" style="font-size:12px;color:#64748b;margin-top:5px;line-height:1.45">' +
+        'It already counts &mdash; a delivery goes on his account the moment the receipt is filed, ' +
+        'not when this button is pressed. Finalising is the check. A further discount below is the ' +
+        'only thing on this screen that moves the figure.</div>' +
+      '</div>';
   }
 
   function modalAddToHisab(id) {
@@ -9097,8 +9225,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
                                  : (p.queued ? '<b>on this phone, still uploading</b>' : '<b>on file</b>')) +
       '. ' + (p.has ? 'Check the paper first &mdash; this' : 'This') +
       ' is the last look before the delivery counts as part of his hisab.</p>' +
-      (p.url ? '<div style="margin:0 0 10px"><a class="btn sm ghost" href="' + esc(p.url) +
-        '" target="_blank" rel="noopener">Open the signed receipt &#8599;</a></div>' : "");
+      hisabStandingHtml(c, cl) + hisabReceiptPic(p) + chTrailBox(c);
 
     /* ---- 0. NO PAPER, AND ONE LINE SAYING WHY  (v6.9.342) ----
        His answer, in his own choice of the three: "show it, ask one line why". A delivery he
@@ -9149,15 +9276,25 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<td style="padding:5px 6px">' + money(x.dr) + '</td>' +
         '<td style="padding:5px 0 5px 6px;font-weight:700">' + money(x.amt) + '</td></tr>';
     });
-    h += '<tr style="border-top:2px solid #cbd5e1;text-align:right">' +
-      '<td colspan="5" style="padding:6px 6px 3px 0;color:#475569">Goods</td>' +
-      '<td style="padding:6px 0 3px 6px;font-weight:800">' + money(goods) + '</td></tr>';
-    if (frt > 0) h += '<tr style="text-align:right"><td colspan="5" style="padding:2px 6px 3px 0;color:#475569">' +
-      'Freight (recovered from the client)</td><td style="padding:2px 0 3px 6px;font-weight:700">' + money(frt) + '</td></tr>';
-    h += '<tr style="text-align:right;background:#f8fafc">' +
-      '<td colspan="5" style="padding:6px 6px 6px 0;font-weight:800;color:#0f172a">This delivery</td>' +
-      '<td id="hsb_tot" style="padding:6px 0 6px 6px;font-weight:800;font-size:15px;color:#0f172a">' + money(goods + frt) + '</td></tr>' +
-      '</table></div></div>';
+    /* ---- THE TOTAL IS NOT INSIDE THE SCROLLER  (v6.9.468) ----
+       DRAWN AT 390px AND LOOKED AT. Six columns do not fit a phone, so the table scrolls
+       sideways - which is fine for the line items and was NOT fine for the total, because
+       "This delivery" rode in the same table and came out clipped to "Rs 17,77". The one
+       number this screen exists for was the one number he could not read. */
+    h += '</table></div>' +
+      '<div style="margin-top:8px;border-top:2px solid #cbd5e1;padding-top:7px">' +
+      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">' +
+        '<span style="font-size:12.5px;color:#475569">Goods</span>' +
+        '<span style="font-weight:800;font-size:13px;white-space:nowrap">' + money(goods) + '</span></div>' +
+      (frt > 0 ? '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-top:2px">' +
+        '<span style="font-size:12.5px;color:#475569">Freight (recovered from the client)</span>' +
+        '<span style="font-weight:700;font-size:13px;white-space:nowrap">' + money(frt) + '</span></div>' : '') +
+      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;' +
+           'margin-top:5px;padding-top:5px;border-top:1px solid #e2e8f0">' +
+        '<span style="font-weight:800;font-size:13px;color:#0f172a">This delivery</span>' +
+        '<span id="hsb_tot" style="font-weight:800;font-size:15px;color:#0f172a;white-space:nowrap">' +
+          money(goods + frt) + '</span></div>' +
+      '</div></div>';
 
     /* ---- 2. THE PRESET, BRAND BY BRAND ----
        Every brand on this delivery, and what this client is set at for it. Until now only the
@@ -9193,8 +9330,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           '<td style="text-align:left;padding:5px 6px 5px 0;font-weight:600">' + esc(r.brand) + '</td>' +
           '<td style="padding:5px 6px">' + money(r.value) + '</td>' +
           '<td style="padding:5px 6px;font-weight:700;color:' +
-            (r.disc === null ? '#b91c1c' : (r.disc > 0 ? '#0f766e' : '#94a3b8')) + '">' +
-            (r.disc === null ? 'not set' : (r.disc > 0 ? r.disc + '%' : 'none')) + '</td>' +
+            (r.disc === null ? (r.real ? '#b91c1c' : '#94a3b8') : (r.disc > 0 ? '#0f766e' : '#94a3b8')) + '">' +
+            (r.disc === null
+               ? (r.real ? 'not set'
+                         : '<span title="Accessories and net-price lines are not a brand and carry ' +
+                           'no preset discount. There is nothing to set.">n/a</span>')
+               : (r.disc > 0 ? r.disc + '%' : 'none')) + '</td>' +
           (own ? r.per.map(function (p) {
             /* v6.9.389 - three states, not two. Rated. Unrated and somebody should set it
                (amber, and counted below). Unrated because this man takes no executive
@@ -9281,7 +9422,19 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div class="row" style="gap:10px;flex-wrap:wrap;margin-top:8px;align-items:center">' +
         '<input id="hsb_extra" inputmode="decimal" placeholder="Amount off (₹)" ' +
           'data-goods="' + Math.round(goods) + '" data-frt="' + Math.round(frt) + '" ' +
-          'style="flex:1 1 150px;min-width:130px"/>' +
+          /* v6.9.468 - what he owes with this delivery taken back out. Carried here so the
+             "after" underneath can follow the amount as it is typed. */
+          'data-before="' + Math.round(hisabStanding(c, cl).before) + '" ' +
+          'style="flex:1 1 130px;min-width:120px"/>' +
+        /* ---- OR A PERCENT  (v6.9.468) ----
+           HIS WORDS: "further discount thing, its now showing amt to enter only, we also want
+           for % dist on total provision also". Two boxes, one question: type in either and the
+           other fills itself. WHAT IS STORED IS STILL THE RUPEE AMOUNT - `extra` on the stamp,
+           read by challanNet and by the backend - so a 5% typed here and a 2,050 typed here
+           leave the identical record and nothing downstream learns a new word. */
+        '<span class="meta" style="font-size:12.5px;color:#64748b;white-space:nowrap">or</span>' +
+        '<input id="hsb_extrapc" inputmode="decimal" placeholder="% off goods" ' +
+          'style="flex:1 1 110px;min-width:100px"/>' +
         '<span id="hsb_extrapct" class="meta" style="font-size:12px;white-space:nowrap">&mdash;</span>' +
         '<label style="display:flex;align-items:center;gap:7px;margin:0;white-space:nowrap;font-weight:700;' +
           'color:#334155;cursor:pointer"><input type="checkbox" id="hsb_noextra" checked ' +
@@ -16825,6 +16978,60 @@ function viewCatalogue() {
     return h;
   }
 
+    /* ============ WHO DID WHAT, ON THE FACE OF THE CARD (v6.9.466) ============
+     v6.9.468 - LIFTED OUT OF viewChallans, NOT COPIED. It was written inside that function,
+     so the finalise window could not call it and would have had to draw the same three lines
+     a second time - which is how two screens start disagreeing about who passed a challan.
+     HIS WORDS, 12 Sep 2026: "on every challan, both in CRM and challan app, for all, show
+     challan created by on date, challan approved by on date, receipt attached by on date …
+     so to check who doing how much effort and also easilly found who created what and who
+     approved what WITHOUT CLICKING DETAILS."
+
+     IT WAS THERE AND IT WAS BEHIND THE FOLD. madeLine - "Created by X · approved by Y" -
+     was built inside `if (open)`, so it only ever appeared once the card had been expanded,
+     and it carried NO DATES at all. Both are fixed here: three lines, always open, with the
+     date on each, and the old madeLine is gone rather than left to say the same thing twice
+     one fold lower.
+
+     Every field was MEASURED as populated on his book before this was built: createdBy
+     180/180, createdAt 180/180, approvedBy 179, approvedAt 175. "Attached by" comes off the
+     receipt's own audit row, which has always carried its actor and its time - there has
+     never been a column for it and there does not need to be one.
+
+     A STAGE THAT HAS NOT HAPPENED SAYS SO, in the red the pills use. And a stage that
+     happened with no name says "name not recorded" rather than printing a blank: one of his
+     180 challans has an approvedAt and no approvedBy, and a blank there is how a man gets
+     blamed for something he did not do. Byte-for-byte the same three rows as the Challan
+     app's chTrail. */
+  function chTrailRow(label, who, when, tone) {
+    var col = tone === "bad" ? "#b91c1c" : (tone === "good" ? "#0f766e" : "#334155");
+    return '<div style="display:flex;gap:6px;line-height:1.5">' +
+      '<div style="font-size:12px;color:#64748b;min-width:62px;flex:0 0 auto">' + label + '</div>' +
+      '<div style="font-size:12px;color:' + col + ';min-width:0">' +
+        (who ? '<b>' + esc(who) + '</b>' : '') + (who && when ? ' &middot; ' : '') +
+        (when ? esc(fullDate(when)) : '') + '</div></div>';
+  }
+  function chTrailHtml(c) {
+    var st = String(c.status || "Draft"), pf = challanProof(c.id);
+    var gone = ["Dispatched", "Received", "Billed"].indexOf(st) >= 0;
+    var none = function (v) { return !String(v == null ? "" : v).trim(); };
+    var rows = [chTrailRow("Made", none(c.createdBy) ? "name not recorded" : c.createdBy, c.createdAt, "")];
+    if (none(c.approvedAt) && none(c.approvedBy)) {
+      rows.push(chTrailRow("Passed", st === "Draft" ? "not passed yet" : "not recorded", "", "bad"));
+    } else {
+      rows.push(chTrailRow("Passed", none(c.approvedBy) ? "name not recorded" : c.approvedBy, c.approvedAt, ""));
+    }
+    if (pf) {
+      rows.push(chTrailRow("Receipt", none(pf.actor || pf.by) ? "name not recorded" : (pf.actor || pf.by), pf.at, "good"));
+    } else if (gone) {
+      rows.push(chTrailRow("Receipt", "not attached yet", "", "bad"));
+    } else {
+      rows.push(chTrailRow("Receipt", "not due until it has gone", "", ""));
+    }
+    return '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0">' +
+      rows.join("") + '</div>';
+  }
+
   function viewChallans() {
     ensurePickerCss();   /* stage-action colours + picker styles must exist on the list view too */
     /* v6.9.247 - the challan app. A separate app on purpose: this screen is the whole delivery
@@ -16889,56 +17096,6 @@ function viewCatalogue() {
 
     /* One challan's card (compact summary + expandable detail). Factored out so the very same card
        can be dropped under whichever client it belongs to in the grouped layout below. */
-      /* ============ WHO DID WHAT, ON THE FACE OF THE CARD (v6.9.466) ============
-       HIS WORDS, 12 Sep 2026: "on every challan, both in CRM and challan app, for all, show
-       challan created by on date, challan approved by on date, receipt attached by on date …
-       so to check who doing how much effort and also easilly found who created what and who
-       approved what WITHOUT CLICKING DETAILS."
-
-       IT WAS THERE AND IT WAS BEHIND THE FOLD. madeLine - "Created by X · approved by Y" -
-       was built inside `if (open)`, so it only ever appeared once the card had been expanded,
-       and it carried NO DATES at all. Both are fixed here: three lines, always open, with the
-       date on each, and the old madeLine is gone rather than left to say the same thing twice
-       one fold lower.
-
-       Every field was MEASURED as populated on his book before this was built: createdBy
-       180/180, createdAt 180/180, approvedBy 179, approvedAt 175. "Attached by" comes off the
-       receipt's own audit row, which has always carried its actor and its time - there has
-       never been a column for it and there does not need to be one.
-
-       A STAGE THAT HAS NOT HAPPENED SAYS SO, in the red the pills use. And a stage that
-       happened with no name says "name not recorded" rather than printing a blank: one of his
-       180 challans has an approvedAt and no approvedBy, and a blank there is how a man gets
-       blamed for something he did not do. Byte-for-byte the same three rows as the Challan
-       app's chTrail. */
-    function chTrailRow(label, who, when, tone) {
-      var col = tone === "bad" ? "#b91c1c" : (tone === "good" ? "#0f766e" : "#334155");
-      return '<div style="display:flex;gap:6px;line-height:1.5">' +
-        '<div style="font-size:12px;color:#64748b;min-width:62px;flex:0 0 auto">' + label + '</div>' +
-        '<div style="font-size:12px;color:' + col + ';min-width:0">' +
-          (who ? '<b>' + esc(who) + '</b>' : '') + (who && when ? ' &middot; ' : '') +
-          (when ? esc(fullDate(when)) : '') + '</div></div>';
-    }
-    function chTrailHtml(c) {
-      var st = String(c.status || "Draft"), pf = challanProof(c.id);
-      var gone = ["Dispatched", "Received", "Billed"].indexOf(st) >= 0;
-      var none = function (v) { return !String(v == null ? "" : v).trim(); };
-      var rows = [chTrailRow("Made", none(c.createdBy) ? "name not recorded" : c.createdBy, c.createdAt, "")];
-      if (none(c.approvedAt) && none(c.approvedBy)) {
-        rows.push(chTrailRow("Passed", st === "Draft" ? "not passed yet" : "not recorded", "", "bad"));
-      } else {
-        rows.push(chTrailRow("Passed", none(c.approvedBy) ? "name not recorded" : c.approvedBy, c.approvedAt, ""));
-      }
-      if (pf) {
-        rows.push(chTrailRow("Receipt", none(pf.actor || pf.by) ? "name not recorded" : (pf.actor || pf.by), pf.at, "good"));
-      } else if (gone) {
-        rows.push(chTrailRow("Receipt", "not attached yet", "", "bad"));
-      } else {
-        rows.push(chTrailRow("Receipt", "not due until it has gone", "", ""));
-      }
-      return '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0">' +
-        rows.join("") + '</div>';
-    }
 
   function challanCardHtml(c) {
       var st = c.status || "Draft";
