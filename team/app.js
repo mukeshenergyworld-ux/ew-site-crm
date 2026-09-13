@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.475";
+  var APP_VERSION = "6.9.476";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4340,17 +4340,24 @@ window.addEventListener("beforeunload", function (ev) {
 
   /* v6.9.394 - tone: "red" for a return, anything else for the teal every other document has
      always had. Optional, so no existing caller changes by a byte. */
-  function commPdfBase(title, ch, dateStr, tone) {
+  /* v6.9.476 - ORIENTATION IS A PARAMETER, AND PORTRAIT IS THE DEFAULT. Eight documents are
+     built on this base - the commissioning certificate, the warranty card, the AMC, the payment
+     receipt, today's board, the week ahead and behind, the agent's day, and the signed receipt.
+     Only the last one wants landscape, so `land` is opt-in and the other seven are not touched
+     by so much as a millimetre. */
+  function commPdfBase(title, ch, dateStr, tone, land) {
     var _red = tone === "red";
     return loadFonts().then(function (f) {
-      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var doc = new window.jspdf.jsPDF(land
+        ? { unit: "mm", format: "a4", orientation: "landscape" }
+        : { unit: "mm", format: "a4" });
       var uni = false;
       if (f) {
         doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
         doc.addFileToVFS("DejaVuSans-Bold.ttf", f.bold); doc.addFont("DejaVuSans-Bold.ttf", "DJ", "bold"); uni = true;
       }
       var F = function (w) { var s = (w && String(w).indexOf("bold") >= 0) ? "bold" : "normal"; doc.setFont(ppEmbed(doc), s); };
-      var W = 210, L = 16, R = W - 16;
+      var W = land ? 297 : 210, L = 16, R = W - 16;
       if (_red) { doc.setFillColor(127, 29, 29); } else { doc.setFillColor(11, 59, 54); }
       doc.rect(0, 0, W, 34, "F");
       if (_red) { doc.setFillColor(252, 165, 165); } else { doc.setFillColor(94, 234, 212); }
@@ -4363,7 +4370,9 @@ window.addEventListener("beforeunload", function (ev) {
       doc.text("Energy World · Save Energy, Money & Earth", R, 22, { align: "right" });
       doc.text("Date: " + fullDate(dateStr), R, 27, { align: "right" });
       doc.setTextColor(17, 34, 45);
-      return { doc: doc, F: F, uni: uni, L: L, R: R, y: 46, red: _red };
+      /* PGH so a caller never has to remember which way round the paper is */
+      return { doc: doc, F: F, uni: uni, L: L, R: R, y: 46, red: _red,
+               land: !!land, PGW: W, PGH: land ? 210 : 297 };
     });
   }
   function commCustomerBlock(b, ch) {
@@ -10129,11 +10138,23 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        standing at a site trying to file a piece of paper. */
     return Promise.all([loadLogo()]).then(function (lres) {
       var LG = [];
+      /* v6.9.476 - landscape: the paperwork on the left half, the signed receipt on the right */
       return commPdfBase(ch._isReturn ? "MATERIAL RETURN & GOODS-IN RECEIPT" : "DELIVERY CHALLAN & RECEIPT",
-        ch, String(meta.at || "").slice(0, 10), ch._isReturn ? "red" : "")
+        ch, String(meta.at || "").slice(0, 10), ch._isReturn ? "red" : "", true)
         .then(function (b) { b.LG = LG; return b; });
     }).then(function (b) {
-      var doc = b.doc, F = b.F, L = b.L, R = b.R, y;   /* v6.9.275 - no LOGOS on a receipt */
+      /* ============ TWO COLUMNS  (v6.9.476) ============
+         R is redefined to the PAPERWORK column's right edge, so every line of the facts band,
+         the item table and the sign-off below - all of which are written relative to L and R -
+         lands in the left half without a single one of them being touched. The photograph gets
+         its own column and its own y, and the full page edge is kept as PGR for the closing note.
+         PCOL is deliberately the same 128 mm on both sides: a challan and its receipt are equal
+         halves of one document, and neither is a margin note on the other. */
+      var doc = b.doc, F = b.F, L = b.L, PGR = b.R, y;   /* v6.9.275 - no LOGOS on a receipt */
+      var PGH = b.PGH, PCOL = 128;
+      var R = L + PCOL;                    /* the paperwork column */
+      var PX = R + 9, PXW = PGR - PX;      /* the receipt column */
+      var TBOT = PGH - 32;                 /* where the item table breaks to a new page */
       /* ============ A RETURN IS NOT A DELIVERY (v6.9.394) ============
          "all return must be in red words all, make is standard for all." The statement has drawn
          a return in red since v6.9.240; this document never did - it hard-coded the delivery's
@@ -10211,7 +10232,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         doc.setFontSize(8.4);
         var dl = doc.splitTextToSize(String(r.desc || ""), DESCW).slice(0, 2);
         var need = 6.3 + (dl.length > 1 ? 4 : 0) + (note ? 4 : 0);   /* v6.9.281 */
-        if (y + need > 265) { doc.addPage(); y = 24; tableHead(); }
+        if (y + need > TBOT) { doc.addPage(); y = 24; tableHead(); }
         if (i2 % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(L, y - 4.5, R - L, need - 0.6, "F"); }
         var diff = Number(r.now) - Number(r.was);
         if (diff < 0) shortLines++;
@@ -10262,7 +10283,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          actually is. When there is NO photograph the ruled block is the only place a signature
          could ever go, so it is kept in full, unchanged. */
       if (prfPhotoList(prf).length) {
-        if (y > 250) { doc.addPage(); y = 26; }
+        if (y > PGH - 42) { doc.addPage(); y = 26; }
         F("bold"); doc.setFontSize(8.5); ink();
         var lead = ch._isReturn
           ? "RETURNED AND COUNTED IN AT THE GODOWN BY \u2014"
@@ -10274,13 +10295,17 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         F("normal"); doc.setFontSize(11); doc.setTextColor(17, 34, 45);
         doc.text(String(meta.by || "\u2014"), nameX, y);
         if (prf.sig) { try { doc.addImage(prf.sig, "PNG", R - 46, y - 6, 44, 16); } catch (e) { } }
-        else {
-          F("normal"); doc.setFontSize(7.6); tallyColour();
-          doc.text(tally, R, y, { align: "right" });
-        }
         y += 9;
+        /* v6.9.476 - IT USED TO BE RIGHT-ALIGNED ON THIS SAME LINE, which worked against a
+           178 mm page and printed straight through "Gagan" against a 128 mm column. Seen on the
+           render, not in the source. Its own line, left-aligned, where nothing can reach it. */
+        if (!prf.sig) {
+          F("normal"); doc.setFontSize(7.6); tallyColour();
+          doc.text(tally, L, y);
+          y += 6;
+        }
       } else {
-        if (y > 206) { doc.addPage(); y = 26; }
+        if (y > PGH - 60) { doc.addPage(); y = 26; }
         F("bold"); doc.setFontSize(8.5); ink();
         doc.text(ch._isReturn
           ? "THE ABOVE MATERIAL WAS RETURNED AND COUNTED IN AT THE GODOWN"
@@ -10305,44 +10330,94 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          one document. Each picture still gets the room the page has left and still earns a
          fresh sheet only when it would otherwise be too small to read; the caption numbers
          them, because a man arguing three months later needs to know none is missing. */
+      /* ============ THE RECEIPT BESIDE THE PAPERWORK  (v6.9.476) ============
+         HIS WORDS: "half page challan and another half receipt preview".
+
+         IT USED TO BE DRAWN UNDERNEATH EVERYTHING, so the evidence was always below the fold and
+         on any delivery of more than a few lines it was pushed onto a second sheet. v6.9.281
+         spent 37 mm of ruled signature block, a 9 mm provenance line and 277 KB of logo strip
+         clawing room back to keep the picture on page one. The SHAPE was the problem.
+
+         It now has its own column at the full height of the page. A receipt photographed at
+         1024 x 1448 - measured on three of his - draws at 110 x 156 mm, against the 78 mm floor
+         below which the handwriting on a delivery slip stops being readable.
+
+         AND IT IS ON PAGE ONE WHATEVER THE PAPERWORK DID. The item table above may have run to
+         three sheets; the page is set back to the first before the picture is drawn, because a
+         man arguing three months later should not have to turn over to find the evidence. */
       var _phs = prfPhotoList(prf);
+      var _paperPage = doc.getNumberOfPages(), _paperY = y;
+      /* ---- WHERE A PICTURE CAN GO (v6.9.476) ----
+         Page one has ONE slot - the right-hand column, because the left half is the paperwork.
+         Every sheet after it has TWO, left then right. A picture takes the slot it is in; when
+         it would come out under 78 mm it moves to the next one, and only a sheet with no slots
+         left earns a new sheet. Rendered and counted: three photographs, two sheets. */
+      var _slot = { x: PX, w: PXW }, py = 43, _onPage1 = true;
+      var nextSlot = function () {
+        if (_onPage1 || _slot.x !== L) {
+          /* jsPDF inserts after the ACTIVE page, and page one is active while the first picture
+             is drawn - so walk to the end before adding, or the new sheet lands mid-document */
+          doc.setPage(doc.getNumberOfPages()); doc.addPage();
+          doc.setPage(doc.getNumberOfPages());
+          _onPage1 = false; _slot = { x: L, w: PCOL };
+        } else {
+          _slot = { x: PX, w: PXW };
+        }
+        py = 26;
+      };
       _phs.forEach(function (ph, _pi) {
-        /* ================= FIT IT TO THE ROOM THAT IS LEFT (v6.9.281) =================
-           This used to scale the picture to a fixed 214 mm and then ask whether it fitted. It
-           never did - 214 mm is three quarters of an A4 page - so the photograph took a sheet of
-           its own every single time, however short the delivery. Now the height is whatever the
-           page has left after the paperwork, and the width follows the picture's own shape. */
-        var MAXW = R - L, PW = 3, PH = 4;
+        var IW = 3, IH = 4;
         try {
           var ip = doc.getImageProperties("data:image/jpeg;base64," + ph);
-          if (ip && ip.width && ip.height) { PW = ip.width; PH = ip.height; }
+          if (ip && ip.width && ip.height) { IW = ip.width; IH = ip.height; }
         } catch (e) { }
-        /* FOOT is the closing note's own room: three lines at 3.8 mm plus a bottom margin.
-           MEASURED with 12: the picture fitted, then the note tipped onto a second page - which
-           is the same wasted sheet, just with four lines of small print on it instead of a
-           photograph. */
-        var BOT = 286, FOOT = 15, CAP = 5.5;
-        var fitTo = function (h) {
-          var sc = Math.min(MAXW / PW, h / PH);
-          return { w: PW * sc, h: PH * sc };
+        /* v6.9.476 - THE CLOSING NOTE'S ROOM IS RESERVED, NOT HOPED FOR. Rendered without it:
+           the third photograph came down flush to PGH - 11, the note had nowhere left to sit, and
+           it took a THIRD sheet to itself carrying four lines of small print. Thirteen millimetres
+           off every picture is cheaper than a sheet, and every picture is still far above the
+           78 mm floor.
+           MEASURED AGAIN with 13 mm and it was half a millimetre short: ONE photograph - the
+           ordinary case, 158 of his 158 receipts - came to y 197.5 against a limit of 197 and
+           took a second sheet for four lines of small print. 30 mm covers the picture's own
+           trailing gap as well as the note. The picture is still 131 mm tall. */
+        var CAP = 5.5, BOT = PGH - 30;
+        var fitTo = function (w, h) {
+          var sc = Math.min(w / IW, h / IH);
+          return { w: IW * sc, h: IH * sc };
         };
-        var box = fitTo(BOT - FOOT - y - CAP);
-        /* Under 78 mm the handwriting on a delivery slip stops being readable, and an
-           unreadable receipt is not evidence. That is the ONLY thing that still earns a second
-           sheet - not a constant, and not the length of the item list on its own. */
-        if (box.h < 78) { doc.addPage(); y = 26; box = fitTo(Math.min(214, BOT - FOOT - y - CAP)); }
+        if (_pi === 0) doc.setPage(1);
+        var box = fitTo(_slot.w, BOT - py - CAP);
+        /* Under 78 mm the handwriting on a delivery slip stops being readable, and an unreadable
+           receipt is not evidence. That is the ONLY thing that moves a picture along.
+           BUT ONLY IF MOVING WOULD ACTUALLY HELP. A WIDE receipt - 1400 x 800, the second of the
+           three in the rig - is limited by the COLUMN, not by the room below it: at 128 mm wide
+           it is 73 mm tall in every slot on every sheet. Asking for a fresh slot then asks
+           forever, and that is exactly what it did - three photographs came out on FOUR sheets,
+           one per picture, each of them mostly blank. So: compare against what an EMPTY slot
+           would give, and stay put when the answer is the same. */
+        var _fresh = fitTo(_slot.w, BOT - 26 - CAP);
+        if (box.h < 78 && box.h < _fresh.h - 0.5) { nextSlot(); box = fitTo(_slot.w, BOT - py - CAP); }
         F("bold"); doc.setFontSize(8.5); ink();
         doc.text((ch._isReturn ? "THE GOODS-IN RECEIPT AS IT WAS SIGNED AT THE GODOWN"
                                : "THE RECEIPT AS IT CAME BACK FROM THE SITE") +
-                 (_phs.length > 1 ? "  \u00b7  " + (_pi + 1) + " OF " + _phs.length : ""), L, y);
-        y += CAP;
-        var ix = L + (MAXW - box.w) / 2;
+                 (_phs.length > 1 ? "  \u00b7  " + (_pi + 1) + " OF " + _phs.length : ""), _slot.x, py);
+        py += CAP;
+        var ix = _slot.x + (_slot.w - box.w) / 2;
         try {
-          doc.addImage("data:image/jpeg;base64," + ph, "JPEG", ix, y, box.w, box.h);
-          doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(ix, y, box.w, box.h);
-          y += box.h + 5.5;
+          doc.addImage("data:image/jpeg;base64," + ph, "JPEG", ix, py, box.w, box.h);
+          doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3); doc.rect(ix, py, box.w, box.h);
+          py += box.h + 5.5;
         } catch (e) { }
       });
+      /* ---- v6.9.476 - THE NOTE SITS BELOW WHATEVER WAS ACTUALLY DRAWN LAST ----
+         It was anchored at a fixed PGH - 14, which is INSIDE the picture whenever the last
+         photograph runs near the foot - and on the render it did exactly that, printing straight
+         through the third receipt. So: the last sheet, and on it the lower of the paperwork and
+         the pictures, whichever reaches further down. */
+      var _endPage = doc.getNumberOfPages();
+      doc.setPage(_endPage);
+      y = (_phs.length ? (_endPage === _paperPage ? Math.max(_paperY, py) : py) : _paperY) + 6;
+      if (y > PGH - 13) { doc.addPage(); y = 26; }
 
       /* ================= NO LOGO STRIP ON A RECEIPT (v6.9.275) =================
          MEASURED on 15 Aug, on the machine that could not upload:
@@ -10362,13 +10437,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          already.
 
          The quote PDF, the proposal deck, the price list and the challan itself all keep it. */
-      if (y > 277) { doc.addPage(); y = 26; }
+      /* v6.9.476 - anchored to the foot of the page rather than flowed, and it spans BOTH
+         columns: it is provenance for the whole document, not for the left half of it. */
       F("normal"); doc.setFontSize(7); doc.setTextColor(120, 130, 145);
       doc.splitTextToSize("Recorded by " + String(meta.actor || "-") + " on " +
         fullDate(String(meta.at || "").slice(0, 10)) + " at " + String(meta.at || "").slice(11, 16) +
         " hrs. This is one document: the delivery challan and the receipt that came back from the site, " +
         "kept together and stored unaltered. The quantities shown as received are what the person named above confirmed.",
-        R - L).forEach(function (ln) { doc.text(ln, L, y); y += 3.8; });
+        PGR - L).forEach(function (ln) { doc.text(ln, L, y); y += 3.8; });
 
       return doc;
     });
