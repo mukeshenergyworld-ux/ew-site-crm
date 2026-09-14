@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.61.0";
+  var APP_VERSION = "1.62.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3314,7 +3314,10 @@ function discRowOn(client, brand, onYmd) {
          oldest-day-first. A line that describes the screen wrongly is worse than no line. */
       h += '<div class="muted" style="font-weight:700;margin:8px 2px 4px">' +
         list.length + ' challan' + (list.length === 1 ? '' : 's') + ' · ' + money(val3) +
-        (f === "noproof" ? ' · oldest day first' : ' · newest first') + '</div>';
+        /* 1.56.0 learned this the hard way and 1.62.0 keeps it: the strap has to tell the
+           truth about the order, so it reads whichever NEWEST_DAY_FIRST says. */
+        (f === "noproof" ? (NEWEST_DAY_FIRST ? ' · latest day first' : ' · oldest day first')
+                         : ' · newest first') + '</div>';
       /* 1.56.0 - the receipts chip is a CHASE list, so it is grouped by the day the material
          went out and the oldest day is at the top. Everything else stays exec-banded. */
       h += (f === "noproof" ? receiptBands(list) : execBands(list));
@@ -3599,6 +3602,8 @@ function discRowOn(client, brand, onYmd) {
      OLDEST DAY FIRST, and that is the whole point: a chase list is not a news feed. The 53-day
      old one is the one that will be argued about, so it is at the top, not buried under this
      morning's. Every other chip still reads newest-first through execBands. */
+  /* 1.62.0 - his word, and one line turns it round again. Byte-identical to the CRM's. */
+  var NEWEST_DAY_FIRST = true;
   function receiptBands(list) {
     var days = {}, order = [];
     list.forEach(function (c) {
@@ -3606,7 +3611,15 @@ function discRowOn(client, brand, onYmd) {
       if (!days[k]) { days[k] = []; order.push(k); }
       days[k].push(c);
     });
-    order.sort();                                   /* oldest day first */
+    /* 1.62.0 - HIS WORDS, on the CRM's copy of this screen: "everthing , show latest at top".
+       Both apps turn together, because one message earlier he asked that these two screens be
+       the same provision and flipping one would undo that the same day. "(no date)" is pulled
+       out and put back on TOP - reversing the whole order would bury the one group nobody can
+       chase by age at the very bottom. */
+    var _nd = order.indexOf("(no date)") >= 0;
+    order = order.filter(function (k) { return k !== "(no date)"; }).sort();
+    if (NEWEST_DAY_FIRST) order.reverse();
+    if (_nd) order.unshift("(no date)");
     return order.map(function (k) {
       var l = days[k];
       var val = l.reduce(function (a, c) { return a + chValue(c); }, 0);
