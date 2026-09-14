@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.478";
+  var APP_VERSION = "6.9.479";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8008,7 +8008,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (!qq) return true;
     return clientHay(c).indexOf(String(qq).toLowerCase()) > -1;
   }
-  function clientsListHtml() {
+  /* ---- v6.9.479 - ONE FILTER, TWO READERS ----
+     The area chips, Missing details, No site yet and the search box used to belong to the card
+     view and were drawn below the choice of view. They now sit ABOVE it and apply to whichever
+     is open - and they are worth more on the register than they ever were on the cards, because
+     the register is the only screen where a missing mobile can be typed in where it is read.
+     Written once so the two views can never disagree about who is on the list. */
+  function clientsShown() {
     var loc = S.q, qq = String(S.clq || "").trim().toLowerCase();
     var all = S.data.clients.filter(function (c) { return isClient(c.name); });
     if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });   /* a sales exec sees only clients assigned to them */
@@ -8016,6 +8022,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (S.clNoSite) list = list.filter(function (c) { return !siteForClient(c.name); });   /* v6.9.246 */
     if (S.clNoMob) list = list.filter(function (c) { return clGaps(c).length > 0; });      /* v6.9.293 */
     if (qq) list = list.filter(function (c) { return cvMatch(c, qq); });
+    return list;
+  }
+  function clientsListHtml() {
+    var loc = S.q, qq = String(S.clq || "").trim().toLowerCase();
+    var list = clientsShown();
     if (!list.length) return '<div class="empty">' + (qq
       ? 'No client matches <b>' + esc(S.clq) + '</b>. Search runs on his name, his short name, ' +
         'both numbers, district, area, plumber, architect, builder, PMC, address, notes &mdash; ' +
@@ -8189,21 +8200,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     /* Compact is a whole different read of the same list, so it returns early rather than
        trying to share the area chips and the search box below - those belong to the card view. */
     ensureCompactCss();
+    /* v6.9.479 - REGISTER or CARDS. Compact is gone from THIS screen only: the register is the
+       same tree of the same lines with the same brands on them, and six things more. It still
+       draws on Leads and on Quotes, which have no register. */
     h += '<div class="row" style="margin-bottom:8px">' + cvSeg(true) + '<div class="grow"></div></div>';
-    /* v6.9.450 - THE REGISTER. HIS WORDS: "List of client generation from database, we can complete
-       all details if pending there only like client address etc, that will auto update everywhere,
-       need client list data area wise." One line per client, city -> area, the blanks as boxes. */
-    if (clListOn()) return h + viewClientRegister(all);
-    /* v6.9.415 - NOT while he is working through the Missing details list. Compact is a tree
-       grouped by customer and the full card is behind a tap; "Phone ?" and the box to type the
-       number into are ON the full card, so in compact the worklist drew neither. Found by
-       driving it in a browser. cvMode() is not written to - leave the filter and he is back in
-       whichever view he chose. */
-    if (cvMode() === "compact" && !S.clNoMob) {
-      var cvC = function () { var q = cvQ(); return cvHtml("clients", all.filter(function (c) { return cvMatch(c, q); })); };
-      return h + cvSearchRow(all.length, all.length === 1 ? "client" : "clients", cvC) +
-        tidyBanner() + '<div id="cv_list">' + cvC() + '</div>';
-    }
     h += '<div class="row">' + clocs.map(function (l) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") + '</div>';
@@ -8252,6 +8252,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        filter, and the two must work together (pick Panipat, then type a name inside it). */
     h += '<div class="row"><input class="grow" id="cl_q" placeholder="Search ' + all.length + ' clients — name, phone, area, plumber..." value="' + esc(S.clq || "") + '"/>' +
       (S.clq ? '<button class="btn sm ghost" data-act="cl-qclear">Clear</button>' : '') + '</div>';
+    /* ---- v6.9.450 - THE REGISTER. HIS WORDS: "List of client generation from database, we can
+       complete all details if pending there only like client address etc, that will auto update
+       everywhere, need client list data area wise." One line per client, city -> area, the blanks
+       as boxes - and since v6.9.479 it reads the chips and the search box above it, so the 112
+       clients missing something can be worked THROUGH the list that can fix them. */
+    if (clListOn()) return h + viewClientRegister(clientsShown());
     h += '<div id="cl_list">' + clientsListHtml() + '</div>';
     return h;
   }
@@ -28752,7 +28758,13 @@ function viewCatalogue() {
      a register of clients means nothing on either of those. Remembered per phone. */
   var CL_LIST_KEY = "ew_cl_list";
   function clListOn() {
-    if (S.clList === undefined) { try { S.clList = localStorage.getItem(CL_LIST_KEY) === "1"; } catch (e) { S.clList = false; } }
+    if (S.clList === undefined) {
+      var v = ""; try { v = localStorage.getItem(CL_LIST_KEY) || ""; } catch (e) { }
+      /* v6.9.479 - THE REGISTER IS WHERE A MAN LANDS NOW. Only "0" - written when he chooses
+         Cards - turns it off, so a phone that has never been asked gets the register rather than
+         the view that happened to be the default in 6.9.183. */
+      S.clList = (v !== "0");
+    }
     return !!S.clList;
   }
   function clListSet(on) {
@@ -28761,10 +28773,25 @@ function viewCatalogue() {
   }
   function cvSeg(withList) {
     var m = cvMode(), lst = withList && clListOn();
+    /* ---- v6.9.479 - THE CLIENTS SCREEN HAS TWO, AND THEY ARE NAMED FOR WHAT THEY ARE ----
+       Compact was a city -> area tree of one line per client with the brands still worth a call.
+       The register is the same tree, the same line, the same brands - as "chase:" - and also the
+       three boxes that fix a record where it is read, the brand filter, the Excel and the PDF.
+       It is a superset, so Compact had nothing left to offer HERE. It is untouched on Leads and
+       on Quotes, which have no register.
+       And "Compact / Expand / List" named how they were DRAWN. Register and Cards name what they
+       are FOR: the book of who he sells to, and the board he cross-sells from. */
+    if (withList) {
+      return '<span class="cv-seg">' +
+        '<button class="' + (lst ? "on" : "") + '" data-act="cv-mode" data-m="list" ' +
+          'title="One line per client, city then area - with his mobile, area and address as boxes you can type straight into, the brand filter, and the Excel and PDF">Register</button>' +
+        '<button class="' + (lst ? "" : "on") + '" data-act="cv-mode" data-m="expand" ' +
+          'title="The full card for each client - his brand board to quote from, his pills and his number to ring">Cards</button>' +
+        '</span>';
+    }
     return '<span class="cv-seg">' +
-      '<button class="' + (!lst && m === "compact" ? "on" : "") + '" data-act="cv-mode" data-m="compact">Compact</button>' +
-      '<button class="' + (!lst && m === "expand" ? "on" : "") + '" data-act="cv-mode" data-m="expand">Expand</button>' +
-      (withList ? '<button class="' + (lst ? "on" : "") + '" data-act="cv-mode" data-m="list">List</button>' : '') +
+      '<button class="' + (m === "compact" ? "on" : "") + '" data-act="cv-mode" data-m="compact">Compact</button>' +
+      '<button class="' + (m === "expand" ? "on" : "") + '" data-act="cv-mode" data-m="expand">Expand</button>' +
       '</span>';
   }
   /* v6.9.184: the search Compact was missing. It is the reason a man had to drop back to
