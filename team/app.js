@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.486";
+  var APP_VERSION = "6.9.487";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8854,9 +8854,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function hisabAddBtn(c) {
     if (!c || !canHisabRole() || inHisab(c)) return "";
     var live = hisabCounts(c);
-    return '<button class="btn sm" data-act="ch-hisabadd" data-id="' + esc(c.id) + '" style="' +
-      (live ? 'background:#0b3b36;border-color:#0b3b36'
-            : 'background:#fff;color:#0b3b36;border-color:#0b3b36;border-style:dashed') + '"' +
+    /* v6.9.487 - a class, not an inline style, on his word "show all button in color". The
+       dashed outline still means "this will explain rather than work" - it is the same two
+       looks, said in the stylesheet where the other six stage colours live. */
+    return '<button class="btn sm act-hisab' + (live ? '' : ' dash') + '" data-act="ch-hisabadd" data-id="' + esc(c.id) + '"' +
       (live ? '' : ' title="Not counted yet \u2014 this delivery is not marked received."') +
       '>Finalise</button>';
   }
@@ -9721,6 +9722,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      challan list and the hisab can never disagree about it. Three states, and the middle
      one matters most: a receipt sitting on the phone that took it, not yet on Drive, is a
      receipt - offering "Attach" for it is how the same paper gets photographed twice. */
+  /* v6.9.487 - the one line of chSteps that cannot be shared, because the two apps read the
+     paper differently: this one counts a receipt still queued on the phone as present (the same
+     rule the Receipts pending list has used since 6.9.481), and the Challan app reads its own
+     proofFor(). Listed in t_apps_agree with that reason. */
+  function chHasProof(c) { try { return !!chProofAny(c).has; } catch (e) { return false; } }
   function chProofAny(c) {
     var q = prfLoad().filter(function (x) { return x.chId === c.id; })[0];
     /* v6.9.265 - `queued` carries the entry's last failure now, so proofSeal can tell the
@@ -17853,6 +17859,61 @@ function viewCatalogue() {
     });
     return h + '</div>';
   }
+  /* ==========================================================================================
+     THE SEVEN ONE-TIME STEPS OF A DELIVERY                        (v6.9.487, 14 Sep 2026)
+
+     HIS WORDS: "show all button in color, strikeout what completed, like strikeout receipt when
+     receipt attacehd, strikeout finalise when its checked and finlaized, like do for all one time
+     process and do everywhere, whether its chllan app, crm or any other reated app". He was shown
+     the line before it was built and answered "this is perfect i think".
+
+     GREEN STRUCK MEANS DONE. RED STRUCK MEANS CANCELLED. A line through something has meant
+     CANCELLED across this estate for months - a cancelled challan number, a lost brand, a dead
+     payment, the old rate before a discount - and that is exactly why 1.55.0 refused to strike a
+     dispatched challan and faded it instead. What is struck HERE is not a record: it is a step
+     label on a checklist, where a struck line has always meant done. It is teal, it carries a
+     tick, and nothing on this strip is ever grey-struck or red-struck.
+
+     chSteps IS PURE STATE. It answers only "is this step done", off the record and off two
+     helpers every app already has, so the Challan app runs the same function byte for byte.
+     Which BUTTON a step offers is the caller's business, because the two apps reach the same
+     step through different act names - and that is the half that must not be shared, because a
+     strip that invented its own buttons could offer a tap the handler would refuse. */
+  function chSteps(c) {
+    var st = String((c && c.status) || "Draft");
+    var gone = ["Dispatched", "Received", "Billed"].indexOf(st) >= 0;
+    var arrived = ["Received", "Billed"].indexOf(st) >= 0 ||
+                  String((c && c.receiptReceived) || "").toUpperCase() === "Y";
+    return [
+      { k: "made",  label: "Made",       done: true,
+        why: "" },
+      { k: "pass",  label: "Passed",     done: gone || st === "Approved" || !!String((c && c.approvedBy) || "").trim(),
+        why: "Waiting for the accounts desk to pass it." },
+      { k: "disp",  label: "Dispatched", done: gone,
+        why: "Nothing has left the godown on this challan yet." },
+      { k: "recd",  label: "Received",   done: arrived,
+        why: "The material has gone but nobody has marked it delivered." },
+      { k: "proof", label: "Receipt",    done: chHasProof(c),
+        why: "No signed paper on file - a delivery you cannot prove three months later." },
+      { k: "hisab", label: "Finalised",  done: inHisab(c),
+        why: "Not on the customer's account yet. The owner finalises it." },
+      { k: "bill",  label: "Billed",     done: !!String((c && c.billNo) || "").trim(),
+        why: "No GST bill number against this delivery." }
+    ];
+  }
+  /* The strip. `btns` maps a step key to the caller's OWN button html; a step with no button
+     sits grey and says, on a long press, what has to happen before it can be done. */
+  function chStepStrip(c, btns) {
+    var b = btns || {};
+    var out = chSteps(c).map(function (p, i) {
+      var sep = i ? '<span class="stp-sep">&middot;</span>' : '';
+      if (p.done) return sep + '<span class="stp done" title="Done">' + esc(p.label) + '</span>';
+      if (b[p.k]) return sep + b[p.k];
+      return sep + '<span class="stp wait" title="' + esc(p.why || "Not yet") + '">' + esc(p.label) + '</span>';
+    }).join("");
+    return '<div class="stp-row">' + out + '</div>';
+  }
+
   /* ============ THE DELIVERY CARD, WHERE EVERY LIST CAN REACH IT  (v6.9.483) ============
      It lived INSIDE viewChallans until today, which meant it existed on exactly one screen. The
      Receipts pending section draws it too - a chase list a man has to leave in order to act on
@@ -17870,42 +17931,57 @@ function viewCatalogue() {
 
       /* action buttons stay on the compact card too, so approving many in a row never needs an
          extra tap to expand first. */
-      var actions =
+      /* v6.9.487 - THE SIX STEP BUTTONS NOW LIVE ON THE STRIP, and every one of them is the
+         button that was here before: same act, same permission test, same colour. Nothing has
+         been moved out of anybody's reach and no new tap has been invented - the strip only
+         decides WHERE a button sits and whether a struck label stands in its place. */
+      var stepBtns = {
         /* v6.9.387 - !chArrived: a delivery already signed for is never offered again */
-        (st === "Draft" && canApprove() && !chArrived(c) ? '<button class="btn sm act-approve" data-act="ch-pass" data-id="' + esc(c.id) + '">Pass &amp; Dispatch</button>' : "") +
+        pass: (st === "Draft" && canApprove() && !chArrived(c) ? '<button class="btn sm act-approve" data-act="ch-pass" data-id="' + esc(c.id) + '">Pass &amp; Dispatch</button>' : ""),
         /* a challan already sitting at Approved from before v6.9.337 still has its own door */
-        (st === "Approved" && canApprove() && !chArrived(c) ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : "") +
+        disp: (st === "Approved" && canApprove() && !chArrived(c) ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : ""),
         /* and the way OUT of the state, in his hand and not in mine: one tap that moves the
-           status to where the paper already is. It changes nothing else and it is audited. */
-        (chStatusBehind(c) && canProof() ? '<button class="btn sm act-receipt" data-act="ch-arrived" data-id="' + esc(c.id) + '">Receipt is in &mdash; mark Received</button>' : "") +
+           status to where the paper already is. It changes nothing else and it is audited.
+           v6.9.259 - "Mark as received" is the STATUS; the seal is the paper. Two different
+           things, and the words have to stay different. */
+        recd: (chStatusBehind(c) && canProof()
+                ? '<button class="btn sm act-receipt" data-act="ch-arrived" data-id="' + esc(c.id) + '">Receipt is in &mdash; mark Received</button>'
+                : (st === "Dispatched" && canProof()
+                    ? '<button class="btn sm act-receipt" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button>'
+                    : "")),
+        /* v6.9.210 - open to anyone who may file the paper. v6.9.212 - and it goes the moment a
+           receipt is on this phone, not only once Drive has confirmed it, because a card that
+           says "waiting to upload" and offers "Attach receipt" in the same breath is how a man
+           attaches the same paper twice. v6.9.487 - amber, on his word "all button in color". */
+        proof: ((st === "Dispatched" || st === "Received") && canAttachProof() &&
+                !(challanProof(c.id) || prfLoad().filter(function (x) { return x.chId === c.id; })[0])
+                ? '<button class="btn sm act-proof" data-act="ch-proof" data-id="' + esc(c.id) + '">Attach receipt</button>' : ""),
+        /* v6.9.342 - the BUTTON always, and the pill beside it only while it will not yet count.
+           v6.9.487b - IN ONE WRAPPER. The strip puts a dot between its children, so an unwrapped
+           pill became an EIGHTH step sitting between Finalise and Billed as though it were one of
+           the seven. Seen on the render. The button and its reason are one step; they occupy one
+           slot. */
+        hisab: '<span class="stp-b">' + hisabAddBtn(c) + hisabWhyNot(c) + '</span>',
+        /* Billing on a received challan: accounts and admin enter it here, everyone else hands
+           it off to the accounts queue. */
+        bill: (st === "Received"
+                ? (canBill()
+                    ? '<button class="btn sm ' + (c.billNo ? 'act-billedit' : 'act-bill') + '" data-act="bill-detail" data-id="' + esc(c.id) + '">' + (c.billNo ? 'Edit bill' : 'Add billing detail') + '</button>'
+                    : (!c.billStatus ? '<button class="btn sm act-billsend" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : ""))
+                : "")
+      };
+
+      var actions =
         ((st === "Draft" || st === "Approved") && canApprove() && !chArrived(c) ? '<button class="btn sm ghost" data-act="ch-edit" data-id="' + esc(c.id) + '">Edit</button>' : "") +
-        /* v6.9.259 - it used to read "Receipt received", the same words as the seal that
-           appears once the PHOTO is attached. So a man who had just attached the photo saw a
-           button apparently asking for it again. They are different things: the seal is the
-           paper, this is the delivery's status - and the status is what hisab counts. */
-        (st === "Dispatched" && canProof() ? '<button class="btn sm act-receipt" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button>' : "") +
-        /* Billing on a received challan. Accounts/admin enter it directly here (add or edit), so a
-           delivered challan can be tied to its invoice number - the basis for tallying stock later.
-           Other roles keep the hand-off ("Send for billing") that puts it in the accounts queue. */
-        (st === "Received"
-          ? (canBill()
-              ? '<button class="btn sm ' + (c.billNo ? 'act-billedit' : 'act-bill') + '" data-act="bill-detail" data-id="' + esc(c.id) + '">' + (c.billNo ? 'Edit bill' : 'Add billing detail') + '</button>'
-              : (!c.billStatus ? '<button class="btn sm act-billsend" data-act="bill-send" data-id="' + esc(c.id) + '">Send for billing</button>' : ""))
-          : "") +
         '<button class="btn sm ghost" data-act="ch-pdf" data-id="' + esc(c.id) + '">PDF</button>' +
         /* v6.9.210 - the two buttons this whole feature exists for, and BOTH are open to anyone
            who can see the challan (the owner's decision): the godown man who loaded the tempo is
            the man holding the photo, and the sales exec standing at the site is the man who has
            the customer's number open. Attach disappears once a receipt is on file. */
+        /* v6.9.487 - Attach receipt moved to the step strip above; Send stays here, because
+           telling the customer is not one of the seven steps and has no "done". */
         ((st === "Dispatched" || st === "Received")
-          ? '<button class="btn sm ghost" data-act="ch-wa" data-id="' + esc(c.id) + '" style="color:#0f766e">Send</button>' + waExecBtn("ch-wa", c.customerName, 'data-id="' + esc(c.id) + '"') +
-            /* v6.9.212 - and it also goes the moment the receipt is attached, not only once
-               Drive has confirmed it. Until now the card could say "waiting to upload" and offer
-               "Attach receipt" in the same breath, which is how a man attaches the same paper
-               twice. A receipt on this phone counts as a receipt. */
-            ((challanProof(c.id) || prfLoad().filter(function (x) { return x.chId === c.id; })[0])
-              ? ""
-              : (canAttachProof() ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(c.id) + '">Attach receipt</button>' : ''))
+          ? '<button class="btn sm ghost" data-act="ch-wa" data-id="' + esc(c.id) + '" style="color:#0f766e">Send</button>' + waExecBtn("ch-wa", c.customerName, 'data-id="' + esc(c.id) + '"')
           : "") +
         /* v6.9.206 - on the card, not in the edit form: a dispatched or received challan has no
            edit form to put it in, and those are exactly the ones he needs to be able to void. */
@@ -17915,7 +17991,7 @@ function viewCatalogue() {
         /* v6.9.342 - the BUTTON always, and the pill beside it only while it will not yet
            count. The pill used to stand INSTEAD of the button, which is how he came to ask
            three times where the button had gone. */
-        hisabAddBtn(c) + hisabWhyNot(c) +
+        /* v6.9.487 - Finalise moved to the step strip above, with its pill. */
         /* v6.9.363 - one function draws it for the owner AND for the man who may only ask */
         cxCardBtn("challans", c.id);
 
@@ -17978,6 +18054,9 @@ function viewCatalogue() {
                 'border:1px solid #b45309;border-radius:6px;white-space:nowrap">Send to the group</button>'
               : '');
         })() + proofLink(c) + '</div>' +
+        /* v6.9.487 - THE SEVEN STEPS, above the trail. The strip says WHAT is done; the trail
+           below says WHO did it. */
+        chStepStrip(c, stepBtns) +
         /* v6.9.466 - always open, for every role. See chTrailHtml. */
         chTrailHtml(c);
 
@@ -34280,6 +34359,22 @@ function viewCatalogue() {
       ".btn.act-billedit{background:#fff!important;border-color:#7c3aed!important;color:#7c3aed!important}" +
       ".btn.act-billsend{background:#4f46e5!important;border-color:#4f46e5!important;color:#fff!important}" +
       ".btn.act-reset{background:#fff!important;border-color:#dc2626!important;color:#dc2626!important}" +
+      /* v6.9.487 - the two that were still white, on his word "show all button in color". Amber
+         is the paper that is owed; dark green is the owner's own stage. They join the language
+         the four above already speak. */
+      ".btn.act-proof{background:#b45309!important;border-color:#b45309!important;color:#fff!important}" +
+      ".btn.act-hisab{background:#0b3b36!important;border-color:#0b3b36!important;color:#fff!important}" +
+      ".btn.act-hisab.dash{background:#fff!important;color:#0b3b36!important;border-style:dashed!important}" +
+      /* v6.9.487 - THE SEVEN STEPS. .done is TEAL and struck; it is the only struck thing in this
+         estate that does not mean cancelled, and the colour is the whole distinction. 12.5px,
+         because nothing readable here has gone below twelve since 6.9.401. */
+      ".stp-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:7px 0 2px;padding:6px 9px;background:#f8fafc;border-left:3px solid #cbd5e1;border-radius:0 8px 8px 0}" +
+      ".stp{font-size:12.5px;font-weight:700}" +
+      ".stp.done{color:#0f766e;text-decoration:line-through;text-decoration-thickness:1.5px;text-decoration-color:#5eead4}" +
+      ".stp.wait{color:#94a3b8;font-weight:600}" +
+      ".stp-sep{color:#cbd5e1;font-size:12.5px}" +
+      /* v6.9.487b - one step, one slot, even when it is a button AND the reason beside it */
+      ".stp-b{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}" +
       ".btn.act-reset:hover{background:#fef2f2!important}" +
       /* Grouped challan book: a solid teal band per sales exec, a lighter left-ruled strip per client. */
       ".ch-exec{margin:20px 0 4px;padding:9px 13px;background:#0f766e;color:#fff;border-radius:10px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:8px}" +
