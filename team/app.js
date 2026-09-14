@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.480";
+  var APP_VERSION = "6.9.481";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -15465,6 +15465,128 @@ function viewCatalogue() {
      lorry. A receipt is the proof that settles an argument; it should not be attachable
      by the person it would exonerate. */
   function canProof()   { return roleAny(["admin","accounts"]); }
+  /* ============ WHOSE RECEIPT ARE WE WAITING FOR  (v6.9.481) ============
+     HIS WORDS: "make a dedicated section for pending receipt upload, there shown only challan
+     with pending receipts".
+
+     MEASURED ON HIS BOOK THE DAY THIS SHIPPED, and it is TWO problems wearing one name:
+        3 gone out with the paper not back (status Dispatched), Rs 8,268 - one of them,
+          23/08/2026/023 Sandeep Goel, has no date of its own ON THE SHEET. On the SCREEN it
+          reads 22 days, because chDatesIn() recovers that from the challan number - a
+          correction the render made to my own first draft of this comment
+       32 marked RECEIVED with no receipt document on file, Rs 6,76,805, the oldest 55 days
+     healthScan only shouts about a Dispatched load after seven days, so a receipt missing for
+     six is invisible - and the second group is invisible for ever, because as far as every
+     other screen is concerned that delivery is finished.
+
+     WHO MAY LOOK: admin, accounts and the GODOWN - the godown is who takes the signed paper off
+     the driver, so a list of what has not come back is their work list. Filing the receipt is
+     still canProof() (admin and accounts) and this release does not widen it. */
+  function canSeeRcptQueue() { return roleAny(["admin", "accounts", "godown"]); }
+  /* A delivery that has gone and whose paper is not back. Read from the SERVER's status, never
+     from anything the phone remembers - the same rule as the passed-not-dispatched band. */
+  function rcptOutNoPaper() {
+    return (S.data.challans || []).filter(function (c) {
+      return c && !c.cancelled && String(c.status) === "Dispatched" &&
+             String(c.receiptReceived || "").toUpperCase() !== "Y";
+    }).filter(rcptMine).sort(rcptOldestFirst);
+  }
+  /* scoped exactly like the passed-not-dispatched band: the owner and accounts see the whole
+     book, anybody else sees his own clients and nobody else's */
+  function rcptMine(c) { return seesAllClients() || isMineClient(c.customerName); }
+  /* oldest first, and A ROW WITH NO DATE SORTS FIRST rather than vanishing into the middle.
+     One of his three today is exactly that: 23/08/2026/023, Sandeep Goel, no createdAt at all.
+     daysTo("") answers 9999, which would have read as "due in 27 years" - so the date is asked
+     about before it is arithmetic. */
+  function rcptAge(c) {
+    var d = String((c && c.createdAt) || "").slice(0, 10);
+    if (!d) return null;
+    var n = -daysTo(d);
+    return isFinite(n) ? Math.max(0, n) : null;
+  }
+  function rcptOldestFirst(a, b) {
+    var x = rcptAge(a), y = rcptAge(b);
+    if (x === null && y === null) return 0;
+    if (x === null) return -1;
+    if (y === null) return 1;
+    return y - x;
+  }
+  /* And the one nothing watches: somebody ticked "received" and no document was ever attached.
+     chProofAny is the same reader the account's RECEIPT column uses, so a receipt still queued
+     on a phone counts as present here and this list cannot nag about one already on its way. */
+  function rcptInNoPaper() {
+    return (S.data.challans || []).filter(function (c) {
+      if (!c || c.cancelled) return false;
+      if (String(c.receiptReceived || "").toUpperCase() !== "Y") return false;
+      return !chProofAny(c).has;
+    }).filter(rcptMine).sort(rcptOldestFirst);
+  }
+  function rcptQueueCount() { return rcptOutNoPaper().length + rcptInNoPaper().length; }
+  /* one row, and it NAMES THE MEN - the point of a chase list is knowing who to ask */
+  function rcptRow(c, tone) {
+    var age = rcptAge(c), who = String(c.createdBy || "").split(" ")[0] || "?";
+    var pby = String(c.approvedBy || "").split(" ")[0] || "";
+    return '<div class="acts" style="align-items:center;gap:8px;padding:7px 0;border-top:1px solid #fee2e2;flex-wrap:nowrap">' +
+      '<div class="grow" style="min-width:0">' +
+      '<b style="font-size:13px">' + esc(c.challanNo || "(no number)") + '</b>' +
+      ' <span class="pill due">' + esc(c.status || "") + '</span>' +
+      '<br><span style="font-size:12.5px;color:' + tone + '">' + esc(c.customerName || "") + '</span>' +
+      '<br><span style="font-size:12px;color:#64748b">Made by <b>' + esc(who) + '</b>' +
+      (pby ? ' &middot; passed by <b>' + esc(pby) + '</b>' : ' &middot; not passed yet') +
+      /* THE RENDER CORRECTED ME HERE. I had written that 23/08/2026/023 "carries no date on the
+         row at all" - true of his SHEET, and not true of this screen: chDatesIn() has recovered
+         a missing date from the challan NUMBER since the dateless-rows work, so it reads 22 days.
+         The amber pill is the mark every other screen puts on a recovered date, and it belongs
+         here more than anywhere: an age is the whole basis of a chase list, and a man is owed the
+         knowledge that this one was worked out from the number. The null branch stays for a row
+         whose number has no date in it either. */
+      ' &middot; ' + (age == null ? '<b style="color:#b91c1c">no date on the row</b>' : esc(age) + ' days') +
+      chDatePill(c) +
+      '</span></div>' +
+      /* MEASURED AT 390px AND LOOKED AT: without flex:0 0 auto this column wrapped onto its own
+         line, and the money and the button landed under the client's name reading like a
+         separate row. A chase list is read down the right-hand edge - the figure and the way to
+         act on it belong there, on the same line as the delivery they are about. */
+      '<div style="flex:0 0 auto;margin-left:auto;text-align:right;white-space:nowrap">' +
+      '<b style="font-size:13px">' + money(chValue(c)) + '</b><br>' +
+      (canProof()
+        ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" ' +
+          'style="padding:1px 8px;font-size:12px;margin-top:3px">&#128206; Attach</button>'
+        : '<span style="font-size:12px;color:#94a3b8">accounts files it</span>') +
+      '</div></div>';
+  }
+  function rcptBand(title, why, list, tone, bg, edge) {
+    if (!list.length) return "";
+    var worth = list.reduce(function (a, c) { return a + chValue(c); }, 0);
+    return '<div class="card" style="border-color:' + edge + ';background:' + bg + '">' +
+      '<h3 style="margin:0 0 2px;color:' + tone + '">' + list.length + ' ' + title +
+      ' &middot; ' + money(worth) + '</h3>' +
+      '<div class="meta" style="color:' + tone + ';font-size:12.5px;line-height:1.5">' + why + '</div>' +
+      list.map(function (c) { return rcptRow(c, tone); }).join("") + '</div>';
+  }
+  function viewRcptPending() {
+    if (!canSeeRcptQueue()) return '<div class="empty">This list is the owner\u2019s, accounts\u2019 and the godown\u2019s.</div>';
+    var out = rcptOutNoPaper(), inn = rcptInNoPaper();
+    if (!out.length && !inn.length) {
+      return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+        '<b style="color:#0f766e">Every delivery has its signed paper</b>' +
+        '<div class="meta" style="color:#0f766e;font-size:12.5px;margin-top:3px">' +
+        'Nothing is waiting. A delivery appears here the moment it leaves the godown, and ' +
+        'leaves this list the moment its receipt is on file.</div></div>';
+    }
+    return rcptBand("gone out, paper not back",
+        'The material has left and the signed challan has not come back. Ask the driver, or the ' +
+        'man who passed it. Until the paper is in, <b>this is not on the customer\u2019s account</b> ' +
+        'and nothing will chase it.',
+        out, "#92400e", "#fffbeb", "#fde68a") +
+      rcptBand("marked received, no paper on file",
+        'Somebody ticked <b>received</b> and no receipt document was ever attached. The money IS ' +
+        'on the account, so nothing on any other screen says a word about it \u2014 which is exactly ' +
+        'why it can sit for months. If the customer disputes one of these, there is no signed ' +
+        'paper to put in front of him.',
+        inn, "#b91c1c", "#fff7f7", "#fecaca");
+  }
+
   /* v6.9.444 - who may record a GST bill against a delivery. The card has gated its button on
      admin-or-accounts since the billing queue was built; the HANDLER never checked, so the
      hidden button was the only lock. This is the rule, and the handler reads it. */
@@ -16868,12 +16990,22 @@ function viewCatalogue() {
   /* Deliveries hub: Challans + Material returns are one lifecycle, so they share a screen with
      a small sub-tab switch instead of two top-level tabs. Each sub-view is unchanged. */
   function viewDeliveries() {
-    var sub = S.delSub === "returns" ? "returns" : "challans";
+    /* v6.9.481 - a third sub-tab, not a fourth top-level one. The house rule is that a new tab
+       costs an old one, and this belongs beside the deliveries it is about. The count rides on
+       the button, because a chase list nobody knows is full is a chase list nobody opens. */
+    var sub = ["returns", "rcpt"].indexOf(S.delSub) >= 0 ? S.delSub : "challans";
+    if (sub === "rcpt" && !canSeeRcptQueue()) sub = "challans";
+    var n = canSeeRcptQueue() ? rcptQueueCount() : 0;
     var h = '<div class="row" style="margin-bottom:10px">' +
       '<button class="btn sm ' + (sub === "challans" ? "" : "ghost") + '" data-act="del-sub" data-s="challans">Challans</button>' +
       '<button class="btn sm ' + (sub === "returns" ? "" : "ghost") + '" data-act="del-sub" data-s="returns">Material returns</button>' +
+      (canSeeRcptQueue()
+        ? '<button class="btn sm ' + (sub === "rcpt" ? "" : "ghost") + '" data-act="del-sub" data-s="rcpt"' +
+          (n ? ' style="border-color:#fecaca;color:' + (sub === "rcpt" ? "#fff" : "#b91c1c") + '"' : '') +
+          '>Receipts pending' + (n ? ' (' + n + ')' : '') + '</button>'
+        : '') +
       '</div>';
-    return h + (sub === "returns" ? viewReturns() : viewChallans());
+    return h + (sub === "rcpt" ? viewRcptPending() : sub === "returns" ? viewReturns() : viewChallans());
   }
 
   /* A saved challan's items as a compact, numbered, qty-descending table (same look as the
@@ -20396,7 +20528,16 @@ function viewCatalogue() {
   function miniRcptCell(r) {
     var w = miniRcptWord(r.rcpt), ink = miniRcptInk(r.rcpt);
     if (r.rcpt !== "no" || !r.id || !canProof()) {
-      return '<span style="color:' + ink + '">' + esc(w) + '</span>';
+      /* v6.9.481 - and WHO put it there. "Attached" alone is a fact with nobody behind it; the
+         name is already on the audit row this column is read from, so printing it costs one
+         lookup and answers the third of his three questions on the row itself. */
+      var _pf = (r.rcpt === "yes" && r.id) ? challanProof(r.id) : null;
+      var _rby = _pf ? String(_pf.actor || _pf.by || "").split(" ")[0] : "";
+      return '<span style="color:' + ink + '">' + esc(w) + '</span>' +
+        /* 12px, not 11. Nothing readable in this app has been allowed below twelve since
+           6.9.401, because he reads these screens on a phone in a godown - and the first draft
+           of this line was 11px. t_v401 caught it. */
+        (_rby ? '<br><span style="font-size:12px;color:#94a3b8">by ' + esc(_rby) + '</span>' : '');
     }
     return '<button class="btn sm" data-act="ch-proof" data-id="' + esc(r.id) + '" ' +
       'title="Attach the ' + (r.kind === "ret" ? 'goods-in' : 'signed delivery') +
@@ -21466,6 +21607,12 @@ function viewCatalogue() {
            set its width to 381px and the whole screen scrolled sideways. The label wraps now. */
         '<div style="flex:0 0 auto;max-width:100%;min-width:0;text-align:right">' + billBlock + admChallanStrip(c) + '</div>' +
         '</div>' +
+        /* v6.9.481 - HIS WORDS: "every challan everwhere must show, who gnerated it, who
+           approve it and who uploaded receipt". chTrailHtml has answered all three - Made,
+           Passed, Receipt, each with a name and a time - since it was written, and it was drawn
+           on the challan card and the finalise window and NOWHERE ELSE. This is the card he
+           actually opens when he is looking at a client's money. */
+        chTrailHtml(c, "margin-top:7px;padding-top:6px;border-top:1px dashed #e2e8f0") +
         _ctbl + '</div>';
       /* v6.9.451 - kept for the sheet, not drawn here; its row on the account opens it */
       _acctCards[c.id] = _card;
@@ -24318,6 +24465,15 @@ function viewCatalogue() {
   }
 
   function viewPayments() {
+    /* v6.9.481 - the verification section is its own screen now. Drawn FIRST and returned, so
+       the collection radar and the whole payment history are not built for a man who came here
+       to tick four receipts. */
+    if (S.paySub === "verify" && canVerifyPay()) {
+      return '<div class="row" style="margin:2px 0 10px">' +
+        '<button class="btn sm ghost" data-act="payv-sub" data-s="list">Payments</button>' +
+        '<button class="btn sm" data-act="payv-sub" data-s="verify">Verification</button></div>' +
+        payVerifyHtml();
+    }
     var list = payLedgerList();
     /* v6.9.399 - TWO SUMS, NOT ONE. This netted every client's balance into a single figure,
        so a man 7,942 in credit made another man's 50,000 read as 42,058 "outstanding from
@@ -24332,9 +24488,20 @@ function viewCatalogue() {
       '<div class="stat"><div class="n">' + list.length + '</div><div class="l">Client ledgers</div></div>' +
       '</div>';
 
-    /* v6.9.470 - ABOVE the radar, because an unchecked receipt is a question about what he has
-       already been paid and the radar is about what he has not. Accounts and the owner only. */
-    h += payVerifyHtml();
+    /* v6.9.481 - HIS WORDS: "make a dedicated section for payment verification for accouns".
+       It was a card on top of the collection radar since 6.9.470, which is a section in the
+       sense that it is drawn, and not one in the sense that he can go to it. It has its own
+       screen now, with the number waiting on the button. THIS MOVES IT AND DOES NOT WIDEN IT -
+       canVerifyPay() is still admin and accounts, and a salesman sees neither the button nor
+       the screen. */
+    if (canVerifyPay()) {
+      var _pv = payUnverifiedList().length;
+      h += '<div class="row" style="margin:2px 0 10px">' +
+        '<button class="btn sm" data-act="payv-sub" data-s="list">Payments</button>' +
+        '<button class="btn sm ghost" data-act="payv-sub" data-s="verify"' +
+        (_pv ? ' style="border-color:#fecaca;color:#b91c1c"' : '') +
+        '>Verification' + (_pv ? ' (' + _pv + ')' : '') + '</button></div>';
+    }
 
     /* v6.9.433 - the radar is a sheet now; rdrHtml() draws it, filters it and downloads it. */
     if (list.filter(function (x) { return x.l.due > 0 && x.age >= PAY_MIN; }).length) h += rdrHtml();
@@ -36573,6 +36740,16 @@ function viewCatalogue() {
       return;
     }
     if (act === "del-sub") { S.delSub = t.getAttribute("data-s"); render(); return; }
+    /* v6.9.481 - the same shape for the Payments screen's two sections. keepScroll, because
+       6.9.475 made staying where he was the standard for every screen in this app.
+
+       IT IS NOT CALLED pay-sub, AND THE FIRST DRAFT WAS. The Payroll & incentives hub has owned
+       that act name since it was built (subHub(..., "payHubSub", "pay-sub")), and a second
+       handler for it, added above the first and returning, would have silently stopped the
+       Incentives and Payroll tabs from switching - on a screen nobody would ever connect to a
+       release about receipts. t_dead_taps asks whether every act is handled exactly once, and
+       it answered "pay-sub x2" before this reached him. */
+    if (act === "payv-sub") { S.paySub = t.getAttribute("data-s"); keepScroll = true; render(); return; }
     if (act === "fcs-setup") {
       /* v6.9.131: jump to the Discounts screen for this client to set discount + partner incentive. */
       var _fcl = t.getAttribute("data-cl") || "";
