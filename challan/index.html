@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.60.0";
+  var APP_VERSION = "1.61.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3785,6 +3785,49 @@ function discRowOn(client, brand, onYmd) {
       (c.driver ? '<div class="muted" style="margin-top:2px">Driver: ' + esc(c.driver) + '</div>' : '');
   }
 
+  /* ============ A DELIVERY WITH NO DATE OF ITS OWN  (1.61.0) ============
+     HIS WORDS: "both must be same provision, challan app looks good".
+
+     Comparing the two screens is what found this. THE FIRST BAND ON HIS CHASE LIST READS
+     "No date on the challan - Rs 18,916 - 5 receipts still to collect": five deliveries the
+     godown cannot chase by age. The CRM has recovered that case since the dateless-rows work
+     and this app never learned how, so the same list grouped two different ways in two apps.
+
+     COPIED BYTE FOR BYTE from team/app.js. t_apps_agree requires that of anything living in
+     both apps, and it is the right requirement - a date worked out two different ways in two
+     apps is two dates. Nothing is written to the sheet: the phone's copy is filled in and
+     carries a __-prefixed key the backend drops, and the next ordinary save writes it properly.
+     ==================================================================== */
+  function chNoDate(c) {
+    var s = String((c && c.challanNo) || "");
+    var m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})\//);
+    if (m) return m[3] + "-" + m[2] + "-" + m[1];
+    m = s.match(/\/(\d{2})(\d{2})(\d{2})\//);
+    if (m) return "20" + m[3] + "-" + m[2] + "-" + m[1];
+    return "";
+  }
+  function chDatesIn() {
+    (((S.data || {}).challans) || []).forEach(function (c) {
+      if (!c || String(c.createdAt || "").trim()) return;
+      var d = chNoDate(c);
+      var src = d ? "number" : "";
+      if (!d) { d = String(c.approvedAt || "").slice(0, 10); src = d ? "approval" : ""; }
+      if (!d) { d = String(c.updatedAt || "").slice(0, 10); src = d ? "last change" : ""; }
+      if (!d) return;
+      /* midday, not midnight: a date-only stamp read back in any timezone stays the same day */
+      c.createdAt = d + "T12:00:00.000Z";
+      c.__dFrom = src;
+    });
+  }
+  function chDateLost(c) { return String((c && c.__dFrom) || ""); }
+  function chDatePill(c) {
+    var f = chDateLost(c);
+    return f ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-size:12px" ' +
+      'title="This delivery has no date of its own on the sheet. The date shown is taken from its ' +
+      'challan number. It will be written back the next time this challan is saved.">date from ' +
+      esc(f) + '</span>' : '';
+  }
+
   function chRow(c) {
     var mn = manualNoFor(c), pf = proofFor(c), st = chStatus(c), held = chHeld(c);
     var ex = chExec(c), open = S.open && String(S.open) === String(c.id);
@@ -3857,7 +3900,11 @@ function discRowOn(client, brand, onYmd) {
         '<div class="muted" style="margin-top:2px">' +
           esc(c.challanNo || (held ? "Its number comes when it uploads" : "")) +
           (mn ? ' \u00b7 <b style="color:#b91c1c">Book ' + esc(mn) + '</b>' : '') +
-          ' \u00b7 ' + esc(dstr(d10(c.createdAt))) + (c.site ? ' \u00b7 ' + esc(c.site) : '') + '</div>' +
+          /* 1.61.0 - and the amber mark when the date was worked out from the number rather
+             than read off the row. On a chase list the age IS the argument, so a man is owed
+             the knowledge that this one was derived. */
+          ' \u00b7 ' + esc(dstr(d10(c.createdAt))) + chDatePill(c) +
+          (c.site ? ' \u00b7 ' + esc(c.site) : '') + '</div>' +
         '<div style="margin-top:5px">' +
           (held ? '<span class="pill amb">Held on this phone</span> ' : '') +
           /* 1.55.1 - AND A CANCELLED CHALLAN WAS WEARING A GREEN PILL. chStatus returns whatever
@@ -5549,6 +5596,10 @@ function discRowOn(client, brand, onYmd) {
   }
 
   function renderBody() {
+    /* 1.61.0 - before anything is counted or grouped. The CRM does the same thing in
+       splitCancelled(), which is ITS first look at the book; this app has no such step, and
+       renderBody is the one place every screen passes through. */
+    if (S.data) { try { chDatesIn(); } catch (e) { } }
     var p = S.data ? pendingApproval().length : 0;
     var m = S.data ? missingReceipts().filter(recent).length : 0;   /* agrees with the list it opens */
     /* the badge counts DELIVERIES HOLDING FREIGHT BACK, not drivers - a driver with four
