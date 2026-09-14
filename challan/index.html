@@ -89,6 +89,16 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
 .frline{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:10px 12px;border-top:1px solid #eef2f7;font-size:13.5px}
 .frline:first-child{border-top:0}
 .pill.grn{background:#ccfbf1;color:#0f766e}
+/* 1.64.0 - THE SEVEN STEPS. .done is TEAL and struck; it is the only struck thing in this estate
+   that does not mean cancelled, and the colour is the whole distinction. Byte for byte the CRM's
+   rules, so the same line reads the same on both phones. Nothing below 12px, since 6.9.401. */
+.stp-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:7px 0 2px;padding:6px 9px;background:#f8fafc;border-left:3px solid #cbd5e1;border-radius:0 8px 8px 0}
+.stp{font-size:12.5px;font-weight:700}
+.stp.done{color:#0f766e;text-decoration:line-through;text-decoration-thickness:1.5px;text-decoration-color:#5eead4}
+.stp.wait{color:#94a3b8;font-weight:600}
+.stp-sep{color:#cbd5e1;font-size:12.5px}
+/* 1.64.0 - one step, one slot, even when it is a button AND the reason beside it */
+.stp-b{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
 .pill.blu{background:#dbeafe;color:#1d4ed8}
 .row{display:flex;gap:8px;align-items:center}
 .grow{flex:1;min-width:0}
@@ -205,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.63.0";
+  var APP_VERSION = "1.64.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1630,6 +1640,22 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      lorry. A receipt is the proof that settles an argument; it should not be attachable
      by the person it would exonerate. */
   function canProof()   { return roleAny(["admin","accounts"]); }
+  /* ---- 1.64.0 - THE GODOWN FILES THE PAPER IT TAKES OFF THE DRIVER ----
+     HIS WORDS on 6.9.482, twelve days ago: "godown can file receipt, only challan with pending
+     receipt to be shown to dedicated receipt attahed section to godown and accounts". The CRM was
+     changed that day. THIS APP WAS NOT - and this app is the godown's own, the phone the man
+     holding the signed paper is actually carrying. All four receipt buttons here asked canProof(),
+     which is admin and accounts, and the rc-attach handler refused him in so many words.
+
+     So the one role he asked to give this to has been the one role that could not do it, on the
+     one screen where it matters. Found while building the step strip, which has to say whether an
+     Attach button is missing because the step is DONE or because this man may not do it.
+
+     Byte for byte the CRM's canAttachProof. The server has always allowed it - a challan:proof
+     row is an ordinary audit row - so this is the screen catching up with the door.
+     canProof() itself is UNTOUCHED: marking a delivery Received and settling a twin receipt are
+     still the office's judgement, exactly as they are in the CRM. */
+  function canAttachProof() { return roleAny(["admin", "accounts", "godown"]); }
 
   /* ---------- WHERE THE CLIENT IS ----------
      District first, then the area inside it, then his name. That is how the godown thinks
@@ -4178,6 +4204,53 @@ function discRowOn(client, brand, onYmd) {
     return h;
   }
 
+  /* ==========================================================================================
+     THE SEVEN ONE-TIME STEPS OF A DELIVERY                          (1.64.0, 14 Sep 2026)
+
+     chSteps and chStepStrip below are LIFTED OUT OF team/app.js BYTE FOR BYTE by
+     v108/p_ch164_steps.py, so t_apps_agree fails the day one of them is touched alone. His
+     words: "do everywhere, whether its chllan app, crm or any other reated app".
+
+     GREEN STRUCK MEANS DONE. RED STRUCK MEANS CANCELLED. A line through something has meant
+     cancelled across this estate for months, and it is exactly why 1.55.0 refused to strike a
+     dispatched challan and faded it instead. What is struck here is a step label on a checklist,
+     not a record. It is teal. Nothing on this strip is ever grey-struck or red-struck. ======= */
+  function chHasProof(c) { return !!proofFor(c); }
+
+  function chSteps(c) {
+    var st = String((c && c.status) || "Draft");
+    var gone = ["Dispatched", "Received", "Billed"].indexOf(st) >= 0;
+    var arrived = ["Received", "Billed"].indexOf(st) >= 0 ||
+                  String((c && c.receiptReceived) || "").toUpperCase() === "Y";
+    return [
+      { k: "made",  label: "Made",       done: true,
+        why: "" },
+      { k: "pass",  label: "Passed",     done: gone || st === "Approved" || !!String((c && c.approvedBy) || "").trim(),
+        why: "Waiting for the accounts desk to pass it." },
+      { k: "disp",  label: "Dispatched", done: gone,
+        why: "Nothing has left the godown on this challan yet." },
+      { k: "recd",  label: "Received",   done: arrived,
+        why: "The material has gone but nobody has marked it delivered." },
+      { k: "proof", label: "Receipt",    done: chHasProof(c),
+        why: "No signed paper on file - a delivery you cannot prove three months later." },
+      { k: "hisab", label: "Finalised",  done: inHisab(c),
+        why: "Not on the customer's account yet. The owner finalises it." },
+      { k: "bill",  label: "Billed",     done: !!String((c && c.billNo) || "").trim(),
+        why: "No GST bill number against this delivery." }
+    ];
+  }
+
+  function chStepStrip(c, btns) {
+    var b = btns || {};
+    var out = chSteps(c).map(function (p, i) {
+      var sep = i ? '<span class="stp-sep">&middot;</span>' : '';
+      if (p.done) return sep + '<span class="stp done" title="Done">' + esc(p.label) + '</span>';
+      if (b[p.k]) return sep + b[p.k];
+      return sep + '<span class="stp wait" title="' + esc(p.why || "Not yet") + '">' + esc(p.label) + '</span>';
+    }).join("");
+    return '<div class="stp-row">' + out + '</div>';
+  }
+
   function chRow(c) {
     var mn = manualNoFor(c), pf = proofFor(c), st = chStatus(c), held = chHeld(c);
     var ex = chExec(c), open = S.open && String(S.open) === String(c.id);
@@ -4274,6 +4347,38 @@ function discRowOn(client, brand, onYmd) {
         '<div style="text-align:right"><div class="big">' + money(chValue(c)) + '</div>' +
         '<div class="muted">' + chLines(c).length + ' line' + (chLines(c).length === 1 ? '' : 's') + '</div></div>' +
       '</div>' +
+      /* 1.64.0 - THE SEVEN STEPS, above the trail. The strip says WHAT is done; the trail below
+         says WHO did it. Every button on it is the button that was in the row beneath: same act,
+         same permission test, same colour. Nothing was moved out of anybody's reach. */
+      chStepStrip(c, {
+        pass: (st === "Draft" && canApprove()
+                ? (held ? '<span class="pill amb">Cannot be passed until it uploads</span>'
+                        : '<button class="btn sm red" data-act="ch-approve" data-no="' + esc(c.id || c.challanNo) + '">Pass &amp; Dispatch</button>')
+                : ''),
+        disp: (st === "Approved" && canApprove() && !held
+                ? '<button class="btn sm" data-act="ch-dispatch" data-id="' + esc(c.id) + '">Dispatch</button>' : ''),
+        /* There is no "mark received" button in this app and there should not be: attaching the
+           signed paper is what moves a delivery to Received here (see the rc-attach handler), so
+           offering a second way to do it would be two doors to one room. */
+        recd: '',
+        proof: (pf ? '' : (canAttachYet(st)
+                 ? (canAttachProof()
+                    ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(c.id) + '">Attach receipt</button>'
+                    : '<span class="pill amb">Receipt is attached by the office</span>')
+                 /* ---- v1.35.0 - A DEAD END WITH NO DOOR, AND NO SIGN EITHER ----
+                    "upload receipt option not showing". Seven challans, Rs 87,255, and not one of
+                    them could be given a receipt: the button was gated on his own words, "attach
+                    receipt only to be shown when challan approved AND dispatched", and this app
+                    could not REACH Dispatched. Both halves were fixed then - the door, and this
+                    sign - and the sign keeps its place here. A silent refusal is the worst kind. */
+                 : (st === "Approved"
+                    ? '<span class="pill amb say">Mark it dispatched first &mdash; a receipt is for goods that have gone</span>'
+                    : ''))),
+        /* Finalising is the owner's own stage and it has its own screen in this app - the
+           "Check & add" tab. No second door on the card. */
+        hisab: '',
+        bill: ''
+      }) +
       chTrail(c) +
       (open ? chDetail(c) : '') +
       '<div class="acts">' +
@@ -4287,35 +4392,13 @@ function discRowOn(client, brand, onYmd) {
         (held ? '' :
           '<button class="btn sm gry" data-act="ch-tg" data-id="' + esc(c.id) + '">' +
             (tgSent(c) ? 'Send again' : 'Send to Telegram') + '</button>') +
-        (pf ? '<a class="btn sm gry" href="' + esc(pf.url) + '" target="_blank" rel="noopener">See receipt</a>'
-            : (canAttachYet(st)
-               ? (canProof()
-                  ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(c.id) + '">Attach receipt</button>'
-                  : '<span class="pill amb">Receipt is attached by the office</span>')
-               /* ---- v1.35.0 - A DEAD END WITH NO DOOR, AND NO SIGN EITHER ----
-                  "upload receipt option not showing". Seven challans, Rs 87,255, and not one
-                  of them could be given a receipt.
+        /* 1.64.0 - the Attach button and its two signs moved to the step strip above; SEE
+           RECEIPT stays here, because looking at the paper is not one of the seven steps. */
+        (pf ? '<a class="btn sm gry" href="' + esc(pf.url) + '" target="_blank" rel="noopener">See receipt</a>' : '') +
 
-                  This morning the receipt button was correctly gated on his own words -
-                  "attach receipt only to be shown when challan approved AND dispatched". What
-                  was not checked is whether this app can REACH Dispatched. It cannot: passing
-                  writes Approved and stops, and the Dispatch button has only ever existed in
-                  the CRM. So every challan passed the way they are actually passed - here, at
-                  the accounts desk - sat at Approved for ever with the receipt button hidden
-                  and NOTHING ON THE SCREEN SAYING WHY. A silent refusal is the worst kind.
-
-                  Both halves are fixed: the door below, and this sign. */
-               : (st === "Approved"
-                  ? '<span class="pill amb say">Mark it dispatched first &mdash; a receipt is for goods that have gone</span>'
-                  : ''))) +
-        (st === "Approved" && canApprove() && !held
-          ? '<button class="btn sm" data-act="ch-dispatch" data-id="' + esc(c.id) + '">Dispatch</button>' : '') +
         (canMake() && !held && (st === "Draft" || st === "Approved")
           ? '<button class="btn sm gry" data-act="ch-edit" data-id="' + esc(c.id) + '">Edit</button>' : '') +
-        (st === "Draft" && canApprove()
-          ? (held ? '<span class="pill amb">Cannot be passed until it uploads</span>'
-                  : '<button class="btn sm red" data-act="ch-approve" data-no="' + esc(c.id || c.challanNo) + '">Pass &amp; Dispatch</button>')
-          : '') +
+
       '</div></div>';
   }
 
@@ -4385,7 +4468,7 @@ function discRowOn(client, brand, onYmd) {
       '</div><div style="text-align:right"><div class="big">' + money(tot) + '</div></div></div>' +
       '<div class="acts">' +
         (pf ? '<a class="btn sm gry" href="' + esc(pf.url) + '" target="_blank" rel="noopener">See receipt</a>'
-            : (canProof()
+            : (canAttachProof()
                ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(r.id) + '">Attach goods-in receipt</button>'
                : '<span class="pill amb">Receipt is attached by the office</span>')) +
       '</div></div>';
@@ -5215,7 +5298,7 @@ function discRowOn(client, brand, onYmd) {
           (when ? ' &middot; ' + esc(dstr(when)) : '') +
           (frToClient(r) ? ' &middot; borne by client' : '') + '</div></div>' +
       '<div><b>' + esc(money(frAmt(r))) + '</b></div>' +
-      (t.state === "held" && canProof()
+      (t.state === "held" && canAttachProof()
         ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(r.id) + '">Attach receipt</button>'
         : '') +
       '</div>';
@@ -7189,7 +7272,8 @@ function discRowOn(client, brand, onYmd) {
 
     /* ---- the signed receipt ---- */
     if (act === "rc-attach") {
-      if (!canProof()) { toast("The signed receipt is filed by the office, not the godown."); return; }
+      /* 1.64.0 - and the toast no longer tells a godown man he is the wrong person. */
+      if (!canAttachProof()) { toast("The signed receipt is filed by the godown, accounts or the owner."); return; }
       var rid = t.getAttribute("data-id");
       var rec = challans().filter(function (x) { return String(x.id) === String(rid); })[0] ||
                 returns().filter(function (x) { return String(x.id) === String(rid); })[0];
