@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.481";
+  var APP_VERSION = "6.9.482";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9755,7 +9755,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      seal already says so in amber. */
   function chgSeal(c) {
     var r = chProofAny(c);
-    if (!r.has || r.queued || !canProof()) return "";
+    if (!r.has || r.queued || !canAttachProof()) return "";
     return ' <button class="btn sm ghost" data-act="ch-reproof" data-id="' + esc(c.id) + '" ' +
       'style="padding:2px 9px;font-size:12px;border-color:#fed7aa;color:#b45309;vertical-align:middle" ' +
       'title="Photograph the right receipt. The one on file now is kept - nothing is deleted.">Change</button>';
@@ -9792,7 +9792,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       (url ? '<a class="btn sm ghost full" href="' + esc(url) + '" target="_blank" rel="noopener" ' +
         'style="text-decoration:none;text-align:center">Open the full document &#8599;</a>'
            : '<div class="meta" style="font-size:12px;color:#b45309">no link to the document</div>') +
-      (canProof() ? '<button class="btn sm ghost full" data-act="ch-reproof" data-id="' + esc(sub.id) +
+      (canAttachProof() ? '<button class="btn sm ghost full" data-act="ch-reproof" data-id="' + esc(sub.id) +
         '" style="margin-top:6px;border-color:#fed7aa;color:#b45309">This one is wrong \u2014 Change it</button>' : '') +
       '</div>';
   }
@@ -11041,7 +11041,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         h += '<div class="row" style="align-items:center;border-top:1px solid #fecaca;padding:5px 0">' +
           '<div class="grow" style="font-size:12.5px"><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(c.customerName || "") +
           (c.site ? '<div style="color:#94a3b8;font-size:12px">' + esc(c.site) + '</div>' : "") + '</div>' +
-          (canProof() ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '">Attach</button>' : '') + '</div>';
+          (canAttachProof() ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '">Attach</button>' : '') + '</div>';
       });
       if (off.length > CAP) h += '<div class="meta" style="margin-top:6px">Showing the newest ' + CAP + ' of ' + off.length + '. The rest are still on their own challan cards.</div>';
       h += '</div>';
@@ -15465,6 +15465,24 @@ function viewCatalogue() {
      lorry. A receipt is the proof that settles an argument; it should not be attachable
      by the person it would exonerate. */
   function canProof()   { return roleAny(["admin","accounts"]); }
+  /* ============ WHO FILES THE SIGNED PAPER  (v6.9.482) ============
+     HIS WORDS: "godown can file receipt".
+
+     NOT a widening of canProof(), and the difference is the whole point. canProof() gates four
+     things that only look like one:
+
+        attaching the signed paper   - an audit row, and the server takes it from any signed-in
+                                       role: challan:proof is not in PAPER_ACTIONS
+        replacing a wrong one        - the same, and the old row stays in the trail as history
+        "Mark as received"           - challanMove_ to Received, which the SERVER refuses from
+                                       anybody but admin or accounts
+        settling a twin              - deciding which of two receipts is the real one
+
+     Widening canProof() would have given the godown two buttons the server turns away, which is
+     the fault shape this file has found and written down more than once: a button that exists
+     and does nothing. So attaching gets its own question and canProof keeps the rest. */
+  function canAttachProof() { return roleAny(["admin", "accounts", "godown"]); }
+
   /* ============ WHOSE RECEIPT ARE WE WAITING FOR  (v6.9.481) ============
      HIS WORDS: "make a dedicated section for pending receipt upload, there shown only challan
      with pending receipts".
@@ -15480,8 +15498,8 @@ function viewCatalogue() {
      other screen is concerned that delivery is finished.
 
      WHO MAY LOOK: admin, accounts and the GODOWN - the godown is who takes the signed paper off
-     the driver, so a list of what has not come back is their work list. Filing the receipt is
-     still canProof() (admin and accounts) and this release does not widen it. */
+     the driver, so a list of what has not come back is their work list. Since v6.9.482 they may
+     FILE it too (canAttachProof), which is what he asked for the day after this shipped. */
   function canSeeRcptQueue() { return roleAny(["admin", "accounts", "godown"]); }
   /* A delivery that has gone and whose paper is not back. Read from the SERVER's status, never
      from anything the phone remembers - the same rule as the passed-not-dispatched band. */
@@ -15491,9 +15509,15 @@ function viewCatalogue() {
              String(c.receiptReceived || "").toUpperCase() !== "Y";
     }).filter(rcptMine).sort(rcptOldestFirst);
   }
-  /* scoped exactly like the passed-not-dispatched band: the owner and accounts see the whole
-     book, anybody else sees his own clients and nobody else's */
-  function rcptMine(c) { return seesAllClients() || isMineClient(c.customerName); }
+  /* v6.9.482 - A FAULT OF MINE FROM 6.9.481, FOUND THE SAME DAY. This asked
+     `seesAllClients() || isMineClient(...)`, which is admin-or-accounts plus the clients a man
+     owns - and a GODOWN man owns none. So the tab I had just built for him would have opened
+     empty, which is worse than not building it.
+
+     The list this sits beside has never worked that way: viewChallans narrows on
+     `roleIs("sales")` and shows a godown man every challan in the business. That is the right
+     rule and this is now the same one - the godown handles every load, not a territory. */
+  function rcptMine(c) { return !roleIs("sales") || isMineClient(c.customerName); }
   /* oldest first, and A ROW WITH NO DATE SORTS FIRST rather than vanishing into the middle.
      One of his three today is exactly that: 23/08/2026/023, Sandeep Goel, no createdAt at all.
      daysTo("") answers 9999, which would have read as "due in 27 years" - so the date is asked
@@ -15549,10 +15573,10 @@ function viewCatalogue() {
          act on it belong there, on the same line as the delivery they are about. */
       '<div style="flex:0 0 auto;margin-left:auto;text-align:right;white-space:nowrap">' +
       '<b style="font-size:13px">' + money(chValue(c)) + '</b><br>' +
-      (canProof()
+      (canAttachProof()
         ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" ' +
           'style="padding:1px 8px;font-size:12px;margin-top:3px">&#128206; Attach</button>'
-        : '<span style="font-size:12px;color:#94a3b8">accounts files it</span>') +
+        : '<span style="font-size:12px;color:#94a3b8">the godown or accounts files it</span>') +
       '</div></div>';
   }
   function rcptBand(title, why, list, tone, bg, edge) {
@@ -16892,7 +16916,7 @@ function viewCatalogue() {
         (stt === "Picked up" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received">Received at godown</button>' : "") +
         /* v6.9.241 - once the material is back in, the paper signed for it can be attached */
         (stt === "Received" && !chProofAny(r).has
-          ? (canProof() ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '">Attach goods-in receipt</button>' : '') : "") +
+          ? (canAttachProof() ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '">Attach goods-in receipt</button>' : '') : "") +
         /* v6.9.371 - was hand-written and admin-only, so nobody could ASK about a return */
         cxCardBtn("returns", r.id) +
         '</div></div>';
@@ -17543,7 +17567,7 @@ function viewCatalogue() {
                twice. A receipt on this phone counts as a receipt. */
             ((challanProof(c.id) || prfLoad().filter(function (x) { return x.chId === c.id; })[0])
               ? ""
-              : (canProof() ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(c.id) + '">Attach receipt</button>' : ''))
+              : (canAttachProof() ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(c.id) + '">Attach receipt</button>' : ''))
           : "") +
         /* v6.9.206 - on the card, not in the edit form: a dispatched or received challan has no
            edit form to put it in, and those are exactly the ones he needs to be able to void. */
@@ -20527,7 +20551,7 @@ function viewCatalogue() {
   }
   function miniRcptCell(r) {
     var w = miniRcptWord(r.rcpt), ink = miniRcptInk(r.rcpt);
-    if (r.rcpt !== "no" || !r.id || !canProof()) {
+    if (r.rcpt !== "no" || !r.id || !canAttachProof()) {
       /* v6.9.481 - and WHO put it there. "Attached" alone is a fact with nobody behind it; the
          name is already on the audit row this column is read from, so printing it costs one
          lookup and answers the third of his three questions on the row itself. */
@@ -21580,7 +21604,7 @@ function viewCatalogue() {
         /* v6.9.236 - no paper on file, so ask for it right here. Open to anyone who can see the
            challan: the photo usually reaches whoever has the customer on WhatsApp, not whoever
            loaded the tempo. Once one is attached this button is gone. */
-        (!_rc.has && canSee("challans") && canProof()
+        (!_rc.has && canSee("challans") && canAttachProof()
           ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" style="background:#b91c1c;border-color:#b91c1c" title="Photograph or upload the signed receipt for this delivery">&#128206; Attach receipt</button>'
           : '') +
         /* ================= THE CANCEL BUTTON WAS NOT HERE  (v6.9.370, 27 Aug 2026) ==========
@@ -21737,7 +21761,7 @@ function viewCatalogue() {
         '<div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px">' +
           /* v6.9.451 - the items are on the sheet below; the count stands where the toggle was */
           '<span style="font-size:13px;color:#b91c1c;white-space:nowrap">' + rl.length + ' item' + (rl.length === 1 ? '' : 's') + ' back</span>' +
-          (!chProofAny(r).has && canSee("returns") && canProof()
+          (!chProofAny(r).has && canSee("returns") && canAttachProof()
             ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(r.id) + '" style="background:#b91c1c;border-color:#b91c1c" title="Photograph the paper signed at the godown when this material was counted back in">&#128206; Attach goods-in receipt</button>'
             : '') +
           /* v6.9.348 - the way back from a mistaken booking-in. Owner only, confirmed, and it
@@ -41813,8 +41837,11 @@ function viewCatalogue() {
 
     /* ---- delivery receipts (v6.9.210) ---- */
     if (act === "ch-proof") {
-      /* v6.9.337 - a hidden button is a courtesy, not a rule. The rule is here. */
-      if (!canProof()) { toast("The signed receipt is filed by accounts or the owner."); return; }
+      /* v6.9.337 - a hidden button is a courtesy, not a rule. The rule is here.
+         v6.9.482 - and the rule is canAttachProof now: the godown files the paper it takes off
+         the driver. The server has always allowed it - a challan:proof row is an ordinary audit
+         row - so this is the screen catching up with what the door already permitted. */
+      if (!canAttachProof()) { toast("The signed receipt is filed by the godown, accounts or the owner."); return; }
       S.prf = { id: id, by: "", photo: "" };
       S.modal = modalProof(id); render(); return;
     }
@@ -41840,7 +41867,9 @@ function viewCatalogue() {
       return;
     }
     if (act === "ch-reproof") {
-      if (!canProof()) { toast("The signed receipt is filed by accounts or the owner."); return; }
+      /* v6.9.482 - whoever may file the paper may fix the one they filed. Nothing is deleted:
+         the old proof row stays in the trail and the new one wins by being newer. */
+      if (!canAttachProof()) { toast("The signed receipt is filed by the godown, accounts or the owner."); return; }
       var rsub = proofSubject(id);
       var rold = chProofAny(rsub || { id: id });
       if (!rold.has || rold.queued) { toast("There is no receipt on file to change yet."); return; }
