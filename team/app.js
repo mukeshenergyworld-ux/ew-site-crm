@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.483";
+  var APP_VERSION = "6.9.484";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -15506,6 +15506,9 @@ function viewCatalogue() {
      The rows are challanCardHtml, the card the Challans tab has drawn all along: the status
      pills, Made / Passed / Receipt with the names, and every button including Attach. This
      release draws nothing new. */
+  /* v6.9.484 - his word, and one line turns it round again. The strap below reads whichever
+     this says, because a line that describes the screen wrongly is worse than no line. */
+  var NEWEST_DAY_FIRST = true;
   function rcptDayBands(list) {
     var days = {}, order = [];
     list.forEach(function (c) {
@@ -15513,7 +15516,19 @@ function viewCatalogue() {
       if (!days[k]) { days[k] = []; order.push(k); }
       days[k].push(c);
     });
-    order.sort();                                   /* oldest day first; "(no date)" sorts first */
+    /* v6.9.484 - HIS WORDS: "everthing , show latest at top". I had argued the other way - a
+       chase list is not a news feed - and he has overruled it, which is his right: it is his
+       screen and he opens it many times a day. Nothing else about the band changes, so the
+       oldest day still says "55 days out" in red and the total at the top is still of
+       everything; what moves is only which end he starts reading from.
+
+       "(no date)" IS PULLED OUT AND PUT BACK ON TOP. Reversing the whole order would bury the
+       one group nobody can chase by age at the very bottom, which is the opposite of what it
+       needs. */
+    var _nd = order.indexOf("(no date)") >= 0;
+    order = order.filter(function (k) { return k !== "(no date)"; }).sort();
+    if (NEWEST_DAY_FIRST) order.reverse();
+    if (_nd) order.unshift("(no date)");
     return order.map(function (k) {
       var l = days[k];
       var val = l.reduce(function (a, c) { return a + chValue(c); }, 0);
@@ -15554,7 +15569,7 @@ function viewCatalogue() {
        itself is on every row in the card's own status pill. */
     return '<div class="meta" style="font-weight:700;margin:8px 2px 4px;color:#0f172a">' +
         all.length + ' challan' + (all.length === 1 ? '' : 's') + ' &middot; ' + money(val) +
-        ' &middot; oldest day first</div>' +
+        ' &middot; ' + (NEWEST_DAY_FIRST ? 'latest day first' : 'oldest day first') + '</div>' +
       '<div class="meta" style="font-size:12.5px;line-height:1.55;margin:0 2px 4px;color:#7f1d1d">' +
         '<b>' + out.length + '</b> gone out and the paper has not come back &mdash; until it is in, ' +
         'that money is <b>not on the customer\u2019s account</b> and nothing will chase it. ' +
