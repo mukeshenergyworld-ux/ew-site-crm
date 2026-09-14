@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.482";
+  var APP_VERSION = "6.9.483";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -11014,64 +11014,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
   /* ---- one place to check every delivery ----
      Deliberately a screen and not a new tab: there are already more tabs than fit on a phone. */
-  function modalProofList() {
-    var list = (S.data.challans || []).filter(function (c) {
-      var st = c.status || "Draft";
-      return st === "Dispatched" || st === "Received";
-    });
-    if (roleIs("sales")) list = list.filter(function (c) { return isMineClient(c.customerName); });
-    var pmap = {};
-    prfLoad().forEach(function (p) { pmap[p.chId] = p; });
-    var on = [], off = [];
-    list.forEach(function (c) { if (challanProof(c.id) || pmap[c.id]) on.push(c); else off.push(c); });
-    on.sort(function (a, b) {
-      var pa = challanProof(a.id) || {}, pb = challanProof(b.id) || {};
-      return String(pb.at || "").localeCompare(String(pa.at || ""));
-    });
-    off.reverse();
-    var CAP = 200;
-    var h = '<h2>Delivery receipts</h2>' +
-      '<div class="meta" style="margin-bottom:8px">Every delivery that has gone out, and whether the signed receipt has come back. <b>' +
-      on.length + '</b> on file, <b>' + off.length + '</b> still missing.</div>' +
-      '<div style="max-height:58vh;overflow:auto">';
-    if (off.length) {
-      h += '<div class="card" style="border-color:#fecaca;background:#fef2f2">' +
-        '<h3 style="margin:0 0 4px;font-size:13px">No receipt on file (' + off.length + ')</h3>';
-      off.slice(0, CAP).forEach(function (c) {
-        h += '<div class="row" style="align-items:center;border-top:1px solid #fecaca;padding:5px 0">' +
-          '<div class="grow" style="font-size:12.5px"><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(c.customerName || "") +
-          (c.site ? '<div style="color:#94a3b8;font-size:12px">' + esc(c.site) + '</div>' : "") + '</div>' +
-          (canAttachProof() ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '">Attach</button>' : '') + '</div>';
-      });
-      if (off.length > CAP) h += '<div class="meta" style="margin-top:6px">Showing the newest ' + CAP + ' of ' + off.length + '. The rest are still on their own challan cards.</div>';
-      h += '</div>';
-    }
-    if (on.length) {
-      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
-        '<h3 style="margin:0 0 4px;font-size:13px">On file (' + on.length + ')</h3>';
-      on.slice(0, CAP).forEach(function (c) {
-        var p = challanProof(c.id);
-        /* v6.9.212 - the filed picture, or the queued one if it has not gone up yet. */
-        var pth = (p && p.thumb) || (pmap[c.id] && pmap[c.id].thumb) || "";
-        h += '<div class="row" style="align-items:center;border-top:1px solid #99f6e4;padding:5px 0">' +
-          (pth ? '<div style="margin-right:8px">' + proofThumbImg(pth, 38) + '</div>' : "") +
-          '<div class="grow" style="font-size:12.5px"><b>' + esc(c.challanNo || "") + '</b> &middot; ' + esc(c.customerName || "") +
-          '<div style="color:#94a3b8;font-size:12px">' +
-          (p ? fullDate(String(p.at || "").slice(0, 10)) : "waiting to upload") +
-          (p && p.by ? ' &middot; signed by ' + esc(p.by) : "") + '</div></div>' +
-          (p && p.url
-            ? '<a class="btn sm ghost" href="' + esc(p.url) + '" target="_blank" rel="noopener">Open</a>'
-            : '<span class="pill due">uploading</span>') +
-          '<button class="btn sm ghost" data-act="ch-wa" data-id="' + esc(c.id) + '" style="color:#0f766e">Send</button>' + waExecBtn("ch-wa", c.customerName, 'data-id="' + esc(c.id) + '"') + '</div>';
-      });
-      if (on.length > CAP) h += '<div class="meta" style="margin-top:6px">Showing the newest ' + CAP + ' of ' + on.length + '.</div>';
-      h += '</div>';
-    }
-    if (!on.length && !off.length) h += '<div class="empty">Nothing has been dispatched yet.</div>';
-    h += '</div><div class="foot"><button class="btn ghost" data-act="prf-cancel">Close</button></div>';
-    return h;
-  }
-
+  /* v6.9.483 - modalProofList REMOVED. It listed the same rows as the Receipts pending section, flatter: an Attach button and nothing else - no day grouping, no money, no trail, no status. It is the screen he photographed to show what was wrong with it, and the button that opened it now opens the section. Declared in lift.js REMOVED. */
   /* ---- the old book, attached to the client ----
      A client carried over from the old Excel arrives with a balance and no story. This lets that
      story - the hisab statement from the old books - be attached to the man himself, hosted on
@@ -15545,70 +15488,81 @@ function viewCatalogue() {
       return !chProofAny(c).has;
     }).filter(rcptMine).sort(rcptOldestFirst);
   }
-  function rcptQueueCount() { return rcptOutNoPaper().length + rcptInNoPaper().length; }
+  function rcptQueueCount() { return rcptAllWaiting().length; }
+  /* v6.9.483 - ONE LIST, the way the Challan app's "Receipt pending" chip has shown it since
+     1.56.0. The two states are still two states and every row says which it is in its own status
+     pill; what they are not is two lists, because he asked for these two screens to be the same
+     provision and the other one is date-wise. */
+  function rcptAllWaiting() {
+    return rcptOutNoPaper().concat(rcptInNoPaper()).sort(rcptOldestFirst);
+  }
+  /* THE DAY BANDS, and the shape is the Challan app's 1.56.0 word for word, because it came from
+     his: "a dedicated section for date wise List of pending receivings to be attachd for Godown,
+     accounts and admin, flag them red to all."
+
+     OLDEST DAY FIRST is the whole point - a chase list is not a news feed. The 55-day-old one is
+     the one that will be argued about, so it is at the top and not buried under this morning's.
+
+     The rows are challanCardHtml, the card the Challans tab has drawn all along: the status
+     pills, Made / Passed / Receipt with the names, and every button including Attach. This
+     release draws nothing new. */
+  function rcptDayBands(list) {
+    var days = {}, order = [];
+    list.forEach(function (c) {
+      var k = dstr(c.createdAt) || "(no date)";
+      if (!days[k]) { days[k] = []; order.push(k); }
+      days[k].push(c);
+    });
+    order.sort();                                   /* oldest day first; "(no date)" sorts first */
+    return order.map(function (k) {
+      var l = days[k];
+      var val = l.reduce(function (a, c) { return a + chValue(c); }, 0);
+      var age = k === "(no date)" ? 0
+        : Math.max(0, Math.floor((Date.now() - Date.parse(k + "T00:00:00")) / 86400000));
+      return '<div class="card" style="padding:9px 11px;margin:10px 0 6px;border-color:#fecaca;background:#fffafa">' +
+          '<div class="row" style="align-items:baseline;gap:8px">' +
+            '<div style="font-weight:800;font-size:14.5px;color:#b91c1c">' +
+              (k === "(no date)" ? "No date on the challan" : esc(fullDate(k))) + '</div>' +
+            '<div class="grow"></div>' +
+            '<div style="font-weight:800">' + money(val) + '</div>' +
+          '</div>' +
+          '<div class="meta" style="margin-top:2px;font-size:12.5px">' + l.length + ' receipt' +
+            (l.length === 1 ? '' : 's') + ' still to collect' +
+            (age ? ' &middot; <b style="color:#b91c1c">' + age + ' day' + (age === 1 ? '' : 's') + ' out</b>' : '') +
+          '</div></div>' +
+        l.slice().sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); })
+         .map(challanCardHtml).join("");
+    }).join("");
+  }
   /* one row, and it NAMES THE MEN - the point of a chase list is knowing who to ask */
-  function rcptRow(c, tone) {
-    var age = rcptAge(c), who = String(c.createdBy || "").split(" ")[0] || "?";
-    var pby = String(c.approvedBy || "").split(" ")[0] || "";
-    return '<div class="acts" style="align-items:center;gap:8px;padding:7px 0;border-top:1px solid #fee2e2;flex-wrap:nowrap">' +
-      '<div class="grow" style="min-width:0">' +
-      '<b style="font-size:13px">' + esc(c.challanNo || "(no number)") + '</b>' +
-      ' <span class="pill due">' + esc(c.status || "") + '</span>' +
-      '<br><span style="font-size:12.5px;color:' + tone + '">' + esc(c.customerName || "") + '</span>' +
-      '<br><span style="font-size:12px;color:#64748b">Made by <b>' + esc(who) + '</b>' +
-      (pby ? ' &middot; passed by <b>' + esc(pby) + '</b>' : ' &middot; not passed yet') +
-      /* THE RENDER CORRECTED ME HERE. I had written that 23/08/2026/023 "carries no date on the
-         row at all" - true of his SHEET, and not true of this screen: chDatesIn() has recovered
-         a missing date from the challan NUMBER since the dateless-rows work, so it reads 22 days.
-         The amber pill is the mark every other screen puts on a recovered date, and it belongs
-         here more than anywhere: an age is the whole basis of a chase list, and a man is owed the
-         knowledge that this one was worked out from the number. The null branch stays for a row
-         whose number has no date in it either. */
-      ' &middot; ' + (age == null ? '<b style="color:#b91c1c">no date on the row</b>' : esc(age) + ' days') +
-      chDatePill(c) +
-      '</span></div>' +
-      /* MEASURED AT 390px AND LOOKED AT: without flex:0 0 auto this column wrapped onto its own
-         line, and the money and the button landed under the client's name reading like a
-         separate row. A chase list is read down the right-hand edge - the figure and the way to
-         act on it belong there, on the same line as the delivery they are about. */
-      '<div style="flex:0 0 auto;margin-left:auto;text-align:right;white-space:nowrap">' +
-      '<b style="font-size:13px">' + money(chValue(c)) + '</b><br>' +
-      (canAttachProof()
-        ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" ' +
-          'style="padding:1px 8px;font-size:12px;margin-top:3px">&#128206; Attach</button>'
-        : '<span style="font-size:12px;color:#94a3b8">the godown or accounts files it</span>') +
-      '</div></div>';
-  }
-  function rcptBand(title, why, list, tone, bg, edge) {
-    if (!list.length) return "";
-    var worth = list.reduce(function (a, c) { return a + chValue(c); }, 0);
-    return '<div class="card" style="border-color:' + edge + ';background:' + bg + '">' +
-      '<h3 style="margin:0 0 2px;color:' + tone + '">' + list.length + ' ' + title +
-      ' &middot; ' + money(worth) + '</h3>' +
-      '<div class="meta" style="color:' + tone + ';font-size:12.5px;line-height:1.5">' + why + '</div>' +
-      list.map(function (c) { return rcptRow(c, tone); }).join("") + '</div>';
-  }
+  /* v6.9.483 - rcptRow REMOVED. The compact chase row 6.9.481 drew, replaced by challanCardHtml - the card the Challans tab has always drawn, which already carries the status pills, the made/passed/receipt trail and every button including Attach. Declared in lift.js REMOVED. */
+  /* v6.9.483 - rcptBand REMOVED. The state-banded wrapper from 6.9.481, replaced by rcptDayBands - he compared the two apps and asked for the Challan app's shape, which is date-wise. Its two sentences are kept on one line under the strap. Declared in lift.js REMOVED. */
   function viewRcptPending() {
     if (!canSeeRcptQueue()) return '<div class="empty">This list is the owner\u2019s, accounts\u2019 and the godown\u2019s.</div>';
-    var out = rcptOutNoPaper(), inn = rcptInNoPaper();
-    if (!out.length && !inn.length) {
+    var out = rcptOutNoPaper(), inn = rcptInNoPaper(), all = rcptAllWaiting();
+    if (!all.length) {
       return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
         '<b style="color:#0f766e">Every delivery has its signed paper</b>' +
         '<div class="meta" style="color:#0f766e;font-size:12.5px;margin-top:3px">' +
         'Nothing is waiting. A delivery appears here the moment it leaves the godown, and ' +
         'leaves this list the moment its receipt is on file.</div></div>';
     }
-    return rcptBand("gone out, paper not back",
-        'The material has left and the signed challan has not come back. Ask the driver, or the ' +
-        'man who passed it. Until the paper is in, <b>this is not on the customer\u2019s account</b> ' +
-        'and nothing will chase it.',
-        out, "#92400e", "#fffbeb", "#fde68a") +
-      rcptBand("marked received, no paper on file",
-        'Somebody ticked <b>received</b> and no receipt document was ever attached. The money IS ' +
-        'on the account, so nothing on any other screen says a word about it \u2014 which is exactly ' +
-        'why it can sit for months. If the customer disputes one of these, there is no signed ' +
-        'paper to put in front of him.',
-        inn, "#b91c1c", "#fff7f7", "#fecaca");
+    var val = all.reduce(function (a, c) { return a + chValue(c); }, 0);
+    /* v6.9.483 - the strap, then ONE line for the two states. 6.9.481 gave each state a band of
+       its own with a paragraph in it; he compared the two apps and asked for the Challan app's
+       shape, which is date-wise. The words that mattered are kept, on one line, and the state
+       itself is on every row in the card's own status pill. */
+    return '<div class="meta" style="font-weight:700;margin:8px 2px 4px;color:#0f172a">' +
+        all.length + ' challan' + (all.length === 1 ? '' : 's') + ' &middot; ' + money(val) +
+        ' &middot; oldest day first</div>' +
+      '<div class="meta" style="font-size:12.5px;line-height:1.55;margin:0 2px 4px;color:#7f1d1d">' +
+        '<b>' + out.length + '</b> gone out and the paper has not come back &mdash; until it is in, ' +
+        'that money is <b>not on the customer\u2019s account</b> and nothing will chase it. ' +
+        '<b>' + inn.length + '</b> marked <b>received</b> with no document ever attached &mdash; that ' +
+        'money IS on the account, which is exactly why no other screen says a word about it. If ' +
+        'the customer disputes one of those, there is no signed paper to put in front of him.' +
+      '</div>' +
+      rcptDayBands(all);
   }
 
   /* v6.9.444 - who may record a GST bill against a delivery. The card has gated its button on
@@ -17452,78 +17406,15 @@ function viewCatalogue() {
     });
     return h + '</div>';
   }
-  function viewChallans() {
-    ensurePickerCss();   /* stage-action colours + picker styles must exist on the list view too */
-    /* v6.9.247 - the challan app. A separate app on purpose: this screen is the whole delivery
-       book for someone who also does forty other things; that one is two jobs and nothing else,
-       for the godown and the accounts desk. Same book, same numbering, same sheets. */
-    var chAppLink = '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
-      '<div class="acts" style="margin:0"><a class="btn sm" href="../challan/" target="_blank" rel="noopener" ' +
-        'style="background:#0f766e;border-color:#0f766e">&#128230; Open the Challan app</a>' +
-      '<span class="meta" style="align-self:center;font-size:12px">Make a challan, register a return, ' +
-        'photograph the signed receipt. Godown makes it, accounts passes it.</span></div></div>';
-    var list = S.data.challans.slice().reverse();
-    /* ONLY sales is owner-scoped; godown must see every challan to dispatch/receipt them. */
-    if (roleIs("sales")) list = list.filter(function (c) { return isMineClient(c.customerName); });
-    var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
-    /* v6.9.388 - the same predicate the red band counts, scoped the same way, so the tile, the
-       band and the queue can never disagree about how many there are. hisabNotStamped() is NOT
-       re-implemented here: it already exists and it already knows about HISAB_STAMP_FROM, which
-       is the only reason the band says 1 and not 79. */
-    var hq = hisabNotStamped().filter(function (c) {
-      return seesAllClients() || isMineClient(c.customerName);
-    }).sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
-    var h = chAppLink + '<div class="cards">' +
-      '<div class="stat ' + (by("Draft") ? "alert" : "") + '"><div class="n">' + by("Draft") + '</div><div class="l">Awaiting approval</div></div>' +
-      /* v6.9.473 - IT WAS DRAWN QUIET. A four sat here for six weeks looking like a number
-         rather than Rs 1,31,038 of material nobody had released. It alerts now, and it leads to
-         the band instead of leading nowhere. */
-      '<div class="stat' + (by("Approved") ? ' alert' : '') + '"' + (by("Approved") ? ' data-act="ch-appr" style="cursor:pointer" title="Passed but not dispatched. Tap to see them."' : '') +
-        '><div class="n">' + by("Approved") + '</div><div class="l">Approved, to dispatch</div></div>' +
-      '<div class="stat"><div class="n">' + by("Dispatched") + '</div><div class="l">Awaiting receipt</div></div>' +
-      '<div class="stat"><div class="n">' + by("Received") + '</div><div class="l">Receipt in</div></div>' +
-      /* ---- A PLACE OF ITS OWN FOR THE HISAB QUEUE  (v6.9.388, 1 September 2026) ----
-         HIS WORDS: "make a dedicated space for pending for add to hisab, as i have to search
-         time and again for each entry and find".
+  /* ============ THE DELIVERY CARD, WHERE EVERY LIST CAN REACH IT  (v6.9.483) ============
+     It lived INSIDE viewChallans until today, which meant it existed on exactly one screen. The
+     Receipts pending section draws it too - a chase list a man has to leave in order to act on
+     is not a chase list - and calling it from there threw "challanCardHtml is not defined".
+     t_undefined_names caught that before it shipped.
 
-         The red band has counted them since v6.9.346 and then said "Tap to open Deliveries" -
-         which drops him into the whole book, grouped by executive and then by client, to hunt
-         for the one card that needs stamping. Counting a queue is not the same as giving him
-         somewhere to work it.
-
-         The tile is drawn even at zero, and quiet when it is: a space he has to find only when
-         it is full is a space he will not trust is there. */
-      (canHisabRole()
-        ? '<div class="stat' + (hq.length ? ' alert' : '') + '" data-act="ch-queue" style="cursor:pointer" ' +
-          'title="Deliveries whose receipt is in and which have not been stamped. Tap to work through them.">' +
-          '<div class="n">' + hq.length + '</div><div class="l">To finalise</div></div>'
-        : '') +
-      '</div>';
-    /* v6.9.128: delivered-but-not-billed banner, so bills get raised (a delivered challan with no bill
-       is money shipped without a tax invoice). Only for billing-capable roles. */
-    if (canSee("billing")) {
-      var _unb = unbilledStats();
-      if (_unb.val > 0) {
-        h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
-          '<div class="meta" style="font-size:13.5px;color:#7c2d12"><b>' + money(_unb.val) + '</b> in <b>' + _unb.count + '</b> delivered challan(s) not billed yet — raise the bills so nothing slips on GST.</div></div>';
-      }
-    }
-    /* v6.9.388 - not inside the queue: the band and the queue's own header would say the same
-       thing twice, one under the other. */
-    if (S.chOnly !== "hisab" && S.chOnly !== "draft") h += hisabNotStampedBand();   /* v6.9.464 */
-    /* v6.9.473 - ABOVE the finalise band on purpose: this one is material that never left the
-       godown, and that is a worse fact than a delivery waiting to be stamped. */
-    if (S.chOnly !== "hisab" && S.chOnly !== "draft") h += chStuckApprovedBand();
-    h += hisabMismatchCard();
-    h += '<div class="row">' +
-      (roleIs("admin") ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
-      '<button class="btn sm ghost" data-act="prf-list">Delivery receipts</button>' +
-      '<div class="grow"></div><button class="btn" data-act="ch-new">+ New challan</button></div>';
-    if (!list.length) h += '<div class="empty">No challans yet.</div>';
-
-    /* One challan's card (compact summary + expandable detail). Factored out so the very same card
-       can be dropped under whichever client it belongs to in the grouped layout below. */
-
+     MEASURED BEFORE MOVING IT: viewChallans has 21 locals of its own and this uses NONE of them.
+     It takes its challan as an argument and reads only helpers at this level. So this is a move
+     and not a refactor - the same characters, one nesting level out. */
   function challanCardHtml(c) {
       var st = c.status || "Draft";
       var cls = st === "Received" ? "Won" : (st === "Draft" ? "due" : "teal");
@@ -17585,7 +17476,13 @@ function viewCatalogue() {
          line 1 - challan no + status pills, all action buttons pinned right
          line 2 - client · site · items/units · brand · bill state */
       var out = '<div class="card lc-compact">' +
-        '<div class="lc-top"><div class="lc-id"><b>' + esc(c.challanNo) + '</b>' +
+        /* v6.9.483 - AND THE AMBER MARK WHEN THE DATE WAS RECOVERED. chDatesIn() works a missing
+           date out of the challan NUMBER, and until today only the account card said so. This card
+           is the row of the Receipts pending chase list now, where the AGE is the whole argument -
+           a man is owed the knowledge that this one was derived rather than read off the row. The
+           Challan app's chRow wears the same mark since 1.61.0, so the two screens say the same
+           thing about the same delivery. */
+        '<div class="lc-top"><div class="lc-id"><b>' + esc(c.challanNo) + '</b>' + chDatePill(c) +
         /* v6.9.237 - read-only, so a man hunting for "1247" from the paper book finds it here too */
         manualNoCell(c, true) +
         ' <span class="pill ' + cls + '">' + esc(st) + '</span>' +
@@ -17654,6 +17551,81 @@ function viewCatalogue() {
       out += '</div>';
       return out;
     }
+
+  function viewChallans() {
+    ensurePickerCss();   /* stage-action colours + picker styles must exist on the list view too */
+    /* v6.9.247 - the challan app. A separate app on purpose: this screen is the whole delivery
+       book for someone who also does forty other things; that one is two jobs and nothing else,
+       for the godown and the accounts desk. Same book, same numbering, same sheets. */
+    var chAppLink = '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
+      '<div class="acts" style="margin:0"><a class="btn sm" href="../challan/" target="_blank" rel="noopener" ' +
+        'style="background:#0f766e;border-color:#0f766e">&#128230; Open the Challan app</a>' +
+      '<span class="meta" style="align-self:center;font-size:12px">Make a challan, register a return, ' +
+        'photograph the signed receipt. Godown makes it, accounts passes it.</span></div></div>';
+    var list = S.data.challans.slice().reverse();
+    /* ONLY sales is owner-scoped; godown must see every challan to dispatch/receipt them. */
+    if (roleIs("sales")) list = list.filter(function (c) { return isMineClient(c.customerName); });
+    var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
+    /* v6.9.388 - the same predicate the red band counts, scoped the same way, so the tile, the
+       band and the queue can never disagree about how many there are. hisabNotStamped() is NOT
+       re-implemented here: it already exists and it already knows about HISAB_STAMP_FROM, which
+       is the only reason the band says 1 and not 79. */
+    var hq = hisabNotStamped().filter(function (c) {
+      return seesAllClients() || isMineClient(c.customerName);
+    }).sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
+    var h = chAppLink + '<div class="cards">' +
+      '<div class="stat ' + (by("Draft") ? "alert" : "") + '"><div class="n">' + by("Draft") + '</div><div class="l">Awaiting approval</div></div>' +
+      /* v6.9.473 - IT WAS DRAWN QUIET. A four sat here for six weeks looking like a number
+         rather than Rs 1,31,038 of material nobody had released. It alerts now, and it leads to
+         the band instead of leading nowhere. */
+      '<div class="stat' + (by("Approved") ? ' alert' : '') + '"' + (by("Approved") ? ' data-act="ch-appr" style="cursor:pointer" title="Passed but not dispatched. Tap to see them."' : '') +
+        '><div class="n">' + by("Approved") + '</div><div class="l">Approved, to dispatch</div></div>' +
+      '<div class="stat"><div class="n">' + by("Dispatched") + '</div><div class="l">Awaiting receipt</div></div>' +
+      '<div class="stat"><div class="n">' + by("Received") + '</div><div class="l">Receipt in</div></div>' +
+      /* ---- A PLACE OF ITS OWN FOR THE HISAB QUEUE  (v6.9.388, 1 September 2026) ----
+         HIS WORDS: "make a dedicated space for pending for add to hisab, as i have to search
+         time and again for each entry and find".
+
+         The red band has counted them since v6.9.346 and then said "Tap to open Deliveries" -
+         which drops him into the whole book, grouped by executive and then by client, to hunt
+         for the one card that needs stamping. Counting a queue is not the same as giving him
+         somewhere to work it.
+
+         The tile is drawn even at zero, and quiet when it is: a space he has to find only when
+         it is full is a space he will not trust is there. */
+      (canHisabRole()
+        ? '<div class="stat' + (hq.length ? ' alert' : '') + '" data-act="ch-queue" style="cursor:pointer" ' +
+          'title="Deliveries whose receipt is in and which have not been stamped. Tap to work through them.">' +
+          '<div class="n">' + hq.length + '</div><div class="l">To finalise</div></div>'
+        : '') +
+      '</div>';
+    /* v6.9.128: delivered-but-not-billed banner, so bills get raised (a delivered challan with no bill
+       is money shipped without a tax invoice). Only for billing-capable roles. */
+    if (canSee("billing")) {
+      var _unb = unbilledStats();
+      if (_unb.val > 0) {
+        h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
+          '<div class="meta" style="font-size:13.5px;color:#7c2d12"><b>' + money(_unb.val) + '</b> in <b>' + _unb.count + '</b> delivered challan(s) not billed yet — raise the bills so nothing slips on GST.</div></div>';
+      }
+    }
+    /* v6.9.388 - not inside the queue: the band and the queue's own header would say the same
+       thing twice, one under the other. */
+    if (S.chOnly !== "hisab" && S.chOnly !== "draft") h += hisabNotStampedBand();   /* v6.9.464 */
+    /* v6.9.473 - ABOVE the finalise band on purpose: this one is material that never left the
+       godown, and that is a worse fact than a delivery waiting to be stamped. */
+    if (S.chOnly !== "hisab" && S.chOnly !== "draft") h += chStuckApprovedBand();
+    h += hisabMismatchCard();
+    h += '<div class="row">' +
+      (roleIs("admin") ? '<button class="btn sm ghost" data-act="oc-new">Enter an old delivery</button>' : "") +
+      /* v6.9.483 - this opened a modal listing the same rows flatter and worse; it is the
+         screen he photographed to show what was wrong with it. One tap to the real section. */
+      '<button class="btn sm ghost" data-act="prf-list">Receipts pending</button>' +
+      '<div class="grow"></div><button class="btn" data-act="ch-new">+ New challan</button></div>';
+    if (!list.length) h += '<div class="empty">No challans yet.</div>';
+
+    /* One challan's card (compact summary + expandable detail). Factored out so the very same card
+       can be dropped under whichever client it belongs to in the grouped layout below. */
+
 
     /* ---- THE QUEUE ITSELF. Flat and OLDEST FIRST, because this is a list to be emptied and
        not a book to be browsed: the exec/client grouping that makes the full list readable is
@@ -41888,7 +41860,11 @@ function viewCatalogue() {
       return;
     }
     if (act === "prf-cancel") { S.prf = null; S.modal = null; render(); return; }
-    if (act === "prf-list") { S.modal = modalProofList(); render(); return; }
+    /* v6.9.483 - the modal is gone; this goes to the section that answers the same question
+       properly, day by day, with the whole card on every row. */
+    if (act === "prf-list") {
+      S.modal = null; S.tab = "deliveries"; S.delSub = "rcpt"; render(); return;
+    }
     if (act === "prf-save") {
       if (!S.prf) return;
       var pby = el("prf_by") ? String(el("prf_by").value || "").trim() : "";
