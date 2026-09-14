@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.476";
+  var APP_VERSION = "6.9.478";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18100,12 +18100,20 @@ function viewCatalogue() {
       ? '<button class="btn sm ghost" data-act="agr-open" data-n="' + esc(cl) + '">' +
         (top ? '+ Attach another' : '&#128206; Attach the paper') + '</button>' : "";
     if (!top) {
-      return '<div style="border:1px dashed #cbd5e1;border-radius:9px;padding:7px 9px;margin:0 0 7px">' +
-        docTag("What was agreed, and at what rate") +          /* v6.9.460 - what this paper is FOR */
-        '<div class="meta" style="font-size:12px">' +
-        '<b>No signed paper on file.</b> The rates below are what the app charges — nothing here ' +
-        'says what was agreed, on a date, by whom.' + (add ? ' ' : '') + '</div>' +
-        (add ? '<div class="acts" style="margin-top:5px">' + add + '</div>' : '') + '</div>';
+      /* v6.9.477 - IT TOOK 134 px TO SAY NOTHING IS ON FILE: a tag line, two lines of prose and
+         a button on a fourth row. One row now. The sentence that matters is kept on the strip
+         itself, because it is the REASON the paper is worth attaching; the rest is on the
+         tooltip. The paper-on-file case below is untouched - when there is something to say, it
+         gets the room it needs. */
+      return '<div style="border:1px dashed #cbd5e1;border-radius:9px;padding:5px 9px;margin:0 0 6px;' +
+        'display:flex;align-items:center;gap:8px;flex-wrap:wrap" ' +
+        'title="Nothing on file says what was agreed, on a date, by whom.">' +
+        /* v6.9.477 - docTag STAYS. It is this estate's way of saying what a document strip is
+           FOR (v6.9.460) and both states must carry it; inside a flex row its div is a flex
+           item, so the convention costs nothing here. */
+        docTag("What was agreed, and at what rate") +
+        '<span class="meta" style="font-size:12px">&mdash; <b>No signed paper on file</b>, so the ' +
+        'rates are the app\'s own.</span>' + (add || '') + '</div>';
     }
     var dr = agrDrift(top);
     return '<div style="border:1px solid #a7f3d0;background:#f0fdfa;border-radius:9px;padding:7px 9px;margin:0 0 7px">' +
@@ -20270,20 +20278,27 @@ function viewCatalogue() {
      (13 Sep) has NOBODY to name. It says so. Drawing a blank there would read as "nobody
      bothered", and inventing a name would be worse than either. */
   function miniWhoCell(r, cell, f) {
+    /* ---- v6.9.478 - A RETURN IS RED ALL THE WAY ACROSS ITS ROW ----
+       v6.9.425's rule, and these two columns were added at v6.9.472 without it: "he reads the
+       colour before he reads the word", and on a statement a return and a delivery mean opposite
+       things. FOUND BY run_hisabsum, which had been CRASHING at the row above this assertion
+       since the card stopped opening as a sheet - so the fault sat behind a red test that never
+       got far enough to go red. A runner that dies early hides everything after it. */
+    var _red = !!(r && r.kind === "ret");
     var full = String((r && r[f]) || "").replace(/^\s+|\s+$/g, "");
     if (full) {
-      return '<td style="' + cell + ';font-size:12px;color:#475569" title="' + esc(full) + '">' +
-        esc(miniWho1(full)) + '</td>';
+      return '<td style="' + cell + ';font-size:12px;color:' + (_red ? "#b91c1c" : "#475569") +
+        '" title="' + esc(full) + '">' + esc(miniWho1(full)) + '</td>';
     }
     if (!r || r.kind === "bf") return '<td style="' + cell + '"></td>';
     if (f === "aby" && r.old) {
-      return '<td style="' + cell + ';font-size:12px;color:#94a3b8" title="' +
+      return '<td style="' + cell + ';font-size:12px;color:' + (_red ? "#b91c1c" : "#94a3b8") + '" title="' +
         esc(r.kind === "pay"
           ? "Entered before the accounts check began, so it counts as checked"
           : "On the books before the finalise window, so it was never stamped") +
         '">before</td>';
     }
-    return '<td style="' + cell + ';font-size:12px;color:#cbd5e1">&mdash;</td>';
+    return '<td style="' + cell + ';font-size:12px;color:' + (_red ? "#b91c1c" : "#cbd5e1") + '">&mdash;</td>';
   }
   function miniRcptWord(k) {
     return k === "yes" ? "Attached" : k === "onway" ? "On its way" : k === "no" ? "Pending" : "";
@@ -20344,11 +20359,16 @@ function viewCatalogue() {
     var head = (shortNo !== full ? full + " \u2014 " : "");
     if (!can) return '<td style="' + cell + ';font-weight:700;color:' + tone + '"' +
       (head ? ' title="' + esc(full) + '"' : '') + '>' + esc(shortNo) + '</td>';
+    /* v6.9.478 - a row that opens says so before it is tapped, and says which way it is now */
+    var _open = !!(S.acctExp || {})[r.id];
+    var _chev = '<span style="display:inline-block;width:11px;color:#94a3b8;font-weight:400">' +
+      (_open ? '&#9662;' : '&#9656;') + '</span>';
     return '<td data-act="acct-open" data-id="' + esc(r.id) + '" title="' + esc(head +
-      (r.kind === "ret" ? 'Open this return: what came back, the goods-in receipt, what it credits'
-                        : 'Open this delivery: its items, the signed receipt, copy, return, cancel')) + '" ' +
+      (_open ? 'Close it again. ' : '') +
+      (r.kind === "ret" ? 'Open this return under its own row: what came back, the goods-in receipt, what it credits'
+                        : 'Open this delivery under its own row: its items, the signed receipt, copy, return, cancel')) + '" ' +
       'style="' + cell + ';font-weight:700;color:' + tone + ';cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px">' +
-      esc(shortNo) + '</td>';
+      _chev + esc(shortNo) + '</td>';
   }
   function miniRcptCell(r) {
     var w = miniRcptWord(r.rcpt), ink = miniRcptInk(r.rcpt);
@@ -20432,6 +20452,28 @@ function viewCatalogue() {
           (r.credit == null ? "" : money(r.credit)) + '</td>' +
         '<td style="' + num + '"><b style="color:' + (r.kind === "ret" ? "#b91c1c" : (r.bal < -0.5 ? "#0f766e" : "#0f172a")) + '">' +
           moneySgn(Math.abs(r.bal) < 0.5 ? 0 : r.bal) + '</b></td></tr>';
+      /* ---- v6.9.478 - AND ITS CARD, UNDERNEATH, WHEN HE HAS OPENED IT ----
+         The card is not built yet - viewBilling fills _acctCards AFTER it draws this table, which
+         is the very reason v6.9.451 read the store on tap. So the row leaves a MARKED GAP and the
+         card is spliced into it at the end of the paint.
+
+         position:sticky;left:0 at viewport width because this table scrolls sideways: without it
+         the panel would be as wide as twelve columns and would slide out from under the row that
+         opened it. */
+      if (r.id && (S.acctExp || {})[r.id]) {
+        h += '<tr class="acctx"><td colspan="' + MINI_HEAD2.length + '" ' +
+          'style="padding:0;background:#f8fafc;border-top:2px solid #0d766c">' +
+          /* v6.9.478 - MEASURED, because I first wrote a comment here saying the buttons were
+             clipped and they were not. At 390px: panel 346px, the card inside it 346 with a
+             scrollWidth of 344, and the account card's own inner width 356 - so the card fits
+             with ten pixels to spare, and the one thing that scrolls is the rates table, which
+             scrolls on every screen it appears on. overflow-x stays as the cap that keeps a
+             future wider card inside the panel instead of stretching the row it belongs to. */
+          '<div style="position:sticky;left:0;width:calc(100vw - 44px);max-width:calc(100vw - 44px);' +
+          'overflow-x:auto;-webkit-overflow-scrolling:touch;padding:7px 0 3px">' +
+          '<!--ACCTX:' + r.id + '-->' +
+          '</div></td></tr>';
+      }
     });
     return '<div class="card" style="border-color:#cbd5e1;padding:10px 12px">' +
       '<div class="acts" style="align-items:baseline;margin:0 0 2px;gap:8px;flex-wrap:wrap">' +
@@ -20989,37 +21031,21 @@ function viewCatalogue() {
      already updated. Cancelling the delivery from its own sheet empties its card, and the
      sheet closes with it. */
   var _acctCards = {};
-  function acctEntryOf(id) {
-    var c = (S.data.challans || []).filter(function (x) { return x && x.id === id; })[0];
-    if (c) return { kind: "ch", row: c, no: String(c.challanNo || ""), when: d10(c.createdAt) };
-    var r = (S.data.returns || []).filter(function (x) { return x && x.id === id; })[0];
-    if (r) return { kind: "ret", row: r, no: String(r.returnNo || "(no number yet)"), when: d10(r.createdAt) };
-    return null;
-  }
-  /* the sheet's title, and therefore its modalKey: "Delivery <no>" or "Return <no>" */
-  function acctSheetHead(id) {
-    var e = acctEntryOf(id);
-    return e ? '<h2>' + (e.kind === "ret" ? 'Return ' : 'Delivery ') + esc(e.no) + '</h2>' : '';
-  }
-  function modalAcctEntry(id) {
-    var e = acctEntryOf(id), card = _acctCards[id];
-    if (!e || !card) return null;
-    /* the sub is the client alone: the card under it already carries the date pill, the site
-       pill and, on a return, "vs <challan>" - measured on the first render, the sub said all
-       three a second time two lines above them */
-    return acctSheetHead(id) +
-      '<p class="sub">' + esc(String(e.row.customerName || "")) + '</p>' +
-      card +
-      '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
-  }
+  /* ---- v6.9.478 - acctSheetHead / modalAcctEntry ARE GONE (see lift.js REMOVED) ----
+     A delivery opens under its own row now, not in a sheet over the account, so nothing has set
+     S.acctOpen since the handler changed and these two could not be reached from anywhere. */
+  /* ---- v6.9.478 - THE SAME JOB, FOR A PANEL INSTEAD OF A SHEET ----
+     Its work since v6.9.451 was this: when an entry LEAVES the account - cancelled, or its
+     receipt taken back - the sheet showing it closes with it. A panel needs the same care for a
+     different reason: the flag that opens it would otherwise sit in S for the rest of the
+     session, and a challan later un-cancelled would come back ALREADY OPEN, which nobody asked
+     it to be. _acctCards is this paint's own store, so anything not in it is not on the account. */
   function acctSheetSync() {
-    if (!S.acctOpen) return;
-    if (S.modal && modalKey(S.modal) === modalKey(acctSheetHead(S.acctOpen))) {
-      if (_acctCards[S.acctOpen]) S.modal = modalAcctEntry(S.acctOpen);
-      else { S.modal = null; S.acctOpen = null; }   /* the entry left the account - so does its sheet */
-    } else if (!S.modal) {
-      S.acctOpen = null;                            /* closed, or a sheet opened from it has closed */
-    }
+    var open = S.acctExp;
+    if (!open) return;
+    Object.keys(open).forEach(function (k) {
+      if (open[k] && !_acctCards[k]) delete open[k];
+    });
   }
   function viewBilling() {
     if (!S.billSel) S.billSel = {};
@@ -21612,11 +21638,11 @@ function viewCatalogue() {
       /* v6.9.360 - money can be entered from the ledger itself now, in all three directions.
          It was on the Payments screen only, which is a different tab and a different search. */
       (canSee("payments") ? '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:9px">' +
-        '<button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '" data-k="in">+ Payment received</button>' +
+        '<button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '" data-k="in" title="Record money received from this client">+ Payment</button>' +
         '<button class="btn sm ghost" data-act="pay-in" data-n="' + esc(cl) + '" data-k="advance" ' +
           'style="border-color:#99f6e4;color:#0f766e">+ Advance</button>' +
         '<button class="btn sm ghost" data-act="pay-in" data-n="' + esc(cl) + '" data-k="refund" ' +
-          'style="border-color:#fecaca;color:#b91c1c">\u2212 Refund to client</button>' +
+          'style="border-color:#fecaca;color:#b91c1c" title="Refund money to the client">\u2212 Refund</button>' +
         '</div>' : '') +
       /* v6.9.437 - AND THE SIGNED PAPER, HERE TOO.
          6.9.436 put it on the rate screens, which is where a rate is TYPED. He pointed at this
@@ -21634,12 +21660,14 @@ function viewCatalogue() {
         var _pSelAmt = _pSel.reduce(function (a, p) { return a + p.amount; }, 0), _pAll = _ps.reduce(function (a, p) { return a + p.amount; }, 0);
         var _bf = opening + (allNet - selNet) - (retTotal - retSelAmt) - (_pAll - _pSelAmt);
         var _off = (chs.length - selCount) + (rets.length - retSelN) + (_ps.length - _pSel.length);
-        return '<div style="margin-top:8px;font-size:13.5px;line-height:1.6">On the statement: <b>' + selCount + '</b> of ' + chs.length + ' deliver' + (chs.length === 1 ? 'y' : 'ies') +
+        /* v6.9.477 - 13.5px at 1.6 was two tall prose lines; 12.5 at 1.45 is the same two
+           sentences and 26px less, and it is still above the 12px floor. */
+        return '<div style="margin-top:7px;font-size:12.5px;line-height:1.45">On the statement: <b>' + selCount + '</b> of ' + chs.length + ' deliver' + (chs.length === 1 ? 'y' : 'ies') +
           (rets.length ? ' &middot; <b>' + retSelN + '</b> of ' + rets.length + ' return' + (rets.length === 1 ? '' : 's') : '') +
           (_ps.length ? ' &middot; <b>' + _pSel.length + '</b> of ' + _ps.length + ' payment' + (_ps.length === 1 ? '' : 's') : '') +
           ' ticked &mdash; deliveries <b>' + money(selNet) + '</b>' + (S.billGst ? ' + GST ' + money(gst) + ' = <b>' + money(selNet + gst) + '</b>' : '') +
           '<br><span style="color:#64748b">Balance brought forward on the paper: <b style="color:#0f172a">' + moneySgn(_bf) + '</b>' +
-          (_off ? ' (' + _off + ' unticked entr' + (_off === 1 ? 'y folds' : 'ies fold') + ' into it, with the sum written out under it)' : ' (the previous balance; every entry is listed)') +
+          (_off ? ' (' + _off + ' unticked entr' + (_off === 1 ? 'y folds' : 'ies fold') + ' into it, with the sum written out under it)' : ' (the previous balance)') +
           ' &middot; it closes to ' + moneySgn(bal) + ' either way.</span></div>';   /* v6.9.451 - the sign in front (moneySgn), as in the table above */
       })() +
       '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:10px">' +
@@ -21649,16 +21677,31 @@ function viewCatalogue() {
          that is the statement he described; off gives the one-page copy. */
       '<button class="btn sm ' + (hisabPerPage() ? '' : 'ghost') + '" data-act="bill-perpage" ' +
         'title="After the summary page, one page per ticked delivery or return: its items on the left, the signed receipt on the right. Turn off for a one-page statement.">' +
-        (hisabPerPage() ? '\u2713 Item pages with receipts' : 'Item pages with receipts: off') + '</button>' +
-      '<button class="btn sm ghost" data-act="bill-selall" data-v="1" title="Every delivery, return and payment on the paper">Tick all</button>' +
-      '<button class="btn sm ghost" data-act="bill-selall" data-v="0" title="Nothing listed; everything folds into the brought-forward line">Untick all</button>' +
-      '<button class="btn sm ghost" data-act="bill-selall" data-v="d" title="Back to the default: only what cancels out exactly is left off">Default ticks</button>' +
+        /* v6.9.477 - the tooltip above already says what these pages are, in full */
+        (hisabPerPage() ? '\u2713 Item pages' : 'Item pages: off') + '</button>' +
+      /* v6.9.477 - ONE CHOICE OF THREE, drawn as three full-width ghost buttons that wrapped the
+         row onto a third line. Every word of the old labels is kept on the tooltips, where a man
+         who does not know what "Default" means will look for it. */
+      /* v6.9.477 - ONE GROUP THAT CANNOT BREAK. The first cut left the word "Ticks" stranded at
+         the end of one row with its three buttons on the next, which is worse than the three
+         long labels it replaced. Seen on the render at 390px. inline-flex + nowrap keeps the
+         label with the choice it names, and the row wraps around the whole group instead. */
+      '<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap">' +
+      '<span class="meta" style="font-size:12px;color:#64748b">Ticks</span>' +
+      '<button class="btn sm ghost" data-act="bill-selall" data-v="1" title="Tick all \u2014 every delivery, return and payment on the paper">All</button>' +
+      '<button class="btn sm ghost" data-act="bill-selall" data-v="0" title="Untick all \u2014 nothing listed; everything folds into the brought-forward line">None</button>' +
+      '<button class="btn sm ghost" data-act="bill-selall" data-v="d" title="Back to the default: only what cancels out exactly is left off">Default</button>' +
+      '</span>' +
       '<div class="grow"></div>' +
-      (bal > 0 && canSee("payments") ? '<button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '">&#8377; Payment received</button>' : '') +
-      '<button class="btn sm ghost" data-act="bill-wa">WhatsApp statement</button>' + waExecBtn("bill-wa", cl) +
+      /* v6.9.477 - A SECOND "Payment received" USED TO BE DRAWN HERE whenever the client owed
+         money, which is every client he actually opens. The money row at the top of this same
+         card - three lines up - has carried it since v6.9.360, same act, same handler, and this
+         row is otherwise entirely about the statement. Nothing is lost: the button is still on
+         the screen, above, where money belongs. */
+      '<button class="btn sm ghost" data-act="bill-wa" title="Send this statement on WhatsApp">WhatsApp</button>' + waExecBtn("bill-wa", cl) +
       /* v6.9.449 - the ticked statement is the account's PDF button now (one paper, one button) */
       /* v6.9.240 - everything, in date order, without touching the ticks */
-      '<button class="btn sm ghost" data-act="bill-pdf" data-all="1" title="Every received challan and every booked-in return, in date order, whatever is ticked">Download all</button>' +
+      '<button class="btn sm ghost" data-act="bill-pdf" data-all="1" title="Download ALL - every received challan and every booked-in return, in date order, whatever is ticked">&#8681; All</button>' +
       '</div></div>' + admLedgerFold(cl) + '</div></div>';
     h += serviceLedgerCard(cl);
     /* v6.9.462 - HIS WORDS: "anything cancelled whether challan or any, show at last of hisab
@@ -21666,6 +21709,18 @@ function viewCatalogue() {
        controls, after the service book. */
     h += cxClientBand(cl);
     acctSheetSync();        /* v6.9.451 - the open sheet, refreshed from this paint's card */
+    /* ---- v6.9.478 - THE CARDS GO INTO THE GAPS THEIR ROWS LEFT ----
+       _acctCards is only full NOW: the account table is drawn before the delivery cards are
+       built, which is why v6.9.451 read this store on tap rather than at paint. split/join and
+       not a regex, because an id is not a pattern. */
+    Object.keys(S.acctExp || {}).forEach(function (_k) {
+      if (!S.acctExp[_k]) return;
+      var _mark = "<!--ACCTX:" + _k + "-->";
+      if (h.indexOf(_mark) < 0) return;
+      h = h.split(_mark).join(_acctCards[_k] ||
+        '<div class="meta" style="padding:8px 10px;font-size:12.5px">Nothing more to show for ' +
+        'this one here \u2014 it is counted on the account above.</div>');
+    });
     return h;
   }
 
@@ -37434,10 +37489,16 @@ function viewCatalogue() {
     /* v6.9.451 - a row on the account opens its card as a sheet. The card is this paint's, from
        _acctCards; a row with no card (a return on a client with no received delivery, whose
        branch builds none) says so instead of opening nothing. */
+    /* v6.9.478 - IT OPENS WHERE IT IS. A modal sheet hid the account he was reading, and the one
+       question a man asks when he taps a challan is how THIS line makes up THAT balance - which
+       needs the line and the card on the screen together. keepScroll, so the row he tapped is
+       still under his thumb: his standing rule since v6.9.475. */
     if (act === "acct-open") {
       var _ao = String(id || "");
       if (!_acctCards[_ao]) { toast("Nothing more to show for this one here \u2014 it is counted on the account above."); return; }
-      S.acctOpen = _ao; S.modal = modalAcctEntry(_ao); render(); return;
+      S.acctExp = S.acctExp || {};
+      S.acctExp[_ao] = !S.acctExp[_ao];
+      keepScroll = true; render(); return;
     }
     if (act === "ch-detail") {
       var cid = t.getAttribute("data-id"); S.chExp = S.chExp || {};
