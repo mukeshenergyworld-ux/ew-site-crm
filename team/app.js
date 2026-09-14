@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.484";
+  var APP_VERSION = "6.9.485";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2369,6 +2369,14 @@ window.addEventListener("beforeunload", function (ev) {
     }, 450);
   });
 
+  /* v6.9.485 - the register's Find box types, it does not "change", so it needs the input event.
+     Only reg_q: everything else on that bar is a <select>. */
+  document.addEventListener("input", function (ev) {
+    var t = ev && ev.target;
+    if (!t || t.id !== "reg_q") return;
+    S.reg = S.reg || {}; S.reg.q = t.value;
+    keepScroll = true; render();
+  });
   document.addEventListener("change", function (ev) {
     var t = ev && ev.target;
     /* v6.9.356 - the off-list item's brand box. Changing it re-draws the little form so the
@@ -2381,6 +2389,14 @@ window.addEventListener("beforeunload", function (ev) {
         S.modal = modalChallan(); render(); _rm();
       }
       return;
+    }
+    /* v6.9.485 - every register filter is a <select> or a search box whose id starts reg_, so one
+       branch carries all seven. keepScroll, because changing a filter halfway down a 200-row
+       table and being thrown back to the top is not a filter, it is a punishment. */
+    if (t && String(t.id || "").indexOf("reg_") === 0) {
+      S.reg = S.reg || {};
+      S.reg[String(t.id).slice(4)] = t.value;
+      keepScroll = true; render(); return;
     }
     if (!t || t.id !== "hsb_noextra") return;
     /* v6.9.468 - BOTH boxes. Leaving the percent behind would tick "no further discount" over a
@@ -16982,15 +16998,410 @@ function viewCatalogue() {
 
   /* Deliveries hub: Challans + Material returns are one lifecycle, so they share a screen with
      a small sub-tab switch instead of two top-level tabs. Each sub-view is unchanged. */
+  /* ==========================================================================================
+     THE CHALLAN REGISTER - EVERY CHALLAN, SERIAL BY SERIAL          (v6.9.485, 14 Sep 2026)
+
+     HIS WORDS: "all challan at once serial wise, mark earlier ones without serial as old one
+     and, one with proper serial nos should be continued, we need it seriously." The motive, one
+     message earlier: "so any challan not left unentered."
+
+     MEASURED ON HIS BOOK FIRST. 199 challans, in TWO numbering systems:
+         99 on the running series   24/08/2026/026       serials 1..109
+        100 on the older shape      ATUL4000/200726/001  client code / ddmmyy / count
+     So a continuous line can only be drawn over the 99. The other hundred are not lost and are
+     not wrong - they are the OLD BOOK, and they get their own complete section below.
+
+     TEN SERIALS WERE MISSING on the day this was written: 27, 29, 31, 33 (all inside 24/08),
+     86, 87, 88 (three in a row inside 11/09), 99, and 103 and 106 - both from that same day.
+     Archive_challans is empty, so none of them is archived. They were either taken and
+     abandoned or never entered, and only he knows which. The screen does not guess. It shows
+     the hole, in place, in red, and puts the count at the very top where he cannot miss it.
+
+     THE SCOPING BUG THIS AVOIDS, which is not obvious: a salesman sees only his own clients. If
+     the serial line were built from the rows HE may read, every challan belonging to another
+     executive would look to him like a MISSING NUMBER - he would open this and see 150 red gaps.
+     So the LINE is built over the whole book and only the READING is scoped. Somebody else's
+     serial draws as a quiet grey row with no name and no money on it. A missing number is
+     missing for everybody; a number that is someone else's is not missing at all. */
+  var _regCache = null, _regBal = null, _regScore = null, _regAge = null;
+  /* Highest serial at the top - his instruction on the receipts screen two releases ago was
+     "everthing, show latest at top", and today's gaps are the ones worth finding today. One
+     line turns it round, and the strap reads whichever this says. */
+  var REG_NEWEST_FIRST = true;
+  var REG_RE = /^(\d{2})\/(\d{2})\/(\d{4})\/(\d+)$/;
+
+  /* Admin and accounts see the whole book; a salesman sees the register scoped to his own
+     clients - his words, "related executive can see there client details only". The godown is
+     not here: it files receipts, it does not audit the series. */
+  function canSeeRegister() { return roleAny(["admin", "accounts", "sales"]); }
+  function regSeesAll() { return roleAny(["admin", "accounts"]); }
+  function regMine(c) { return regSeesAll() || isMineClient((c || {}).customerName); }
+
+  function regSerial(c) {
+    var m = String(((c || {}).challanNo) || "").trim().match(REG_RE);
+    return m ? parseInt(m[4], 10) : null;
+  }
+  /* The row's date. createdAt when the sheet has one; otherwise the date recovered from the
+     challan number itself - chDatesIn() has written that back since 6.9.483, and chDatePill
+     marks the row amber so nobody mistakes a recovered date for a recorded one. */
+  function regDate(c) {
+    var d = String(((c || {}).createdAt) || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : (chNoDate(c) || "");
+  }
+  function regDMY(d) {
+    d = String(d || "");
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d.slice(8, 10) + "/" + d.slice(5, 7) + "/" + d.slice(0, 4) : "—";
+  }
+
+  function regBuild() {
+    if (_regCache) return _regCache;
+    var all = (((S.data || {}).challans) || []).filter(function (c) { return c && !c.cancelled; });
+    var bySer = {}, old = [];
+    all.forEach(function (c) {
+      var n = regSerial(c);
+      if (n === null) { old.push(c); return; }
+      (bySer[n] = bySer[n] || []).push(c);
+    });
+    var keys = Object.keys(bySer).map(Number).sort(function (a, b) { return a - b; });
+    var lo = keys.length ? keys[0] : 0, hi = keys.length ? keys[keys.length - 1] : 0;
+    var line = [], gaps = [], dups = [];
+    for (var n = lo; keys.length && n <= hi; n++) {
+      if (bySer[n]) {
+        line.push({ n: n, chs: bySer[n] });
+        if (bySer[n].length > 1) dups.push(n);
+      } else {
+        line.push({ n: n, gap: true });
+        gaps.push(n);
+      }
+    }
+    if (REG_NEWEST_FIRST) line.reverse();
+    old.sort(function (a, b) {
+      var x = String(regDate(a)), y = String(regDate(b));
+      return REG_NEWEST_FIRST ? y.localeCompare(x) : x.localeCompare(y);
+    });
+    return (_regCache = { line: line, old: old, gaps: gaps, dups: dups, lo: lo, hi: hi,
+      total: all.length, nSer: all.length - old.length, nOld: old.length });
+  }
+
+  /* THE RUNNING BALANCE, FROM THE LEDGER'S OWN INPUTS. clientLedgerCalc counts a delivery only
+     once hisabOwed() is true - the finalise gate - so a delivery nobody has looked at is NOT on
+     the customer's account, and this walk must not pretend otherwise. Same family rule
+     (famRow), same dedupe, same challanNet + chFreight, same payments and booked-in returns,
+     same opening. By construction the last value of the walk IS clientLedger().due, and
+     t_register.js asserts exactly that for every client on the book. */
+  function regBalances(name) {
+    var k = "|" + String(name == null ? "" : name);
+    if (!_regBal) _regBal = {};
+    if (_regBal[k]) return _regBal[k];
+    var fr = famRow(name);
+    var chs = dedupeChallans((((S.data || {}).challans) || []).filter(function (c) {
+      return fr.has(c.customerName) && hisabOwed(c);
+    }));
+    var pays = (((S.data || {}).payments) || []).filter(function (p) { return fr.has(p.client); });
+    var rets = famReturns(fr);
+    var ev = [];
+    chs.forEach(function (c) { ev.push({ d: regDate(c), o: 1, v: challanNet(c) + chFreight(c), id: c.id }); });
+    pays.forEach(function (p) { ev.push({ d: String(p.date || p.createdAt || "").slice(0, 10), o: 2, v: -payAmt(p) }); });
+    rets.forEach(function (r) { ev.push({ d: String(r.receivedAt || r.createdAt || "").slice(0, 10), o: 2, v: -returnNet(r) }); });
+    ev.sort(function (a, b) { return String(a.d).localeCompare(String(b.d)) || (a.o - b.o); });
+    var bal = famOpening(fr), by = {};
+    ev.forEach(function (e) { bal += e.v; if (e.id) by[e.id] = bal; });
+    return (_regBal[k] = { by: by, due: bal, terms: creditTerms(name) });
+  }
+
+  /* ---- the two filters that are a property of the CLIENT, not of the challan ---- */
+  function regSlab(nm) {
+    if (!_regAge) _regAge = {};
+    if (_regAge[nm] !== undefined) return _regAge[nm];
+    var v = "clear";
+    try {
+      var a = clientAging(nm);
+      if (a && (Number(a.due) || 0) > 0.5) {
+        var o = Number(a.oldest) || 0;
+        v = o <= 30 ? "d0" : o <= 60 ? "d30" : o <= 90 ? "d60" : "d90";
+      }
+    } catch (e) { v = "clear"; }
+    return (_regAge[nm] = v);
+  }
+  /* scClientHealth walks every client and is not cheap, so it is built ONCE per book and only
+     when a score filter is actually asked for. Nothing on the row reads it. */
+  function regScoreMap() {
+    if (_regScore) return _regScore;
+    var m = {};
+    try { (scClientHealth() || []).forEach(function (r) { if (r && r.name) m[String(r.name)] = String(r.flag || ""); }); }
+    catch (e) { m = {}; }
+    return (_regScore = m);
+  }
+  var REG_SLABS = [["d0", "Pending 0-30 days"], ["d30", "Pending 31-60 days"],
+    ["d60", "Pending 61-90 days"], ["d90", "Pending 90+ days"], ["clear", "Nothing pending"]];
+  var REG_SCORES = ["At risk", "Gone quiet", "Shrinking", "Steady", "Growing"];
+
+  function regF(k) { return String((((S || {}).reg) || {})[k] || ""); }
+  function regAnyFilter() {
+    return ["q", "exec", "area", "plumber", "arch", "slab", "score"].some(function (k) { return !!regF(k); });
+  }
+  function regPass(c) {
+    var cl = clientByName((c || {}).customerName) || {};
+    var q = regF("q").trim().toLowerCase();
+    if (q && (String(c.challanNo || "") + " " + String(c.customerName || "") + " " +
+              String(cl.mobile || "")).toLowerCase().indexOf(q) < 0) return false;
+    var f;
+    f = regF("exec");    if (f && (String(cl.ownedBy || "").trim() || "(unassigned)") !== f) return false;
+    f = regF("area");    if (f && (String(cl.area || "").trim() || "(no area)") !== f) return false;
+    f = regF("plumber"); if (f && (String(cl.plumber || "").trim() || "(none named)") !== f) return false;
+    f = regF("arch");    if (f && (String(cl.architect || "").trim() || "(none named)") !== f) return false;
+    f = regF("slab");    if (f && regSlab(String(c.customerName || "")) !== f) return false;
+    f = regF("score");   if (f && (regScoreMap()[String(c.customerName || "")] || "") !== f) return false;
+    return true;
+  }
+
+  /* Every value that actually occurs on a client this register can show, so no dropdown ever
+     offers a choice that matches nothing. */
+  function regOpts(field, blank) {
+    var seen = {}, out = [];
+    (((S.data || {}).clients) || []).forEach(function (cl) {
+      var v = String((cl || {})[field] || "").trim() || blank;
+      if (seen[v]) return; seen[v] = 1; out.push(v);
+    });
+    return out.sort(function (a, b) { return a.localeCompare(b); });
+  }
+  function regSelect(id, label, opts) {
+    var cur = regF(id);
+    return '<label style="display:inline-flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700;color:#475569">' +
+      esc(label) +
+      '<select id="reg_' + id + '" style="font-size:12.5px;padding:4px 6px;border:1px solid ' +
+      (cur ? '#0b3b36' : '#cbd5e1') + ';border-radius:7px;background:' + (cur ? '#f0fdfa' : '#fff') +
+      ';max-width:150px">' +
+      '<option value="">All</option>' +
+      opts.map(function (o) {
+        var v = (o instanceof Array) ? o[0] : o, t = (o instanceof Array) ? o[1] : o;
+        return '<option value="' + esc(v) + '"' + (cur === v ? ' selected' : '') + '>' + esc(t) + '</option>';
+      }).join("") + '</select></label>';
+  }
+
+  function regFilterBar() {
+    return '<div class="card" style="padding:9px 11px">' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
+      '<label style="display:inline-flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700;color:#475569">Find' +
+      '<input id="reg_q" type="search" value="' + esc(regF("q")) + '" placeholder="challan no, client, mobile" ' +
+      'style="font-size:12.5px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:7px;min-width:170px"/></label>' +
+      regSelect("exec", "Executive", regOpts("ownedBy", "(unassigned)")) +
+      regSelect("area", "Area", regOpts("area", "(no area)")) +
+      regSelect("plumber", "Plumber", regOpts("plumber", "(none named)")) +
+      regSelect("arch", "Architect", regOpts("architect", "(none named)")) +
+      regSelect("slab", "Payment slab", REG_SLABS) +
+      regSelect("score", "Score card", REG_SCORES) +
+      /* v6.9.485c - regx-, not reg-: the brand register has owned data-act="reg-clear" since
+         6.9.458 and mine sat EARLIER in the handler chain, so it would have swallowed every tap
+         on that screen's Clear from the day this shipped. t_dead_taps named it. */
+      (regAnyFilter() ? '<button class="btn sm ghost" data-act="regx-clear" style="margin-bottom:1px">Clear</button>' : '') +
+      '</div>' +
+      '<div class="meta" style="font-size:12px;margin-top:6px">Area, plumber, architect and the ' +
+      'score card are read from the <b>client</b> record, not the challan - a delivery whose ' +
+      'client has that box empty will not answer that filter. Plumber is filled on ' +
+      regFilledSay("plumber") + ', architect on ' + regFilledSay("architect") + '.</div></div>';
+  }
+  /* Say how much of the book a filter can actually see, rather than letting him find out. */
+  function regFilledSay(field) {
+    var all = ((S.data || {}).clients) || [];
+    var n = all.filter(function (cl) { return String((cl || {})[field] || "").trim(); }).length;
+    return n + " of " + all.length + " clients";
+  }
+
+  /* ---------------------------------------------------------------- the row */
+  function regCell(extra) {
+    return "padding:5px 7px;border-top:1px solid #e2e8f0;white-space:nowrap;font-size:12.5px" + (extra || "");
+  }
+  function regGapRow(n) {
+    return '<tr style="background:#fef2f2"><td style="' + regCell(";font-weight:800;color:#b91c1c") + '">' + n + '</td>' +
+      /* v6.9.485b - SHORT, and inside a box that cannot grow. A cell spanning eleven columns lays
+         its text out across the WHOLE table width, so the long version ran off the right of a
+         390px screen and the red line - the entire point of this register - had to be SWIPED to
+         be read. What a hole means is explained once, in the card at the top. */
+      '<td colspan="10" style="' + regCell(";color:#b91c1c;white-space:normal") + '">' +
+      '<div style="max-width:290px"><b>No challan on this number</b> &mdash; taken and dropped, ' +
+      'or never entered.</div></td></tr>';
+  }
+  function regHiddenRow(n, c) {
+    return '<tr style="background:#f8fafc"><td style="' + regCell(";font-weight:700;color:#94a3b8") + '">' + n + '</td>' +
+      '<td style="' + regCell(";color:#94a3b8") + '">' + esc(regDMY(regDate(c))) + '</td>' +
+      '<td colspan="9" style="' + regCell(";color:#94a3b8;white-space:normal") + '">' +
+      '<div style="max-width:250px">Another executive&rsquo;s client &mdash; the number is used.' +
+      '</div></td></tr>';
+  }
+  function regFirst(v) { return String(v == null ? "" : v).trim().split(" ")[0]; }
+
+  function regRow(n, c, alt, dup) {
+    var cl = clientByName(c.customerName) || {};
+    var bal = regBalances(String(c.customerName || ""));
+    var counted = hisabOwed(c);
+    var after = bal.by[c.id];
+    var lim = Number(bal.terms.limit) || 0;
+    var over = lim > 0 && (after !== undefined ? after : bal.due) > lim + 0.5;
+    var pf = challanProof(c.id);
+    var open = !!(S.chExp && S.chExp[c.id]);
+    var bg = dup ? "#fffbeb" : (alt ? "#f8fafc" : "#fff");
+    var h = '<tr style="background:' + bg + '">' +
+      '<td style="' + regCell(";font-weight:800;color:#0b3b36") + '">' + (n === null ? "OLD" : n) +
+        (dup ? '<br><span style="font-size:12px;color:#b45309">twice</span>' : '') + '</td>' +
+      '<td style="' + regCell() + '">' + esc(regDMY(regDate(c))) + chDatePill(c) + '</td>' +
+      '<td style="' + regCell(";max-width:170px;overflow:hidden;text-overflow:ellipsis") + '">' +
+        '<a href="#" data-act="ch-hisab" data-cl="' + esc(c.customerName || "") + '" ' +
+        'style="font-weight:700;color:#0b3b36;text-decoration:none" title="Open this client’s full HISAB, where the complete statement downloads">' +
+        esc(c.customerName || "—") + '</a>' +
+        (cl.mobile ? '<br><span style="font-size:12px;color:#64748b">' + esc(cl.mobile) + '</span>' : '') + '</td>' +
+      '<td style="' + regCell() + '"><button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '" ' +
+        'style="padding:1px 8px;font-size:12.5px;font-weight:700">' + esc(c.challanNo || "no number") +
+        ' ' + (open ? "▴" : "▾") + '</button></td>' +
+      '<td style="' + regCell(";text-align:right;font-weight:700") + '">' + moneySgn(chValue(c)) + '</td>' +
+      '<td style="' + regCell() + '">' + esc(regFirst(c.createdBy) || "—") + '</td>' +
+      '<td style="' + regCell(";color:" + (String(c.approvedBy || "").trim() ? "#0f172a" : "#b91c1c")) + '">' +
+        esc(regFirst(c.approvedBy) || "not passed") + '</td>' +
+      '<td style="' + regCell() + '">' +
+        (pf ? '✓ <span style="font-size:12px;color:#64748b">' + esc(regFirst(pf.actor || pf.by)) + '</span>'
+            : (canAttachProof()
+                ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" ' +
+                  'style="padding:1px 8px;font-size:12px;font-weight:700;background:#fff;color:#b45309;border:1px solid #b45309;border-radius:6px">Attach</button>'
+                : '<span style="color:#b45309">none</span>')) + '</td>' +
+      '<td style="' + regCell() + '">' + (inHisab(c) ? hisabStampPill(c) : hisabAddBtn(c) ||
+        '<span style="color:#b45309;font-size:12px">not finalised</span>') + '</td>' +
+      '<td style="' + regCell(";text-align:right") + '">' +
+        (after === undefined
+          ? '<span style="color:#94a3b8">' + moneySgn(bal.due) + '</span><br>' +
+            '<span style="font-size:12px;color:#b45309">not on his account yet</span>'
+          : '<b>' + moneySgn(after) + '</b>') + '</td>' +
+      '<td style="' + regCell(";text-align:right;color:" + (over ? "#b91c1c" : "#64748b")) + '">' +
+        (lim > 0 ? (over ? '<b>' + moneySgn(lim) + '</b><br><span style="font-size:12px">over</span>' : moneySgn(lim))
+                 : '<span style="font-size:12px">not set</span>') + '</td></tr>';
+    if (open) {
+      h += '<tr style="background:' + bg + '"><td colspan="11" style="padding:2px 6px 10px;border-top:0">' +
+        challanCardHtml(c) + '</td></tr>';
+    }
+    return h;
+  }
+
+  /* v6.9.485b - eleven columns, four of them visible on a 390px phone. A man who does not know
+     the table swipes will think the register has four columns and the rest was never built. */
+  function regSwipe() {
+    return '<div class="meta" style="font-size:12px;margin:0 0 4px">Swipe the table sideways for ' +
+      'made by, passed by, receipt, hisab, balance and limit &rarr;</div>';
+  }
+  function regHead() {
+    var TH = function (x, r) {
+      return '<th style="padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' +
+        (r ? "right" : "left") + '">' + esc(x) + '</th>';
+    };
+    return '<tr style="background:#0b3b36">' + TH("#") + TH("DATE") + TH("CLIENT") + TH("CHALLAN NO") +
+      TH("AMOUNT", 1) + TH("MADE BY") + TH("PASSED BY") + TH("RECEIPT") + TH("HISAB") +
+      TH("BALANCE AFTER", 1) + TH("LIMIT", 1) + '</tr>';
+  }
+
+  function viewRegister() {
+    if (!canSeeRegister()) return '<div class="empty">The register is for the owner, accounts and the executive whose clients are on it.</div>';
+    var R = regBuild();
+    var filt = regAnyFilter();
+
+    /* ---- the headline. The gap count first, because that is what this screen is for. ---- */
+    var h = '<div class="card"><h3 style="margin:0 0 2px">The challan register</h3>' +
+      '<div class="meta">Every challan on the book, in one place, serial by serial &mdash; so a ' +
+      'number that was never entered has nowhere to hide. Tap a challan number to open the whole ' +
+      'delivery; tap a client to open his full HISAB.</div></div>';
+
+    if (R.gaps.length) {
+      h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2;padding:10px 12px">' +
+        '<b style="color:#b91c1c;font-size:14px">' + R.gaps.length + ' number' + (R.gaps.length === 1 ? '' : 's') +
+        ' missing from the series</b>' +
+        '<div style="margin-top:5px;font-weight:800;color:#b91c1c;font-size:13px;word-break:break-word">' +
+        R.gaps.join(" · ") + '</div>' +
+        '<div class="meta" style="font-size:12.5px;color:#b91c1c;margin-top:5px">Each one is either a ' +
+        'number taken and abandoned, or a challan written in the paper book and never entered here. ' +
+        'They are marked in red where they belong on the line below. Nothing is archived under any ' +
+        'of them &mdash; I checked.</div></div>';
+    } else if (R.nSer) {
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:10px 12px">' +
+        '<b style="color:#0f766e">✓ The series runs unbroken from ' + R.lo + ' to ' + R.hi +
+        '. Not one number is missing.</b></div>';
+    }
+    if (R.dups.length) {
+      h += '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:10px 12px">' +
+        '<b style="color:#92400e">' + R.dups.length + ' number' + (R.dups.length === 1 ? ' carries' : 's carry') +
+        ' more than one challan: ' + R.dups.join(", ") + '</b>' +
+        '<div class="meta" style="font-size:12.5px;color:#92400e;margin-top:4px">Both are shown, amber, ' +
+        'on the same line. Nothing is removed &mdash; only you know which one is the real delivery.</div></div>';
+    }
+
+    h += '<div class="cards" style="margin-top:8px">' +
+      '<div class="stat"><div class="n">' + R.total + '</div><div class="l">Challans on the book</div></div>' +
+      '<div class="stat"><div class="n">' + R.nSer + '</div><div class="l">On the running series (' + R.lo + '–' + R.hi + ')</div></div>' +
+      '<div class="stat"><div class="n">' + R.nOld + '</div><div class="l">Old book — numbered the old way</div></div>' +
+      '<div class="stat' + (R.gaps.length ? ' alert' : '') + '"><div class="n">' + R.gaps.length + '</div><div class="l">Numbers missing</div></div></div>';
+
+    h += regFilterBar();
+
+    /* ---- the serial line ---- */
+    var shown = 0, hidden = 0;
+    var body = "", i = 0;
+    R.line.forEach(function (row) {
+      if (row.gap) { if (!filt) body += regGapRow(row.n); return; }
+      var mine = row.chs.filter(regMine);
+      if (!mine.length) { if (!filt) { body += regHiddenRow(row.n, row.chs[0]); hidden++; } return; }
+      var pass = mine.filter(regPass);
+      if (!pass.length) return;
+      var dup = row.chs.length > 1;
+      pass.forEach(function (c) { body += regRow(row.n, c, (i++ % 2) === 1, dup); shown++; });
+    });
+
+    h += '<div class="card" style="padding:8px 10px">' +
+      '<div style="font-weight:800;font-size:13.5px;margin-bottom:5px">The running series' +
+      ' <span style="font-weight:600;color:#64748b;font-size:12.5px">· ' + shown + ' shown · ' +
+      (REG_NEWEST_FIRST ? 'latest number first' : 'first number first') +
+      (hidden ? ' · ' + hidden + ' belong to another executive' : '') +
+      (filt ? ' · filtered, so gaps are hidden' : '') + '</span></div>' +
+      (shown || (!filt && R.line.length)
+        ? regSwipe() +
+          '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
+          regHead() + body + '</table></div>'
+        : '<div class="empty">Nothing on the series answers that filter.</div>') + '</div>';
+
+    /* ---- and the old book, complete ---- */
+    var ob = "", on = 0, j = 0;
+    R.old.filter(regMine).filter(regPass).forEach(function (c) { ob += regRow(null, c, (j++ % 2) === 1, false); on++; });
+    h += '<div class="card" style="padding:8px 10px">' +
+      '<div style="font-weight:800;font-size:13.5px;margin-bottom:2px">The old book' +
+      ' <span style="font-weight:600;color:#64748b;font-size:12.5px">· ' + on + ' shown of ' + R.nOld + '</span></div>' +
+      '<div class="meta" style="font-size:12.5px;margin-bottom:5px">These were numbered the older way &mdash; ' +
+      '<b>client code / date / count</b>, like ATUL4000/200726/001 &mdash; so they carry no place on the ' +
+      'running series and no gap can be read from them. They are every bit as real; they are just ' +
+      'a different book. Newest first.</div>' +
+      (on ? regSwipe() + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
+            regHead() + ob + '</table></div>'
+          : '<div class="empty">Nothing in the old book answers that filter.</div>') + '</div>';
+
+    return h;
+  }
+
   function viewDeliveries() {
     /* v6.9.481 - a third sub-tab, not a fourth top-level one. The house rule is that a new tab
        costs an old one, and this belongs beside the deliveries it is about. The count rides on
        the button, because a chase list nobody knows is full is a chase list nobody opens. */
-    var sub = ["returns", "rcpt"].indexOf(S.delSub) >= 0 ? S.delSub : "challans";
+    /* v6.9.485 - a FOURTH sub-tab, and still not a 46th top-level one. */
+    var sub = ["returns", "rcpt", "reg"].indexOf(S.delSub) >= 0 ? S.delSub : "challans";
     if (sub === "rcpt" && !canSeeRcptQueue()) sub = "challans";
+    if (sub === "reg" && !canSeeRegister()) sub = "challans";
     var n = canSeeRcptQueue() ? rcptQueueCount() : 0;
     var h = '<div class="row" style="margin-bottom:10px">' +
       '<button class="btn sm ' + (sub === "challans" ? "" : "ghost") + '" data-act="del-sub" data-s="challans">Challans</button>' +
+      /* v6.9.485 - the register sits next to the challans it is about, and wears the gap count
+         for the same reason the receipts button wears its own: a hole nobody knows about is a
+         hole nobody fills. */
+      (canSeeRegister()
+        ? (function () {
+            var g = regBuild().gaps.length;
+            return '<button class="btn sm ' + (sub === "reg" ? "" : "ghost") + '" data-act="del-sub" data-s="reg"' +
+              (g ? ' style="border-color:#fecaca;color:' + (sub === "reg" ? "#fff" : "#b91c1c") + '"' : '') +
+              '>Register' + (g ? ' (' + g + ' missing)' : '') + '</button>';
+          })()
+        : '') +
       '<button class="btn sm ' + (sub === "returns" ? "" : "ghost") + '" data-act="del-sub" data-s="returns">Material returns</button>' +
       (canSeeRcptQueue()
         ? '<button class="btn sm ' + (sub === "rcpt" ? "" : "ghost") + '" data-act="del-sub" data-s="rcpt"' +
@@ -16998,7 +17409,8 @@ function viewCatalogue() {
           '>Receipts pending' + (n ? ' (' + n + ')' : '') + '</button>'
         : '') +
       '</div>';
-    return h + (sub === "rcpt" ? viewRcptPending() : sub === "returns" ? viewReturns() : viewChallans());
+    return h + (sub === "reg" ? viewRegister() : sub === "rcpt" ? viewRcptPending()
+              : sub === "returns" ? viewReturns() : viewChallans());
   }
 
   /* A saved challan's items as a compact, numbered, qty-descending table (same look as the
@@ -35556,6 +35968,12 @@ function viewCatalogue() {
     /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
        yesterday's money, which is the worst thing this app can do. */
     _ledCache = null; _cqCache = null; _cwbCache = null;
+    /* v6.9.485 - the register's four are per-PAINT indexes, busted here with the ledger's. That
+       is the whole job: renderCore runs on every render and every caller of splitCancelled
+       renders straight afterwards, so a second bust inside splitCancelled bought nothing - and
+       splitCancelled is one of the fifty functions kept byte-identical with the backend, which
+       t_v108_ledger noticed the moment I edited it. */
+    _regCache = null; _regBal = null; _regScore = null; _regAge = null;
     /* v6.9.263 - warming the logo cache is for the NEXT quote PDF, never for this paint;
        nothing on screen waits on it. Started from the paint it competed with teamAuth and
        teamGet for the same connections. Four seconds later the boot is done and the line is
@@ -36751,6 +37169,10 @@ function viewCatalogue() {
       return;
     }
     if (act === "del-sub") { S.delSub = t.getAttribute("data-s"); render(); return; }
+    /* v6.9.485 - one button empties every box on the challan register at once. The name is
+       regx- because reg-clear belongs to the BRAND register and has since 6.9.458; this handler
+       sits earlier in the chain and would have eaten its taps. t_dead_taps caught it. */
+    if (act === "regx-clear") { S.reg = {}; render(); return; }
     /* v6.9.481 - the same shape for the Payments screen's two sections. keepScroll, because
        6.9.475 made staying where he was the standard for every screen in this app.
 
