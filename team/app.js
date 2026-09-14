@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.479";
+  var APP_VERSION = "6.9.480";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7850,6 +7850,20 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return h(c.customerName) && String(c.receiptReceived).toUpperCase() === "Y";
     }));
   }
+  /* v6.9.480 - AND THE ONE THE ACCOUNT READS.
+     famChallansIn is every delivery whose receipt is in, and it must stay that way: the credit
+     gate, the ageing clock and delivered-not-billed each read it, and each is there to protect
+     him - a gate on any of those would make his exposure read smaller than it is.
+
+     But the three places that CLOSE an account - the account table, the summary line above it
+     and the statement the customer is handed - were reading it too, and since 6.9.469 the
+     LEDGER has not. So the paper carried deliveries the balance does not count. Measured on his
+     book on 14 Sep 2026: one delivery waiting, Rs 11,791, Manish Singla; his statement said Rs
+     11,791 more than his screen did. The red band above the account already says that money is
+     "not on any statement yet" - this is the line that makes it true.
+
+     One name, so there is one rule and the next person can find every reader of it. */
+  function famChallansOwed(cl) { return famChallansIn(cl).filter(hisabOwed); }
   function famPays(cl) { var h = famHas(cl); return (S.data.payments || []).filter(function (p) { return p && h(p.client); }); }
   function famRets(cl) { return famReturns(famRow(cl)); }
   function famOpen(cl) { return famOpening(famRow(cl)); }
@@ -20113,7 +20127,10 @@ function viewCatalogue() {
      the PDF all render the same array. Three functions each walking the challan book would be
      three chances for a screen and a file he sends a customer to disagree about one account. */
   function hisabMiniRows(cl) {
-    var chs = famChallansIn(cl);                          /* v6.9.461 - the man, not the name */
+    /* v6.9.480 - the gated list. This builder feeds the table on screen, the Excel file and the
+       mini PDF, and its closing line is asserted to equal clientLedger. It was reading the
+       ungated list, so all three could close on a figure the ledger does not hold. */
+    var chs = famChallansOwed(cl);                        /* v6.9.461 - the man, not the name */
     var rets = famRets(cl) || [];
     var pays = famPays(cl);
     var led = clientLedger(cl) || {};
@@ -20392,7 +20409,7 @@ function viewCatalogue() {
     return bal < -0.5 ? "In credit — paid ahead, comes off the next delivery"
          : bal > 0.5 ? "Balance due" : "Settled in full";
   }
-  function hisabSummaryCard(cl, chs) {
+  function hisabSummaryCard(cl) {
     var m = hisabMiniRows(cl);
     if (m.rows.length < 2 && !m.opening) return "";
     var nD = m.chs.length;
@@ -21215,7 +21232,12 @@ function viewCatalogue() {
            what order the cards are painted in. */
     var chs = famChallansIn(cl)                             /* v6.9.461 - the account card */
       .sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
-    var _acct = hisabSummaryCard(cl, chs);      /* v6.9.424 - the account, before the cards */
+    /* v6.9.480 - the second argument is gone. It was never read: the card builds its rows
+       from hisabMiniRows itself. A parameter that LOOKS like it decides the balance, on the one
+       card whose balance was wrong, is how the next person concludes the card is gated when it
+       is not. The cards below this line keep the FULL list - that is the working screen, and a
+       delivery he has not finalised has to be visible for him to finalise it. */
+    var _acct = hisabSummaryCard(cl);           /* v6.9.424 - the account, before the cards */
     h += _acct;
     h += hisabNewBar(cl, chs);
     h += hisabPendingCard(cl);
@@ -22150,7 +22172,10 @@ function viewCatalogue() {
      are untouched. The account's own four buttons always pass one, so a statement taken "just
      this once" cannot change what the next one looks like. */
   function hisabPdf(cl, all, pp) {
-    var chs = famChallansIn(cl);                          /* v6.9.461 */
+    /* v6.9.480 - the gated list, because this is the document that leaves the building. A
+       statement that lists what the balance does not count is a statement the client wins an
+       argument with. */
+    var chs = famChallansOwed(cl);                        /* v6.9.461 */
     var rets = famRets(cl).slice();
     var pays = famPays(cl);
     /* `all` is the one-press "everything, in date order" - every tick read as on, none touched */
@@ -22843,7 +22868,14 @@ function viewCatalogue() {
     client = String(client || "");
     if (!_stlCache) _stlCache = {};
     if (_stlCache[client]) return _stlCache[client];
-    var chs = famChallansIn(client);                       /* v6.9.461 */
+    /* v6.9.480 - the gated list too, and this one is not cosmetic. This walk decides which
+       payment cleared which delivery, and hisabFoldDefault turns that into the rows the
+       statement leaves off. Walking the UNGATED list, a payment could settle a delivery the
+       ledger does not count, the pair would cancel, both would fold into brought-forward - and
+       the paper would close on a figure the screen never shows. A payment against a delivery
+       that is not yet on the account is credit in hand, which is what this walk already does
+       with money it cannot place. */
+    var chs = famChallansOwed(client);                     /* v6.9.461 */
     var ev = [], op = famOpen(client);
     /* The opening balance has no date and is older than everything, so it sorts first on an
        empty string and is settled first. A MINUS opening balance is money he already held. */
