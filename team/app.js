@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.485";
+  var APP_VERSION = "6.9.486";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17138,7 +17138,7 @@ function viewCatalogue() {
 
   function regF(k) { return String((((S || {}).reg) || {})[k] || ""); }
   function regAnyFilter() {
-    return ["q", "exec", "area", "plumber", "arch", "slab", "score"].some(function (k) { return !!regF(k); });
+    return ["q", "exec", "area", "location", "plumber", "arch", "slab", "score"].some(function (k) { return !!regF(k); });
   }
   function regPass(c) {
     var cl = clientByName((c || {}).customerName) || {};
@@ -17148,6 +17148,7 @@ function viewCatalogue() {
     var f;
     f = regF("exec");    if (f && (String(cl.ownedBy || "").trim() || "(unassigned)") !== f) return false;
     f = regF("area");    if (f && (String(cl.area || "").trim() || "(no area)") !== f) return false;
+    f = regF("location");if (f && (String(cl.location || "").trim() || "(no town)") !== f) return false;
     f = regF("plumber"); if (f && (String(cl.plumber || "").trim() || "(none named)") !== f) return false;
     f = regF("arch");    if (f && (String(cl.architect || "").trim() || "(none named)") !== f) return false;
     f = regF("slab");    if (f && regSlab(String(c.customerName || "")) !== f) return false;
@@ -17167,6 +17168,15 @@ function viewCatalogue() {
   }
   function regSelect(id, label, opts) {
     var cur = regF(id);
+    /* v6.9.486 - A DROPDOWN WITH NOTHING REAL IN IT IS NOT DRAWN. The Challan app shares this
+       function, and a godown phone receives clients stripped to id/name/location/address/mobile/
+       ownedBy (backend V99) - so its plumber box would offer exactly one choice, "(none named)",
+       which is a filter that can answer nothing. A placeholder is any option in brackets. No role
+       test anywhere: the box appears by itself the day the office fills those in. */
+    var real = opts.filter(function (o) {
+      return !/^\(/.test(String((o instanceof Array) ? o[0] : o));
+    });
+    if (!real.length && !cur) return "";
     return '<label style="display:inline-flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700;color:#475569">' +
       esc(label) +
       '<select id="reg_' + id + '" style="font-size:12.5px;padding:4px 6px;border:1px solid ' +
@@ -17187,6 +17197,10 @@ function viewCatalogue() {
       'style="font-size:12.5px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:7px;min-width:170px"/></label>' +
       regSelect("exec", "Executive", regOpts("ownedBy", "(unassigned)")) +
       regSelect("area", "Area", regOpts("area", "(no area)")) +
+      /* v6.9.486 - TOWN. Measured: location is filled on 171 of his 172 clients and area on 147,
+         and location is also the one field a godown phone receives (backend V99), so it is the
+         field both apps can filter on. */
+      regSelect("location", "Town", regOpts("location", "(no town)")) +
       regSelect("plumber", "Plumber", regOpts("plumber", "(none named)")) +
       regSelect("arch", "Architect", regOpts("architect", "(none named)")) +
       regSelect("slab", "Payment slab", REG_SLABS) +
@@ -17196,9 +17210,10 @@ function viewCatalogue() {
          on that screen's Clear from the day this shipped. t_dead_taps named it. */
       (regAnyFilter() ? '<button class="btn sm ghost" data-act="regx-clear" style="margin-bottom:1px">Clear</button>' : '') +
       '</div>' +
-      '<div class="meta" style="font-size:12px;margin-top:6px">Area, plumber, architect and the ' +
-      'score card are read from the <b>client</b> record, not the challan - a delivery whose ' +
-      'client has that box empty will not answer that filter. Plumber is filled on ' +
+      '<div class="meta" style="font-size:12px;margin-top:6px">Town, area, plumber, architect and ' +
+      'the score card are read from the <b>client</b> record, not the challan - a delivery whose ' +
+      'client has that box empty will not answer that filter. Town is filled on ' +
+      regFilledSay("location") + ', area on ' + regFilledSay("area") + ', plumber on ' +
       regFilledSay("plumber") + ', architect on ' + regFilledSay("architect") + '.</div></div>';
   }
   /* Say how much of the book a filter can actually see, rather than letting him find out. */
@@ -17282,9 +17297,14 @@ function viewCatalogue() {
 
   /* v6.9.485b - eleven columns, four of them visible on a 390px phone. A man who does not know
      the table swipes will think the register has four columns and the rest was never built. */
-  function regSwipe() {
+  /* v6.9.486b - THE COLUMNS ARE AN ARGUMENT. This function is shared with the Challan app, whose
+     register has no balance and no limit column and does have an EXECUTIVE one - so the fixed
+     text named two columns that were not there and missed the one that was. Seen on the render.
+     1.56.0 learned this on the same app: a line that describes the screen wrongly is worse than
+     no line. One function, and each caller says what its own table actually holds. */
+  function regSwipe(cols) {
     return '<div class="meta" style="font-size:12px;margin:0 0 4px">Swipe the table sideways for ' +
-      'made by, passed by, receipt, hisab, balance and limit &rarr;</div>';
+      esc(cols) + ' &rarr;</div>';
   }
   function regHead() {
     var TH = function (x, r) {
@@ -17358,7 +17378,7 @@ function viewCatalogue() {
       (hidden ? ' · ' + hidden + ' belong to another executive' : '') +
       (filt ? ' · filtered, so gaps are hidden' : '') + '</span></div>' +
       (shown || (!filt && R.line.length)
-        ? regSwipe() +
+        ? regSwipe("made by, passed by, receipt, hisab, balance and limit") +
           '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
           regHead() + body + '</table></div>'
         : '<div class="empty">Nothing on the series answers that filter.</div>') + '</div>';
@@ -17373,7 +17393,7 @@ function viewCatalogue() {
       '<b>client code / date / count</b>, like ATUL4000/200726/001 &mdash; so they carry no place on the ' +
       'running series and no gap can be read from them. They are every bit as real; they are just ' +
       'a different book. Newest first.</div>' +
-      (on ? regSwipe() + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
+      (on ? regSwipe("made by, passed by, receipt, hisab, balance and limit") + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
             regHead() + ob + '</table></div>'
           : '<div class="empty">Nothing in the old book answers that filter.</div>') + '</div>';
 
