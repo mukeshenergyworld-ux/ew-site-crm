@@ -205,7 +205,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.62.0";
+  var APP_VERSION = "1.63.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -2827,9 +2827,17 @@ function discRowOn(client, brand, onYmd) {
     ["all",     "All"],
     ["draft",   "Approval pending"],
     ["noproof", "Receipt pending"],
-    ["mine",    "Mine"]
+    ["mine",    "Mine"],
+    /* 1.63.0 - and the register, beside the headings a man already picks from. NOT a 7th nav
+       button: v1.46.7 measured that bar at 373px on a 360px phone with six. */
+    ["reg",     "Register"]
   ];
   function chFiltered(kind) {
+    /* 1.63.0 - THE REGISTER IS THE WHOLE BOOK. Every other heading here lives inside a 60-day
+       window, which is right for a chase list and wrong for a register: a serial line that
+       quietly stopped at 60 days would hide exactly the old challans a man has come looking for,
+       and would invent gaps where the window cut. */
+    if (kind === "reg") return challans();
     var list = challans().filter(recent);
     if (kind === "draft")   return list.filter(isDraft);
     if (kind === "noproof") return list.filter(receiptOwed);
@@ -2844,11 +2852,17 @@ function discRowOn(client, brand, onYmd) {
         if (!n && b[0] !== "all") return "";
         /* v1.32.0 - "pending receipts also to be highlighted in red". A count of nought is
            not a warning, so the red only appears when there is something to answer for. */
-        var urgent = (b[0] === "draft" || b[0] === "noproof") && n > 0;
+        /* 1.63.0 - the register's number is not how many challans there are, it is how many are
+           MISSING - and it goes red for the same reason these two do. A count of nought is not a
+           warning, so with an unbroken series it is an ordinary grey chip. */
+        var gaps = 0;
+        if (b[0] === "reg") { try { gaps = regBuild().gaps.length; } catch (e) { gaps = 0; } }
+        var urgent = ((b[0] === "draft" || b[0] === "noproof") && n > 0) || (b[0] === "reg" && gaps > 0);
         var cls = (f === b[0]) ? (urgent ? 'red' : '') : 'gry';
         return '<button class="btn sm ' + cls + '" data-act="ch-filter" data-f="' + b[0] + '"' +
           (urgent && f !== b[0] ? ' style="border-color:#fecaca;color:#b91c1c"' : '') + '>' +
-          esc(b[1]) + ' <b style="opacity:.75">' + n + '</b></button>';
+          esc(b[1]) + ' <b style="opacity:.75">' +
+          (b[0] === "reg" ? (gaps ? gaps + ' missing' : n) : n) + '</b></button>';
       }).join("") + '</div>';
   }
 
@@ -3303,11 +3317,15 @@ function discRowOn(client, brand, onYmd) {
           '<div class="acts" style="margin-top:10px">' +
           '<button class="btn sm ghost" data-act="refresh">Try pulling again</button></div></div>') +
         searchBox() + dayCard() + statBar() + chChips();
+      if (f === "reg") return h + viewRegister();   /* 1.63.0 - before the 60-day empty branch */
       if (!list.length) {
         return h + '<div class="empty">Nothing here' +
           (f === "all" ? ' in the last 60 days.' : ' under that heading.') + '</div>' +
           showAllBar(hidden, 'than 60 days');
       }
+      /* 1.63.0 - the register has its own strap, its own order and no 60-day bar, so it takes
+         over here rather than being squeezed through the three lines below. */
+      if (f === "reg") return h + viewRegister();
       var val3 = list.reduce(function (a, c) { return a + chValue(c); }, 0);
       /* 1.56.0 - AND THE STRAP HAS TO TELL THE TRUTH ABOUT THE ORDER. Seen on the render, not
          in the source: this said "newest first" over the chase list, which is deliberately
@@ -3819,6 +3837,10 @@ function discRowOn(client, brand, onYmd) {
     if (m) return "20" + m[3] + "-" + m[2] + "-" + m[1];
     return "";
   }
+  /* 1.63.0 - the register's line is a per-PAINT index, exactly as it is in the CRM. chDatesIn
+     runs at the top of every render, before anything is drawn, so this is the one place that
+     cannot be reached with a stale line. */
+  function regBust() { _regCache = null; }
   function chDatesIn() {
     (((S.data || {}).challans) || []).forEach(function (c) {
       if (!c || String(c.createdAt || "").trim()) return;
@@ -3839,6 +3861,321 @@ function discRowOn(client, brand, onYmd) {
       'title="This delivery has no date of its own on the sheet. The date shown is taken from its ' +
       'challan number. It will be written back the next time this challan is saved.">date from ' +
       esc(f) + '</span>' : '';
+  }
+
+  /* ==========================================================================================
+     THE CHALLAN REGISTER, IN THIS APP TOO                        (1.63.0, 14 Sep 2026)
+
+     HIS WORDS: "dedicated all challan section required at both chllan app and crm app".
+
+     EVERYTHING FROM HERE DOWN TO viewRegister IS LIFTED OUT OF team/app.js BYTE FOR BYTE by
+     v108/p_ch163_register.py - regSerial, regDate, regDMY, regBuild, regGapRow, regCell,
+     regFirst, regF, regAnyFilter, regPass, regOpts, regSelect, regSwipe, regFilledSay. Not
+     retyped: lifted, so that t_apps_agree can compare the two texts and go red the day one of
+     them is touched alone. These two screens drifted once already - 1.56.0, the strap that said
+     "newest first" over a list that was deliberately oldest-first - and this is what stops it.
+
+     MEASURED ON HIS BOOK, the same 199 challans the CRM was built against: 99 on the running
+     series 24/08/2026/026 (serials 1-109), 100 on the older ATUL4000/200726/001 shape, and TEN
+     serials missing - 27, 29, 31, 33, 86, 87, 88, 99, 103, 106. Archive_challans is empty, so
+     none of them is archived.
+
+     NO SCOPING ROW. This app is admin, accounts and godown only (ALLOWED, above) - there are no
+     salesmen on it - so everyone who can open this screen sees the whole book, and the CRM's
+     "another executive's client" row has nothing to do here. ========================== */
+
+  var _regCache = null;
+  var REG_NEWEST_FIRST = true;
+  var REG_RE = /^(\d{2})\/(\d{2})\/(\d{4})\/(\d+)$/;
+
+  function regSerial(c) {
+    var m = String(((c || {}).challanNo) || "").trim().match(REG_RE);
+    return m ? parseInt(m[4], 10) : null;
+  }
+
+  function regDate(c) {
+    var d = String(((c || {}).createdAt) || "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : (chNoDate(c) || "");
+  }
+
+  function regDMY(d) {
+    d = String(d || "");
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d.slice(8, 10) + "/" + d.slice(5, 7) + "/" + d.slice(0, 4) : "—";
+  }
+
+  function regBuild() {
+    if (_regCache) return _regCache;
+    var all = (((S.data || {}).challans) || []).filter(function (c) { return c && !c.cancelled; });
+    var bySer = {}, old = [];
+    all.forEach(function (c) {
+      var n = regSerial(c);
+      if (n === null) { old.push(c); return; }
+      (bySer[n] = bySer[n] || []).push(c);
+    });
+    var keys = Object.keys(bySer).map(Number).sort(function (a, b) { return a - b; });
+    var lo = keys.length ? keys[0] : 0, hi = keys.length ? keys[keys.length - 1] : 0;
+    var line = [], gaps = [], dups = [];
+    for (var n = lo; keys.length && n <= hi; n++) {
+      if (bySer[n]) {
+        line.push({ n: n, chs: bySer[n] });
+        if (bySer[n].length > 1) dups.push(n);
+      } else {
+        line.push({ n: n, gap: true });
+        gaps.push(n);
+      }
+    }
+    if (REG_NEWEST_FIRST) line.reverse();
+    old.sort(function (a, b) {
+      var x = String(regDate(a)), y = String(regDate(b));
+      return REG_NEWEST_FIRST ? y.localeCompare(x) : x.localeCompare(y);
+    });
+    return (_regCache = { line: line, old: old, gaps: gaps, dups: dups, lo: lo, hi: hi,
+      total: all.length, nSer: all.length - old.length, nOld: old.length });
+  }
+
+  function regGapRow(n) {
+    return '<tr style="background:#fef2f2"><td style="' + regCell(";font-weight:800;color:#b91c1c") + '">' + n + '</td>' +
+      /* v6.9.485b - SHORT, and inside a box that cannot grow. A cell spanning eleven columns lays
+         its text out across the WHOLE table width, so the long version ran off the right of a
+         390px screen and the red line - the entire point of this register - had to be SWIPED to
+         be read. What a hole means is explained once, in the card at the top. */
+      '<td colspan="10" style="' + regCell(";color:#b91c1c;white-space:normal") + '">' +
+      '<div style="max-width:290px"><b>No challan on this number</b> &mdash; taken and dropped, ' +
+      'or never entered.</div></td></tr>';
+  }
+
+  function regCell(extra) {
+    return "padding:5px 7px;border-top:1px solid #e2e8f0;white-space:nowrap;font-size:12.5px" + (extra || "");
+  }
+
+  function regFirst(v) { return String(v == null ? "" : v).trim().split(" ")[0]; }
+
+  function regF(k) { return String((((S || {}).reg) || {})[k] || ""); }
+
+  function regAnyFilter() {
+    return ["q", "exec", "area", "location", "plumber", "arch", "slab", "score"].some(function (k) { return !!regF(k); });
+  }
+
+  function regPass(c) {
+    var cl = clientByName((c || {}).customerName) || {};
+    var q = regF("q").trim().toLowerCase();
+    if (q && (String(c.challanNo || "") + " " + String(c.customerName || "") + " " +
+              String(cl.mobile || "")).toLowerCase().indexOf(q) < 0) return false;
+    var f;
+    f = regF("exec");    if (f && (String(cl.ownedBy || "").trim() || "(unassigned)") !== f) return false;
+    f = regF("area");    if (f && (String(cl.area || "").trim() || "(no area)") !== f) return false;
+    f = regF("location");if (f && (String(cl.location || "").trim() || "(no town)") !== f) return false;
+    f = regF("plumber"); if (f && (String(cl.plumber || "").trim() || "(none named)") !== f) return false;
+    f = regF("arch");    if (f && (String(cl.architect || "").trim() || "(none named)") !== f) return false;
+    f = regF("slab");    if (f && regSlab(String(c.customerName || "")) !== f) return false;
+    f = regF("score");   if (f && (regScoreMap()[String(c.customerName || "")] || "") !== f) return false;
+    return true;
+  }
+
+  function regOpts(field, blank) {
+    var seen = {}, out = [];
+    (((S.data || {}).clients) || []).forEach(function (cl) {
+      var v = String((cl || {})[field] || "").trim() || blank;
+      if (seen[v]) return; seen[v] = 1; out.push(v);
+    });
+    return out.sort(function (a, b) { return a.localeCompare(b); });
+  }
+
+  function regSelect(id, label, opts) {
+    var cur = regF(id);
+    /* v6.9.486 - A DROPDOWN WITH NOTHING REAL IN IT IS NOT DRAWN. The Challan app shares this
+       function, and a godown phone receives clients stripped to id/name/location/address/mobile/
+       ownedBy (backend V99) - so its plumber box would offer exactly one choice, "(none named)",
+       which is a filter that can answer nothing. A placeholder is any option in brackets. No role
+       test anywhere: the box appears by itself the day the office fills those in. */
+    var real = opts.filter(function (o) {
+      return !/^\(/.test(String((o instanceof Array) ? o[0] : o));
+    });
+    if (!real.length && !cur) return "";
+    return '<label style="display:inline-flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700;color:#475569">' +
+      esc(label) +
+      '<select id="reg_' + id + '" style="font-size:12.5px;padding:4px 6px;border:1px solid ' +
+      (cur ? '#0b3b36' : '#cbd5e1') + ';border-radius:7px;background:' + (cur ? '#f0fdfa' : '#fff') +
+      ';max-width:150px">' +
+      '<option value="">All</option>' +
+      opts.map(function (o) {
+        var v = (o instanceof Array) ? o[0] : o, t = (o instanceof Array) ? o[1] : o;
+        return '<option value="' + esc(v) + '"' + (cur === v ? ' selected' : '') + '>' + esc(t) + '</option>';
+      }).join("") + '</select></label>';
+  }
+
+  function regSwipe(cols) {
+    return '<div class="meta" style="font-size:12px;margin:0 0 4px">Swipe the table sideways for ' +
+      esc(cols) + ' &rarr;</div>';
+  }
+
+  function regFilledSay(field) {
+    var all = ((S.data || {}).clients) || [];
+    var n = all.filter(function (cl) { return String((cl || {})[field] || "").trim(); }).length;
+    return n + " of " + all.length + " clients";
+  }
+
+  /* The two filters this app has no data for. They are never DRAWN here - regSelect refuses a
+     dropdown whose every option is a placeholder, and there is no ledger and no scorecard on a
+     godown phone to fill them from - so regPass can be the CRM's function byte for byte and
+     these are never reached with a value. They are stubs on purpose and they say so. */
+  function regSlab() { return ""; }
+  function regScoreMap() { return {}; }
+
+  /* Same bar as the CRM's, minus the two it has no data for, plus Town - which on a godown phone
+     is the ONLY place field there is: backend V99 sends that phone clients stripped to id, name,
+     location, address, mobile and ownedBy. regSelect drops any box with nothing real in it, so
+     an admin phone shows Area, Plumber and Architect as well and a godown phone shows what it
+     can actually answer. No role test: it corrects itself the day the office fills them in. */
+  function regFilterBar() {
+    return '<div class="card" style="padding:9px 11px">' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">' +
+      '<label style="display:inline-flex;flex-direction:column;gap:2px;font-size:12px;font-weight:700;color:#475569">Find' +
+      '<input id="reg_q" type="search" value="' + esc(regF("q")) + '" placeholder="challan no, client, mobile" ' +
+      'style="font-size:12.5px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:7px;min-width:170px"/></label>' +
+      regSelect("exec", "Executive", regOpts("ownedBy", "(unassigned)")) +
+      regSelect("location", "Town", regOpts("location", "(no town)")) +
+      regSelect("area", "Area", regOpts("area", "(no area)")) +
+      regSelect("plumber", "Plumber", regOpts("plumber", "(none named)")) +
+      regSelect("arch", "Architect", regOpts("architect", "(none named)")) +
+      (regAnyFilter() ? '<button class="btn sm gry" data-act="regx-clear" style="margin-bottom:1px">Clear</button>' : '') +
+      '</div>' +
+      '<div class="muted" style="font-size:12px;margin-top:6px">Town, area, plumber and architect ' +
+      'are read from the <b>client</b> record, not the challan. A box you cannot see is one this ' +
+      'phone was not sent — the godown receives a client’s name, town, address, mobile and ' +
+      'executive, and nothing else. Town is filled on ' + regFilledSay("location") + '.</div></div>';
+  }
+
+  function regHead() {
+    var TH = function (x, r) {
+      return '<th style="padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' +
+        (r ? "right" : "left") + '">' + esc(x) + '</th>';
+    };
+    return '<tr style="background:#0b3b36">' + TH("#") + TH("DATE") + TH("CLIENT") + TH("CHALLAN NO") +
+      TH("AMOUNT", 1) + TH("EXECUTIVE") + TH("MADE BY") + TH("PASSED BY") + TH("RECEIPT") + TH("HISAB") + '</tr>';
+  }
+
+  /* Ten columns, not the CRM's eleven. The balance after this challan and the credit limit are
+     NOT here and must not be faked: this app has no clientLedger - and should not, the ledger is
+     pricing the godown has no business carrying - and the godown's client record does not
+     contain a limit at all. The screen says so once, and the CRM button is in the nav bar.
+     What IS here and is not on the CRM's row: the EXECUTIVE. chExec() has printed it beside the
+     client's name since 20 Aug on his own instruction, and a register without it would be a step
+     backwards on the one phone that asked for it. */
+  function regRow(n, c, alt, dup) {
+    var cl = clientByName(c.customerName) || {};
+    var pf = proofFor(c);
+    var open = S.open && String(S.open) === String(c.id);
+    var bg = dup ? "#fffbeb" : (alt ? "#f8fafc" : "#fff");
+    var h = '<tr style="background:' + bg + '">' +
+      '<td style="' + regCell(";font-weight:800;color:#0b3b36") + '">' + (n === null ? "OLD" : n) +
+        (dup ? '<br><span style="font-size:12px;color:#b45309">twice</span>' : '') + '</td>' +
+      '<td style="' + regCell() + '">' + esc(regDMY(regDate(c))) + chDatePill(c) + '</td>' +
+      '<td style="' + regCell(";max-width:170px;overflow:hidden;text-overflow:ellipsis") + '">' +
+        '<b>' + esc(c.customerName || "—") + '</b>' +
+        (cl.mobile ? '<br><span style="font-size:12px;color:#64748b">' + esc(cl.mobile) + '</span>' : '') + '</td>' +
+      '<td style="' + regCell() + '"><button class="btn sm gry" data-act="ch-open" data-id="' + esc(c.id) + '" ' +
+        'style="padding:1px 8px;font-size:12.5px;font-weight:700">' + esc(c.challanNo || "no number") +
+        ' ' + (open ? "▴" : "▾") + '</button></td>' +
+      '<td style="' + regCell(";text-align:right;font-weight:700") + '">' + esc(money(chValue(c))) + '</td>' +
+      '<td style="' + regCell(";color:#475569") + '">' + esc(regFirst(chExec(c)) || "—") + '</td>' +
+      '<td style="' + regCell() + '">' + esc(regFirst(c.createdBy) || "—") + '</td>' +
+      '<td style="' + regCell(";color:" + (String(c.approvedBy || "").trim() ? "#0f172a" : "#b91c1c")) + '">' +
+        esc(regFirst(c.approvedBy) || "not passed") + '</td>' +
+      '<td style="' + regCell() + '">' +
+        (pf ? '✓ <span style="font-size:12px;color:#64748b">' + esc(regFirst(pf.actor || pf.by)) + '</span>'
+            : (RECEIPT_FROM.indexOf(chStatus(c)) >= 0
+                ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(c.id) + '" ' +
+                  'style="padding:1px 8px;font-size:12px;font-weight:700;white-space:nowrap">Attach</button>'
+                : '<span style="color:#94a3b8;font-size:12px">not gone yet</span>')) + '</td>' +
+      '<td style="' + regCell() + '">' + (inHisab(c)
+        ? /* 1.63.0 - .pill.grn, not .pill.ok. This app's pill colours are red / amb / grn / blu; the
+           CRM's are named differently and a class that does not exist here would have drawn a
+           plain grey word where a green tick belongs. Caught by reading this app's own CSS. */
+        '<span class="pill grn" style="font-size:12px">finalised</span>'
+        : '<span style="color:#b45309;font-size:12px">not finalised</span>') + '</td></tr>';
+    if (open) {
+      h += '<tr style="background:' + bg + '"><td colspan="10" style="padding:2px 6px 10px;border-top:0">' +
+        chRow(c) + '</td></tr>';
+    }
+    return h;
+  }
+
+  function viewRegister() {
+    var R = regBuild();
+    var filt = regAnyFilter();
+
+    var h = '<div class="card"><h3 style="margin:0 0 2px">The challan register</h3>' +
+      '<div class="muted">Every challan on the book, in one place, serial by serial &mdash; so a ' +
+      'number that was never entered has nowhere to hide. This is the <b>whole book</b>, not the ' +
+      'last 60 days like the other headings. Tap a challan number to open the delivery.</div></div>';
+
+    if (R.gaps.length) {
+      h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2;padding:10px 12px">' +
+        '<b style="color:#b91c1c;font-size:14px">' + R.gaps.length + ' number' + (R.gaps.length === 1 ? '' : 's') +
+        ' missing from the series</b>' +
+        '<div style="margin-top:5px;font-weight:800;color:#b91c1c;font-size:13px;word-break:break-word">' +
+        R.gaps.join(" · ") + '</div>' +
+        '<div class="muted" style="font-size:12.5px;color:#b91c1c;margin-top:5px">Each one is either a ' +
+        'number taken and abandoned, or a challan written in the paper book and never entered here. ' +
+        'They are marked in red where they belong on the line below.</div></div>';
+    } else if (R.nSer) {
+      h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:10px 12px">' +
+        '<b style="color:#0f766e">✓ The series runs unbroken from ' + R.lo + ' to ' + R.hi +
+        '. Not one number is missing.</b></div>';
+    }
+    if (R.dups.length) {
+      h += '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:10px 12px">' +
+        '<b style="color:#92400e">' + R.dups.length + ' number' + (R.dups.length === 1 ? ' carries' : 's carry') +
+        ' more than one challan: ' + R.dups.join(", ") + '</b>' +
+        '<div class="muted" style="font-size:12.5px;color:#92400e;margin-top:4px">Both are shown, amber, ' +
+        'on the same line. Nothing is removed.</div></div>';
+    }
+
+    h += regFilterBar();
+
+    var shown = 0, body = "", i = 0;
+    R.line.forEach(function (row) {
+      if (row.gap) { if (!filt) body += regGapRow(row.n); return; }
+      var pass = row.chs.filter(regPass);
+      if (!pass.length) return;
+      var dup = row.chs.length > 1;
+      pass.forEach(function (c) { body += regRow(row.n, c, (i++ % 2) === 1, dup); shown++; });
+    });
+
+    h += '<div class="card" style="padding:8px 10px">' +
+      '<div style="font-weight:800;font-size:13.5px;margin-bottom:5px">The running series' +
+      ' <span style="font-weight:600;color:#64748b;font-size:12.5px">· ' + shown + ' shown · ' +
+      (REG_NEWEST_FIRST ? 'latest number first' : 'first number first') +
+      (filt ? ' · filtered, so gaps are hidden' : '') + '</span></div>' +
+      (shown || (!filt && R.line.length)
+        ? regSwipe("the executive, made by, passed by, receipt and hisab") +
+          '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
+          regHead() + body + '</table></div>'
+        : '<div class="empty">Nothing on the series answers that filter.</div>') + '</div>';
+
+    var ob = "", on = 0, j = 0;
+    R.old.filter(regPass).forEach(function (c) { ob += regRow(null, c, (j++ % 2) === 1, false); on++; });
+    h += '<div class="card" style="padding:8px 10px">' +
+      '<div style="font-weight:800;font-size:13.5px;margin-bottom:2px">The old book' +
+      ' <span style="font-weight:600;color:#64748b;font-size:12.5px">· ' + on + ' shown of ' + R.nOld + '</span></div>' +
+      '<div class="muted" style="font-size:12.5px;margin-bottom:5px">These were numbered the older way &mdash; ' +
+      '<b>client code / date / count</b>, like ATUL4000/200726/001 &mdash; so they carry no place on the ' +
+      'running series and no gap can be read from them. They are every bit as real; they are just ' +
+      'a different book. Newest first.</div>' +
+      (on ? regSwipe("the executive, made by, passed by, receipt and hisab") + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
+            regHead() + ob + '</table></div>'
+          : '<div class="empty">Nothing in the old book answers that filter.</div>') + '</div>';
+
+    /* Said once, plainly, instead of two columns of invented numbers. */
+    h += '<div class="card" style="border-color:#bae6fd;background:#f0f9ff;padding:10px 12px">' +
+      '<b style="color:#0369a1">The balance and the credit limit are in the CRM.</b>' +
+      '<div class="muted" style="font-size:12.5px;margin-top:4px">This app has no ledger — that is ' +
+      'deliberate, it is pricing a godown phone has no business carrying — and the client record ' +
+      'sent here does not contain a credit limit at all. The CRM’s register carries both, on the ' +
+      'same serial line. The <b>CRM</b> button is at the end of the bar below.</div></div>';
+
+    return h;
   }
 
   function chRow(c) {
@@ -5613,6 +5950,7 @@ function discRowOn(client, brand, onYmd) {
        splitCancelled(), which is ITS first look at the book; this app has no such step, and
        renderBody is the one place every screen passes through. */
     if (S.data) { try { chDatesIn(); } catch (e) { } }
+    try { regBust(); } catch (e) { }                 /* 1.63.0 */
     var p = S.data ? pendingApproval().length : 0;
     var m = S.data ? missingReceipts().filter(recent).length : 0;   /* agrees with the list it opens */
     /* the badge counts DELIVERIES HOLDING FREIGHT BACK, not drivers - a driver with four
@@ -5715,6 +6053,22 @@ function discRowOn(client, brand, onYmd) {
         'No freight &mdash; save it</button>' +
       '</div></div>';
   }
+  /* 1.63.0 - the register's filters. Every one is a <select> or a search box whose id starts
+     reg_, so one pair of listeners carries all of them. They are bound on the document once,
+     not per render, because render() replaces every node in the body. */
+  (function () {
+    document.addEventListener("change", function (ev) {
+      var e = ev && ev.target;
+      if (!e || String(e.id || "").indexOf("reg_") !== 0) return;
+      S.reg = S.reg || {}; S.reg[String(e.id).slice(4)] = e.value; render();
+    });
+    document.addEventListener("input", function (ev) {
+      var e = ev && ev.target;
+      if (!e || e.id !== "reg_q") return;
+      S.reg = S.reg || {}; S.reg.q = e.value; render();
+    });
+  })();
+
   function wireInputs() {
     var hx = el("hsb_extra"), hxn = el("hsb_noextra"), hpc = el("hsb_extrapc");
     if (hx) hx.addEventListener("input", function () {
@@ -6788,6 +7142,9 @@ function discRowOn(client, brand, onYmd) {
     }
 
     /* ---- read it here, rather than downloading it (v1.32.0) ---- */
+    /* 1.63.0 - one button empties every box on the register. regx-, the same name the CRM uses,
+       because reg-clear belongs to the CRM's brand register and the two apps share these names. */
+    if (act === "regx-clear") { S.reg = {}; render(); return; }
     if (act === "ch-open") {
       var oid = t.getAttribute("data-id");
       S.open = (S.open && String(S.open) === String(oid)) ? "" : oid;
