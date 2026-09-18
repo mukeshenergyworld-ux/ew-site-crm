@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.491";
+  var APP_VERSION = "6.9.492";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2682,7 +2682,9 @@ window.addEventListener("beforeunload", function (ev) {
       '<h3 style="margin:0 0 4px;font-size:16px">' + esc(d.title) + '</h3>' +
       '<div style="font-size:22px;font-weight:700;color:#0f766e;margin:6px 0 2px">' + money(p.price) +
       (p.unit ? ' <span style="font-size:12px;font-weight:400;color:#94a3b8">/ ' + esc(p.unit) + '</span>' : "") + '</div>' +
-      '<div class="meta" style="margin-bottom:8px">List price - discount alag se lagta hai.</div>';
+      /* v6.9.492 - ENGLISH. This one walked through the 6.9.491 sweep because the word list had
+         "nahin" and not "nahi", and it was sitting on the very screen he pointed at. */
+      '<div class="meta" style="margin-bottom:8px">List price \u2014 the discount is applied separately.</div>';
     var sp = specLines(p.specs);
     if (sp.length) {
       h += '<div style="font-size:12px;letter-spacing:.08em;color:#94a3b8;margin:12px 0 4px">SPECIFICATIONS</div>' +
@@ -2698,6 +2700,25 @@ window.addEventListener("beforeunload", function (ev) {
         '<ul style="margin:8px 0 10px;padding-left:18px;font-size:13px;line-height:1.6;color:#334155">' +
         d.bullets.map(function (b) { return '<li>' + esc(b) + '</li>'; }).join("") + '</ul>';
     }
+    /* ======== HIS ITEM 11: EDIT THE SPEC AND THE PRICE  (v6.9.492) ========
+       Everything behind this already existed - modalProduct() edits the code, the price, the
+       description and features, the family, the unit, the master brand, the category and the
+       picture, and catalogSave writes it to the master sheet. The act is `pr-open`.
+
+       IT HAD ONE DOOR AND IT WAS ON THE WRONG SCREEN: the Catalogue admin screen, which shows
+       nothing at all until you type a search into it. THIS screen - the product opened out, the
+       one a man reads down the phone to a customer - had no way in. So the moment he can SEE
+       that a specification is wrong is the one moment he could not fix it.
+
+       The same act and the same form, not a second one: two ways to write to the catalogue is
+       two answers about what a product costs. Owner only, as catalogSave has always been. At the
+       bottom with the pills rather than beside the price, so a thumb going for Back does not
+       find it. */
+    h += (roleIs("admin")
+      ? '<div class="row" style="margin-top:10px"><button class="btn sm ghost" data-act="pr-open" ' +
+        'data-code="' + esc(p.code) + '" style="border-color:#c7d2fe;color:#4338ca">' +
+        '\u270e Edit the spec or the price</button></div>'
+      : "");
     h += '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">' +
       '<span class="pill">' + esc(p.code) + '</span>' +
       (rb ? '<span class="pill teal">' + esc(rb) + '</span>' : (p.brand ? '<span class="pill">' + esc(p.brand) + '</span>' : "")) +
