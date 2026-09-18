@@ -327,7 +327,7 @@ var GAS_URL = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjm
    answered and this one said "no version in the file". Without it nobody can tell whether a
    customer is looking at today's form or one from three weeks ago - and this is the one app
    whose users are customers, who will not be asked to refresh. */
-var BUILD = "2026.09.11-1";
+var BUILD = "2026.09.18-1";
 
 var state = { category:"", urgency:"normal" };
 
@@ -488,10 +488,10 @@ function showFailed(p, why){
   if (head) head.textContent = 'Not sent yet';
   var box = document.getElementById('ticketSummary');
   if (box) box.innerHTML =
-    '<b style="color:#b91c1c">Aapki shikayat abhi humein nahi pahunchi.</b><br>' +
+    '<b style="color:#b91c1c">Your complaint has not reached us yet.</b><br>' +
     'It is saved on this phone and will go by itself as soon as you have signal \u2014 ' +
     'keep this page or the app open for a moment.<br><br>' +
-    'Turant baat karni ho to: <b><a href="tel:+919466600611" style="color:#0d5c56">' +
+    'To speak to someone now: <b><a href="tel:+919466600611" style="color:#0d5c56">' +
     '+91 94666 00611</a></b><br>' +
     '<span style="font-size:12px;color:#64748b">' + esc(p.category) + ' \u00b7 ' + esc(p.name) +
     (why ? ' \u00b7 (' + esc(why) + ')' : '') + '</span>';
