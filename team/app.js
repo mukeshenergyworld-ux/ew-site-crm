@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.502";
+  var APP_VERSION = "6.9.504";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5322,10 +5322,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           '<td style="padding:6px 9px;font-weight:600">' + esc(k) + '</td>' +
           '<td style="padding:5px 9px;text-align:right"><input class="amcr-w" data-kind="' + esc(k) + '" ' +
             'inputmode="numeric" value="' + esc(r && r.withSpares ? r.withSpares : "") + '" ' +
-            'placeholder="not priced" style="width:120px;text-align:right;padding:6px 9px"/></td>' +
+            /* v6.9.503b - font-size:13px, to match its own table. It was inheriting the global
+               15px, same as the challan's Disc% input did. */
+            'placeholder="not priced" style="width:120px;text-align:right;padding:6px 9px;font-size:13px"/></td>' +
           '<td style="padding:5px 9px;text-align:right"><input class="amcr-o" data-kind="' + esc(k) + '" ' +
             'inputmode="numeric" value="' + esc(r && r.withoutSpares ? r.withoutSpares : "") + '" ' +
-            'placeholder="not priced" style="width:120px;text-align:right;padding:6px 9px"/></td></tr>';
+            'placeholder="not priced" style="width:120px;text-align:right;padding:6px 9px;font-size:13px"/></td></tr>';
       }).join("") + '</tbody></table></div>' +
       '<div class="acts" style="margin-top:10px"><button class="btn" data-act="amcr-save">Save the rate card</button>' +
       '<span class="meta" style="align-self:center;font-size:12px">A rate corrected later is a new ' +
@@ -11577,9 +11579,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       h += '<tr style="border-top:1px solid #e2e8f0">' +
         '<td style="padding:5px 4px">' + esc(r.desc) + '<br><span style="color:#94a3b8;font-size:12px">' + esc(r.code) + '</span></td>' +
         '<td style="color:#94a3b8">' + qShow(r.was) + '</td>' +
-        '<td><input id="alt_q' + i + '" inputmode="decimal" value="' + qShow(r.now) + '" style="width:56px;padding:4px" data-act="alt-q" data-i="' + i + '"/>' +
+        /* v6.9.503b - 12px, its own table's size. A 56px cell input was carrying a 15px font. */
+        '<td><input id="alt_q' + i + '" inputmode="decimal" value="' + qShow(r.now) + '" style="width:56px;padding:4px;font-size:12px" data-act="alt-q" data-i="' + i + '"/>' +
         '<div style="font-size:12px;color:' + col + '">' + (diff === 0 ? "full" : (diff > 0 ? "+" + qShow(diff) + " excess" : "-" + qShow(-diff) + " short")) + '</div></td>' +
-        '<td><input id="alt_n' + i + '" value="' + esc(r.note) + '" placeholder="reason" style="width:100%;padding:4px"/></td>' +
+        '<td><input id="alt_n' + i + '" value="' + esc(r.note) + '" placeholder="reason" style="width:100%;padding:4px;font-size:12px"/></td>' +
         '</tr>';
     });
     h += '</table></div>' +
@@ -22658,11 +22661,24 @@ function viewCatalogue() {
       var rows = priced.map(function (x, idx) {
         var disc = x.disc;
         var discCell = admin
-          ? '<input class="bdsc" data-ch="' + esc(c.id) + '" data-code="' + esc(x.code) + '" inputmode="decimal" value="' + (disc > 0 ? esc(disc) : "") + '" placeholder="0" style="width:48px;text-align:center;padding:4px;border:1px solid #cbd5e1;border-radius:5px"/>'
+          /* v6.9.503 - font-size:12px. MEASURED: the app's global rule is
+             `input,select,textarea { font-size:15px }`, and the inline style here overrode the
+             WIDTH and the PADDING and said nothing about the font - so a 15px control sat in a
+             12px table and set the height of every row on the delivery. 28px inside a row that
+             would otherwise be 24. Sixteen items: 624px down to 496px. */
+          ? '<input class="bdsc" data-ch="' + esc(c.id) + '" data-code="' + esc(x.code) + '" inputmode="decimal" value="' + (disc > 0 ? esc(disc) : "") + '" placeholder="0" style="width:38px;text-align:center;padding:2px 3px;font-size:12px;border:1px solid #cbd5e1;border-radius:5px"/>'
           : (disc > 0 ? disc + '%' : '');
-        return '<tr style="border-bottom:1px solid #e2e8f0;background:' + (idx % 2 ? '#f8fafc' : '#fff') + '">' +
-          '<td style="padding:5px 6px;color:#64748b">' + (idx + 1) + '</td>' +
-          '<td style="padding:5px 6px">' + esc(x.desc) + '</td>' +
+        /* v6.9.503 - THE NAME STAYS PUT. This table scrolls sideways on a phone, and a product
+           name that scrolls off the left takes the meaning of every cell in its row with it. The
+           register settled this long ago; xlTable copied it; this is the third table on it.
+           Checked by scrolling the box to its end at 390px and looking at the picture. */
+        var _bg = idx % 2 ? '#f8fafc' : '#fff';
+        var _pin = ';position:sticky;z-index:1;background:' + _bg;
+        return '<tr style="border-bottom:1px solid #e2e8f0;background:' + _bg + '">' +
+          '<td style="padding:5px 6px;color:#64748b' + _pin + ';left:0">' + (idx + 1) + '</td>' +
+          /* nowrap: at 390px this column was 69px and "HR TEE 20/1/2 Female" wrapped to three
+             lines, which is where the other half of the row height came from. */
+          '<td style="padding:5px 6px;white-space:nowrap' + _pin + ';left:26px">' + esc(x.desc) + '</td>' +
           '<td style="padding:5px 6px;text-align:center">' + x.qty + '</td>' +
           '<td style="padding:5px 6px;text-align:right;color:#94a3b8">' + (disc > 0 ? money(x.rate) : '') + '</td>' +
           '<td style="padding:5px 6px;text-align:center">' + discCell + '</td>' +
@@ -22698,9 +22714,18 @@ function viewCatalogue() {
          and its items are always drawn on it. S.chExp / ch-detail still fold the Deliveries
          tab's cards and the pending-return card below, exactly as before. */
       var _rc = chProofAny(c);
-      var _ctbl = '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0">' +
+      /* v6.9.503 - HIS WORDS: "make challan view compact one, its lots of space there".
+         MEASURED at 1000px before changing anything: the table was 974px wide and the PRODUCT
+         COLUMN WAS 625 OF THEM, for names like "HR PIPE 20". width:100% with a fixed width on
+         every numeric column means Product absorbs all the slack, and the Amount - the number he
+         is actually reading - ends up across the room from the name it belongs to.
+         width:auto with max-width:100% makes the table as wide as its content and no wider:
+         974px down to 517px on the desk, unchanged on the phone where it scrolls in its own box. */
+      var _swipe = '<div class="meta" style="font-size:12px;margin:6px 0 2px">Swipe the table sideways for the rate and the amount &rarr;</div>';
+      var _ctbl = _swipe + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:auto;max-width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e2e8f0">' +
         '<thead><tr style="background:#0b3b36;color:#fff">' +
-        '<th style="padding:6px;text-align:left;width:26px">#</th><th style="padding:6px;text-align:left">Product</th>' +
+        '<th style="padding:6px;text-align:left;width:26px;position:sticky;left:0;z-index:2;background:#0b3b36">#</th>' +
+        '<th style="padding:6px;text-align:left;white-space:nowrap;position:sticky;left:26px;z-index:2;background:#0b3b36">Product</th>' +
         '<th style="padding:6px;text-align:center;width:40px">Qty</th><th style="padding:6px;text-align:right;width:66px">Rate</th>' +
         '<th style="padding:6px;text-align:center;width:56px">Disc%</th><th style="padding:6px;text-align:right;width:72px">Net rate</th>' +
         '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' + rows +
