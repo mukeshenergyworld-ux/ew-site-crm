@@ -230,7 +230,7 @@ function gasAsk(){
   m.innerHTML =
     '<div style="max-width:460px;margin:22px auto;padding:16px;border:1px solid rgba(128,128,128,.35);' +
     'border-radius:14px;line-height:1.55">' +
-    '<div style="font-weight:700;font-size:16px;margin-bottom:6px">Server ka pata daalein</div>' +
+    '<div style="font-weight:700;font-size:16px;margin-bottom:6px">Enter the server address</div>' +
     '<div style="font-size:13px;opacity:.85;margin-bottom:12px">' +
     'This app is not joined to the server yet. Paste the Apps Script deployment <b>/exec</b> link here once ' +
     'and it is remembered on this phone only. No PIN and no data goes anywhere from here.</div>' +
@@ -612,7 +612,7 @@ function renderGate(){
   document.getElementById('gate').innerHTML = '<div class="gwrap">' +
     '<div class="gmark">EW</div>' +
     '<h2>EW Visit</h2>' +
-    '<p class="lede">Apna mobile number aur PIN daalein.<br>' +
+    '<p class="lede">Your mobile number and PIN.<br>' +
     'First time? Your PIN is the last 4 digits of your number.</p>' +
     (GERR ? '<div class="gerr" role="alert">' + esc(GERR) + '</div>' : '') +
     '<label for="gm">Mobile number</label>' +
@@ -620,10 +620,10 @@ function renderGate(){
       'placeholder="10 digit" value="' + esc(A.mobile) + '">' +
     '<label for="gp">PIN</label>' +
     '<input id="gp" type="password" inputmode="numeric" autocomplete="current-password" ' +
-      'maxlength="6" placeholder="4 se 6 digit">' +
-    '<button class="go" id="gbtn" onclick="doLogin()">Andar aayein</button>' +
-    '<button class="lnk" onclick="gateHelp()">PIN bhool gaye?</button>' +
-    '<div class="gfoot">Energy World<br>Number badla ho to office se update karwa lein.</div></div>';
+      'maxlength="6" placeholder="4 to 6 digits">' +
+    '<button class="go" id="gbtn" onclick="doLogin()">Sign in</button>' +
+    '<button class="lnk" onclick="gateHelp()">Forgotten your PIN?</button>' +
+    '<div class="gfoot">Energy World<br>If your number has changed, ask the office to update it.</div></div>';
   gate(true);
   var mi = document.getElementById('gm'), pi = document.getElementById('gp');
   pi.addEventListener('keydown', function(e){ if (e.key === 'Enter') doLogin(); });
@@ -640,8 +640,8 @@ function gateHelp(){
 function doLogin(){
   var m = String(document.getElementById('gm').value || '').replace(/\D/g, '').slice(-10);
   var p = String(document.getElementById('gp').value || '').replace(/\D/g, '');
-  if (m.length !== 10){ GERR = 'Poora 10 digit mobile number daalein.'; renderGate(); return; }
-  if (!p){ GERR = 'PIN daalein.'; renderGate(); return; }
+  if (m.length !== 10){ GERR = 'Enter the full 10 digit mobile number.'; renderGate(); return; }
+  if (!p){ GERR = 'Enter the PIN.'; renderGate(); return; }
   var b = document.getElementById('gbtn'); b.disabled = true; b.textContent = 'Checking...';
   A.mobile = m; A.pin = p;
   call('login').then(function(r){
@@ -668,14 +668,14 @@ function renderPinChange(forced){
     '<h2>Change the PIN</h2>' +
     '<p class="lede">' + (PFORCE
       ? 'First time here. Choose your own PIN.'
-      : 'Naya PIN chun lein. 4 se 6 digit.') + '</p>' +
+      : 'Choose a new PIN. 4 to 6 digits.') + '</p>' +
     (PERR ? '<div class="gerr" role="alert">' + esc(PERR) + '</div>' : '') +
-    '<label for="p1">Naya PIN</label>' +
+    '<label for="p1">New PIN</label>' +
     '<input id="p1" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">' +
     '<label for="p2">Type it again</label>' +
     '<input id="p2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">' +
     '<button class="go" id="pbtn" onclick="doPinChange()">Save the PIN</button>' +
-    (PFORCE ? '' : '<button class="lnk" onclick="gate(false)">Rehne dein</button>') +
+    (PFORCE ? '' : '<button class="lnk" onclick="gate(false)">Not now</button>') +
     '<div class="gfoot">The PIN is never written down anywhere. Only its lock is kept on the sheet.</div></div>';
   gate(true);
   var b = document.getElementById('p2');
@@ -686,8 +686,8 @@ function renderPinChange(forced){
 function doPinChange(){
   var a = String(document.getElementById('p1').value || '').replace(/\D/g, '');
   var b = String(document.getElementById('p2').value || '').replace(/\D/g, '');
-  if (!/^\d{4,6}$/.test(a)){ PERR = 'PIN 4 se 6 digit ka hona chahiye.'; renderPinChange(PFORCE); return; }
-  if (/^(\d)\1+$/.test(a)){ PERR = 'Ek hi digit baar baar mat rakhein.'; renderPinChange(PFORCE); return; }
+  if (!/^\d{4,6}$/.test(a)){ PERR = 'The PIN must be 4 to 6 digits.'; renderPinChange(PFORCE); return; }
+  if (/^(\d)\1+$/.test(a)){ PERR = 'Do not use the same digit over and over.'; renderPinChange(PFORCE); return; }
   if (a !== b){ PERR = 'The two PINs are different.'; renderPinChange(PFORCE); return; }
   var btn = document.getElementById('pbtn'); btn.disabled = true; btn.textContent = 'Saving...';
   call('changePin', { newPin: a }).then(function(r){
@@ -718,9 +718,9 @@ function offerInstall(){
   var bar = document.getElementById('inst');
   bar.innerHTML = '<div class="t">' + (DEFER
     ? '<b>Keep it on the phone.</b> A visit still writes with no signal.'
-    : '<b>Phone mein rakh lein.</b> Neeche <b>Share</b> dabayein, phir <b>Add to Home Screen</b>.')
-    + '</div>' + (DEFER ? '<button onclick="doInstall()">Rakh lein</button>' : '') +
-    '<button class="x" onclick="hideInstall()">Baad mein</button>';
+    : '<b>Keep it on the phone.</b> Press <b>Share</b> below, then <b>Add to Home Screen</b>.')
+    + '</div>' + (DEFER ? '<button onclick="doInstall()">Keep it</button>' : '') +
+    '<button class="x" onclick="hideInstall()">Later</button>';
   bar.classList.add('on');
 }
 function doInstall(){
@@ -793,7 +793,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.08.17-1';        /* which build of this file is running */
+var BUILD  = '2026.09.18-1';        /* which build of this file is running */
 var APPKEY = 'VISIT';
 var VKEY   = 'ew_visit_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -848,9 +848,9 @@ function verBar(v, note, force){
   var b = document.getElementById('vbar');
   if (!b) return;
   b.innerHTML = '<div class="t"><b>A new version is out.</b> ' +
-      esc(note || 'App ko ek baar refresh kar lein.') + '</div>' +
+      esc(note || 'Refresh the app once.') + '</div>' +
       '<button onclick="verWipe(VNEW)">Update</button>' +
-      (force ? '' : '<button class="x" onclick="verHide()">Baad mein</button>');
+      (force ? '' : '<button class="x" onclick="verHide()">Later</button>');
   b.classList.add('on');
   if (force) setTimeout(function(){ verWipe(VNEW); }, 6000);
 }
