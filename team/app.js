@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.505";
+  var APP_VERSION = "6.9.506";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2668,6 +2668,51 @@ window.addEventListener("beforeunload", function (ev) {
   function prodGrid(list) {
     return '<div class="pv-grid">' + list.map(prodTile).join("") + '</div>';
   }
+  /* ======== HIS ITEM 29: THE CATALOGUE AS A SHEET  (v6.9.506) ========
+     MEASURED: 1,051 products, 1,033 of them with a photo. The tiles are NOT wrong - a man
+     recognises a fitting by looking at it faster than by reading "K232020", and that is the
+     right shape for PICKING one.
+
+     It is the wrong shape for SCANNING, which is what he is asking for. Sixty tiles to find out
+     what four products cost, when the answer is four rows.
+
+     So both, and the sheet is what he lands on because that is what he asked for. A photo is
+     still one tap away: the code opens the product with its picture, exactly as a tile does. */
+  function prodSheet(list) {
+    /* THE PRICE IS THIRD, NOT LAST. Rendered at 390px and looked at: with the price at the far
+       right the table is 636px in a 364px box, so the ONE number he opened this screen to read
+       was the one off the edge. Brand and category are usually already settled by the chips
+       above; the price never is. Same lesson as the register's BALANCE AFTER in 6.9.496 - his
+       own words then were "put balance after after amt column". */
+    var cols = [
+      { k: "code", t: "CODE", w: "96px" },
+      { k: "desc", t: "PRODUCT", w: "150px" },
+      { k: "price", t: "LIST PRICE", r: 1, n: 1 },
+      { k: "brand", t: "BRAND" },
+      { k: "cat", t: "CATEGORY" },
+      { k: "unit", t: "UNIT" }
+    ];
+    var rows = list.map(function (p) {
+      var d = descLines(p.desc || p.family);
+      return {
+        v: { code: p.code, desc: d.title, brand: p.brand || "", cat: p.cat || "", unit: p.unit || "", price: Number(p.price) || 0 },
+        cells: {
+          /* the act is on the CODE, not the row - these rows are plain text but the rule is the
+             register's and it does not change per table */
+          code: '<b data-act="pv-open" data-code="' + esc(p.code) + '" style="cursor:pointer;color:#0f766e">' + esc(p.code) + '</b>',
+          desc: esc(d.title),
+          brand: esc(p.brand || "\u2014"),
+          cat: esc(p.cat || "\u2014"),
+          unit: esc(p.unit || "\u2014"),
+          price: money(p.price)
+        }
+      };
+    });
+    return xlTable("products", cols, rows, "the brand, the category and the unit");
+  }
+  /* prodGrid is called from three places - the search results, the per-brand taster and the
+     browse list. This decides once so none of the three had to learn anything. */
+  function prodList(list) { return S.pvTiles ? prodGrid(list) : prodSheet(list); }
 
   /* One product, opened out: the big picture, every feature line, and the price
      in full. This is the screen someone reads out on the phone to a customer. */
@@ -2744,6 +2789,9 @@ window.addEventListener("beforeunload", function (ev) {
     } catch (e) {}
 
     var h = '<div class="row"><input class="grow" id="q" placeholder="Search by code, name, brand or family..." value="' + esc(S.q) + '"/>' +
+      /* v6.9.506 - his item 29. The sheet is the default; the tiles are one tap away and the
+         choice sticks for the session. */
+      xlToggle("products", !!S.pvTiles) +
       '<button class="btn ghost" data-act="cat-reload">Reload</button></div>' +
       '<div class="meta" style="margin:-2px 0 6px">' + PRODUCTS.length + ' products' +
       (loadedAt ? ' &middot; price list taken ' + esc(loadedAt) : "") + '</div>';
@@ -2765,7 +2813,7 @@ window.addEventListener("beforeunload", function (ev) {
       if (!hits.length) return h + '<div class="empty">Nothing in the catalogue matches that.</div>';   /* v6.9.399 - English */
       var cap = S.pvMore || 60;
       h += '<div class="meta">' + hits.length + ' found' + (hits.length > cap ? ' - first ' + cap : "") + '</div>' +
-        prodGrid(hits.slice(0, cap));
+        prodList(hits.slice(0, cap));
       if (hits.length > cap) h += '<div class="row" style="margin-top:10px"><button class="btn ghost grow" data-act="pv-more">Show more</button></div>';
       return h;
     }
@@ -2802,7 +2850,7 @@ window.addEventListener("beforeunload", function (ev) {
     list = list.slice().sort(function (a, b) { return String(a.desc).localeCompare(String(b.desc)); });
     var cap2 = S.pvMore || 60;
     h += '<div class="meta" style="margin-top:8px">' + list.length + ' product' + (list.length > cap2 ? ' - first ' + cap2 : "") + '</div>' +
-      prodGrid(list.slice(0, cap2));
+      prodList(list.slice(0, cap2));
     if (list.length > cap2) h += '<div class="row" style="margin-top:10px"><button class="btn ghost grow" data-act="pv-more">Show more</button></div>';
     return h;
   }
@@ -35068,6 +35116,8 @@ function viewCatalogue() {
       'Set each live site to its construction stage — the board shows exactly what to pitch there, to whom, and which windows close soon. This is the single biggest lever in the app.</div>';
 
     h += '<div class="row"><input class="grow" id="q" placeholder="Search sites, client, plumber, architect..." value="' + esc(S.q) + '"/>' +
+      /* v6.9.506 - his item 25 */
+      xlToggle("pitch", !!S.pbCards) +
       '<button class="btn" data-act="site-new">+ New site</button></div>';
 
     /* sites still missing a stage — nothing can be pitched until the stage is set */
@@ -35092,6 +35142,38 @@ function viewCatalogue() {
           '<h3>' + sn + '. ' + esc(stage) + ' <span class="pill due">' + here.length + ' site(s)</span>' +
           (def.win ? ' <span class="pill soon">window closing</span>' : '') + '</h3>' +
           '<div class="meta"><b>Pitch:</b> ' + esc(def.lines.join(" · ") || "-") + '</div>';
+        /* ======== HIS ITEM 25: THE BOARD AS A SHEET  (v6.9.506) ========
+           The grouping by stage is the point of this screen and it is kept - what to pitch
+           depends on the stage and nothing else. What the cards could not answer is "which of my
+           sites has no plumber on it" or "every site Munna is on", because the architect, the
+           plumber and the builder are a run-on line inside a card. On a sheet they are columns,
+           and a column sorts. */
+        if (!S.pbCards) {
+          var _prows = here.map(function (st) {
+            return {
+              v: { name: st.name, client: st.client || "", arch: st.architect || "", plumb: st.plumber || "", build: st.builder || "" },
+              cells: {
+                name: '<b data-act="site-open" data-id="' + esc(st.id) + '" style="cursor:pointer;color:#0f766e">' + esc(st.name) + '</b>',
+                client: esc(st.client || "\u2014"),
+                /* a missing plumber or architect is the thing he is looking FOR on this screen,
+                   so it is red and not an empty cell */
+                arch: st.architect ? esc(st.architect) : '<span style="color:#dc2626">none</span>',
+                plumb: st.plumber ? esc(st.plumber) : '<span style="color:#dc2626">none</span>',
+                build: esc(st.builder || "\u2014"),
+                go: '<button class="btn sm" data-act="matrix" data-id="' + esc(st.id) + '" style="padding:2px 8px;font-size:12px">Pitch</button>'
+              }
+            };
+          });
+          h += xlTable("pitch-" + sn, [
+            { k: "name", t: "SITE", w: "140px" }, { k: "client", t: "CLIENT" },
+            { k: "arch", t: "ARCHITECT" }, { k: "plumb", t: "PLUMBER" },
+            /* a heading with no text is still a sort button, and a button that looks tappable
+               and does nothing is a small lie. It says what the column is. */
+            { k: "build", t: "BUILDER" }, { k: "go", t: "PITCH" }
+          ], _prows, "the architect, the plumber and the builder");
+          h += '</div>';
+          return;
+        }
         here.forEach(function (st) {
           var who = [st.architect ? "Arch: " + st.architect : "", st.plumber ? "Plumber: " + st.plumber : "", st.builder ? "Builder: " + st.builder : ""].filter(Boolean).join(" · ");
           h += '<div class="acts" style="align-items:center;border-top:1px solid #f1f5f9;margin-top:8px;padding-top:8px">' +
@@ -40960,7 +41042,12 @@ function viewCatalogue() {
       keepScroll = true; render(); return;
     }
     if (act === "xl-cards") {
-      if ((t.getAttribute("data-s") || "") === "partners") S.pCards = !S.pCards;
+      var _xc = t.getAttribute("data-s") || "";
+      if (_xc === "partners") S.pCards = !S.pCards;
+      /* v6.9.506 - and the two new ones. Each screen keeps its own choice: a man who wants the
+         catalogue as pictures does not necessarily want his sites as cards. */
+      else if (_xc === "products") S.pvTiles = !S.pvTiles;
+      else if (_xc === "pitch") S.pbCards = !S.pbCards;
       keepScroll = true; render(); return;
     }
     if (act === "p-role") {
