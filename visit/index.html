@@ -574,7 +574,7 @@ function saveVisit(){
       resetForm();
       loadVisits();
     } else {
-      hold(rec, (r && r.err) || 'Server ne mana kiya');
+      hold(rec, (r && r.err) || 'The server refused it');
     }
   }).catch(function(){
     BUSY = false;
@@ -793,7 +793,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.09.18-1';        /* which build of this file is running */
+var BUILD  = '2026.09.18-2';        /* which build of this file is running */
 var APPKEY = 'VISIT';
 var VKEY   = 'ew_visit_ver_v1';
 var VNEW   = '', VBUSY = false;
