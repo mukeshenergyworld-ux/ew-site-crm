@@ -165,21 +165,21 @@ function gasSet(){
   var v  = String((el && el.value) || '').trim();
   if (!n) return;
   if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(v)){
-    n.textContent = 'Yeh Apps Script ka link nahi lag raha. Link https://script.google.com/... se shuru aur /exec par khatam hona chahiye.';
+    n.textContent = 'That does not look like an Apps Script link. It should start with https://script.google.com/... and end with /exec.';
     return;
   }
-  n.textContent = 'Server check kar rahe hain...';
+  n.textContent = 'Checking the server...';
   fetch(v, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
              body: JSON.stringify({ action:'ping' }) })
     .then(function(x){ return x.json(); })
     .then(function(r){
       if (!r || !r.ok) throw 0;
       try { localStorage.setItem(GKEY, v); } catch(e){}
-      n.textContent = 'Server mil gaya. App khul raha hai...';
+      n.textContent = 'Server found. Opening the app...';
       setTimeout(function(){ location.replace(location.pathname); }, 400);
     })
     .catch(function(){
-      n.textContent = 'Is link par server nahi mila. Apps Script deployment "Anyone" par set hai kya? Link dobara copy karke daalein.';
+      n.textContent = 'No server at that link. Is the Apps Script deployment set to "Anyone"? Copy the link again and paste it.';
     });
 }
 function gasAsk(){
@@ -188,19 +188,19 @@ function gasAsk(){
   m.innerHTML =
     '<div style="max-width:460px;margin:22px auto;padding:16px;border:1px solid rgba(128,128,128,.35);' +
     'border-radius:14px;line-height:1.55">' +
-    '<div style="font-weight:700;font-size:16px;margin-bottom:6px">Server ka pata daalein</div>' +
+    '<div style="font-weight:700;font-size:16px;margin-bottom:6px">Enter the server address</div>' +
     '<div style="font-size:13px;opacity:.85;margin-bottom:12px">' +
-    'App abhi server se juda nahi hai. Apps Script deployment ka <b>/exec</b> link yahan ek baar paste ' +
-    'kar dein. Yeh sirf is phone par yaad rahega. Koi PIN ya data yahan nahi jaata.</div>' +
+    'This app is not joined to the server yet. Paste the Apps Script deployment <b>/exec</b> link ' +
+    'here once. It is remembered on this phone only. No PIN and no data goes anywhere from here.</div>' +
     '<input id="gasUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" ' +
     'placeholder="https://script.google.com/macros/s/.../exec" ' +
     'style="width:100%;box-sizing:border-box;font-size:16px;padding:11px 12px;border-radius:10px;' +
     'border:1px solid rgba(128,128,128,.5);background:transparent;color:inherit">' +
     '<button onclick="gasSet()" style="margin-top:10px;width:100%;min-height:44px;font-size:15px;' +
-    'font-weight:700;border:0;border-radius:10px;background:#2F6E5F;color:#fff">Jodein</button>' +
+    'font-weight:700;border:0;border-radius:10px;background:#2F6E5F;color:#fff">Join</button>' +
     '<div id="gasNote" style="font-size:12.5px;opacity:.85;margin-top:10px;min-height:18px"></div>' +
     '<div style="font-size:12px;opacity:.7;margin-top:10px">' +
-    'Link kahan se milta hai: Apps Script &rarr; Deploy &rarr; Manage deployments &rarr; Web app URL.</div>' +
+    'Where the link comes from: Apps Script &rarr; Deploy &rarr; Manage deployments &rarr; Web app URL.</div>' +
     '</div>';
 }
 if (!GAS) GAS = gasSaved();
@@ -291,13 +291,13 @@ function viewCast(){
   var e = EDIT || { id:'', kind:(D.kinds[0]||'Update'), title:'', body:'', img:'', brand:'',
                     link:'', till:'', audience:'ALL', cities:'ALL', pinned:false };
   var h = '<div class="card">' +
-    '<div class="fld"><label>Kis tarah ki khabar</label><select id="kind">' +
+    '<div class="fld"><label>What kind of news</label><select id="kind">' +
       D.kinds.map(function(k){ return '<option' + (e.kind===k?' selected':'') + '>' + esc(k) + '</option>'; }).join('') +
     '</select></div>' +
     '<div class="fld"><label>Heading</label>' +
-      '<input id="title" maxlength="120" placeholder="TECE concealed cistern - naya model" value="' + esc(e.title) + '"></div>' +
-    '<div class="fld"><label>Baat</label>' +
-      '<textarea id="body" maxlength="1200" placeholder="Saathiyon ke liye kya hai, kab tak hai, kya karna hai.">' + esc(e.body) + '</textarea></div>' +
+      '<input id="title" maxlength="120" placeholder="TECE concealed cistern - new model" value="' + esc(e.title) + '"></div>' +
+    '<div class="fld"><label>The message</label>' +
+      '<textarea id="body" maxlength="1200" placeholder="What it is for the partners, how long it runs, what they have to do.">' + esc(e.body) + '</textarea></div>' +
     '<div class="two">' +
       '<div class="fld"><label>Brand</label><input id="brand" value="' + esc(e.brand) + '" placeholder="TECE"></div>' +
       '<div class="fld"><label>Valid till</label><input id="till" type="date" value="' + esc(e.till) + '"></div>' +
@@ -306,23 +306,23 @@ function viewCast(){
       '<input id="img" placeholder="https://... (Drive link ho to Anyone-with-link)" value="' + esc(e.img) + '"></div>' +
     '<div class="two">' +
       '<div class="fld"><label>Kis ko dikhe</label><select id="audience">' +
-        '<option value="ALL"' + (e.audience==='ALL'?' selected':'') + '>Sab partners</option>' +
+        '<option value="ALL"' + (e.audience==='ALL'?' selected':'') + '>All partners</option>' +
         D.types.map(function(t){ return '<option value="' + esc(t) + '"' +
           (e.audience===t?' selected':'') + '>Sirf ' + esc(t) + '</option>'; }).join('') +
       '</select></div>' +
-      '<div class="fld"><label>Shehar</label><input id="cities" value="' + esc(e.cities) + '" placeholder="ALL ya Panipat, Karnal"></div>' +
+      '<div class="fld"><label>City</label><input id="cities" value="' + esc(e.cities) + '" placeholder="ALL, or Panipat, Karnal"></div>' +
     '</div>' +
     '<div class="fld"><label><input type="checkbox" id="pinned" style="width:auto;min-height:0;margin-right:8px"' +
-      (e.pinned?' checked':'') + '>Upar chipka kar rakhein</label></div>' +
+      (e.pinned?' checked':'') + '>Pin it to the top</label></div>' +
     '<div class="two">' +
-      '<button class="pri" onclick="saveCast(0)">Draft save karein</button>' +
-      '<button onclick="clearEdit()">Naya</button>' +
+      '<button class="pri" onclick="saveCast(0)">Save as draft</button>' +
+      '<button onclick="clearEdit()">New</button>' +
     '</div>' +
-    '<div class="note" style="margin-top:9px">Save karne se kisi ko kuch nahi jaata. ' +
-      'Bhejne ke liye neeche list mein <b>Bhejein</b> dabana padega.</div>' +
+    '<div class="note" style="margin-top:9px">Saving sends nothing to anybody. ' +
+      'To send it, press <b>Send</b> on it in the list below.</div>' +
   '</div>';
 
-  h += '<h2>Pehle ki khabrein</h2>';
+  h += '<h2>Everything sent before</h2>';
   h += D.casts.length ? D.casts.map(castRow).join('')
      : '<div class="empty">Abhi tak koi broadcast nahi.</div>';
   return h;
@@ -336,7 +336,7 @@ function castRow(c){
       '<span class="tag ' + tag + '">' + lbl + '</span>' +
       '<span class="note">' + esc(c.kind) + ' &middot; ' + esc(c.on) + '</span>' +
       '<span class="note" style="margin-left:auto">' + c.seen + ' ne dekha &middot; ' +
-        c.interested + ' ne haan ki</span>' +
+        c.interested + ' said yes</span>' +
     '</div>' +
     '<div class="t">' + esc(c.title) + '</div>' +
     (c.body ? '<div class="s">' + esc(c.body).slice(0,140) + (c.body.length>140?'...':'') + '</div>' : '') +
@@ -346,10 +346,10 @@ function castRow(c){
          An ended one can still be re-sent, but it says so and the modal names the expiry. */
       (c.status==='Live' ? ''
         : '<button class="' + (c.status==='Ended' ? '' : 'brass') + '" onclick="sendCast(\'' +
-          esc(c.id) + '\')">' + (c.status==='Ended' ? 'Phir se bhejein' : 'Bhejein') + '</button>') +
-      '<button onclick="editCast(\'' + esc(c.id) + '\')">Badlein</button>' +
+          esc(c.id) + '\')">' + (c.status==='Ended' ? 'Send again' : 'Send') + '</button>') +
+      '<button onclick="editCast(\'' + esc(c.id) + '\')">Change</button>' +
       (c.status==='Live'
-        ? '<button class="warn" onclick="endCast(\'' + esc(c.id) + '\')">Band karein</button>' : '') +
+        ? '<button class="warn" onclick="endCast(\'' + esc(c.id) + '\')">Stop it</button>' : '') +
     '</div></div>';
 }
 
@@ -361,11 +361,11 @@ function collect(){
 }
 function saveCast(){
   var p = collect();
-  if (!p.title){ toast('Heading likhni zaroori hai.'); return; }
+  if (!p.title){ toast('A heading is required.'); return; }
   call('bcastSave', p).then(function(r){
-    if (r && r.ok){ toast('Draft save ho gaya. Ab bhej sakte hain.'); EDIT=null; reload(); }
-    else toast((r && r.err) || 'Save nahi hua.');
-  }).catch(function(){ toast('Network slow hai.'); });
+    if (r && r.ok){ toast('Draft saved. You can send it now.'); EDIT=null; reload(); }
+    else toast((r && r.err) || 'It was not saved.');
+  }).catch(function(){ toast('The network is slow.'); });
 }
 function editCast(id){
   EDIT = D.casts.filter(function(c){ return c.id===id; })[0] || null;
@@ -382,34 +382,34 @@ function sendCast(id){
      body pushed both buttons off the bottom of a phone with no way to scroll to them. */
   var expired = c.till && String(c.till) < (new Date()).toISOString().slice(0,10);
   ewAsk({
-    warn: 'Yeh sab partners ke app par turant dikhne lagega. Ek baar padh lein.' +
-          (expired ? '<br><b>Dhyaan dein:</b> is offer ki taareekh (' + esc(c.till) +
-                     ') nikal chuki hai.' : ''),
+    warn: 'This goes onto every partner\u2019s app straight away. Read it through once.' +
+          (expired ? '<br><b>Careful:</b> this offer\u2019s date (' + esc(c.till) +
+                     ') has already passed.' : ''),
     body: '<div class="prev"><span class="tag">' + esc(c.kind) + '</span>' +
       '<h3>' + esc(c.title) + '</h3>' +
       (c.body ? '<p>' + esc(c.body) + '</p>' : '') + '</div>' +
       '<div class="fld" style="margin-top:12px"><label>' +
       '<input type="checkbox" data-opt checked style="width:auto;min-height:0;margin-right:8px">' +
-      'Telegram par bhi bhejein</label></div>',
-    yes: 'Haan, bhej dein',
+      'Send on Telegram as well</label></div>',
+    yes: 'Yes, send it',
     onYes: function(x){
       call('bcastSend', { id:id, telegram: !!x.opt }).then(function(r){
         if (r && r.ok) {
           /* r.reach may be absent; "undefined partners ko dikhega" is not a message */
-          toast(r.reach != null ? 'Live ho gaya. ' + r.reach + ' partners ko dikhega.'
-                                : 'Live ho gaya.');
+          toast(r.reach != null ? 'It is live. ' + r.reach + ' partners will see it.'
+                                : 'It is live.');
           reload();
         }
         else toast((r && r.err) || 'Nahi bheja ja saka.');
-      }).catch(function(){ toast('Network slow hai.'); });
+      }).catch(function(){ toast('The network is slow.'); });
     }
   });
 }
 function endCast(id){
   call('bcastEnd', { id:id }).then(function(r){
-    if (r && r.ok){ toast('Band kar diya. Record wahin hai, mita nahi.'); reload(); }
-    else toast((r && r.err) || 'Nahi hua.');
-  }).catch(function(){ toast('Network slow hai.'); });
+    if (r && r.ok){ toast('Stopped. The record is still there \u2014 nothing was deleted.'); reload(); }
+    else toast((r && r.err) || 'That did not go through.');
+  }).catch(function(){ toast('The network is slow.'); });
 }
 
 /* ============================== PEOPLE ==============================
@@ -457,8 +457,8 @@ function personRow(p){
     '<div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap">' +
       '<button onclick="askResetPin(' + q + ')">PIN reset</button>' +
       (blocked
-        ? '<button onclick="setBlock(' + q + ',0)">Wapas chalu</button>'
-        : '<button class="warn" onclick="setBlock(' + q + ',1)">Band karein</button>') +
+        ? '<button onclick="setBlock(' + q + ',0)">Turn back on</button>'
+        : '<button class="warn" onclick="setBlock(' + q + ',1)">Block sign in</button>') +
     '</div></div></div>';
 }
 
@@ -476,13 +476,13 @@ function viewPeople(){
   var h = '';
   if (PMSG) h += '<div class="okbox">' + PMSG + '</div>';
 
-  h += '<div class="warnbox">Sign in ka tareeka: <b>username = mobile number</b>, ' +
-       '<b>pehla PIN = usi number ke aakhri 4 digit</b>. Partner ka number Associates ' +
-       'sheet mein badlein - naya number usi waqt chalne lagta hai aur uska PIN, ' +
-       'uske points aur uska poora hisaab uske saath chalte hain.</div>';
+  h += '<div class="warnbox">How signing in works: <b>username = mobile number</b>, ' +
+       '<b>first PIN = the last 4 digits of that number</b>. Change a partner\u2019s number in the ' +
+       'Associates sheet \u2014 the new number works from that moment, and his PIN, his points and ' +
+       'his whole account go with him.</div>';
 
-  h += '<div class="card"><div class="fld"><label>Dhoondhein</label>' +
-    '<input id="pq" placeholder="Naam, ID ya number" value="' + esc(PQ) + '" ' +
+  h += '<div class="card"><div class="fld"><label>Search</label>' +
+    '<input id="pq" placeholder="Name, ID or number" value="' + esc(PQ) + '" ' +
     'oninput="pqType(this.value)"></div>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
       ['', 'PARTNER', 'EXEC', 'OWNER'].map(function(k){
@@ -491,7 +491,7 @@ function viewPeople(){
           (k ? esc(kindLabel(k)) : 'Sab') + '</button>'; }).join('') +
     '</div></div>';
 
-  h += '<h2>Sign in kar sakte hain (' + list.length + ')' +
+  h += '<h2>Can sign in (' + list.length + ')' +
        (locked ? ' &middot; ' + locked + ' locked' : '') + '</h2>';
   h += list.length
      ? '<div class="card">' + list.slice(0, 120).map(personRow).join('') + '</div>' +
@@ -509,27 +509,27 @@ function viewPeople(){
           esc(w.mobile || 'number nahi') + '</div></div>' +
         (w.mobile
           ? '<button onclick="waInvite(\'' + esc(w.mobile) + '\',\'' +
-            esc(String(w.name || '').replace(/\'/g, '')) + '\')">Bulayein</button>'
-          : '<span class="note">number chahiye</span>') +
+            esc(String(w.name || '').replace(/\'/g, '')) + '\')">Invite</button>'
+          : '<span class="note">no number</span>') +
         '</div>'; }).join('') + '</div>';
-    h += '<div class="note">Inka PIN pehle se taiyaar hai - unke number ke aakhri 4 digit. ' +
-         'Sirf app ka pata aur yeh baat bhejni hai.</div>';
+    h += '<div class="note">Their PIN is ready already \u2014 the last 4 digits of their number. ' +
+         'All you have to send is the app address and this message.</div>';
   }
 
   /* adding an executive - partners are never added from here */
-  h += '<h2>Naya executive jodein</h2>';
+  h += '<h2>Add an executive</h2>';
   h += '<div class="card">' +
-    '<div class="two"><div class="fld"><label>Naam</label>' +
-      '<input id="uName" placeholder="Poora naam"></div>' +
+    '<div class="two"><div class="fld"><label>Name</label>' +
+      '<input id="uName" placeholder="Full name"></div>' +
     '<div class="fld"><label>Mobile</label>' +
       '<input id="uMob" type="tel" inputmode="numeric" maxlength="10" placeholder="10 digit"></div></div>' +
-    '<div class="fld"><label>Kis tarah ka</label><select id="uKind">' +
+    '<div class="fld"><label>What kind</label><select id="uKind">' +
       '<option value="EXEC">Executive (Visit app)</option>' +
-      '<option value="OWNER">Owner (yeh console)</option></select></div>' +
-    '<button class="pri wide" onclick="addUser()">Sign in banayein</button>' +
-    '<div class="note" style="margin-top:9px">Partner yahan se nahi jud sakta. ' +
-      'Partner Associates sheet se aata hai aur wahin se aayega - taaki ek hi jagah ' +
-      'sach rahe.</div>' +
+      '<option value="OWNER">Owner (this console)</option></select></div>' +
+    '<button class="pri wide" onclick="addUser()">Create the sign in</button>' +
+    '<div class="note" style="margin-top:9px">A partner cannot be added from here. ' +
+      'A partner comes from the Associates sheet and always will \u2014 so there is one place ' +
+      'that is true.</div>' +
     '<div id="uOut"></div></div>';
 
   return h;
@@ -559,47 +559,47 @@ function pqType(v){
 function askResetPin(kind, refId, name){
   ewAsk({
     danger: true,
-    warn: '<b>' + esc(name || refId) + '</b> ka PIN reset karein?',
-    body: '<div class="note">Unka chuna hua PIN chala jayega aur wapas nahi aayega. ' +
-          'Naya PIN unke number ke aakhri 4 digit ho jayega - jab tak woh dobara sign in ' +
-          'karke apna PIN nahi chunte, koi bhi unka khaata khol sakta hai.</div>',
-    yes: 'Haan, reset karein',
+    warn: 'Reset <b>' + esc(name || refId) + '</b>\u2019s PIN?',
+    body: '<div class="note">The PIN they chose is gone and does not come back. ' +
+          'The new PIN becomes the last 4 digits of their number \u2014 and until they sign in ' +
+          'again and choose their own, anybody can open their account.</div>',
+    yes: 'Yes, reset it',
     onYes: function(){ resetPin(kind, refId, name); }
   });
 }
 function resetPin(kind, refId, name){
   call('resetPin', { kind: kind, refId: refId, name: name }).then(function(r){
     if (r && r.ok){
-      PMSG = esc(name || refId) + ' ka PIN reset ho gaya.<br>Naya PIN: ' +
+      PMSG = esc(name || refId) + '\u2019s PIN has been reset.<br>New PIN: ' +
              '<span class="pin">' + esc(r.pin) + '</span><br>' +
-             '<span class="note">Yehi unke number ke aakhri 4 digit hain. ' +
-             'Agli baar sign in karke apna naya PIN chun lenge.</span>';
+             '<span class="note">These are the last 4 digits of their number. ' +
+             'Next time they sign in they will choose their own.</span>';
       refreshPeople();
-    } else toast((r && r.err) || 'Reset nahi hua.');
-  }).catch(function(){ toast('Network slow hai.'); });
+    } else toast((r && r.err) || 'The reset did not go through.');
+  }).catch(function(){ toast('The network is slow.'); });
 }
 
 function setBlock(kind, refId, name, block){
   call('userBlock', { kind: kind, refId: refId, block: !!block }).then(function(r){
     if (r && r.ok){
       PMSG = esc(name || refId) + (block
-        ? ' ka sign in band kar diya. Record, points aur hisaab sab waise ke waise hain.'
-        : ' ka sign in wapas chalu kar diya.');
+        ? '\u2019s sign in is blocked. The record, the points and the account are all exactly as they were.'
+        : '\u2019s sign in is back on.');
       refreshPeople();
-    } else toast((r && r.err) || 'Nahi hua.');
-  }).catch(function(){ toast('Network slow hai.'); });
+    } else toast((r && r.err) || 'That did not go through.');
+  }).catch(function(){ toast('The network is slow.'); });
 }
 
 function addUser(){
   var p = { kind: val('uKind'), name: val('uName'), mobile: val('uMob') };
-  if (!p.name){ toast('Naam daalein.'); return; }
-  if (String(p.mobile).replace(/\D/g, '').length !== 10){ toast('Poora 10 digit mobile daalein.'); return; }
+  if (!p.name){ toast('Enter a name.'); return; }
+  if (String(p.mobile).replace(/\D/g, '').length !== 10){ toast('Enter the full 10 digit mobile number.'); return; }
   call('userAdd', p).then(function(r){
     if (r && r.ok){
-      PMSG = esc(r.msg || 'Ban gaya.') + '<br><span class="note">ID ' + esc(r.refId) + '</span>';
+      PMSG = esc(r.msg || 'Done.') + '<br><span class="note">ID ' + esc(r.refId) + '</span>';
       refreshPeople();
     } else toast((r && r.err) || 'Nahi bana.');
-  }).catch(function(){ toast('Network slow hai.'); });
+  }).catch(function(){ toast('The network is slow.'); });
 }
 
 function refreshPeople(){
@@ -612,12 +612,14 @@ function refreshPeople(){
 
 function waInvite(phone, name){
   var msg = encodeURIComponent(
-    'Namaste ' + name + ' ji,\n\nEnergy World ka apna app - EW Saathi. ' +
-    'Ismein aapke points, naye product aur scheme sab dikhte hain.\n\n' +
+    /* The greeting stays in the house voice - every message this business sends a partner or a
+     customer opens this way. See t_english.js. The rest is English, on his standing rule. */
+    'Namaste ' + name + ' ji,\n\nEnergy World now has its own app - EW Saathi. ' +
+    'Your points, new products and every scheme are all in it.\n\n' +
     (SAATHI_URL()) +
-    '\n\nUsername: aapka yahi mobile number\nPehli baar ka PIN: aapke number ke ' +
-    'aakhri 4 digit\n\nAndar jaate hi PIN badal lein. App ko phone ki home screen ' +
-    'par laga lein.\n\n- Energy World');
+    '\n\nUsername: this same mobile number\nFirst PIN: the last 4 digits of ' +
+    'your number\n\nChange the PIN as soon as you are in. Keep the app on your phone\u2019s ' +
+    'home screen.\n\n- Energy World');
   var num = String(phone || '').replace(/\D/g, '');
   if (num.length === 10) num = '91' + num;
   window.open('https://wa.me/' + num + '?text=' + msg, '_blank');
@@ -640,7 +642,7 @@ function SAATHI_URL(){
 --------------------------------------------------------------------- */
 var VMSG = '', VAPP = 'ALL', VFORCE = false, VARM = false;
 
-var VAPPS = [['ALL','Sab apps'],['SAATHI','Saathi'],['VISIT','Visit'],
+var VAPPS = [['ALL','All apps'],['SAATHI','Saathi'],['VISIT','Visit'],
              ['CONSOLE','Console'],['CRM','Team CRM']];
 
 function verLabel(k){
@@ -653,52 +655,52 @@ function viewUpd(){
   var h = '';
   if (VMSG) h += '<div class="okbox">' + VMSG + '</div>';
 
-  h += '<div class="warnbox">Pehle nayi file GitHub par chadhayein. ' +
-       '<b>Uske baad</b> yeh button dabayein. Har phone agli baar app kholte hi ' +
-       'purana version phenk kar naya le lega - kisi ko phone karne ki zaroorat nahi.</div>';
+  h += '<div class="warnbox">Upload the new file to GitHub first. ' +
+       '<b>Then</b> press this button. Every phone throws away the old version and takes the ' +
+       'new one the next time the app is opened \u2014 nobody has to be telephoned.</div>';
 
-  h += '<h2>Abhi kaunsa version chal raha hai</h2><div class="card">';
+  h += '<h2>What is running right now</h2><div class="card">';
   VAPPS.forEach(function(a){
     var v = V[a[0]] || {};
     h += '<div class="row"><div style="flex:1;min-width:0">' +
          '<div class="t">' + esc(a[1]) + '</div>' +
-         '<div class="s">' + esc(v.note || 'koi note nahi') +
-         (v.force ? ' &middot; <b>zaroori</b>' : '') + '</div></div>' +
+         '<div class="s">' + esc(v.note || 'no note') +
+         (v.force ? ' &middot; <b>required</b>' : '') + '</div></div>' +
          '<div class="v mono">' + esc(v.ver || '-') + '</div></div>';
   });
   h += '</div>';
-  if (D.verOn) h += '<div class="note">Pichhli baar bheja: ' + esc(D.verOn) +
+  if (D.verOn) h += '<div class="note">Last sent: ' + esc(D.verOn) +
                     (D.verBy ? ' &middot; ' + esc(D.verBy) : '') + '</div>';
 
-  h += '<h2>Naya update bhejein</h2><div class="card">';
-  h += '<div class="fld"><label>Kis app ko</label><select id="vApp" onchange="VAPP=this.value;VARM=false;paintUpd()">' +
+  h += '<h2>Send a new update</h2><div class="card">';
+  h += '<div class="fld"><label>Which app</label><select id="vApp" onchange="VAPP=this.value;VARM=false;paintUpd()">' +
        VAPPS.map(function(a){
          return '<option value="' + a[0] + '"' + (VAPP===a[0]?' selected':'') + '>' +
                 esc(a[1]) + '</option>'; }).join('') + '</select></div>';
-  h += '<div class="fld"><label>Ek line - kya badla (optional)</label>' +
-       '<input id="vNote" maxlength="120" placeholder="Jaise: hisaab tez hua"></div>';
+  h += '<div class="fld"><label>One line \u2014 what changed (optional)</label>' +
+       '<input id="vNote" maxlength="120" placeholder="For example: the account screen is faster"></div>';
   h += '<label style="display:flex;gap:9px;align-items:center;font-size:13px;margin:2px 0 12px">' +
        '<input type="checkbox" id="vForce" ' + (VFORCE?'checked':'') +
        ' onchange="VFORCE=this.checked" style="width:20px;height:20px">' +
-       'Zaroori update - purana version chalne hi na de</label>';
+       'Required update \u2014 do not let the old version run at all</label>';
 
   h += VARM
-     ? '<div class="warnbox"><b>Pakka?</b> ' + esc(verLabel(VAPP)) +
-       ' ka har phone agli baar khulte hi refresh hoga.' +
+     ? '<div class="warnbox"><b>Sure?</b> Every ' + esc(verLabel(VAPP)) +
+       ' phone will refresh the next time it is opened.' +
        /* 15 Aug 2026 - say the word "force". The old text promised a refresh and never
           mentioned that old versions would be BLOCKED from running, which is the part that
           cannot be undone from this screen. */
-       (VFORCE ? '<br><b>Zaroori update:</b> purana version chalega hi nahi. ' +
-                 'Agar naya build kharab hua to har phone atak jayega - yahan se wapas nahi ' +
-                 'ho sakta, theek file GitHub par daal kar dobara bhejni padegi.' : '') +
+       (VFORCE ? '<br><b>Required update:</b> the old version will not run at all. ' +
+                 'If the new build is bad every phone is stuck \u2014 it cannot be undone from ' +
+                 'here, a good file has to go up to GitHub and be sent again.' : '') +
        '</div>' +
-       '<button class="pri wide" onclick="verSend()">Haan, update bhej dein</button>' +
-       '<button class="wide" style="margin-top:8px" onclick="VARM=false;paintUpd()">Rehne dein</button>'
-     : '<button class="pri wide" onclick="verArm()">Update bhejein</button>';
-  h += '<div class="note" style="margin-top:9px">Yeh sirf app ka dhaancha badalta hai. ' +
-       'Kisi ka data, PIN, points ya hisaab isse nahi chhoota.<br>' +
-       'Yeh console khud <b>App version ' + esc(BUILD) + '</b> par chal raha hai. ' +
-       '<button class="lnkb" style="font-size:11px;padding:2px 4px" onclick="verPoll(false)">Update check karein</button>' +
+       '<button class="pri wide" onclick="verSend()">Yes, send the update</button>' +
+       '<button class="wide" style="margin-top:8px" onclick="VARM=false;paintUpd()">Leave it</button>'
+     : '<button class="pri wide" onclick="verArm()">Send an update</button>';
+  h += '<div class="note" style="margin-top:9px">This changes the app\u2019s shell only. ' +
+       'Nobody\u2019s data, PIN, points or account is touched by it.<br>' +
+       'This console is itself running <b>App version ' + esc(BUILD) + '</b>. ' +
+       '<button class="lnkb" style="font-size:11px;padding:2px 4px" onclick="verPoll(false)">Check for an update</button>' +
        '</div></div>';
 
   /* who is still behind - the reason this screen exists */
@@ -709,16 +711,16 @@ function viewUpd(){
     known++; builds[x.build] = (builds[x.build] || 0) + 1;
   });
   var keys = Object.keys(builds).sort();
-  h += '<h2>Kis phone par kaunsi build (' + known + ')</h2>';
+  h += '<h2>Which build is on which phone (' + known + ')</h2>';
   h += keys.length
      ? '<div class="card">' + keys.map(function(k){
          return '<div class="row"><div style="flex:1;min-width:0"><div class="t mono">' +
            esc(k) + '</div></div><div class="v">' + builds[k] + ' phone</div></div>';
        }).join('') + '</div>' +
-       '<div class="note">Sabse upar wali purani build hai. Jo log usi par atke hain ' +
-       'unhone abhi tak app khola hi nahi - update tabhi lagta hai jab app khulta hai.</div>'
-     : '<div class="empty">Abhi kisi phone ne apni build nahi batayi. ' +
-       'Ek baar sab sign in kar lein, phir yahan dikhne lagegi.</div>';
+       '<div class="note">The one at the top is the oldest build. Anybody still on it has not ' +
+       'opened the app yet \u2014 an update only lands when the app is opened.</div>'
+     : '<div class="empty">No phone has reported its build yet. ' +
+       'Once everybody has signed in once, they show here.</div>';
 
   return h;
 }
@@ -741,12 +743,12 @@ function verSend(){
   VFORCE = false;
   call('verPush', { app: VAPP, note: VNOTE_HOLD, force: forced ? 'true' : 'false' })
     .then(function(r){
-      if (!r || !r.ok){ VMSG = ''; toast((r && r.err) || 'Nahi bheja gaya.'); paintUpd(); return; }
-      VMSG = 'Update bhej diya - ' + esc(verLabel(r.app)) + ' &middot; version ' + esc(r.ver) +
-             '. Har phone agli baar khulte hi naya le lega.';
+      if (!r || !r.ok){ VMSG = ''; toast((r && r.err) || 'It was not sent.'); paintUpd(); return; }
+      VMSG = 'Update sent \u2014 ' + esc(verLabel(r.app)) + ' &middot; version ' + esc(r.ver) +
+             '. Every phone takes it the next time it is opened.';
       VNOTE_HOLD = '';
       reload().then(paintUpd);
-      toast('Update bhej diya.');
+      toast('Update sent.');
     })
     .catch(function(){ toast('Network nahi mil raha.'); });
 }
@@ -796,21 +798,21 @@ function renderGate(){
   g.innerHTML = '<div class="gwrap">' +
     '<div class="gmark">EW</div>' +
     '<h2>Energy World console</h2>' +
-    '<p class="lede">Apna mobile number aur PIN daalein.<br>' +
-    'Yeh screen sirf owner ke liye hai.</p>' +
+    '<p class="lede">Your mobile number and PIN.<br>' +
+    'This screen is for the owner only.</p>' +
     (GERR ? '<div class="gerr" role="alert">' + esc(GERR) + '</div>' : '') +
     '<label for="gm">Mobile number</label>' +
     '<input id="gm" type="tel" inputmode="numeric" autocomplete="username" ' +
       'maxlength="10" placeholder="10 digit" value="' + esc(A.mobile) + '">' +
     '<label for="gp">PIN</label>' +
     '<input id="gp" type="password" inputmode="numeric" autocomplete="current-password" ' +
-      'maxlength="6" placeholder="4 se 6 digit">' +
-    '<button class="go" id="gbtn" onclick="doLogin()">Andar aayein</button>' +
-    '<div class="gfoot">Owner ka PIN yahan se reset nahi hota. ' +
-    'Agar bhool jaayein to Apps Script kholkar <b>issueOwnerLogin()</b> chala dein - ' +
-    'PIN wapas aapke number ke aakhri 4 digit ho jayega.<br>' +
+      'maxlength="6" placeholder="4 to 6 digits">' +
+    '<button class="go" id="gbtn" onclick="doLogin()">Sign in</button>' +
+    '<div class="gfoot">The owner\u2019s PIN cannot be reset from here. ' +
+    'If you forget it, open Apps Script and run <b>issueOwnerLogin()</b> \u2014 ' +
+    'the PIN goes back to the last 4 digits of your number.<br>' +
     'App version ' + BUILD + ' &middot; ' +
-    '<button class="lnkb" style="font-size:11px" onclick="verPoll(false)">Update check karein</button></div></div>';
+    '<button class="lnkb" style="font-size:11px" onclick="verPoll(false)">Check for an update</button></div></div>';
   gate(true);
   var mi = document.getElementById('gm'), pi = document.getElementById('gp');
   pi.addEventListener('keydown', function(e){ if (e.key === 'Enter') doLogin(); });
@@ -821,10 +823,10 @@ function renderGate(){
 function doLogin(){
   var m = String(document.getElementById('gm').value || '').replace(/\D/g, '').slice(-10);
   var p = String(document.getElementById('gp').value || '').replace(/\D/g, '');
-  if (m.length !== 10){ GERR = 'Poora 10 digit mobile number daalein.'; renderGate(); return; }
-  if (!p){ GERR = 'PIN daalein.'; renderGate(); return; }
+  if (m.length !== 10){ GERR = 'Enter the full 10 digit mobile number.'; renderGate(); return; }
+  if (!p){ GERR = 'Enter the PIN.'; renderGate(); return; }
   var b = document.getElementById('gbtn');
-  b.disabled = true; b.textContent = 'Dekh rahe hain...';
+  b.disabled = true; b.textContent = 'Checking...';
   A.mobile = m; A.pin = p;
   call('login').then(function(r){
     if (!r || !r.ok){
@@ -832,12 +834,12 @@ function doLogin(){
       authClear(true); renderGate(); return;
     }
     if (r.kind !== 'OWNER'){
-      GERR = 'Yeh console sirf owner ke liye hai.';
+      GERR = 'This console is for the owner only.';
       authClear(true); renderGate(); return;
     }
     authSave(); GERR = ''; gate(false); landed(r);
   }).catch(function(){
-    GERR = 'Network nahi mil raha. Dobara koshish karein.';
+    GERR = 'No network. Try again.';
     authClear(true); renderGate();
   });
 }
@@ -854,19 +856,19 @@ function renderPinChange(forced){
   var g = document.getElementById('gate');
   g.innerHTML = '<div class="gwrap">' +
     '<div class="gmark">EW</div>' +
-    '<h2>PIN badlein</h2>' +
+    '<h2>Change the PIN</h2>' +
     '<p class="lede">' + (PFORCE
-      ? 'Pehli baar aaye hain. Apna naya PIN chun lein.'
-      : 'Naya PIN chun lein. 4 se 6 digit.') + '</p>' +
+      ? 'First time here. Choose your own PIN.'
+      : 'Choose a new PIN. 4 to 6 digits.') + '</p>' +
     (PERR ? '<div class="gerr" role="alert">' + esc(PERR) + '</div>' : '') +
-    '<label for="p1">Naya PIN</label>' +
+    '<label for="p1">New PIN</label>' +
     '<input id="p1" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">' +
-    '<label for="p2">Dobara likhein</label>' +
+    '<label for="p2">Type it again</label>' +
     '<input id="p2" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password">' +
-    '<button class="go" id="pbtn" onclick="doPinChange()">PIN save karein</button>' +
-    (PFORCE ? '' : '<button class="lnk" onclick="gate(false)">Rehne dein</button>') +
-    '<div class="gfoot">PIN kahin likha nahi jaata. Sheet mein sirf uska taala rehta ' +
-    'hai, chaabi nahi.</div></div>';
+    '<button class="go" id="pbtn" onclick="doPinChange()">Save the PIN</button>' +
+    (PFORCE ? '' : '<button class="lnk" onclick="gate(false)">Not now</button>') +
+    '<div class="gfoot">The PIN is never written down anywhere. Only its lock is kept on the ' +
+    'sheet, never the key.</div></div>';
   gate(true);
   var a = document.getElementById('p1'), b = document.getElementById('p2');
   b.addEventListener('keydown', function(e){ if (e.key === 'Enter') doPinChange(); });
@@ -876,11 +878,11 @@ function renderPinChange(forced){
 function doPinChange(){
   var a = String(document.getElementById('p1').value || '').replace(/\D/g, '');
   var b = String(document.getElementById('p2').value || '').replace(/\D/g, '');
-  if (!/^\d{4,6}$/.test(a)){ PERR = 'PIN 4 se 6 digit ka hona chahiye.'; renderPinChange(PFORCE); return; }
-  if (/^(\d)\1+$/.test(a)){ PERR = 'Ek hi digit baar baar mat rakhein.'; renderPinChange(PFORCE); return; }
-  if (a !== b){ PERR = 'Dono PIN alag hain. Dobara dekh lein.'; renderPinChange(PFORCE); return; }
+  if (!/^\d{4,6}$/.test(a)){ PERR = 'The PIN must be 4 to 6 digits.'; renderPinChange(PFORCE); return; }
+  if (/^(\d)\1+$/.test(a)){ PERR = 'Do not use the same digit over and over.'; renderPinChange(PFORCE); return; }
+  if (a !== b){ PERR = 'The two PINs are different.'; renderPinChange(PFORCE); return; }
   var btn = document.getElementById('pbtn');
-  btn.disabled = true; btn.textContent = 'Save ho raha hai...';
+  btn.disabled = true; btn.textContent = 'Saving...';
   call('changePin', { newPin: a }).then(function(r){
     if (!r || !r.ok){ PERR = (r && r.err) || 'PIN save nahi hua.'; renderPinChange(PFORCE); return; }
     A.pin = a; authSave(); PERR = ''; PFORCE = false;
@@ -947,7 +949,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.08.17-1';        /* which build of this file is running */
+var BUILD  = '2026.09.18-1';        /* which build of this file is running */
 var APPKEY = 'CONSOLE';
 var VKEY   = 'ew_console_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -963,7 +965,7 @@ function verWipe(v){
   VBUSY = true;
   verPut({ have: (verSeen().have || ''), want: String(v || ''), at: (new Date()).getTime() });
   var b = document.getElementById('vbar');
-  if (b){ b.innerHTML = '<div class="t">Naya version aa raha hai...</div>'; b.classList.add('on'); }
+  if (b){ b.innerHTML = '<div class="t">A new version is coming...</div>'; b.classList.add('on'); }
 
   var done = false;
   var go = function(){
@@ -998,10 +1000,10 @@ function verBar(v, note, force){
   VNEW = String(v || '');
   var b = document.getElementById('vbar');
   if (!b) return;
-  b.innerHTML = '<div class="t"><b>Naya version aa gaya hai.</b> ' +
-      esc(note || 'App ko ek baar refresh kar lein.') + '</div>' +
-      '<button onclick="verWipe(VNEW)">Update karein</button>' +
-      (force ? '' : '<button class="x" onclick="verHide()">Baad mein</button>');
+  b.innerHTML = '<div class="t"><b>A new version is out.</b> ' +
+      esc(note || 'Refresh the app once.') + '</div>' +
+      '<button onclick="verWipe(VNEW)">Update</button>' +
+      (force ? '' : '<button class="x" onclick="verHide()">Later</button>');
   b.classList.add('on');
   if (force) setTimeout(function(){ verWipe(VNEW); }, 6000);
 }
