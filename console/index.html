@@ -257,7 +257,7 @@ function ewAsk(opts) {
     (o.body || '') +
     '<div class="two" style="margin-top:12px">' +
     '<button class="' + (o.danger ? 'warn' : 'brass') + '" data-go>' + (o.yes || 'Haan') + '</button>' +
-    '<button data-no>' + (o.no || 'Abhi nahi') + '</button></div>';
+    '<button data-no>' + (o.no || 'Not now') + '</button></div>';
   var close = function () {
     if (!EWMODAL) return;
     EWMODAL = null;
@@ -324,7 +324,7 @@ function viewCast(){
 
   h += '<h2>Everything sent before</h2>';
   h += D.casts.length ? D.casts.map(castRow).join('')
-     : '<div class="empty">Abhi tak koi broadcast nahi.</div>';
+     : '<div class="empty">Nothing has been broadcast yet.</div>';
   return h;
 }
 
@@ -400,7 +400,7 @@ function sendCast(id){
                                 : 'It is live.');
           reload();
         }
-        else toast((r && r.err) || 'Nahi bheja ja saka.');
+        else toast((r && r.err) || 'It could not be sent.');
       }).catch(function(){ toast('The network is slow.'); });
     }
   });
@@ -443,8 +443,8 @@ function personRow(p){
   var newest = newestBuild();
   if (p.build && newest && p.build !== newest) tags += ' <span class="tag lock">Purani build</span>';
 
-  var sub = esc(p.refId) + ' &middot; ' + esc(p.mobile || 'number nahi') + ' &middot; ' +
-    (p.logins ? p.logins + ' baar aaye &middot; ' + esc(p.last || '') : 'kabhi sign in nahi kiya') +
+  var sub = esc(p.refId) + ' &middot; ' + esc(p.mobile || 'no number') + ' &middot; ' +
+    (p.logins ? p.logins + ' sign ins &middot; ' + esc(p.last || '') : 'never signed in') +
     (p.build ? '<br>build ' + esc(p.build) : '');
 
   var blocked = String(p.status || 'Active') !== 'Active';
@@ -495,18 +495,18 @@ function viewPeople(){
        (locked ? ' &middot; ' + locked + ' locked' : '') + '</h2>';
   h += list.length
      ? '<div class="card">' + list.slice(0, 120).map(personRow).join('') + '</div>' +
-       (list.length > 120 ? '<div class="note">Pehle 120 dikhaye. Naam likh kar dhoondhein.</div>' : '')
-     : '<div class="empty">Koi nahi mila.</div>';
+       (list.length > 120 ? '<div class="note">Showing the first 120. Type a name to search.</div>' : '')
+     : '<div class="empty">Nobody matches that.</div>';
 
   /* the ones who have never come in - the real work list */
   if (D.never.length){
-    h += '<h2>Kabhi sign in nahi kiya (' + D.never.length + ')</h2>';
+    h += '<h2>Never signed in (' + D.never.length + ')</h2>';
     h += '<div class="card">' + D.never.slice(0, 60).map(function(w){
       return '<div class="row"><div style="flex:1;min-width:0">' +
         '<div class="t">' + esc(w.name) + '</div>' +
         '<div class="s">' + esc(w.refId) + (w.type ? ' &middot; ' + esc(w.type) : '') +
           (w.city ? ' &middot; ' + esc(w.city) : '') + ' &middot; ' +
-          esc(w.mobile || 'number nahi') + '</div></div>' +
+          esc(w.mobile || 'no number') + '</div></div>' +
         (w.mobile
           ? '<button onclick="waInvite(\'' + esc(w.mobile) + '\',\'' +
             esc(String(w.name || '').replace(/\'/g, '')) + '\')">Invite</button>'
@@ -598,7 +598,7 @@ function addUser(){
     if (r && r.ok){
       PMSG = esc(r.msg || 'Done.') + '<br><span class="note">ID ' + esc(r.refId) + '</span>';
       refreshPeople();
-    } else toast((r && r.err) || 'Nahi bana.');
+    } else toast((r && r.err) || 'It was not created.');
   }).catch(function(){ toast('The network is slow.'); });
 }
 
@@ -750,7 +750,7 @@ function verSend(){
       reload().then(paintUpd);
       toast('Update sent.');
     })
-    .catch(function(){ toast('Network nahi mil raha.'); });
+    .catch(function(){ toast('No network.'); });
 }
 
 function val2(id){ var e = document.getElementById(id); return e ? e.value : ''; }
@@ -783,7 +783,7 @@ function reload(){
       subline(); render();
     } else {
       document.getElementById('main').innerHTML =
-        '<div class="empty">' + esc((r && r.err) || 'Nahi khula.') + '</div>';
+        '<div class="empty">' + esc((r && r.err) || 'It did not open.') + '</div>';
     }
   });
 }
@@ -830,7 +830,7 @@ function doLogin(){
   A.mobile = m; A.pin = p;
   call('login').then(function(r){
     if (!r || !r.ok){
-      GERR = (r && r.err) || 'Sign in nahi ho paya.';
+      GERR = (r && r.err) || 'Could not sign in.';
       authClear(true); renderGate(); return;
     }
     if (r.kind !== 'OWNER'){
@@ -884,10 +884,10 @@ function doPinChange(){
   var btn = document.getElementById('pbtn');
   btn.disabled = true; btn.textContent = 'Saving...';
   call('changePin', { newPin: a }).then(function(r){
-    if (!r || !r.ok){ PERR = (r && r.err) || 'PIN save nahi hua.'; renderPinChange(PFORCE); return; }
+    if (!r || !r.ok){ PERR = (r && r.err) || 'The PIN was not saved.'; renderPinChange(PFORCE); return; }
     A.pin = a; authSave(); PERR = ''; PFORCE = false;
     gate(false); render(); toast('PIN badal gaya.');
-  }).catch(function(){ PERR = 'Network nahi mil raha.'; renderPinChange(PFORCE); });
+  }).catch(function(){ PERR = 'No network.'; renderPinChange(PFORCE); });
 }
 
 
@@ -949,7 +949,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.09.18-1';        /* which build of this file is running */
+var BUILD  = '2026.09.18-3';        /* which build of this file is running */
 var APPKEY = 'CONSOLE';
 var VKEY   = 'ew_console_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1057,7 +1057,7 @@ function landed(r){
     landed(r);
   }).catch(function(){
     document.getElementById('main').innerHTML =
-      '<div class="empty">Network nahi mil raha.<br><br>' +
+      '<div class="empty">No network.<br><br>' +
       '<button class="pri" onclick="location.reload()">Phir se</button></div>';
   });
 })();
