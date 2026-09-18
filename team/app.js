@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.494";
+  var APP_VERSION = "6.9.495";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8140,6 +8140,35 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     /* v6.9.349 - one pill, from amcForClient(). It draws nothing at all for a client with no
        machine on a contract, which is most of them: a card that says "AMC: none" on two hundred
        clients has taught nobody anything and cost every one of them a line. */
+    /* ======== WHAT HAS BEEN QUOTED TO THIS MAN  (v6.9.495 - his item 10) ========
+       MEASURED: viewClients did not mention a quote anywhere - zero references to clientQuotes
+       or quoteBrands on the whole screen. So the one place he looks a client up could not tell
+       him whether that man had ever been quoted, for what, or what was still open.
+
+       NOT RE-WRITTEN. The Quotes compact view has carried this since v6.9.179; clientQuotes()
+       and qvStats() are its own functions and this reads them. One definition of what a client's
+       quotes add up to, not two - the day those two disagree is the day he trusts neither.
+
+       NOTHING AT ALL for a client who has never been quoted. A pill reading "0 quotes" on a
+       hundred and eighty cards teaches nobody anything and costs every one of them a line -
+       the same reasoning amcCardPill was given in v6.9.349, one function below. */
+    function quoteCardPill(name) {
+      var qs = [];
+      try { qs = clientQuotes(name) || []; } catch (e) { return ""; }
+      if (!qs.length) return "";
+      var st;
+      try { st = qvStats(qs); } catch (e) { return ""; }
+      var live = st.live || 0, open = live > 0;
+      var txt = st.n + " quote" + (st.n === 1 ? "" : "s");
+      if (open) txt += " \u00b7 " + live + " open" + (st.liveVal > 0.5 ? " " + money(st.liveVal) : "");
+      return ' <span class="pill" data-act="qv-jump" data-cl="' + esc(name) + '"' +
+        ' style="cursor:pointer;' + (open ? 'background:#fef3c7;color:#92400e' : 'background:#f1f5f9;color:#475569') + '"' +
+        ' title="' + esc(st.n + " quotation" + (st.n === 1 ? "" : "s") +
+          (st.won ? ", " + st.won + " won" : "") + (st.lost ? ", " + st.lost + " lost" : "") +
+          (live ? ", " + live + " still open" : "") +
+          (st.brands && st.brands.length ? " \u00b7 " + st.brands.slice(0, 4).join(", ") : "") +
+          " \u2014 tap to open his quotes") + '">' + esc(txt) + '</span>';
+    }
     function amcCardPill(name) {
       var a;
       try { a = amcForClient(name); } catch (e) { return ""; }
@@ -8221,6 +8250,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
            Quiet where it is settled - one teal pill - and loud where it is not: a contract
            with no amount typed is the money leak he named on 22 August, and it says so. */
         amcCardPill(c.name) +
+        quoteCardPill(c.name) +                      /* v6.9.495 - his item 10 */
         /* v6.9.210 - the old book. Only ever shown for a client carried over WITH a balance:
            teal and tappable once the statement is attached, red until it is, and gone entirely
            the day his money clears. */
@@ -37597,6 +37627,17 @@ function viewCatalogue() {
     }
     /* v6.9.494 - his item 8. keepScroll because the whole point is to open what is under the
        queue he is reading, and a jump to the top loses his place in it. */
+    /* v6.9.495 - the pill on a client card opens THAT MAN'S quotes on the Quotes screen, which
+       is the screen that owns them. It does not build a second quote list on the client card:
+       one definition of a quote card, which is the rule qvClientHtml was written to keep. */
+    if (act === "qv-jump") {
+      var _qn = t.getAttribute("data-cl") || "";
+      /* S.qq is the Quotes screen's OWN search box, and cvMode() already lands on Compact -
+         which is the view that carries the per-client log. Nothing new is switched on. */
+      S.tab = "quotes"; S.qq = _qn; S.qUnsent = false;
+      try { tabUse(S.tab); navBump(S.tab); } catch (e) { }
+      render(); return;
+    }
     if (act === "ch-rest") { S.chRest = !S.chRest; keepScroll = true; render(); return; }
     if (act === "ch-queue") {
       if (t.getAttribute("data-off")) { chQueueLeave(); return; }
