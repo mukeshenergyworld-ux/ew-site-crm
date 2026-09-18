@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.497";
+  var APP_VERSION = "6.9.498";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -30528,6 +30528,93 @@ function viewCatalogue() {
     return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
   }
 
+  /* ================= ONE TABLE, USED EVERYWHERE  (v6.9.498) =================
+     MEASURED: this app had 37 hand-rolled tables with EIGHT header colours and FOUR font sizes,
+     and the five screens he asked to be "excel-like" had no table at all between them. So the
+     answer is not five more tables. It is one, and this is it.
+
+     A SCREEN HANDS OVER COLUMNS AND ROWS AND NOTHING ELSE. The sorting, the striping, the
+     sideways scroll and the pinned first column live here, once.
+
+       cols: [{ k: "live", t: "LIVE", r: 1, n: 1, w: "130px" }]
+             k = key   t = heading   r = right-aligned   n = sort as a number   w = min width
+       rows: [{ v: { live: 3 }, cells: { live: "<b>3</b>" } }]
+             v = what it SORTS by (a number or a string)   cells = what it DRAWS (html)
+
+     A TAP GOES ON A CELL, NEVER ON THE ROW. The dispatcher is e.target.closest("[data-act]"),
+     and these rows contain <a href="tel:"> - a row-level act would fire on the tap that dials.
+     The register already settled this: "tap a challan number to open the delivery, tap a client
+     to open his HISAB". Same here. The cell's own html carries its own data-act. */
+  var XL_HEAD = "#0b3b36";                 /* the register's colour - already 7 of the 37 */
+
+  function xlState(screen) {
+    if (!S.xl) S.xl = {};
+    if (!S.xl[screen]) S.xl[screen] = {};
+    return S.xl[screen];
+  }
+  /* pinned, so the name does not scroll away from its own row */
+  function xlPin(bg) { return "position:sticky;left:0;z-index:1;background:" + bg + ";"; }
+
+  function xlTable(screen, cols, rows, swipe) {
+    var cur = xlState(screen);
+    if (cur.k) {
+      var col = null;
+      cols.forEach(function (c) { if (c.k === cur.k) col = c; });
+      if (col) {
+        rows = rows.slice().sort(function (a, b) {
+          var x = (a.v || {})[cur.k], y = (b.v || {})[cur.k], r;
+          if (col.n) r = (Number(x) || 0) - (Number(y) || 0);
+          else r = String(x == null ? "" : x).localeCompare(String(y == null ? "" : y));
+          return cur.d < 0 ? -r : r;
+        });
+      }
+    }
+    var h = "";
+    /* ONE LINE, AND NO FLOAT. The first draft put "tap a heading to sort" in a float:right span;
+       rendered at 390px and looked at, the float escaped the hint and squeezed the table's own
+       box to 263px of the 390 available, so four of the seven columns were unreachable by a
+       swipe that had nowhere to go. Two messages do not fit on a 390px line - so it is one. */
+    if (swipe) {
+      h += '<div class="meta" style="font-size:12px;margin:0 0 4px;white-space:normal">' +
+        'Tap a heading to sort &middot; swipe sideways for ' + esc(swipe) + ' &rarr;</div>';
+    }
+    h += '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>';
+    cols.forEach(function (c, i) {
+      var on = cur.k === c.k;
+      /* the arrow shows the direction the column IS in, not the one a tap would give it */
+      h += '<th data-act="xl-sort" data-s="' + esc(screen) + '" data-k="' + esc(c.k) + '"' +
+        ' title="Tap to sort by ' + esc(c.t) + '"' +
+        ' style="' + (i === 0 ? xlPin(XL_HEAD) : "background:" + XL_HEAD + ";") +
+        'padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;' +
+        'cursor:pointer;user-select:none;text-align:' + (c.r ? "right" : "left") +
+        (c.w ? ";min-width:" + c.w : "") +
+        (on ? ";box-shadow:inset 0 -2px 0 #5eead4" : "") + '">' +
+        esc(c.t) + (on ? (cur.d < 0 ? " \u25be" : " \u25b4") : "") + '</th>';
+    });
+    h += '</tr></thead><tbody>';
+    if (!rows.length) {
+      h += '<tr><td colspan="' + cols.length + '" style="padding:12px 7px;color:#64748b">Nothing here.</td></tr>';
+    }
+    rows.forEach(function (r, i) {
+      var bg = i % 2 ? "#f8fafc" : "#ffffff";
+      h += '<tr style="background:' + bg + '">';
+      cols.forEach(function (c, k) {
+        var v = (r.cells || {})[c.k];
+        h += '<td style="' + (k === 0 ? xlPin(bg) : "") +
+          'padding:5px 7px;border-top:1px solid #e2e8f0;white-space:nowrap;font-size:12.5px;text-align:' +
+          (c.r ? "right" : "left") + '">' + (v == null ? "" : v) + '</td>';
+      });
+      h += '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+  /* the cards are one tap away, because this changes the default view of a daily screen */
+  function xlToggle(screen, showingCards) {
+    return '<button class="btn sm ghost" data-act="xl-cards" data-s="' + esc(screen) + '">' +
+      (showingCards ? "Show as a sheet" : "Show as cards") + '</button>';
+  }
+
   function viewPartners() {
     var q = S.q.toLowerCase();
     var all = S.data.associates || [];
@@ -30581,8 +30668,52 @@ function viewCatalogue() {
     h += '<div class="row" style="margin:10px 0 4px"><div class="meta"><b>' + list.length + '</b> ' +
       esc(S.pRole || "partner") + (list.length === 1 ? "" : "s") + (S.pLoc ? ' in ' + esc(S.pLoc) : "") +
       ' &middot; most live sites first' + (seesAllClients() ? '' : ' (your clients)') + '</div>' +
-      '<div class="grow"></div><button class="btn sm" data-act="as-new">+ Add</button></div>';
+      '<div class="grow"></div>' + xlToggle("partners", !!S.pCards) +
+      '<button class="btn sm" data-act="as-new">+ Add</button></div>';
     if (!list.length) return h + '<div class="empty">Nobody here yet.</div>';
+
+    /* ======== v6.9.498 - HIS ITEM 15, AS A SHEET ========
+       Six facts about a partner that used to need the card opened, on one line - and the
+       INCENTIVE PENDING, which he could not see at all without opening all 332 cards one at a
+       time. partnerStats() and partnerBook() are the existing functions; nothing is recomputed. */
+    if (!S.pCards) {
+      var _adm = roleIs("admin");
+      var _cols = [
+        { k: "name", t: "PARTNER", w: "128px" },
+        { k: "mobile", t: "MOBILE" },
+        { k: "area", t: "AREA" },
+        { k: "clients", t: "CLIENTS", r: 1, n: 1 },
+        { k: "live", t: "LIVE", r: 1, n: 1 },
+        { k: "open", t: "QUOTED", r: 1, n: 1 }
+      ];
+      if (_adm) _cols.push({ k: "inc", t: "INCENTIVE", r: 1, n: 1 });
+      var _rows = list.map(function (row) {
+        var p = row.p, st = row.st, bk = _adm ? partnerBook(p.name) : null;
+        return {
+          v: { name: p.name, mobile: p.mobile || "", area: p.area || "", clients: st.clients,
+               live: st.live, open: st.open, inc: bk ? bk.pending : 0 },
+          cells: {
+            /* the act is on the NAME, not the row - see the component's header for why */
+            name: '<b data-act="as-open" data-id="' + esc(p.id) + '" style="cursor:pointer;color:#0f766e">' +
+                  esc(p.name) + '</b>' + (p.flag ? ' <span class="pill Lost">no number</span>' : ""),
+            mobile: p.mobile
+              ? '<a href="tel:' + esc(p.mobile) + '">' + esc(p.mobile) + '</a>'
+              : '<span style="color:#dc2626">none</span>',
+            area: esc(p.area || "\u2014"),
+            clients: String(st.clients || 0),
+            /* LIVE means material is moving to his site today - that is the column he scans */
+            live: st.live ? '<b style="color:#0d9488">' + st.live + '</b>' : '<span style="color:#94a3b8">0</span>',
+            open: st.open ? '<b style="color:#b45309">' + st.open + '</b>' : '<span style="color:#94a3b8">0</span>',
+            inc: bk
+              ? (bk.pending > 0.5 ? '<b style="color:#0d9488">' + money(bk.pending) + '</b>' : '<span style="color:#94a3b8">\u2014</span>') +
+                (bk.reversed > 0.5 ? ' <span style="color:#dc2626;font-size:12px">\u2212' + money(bk.reversed) + '</span>' : "")
+              : ""
+          }
+        };
+      });
+      return h + xlTable("partners", _cols, _rows,
+        "what he has quoted" + (_adm ? " and his incentive" : ""));
+    }
 
     list.forEach(function (row) {
       var p = row.p, st = row.st;
@@ -40540,6 +40671,21 @@ function viewCatalogue() {
       var nl = t.getAttribute("data-l");
       S.pLoc = (S.pLoc === nl) ? "" : nl;      /* tap again to go back up */
       render(); return;
+    }
+    /* v6.9.498 - the sort. A second tap on the same heading turns it round; a tap on a
+       different one starts that column DESCENDING, because the first question of every column on
+       this screen is "who is biggest", never "who is smallest". keepScroll because he is looking
+       at the table he just sorted. */
+    if (act === "xl-sort") {
+      var _xs = t.getAttribute("data-s") || "", _xk = t.getAttribute("data-k") || "";
+      var _st = xlState(_xs);
+      if (_st.k === _xk) _st.d = (_st.d < 0) ? 1 : -1;
+      else { _st.k = _xk; _st.d = -1; }
+      keepScroll = true; render(); return;
+    }
+    if (act === "xl-cards") {
+      if ((t.getAttribute("data-s") || "") === "partners") S.pCards = !S.pCards;
+      keepScroll = true; render(); return;
     }
     if (act === "p-role") {
       var nr = t.getAttribute("data-r");
