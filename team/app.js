@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.487";
+  var APP_VERSION = "6.9.488";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -13686,6 +13686,29 @@ function viewCatalogue() {
     });
   }
 
+  /* ---- ONE AT A TIME, TWO AT MOST  (v6.9.488) -------------------------------
+     Every catalogue photo is one Apps Script round trip, and this backend's CHEAPEST call answers
+     in about 2.1 seconds - his own measurement. quotePdf used to fire all nine of a nine-line
+     quote at once; Apps Script queues them, the later ones blow their cap, and their rows print
+     blank. A four-line quote worked and a nine-line quote did not.
+
+     TWO is not a guess: nine pictures through a pool of two come back in about ten seconds, and
+     each one gets a full cap to itself instead of sharing one with eight others. */
+  var PIC_POOL = 2, _picRunning = 0, _picWaiting = [];
+  function picQueue(job) {
+    return new Promise(function (res) {
+      _picWaiting.push(function () {
+        _picRunning++;
+        job().then(res, function () { res(null); }).then(function () {
+          _picRunning--;
+          var next = _picWaiting.shift();
+          if (next) next();
+        });
+      });
+      while (_picRunning < PIC_POOL && _picWaiting.length) { _picWaiting.shift()(); }
+    });
+  }
+
   function loadPic(url, trim) {
     /* Logos (trim=true) print into ~17mm boxes and were fetched at only =w200, so they came
        out soft/blurry. Pull them at =w700 and keep the downscale ceiling at 600 so the mark
@@ -13695,10 +13718,17 @@ function viewCatalogue() {
     url = driveImg(url, trim ? 700 : 200);
     if (!url) return Promise.resolve(null);
     if (PIC_CACHE[url] !== undefined) return Promise.resolve(PIC_CACHE[url]);
-    var fetched = api("imgB64", { url: url }).then(function (r) {
-      if (!r || !r.ok) { PIC_CACHE[url] = null; return null; }
-      return shrinkPic("data:" + r.mime + ";base64," + r.b64, trim ? 600 : 300, trim ? 0.85 : 0.75, trim).then(function (p) {
-        PIC_CACHE[url] = p ? p.src : null;
+    /* v6.9.488 - A MISS IS NEVER CACHED. The note below used to say the miss is not cached and
+       that was only true of the timeout: both the not-ok branch and the catch wrote null into
+       PIC_CACHE, and the race's null resolved while `fetched` kept running underneath and cached
+       its failure a moment later. From then on PIC_CACHE[url] !== undefined, so every later
+       export for that product returned the cached blank instantly - one flaky moment blanking a
+       picture for the rest of the session. Only a real picture is remembered now. */
+    var once = function () {
+      return api("imgB64", { url: url }).then(function (r) {
+        if (!r || !r.ok) return null;
+        return shrinkPic("data:" + r.mime + ";base64," + r.b64, trim ? 600 : 300, trim ? 0.85 : 0.75, trim).then(function (p) {
+        if (p && p.src) PIC_CACHE[url] = p.src;         /* v6.9.488 - hits only */
         var dim = p ? { w: p.w, h: p.h } : null;
         /* Store the real pixel dimensions under BOTH the fetched (=w700) key and the ORIGINAL
            url. logosReady() and the quote table look dims up by the original url; keying only
@@ -13706,16 +13736,38 @@ function viewCatalogue() {
            which squashed every logo to the box aspect and stretched the wide ones tall. */
         PIC_DIM[url] = dim;
         PIC_DIM[raw] = dim;
-        return PIC_CACHE[url];
+        return (p && p.src) || null;
+        });
+      }).catch(function () { return null; });                /* v6.9.488 - a miss is not cached */
+    };
+    /* ONE RETRY, AFTER A BREATH. A queued Apps Script call that lost its place comes back on the
+       second ask, and a retry costs nothing on the runs where the first try worked. */
+    /* v6.9.488b - THE CAP STARTS WHEN THE PICTURE STARTS, NOT WHEN IT IS QUEUED.
+       Reviewing this before shipping: with the clock running from the moment a job joins the
+       queue, the queue itself eats the budget. Nine pictures through a pool of two at ~2.1s a
+       call means the ninth does not START for about eight seconds; at 4s a call it does not start
+       for sixteen, and a 20-second cap measured from queueing would cut it off while it was still
+       waiting its turn. That is the SAME bug as before, moved further down the list - the last
+       rows of a long quote print blank.
+
+       So the cap is inside the slot: every picture gets its own full twenty seconds of actual
+       running, however long it waited to get there. The only thing the cap still protects against
+       is one dead image, and that is all it was ever for. */
+    var fetched = picQueue(function () {
+      var work = once().then(function (p) {
+        if (p) return p;
+        return new Promise(function (r) { setTimeout(r, 600); }).then(once);
       });
-    }).catch(function () { PIC_CACHE[url] = null; return null; });
+      var cap = new Promise(function (res) { setTimeout(function () { res(null); }, 20000); });
+      return Promise.race([work, cap]);
+    });
+    return fetched;
     /* One slow image used to stall the WHOLE quote PDF: the export waits on every picture, and a
        single hung request (weak signal / big Drive image) meant the PDF never appeared and the
        Telegram send never fired. Cap each fetch - if it has not returned in time, draw the PDF
        WITHOUT that one image instead of hanging. We deliberately do NOT cache the miss, so the
        next export tries the image again. */
-    var timed = new Promise(function (res) { setTimeout(function () { res(null); }, 12000); });
-    return Promise.race([fetched, timed]);
+
   }
 
   /* the 12 logos that print on a quote, in the order Mukesh grouped them.
