@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.65.0";
+  var APP_VERSION = "1.66.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3965,7 +3965,34 @@ function discRowOn(client, brand, onYmd) {
 
   function regBuild() {
     if (_regCache) return _regCache;
-    var all = (((S.data || {}).challans) || []).filter(function (c) { return c && !c.cancelled; });
+    /* ======== A CANCELLED CHALLAN IS NOT A MISSING NUMBER  (v6.9.490) ========
+       HIS WORDS: "show details of these type of challans also, who created and who cancells in
+       single line again", after spotting 106 and 103 reported as holes.
+
+       MEASURED on his book: THIRTEEN gaps reported - 27 28 29 31 33 49 63 86 87 88 99 103 106 -
+       and THREE of them are challans he cancelled himself, with the reason already on the audit
+       row: 28 Ar Punit Narang (duplicate), 49 Ravinder Kadiyan (raised by mistake), 63 Manish
+       Singla (duplicate). A register that calls a cancelled challan a missing number cannot be
+       trusted about the other ten, and being trusted about exactly that is the whole screen.
+
+       IT WAS TWO THINGS. The filter below tested `!c.cancelled`, a property NO ROW IN HIS BOOK
+       HAS - 0 of 209 - because cancellation here is an audit row, not a column. And
+       splitCancelled had already MOVED those rows out of S.data.challans, so they were gone
+       before this ever looked.
+
+       AND THE TWO APPS DISAGREED. The Challan app has no splitCancelled and no S.cancelled, so
+       over there the rows were still in the list and 28, 49 and 63 were never gaps: the same
+       register, built from the same bytes, said 13 here and 10 there. t_apps_agree cannot see
+       that - the bodies are identical and the DATA is not - and that is the first time byte
+       identity has not been enough.
+
+       `held` is empty in the Challan app, where the live list already carries them. Same bytes,
+       right answer in both, and the two registers agree for the first time. */
+    var live = (((S.data || {}).challans) || []);
+    var held = (((S.cancelled || {}).challans) || []);
+    var cxId = {};
+    held.forEach(function (c) { if (c && c.id) cxId[c.id] = 1; });
+    var all = live.concat(held);
     var bySer = {}, old = [];
     all.forEach(function (c) {
       var n = regSerial(c);
@@ -3974,11 +4001,20 @@ function discRowOn(client, brand, onYmd) {
     });
     var keys = Object.keys(bySer).map(Number).sort(function (a, b) { return a - b; });
     var lo = keys.length ? keys[0] : 0, hi = keys.length ? keys[keys.length - 1] : 0;
-    var line = [], gaps = [], dups = [];
+    var line = [], gaps = [], dups = [], cxs = [];
     for (var n = lo; keys.length && n <= hi; n++) {
       if (bySer[n]) {
-        line.push({ n: n, chs: bySer[n] });
-        if (bySer[n].length > 1) dups.push(n);
+        var rowChs = bySer[n];
+        /* v6.9.490 - a serial where EVERY row is cancelled is a cancelled number, not a hole */
+        var rowCx = rowChs.every(function (c) { return !!cxId[c && c.id]; });
+        /* AND DUPLICATES ARE COUNTED ON THE LIVING ONLY. Putting the cancelled rows back would
+           otherwise read "cancelled 28, re-entered as 28" as a duplicate - which is a correction,
+           and the one screen that must never cry wolf is this one. Not in his book today, which
+           is precisely why it is guarded now rather than found later. */
+        var alive = rowChs.filter(function (c) { return !cxId[c && c.id]; });
+        line.push({ n: n, chs: rowChs, cx: rowCx });
+        if (rowCx) cxs.push(n);
+        if (alive.length > 1) dups.push(n);
       } else {
         line.push({ n: n, gap: true });
         gaps.push(n);
@@ -3989,7 +4025,7 @@ function discRowOn(client, brand, onYmd) {
       var x = String(regDate(a)), y = String(regDate(b));
       return REG_NEWEST_FIRST ? y.localeCompare(x) : x.localeCompare(y);
     });
-    return (_regCache = { line: line, old: old, gaps: gaps, dups: dups, lo: lo, hi: hi,
+    return (_regCache = { line: line, old: old, gaps: gaps, dups: dups, cxs: cxs, lo: lo, hi: hi,
       total: all.length, nSer: all.length - old.length, nOld: old.length });
   }
 
@@ -4267,7 +4303,18 @@ function discRowOn(client, brand, onYmd) {
         why: "The material has gone but nobody has marked it delivered." },
       { k: "proof", label: "Receipt",    done: chHasProof(c),
         why: "No signed paper on file - a delivery you cannot prove three months later." },
-      { k: "hisab", label: "Finalised",  done: inHisab(c),
+      /* v6.9.490 - AND THE MONEY IS ACTUALLY ON THE ACCOUNT. inHisab() asks only whether a
+         stamp exists, or whether the delivery predates the stamp at all (13 Aug) - neither
+         asks whether hisab counts a rupee of it. hisabOwed() does, and its own test is
+         hisabCounts() && inHisab(). So a delivery stamped in the seconds before its receipt
+         failed to save, or any delivery from before the window, was drawn GREEN STRUCK AND
+         DONE while hisabOutstanding counted nothing of it - and hisabStampPill, on the same
+         card, drew a red "not finalised" beside it. Two labels, one card, opposite answers.
+         hisabCounts rather than hisabOwed because all three apps carry hisabCounts, and
+         HISAB_GATE and hisabBookReady are the CRM's alone; this block must mean one thing
+         everywhere. MEASURED: one delivery in his book is in this state, it is cancelled, and
+         it is worth Rs 840 - so this moves no money and prevents a lie. */
+      { k: "hisab", label: "Finalised",  done: inHisab(c) && hisabCounts(c),
         why: "Not on the customer's account yet. The owner finalises it." },
       { k: "bill",  label: "Billed",     done: !!String((c && c.billNo) || "").trim(),
         why: "No GST bill number against this delivery." }
