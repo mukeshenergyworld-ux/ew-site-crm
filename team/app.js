@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.508";
+  var APP_VERSION = "6.9.509";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4061,6 +4061,39 @@ window.addEventListener("beforeunload", function (ev) {
     return h;
   }
 
+  /* ======== A BRAND'S RECORD, WRITTEN ONCE  (v6.9.509 - his item 26) ========
+     "Combine Win/Loss with brand follow-up." They are two halves of one question about a brand,
+     on two tabs that could not see each other: one says how the brand is DOING, the other says
+     who is LEFT.
+
+     Both screens read THIS, so the win rate on one can never disagree with the win rate on the
+     other. That is the lesson hisabOwed, dscIndex and unsentQuotes each taught in turn - two
+     screens computing one number two ways is two answers, and the day they differ is the day he
+     trusts neither. */
+  function brandWL(brand) {
+    var b = String(brand || "");
+    var ps = (S.data.pitch || []).filter(function (p) { return p.brand === b; });
+    var cnt = function (st) { return ps.filter(function (p) { return p.status === st; }).length; };
+    var won = cnt("Won"), lost = cnt("Lost");
+    var rule = (S.data.rules || []).filter(function (r) { return r.brand === b; })[0] || null;
+    /* a missed window is a stage that has closed on a site with this brand still unanswered -
+       and it needs the pitch RULE, so a brand with no rule has no missed windows to count */
+    var missed = rule ? (S.data.sites || []).filter(function (site) {
+      return action(site, rule, pitchRow(site.id, b)).k === "closed";
+    }).length : 0;
+    return {
+      brand: b, line: rule ? rule.line : "", won: won, lost: lost, missed: missed,
+      rate: (won + lost) ? Math.round(won * 100 / (won + lost)) : null,
+      val: ps.reduce(function (a, p) { return a + (Number(p.won) || 0); }, 0)
+    };
+  }
+  /* and the one sentence that says it, so the two screens phrase it the same way */
+  function brandWLPill(w) {
+    return (w.rate === null ? '<span class="pill">no result yet</span>'
+                            : '<span class="pill ' + (w.rate >= 50 ? "Won" : "Lost") + '">' + w.rate + '% win</span>') +
+      (w.missed ? ' <span class="pill due">' + w.missed + ' missed window' + (w.missed === 1 ? '' : 's') + '</span>' : "");
+  }
+
   function viewWinLoss() {
     var by = S.wlBy || "brand";
     /* a sales exec gets brand-wise rates and THEIR OWN scorecard; the partner ranking and other
@@ -4108,20 +4141,19 @@ window.addEventListener("beforeunload", function (ev) {
     }
 
     h += '<div class="empty" style="text-align:left;padding:0 0 12px">Win rate per product line across every site.</div>';
-    var rows = S.data.rules.map(function (r) {
-      var ps = S.data.pitch.filter(function (p) { return p.brand === r.brand; });
-      var cnt = function (st) { return ps.filter(function (p) { return p.status === st; }).length; };
-      var won = cnt("Won"), lost = cnt("Lost");
-      var missed = S.data.sites.filter(function (site) { return action(site, r, pitchRow(site.id, r.brand)).k === "closed"; }).length;
-      var wonVal = ps.reduce(function (a, p) { return a + (Number(p.won) || 0); }, 0);
-      return { brand: r.brand, line: r.line, won: won, lost: lost, missed: missed, rate: (won + lost) ? Math.round(won * 100 / (won + lost)) : null, val: wonVal };
-    }).sort(function (a, b) { return b.missed - a.missed; });
+    /* v6.9.509 - brandWL(), which the follow-up screen also reads. This was the same
+       arithmetic written out here; now there is one of it. */
+    var rows = S.data.rules.map(function (r) { return brandWL(r.brand); })
+      .sort(function (a, b) { return b.missed - a.missed; });
     if (!rows.length) return h + '<div class="empty">Nothing to score yet - win rates appear here once the pitch rules are set and quotes are marked Won or Lost.</div>';
     rows.forEach(function (x) {
-      h += '<div class="card"><h3>' + esc(x.brand) +
-        (x.rate === null ? ' <span class="pill">no result yet</span>' : ' <span class="pill ' + (x.rate >= 50 ? "Won" : "Lost") + '">' + x.rate + '% win</span>') +
-        (x.missed ? ' <span class="pill due">' + x.missed + ' missed window(s)</span>' : "") + '</h3>' +
-        '<div class="meta">' + esc(x.line) + '<br>Won ' + x.won + ' &middot; Lost ' + x.lost + ' &middot; Value won ' + money(x.val) + '</div></div>';
+      h += '<div class="card"><h3>' + esc(x.brand) + ' ' + brandWLPill(x) + '</h3>' +
+        '<div class="meta">' + esc(x.line) + '<br>Won ' + x.won + ' &middot; Lost ' + x.lost + ' &middot; Value won ' + money(x.val) + '</div>' +
+        /* v6.9.509 - HIS ITEM 26. A man looking at a 40% win rate wants the chase list in the
+           same breath. bf-brand is the follow-up screen's OWN act and it carries the tab now -
+           a second act name for the same thing is how hsb-open got invented. */
+        '<div class="acts" style="margin-top:7px"><button class="btn sm" data-act="bf-brand" data-brand="' +
+        esc(x.brand) + '">Who is still open on ' + esc(x.brand) + '</button></div></div>';
     });
     return h;
   }
@@ -7810,6 +7842,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var lost = all.filter(function (x) { return x.st === "lost"; });
 
     /* nothing is hidden: the lost are counted here even though they are not a band */
+    /* v6.9.509 - HIS ITEM 26, the other half. The chase list now says how the brand is doing
+       while he works it - the same brandWL() the Win/Loss screen reads, so the two can never
+       disagree about a win rate. */
+    var _wl = brandWL(brand);
+    h += '<div class="meta" style="margin:2px 0 6px;font-size:12.5px">' + brandWLPill(_wl) +
+      (_wl.won + _wl.lost ? ' Won ' + _wl.won + ' &middot; Lost ' + _wl.lost : '') +
+      (_wl.val > 0.5 ? ' &middot; value won <b>' + money(_wl.val) + '</b>' : '') + '</div>';
     h += '<div class="meta" style="margin:2px 0 8px;font-size:12.5px">' +
       '<b>' + won.length + '</b> won &middot; <b>' + nr.length + '</b> not required &middot; ' +
       '<b>' + listOpen.length + '</b> still open' +
@@ -39390,7 +39429,16 @@ function viewCatalogue() {
       setTimeout(function () { try { bfAllCsv(); } catch (e) { toast("Could not build that file."); } }, 40);
       return;
     }
-    if (act === "bf-brand") { S.bf = t.getAttribute("data-brand"); render(); return; }
+    /* v6.9.509 - AND IT CARRIES THE TAB NOW. This set the brand and not the tab, because the
+       only button that emitted it was already on the Brand follow-up screen - the identical
+       shape q-unsent had before v6.9.495, and the identical fix. The Win/Loss card presses the
+       same act rather than a second one of its own, and from the follow-up screen setting the
+       tab it is already on costs nothing. */
+    if (act === "bf-brand") {
+      S.bf = t.getAttribute("data-brand"); S.tab = "brandfollow";
+      try { tabUse(S.tab); navBump(S.tab); } catch (e) { }
+      render(); return;
+    }
     /* v6.9.500 - his item 24. The follow-up band opens by default because it is the work list;
        Won and Not required are reference and cost a tap. keepScroll so opening the band he is
        looking at does not throw him back to the top of the brand chips. */
