@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.507";
+  var APP_VERSION = "6.9.508";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -339,7 +339,24 @@
      through num() for months; the CRM and the Payment app did not, so one stored amount drew
      two different figures depending on which app was open. Never show zero for a number that
      exists. (nAmt is declared later in the file; function declarations hoist.) */
-  function money(n) { return "\u20B9" + Math.round(nAmt(n)).toLocaleString("en-IN"); }
+  /* ======== ONE money(), IN ALL THREE APPS  (18 Sep 2026) ========
+     451 calls in the CRM, 60 in the Challan app, 46 here - more than every other money function
+     put together. The three bodies agreed on a positive amount and disagreed on a negative one:
+     two of them printed "\u20B9-5,000", which reads as "rupees minus five thousand" and breaks the
+     standing rule that THE SIGN GOES IN FRONT OF THE MONEY. The Payment app had it right; this
+     is its version, in all three.
+
+     nAmt and num are the same function under two names, byte for byte, in all three apps - so
+     these bodies can be identical without inventing anything.
+
+     moneySgn is NOT merged into this. It exists for the places where the minus is typographic
+     ("\u2212 \u20B95,000", a true minus and a space), which is a different job.
+
+     AND nAmt, NOT Number - the reason the Payment app gave when it changed this in v1.31.1:
+     a stored "25,000" drew as Rs 0 there and as Rs 25,000 in the Challan app. Never show zero
+     for a number that exists. That note nearly went with the old body; it is kept because it is
+     the reason the shared version reads the way it does. */
+  function money(n) { var v = Math.round(nAmt(n)); return (v < 0 ? "-" : "") + "\u20B9" + Math.abs(v).toLocaleString("en-IN"); }
   function moneyAscii(n) { return "Rs. " + Math.round(nAmt(n)).toLocaleString("en-IN"); }
   /* v6.9.429 - THE SIGN GOES IN FRONT OF THE MONEY, NOT INSIDE IT.
      hisabMiniPdf has done this since v6.9.403 - "a credit balance reads '- Rs.1,05,674' and
