@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.498";
+  var APP_VERSION = "6.9.499";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2788,11 +2788,13 @@ window.addEventListener("beforeunload", function (ev) {
     }
 
     var list = shelf.by[S.pvBrand] || [];
-    h += prodChips("pv-cat", prodCountBy(list, "cat"), S.pvCat || "", "Saari category",
+    /* v6.9.499 - item 14, fourth sweep. The word list held "saare" and not "saari" - one
+       letter, the third time a one-letter variant has walked straight through. */
+    h += prodChips("pv-cat", prodCountBy(list, "cat"), S.pvCat || "", "All categories",
                    list.some(function (p) { return !String(p.cat || "").trim(); }), "Category");
     if (S.pvCat) list = list.filter(function (p) { return String(p.cat || "").trim() === S.pvCat; });
 
-    h += prodChips("pv-fam", prodCountBy(list, "family"), S.pvFam || "", "Saari family",
+    h += prodChips("pv-fam", prodCountBy(list, "family"), S.pvFam || "", "All families",
                    list.some(function (p) { return !String(p.family || "").trim(); }), "Family");
     if (S.pvFam) list = list.filter(function (p) { return String(p.family || "").trim() === S.pvFam; });
 
