@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.492";
+  var APP_VERSION = "6.9.493";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -21810,8 +21810,24 @@ function viewCatalogue() {
   }
   function hisabPendingCard(cl) {
     var _fh = famHas(cl);                                   /* v6.9.461 */
+    /* ======== v6.9.493 - THE ACCOUNT'S OWN QUESTION, NOT A SECOND ONE ========
+       This asked `receiptReceived !== "Y"` while the balance beside it asks hisabOwed(c). The
+       two differ in exactly one case, and it is the worst one: A DELIVERY THE CUSTOMER HAS
+       SIGNED FOR THAT HE HAS NOT FINALISED. The paper is in, so this card said nothing; the
+       finalise gate keeps it off the account, so the balance said nothing either. Invisible on
+       both halves of the one screen he reads before sending a statement - and then the statement
+       goes out short by that delivery, to a customer who has the goods and signed for them.
+       That is "half-entered", which is the reason he gave for asking.
+
+       hisabOwed is now the ONE test, so this card and the balance can never disagree about
+       whether a delivery is on the account. Same fault and same fix as the tile and the band in
+       6.9.490: two tests for one fact is two answers.
+
+       MEASURED on his book the day this shipped: ZERO deliveries are in that state - he has kept
+       the finalise queue empty - so this moves no money and changes nothing he can see today. It
+       closes the hole that opens the first week he is busy. */
     var pend = (S.data.challans || []).filter(function (c) {
-      return _fh(c.customerName) && String(c.receiptReceived).toUpperCase() !== "Y";
+      return _fh(c.customerName) && !hisabOwed(c);
     });
     if (!pend.length) return "";
     var rank = { Draft: 0, Approved: 1, Dispatched: 2 };
@@ -21821,12 +21837,22 @@ function viewCatalogue() {
       return ra - rb || String(a.createdAt).localeCompare(String(b.createdAt));
     });
     var draft = pend.filter(function (c) { return String(c.status) === "Draft"; });
-    var h = '<div class="card" style="border-color:' + (draft.length ? '#fecaca' : '#fde68a') +
-      ';background:' + (draft.length ? '#fff5f5' : '#fffbeb') + '">' +
+    /* v6.9.493 - SIGNED FOR, NOT FINALISED. The new case, and the one that matters: the customer
+       has the goods and has put his name to them, and it is still not on his statement. */
+    var signed = pend.filter(function (c) { return hisabCounts(c); });
+    /* v6.9.493 - AND THE TOTAL. A card that lists deliveries without adding them up leaves him
+       to do the one sum that matters in his head: how much is NOT on the statement he is about
+       to send. */
+    var pendRs = pend.reduce(function (a, c) { return a + (chValue(c) || 0); }, 0);
+    var h = '<div class="card" style="border-color:' + (draft.length || signed.length ? '#fecaca' : '#fde68a') +
+      ';background:' + (draft.length || signed.length ? '#fff5f5' : '#fffbeb') + '">' +
       '<h3 style="margin:0 0 3px;font-size:14px">Not in the account yet &mdash; ' + pend.length + ' challan' + (pend.length === 1 ? '' : 's') +
-      (draft.length ? ' <span class="pill due" style="background:#fee2e2;color:#b91c1c">' + draft.length + ' NOT APPROVED</span>' : '') + '</h3>' +
-      '<div class="meta" style="font-size:12.5px">These do not count in the balance below, because the balance counts only deliveries whose <b>receipt is confirmed</b>.' +
+      (Math.abs(pendRs) > 0.5 ? ' <span class="pill due">' + moneySgn(pendRs) + '</span>' : '') +
+      (draft.length ? ' <span class="pill due" style="background:#fee2e2;color:#b91c1c">' + draft.length + ' NOT APPROVED</span>' : '') +
+      (signed.length ? ' <span class="pill due" style="background:#fee2e2;color:#b91c1c">' + signed.length + ' SIGNED, NOT FINALISED</span>' : '') + '</h3>' +
+      '<div class="meta" style="font-size:12.5px">These do not count in the balance below, and they are not on any statement you send from this screen.' +
       (draft.length ? ' <b style="color:#b91c1c">A challan still on Draft has not been approved, so no material has been released against it.</b>' : '') +
+      (signed.length ? ' <b style="color:#b91c1c">The ones marked SIGNED, NOT FINALISED are the ones to look at: the customer has the goods and has signed for them, and until you finalise each one it stays off his statement.</b>' : '') +
       '</div>';
     pend.forEach(function (c) {
       var st = String(c.status || "Draft");
@@ -21835,8 +21861,12 @@ function viewCatalogue() {
         (isD ? '#fecaca' : '#fef3c7') + ';margin-top:6px;padding-top:6px">' +
         '<div class="grow" style="min-width:150px"><b>' + esc(c.challanNo || "") + '</b>' +
         manualNoCell(c, true) +
-        ' <span class="pill' + (isD ? ' due' : ' teal') + '"' + (isD ? ' style="background:#fee2e2;color:#b91c1c"' : '') + '>' +
-        (isD ? 'Not approved' : esc(st)) + '</span>' +
+        /* v6.9.493 - a delivery that is SIGNED FOR and not finalised is not "Dispatched" or
+           "Received" as far as this card is concerned - it is waiting on him, and the pill says
+           so rather than repeating a status that explains nothing about why it is here. */
+        ' <span class="pill' + (isD || hisabCounts(c) ? ' due' : ' teal') + '"' +
+        (isD || hisabCounts(c) ? ' style="background:#fee2e2;color:#b91c1c"' : '') + '>' +
+        (isD ? 'Not approved' : (hisabCounts(c) ? 'Signed for \u2014 finalise it' : esc(st))) + '</span>' +
         chArrivedPill(c) +
         '<br><span style="font-size:12px;color:#64748b">' + esc(d10(c.createdAt)) +
         (c.site ? ' &middot; ' + esc(c.site) : '') +
@@ -21851,6 +21881,13 @@ function viewCatalogue() {
         (st === "Dispatched" && (canSee("billing") || canSee("challans")) ? '<button class="btn sm act-receipt" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Received">Mark as received</button>' : '') +
         /* v6.9.363 - a challan raised by mistake is usually spotted HERE, sitting at Draft in
            the middle of a client's hisab. It had no way out of this screen. */
+        /* v6.9.493 - AND THE WAY OUT OF THE STATE, from the screen where he noticed it.
+           hisabAddBtn is the SAME button the delivery card and the register already draw - same
+           act, same permission test, same two looks (solid when it will work, dashed when it
+           will only explain). I had written a second button with its own act name before
+           checking; there is no such act, and inventing one would have been the third act-name
+           collision in a week. This card only decides WHERE the button sits. */
+        hisabAddBtn(c) +
         cxCardBtn("challans", c.id) +
         '</div>';
     });
