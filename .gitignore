@@ -1,0 +1,21 @@
+# ============================================================================
+# 15 September 2026, written again 18 September after the container took it.
+#
+# This repository had no .gitignore, so an `npm install` run inside it once put
+# 4,886 node_modules files under version control - about 505,000 lines of
+# vendored dependencies alongside 119 real ones. None of it ever reached
+# GitHub, because every release ships one file at a time through the web upload
+# UI; the remote has always held a clean 86 files. This file is what makes a
+# future `git push` safe rather than a half-million-line accident.
+#
+# The test rig lives OUTSIDE this repo (in the session's own working dir) and
+# must stay outside it: its suites quote the live book - client names and
+# balances - and this repository is public.
+# ============================================================================
+node_modules/
+__pycache__/
+*.pyc
+
+# scratch left by the test rig
+lifted.js
+_extract*.js
