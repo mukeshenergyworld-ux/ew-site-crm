@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.495";
+  var APP_VERSION = "6.9.496";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17421,6 +17421,23 @@ function viewCatalogue() {
   }
 
   /* ---------------------------------------------------------------- the row */
+  /* ======== WHAT HE OWES, IN COLOUR  (v6.9.496) ========
+     HIS WORDS: "Red over 1 lac due and below green, over 3 lac black."
+
+     Black for the largest is HIS choice and it is not second-guessed. Red is the colour that
+     should catch an eye moving down a page, and the handful of accounts past three lakh are the
+     ones he already knows by name - they do not need to shout, they need to be findable.
+
+     A CREDIT IS NEVER RED. A minus balance is money of his that we are holding; owing nothing is
+     not a warning, and painting it the same colour as a lakh overdue would teach him to stop
+     reading the colour at all. */
+  function regBalColor(v) {
+    v = Number(v) || 0;
+    if (v < -0.5) return "#0f766e";          /* in credit - teal, like every other credit here */
+    if (v > 300000) return "#0f172a";        /* over three lakh - black */
+    if (v > 100000) return "#b91c1c";        /* over one lakh - red */
+    return "#166534";                        /* below one lakh - green */
+  }
   function regCell(extra) {
     return "padding:5px 7px;border-top:1px solid #e2e8f0;white-space:nowrap;font-size:12.5px" + (extra || "");
   }
@@ -17476,7 +17493,10 @@ function viewCatalogue() {
     var h = '<tr style="background:' + bg + '">' +
       '<td style="' + regCell(";font-weight:800;color:#0b3b36") + '">' + (n === null ? "OLD" : n) +
         (dup ? '<br><span style="font-size:12px;color:#b45309">twice</span>' : '') + '</td>' +
-      '<td style="' + regCell() + '">' + esc(regDMY(regDate(c))) + chDatePill(c) + '</td>' +
+      /* v6.9.496 - "reduce gap between date and client". It printed 18/09/2026; the year of a
+         delivery in the current book is never in doubt, and two digits of it buy the width that
+         puts the balance on screen beside the amount. The full date is on the row's own card. */
+      '<td style="' + regCell(";padding-right:3px") + '">' + esc(regDMY(regDate(c)).replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c) + '</td>' +
       '<td style="' + regCell(";max-width:170px;overflow:hidden;text-overflow:ellipsis") + '">' +
         '<a href="#" data-act="ch-hisab" data-cl="' + esc(c.customerName || "") + '" ' +
         'style="font-weight:700;color:#0b3b36;text-decoration:none" title="Open this client’s full HISAB, where the complete statement downloads">' +
@@ -17486,6 +17506,14 @@ function viewCatalogue() {
         'style="padding:1px 8px;font-size:12.5px;font-weight:700">' + esc(c.challanNo || "no number") +
         ' ' + (open ? "▴" : "▾") + '</button></td>' +
       '<td style="' + regCell(";text-align:right;font-weight:700") + '">' + moneySgn(chValue(c)) + '</td>' +
+      /* v6.9.496 - BESIDE THE AMOUNT, and coloured by what he owes. Moved here whole from the
+         far right; the arithmetic is regBalances', untouched, and the running balance still
+         closes on clientLedger exactly as it did. */
+      '<td style="' + regCell(";text-align:right;color:" + regBalColor(after === undefined ? bal.due : after)) + '">' +
+        (after === undefined
+          ? '<span style="opacity:.55">' + moneySgn(bal.due) + '</span><br>' +
+            '<span style="font-size:12px;color:#b45309">not on his account yet</span>'
+          : '<b>' + moneySgn(after) + '</b>') + '</td>' +
       '<td style="' + regCell() + '">' + esc(regFirst(c.createdBy) || "—") + '</td>' +
       '<td style="' + regCell(";color:" + (String(c.approvedBy || "").trim() ? "#0f172a" : "#b91c1c")) + '">' +
         esc(regFirst(c.approvedBy) || "not passed") + '</td>' +
@@ -17497,11 +17525,6 @@ function viewCatalogue() {
                 : '<span style="color:#b45309">none</span>')) + '</td>' +
       '<td style="' + regCell() + '">' + (inHisab(c) ? hisabStampPill(c) : hisabAddBtn(c) ||
         '<span style="color:#b45309;font-size:12px">not finalised</span>') + '</td>' +
-      '<td style="' + regCell(";text-align:right") + '">' +
-        (after === undefined
-          ? '<span style="color:#94a3b8">' + moneySgn(bal.due) + '</span><br>' +
-            '<span style="font-size:12px;color:#b45309">not on his account yet</span>'
-          : '<b>' + moneySgn(after) + '</b>') + '</td>' +
       '<td style="' + regCell(";text-align:right;color:" + (over ? "#b91c1c" : "#64748b")) + '">' +
         (lim > 0 ? (over ? '<b>' + moneySgn(lim) + '</b><br><span style="font-size:12px">over</span>' : moneySgn(lim))
                  : '<span style="font-size:12px">not set</span>') + '</td></tr>';
@@ -17528,9 +17551,13 @@ function viewCatalogue() {
       return '<th style="padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;text-align:' +
         (r ? "right" : "left") + '">' + esc(x) + '</th>';
     };
+    /* v6.9.496 - HIS WORDS: "put balance after after amt column". It sat at the far right, six
+       columns and a sideways scroll away from the figure it follows from, on a table that
+       scrolls horizontally on a phone - so "what did this delivery cost" and "what does he owe
+       now" were never on screen together. */
     return '<tr style="background:#0b3b36">' + TH("#") + TH("DATE") + TH("CLIENT") + TH("CHALLAN NO") +
-      TH("AMOUNT", 1) + TH("MADE BY") + TH("PASSED BY") + TH("RECEIPT") + TH("HISAB") +
-      TH("BALANCE AFTER", 1) + TH("LIMIT", 1) + '</tr>';
+      TH("AMOUNT", 1) + TH("BALANCE AFTER", 1) + TH("MADE BY") + TH("PASSED BY") + TH("RECEIPT") +
+      TH("HISAB") + TH("LIMIT", 1) + '</tr>';
   }
 
   function viewRegister() {
@@ -17614,7 +17641,7 @@ function viewCatalogue() {
       (hidden ? ' · ' + hidden + ' belong to another executive' : '') +
       (filt ? ' · filtered, so gaps are hidden' : '') + '</span></div>' +
       (shown || (!filt && R.line.length)
-        ? regSwipe("made by, passed by, receipt, hisab, balance and limit") +
+        ? regSwipe("the balance, made by, passed by, receipt, hisab and limit") +
           '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
           regHead() + body + '</table></div>'
         : '<div class="empty">Nothing on the series answers that filter.</div>') + '</div>';
@@ -17629,7 +17656,7 @@ function viewCatalogue() {
       '<b>client code / date / count</b>, like ATUL4000/200726/001 &mdash; so they carry no place on the ' +
       'running series and no gap can be read from them. They are every bit as real; they are just ' +
       'a different book. Newest first.</div>' +
-      (on ? regSwipe("made by, passed by, receipt, hisab, balance and limit") + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
+      (on ? regSwipe("the balance, made by, passed by, receipt, hisab and limit") + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
             regHead() + ob + '</table></div>'
           : '<div class="empty">Nothing in the old book answers that filter.</div>') + '</div>';
 
