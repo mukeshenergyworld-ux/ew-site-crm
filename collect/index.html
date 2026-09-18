@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.37.0";
+  var APP_VERSION = "1.38.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1764,11 +1764,20 @@ function cancelMap() {
   function discStamp(d) { var m = String((d && d.id) || "").match(/(\d{10,})/); return m ? Number(m[1]) : 0; }
   /* v1.54.0 / v1.36.0 - the rate follows the man, not the name on the paper. The reason is
      written out in team/app.js above this function; the body is that one, byte for byte. */
+  var _dscIdx = null;
+  function dscIndex() {
+    if (_dscIdx) return _dscIdx;
+    _dscIdx = {};
+    ((S.data && S.data.discounts) || []).forEach(function (x) {
+      var k = dkey(x.client) + "||" + dkey(x.brand);
+      (_dscIdx[k] || (_dscIdx[k] = [])).push(x);
+    });
+    return _dscIdx;
+  }
   function discRowsFor(client, brand) {
-    var b = dkey(brand), all = (S.data && S.data.discounts) || [];
+    var b = dkey(brand), ix = dscIndex();
     var pick = function (nm) {
-      var c = dkey(nm);
-      return all.filter(function (x) { return dkey(x.client) === c && dkey(x.brand) === b; });
+      return (ix[dkey(nm) + "||" + b] || []).slice();
     };
     var own = pick(client);
     if (own.length) return own;
@@ -3966,7 +3975,7 @@ function cancelMap() {
   /* v1.37.0 - _hsbCache with them. It is built from the audit trail, which arrives in the
      SECOND half of a staged pull: a map built before that half lands is an EMPTY map, and an
      empty map means "nothing is finalised", which understates every due on the screen. */
-  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; _hxCache = null; _aliasCache = null; _hsbCache = null; }
+  function bust() { _rowsCache = null; _fuCache = null; _obCache = null; _pmCache = {}; _flCache = {}; _cxCache = null; _hxCache = null; _aliasCache = null; _hsbCache = null;_dscIdx = null; }
 
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest("[data-act]");
