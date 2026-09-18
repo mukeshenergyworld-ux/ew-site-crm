@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.489";
+  var APP_VERSION = "6.9.490";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17165,7 +17165,34 @@ function viewCatalogue() {
 
   function regBuild() {
     if (_regCache) return _regCache;
-    var all = (((S.data || {}).challans) || []).filter(function (c) { return c && !c.cancelled; });
+    /* ======== A CANCELLED CHALLAN IS NOT A MISSING NUMBER  (v6.9.490) ========
+       HIS WORDS: "show details of these type of challans also, who created and who cancells in
+       single line again", after spotting 106 and 103 reported as holes.
+
+       MEASURED on his book: THIRTEEN gaps reported - 27 28 29 31 33 49 63 86 87 88 99 103 106 -
+       and THREE of them are challans he cancelled himself, with the reason already on the audit
+       row: 28 Ar Punit Narang (duplicate), 49 Ravinder Kadiyan (raised by mistake), 63 Manish
+       Singla (duplicate). A register that calls a cancelled challan a missing number cannot be
+       trusted about the other ten, and being trusted about exactly that is the whole screen.
+
+       IT WAS TWO THINGS. The filter below tested `!c.cancelled`, a property NO ROW IN HIS BOOK
+       HAS - 0 of 209 - because cancellation here is an audit row, not a column. And
+       splitCancelled had already MOVED those rows out of S.data.challans, so they were gone
+       before this ever looked.
+
+       AND THE TWO APPS DISAGREED. The Challan app has no splitCancelled and no S.cancelled, so
+       over there the rows were still in the list and 28, 49 and 63 were never gaps: the same
+       register, built from the same bytes, said 13 here and 10 there. t_apps_agree cannot see
+       that - the bodies are identical and the DATA is not - and that is the first time byte
+       identity has not been enough.
+
+       `held` is empty in the Challan app, where the live list already carries them. Same bytes,
+       right answer in both, and the two registers agree for the first time. */
+    var live = (((S.data || {}).challans) || []);
+    var held = (((S.cancelled || {}).challans) || []);
+    var cxId = {};
+    held.forEach(function (c) { if (c && c.id) cxId[c.id] = 1; });
+    var all = live.concat(held);
     var bySer = {}, old = [];
     all.forEach(function (c) {
       var n = regSerial(c);
@@ -17174,11 +17201,20 @@ function viewCatalogue() {
     });
     var keys = Object.keys(bySer).map(Number).sort(function (a, b) { return a - b; });
     var lo = keys.length ? keys[0] : 0, hi = keys.length ? keys[keys.length - 1] : 0;
-    var line = [], gaps = [], dups = [];
+    var line = [], gaps = [], dups = [], cxs = [];
     for (var n = lo; keys.length && n <= hi; n++) {
       if (bySer[n]) {
-        line.push({ n: n, chs: bySer[n] });
-        if (bySer[n].length > 1) dups.push(n);
+        var rowChs = bySer[n];
+        /* v6.9.490 - a serial where EVERY row is cancelled is a cancelled number, not a hole */
+        var rowCx = rowChs.every(function (c) { return !!cxId[c && c.id]; });
+        /* AND DUPLICATES ARE COUNTED ON THE LIVING ONLY. Putting the cancelled rows back would
+           otherwise read "cancelled 28, re-entered as 28" as a duplicate - which is a correction,
+           and the one screen that must never cry wolf is this one. Not in his book today, which
+           is precisely why it is guarded now rather than found later. */
+        var alive = rowChs.filter(function (c) { return !cxId[c && c.id]; });
+        line.push({ n: n, chs: rowChs, cx: rowCx });
+        if (rowCx) cxs.push(n);
+        if (alive.length > 1) dups.push(n);
       } else {
         line.push({ n: n, gap: true });
         gaps.push(n);
@@ -17189,7 +17225,7 @@ function viewCatalogue() {
       var x = String(regDate(a)), y = String(regDate(b));
       return REG_NEWEST_FIRST ? y.localeCompare(x) : x.localeCompare(y);
     });
-    return (_regCache = { line: line, old: old, gaps: gaps, dups: dups, lo: lo, hi: hi,
+    return (_regCache = { line: line, old: old, gaps: gaps, dups: dups, cxs: cxs, lo: lo, hi: hi,
       total: all.length, nSer: all.length - old.length, nOld: old.length });
   }
 
@@ -17347,6 +17383,26 @@ function viewCatalogue() {
       '<div style="max-width:290px"><b>No challan on this number</b> &mdash; taken and dropped, ' +
       'or never entered.</div></td></tr>';
   }
+  /* ---- v6.9.490 - WHO MADE IT, WHO CANCELLED IT, AND WHY. ONE LINE. ----
+     His instruction, word for word: "show details of these type of challans also, who created and
+     who cancells in single line again". RED STRUCK MEANS CANCELLED - the rule stated in 6.9.487
+     and the reason the step strip is teal and never red. The reason is already on the audit row;
+     it has simply never been shown anywhere. */
+  function regCxRow(n, c) {
+    var x = cancelInfo("challans", c && c.id) || {};
+    var why = String(x.reason || "").trim();
+    var note = String(x.note || "").trim();
+    return '<tr style="background:#fff1f2"><td style="' + regCell(";font-weight:800;color:#b91c1c;text-decoration:line-through") + '">' + n + '</td>' +
+      '<td style="' + regCell(";color:#b91c1c") + '">' + esc(regDMY(regDate(c))) + '</td>' +
+      '<td colspan="9" style="' + regCell(";color:#b91c1c;white-space:normal") + '">' +
+      '<div style="max-width:300px;font-size:12.5px"><b style="text-decoration:line-through">' +
+      esc(c.challanNo || "no number") + '</b> &middot; ' + esc(c.customerName || "\u2014") +
+      ' &middot; made by ' + esc(regFirst(c.createdBy) || "\u2014") +
+      ' &middot; cancelled by ' + esc(regFirst(x.by) || "\u2014") +
+      (x.at ? ' on ' + esc(regDMY(String(x.at).slice(0, 10))) : "") +
+      (why ? ' &middot; ' + esc(why) : "") + (note ? ' (' + esc(note) + ')' : "") +
+      '</div></td></tr>';
+  }
   function regHiddenRow(n, c) {
     return '<tr style="background:#f8fafc"><td style="' + regCell(";font-weight:700;color:#94a3b8") + '">' + n + '</td>' +
       '<td style="' + regCell(";color:#94a3b8") + '">' + esc(regDMY(regDate(c))) + '</td>' +
@@ -17437,6 +17493,18 @@ function viewCatalogue() {
       'number that was never entered has nowhere to hide. Tap a challan number to open the whole ' +
       'delivery; tap a client to open his full HISAB.</div></div>';
 
+    /* v6.9.490 - said BEFORE the missing-numbers card, because "three of these are explained"
+       changes how he reads the number underneath it. */
+    if (R.cxs && R.cxs.length) {
+      h += '<div class="card" style="border-color:#fecdd3;background:#fff1f2;padding:9px 12px">' +
+        '<b style="color:#b91c1c;font-size:13.5px">' + R.cxs.length + ' number' +
+        (R.cxs.length === 1 ? ' was' : 's were') + ' cancelled, not lost</b>' +
+        '<div style="margin-top:4px;font-weight:800;color:#b91c1c;font-size:13px;word-break:break-word;text-decoration:line-through">' +
+        R.cxs.join(" \u00b7 ") + '</div>' +
+        '<div class="meta" style="font-size:12px;color:#7f1d1d;margin-top:4px">Struck through in the ' +
+        'series below, each one saying who made it, who cancelled it and why. Until today these ' +
+        'were counted as missing numbers.</div></div>';
+    }
     if (R.gaps.length) {
       h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2;padding:10px 12px">' +
         '<b style="color:#b91c1c;font-size:14px">' + R.gaps.length + ' number' + (R.gaps.length === 1 ? '' : 's') +
@@ -17473,6 +17541,13 @@ function viewCatalogue() {
     var body = "", i = 0;
     R.line.forEach(function (row) {
       if (row.gap) { if (!filt) body += regGapRow(row.n); return; }
+      /* v6.9.490 - a cancelled number is shown, struck, with its reason - never as a hole, and
+         never as a live delivery either. Scoped like every other row: the LINE is built over the
+         whole book so the serial sequence is true, the READING is scoped to his own clients. */
+      if (row.cx) {
+        if (!filt) { var _cxc = row.chs.filter(regMine)[0] || row.chs[0]; if (regMine(_cxc)) body += regCxRow(row.n, _cxc); }
+        return;
+      }
       var mine = row.chs.filter(regMine);
       if (!mine.length) { if (!filt) { body += regHiddenRow(row.n, row.chs[0]); hidden++; } return; }
       var pass = mine.filter(regPass);
@@ -17999,7 +18074,18 @@ function viewCatalogue() {
         why: "The material has gone but nobody has marked it delivered." },
       { k: "proof", label: "Receipt",    done: chHasProof(c),
         why: "No signed paper on file - a delivery you cannot prove three months later." },
-      { k: "hisab", label: "Finalised",  done: inHisab(c),
+      /* v6.9.490 - AND THE MONEY IS ACTUALLY ON THE ACCOUNT. inHisab() asks only whether a
+         stamp exists, or whether the delivery predates the stamp at all (13 Aug) - neither
+         asks whether hisab counts a rupee of it. hisabOwed() does, and its own test is
+         hisabCounts() && inHisab(). So a delivery stamped in the seconds before its receipt
+         failed to save, or any delivery from before the window, was drawn GREEN STRUCK AND
+         DONE while hisabOutstanding counted nothing of it - and hisabStampPill, on the same
+         card, drew a red "not finalised" beside it. Two labels, one card, opposite answers.
+         hisabCounts rather than hisabOwed because all three apps carry hisabCounts, and
+         HISAB_GATE and hisabBookReady are the CRM's alone; this block must mean one thing
+         everywhere. MEASURED: one delivery in his book is in this state, it is cancelled, and
+         it is worth Rs 840 - so this moves no money and prevents a lie. */
+      { k: "hisab", label: "Finalised",  done: inHisab(c) && hisabCounts(c),
         why: "Not on the customer's account yet. The owner finalises it." },
       { k: "bill",  label: "Billed",     done: !!String((c && c.billNo) || "").trim(),
         why: "No GST bill number against this delivery." }
@@ -18196,6 +18282,7 @@ function viewCatalogue() {
     /* ONLY sales is owner-scoped; godown must see every challan to dispatch/receipt them. */
     if (roleIs("sales")) list = list.filter(function (c) { return isMineClient(c.customerName); });
     var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
+    var _appr = chStuckApproved().length;      /* v6.9.490 - the band's own count, see the tile below */
     /* v6.9.388 - the same predicate the red band counts, scoped the same way, so the tile, the
        band and the queue can never disagree about how many there are. hisabNotStamped() is NOT
        re-implemented here: it already exists and it already knows about HISAB_STAMP_FROM, which
@@ -18208,8 +18295,14 @@ function viewCatalogue() {
       /* v6.9.473 - IT WAS DRAWN QUIET. A four sat here for six weeks looking like a number
          rather than Rs 1,31,038 of material nobody had released. It alerts now, and it leads to
          the band instead of leading nowhere. */
-      '<div class="stat' + (by("Approved") ? ' alert' : '') + '"' + (by("Approved") ? ' data-act="ch-appr" style="cursor:pointer" title="Passed but not dispatched. Tap to see them."' : '') +
-        '><div class="n">' + by("Approved") + '</div><div class="l">Approved, to dispatch</div></div>' +
+      /* v6.9.490 - THE TILE COUNTS WHAT THE BAND COUNTS. by() counts status off a list scoped
+         only for roleIs("sales"); chStuckApproved scopes by seesAllClients() || isMineClient.
+         Two tests for one number, which is the fault v6.9.388 wrote down one screen above -
+         "so the tile, the band and the queue can never disagree about how many there are" -
+         and this tile never got it. A tile counting rows the band does not draw is a tile that
+         leads nowhere, which is exactly what he reported. */
+      '<div class="stat' + (_appr ? ' alert' : '') + '"' + (_appr ? ' data-act="ch-appr" style="cursor:pointer" title="Passed but not dispatched. Tap to see them."' : '') +
+        '><div class="n">' + _appr + '</div><div class="l">Approved, to dispatch</div></div>' +
       '<div class="stat"><div class="n">' + by("Dispatched") + '</div><div class="l">Awaiting receipt</div></div>' +
       '<div class="stat"><div class="n">' + by("Received") + '</div><div class="l">Receipt in</div></div>' +
       /* ---- A PLACE OF ITS OWN FOR THE HISAB QUEUE  (v6.9.388, 1 September 2026) ----
@@ -37388,11 +37481,32 @@ function viewCatalogue() {
         .catch(function () { tgSentFlag(_tc.id, false); toast("It did not go. Try again, or download the PDF and send it by hand."); render(); });
       return;
     }
+    /* ======== THE TAP THAT DID NOTHING  (v6.9.490 - his item 2) ========
+       The band this scrolls to is drawn only when S.chOnly is neither "hisab" nor "draft", so
+       inside the finalise queue or the draft queue the tile was still there, still counting and
+       still tappable, and the element it looked for did not exist. It returned. Silently. That
+       is the whole of "challan shows nothing on clicking".
+
+       A tap now always does something: if the band is not on the screen, leave the queue that is
+       hiding it and go to it after the paint. */
     if (act === "ch-appr") {
-      try {
-        var _ab = document.getElementById("ch_appr_band");
-        if (_ab) { _ab.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
-      } catch (e) { }
+      var _goBand = function () {
+        try {
+          var _ab = document.getElementById("ch_appr_band");
+          if (_ab) { _ab.scrollIntoView({ behavior: "smooth", block: "center" }); return true; }
+        } catch (e) { }
+        return false;
+      };
+      if (_goBand()) return;
+      if (S.tab !== "challans" || S.chOnly) {
+        S.tab = "challans"; S.chOnly = "";
+        render();
+        setTimeout(_goBand, 60);
+        return;
+      }
+      /* on the right screen, no queue in the way, and still nothing to go to: say so rather
+         than leave him pressing a number that never answers */
+      toast("Nothing is passed and waiting to be dispatched.");
       return;
     }
     if (act === "ch-queue") {
