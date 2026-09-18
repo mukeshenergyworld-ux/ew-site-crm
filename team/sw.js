@@ -65,29 +65,11 @@ var NET_MS = 2500;
 
    The routing was right. The storing was wrong: a url that will never be asked for again has
    no business in a cache. One line, and it is this one. */
-/* ===== IT RETURNS THE PROMISE NOW  (18 Sep 2026 - B0) =====
-   MEASURED on his own origin before this was written: cache ew-team-v11 held six entries -
-   ew-config.js, the shell, two icons, the logo, the manifest - and NO app.js. Not a stale
-   copy; no copy. ew-challan-v1210 held three small files and not its own index.html.
-
-   Every small file on the shelf and every big one missing. That pattern is the diagnosis.
-
-   A service worker is killed the moment nothing needs it. This function was fire-and-forget
-   and never inside e.waitUntil(), so the browser shut the worker down as soon as the response
-   reached the page - with caches.open() still unresolved. A 559-byte manifest wins that race.
-   A 2.8 MB app.js loses it every time. The same put run by hand on the same origin stored all
-   2,809,475 bytes without complaint: the cache was never the problem, the worker was gone.
-
-   It returns a promise now so a caller can keep the worker breathing until the bytes land, and
-   says TRUE only when they actually did - the update banner is hung off that answer. */
 function ewKeep(req, res) {
-  if (!res || !(res.ok || res.status === 200)) return Promise.resolve(false);
-  try { if (new URL(req.url).search) return Promise.resolve(false); } catch (e) { return Promise.resolve(false); }
+  if (!res || !(res.ok || res.status === 200)) return;
+  try { if (new URL(req.url).search) return; } catch (e) { return; }
   var cp = res.clone();
-  return caches.open(CACHE)
-    .then(function (c) { return c.put(req, cp); })
-    .then(function () { return true; })
-    .catch(function () { return false; });
+  caches.open(CACHE).then(function (c) { c.put(req, cp); }).catch(function () {});
 }
 /* and clear what the old rule left behind. Runs once, when this worker activates. The cache
    NAME is deliberately not bumped - that would delete the good entries too and cost every
@@ -176,52 +158,18 @@ function ewTellNewBuild(url) {
     });
   } catch (e) {}
 }
-/* ===== AND SOMEBODY WAITS FOR IT  (18 Sep 2026 - B0) =====
-   Two promises, deliberately, and the reason is worth having in front of you before touching
-   either of them.
-
-     res$  settles when the headers arrive. THIS IS WHAT THE PAGE GETS. Chaining the page onto
-           the cache write would have traded a stale app for a slow one - the 2.5 seconds this
-           whole design exists to remove, handed straight back.
-
-     net   is res$ with the write chained on. THIS IS WHAT KEEPS THE WORKER ALIVE, and it is
-           handed to waitUntil ONCE, BEFORE the cached copy is returned. That order is not
-           cosmetic: once respondWith has settled the event is dead and waitUntil throws
-           InvalidStateError, which the catch would swallow - leaving the bug exactly where it
-           was, silently. Call it late and nothing works and nothing complains.
-
-   THE BANNER NOW MEANS A DIFFERENT THING. It used to fire on "a different ETag came back off
-   the network". It fires on "a different build IS ON THE SHELF" - after the put resolves, and
-   only if the put said true. Update reloads the shell, the shell asks for app.js, and app.js
-   comes off the shelf: announcing a build that had not finished storing is precisely how a man
-   taps Update and gets the same version back. */
-function ewShelf(req, fallbackUrl, evt) {
+function ewShelf(req, fallbackUrl) {
   return caches.match(req).then(function (hit) {
-    var res$ = fetch(req).catch(function () { return null; });
-    var net = res$.then(function (r) {
-      if (!r || !r.ok) return r;
-      /* the tag is read BEFORE ewKeep replaces the stored copy */
-      var a = hit ? ewTag(hit) : "", b = ewTag(r);
-      /* ===== NOTHING TO WRITE  (18 Sep 2026 - B0, second look) =====
-         B0 made the write complete. It then completed ON EVERY OPEN, and on nearly every open
-         the bytes off the network are the bytes already on the shelf - 2.8 MB of app.js
-         rewritten on top of itself, ten times a day, on a phone that has to last years.
-         Both tags are read here anyway to decide about the banner; if they match, the shelf
-         already holds this build and there is nothing to do. A MISSING tag on either side is
-         not a match - it means "cannot tell", and the safe answer to that is to keep the newest
-         copy. */
-      if (a && b && a === b) return r;
-      var fresh = !!(a && b && a !== b);
-      return ewKeep(req, r).then(function (stored) {
-        if (fresh && stored) ewTellNewBuild(req.url);
-        return r;
-      });
+    var net = fetch(req).then(function (r) {
+      if (r && r.ok) {
+        /* the tag is read BEFORE ewKeep replaces the stored copy */
+        if (hit && ewTag(hit) && ewTag(r) && ewTag(hit) !== ewTag(r)) ewTellNewBuild(req.url);
+        ewKeep(req, r);
+      }
+      return r;
     }).catch(function () { return null; });
-    try { if (evt && evt.waitUntil) evt.waitUntil(net); } catch (e) {}
     if (hit) return hit;                    /* instant - the fetch finishes quietly into the cache */
-    /* res$, not net: nothing is on the shelf, so the page is waiting on this - and it must
-       not also wait on the write that net carries. */
-    return res$.then(function (r) {
+    return net.then(function (r) {
       if (r) return r;
       if (!fallbackUrl) return new Response("", { status: 504, statusText: "offline" });
       return caches.match(fallbackUrl).then(function (m) {
@@ -294,7 +242,7 @@ self.addEventListener("fetch", function (e) {
   if (e.request.mode === "navigate" || url.indexOf("app.js") >= 0 ||
       url.indexOf("index.html") >= 0 || url.indexOf("manifest") >= 0) {
     if (ewWantsNetwork(e.request)) { networkFirst(e); return; }
-    e.respondWith(ewShelf(e.request, e.request.mode === "navigate" ? "./index.html" : null, e));
+    e.respondWith(ewShelf(e.request, e.request.mode === "navigate" ? "./index.html" : null));
     return;
   }
 
