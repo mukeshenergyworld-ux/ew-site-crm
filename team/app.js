@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.490";
+  var APP_VERSION = "6.9.491";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2675,7 +2675,7 @@ window.addEventListener("beforeunload", function (ev) {
     var pic = p.pic ? driveImg(p.pic, 700) : "";
     var d = descLines(p.desc || p.family);
     var rb = realBrand(p);
-    var h = '<div class="row"><button class="btn sm ghost" data-act="pv-back">&#8592; Wapas</button></div>' +
+    var h = '<div class="row"><button class="btn sm ghost" data-act="pv-back">&#8592; Back</button></div>' +
       '<div class="card" style="padding:0;overflow:hidden">' +
       (pic ? '<div style="background:#f8fafc;padding:14px;text-align:center"><img src="' + esc(pic) + '" alt="" style="max-width:100%;max-height:300px;object-fit:contain"/></div>' : "") +
       '<div style="padding:14px 15px 16px">' +
@@ -2743,24 +2743,24 @@ window.addEventListener("beforeunload", function (ev) {
       });
       if (!hits.length) return h + '<div class="empty">Nothing in the catalogue matches that.</div>';   /* v6.9.399 - English */
       var cap = S.pvMore || 60;
-      h += '<div class="meta">' + hits.length + ' mile' + (hits.length > cap ? ' - pehle ' + cap : "") + '</div>' +
+      h += '<div class="meta">' + hits.length + ' found' + (hits.length > cap ? ' - first ' + cap : "") + '</div>' +
         prodGrid(hits.slice(0, cap));
-      if (hits.length > cap) h += '<div class="row" style="margin-top:10px"><button class="btn ghost grow" data-act="pv-more">Aur dikhayein</button></div>';
+      if (hits.length > cap) h += '<div class="row" style="margin-top:10px"><button class="btn ghost grow" data-act="pv-more">Show more</button></div>';
       return h;
     }
 
     /* ---- browse: brand -> category -> family ---- */
     var shelf = prodShelf();
     h += prodChips("pv-brand", shelf.order.map(function (b) { return { k: b, n: shelf.by[b].length }; }),
-                   S.pvBrand || "", "Saare brand", false, "Brand");
+                   S.pvBrand || "", "All brands", false, "Brand");
 
     if (!S.pvBrand) {
-      h += '<div class="empty" style="text-align:left;padding:10px 0 2px">Brand chunein - phir category aur family.</div>';
+      h += '<div class="empty" style="text-align:left;padding:10px 0 2px">Pick a brand \u2014 then the category, then the family.</div>';
       /* a taste of each shelf so the screen is never blank */
       shelf.order.slice(0, 6).forEach(function (b) {
         h += '<h3 style="margin:16px 0 0;font-size:14px">' + esc(b) +
           ' <span class="pill teal">' + shelf.by[b].length + '</span>' +
-          ' <button class="btn sm ghost" data-act="pv-brand" data-v="' + esc(b) + '">sab dekhein</button></h3>' +
+          ' <button class="btn sm ghost" data-act="pv-brand" data-v="' + esc(b) + '">see all</button></h3>' +
           prodGrid(shelf.by[b].slice(0, 11));
       });
       return h;
@@ -2778,9 +2778,9 @@ window.addEventListener("beforeunload", function (ev) {
     if (!list.length) return h + '<div class="empty">No product under this choice.</div>';   /* v6.9.399 - English */
     list = list.slice().sort(function (a, b) { return String(a.desc).localeCompare(String(b.desc)); });
     var cap2 = S.pvMore || 60;
-    h += '<div class="meta" style="margin-top:8px">' + list.length + ' product' + (list.length > cap2 ? ' - pehle ' + cap2 : "") + '</div>' +
+    h += '<div class="meta" style="margin-top:8px">' + list.length + ' product' + (list.length > cap2 ? ' - first ' + cap2 : "") + '</div>' +
       prodGrid(list.slice(0, cap2));
-    if (list.length > cap2) h += '<div class="row" style="margin-top:10px"><button class="btn ghost grow" data-act="pv-more">Aur dikhayein</button></div>';
+    if (list.length > cap2) h += '<div class="row" style="margin-top:10px"><button class="btn ghost grow" data-act="pv-more">Show more</button></div>';
     return h;
   }
 
