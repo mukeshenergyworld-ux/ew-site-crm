@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.504";
+  var APP_VERSION = "6.9.505";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -12871,10 +12871,22 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         else { d.save(fname); toast("Couldn't host the PDF - opened WhatsApp, downloaded the PDF to drag in."); }
       });
     }).catch(function () {
-      /* PDF build or host errored: still open WhatsApp with the text, download the PDF to attach */
+      /* ===== v6.9.505 - IT WAS TELLING HIM SOMETHING UNTRUE =====
+         This opened WhatsApp, tried to save the PDF, SWALLOWED whatever went wrong, and then
+         said "attach the downloaded PDF" whatever had happened. If the document could not be
+         built the save cannot happen either - so he was sent to look in his downloads folder
+         for a file that was never written.
+
+         That is worse than a missing picture. A gap he can see; this is an instruction to do
+         something impossible, printed with confidence. The two outcomes are different events
+         and he does different things about them, so they are now said differently. */
       try { if (win && !win.closed) win.location = "https://wa.me/" + (wnum || "") + "?text=" + encodeURIComponent(wmsg); } catch (e) { }
-      docPromise.then(function (d) { d.save(fname); }).catch(function () { });
-      toast("Opened WhatsApp - attach the downloaded PDF.");
+      docPromise.then(function (d) {
+        d.save(fname);
+        toast("Opened WhatsApp \u2014 the PDF is in your downloads, attach it there.");
+      }).catch(function () {
+        toast("Opened WhatsApp with the message. THE PDF COULD NOT BE MADE \u2014 there is nothing to attach. Try making it again from the quote.");
+      });
     });
   }
 
@@ -13447,8 +13459,14 @@ async function priceListPdf(brands) {
   var pics = {}, uniq = [];
   rows.forEach(function (p) { var u = String(p.pic || "").trim(); if (u && uniq.indexOf(u) < 0) uniq.push(u); });
   var f = await loadFonts();
-  var got = await Promise.all(uniq.map(function (u) { return loadPic(u); }));
+  /* v6.9.505 - counted. A price list with holes in it is a price list he hands to a customer
+     without knowing it has holes. The name reported is the product code, not the url. */
+  var codeOf = {};
+  rows.forEach(function (p) { var u = String(p.pic || "").trim(); if (u && !codeOf[u]) codeOf[u] = p.code || p.desc || u; });
+  var got = await picsForList(uniq, function (u) { return u; },
+                              function (u) { return codeOf[u] || u; });
   uniq.forEach(function (u, i) { pics[u] = got[i]; });
+  if (got.miss && got.miss.length) toast(picMissSay(got.miss));
   var logos = {};
   var lg = await Promise.all(brands.map(function (b) {
     var row = (S.data.logos || []).filter(function (l) { return String(l.brand || "").trim().toLowerCase() === b.toLowerCase(); })[0];
@@ -14074,23 +14092,45 @@ function viewCatalogue() {
      AND IT COUNTS. What is still short after that is named, BY ITEM CODE, on his screen. Never
      on the customer's copy: a quotation is his shop's paper and the plumbing is not the
      customer's business. */
-  var PIC_MISS = [];
-  function picsForQuote(items) {
-    return Promise.all(items.map(function (i) { return loadPic(i.pic); })).then(function (ps) {
-      var late = [];
-      items.forEach(function (i, n) {
-        if (!ps[n] && String(i.pic || "").replace(/^\s+|\s+$/g, "")) late.push(n);
-      });
-      if (!late.length) { PIC_MISS = []; return ps; }
-      return Promise.all(late.map(function (n) {
-        return loadPic(items[n].pic).then(function (p) { if (p) ps[n] = p; });
-      })).then(function () {
-        PIC_MISS = late.filter(function (n) { return !ps[n]; }).map(function (n) {
-          return String(items[n].code || items[n].desc || ("line " + (n + 1))).slice(0, 18);
+  /* v6.9.505 - AND THE ANSWER RIDES ON THE ARRAY, NOT ON A MODULE VARIABLE. 6.9.502 kept the
+     shortfall in PIC_MISS, which is fine while ONE document is being built and wrong the moment
+     two are: the second would overwrite the first's answer before the first had read it. It is
+     a property of the returned array now, so nobody can clobber anybody.
+
+     AND ONE DEFINITION FOR ALL THREE DOCUMENTS. quotePresPdf and priceListPdf had the same bare
+     Promise.all whose nulls nobody looked at. They read this instead - the day two of them
+     disagree about whether a picture arrived is the day neither is believed. */
+  function picsForList(list, urlOf, nameOf, loader) {
+    loader = loader || loadPic;
+    var wanted = function (x) { return String(urlOf(x) || "").replace(/^\s+|\s+$/g, ""); };
+    return Promise.all(list.map(function (x) { return wanted(x) ? loader(urlOf(x)) : Promise.resolve(null); }))
+      .then(function (ps) {
+        var late = [];
+        list.forEach(function (x, n) { if (!ps[n] && wanted(x)) late.push(n); });
+        if (!late.length) { ps.miss = []; return ps; }
+        /* THE SECOND PASS, WITH THE QUEUE EMPTY. The first runs two at a time and the later
+           pictures fight for a slot; by now the pool is free and the backend is warm. Only
+           possible because 6.9.488 stopped caching a miss. */
+        return Promise.all(late.map(function (n) {
+          return loader(urlOf(list[n])).then(function (p) { if (p) ps[n] = p; });
+        })).then(function () {
+          ps.miss = late.filter(function (n) { return !ps[n]; })
+                        .map(function (n) { return String(nameOf(list[n], n)).slice(0, 18); });
+          return ps;
         });
-        return ps;
       });
-    });
+  }
+  /* and a line that says what a picture is called, once, for every document that draws one */
+  function picName(i, n) { return i && (i.code || i.desc) ? (i.code || i.desc) : ("line " + (n + 1)); }
+  function picsForQuote(items) {
+    return picsForList(items, function (i) { return i.pic; }, picName);
+  }
+  /* v6.9.505 - said in one place, so three documents phrase it the same way */
+  function picMissSay(miss) {
+    if (!miss || !miss.length) return "";
+    return miss.length + " picture" + (miss.length === 1 ? "" : "s") + " did not come through: " +
+      miss.slice(0, 4).join(", ") + (miss.length > 4 ? " and " + (miss.length - 4) + " more" : "") +
+      ". Everything else is correct \u2014 make it again in a moment and they will be there.";
   }
 
   function quotePdf(q) {
@@ -14111,13 +14151,8 @@ function viewCatalogue() {
          see it without each having to remember to ask. NOT printed on the quotation: that is his
          shop's paper going to a customer, and the plumbing is not the customer's business. */
       try {
-        doc.picMiss = PIC_MISS.slice();
-        if (PIC_MISS.length) {
-          toast(PIC_MISS.length + " picture" + (PIC_MISS.length === 1 ? "" : "s") +
-            " did not come through: " + PIC_MISS.slice(0, 4).join(", ") +
-            (PIC_MISS.length > 4 ? " and " + (PIC_MISS.length - 4) + " more" : "") +
-            ". Everything else on the quote is correct \u2014 make it again in a moment and they will be there.");
-        }
+        doc.picMiss = (pics && pics.miss) ? pics.miss.slice() : [];
+        if (doc.picMiss.length) toast(picMissSay(doc.picMiss));
       } catch (e) { }
       var uni = false;
       if (f) {
@@ -14748,7 +14783,11 @@ function viewCatalogue() {
 
     return Promise.all([
       loadLogo(),
-      Promise.all(seq.map(function (x) { return loadPicBig(x.it.pic); })),
+      /* v6.9.505 - counted, like the plain quote. This was a bare Promise.all whose nulls
+         nobody looked at, so a presentation went to a customer with gaps and said nothing. */
+      picsForList(seq, function (x) { return x.it.pic; },
+                  function (x, n) { return picName(x.it, n); },
+                  function (u) { return loadPicBig(u); }),
       logosReady(),
       Promise.all(introBrands.map(function (b) { return b.page ? loadPicBig(b.page, 1200, 0.72) : Promise.resolve(null); })),
       Promise.all(introBrands.map(function (b) { return b.photo ? loadPicBig(b.photo, 700, 0.78) : Promise.resolve(null); }))
