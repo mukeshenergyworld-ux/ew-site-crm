@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.499";
+  var APP_VERSION = "6.9.500";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7605,10 +7605,17 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (!seesAllClients()) custs = custs.filter(function (c) { return isMineClient(c.name); });
     var openByBrand = {};
     brands.forEach(function (b) { openByBrand[b] = []; });
+    /* v6.9.500 - his item 24. This kept "none" and "live" and THREW THE REST AWAY, so a name
+       vanished the moment he decided anything about it. Measured on his book: 337 Won and 247
+       Not required - 584 decisions he made himself, invisible on the one screen that exists to
+       show brand progress. Every state is kept now and the bands sort them out. */
+    var allByBrand = {};
+    brands.forEach(function (b) { allByBrand[b] = []; });
     custs.forEach(function (c) {
       if (isClient(c.name) !== wantClient) return;
       brands.forEach(function (b) {
         var st = clientGroupState(c.name, b);
+        allByBrand[b].push({ c: c, st: st });
         if (st === "none" || st === "live") openByBrand[b].push({ c: c, st: st });
       });
     });
@@ -7657,8 +7664,91 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<button class="btn sm ghost" data-act="board-nr" data-n="' + esc(c.name) + '" data-brand="' + esc(brand) + '">Not required</button>' +
         '</div></div>';
     };
-    if (!listOpen.length) { h += '<div class="empty">No ' + (wantClient ? 'clients' : 'leads') + ' open for ' + esc(brand) + ' &mdash; nothing to chase here. 🎉</div>'; return h; }
-    listOpen.forEach(function (x) { h += rowH(x); });
+    /* ======== v6.9.500 - THREE BANDS, HIS WORDING ========
+       Won, Not required, Follow-up. The first two have never been shown anywhere; the reason he
+       typed when he marked a brand Not required has been stored since board-nr was built and
+       read back nowhere. xlTable does the sorting and the pinned first column - this screen
+       hands over columns and rows and writes none of that again. */
+    var all = allByBrand[brand] || [];
+    var won = all.filter(function (x) { return x.st === "won"; });
+    var nr  = all.filter(function (x) { return x.st === "nr"; });
+    var lost = all.filter(function (x) { return x.st === "lost"; });
+
+    /* nothing is hidden: the lost are counted here even though they are not a band */
+    h += '<div class="meta" style="margin:2px 0 8px;font-size:12.5px">' +
+      '<b>' + won.length + '</b> won &middot; <b>' + nr.length + '</b> not required &middot; ' +
+      '<b>' + listOpen.length + '</b> still open' +
+      (lost.length ? ' &middot; ' + lost.length + ' lost (not a band &mdash; he asked for three)' : '') +
+      '</div>';
+
+    var cell = function (x) {
+      var c = x.c, p = null;
+      try { p = clientPitch(c.name, brand) || null; } catch (e) { p = null; }
+      var num = String(c.mobile || "").replace(/\D/g, "");
+      return { c: c, p: p, num: num,
+        area: [c.area, c.location].filter(Boolean).join(", "),
+        when: p && (p.updatedAt || p.createdAt) ? String(p.updatedAt || p.createdAt) : "",
+        why: p && p.note ? String(p.note) : "" };
+    };
+    /* cl-open, NOT cust-open. custById reads S.data.customers, and THAT SHEET HAS ZERO ROWS in
+       his book - measured. cust-open would have opened an empty card for every one of these 584
+       names. It is the identical fault v6.9.411 fixed on the follow-up cards ("this was custById
+       alone, which answers null for every row on his book") and I had written it again. cl-open
+       reads S.data.clients, which is the register these 180 names actually come from. */
+    var nameCell = function (r) {
+      return '<b data-act="cl-open" data-id="' + esc(r.c.id) + '" style="cursor:pointer;color:#0f766e">' +
+        esc(r.c.name) + '</b>';
+    };
+    var mobCell = function (r) {
+      return r.num ? '<a href="tel:' + esc(r.num) + '">' + esc(r.num) + '</a>'
+                   : '<span style="color:#dc2626">none</span>';
+    };
+    /* THE ROWS ARE BUILT ONLY IF THE BAND IS OPEN. `build` is a function, not an array: folded,
+       these two bands would otherwise still walk 584 names through clientPitch and clientQuotes
+       on every single repaint, to produce html nobody is looking at. */
+    var band = function (key, title, colour, n, build, cols, open) {
+      h += '<div class="card" data-act="bf-band" data-b="' + esc(key) + '" style="cursor:pointer;' +
+        'border-color:' + colour + ';padding:9px 12px;display:flex;justify-content:space-between;' +
+        'align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+        '<b style="font-size:13.5px">' + (open ? '\u25be' : '\u25b8') + ' ' + esc(title) + '</b>' +
+        '<span class="meta" style="font-size:12.5px">' + n + '</span></div>';
+      if (open) h += xlTable("bf-" + key, cols, build(), "the rest of the row");
+    };
+
+    var bfOpen = S.bfBand || { follow: 1 };
+
+    band("won", "Won \u2014 " + brand, "#a7f3d0", won.length, function () { return won.map(function (x) {
+      var r = cell(x);
+      return { v: { name: r.c.name, area: r.area, when: r.when },
+               cells: { name: nameCell(r), area: esc(r.area || "\u2014"), mobile: mobCell(r),
+                        when: r.when ? esc(d10(r.when)) : '<span style="color:#94a3b8">\u2014</span>' } };
+    }); }, [{ k: "name", t: "CLIENT", w: "128px" }, { k: "area", t: "AREA" },
+            { k: "mobile", t: "MOBILE" }, { k: "when", t: "WHEN" }], !!bfOpen.won);
+
+    band("nr", "Not required \u2014 " + brand, "#e2e8f0", nr.length, function () { return nr.map(function (x) {
+      var r = cell(x);
+      return { v: { name: r.c.name, area: r.area, why: r.why, when: r.when },
+               cells: { name: nameCell(r), area: esc(r.area || "\u2014"),
+                        /* THE REASON HE TYPED. Captured since board-nr was built, shown nowhere
+                           until now - and it is the whole value of this band. */
+                        why: r.why ? esc(r.why) : '<span style="color:#94a3b8">no reason given</span>',
+                        when: r.when ? esc(d10(r.when)) : '<span style="color:#94a3b8">\u2014</span>' } };
+    }); }, [{ k: "name", t: "CLIENT", w: "128px" }, { k: "why", t: "WHY NOT", w: "150px" },
+            { k: "area", t: "AREA" }, { k: "when", t: "WHEN" }], !!bfOpen.nr);
+
+    h += '<div class="card" data-act="bf-band" data-b="follow" style="cursor:pointer;' +
+      'border-color:#fde68a;background:#fffbeb;padding:9px 12px;display:flex;' +
+      'justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+      '<b style="font-size:13.5px">' + (bfOpen.follow ? '\u25be' : '\u25b8') + ' Follow-up \u2014 ' + esc(brand) + '</b>' +
+      '<span class="meta" style="font-size:12.5px">' + listOpen.length + '</span></div>';
+    if (bfOpen.follow) {
+      if (!listOpen.length) {
+        h += '<div class="empty">No ' + (wantClient ? 'clients' : 'leads') + ' open for ' + esc(brand) +
+             ' &mdash; nothing to chase here.</div>';
+      } else {
+        listOpen.forEach(function (x) { h += rowH(x); });
+      }
+    }
     return h;
   }
 
@@ -38959,6 +39049,15 @@ function viewCatalogue() {
       return;
     }
     if (act === "bf-brand") { S.bf = t.getAttribute("data-brand"); render(); return; }
+    /* v6.9.500 - his item 24. The follow-up band opens by default because it is the work list;
+       Won and Not required are reference and cost a tap. keepScroll so opening the band he is
+       looking at does not throw him back to the top of the brand chips. */
+    if (act === "bf-band") {
+      var _bb = t.getAttribute("data-b") || "";
+      if (!S.bfBand) S.bfBand = { follow: 1 };
+      S.bfBand[_bb] = S.bfBand[_bb] ? 0 : 1;
+      keepScroll = true; render(); return;
+    }
     if (act === "bf-mode") { S.bfMode = t.getAttribute("data-m") === "client" ? "client" : "lead"; render(); return; }
     if (act === "bill-go") { render(); return; }
     if (act === "bill-open") { S.q = t.getAttribute("data-n"); render(); return; }
