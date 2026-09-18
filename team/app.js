@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.496";
+  var APP_VERSION = "6.9.497";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -32794,6 +32794,70 @@ function viewCatalogue() {
       return { c: c, age: Math.max(0, -daysTo(String(c.createdAt || "").slice(0, 10))) };
     }).sort(function (a, b) { return b.age - a.age; });
   }
+  /* ======== THE QUOTATIONS THAT NEVER WENT OUT  (v6.9.497 - his item 17) ========
+     MEASURED on his book the evening this shipped: 96 quotations, 91 on Draft, 21 of those
+     superseded by a later version - so 71 that have never been sent to anybody, worth
+     Rs 1,48,37,395, median age 32 days, 37 over a month old.
+
+     Today did not mention them. Its eight tiles are lifetime totals and its one list is driven
+     by the follow-ups table, which has ONE ROW in it, due 23 July. So the half of the screen
+     named "Today" showed a single card two months overdue while the largest number in the
+     business sat on another screen behind a filter.
+
+     NOT RE-WRITTEN. unsentQuotes() has done the hard part since v6.9.410 - superseded versions
+     dropped, scoped to the executive's own clients, oldest first - and this reads it. One
+     definition of "never sent", not two.
+
+     ABOVE THE TILES, for the reason v6.9.374 gave when it moved the unstamped band up there:
+     a number nobody scrolls to is a number nobody acts on. */
+  function unsentDashCard() {
+    var list = [];
+    try { list = unsentQuotes() || []; } catch (e) { return ""; }
+    if (!list.length) return "";
+    var val = list.reduce(function (a, q) { return a + (Number(q.net) || 0); }, 0);
+    var old30 = list.filter(function (q) { return qAgeDays(q) > 30; }).length;
+    var oldest = list.reduce(function (m, q) { var d = qAgeDays(q); return d > m ? d : m; }, 0);
+    var hot = old30 > 0;
+    /* by customer, because "six for Amrik" is one phone call and six rows are six */
+    var by = {}, order = [];
+    list.forEach(function (q) {
+      var c = String(q.client || "(no client)").trim() || "(no client)";
+      if (!by[c]) { by[c] = { n: 0, val: 0, old: 0 }; order.push(c); }
+      by[c].n++; by[c].val += (Number(q.net) || 0);
+      var d = qAgeDays(q); if (d > by[c].old) by[c].old = d;
+    });
+    order.sort(function (a, b) { return by[b].val - by[a].val; });
+
+    var h = '<div class="card" style="border-color:' + (hot ? '#fca5a5;background:#fef2f2' : '#fde68a;background:#fffbeb') + '">' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:' +
+        (hot ? '#b91c1c' : '#b45309') + '"><b>Never sent</b></div>' +
+      '<h3 style="font-size:16px;margin:4px 0 2px">' + list.length + ' quotation' + (list.length === 1 ? '' : 's') +
+        ' ' + (list.length === 1 ? 'has' : 'have') + ' never gone out</h3>' +
+      '<div class="meta" style="font-size:13px"><b>' + money(val) + '</b> of quoted work, still sitting in Draft. ' +
+      (old30 ? '<b>' + old30 + '</b> of them ' + (old30 === 1 ? 'is' : 'are') + ' more than a month old' +
+               (oldest > 0 ? ', the oldest ' + oldest + ' days' : '') + '. ' : '') +
+      'A quotation on Draft has not reached the customer &mdash; he is not waiting on a price, he is waiting on nothing.</div>';
+
+    order.slice(0, 5).forEach(function (c) {
+      var x = by[c];
+      h += '<div class="row" style="align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap;' +
+        'border-top:1px solid ' + (hot ? '#fecaca' : '#fde68a') + ';padding-top:7px">' +
+        '<b style="flex:1 1 auto;font-size:13.5px">' + esc(c) + '</b>' +
+        '<span class="meta" style="font-size:12px;white-space:nowrap">' + x.n + ' quote' + (x.n === 1 ? '' : 's') + '</span>' +
+        '<span class="pill ' + (x.old > 30 ? 'due' : 'soon') + '" style="white-space:nowrap">' +
+          (x.old <= 0 ? 'today' : x.old + 'd') + '</span>' +
+        '<span style="font-size:12.5px;white-space:nowrap"><b>' + money(x.val) + '</b></span></div>';
+    });
+    if (order.length > 5) {
+      h += '<div class="meta" style="font-size:12px;margin-top:6px">and ' + (order.length - 5) +
+        ' more customer' + (order.length - 5 === 1 ? '' : 's') + '</div>';
+    }
+    /* q-unsent is the Quotes screen's OWN door, extended to carry the tab. A second act name
+       for the same thing is how hsb-open got invented. */
+    return h + '<div class="acts" style="margin-top:9px">' +
+      '<button class="btn sm" data-act="q-unsent">Work through them</button></div></div>';
+  }
+
   function draftDashCard() {
     var list = draftWaiting();
     if (!list.length) return "";
@@ -32861,7 +32925,9 @@ function viewCatalogue() {
 
     /* v6.9.374 - ABOVE the tiles, not below them. A number nobody scrolls to is a number
        nobody acts on, and 88 unstamped deliveries is what that costs. */
-    var h = hisabNotStampedBand() + '<div class="cards">' +
+    /* v6.9.497 - his item 17. Above the tiles for the reason v6.9.374 wrote down when it moved
+       the unstamped band up here, and the number is the larger of the two. */
+    var h = hisabNotStampedBand() + unsentDashCard() + '<div class="cards">' +
       '<div class="stat"><div class="n">' + liveClients.length + '</div><div class="l">Clients</div></div>' +
       '<div class="stat ' + (overdue.length ? 'alert' : '') + '"><div class="n">' + overdue.length + '</div><div class="l">Follow-ups overdue</div></div>' +
       '<div class="stat"><div class="n">' + due.length + '</div><div class="l">Due today</div></div>' +
@@ -39732,7 +39798,15 @@ function viewCatalogue() {
       S.modal = modalChallan(); render(); return;
     }
     /* ===== v6.9.410 - the two taps that end a never-sent quotation ===== */
-    if (act === "q-unsent") { S.qUnsent = true; S.qq = ""; render(); return; }
+    /* v6.9.497 - AND IT CARRIES THE TAB NOW. This set the filter and not the tab, because the
+       only button that emitted it was already on the Quotes screen. Today's card presses the
+       same act rather than a second one of its own: one door to the never-sent list, and from
+       the Quotes screen setting the tab it is already on costs nothing. */
+    if (act === "q-unsent") {
+      S.qUnsent = true; S.qq = ""; S.tab = "quotes";
+      try { tabUse(S.tab); navBump(S.tab); } catch (e) { }
+      render(); return;
+    }
     if (act === "q-unsent-off") { S.qUnsent = false; render(); return; }
     if (act === "q-sent") {
       var _qsn = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
