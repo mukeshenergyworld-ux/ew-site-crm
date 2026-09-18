@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.493";
+  var APP_VERSION = "6.9.494";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18024,6 +18024,24 @@ function viewCatalogue() {
       return { c: c, age: Math.max(0, -daysTo(String(c.createdAt || "").slice(0, 10))) };
     }).sort(function (a, b) { return b.age - a.age; });
   }
+  /* ======== THE REST, FOLDED AWAY  (v6.9.494 - his item 8) ========
+     His words: "filtered challans on top, the rest below". The two queues used to REPLACE the
+     delivery book; now they sit on top of it and this line says how much is underneath.
+
+     COLLAPSED, and that is his own choice made with the trade-off in front of him. v6.9.388 and
+     v6.9.464 both refused to draw the book under a queue, in these words: "a list to be emptied
+     is not a book to be browsed." Appending two hundred cards under a twelve-card work list on a
+     390px phone is what that reasoning was protecting against. One line gives him both. */
+  function chRestBar(n, open) {
+    if (n <= 0) return "";
+    return '<div class="card" data-act="ch-rest" style="cursor:pointer;user-select:none;' +
+      'border-color:#cbd5e1;background:#f8fafc;padding:9px 12px;display:flex;' +
+      'justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+      '<b style="font-size:13.5px;color:#334155">' + (open ? '\u25be' : '\u25b8') +
+      ' Everything else</b>' +
+      '<span class="meta" style="font-size:12.5px">' + n + ' deliver' + (n === 1 ? 'y' : 'ies') +
+      ' &middot; ' + (open ? 'tap to fold away' : 'tap to show') + '</span></div>';
+  }
   function chStuckApprovedBand() {
     var L = chStuckApproved();
     if (!L.length) return "";
@@ -18304,6 +18322,8 @@ function viewCatalogue() {
     if (roleIs("sales")) list = list.filter(function (c) { return isMineClient(c.customerName); });
     var by = function (st) { return list.filter(function (c) { return (c.status || "Draft") === st; }).length; };
     var _appr = chStuckApproved().length;      /* v6.9.490 - the band's own count, see the tile below */
+    /* v6.9.494 - the deliveries already shown in a queue above, held out of the book below it */
+    var qSkip = null;
     /* v6.9.388 - the same predicate the red band counts, scoped the same way, so the tile, the
        band and the queue can never disagree about how many there are. hisabNotStamped() is NOT
        re-implemented here: it already exists and it already knows about HISAB_STAMP_FROM, which
@@ -18396,7 +18416,11 @@ function viewCatalogue() {
         'The godown cannot dispatch until each one is passed.</div>' +
         '<div class="row" style="margin-top:8px">' + aqBack + '</div></div>';
       aq.forEach(function (c) { h += challanCardHtml(c); });
-      return h;
+      /* v6.9.494 - the book is still down there, and the queue's own challans are held out of it
+         so nothing appears twice on one screen. */
+      qSkip = {}; aq.forEach(function (c) { qSkip[c.id] = 1; });
+      h += chRestBar(list.length - aq.length, !!S.chRest);
+      if (!S.chRest) return h;
     }
 
     if (S.chOnly === "hisab" && canHisabRole()) {
@@ -18425,7 +18449,10 @@ function viewCatalogue() {
         'whoever the client&rsquo;s partner is <i>today</i>.</div>' +
         '<div class="row" style="margin-top:8px">' + back + '</div></div>';
       hq.forEach(function (c) { h += challanCardHtml(c); });
-      return h;
+      /* v6.9.494 - as above: the rest below, and never the same delivery twice. */
+      qSkip = {}; hq.forEach(function (c) { qSkip[c.id] = 1; });
+      h += chRestBar(list.length - hq.length, !!S.chRest);
+      if (!S.chRest) return h;
     }
 
     /* Group the whole delivery book top-down: Sales exec -> Client -> that client's challans.
@@ -18434,6 +18461,7 @@ function viewCatalogue() {
        is blank falls under "Unassigned", pinned to the bottom so it reads as a to-do. */
     var groups = {}, execOrder = [];
     list.forEach(function (c) {
+      if (qSkip && qSkip[c.id]) return;        /* v6.9.494 - it is already on screen, above */
       var cl = clientByName(c.customerName) || {};
       var exec = String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned";
       var clientName = c.customerName || "(no client)";
@@ -37567,6 +37595,9 @@ function viewCatalogue() {
       toast("Nothing is passed and waiting to be dispatched.");
       return;
     }
+    /* v6.9.494 - his item 8. keepScroll because the whole point is to open what is under the
+       queue he is reading, and a jump to the top loses his place in it. */
+    if (act === "ch-rest") { S.chRest = !S.chRest; keepScroll = true; render(); return; }
     if (act === "ch-queue") {
       if (t.getAttribute("data-off")) { chQueueLeave(); return; }
       chQueueEnter("hisab"); return;
