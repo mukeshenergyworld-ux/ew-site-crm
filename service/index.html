@@ -289,7 +289,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.14.1";
+  var APP_VERSION = "1.15.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -2368,9 +2368,24 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
   function cxTellText(ref) {
     var c = cRowOf(ref) || {};
+    /* v18.09.2026 - English, on his standing rule. THIS ONE LEAVES THE COMPANY: it is the
+       message the customer reads when his complaint is closed, and it opened with "Namaste". He
+       is told in as many words that it changed, because a customer is the wrong person to learn
+       it from and putting the greeting back is one line. */
+    /* THE GREETING STAYS "NAMASTE", AND THAT IS A CORRECTION OF MY OWN (18 Sep 2026).
+       His rule is English everywhere, and the BODY of this message was Hinglish - "aapki
+       complaint ka kaam ho gaya hai" - which is exactly the kind of line he objected to. That is
+       now English.
+
+       But the greeting is not a UI label, it is HOW ENERGY WORLD OPENS EVERY MESSAGE IT SENDS.
+       Checked: eleven other places across the CRM, the Challan app and the Payment app all open
+       "Namaste <name>," and continue in English - statements, delivery notes, account
+       confirmations, follow-ups. Translating this one alone would have made Service the odd one
+       out, and translating all twelve is a decision about how he greets his customers, not a
+       translation job. It is his to make, and he is asked rather than presented with it. */
     return "Namaste " + (String(c.Name || "").trim() || "ji") + ", " +
-      "aapki complaint (" + String(ref || "") + ") ka kaam ho gaya hai. " +
-      "Koi dikkat ho to is number par bata dijiye. — Energy World";
+      "your complaint (" + String(ref || "") + ") has been completed. " +
+      "If anything is still not right, tell us on this number. — Energy World";
   }
   function sheetCxTell() {
     var t = S.cxTell || {};
