@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.488";
+  var APP_VERSION = "6.9.489";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2488,7 +2488,7 @@ window.addEventListener("beforeunload", function (ev) {
       if (!force) {
         _catAt = _shelf.at;               /* so the 5-minute guard above works on the NEXT call too */
         PRODLIST_HTML = null;
-        _pcbCache = null;
+        _pcbCache = null; _plcCache = null;
         return Promise.resolve();
       }
     }
@@ -2508,7 +2508,7 @@ window.addEventListener("beforeunload", function (ev) {
           var _wasEmpty = !PRODUCTS.length;
           PRODUCTS = items;
           PRODLIST_HTML = null;
-          _pcbCache = null;                 /* v6.9.373 - the brand map is derived from PRODUCTS */
+          _pcbCache = null; _plcCache = null;   /* v6.9.373 - the brand map is derived from PRODUCTS */
           _catAt = Date.now();
           bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items }));
           if (_wasEmpty) { try { render(); } catch (e) {} }
@@ -2559,7 +2559,7 @@ window.addEventListener("beforeunload", function (ev) {
     var c = String(code || "").trim();
     PRODUCTS = PRODUCTS.filter(function (x) { return String(x.code || "").trim() !== c; });
     PRODLIST_HTML = null;
-    _pcbCache = null;                       /* v6.9.373 - and here */
+    _pcbCache = null; _plcCache = null;      /* v6.9.373 - and here */
     bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: at || Date.now(), items: PRODUCTS }));
   }
 
@@ -6072,11 +6072,45 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      Gurpreet Singh, Mohit - Orlov Hotel, ravi); not one carries a delivery and not one has a
      discount row of its own, so not a single line in the book prices differently. This moves
      Rs 0 today. Money must never move because a feature was deployed. */
+  /* ---- v6.9.489 - THE SAME ANSWER, LOOKED UP INSTEAD OF SEARCHED ----
+     MEASURED in his own browser against his own book, 18 September 2026. This filtered all 551
+     discount rows on EVERY call, normalising 551 client names and 551 brand names with a regex
+     each time to do it, and it cost 0.35 ms a call.
+
+     IT IS ON THE HOT PATH OF EVERYTHING THAT PRICES ANYTHING. pricedLines asks it once per line,
+     so the account, the statement, HISAB, the incentive book, every quote and every PDF have
+     been paying that all along. Walking his 209 deliveries: 399 ms before, 3.1 ms after. The
+     JSON parsing of the same 209 deliveries is 0.9 ms, so this WAS the cost of those screens.
+
+     PROVED, NOT ASSERTED: 5,220 client x brand pairs off his own book - every client, every
+     brand, every spelling that appears on a discount row, plus messy whitespace, wrong case and
+     names that do not exist - return the identical rows in the identical order. Zero mismatches.
+     ORDER MATTERS (discRowOn seeds `best` with live[0], discPick walks from rows[0]) and it is
+     preserved because the index is built by walking the rows in their own order.
+
+     .slice() ON THE WAY OUT is deliberate: the old body handed back a fresh array from .filter()
+     every time, and handing back the index's own array would let a future caller sort or splice
+     the index itself. No caller mutates it today - but that is not a guarantee, and one array
+     against 0.35 ms is not a trade worth thinking about.
+
+     The same bytes live in the Challan app, as the whole block does. Where it is DROPPED differs,
+     and always has: the CRM drops its caches on every paint (renderCore), the Challan app when a
+     new book lands (bust). It follows _aliasCache, the merge machinery, which is trusted in
+     exactly those two places for exactly the same reason. */
+  var _dscIdx = null;
+  function dscIndex() {
+    if (_dscIdx) return _dscIdx;
+    _dscIdx = {};
+    ((S.data && S.data.discounts) || []).forEach(function (x) {
+      var k = dkey(x.client) + "||" + dkey(x.brand);
+      (_dscIdx[k] || (_dscIdx[k] = [])).push(x);
+    });
+    return _dscIdx;
+  }
   function discRowsFor(client, brand) {
-    var b = dkey(brand), all = (S.data && S.data.discounts) || [];
+    var b = dkey(brand), ix = dscIndex();
     var pick = function (nm) {
-      var c = dkey(nm);
-      return all.filter(function (x) { return dkey(x.client) === c && dkey(x.brand) === b; });
+      return (ix[dkey(nm) + "||" + b] || []).slice();
     };
     var own = pick(client);
     if (own.length) return own;
@@ -6714,6 +6748,24 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       });
     }
     return _pcbCache[String(code == null ? "" : code)] || "";
+  }
+  /* ---- v6.9.489 - THE LIST PRICE, LOOKED UP INSTEAD OF SEARCHED ----
+     chDiscGap and chRepriced each ran PRODUCTS.filter() once per line to ask "is this rate still
+     the catalogue price". 1,051 products against roughly 1,700 lines in his book is 1.8 million
+     comparisons, and presetGapScan below asks the same question of every delivery on every paint
+     of HISAB. One pass, then a lookup - exactly what v6.9.373 did to productBrandByCode, and for
+     exactly the same reason: that is how the brand-follow screen came to take 24 seconds.
+     Dropped in renderCore with _pcbCache, and wherever PRODUCTS itself is replaced. */
+  var _plcCache = null;
+  function productListByCode(code) {
+    if (!_plcCache) {
+      _plcCache = {};
+      (PRODUCTS || []).forEach(function (p) {
+        if (!p || !p.code) return;
+        _plcCache[String(p.code)] = Number(p.price) || 0;
+      });
+    }
+    return _plcCache[String(code == null ? "" : code)] || 0;
   }
   function challanWonBrands(name) {
     var set = {}, t = String(name || "").trim().toLowerCase();
@@ -20229,6 +20281,27 @@ function viewCatalogue() {
      This finds the gap and says so. It reports a line ONLY where the preset now in force is
      LARGER than what was frozen - a smaller preset means the discount was deliberately better on
      the day, and nothing here will ever quietly take that away. */
+  /* ========= A LINE THE APP NEVER PRICED IS A LINE IT MUST NEVER RE-PRICE  (v6.9.489) ======
+     MEASURED on his book, 18 September 2026, before a second door was opened to repriceOffer.
+     chDiscGap and chRepriced read i.brand and i.disc straight off the saved line and asked
+     nothing else, so five lines were eligible for a re-price that would have been a disaster:
+
+       27/08/2026/034   Material Return 22/8/26       -22,463   Huliot ULTRA SILENT 50%
+       27/08/2026/034   Material Return - 25/8/26     -47,793   Heliroma 50%
+       01/09/2026/050   Material Return               -65,049   Heliroma 50%
+       01/09/2026/049   Material Returned            -103,730   Heliroma 50%
+       20/08/2026/001   JOBWORK, dismantle and lay     31,800   Heliroma 40%
+
+     The first four are credit notes he worked out on paper. Re-pricing them takes HALF THE
+     CREDIT BACK OFF THE CUSTOMER - Rs 1,19,519 in all. The fifth cuts a labour bill by Rs 12,720
+     for a discount nobody gave, on work no brand supplied.
+
+     v6.9.361 and v6.9.356 closed this trap where a line is ENTERED - a hand-worked figure keeps
+     a stored 0, labour keeps no brand. Neither guard is read here, because this code reads the
+     SAVED line, and a saved manual line carries the brand he chose SO THAT SOMEBODY WOULD EARN
+     ON IT. A brand named for an incentive is not a brand named for a discount. One predicate,
+     read by both functions, so the two can never again disagree about what may be touched. */
+  function chNoReprice(l) { return isJobLine(l) || isManualLine(l); }
   function chDiscGap(c) {
     var cl = c && c.customerName;
     /* v6.9.379 - THE DAY THIS DELIVERY WAS MADE, not today. Measured on his book the day this
@@ -20243,6 +20316,15 @@ function viewCatalogue() {
     var lines = [], skipped = [], was = 0, now = 0;
     items.forEach(function (i) {
       var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0;
+      /* v6.9.489 - see chNoReprice. The line is still COUNTED, at the discount it carries, so
+         `was` and `now` remain the true value of the whole delivery on the offer sheet and in
+         the audit row; it is simply never a candidate for a change. */
+      if (chNoReprice(i)) {
+        var _fz = (i.disc != null && i.disc !== "") ? Number(i.disc) : 0;
+        var _v = qty * Math.round(rate * (1 - _fz / 100));
+        was += _v; now += _v;
+        return;
+      }
       var brand = i.brand || productBrandByCode(i.code) || (c && c.brand) || "";
       var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : 0;
       var preset = clientDiscountOn(cl, brand, _day);
@@ -20252,7 +20334,7 @@ function viewCatalogue() {
          takes the same 47% off twice and bills 20,101 for a 71,561 pump. So a line is only
          re-priceable when its stored rate really is the catalogue list price. Anything else is
          reported separately and never touched. */
-      var list = Number((PRODUCTS.filter(function (p) { return p.code === i.code; })[0] || {}).price) || 0;
+      var list = productListByCode(i.code);                 /* v6.9.489 - a map, not a scan */
       var isMrp = !list || Math.abs(list - rate) <= 1;      /* unknown code: leave it be */
       was += qty * Math.round(rate * (1 - frozen / 100));
       now += qty * Math.round(rate * (1 - ((preset > frozen && isMrp) ? preset : frozen) / 100));
@@ -20272,12 +20354,15 @@ function viewCatalogue() {
     var _day = String((c && c.createdAt) || "").slice(0, 10);   /* v6.9.379 - as chDiscGap judges it */
     var items = []; try { items = JSON.parse((c && c.itemsJson) || "[]"); } catch (e) { items = []; }
     return items.map(function (i) {
+      /* v6.9.489 - the same predicate chDiscGap reads, so what is offered and what is written
+         can never disagree. A hand-worked credit and a labour line come back untouched. */
+      if (chNoReprice(i)) return Object.assign({}, i);
       var brand = i.brand || productBrandByCode(i.code) || (c && c.brand) || "";
       var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : 0;
       var preset = clientDiscountOn(cl, brand, _day);
       /* v6.9.277 - the same guard. A rate that is not the list price is a net figure, and a
          percentage applied to a net figure discounts what has already been discounted. */
-      var list = Number((PRODUCTS.filter(function (p) { return p.code === i.code; })[0] || {}).price) || 0;
+      var list = productListByCode(i.code);                 /* v6.9.489 - a map, not a scan */
       var isMrp = !list || Math.abs(list - (Number(i.rate) || 0)) <= 1;
       var out = Object.assign({}, i);
       if (preset > frozen && isMrp) out.disc = preset;
@@ -20291,8 +20376,54 @@ function viewCatalogue() {
      separately because those are bills the client may already be holding.
 
      Cancel leaves every delivery exactly as it is, and nothing asks again. */
-  function repriceOffer(touched, fromYmd) {
+  /* ======== WHAT HE HAS ALREADY SAID NO TO, AND HOW BIG IT WAS  (v6.9.489) ========
+     The standing count below reads HISAB, which he opens more than any other screen. Asking him
+     the same question on every paint is the nag v6.9.379 deleted, so a "no" is written down and
+     honoured. The SIZE of the gap he declined is kept with it, not just the delivery's id: a
+     rate raised AGAIN later opens a bigger gap than the one he answered, and that is a new
+     question, not the old one. Without the size, one "no" would swallow every future correction
+     to that delivery in silence - which is the same shape of fault as the one this release is
+     fixing. Nothing is deleted: the answer is an audit row like every other decision here. */
+  function rpDeclined() {
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (String(a.action) !== "challan:reprice-no") return;
+      var d = null; try { d = JSON.parse(a.detail || "{}"); } catch (e) { d = null; }
+      if (!d || !d.chId) return;
+      var was = Number(d.diff) || 0;
+      if (m[d.chId] === undefined || was > m[d.chId]) m[d.chId] = was;
+    });
+    return m;
+  }
+  /* ======== EVERY DELIVERY BILLED ABOVE THE RATE THE CUSTOMER WAS PROMISED  (v6.9.489) =======
+     Rs 1,47,989 across 12 deliveries on the day this was written, and not one screen in the app
+     said so. adm-save now asks at the moment a rate changes, but that only helps from today; the
+     gap that already exists needs one door, and this is the count behind it.
+
+     Per paint, and cached - chDiscGap is not cheap and this walks all 209 deliveries. */
+  var _rpgCache = null;
+  function presetGapScan() {
+    if (_rpgCache) return _rpgCache;
+    var no = rpDeclined(), n = 0, rs = 0, who = {};
+    (S.data.challans || []).forEach(function (c) {
+      if (!c || !c.id) return;
+      if (isCancelled("challans", c.id)) return;
+      var g = chDiscGap(c);
+      if (!g.n) return;
+      if (no[c.id] !== undefined && g.diff <= no[c.id]) return;   /* answered, and no bigger */
+      n++; rs += g.diff; who[dkey(c.customerName)] = c.customerName;
+    });
+    _rpgCache = { n: n, rs: rs, clients: Object.keys(who).map(function (k) { return { client: who[k] }; }) };
+    return _rpgCache;
+  }
+  /* v6.9.489b - `standing` says WHICH QUESTION THIS IS. Called from a discount save it means
+     "the rate you just changed reaches these"; called from the count in HISAB it means "these
+     were billed above what the customer was promised, whenever that happened". The arithmetic is
+     identical and the words are not, and a money sheet that misdescribes what it is about to do
+     is worse than no sheet at all. */
+  function repriceOffer(touched, fromYmd, standing) {
     if (!touched || !touched.length || !roleIs("admin")) return;
+    var rpNo = rpDeclined();      /* v6.9.489 - the sheet and the standing count must agree */
     var want = {};
     touched.forEach(function (t) { want[dkey(t.client)] = 1; });
     var hits = [];
@@ -20302,32 +20433,68 @@ function viewCatalogue() {
       if (fromYmd && ymd < fromYmd) return;      /* a rate does not reach back past its own start */
       if (isCancelled && isCancelled("challans", c.id)) return;
       var g = chDiscGap(c);
-      if (g.n) hits.push({ c: c, g: g, ymd: ymd });
+      if (!g.n) return;
+      /* v6.9.489 - a delivery he has already looked at and left alone is not offered again
+         unless the gap has actually grown since he answered. */
+      if (rpNo[c.id] !== undefined && g.diff <= rpNo[c.id]) return;
+      hits.push({ c: c, g: g, ymd: ymd });
     });
     if (!hits.length) return;
     hits.sort(function (a, b) { return String(a.ymd).localeCompare(String(b.ymd)); });
     var total = hits.reduce(function (a, h) { return a + h.g.diff; }, 0);
     var inH = hits.filter(function (h) { return inHisab(h.c); });
     /* v6.9.452 - the app's own sheet, not window.confirm; the deliveries as rows, not dot-leaders */
+    /* v6.9.489b - WHOSE DELIVERY IS THIS? With one client the rows needed no name. Opened from
+       the standing count they span every client in the book, and a list of bare challan numbers
+       is a list he cannot check. The name goes under the number, and only when there is more
+       than one - repeated twelve times down a 390px screen it would be noise. */
+    var _rpWho = {};
+    hits.forEach(function (h) { _rpWho[dkey(h.c.customerName)] = h.c.customerName; });
+    var _rpNames = Object.keys(_rpWho).length;
     var show = '<table style="width:100%;border-collapse:collapse;font-size:13px">' + hits.slice(0, 8).map(function (h) {
       var l = h.g.lines[0];
-      return '<tr><td style="padding:2px 6px 2px 0;font-weight:700;white-space:nowrap">' + esc(h.c.challanNo || "?") + '</td>' +
+      return '<tr><td style="padding:2px 6px 2px 0;font-weight:700;white-space:nowrap">' + esc(h.c.challanNo || "?") +
+        (_rpNames > 1 ? '<div style="font-weight:400;font-size:12px;color:#64748b;max-width:150px;overflow:hidden;text-overflow:ellipsis">' +
+          esc(h.c.customerName || "") + '</div>' : '') + '</td>' +
         '<td style="padding:2px 6px;color:#64748b;white-space:nowrap">' + esc(fullDate(h.ymd)) + '</td>' +
         '<td style="padding:2px 6px;white-space:nowrap">' + l.frozen + '% \u2192 ' + l.preset + '%</td>' +
         '<td style="padding:2px 0;text-align:right;white-space:nowrap;color:#b91c1c">' + money(h.g.diff) + ' less</td></tr>';
     }).join("") + '</table>' + (hits.length > 8 ? '<div class="meta">\u2026 and ' + (hits.length - 8) + ' more</div>' : '');
-    askSheet({ title: "Re-price " + (hits.length > 1 ? hits.length + " deliveries" : "one delivery") + " at the new discount?",
-      yes: "Re-price " + (hits.length > 1 ? "them" : "it"), no: "Leave them as they are",
-      sub: esc(hits[0].c.customerName) + " \u2014 the discount you just saved is higher than the one " +
-        (hits.length > 1 ? "these deliveries were" : "this delivery was") + " priced at" +
-        (fromYmd ? " (on or after " + esc(fullDate(fromYmd)) + ")" : "") + ".",
+    var _rpMany = hits.length > 1;
+    askSheet({ title: "Re-price " + (_rpMany ? hits.length + " deliveries" : "one delivery") +
+        (standing ? " at the discount the customer was promised?" : " at the new discount?"),
+      yes: "Re-price " + (_rpMany ? "them" : "it"), no: "Leave them as they are",
+      /* v6.9.489b - the standing door has not just saved anything, and the deliveries are not
+         one man's. Naming the first customer over a list of ten is how he would approve a change
+         to nine other people's bills believing it was one man's. */
+      sub: standing
+        ? ((_rpNames > 1 ? _rpNames + " customers were" : esc(hits[0].c.customerName) + " was") +
+           " billed ABOVE the discount " + (_rpNames > 1 ? "they had been" : "he had been") +
+           " promised. This is the book as it stands \u2014 nothing has just changed.")
+        : (esc(hits[0].c.customerName) + " \u2014 the discount you just saved is higher than the one " +
+           (_rpMany ? "these deliveries were" : "this delivery was") + " priced at" +
+           (fromYmd ? " (on or after " + esc(fullDate(fromYmd)) + ")" : "") + "."),
       body: show + '<div style="margin-top:8px">Total <b style="color:#b91c1c">' + money(total) + '</b> off what this client owes.</div>' +
         (inH.length ? '<div style="margin-top:8px;color:#b45309">\u26a0 ' + inH.length + ' of these ' + (inH.length > 1 ? 'have' : 'has') +
           ' already been finalised \u2014 re-pricing changes a bill the client may already hold.</div>' : '') +
         '<div class="meta" style="margin-top:8px">Leaving them keeps every delivery exactly as it is, and you will not be asked again.</div>' })
     .then(function (yes) {
     if (!yes) {
-      toast("Left as they are \u2014 nothing was re-priced.");
+      /* v6.9.489 - "no" is a decision, and a decision is a row. It is what stops the standing
+         count in HISAB asking him this again every time he opens the screen. */
+      hits.forEach(function (h) {
+        save("audit", {
+          id: "RN-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+          createdAt: new Date().toISOString(), actor: S.user, action: "challan:reprice-no",
+          target: (h.c.challanNo || "") + " / " + (h.c.customerName || ""),
+          detail: JSON.stringify({ chId: h.c.id, no: h.c.challanNo, diff: h.g.diff,
+            from: fromYmd || "", why: "owner left it as it was" }), ip: ""
+        }, true);
+      });
+      _rpgCache = null;
+      toast("Left as " + (hits.length > 1 ? "they are" : "it is") + " \u2014 nothing was re-priced, " +
+            "and you will not be asked again unless the discount moves further.");
+      renderBg();
       return;
     }
     var jobs = hits.map(function (h) {
@@ -20347,8 +20514,10 @@ function viewCatalogue() {
       });
     });
     Promise.all(jobs).then(function () {
+      /* v6.9.489b - off TEN accounts, not off the one whose name sorted first */
       toast(hits.length + " deliver" + (hits.length > 1 ? "ies" : "y") + " re-priced \u2014 " +
-            money(total) + " off " + hits[0].c.customerName + "\u2019s account.");
+            money(total) + " off " + (_rpNames > 1 ? _rpNames + " customers\u2019 accounts"
+                                                   : hits[0].c.customerName + "\u2019s account") + ".");
       renderBg();
     });
     });
@@ -21734,13 +21903,31 @@ function viewCatalogue() {
       var cp = coldPartners().length;
       if (cp) rows.push({ tab: "partners", n: cp, txt: "partner" + (cp === 1 ? "" : "s") + " gone quiet", why: "no delivery, visit or payout for " + COLD_PARTNER + "+ days" });
     } catch (e) { }
+    /* ---- v6.9.489 - AND THE ONE THAT IS MONEY ----
+       Rs 1,47,989 across 12 deliveries was billed above the rate those customers were promised,
+       and until today nothing anywhere said so. THE OWNER'S ONLY, because repriceOffer is the
+       owner's only: a count a salesman can see and cannot act on teaches him to ignore the band.
+       Red, not teal - every other chip here is work to do, this one is money that is wrong. */
+    try {
+      if (roleIs("admin")) {
+        var pg = presetGapScan();
+        if (pg.n) {
+          rows.push({ act: "reprice-scan", n: pg.n, red: true,
+            txt: "deliver" + (pg.n === 1 ? "y" : "ies") + " billed above the preset",
+            why: money(pg.rs) + " charged above the discount these customers were promised. " +
+                 "Tap to see every one of them and decide." });
+        }
+      }
+    } catch (e) { }
     if (!rows.length) return "";
     return '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px">' +
       '<h3 style="margin:0 0 5px;font-size:13px">Today, besides the money</h3>' +
       '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
       rows.map(function (r) {
-        return '<button class="btn sm ghost" data-act="tab" data-tab="' + esc(r.tab) + '" ' +
-          'style="background:#fff;border-color:#99f6e4" title="' + esc(r.why) + '">' +
+        return '<button class="btn sm ghost" data-act="' + esc(r.act || "tab") + '" data-tab="' +
+          esc(r.tab || "") + '" ' +
+          'style="background:#fff;border-color:' + (r.red ? '#fca5a5;color:#b91c1c' : '#99f6e4') +
+          '" title="' + esc(r.why) + '">' +
           '<b>' + r.n + '</b> ' + esc(r.txt) + '</button>';
       }).join("") + '</div></div>';
   }
@@ -36131,10 +36318,11 @@ function viewCatalogue() {
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
     _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pfxCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null; _agrCache = null; _pvCache = null;
-    _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null;
+    _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null; _plcCache = null;
+    _rpgCache = null;      /* v6.9.489 - the preset gap is money; a stale count is the worst of them */
     /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
        yesterday's money, which is the worst thing this app can do. */
-    _ledCache = null; _cqCache = null; _cwbCache = null;
+    _ledCache = null; _cqCache = null; _cwbCache = null; _dscIdx = null;
     /* v6.9.485 - the register's four are per-PAINT indexes, busted here with the ledger's. That
        is the whole job: renderCore runs on every render and every caller of splitCancelled
        renders straight afterwards, so a second bust inside splitCancelled bought nothing - and
@@ -38408,7 +38596,7 @@ function viewCatalogue() {
          Asking per brand would be five prompts to change five rows he thinks of as one decision. */
       /* v6.9.453 - every row is decided FIRST, the date asked once (a sheet, a Promise), the rows
          written after. The rows, their ids and the audit are exactly what 6.9.350 wrote. */
-      var admFrom = "", admN = 0, admJobs = [];
+      var admFrom = "", admN = 0, admJobs = [], admTouch = [];   /* v6.9.489 - admTouch */
       Object.keys(admG).forEach(function (k) {
         var g = admG[k], exd = discRow(admCl, g.brand);
         var notes = incMap(exd);
@@ -38442,12 +38630,24 @@ function viewCatalogue() {
              it always has, so a man correcting a typo does not litter the sheet. */
           save("discounts", { id: (admFrom ? mintId("D") : ((exd ? exd.id : "") || mintId("D"))),
             client: admCl, brand: g.brand, pct: pct, notes: notesStr }, true);
+          admTouch.push({ client: admCl, brand: g.brand, pct: pct });   /* v6.9.489 */
           admN++;
         });
         S.modal = null;
         toast(admN ? ("Saved " + admN + " brand line" + (admN > 1 ? "s" : "") + " for " + admCl + ".")
                    : "Nothing to save.");
         setTimeout(render, 120);
+        /* ---- v6.9.489 - THE SECOND DOOR ----
+           v6.9.379 asks, at the moment a rate changes, whether the deliveries it now covers
+           should be re-priced - and it was wired into disc-saveall alone. THIS is the card he
+           reaches from a client's own screen and from a delivery, and it wrote the row and
+           offered nothing. That is why his 29 August Heliroma correction for C208 and his
+           17 September back-date to 4 August each moved exactly nothing, and why nine lines on
+           23/08/2026/007 are still at 0% against a 52% preset - Rs 85,469 on one delivery.
+           Same call, same arguments, same sheet, after the render, exactly as disc-saveall. */
+        if (admN && admTouch.length) {
+          setTimeout(function () { try { repriceOffer(admTouch, admFrom); } catch (e) {} }, 180);
+        }
       };
       if (!admJobs.length) { admWrite(); return; }
       /* the owner's per-challan sheet is a form; on Cancel it comes back as he left it */
@@ -38975,6 +39175,18 @@ function viewCatalogue() {
         if (_df === null) { toast("Nothing was saved."); formBack(dsHold); return; }
         dsWrite(_df);
       });
+      return;
+    }
+    /* ======== THE STANDING DOOR TO THE GAP THAT ALREADY EXISTS  (v6.9.489) ========
+       repriceOffer IS the screen - same sheet, same arithmetic, same audit rows as the offer
+       made when a rate changes. Nothing new decides anything about money; this only opens the
+       question for the book as it stands, which adm-save alone could never reach because it
+       fires on a save and Rs 1,47,989 was already wrong before today. */
+    if (act === "reprice-scan") {
+      if (!roleIs("admin")) { toast("Re-pricing a delivery is the owner\u2019s."); return; }
+      var rpg = presetGapScan();
+      if (!rpg.n) { toast("Nothing is billed above a customer\u2019s preset."); return; }
+      repriceOffer(rpg.clients, "", true);      /* v6.9.489b - and it says which question it is */
       return;
     }
     if (act === "board-quote") {
