@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.506";
+  var APP_VERSION = "6.9.507";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5535,10 +5535,78 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '</div>';
     h += commissioningSection();
     h += '<div class="row"><input class="grow" id="q" placeholder="Search client, area, engineer..." value="' + esc(S.q) + '"/>' +
+      /* v6.9.507 - his item 23 */
+      xlToggle("service", !!S.svcCards) +
       '<button class="btn" data-act="inst-new">+ New installation</button></div>';
     if (!list.length) h += '<div class="empty">No installations yet.</div>';
     /* v6.9.402 - the same phone under two names is said ON THE CARD, where he is looking */
     var _dupPh = svcDupPhones().byInst;
+
+    /* ======== HIS ITEM 23: SERVICE AS A SHEET  (v6.9.507) ========
+       MEASURED: he has six installations, so a sheet of six saves nobody anything today. But a
+       service book grows, and this is the shape he asked it to grow into.
+
+       TWO THINGS ON THIS SCREEN WILL NOT FIT IN A ROW, AND THEY ARE THE TWO THAT MATTER:
+       a man entered twice under one phone number - his visits and his dues split, a reminder
+       able to fire for a machine serviced yesterday - and a visit billed with no signed receipt
+       and no salt slip. Both are EXCEPTIONS, not columns. A red cell in a row that scrolls
+       sideways is a red cell he can swipe past, and on a 390px phone it can be off the edge
+       entirely.
+
+       So they stay as CARDS, drawn above the sheet, and the sheet is the list underneath. A list
+       is for scanning and an exception is for stopping at; making one thing do both is how the
+       delivery queues came to replace the delivery book in 6.9.494. */
+    if (!S.svcCards && list.length) {
+      var _flagged = list.filter(function (x) { return _dupPh[x.id] || svcMissingCount(x.id); });
+      var _rows = list.map(function (x) {
+        var d = dueLabel(x);
+        var bal = S.data.visits.filter(function (v) { return v.installId === x.id; })
+          .reduce(function (a, v) { return a + (Number(v.balance) || 0); }, 0);
+        var mach = instProducts(x).map(function (p) { return p.product; }).filter(Boolean).join(", ");
+        var miss = svcMissingCount(x.id);
+        return {
+          /* DUE SORTS BY DAYS, NOT BY THE WORDS. "12d OVERDUE" and "due in 3d" and "no date set"
+             sort as text into nonsense. The column sorts on daysTo(); the cell shows the words. */
+          /* NEGATED ON PURPOSE. xlTable starts a new column DESCENDING, because on every other
+             column here the first question is "who is biggest". On SERVICE DUE biggest means
+             furthest in the future, which is the least urgent thing on the screen - so the value
+             is negated and descending gives MOST OVERDUE FIRST. A machine with no date set sorts
+             to the bottom rather than the top, where it would push twelve overdue ones down. */
+          v: { client: x.client, due: x.nextService ? -daysTo(x.nextService) : -99999,
+               mach: mach, eng: x.engineer || "", area: x.area || "", bal: bal,
+               amc: amcKind(x) === "None" ? "" : "AMC" },
+          cells: {
+            client: '<b data-act="inst-open" data-id="' + esc(x.id) + '" style="cursor:pointer;color:#0f766e">' +
+                    esc(x.client) + '</b>' +
+                    (_dupPh[x.id] ? ' <span class="pill" style="background:#fee2e2;color:#b91c1c">2 records</span>' : '') +
+                    (miss ? ' <span class="pill" style="background:#fef3c7;color:#92400e">' + miss + ' unsigned</span>' : ''),
+            due: '<span class="pill ' + d.k + '">' + esc(d.t) + '</span>',
+            mach: esc(mach || "\u2014"),
+            eng: x.engineer ? esc(x.engineer) : '<span style="color:#dc2626">unassigned</span>',
+            area: esc(x.area || "\u2014"),
+            mobile: x.mobile ? '<a href="tel:' + esc(x.mobile) + '">' + esc(x.mobile) + '</a>'
+                             : '<span style="color:#dc2626">none</span>',
+            bal: bal > 0.5 ? '<b style="color:#b91c1c">' + money(bal) + '</b>' : '<span style="color:#94a3b8">\u2014</span>',
+            amc: amcKind(x) === "None" ? '<span style="color:#94a3b8">\u2014</span>'
+                                       : '<span class="pill teal">' + (x.amcEnd ? esc(d10(x.amcEnd)) : "AMC") + '</span>',
+            go: '<button class="btn sm" data-act="visit-new" data-id="' + esc(x.id) + '" style="padding:2px 8px;font-size:12px">Log visit</button>'
+          }
+        };
+      });
+      h += xlTable("service", [
+        { k: "client", t: "CLIENT", w: "140px" }, { k: "due", t: "SERVICE DUE", n: 1 },
+        { k: "mach", t: "MACHINE" }, { k: "eng", t: "ENGINEER" },
+        { k: "bal", t: "OWED", r: 1, n: 1 }, { k: "area", t: "AREA" },
+        { k: "mobile", t: "MOBILE" }, { k: "amc", t: "AMC" }, { k: "go", t: "VISIT" }
+      ], _rows, "the area, the number and the AMC");
+      /* and the exceptions keep their cards, above the list, where he cannot swipe past them */
+      if (_flagged.length) {
+        h += '<h3 style="margin:16px 0 6px;font-size:14px;color:#b91c1c">' + _flagged.length +
+             ' need' + (_flagged.length === 1 ? 's' : '') + ' looking at</h3>';
+      }
+      list = _flagged;
+    }
+
     list.forEach(function (x) {
       var d = dueLabel(x);
       var bal = S.data.visits.filter(function (v) { return v.installId === x.id; })
@@ -41048,6 +41116,7 @@ function viewCatalogue() {
          catalogue as pictures does not necessarily want his sites as cards. */
       else if (_xc === "products") S.pvTiles = !S.pvTiles;
       else if (_xc === "pitch") S.pbCards = !S.pbCards;
+      else if (_xc === "service") S.svcCards = !S.svcCards;
       keepScroll = true; render(); return;
     }
     if (act === "p-role") {
