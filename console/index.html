@@ -256,7 +256,7 @@ function ewAsk(opts) {
   box.innerHTML = (o.warn ? '<div class="warnbox">' + o.warn + '</div>' : '') +
     (o.body || '') +
     '<div class="two" style="margin-top:12px">' +
-    '<button class="' + (o.danger ? 'warn' : 'brass') + '" data-go>' + (o.yes || 'Haan') + '</button>' +
+    '<button class="' + (o.danger ? 'warn' : 'brass') + '" data-go>' + (o.yes || 'Yes')            /* 2026.09.18-4 - item 14: the YES on every sheet in this app */ + '</button>' +
     '<button data-no>' + (o.no || 'Not now') + '</button></div>';
   var close = function () {
     if (!EWMODAL) return;
@@ -302,8 +302,8 @@ function viewCast(){
       '<div class="fld"><label>Brand</label><input id="brand" value="' + esc(e.brand) + '" placeholder="TECE"></div>' +
       '<div class="fld"><label>Valid till</label><input id="till" type="date" value="' + esc(e.till) + '"></div>' +
     '</div>' +
-    '<div class="fld"><label>Photo ka link</label>' +
-      '<input id="img" placeholder="https://... (Drive link ho to Anyone-with-link)" value="' + esc(e.img) + '"></div>' +
+    '<div class="fld"><label>Photo link</label>' +
+      '<input id="img" placeholder="https://... (a Drive link must be Anyone-with-link)" value="' + esc(e.img) + '"></div>' +
     '<div class="two">' +
       '<div class="fld"><label>Kis ko dikhe</label><select id="audience">' +
         '<option value="ALL"' + (e.audience==='ALL'?' selected':'') + '>All partners</option>' +
@@ -330,12 +330,18 @@ function viewCast(){
 
 function castRow(c){
   var tag = c.status==='Live' ? 'live' : c.status==='Ended' ? 'ended' : 'draft';
-  var lbl = c.status==='Live' ? 'Live' : c.status==='Ended' ? 'Band' : 'Draft';
+  /* 2026.09.18-4 - item 14. "Band" is Hindi for closed AND an ordinary English word, so no
+     word list could ever have flagged it - a list that goes red on "band" goes red on a hundred
+     English sentences. Only eyes find a homograph. The record already calls this Ended; the
+     screen now agrees with it. */
+  var lbl = c.status==='Live' ? 'Live' : c.status==='Ended' ? 'Ended' : 'Draft';
   return '<div class="card" style="padding:12px 14px">' +
     '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">' +
       '<span class="tag ' + tag + '">' + lbl + '</span>' +
       '<span class="note">' + esc(c.kind) + ' &middot; ' + esc(c.on) + '</span>' +
-      '<span class="note" style="margin-left:auto">' + c.seen + ' ne dekha &middot; ' +
+      '<span class="note" style="margin-left:auto">' + /* 2026.09.18-4 - HALF HINDI AND HALF ENGLISH IN ONE SENTENCE: "12 ne dekha - 3 said
+         yes". This is the exact shape 6.9.492 warned about in writing and then did not catch. */
+      c.seen + ' seen &middot; ' +
         c.interested + ' said yes</span>' +
     '</div>' +
     '<div class="t">' + esc(c.title) + '</div>' +
@@ -488,7 +494,7 @@ function viewPeople(){
       ['', 'PARTNER', 'EXEC', 'OWNER'].map(function(k){
         return '<button class="' + (PKIND === k ? 'pri' : '') + '" style="min-height:38px" ' +
           'onclick="PKIND=\'' + k + '\';paintPeople()">' +
-          (k ? esc(kindLabel(k)) : 'Sab') + '</button>'; }).join('') +
+          (k ? esc(kindLabel(k)) : 'All')            /* 2026.09.18-4 - the other homograph */ + '</button>'; }).join('') +
     '</div></div>';
 
   h += '<h2>Can sign in (' + list.length + ')' +
@@ -886,7 +892,7 @@ function doPinChange(){
   call('changePin', { newPin: a }).then(function(r){
     if (!r || !r.ok){ PERR = (r && r.err) || 'The PIN was not saved.'; renderPinChange(PFORCE); return; }
     A.pin = a; authSave(); PERR = ''; PFORCE = false;
-    gate(false); render(); toast('PIN badal gaya.');
+    gate(false); render(); toast('PIN changed.');
   }).catch(function(){ PERR = 'No network.'; renderPinChange(PFORCE); });
 }
 
@@ -949,7 +955,7 @@ function ewRefresh(){
    Nothing you have typed or queued is touched. The sign-in and the
    offline queue live in localStorage and this never goes near them.
 --------------------------------------------------------------------- */
-var BUILD  = '2026.09.18-3';        /* which build of this file is running */
+var BUILD  = '2026.09.18-5';        /* which build of this file is running */
 var APPKEY = 'CONSOLE';
 var VKEY   = 'ew_console_ver_v1';
 var VNEW   = '', VBUSY = false;
@@ -1016,7 +1022,7 @@ function verCheck(r, cold){
   var v = String(r.ver), st = verSeen();
   if (st.want && st.want === v){                     /* the refresh worked */
     verPut({ have: v });
-  if (typeof toast === 'function') toast('App update ho gaya.');
+  if (typeof toast === 'function') toast('The app has been updated.');
     return false;
   }
   if (!st.have){ verPut({ have: v }); return false; }   /* first run on this phone */
@@ -1058,7 +1064,7 @@ function landed(r){
   }).catch(function(){
     document.getElementById('main').innerHTML =
       '<div class="empty">No network.<br><br>' +
-      '<button class="pri" onclick="location.reload()">Phir se</button></div>';
+      '<button class="pri" onclick="location.reload()">Try again</button></div>';
   });
 })();
 </script>
