@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.67.0";
+  var APP_VERSION = "1.68.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1590,7 +1590,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   function loadCatalog() {
     try {
       var c = JSON.parse(bigGet(CAT_KEY) || "null");
-      if (c && c.v === CAT_V && c.items && c.items.length) PRODUCTS = c.items;
+      if (c && c.v === CAT_V && c.items && c.items.length) { PRODUCTS = c.items; _pcbCache = null; _valGen++; }
     } catch (e) {}
     var fresh = false;
     try {
@@ -1604,6 +1604,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         var items = parseCatalog(rows);
         if (items.length) {
           PRODUCTS = items;
+          /* v1.68.0 - chValue asks this catalogue what brand a code is, so a delivery priced
+             before it arrived must be priced again. One integer; the rows recompute on read. */
+          _pcbCache = null; _valGen++;
           bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items }));
         }
         return PRODUCTS;
@@ -2434,7 +2437,7 @@ function discRowOn(client, brand, onYmd) {
 
   /* v1.20.0: the delivery-book client list dies with the book too - a client the office
      added an hour ago must not be invisible because the first paint cached the old set. */
-  function bust() { _mnCache = null; _proofCache = null; _dtCache = null; _aliasCache = null; _dscIdx = null; bustBookClients(); }
+  function bust() { _mnCache = null; _proofCache = null; _dtCache = null; _aliasCache = null; _dscIdx = null; _pcbCache = null; _valGen++; bustBookClients(); }   /* v1.68.0 - the delivery value reads the catalogue and the discount table now */
 
   /* v1.9.1 - remembered on the record itself. chRow() calls chLines three times per card and
      byExec()'s sort comparator calls chValue O(n log n) times, each re-running JSON.parse over
@@ -2450,23 +2453,75 @@ function discRowOn(client, brand, onYmd) {
     catch (e) { return l; }
     return l;
   }
+  /* ======= THE GODOWN PRICES A DELIVERY LIKE THE OTHER TWO  (v1.68.0, 19 Sep 2026) =======
+     MEASURED on his book through all three apps' own functions:
+
+         ATUL4000/200726/001, Atul Garg / Hukam Chand Garg, twenty lines
+             this app   Rs 1,35,555        the CRM   Rs 89,865        Payment   Rs 89,865
+
+     Not one of those twenty lines carries a brand or a discount, and the paper's brand is
+     "Accessory" - a catalogue bucket, not a brand. What stood here read l.disc off the line,
+     and num("") is 0, so every line was billed at FULL LIST. pricedLines asks the CATALOGUE
+     what brand a code is - twelve of the twenty are Heliroma - and applies the 35% this client
+     has had since July. Rs 45,690 too much, on the screen the godown loads a lorry from.
+
+     The Payment app had this exact fault and fixed it in v1.35.0, its own comment naming this
+     same delivery. This is that fix arriving in the third app, and pricedLines is lifted out of
+     team/app.js byte for byte so t_apps_agree keeps the three honest from here on.
+
+     ONE DELIVERY MOVES. The whole book was counted first: exactly one row carries a material
+     line with no frozen discount, and ZERO rows carry a rate, qty or discount that is not
+     already a clean number - so Number() inside pricedLines and num() out here agree on every
+     figure he has, and every other delivery is worth exactly what it was worth yesterday. */
   function chValue(c) {
     if (!c) return 0;
-    if (c.__value !== undefined) return c.__value;
-    /* v1.41.0 - a further discount taken when this delivery was passed comes off here, which
-       is this app's single expression for what a delivery is worth. The CRM takes it off in
-       challanNet for the same reason. Floored at the goods so it can never go negative. */
-    var _g = chLines(c).reduce(function (a, l) {
-      var d = num(l.disc);
-      return a + num(l.qty) * Math.round(num(l.rate) * (1 - d / 100));
-    }, 0);
+    /* v1.68.0 - the cache is STAMPED now. It used to be for ever, which was safe while the
+       answer came only off the row. It now depends on the CATALOGUE, so a value worked out
+       before the catalogue landed would have stood wrong for the rest of the session. bust()
+       and loadCatalog() bump the generation and the figure corrects itself.
+       Uncached, pricing all 180 deliveries costs 14.8 ms on a desktop - hence still a cache. */
+    if (c.__value && c.__value.g === _valGen) return c.__value.v;
+    var _g = pricedLines(c, c.customerName).reduce(function (a, x) { return a + x.amt; }, 0);
     var _x = Math.min(hisabExtra(c), _g);
     var v = _g - (_x > 0 ? _x : 0) + (String(c.freightTo) === "Client" ? num(c.freight) : 0);
     /* NOT enumerable: these rows are stringified into the offline snapshot and posted back to the
        server, and a cache must never travel with the data it describes. */
-    try { Object.defineProperty(c, "__value", { value: v, enumerable: false, configurable: true }); }
+    try { Object.defineProperty(c, "__value", { value: { g: _valGen, v: v }, enumerable: false, configurable: true }); }
     catch (e) {}
     return v;
+  }
+  /* bumped wherever an input to chValue can have changed - the book, the discount table, the
+     catalogue. Cheap: one integer, and every stamped row recomputes once on the next read. */
+  var _valGen = 0;
+  var _pcbCache = null;
+  function productBrandByCode(code) {
+    if (!_pcbCache) {
+      _pcbCache = {};
+      (PRODUCTS || []).forEach(function (p) {
+        if (!p || !p.code) return;
+        var b = realBrand(p);
+        if (b) _pcbCache[String(p.code)] = b;
+      });
+    }
+    return _pcbCache[String(code == null ? "" : code)] || "";
+  }
+  function pricedLines(c, cl) {
+    var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+    var priced = items.map(function (i) {
+      var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0;
+      /* v6.9.323 - a job line has NO brand, and must not be lent the challan's. Left to the
+         fallback it would inherit whichever brand the first material line happened to carry,
+         and then be priced against that brand's client discount - a discount on labour, taken
+         from a brand that had nothing to do with it. */
+      var bBrand = isJobLine(i) ? "" :
+        (i.brand || productBrandByCode(i.code) || c.brand || "");
+      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscount(cl, bBrand);
+      var dr = Math.round(rate * (1 - disc / 100));
+      return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
+               amt: qty * dr, job: isJobLine(i) };
+    });
+    priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
+    return priced;
   }
   /* ================= THE PRODUCT PICKER =================
      One level at a time, exactly as the CRM does it, because that is what the godown
