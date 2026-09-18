@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.509";
+  var APP_VERSION = "6.9.510";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -549,11 +549,11 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","changelog","booksweep","dups","stock","brief"],
-    accounts: ["dash","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","dups","stock"],
-    godown:   ["dash","returns","tools","challans","products","stock"],
-    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products","dups","brief"],
-    service:  ["dash","tools","service","spares","dues","followups","products"]
+    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
+    accounts: ["dash","agent","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","dups","stock","trouble"],
+    godown:   ["dash","agent","returns","tools","challans","products","stock","trouble"],
+    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products","dups","brief","trouble"],
+    service:  ["dash","agent","tools","service","spares","dues","followups","products","trouble"]
   };
   /* v6.9.320 - EVERY SCREEN EITHER OF HIS ROLES OPENS.
      A man holding godown and service is entitled to the godown's six screens AND the service
@@ -29204,7 +29204,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -29605,6 +29605,293 @@ function viewCatalogue() {
                 r.action || "", r.fields || "", r.detail || ""]);
     });
     dlCsv("Change_log_" + today() + ".csv", out);
+  }
+
+  /* ================= THE TROUBLESHOOTER  (item 28, v6.9.510, 19 Sep 2026) =================
+     HIS WORDS: "Can I have a dedicated troubleshoot agent for my apps and crm for small issues
+     ... it's not picking all product pics and I have no Claude credits ... so my dedicated
+     troubleshooter agent solve this problem".
+
+     Health check, one screen along, asks whether his BOOK is sound - duplicates, serial gaps,
+     storage. This asks whether the APP is sound, which is a different question and the one he
+     was stuck on: the newest build, the catalogue, the pictures, the book, anything held unsent.
+
+     Every check reports in plain words and carries its own fix where one exists. Nothing here
+     touches a service worker - B0 took the installed apps down in September doing exactly that,
+     so "update" here is a cache-busting reload and nothing more. */
+  var _ts = null, _tsBusy = false;
+  var TS_PIC_N = 8, TS_PIC_SLOW = 3000, TS_CAT_STALE_DAYS = 3;
+
+  /* v6.9.510 - he has asked for proper English in every app twice. A bracketed s is not it. */
+  function tsPl(n, one, many) { return n + " " + (n === 1 ? one : (many || one + "s")); }
+  function tsRow(id, title, state, say, fix, fixSay) {
+    return { id: id, title: title, state: state, say: say, fix: fix || "", fixSay: fixSay || "" };
+  }
+  /* ok = nothing to do, warn = worth knowing, bad = this is your problem */
+  function tsTone(state) {
+    if (state === "bad")  return { bg: "#fef2f2", bd: "#fecaca", fg: "#b91c1c", mark: "✕" };
+    if (state === "warn") return { bg: "#fff7ed", bd: "#fed7aa", fg: "#b45309", mark: "!" };
+    return { bg: "#f0fdfa", bd: "#99f6e4", fg: "#0f766e", mark: "✓" };
+  }
+
+  function runTrouble() {
+    if (_tsBusy) return;
+    _tsBusy = true;
+    _ts = { at: Date.now(), rows: [], running: "Looking at the app…" };
+    render();
+    var rows = [];
+    var push = function (r) { rows.push(r); _ts.rows = rows.slice(); render(); };
+    var step = function (say) { _ts.running = say; render(); };
+    var fin = function () { _tsBusy = false; _ts.running = ""; _ts.rows = rows.slice(); render(); };
+
+    /* ---- 1. is this the newest build? ---------------------------------------- */
+    step("Checking whether this is the newest app…");
+    var t0 = Date.now();
+    fetch("app.js?ts=" + Date.now(), { cache: "reload" })
+      .then(function (r) { return r.text(); })
+      .then(function (txt) {
+        var ms = Date.now() - t0;
+        var live = (txt.match(/APP_VERSION\s*=\s*"([\d.]+)"/) || [])[1] || "";
+        var kb = Math.round(txt.length / 1024);
+        if (!live) {
+          push(tsRow("ver", "Is this the newest app?", "warn",
+            "The server answered in " + ms + " ms but the reply did not look like the app. " +
+            "You are running " + APP_VERSION + "."));
+        } else if (live !== APP_VERSION) {
+          push(tsRow("ver", "Is this the newest app?", "bad",
+            "No. This phone is running " + APP_VERSION + " and the newest is " + live + ". " +
+            "An old app shows old figures and is missing whatever was fixed since. " +
+            "It downloaded in " + ms + " ms (" + kb + " KB).",
+            "ts-reload", "Update now"));
+        } else {
+          push(tsRow("ver", "Is this the newest app?", "ok",
+            "Yes — " + APP_VERSION + ", the same as the server. It downloaded in " + ms +
+            " ms (" + kb + " KB)."));
+        }
+      })
+      .catch(function (e) {
+        push(tsRow("ver", "Is this the newest app?", "bad",
+          "Could not reach the server at all. " + (navigator.onLine ? "This phone says it is online, so the site itself may be down." : "This phone is offline.") +
+          " You are running " + APP_VERSION + "."));
+      })
+      /* ---- 2. the catalogue ------------------------------------------------- */
+      .then(function () {
+        step("Checking the price list on this phone…");
+        var at = 0;
+        try { var c = JSON.parse(bigGet(CAT_KEY) || "null"); at = (c && c.at) || 0; } catch (e) {}
+        var n = (PRODUCTS || []).length;
+        var days = at ? Math.floor((Date.now() - at) / 86400000) : -1;
+        if (!n) {
+          push(tsRow("cat", "The price list on this phone", "bad",
+            "There is no price list here at all. Without it a delivery with no discount written " +
+            "on the line cannot be priced, and the brand of a product code cannot be looked up — " +
+            "so figures on this phone can differ from the office.",
+            "ts-cat", "Fetch the price list"));
+        } else if (days > TS_CAT_STALE_DAYS) {
+          push(tsRow("cat", "The price list on this phone", "warn",
+            n + " products, last taken " + days + " days ago. Any price changed since then is not on this phone.",
+            "ts-cat", "Fetch it again"));
+        } else {
+          push(tsRow("cat", "The price list on this phone", "ok",
+            n + " products, taken " + (days <= 0 ? "today" : days + " day" + (days === 1 ? "" : "s") + " ago") + "."));
+        }
+      })
+      /* ---- 3. THE PICTURES - the check he asked for -------------------------- */
+      .then(function () {
+        step("Fetching real product pictures and timing them…");
+        var pool = (PRODUCTS || []).filter(function (p) { return p && String(p.pic || "").trim(); });
+        if (!pool.length) {
+          push(tsRow("pics", "Do the product pictures load?", "warn",
+            "No product on this phone has a picture on it, so a quote would print without any. " +
+            (PRODUCTS && PRODUCTS.length ? "The price list is here but the picture column is empty."
+                                         : "The price list is not on this phone — fix that first.")));
+          return;
+        }
+        /* spread the sample across the list rather than taking the first eight, which would all
+           be one brand and would say nothing about the rest */
+        var pick = [], stride = Math.max(1, Math.floor(pool.length / TS_PIC_N));
+        for (var i = 0; i < pool.length && pick.length < TS_PIC_N; i += stride) pick.push(pool[i]);
+        var t1 = Date.now();
+        return Promise.all(pick.map(function (p) {
+          var st = Date.now();
+          return loadPic(p.pic).then(function (d) {
+            return { p: p, ms: Date.now() - st, got: !!d };
+          }).catch(function () { return { p: p, ms: Date.now() - st, got: false }; });
+        })).then(function (res) {
+          var got = res.filter(function (r) { return r.got; });
+          var slow = got.filter(function (r) { return r.ms > TS_PIC_SLOW; });
+          var bad = res.filter(function (r) { return !r.got; });
+          var worst = res.reduce(function (a, r) { return r.ms > a ? r.ms : a; }, 0);
+          var name = function (r) { return String(r.p.code || r.p.desc || "?").slice(0, 18); };
+          var say = got.length + " of " + res.length + " pictures arrived, the slowest in " +
+                    (worst / 1000).toFixed(1) + " s (whole test " + ((Date.now() - t1) / 1000).toFixed(1) + " s).";
+          if (bad.length) {
+            push(tsRow("pics", "Do the product pictures load?", "bad",
+              say + " These did NOT arrive: " + bad.map(name).join(", ") + ". A quote built now " +
+              "would print those lines with a blank where the photograph goes. The usual cause is " +
+              "the picture link on the product row, not the app.", "ts-pics", "Test them again"));
+          } else if (slow.length) {
+            push(tsRow("pics", "Do the product pictures load?", "warn",
+              say + " " + slow.length + " took more than " + (TS_PIC_SLOW / 1000) + " s: " +
+              slow.map(name).join(", ") + ". They do arrive, but on a slower line a long quote can " +
+              "run past the time the document waits and print short. If a quote comes out with " +
+              "gaps, this is why — not a missing picture.", "ts-pics", "Test them again"));
+          } else {
+            push(tsRow("pics", "Do the product pictures load?", "ok",
+              say + " Nothing to do.", "ts-pics", "Test them again"));
+          }
+        });
+      })
+      /* ---- 4. is the book whole? --------------------------------------------- */
+      .then(function () {
+        step("Checking the book on this phone…");
+        /* singular, plural - these print AFTER a number, so "the audit trail" rendered as
+           "808 the audit trail" on the real screen. */
+        var need = [["challans", "delivery", "deliveries"], ["clients", "client", "clients"],
+                    ["quotes", "quotation", "quotations"], ["discounts", "discount row", "discount rows"],
+                    ["audit", "audit row", "audit rows"], ["team", "person on the team", "people on the team"]];
+        var miss = [], counts = [];
+        need.forEach(function (n) {
+          var a = (S.data || {})[n[0]];
+          if (!Array.isArray(a) || !a.length) miss.push(n[2]);
+          else counts.push(tsPl(a.length, n[1], n[2]));
+        });
+        var when = syncAt ? Math.round((Date.now() - syncAt) / 60000) : -1;   /* the CRM's own module stamp (1824), NOT S.syncAt - that never existed */
+        var whenSay = when < 0 ? "This phone has not finished a full refresh this session."
+                     : when < 1 ? "Last refreshed less than a minute ago."
+                     : "Last refreshed " + tsPl(when, "minute") + " ago.";
+        if (miss.length) {
+          push(tsRow("book", "Is the whole book on this phone?", "bad",
+            "No — nothing here for: " + miss.join(", ") + ". Any figure built on those is wrong " +
+            "or blank right now. " + whenSay, "ts-pull", "Refresh the book"));
+        } else {
+          push(tsRow("book", "Is the whole book on this phone?", "ok",
+            counts.join(" · ") + ". " + whenSay, "ts-pull", "Refresh anyway"));
+        }
+      })
+      /* ---- 5. anything held and unsent? -------------------------------------- */
+      .then(function () {
+        var n = 0;
+        try { n = pendCount(); } catch (e) { n = 0; }
+        if (n > 0) {
+          push(tsRow("pend", "Anything waiting to reach the sheet?", "warn",
+            tsPl(n, "document") + " " + (n === 1 ? "is" : "are") + " held on this phone and not on the " +
+            "sheet yet. " + (n === 1 ? "It is" : "They are") + " safe, and " + (n === 1 ? "goes" : "go") +
+            " up by themselves when the line allows — do not enter " + (n === 1 ? "it" : "them") + " again.",
+            "ts-flush", "Try to send them now"));
+        } else {
+          push(tsRow("pend", "Anything waiting to reach the sheet?", "ok",
+            "Nothing is held. Everything entered on this phone has reached the sheet."));
+        }
+      })
+      /* ---- 6. room on this device -------------------------------------------- */
+      .then(function () {
+        var used = 0; try { used = lsBytes(); } catch (e) {}
+        var pct = Math.min(100, Math.round(used / (5 * 1024 * 1024) * 100));
+        var big = 0; try { big = Object.keys(_big).length; } catch (e) {}
+        var st = pct >= 90 ? "bad" : pct >= 75 ? "warn" : "ok";
+        push(tsRow("room", "Room on this device", st,
+          Math.round(used / 1024) + " KB of about 5,120 KB used (" + pct + "%). " +
+          (big ? "The heavy things are in the big store, which holds gigabytes — a receipt cannot run out of room."
+               : "This browser has no big store, so everything shares the 5 MB box. Receipts can fail here.") +
+          (pct >= 75 ? " This is the website’s own box — deleting photos or apps on the phone does nothing for it." : "")));
+      })
+      /* ---- 7. what this device is (for the report) ---------------------------- */
+      .then(function () {
+        var standalone = false;
+        try { standalone = window.matchMedia("(display-mode: standalone)").matches || !!navigator.standalone; } catch (e) {}
+        push(tsRow("dev", "This device", "ok",
+          (standalone ? "The installed app" : "A browser tab") + " · " +
+          window.innerWidth + "×" + window.innerHeight + " · " +
+          (navigator.onLine ? "online" : "OFFLINE") + " · signed in as " + String(S.user || "-") + "."));
+      })
+      .then(fin)
+      .catch(function (e) {
+        push(tsRow("err", "The check itself stopped", "bad",
+          "Something went wrong running these checks: " + String((e && e.message) || e) +
+          ". That is worth reporting as it stands."));
+        fin();
+      });
+  }
+
+  /* The whole finding as plain text, for when he has no credits and needs to hand it to
+     somebody. Versions and numbers, no opinions. */
+  /* Safari on an installed app can refuse the clipboard. Never lose the report because of
+     that - put it on the screen where it can be selected. */
+  function tsShowReport(txt) {
+    /* v6.9.510 review - the CRM has no modal(); a modal IS `S.modal = html` plus a render. */
+    S.modal = ('<h2 style="margin:0 0 6px">Troubleshooter report</h2>' +
+      '<div class="meta" style="font-size:13px">This phone would not let the app copy it for you. ' +
+      'Press and hold to select all of it.</div>' +
+      '<textarea readonly style="width:100%;height:46vh;margin-top:8px;font-family:ui-monospace,Menlo,monospace;' +
+      'font-size:12px;line-height:1.45;border:1px solid #cbd5e1;border-radius:8px;padding:8px">' +
+      esc(txt) + '</textarea>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>');
+    render();
+  }
+  function tsReport() {
+    if (!_ts || !_ts.rows.length) return "";
+    var L = [];
+    L.push("ENERGY WORLD - TROUBLESHOOTER REPORT");
+    L.push(new Date(_ts.at).toLocaleString());
+    L.push("CRM " + APP_VERSION + " - " + String(S.user || "-"));
+    L.push("");
+    _ts.rows.forEach(function (r) {
+      L.push("[" + r.state.toUpperCase() + "] " + r.title);
+      L.push("  " + r.say);
+    });
+    var bad = _ts.rows.filter(function (r) { return r.state === "bad"; }).length;
+    var warn = _ts.rows.filter(function (r) { return r.state === "warn"; }).length;
+    L.push("");
+    L.push(tsPl(bad, "problem") + ", " + warn + " worth knowing, " + tsPl(_ts.rows.length, "check") + " run.");
+    return L.join("\n");
+  }
+
+  function viewTrouble() {
+    var h = '<div class="card" style="border-color:#bfdbfe;background:#eff6ff">' +
+      '<h2 style="margin:0">Troubleshooter</h2>' +
+      /* v6.9.510 - TWO LINES. Rendered at 390px the old ten-line note pushed both red cards
+         below the fold, on a screen whose whole job is to say what is wrong first. */
+      '<div class="meta" style="font-size:13px;color:#1e3a8a">Something behaving oddly? This tests ' +
+      'the app on this phone, right now, and says which part is at fault.</div>';
+
+    if (!_ts) {
+      h += '<div class="acts" style="margin-top:10px">' +
+        '<button class="btn" data-act="ts-run">Check this app now</button></div></div>';
+      return h;
+    }
+    var bad = _ts.rows.filter(function (r) { return r.state === "bad"; }).length;
+    var warn = _ts.rows.filter(function (r) { return r.state === "warn"; }).length;
+    h += '<div style="margin-top:8px;font-weight:800;color:' +
+      (bad ? "#b91c1c" : warn ? "#b45309" : "#0f766e") + '">' +
+      (_tsBusy ? esc(_ts.running || "Checking…")
+        : bad ? tsPl(bad, "problem") + " found"
+        : warn ? "Nothing broken — " + tsPl(warn, "thing") + " worth knowing"
+        : "✓ Everything checked out") + '</div>' +
+      '<div class="acts" style="margin-top:8px">' +
+      '<button class="btn sm ghost"' + (_tsBusy ? ' disabled' : '') + ' data-act="ts-run">Check again</button>' +
+      (_tsBusy ? "" : '<button class="btn sm ghost" data-act="ts-copy">Copy the report</button>') +
+      '</div></div>';
+
+    _ts.rows.forEach(function (r) {
+      var t = tsTone(r.state);
+      h += '<div class="card" style="border-color:' + t.bd + ';background:' + t.bg + '">' +
+        '<div class="row" style="align-items:flex-start;gap:8px">' +
+        '<div style="font-weight:900;color:' + t.fg + ';font-size:15px;line-height:1.2;min-width:14px">' + t.mark + '</div>' +
+        '<div class="grow" style="min-width:0">' +
+        '<h3 style="margin:0 0 2px;font-size:14px">' + esc(r.title) + '</h3>' +
+        '<div style="font-size:13px;line-height:1.45">' + esc(r.say) + '</div>' +
+        (r.fix ? '<div class="acts" style="margin-top:8px"><button class="btn sm' +
+                 (r.state === "ok" ? " ghost" : "") + '" data-act="' + esc(r.fix) + '">' +
+                 esc(r.fixSay) + '</button></div>' : "") +
+        '</div></div></div>';
+    });
+    /* the difference from Health check, at the foot - findable by anyone wondering, in the way
+       of nobody who came here because something is broken */
+    h += '<div class="meta" style="font-size:12px;padding:2px 4px 10px">This looks at the <b>app</b>. ' +
+      'Health check, next door, looks at your <b>book</b> — duplicates, missing serial numbers, ' +
+      'room on the device.</div>';
+    return h;
   }
 
   function viewHealth() {
@@ -36919,14 +37206,18 @@ function viewCatalogue() {
      of the cross-sell. So "quotes" is a member of both. navGroupOf below keeps the band where
      he tapped it from, so a screen in two groups cannot make the row jump under his thumb. */
   var NAV_GROUPS = [
+    /* item 27, v6.9.510 - HIS WORDS: "Put agent on master tab for everyone". It was a chip
+       inside Leads, four along, on two role lists out of five. It is the first thing in the row
+       now and every role has it. */
+    ["Agent",      ["agent"]],
     ["HISAB",      ["billing", "payments", "paidout", "dues"]],
     ["Deliveries", ["challans", "returns", "stock"]],
-    ["Leads",      ["leads", "brandfollow", "quotes", "pitch", "agent", "winloss", "rules"]],
+    ["Leads",      ["leads", "brandfollow", "quotes", "pitch", "winloss", "rules"]],
     ["Clients",    ["clients", "followups", "quotes", "visits", "discounts", "customers"]],
     ["Service",    ["service", "spares"]],
     ["Products",   ["products", "catalogue", "pricelist", "rates"]],
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins", "tools"]],
-    ["Today",      ["dash", "brief", "pending", "health", "changelog", "booksweep", "dups"]]
+    ["Today",      ["dash", "brief", "pending", "health", "trouble", "changelog", "booksweep", "dups"]]
   ];
   /* The four hub tabs (v6.9.330 and before) still render if something lands on them - the two
      "Open Deliveries" buttons do - so they must light the right group. They are not listed as
@@ -37245,7 +37536,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -39871,6 +40162,39 @@ function viewCatalogue() {
       return;
     }
     if (act === "line-test") { runLineTest(); return; }
+    /* ---- item 28, the troubleshooter. Every fix here is one the app already knows how to do;
+       nothing new is invented, and nothing touches a service worker. ---- */
+    if (act === "ts-run") { runTrouble(); return; }
+    if (act === "ts-pics") { runTrouble(); return; }
+    if (act === "ts-reload") {
+      toast("Fetching the newest app…");
+      try { location.replace(location.pathname + "?v=" + Date.now()); }
+      catch (e) { location.reload(); }
+      return;
+    }
+    if (act === "ts-cat") {
+      toast("Fetching the price list…");
+      /* force: loadCatalog short-circuits to Promise.resolve() inside five minutes, so the
+         button would have looked like it worked and fetched nothing. cat-reload passes it too. */
+      loadCatalog(true).then(function () {
+        _pcbCache = null;
+        toast((PRODUCTS || []).length + " products are on this phone now.");
+        runTrouble();
+      }).catch(function () { toast("The price list did not come down. Check the line and try again."); });
+      return;
+    }
+    if (act === "ts-pull") { toast("Refreshing the book…"); refresh(); return; }
+    if (act === "ts-flush") { toast("Trying to send what is held…"); try { flushSoon(); } catch (e) {} return; }
+    if (act === "ts-copy") {
+      var _rep = tsReport();
+      if (!_rep) { toast("Run the check first."); return; }
+      try {
+        navigator.clipboard.writeText(_rep).then(
+          function () { toast("The report is copied. Paste it anywhere."); },
+          function () { tsShowReport(_rep); });
+      } catch (e) { tsShowReport(_rep); }
+      return;
+    }
     if (act === "prf-download") {
       var dl = prfLoad();
       if (!dl.length) { toast("Nothing waiting."); return; }
