@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.500";
+  var APP_VERSION = "6.9.502";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7678,7 +7678,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     h += '<div class="meta" style="margin:2px 0 8px;font-size:12.5px">' +
       '<b>' + won.length + '</b> won &middot; <b>' + nr.length + '</b> not required &middot; ' +
       '<b>' + listOpen.length + '</b> still open' +
-      (lost.length ? ' &middot; ' + lost.length + ' lost (not a band &mdash; he asked for three)' : '') +
+      /* v6.9.501 - this read "(not a band - he asked for three)", which is me explaining a
+         decision to a commit message on the screen of the man who made the decision. The
+         reasoning is in the comment above where it belongs; the screen says the number. */
+      (lost.length ? ' &middot; ' + lost.length + ' lost' : '') +
       '</div>';
 
     var cell = function (x) {
@@ -13669,6 +13672,8 @@ function viewCatalogue() {
         conversion taints and throws. Fetch them through the server instead.
      3) The logo is same-origin, so FileReader is enough for that one. */
   var FONTS = null, LOGO_B64 = null, PIC_CACHE = {};
+  /* v6.9.502 - filled from the device by restorePicCache(), declared below beside the logo
+     cache it copies. Declared here because loadPic() reads it. */
 
   function loadFonts() {
     if (FONTS !== null) return Promise.resolve(FONTS);
@@ -13714,6 +13719,63 @@ function viewCatalogue() {
     return false;
   }
   restoreLogoCache();
+
+  /* ======== A CATALOGUE PHOTO IS FETCHED ONCE PER DEVICE, EVER  (v6.9.502) ========
+     HIS REPORT, holding a quote with three of five rows blank: "still its not fetching all
+     product pics".
+
+     MEASURED FIRST: all five products had a picture in the catalogue and ALL FIVE LOADED from
+     Google - one of them in 9,981 ms, the rest in about half a second. So nothing was missing
+     and no link was broken. The blanks came from the PIPELINE: every photo goes through an Apps
+     Script round trip, two at a time, with a 20-second cap that RESOLVES NULL, and the PDF then
+     draws whatever arrived and finishes without a word.
+
+     The argument for this cache is already written twenty lines above, about logos: "A logo does
+     not change. It has no business being fetched from anywhere." A CATALOGUE PHOTO DOES NOT
+     CHANGE EITHER. PIC_CACHE was in memory and died with the page, so every quote re-ran the
+     whole gauntlet from scratch.
+
+     It lives beside ew_logos_v2 now, through the same bigSet/bigGet. The second quote for a
+     product - and every quote after it, in every later session - takes the picture off the
+     device instantly: no backend call, no queue, no cap, no blank.
+
+     CAPPED, most-recently-used kept, because he quotes the same few dozen products repeatedly
+     and an uncapped store of all 1,051 would write about 15 MB to a phone. That is a different
+     fault rather than a fix - the same reasoning the service worker's receipt store was given. */
+  var PIC_STORE = "ew_pics_v1", PIC_KEEP = 300, PIC_USED = {}, _picSaveT = null;
+  function restorePicCache() {
+    try {
+      var c = JSON.parse(bigGet(PIC_STORE) || "null");
+      if (!c || !c.pics) return 0;
+      Object.keys(c.pics).forEach(function (k) { if (c.pics[k]) PIC_CACHE[k] = c.pics[k]; });
+      PIC_USED = c.used || {};
+      if (c.dims) Object.keys(c.dims).forEach(function (k) { PIC_DIM[k] = c.dims[k]; });
+      return Object.keys(c.pics).length;
+    } catch (e) { return 0; }
+  }
+  /* written on a breath, not per picture: a nine-line quote would otherwise serialise and store
+     the whole box nine times while the man is waiting for his PDF */
+  function savePicCacheSoon() {
+    if (_picSaveT) return;
+    _picSaveT = setTimeout(function () {
+      _picSaveT = null;
+      try {
+        var keys = Object.keys(PIC_CACHE).filter(function (k) {
+          return typeof PIC_CACHE[k] === "string" && PIC_CACHE[k];
+        });
+        keys.sort(function (a, b) { return (PIC_USED[b] || 0) - (PIC_USED[a] || 0); });
+        keys = keys.slice(0, PIC_KEEP);
+        var pics = {}, dims = {}, used = {};
+        keys.forEach(function (k) {
+          pics[k] = PIC_CACHE[k];
+          used[k] = PIC_USED[k] || Date.now();
+          if (PIC_DIM[k]) dims[k] = PIC_DIM[k];
+        });
+        bigSet(PIC_STORE, JSON.stringify({ at: Date.now(), pics: pics, used: used, dims: dims }));
+      } catch (e) { }
+    }, 3000);
+  }
+  restorePicCache();
   function normB(x) { return String(x || "").toUpperCase().replace(/[^A-Z]/g, ""); }
   function logoFor(brand) {
     var k = normB(brand);
@@ -13912,7 +13974,9 @@ function viewCatalogue() {
     var raw = url;
     url = driveImg(url, trim ? 700 : 200);
     if (!url) return Promise.resolve(null);
-    if (PIC_CACHE[url] !== undefined) return Promise.resolve(PIC_CACHE[url]);
+    /* v6.9.502 - and the stamp, so the cap evicts the ones he stopped quoting rather than
+       whichever happened to be added last. */
+    if (PIC_CACHE[url] !== undefined) { PIC_USED[url] = Date.now(); return Promise.resolve(PIC_CACHE[url]); }
     /* v6.9.488 - A MISS IS NEVER CACHED. The note below used to say the miss is not cached and
        that was only true of the timeout: both the not-ok branch and the catch wrote null into
        PIC_CACHE, and the race's null resolved while `fetched` kept running underneath and cached
@@ -13923,7 +13987,8 @@ function viewCatalogue() {
       return api("imgB64", { url: url }).then(function (r) {
         if (!r || !r.ok) return null;
         return shrinkPic("data:" + r.mime + ";base64," + r.b64, trim ? 600 : 300, trim ? 0.85 : 0.75, trim).then(function (p) {
-        if (p && p.src) PIC_CACHE[url] = p.src;         /* v6.9.488 - hits only */
+        /* v6.9.488 - hits only. v6.9.502 - and it survives the session now. */
+        if (p && p.src) { PIC_CACHE[url] = p.src; PIC_USED[url] = Date.now(); savePicCacheSoon(); }
         var dim = p ? { w: p.w, h: p.h } : null;
         /* Store the real pixel dimensions under BOTH the fetched (=w700) key and the ORIGINAL
            url. logosReady() and the quote table look dims up by the original url; keying only
@@ -13991,6 +14056,40 @@ function viewCatalogue() {
     "INSTALLATION - Unless explicitly included, installation is not in the scope of supply. Energy World recommends installation by certified plumbers or brand-authorized technicians."
   ];
 
+  /* ======== EVERY PICTURE, OR A NAMED LIST OF THE ONES MISSING  (v6.9.502) ========
+     The old line was Promise.all(items.map(loadPic)) and nothing looked at the result. loadPic
+     resolves NULL when its 20-second cap wins, so a quote quietly printed a gap and finished.
+     That is the shape he asked me to fix permanently, and it is in four of the fifty functions
+     that produce something a customer sees.
+
+     A SECOND PASS, WITH THE QUEUE EMPTY. The first pass runs two at a time and the later
+     pictures fight for a slot; by the time it ends the pool is free and the backend is warm, so
+     anything still missing gets one clean run with nothing in front of it. It costs nothing on
+     the quotes where the first pass worked, and it is only possible because 6.9.488 stopped
+     caching a miss - otherwise the second ask would be handed the first ask's blank.
+
+     AND IT COUNTS. What is still short after that is named, BY ITEM CODE, on his screen. Never
+     on the customer's copy: a quotation is his shop's paper and the plumbing is not the
+     customer's business. */
+  var PIC_MISS = [];
+  function picsForQuote(items) {
+    return Promise.all(items.map(function (i) { return loadPic(i.pic); })).then(function (ps) {
+      var late = [];
+      items.forEach(function (i, n) {
+        if (!ps[n] && String(i.pic || "").replace(/^\s+|\s+$/g, "")) late.push(n);
+      });
+      if (!late.length) { PIC_MISS = []; return ps; }
+      return Promise.all(late.map(function (n) {
+        return loadPic(items[n].pic).then(function (p) { if (p) ps[n] = p; });
+      })).then(function () {
+        PIC_MISS = late.filter(function (n) { return !ps[n]; }).map(function (n) {
+          return String(items[n].code || items[n].desc || ("line " + (n + 1))).slice(0, 18);
+        });
+        return ps;
+      });
+    });
+  }
+
   function quotePdf(q) {
     var items = [];
     try { items = JSON.parse(q.items || "[]"); } catch (e) {}
@@ -14000,11 +14099,23 @@ function viewCatalogue() {
     return Promise.all([
       Promise.resolve(null),
       loadLogo(),
-      Promise.all(items.map(function (i) { return loadPic(i.pic); })),
+      picsForQuote(items),
       logosReady()
     ]).then(function (res) {
       var f = res[0], logo = res[1], pics = res[2];
       var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      /* v6.9.502 - the shortfall rides on the document, so every one of the four send paths can
+         see it without each having to remember to ask. NOT printed on the quotation: that is his
+         shop's paper going to a customer, and the plumbing is not the customer's business. */
+      try {
+        doc.picMiss = PIC_MISS.slice();
+        if (PIC_MISS.length) {
+          toast(PIC_MISS.length + " picture" + (PIC_MISS.length === 1 ? "" : "s") +
+            " did not come through: " + PIC_MISS.slice(0, 4).join(", ") +
+            (PIC_MISS.length > 4 ? " and " + (PIC_MISS.length - 4) + " more" : "") +
+            ". Everything else on the quote is correct \u2014 make it again in a moment and they will be there.");
+        }
+      } catch (e) { }
       var uni = false;
       if (f) {
         doc.addFileToVFS("DejaVuSans.ttf", f.reg); doc.addFont("DejaVuSans.ttf", "DJ", "normal");
