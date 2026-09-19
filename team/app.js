@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.530";
+  var APP_VERSION = "6.9.531";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -35580,7 +35580,7 @@ function viewCatalogue() {
                   stageNo: a.stageNo, contacts: a.contacts || [], lines: [], brands: [], keys: [] };
         order.push(k);
       }
-      by[k].brands.push({ brand: a.brand, line: a.line || a.brand,
+      by[k].brands.push({ brand: a.brand, line: a.line || a.brand, st: agBrandState(a.client, a.brand),
                           last: Number(a.by || 0) === Number(a.stageNo || 0), by: Number(a.by || 0) });
       by[k].keys.push(a.key);
     });
@@ -35588,6 +35588,8 @@ function viewCatalogue() {
       var g = by[k];
       g.brands.sort(function (x, y) { return (y.last ? 1 : 0) - (x.last ? 1 : 0) || x.brand.localeCompare(y.brand); });
       g.lastN = g.brands.filter(function (x) { return x.last; }).length;
+      g.quotedN = g.brands.filter(function (x) { return x.st === "live" || x.st === "won"; }).length;
+      g.toQuote = g.brands.filter(function (x) { return !(x.st === "live" || x.st === "won"); }).map(function (x) { return x.brand; });
       g.lines = g.brands.map(function (x) { return x.line; });
       return g;
     });
@@ -35604,9 +35606,21 @@ function viewCatalogue() {
      Colour alone is never the message - the strap under the sheet says which is which in words,
      because a man who cannot separate red from amber still has to be able to work. */
   function agBrandChip(x) {
+    /* v6.9.531 - his item 8: "which brand quoted, which pending to be quoted". A tick and a
+       green edge on a brand this client already holds a quote for; the rest are still to quote. */
+    var q = x.st === "live" || x.st === "won";
     return '<span class="pill" style="font-size:12px;background:' + (x.last ? '#fee2e2' : '#fef3c7') +
-      ';color:' + (x.last ? '#b91c1c' : '#92400e') + '" title="' + esc(x.brand) +
-      ' - window ends at stage ' + x.by + '">' + esc(x.brand) + '</span>';
+      ';color:' + (x.last ? '#b91c1c' : '#92400e') + (q ? ';box-shadow:inset 0 0 0 2px #15803d' : '') + '" title="' + esc(x.brand) +
+      ' - window ends at stage ' + x.by + (q ? ' - quoted' : ' - not quoted yet') + '">' + (q ? '\u2713 ' : '') + esc(x.brand) + '</span>';
+  }
+  /* the state of one brand on one client, once per paint - clientGroupState reads every quote
+     and challan for the name, and a card of 199 chips must not do that 199 times over */
+  var _agStCache = null;
+  function agBrandState(client, brand) {
+    _agStCache = _agStCache || {};
+    var k = dgKey(client) + "||" + dgKey(brand);
+    if (!(k in _agStCache)) { try { _agStCache[k] = clientGroupState(client, brand); } catch (e) { _agStCache[k] = "none"; } }
+    return _agStCache[k];
   }
 
   /* the merged action behind ONE message for a whole site. Registered in AG_INDEX so the draft
@@ -35624,15 +35638,18 @@ function viewCatalogue() {
   }
 
   function agSheetHtml(rows) {
+    _agStCache = null;   /* fresh each paint - a quote made a minute ago must show */
     var groups = agClosingGroups(rows);
     if (!groups.length) return "";
-    var brandN = rows.length, lastN = 0, byBrand = {}, order = [];
-    groups.forEach(function (g) { lastN += g.lastN; });
+    var brandN = rows.length, lastN = 0, quotedN = 0, byBrand = {}, order = [];
+    groups.forEach(function (g) { lastN += g.lastN; quotedN += g.quotedN; });
     rows.forEach(function (a) {
       var k = a.brand || "(brand)";
-      if (!byBrand[k]) { byBrand[k] = { brand: k, by: Number(a.by || 0), sites: [], last: 0 }; order.push(k); }
+      if (!byBrand[k]) { byBrand[k] = { brand: k, by: Number(a.by || 0), sites: [], last: 0, quoted: 0 }; order.push(k); }
       byBrand[k].sites.push(a.siteName || "(site)");
       if (Number(a.by || 0) === Number(a.stageNo || 0)) byBrand[k].last++;
+      var _st = agBrandState(a.client, a.brand);
+      if (_st === "live" || _st === "won") byBrand[k].quoted++;
     });
     var mode = (S.agFold === "brand") ? "brand" : "site";
 
@@ -35644,12 +35661,15 @@ function viewCatalogue() {
       '<div class="meta" style="color:#7f1d1d;font-size:12.5px;line-height:1.55;margin-top:5px">' +
         'These are not ' + brandN + ' jobs. They are <b>' + groups.length + ' conversations</b> \u2014 one site ' +
         'carries every brand closing on it, and one message covers the lot. ' +
-        '<b>' + lastN + '</b> end at this exact stage (red); the rest end at the next one (amber).' +
+        '<b>' + lastN + '</b> end at this exact stage (red); the rest end at the next one (amber). ' +
+        /* v6.9.531 - the two numbers he asked for */
+        '<b>' + quotedN + '</b> already quoted (\u2713), <b>' + (brandN - quotedN) + '</b> still to quote.' +
       '</div>' +
       '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px">' +
         '<button class="btn sm' + (mode === "site" ? '' : ' ghost') + '" data-act="ag-fold" data-m="site">By site</button>' +
         '<button class="btn sm' + (mode === "brand" ? '' : ' ghost') + '" data-act="ag-fold" data-m="brand">By brand</button>' +
         '<button class="btn sm ghost" data-act="ag-xls">Excel</button>' +
+        '<button class="btn sm ghost" data-act="ag-remind" title="A message per executive with his sites and what is still to quote, for WhatsApp or Telegram">Remind executives</button>' +
       '</div></div>';
 
     if (mode === "brand") {
@@ -35662,6 +35682,8 @@ function viewCatalogue() {
           '<th style="padding:5px 6px;white-space:nowrap">BRAND</th>' +
           '<th style="padding:5px 6px;white-space:nowrap">CLOSES BY</th>' +
           '<th style="padding:5px 6px;text-align:right;white-space:nowrap">SITES</th>' +
+          '<th style="padding:5px 6px;text-align:right;white-space:nowrap">QUOTED</th>' +
+          '<th style="padding:5px 6px;text-align:right;white-space:nowrap">TO QUOTE</th>' +
           '<th style="padding:5px 6px;text-align:right;white-space:nowrap">LAST CHANCE</th></tr>';
       order.map(function (k) { return byBrand[k]; })
         .sort(function (a, b) { return b.sites.length - a.sites.length || a.brand.localeCompare(b.brand); })
@@ -35670,6 +35692,8 @@ function viewCatalogue() {
             '<td style="padding:5px 6px;font-weight:700">' + esc(r.brand) + '</td>' +
             '<td style="padding:5px 6px;color:#475569;white-space:nowrap">stage ' + r.by + '</td>' +
             '<td style="padding:5px 6px;text-align:right;font-weight:700">' + r.sites.length + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;color:#15803d">' + r.quoted + '</td>' +
+            '<td style="padding:5px 6px;text-align:right;font-weight:700;color:#b45309">' + (r.sites.length - r.quoted) + '</td>' +
             '<td style="padding:5px 6px;text-align:right;font-weight:700;color:' +
               (r.last ? '#b91c1c' : '#94a3b8') + '">' + r.last + '</td></tr>';
         });
@@ -35710,6 +35734,9 @@ function viewCatalogue() {
           (g.stageNo ? ' (stage ' + g.stageNo + ' of 13)' : '') + '</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">' +
           g.brands.map(agBrandChip).join("") + '</div>' +
+        '<div class="meta" style="font-size:12px;margin-top:3px">' +
+          (g.quotedN ? '<span style="color:#15803d">\u2713 ' + g.quotedN + ' quoted</span> \u00b7 ' : '') +
+          (g.toQuote.length ? '<b style="color:#b45309">' + g.toQuote.length + ' to quote</b>' : '<span style="color:#15803d">every brand quoted</span>') + '</div>' +
         /* the two that are decisions, full size; the three that are housekeeping, quieter and
            on their own line. Three rows of equal buttons made every block look like a form. */
         '<div class="acts" style="flex-wrap:wrap;gap:6px;margin-top:8px">' +
@@ -35729,6 +35756,61 @@ function viewCatalogue() {
       h += '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="ag-all">' +
         'Show only the most urgent ' + AG_SHEET_TOP + '</button></div>';
     }
+    return h;
+  }
+
+  /* ===== REMIND THE EXECUTIVES  (v6.9.531 - his item 8) =====
+     "reminder to executive weekly, on whats app and telegram both". One block per executive:
+     his sites closing, and on each the brands still to quote. WhatsApp opens wa.me to his
+     number from the Team sheet; Telegram opens the share sheet with the same text (no bot, no
+     server). The weekly AUTOMATIC send is a server job - queued for backend V129 - and the modal
+     says so rather than pretending a button is a schedule. */
+  function agRemindGroups() {
+    _agStCache = null;
+    var groups = agClosingGroups(agScan().filter(function (a) { return !a.mute && a.kind === "closing"; }));
+    var by = {}, order = [];
+    groups.forEach(function (g) {
+      var ex = execForClient(g.client) || "Unassigned";
+      if (!by[ex]) { by[ex] = { exec: ex, sites: [] }; order.push(ex); }
+      by[ex].sites.push(g);
+    });
+    return order.map(function (k) { return by[k]; }).sort(function (a, b) { return b.sites.length - a.sites.length; });
+  }
+  function agRemindText(b) {
+    var first = String(b.exec || "").split(" ")[0];
+    var lines = ["Weekly pitch reminder for " + first + " - " + today() + "", ""];
+    lines.push(b.sites.length + " site" + (b.sites.length === 1 ? "" : "s") + " closing this week:");
+    b.sites.forEach(function (g, i) {
+      lines.push((i + 1) + ". " + (g.siteName || "site") + (g.client ? " (" + g.client + ")" : "") +
+        " - " + (g.stage || "") + (g.stageNo ? ", stage " + g.stageNo + " of 13" : ""));
+      if (g.toQuote.length) lines.push("   To quote: " + g.toQuote.join(", "));
+      if (g.quotedN) lines.push("   Quoted: " + g.brands.filter(function (x) { return x.st === "live" || x.st === "won"; }).map(function (x) { return x.brand; }).join(", "));
+    });
+    lines.push("", "Energy World");
+    return lines.join("\n");
+  }
+  function modalAgRemind() {
+    var bs = agRemindGroups();
+    var h = '<h2 style="margin:0 0 2px">Remind the executives</h2>' +
+      '<div class="meta" style="margin-bottom:8px">One message per executive: his sites closing and the brands still to quote on each. ' +
+      'WhatsApp goes to his number on the Team sheet; Telegram opens the share sheet with the same text.</div>';
+    if (!bs.length) h += '<div class="empty">Nothing is closing - nothing to remind anyone of.</div>';
+    bs.forEach(function (b) {
+      var m = (S.data.team || []).filter(function (u) { return u && dgKey(u.name) === dgKey(b.exec); })[0] || {};
+      var num = String(m.mobile || "").replace(/\D/g, ""); if (num.length === 10) num = "91" + num;
+      var toQ = b.sites.reduce(function (a, g) { return a + g.toQuote.length; }, 0);
+      h += '<div class="card" style="padding:9px 12px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<div>' + whoChip(b.exec) + ' <span class="pill due">' + b.sites.length + ' site' + (b.sites.length === 1 ? '' : 's') + '</span> ' +
+        '<span class="pill" style="' + (toQ ? 'background:#fef3c7;color:#92400e' : '') + '">' + toQ + ' to quote</span></div>' +
+        '<div class="acts" style="margin:0;gap:6px">' +
+        (num.length >= 12
+          ? '<button class="btn sm" data-act="ag-remind-wa" data-k="' + esc(b.exec) + '">WhatsApp</button>'
+          : '<span class="pill" style="font-size:12px" title="Add his mobile under Team">no mobile on Team</span>') +
+        '<button class="btn sm ghost" data-act="ag-remind-tg" data-k="' + esc(b.exec) + '">Telegram</button></div></div>' +
+        '<pre style="white-space:pre-wrap;font:12px/1.45 ui-monospace,monospace;color:#334155;background:#f8fafc;border-radius:8px;padding:8px;margin:8px 0 0;max-height:160px;overflow:auto">' + esc(agRemindText(b)) + '</pre></div>';
+    });
+    h += '<div class="meta" style="font-size:12px;margin-top:6px">The automatic Monday send is a server job and is queued for the next backend release (V129); until then this screen sends it with one tap.</div>' +
+      '<div class="foot"><button class="btn" data-act="close">Close</button></div>';
     return h;
   }
 
@@ -43366,6 +43448,20 @@ function viewCatalogue() {
     if (act === "ag-fold") { S.agFold = (t.getAttribute("data-m") === "brand") ? "brand" : "site"; keepScroll = true; render(); return; }
     if (act === "ag-all") { S.agAll = !S.agAll; keepScroll = true; render(); return; }
     if (act === "ag-xls") { agClosingXlsx(); return; }
+    /* v6.9.531 */
+    if (act === "ag-remind") { S.modal = modalAgRemind(); render(); return; }
+    if (act === "ag-remind-wa" || act === "ag-remind-tg") {
+      var _rk = t.getAttribute("data-k") || "";
+      var _rb = agRemindGroups().filter(function (b) { return b.exec === _rk; })[0];
+      if (!_rb) { toast("Nothing to send for " + _rk + "."); return; }
+      var _rt = agRemindText(_rb);
+      if (act === "ag-remind-tg") { window.open("https://t.me/share/url?url=" + encodeURIComponent("https://mukeshenergyworld-ux.github.io/ew-site-crm/team/") + "&text=" + encodeURIComponent(_rt), "_blank"); return; }
+      var _rm = (S.data.team || []).filter(function (u) { return u && dgKey(u.name) === dgKey(_rk); })[0] || {};
+      var _rn = String(_rm.mobile || "").replace(/\D/g, ""); if (_rn.length === 10) _rn = "91" + _rn;
+      if (_rn.length < 12) { toast(_rk + " has no mobile on the Team sheet."); return; }
+      window.open("https://wa.me/" + _rn + "?text=" + encodeURIComponent(_rt), "_blank");
+      return;
+    }
     if (act === "ag-draft-site") {
       var agS = t.getAttribute("data-s") || "";
       var agG = agClosingGroups(agScan().filter(function (x) {
