@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.520";
+  var APP_VERSION = "6.9.521";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -6837,7 +6837,18 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* Catalogue buckets that are NOT real brands and must never appear in brand follow-ups. */
   var NON_BRANDS = ["accessory", "accessories", "net price items", "net price item", "net price", "misc", "miscellaneous"];
   function isRealBrandName(name) {
-    return NON_BRANDS.indexOf(String(name || "").trim().toLowerCase()) < 0;
+    return NON_BRANDS.indexOf(String(name || "").trim().toLowerCase()) < 0 && !brandSetAside(name);
+  }
+  /* v6.9.521 - his item 24: "mark it brand, not brand as all brand names are not brands". A name
+     the owner has set aside is a Brands row with active N and a note saying so - data, not a
+     list in the code, so he can change his mind without a release. */
+  function brandSetAsideRow(name) {
+    var k = dkey(name);
+    return (S.data.brands || []).filter(function (b) { return dkey(b.brand) === k && /not a brand/i.test(String(b.notes || "")); })[0] || null;
+  }
+  function brandSetAside(name) {
+    var r = brandSetAsideRow(name);
+    return !!(r && String(r.active).toUpperCase() === "N");
   }
   /* Brands you can FOLLOW UP / pitch - every active brand in the master, even one with no
      products loaded yet (a brand you distribute can be pitched before its catalogue is entered).
@@ -7904,8 +7915,23 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       ' The number on each brand is how many are still open.</div>';
     h += '<div class="row" style="flex-wrap:wrap;gap:6px">' + brands.map(function (b) {
       var n = openByBrand[b].length;
-      return '<button class="btn sm ' + (b === brand ? "" : "ghost") + '" data-act="bf-brand" data-brand="' + esc(b) + '">' + esc(b) + (n ? ' <b>' + n + '</b>' : '') + '</button>';
+      return '<span style="display:inline-flex;align-items:stretch">' +
+        '<button class="btn sm ' + (b === brand ? "" : "ghost") + '" data-act="bf-brand" data-brand="' + esc(b) + '"' +
+        (roleIs("admin") ? ' style="border-top-right-radius:0;border-bottom-right-radius:0"' : '') + '>' + esc(b) + (n ? ' <b>' + n + '</b>' : '') + '</button>' +
+        /* v6.9.521 - his item 24: "mark it brand, not brand". Owner only; written to the Brands
+           sheet, never deleted, brought back from the line below. */
+        (roleIs("admin")
+          ? '<button class="btn sm ghost" data-act="bf-notbrand" data-brand="' + esc(b) + '" title="Not a brand \u2014 set ' + esc(b) + ' aside from every brand list. One tap brings it back." ' +
+            'style="border-left:0;border-top-left-radius:0;border-bottom-left-radius:0;padding:4px 7px;color:#94a3b8;min-width:0">&times;</button>'
+          : '') + '</span>';
     }).join("") + '</div>';
+    var aside = (S.data.brands || []).filter(function (b) { return brandSetAside(b.brand); }).map(function (b) { return b.brand; }).sort(alpha);
+    if (aside.length) {
+      h += '<div class="meta" style="font-size:12px;margin-top:6px">Set aside as not a brand: ' + aside.map(function (b) {
+        return '<span class="pill" style="background:#f1f5f9;color:#475569">' + esc(b) +
+          (roleIs("admin") ? ' <a data-act="bf-isbrand" data-brand="' + esc(b) + '" style="cursor:pointer;color:#0f766e;font-weight:700" title="It is a brand after all \u2014 bring it back">back</a>' : '') + '</span>';
+      }).join(" ") + '</div>';
+    }
     /* v6.9.283 - carry the whole brand out of the office, not just what is open */
     h += '<div class="acts" style="flex-wrap:wrap;gap:8px;margin:10px 0 4px">' +
       '<button class="btn sm" data-act="bf-pdf" data-brand="' + esc(brand) + '" ' +
@@ -7922,21 +7948,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       'who is quoted and still open, and who has never been shown it \u2014 not only the open names below.</div>';
     h += '<div class="cards"><div class="stat ' + (listOpen.length ? "alert" : "") + '"><div class="n">' + listOpen.length + '</div><div class="l">' +
       (wantClient ? 'Clients to cross-sell' : 'Leads to chase') + ' &middot; ' + esc(brand) + '</div></div></div>';
-    var rowH = function (x) {
-      var c = x.c, num = String(c.mobile || "").replace(/\D/g, "");
-      var pill = x.st === "live" ? '<span class="pill teal">in play</span>' : '<span class="pill">not started</span>';
-      return '<div class="card"><h3>' + esc(c.name) + ' ' + pill + '</h3>' +
-        '<div class="meta">' + esc([c.area, c.location].filter(Boolean).join(", ")) + (c.mobile ? '<br>' + esc(c.mobile) : "") +
-        /* v6.9.217 - "a lead have how many quotes, which brand pitched" - on the chase list too */
-        '<br>' + leadSummaryLine(c.name) + '</div>' +
-        '<div class="acts" style="flex-wrap:wrap;margin-top:6px">' +
-        '<button class="btn sm" data-act="board-quote" data-n="' + esc(c.name) + '" data-brand="' + esc(brand) + '">Quote</button>' +
-        (num ? '<a class="btn sm ghost" href="tel:' + esc(num) + '">Call</a>' : "") +
-        '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(c.name) + '" data-brand="' + esc(brand) + '" data-s="Won">Won</button>' +
-        '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(c.name) + '" data-brand="' + esc(brand) + '" data-s="Lost">Lost</button>' +
-        '<button class="btn sm ghost" data-act="board-nr" data-n="' + esc(c.name) + '" data-brand="' + esc(brand) + '">Not required</button>' +
-        '</div></div>';
-    };
+    /* rowH - the four-line card per man - REMOVED in v6.9.521: the follow-up band is a table now. */
     /* ======== v6.9.500 - THREE BANDS, HIS WORDING ========
        Won, Not required, Follow-up. The first two have never been shown anywhere; the reason he
        typed when he marked a brand Not required has been stored since board-nr was built and
@@ -8029,7 +8041,24 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         h += '<div class="empty">No ' + (wantClient ? 'clients' : 'leads') + ' open for ' + esc(brand) +
              ' &mdash; nothing to chase here.</div>';
       } else {
-        listOpen.forEach(function (x) { h += rowH(x); });
+        /* v6.9.521 - his item 24: "excel like format". The band he works was the one still in
+           cards. One line per man, the five buttons in the row, sortable by heading. */
+        h += xlTable("bf-follow", [
+          { k: "name", t: "CLIENT", w: "128px" }, { k: "st", t: "STATE" }, { k: "quotes", t: "QUOTES", n: 1, r: 1 },
+          { k: "pitched", t: "PITCHED" }, { k: "area", t: "AREA" }, { k: "mobile", t: "MOBILE" }, { k: "go", t: "" }
+        ], listOpen.map(function (x) {
+          var r = cell(x), sm = leadSummaryName(r.c.name);
+          return { v: { name: r.c.name, st: x.st, quotes: sm.quotes || 0, pitched: (sm.groups || []).join(", "), area: r.area },
+            cells: { name: nameCell(r),
+              st: x.st === "live" ? '<span class="pill teal">in play</span>' : '<span class="pill">not started</span>',
+              quotes: sm.quotes || 0,
+              pitched: esc((sm.groups || []).join(", ") || "\u2014"),
+              area: esc(r.area || "\u2014"), mobile: mobCell(r),
+              go: '<button class="btn sm" data-act="board-quote" data-n="' + esc(r.c.name) + '" data-brand="' + esc(brand) + '" style="padding:2px 8px;font-size:12px">Quote</button> ' +
+                  '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(r.c.name) + '" data-brand="' + esc(brand) + '" data-s="Won" style="padding:2px 8px;font-size:12px">Won</button> ' +
+                  '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(r.c.name) + '" data-brand="' + esc(brand) + '" data-s="Lost" style="padding:2px 8px;font-size:12px">Lost</button> ' +
+                  '<button class="btn sm ghost" data-act="board-nr" data-n="' + esc(r.c.name) + '" data-brand="' + esc(brand) + '" style="padding:2px 8px;font-size:12px">Not required</button>' } };
+        }), "quotes, area, number and the buttons");
       }
     }
     return h;
@@ -41299,6 +41328,27 @@ function viewCatalogue() {
        Brands row first, then the BrandMap row repointed at it - so there is never a moment
        where the map names a brand that does not exist. Nothing is deleted and no product is
        touched; the products simply start resolving to a brand instead of a bucket. */
+    /* v6.9.521 - his item 24: "mark it brand, not brand". Owner only. The Brands row is
+       written active N with a note naming who and when; nothing is deleted, and the line under
+       the chips brings it back. followBrandList reads active, so the register's brand ticks and
+       the pitch lists follow the same decision. */
+    if (act === "bf-notbrand" || act === "bf-isbrand") {
+      if (!roleIs("admin")) { toast("Only the owner decides what is a brand."); return; }
+      var bnm = String(t.getAttribute("data-brand") || "").trim();
+      if (!bnm) return;
+      var setAside = act === "bf-notbrand";
+      var brow = (S.data.brands || []).filter(function (b) { return dkey(b.brand) === dkey(bnm); })[0];
+      var row = brow ? Object.assign({}, brow) : { id: "", brand: bnm };
+      row.active = setAside ? "N" : "Y";
+      row.notes = setAside ? "not a brand \u2014 " + S.user + " " + today() : "";
+      if (setAside && S.bf === bnm) S.bf = null;
+      save("brands", row).then(function (r) {
+        if (!r) return;
+        toast(setAside ? bnm + " set aside \u2014 it is not a brand. Bring it back from the line under the chips." : bnm + " is a brand again.");
+        render();
+      });
+      return;
+    }
     if (act === "brand-promote") {
       if (!canSee("catalogue") && !roleIs("admin")) { toast("A partner sets up a brand."); return; }
       var cv = String(t.getAttribute("data-cv") || "").trim();
