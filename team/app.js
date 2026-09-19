@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.533";
+  var APP_VERSION = "6.9.534";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7666,6 +7666,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      one worth the trip - never yet shown it. Same states as the board, same definition of "won"
      (a Won quote OR a delivered challan with a signed receipt), so the paper and the screen can
      never disagree. */
+  var _bfTap = { timer: null, key: "" };   /* v6.9.534 - the one-tap / two-tap state chip */
   var BF_ORDER = ["won", "live", "none", "lost", "nr"];
   var BF_LABEL = { won: "Won", live: "Quoted \u2014 in play", none: "Yet to quote",
                    lost: "Lost", nr: "Not required" };
@@ -8058,7 +8059,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (open) h += xlTable("bf-" + key, cols, build(), "the rest of the row");
     };
 
-    var bfOpen = S.bfBand || { follow: 1 };
+    var bfOpen = S.bfBand || { follow: 1, quoted: 1, open: 1 };
 
     band("won", "Won \u2014 " + brand, "#a7f3d0", won.length, function () { return won.map(function (x) {
       var r = cell(x);
@@ -8079,36 +8080,45 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     }); }, [{ k: "name", t: "CLIENT", w: "128px" }, { k: "why", t: "WHY NOT", w: "150px" },
             { k: "area", t: "AREA" }, { k: "when", t: "WHEN" }], !!bfOpen.nr);
 
-    h += '<div class="card" data-act="bf-band" data-b="follow" style="cursor:pointer;' +
-      'border-color:#fde68a;background:#fffbeb;padding:9px 12px;display:flex;' +
-      'justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">' +
-      '<b style="font-size:13.5px">' + (bfOpen.follow ? '\u25be' : '\u25b8') + ' Follow-up \u2014 ' + esc(brand) + '</b>' +
-      '<span class="meta" style="font-size:12.5px">' + listOpen.length + '</span></div>';
-    if (bfOpen.follow) {
-      if (!listOpen.length) {
-        h += '<div class="empty">No ' + (wantClient ? 'clients' : 'leads') + ' open for ' + esc(brand) +
-             ' &mdash; nothing to chase here.</div>';
-      } else {
-        /* v6.9.521 - his item 24: "excel like format". The band he works was the one still in
-           cards. One line per man, the five buttons in the row, sortable by heading. */
-        h += xlTable("bf-follow", [
-          { k: "name", t: "CLIENT", w: "128px" }, { k: "st", t: "STATE" }, { k: "quotes", t: "QUOTES", n: 1, r: 1 },
-          { k: "pitched", t: "PITCHED" }, { k: "area", t: "AREA" }, { k: "mobile", t: "MOBILE" }, { k: "go", t: "" }
-        ], listOpen.map(function (x) {
-          var r = cell(x), sm = leadSummaryName(r.c.name);
-          return { v: { name: r.c.name, st: x.st, quotes: sm.quotes || 0, pitched: (sm.groups || []).join(", "), area: r.area },
-            cells: { name: nameCell(r),
-              st: x.st === "live" ? '<span class="pill teal">in play</span>' : '<span class="pill">not started</span>',
-              quotes: sm.quotes || 0,
-              pitched: esc((sm.groups || []).join(", ") || "\u2014"),
-              area: esc(r.area || "\u2014"), mobile: mobCell(r),
-              go: '<button class="btn sm" data-act="board-quote" data-n="' + esc(r.c.name) + '" data-brand="' + esc(brand) + '" style="padding:2px 8px;font-size:12px">Quote</button> ' +
-                  '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(r.c.name) + '" data-brand="' + esc(brand) + '" data-s="Won" style="padding:2px 8px;font-size:12px">Won</button> ' +
-                  '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(r.c.name) + '" data-brand="' + esc(brand) + '" data-s="Lost" style="padding:2px 8px;font-size:12px">Lost</button> ' +
-                  '<button class="btn sm ghost" data-act="board-nr" data-n="' + esc(r.c.name) + '" data-brand="' + esc(brand) + '" style="padding:2px 8px;font-size:12px">Not required</button>' } };
-        }), "quotes, area, number and the buttons");
-      }
-    }
+    /* ===== QUOTED and OPEN, two bands  (v6.9.534 - his third list, item 14) =====
+       "vertical like brand won, brand quoted, not required, brand open to quote; single click
+       shift brand to won, double click to not required". The Follow-up band held both and told
+       them apart by a column; they are two bands now. The state chip on each row is the
+       one-tap control: once = Won, twice = Not required. The buttons stay for anyone who
+       prefers a word to a tap. */
+    var quoted = listOpen.filter(function (x) { return x.st === "live"; });
+    var open = listOpen.filter(function (x) { return x.st !== "live"; });
+    var openCols = [
+      { k: "name", t: "CLIENT", w: "128px" }, { k: "st", t: "TAP: ONCE WON, TWICE NR" }, { k: "quotes", t: "QUOTES", n: 1, r: 1 },
+      { k: "pitched", t: "PITCHED" }, { k: "area", t: "AREA" }, { k: "mobile", t: "MOBILE" }, { k: "go", t: "" }
+    ];
+    var openRow = function (x) {
+      var r = cell(x), sm = leadSummaryName(r.c.name);
+      return { v: { name: r.c.name, st: x.st, quotes: sm.quotes || 0, pitched: (sm.groups || []).join(", "), area: r.area },
+        cells: { name: nameCell(r),
+          st: '<span class="pill ' + (x.st === "live" ? "teal" : "") + '" data-act="bf-tap" data-n="' + esc(r.c.name) + '" data-brand="' + esc(brand) + '" ' +
+              'style="cursor:pointer;user-select:none" title="Tap once: mark ' + esc(brand) + ' Won for ' + esc(r.c.name) + '. Tap twice: Not required.">' +
+              (x.st === "live" ? "quoted" : "open") + ' ›</span>',
+          quotes: sm.quotes || 0,
+          pitched: esc((sm.groups || []).join(", ") || "—"),
+          area: esc(r.area || "—"), mobile: mobCell(r),
+          go: '<button class="btn sm" data-act="board-quote" data-n="' + esc(r.c.name) + '" data-brand="' + esc(brand) + '" style="padding:2px 8px;font-size:12px">Quote</button> ' +
+              '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(r.c.name) + '" data-brand="' + esc(brand) + '" data-s="Won" style="padding:2px 8px;font-size:12px">Won</button> ' +
+              '<button class="btn sm ghost" data-act="board-status" data-n="' + esc(r.c.name) + '" data-brand="' + esc(brand) + '" data-s="Lost" style="padding:2px 8px;font-size:12px">Lost</button> ' +
+              '<button class="btn sm ghost" data-act="board-nr" data-n="' + esc(r.c.name) + '" data-brand="' + esc(brand) + '" style="padding:2px 8px;font-size:12px">Not required</button>' } };
+    };
+    var openBand = function (key, title, colour, bg, rows, isOpen) {
+      h += '<div class="card" data-act="bf-band" data-b="' + key + '" style="cursor:pointer;' +
+        'border-color:' + colour + ';background:' + bg + ';padding:9px 12px;display:flex;' +
+        'justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+        '<b style="font-size:13.5px">' + (isOpen ? '▾' : '▸') + ' ' + title + ' — ' + esc(brand) + '</b>' +
+        '<span class="meta" style="font-size:12.5px">' + rows.length + '</span></div>';
+      if (!isOpen) return;
+      if (!rows.length) { h += '<div class="empty">Nobody here for ' + esc(brand) + '.</div>'; return; }
+      h += xlTable("bf-" + key, openCols, rows.map(openRow), "quotes, area, number and the buttons");
+    };
+    openBand("quoted", "Quoted — in play", "#99f6e4", "#f0fdfa", quoted, bfOpen.quoted !== 0);
+    openBand("open", "Open — yet to quote", "#fde68a", "#fffbeb", open, bfOpen.open !== 0);
     return h;
   }
 
@@ -13215,18 +13225,6 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '</div></div>';
   }
 
-  function quotesByOutcomeHtml(quotes) {
-    var byCat = { "Won": [], "Lost": [], "In play": [] };
-    quotes.forEach(function (q) { byCat[qCatOf(q)].push(q); });
-    var out = "";
-    QCAT.forEach(function (cat) {
-      if (!byCat[cat].length) return;
-      out += '<div class="ch-client" style="border-left-color:' + QCAT_COLOR[cat] + ';color:' + QCAT_COLOR[cat] + '">' + cat +
-        '<span class="sub" style="color:' + QCAT_COLOR[cat] + '">' + byCat[cat].length + '</span></div>';
-      byCat[cat].forEach(function (q) { out += quoteCardHtml(q); });
-    });
-    return out;
-  }
 
   /* The list alone, so typing repaints THIS and never the page - the caret and the phone
      keyboard stay exactly where they were. */
@@ -13250,39 +13248,82 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       h += '<div class="meta" style="margin:0 0 7px;font-size:12.5px">Showing <b>' + list.length +
         '</b> of ' + tot + ' quote' + (tot !== 1 ? "s" : "") + ' &middot; matching <b>' + esc(qq) + '</b></div>';
     }
-    /* v6.9.410 - WORKING THROUGH THEM IS A LIST, NOT A TREE. Compact is what a man lands on
-       (v6.9.183) and it groups the book by customer, with every quote card behind a tap - and
-       the two taps that end a never-sent quotation live ON the card. Found by driving it in a
-       browser: the band opened a tree with nothing to press. */
-    if (cvMode() === "compact" && !S.qUnsent) return h + tidyBanner() + qvHtml(list, quoteCardHtml);
-
-    /* Admin / accounts read the quote book grouped by the sales executive who owns the client, and
-       within each exec by outcome (Won / Lost / In play). A sales exec (list already filtered to
-       their own clients) skips the exec band but still gets the win/loss breakdown. */
-    if (seesAllClients()) {
-      var groups = {}, order = [];
-      list.forEach(function (q) {
-        var cl = clientByName(q.client) || {};
-        var e = String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned";
-        if (!groups[e]) { groups[e] = []; order.push(e); }
-        groups[e].push(q);
-      });
-      order.sort(function (a, b) {
-        if (a === "Unassigned") return 1; if (b === "Unassigned") return -1;
-        return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
-      });
-      order.forEach(function (e) {
-        var qs = groups[e];
-        var won = qs.filter(function (q) { return q.status === "Won"; }).length;
-        var lost = qs.filter(function (q) { return q.status === "Lost"; }).length;
-        h += '<div class="ch-exec">' + esc(e) +
-          '<span class="sub">' + qs.length + ' quote' + (qs.length !== 1 ? 's' : '') +
-          ' &middot; ' + won + ' won &middot; ' + lost + ' lost</span></div>';
-        h += quotesByOutcomeHtml(qs);
-      });
-    } else {
-      h += quotesByOutcomeHtml(list);
+    /* v6.9.410 - working through the never-sent list keeps its cards: the two taps that end
+       a never-sent quotation live on the card. */
+    if (S.qUnsent) {
+      list.forEach(function (q) { h += quoteCardHtml(q); });
+      return h;
     }
+    /* ===== THE QUOTE LOG  (v6.9.534 - his third list, item 15) =====
+       "proper quote log, date wise, can be filtered, which brand quoted; win / lose with one
+       or two clicks". One sheet, newest first. Chips by outcome and a date range filter it;
+       the number opens the ordinary card above the sheet; Won and Lost are one tap. The
+       Compact tree and the executive -> outcome cards are gone from this screen. */
+    var qf = String(S.qLog || "all");
+    var inRange = function (q) {
+      var d = String(q.createdAt || "").slice(0, 10);
+      if (S.qFrom && (!d || d < S.qFrom)) return false;
+      if (S.qTo && (!d || d > S.qTo)) return false;
+      return true;
+    };
+    var ranged = list.filter(inRange);
+    var nOf = function (k) {
+      return ranged.filter(function (q) {
+        return k === "all" ? true : k === "won" ? q.status === "Won" : k === "lost" ? q.status === "Lost"
+             : k === "draft" ? String(q.status || "Draft") === "Draft" : qCatOf(q) === "In play" && String(q.status || "Draft") !== "Draft";
+      }).length;
+    };
+    var chip = function (k, label) {
+      return '<button class="btn sm ' + (qf === k ? "" : "ghost") + '" data-act="q-log" data-k="' + k + '">' + label +
+        ' <span class="pill" style="font-size:12px">' + nOf(k) + '</span></button>';
+    };
+    h += '<div class="card" style="padding:8px 10px"><div class="row" style="flex-wrap:wrap;gap:6px;align-items:center">' +
+      chip("all", "All") + chip("play", "Sent, in play") + chip("draft", "Draft") + chip("won", "Won") + chip("lost", "Lost") +
+      '<span class="meta" style="font-size:12px;font-weight:700;color:#64748b;margin-left:4px">DATED</span>' +
+      '<input type="date" id="q_from" value="' + esc(S.qFrom || "") + '" style="width:auto;padding:4px 7px;font-size:12.5px" />' +
+      '<span class="meta" style="font-size:12px">to</span>' +
+      '<input type="date" id="q_to" value="' + esc(S.qTo || "") + '" style="width:auto;padding:4px 7px;font-size:12.5px" />' +
+      ((S.qFrom || S.qTo) ? '<button class="btn sm ghost" data-act="q-dates-clear">Clear</button>' : "") +
+      '</div></div>';
+    var shown = ranged.filter(function (q) {
+      return qf === "all" ? true : qf === "won" ? q.status === "Won" : qf === "lost" ? q.status === "Lost"
+           : qf === "draft" ? String(q.status || "Draft") === "Draft" : qCatOf(q) === "In play" && String(q.status || "Draft") !== "Draft";
+    }).sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
+    if (S.qCard) {
+      var _qc = list.filter(function (q) { return q.id === S.qCard; })[0];
+      if (_qc) {
+        h += '<div class="row" style="margin:6px 0 2px"><b style="font-size:13.5px">' + esc(_qc.quoteNo || "") + '</b>' +
+          '<div class="grow"></div><button class="btn sm ghost" data-act="q-card" data-id="">Close card</button></div>' + quoteCardHtml(_qc);
+      }
+    }
+    var stPill = function (q) {
+      var st = String(q.status || "Draft");
+      return '<span class="pill ' + (st === "Won" ? "Won" : st === "Lost" ? "Lost" : st === "Draft" ? "" : "teal") + '" style="font-size:12px">' + esc(st.toLowerCase()) + '</span>';
+    };
+    h += xlTable("qlog", [
+      { k: "date", t: "DATE", w: "84px" }, { k: "no", t: "QUOTE" }, { k: "client", t: "CLIENT" }, { k: "brand", t: "BRAND" },
+      { k: "st", t: "STATUS" }, { k: "go", t: "" }, { k: "net", t: "NET", n: 1, r: 1 }, { k: "total", t: "INCL GST", n: 1, r: 1 },
+      { k: "exec", t: "EXECUTIVE" }, { k: "by", t: "BY" }
+    ], shown.map(function (q) {
+      var cl = clientByName(q.client) || {};
+      var exec = String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned";
+      var d = String(q.createdAt || "").slice(0, 10);
+      var st = String(q.status || "Draft");
+      var brands = quoteBrands(q);
+      return { v: { date: d, no: q.quoteNo || "", client: q.client || "", brand: brands.join(", ") || q.brand || "", st: st, go: "", net: Number(q.net) || 0, total: Number(q.total) || 0, exec: exec, by: q.createdBy || "" },
+        cells: {
+          date: esc(dmy(d)) || '<span style="color:#b45309">no date</span>',
+          no: '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700" title="Open this quote’s card">' + esc(q.quoteNo || "") + '</button>' +
+              (Number(q.version) > 1 ? ' <span class="pill" style="font-size:12px">v' + esc(q.version) + '</span>' : ""),
+          client: '<a href="#" data-act="cl-open" data-id="' + esc(cl.id || "") + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(q.client || "") + '</a>',
+          brand: esc(brands.join(", ") || q.brand || "—"),
+          st: stPill(q),
+          go: (st !== "Won" ? '<button class="btn sm" data-act="q-win" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Won</button> ' : "") +
+              (st !== "Lost" ? '<button class="btn sm ghost" data-act="q-lose" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Lost</button> ' : "") +
+              '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">PDF</button>',
+          net: money(q.net), total: money(q.total), exec: whoChip(exec), by: whoChip(q.createdBy)
+        } };
+    }), "status, the one-tap Won / Lost, the money and who");
     return h;
   }
 
@@ -13316,7 +13357,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (S.qz) return viewQzWizard();
     ensureCompactCss(); ensureQuoteCss();
     ensurePickerCss();   /* exec band (.ch-exec) + sub-strip (.ch-client) styling */
-    var h = '<div class="row">' + cvSeg() + '<div class="grow"></div><button class="btn" data-act="qz-new">+ New quote</button></div>';
+    /* v6.9.534 - his item 15: no Compact / Expand here; the log below filters and opens */
+    var h = '<div class="row"><div class="grow"></div><button class="btn" data-act="qz-new">+ New quote</button></div>';
     h += unsentBandHtml();
     var all = quoteAllList();
     if (!all.length) { h += '<div class="empty">No quotes yet. Every quote is versioned - revising keeps the old one.</div>'; return h; }
@@ -40436,6 +40478,21 @@ function viewCatalogue() {
     }
 
     /* ---- compact / expand (v6.9.178) ---- */
+    /* v6.9.534 - the quote log: its chips, the card it opens, and Won / Lost in one tap.
+       The write is the same one the status select makes (qq.status + save), and Lost opens
+       the reason sheet after saving, exactly as the select does. */
+    if (act === "q-log") { S.qLog = t.getAttribute("data-k") || "all"; keepScroll = true; render(); return; }
+    if (act === "q-card") { S.qCard = t.getAttribute("data-id") || ""; keepScroll = true; render(); return; }
+    if (act === "q-dates-clear") { S.qFrom = ""; S.qTo = ""; render(); return; }
+    if (act === "q-win" || act === "q-lose") {
+      var _qw = (S.data.quotes || []).filter(function (x) { return x.id === id; })[0];
+      if (!_qw) return;
+      var _wasL = String(_qw.status) === "Lost";
+      _qw.status = act === "q-win" ? "Won" : "Lost";
+      save("quotes", _qw).then(function (r) { if (r) toast("Quote " + _qw.status + "."); });
+      if (act === "q-lose" && !_wasL) { S.modal = modalQuoteLost(_qw.id); }
+      keepScroll = true; render(); return;
+    }
     if (act === "cv-mode") {
       var _cvm = t.getAttribute("data-m");
       /* v6.9.450 - List is the Clients screen's own switch; Compact / Expand turn it off */
@@ -40916,6 +40973,36 @@ function viewCatalogue() {
       }
       S.modal = null; render(); return;
     }
+    /* v6.9.534 - one tap = Won, two taps inside 350 ms = Not required. The first tap waits
+       that long before it writes, so a second one can turn it into the other. */
+    if (act === "bf-tap") {
+      var _tn = t.getAttribute("data-n"), _tb = t.getAttribute("data-brand");
+      var _tk = _tn + "||" + _tb;
+      if (_bfTap.timer && _bfTap.key === _tk) {
+        clearTimeout(_bfTap.timer); _bfTap.timer = null; _bfTap.key = "";
+        var _nrb = resolveBrand(_tn, _tb, "board-nr", "");
+        if (_nrb === null) return;
+        promptSheet({ title: "Why is " + esc(_nrb) + " not required for " + esc(_tn) + "?",
+          placeholder: "already has it \u00b7 competitor tied up \u00b7 not in scope", ok: "Mark Not required" })
+        .then(function (why) {
+          if (why === null) return;
+          saveBrandStatus(_tn, _nrb, "", { status: "Not required", note: why });
+          S.modal = null; toast(_nrb + " marked Not required."); render();
+        });
+        return;
+      }
+      if (_bfTap.timer) clearTimeout(_bfTap.timer);
+      _bfTap.key = _tk;
+      t.textContent = "once more = not required\u2026";
+      _bfTap.timer = setTimeout(function () {
+        _bfTap.timer = null; _bfTap.key = "";
+        var _wb = resolveBrand(_tn, _tb, "board-status", ' data-s="Won"');
+        if (_wb === null) return;
+        saveBrandStatus(_tn, _wb, "", { status: "Won" });
+        S.modal = null; toast(_wb + " marked Won \u2014 moved to Clients"); render();
+      }, 350);
+      return;
+    }
     if (act === "board-status") {
       var stn = t.getAttribute("data-n"), stv = t.getAttribute("data-s") || "Not pitched";
       var stb = resolveBrand(stn, t.getAttribute("data-brand"), "board-status", ' data-s="' + esc(stv) + '"');
@@ -40975,7 +41062,7 @@ function viewCatalogue() {
        looking at does not throw him back to the top of the brand chips. */
     if (act === "bf-band") {
       var _bb = t.getAttribute("data-b") || "";
-      if (!S.bfBand) S.bfBand = { follow: 1, score: 1 };
+      if (!S.bfBand) S.bfBand = { follow: 1, score: 1, quoted: 1, open: 1 };
       S.bfBand[_bb] = S.bfBand[_bb] ? 0 : 1;
       keepScroll = true; render(); return;
     }
@@ -45977,6 +46064,7 @@ function viewCatalogue() {
       if (it2) it2.disc = t.value === "" ? undefined : Number(t.value);
       render(); return;
     }
+    if (t.id === "q_from" || t.id === "q_to") { S[t.id === "q_from" ? "qFrom" : "qTo"] = String(t.value || ""); render(); return; }   /* v6.9.534 */
     if (t.classList && t.classList.contains("qs")) {
       var qq = S.data.quotes.filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
       if (!qq) return;
