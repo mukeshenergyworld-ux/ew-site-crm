@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.70.0";
+  var APP_VERSION = "1.71.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -4458,9 +4458,25 @@ function discRowOn(client, brand, onYmd) {
     return [
       { k: "made",  label: "Made",       done: true,
         why: "" },
-      { k: "pass",  label: "Passed",     done: gone || st === "Approved" || !!String((c && c.approvedBy) || "").trim(),
+      /* ===== A LATER STEP PROVES THE EARLIER ONE  (v6.9.516, 19 September 2026) =====
+         HIS WORDS, with 23/08/2026/008 open: "how dispatch pending if receipt attacehd ?"
+
+         It cannot be. Material does not come back signed for if it never left. `gone` reads the
+         STATUS alone, and 008's status is still "Approved" while its receipt is on file, so the
+         checklist said Dispatched PENDING directly beside a struck Received and a Receipt
+         carrying his own name. A one-time checklist that reads backwards is worse than one that
+         says nothing, because a man checks it to know what still has to happen.
+
+         The app already knew: chStatusBehind() is exactly this state and the card wears its
+         amber "status is behind the receipt" pill. The pill stays - the RECORD is still behind
+         and the one-tap correction still belongs there. What changes is that the steps stop
+         contradicting it.
+
+         ONLY THE PHYSICAL STEPS chain. Finalised and Billed are office acts that happen in
+         either order, and inferring one from the other would be a lie about money. */
+      { k: "pass",  label: "Passed",     done: gone || arrived || st === "Approved" || !!String((c && c.approvedBy) || "").trim(),
         why: "Waiting for the accounts desk to pass it." },
-      { k: "disp",  label: "Dispatched", done: gone,
+      { k: "disp",  label: "Dispatched", done: gone || arrived,
         why: "Nothing has left the godown on this challan yet." },
       { k: "recd",  label: "Received",   done: arrived,
         why: "The material has gone but nobody has marked it delivered." },
