@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.525";
+  var APP_VERSION = "6.9.526";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -549,10 +549,10 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
-    accounts: ["dash","agent","returns","tools","clients","partners","followups","challans","payments","billing","service","spares","dues","products","rates","pricelist","dups","stock","trouble"],
+    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
+    accounts: ["dash","agent","returns","tools","clients","partners","followups","challans","register","payments","billing","service","spares","dues","products","rates","pricelist","dups","stock","trouble"],
     godown:   ["dash","agent","returns","tools","challans","products","stock","trouble"],
-    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","billing","payments","products","dups","brief","trouble"],
+    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","billing","payments","products","dups","brief","trouble"],
     service:  ["dash","agent","tools","service","spares","dues","followups","products","trouble"]
   };
   /* v6.9.320 - EVERY SCREEN EITHER OF HIS ROLES OPENS.
@@ -29940,7 +29940,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -38051,8 +38051,11 @@ function viewCatalogue() {
        inside Leads, four along, on two role lists out of five. It is the first thing in the row
        now and every role has it. */
     ["Agent",      ["agent"]],
-    ["HISAB",      ["billing", "payments", "paidout", "dues"]],
-    ["Deliveries", ["challans", "returns", "stock"]],
+    /* v6.9.526 - "where is dedicated challan log under hisab". The register had no door: it was
+       a sub-tab of the old Deliveries hub ("deliveries"), which no group names. It is a tab now,
+       in both places a man would look. */
+    ["HISAB",      ["billing", "register", "payments", "paidout", "dues"]],
+    ["Deliveries", ["challans", "register", "returns", "stock"]],
     ["Leads",      ["leads", "brandfollow", "quotes", "pitch", "winloss", "rules"]],
     ["Clients",    ["clients", "followups", "quotes", "visits", "discounts", "customers"]],
     ["Service",    ["service", "spares"]],
@@ -38377,7 +38380,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
