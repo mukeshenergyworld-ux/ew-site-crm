@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.528";
+  var APP_VERSION = "6.9.529";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -11877,38 +11877,32 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (!rows.length) return "";
     var totOp = rows.reduce(function (a, r) { return a + r.opening; }, 0);
     var totDue = rows.reduce(function (a, r) { return a + r.due; }, 0);
+    /* v6.9.529 - his third list, item 1: "must be in single line compact". Three lines per
+       client became one; the mobile and the area are columns. */
     return '<div class="card" style="border-color:#fde68a;background:#fffbeb">' +
-      '<h3 style="margin:0 0 2px;font-size:13px">' + rows.length + ' old client(s) owe money with no old hisab attached</h3>' +
+      '<h3 style="margin:0 0 2px;font-size:13px">' + rows.length + ' old client' + (rows.length === 1 ? '' : 's') + ' owe' + (rows.length === 1 ? 's' : '') + ' money with no old hisab attached</h3>' +
       '<div class="meta" style="margin-bottom:6px">' + money(totOp) + ' came over from the old books; ' +
       money(totDue) + ' of it is still owed. Attach a man’s statement and his balance can be ' +
       'explained without anybody opening the spreadsheet again. <b>Attach</b> opens the form here — ' +
       'his card is not needed.</div>' +
-      '<div class="acts" style="margin:0 0 8px"><button class="btn sm ghost" data-act="hdmiss-xlsx" ' +
+      '<div class="acts" style="margin:0 0 6px"><button class="btn sm ghost" data-act="hdmiss-xlsx" ' +
       'title="The same list as an Excel file, in the same order">↓ Excel</button>' +
       '<span class="meta" style="align-self:center;font-size:12px">biggest old balance first</span></div>' +
-      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
-      '<thead><tr style="background:#fef3c7;color:#92400e">' +
-      '<th style="padding:6px 8px;text-align:left">Client</th>' +
-      '<th style="padding:6px 8px;text-align:left">Executive</th>' +
-      '<th style="padding:6px 8px;text-align:right">Came over with</th>' +
-      '<th style="padding:6px 8px;text-align:right">Owes now</th>' +
-      '<th style="padding:6px 8px;text-align:center">Old book</th>' +
-      '<th style="padding:6px 8px"></th></tr></thead><tbody>' +
-      rows.map(function (r, i) {
-        return '<tr style="border-bottom:1px solid #fef3c7;background:' + (i % 2 ? '#fffdf5' : '#fff') + '">' +
-          '<td style="padding:7px 8px"><div style="font-weight:600;color:#92400e">' + esc(r.name) + '</div>' +
-          (r.mobile ? '<div style="font-size:12px;color:#b45309">☎ ' + esc(r.mobile) + '</div>' : '') +
-          (r.where ? '<div style="font-size:12px;color:#b45309">' + esc(r.where) + '</div>' : '') + '</td>' +
-          '<td style="padding:7px 8px;font-size:12.5px;color:#92400e">' + esc(r.exec || "—") + '</td>' +
-          '<td style="padding:7px 8px;text-align:right;color:#92400e">' + money(r.opening) +
-          (r.asOn ? '<div style="font-size:12px;color:#b45309">as on ' + esc(d10(r.asOn)) + '</div>' : '') + '</td>' +
-          '<td style="padding:7px 8px;text-align:right;font-weight:800;color:#b91c1c">' + money(r.due) + '</td>' +
-          '<td style="padding:7px 8px;text-align:center;font-size:12.5px;color:#92400e">' + r.share + '%</td>' +
-          '<td style="padding:7px 8px;text-align:right;white-space:nowrap">' +
-          '<button class="btn sm" data-act="hd-open" data-id="' + esc(r.id) + '" ' +
-          'style="background:#0d9488;border-color:#0d9488">Attach</button> ' +
-          '<button class="btn sm ghost" data-act="bill-open" data-n="' + esc(r.name) + '">Hisab</button></td></tr>';
-      }).join("") + '</tbody></table></div></div>';
+      xlTable("hdmiss", [
+        { k: "name", t: "CLIENT", w: "140px" }, { k: "mobile", t: "MOBILE" }, { k: "where", t: "AREA" }, { k: "exec", t: "EXECUTIVE" },
+        { k: "opening", t: "CAME OVER WITH", n: 1, r: 1 }, { k: "due", t: "OWES NOW", n: 1, r: 1 }, { k: "share", t: "OLD BOOK", n: 1, r: 1 }, { k: "go", t: "" }
+      ], rows.map(function (r) {
+        return { v: { name: r.name, mobile: r.mobile, where: r.where, exec: r.exec, opening: r.opening, due: r.due, share: r.share },
+          cells: {
+            name: '<b data-act="bill-open" data-n="' + esc(r.name) + '" style="cursor:pointer;color:#92400e">' + esc(r.name) + '</b>',
+            mobile: r.mobile ? '<a href="tel:' + esc(r.mobile) + '">' + esc(r.mobile) + '</a>' : '<span style="color:#94a3b8">—</span>',
+            where: esc(r.where || "—"), exec: r.exec ? whoChip(r.exec) : '<span style="color:#94a3b8">—</span>',
+            opening: money(r.opening) + (r.asOn ? ' <span style="color:#94a3b8;font-size:12px">as on ' + esc(d10(r.asOn)) + '</span>' : ''),
+            due: '<b style="color:#b91c1c">' + money(r.due) + '</b>', share: r.share + '%',
+            go: '<button class="btn sm" data-act="hd-open" data-id="' + esc(r.id) + '" style="padding:2px 8px;font-size:12px;background:#0d9488;border-color:#0d9488">Attach</button> ' +
+                '<button class="btn sm ghost" data-act="bill-open" data-n="' + esc(r.name) + '" style="padding:2px 8px;font-size:12px">Hisab</button>'
+          } };
+      }), "the executive, the figures and Attach") + '</div>';
   }
   function hdMissXlsx() {
     var rows = hdMissRows();
@@ -18336,7 +18330,8 @@ function viewCatalogue() {
   function regDay(at) {
     var d = String(at || "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "";
-    return '<div style="font-size:12px;color:#64748b;text-decoration:none">' + d.slice(8, 10) + '/' + d.slice(5, 7) + '</div>';
+    /* v6.9.529 - beside, not under: one line per row */
+    return ' <span style="font-size:12px;color:#64748b;white-space:nowrap">' + d.slice(8, 10) + '/' + d.slice(5, 7) + '</span>';
   }
   function regCell(extra) {
     return "padding:5px 7px;border-top:1px solid #e2e8f0;white-space:nowrap;font-size:12.5px" + (extra || "");
@@ -18429,16 +18424,18 @@ function viewCatalogue() {
     var regStruck = ";text-decoration:line-through;text-decoration-color:#15803d;text-decoration-thickness:2px;color:#15803d";
     var h = '<tr style="background:' + bg + '">' +
       '<td style="' + regCell(";font-weight:800;color:#0b3b36") + '">' + (n === null ? "OLD" : n) +
-        (dup ? '<br><span style="font-size:12px;color:#b45309">twice</span>' : '') + '</td>' +
+        (dup ? ' <span style="font-size:12px;color:#b45309">twice</span>' : '') + '</td>' +
       /* v6.9.496 - "reduce gap between date and client". It printed 18/09/2026; the year of a
          delivery in the current book is never in doubt, and two digits of it buy the width that
          puts the balance on screen beside the amount. The full date is on the row's own card. */
       '<td style="' + regCell(";padding-right:3px") + '">' + esc(regDMY(regDate(c)).replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c) + '</td>' +
       '<td style="' + regCell(";max-width:170px;overflow:hidden;text-overflow:ellipsis") + '">' +
         '<a href="#" data-act="ch-hisab" data-cl="' + esc(c.customerName || "") + '" ' +
-        'style="font-weight:700;color:#0b3b36;text-decoration:none" title="Open this client’s full HISAB, where the complete statement downloads">' +
+        'style="font-weight:700;color:#0b3b36;text-decoration:none;white-space:nowrap" title="' +
+        (cl.mobile ? esc(cl.mobile) + ' · ' : '') + 'Open this client’s full HISAB, where the complete statement downloads">' +
         esc(c.customerName || "—") + '</a>' +
-        (cl.mobile ? '<br><span style="font-size:12px;color:#64748b">' + esc(cl.mobile) + '</span>' : '') + '</td>' +
+        /* v6.9.529 - the mobile no longer takes a second line; it rides in the title of the name */
+        '</td>' +
       '<td style="' + regCell() + '"><button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '" ' +
         'style="padding:1px 8px;font-size:12.5px;font-weight:700">' + esc(c.challanNo || "no number") +
         ' ' + (open ? "▴" : "▾") + '</button></td>' +
@@ -18448,12 +18445,14 @@ function viewCatalogue() {
          closes on clientLedger exactly as it did. */
       '<td style="' + regCell(";text-align:right;color:" + regBalColor(after === undefined ? bal.due : after)) + '">' +
         (after === undefined
-          ? '<span style="opacity:.55">' + moneySgn(bal.due) + '</span><br>' +
-            '<span style="font-size:12px;color:#b45309">not on his account yet</span>'
+          ? '<span style="opacity:.55" title="not on his account yet">' + moneySgn(bal.due) + '</span>' +
+            ' <span style="font-size:12px;color:#b45309">*</span>'
           : '<b>' + moneySgn(after) + '</b>') + '</td>' +
       /* v6.9.525 - HIS WORDS: "with date, who made it, who approved, who attached receipt, when
          finalized {date}, all strikeout when done". The day under each name, the finalised
          date, and a finished row struck through in green - his rule, green struck = done. */
+      /* v6.9.529 - his third list, item 4: "more compact, single line". The day sits beside the
+         name, not under it; the client cell carries the name alone, the mobile in its title. */
       '<td style="' + regCell() + (regDone ? regStruck : "") + '">' + whoChip(c.createdBy) + regDay(c.createdAt) + '</td>' +
       '<td style="' + regCell(";color:#b91c1c") + (regDone ? regStruck : "") + '">' +
         (String(c.approvedBy || "").trim() ? whoChip(c.approvedBy) + regDay(c.approvedAt) : "not passed") + '</td>' +
@@ -18466,7 +18465,7 @@ function viewCatalogue() {
       '<td style="' + regCell() + (regDone ? regStruck : "") + '">' + (inHisab(c) ? hisabStampPill(c) + regDay((hisabStamp(c) || {}).at) : hisabAddBtn(c) ||
         '<span style="color:#b45309;font-size:12px">not finalised</span>') + '</td>' +
       '<td style="' + regCell(";text-align:right;color:" + (over ? "#b91c1c" : "#64748b")) + '">' +
-        (lim > 0 ? (over ? '<b>' + moneySgn(lim) + '</b><br><span style="font-size:12px">over</span>' : moneySgn(lim))
+        (lim > 0 ? (over ? '<b>' + moneySgn(lim) + '</b> <span style="font-size:12px">over</span>' : moneySgn(lim))
                  : '<span style="font-size:12px">not set</span>') + '</td></tr>';
     if (open) {
       h += '<tr style="background:' + bg + '"><td colspan="11" style="padding:2px 6px 10px;border-top:0">' +
@@ -23378,27 +23377,23 @@ function viewCatalogue() {
       });
     });
     if (!pairs.length) return "";
+    /* v6.9.529 - his third list, item 2: "more organised". One line per pair, every pair. */
     return '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
       '<h3 style="margin:0 0 2px;font-size:13px">' + pairs.length + ' pair' +
       (pairs.length === 1 ? '' : 's') + ' of deliveries carry the SAME receipt photograph</h3>' +
       '<div class="meta" style="color:#7f1d1d;margin-bottom:6px">The picture is the same one, ' +
-      'not merely a similar page \u2014 so one of each pair has the wrong paper against it. ' +
-      'Tap <b>Look at both</b>, and either say they are different \u2014 which clears the flag on ' +
-      'both cards \u2014 or use <b>Change</b> on whichever has the wrong paper. ' +
+      'not merely a similar page — so one of each pair has the wrong paper against it. ' +
+      'Tap <b>Look at both</b>, and either say they are different — which clears the flag on ' +
+      'both cards — or use <b>Change</b> on whichever has the wrong paper. ' +
       'Nothing is deleted: the old photo stays on the audit trail, and so does your answer.</div>' +
-      pairs.slice(0, 10).map(function (p) {
-        return '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow">' +
-          '<b>' + esc(proofOwnerName(p.a)) + '</b> <span style="color:#7f1d1d">and</span> ' +
-          '<b>' + esc(proofOwnerName(p.b)) + '</b>' +
-          '<br><span style="font-size:12px;color:#7f1d1d">same photograph on both</span></div>' +
-          /* v6.9.358 - this list could name the pairs and do nothing about them. Same screen,
-             same two answers, reached from the place that found the problem. */
-          '<button class="btn sm" data-act="twin-open" data-id="' + esc(p.a) + '" ' +
-          'style="background:#7f1d1d;border-color:#7f1d1d">Look at both</button>' +
-          '</div>';
-      }).join("") +
-      (pairs.length > 10 ? '<div class="meta" style="margin-top:6px">and ' + (pairs.length - 10) + ' more.</div>' : "") +
-      '</div>';
+      xlTable("twins", [
+        { k: "a", t: "DELIVERY", w: "150px" }, { k: "b", t: "SAME PHOTO AS", w: "150px" }, { k: "at", t: "FLAGGED", n: 1 }, { k: "go", t: "" }
+      ], pairs.map(function (p) {
+        return { v: { a: proofOwnerName(p.a), b: proofOwnerName(p.b), at: String(p.at || "").slice(0, 10) },
+          cells: { a: '<b>' + esc(proofOwnerName(p.a)) + '</b>', b: '<b>' + esc(proofOwnerName(p.b)) + '</b>',
+                   at: p.at ? esc(dmy(String(p.at).slice(0, 10))) : '<span style="color:#94a3b8">—</span>',
+                   go: '<button class="btn sm" data-act="twin-open" data-id="' + esc(p.a) + '" style="padding:2px 8px;font-size:12px;background:#7f1d1d;border-color:#7f1d1d">Look at both</button>' } };
+      }), "when it was flagged, and the button") + '</div>';
   }
   function retWaitingCard() {
     var list = (S.data.returns || []).filter(function (r) {
@@ -23640,47 +23635,56 @@ function viewCatalogue() {
         ageTile('61 - 90 days', agg.d60, '#ffedd5', '#c2410c') +
         ageTile('90+ days (chase hard)', agg.d90, '#fee2e2', '#b91c1c') +
         '</div></div>';
-      gkeys.forEach(function (k) {
-        var rows = groups[k].slice().sort(function (a, b) { return (b.ag ? b.ag.oldest : 0) - (a.ag ? a.ag.oldest : 0) || b.due - a.due; });
-        /* Collapsible per-executive. The logged-in person's OWN group is open by default; every other
-           executive shows just its total, expandable on tap — a clean overview for the owner. Explicit
-           taps are remembered in S.hisabExp. */
-        var expanded = (S.hisabExp && (k in S.hisabExp)) ? !!S.hisabExp[k] : (k === S.user || gkeys.length === 1);
-        var _tbl = '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
-          '<thead><tr style="background:#f1f5f9;color:#475569"><th style="padding:6px 8px;text-align:left">Client</th>' +
-          '<th style="padding:6px 8px;text-align:center">Age</th>' +
-          '<th style="padding:6px 8px;text-align:right">Billed (net)</th><th style="padding:6px 8px;text-align:right">Received</th>' +
-          '<th style="padding:6px 8px;text-align:right">Outstanding</th></tr></thead><tbody>' +
-          rows.map(function (r, i) {
-            var _mob = (clientByName(r.name) || {}).mobile || '';
-            return '<tr style="border-bottom:1px solid #eef2f7;cursor:pointer;background:' + (i % 2 ? '#f8fafc' : '#fff') + '" data-act="bill-open" data-n="' + esc(r.name) + '">' +
-              '<td style="padding:7px 8px"><div style="font-weight:600;color:#0d766c">' + esc(r.name) + '</div>' +
-                (_mob ? '<div style="font-size:12px;color:#94a3b8">☎ ' + esc(_mob) + '</div>' : '') +
-                dueTagChips(r) + '</td>' +
-              '<td style="padding:7px 8px;text-align:center">' + agePill(r.ag) + '</td>' +
-              '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.net) + '</td>' +
-              '<td style="padding:7px 8px;text-align:right;color:#64748b">' + money(r.paid) + '</td>' +
-              '<td style="padding:7px 8px;text-align:right;font-weight:800;color:#dc2626">' + money(r.due) + '</td></tr>';
-          }).join("") + '</tbody></table></div>';
-        /* v6.9.372 - his report card, from the group header it belongs to. Drawn only for the
-           man who may pull it: the owner and accounts see one on every executive, a sales
-           executive sees one on his own group and there is no other group on his screen. */
-        var _cardBtns = canExecCard(k)
-          ? '<div class="acts" style="margin:8px 0 0;flex-wrap:wrap;gap:8px">' +
-            '<button class="btn sm ghost" data-act="exec-xlsx" data-k="' + esc(k) + '" ' +
-              'title="Every client under ' + esc(k) + ' who owes money, as an Excel file">' +
-              '\u2193 Excel</button>' +
-            '<button class="btn sm ghost" data-act="exec-pdf" data-k="' + esc(k) + '" ' +
-              'title="The same list on the letterhead, ready to print or send on WhatsApp">' +
-              '\u2193 PDF</button>' +
-            '<span style="font-size:12px;color:#94a3b8;align-self:center">pending list \u00b7 not for a client</span>' +
-            '</div>'
-          : '';
-        oh += '<div class="card"><h3 data-act="hisab-grp" data-k="' + esc(k) + '" data-open="' + (expanded ? "1" : "0") + '" style="margin:0;cursor:pointer;user-select:none">' +
-          '<span style="display:inline-block;width:16px;color:#94a3b8">' + (expanded ? '&#9662;' : '&#9656;') + '</span>' +
-          esc(k) + ' <span class="pill due">' + money(gtot(k)) + '</span> <span style="font-weight:400;color:#94a3b8;font-size:12.5px">' + rows.length + ' client(s)' + (expanded ? '' : ' &middot; tap to view') + '</span></h3>' +
-          (expanded ? _tbl + _cardBtns : '') + '</div>';
-      });
+      /* ===== ONE TABLE, EVERYBODY  (v6.9.529 - his third list, item 3) =====
+         "excel like format, give colour code to executive, all combined, we can have filter
+         option, filtered one on top and rest all below it". The per-executive fold-outs are
+         one sheet now: the executive is a coloured chip on the row (whoChip - the same colour
+         he has on the challan log), a chip per executive filters, the slab chips filter, and
+         a filter puts the matching rows FIRST under a band and the rest below it, greyed - so
+         the whole list is always on the screen and the filter is a sort, not a hiding. */
+      var _all = outsAll.slice().sort(function (a, b) { return (b.ag ? b.ag.oldest : 0) - (a.ag ? a.ag.oldest : 0) || b.due - a.due; });
+      var _ex = String(S.hisabExec || "");
+      var _hit = function (r) { return (!_dueT || _dueT.hit(r)) && (!_ex || String(r.owner || "Unassigned") === _ex); };
+      var _on = !!(_dueT || _ex);
+      var _top = _on ? _all.filter(_hit) : _all, _rest = _on ? _all.filter(function (r) { return !_hit(r); }) : [];
+      oh += '<div class="card"><div class="row" style="flex-wrap:wrap;gap:6px;align-items:center">' +
+        '<span class="meta" style="font-size:12px;font-weight:700;color:#64748b">EXECUTIVE</span>' +
+        '<button class="btn sm ' + (_ex ? "ghost" : "") + '" data-act="hisab-exec" data-k="">Everyone</button>' +
+        gkeys.map(function (k) {
+          return '<button class="btn sm ' + (_ex === k ? "" : "ghost") + '" data-act="hisab-exec" data-k="' + esc(k) + '" style="display:inline-flex;align-items:center;gap:6px">' +
+            whoChip(k) + ' <span class="pill">' + money(gtot(k)) + '</span></button>';
+        }).join("") +
+        (canExecCard(_ex) && _ex
+          ? '<button class="btn sm ghost" data-act="exec-xlsx" data-k="' + esc(_ex) + '" title="Every client under ' + esc(_ex) + ' who owes money, as an Excel file">↓ Excel</button>' +
+            '<button class="btn sm ghost" data-act="exec-pdf" data-k="' + esc(_ex) + '" title="The same list on the letterhead">↓ PDF</button>'
+          : '') + '</div>';
+      var _rowOf = function (r, dim) {
+        var _mob = (clientByName(r.name) || {}).mobile || '';
+        var _st = dim ? 'color:#94a3b8' : '';
+        return { v: { name: r.name, exec: r.owner || "Unassigned", age: r.ag ? r.ag.oldest : 0, net: r.net, paid: r.paid, due: r.due, tags: dueTagChips(r).replace(/<[^>]+>/g, '') },
+          cells: {
+            name: '<b data-act="bill-open" data-n="' + esc(r.name) + '" style="cursor:pointer;color:' + (dim ? '#94a3b8' : '#0d766c') + '">' + esc(r.name) + '</b>' +
+                  (_mob ? ' <span style="font-size:12px;color:#94a3b8">' + esc(_mob) + '</span>' : ''),
+            exec: whoChip(r.owner || "Unassigned"),
+            age: agePill(r.ag),
+            net: '<span style="' + _st + '">' + money(r.net) + '</span>', paid: '<span style="' + _st + '">' + money(r.paid) + '</span>',
+            due: '<b style="color:' + (dim ? '#94a3b8' : '#dc2626') + '">' + money(r.due) + '</b>',
+            tags: dueTagChips(r)
+          } };
+      };
+      var _cols = [{ k: "name", t: "CLIENT", w: "150px" }, { k: "exec", t: "EXECUTIVE" }, { k: "age", t: "AGE", n: 1 },
+                   { k: "net", t: "BILLED (NET)", n: 1, r: 1 }, { k: "paid", t: "RECEIVED", n: 1, r: 1 }, { k: "due", t: "OUTSTANDING", n: 1, r: 1 }, { k: "tags", t: "SLAB" }];
+      if (_on) {
+        var _tdue = _top.reduce(function (a, r) { return a + r.due; }, 0);
+        oh += '<div style="margin:8px 0 4px;font-weight:800;font-size:13px;color:#b91c1c">' + _top.length + ' matching &middot; ' + money(_tdue) +
+          (_dueT ? ' &middot; ' + esc(_dueT.lbl) : '') + (_ex ? ' &middot; ' + esc(_ex) : '') + '</div>';
+      }
+      oh += xlTable("ageing", _cols, _top.map(function (r) { return _rowOf(r, false); }), "the executive, the figures and the slab");
+      if (_on && _rest.length) {
+        oh += '<div style="margin:10px 0 4px;font-weight:700;font-size:12.5px;color:#94a3b8">the other ' + _rest.length + ' &middot; ' + money(_rest.reduce(function (a, r) { return a + r.due; }, 0)) + '</div>' +
+          xlTable("ageing-rest", _cols, _rest.map(function (r) { return _rowOf(r, true); }));
+      }
+      oh += '</div>';
       }
       /* In-credit / advance clients — money we hold or a minus opening balance. Shown as their own
          green section so they're never invisible just because their balance isn't a debit. */
@@ -26925,21 +26929,31 @@ function viewCatalogue() {
     var h = "";
     if (qq) {
       var qDue = list.reduce(function (a, x) { return a + x.l.due; }, 0);
-      h += '<div class="meta" style="margin:-4px 0 8px">' + list.length + ' client(s) &middot; ' +
+      h += '<div class="meta" style="margin:-4px 0 8px">' + list.length + (list.length === 1 ? ' client' : ' clients') + ' &middot; ' +
         (qDue > 0 ? 'due ' + money(qDue) : 'nothing outstanding') + '</div>';
     }
-    list.forEach(function (x) {
-      h += '<div class="card"><h3>' + esc(x.name) + creditPill(x.name) +
-        (x.l.due > 0 ? ' ' + dueAmt(x.l.due) : ' <span class="pill Won">clear</span>') +
-        (x.l.due > 0 && x.age ? ' <span class="pill ' + payBucket(x.age).cls + '">' + x.age + 'd old</span>' : "") + '</h3>' +
-        '<div class="meta">' + x.l.chs.length + ' challan(s) &middot; billed ' + money(x.l.billed) +
-        (x.l.freight ? ' + freight ' + money(x.l.freight) : "") +
-        '<br>Received ' + money(x.l.paid) + '</div>' +
-        '<div class="acts"><button class="btn sm" data-act="pay-in" data-n="' + esc(x.name) + '">Payment received</button>' +
-        (x.l.due > 0 ? '<button class="btn sm ghost" data-act="pay-wa" data-n="' + esc(x.name) + '">Remind on WhatsApp</button>' + waExecBtn("pay-wa", x.name, 'data-n="' + esc(x.name) + '"') : "") +
-        '<button class="btn sm ghost" data-act="rc-list" data-n="' + esc(x.name) + '">Receipts</button>' +
-        '<button class="btn sm ghost" data-act="ledger-pdf" data-n="' + esc(x.name) + '">Ledger PDF</button></div></div>';
-    });
+    /* v6.9.529 - his third list, item 6: "excel form". One row per client, the same five
+       buttons in the last cell, nothing else changed - the acts and their data-n are the ones
+       the handler already answers. */
+    h += xlTable("payled", [
+      /* the buttons sit third, one short swipe from the name, not at the far end of the sheet */
+      { k: "name", t: "CLIENT" }, { k: "due", t: "DUE", n: 1, r: 1 }, { k: "go", t: "" }, { k: "age", t: "AGE", n: 1, r: 1 },
+      { k: "n", t: "CHALLANS", n: 1, r: 1 }, { k: "billed", t: "BILLED", n: 1, r: 1 }, { k: "paid", t: "RECEIVED", n: 1, r: 1 }
+    ], list.map(function (x) {
+      var cells = {
+        name: '<b>' + esc(x.name) + '</b>' + creditPill(x.name),
+        due: x.l.due > 0 ? '<b style="color:#b91c1c">' + money(x.l.due) + '</b>' : '<span class="pill Won">clear</span>',
+        age: (x.l.due > 0 && x.age) ? '<span class="pill ' + payBucket(x.age).cls + '">' + x.age + 'd</span>' : "",
+        n: String(x.l.chs.length),
+        billed: money(x.l.billed) + (x.l.freight ? ' <span style="color:#64748b;font-size:12px">+ freight ' + money(x.l.freight) + '</span>' : ""),
+        paid: money(x.l.paid),
+        go: '<button class="btn sm" data-act="pay-in" data-n="' + esc(x.name) + '">Payment received</button> ' +
+            (x.l.due > 0 ? '<button class="btn sm ghost" data-act="pay-wa" data-n="' + esc(x.name) + '">Remind</button> ' + waExecBtn("pay-wa", x.name, 'data-n="' + esc(x.name) + '"') + ' ' : "") +
+            '<button class="btn sm ghost" data-act="rc-list" data-n="' + esc(x.name) + '">Receipts</button> ' +
+            '<button class="btn sm ghost" data-act="ledger-pdf" data-n="' + esc(x.name) + '">Ledger PDF</button>'
+      };
+      return { v: { name: x.name, due: x.l.due, age: x.age || 0, n: x.l.chs.length, billed: x.l.billed, paid: x.l.paid, go: "" }, cells: cells };
+    }), "billed, received and the buttons");
     return h;
   }
 
@@ -37555,11 +37569,12 @@ function viewCatalogue() {
     return out;
   }
   function viewPaidOut() {
-    var rows = paidRows();
+    /* v6.9.529 - the tiles count the same rows the sheet below shows: incentives AND driver payouts */
+    var rows = paidOutLog();
     var thisM = ymLocal(new Date());
     var mTot = rows.filter(function (p) { return String(p.date || "").slice(0, 7) === thisM; })
-      .reduce(function (a, p) { return a + payAmt(p); }, 0);
-    var allTot = rows.reduce(function (a, p) { return a + payAmt(p); }, 0);
+      .reduce(function (a, p) { return a + p.amt; }, 0);
+    var allTot = rows.reduce(function (a, p) { return a + p.amt; }, 0);
     /* still to pay, across everybody - the same books the Incentives screen reads, so the two
        screens can never disagree about what is owed */
     var owed = 0, owedOk = true;
@@ -37592,24 +37607,28 @@ function viewCatalogue() {
         : '<div class="empty" style="text-align:left;padding:0">No partners or executives on the book yet.</div>') +
       '</div>';
 
-    /* ---- what has actually been paid ---- */
-    h += '<h3 style="margin:16px 0 6px;font-size:15px">Payments made</h3>';
-    if (!rows.length) {
+    /* ---- what has actually been paid ----
+       v6.9.529 - his third list, item 5: "make a date wise log of payment made (all)". One sheet,
+       newest first, of every rupee that left the firm through this app: partner and executive
+       incentives from commpay, and driver payouts from the Drivers & freight corner (S.dp, the
+       server's driverpay list - pulled once here if the freight screen has not pulled it yet).
+       Before this the driver money was on another screen and the note below said "not here". */
+    if (S.data && !S.dp && !_dpTried) { _dpTried = true; dpPull().then(function (g) { if (g) render(); }); }
+    var log = rows;
+    h += '<h3 style="margin:16px 0 6px;font-size:15px">Payments made, date-wise</h3>';
+    if (!log.length) {
       h += '<div class="empty">Nothing has been paid out yet.</div>';
     } else {
-      rows.slice(0, 100).forEach(function (p) {
-        h += '<div class="card" style="padding:9px 12px">' +
-          '<div class="acts" style="align-items:center;margin:0">' +
-          '<div class="grow"><b>' + esc(p.associate || "(nobody named)") + '</b>' +
-            (p.mode ? ' <span class="pill">' + esc(p.mode) + '</span>' : '') +
-            '<div class="meta" style="margin-top:2px">' + esc(d10(p.date || p.createdAt)) +
-            (p.notes ? ' &middot; ' + esc(p.notes) : '') +
-            (p.createdBy ? ' &middot; entered by ' + esc(p.createdBy) : '') + '</div></div>' +
-          '<b style="white-space:nowrap;font-size:14px">' + money(p.amount) + '</b></div></div>';
-      });
-      if (rows.length > 100) {
-        h += '<div class="meta" style="font-size:12px">and ' + (rows.length - 100) + ' older</div>';
-      }
+      h += xlTable("paidout", [
+        { k: "date", t: "DATE", w: "84px" }, { k: "who", t: "PAID TO" }, { k: "kind", t: "KIND" },
+        { k: "amt", t: "AMOUNT", n: 1, r: 1 }, { k: "mode", t: "HOW" }, { k: "for", t: "FOR" }, { k: "by", t: "ENTERED BY" }
+      ], log.map(function (p) {
+        return { v: { date: p.date, who: p.who, kind: p.kind, amt: p.amt, mode: p.mode, "for": p.forWhat, by: p.by },
+          cells: { date: esc(dmy(p.date)), who: '<b>' + esc(p.who || "(nobody named)") + '</b>', kind: paidKindPill(p.kind),
+                   amt: money(p.amt), mode: esc(p.mode || "\u2014"), "for": esc(p.forWhat || "\u2014"),
+                   by: p.by ? whoChip(p.by) : "\u2014" } };
+      }), "how and for what");
+      if (!S.dp) h += '<div class="meta" style="font-size:12px;margin-top:4px">Driver payouts are being read from the server\u2026</div>';
     }
 
     /* ---- the two kinds of money-out that are NOT here, said out loud ---- */
@@ -37617,13 +37636,32 @@ function viewCatalogue() {
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
       '<b>Not on this screen</b></div>' +
       '<div class="meta" style="font-size:12.5px;margin-top:4px">' +
-      '<b>Driver freight</b> is settled in the <b>Challan app</b>, because a driver is paid only once ' +
-      'his receipts are in and that is where the receipts live. ' +
-      '<a href="../challan/" target="_blank" rel="noopener">Open it</a>.' +
-      '<br><b>Engineer salary</b> is a monthly figure on the Payroll screen, not a payment &mdash; ' +
+      '<b>Engineer salary</b> is a monthly figure on the Payroll screen, not a payment &mdash; ' +
       'nothing records the day it was actually handed over.' +
-      '<br><b>Supplier payments</b> are not tracked anywhere in this app at all.</div></div>';
+      '<br><b>Supplier payments</b> are not tracked anywhere in this app at all.' +
+      '<br>A driver is paid from <b>Deliveries &rarr; Drivers &amp; freight</b>; it shows here once recorded.</div></div>';
     return h;
+  }
+  /* v6.9.529 - every payout, one shape, newest first */
+  function paidOutLog() {
+    var out = [];
+    paidRows().forEach(function (p) {
+      var kind = "incentive";
+      try { if (execTeam().some(function (u) { return lower(u.name) === lower(p.associate); })) kind = "exec incentive"; else kind = "partner incentive"; } catch (e) { }
+      out.push({ date: String(p.date || p.createdAt || "").slice(0, 10), who: p.associate || "", kind: kind,
+                 amt: payAmt(p), mode: p.mode || "", forWhat: p.notes || "", by: p.createdBy || "", id: p.id });
+    });
+    payouts().forEach(function (p) {
+      out.push({ date: String(p.createdAt || "").slice(0, 10), who: p.driver || "", kind: "driver freight",
+                 amt: dpAmt(p), mode: p.mode || "", forWhat: (p.forTrips || "") + (p.note ? " \u00b7 " + p.note : "") + (p.ref ? " \u00b7 " + p.ref : ""),
+                 by: p.createdBy || "", id: p.id });
+    });
+    return out.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+  }
+  function paidKindPill(k) {
+    return k === "driver freight" ? '<span class="pill teal">driver freight</span>'
+         : k === "exec incentive" ? '<span class="pill">exec incentive</span>'
+         : '<span class="pill soon">partner incentive</span>';
   }
 
   /* v6.9.330 - one tab for money, both directions. "Paid out" rides on canSee("commission"),
@@ -41077,6 +41115,7 @@ function viewCatalogue() {
     if (act === "exec-xlsx") { execCardXlsx(t.getAttribute("data-k") || ""); return; }
     /* v6.9.463 - the old hisabs still to attach, as a spreadsheet, and the slab filter */
     if (act === "hdmiss-xlsx") { hdMissXlsx(); return; }
+    if (act === "hisab-exec") { S.hisabExec = t.getAttribute("data-k") || ""; render(); return; }   /* v6.9.529 */
     if (act === "due-tag") {
       var _dk = t.getAttribute("data-k") || "";
       S.dueTag = (String(S.dueTag || "") === _dk) ? "" : _dk;   /* tapping the one that is on turns it off */
