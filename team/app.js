@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.539";
+  var APP_VERSION = "6.9.540";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -30649,6 +30649,101 @@ function viewCatalogue() {
     return { bg: "#f0fdfa", bd: "#99f6e4", fg: "#0f766e", mark: "✓" };
   }
 
+  /* ===== WHAT THE APP KNOWS  (v6.9.540 - his item 26) =====
+     The faults this estate has actually seen, each with the words a man uses for it, what is
+     going on, and the button that does something about it. Matched on the complaint he types. */
+  var TR_KNOWN = [
+    { re: /not (showing|visible|there|coming)|missing|cannot see|can'?t see/i, k: "missing",
+      say: "A record that is on the sheet but not on the screen is usually one of three things: this phone's book is older than the sheet (refresh pulls it); the record is under another spelling of the name (Duplicate check finds it); or the person looking is a sales executive and the client is assigned to somebody else.",
+      fix: "app-refresh", fixSay: "Refresh the book now", also: [["dups", "Duplicate check"], ["clients", "Clients"]] },
+    { re: /pdf|download|print|statement|ledger/i, k: "pdf",
+      say: "A PDF is built on the phone itself. On iPhone it opens in a new tab and Safari's share button saves it; on Android it lands in Downloads. If nothing opens, a pop-up blocker or a full storage is the usual cause - the check below says which.",
+      fix: "ts-run", fixSay: "Check this phone" },
+    { re: /whatsapp|telegram|send|share|message/i, k: "send",
+      say: "WhatsApp is opened with the message ready and you press send - nothing goes by itself. If the client's number is not on his card, or the executive's number is not on the Team sheet, the button says so and stops.",
+      also: [["clients", "Clients"], ["teampins", "Team"]] },
+    { re: /pin|login|log in|sign in|password|otp/i, k: "pin",
+      say: "The PIN is checked by the server against the Team sheet. Three things stop a login: no signal, a PIN typed for a name that is not on the sheet, or a PIN that was changed on another phone. The owner resets a PIN under Team; nobody else can.",
+      fix: "ts-run", fixSay: "Check the connection" },
+    { re: /slow|hang|stuck|loading|freeze|spinning/i, k: "slow",
+      say: "The book is pulled whole on every open. On a weak signal the first paint waits for it; after that everything is on the phone. If it stays stuck, the check below measures the server's answer time and says so.",
+      fix: "ts-run", fixSay: "Measure it now" },
+    { re: /number|numbering|challan no|serial|gap|skipped|86|87|88/i, k: "number",
+      say: "A challan number is given out by the server before the row is saved. If the answer comes back after the app has given up waiting, that number is spent with nothing on it - the challan log names such holes. Nothing is lost: the next challan takes the next number.",
+      also: [["register", "Challan log"]] },
+    { re: /discount|rate|preset|price|amount wrong|billed wrong|below/i, k: "rate",
+      say: "A line's rate is frozen on the challan when it is made; the preset on Discounts applies to future challans. A line at 0% while a rate was on file is flagged on HISAB and put right at finalise.",
+      also: [["discounts", "Discounts"], ["billing", "HISAB"]] },
+    { re: /receipt|photo|proof|attach|upload/i, k: "receipt",
+      say: "A receipt photo is queued on the phone and pushed on the next refresh; the challan is marked received at once. Pending upload lists what is still waiting on this phone.",
+      also: [["pending", "Pending upload"]] },
+    { re: /incentive|payout|paid|commission/i, k: "incentive",
+      say: "Incentive is earned on the net (post-discount, ex-GST) at the rate set for that client and brand, only once the receipt is in, and becomes payable as the client pays. A rate not set is amber on Discounts - that man earns nothing on that brand until it is.",
+      also: [["commission", "Incentives"], ["discounts", "Discounts"]] },
+    { re: /blank|white|nothing (opens|loads)|crash|error|closes/i, k: "crash",
+      say: "A blank screen at a place with no signal is a phone whose offline copy is empty; the /fix/ page recovers it. A crash is written to a small log on this phone, which the report below carries.",
+      fix: "ts-run", fixSay: "Check this app now" }
+  ];
+  /* the names in the complaint, read off the book */
+  function trBookHits(q) {
+    var out = [], t = String(q || "");
+    var no = t.match(/\d{2}\/\d{2}\/\d{4}\/\d{3}/g) || [];
+    no.forEach(function (n) {
+      var c = (S.data.challans || []).filter(function (x) { return String(x.challanNo || "") === n; })[0];
+      out.push(c ? { kind: "challan", say: "Challan " + n + " is on this phone's book: " + (c.customerName || "") + ", " + chStatus(c) + (inHisab(c) ? ", finalised" : ", not finalised") + ", " + money(chValue(c)) + ".", act: "ch-open", id: c.id, btn: "Open it" }
+                  : { kind: "challan", say: "Challan " + n + " is NOT on this phone's book. Either it was never saved (a spent number) or this phone has not pulled it yet - refresh first." });
+    });
+    var lo = t.toLowerCase();
+    (S.data.clients || []).forEach(function (c) {
+      var nm = String(c.name || "").trim(); if (nm.length < 4) return;
+      var first = nm.toLowerCase().split(/\s+/).slice(0, 2).join(" ");
+      if (lo.indexOf(nm.toLowerCase()) >= 0 || (first.length >= 6 && lo.indexOf(first) >= 0)) {
+        if (out.some(function (o) { return o.kind === "client" && o.id === c.id; })) return;
+        var due = 0; try { due = clientDue(nm); } catch (e) { }
+        out.push({ kind: "client", say: nm + " is on the book" + (c.ownedBy ? ", assigned to " + c.ownedBy : ", assigned to nobody") + (due > 0.5 ? ", owes " + money(due) : "") + ".", act: "cl-open", id: c.id, btn: "Open his card" });
+      }
+    });
+    return out.slice(0, 6);
+  }
+  function trAsk(q) {
+    var hits = TR_KNOWN.filter(function (k) { return k.re.test(q); });
+    return { q: q, at: Date.now(), known: hits, book: trBookHits(q), net: S.trNet || null };
+  }
+  function trReport(a) {
+    var L = ["ENERGY WORLD - COMPLAINT", new Date(a.at).toLocaleString(), "CRM " + APP_VERSION + " - " + String(S.user || "-"), "", "HE SAYS: " + a.q, ""];
+    a.book.forEach(function (b) { L.push("BOOK: " + b.say); });
+    a.known.forEach(function (k) { L.push("KNOWN (" + k.k + "): " + k.say); });
+    var rep = tsReport(); if (rep) { L.push(""); L.push(rep); }
+    var cl = crashLogList().slice(-3);
+    if (cl.length) { L.push(""); L.push("LAST CRASHES:"); cl.forEach(function (c) { L.push("  " + c.t + " " + c.v + " " + c.tab + " - " + c.msg); }); }
+    return L.join("\n");
+  }
+  function trAnswerHtml(a) {
+    var h = '<div class="card" style="margin-top:10px;border-color:#99f6e4;background:#fff">' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#0f766e"><b>What the app can say</b></div>';
+    if (!a.book.length && !a.known.length) {
+      h += '<div class="meta" style="margin-top:4px">Nothing in the book matches those words and it is not a fault the app has seen before. The report below carries everything - send it.</div>';
+    }
+    a.book.forEach(function (b) {
+      h += '<div style="margin-top:6px;font-size:13px">' + esc(b.say) + (b.act ? ' <button class="btn sm ghost" data-act="' + esc(b.act) + '" data-id="' + esc(b.id) + '" style="padding:2px 8px;font-size:12px">' + esc(b.btn) + '</button>' : '') + '</div>';
+    });
+    a.known.forEach(function (k) {
+      h += '<div style="margin-top:8px;font-size:13px;line-height:1.45">' + esc(k.say) + '</div>' +
+        '<div class="acts" style="margin-top:5px;gap:6px;flex-wrap:wrap">' +
+        (k.fix ? '<button class="btn sm" data-act="' + esc(k.fix) + '">' + esc(k.fixSay) + '</button>' : '') +
+        (k.also || []).map(function (t) { return '<button class="btn sm ghost" data-act="tab" data-tab="' + esc(t[0]) + '">' + esc(t[1]) + '</button>'; }).join("") + '</div>';
+    });
+    if (a.net) {
+      h += '<div class="card" style="margin-top:10px;border-color:#ddd6fe;background:#faf5ff"><div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#6d28d9"><b>The internet’s answer</b></div>' +
+        '<div style="font-size:13px;line-height:1.5;margin-top:4px;white-space:pre-wrap">' + esc(a.net) + '</div></div>';
+    }
+    h += '<div class="acts" style="margin-top:10px;gap:6px;flex-wrap:wrap">' +
+      '<button class="btn" data-act="ts-net"' + (S.trNetBusy ? ' disabled' : '') + '>' + (S.trNetBusy ? 'Asking…' : 'Ask the internet') + '</button>' +
+      '<button class="btn sm ghost" data-act="ts-report">Copy the full report</button>' +
+      '<button class="btn sm ghost" data-act="ts-report-tg">Send it on Telegram</button></div>' +
+      '<div class="meta" style="font-size:12px;margin-top:6px">“Ask the internet” sends this report to the server, which puts it to an AI and returns the answer here. That call is part of server release V129; until it is deployed the button says so and the report is what to send.</div></div>';
+    return h;
+  }
   function runTrouble() {
     if (_tsBusy) return;
     _tsBusy = true;
@@ -30870,21 +30965,24 @@ function viewCatalogue() {
       '<div class="meta" style="font-size:13px;color:#1e3a8a">Something behaving oddly? This tests ' +
       'the app on this phone, right now, and says which part is at fault.</div>';
 
-    if (!_ts) {
-      h += '<div class="acts" style="margin-top:10px">' +
-        '<button class="btn" data-act="ts-run">Check this app now</button></div></div>';
-      return h;
-    }
+    /* v6.9.540 - his item 26: the complaint box. What he types is matched against the faults
+       this estate has seen, the book is read for the names in it, and one report is written. */
+    h += '<div style="margin-top:10px"><textarea id="tr_q" rows="3" placeholder="Type what is wrong, in your own words \u2014 e.g. \u201cchallan 19/09/2026/122 not showing in HISAB\u201d, \u201cPDF does not download on my phone\u201d, \u201cAshish cannot see Dr Rathi\u201d" ' +
+      'style="width:100%;box-sizing:border-box;padding:8px 10px;font:13px/1.45 inherit;border:1px solid #cbd5e1;border-radius:8px;background:#fff">' + esc(S.trQ || "") + '</textarea></div>' +
+      '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px">' +
+      '<button class="btn" data-act="ts-ask">Ask</button>' +
+      '<button class="btn sm ghost" data-act="ts-run"' + (_tsBusy ? ' disabled' : '') + '>' + (_ts ? 'Check the app again' : 'Just check the app') + '</button></div>';
+    if (S.trAns) h += trAnswerHtml(S.trAns);
+    if (!_ts) return h + '</div>';
     var bad = _ts.rows.filter(function (r) { return r.state === "bad"; }).length;
     var warn = _ts.rows.filter(function (r) { return r.state === "warn"; }).length;
-    h += '<div style="margin-top:8px;font-weight:800;color:' +
+    h += '<div style="margin-top:12px;font-weight:800;color:' +
       (bad ? "#b91c1c" : warn ? "#b45309" : "#0f766e") + '">' +
       (_tsBusy ? esc(_ts.running || "Checking…")
         : bad ? tsPl(bad, "problem") + " found"
         : warn ? "Nothing broken — " + tsPl(warn, "thing") + " worth knowing"
         : "✓ Everything checked out") + '</div>' +
       '<div class="acts" style="margin-top:8px">' +
-      '<button class="btn sm ghost"' + (_tsBusy ? ' disabled' : '') + ' data-act="ts-run">Check again</button>' +
       (_tsBusy ? "" : '<button class="btn sm ghost" data-act="ts-copy">Copy the report</button>') +
       '</div></div>';
 
@@ -41427,6 +41525,36 @@ function viewCatalogue() {
     /* ---- item 28, the troubleshooter. Every fix here is one the app already knows how to do;
        nothing new is invented, and nothing touches a service worker. ---- */
     if (act === "ts-run") { runTrouble(); return; }
+    /* v6.9.540 - the complaint box */
+    if (act === "ts-ask") {
+      var _tq = String((el("tr_q") && el("tr_q").value) || "").trim();
+      if (!_tq) { toast("Type what is wrong first."); return; }
+      S.trQ = _tq; S.trNet = null; S.trAns = trAsk(_tq);
+      if (!_ts && !_tsBusy) runTrouble(); else render();
+      return;
+    }
+    if (act === "ts-report" || act === "ts-report-tg") {
+      if (!S.trAns) { toast("Ask first."); return; }
+      var _trr = trReport(S.trAns);
+      if (act === "ts-report-tg") { window.open("https://t.me/share/url?url=" + encodeURIComponent("https://mukeshenergyworld-ux.github.io/ew-site-crm/team/") + "&text=" + encodeURIComponent(_trr), "_blank"); return; }
+      try { navigator.clipboard.writeText(_trr).then(function () { toast("The report is copied. Paste it anywhere."); }, function () { tsShowReport(_trr); }); } catch (e) { tsShowReport(_trr); }
+      return;
+    }
+    if (act === "ts-net") {
+      if (!S.trAns) { toast("Ask first."); return; }
+      S.trNetBusy = true; render();
+      api("troubleAsk", { q: S.trAns.q, report: trReport(S.trAns) }, 60000).then(function (r) {
+        S.trNetBusy = false;
+        if (r && r.ok && r.answer) { S.trNet = String(r.answer); S.trAns.net = S.trNet; render(); return; }
+        S.trAns.net = "The server does not carry this call yet (server release V129). The report is ready - copy it or send it on Telegram and it is answered by hand." + (r && r.error ? " Server said: " + r.error : "");
+        render();
+      }).catch(function (e) {
+        S.trNetBusy = false;
+        S.trAns.net = "No answer from the server (" + apiWhy(e) + "). Until server release V129 carries this call, copy the report or send it on Telegram.";
+        render();
+      });
+      return;
+    }
     if (act === "ts-pics") { runTrouble(); return; }
     if (act === "ts-reload") {
       toast("Fetching the newest app…");
