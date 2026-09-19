@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.522";
+  var APP_VERSION = "6.9.523";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2693,9 +2693,14 @@ window.addEventListener("beforeunload", function (ev) {
     var h = '<div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0 2px;align-items:center">' +
       '<span style="font-size:12px;color:#94a3b8;min-width:56px">' + esc(rowLabel || "") + '</span>' +
       '<button class="btn sm ' + (active ? "ghost" : "") + '" data-act="' + act + '" data-v="">' + allLabel + '</button>';
+    /* v6.9.523 - his item 29: "always show brand name in color coding". The brand row carries
+       brandDot() - the same hue a brand has on the return form and the register, for ever. */
+    var _isBrand = act === "pv-brand";
+    if (_isBrand) ensurePickerCss();
     items.forEach(function (x) {
-      h += '<button class="btn sm ' + (active === x.k ? "" : "ghost") + '" data-act="' + act + '" data-v="' + esc(x.k) + '">' +
-        esc(x.k) + ' <span style="opacity:.6">' + x.n + '</span></button>';
+      h += '<button class="btn sm ' + (active === x.k ? "" : "ghost") + '" data-act="' + act + '" data-v="' + esc(x.k) + '"' +
+        (_isBrand ? ' style="display:inline-flex;align-items:center;gap:6px"' : '') + '>' +
+        (_isBrand ? brandDot(x.k) : '') + esc(x.k) + ' <span style="opacity:.6">' + x.n + '</span></button>';
     });
     return h + '</div>';
   }
@@ -2739,12 +2744,15 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="pv-b">' +
       '<div class="pv-n">' + esc(d.title) + '</div>' +
       '<div class="pv-c">' + esc(p.code) + '</div>' +
+      /* v6.9.523 - his item 29: the brand on the tile, in its colour */
+      (p.brand ? '<div class="pv-c" style="display:flex;align-items:center;gap:5px;color:hsl(' + brandHue(p.brand) + ',58%,38%)">' + brandDot(p.brand) + esc(p.brand) + '</div>' : '') +
       '<div class="pv-p">' + money(p.price) +
       (p.unit ? ' <i>/ ' + esc(p.unit) + '</i>' : "") + '</div>' +
       '</div></div>';
   }
 
   function prodGrid(list) {
+    ensurePickerCss();   /* v6.9.523 - .bdot */
     return '<div class="pv-grid">' + list.map(prodTile).join("") + '</div>';
   }
   /* ======== HIS ITEM 29: THE CATALOGUE AS A SHEET  (v6.9.506) ========
@@ -2758,6 +2766,7 @@ window.addEventListener("beforeunload", function (ev) {
      So both, and the sheet is what he lands on because that is what he asked for. A photo is
      still one tap away: the code opens the product with its picture, exactly as a tile does. */
   function prodSheet(list) {
+    ensurePickerCss();   /* v6.9.523 - .bdot */
     /* THE PRICE IS THIRD, NOT LAST. Rendered at 390px and looked at: with the price at the far
        right the table is 636px in a 364px box, so the ONE number he opened this screen to read
        was the one off the edge. Brand and category are usually already settled by the chips
@@ -2780,7 +2789,7 @@ window.addEventListener("beforeunload", function (ev) {
              register's and it does not change per table */
           code: '<b data-act="pv-open" data-code="' + esc(p.code) + '" style="cursor:pointer;color:#0f766e">' + esc(p.code) + '</b>',
           desc: esc(d.title),
-          brand: esc(p.brand || "\u2014"),
+          brand: p.brand ? '<span style="display:inline-flex;align-items:center;gap:6px">' + brandDot(p.brand) + esc(p.brand) + '</span>' : "\u2014",   /* v6.9.523 */
           cat: esc(p.cat || "\u2014"),
           unit: esc(p.unit || "\u2014"),
           price: money(p.price)
@@ -2906,10 +2915,11 @@ window.addEventListener("beforeunload", function (ev) {
       h += '<div class="empty" style="text-align:left;padding:10px 0 2px">Pick a brand \u2014 then the category, then the family.</div>';
       /* a taste of each shelf so the screen is never blank */
       shelf.order.slice(0, 6).forEach(function (b) {
-        h += '<h3 style="margin:16px 0 0;font-size:14px">' + esc(b) +
+        h += '<h3 style="margin:16px 0 0;font-size:14px;display:flex;align-items:center;gap:7px">' + brandDot(b) + esc(b) +
           ' <span class="pill teal">' + shelf.by[b].length + '</span>' +
           ' <button class="btn sm ghost" data-act="pv-brand" data-v="' + esc(b) + '">see all</button></h3>' +
-          prodGrid(shelf.by[b].slice(0, 11));
+          /* v6.9.523 - his item 29: the landing drew tiles whatever the sheet/cards choice said */
+          prodList(shelf.by[b].slice(0, 11));
       });
       return h;
     }
