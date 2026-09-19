@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.535";
+  var APP_VERSION = "6.9.536";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -21401,10 +21401,12 @@ function viewCatalogue() {
     h += '<div class="row"><button class="btn sm ghost" data-act="disc-back">&larr; All discount clients</button></div>' +
       /* v6.9.436 - the signed paper sits at the TOP of the screen where the rates are typed.
          This is the screen he meant: "as to check on single click what finalized at what rate". */
-      docStrip(cl) +          /* v6.9.460 - the old hisab too; this screen never named it */
+      /* v6.9.536 - his item 17: "open old hisab, attach a new one; attach paper not needed here".
+         hdLine is the old-hisab door alone; the agreed-rates strip is on HISAB, where it belongs. */
+      hdLine(cl, {}) +
       '<div class="empty" style="text-align:left;padding:6px 0 10px">Brand-wise discount for <b>' + esc(cl) + '</b>. Used by the quote builder, new challans and the billing screen.' +
       (anyPartner
-        ? ' Below each discount, set the incentive % for this client’s partner(s) on that brand — each earns on the net (post-discount) sale.'
+        ? ' Under the discount row, set the incentive % for each of this client’s partners on that brand — each earns on the net (post-discount) sale.'
         : ' <span style="color:#94a3b8">No plumber / architect / builder / PMC is linked to this client, so there is no incentive to set. Add one on the client’s record to set partner incentives here.</span>') +
       '<br><span style="color:#0f766e;font-weight:600">Fill in every brand you need, then tap <b>Save &amp; back</b> — nothing is saved until you do.</span>' +
       '</div>';
@@ -21445,46 +21447,66 @@ function viewCatalogue() {
     var roles = ["plumber", "architect", "builder", "pmc"].filter(function (role) { return String(cObj[role] || "").trim(); });
     var _eWho = execForClient(cl);
     var pf = function (x) { return (Math.round(x * 100) / 100) + "%"; };
-    var TH = function (x, r) {
-      return '<th style="padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;background:#0b3b36;text-align:' + (r ? "right" : "left") + '">' + x + '</th>';
+    /* ===== HIS DRAWING  (v6.9.536 - third list, item 17) =====
+       The client's details down the left; the brands ACROSS; one row for the preset discount,
+       one per partner incentive, one for the executive, one for the load. The 6.9.525 sheet had
+       the brands down and the roles across - this is its transposition, box for box. */
+    var _pm = function (role) { var p = partnerByName(cObj[role]); return p && p.mobile ? String(p.mobile) : ""; };
+    var _em = (function () { var m = (S.data.team || []).filter(function (u) { return u && dgKey(u.name) === dgKey(_eWho); })[0]; return m && m.mobile ? String(m.mobile) : ""; })();
+    var who = function (name, mob) { return '<b>' + esc(name || "—") + '</b>' + (mob ? ' <span style="color:#64748b;font-size:12px;white-space:nowrap">' + esc(mob) + '</span>' : ''); };
+    var TH = function (x, sticky) {
+      return '<th style="padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;background:#0b3b36;text-align:left' +
+        (sticky ? ';position:sticky;left:0;z-index:2' : '') + '">' + x + '</th>';
     };
     var TD = function (x, extra) { return '<td style="padding:4px 7px;border-top:1px solid #e2e8f0;white-space:nowrap;font-size:12.5px;vertical-align:middle' + (extra || "") + '">' + x + '</td>'; };
+    var LBL = function (x, bg) { return TD(x, ";position:sticky;left:0;z-index:1;background:" + bg + ";font-weight:700;min-width:150px"); };
     var inp = 'inputmode="decimal" placeholder="0" style="width:64px;padding:5px 7px;font-size:13px"';
-    h += '<div class="meta" style="font-size:12px;margin:8px 0 4px">Type the rate in the box; swipe sideways for the partners and the executive &rarr;</div>' +
-      '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;border-collapse:collapse">' +
-      '<thead><tr>' + TH('BRAND') + TH('DISCOUNT %') +
-      roles.map(function (role) { return TH(esc(ROLE_LABEL[role].toUpperCase()) + ' <span style="font-weight:500;opacity:.8">' + esc(String(cObj[role]).trim()) + '</span> %'); }).join('') +
-      TH('EXECUTIVE ' + (_eWho ? '<span style="font-weight:500;opacity:.8">' + esc(_eWho) + '</span>' : '<span style="font-weight:500;opacity:.8">none assigned</span>') + ' %') +
-      TH('LOAD') + '</tr></thead><tbody>';
-    brands.forEach(function (b, bi) {
-      var d = discRow(cl, b);
-      var im = incMap(d);
-      var dPct = Number(d && d.pct) || 0;
+    var ROLE_NAME = { plumber: "Plumber", architect: "Architect", builder: "Builder", pmc: "PMC" };
+    /* the details, as he drew them: client / mobile and address / partner name and number / executive */
+    h += '<div class="card" style="padding:8px 10px"><table style="border-collapse:collapse;font-size:12.5px;width:100%">' +
+      '<tr><td style="padding:3px 8px 3px 0;color:#64748b;white-space:nowrap">Client</td><td style="padding:3px 0"><b>' + esc(cl) + '</b>' + (cObj.location ? ' <span class="pill teal" style="font-size:12px">' + esc(cObj.location) + '</span>' : '') + '</td></tr>' +
+      '<tr><td style="padding:3px 8px 3px 0;color:#64748b;white-space:nowrap">Mobile, address</td><td style="padding:3px 0">' + (cObj.mobile ? esc(cObj.mobile) : '<span style="color:#b45309">no mobile</span>') + (cObj.address ? ' · ' + esc(cObj.address) : '') + '</td></tr>' +
+      roles.map(function (role) { return '<tr><td style="padding:3px 8px 3px 0;color:#64748b;white-space:nowrap">' + ROLE_NAME[role] + '</td><td style="padding:3px 0">' + who(cObj[role], _pm(role)) + '</td></tr>'; }).join("") +
+      '<tr><td style="padding:3px 8px 3px 0;color:#64748b;white-space:nowrap">Executive</td><td style="padding:3px 0">' + (_eWho ? who(_eWho, _em) : '<span style="color:#b45309">none assigned</span>') + '</td></tr>' +
+      '</table></div>';
+    h += '<div class="meta" style="font-size:12px;margin:8px 0 4px">Type the rate in the box; swipe sideways for the other brands &rarr;</div>' +
+      '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse">' +
+      '<thead><tr>' + TH('RATE', true) + brands.map(function (b) { return TH(esc(b)); }).join('') + '</tr></thead><tbody>';
+    var cellOf = {};   /* per brand, the pieces each row needs */
+    brands.forEach(function (b) {
+      var d = discRow(cl, b), im = incMap(d), dPct = Number(d && d.pct) || 0;
       var _bkey = String(b).replace(/[^A-Za-z0-9]/g, "_");
-      var _eOn = execOnFor(cl, b);
-      var _eVal = execRateFor(cl, b);
-      var _eSug = execSet(b) ? execRateAt(b, dPct) : 0;
+      var _eOn = execOnFor(cl, b), _eVal = execRateFor(cl, b), _eSug = execSet(b) ? execRateAt(b, dPct) : 0;
       var totInc = roles.reduce(function (a, role) { return a + (Number(im[role]) || 0); }, 0);
       var _eLoad = _eOn ? (Number(_eVal) || 0) : 0;
-      var bg = bi % 2 ? "#f8fafc" : "#fff";
-      h += '<tr style="background:' + bg + '">' +
-        TD('<b>' + esc(b) + '</b>' + (d && Number(d.pct) ? ' <span class="pill teal" style="font-size:12px">' + esc(d.pct) + '%</span>' : ' <span class="pill" style="font-size:12px">not set</span>'), ";position:sticky;left:0;z-index:1;background:" + bg) +
-        TD('<input class="dsc" id="exd_' + _bkey + '" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-id="' + esc(d ? d.id : "") + '" ' + inp + ' value="' + esc(d ? d.pct : "") + '"/>') +
-        roles.map(function (role) {
+      cellOf[b] = {
+        disc: '<input class="dsc" id="exd_' + _bkey + '" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-id="' + esc(d ? d.id : "") + '" ' + inp + ' value="' + esc(d ? d.pct : "") + '"/>' +
+              (d && Number(d.pct) ? '' : ' <span class="pill" style="font-size:12px">not set</span>'),
+        role: function (role) {
           var rv = (im[role] != null && im[role] !== "") ? im[role] : "";
-          return TD('<input class="incp" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-role="' + role + '" data-id="' + esc(d ? d.id : "") + '" ' + inp + ' value="' + esc(rv) + '"/>');
-        }).join('') +
-        TD('<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">' +
-            '<input type="checkbox" class="exon" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-sug="' + esc(_eSug) + '" data-key="' + _bkey + '"' + (_eOn ? ' checked' : '') + ' style="width:16px;height:16px;flex:0 0 auto"/>' +
-            '<span id="exw_' + _bkey + '" style="display:' + (_eOn ? 'inline-flex' : 'none') + ';align-items:center;gap:4px">' +
-              '<input class="exip" id="exi_' + _bkey + '" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" ' + inp + ' value="' + esc(_eOn ? _eVal : "") + '"/></span></label>' +
-            (execSet(b) ? '<div class="meta" id="exl_' + _bkey + '" style="font-size:12px;white-space:normal;max-width:220px">' + execLineHtml(b, dPct) + '</div>' : '')) +
-        TD((totInc > 0 || _eLoad > 0)
-            ? '<b style="color:#b45309">' + pf(totInc + _eLoad) + '</b> <span style="color:#94a3b8;font-size:12px">of net</span>' +
-              (dPct ? '<div style="font-size:12px;color:#94a3b8">≈ ' + pf((totInc + _eLoad) * (1 - dPct / 100)) + ' of list</div>' : '')
-            : '<span style="color:#94a3b8">—</span>', ";text-align:right") +
-        '</tr>';
+          return '<input class="incp" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-role="' + role + '" data-id="' + esc(d ? d.id : "") + '" ' + inp + ' value="' + esc(rv) + '"/>';
+        },
+        exec: '<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">' +
+              '<input type="checkbox" class="exon" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-sug="' + esc(_eSug) + '" data-key="' + _bkey + '"' + (_eOn ? ' checked' : '') + ' style="width:16px;height:16px;flex:0 0 auto"/>' +
+              '<span id="exw_' + _bkey + '" style="display:' + (_eOn ? 'inline-flex' : 'none') + ';align-items:center;gap:4px">' +
+              '<input class="exip" id="exi_' + _bkey + '" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" ' + inp + ' value="' + esc(_eOn ? _eVal : "") + '"/></span></label>',
+        sug: execSet(b) ? '<div class="meta" id="exl_' + _bkey + '" style="font-size:12px;white-space:normal;max-width:220px">' + execLineHtml(b, dPct) + '</div>' : '<span style="color:#94a3b8">—</span>',
+        load: (totInc > 0 || _eLoad > 0)
+          ? '<b style="color:#b45309">' + pf(totInc + _eLoad) + '</b> <span style="color:#94a3b8;font-size:12px">of net</span>' +
+            (dPct ? '<div style="font-size:12px;color:#94a3b8">≈ ' + pf((totInc + _eLoad) * (1 - dPct / 100)) + ' of list</div>' : '')
+          : '<span style="color:#94a3b8">—</span>'
+      };
     });
+    var row = function (label, bg, cell) {
+      return '<tr style="background:' + bg + '">' + LBL(label, bg) + brands.map(function (b) { return TD(cell(cellOf[b])); }).join('') + '</tr>';
+    };
+    h += row('Brand preset discount %', '#fff', function (c) { return c.disc; });
+    roles.forEach(function (role, ri) {
+      h += row(ROLE_NAME[role] + ' incentive % <span style="font-weight:500;color:#64748b">' + esc(String(cObj[role]).trim()) + '</span>', ri % 2 ? '#fff' : '#f8fafc', function (c) { return c.role(role); });
+    });
+    h += row('Executive incentive % <span style="font-weight:500;color:#64748b">' + (_eWho ? esc(_eWho) : 'none assigned') + '</span>', '#faf5ff', function (c) { return c.exec; });
+    h += row('<span style="font-weight:500;color:#64748b">Rate card offers</span>', '#fff', function (c) { return c.sug; });
+    h += row('Load on the sale', '#f8fafc', function (c) { return c.load; });
     h += '</tbody></table></div>';
     /* Explicit, DEFERRED Save. Typing in a discount / incentive box writes nothing; this button is
        the only thing that commits — it reads every box on the screen and saves them in one pass,
