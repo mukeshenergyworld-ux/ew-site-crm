@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.72.0";
+  var APP_VERSION = "1.73.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -4203,6 +4203,12 @@ function discRowOn(client, brand, onYmd) {
       'or never entered.</div></td></tr>';
   }
 
+  /* 1.73.0 - the day under a name on the register, dd/mm, 12px, nothing when there is none */
+  function regDay(at) {
+    var d = String(at || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "";
+    return '<div style="font-size:12px;color:#64748b;text-decoration:none">' + d.slice(8, 10) + '/' + d.slice(5, 7) + '</div>';
+  }
   function regCell(extra) {
     return "padding:5px 7px;border-top:1px solid #e2e8f0;white-space:nowrap;font-size:12.5px" + (extra || "");
   }
@@ -4326,6 +4332,9 @@ function discRowOn(client, brand, onYmd) {
     var pf = proofFor(c);
     var open = S.open && String(S.open) === String(c.id);
     var bg = dup ? "#fffbeb" : (alt ? "#f8fafc" : "#fff");
+    /* 1.73.0 - done = finalised and counted; the four step cells are struck through in green */
+    var regDone = inHisab(c) && hisabCounts(c);
+    var regStruck = ";text-decoration:line-through;text-decoration-color:#15803d;text-decoration-thickness:2px;color:#15803d";
     var h = '<tr style="background:' + bg + '">' +
       '<td style="' + regCell(";font-weight:800;color:#0b3b36") + '">' + (n === null ? "OLD" : n) +
         (dup ? '<br><span style="font-size:12px;color:#b45309">twice</span>' : '') + '</td>' +
@@ -4338,20 +4347,23 @@ function discRowOn(client, brand, onYmd) {
         ' ' + (open ? "▴" : "▾") + '</button></td>' +
       '<td style="' + regCell(";text-align:right;font-weight:700") + '">' + esc(money(chValue(c))) + '</td>' +
       '<td style="' + regCell(";color:#475569") + '">' + esc(regFirst(chExec(c)) || "—") + '</td>' +
-      '<td style="' + regCell() + '">' + esc(regFirst(c.createdBy) || "—") + '</td>' +
-      '<td style="' + regCell(";color:" + (String(c.approvedBy || "").trim() ? "#0f172a" : "#b91c1c")) + '">' +
-        esc(regFirst(c.approvedBy) || "not passed") + '</td>' +
-      '<td style="' + regCell() + '">' +
-        (pf ? '✓ <span style="font-size:12px;color:#64748b">' + esc(regFirst(pf.actor || pf.by)) + '</span>'
+      /* 1.73.0 - HIS WORDS: "with date, who made it, who approved, who attached receipt, when
+         finalized {date}, all strikeout when done". The day under each name, the finalised
+         date, a finished row struck through in green - the same as CRM 6.9.525. */
+      '<td style="' + regCell() + (regDone ? regStruck : "") + '">' + esc(regFirst(c.createdBy) || "\u2014") + regDay(c.createdAt) + '</td>' +
+      '<td style="' + regCell(";color:" + (String(c.approvedBy || "").trim() ? "#0f172a" : "#b91c1c")) + (regDone ? regStruck : "") + '">' +
+        esc(regFirst(c.approvedBy) || "not passed") + (String(c.approvedBy || "").trim() ? regDay(c.approvedAt) : "") + '</td>' +
+      '<td style="' + regCell() + (regDone ? regStruck : "") + '">' +
+        (pf ? '\u2713 <span style="font-size:12px;color:#64748b">' + esc(regFirst(pf.actor || pf.by)) + '</span>' + regDay(pf.at || c.receiptAt)
             : (RECEIPT_FROM.indexOf(chStatus(c)) >= 0
                 ? '<button class="btn sm amb" data-act="rc-attach" data-id="' + esc(c.id) + '" ' +
                   'style="padding:1px 8px;font-size:12px;font-weight:700;white-space:nowrap">Attach</button>'
                 : '<span style="color:#94a3b8;font-size:12px">not gone yet</span>')) + '</td>' +
-      '<td style="' + regCell() + '">' + (inHisab(c)
+      '<td style="' + regCell() + (regDone ? regStruck : "") + '">' + (inHisab(c)
         ? /* 1.63.0 - .pill.grn, not .pill.ok. This app's pill colours are red / amb / grn / blu; the
            CRM's are named differently and a class that does not exist here would have drawn a
            plain grey word where a green tick belongs. Caught by reading this app's own CSS. */
-        '<span class="pill grn" style="font-size:12px">finalised</span>'
+        '<span class="pill grn" style="font-size:12px">finalised</span>' + regDay((hisabStamp(c) || {}).at)
         : '<span style="color:#b45309;font-size:12px">not finalised</span>') + '</td></tr>';
     if (open) {
       h += '<tr style="background:' + bg + '"><td colspan="10" style="padding:2px 6px 10px;border-top:0">' +
