@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.518";
+  var APP_VERSION = "6.9.519";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8163,6 +8163,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<div class="lc-right">' + partnerBadge(c, "plumber") + partnerBadge(c, "architect") +
         (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
         '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>' +
+        clWhenLine(c) +                              /* v6.9.519 - his item 10 */
         brandBoard(c.name, true) + '</div>';
     }
 
@@ -8180,13 +8181,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
       });
       order.forEach(function (e) {
-        var cs = groups[e].slice().sort(function (a, b) { return String(a.name).toLowerCase() < String(b.name).toLowerCase() ? -1 : 1; });
+        /* v6.9.519 - HIS WORDS, item 10: "latest added at top". This sorted by name. */
+        var cs = groups[e].slice().sort(clNewestFirst);
         h += '<div class="ch-exec">' + esc(e) +
           '<span class="sub">' + cs.length + ' lead' + (cs.length !== 1 ? 's' : '') + '</span></div>';
         cs.forEach(function (c) { h += leadCardHtml(c); });
       });
     } else {
-      shown.forEach(function (c) { h += leadCardHtml(c); });
+      shown.slice().sort(clNewestFirst).forEach(function (c) { h += leadCardHtml(c); });   /* v6.9.519 */
     }
     return h;
   }
@@ -8487,6 +8489,43 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (S.clTo && (!d || d > S.clTo)) return false;
     return true;
   }
+  /* ===== WHO ADDED HIM, WHEN, AND WHO IS CHASING HIM  (v6.9.519, 19 September 2026) =====
+     HIS WORDS, item 10: "latest added at top, who added at what date, who is following up at
+     what date". The card carried none of it, and inside each executive's band the rows were
+     alphabetical, so a man added this morning sat wherever his initial put him.
+
+     MEASURED on his book: 171 of 171 clients carry createdAt and createdBy, so the first half
+     is always answerable. A follow-up is a followups row on his name with status not Done;
+     the NEXT one by due date is the one that matters, and it is red once it is behind. A man
+     with no follow-up open gets no line for it - the way the quote and AMC pills say nothing
+     when there is nothing to say. */
+  function clNewestFirst(a, b) {
+    var A = String(a.createdAt || ""), B = String(b.createdAt || "");
+    if (A !== B) return A < B ? 1 : -1;
+    return String(a.name).toLowerCase() < String(b.name).toLowerCase() ? -1 : 1;
+  }
+  function clNextFollowup(name) {
+    var lo = String(name || "").trim().toLowerCase(), best = null;
+    (S.data.followups || []).forEach(function (f) {
+      if (f.status === "Done") return;
+      if (String(f.customerName || f.client || "").trim().toLowerCase() !== lo) return;
+      /* an undated follow-up sorts LAST, not first - "" would otherwise beat every real date */
+      if (!best || String(f.dueDate || "9999") < String(best.dueDate || "9999")) best = f;
+    });
+    return best;
+  }
+  function clWhenLine(c) {
+    var add = c.createdAt ? "Added " + dmy(c.createdAt) + (c.createdBy ? " by " + esc(String(c.createdBy)) : "") : "";
+    var f = clNextFollowup(c.name), fu = "";
+    if (f) {
+      var late = f.dueDate && daysTo(f.dueDate) < 0;
+      fu = '<span style="' + (late ? 'color:#b91c1c;font-weight:700' : 'color:#0f766e') + '">' +
+        (late ? 'Follow-up was due ' : 'Follow-up ') + dmy(f.dueDate) +
+        (f.createdBy ? ' &middot; ' + esc(String(f.createdBy)) : '') + '</span>';
+    }
+    if (!add && !fu) return "";
+    return '<div class="meta" style="font-size:12px;color:#64748b;margin-top:3px">' + add + (add && fu ? ' &middot; ' : '') + fu + '</div>';
+  }
   function clientsShown() {
     var loc = S.q, qq = String(S.clq || "").trim().toLowerCase();
     var w = clWho();
@@ -8644,6 +8683,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
            chosen, his stage is already known, and the date is already in the box. */
         '<button class="btn sm ghost" data-act="fu-for" data-n="' + esc(c.name) + '" data-days="3">Follow up</button>' +
         '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>' +
+        clWhenLine(c) +                              /* v6.9.519 - his item 10, the other three words */
         /* v6.9.413 - TYPE IT HERE. Only while the Missing details filter is on, and only for a
            record that has no number: 27 numbers should be 27 taps and 27 keyboards, not 27
            client forms of thirty fields each. */
@@ -8675,7 +8715,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
       });
       order.forEach(function (e) {
-        var cs = groups[e].slice().sort(function (a, b) { return String(a.name).toLowerCase() < String(b.name).toLowerCase() ? -1 : 1; });
+        /* v6.9.519 - HIS WORDS, item 10: "latest added at top". This sorted by name. */
+        var cs = groups[e].slice().sort(clNewestFirst);
         /* The band total is the sum of the clients SHOWN under it, so it always adds up to what is
            on screen — filter by area or type in the search box and the total follows the filter. */
         var eDue = cs.reduce(function (a, c) { return a + clientDue(c.name); }, 0);
@@ -8693,7 +8734,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<span class="sub">' + list.length + ' client' + (list.length !== 1 ? 's' : '') + '</span>' +
         dueAmt(mDue) +
         '</span></div>';
-      list.forEach(function (c) { h += clientCardHtml(c); });
+      list.slice().sort(clNewestFirst).forEach(function (c) { h += clientCardHtml(c); });
     }
     return h;
   }
