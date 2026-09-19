@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.534";
+  var APP_VERSION = "6.9.535";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8644,206 +8644,6 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (qq) list = list.filter(function (c) { return cvMatch(c, qq); });
     return list;
   }
-  function clientsListHtml() {
-    var loc = S.q, qq = String(S.clq || "").trim().toLowerCase();
-    var list = clientsShown();
-    if (!list.length) return '<div class="empty">' + (qq
-      ? 'No client matches <b>' + esc(S.clq) + '</b>. Search runs on his name, his short name, ' +
-        'both numbers, district, area, plumber, architect, builder, PMC, address, notes &mdash; ' +
-        'and <b>every firm he is billed under</b>, with their GST numbers.'
-      : (S.clNoSite ? 'Every client here has a site. Nothing hidden from the pitch board.'
-      : (loc ? 'No clients in ' + esc(loc) + ' yet.' : 'No clients yet. A lead becomes a client here the moment one of his quotes is marked Won.'))) + '</div>';
-
-    /* v6.9.349 - one pill, from amcForClient(). It draws nothing at all for a client with no
-       machine on a contract, which is most of them: a card that says "AMC: none" on two hundred
-       clients has taught nobody anything and cost every one of them a line. */
-    /* ======== WHAT HAS BEEN QUOTED TO THIS MAN  (v6.9.495 - his item 10) ========
-       MEASURED: viewClients did not mention a quote anywhere - zero references to clientQuotes
-       or quoteBrands on the whole screen. So the one place he looks a client up could not tell
-       him whether that man had ever been quoted, for what, or what was still open.
-
-       NOT RE-WRITTEN. The Quotes compact view has carried this since v6.9.179; clientQuotes()
-       and qvStats() are its own functions and this reads them. One definition of what a client's
-       quotes add up to, not two - the day those two disagree is the day he trusts neither.
-
-       NOTHING AT ALL for a client who has never been quoted. A pill reading "0 quotes" on a
-       hundred and eighty cards teaches nobody anything and costs every one of them a line -
-       the same reasoning amcCardPill was given in v6.9.349, one function below. */
-    function quoteCardPill(name) {
-      var qs = [];
-      try { qs = clientQuotes(name) || []; } catch (e) { return ""; }
-      if (!qs.length) return "";
-      var st;
-      try { st = qvStats(qs); } catch (e) { return ""; }
-      var live = st.live || 0, open = live > 0;
-      var txt = st.n + " quote" + (st.n === 1 ? "" : "s");
-      if (open) txt += " \u00b7 " + live + " open" + (st.liveVal > 0.5 ? " " + money(st.liveVal) : "");
-      return ' <span class="pill" data-act="qv-jump" data-cl="' + esc(name) + '"' +
-        ' style="cursor:pointer;' + (open ? 'background:#fef3c7;color:#92400e' : 'background:#f1f5f9;color:#475569') + '"' +
-        ' title="' + esc(st.n + " quotation" + (st.n === 1 ? "" : "s") +
-          (st.won ? ", " + st.won + " won" : "") + (st.lost ? ", " + st.lost + " lost" : "") +
-          (live ? ", " + live + " still open" : "") +
-          (st.brands && st.brands.length ? " \u00b7 " + st.brands.slice(0, 4).join(", ") : "") +
-          " \u2014 tap to open his quotes") + '">' + esc(txt) + '</span>';
-    }
-    function amcCardPill(name) {
-      var a;
-      try { a = amcForClient(name); } catch (e) { return ""; }
-      if (!a || !a.onAmc) return "";
-      var mach = a.onAmc + " machine" + (a.onAmc === 1 ? "" : "s");
-      /* NOT PRICED IS NOT ZERO. A contract nobody has put an amount against prints the words,
-         never Rs.0 - the whole point of the pill is that he can see the hole from the list. */
-      if (a.charged <= 0) {
-        var _hole = (a.rows || []).filter(function (r) {
-          return r.kind !== "None" && !(r.amount > 0);
-        })[0];
-        return ' <span class="pill"' +
-          (_hole ? ' data-act="inst-open" data-id="' + esc(_hole.ins.id) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer"'
-                 : ' style="background:#fee2e2;color:#b91c1c"') +
-          ' title="' + esc(mach) + ' under AMC and no amount agreed on any of them' +
-          (_hole ? ' \u2014 tap to open the installation and type it' : '') + '.">AMC \u2014 no amount</span>';
-      }
-      var short = a.missing > 0
-        ? ' <span class="pill" style="background:#fef3c7;color:#92400e" title="' + a.missing +
-          ' machine' + (a.missing === 1 ? '' : 's') + ' on this contract have no rate on the card, ' +
-          'so the suggestion below the amount is short.">rate ?</span>'
-        : '';
-      return ' <span class="pill" style="background:#ccfbf1;color:#0f766e" title="' + esc(mach) +
-        ' under AMC, ' + moneyAscii(a.charged) + ' a year in all. Service tab \u2192 the installation ' +
-        'card carries the AMC sheet.">AMC ' + money(a.charged) + '/yr</span>' + short;
-    }
-    function clientCardHtml(c) {
-      var won = clientWonCount(c.name);
-      var cSeg = clientSegment(c);
-      var due = clientDue(c.name);
-      var stg = clientStage2(c.name);
-      /* COMPACT: one header line (name + pills + PL/AR badges + Call/Edit), one brand line.
-         Builder/PMC/address stay on the Edit form - the card is for scanning the book fast. */
-      /* v6.9.317 - the promise the Duplicate check screen made and never kept: "the team stops
-         opening the wrong one". A duplicate now says whose record it really is, on the card,
-         where a man is actually looking. */
-      var alsoC = dupAlsoSay(c.name);
-      return '<div class="card lc-compact"' +
-        (alsoC && alsoC.alias ? ' style="border-color:#fed7aa;background:#fffbf5"' : '') + '>' +
-        '<div class="lc-top"><div class="lc-id"><b>' + esc(c.name) + '</b>' +
-        (alsoC ? ' <span class="pill" style="background:#ccfbf1;color:#0f766e" title="' +
-          esc(alsoC.txt) + '">' + (alsoC.alias ? '\u2192 ' + esc(alsoC.main) : 'also ' +
-          esc((dupAliasMap().aliasOf[dgKey(c.name)] || []).join(", "))) + '</span>' : '') +
-        ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
-        (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
-        /* v6.9.514 - this read "CLIENT" on every card, including the ones that are not one,
-           which is half of why he could not tell them apart. clWhyPill says which AND why. */
-        (won ? ' <span class="bs win">' + won + ' WON</span>' : '') +
-        ' ' + clWhyPill(c.name) +
-        /* Stage sits on the card because it is what decides WHAT to pitch him next. Red when it is
-           still blank — tap it to open his card and answer it. */
-        (stg
-          ? ' <span class="pill" style="background:#ccfbf1;color:#0f766e" title="Construction stage">' + esc(stg) + '</span>'
-          /* v6.9.211 - tapping this used to open the whole client form. It now opens the stage
-             chips on their own and writes the answer the moment one is tapped. */
-          : ' <span class="pill" data-act="cl-stage" data-n="' + esc(c.name) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer" title="No construction stage recorded - tap to answer it here">Stage ?</span>') +
-        /* v6.9.246 - no site at all is a bigger hole than a missing stage: the stage lives ON
-           the site, so without one he is on no selling screen whatsoever. Tap to add it. */
-        (siteForClient(c.name) ? "" :
-          ' <span class="pill" data-act="cl-addsite" data-n="' + esc(c.name) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer;font-weight:800" title="This client has no site, so the pitch board and the brand leads cannot see him at all - tap to add one">+ Add site</span>') +
-        /* v6.9.409 - AND SAY WHEN THERE IS NO NUMBER. Two of the three gaps on this card
-           already shout - "Stage ?" above and "PL/AR - Enter Detail" on the right - and the
-           third, which is the one that stops every other thing working, was drawn as nothing
-           at all. 27 of 166 clients have no number (measured 4 Sep): one in six who cannot be
-           rung, cannot be chased for money and cannot be sent a statement. The lead card
-           above carries the same line, and a lead nobody can telephone is not a lead at all,
-           so both get it - one edit, two cards, the way the two cards were written. */
-        (c.mobile
-          ? ' <span style="color:#94a3b8;font-size:12px;white-space:nowrap">' + esc(c.mobile) + '</span>'
-          : ' <span class="pill" data-act="cl-open" data-id="' + esc(c.id) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer;font-weight:800" title="No phone number - ' +
-            esc((GAP_FIELDS.filter(function (f) { return f.k === "mobile"; })[0] || {}).why || "") +
-            '. Tap to type it.">Phone ?</span>') +
-        /* The money sits right beside the phone number on purpose: the number you would call and the
-           reason you would call him, read as one line. */
-        (due > 0.5 ? ' ' + dueAmt(due) : "") +
-        /* ============ THE CONTRACT HE IS ON, ON HIS OWN CARD  (v6.9.349) ============
-           amcForClient() has existed since v6.9.340 and only the rate-card screen ever asked
-           it, so "what is this client paying us a year" was answerable on one admin screen and
-           nowhere a man would be standing. It belongs here, beside what he owes: those two
-           numbers together are the whole of what a client is worth.
-
-           Quiet where it is settled - one teal pill - and loud where it is not: a contract
-           with no amount typed is the money leak he named on 22 August, and it says so. */
-        amcCardPill(c.name) +
-        quoteCardPill(c.name) +                      /* v6.9.495 - his item 10 */
-        /* v6.9.210 - the old book. Only ever shown for a client carried over WITH a balance:
-           teal and tappable once the statement is attached, red until it is, and gone entirely
-           the day his money clears. */
-        (function () {
-          if (!(nAmt(c.openingAmt) > 0)) return "";
-          var hd = hisabDoc(c.id);
-          if (hd && hd.url) return ' <a class="pill" href="' + esc(hd.url) + '" target="_blank" rel="noopener" style="background:#ccfbf1;color:#0f766e;text-decoration:none" title="The statement from the old books">Old hisab &#8599;</a>';
-          if (clientDue(c.name) <= 0.5) return "";
-          return ' <span class="pill" data-act="cl-open" data-id="' + esc(c.id) + '" style="background:#fee2e2;color:#b91c1c;cursor:pointer" title="Carried over with a balance and no old statement attached - tap to attach it">Old hisab ?</span>';
-        })() +
-        '</div>' +
-        '<div class="lc-right">' + partnerBadge(c, "plumber") + partnerBadge(c, "architect") +
-        (c.mobile ? '<a class="btn sm ghost" href="tel:' + esc(c.mobile) + '">Call</a>' : "") +
-        /* v6.9.411 - a follow-up started from where the work is. One tap: his name is already
-           chosen, his stage is already known, and the date is already in the box. */
-        '<button class="btn sm ghost" data-act="fu-for" data-n="' + esc(c.name) + '" data-days="3">Follow up</button>' +
-        '<button class="btn sm ghost" data-act="cl-open" data-id="' + esc(c.id) + '">Edit</button></div></div>' +
-        clWhenLine(c) +                              /* v6.9.519 - his item 10, the other three words */
-        /* v6.9.413 - TYPE IT HERE. Only while the Missing details filter is on, and only for a
-           record that has no number: 27 numbers should be 27 taps and 27 keyboards, not 27
-           client forms of thirty fields each. */
-        (S.clNoMob && !String(c.mobile || "").trim()
-          ? '<div style="flex:1 1 100%;display:flex;gap:6px;align-items:center;margin-top:7px;' +
-              'border-top:1px dashed #fecaca;padding-top:7px">' +
-            '<input class="clph" id="clph_' + esc(c.id) + '" inputmode="numeric" autocomplete="off" ' +
-              'placeholder="His mobile number" style="flex:1 1 auto;min-width:0;padding:7px 10px;' +
-              'border:1px solid #cbd5e1;border-radius:8px;font-size:14px"/>' +
-            '<button class="btn sm" data-act="cl-ph-save" data-id="' + esc(c.id) + '">Save</button>' +
-            '</div>'
-          : "") +
-        brandBoard(c.name, true) + '</div>';
-    }
-
-    var h = "";
-    /* For admin / accounts, group the client list by the sales executive it's assigned to (a teal
-       band per exec), so the owner can read the book exec-wise. A sales exec (list already filtered
-       to their own clients) just gets the flat list. */
-    if (seesAllClients()) {
-      var groups = {}, order = [];
-      list.forEach(function (c) {
-        var e = String(c.ownedBy || c.createdBy || "").trim() || "Unassigned";
-        if (!groups[e]) { groups[e] = []; order.push(e); }
-        groups[e].push(c);
-      });
-      order.sort(function (a, b) {
-        if (a === "Unassigned") return 1; if (b === "Unassigned") return -1;
-        return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
-      });
-      order.forEach(function (e) {
-        /* v6.9.519 - HIS WORDS, item 10: "latest added at top". This sorted by name. */
-        var cs = groups[e].slice().sort(clNewestFirst);
-        /* The band total is the sum of the clients SHOWN under it, so it always adds up to what is
-           on screen — filter by area or type in the search box and the total follows the filter. */
-        var eDue = cs.reduce(function (a, c) { return a + clientDue(c.name); }, 0);
-        h += '<div class="ch-exec">' + esc(e) +
-          '<span style="display:flex;gap:6px;align-items:center">' +
-          '<span class="sub">' + cs.length + ' client' + (cs.length !== 1 ? 's' : '') + '</span>' +
-          (eDue > 0.5 ? dueAmt(eDue) : '') +
-          '</span></div>';
-        cs.forEach(function (c) { h += clientCardHtml(c); });
-      });
-    } else {
-      var mDue = list.reduce(function (a, c) { return a + clientDue(c.name); }, 0);
-      if (mDue > 0.5) h += '<div class="ch-exec">Your book' +
-        '<span style="display:flex;gap:6px;align-items:center">' +
-        '<span class="sub">' + list.length + ' client' + (list.length !== 1 ? 's' : '') + '</span>' +
-        dueAmt(mDue) +
-        '</span></div>';
-      list.slice().sort(clNewestFirst).forEach(function (c) { h += clientCardHtml(c); });
-    }
-    return h;
-  }
-
   function viewClients() {
     _clDueCache = null; _clStageCache = null; _aliasCache = null;   /* fresh money, stages and merges on every full render */
     /* v6.9.514 - the SAME rule the list uses, so the location chips and the list can never
@@ -8887,7 +8687,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     /* v6.9.479 - REGISTER or CARDS. Compact is gone from THIS screen only: the register is the
        same tree of the same lines with the same brands on them, and six things more. It still
        draws on Leads and on Quotes, which have no register. */
-    h += '<div class="row" style="margin-bottom:8px">' + cvSeg(true) + '<div class="grow"></div></div>';
+    /* v6.9.535 - no Register / Cards toggle: one sheet (his item 16) */
     h += '<div class="row">' + clocs.map(function (l) {
       return '<button class="btn sm ' + (S.q === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (S.q ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") + '</div>';
@@ -8941,8 +8741,80 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        everywhere, need client list data area wise." One line per client, city -> area, the blanks
        as boxes - and since v6.9.479 it reads the chips and the search box above it, so the 112
        clients missing something can be worked THROUGH the list that can fix them. */
-    if (clListOn()) return h + viewClientRegister(clientsShown());
-    h += '<div id="cl_list">' + clientsListHtml() + '</div>';
+    h += '<div id="cl_list">' + clientsSheetHtml() + '</div>';
+    return h;
+  }
+  /* ===== THE CLIENTS SHEET  (v6.9.535 - his third list, item 16) =====
+     One row per man: who, what kind, what he owes, his executive, mobile, where, plumber,
+     architect, builder, PMC, what has been quoted and by whom, what he has taken, what to chase,
+     when he was added and by whom. The register's brand filter and its Excel / PDF sit on top,
+     applied through clientRegisterRows - so the screen, the Excel and the PDF are still three
+     views of one list. */
+  function clientsSheetHtml() {
+    var loc = S.q, qq = String(S.clq || "").trim().toLowerCase();
+    var list = clientsShown();
+    if (!list.length) return '<div class="empty">' + (qq
+      ? 'No client matches <b>' + esc(S.clq) + '</b>. Search runs on his name, his short name, ' +
+        'both numbers, district, area, plumber, architect, builder, PMC, address, notes &mdash; ' +
+        'and <b>every firm he is billed under</b>, with their GST numbers.'
+      : (S.clNoSite ? 'Every client here has a site. Nothing hidden from the pitch board.'
+      : (loc ? 'No clients in ' + esc(loc) + ' yet.' : 'No clients yet. A lead becomes a client here the moment one of his quotes is marked Won.'))) + '</div>';
+    var rows = clientRegisterRows(list);
+    var onB = regBrandsOn(), want = regModeIs() === "want", fLine = regFilterLine();
+    var h = '<div class="card" style="padding:8px 10px">' +
+      '<div class="acts" style="align-items:center;gap:6px;flex-wrap:wrap;margin:0">' +
+      '<b style="font-size:13.5px" class="grow">' + rows.length + (onB.length ? ' of ' + list.length : '') + (rows.length === 1 ? ' name' : ' names') + '</b>' +
+      '<button class="btn sm ghost" data-act="cl-xlsx">&#8681; Excel</button>' +
+      '<button class="btn sm ghost" data-act="cl-pdf">&#8681; PDF</button></div>' +
+      '<div class="acts" style="gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0 0">' +
+      '<span class="meta" style="font-size:12px;color:#334155;font-weight:700">BY BRAND</span>' +
+      '<button class="btn sm ' + (want ? 'ghost' : '') + '" data-act="reg-mode" data-m="has" title="Clients who have already taken a ticked brand">Took it</button>' +
+      '<button class="btn sm ' + (want ? '' : 'ghost') + '" data-act="reg-mode" data-m="want" title="Clients a ticked brand is still open with">Not yet &mdash; chase it</button>' +
+      (onB.length ? '<button class="btn sm ghost" data-act="reg-clear" style="border-color:#fecaca;color:#b91c1c">Clear</button>' : '') + '</div>' +
+      '<div class="row" style="flex-wrap:wrap;gap:5px;margin-top:6px">' +
+      followBrandList().map(function (b) {
+        var on = !!(S.regB || {})[b];
+        return '<button class="btn sm ' + (on ? '' : 'ghost') + '" data-act="reg-brand" data-brand="' + esc(b) + '" style="font-size:12.5px;padding:5px 9px">' + (on ? '&#10003; ' : '') + esc(b) + '</button>';
+      }).join("") + '</div>' +
+      (onB.length ? '<div class="meta" style="font-size:12px;margin-top:6px;color:#0f766e"><b>' + rows.length + '</b> of ' + list.length + ' &mdash; ' + esc(fLine) + '</div>' : '') +
+      '</div>';
+    if (onB.length && !rows.length) return h + '<div class="empty"><b>Nobody.</b><br>' + esc(fLine) + ' matches no client on your book.</div>';
+    var blank = function (c, f, word) {
+      var v = String(c[f] || "").trim();
+      return v ? esc(v) : '<a href="#" data-act="cl-open" data-id="' + esc(c.id) + '" style="color:#b45309;text-decoration:none;font-size:12px" title="Not on the card - tap to add">+ ' + word + '</a>';
+    };
+    h += xlTable("clients", [
+      { k: "name", t: "CLIENT" }, { k: "kind", t: "KIND" }, { k: "due", t: "DUE", n: 1, r: 1 }, { k: "fu", t: "FOLLOW-UP", w: "84px" }, { k: "exec", t: "EXECUTIVE" },
+      { k: "mobile", t: "MOBILE" }, { k: "where", t: "WHERE" }, { k: "pl", t: "PLUMBER" }, { k: "ar", t: "ARCHITECT" },
+      { k: "bl", t: "BUILDER" }, { k: "pmc", t: "PMC" }, { k: "quotes", t: "QUOTED", n: 1, r: 1 }, { k: "qby", t: "QUOTED BY" },
+      { k: "has", t: "HAS" }, { k: "chase", t: "CHASE" }, { k: "added", t: "ADDED", w: "84px" }, { k: "by", t: "ADDED BY" }
+    ], rows.slice().sort(function (a, b) { return clNewestFirst(a.c, b.c); }).map(function (r) {
+      var c = r.c, nm = String(c.name || "");
+      var fu = clNextFollowup(nm), fuLate = !!(fu && fu.dueDate && daysTo(fu.dueDate) < 0);
+      var qs = []; try { qs = clientQuotes(nm) || []; } catch (e) { qs = []; }
+      var qby = {}; qs.forEach(function (q) { if (q.createdBy) qby[q.createdBy] = 1; });
+      var took = clientWonBrands(nm).slice().sort(alpha), chase = regOpenFor(nm);
+      var d = String(c.createdAt || "").slice(0, 10);
+      var kind = isClient(nm) ? "client" : "lead";
+      var whereTxt = [r.area === "Not set" ? "" : r.area, r.city === "Not set" ? "" : r.city].filter(Boolean).join(", ");
+      return { v: { name: nm, kind: kind, due: r.due, fu: fu ? String(fu.dueDate || "9999") : "9999", exec: c.ownedBy || "", mobile: c.mobile || "", where: whereTxt, pl: c.plumber || "", ar: c.architect || "",
+                    bl: c.builder || "", pmc: c.pmc || "", quotes: qs.length, qby: Object.keys(qby).join(", "), has: took.join(", "), chase: chase.join(", "), added: d, by: c.createdBy || "" },
+        cells: {
+          name: '<a href="#" data-act="cl-open" data-id="' + esc(c.id) + '" style="font-weight:700;color:#0b3b36;text-decoration:none" title="Open the full card">' + esc(nm) + '</a>',
+          kind: clWhyPill(nm),
+          fu: fu ? '<span style="' + (fuLate ? 'color:#b91c1c;font-weight:700' : 'color:#0f766e') + '" title="' + esc(fuLate ? "was due" : "due") + (fu.createdBy ? ' · ' + esc(String(fu.createdBy)) : '') + '">' + esc(dmy(fu.dueDate)) + '</span>' : '',
+          due: r.due > 0.5 ? '<b style="color:#b91c1c">' + money(r.due) + '</b>' : '<span style="color:#94a3b8">\u2014</span>',
+          exec: String(c.ownedBy || "").trim() ? whoChip(c.ownedBy) : '<span style="color:#b45309;font-size:12px">unassigned</span>',
+          mobile: String(c.mobile || "").trim() ? '<a href="tel:' + esc(c.mobile) + '" style="color:#0f766e;text-decoration:none">' + esc(c.mobile) + '</a>' : blank(c, "mobile", "mobile"),
+          where: whereTxt ? esc(whereTxt) : blank(c, "area", "area"),
+          pl: blank(c, "plumber", "plumber"), ar: blank(c, "architect", "architect"), bl: blank(c, "builder", "builder"), pmc: blank(c, "pmc", "PMC"),
+          quotes: qs.length ? '<a href="#" data-act="qv-jump" data-cl="' + esc(nm) + '" style="font-weight:700;color:#0f766e;text-decoration:none" title="Open his quotes">' + qs.length + '</a>' : '<span style="color:#94a3b8">0</span>',
+          qby: Object.keys(qby).length ? Object.keys(qby).map(whoChip).join(" ") : '<span style="color:#94a3b8">\u2014</span>',
+          has: took.length ? '<span style="color:#0f766e">' + esc(took.join(", ")) + '</span>' : '<span style="color:#94a3b8">\u2014</span>',
+          chase: chase.length ? '<span style="color:#b45309">' + esc(chase.join(", ")) + '</span>' : '',
+          added: d ? esc(dmy(d)) : '<span style="color:#94a3b8">\u2014</span>', by: String(c.createdBy || "").trim() ? whoChip(c.createdBy) : '<span style="color:#94a3b8">\u2014</span>'
+        } };
+    }), "his executive, number, plumber, architect, builder, PMC, quotes, brands and who added him");
     return h;
   }
 
@@ -34444,105 +34316,6 @@ function viewCatalogue() {
       (extra || '') + ' autocomplete="off" style="' + (w || '') + 'padding:3px 7px;font-size:12.5px;font-family:inherit;border-radius:6px;min-width:0;' +
       'border:1px ' + (v ? 'solid #cbd5e1' : 'dashed #d97706') + ';background:' + (v ? '#fff' : '#fffbeb') + ';color:' + (v ? '#0f172a' : '#b45309') + '"/>';
   }
-  function viewClientRegister(all) {
-    var rows = clientRegisterRows(all), g = clientRegisterGaps(rows.map(function (r) { return r.c; }));
-    var areasN = {}; rows.forEach(function (r) { areasN[r.city + "|" + r.area] = 1; });
-    var onB = regBrandsOn(), want = regModeIs() === "want", fLine = regFilterLine();
-    var h = '<div class="card" style="padding:10px 12px">' +
-      '<div class="acts" style="align-items:baseline;gap:8px;flex-wrap:wrap;margin:0">' +
-      '<h3 style="margin:0;font-size:13.5px" class="grow">The register &mdash; ' + rows.length +
-        (onB.length ? ' of ' + all.length : '') + ' client' + (rows.length === 1 ? '' : 's') + ', ' +
-        Object.keys(areasN).length + ' area' + (Object.keys(areasN).length === 1 ? '' : 's') + '</h3>' +
-      '<button class="btn sm ghost" data-act="cl-xlsx">&#8681; Excel</button>' +
-      /* v6.9.458 - "make provision for list pdf download" */
-      '<button class="btn sm ghost" data-act="cl-pdf">&#8681; PDF</button></div>' +
-      /* ---- v6.9.458 - the brand filter ---- */
-      '<div style="margin-top:8px;border-top:1px solid #e2e8f0;padding-top:8px">' +
-      '<div class="acts" style="gap:6px;flex-wrap:wrap;align-items:center;margin:0">' +
-      '<span class="meta" style="font-size:12px;color:#334155;font-weight:700">By brand</span>' +
-      '<button class="btn sm ' + (want ? 'ghost' : '') + '" data-act="reg-mode" data-m="has" ' +
-        'title="Clients who have already taken a ticked brand">Took it</button>' +
-      '<button class="btn sm ' + (want ? '' : 'ghost') + '" data-act="reg-mode" data-m="want" ' +
-        'title="Clients a ticked brand is still open with - the Brand follow-up rule: won, lost and not-required all drop off">Not yet &mdash; chase it</button>' +
-      (onB.length ? '<button class="btn sm ghost" data-act="reg-clear" style="border-color:#fecaca;color:#b91c1c">Clear</button>' : '') +
-      '</div>' +
-      '<div class="row" style="flex-wrap:wrap;gap:5px;margin-top:6px">' +
-      followBrandList().map(function (b) {
-        var on = !!(S.regB || {})[b];
-        return '<button class="btn sm ' + (on ? '' : 'ghost') + '" data-act="reg-brand" data-brand="' + esc(b) + '" ' +
-          'style="font-size:12.5px;padding:5px 9px">' + (on ? '&#10003; ' : '') + esc(b) + '</button>';
-      }).join("") + '</div>' +
-      '<div class="meta" style="font-size:12px;margin-top:6px;color:' + (onB.length ? '#0f766e' : '#64748b') + '">' +
-      (onB.length
-        ? '<b>' + rows.length + '</b> of ' + all.length + ' &mdash; ' + esc(fLine) +
-          (want ? '. A name drops off here the moment that brand is marked Won, Lost or Not required, exactly as on Brand follow-up.' : '.') +
-          ' Both files carry every brand each client has already taken.'
-        : 'Tick a brand to narrow the list &mdash; and both files always say which brands each client has already taken.') +
-      '</div></div>' +
-      '<div class="meta" style="font-size:12px;margin-top:6px">' +
-      '<span id="clreg_gaps" style="color:' + (g.any ? '#b45309' : '#0f766e') + '"><b>' + g.any + '</b> missing something &middot; ' +
-      '<b>' + g.mob + '</b> no mobile &middot; <b>' + g.area + '</b> no area &middot; <b>' + g.addr + '</b> no address</span>' +
-      '<br><span style="color:#64748b">Type into an amber box and press Enter &mdash; it saves itself, and every screen that shows this client reads the same record. Tap a name for the full form.</span>' +
-      '</div></div>';
-    if (onB.length && !rows.length) {
-      return h + '<div class="empty"><b>Nobody.</b><br>' +
-        esc(fLine) + ' matches no client on your book. Try another brand, or the other button.</div>';
-    }
-    if (!rows.length) return h + '<div class="empty">No clients on this list yet.</div>';
-    var lastCity = null, lastArea = null, openArea = false;
-    var cityId = function (x) { return String(x || "").replace(/[^A-Za-z0-9]/g, "_"); };
-    var lists = {};
-    rows.forEach(function (r) {
-      if (r.city !== lastCity) {
-        if (openArea) { h += '</div>'; openArea = false; }
-        lastCity = r.city; lastArea = null;
-        var cc = cvColor(r.city), nC = rows.filter(function (x) { return x.city === r.city; }).length;
-        h += '<div class="cv-exec" style="background:' + cc[0] + ';margin-top:10px"><span class="cv-en">' + esc(r.city === "Not set" ? "No city yet" : r.city) + '</span>' +
-          '<span class="cv-tags">' + cvTag(nC + (nC === 1 ? " client" : " clients"), "rgba(255,255,255,.22)", "#fff") + '</span></div>';
-        /* one datalist per city: its own colonies, for the area boxes below */
-        if (r.city !== "Not set" && !lists[r.city]) {
-          lists[r.city] = 1;
-          h += '<datalist id="clreg_areas_' + cityId(r.city) + '">' + areasIn(r.city).map(function (a) { return '<option value="' + esc(a) + '"></option>'; }).join("") + '</datalist>';
-        }
-      }
-      if (r.area !== lastArea) {
-        if (openArea) h += '</div>';
-        lastArea = r.area; openArea = true;
-        var inArea = rows.filter(function (x) { return x.city === r.city && x.area === r.area; });
-        var aDue = inArea.reduce(function (t, x) { return t + x.due; }, 0), ac = cvColor(r.city);
-        h += '<div class="cv-area" style="color:' + ac[0] + ';margin-top:6px"><span class="cv-an">' + esc(r.area === "Not set" ? "No area yet" : r.area) + '</span>' +
-          '<span class="cv-tags">' + cvTag(inArea.length, ac[1], ac[0]) + (aDue > 0.5 ? dueAmt(aDue) : "") + '</span></div>' +
-          '<div class="clreg-area" style="border-left:3px solid ' + ac[1] + ';margin:0 0 4px 2px;padding-left:6px">';
-      }
-      var c = r.c;
-      h += '<div class="clreg-row" style="padding:6px 0;border-bottom:1px solid #e2e8f0">' +
-        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-        '<button class="cv-nm" data-act="cl-open" data-id="' + esc(c.id) + '" style="font-size:13.5px">' + esc(c.name) + '</button>' +
-        (String(c.ownedBy || "").trim() ? '<span class="meta" style="font-size:12px;color:#64748b">' + esc(c.ownedBy) + '</span>' : '') +
-        '<span class="grow"></span>' + (r.due > 0.5 ? dueAmt(r.due) : '<span class="cv-ok">no dues</span>') + '</div>' +
-        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;align-items:center">' +
-        clBox(c, "mobile", "+ mobile", 'inputmode="numeric"', 'width:118px;') +
-        clBox(c, "area", "+ area", (r.city !== "Not set" ? 'list="clreg_areas_' + cityId(r.city) + '"' : ''), 'width:150px;') +
-        clBox(c, "address", "+ address", '', 'flex:1 1 180px;') +
-        '</div>' +
-        /* v6.9.458 - what he has already taken, on the row. "executive must have in mind which
-           brand we have already supplied" - and the ticked brands he is still open for, so the
-           chase list says why each name is on it. SORTED: clientWonBrands returns them in the
-           order they were won, which reads as random on a page of forty rows; a man scanning the
-           column for "Huliot" needs it in the same place on every line. */
-        (function () {
-          var took = clientWonBrands(c.name).slice().sort(alpha), open = regOpenFor(c.name);
-          if (!took.length && !open.length) return '';
-          return '<div class="meta" style="font-size:12px;margin-top:3px;line-height:1.5">' +
-            (took.length ? '<span style="color:#0f766e">Has: <b>' + esc(took.join(", ")) + '</b></span>' : '<span style="color:#94a3b8">No brand taken yet</span>') +
-            (open.length ? ' &middot; <span style="color:#b45309">chase: <b>' + esc(open.join(", ")) + '</b></span>' : '') +
-            '</div>';
-        })() +
-        '</div>';
-    });
-    if (openArea) h += '</div>';
-    return h;
-  }
   /* ---- THE REGISTER AS PAPER (v6.9.458) ----
      "make provision for list pdf download". The field copy: city -> area, and the columns a man
      standing at a counter needs - who, where, his number, what he owes, and WHAT HE ALREADY HAS.
@@ -39042,7 +38815,7 @@ function viewCatalogue() {
       clqi.addEventListener("input", function (e) {
         S.clq = e.target.value;
         var box = el("cl_list");
-        if (box) box.innerHTML = clientsListHtml();
+        if (box) box.innerHTML = clientsSheetHtml();   /* v6.9.535 */
       });
       clqi.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
     }
