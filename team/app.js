@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.531";
+  var APP_VERSION = "6.9.532";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -19740,7 +19740,7 @@ function viewCatalogue() {
       var _unb = unbilledStats();
       if (_unb.val > 0) {
         h += '<div class="card" style="border-color:#fed7aa;background:#fff7ed;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">' +
-          '<div class="meta" style="font-size:13.5px;color:#7c2d12"><b>' + money(_unb.val) + '</b> in <b>' + _unb.count + '</b> delivered challan(s) not billed yet — raise the bills so nothing slips on GST.</div></div>';
+          '<div class="meta" style="font-size:13.5px;color:#7c2d12"><b>' + money(_unb.val) + '</b> in <b>' + _unb.count + '</b> delivered challans not billed yet — raise the bills so nothing slips on GST.</div></div>';
       }
     }
     /* v6.9.388 - not inside the queue: the band and the queue's own header would say the same
@@ -19826,55 +19826,55 @@ function viewCatalogue() {
       if (!S.chRest) return h;
     }
 
-    /* Group the whole delivery book top-down: Sales exec -> Client -> that client's challans.
-       Admin / accounts see every exec; a sales exec (list already filtered) sees only their own
-       clients, so their view is simply their clients each with its challans. A client whose owner
-       is blank falls under "Unassigned", pinned to the bottom so it reads as a to-do. */
-    var groups = {}, execOrder = [];
-    list.forEach(function (c) {
-      if (qSkip && qSkip[c.id]) return;        /* v6.9.494 - it is already on screen, above */
+    /* ===== THE BOOK AS ONE SHEET  (v6.9.532 - his third list, item 11) =====
+       "excel like format, can filter if needed - all challan log, challan with pending
+       receipts, challan yet to finalised". The executive -> client -> card book is one sheet
+       now, newest first; four chips filter it; the number opens that one challan's ordinary
+       card above the sheet, so every button a card has is still one tap away. */
+    var book = list.filter(function (c) { return !(qSkip && qSkip[c.id]); })
+      .sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });   /* newest first, by the clock not the row */
+    var fl = String(S.chBook || "all");
+    var isRecPend = function (c) { return chStatus(c) === "Dispatched"; };
+    var isFinPend = function (c) { return chStatus(c) === "Received" && !inHisab(c); };
+    var isPass = function (c) { return chStatus(c) === "Draft"; };
+    var nRec = book.filter(isRecPend).length, nFin = book.filter(isFinPend).length, nPass = book.filter(isPass).length;
+    var chip = function (k, label, n) {
+      return '<button class="btn sm ' + (fl === k ? "" : "ghost") + '" data-act="ch-book" data-k="' + k + '">' + label +
+        ' <span class="pill" style="font-size:12px">' + n + '</span></button>';
+    };
+    h += '<div class="card" style="padding:8px 10px"><div class="row" style="flex-wrap:wrap;gap:6px;align-items:center">' +
+      chip("all", "All", book.length) + chip("receipt", "Receipt pending", nRec) + chip("finalise", "Yet to finalise", nFin) +
+      (nPass ? chip("pass", "To pass", nPass) : "") + '</div></div>';
+    var shown = fl === "receipt" ? book.filter(isRecPend) : fl === "finalise" ? book.filter(isFinPend) : fl === "pass" ? book.filter(isPass) : book;
+    /* the one he tapped, as its ordinary card, above the sheet */
+    if (S.chCard) {
+      var _cc = book.filter(function (c) { return c.id === S.chCard; })[0];
+      if (_cc) {
+        h += '<div class="row" style="margin:6px 0 2px"><b style="font-size:13.5px">' + esc(_cc.challanNo || "no number") + '</b>' +
+          '<div class="grow"></div><button class="btn sm ghost" data-act="ch-card" data-id="">Close card</button></div>' + challanCardHtml(_cc);
+      }
+    }
+    var stPill = function (c) {
+      var st = chStatus(c);
+      var cls = st === "Received" ? (inHisab(c) ? "Won" : "soon") : st === "Dispatched" ? "due" : st === "Draft" ? "due" : st === "Cancelled" ? "Lost" : "";
+      var word = st === "Received" ? (inHisab(c) ? "finalised" : "receipt in, to finalise") : st === "Dispatched" ? "receipt pending" : st === "Draft" ? "to pass" : st === "Approved" ? "passed, to dispatch" : st.toLowerCase();
+      return '<span class="pill ' + cls + '" style="font-size:12px">' + esc(word) + '</span>';
+    };
+    h += xlTable("chbook", [
+      { k: "no", t: "CHALLAN" }, { k: "date", t: "DATE", w: "84px" }, { k: "client", t: "CLIENT" }, { k: "st", t: "STATUS" },
+      { k: "amt", t: "AMOUNT", n: 1, r: 1 }, { k: "exec", t: "EXECUTIVE" }, { k: "made", t: "MADE BY" }, { k: "bill", t: "BILL" }
+    ], shown.map(function (c) {
       var cl = clientByName(c.customerName) || {};
       var exec = String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned";
-      var clientName = c.customerName || "(no client)";
-      if (!groups[exec]) { groups[exec] = { clients: {}, clientOrder: [], n: 0 }; execOrder.push(exec); }
-      var g = groups[exec];
-      if (!g.clients[clientName]) { g.clients[clientName] = []; g.clientOrder.push(clientName); }
-      g.clients[clientName].push(c);
-      g.n++;
-    });
-    execOrder.sort(function (a, b) {
-      if (a === "Unassigned") return 1; if (b === "Unassigned") return -1;
-      return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
-    });
-    execOrder.forEach(function (exec) {
-      var g = groups[exec];
-      g.clientOrder.sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; });
-      /* the exec band only earns its space when more than one exec is on screen (i.e. admin/accounts);
-         for a single sales exec it would just repeat their own name over and over. */
-      var grouped = seesAllClients();
-      /* v6.9.153: collapsible per-executive, same as HISAB. The logged-in person's OWN group is open
-         by default; every other executive collapses to just its client/challan count, expandable on
-         tap — so the owner gets a clean overview instead of one endless scroll. Remembered in
-         S.chGrpExp. Only applies when the exec band is shown (admin / accounts). */
-      var gExpanded = !grouped ? true :
-        ((S.chGrpExp && (exec in S.chGrpExp)) ? !!S.chGrpExp[exec] : (exec === S.user || execOrder.length === 1));
-      if (grouped) {
-        h += '<div class="ch-exec" data-act="ch-grp" data-k="' + esc(exec) + '" data-open="' + (gExpanded ? "1" : "0") + '" style="cursor:pointer;user-select:none">' +
-          '<span style="display:inline-block;width:15px;color:#94a3b8">' + (gExpanded ? '&#9662;' : '&#9656;') + '</span>' + esc(exec) +
-          '<span class="sub">' + g.clientOrder.length + ' client' + (g.clientOrder.length > 1 ? 's' : '') +
-          ' &middot; ' + g.n + ' challan' + (g.n > 1 ? 's' : '') + (gExpanded ? '' : ' &middot; tap to view') + '</span></div>';
-      }
-      if (!gExpanded) return;
-      g.clientOrder.forEach(function (clientName) {
-        var chs = g.clients[clientName];
-        /* v6.9.126: the client header is a tappable link straight into that client's full HISAB. */
-        h += '<div class="ch-client" data-act="ch-hisab" data-cl="' + esc(clientName) + '" style="cursor:pointer" title="Open ' + esc(clientName) + '’s HISAB">' +
-          '<span style="border-bottom:1px dotted currentColor">' + esc(clientName) + '</span>' +
-          '<span class="sub">' + chs.length + ' challan' + (chs.length > 1 ? 's' : '') +
-          ' &middot; <span style="color:#0d9488;font-weight:700">HISAB ›</span></span></div>';
-        chs.forEach(function (c) { h += challanCardHtml(c); });
-      });
-    });
+      var d = String(c.createdAt || "").slice(0, 10);
+      return { v: { no: String(c.challanNo || ""), date: d, client: c.customerName || "", st: chStatus(c) + (inHisab(c) ? " z" : ""), amt: chValue(c), exec: exec, made: c.createdBy || "", bill: c.billNo || "" },
+        cells: {
+          no: '<button class="btn sm ghost" data-act="ch-card" data-id="' + esc(c.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700" title="Open this challan’s card">' + esc(c.challanNo || "no number") + '</button>',
+          date: esc(dmy(d)), client: '<a href="#" data-act="ch-hisab" data-cl="' + esc(c.customerName || "") + '" style="font-weight:700;color:#0b3b36;text-decoration:none" title="Open HISAB">' + esc(c.customerName || "(no client)") + '</a>',
+          st: stPill(c), amt: moneySgn(chValue(c)), exec: whoChip(exec), made: whoChip(c.createdBy),
+          bill: c.billNo ? esc(c.billNo) : '<span style="color:#b45309">not billed</span>'
+        } };
+    }), "status, amount, executive and bill");
     return h;
   }
 
@@ -35845,21 +35845,37 @@ function viewCatalogue() {
     var muted = all.filter(function (a) { return a.mute; });
     var nBand = function (i) { return live.filter(function (a) { return agBand(a) === i; }).length; };
 
-    var h = '<div class="empty" style="text-align:left;padding:0 0 12px"><b>Your agent.</b> ' +
-      'Every time you open this it re-reads the whole book — each live site’s construction stage and your pitch rules, ' +
-      'the money delivered but not yet collected, the quotations lying unanswered, the services and AMCs that have fallen due, ' +
-      'and the partners who have gone quiet — then ranks what to do today, says plainly why, and writes the message for you. ' +
-      '<b>It never sends anything on its own</b> — you read the draft and press send, and nothing here ever deletes a record.</div>';
+    /* ===== TABS, NOT A SCROLL  (v6.9.532 - his third list, item 10) =====
+       "huge scrolling ... tabs with major highlights, click to view all things". The tiles are
+       the tabs: one band paints at a time, and the count on each tab is the highlight. A chip
+       per kind of job under the tabs narrows the band further. The long introduction is one
+       line with the rest in its title. */
+    var h = '<div class="meta" style="margin:0 0 8px;font-size:12.5px" title="Every time you open this it re-reads the whole book - each live site’s construction stage and your pitch rules, the money delivered but not yet collected, the quotations lying unanswered, the services and AMCs that have fallen due, and the partners who have gone quiet - then ranks what to do today, says plainly why, and writes the message for you. It never sends anything on its own, and nothing here ever deletes a record.">' +
+      '<b>Your agent</b> re-reads the whole book each time and ranks what to do; it never sends anything on its own.</div>';
 
+    var bandRows = AG_BANDS.map(function (b, bi) { return live.filter(function (a) { return agBand(a) === bi; }); });
+    var view = Number(S.agView);
+    var viewHas = function (v) { return v === 3 ? muted.length > 0 : !!(bandRows[v] && bandRows[v].length); };
+    if (!(view >= 0 && view <= 3) || !viewHas(view)) {
+      /* the first band with something in it - a chosen tab that has emptied falls through */
+      view = 0; while (view < 3 && !viewHas(view)) view++;
+      if (view === 3 && !muted.length) view = 0;
+    }
+    var tile = function (bi, n, label, alert) {
+      var on = view === bi;
+      return '<div class="stat ' + (alert && n ? "alert" : "") + '" data-act="ag-view" data-v="' + bi + '" role="button" tabindex="0" ' +
+        'style="cursor:pointer' + (on ? ';box-shadow:inset 0 -3px 0 #0f766e' : ';opacity:.8') + '" title="Tap to see these">' +
+        '<div class="n">' + n + '</div><div class="l">' + label + '</div></div>';
+    };
     h += '<div class="cards">' +
-      '<div class="stat ' + (nBand(0) ? "alert" : "") + '"><div class="n">' + nBand(0) + '</div><div class="l">Do today</div></div>' +
-      '<div class="stat"><div class="n">' + nBand(1) + '</div><div class="l">This week</div></div>' +
-      '<div class="stat"><div class="n">' + live.length + '</div><div class="l">Open suggestions</div></div>' +
-      '<div class="stat"><div class="n">' + muted.length + '</div><div class="l">Snoozed / done</div></div></div>';
+      tile(0, nBand(0), "Do today", true) +
+      tile(1, nBand(1), "This week", false) +
+      tile(2, nBand(2), "Keep an eye on", false) +
+      tile(3, muted.length, "Snoozed / done", false) + '</div>';
 
     if (live.length) {
       h += '<div class="row" style="flex-wrap:wrap;gap:6px;margin:2px 0 8px">' +
-        '<button class="btn sm ghost" data-act="ag-tg">Send today\u2019s list to the team (Telegram)</button>' +
+        '<button class="btn sm ghost" data-act="ag-tg">Send today’s list to the team (Telegram)</button>' +
         '<button class="btn sm ghost" data-act="ag-wa2">Share on WhatsApp</button></div>';
     }
 
@@ -35870,33 +35886,49 @@ function viewCatalogue() {
         '<button class="btn sm" data-act="tab" data-tab="sites">Add a site</button>' +
         '<button class="btn sm ghost" data-act="tab" data-tab="pitch">Stage playbook</button></div></div>';
     }
-    if (!live.length) {
+    if (!live.length && view !== 3) {
       h += '<div class="card" style="border-color:#86efac;background:#f0fdf4"><h3>All caught up</h3>' +
         '<div class="meta">Every suggestion is done or snoozed. They come back on their own — a snooze expires, and any site that moves to its next stage gets a fresh set.</div></div>';
     }
 
-    AG_BANDS.forEach(function (b, bi) {
-      var rows = live.filter(function (a) { return agBand(a) === bi; });
-      if (!rows.length) return;
-      h += '<h3 style="margin:18px 0 8px;font-size:15px">' + b.t + ' <span class="pill">' + rows.length + '</span></h3>';
-      /* v6.9.471 - the closing windows fold into one sheet; everything else is still a card,
-         because everything else really is one job each. */
-      var closing = rows.filter(function (a) { return a.kind === "closing"; });
-      var rest = rows.filter(function (a) { return a.kind !== "closing"; });
-      if (closing.length) h += agSheetHtml(closing);
-      rest.forEach(function (a) { h += agCard(a, b); });
-    });
-
-    if (muted.length) {
-      h += '<h3 style="margin:22px 0 8px;font-size:15px;color:#64748b">Snoozed &amp; done <span class="pill">' + muted.length + '</span></h3>';
+    if (view === 3) {
+      h += '<h3 style="margin:14px 0 8px;font-size:15px;color:#64748b">Snoozed &amp; done <span class="pill">' + muted.length + '</span></h3>';
+      if (!muted.length) h += '<div class="empty">Nothing is snoozed or marked done.</div>';
       muted.forEach(function (a) {
         h += '<div class="card" style="opacity:.72"><h3 style="font-size:14px">' + esc(a.title) + '</h3>' +
           '<div class="meta">' + (a.mute.kind === "done" ? "Marked done on " + d10(a.mute.at) : "Snoozed till " + d10(a.mute.until)) +
           ' · it returns by itself when the site moves to its next stage.</div>' +
           '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="ag-unmute" data-k="' + esc(a.key) + '">Bring it back</button></div></div>';
       });
+      return h;
     }
+
+    var b = AG_BANDS[view], rows = bandRows[view] || [];
+    /* the highlights: a chip per kind of job in this band, with its count; tap one to see only those */
+    var kinds = {}, korder = [];
+    rows.forEach(function (a) { var k = a.kind || "other"; if (!kinds[k]) { kinds[k] = 0; korder.push(k); } kinds[k]++; });
+    var kf = String(S.agKind || "");
+    if (kf && !kinds[kf]) kf = "";
+    h += '<div class="card" style="padding:8px 10px"><div class="row" style="flex-wrap:wrap;gap:6px;align-items:center">' +
+      '<b style="font-size:14px">' + b.t + '</b> <span class="pill">' + rows.length + '</span>' +
+      (korder.length > 1 ? '<button class="btn sm ' + (kf ? "ghost" : "") + '" data-act="ag-kind" data-k="">All</button>' : '') +
+      korder.map(function (k) {
+        return '<button class="btn sm ' + (kf === k ? "" : "ghost") + '" data-act="ag-kind" data-k="' + esc(k) + '">' +
+          esc(agKindLabel(k)) + ' <span class="pill" style="font-size:12px">' + kinds[k] + '</span></button>';
+      }).join("") + '</div></div>';
+    if (kf) rows = rows.filter(function (a) { return (a.kind || "other") === kf; });
+    /* v6.9.471 - the closing windows fold into one sheet; everything else is still a card,
+       because everything else really is one job each. */
+    var closing = rows.filter(function (a) { return a.kind === "closing"; });
+    var rest = rows.filter(function (a) { return a.kind !== "closing"; });
+    if (closing.length) h += agSheetHtml(closing);
+    rest.forEach(function (a) { h += agCard(a, b); });
     return h;
+  }
+  function agKindLabel(k) {
+    return { closing: "Windows closing", pay: "Money to collect", coldquote: "Quotes waiting", service: "Service due",
+             amcend: "AMC ending", warrend: "Warranty ending", qblater: "Said later", partner: "Partners gone quiet",
+             unbilled: "Unbilled deliveries", other: "Other" }[k] || k;
   }
 
   /* ================= Part 5 — the agent on the Today screen and in the team push =================
@@ -41013,10 +41045,10 @@ function viewCatalogue() {
     /* v6.9.332 - the challan book's executive bands had the same fault as HISAB's, from the
        same cause: render() also opens a lone band (execOrder.length === 1) and this could not
        see it. Same cure - the element carries what it was drawn with. */
-    if (act === "ch-grp") {
-      var _cgk = t.getAttribute("data-k"); S.chGrpExp = S.chGrpExp || {};
-      S.chGrpExp[_cgk] = t.getAttribute("data-open") !== "1"; render(); return;
-    }
+    /* v6.9.532 - the book's filter chips and the one card opened off the sheet (ch-grp, the
+       executive fold, is gone with the fold: declared in the rig's REMOVED) */
+    if (act === "ch-book") { S.chBook = t.getAttribute("data-k") || "all"; keepScroll = true; render(); return; }
+    if (act === "ch-card") { S.chCard = t.getAttribute("data-id") || ""; keepScroll = true; render(); return; }
     if (act === "sc-pick") { S.sc = S.sc || {}; S.sc.exec = t.getAttribute("data-n"); render(); return; }
     if (act === "sc-tab") { S.sc = S.sc || {}; S.sc.tab = t.getAttribute("data-k") || "exec"; render(); return; }
     if (act === "sc-ppick") { S.sc = S.sc || {}; S.sc.partner = t.getAttribute("data-n"); render(); return; }
@@ -43445,6 +43477,8 @@ function viewCatalogue() {
     }
     if (act === "ag-unmute") { agMemDrop(t.getAttribute("data-k")); toast("Back on the list."); render(); return; }
     /* ---- v6.9.471: the closing sheet ---- */
+    if (act === "ag-view") { S.agView = Number(t.getAttribute("data-v")) || 0; S.agKind = ""; keepScroll = true; render(); return; }   /* v6.9.532 */
+    if (act === "ag-kind") { S.agKind = t.getAttribute("data-k") || ""; keepScroll = true; render(); return; }
     if (act === "ag-fold") { S.agFold = (t.getAttribute("data-m") === "brand") ? "brand" : "site"; keepScroll = true; render(); return; }
     if (act === "ag-all") { S.agAll = !S.agAll; keepScroll = true; render(); return; }
     if (act === "ag-xls") { agClosingXlsx(); return; }
