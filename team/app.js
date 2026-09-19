@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.515";
+  var APP_VERSION = "6.9.516";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9351,16 +9351,37 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      anything. They must never disagree about WHO, only about WHEN - so who lives here, once.
      Caught by t_hisab_standard the moment the role widened: hisabAddBtn still carried its own
      roleIs("admin") and would have hidden the button from the very man it was opened for. */
+  /* ===== WHO MAY WORK THE HISAB SCREEN, AND WHO MAY FINALISE - TWO QUESTIONS  (v6.9.516) =====
+     HIS WORDS: "finalize is only Admin part, i also happening from accounts login, why ?"
+
+     Because these were ONE question and the answer was "admin or accounts". The finalise button,
+     both write handlers, the To-finalise tile and the hisab filter all read canHisabRole, so
+     accounts could stamp a delivery onto a customer's account. The toast said so in plain words
+     and nobody had read it back: "Only the owner or accounts finalises a delivery."
+
+     MEASURED before touching it, on his own audit trail: 148 finalisations - 97 challan:hisab
+     and 51 client:hisab - and every single one by Mukesh Verma. Not one by accounts. So this
+     takes away a permission that has never once been used, and stops no work.
+
+     IT IS A SPLIT AND NOT A NARROWING, and that matters. canHisabRole also gates three things
+     that ARE accounts' job: the GSTIN box, the old book-number box, and the sentence explaining
+     the book number, the receipt and the + bill column. Making the one rule admin-only would
+     have taken accounts' billing work away without anybody asking for that. Those three stay
+     exactly as they were.
+
+     canFinalise is the money gate. Nothing else uses it and nothing else should. */
+  function canFinalise() { return roleIs("admin"); }
+  /* the HISAB SCREEN - book numbers, GSTIN, the receipt and bill columns. Unchanged. */
   function canHisabRole() { return roleAny(["admin", "accounts"]); }
   function canAddToHisab(c) {
-    if (!c || !canHisabRole()) return false;
+    if (!c || !canFinalise()) return false;
     if (inHisab(c)) return false;
     return hisabCounts(c);
   }
   /* The button itself, drawn for every challan the owner has not yet stamped - live when it
      will work, outlined when it will explain. Same act, same place, always there. */
   function hisabAddBtn(c) {
-    if (!c || !canHisabRole() || inHisab(c)) return "";
+    if (!c || !canFinalise() || inHisab(c)) return "";
     var live = hisabCounts(c);
     /* v6.9.487 - a class, not an inline style, on his word "show all button in color". The
        dashed outline still means "this will explain rather than work" - it is the same two
@@ -18808,24 +18829,45 @@ function viewCatalogue() {
       '<span class="meta" style="font-size:12.5px">' + n + ' deliver' + (n === 1 ? 'y' : 'ies') +
       ' &middot; ' + (open ? 'tap to fold away' : 'tap to show') + '</span></div>';
   }
+  /* ===== TWO DIFFERENT FAULTS WEARING ONE HEADING  (v6.9.516) =====
+     This band filtered on status === "Approved" and called every row "passed but NOT
+     dispatched". MEASURED on his book the day this was written: ONE challan is at Approved,
+     23/08/2026/008, and its receipt is already in - so the count was right and every word
+     around it was wrong. It has been telling him for 25 days that a delivery which was signed
+     for and finalised is "on nobody's account".
+
+     They are two states and they need two sentences and two fixes:
+       PASSED, NOT GONE        the material is still in the godown  -> Dispatch
+       GONE, STATUS BEHIND     it was delivered and signed for, and
+                               nobody moved the status              -> Receipt is in, mark Received
+
+     Nothing is dropped. There is no other list in the app for the second state - only a pill on
+     the card - so hiding it here would hide it everywhere. */
   function chStuckApprovedBand() {
-    var L = chStuckApproved();
-    if (!L.length) return "";
+    var ALL = chStuckApproved();
+    var L = ALL.filter(function (x) { return !chArrived(x.c); });
+    var B = ALL.filter(function (x) { return chArrived(x.c); });
+    if (!L.length && !B.length) return "";
     var tot = L.reduce(function (t, x) { return t + (chValue(x.c) || 0); }, 0);
-    var old = L[0].age;
-    var h = '<div class="card" id="ch_appr_band" style="border-color:#fecaca;background:#fef2f2;padding:10px 12px">' +
-      '<div style="font-weight:800;font-size:13.5px;color:#b91c1c">' +
-      L.length + ' challan' + (L.length === 1 ? '' : 's') + ' passed but NOT dispatched &middot; ' +
-      esc(money(tot)) + '</div>' +
-      '<div class="meta" style="font-size:12px;color:#7f1d1d;margin-top:3px">' +
-      'The PIN was typed and the material was released, and the dispatch never went through &mdash; ' +
-      'usually because the second call got no answer while the phone had already moved on. ' +
-      'They are on nobody\'s account and in nobody\'s list until they are dispatched' +
-      (old >= 1 ? '. The oldest has been standing <b>' + old + ' day' + (old === 1 ? '' : 's') + '</b>' : '') +
-      '.</div>';
-    L.forEach(function (x) {
+    var old = L.length ? L[0].age : 0;
+    var h = '<div class="card" id="ch_appr_band" style="border-color:#fecaca;background:#fef2f2;padding:10px 12px">';
+    if (L.length) {
+      h += '<div style="font-weight:800;font-size:13.5px;color:#b91c1c">' +
+        L.length + ' challan' + (L.length === 1 ? '' : 's') + ' passed but NOT dispatched &middot; ' +
+        esc(money(tot)) + '</div>' +
+        '<div class="meta" style="font-size:12px;color:#7f1d1d;margin-top:3px">' +
+        'The PIN was typed and the material was released, and the dispatch never went through &mdash; ' +
+        'usually because the second call got no answer while the phone had already moved on. ' +
+        'They are on nobody\'s account and in nobody\'s list until they are dispatched' +
+        (old >= 1 ? '. The oldest has been standing <b>' + old + ' day' + (old === 1 ? '' : 's') + '</b>' : '') +
+        '.</div>';
+    }
+    var _row = function (x, behind) {
       var c = x.c;
-      h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;' +
+      /* RETURNS the row. The first cut of this appended to h and returned nothing, and
+         `h += _row(x)` reads h BEFORE the call - so the rows it appended were overwritten by
+         the word "undefined". Seen on the 390px render, not by any assertion. */
+      return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;' +
         'padding-top:6px;border-top:1px solid #fecaca">' +
         /* v6.9.515 - item 2. Was acct-open, which cannot answer off a client's account;
            this band is drawn on Health. See the ch-open handler for the class. */
@@ -18837,12 +18879,32 @@ function viewCatalogue() {
         (x.age === 0 ? 'today' : x.age + ' day' + (x.age === 1 ? '' : 's')) + '</span>' +
         '<span class="grow"></span>' +
         '<b style="font-size:12.5px;color:#b91c1c">' + esc(money(chValue(c))) + '</b>' +
-        (canApprove() && !chArrived(c)
-          ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" ' +
-            'data-to="Dispatched" title="Release it now. The same one move the card offers.">Dispatch</button>'
-          : '') +
+        (behind
+          ? (canProof()
+              ? '<button class="btn sm act-receipt" data-act="ch-arrived" data-id="' + esc(c.id) + '" ' +
+                'title="The paper is on file. This moves the status to Received - the same one move the card offers.">' +
+                'Receipt is in &mdash; mark Received</button>'
+              : '')
+          : (canApprove() && !chArrived(c)
+              ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" ' +
+                'data-to="Dispatched" title="Release it now. The same one move the card offers.">Dispatch</button>'
+              : '')) +
         '</div>';
-    });
+    };
+    L.forEach(function (x) { h += _row(x, false); });
+
+    /* the second state, in its own words */
+    if (B.length) {
+      var btot = B.reduce(function (t, x) { return t + (chValue(x.c) || 0); }, 0);
+      h += '<div style="font-weight:800;font-size:13.5px;color:#b45309;' +
+        (L.length ? 'margin-top:10px;padding-top:8px;border-top:1px solid #fecaca' : '') + '">' +
+        B.length + ' delivered and signed for, status never moved &middot; ' + esc(money(btot)) + '</div>' +
+        '<div class="meta" style="font-size:12px;color:#7f1d1d;margin-top:3px">' +
+        'The signed paper is on file, so the material went and the customer has it. Nobody moved ' +
+        'the status afterwards, so every screen that reads the status still calls it undispatched. ' +
+        'One tap puts it right; nothing about the money changes.</div>';
+      B.forEach(function (x) { h += _row(x, true); });
+    }
     return h + '</div>';
   }
   /* ==========================================================================================
@@ -18873,9 +18935,25 @@ function viewCatalogue() {
     return [
       { k: "made",  label: "Made",       done: true,
         why: "" },
-      { k: "pass",  label: "Passed",     done: gone || st === "Approved" || !!String((c && c.approvedBy) || "").trim(),
+      /* ===== A LATER STEP PROVES THE EARLIER ONE  (v6.9.516, 19 September 2026) =====
+         HIS WORDS, with 23/08/2026/008 open: "how dispatch pending if receipt attacehd ?"
+
+         It cannot be. Material does not come back signed for if it never left. `gone` reads the
+         STATUS alone, and 008's status is still "Approved" while its receipt is on file, so the
+         checklist said Dispatched PENDING directly beside a struck Received and a Receipt
+         carrying his own name. A one-time checklist that reads backwards is worse than one that
+         says nothing, because a man checks it to know what still has to happen.
+
+         The app already knew: chStatusBehind() is exactly this state and the card wears its
+         amber "status is behind the receipt" pill. The pill stays - the RECORD is still behind
+         and the one-tap correction still belongs there. What changes is that the steps stop
+         contradicting it.
+
+         ONLY THE PHYSICAL STEPS chain. Finalised and Billed are office acts that happen in
+         either order, and inferring one from the other would be a lie about money. */
+      { k: "pass",  label: "Passed",     done: gone || arrived || st === "Approved" || !!String((c && c.approvedBy) || "").trim(),
         why: "Waiting for the accounts desk to pass it." },
-      { k: "disp",  label: "Dispatched", done: gone,
+      { k: "disp",  label: "Dispatched", done: gone || arrived,
         why: "Nothing has left the godown on this challan yet." },
       { k: "recd",  label: "Received",   done: arrived,
         why: "The material has gone but nobody has marked it delivered." },
@@ -19228,7 +19306,10 @@ function viewCatalogue() {
 
          The tile is drawn even at zero, and quiet when it is: a space he has to find only when
          it is full is a space he will not trust is there. */
-      (canHisabRole()
+      /* v6.9.516 - and the QUEUE follows the gate. This estate's own rule, written when the
+         re-price count was built: "a count a man can see and cannot act on teaches him to
+         ignore the band." */
+      (canFinalise()
         ? '<div class="stat' + (hq.length ? ' alert' : '') + '" data-act="ch-queue" style="cursor:pointer" ' +
           'title="Deliveries whose receipt is in and which have not been stamped. Tap to work through them.">' +
           '<div class="n">' + hq.length + '</div><div class="l">To finalise</div></div>'
@@ -19294,7 +19375,7 @@ function viewCatalogue() {
       if (!S.chRest) return h;
     }
 
-    if (S.chOnly === "hisab" && canHisabRole()) {
+    if (S.chOnly === "hisab" && canFinalise()) {
       var hqWorth = hq.reduce(function (a, c) { return a + chValue(c); }, 0);
       var hqOld = 0;
       hq.forEach(function (c) {
@@ -42697,7 +42778,7 @@ function viewCatalogue() {
       var _hid = t.getAttribute("data-id");
       var _hc = (S.data.challans || []).filter(function (x) { return x.id === _hid; })[0];
       if (!_hc) { toast("That challan is not on this device yet - pull down to refresh."); return; }
-      if (!canHisabRole()) { toast("Only the owner or accounts finalises a delivery."); return; }
+      if (!canFinalise()) { toast("Only the owner finalises a delivery."); return; }
       if (inHisab(_hc)) { toast("That delivery is already finalised."); return; }
       /* v6.9.342 - the missing paper is no longer a refusal; it becomes a question inside the
          screen. The missing RECEIVED still is, and now it explains itself instead of being a
@@ -42764,7 +42845,7 @@ function viewCatalogue() {
       var hid = t.getAttribute("data-id");
       var hc = (S.data.challans || []).filter(function (x) { return x.id === hid; })[0];
       if (!hc) { toast("That challan is not on this device yet - pull down to refresh."); return; }
-      if (!canHisabRole()) { toast("Only the owner or accounts finalises a delivery."); return; }
+      if (!canFinalise()) { toast("Only the owner finalises a delivery."); return; }
       var hOwn = roleIs("admin");
       /* checked again at the moment of writing: the status can change between opening this
          screen and pressing the button, and that is exactly how the bad stamp got written */
