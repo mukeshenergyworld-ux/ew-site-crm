@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.517";
+  var APP_VERSION = "6.9.518";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9456,6 +9456,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   }
   /* The red band. Drawn on the dashboard and at the top of HISAB, for whoever can stamp. */
   function hisabNotStampedBand() {
+    /* v6.9.518 - the queue this opens draws for the owner only (6.9.516, the To-finalise
+       tile follows the gate). A band accounts can tap that lands on an empty screen is the
+       item-2 class - a live button over a dead handler - so the band follows the gate too. */
+    if (!canFinalise()) return "";
     var list = hisabNotStamped().filter(function (c) {
       return seesAllClients() || isMineClient(c.customerName);
     });
@@ -18234,6 +18238,40 @@ function viewCatalogue() {
   }
   function regFirst(v) { return String(v == null ? "" : v).trim().split(" ")[0]; }
 
+  /* ===== ITEM 8 - "GIVE A COOL COLOR CODE TO MADE BY"  (v6.9.518, 19 September 2026) =====
+     The filtered-on-top half of item 8 shipped in 6.9.494. This half never did: MADE BY and
+     PASSED BY were plain black text, and nothing in the app coloured a person anywhere - there
+     was no palette to reuse. One now, keyed on the name, so the same man is the same colour on
+     every screen that ever adopts it. Eight inks, each checked to read at 12px on its wash; the
+     name is hashed so Ashish is not "colour 1" today and "colour 4" after a new hire. */
+  var WHO_INKS = [
+    ["#0f766e", "#ccfbf1"], ["#1d4ed8", "#dbeafe"], ["#b45309", "#fef3c7"], ["#7c3aed", "#ede9fe"],
+    ["#be185d", "#fce7f3"], ["#0e7490", "#cffafe"], ["#4d7c0f", "#ecfccb"], ["#9a3412", "#ffedd5"]
+  ];
+  /* MEASURED before this shipped: a hash of the name gave seven of his men four colours. So
+     the ink is assigned by ORDER OF FIRST APPEARANCE in the staff list, then the book - every
+     man gets his own until the eight run out, and the order is the same on every paint because
+     the lists are. Stable, and no two of the first eight share. */
+  var _whoIx = null;
+  function whoInk(name) {
+    var t = String(name || "").trim().toLowerCase();
+    if (!t) return null;
+    if (!_whoIx) {
+      _whoIx = {}; var n = 0;
+      var seen = function (v) { var k = String(v || "").trim().toLowerCase(); if (k && _whoIx[k] === undefined) _whoIx[k] = n++; };
+      try { ((S.data && S.data.user) || []).forEach(function (u) { seen(u.name || u.user); }); } catch (e) { }
+      try { (S.data.challans || []).forEach(function (c) { seen(c.createdBy); seen(c.approvedBy); }); } catch (e) { }
+    }
+    if (_whoIx[t] === undefined) { _whoIx[t] = Object.keys(_whoIx).length; }
+    return WHO_INKS[_whoIx[t] % WHO_INKS.length];
+  }
+  function whoChip(name, fallback) {
+    var nm = regFirst(name);
+    if (!nm) return esc(fallback || "\u2014");
+    var ink = whoInk(name);
+    return '<span style="display:inline-block;padding:1px 7px;border-radius:999px;font-size:12px;font-weight:700;' +
+      'white-space:nowrap;color:' + ink[0] + ';background:' + ink[1] + '">' + esc(nm) + '</span>';
+  }
   function regRow(n, c, alt, dup) {
     var cl = clientByName(c.customerName) || {};
     var bal = regBalances(String(c.customerName || ""));
@@ -18268,9 +18306,9 @@ function viewCatalogue() {
           ? '<span style="opacity:.55">' + moneySgn(bal.due) + '</span><br>' +
             '<span style="font-size:12px;color:#b45309">not on his account yet</span>'
           : '<b>' + moneySgn(after) + '</b>') + '</td>' +
-      '<td style="' + regCell() + '">' + esc(regFirst(c.createdBy) || "—") + '</td>' +
-      '<td style="' + regCell(";color:" + (String(c.approvedBy || "").trim() ? "#0f172a" : "#b91c1c")) + '">' +
-        esc(regFirst(c.approvedBy) || "not passed") + '</td>' +
+      '<td style="' + regCell() + '">' + whoChip(c.createdBy) + '</td>' +
+      '<td style="' + regCell(";color:#b91c1c") + '">' +
+        (String(c.approvedBy || "").trim() ? whoChip(c.approvedBy) : "not passed") + '</td>' +
       '<td style="' + regCell() + '">' +
         (pf ? '✓ <span style="font-size:12px;color:#64748b">' + esc(regFirst(pf.actor || pf.by)) + '</span>'
             : (canAttachProof()
@@ -23178,7 +23216,7 @@ function viewCatalogue() {
       var agg = { cur: 0, d30: 0, d60: 0, d90: 0 };
       outs.forEach(function (r) { agg.cur += r.ag.b.cur; agg.d30 += r.ag.b.d30; agg.d60 += r.ag.b.d60; agg.d90 += r.ag.b.d90; });
       var overdueTot = outs.reduce(function (a, r) { return a + (r.ag ? r.ag.overdue : 0); }, 0);
-      oh += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3>DUE AMT &mdash; ' + money(totalDue) + ' across ' + outs.length + ' client(s)' +
+      oh += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3>DUE AMT &mdash; ' + money(totalDue) + ' across ' + outs.length + ' client' + (outs.length === 1 ? '' : 's') +
         (_dueT ? ' <span class="pill" style="background:' + _dueT.bg + ';color:' + _dueT.fg + '">' + esc(_dueT.lbl) + '</span>' : '') + '</h3>' +
         '<div class="meta" style="font-size:13px">Grouped by sales executive &middot; net of pre-set discounts. Tap a client to open their hisab.' +
         (_dueT ? ' <b>Showing only: ' + esc(_dueT.lbl.toLowerCase()) + '</b> \u2014 ' + esc(_dueT.why) +
@@ -38073,7 +38111,7 @@ function viewCatalogue() {
     _rpgCache = null;      /* v6.9.489 - the preset gap is money; a stale count is the worst of them */
     /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
        yesterday's money, which is the worst thing this app can do. */
-    _ledCache = null; _cqCache = null; _cwbCache = null; _dscIdx = null;
+    _ledCache = null; _cqCache = null; _cwbCache = null; _dscIdx = null; _whoIx = null;
     /* v6.9.485 - the register's four are per-PAINT indexes, busted here with the ledger's. That
        is the whole job: renderCore runs on every render and every caller of splitCancelled
        renders straight afterwards, so a second bust inside splitCancelled bought nothing - and
@@ -39194,6 +39232,8 @@ function viewCatalogue() {
     if (act === "ch-rest") { S.chRest = !S.chRest; keepScroll = true; render(); return; }
     if (act === "ch-queue") {
       if (t.getAttribute("data-off")) { chQueueLeave(); return; }
+      /* v6.9.518 - the button is not the rule; the handler is */
+      if (!canFinalise()) { toast("Finalising is the owner\u2019s. The queue opens for him."); return; }
       chQueueEnter("hisab"); return;
     }
     if (act === "tab") { navGo(t.getAttribute("data-tab")); return; }
