@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.526";
+  var APP_VERSION = "6.9.527";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1532,12 +1532,18 @@
      retries can outlive that, and a second press would mint a SECOND number. So the create path
      carries its own flag, which is cleared only when the attempt truly ends. */
   var _chSaving = false;
-  function challanNoOnce(client) {
-    return api("challanNo", { client: client }).catch(function (e) {
+  /* v6.9.527 - THE KEY. 86, 87 and 88 were spent by exactly this retry: the first call reached
+     the server, the server moved its counter, the answer came back after the 30 s deadline, and
+     the second call took the next number. The key is the draft's own id; when V129 honours it,
+     the same key gets the same number back, however many times it is asked. Sent now, so the
+     backend can start honouring it without an app release. */
+  function challanNoOnce(client, key) {
+    var q = { client: client, key: String(key || "") };
+    return api("challanNo", q).catch(function (e) {
       var m = String((e && e.message) || "");
       if (!/not JSON|HTTP \d|timed out|Failed to fetch|NetworkError|load failed/i.test(m)) throw e;
       return new Promise(function (r) { setTimeout(r, 1200); })
-        .then(function () { return api("challanNo", { client: client }); });
+        .then(function () { return api("challanNo", q); });
     });
   }
   /* ================= WHO CHANGED WHAT, AND WHEN  (v6.9.438, 8 Sep 2026) ==============
@@ -18342,8 +18348,8 @@ function viewCatalogue() {
          390px screen and the red line - the entire point of this register - had to be SWIPED to
          be read. What a hole means is explained once, in the card at the top. */
       '<td colspan="10" style="' + regCell(";color:#b91c1c;white-space:normal") + '">' +
-      '<div style="max-width:290px"><b>No challan on this number</b> &mdash; taken and dropped, ' +
-      'or never entered.</div></td></tr>';
+      '<div style="max-width:320px"><b>No challan on this number</b> &mdash; the server gave it out and the answer came back too late, ' +
+      'so the app asked again and took the next one. It was never on any paper. Nothing is missing from the book.</div></td></tr>';
   }
   /* ---- v6.9.490 - WHO MADE IT, WHO CANCELLED IT, AND WHY. ONE LINE. ----
      His instruction, word for word: "show details of these type of challans also, who created and
@@ -18524,9 +18530,10 @@ function viewCatalogue() {
         '<div style="margin-top:5px;font-weight:800;color:#b91c1c;font-size:13px;word-break:break-word">' +
         R.gaps.join(" · ") + '</div>' +
         '<div class="meta" style="font-size:12.5px;color:#b91c1c;margin-top:5px">Each one is either a ' +
-        'number taken and abandoned, or a challan written in the paper book and never entered here. ' +
+        'number the server gave out while the app had already given up waiting (the number call has a 30-second limit; Apps Script is slower than that some afternoons) &mdash; ' +
+        'the app then asked again and took the next number, and the first was spent with nothing on it. It was never on any paper. ' +
         'They are marked in red where they belong on the line below. Nothing is archived under any ' +
-        'of them &mdash; I checked.</div></div>';
+        'of them &mdash; I checked. A key now travels with every number call so that, once the backend honours it (V129), a late answer can never spend a number again.</div></div>';
     } else if (R.nSer) {
       h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:10px 12px">' +
         '<b style="color:#0f766e">✓ The series runs unbroken from ' + R.lo + ' to ' + R.hi +
@@ -44549,7 +44556,10 @@ function viewCatalogue() {
       try { t.innerHTML = "Creating\u2026"; } catch (e) { }
       toast("Creating challan for " + cn + "...");
 
-      Promise.all([driverReady, challanNoOnce(cObj.shortName || cn)]).then(function (arr) {
+      /* v6.9.527 - one key per draft, minted once and kept on the draft, so a retry after a
+         timeout asks for the SAME number */
+      if (S.ch && !S.ch.mintKey) S.ch.mintKey = mintId("K");
+      Promise.all([driverReady, challanNoOnce(cObj.shortName || cn, S.ch && S.ch.mintKey)]).then(function (arr) {
         var dRec = arr[0], n = arr[1];
         /* ============ v6.9.328 - NEVER MINT A NUMBER ON THIS PHONE ============
            This line used to end in
