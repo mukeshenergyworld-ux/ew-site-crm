@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.516";
+  var APP_VERSION = "6.9.517";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9838,6 +9838,30 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '</div>';
   }
 
+  /* v6.9.517 - drawn on the finalise sheet only when a line is priced below the rate on
+     file. Names each line with the two figures, offers the correction, and - for the owner -
+     the box that lets it through with a reason. See the gate in hsb-confirm. */
+  function hisabGapBox(c) {
+    var g = null; try { g = chDiscGap(c); } catch (e) { g = null; }
+    if (!g || !g.n) return "";
+    var own = roleIs("admin");
+    return '<div class="card" style="border-color:#fecaca;background:#fef2f2;padding:9px 12px;margin-top:8px">' +
+      '<div style="font-weight:800;font-size:13px;color:#b91c1c">' + g.n + ' line' + (g.n === 1 ? '' : 's') +
+      ' priced below the rate on file &middot; ' + esc(money(g.diff)) + '</div>' +
+      '<div class="meta" style="font-size:12.5px;color:#7f1d1d;margin-top:4px">' +
+      g.lines.map(function (l) {
+        return '<div><b>' + esc(l.desc) + '</b> &middot; billed at <b>' + l.frozen + '%</b>, rate on file <b>' + l.preset + '%</b></div>';
+      }).join('') + '</div>' +
+      '<div class="acts" style="margin-top:7px;gap:6px;flex-wrap:wrap">' +
+      (own ? '<button class="btn sm" data-act="reprice-one" data-id="' + esc(c.id) + '" ' +
+             'style="background:#b91c1c;border-color:#b91c1c">Correct to the rate on file</button>' : '') +
+      '</div>' +
+      (own ? '<div style="display:block;margin-top:8px;font-size:12px;color:#64748b">Or finalise it as it stands &mdash; say why (a reason is required, and it is written down with your name)</div>' +
+             '<input id="hsb_gapwhy" placeholder="e.g. negotiated at list, quote price honoured" ' +
+             'style="width:100%;padding:6px 8px;font-size:13px;border:1px solid #fca5a5;border-radius:7px"/>'
+           : '<div class="meta" style="margin-top:6px;font-size:12px;color:#7f1d1d">The owner corrects this or writes a reason. It cannot be finalised from this login.</div>') +
+      '</div>';
+  }
   function modalAddToHisab(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
     if (!c) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
@@ -9850,7 +9874,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
                                  : (p.queued ? '<b>on this phone, still uploading</b>' : '<b>on file</b>')) +
       '. ' + (p.has ? 'Check the paper first &mdash; this' : 'This') +
       ' is the last look before the delivery counts as part of his hisab.</p>' +
-      hisabStandingHtml(c, cl) + hisabReceiptPic(p) + chTrailBox(c);
+      hisabStandingHtml(c, cl) + hisabReceiptPic(p) + chTrailBox(c) + hisabGapBox(c);
 
     /* ---- 0. NO PAPER, AND ONE LINE SAYING WHY  (v6.9.342) ----
        His answer, in his own choice of the three: "show it, ask one line why". A delivery he
@@ -21420,7 +21444,12 @@ function viewCatalogue() {
         return;
       }
       var brand = i.brand || productBrandByCode(i.code) || (c && c.brand) || "";
-      var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : 0;
+      /* v6.9.517 - A BLANK IS NOT A ZERO. pricedLines reads a blank as "use the preset" and
+         prices every screen that way; this read the same blank as 0% and reported a delivery
+         that was RIGHT as billed at full list. He caught it on ATUL4000/200726/001 - twenty
+         blank lines, correct at 35% on his screen, reported by me as Rs 45,690 of error, more
+         than half the figure on the sheet. One meaning, the same in both places. */
+      var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, brand, _day);
       var preset = clientDiscountOn(cl, brand, _day);
       /* v6.9.277 - IS THIS RATE AN MRP AT ALL?
          Until v6.9.277 a challan raised from a quote stored the NET as its rate and disc 0 -
@@ -21452,7 +21481,12 @@ function viewCatalogue() {
          can never disagree. A hand-worked credit and a labour line come back untouched. */
       if (chNoReprice(i)) return Object.assign({}, i);
       var brand = i.brand || productBrandByCode(i.code) || (c && c.brand) || "";
-      var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : 0;
+      /* v6.9.517 - A BLANK IS NOT A ZERO. pricedLines reads a blank as "use the preset" and
+         prices every screen that way; this read the same blank as 0% and reported a delivery
+         that was RIGHT as billed at full list. He caught it on ATUL4000/200726/001 - twenty
+         blank lines, correct at 35% on his screen, reported by me as Rs 45,690 of error, more
+         than half the figure on the sheet. One meaning, the same in both places. */
+      var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, brand, _day);
       var preset = clientDiscountOn(cl, brand, _day);
       /* v6.9.277 - the same guard. A rate that is not the list price is a net figure, and a
          percentage applied to a net figure discounts what has already been discounted. */
@@ -41033,6 +41067,14 @@ function viewCatalogue() {
        made when a rate changes. Nothing new decides anything about money; this only opens the
        question for the book as it stands, which adm-save alone could never reach because it
        fires on a save and Rs 1,47,989 was already wrong before today. */
+    /* v6.9.517 - from the finalise sheet: the same repriceOffer, for this one delivery */
+    if (act === "reprice-one") {
+      if (!roleIs("admin")) { toast("Re-pricing a delivery is the owner\u2019s."); return; }
+      var _r1 = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      if (!_r1) return;
+      repriceOffer([{ client: _r1.customerName, brand: "", pct: 0 }], "", true);
+      return;
+    }
     if (act === "reprice-scan") {
       if (!roleIs("admin")) { toast("Re-pricing a delivery is the owner\u2019s."); return; }
       var rpg = presetGapScan();
@@ -42885,6 +42927,37 @@ function viewCatalogue() {
         toast("Still to decide: " + hopen.join(", ") + ". Put a % in, or tick No discount.");
         return;
       }
+      /* ===== THE GATE  (v6.9.517) =====
+         The two checks above refuse a brand with NO rate row. They let through a line frozen
+         BELOW a rate that exists - 23/08/2026/008 and DR/200826/001 are both exactly that, and
+         both were finalised onto a customer's account at full list. Finalise is the last look;
+         it must not pass a price the book itself says is wrong.
+
+         A wrong figure is refused with the line, the stored figure and the rate on file, and the
+         correction offered is the same audited re-price sheet that has always done it. The OWNER
+         may write it as it stands with a reason - "negotiated at list", "quote price honoured" -
+         and the reason goes on the audit row with his name. Accounts may not. */
+      var hGap = chDiscGap(hc);
+      if (hGap && hGap.n) {
+        var hWhy = String((el("hsb_gapwhy") || {}).value || "").trim();
+        if (!hOwn) {
+          toast(hGap.n + " line" + (hGap.n === 1 ? "" : "s") + " below the rate on file \u2014 " +
+                money(hGap.diff) + ". The owner corrects it or writes a reason. Nothing was stamped.");
+          return;
+        }
+        if (hWhy.length < 8) {
+          S.hsbGap = { id: hc.id, gap: hGap };
+          render();
+          toast(hGap.lines.map(function (l) { return l.desc + " at " + l.frozen + "% \u2014 rate on file " + l.preset + "%"; }).join("; ") +
+                ". Correct it, or give a reason to finalise it as it stands.");
+          return;
+        }
+        try {
+          save("audit", { action: "challan:gap-override", actor: S.user, recId: hc.id,
+            detail: JSON.stringify({ chId: hc.id, no: hc.challanNo, diff: hGap.diff, n: hGap.n, why: hWhy,
+              lines: hGap.lines.map(function (l) { return { code: l.code, frozen: l.frozen, preset: l.preset }; }) }) }, true);
+        } catch (e) { }
+      }
       /* v6.9.324 - THE FURTHER DISCOUNT IS A QUESTION, AND A QUESTION HAS TO BE ANSWERED.
          Same shape as the brand discount above it: an amount, or the tick that says there is
          none. Leaving it blank is not "no" - it is "not looked at", and the difference matters
@@ -43999,6 +44072,7 @@ function viewCatalogue() {
          value that never changes even if an admin edits the pre-set later (edit affects only future
          challans). Admin can override a line product-wise later in the Billing screen. */
       var chBrandV = val("m_brand") || (S.ch && S.ch.brand) || "";
+      var _noRate = [];
       lines = lines.map(function (l) {
         /* ---- LABOUR HAS NO BRAND, SO IT MUST NOT BORROW ONE  (v6.9.356) ----
            This mapping fell back to the CHALLAN's brand for any line the catalogue did not know,
@@ -44022,9 +44096,31 @@ function viewCatalogue() {
         }
         var prod = (PRODUCTS.filter(function (x) { return x.code === l.code; })[0]) || {};
         var lb = l.brand || realBrand(prod) || chBrandV;
-        var pd = (l.disc != null && l.disc !== "") ? Number(l.disc) : clientDiscount(cn, lb);
+        /* ===== NO RATE ON FILE IS NOT A RATE OF ZERO  (v6.9.517, 19 September 2026) =====
+           clientDiscount() answers 0 to two different questions - "what is his rate on this
+           brand?" when the answer is really zero, and "I could not find a rate at all". This
+           line then froze that 0 into the delivery for ever, and the man writing it was told
+           nothing. That is how a client with a rate on file gets billed at full list, and it is
+           the fault he described as one a client could sue him over.
+
+           Now: a ROW freezes its value, including a genuine 0, which is his decision and stays.
+           NO row stores nothing - pricedLines prices it live, and it heals itself the day the
+           rate is entered. Either way _noRate names the brand so the save can say so. */
+        var _pr = discRow(cn, lb);
+        var pd = (l.disc != null && l.disc !== "") ? Number(l.disc)
+               : (_pr ? (Number(_pr.pct) || 0) : "");
+        if (!_pr && pd === "" && lb && presRealBrand(lb) && _noRate.indexOf(lb) < 0) _noRate.push(lb);
         return { code: l.code, desc: l.desc, unit: l.unit, qty: l.qty, rate: l.rate, brand: lb, disc: pd };
       });
+      /* v6.9.517 - said out loud, once, with the brand named. The challan still saves: a man
+         at the counter must not be blocked by an office decision, but he and the office must
+         both know the price on this paper is list until the owner sets the rate. */
+      if (_noRate.length && !(S.ch && S.ch.noRateOk)) {
+        S.ch.noRateOk = true;
+        toast(cn + " has NO rate on file for " + _noRate.join(", ") + " \u2014 these lines will bill at " +
+              "FULL LIST until a rate is set. Press Save again to write it as it stands.");
+        return;
+      }
       var amount = lines.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0);
       var assocName = val("m_assoc");
       var itemsJson = JSON.stringify(lines);
