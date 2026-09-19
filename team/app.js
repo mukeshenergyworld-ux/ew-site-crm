@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.510";
+  var APP_VERSION = "6.9.511";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1616,7 +1616,12 @@
     if (!r) return "";
     if (tab === "challans") return String(r.challanNo || "") + (r.customerName ? " · " + r.customerName : "");
     if (tab === "returns") return String(r.returnNo || "") + (r.customerName ? " · " + r.customerName : "");
-    if (tab === "payments") return String(r.client || "") + (r.amount ? " · " + money(r.amount) : "");
+    /* v6.9.511 - THE RECEIPT NUMBER FIRST. Two receipts for one man at one amount - a part
+       payment against two challans, which is ordinary - printed as the same line twice and
+       read as the money having come in twice. The number was already on the audit row
+       beside it and missing from the payment’s own. */
+    if (tab === "payments") return (r.id ? receiptNo(r) + " · " : "") + String(r.client || "") +
+      (r.amount ? " · " + money(r.amount) : "");
     if (tab === "quotes") return String(r.quoteNo || "") + (r.client ? " · " + r.client : "");
     if (tab === "discounts") return String(r.client || "") + " · " + String(r.brand || "");
     if (tab === "clients" || tab === "customers") return String(r.name || "");
@@ -1626,6 +1631,53 @@
   }
   /* The record that rides with the save. Returns null when there is nothing to say - a save
      that changed nothing writes no line, or the log would fill with noise on every repaint. */
+  /* ---- one event, one line  (v6.9.511) ----------------------------------------
+     chgRemember keeps the handful of strings that NAME the record just changed - its id, and
+     whatever number a man would recognise it by. chgIsCompanion then asks whether the audit row
+     about to be written is talking about that same record. It is deliberately strict: no name
+     found, no suppression. Losing a cancellation off the owner's audit screen would be a far
+     worse fault than one extra line. */
+  var _chgLast = null;
+  /* What a man would type to find this record again. The first segment of the label is the
+     number for every kind that carries one; a client has no number and is found by name. */
+  function clgLookup(r) {
+    var lab = String((r && r.label) || "").trim();
+    if (!lab) return String((r && r.recId) || "");
+    var head = lab.split(" · ")[0].trim();
+    if (head.length >= 2) return head;
+    return lab.length >= 2 ? lab : "";
+  }
+  function chgNames(tab, r) {
+    var out = [];
+    if (!r) return out;
+    if (r.id) out.push(String(r.id));
+    ["challanNo", "returnNo", "quoteNo"].forEach(function (k) { if (r[k]) out.push(String(r[k])); });
+    if (tab === "payments") { try { out.push(receiptNo(r)); } catch (e) { } }
+    return out.filter(function (x) { return x && x.length >= 4; });
+  }
+  function chgRemember(tab, r) {
+    _chgLast = { at: Date.now(), who: String(S.user || ""), names: chgNames(tab, r) };
+  }
+  /* Actions where the audit row IS the event and nothing else changed - these can never be a
+     companion, whatever else was saved a second earlier. Without this, cancelling a payment
+     within three seconds of editing it would take the cancellation off the owner's own audit
+     screen, which is the one line on it that must never be missing. Counted on his book:
+     rec:cancel 35, challan:hisab 97, credit:override 115, dup:* 10, the PIN records 30. */
+  function chgNeverFold(action) {
+    var a = String(action || "");
+    return /^(rec:|dup:|pin:|join:|lead:|svc:|amc:|unit:|firm:)/.test(a) ||
+           a === "challan:hisab" || a === "credit:override" || a === "proof:twin" ||
+           /PIN/i.test(a);
+  }
+  function chgIsCompanion(auditRow) {
+    if (chgNeverFold(auditRow && auditRow.action)) return false;
+    if (!_chgLast || !_chgLast.names.length) return false;
+    if (Date.now() - _chgLast.at > 3000) return false;
+    if (String(S.user || "") !== _chgLast.who) return false;
+    var hay = [auditRow && auditRow.target, auditRow && auditRow.detail,
+               auditRow && auditRow.action].join(" ");
+    return _chgLast.names.some(function (n) { return hay.indexOf(n) >= 0; });
+  }
   function chgMake(tab, before, row, isNew, full) {
     try {
       var fields = isNew ? [] : chgDiff(before, row);
@@ -1715,6 +1767,16 @@
        request. Wrapped, because a log must never be the thing that loses a challan. */
     var _chg = null;
     try { _chg = chgMake(tab, _chgBefore, row, _chgNew, fullRow); } catch (e) { _chg = null; }
+    /* v6.9.511 - ONE EVENT, ONE LINE. Ten call sites write an audit row alongside the record
+       they just changed, and save() logged both - so a mode change printed as the payment AND
+       as "new audit". The companion is dropped ONLY where it can be proved one: same man,
+       within three seconds, and the audit row’s own text names the record just logged.
+       Everything else keeps its line, because for rec:cancel, challan:hisab, credit:override
+       and the PIN records the audit row IS the event and nothing else changed. */
+    try {
+      if (_chg && tab === "audit" && chgIsCompanion(row)) _chg = null;
+      else if (_chg && tab !== "audit") chgRemember(tab, fullRow);
+    } catch (e) { }
     S.pending = (S.pending || 0) + 1;
     var pk = "pk" + (++_pkSeq) + "_" + (row.id || row._lid || "x");
     pendPut(pk, tab, fullRow, _chg);  // journal the FULL row so an offline retry is safe too
@@ -29550,23 +29612,51 @@ function viewCatalogue() {
     };
     h += '<div class="card" style="padding:8px 10px"><div style="overflow-x:auto;-webkit-overflow-scrolling:touch">' +
       '<table style="border-collapse:collapse;font-size:12.5px;min-width:100%">' +
-      '<tr style="background:#0b3b36">' + TH("WHEN") + TH("WHO") + TH("WHAT") + TH("WHICH RECORD") + TH("CHANGED") + '</tr>';
+      /* v6.9.511 - WHO LAST. Rendered at 390px, the old order put the record - the receipt
+         number, the challan number, the thing he is looking for - off the right edge behind a
+         sideways scroll, while his own name sat in view on every row. */
+      '<tr style="background:#0b3b36">' + TH("WHEN") + TH("WHAT") + TH("WHICH RECORD") + TH("CHANGED") + TH("WHO") + '</tr>';
     var cell = 'padding:4px 6px;white-space:nowrap;border-top:1px solid #e2e8f0';
-    rows.slice(0, 300).forEach(function (r, i) {
+    /* v6.9.511 - A TRUE REPEAT SAYS SO RATHER THAN PRINTING TWICE. Same record, same fields,
+       same man, same minute is the app having written one thing twice - which he should see,
+       but as one line saying so, not as two lines that read like two payments. */
+    var _seen = {}, _folded = [];
+    rows.slice(0, 300).forEach(function (r) {
+      var k = [r.tab, r.recId, r.fields, r.who, String(r.at || "").slice(0, 16)].join("|");
+      if (_seen[k] !== undefined) { _folded[_seen[k]].n++; return; }
+      _seen[k] = _folded.length;
+      _folded.push({ r: r, n: 1 });
+    });
+    _folded.forEach(function (f, i) {
+      var r = f.r;
       var isNew = String(r.action || "") === "create";
       h += '<tr style="background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' +
         '<td style="' + cell + ';color:#64748b;font-size:12px">' + esc(clgWhen(r.at)) + '</td>' +
-        '<td style="' + cell + ';font-weight:700">' + esc(r.who || "?") + '</td>' +
         '<td style="' + cell + ';font-size:12px"><span class="pill' + (isNew ? ' teal' : '') + '">' +
-          esc((isNew ? "new " : "") + clgTabName(r.tab)) + '</span></td>' +
+          esc((isNew ? "new " : "") + clgTabName(r.tab)) + '</span>' +
+          (f.n > 1 ? ' <span class="pill" style="background:#fef3c7;color:#92400e" title="The app wrote this same change ' + f.n + ' times in the same minute. It is ONE change, not ' + f.n + '.">written ' + (f.n === 2 ? 'twice' : f.n + ' times') + '</span>' : '') +
+          '</td>' +
+        /* v6.9.511 - TAPPABLE. The number is the first part of the label for every kind that
+           has one - RC-..., a challan number, a quote number - and the whole label for a man.
+           It goes to SEARCH rather than to a per-tab opener, because this app has none and
+           inventing four would be four things to keep right. */
         '<td style="' + cell + ';max-width:230px;overflow:hidden;text-overflow:ellipsis" title="' + esc(r.label || r.recId || "") + '">' +
-          esc(r.label || r.recId || "") + '</td>' +
+          (clgLookup(r)
+            ? '<button class="btn sm ghost" style="padding:2px 7px;font-size:12.5px;max-width:100%;overflow:hidden;text-overflow:ellipsis" data-act="clg-open" data-q="' + esc(clgLookup(r)) +
+              '" title="Open this record">' + esc(r.label || r.recId || "") + '</button>'
+            : esc(r.label || r.recId || "")) + '</td>' +
         '<td style="' + cell.replace("white-space:nowrap", "white-space:normal") + ';color:#475569;max-width:420px">' +
-          clgFieldsHtml(r) + '</td></tr>';
+          clgFieldsHtml(r) + '</td>' +
+        '<td style="' + cell + ';font-weight:700">' + esc(r.who || "?") + '</td></tr>';
     });
     h += '</table></div>' +
       '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:6px">' +
-      rows.length + ' change(s) in this window. Photographs, signatures and the item block are ' +
+      /* v6.9.511 - what is ON THE SCREEN, and the repeats named separately rather than counted
+         in silently. "8 change(s)" over seven rows is a line that argues with itself. */
+      _folded.length + (_folded.length === 1 ? ' change' : ' changes') + ' in this window' +
+      ((function () { var d = _folded.filter(function (x) { return x.n > 1; }).length;
+         return d ? ' \u00b7 ' + d + (d === 1 ? ' of them was' : ' of them were') + ' written more than once by the app, and shown once here' : ''; })()) +
+      '. Photographs, signatures and the item block are ' +
       'recorded by NAME only — the log says a receipt photo changed, never what was in it. ' +
       '<b>A PIN is never recorded at all:</b> the log says one was changed, by whom and when, and ' +
       'the value is in no second place.</div></div>';
@@ -41808,6 +41898,14 @@ function viewCatalogue() {
     if (act === "clg-who") { S.clgWho = t.getAttribute("data-v") || ""; clgLoad(true); keepScroll = true; render(); return; }
     if (act === "clg-find") { S.clgQ = String(val("clg_q") || "").trim(); clgLoad(true); keepScroll = true; render(); return; }
     if (act === "clg-qclear") { S.clgQ = ""; clgLoad(true); keepScroll = true; render(); return; }
+    if (act === "clg-open") {
+      var _clq = String(t.getAttribute("data-q") || "").trim();
+      if (_clq.length < 2) { toast("There is nothing on this row to look up."); return; }
+      /* S.tab EXPLICITLY. q-unsent in 6.9.495 and bf-brand in 6.9.509 both changed what a screen
+         should show without changing which screen was showing, and left him on the old one. */
+      S.sq = _clq; S.tab = "search"; S.modal = null; navBump("search"); render();
+      return;
+    }
     if (act === "clg-refresh") { clgLoad(true); keepScroll = true; render(); return; }
     if (act === "clg-csv") { clgCsv(); return; }
 
