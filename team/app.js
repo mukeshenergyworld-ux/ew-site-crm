@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.524";
+  var APP_VERSION = "6.9.525";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9967,26 +9967,21 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   /* v6.9.517 - drawn on the finalise sheet only when a line is priced below the rate on
      file. Names each line with the two figures, offers the correction, and - for the owner -
      the box that lets it through with a reason. See the gate in hsb-confirm. */
+  /* v6.9.525 - what WILL happen, not a question. The reason box and the refusal are gone
+     (his item 6). The correction button stays for a man who wants it done before he finalises. */
   function hisabGapBox(c) {
     var g = null; try { g = chDiscGap(c); } catch (e) { g = null; }
     if (!g || !g.n) return "";
-    var own = roleIs("admin");
-    return '<div class="card" style="border-color:#fecaca;background:#fef2f2;padding:9px 12px;margin-top:8px">' +
-      '<div style="font-weight:800;font-size:13px;color:#b91c1c">' + g.n + ' line' + (g.n === 1 ? '' : 's') +
-      ' priced below the rate on file &middot; ' + esc(money(g.diff)) + '</div>' +
-      '<div class="meta" style="font-size:12.5px;color:#7f1d1d;margin-top:4px">' +
+    return '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:9px 12px;margin-top:8px">' +
+      '<div style="font-weight:800;font-size:13px;color:#92400e">' + g.n + ' line' + (g.n === 1 ? '' : 's') +
+      ' at 0% will take the rate on file when you finalise &middot; ' + esc(money(g.diff)) + ' off</div>' +
+      '<div class="meta" style="font-size:12.5px;color:#78350f;margin-top:4px">' +
       g.lines.map(function (l) {
-        return '<div><b>' + esc(l.desc) + '</b> &middot; billed at <b>' + l.frozen + '%</b>, rate on file <b>' + l.preset + '%</b></div>';
+        return '<div><b>' + esc(l.desc) + '</b> &middot; 0% &rarr; <b>' + l.preset + '%</b></div>';
       }).join('') + '</div>' +
-      '<div class="acts" style="margin-top:7px;gap:6px;flex-wrap:wrap">' +
-      (own ? '<button class="btn sm" data-act="reprice-one" data-id="' + esc(c.id) + '" ' +
-             'style="background:#b91c1c;border-color:#b91c1c">Correct to the rate on file</button>' : '') +
-      '</div>' +
-      (own ? '<div style="display:block;margin-top:8px;font-size:12px;color:#64748b">Or finalise it as it stands &mdash; say why (a reason is required, and it is written down with your name)</div>' +
-             '<input id="hsb_gapwhy" placeholder="e.g. negotiated at list, quote price honoured" ' +
-             'style="width:100%;padding:6px 8px;font-size:13px;border:1px solid #fca5a5;border-radius:7px"/>'
-           : '<div class="meta" style="margin-top:6px;font-size:12px;color:#7f1d1d">The owner corrects this or writes a reason. It cannot be finalised from this login.</div>') +
-      '</div>';
+      '<div class="meta" style="font-size:12px;margin-top:5px">Automatic &mdash; nothing to type. It is written to the audit trail with your name.' +
+      (roleIs("admin") ? ' <button class="btn sm ghost" data-act="reprice-one" data-id="' + esc(c.id) + '" style="padding:2px 8px;font-size:12px">Do it now</button>' : '') +
+      '</div></div>';
   }
   function modalAddToHisab(id) {
     var c = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
@@ -18331,6 +18326,12 @@ function viewCatalogue() {
     if (v > 100000) return "#b91c1c";        /* over one lakh - red */
     return "#166534";                        /* below one lakh - green */
   }
+  /* v6.9.525 - the day under a name on the register, dd/mm, 12px, nothing when there is none */
+  function regDay(at) {
+    var d = String(at || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "";
+    return '<div style="font-size:12px;color:#64748b;text-decoration:none">' + d.slice(8, 10) + '/' + d.slice(5, 7) + '</div>';
+  }
   function regCell(extra) {
     return "padding:5px 7px;border-top:1px solid #e2e8f0;white-space:nowrap;font-size:12.5px" + (extra || "");
   }
@@ -18417,6 +18418,9 @@ function viewCatalogue() {
     var pf = challanProof(c.id);
     var open = !!(S.chExp && S.chExp[c.id]);
     var bg = dup ? "#fffbeb" : (alt ? "#f8fafc" : "#fff");
+    /* v6.9.525 - done = finalised and counted; the four step cells are struck through in green */
+    var regDone = inHisab(c) && hisabCounts(c);
+    var regStruck = ";text-decoration:line-through;text-decoration-color:#15803d;text-decoration-thickness:2px;color:#15803d";
     var h = '<tr style="background:' + bg + '">' +
       '<td style="' + regCell(";font-weight:800;color:#0b3b36") + '">' + (n === null ? "OLD" : n) +
         (dup ? '<br><span style="font-size:12px;color:#b45309">twice</span>' : '') + '</td>' +
@@ -18441,16 +18445,19 @@ function viewCatalogue() {
           ? '<span style="opacity:.55">' + moneySgn(bal.due) + '</span><br>' +
             '<span style="font-size:12px;color:#b45309">not on his account yet</span>'
           : '<b>' + moneySgn(after) + '</b>') + '</td>' +
-      '<td style="' + regCell() + '">' + whoChip(c.createdBy) + '</td>' +
-      '<td style="' + regCell(";color:#b91c1c") + '">' +
-        (String(c.approvedBy || "").trim() ? whoChip(c.approvedBy) : "not passed") + '</td>' +
-      '<td style="' + regCell() + '">' +
-        (pf ? '✓ <span style="font-size:12px;color:#64748b">' + esc(regFirst(pf.actor || pf.by)) + '</span>'
+      /* v6.9.525 - HIS WORDS: "with date, who made it, who approved, who attached receipt, when
+         finalized {date}, all strikeout when done". The day under each name, the finalised
+         date, and a finished row struck through in green - his rule, green struck = done. */
+      '<td style="' + regCell() + (regDone ? regStruck : "") + '">' + whoChip(c.createdBy) + regDay(c.createdAt) + '</td>' +
+      '<td style="' + regCell(";color:#b91c1c") + (regDone ? regStruck : "") + '">' +
+        (String(c.approvedBy || "").trim() ? whoChip(c.approvedBy) + regDay(c.approvedAt) : "not passed") + '</td>' +
+      '<td style="' + regCell() + (regDone ? regStruck : "") + '">' +
+        (pf ? '\u2713 <span style="font-size:12px;color:#64748b">' + esc(regFirst(pf.actor || pf.by)) + '</span>' + regDay(pf.at || c.receiptAt)
             : (canAttachProof()
                 ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" ' +
                   'style="padding:1px 8px;font-size:12px;font-weight:700;background:#fff;color:#b45309;border:1px solid #b45309;border-radius:6px">Attach</button>'
                 : '<span style="color:#b45309">none</span>')) + '</td>' +
-      '<td style="' + regCell() + '">' + (inHisab(c) ? hisabStampPill(c) : hisabAddBtn(c) ||
+      '<td style="' + regCell() + (regDone ? regStruck : "") + '">' + (inHisab(c) ? hisabStampPill(c) + regDay((hisabStamp(c) || {}).at) : hisabAddBtn(c) ||
         '<span style="color:#b45309;font-size:12px">not finalised</span>') + '</td>' +
       '<td style="' + regCell(";text-align:right;color:" + (over ? "#b91c1c" : "#64748b")) + '">' +
         (lim > 0 ? (over ? '<b>' + moneySgn(lim) + '</b><br><span style="font-size:12px">over</span>' : moneySgn(lim))
@@ -21297,73 +21304,55 @@ function viewCatalogue() {
         '<div class="meta" style="margin-top:6px;font-size:12px;color:#7c3aed">Nothing is saved until you tap <b>Save &amp; back</b> below \u2014 this only fills the boxes.</div>' +
         '</div>';
     })();
-    brands.forEach(function (b) {
+    /* ===== ONE TABLE, A ROW PER BRAND  (v6.9.525 - his item 3, second list) =====
+       "show it in excel in compact way". Twenty-five cards of boxes became one sheet. The boxes
+       are the SAME boxes - same class, id and data attributes - so disc-saveall and the .dsc
+       listener are untouched. A plain table, not xlTable: sorting re-renders, and a re-render
+       loses what he has typed and not yet saved. */
+    var roles = ["plumber", "architect", "builder", "pmc"].filter(function (role) { return String(cObj[role] || "").trim(); });
+    var _eWho = execForClient(cl);
+    var pf = function (x) { return (Math.round(x * 100) / 100) + "%"; };
+    var TH = function (x, r) {
+      return '<th style="padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;background:#0b3b36;text-align:' + (r ? "right" : "left") + '">' + x + '</th>';
+    };
+    var TD = function (x, extra) { return '<td style="padding:4px 7px;border-top:1px solid #e2e8f0;white-space:nowrap;font-size:12.5px;vertical-align:middle' + (extra || "") + '">' + x + '</td>'; };
+    var inp = 'inputmode="decimal" placeholder="0" style="width:64px;padding:5px 7px;font-size:13px"';
+    h += '<div class="meta" style="font-size:12px;margin:8px 0 4px">Type the rate in the box; swipe sideways for the partners and the executive &rarr;</div>' +
+      '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;border-collapse:collapse">' +
+      '<thead><tr>' + TH('BRAND') + TH('DISCOUNT %') +
+      roles.map(function (role) { return TH(esc(ROLE_LABEL[role].toUpperCase()) + ' <span style="font-weight:500;opacity:.8">' + esc(String(cObj[role]).trim()) + '</span> %'); }).join('') +
+      TH('EXECUTIVE ' + (_eWho ? '<span style="font-weight:500;opacity:.8">' + esc(_eWho) + '</span>' : '<span style="font-weight:500;opacity:.8">none assigned</span>') + ' %') +
+      TH('LOAD') + '</tr></thead><tbody>';
+    brands.forEach(function (b, bi) {
       var d = discRow(cl, b);
       var im = incMap(d);
-      var incRows = "";
-      ["plumber", "architect", "builder", "pmc"].forEach(function (role) {
-        var pn = String(cObj[role] || "").trim();
-        if (!pn) return;
-        var rv = (im[role] != null && im[role] !== "") ? im[role] : "";
-        incRows += '<div class="acts" style="align-items:center;margin-top:6px">' +
-          '<span class="grow" style="font-size:12px;color:#0d9488">' + esc(ROLE_LABEL[role]) + ' incentive <span style="color:#94a3b8">(' + esc(pn) + ')</span></span>' +
-          '<input class="incp" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-role="' + role + '" data-id="' + esc(d ? d.id : "") + '" inputmode="decimal" value="' + esc(rv) + '" placeholder="0" style="width:78px;padding:7px 10px"/>' +
-          '<span class="pill">%</span></div>';
-      });
-      /* incentive load = the sum of every assigned partner's rate on this brand (each earns on
-         the net). Shown so the combined giveaway is visible at the moment you set the rates. */
-      var pf = function (x) { return (Math.round(x * 100) / 100) + "%"; };
-      var totInc = ["plumber", "architect", "builder", "pmc"].reduce(function (a, role) {
-        return a + ((String(cObj[role] || "").trim() && Number(im[role])) || 0);
-      }, 0);
       var dPct = Number(d && d.pct) || 0;
-      /* v6.9.234 - THE SALES EXECUTIVE, TICKED AND TYPED EXACTLY LIKE A PARTNER.
-         Tick the box and the % box appears beside it; untick and the rate is cleared
-         on save. The name shown is whoever this client is assigned to, so you can see
-         at the moment you set it who the money is going to. */
       var _bkey = String(b).replace(/[^A-Za-z0-9]/g, "_");
       var _eOn = execOnFor(cl, b);
       var _eVal = execRateFor(cl, b);
       var _eSug = execSet(b) ? execRateAt(b, dPct) : 0;
-      var _eWho = execForClient(cl);
-      var execRow = '<div class="acts" style="align-items:center;margin-top:6px">' +
-        '<label class="grow" style="font-size:12px;color:#7c3aed;display:flex;align-items:center;gap:7px;cursor:pointer">' +
-          '<input type="checkbox" class="exon" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" ' +
-            'data-sug="' + esc(_eSug) + '" data-key="' + _bkey + '"' + (_eOn ? ' checked' : '') +
-            ' style="width:16px;height:16px;flex:0 0 auto"/>' +
-          '<span>Sales executive incentive' +
-            (_eWho ? ' <span style="color:#94a3b8">(' + esc(_eWho) + ')</span>'
-                   : ' <span style="color:#b45309">(no executive assigned to this client)</span>') +
-          '</span></label>' +
-        '<span id="exw_' + _bkey + '" style="display:' + (_eOn ? 'flex' : 'none') + ';align-items:center;gap:6px">' +
-          '<input class="exip" id="exi_' + _bkey + '" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" ' +
-            'inputmode="decimal" value="' + esc(_eOn ? _eVal : "") + '" placeholder="0" style="width:78px;padding:7px 10px"/>' +
-          '<span class="pill">%</span></span></div>';
-      /* The rate card is a SUGGESTION now, not the payer. It moves as the discount box
-         is typed in (see the .dsc listener; the line is rebuilt in place so the caret
-         never jumps), and tells you what it would have paid at this discount. */
-      var execLine = execSet(b)
-        ? '<div class="meta" id="exl_' + _bkey + '" style="margin-top:6px;font-size:12px;border-top:1px solid #eef2f7;padding-top:6px">' +
-            execLineHtml(b, dPct) + '</div>'
-        : "";
+      var totInc = roles.reduce(function (a, role) { return a + (Number(im[role]) || 0); }, 0);
       var _eLoad = _eOn ? (Number(_eVal) || 0) : 0;
-      var loadLine = (totInc > 0 || _eLoad > 0)
-        ? '<div class="meta" style="margin-top:6px;font-size:12px;color:#64748b">Total incentive load: <b style="color:#b45309">' +
-            pf(totInc + _eLoad) + ' of net</b>' +
-            ' <span style="color:#94a3b8">(partners ' + pf(totInc) + (_eLoad > 0 ? ' + executive ' + pf(_eLoad) : '') + ')</span>' +
-            (dPct ? ' &middot; ≈ ' + pf((totInc + _eLoad) * (1 - dPct / 100)) + ' of list, on top of the ' + pf(dPct) + ' discount' : "") + '</div>'
-        : "";
-      h += '<div class="card"><h3>' + esc(b) + (d && Number(d.pct) ? ' <span class="pill teal">' + esc(d.pct) + '%</span>' : ' <span class="pill">not set</span>') + '</h3>' +
-        '<div class="acts" style="align-items:center">' +
-        '<span class="grow" style="font-size:12px;color:#334155">Brand discount</span>' +
-        '<input class="dsc" id="exd_' + _bkey + '" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-id="' + esc(d ? d.id : "") + '" inputmode="decimal" value="' + esc(d ? d.pct : "") + '" placeholder="0" style="width:78px;padding:7px 10px"/>' +
-        '<span class="pill">% off list</span></div>' +
-        incRows +
-        execRow +
-        execLine +
-        loadLine +
-        '</div>';
+      var bg = bi % 2 ? "#f8fafc" : "#fff";
+      h += '<tr style="background:' + bg + '">' +
+        TD('<b>' + esc(b) + '</b>' + (d && Number(d.pct) ? ' <span class="pill teal" style="font-size:12px">' + esc(d.pct) + '%</span>' : ' <span class="pill" style="font-size:12px">not set</span>'), ";position:sticky;left:0;z-index:1;background:" + bg) +
+        TD('<input class="dsc" id="exd_' + _bkey + '" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-id="' + esc(d ? d.id : "") + '" ' + inp + ' value="' + esc(d ? d.pct : "") + '"/>') +
+        roles.map(function (role) {
+          var rv = (im[role] != null && im[role] !== "") ? im[role] : "";
+          return TD('<input class="incp" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-role="' + role + '" data-id="' + esc(d ? d.id : "") + '" ' + inp + ' value="' + esc(rv) + '"/>');
+        }).join('') +
+        TD('<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">' +
+            '<input type="checkbox" class="exon" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" data-sug="' + esc(_eSug) + '" data-key="' + _bkey + '"' + (_eOn ? ' checked' : '') + ' style="width:16px;height:16px;flex:0 0 auto"/>' +
+            '<span id="exw_' + _bkey + '" style="display:' + (_eOn ? 'inline-flex' : 'none') + ';align-items:center;gap:4px">' +
+              '<input class="exip" id="exi_' + _bkey + '" data-client="' + esc(cl) + '" data-brand="' + esc(b) + '" ' + inp + ' value="' + esc(_eOn ? _eVal : "") + '"/></span></label>' +
+            (execSet(b) ? '<div class="meta" id="exl_' + _bkey + '" style="font-size:12px;white-space:normal;max-width:220px">' + execLineHtml(b, dPct) + '</div>' : '')) +
+        TD((totInc > 0 || _eLoad > 0)
+            ? '<b style="color:#b45309">' + pf(totInc + _eLoad) + '</b> <span style="color:#94a3b8;font-size:12px">of net</span>' +
+              (dPct ? '<div style="font-size:12px;color:#94a3b8">≈ ' + pf((totInc + _eLoad) * (1 - dPct / 100)) + ' of list</div>' : '')
+            : '<span style="color:#94a3b8">—</span>', ";text-align:right") +
+        '</tr>';
     });
+    h += '</tbody></table></div>';
     /* Explicit, DEFERRED Save. Typing in a discount / incentive box writes nothing; this button is
        the only thing that commits — it reads every box on the screen and saves them in one pass,
        then returns to the client list. "Back" leaves without saving (discards unsaved edits). */
@@ -21642,14 +21631,16 @@ function viewCatalogue() {
         was += _v; now += _v;
         return;
       }
-      var brand = i.brand || productBrandByCode(i.code) || (c && c.brand) || "";
+      var brand = lineBrand(i, c);                                  /* v6.9.525 - the code's brand */
       /* v6.9.517 - A BLANK IS NOT A ZERO. pricedLines reads a blank as "use the preset" and
          prices every screen that way; this read the same blank as 0% and reported a delivery
          that was RIGHT as billed at full list. He caught it on ATUL4000/200726/001 - twenty
          blank lines, correct at 35% on his screen, reported by me as Rs 45,690 of error, more
-         than half the figure on the sheet. One meaning, the same in both places. */
+         than half the figure on the sheet. One meaning, the same in both places.
+         v6.9.525 - AND ONLY A STORED ZERO IS A FAULT: a typed figure is his decision, so
+         `preset` is the rate on file only for a stored-0 line, and the line's own figure else. */
       var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, brand, _day);
-      var preset = clientDiscountOn(cl, brand, _day);
+      var preset = lineStoredZero(i) ? rateOnFileOn(cl, brand, (c && c.createdAt) || _day) : frozen;
       /* v6.9.277 - IS THIS RATE AN MRP AT ALL?
          Until v6.9.277 a challan raised from a quote stored the NET as its rate and disc 0 -
          71,561 became a 37,927 "rate" with no discount recorded. Applying a preset to that
@@ -21671,6 +21662,38 @@ function viewCatalogue() {
   }
   /* Rewrite this challan's lines at the preset now in force. Deliberately narrow: it raises a
      discount to the preset and never lowers one, and it touches nothing but disc. */
+  /* ===== THE RATE ON FILE, ONE RULE  (v6.9.525, 19 September 2026) =====
+     HIS WORDS: "why its not strictly matching preset discount, its confusing to cross check every
+     time ... fix it permanently and make error free provision for all". Three rules, here, read
+     by chDiscGap, chRepriced and the Today card, so what is called wrong is wrong the same way
+     everywhere.
+
+     1. THE CODE'S BRAND. The old challan app stamped the challan's brand on every line, so a
+        clamp or a lubricant (catalogue: Accessory, sold at list) carried "Huliot" and was
+        judged against Huliot's 50%. Measured: 12 stored-0 lines carry a brand their code does
+        not. The catalogue is the master; the line's brand is the fallback for a code not in it.
+     2. FROM THE DAY IT EXISTED. An undated row applies from its own stamp. A delivery written
+        before the row cannot be "below" a rate that was not there. */
+  function lineBrand(i, c) {
+    return productBrandByCode(i && i.code) || (i && i.brand) || (c && c.brand) || "";
+  }
+  function rateOnFileOn(cl, brand, onAt) {
+    var day = String(onAt || "").slice(0, 10);
+    var row = discRowOn(cl, brand, day);
+    if (!row) return 0;
+    if (!discFrom(row) && day) {
+      var st = discStamp(row), at = Date.parse(String(onAt || ""));
+      /* to the minute when the delivery carries its time - a row typed at 14:59 UTC did not exist
+         for a challan written at 08:36 UTC the same day (PANKAJ0022/250726/001, measured) */
+      if (st && (isFinite(at) && String(onAt).length > 10 ? st > at : ymdLocal(new Date(st)) > day)) return 0;
+    }
+    return Number(row.pct) || 0;
+  }
+  /* 3. ONLY A STORED ZERO IS THE FAULT. A blank prices live (pricedLines); a typed figure -
+        50 where the file says 55, 44.5 where it says 45 - is his decision and is never flagged. */
+  function lineStoredZero(i) {
+    return i && i.disc != null && i.disc !== "" && Number(i.disc) === 0;
+  }
   function chRepriced(c) {
     var cl = c && c.customerName;
     var _day = String((c && c.createdAt) || "").slice(0, 10);   /* v6.9.379 - as chDiscGap judges it */
@@ -21679,14 +21702,16 @@ function viewCatalogue() {
       /* v6.9.489 - the same predicate chDiscGap reads, so what is offered and what is written
          can never disagree. A hand-worked credit and a labour line come back untouched. */
       if (chNoReprice(i)) return Object.assign({}, i);
-      var brand = i.brand || productBrandByCode(i.code) || (c && c.brand) || "";
+      var brand = lineBrand(i, c);                                  /* v6.9.525 - the code's brand */
       /* v6.9.517 - A BLANK IS NOT A ZERO. pricedLines reads a blank as "use the preset" and
          prices every screen that way; this read the same blank as 0% and reported a delivery
          that was RIGHT as billed at full list. He caught it on ATUL4000/200726/001 - twenty
          blank lines, correct at 35% on his screen, reported by me as Rs 45,690 of error, more
-         than half the figure on the sheet. One meaning, the same in both places. */
+         than half the figure on the sheet. One meaning, the same in both places.
+         v6.9.525 - AND ONLY A STORED ZERO IS A FAULT: a typed figure is his decision, so
+         `preset` is the rate on file only for a stored-0 line, and the line's own figure else. */
       var frozen = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, brand, _day);
-      var preset = clientDiscountOn(cl, brand, _day);
+      var preset = lineStoredZero(i) ? rateOnFileOn(cl, brand, (c && c.createdAt) || _day) : frozen;
       /* v6.9.277 - the same guard. A rate that is not the list price is a net figure, and a
          percentage applied to a net figure discounts what has already been discounted. */
       var list = productListByCode(i.code);                 /* v6.9.489 - a map, not a scan */
@@ -34502,8 +34527,8 @@ function viewCatalogue() {
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b91c1c"><b>Billed above the rate on file</b></div>' +
       '<h3 style="font-size:16px;margin:4px 0 2px">' + rows.length + ' deliver' + (rows.length === 1 ? 'y' : 'ies') +
         ' carr' + (rows.length === 1 ? 'ies' : 'y') + ' a line priced below the client\'s rate &middot; ' + esc(money(tot)) + ' over</h3>' +
-      '<div class="meta" style="font-size:13px">Each was written with 0% frozen on a line while a rate was on file for that client and brand. ' +
-        'Finalise refuses every one of these until it is corrected &mdash; open it, press <b>Correct the price</b>, and the line takes the rate on file. ' +
+      '<div class="meta" style="font-size:13px">Each has a line stored at 0% while a rate was on file for that client and the line\'s own brand on the day it was written. ' +
+        'Finalise puts it right by itself &mdash; the line takes the rate on file and the audit trail says so; or open it and press <b>Do it now</b>. ' +
         (open < rows.length ? '<b>' + (rows.length - open) + '</b> ' + (rows.length - open === 1 ? 'is' : 'are') + ' already finalised and need' + (rows.length - open === 1 ? 's' : '') + ' a credit note instead. ' : '') +
         'The check runs on every open, over the whole book, with the same reading finalise uses.</div>';
     rows.slice(0, 6).forEach(function (r) {
@@ -43230,26 +43255,25 @@ function viewCatalogue() {
          correction offered is the same audited re-price sheet that has always done it. The OWNER
          may write it as it stands with a reason - "negotiated at list", "quote price honoured" -
          and the reason goes on the audit row with his name. Accounts may not. */
+      /* v6.9.525 - AUTO MODE. HIS WORDS: "I dont want these kind of messages, every time have to
+         correct rates, its very difficult, make a better auto mode system." So no question: a
+         stored-0 line takes the rate on file here, at the moment the money is decided, the
+         challan is saved with it, and an audit row names every line and the difference. The
+         refusal, the reason box and the "correct or explain" toast are gone. */
       var hGap = chDiscGap(hc);
+      var hAuto = "";
       if (hGap && hGap.n) {
-        var hWhy = String((el("hsb_gapwhy") || {}).value || "").trim();
-        if (!hOwn) {
-          toast(hGap.n + " line" + (hGap.n === 1 ? "" : "s") + " below the rate on file \u2014 " +
-                money(hGap.diff) + ". The owner corrects it or writes a reason. Nothing was stamped.");
-          return;
-        }
-        if (hWhy.length < 8) {
-          S.hsbGap = { id: hc.id, gap: hGap };
-          render();
-          toast(hGap.lines.map(function (l) { return l.desc + " at " + l.frozen + "% \u2014 rate on file " + l.preset + "%"; }).join("; ") +
-                ". Correct it, or give a reason to finalise it as it stands.");
-          return;
-        }
+        var hNew = chRepriced(hc);
+        hc.itemsJson = JSON.stringify(hNew);
+        hc.amount = hNew.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0);
+        save("challans", Object.assign({}, hc), true);
         try {
-          save("audit", { action: "challan:gap-override", actor: S.user, recId: hc.id,
-            detail: JSON.stringify({ chId: hc.id, no: hc.challanNo, diff: hGap.diff, n: hGap.n, why: hWhy,
-              lines: hGap.lines.map(function (l) { return { code: l.code, frozen: l.frozen, preset: l.preset }; }) }) }, true);
+          save("audit", { action: "challan:auto-reprice", actor: S.user, recId: hc.id,
+            detail: JSON.stringify({ chId: hc.id, no: hc.challanNo, was: hGap.was, now: hGap.now, diff: hGap.diff, n: hGap.n,
+              why: "auto at finalise - a stored 0% took the rate on file",
+              lines: hGap.lines.map(function (l) { return { code: l.code, from: l.frozen, to: l.preset }; }) }) }, true);
         } catch (e) { }
+        hAuto = " " + hGap.n + " line" + (hGap.n === 1 ? "" : "s") + " at 0% took the rate on file \u2014 " + money(hGap.diff) + " off.";
       }
       /* v6.9.324 - THE FURTHER DISCOUNT IS A QUESTION, AND A QUESTION HAS TO BE ANSWERED.
          Same shape as the brand discount above it: an amount, or the tick that says there is
@@ -43343,7 +43367,7 @@ function viewCatalogue() {
       S.modal = null;
       _hsbCache = null;
       render();
-      toast("Challan " + (hc.challanNo || "") + " finalised." +
+      toast("Challan " + (hc.challanNo || "") + " finalised." + hAuto +
         (hxAmt > 0 ? " " + money(hxAmt) + " further discount taken off." : "") +
         (hOff.length ? " No incentive on it for " + hOff.map(function (x) { return x.name; }).join(", ") + "." : "") +
         (hset.length ? " Discount set for " + hset.join(", ") + "." : "") +
