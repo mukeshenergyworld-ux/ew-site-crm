@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.532";
+  var APP_VERSION = "6.9.533";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -17938,31 +17938,35 @@ function viewCatalogue() {
           '</div></div>';
       });
     }
-    if (!list.length) h += '<div class="empty">No returns registered yet.</div>';
-    list.forEach(function (r) {
+    if (!list.length) return h + '<div class="empty">No returns registered yet.</div>';
+    /* v6.9.533 - his third list, item 12: "compact, excel like". One row per return, newest
+       first; the step button, the receipt and the question are in the last cell. */
+    h += xlTable("returns", [
+      { k: "no", t: "RETURN" }, { k: "st", t: "STATUS" }, { k: "go", t: "" }, { k: "client", t: "CLIENT" },
+      { k: "against", t: "AGAINST" }, { k: "items", t: "ITEMS" }, { k: "reason", t: "REASON" }, { k: "pickup", t: "PICKUP" },
+      { k: "raised", t: "RAISED", w: "84px" }, { k: "by", t: "BY" }, { k: "in", t: "BOOKED IN BY" }
+    ], list.map(function (r) {
       var stt = r.status || "Raised";
       var cls = stt === "Received" ? "Won" : (stt === "Raised" ? "due" : "teal");
       var its = [];
       try { its = JSON.parse(r.itemsJson || "[]"); } catch (e) { }
-      h += '<div class="card"><h3>' + esc(r.returnNo) + ' <span class="pill ' + cls + '">' + esc(stt) + '</span>' +
-        (chProofAny(r).has ? ' ' + proofSealFor(r) : '') + '</h3>' +
-        '<div class="meta">' + esc(r.customerName || "") + (r.site ? ' &middot; ' + esc(r.site) : "") +
-        (r.challanNo ? '<br>Against challan ' + esc(r.challanNo) : "") +
-        '<br>' + its.map(function (i) { return esc(i.desc) + " x" + i.qty; }).join(", ") +
-        (r.reason ? '<br>Reason: ' + esc(r.reason) : "") +
-        (r.driver ? '<br>Pickup: ' + esc(r.driver) + (r.vehicle ? " (" + esc(r.vehicle) + ")" : "") : "") +
-        '<br>' + esc(d10(r.createdAt)) + ' by ' + esc(r.createdBy) +
-        (r.receivedBy ? '<br>Booked in by ' + esc(r.receivedBy) : "") + '</div>' +
-        '<div class="acts">' +
-        (stt === "Raised" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Picked up">Picked up</button>' : "") +
-        (stt === "Picked up" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received">Received at godown</button>' : "") +
-        /* v6.9.241 - once the material is back in, the paper signed for it can be attached */
-        (stt === "Received" && !chProofAny(r).has
-          ? (canAttachProof() ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '">Attach goods-in receipt</button>' : '') : "") +
-        /* v6.9.371 - was hand-written and admin-only, so nobody could ASK about a return */
-        cxCardBtn("returns", r.id) +
-        '</div></div>';
-    });
+      var itxt = its.map(function (x) { return String(x.desc || x.code || "") + " x" + (Number(x.qty) || 0); }).join(", ");
+      var d = String(r.createdAt || "").slice(0, 10);
+      return { v: { no: r.returnNo || "", st: stt, go: "", client: r.customerName || "", against: r.challanNo || "", items: itxt, reason: r.reason || "",
+                    pickup: r.driver || "", raised: d, by: r.createdBy || "", "in": r.receivedBy || "" },
+        cells: {
+          no: '<b>' + esc(r.returnNo || "") + '</b>' + (chProofAny(r).has ? ' ' + proofSealFor(r) : ''),
+          st: '<span class="pill ' + cls + '" style="font-size:12px">' + esc(stt) + '</span>',
+          go: (stt === "Raised" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Picked up">Picked up</button> ' : "") +
+              (stt === "Picked up" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received">Received at godown</button> ' : "") +
+              (stt === "Received" && !chProofAny(r).has && canAttachProof() ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '">Attach goods-in receipt</button> ' : "") +
+              cxCardBtn("returns", r.id),
+          client: '<b>' + esc(r.customerName || "") + '</b>' + (r.site ? ' <span style="color:#64748b">' + esc(r.site) + '</span>' : ""),
+          against: esc(r.challanNo || "—"), items: esc(itxt || "—"), reason: esc(r.reason || "—"),
+          pickup: r.driver ? esc(r.driver) + (r.vehicle ? " (" + esc(r.vehicle) + ")" : "") : "—",
+          raised: esc(dmy(d)), by: whoChip(r.createdBy), "in": r.receivedBy ? whoChip(r.receivedBy) : "—"
+        } };
+    }), "the client, the items and who moved it");
     return h;
   }
 
@@ -38424,8 +38428,10 @@ function viewCatalogue() {
        in both places a man would look. */
     ["HISAB",      ["billing", "register", "payments", "paidout", "dues"]],
     ["Deliveries", ["challans", "register", "freight", "returns", "stock"]],
-    ["Leads",      ["leads", "brandfollow", "quotes", "pitch", "winloss", "rules"]],
-    ["Clients",    ["clients", "followups", "quotes", "visits", "discounts", "customers"]],
+    /* v6.9.533 - his third list, item 13: "merge Leads and Clients into one tab with sub-tabs",
+       and item 16: "remove Leads tab from header". One group; the lead board is its second
+       chip. Every chip the two groups had is still here. */
+    ["Clients",    ["clients", "leads", "brandfollow", "followups", "quotes", "visits", "discounts", "pitch", "winloss", "rules", "customers"]],
     ["Service",    ["service", "spares"]],
     ["Products",   ["products", "catalogue", "pricelist", "rates"]],
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins", "tools"]],
@@ -38488,6 +38494,7 @@ function viewCatalogue() {
      configure, nothing that can disagree with the screen. A screen in no group - Search, the
      dossier, the matrix - leaves the band where it was, so it does not flicker on a jump. */
   function navOpenGrp() {
+    if (S.navGrp === "Leads") S.navGrp = "Clients";   /* v6.9.533 - the group merged into Clients */
     return navGroupOf(S.tab, S.navGrp) || S.navGrp || "";
   }
   /* Called once per paint. Returns the group it moved the band to, or "" if it left
