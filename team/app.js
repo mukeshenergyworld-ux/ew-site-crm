@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.523";
+  var APP_VERSION = "6.9.524";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14146,6 +14146,19 @@ function viewCatalogue() {
       '<div id="p_pic_hint" style="font-size:12px;line-height:1.45;margin:4px 2px 0;color:#b45309">' +
         esc(PIC_HINT[picProblem(p.pic)] || "") + '</div>' +
       '<div id="p_pic_prev" style="margin:8px 2px 0">' + picPreviewHtml(p.pic) + '</div>' +
+      /* v6.9.524 - his item 11: "how to edit product specifications". Said where they live
+         until catalogSave can take them (backend, after V128). Read-only here on purpose - a
+         box that looks saved and is not is worse than no box. */
+      (p.code
+        ? '<div style="margin:12px 2px 0;padding:9px 11px;border:1px solid #e2e8f0;border-radius:9px;background:#f8fafc">' +
+          '<div class="meta" style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#64748b"><b>Specifications</b></div>' +
+          (String(p.specs || "").trim()
+            ? '<div style="font-size:13px;margin-top:4px">' + specLines(p.specs).map(function (l) { return esc(l.label ? l.label + ": " + l.value : l.value); }).join("<br>") + '</div>'
+            : '<div class="meta" style="font-size:13px;margin-top:4px">None entered for this product yet.</div>') +
+          '<div class="meta" style="font-size:12px;margin-top:6px">Specifications are typed in the <b>Product Catalog</b> sheet, column <b>L (Specs)</b>, on the row for <b>' + esc(p.code) + '</b> \u2014 ' +
+          'one line, parts separated by <b>|</b>, for example <i>Size : 380W x 540D x 410H mm | Colour : White</i>. They show here and on the proposal after the next login. ' +
+          'Typing them on this form needs the next backend release.</div></div>'
+        : '') +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="cat-save">Save product</button></div>';
   }
@@ -20717,6 +20730,15 @@ function viewCatalogue() {
     return out;
   }
 
+  /* v6.9.524 - the sites a partner is named on. One rule, read by the partners sheet and by
+     his book, so the count on the sheet is the list on the card. */
+  function partnerSites(name) {
+    var nm = String(name || "").trim().toLowerCase();
+    if (!nm) return [];
+    return (S.data.sites || []).filter(function (st) {
+      return [st.architect, st.plumber, st.builder, st.pmc].some(function (x) { return String(x || "").trim().toLowerCase() === nm; });
+    });
+  }
   function partnerBook(name) {
     var nm = String(name).trim().toLowerCase();
     /* A partner earns on every client he is NAMED on (as plumber / architect / builder /
@@ -20734,9 +20756,7 @@ function viewCatalogue() {
     var bk = incentiveBook(myClients, function (cl, br, c) {
       return partnerBookRate(cl, br, c, nm);
     }, nm);
-    bk.sites = S.data.sites.filter(function (st) {
-      return [st.architect, st.plumber, st.builder, st.pmc].some(function (x) { return String(x || "").toLowerCase() === nm; });
-    });
+    bk.sites = partnerSites(name);
     return bk;
   }
 
@@ -21037,19 +21057,38 @@ function viewCatalogue() {
       ' <span class="pill teal">' + b.sites.length + '</span></h3><div class="grow"></div>' +
       (canSee("sites") ? '<button class="btn sm" data-act="p-newsite" data-n="' + esc(name) + '" data-role="' + esc(String(a.role || "").toLowerCase()) + '">+ New project</button>' : "") + '</div>';
     if (!b.sites.length) h += '<div class="empty">No sites linked yet. Add this partner’s running projects so each one can be tracked and pitched.</div>';
-    b.sites.forEach(function (st) {
-      var al = siteAlerts(st);
-      var who = [st.architect ? "Arch: " + st.architect : "", st.plumber ? "Plumber: " + st.plumber : "", st.builder ? "Builder: " + st.builder : "", st.pmc ? "PMC: " + st.pmc : ""].filter(Boolean).join(" · ");
-      h += '<div class="card"><h3>' + esc(st.name) + ' <span class="pill teal">stage ' + stageNo(st) + '</span>' +
-        ' <span style="font-size:12px;color:#94a3b8">' + esc(st.stage || "-") + '</span>' +
-        (al.open ? ' <span class="pill due">' + al.open + ' to pitch now</span>' : "") +
-        (al.closed ? ' <span class="pill">' + al.closed + ' closed</span>' : "") + '</h3>' +
-        '<div class="meta">' + esc(st.client || "") + (st.city ? ' · ' + esc(st.city) : "") +
-        (who ? '<br>' + esc(who) : "") + '</div>' +
-        '<div class="acts">' +
-        '<button class="btn sm" data-act="matrix" data-id="' + esc(st.id) + '">Pitch matrix</button>' +
-        '<button class="btn sm ghost" data-act="site-open" data-id="' + esc(st.id) + '">Edit</button></div></div>';
-    });
+    else {
+      /* v6.9.524 - his item 15: "clicking sites open all sites with related incentives". The
+         sites were cards with no money on them. One line per site, and the delivered value and
+         the incentive earned come from the SAME rows the statement above is built from - a
+         challan is matched to a site by its site name, else by its client. */
+      var _bySite = {}, _byClient = {};
+      (b.rows || []).forEach(function (r) {
+        var sk = dkey(r.site), ck = dkey(r.client);
+        if (sk) { _bySite[sk] = _bySite[sk] || { base: 0, inc: 0 }; _bySite[sk].base += r.base || 0; _bySite[sk].inc += r.inc || 0; }
+        _byClient[ck] = _byClient[ck] || { base: 0, inc: 0 }; _byClient[ck].base += r.base || 0; _byClient[ck].inc += r.inc || 0;
+      });
+      h += xlTable("p-sites", [
+        { k: "site", t: "SITE", w: "130px" }, { k: "client", t: "CLIENT" }, { k: "stage", t: "STAGE", n: 1 },
+        { k: "added", t: "ADDED", n: 1 }, { k: "by", t: "BY" }, { k: "base", t: "DELIVERED", r: 1, n: 1 },
+        { k: "inc", t: "INCENTIVE", r: 1, n: 1 }, { k: "go", t: "" }
+      ], b.sites.map(function (st) {
+        var al = siteAlerts(st), m = _bySite[dkey(st.name)] || _byClient[dkey(st.client)] || { base: 0, inc: 0 };
+        var added = String(st.createdAt || "").slice(0, 10);
+        return { v: { site: st.name, client: st.client || "", stage: stageNo(st) || 0, added: added, by: st.createdBy || "", base: m.base, inc: m.inc },
+          cells: {
+            site: '<b data-act="site-open" data-id="' + esc(st.id) + '" style="cursor:pointer;color:#0f766e">' + esc(st.name) + '</b>' +
+                  (al.open ? ' <span class="pill due">' + al.open + ' to pitch</span>' : ""),
+            client: esc(st.client || "\u2014"),
+            stage: '<span class="pill teal">' + esc(String(stageNo(st) || "?")) + '</span> <span style="color:#94a3b8;font-size:12px">' + esc(st.stage || "") + '</span>',
+            added: added ? esc(dmy(added)) : '<span style="color:#94a3b8">\u2014</span>',
+            by: esc(st.createdBy || "\u2014"),
+            base: m.base > 0.5 ? money(m.base) : '<span style="color:#94a3b8">\u2014</span>',
+            inc: m.inc > 0.5 ? '<b style="color:#0f766e">' + money(m.inc) + '</b>' : '<span style="color:#94a3b8">\u2014</span>',
+            go: '<button class="btn sm" data-act="matrix" data-id="' + esc(st.id) + '" style="padding:2px 8px;font-size:12px">Pitch matrix</button>'
+          } };
+      }), "who added it, what was delivered and what he earned");
+    }
 
     /* The challan-by-challan card list that used to sit here is gone: every one of
        those challans is now under its client in the statement above, one tap away,
@@ -32114,18 +32153,31 @@ function viewCatalogue() {
         { k: "area", t: "AREA" },
         { k: "clients", t: "CLIENTS", r: 1, n: 1 },
         { k: "live", t: "LIVE", r: 1, n: 1 },
-        { k: "open", t: "QUOTED", r: 1, n: 1 }
+        { k: "open", t: "QUOTED", r: 1, n: 1 },
+        /* v6.9.524 - his item 15: "how many new site entered of partner recently and by whome" */
+        { k: "new30", t: "NEW 30D", r: 1, n: 1 }, { k: "newby", t: "ADDED BY" }
       ];
       if (_adm) _cols.push({ k: "inc", t: "INCENTIVE", r: 1, n: 1 });
+      _cols.push({ k: "edit", t: "" });
+      var _since = (function () { var d = new Date(); d.setDate(d.getDate() - 30); return ymdLocal(d); })();
       var _rows = list.map(function (row) {
         var p = row.p, st = row.st, bk = _adm ? partnerBook(p.name) : null;
+        var _ps = partnerSites(p.name), _new = _ps.filter(function (x) { return String(x.createdAt || "").slice(0, 10) >= _since; });
+        var _newest = _new.slice().sort(function (a, b) { return String(b.createdAt || "") < String(a.createdAt || "") ? -1 : 1; })[0];
         return {
           v: { name: p.name, mobile: p.mobile || "", area: p.area || "", clients: st.clients,
-               live: st.live, open: st.open, inc: bk ? bk.pending : 0 },
+               live: st.live, open: st.open, inc: bk ? bk.pending : 0, new30: _new.length, newby: _newest ? String(_newest.createdBy || "") : "" },
           cells: {
-            /* the act is on the NAME, not the row - see the component's header for why */
-            name: '<b data-act="as-open" data-id="' + esc(p.id) + '" style="cursor:pointer;color:#0f766e">' +
+            /* the act is on the NAME, not the row - see the component's header for why.
+               v6.9.524 - and it opens his BOOK (sites and incentives), not the edit form: his
+               item 15, "clicking sites open all sites with related incentives". */
+            name: (canSee("commission")
+                    ? '<b data-act="p-open" data-n="' + esc(p.name) + '" style="cursor:pointer;color:#0f766e">'
+                    : '<b data-act="as-open" data-id="' + esc(p.id) + '" style="cursor:pointer;color:#0f766e">') +
                   esc(p.name) + '</b>' + (p.flag ? ' <span class="pill Lost">no number</span>' : ""),
+            new30: _new.length ? '<b style="color:#0d9488">' + _new.length + '</b>' : '<span style="color:#94a3b8">\u2014</span>',
+            newby: _newest ? esc(String(_newest.createdBy || "")) + ' <span style="color:#94a3b8;font-size:12px">' + esc(dmy(_newest.createdAt)) + '</span>' : '<span style="color:#94a3b8">\u2014</span>',
+            edit: '<button class="btn sm ghost" data-act="as-open" data-id="' + esc(p.id) + '" style="padding:2px 8px;font-size:12px">Edit</button>',
             mobile: p.mobile
               ? '<a href="tel:' + esc(p.mobile) + '">' + esc(p.mobile) + '</a>'
               : '<span style="color:#dc2626">none</span>',
@@ -42464,6 +42516,9 @@ function viewCatalogue() {
     if (act === "p-open") {
       S.partner = t.getAttribute("data-n");
       S.pKind = (t.getAttribute("data-k") === "exec") ? "exec" : "";
+      /* v6.9.524 - the partners sheet presses this too. Only viewIncentives draws the book,
+         so the act carries the tab - otherwise a tap on the sheet sets a name and shows nothing. */
+      if (S.tab !== "commission" && canSee("commission")) { S.tab = "commission"; try { tabUse(S.tab); navBump(S.tab); } catch (e) { } }
       S.pMonth = ""; S.pOpen = {}; render(); return;
     }
     if (act === "p-back") { S.partner = ""; S.pKind = ""; S.pOpen = {}; render(); return; }
