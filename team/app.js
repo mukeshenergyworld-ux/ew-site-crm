@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.512";
+  var APP_VERSION = "6.9.513";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14367,6 +14367,162 @@ function viewCatalogue() {
       ". Everything else is correct \u2014 make it again in a moment and they will be there.";
   }
 
+  /* ---- WHAT ONE QUOTED LINE IS WORTH  (v6.9.513) ------------------------------
+     Lifted out of quotePdf, where it had always lived, the day a second screen needed it.
+     The order is deliberate and is not a fallback chain by accident:
+       1. an explicit per-line override the man typed
+       2. else the line's OWN brand discount, snapshotted onto the item when the quote was saved
+       3. else the quote's blended discountPct - which is all an old quote carries */
+  function qLineDisc(q, i) {
+    var bd = Number((q && q.discountPct) || 0) || 0;
+    var d = (i.disc === "" || i.disc === undefined || i.disc === null)
+      ? ((i.bd !== undefined && i.bd !== null) ? Number(i.bd) : bd)
+      : Number(i.disc);
+    return Number(d) || 0;
+  }
+  function qLineNet(q, i) { return Math.round(Number(i.price || 0) * (1 - qLineDisc(q, i) / 100)); }
+  function qItems(q) {
+    var a = []; try { a = JSON.parse((q && q.items) || "[]"); } catch (e) { a = []; }
+    return Array.isArray(a) ? a : [];
+  }
+
+  /* ================= A QUOTE, IN FULL AND READ ONLY  (v6.9.513) =================
+     HIS WORDS: "need detailed click to view, its view only, everthing relared to this quote,
+     also how many quotes quoted till date".
+
+     6.9.512 opened the universal search card - a number, a pill and a name. That answers "does
+     this exist", not "what is on it". This answers the second question, and nothing on it can
+     change a record: the status select, Revise, Make challan and the PDF buttons all stay on
+     the Quotes screen where they belong. */
+  function qStatusTone(st) {
+    var s = String(st || "Draft");
+    if (s === "Won")  return "background:#ecfdf5;color:#065f46;border-color:#6ee7b7";
+    if (s === "Lost") return "background:#fef2f2;color:#991b1b;border-color:#fecaca";
+    if (s === "Sent") return "background:#eff6ff;color:#1e40af;border-color:#bfdbfe";
+    return "background:#fff7ed;color:#9a3412;border-color:#fed7aa";
+  }
+  function modalQuoteView(q) {
+    if (!q) return '<div class="empty">That quote is not on this phone.</div>';
+    var items = qItems(q);
+    var opt = items.filter(function (i) { return i.optional; });
+    var live = items.filter(function (i) { return !i.optional; });
+    var money2 = function (n) { return money(n); };
+
+    var h = '<h2 style="margin:0 0 2px">' + esc(q.quoteNo || "(no number)") + '</h2>' +
+      '<div class="meta" style="font-size:13px">' + esc(q.client || "") +
+      (q.siteName ? ' · ' + esc(q.siteName) : "") + '</div>' +
+      '<div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0 2px">' +
+      '<span class="pill" style="' + qStatusTone(q.status) + '">' + esc(q.status || "Draft") + '</span>' +
+      (Number(q.version) > 1 ? '<span class="pill">version ' + esc(q.version) + '</span>' : "") +
+      (q.brand ? '<span class="pill">' + esc(q.brand) + '</span>' : "") +
+      '<span class="pill">' + esc(d10(q.createdAt)) + '</span>' +
+      (q.createdBy ? '<span class="pill">by ' + esc(q.createdBy) + '</span>' : "") +
+      '</div>';
+
+    /* why it was lost, if it was - the reason he typed, not a guess */
+    if (String(q.status || "") === "Lost") {
+      var _lr = null; try { _lr = lossOf(q.id); } catch (e) { _lr = null; }
+      h += '<div class="card" style="border-color:#fecaca;background:#fef2f2;margin:8px 0 0;padding:8px 10px">' +
+        '<b style="color:#991b1b;font-size:13px">Lost</b> <span style="font-size:13px">' +
+        (_lr ? esc(_lr.reason) + (_lr.lostTo ? " · to " + esc(_lr.lostTo) : "") +
+               (_lr.note ? '<br><span class="meta">' + esc(_lr.note) + '</span>' : "")
+             : '<span class="meta">no reason recorded</span>') + '</span></div>';
+    }
+
+    /* ---- the lines ---- */
+    var cell = 'padding:5px 6px;border-top:1px solid #e2e8f0;font-size:12.5px';
+    var rowHtml = function (i, n) {
+      var d = qLineDisc(q, i), nr = qLineNet(q, i), qty = Number(i.qty) || 0;
+      /* v6.9.513 - PRODUCT then AMOUNT, and the derivation after. Measured at 390px: the table
+         is 419px inside a 340px box, and with the old order the amount - the one figure he opens
+         a quote to read - was the column behind the scroll. The row number was decoration; the
+         unit joins the code line, where there is already a second line. */
+      return '<tr' + (i.optional ? ' style="background:#fffdf5"' : '') + '>' +
+        '<td style="' + cell + '"><b>' + esc(i.desc || i.code || "") + '</b>' +
+          '<div style="color:#94a3b8;font-size:12px">' + esc(n) + '. ' + esc(i.code || "") +
+            (i.brand ? ' · ' + esc(i.brand) : "") +
+            (i.unit ? ' · ' + esc(i.unit) : "") + '</div>' +
+          (i.optional ? '<span class="pill" style="background:#fef3c7;color:#92400e">option, not in the total</span>' : "") +
+        '</td>' +
+        '<td style="' + cell + ';text-align:right;white-space:nowrap;font-weight:700">' +
+          (i.optional ? '<span style="color:#94a3b8">' + money2(qty * nr) + '</span>' : money2(qty * nr)) + '</td>' +
+        '<td style="' + cell + ';text-align:center;white-space:nowrap">' + esc(qty) + '</td>' +
+        '<td style="' + cell + ';text-align:right;white-space:nowrap;color:#64748b">' + money2(i.price) + '</td>' +
+        '<td style="' + cell + ';text-align:center;white-space:nowrap">' + esc(d) + '%</td>' +
+        '<td style="' + cell + ';text-align:right;white-space:nowrap">' + money2(nr) + '</td></tr>';
+    };
+    var TH = function (x, a) {
+      return '<th style="padding:5px 6px;font-size:12px;color:#fff;font-weight:700;white-space:nowrap;text-align:' + (a || "left") + '">' + esc(x) + '</th>';
+    };
+    /* v6.9.513 - max-width:100%. Seven columns cannot fit 390px and are not meant to - the
+       TABLE scrolls, which is the excel-like shape he asked for in item 23. Without this the
+       box did not hold it and the whole PAGE scrolled sideways by 6px instead. */
+    h += '<div style="margin-top:10px;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch">' +
+      '<table style="border-collapse:collapse;width:100%;min-width:100%">' +
+      '<tr style="background:#0b3b36">' + TH("PRODUCT") + TH("AMOUNT", "right") + TH("QTY", "center") +
+        TH("MRP", "right") + TH("DISC", "center") + TH("RATE", "right") + '</tr>';
+    live.forEach(function (i, n) { h += rowHtml(i, n + 1); });
+    opt.forEach(function (i, n) { h += rowHtml(i, live.length + n + 1); });
+    h += '</table></div>';
+    if (!items.length) h += '<div class="empty">No lines on this quote.</div>';
+
+    /* ---- the totals AS SAVED. Not recomputed: what he sent the customer is what the row
+       carries, and a panel that quietly re-adds it could disagree with the paper. ---- */
+    h += '<div class="card" style="margin:10px 0 0;padding:9px 11px;background:#f0fdfa;border-color:#99f6e4">' +
+      '<div class="row" style="justify-content:space-between"><span class="meta">At MRP</span><b>' + money2(q.gross) + '</b></div>' +
+      '<div class="row" style="justify-content:space-between"><span class="meta">Discount</span><b>' + esc(q.discountPct) + '%</b></div>' +
+      '<div class="row" style="justify-content:space-between"><span class="meta">Net</span><b>' + money2(q.net) + '</b></div>' +
+      (Number(q.gstAmt) ? '<div class="row" style="justify-content:space-between"><span class="meta">GST</span><b>' + money2(q.gstAmt) + '</b></div>' : "") +
+      '<div class="row" style="justify-content:space-between;border-top:1px solid #99f6e4;margin-top:4px;padding-top:4px">' +
+      '<b>Total</b><b style="font-size:15px">' + money2(q.total) + '</b></div>' +
+      (opt.length ? '<div class="meta" style="font-size:12px;margin-top:4px">' + opt.length +
+        ' option line' + (opt.length === 1 ? "" : "s") + ' shown above and counted in none of these figures.</div>' : "") +
+      '</div>';
+    if (q.notes) h += '<div class="meta" style="font-size:12.5px;margin-top:6px">' + esc(q.notes) + '</div>';
+
+    /* ---- HOW MANY QUOTES TILL DATE. His second question, answered twice over: this man,
+       and the whole book, because "till date" can mean either and both are cheap. ---- */
+    var all = (S.data.quotes || []);
+    var mine = all.filter(function (x) {
+      return String(x.client || "").trim().toLowerCase() === String(q.client || "").trim().toLowerCase();
+    }).sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
+    var by = {}; mine.forEach(function (x) { var s2 = String(x.status || "Draft"); by[s2] = (by[s2] || 0) + 1; });
+    var val = mine.reduce(function (a, x) { return a + (Number(x.net) || 0); }, 0);
+    var won = mine.filter(function (x) { return String(x.status) === "Won"; })
+                  .reduce(function (a, x) { return a + (Number(x.net) || 0); }, 0);
+
+    h += '<div class="card" style="margin:10px 0 0;padding:9px 11px">' +
+      '<h3 style="margin:0 0 4px;font-size:14px">' + esc(q.client || "This client") + ' · quoted till date</h3>' +
+      '<div style="font-size:13px"><b>' + mine.length + '</b> quotation' + (mine.length === 1 ? "" : "s") +
+      ' worth <b>' + money2(val) + '</b> net' +
+      (won ? ', of which <b style="color:#0f766e">' + money2(won) + '</b> won' : "") + '.</div>' +
+      '<div class="row" style="gap:5px;flex-wrap:wrap;margin-top:5px">' +
+      Object.keys(by).map(function (k) {
+        return '<span class="pill" style="' + qStatusTone(k) + '">' + esc(k) + ' ' + by[k] + '</span>';
+      }).join("") + '</div>';
+    if (mine.length > 1) {
+      h += '<div style="margin-top:7px">' + mine.slice(0, 12).map(function (x) {
+        var here = String(x.id) === String(q.id);
+        return '<div style="font-size:12.5px;padding:3px 0;border-top:1px solid #f1f5f9;display:flex;gap:8px;align-items:baseline">' +
+          '<span style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+            (here ? '<b>' + esc(x.quoteNo) + '</b> ◀ this one' : esc(x.quoteNo)) + '</span>' +
+          '<span class="meta" style="white-space:nowrap">' + esc(d10(x.createdAt)) + '</span>' +
+          '<span style="white-space:nowrap;font-weight:600">' + money2(x.net) + '</span>' +
+          '<span class="pill" style="' + qStatusTone(x.status) + '">' + esc(x.status || "Draft") + '</span></div>';
+      }).join("") +
+      (mine.length > 12 ? '<div class="meta" style="font-size:12px;margin-top:4px">… and ' + (mine.length - 12) + ' more.</div>' : "") +
+      '</div>';
+    }
+    h += '<div class="meta" style="font-size:12px;margin-top:6px;border-top:1px solid #f1f5f9;padding-top:5px">' +
+      'Across the whole book: <b>' + all.length + '</b> quotation' + (all.length === 1 ? "" : "s") +
+      ' to date.</div></div>';
+
+    h += '<div class="meta" style="font-size:12px;margin-top:8px">View only. The status, Revise, ' +
+      'Make challan and the PDF live on the Quotes screen.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+    return h;
+  }
+
   function quotePdf(q) {
     var items = [];
     try { items = JSON.parse(q.items || "[]"); } catch (e) {}
@@ -14409,11 +14565,11 @@ function viewCatalogue() {
       var rows = items.map(function (i, idx) {
         /* per-line discount: explicit override wins, else the line's own brand
            discount snapshot (i.bd), else the quote's blended figure for old quotes. */
-        var d = (i.disc === "" || i.disc === undefined || i.disc === null)
-          ? ((i.bd !== undefined && i.bd !== null) ? Number(i.bd) : bd)
-          : Number(i.disc);
-        d = Number(d) || 0;
-        var net = Math.round(i.price * (1 - d / 100));
+        /* v6.9.513 - the rule moved out to qLineDisc/qLineNet so the read-only quote panel
+           prices a line exactly as the printed document does. Two copies of one arithmetic rule
+           is two answers to one question - the whole of item 22 this week. */
+        var d = qLineDisc(q, i);
+        var net = qLineNet(q, i);
         var _dl = descLines(i.desc);
         /* the room reads as the first bullet, so an existing quote layout carries
            it with no new column: "Master Bathroom, PDR" above the features */
@@ -41906,6 +42062,13 @@ function viewCatalogue() {
          false for every role, so renderCore's guard sent every tap to Today. uniHits/uniHtml are
          the universal search the top bar already runs from every screen, so the record opens
          over whatever he is looking at and no navigation can go wrong. */
+      /* v6.9.513 - a QUOTE opens in full. Everything else keeps the universal-search card,
+         which is the right answer for a client or a product and the wrong one for a document
+         he wants to read. Matched on the number the log already carries. */
+      var _clqRow = (S.data.quotes || []).filter(function (x) {
+        return String(x.quoteNo || "").trim() === _clq;
+      })[0];
+      if (_clqRow) { S.modal = modalQuoteView(_clqRow); render(); return; }
       var _clh = "";
       try { _clh = uniHtml(uniHits(_clq), _clq); } catch (e) { _clh = ""; }
       S.modal = '<h2 style="margin:0 0 2px">' + esc(_clq) + '</h2>' +
