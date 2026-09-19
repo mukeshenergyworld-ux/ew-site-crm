@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.540";
+  var APP_VERSION = "6.9.541";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -29339,7 +29339,7 @@ function viewCatalogue() {
       'It reads the catalogue and says what disagrees; the fix is one cell on the Products sheet.</div>' +
       '<div style="margin-top:8px;font-weight:700;color:' + (good ? '#0f766e' : '#b45309') + '">' +
       (good ? '\u2713 All ' + s.total + ' products agree with themselves.'
-            : s.faults + ' thing(s) to look at, out of ' + s.total + ' products') + '</div></div>';
+            : s.faults + (s.faults === 1 ? ' thing' : ' things') + ' to look at, out of ' + s.total + ' products') + '</div></div>';
 
     if (s.strays.length) {
       h += '<h3 style="margin:14px 0 6px;font-size:14px">Filed under a brand its own family does not use</h3>' +
@@ -29681,7 +29681,7 @@ function viewCatalogue() {
       h += '<div class="card" style="margin-top:8px">' +
         '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Same phone, two names</b></div>' +
         '<h3 style="font-size:15px;margin:3px 0 2px">' + esc(g.names.join(" / ")) + (g.master && g.names.indexOf(g.master.name) < 0 ? ' / ' + esc(g.master.name) : '') + '</h3>' +
-        '<div class="meta" style="font-size:12.5px">' + g.rows.length + ' machine record(s) on ' + esc(g.phone) +
+        '<div class="meta" style="font-size:12.5px">' + g.rows.length + (g.rows.length === 1 ? ' machine record' : ' machine records') + ' on ' + esc(g.phone) +
         (g.master ? ', whose client-master name is <b>' + esc(g.master.name) + '</b>' : ', and no client on the master has this phone') +
         '. His visits and his dues are split between the names.</div>' +
         '<div class="acts" style="margin-top:7px"><button class="btn sm" data-act="svc-merge-open" data-p="' + esc(g.phone) + '">Merge them</button></div></div>';
@@ -29700,7 +29700,7 @@ function viewCatalogue() {
             '<div class="grow"><b style="font-size:12.5px">' + money(cxValue("visits", v)) + '</b>' +
             '<div class="meta">' + esc(String(v.engineer || "")) + ' \u00b7 ' + esc(String(v.type || "")) +
             ' \u00b7 saved ' + esc(String(v.createdAt || "").slice(11, 19)) +
-            (nAmt(v.saltBags) ? ' \u00b7 ' + nAmt(v.saltBags) + ' bag(s) salt ' + money(nAmt(v.saltAmt)) : ' \u00b7 no salt') +
+            (nAmt(v.saltBags) ? ' \u00b7 ' + nAmt(v.saltBags) + (nAmt(v.saltBags) === 1 ? ' bag' : ' bags') + ' salt ' + money(nAmt(v.saltAmt)) : ' \u00b7 no salt') +
             '</div></div>' +
             (i === 0 ? '<span class="pill">first</span>'
                      : '<button class="btn sm" data-act="svc-dupcx" data-id="' + esc(v.id) + '">This one is a double</button>') +
@@ -29713,7 +29713,7 @@ function viewCatalogue() {
       h += '<div class="card" style="margin-top:8px">' +
         '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Not a client on the master</b></div>' +
         '<h3 style="font-size:15px;margin:3px 0 2px">' + esc(e.name) + '</h3>' +
-        '<div class="meta" style="font-size:12.5px">' + e.rows.length + ' service record(s) are filed under this ' +
+        '<div class="meta" style="font-size:12.5px">' + e.rows.length + (e.rows.length === 1 ? ' service record is' : ' service records are') + ' filed under this ' +
         'name, and there is no client by it. His service history and his account are two different books.' +
         (e.near.length
           ? ' It looks like <b>' + e.near.slice(0, 3).map(esc).join('</b> or <b>') + '</b>.'
@@ -29729,7 +29729,7 @@ function viewCatalogue() {
       var tot = sg.rows.reduce(function (a, r) { return a + r.diff; }, 0);
       h += '<div class="card" style="margin-top:8px">' +
         '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Salt against the price list</b></div>' +
-        '<h3 style="font-size:15px;margin:3px 0 2px">' + sg.rows.length + ' visit(s) do not match ' + money(sg.price) + ' a bag</h3>' +
+        '<h3 style="font-size:15px;margin:3px 0 2px">' + sg.rows.length + (sg.rows.length === 1 ? ' visit does' : ' visits do') + ' not match ' + money(sg.price) + ' a bag</h3>' +
         '<div class="meta" style="font-size:12.5px">A bag is ' + money(sg.price) + ' on the price list. ' +
         'Correcting these changes what ' + (sg.rows.length > 1 ? 'those customers owe' : 'that customer owes') +
         ' by <b>' + money(tot) + '</b> \u2014 <b>tell them before you send the next statement.</b></div>' +
@@ -29738,7 +29738,7 @@ function viewCatalogue() {
           return '<div class="row" style="padding:7px 10px;border-bottom:1px solid #f1f5f9;align-items:center">' +
             '<div class="grow"><b style="font-size:12.5px">' + esc(String(r.v.client || "")) + '</b>' +
             '<div class="meta">' + esc(fullDate(String(r.v.date || "").slice(0, 10))) + ' \u00b7 ' + r.bags +
-            ' bag(s) \u00b7 salt ' + money(r.was) + ' \u2192 ' + money(r.should) +
+            ' bags \u00b7 salt ' + money(r.was) + ' \u2192 ' + money(r.should) +
             ' \u00b7 bill ' + money(r.wasTotal) + ' \u2192 ' + money(r.nowTotal) + '</div></div>' +
             '<button class="btn sm" data-act="svc-saltfix" data-id="' + esc(r.v.id) + '">Correct it</button>' +
             '</div>';
@@ -35970,7 +35970,9 @@ function viewCatalogue() {
     return h;
   }
   function agKindLabel(k) {
-    return { closing: "Windows closing", pay: "Money to collect", coldquote: "Quotes waiting", service: "Service due",
+    /* every kind the scan can emit - measured on his book 19 Sep: closing 220, window 75, pay 11, coldquote 3 */
+    return { closing: "Windows closing", window: "Key stage, pitch now", stagepitch: "Never quoted", nostage: "Stage missing",
+             stale: "Gone quiet", amc: "AMC due", pay: "Money to collect", coldquote: "Quotes waiting", service: "Service due",
              amcend: "AMC ending", warrend: "Warranty ending", qblater: "Said later", partner: "Partners gone quiet",
              unbilled: "Unbilled deliveries", other: "Other" }[k] || k;
   }
