@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.529";
+  var APP_VERSION = "6.9.530";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5889,42 +5889,50 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div class="stat"><div class="n">' + names.length + '</div><div class="l">Clients owing</div></div>' +
       '<div class="stat"><div class="n">' + gkeys.length + '</div><div class="l">Executives carrying it</div></div></div>';
     if (!names.length) return h + '<div class="empty">Nothing pending. Everything collected.</div>';
-    h += '<div class="meta" style="margin:0 0 10px;font-size:12.5px">Service, AMC and complaint bills only &mdash; the goods account is <b>HISAB</b>, and that is a separate number. Grouped by the sales executive the client is assigned to. Tap a client to open the account.</div>';
+    h += '<div class="meta" style="margin:0 0 10px;font-size:12.5px">Service, AMC and complaint bills only &mdash; the goods account is <b>HISAB</b>, and that is a separate number. One row per unpaid visit; tap an executive to see only his, tap a client to open the account.</div>';
     var canBill = canSee("billing");
-    gkeys.forEach(function (e) {
-      var mine = groups[e].slice().sort(function (a, b) { return by[b].bal - by[a].bal; });
-      /* Same rule as HISAB - your own group open, everyone else collapsed to a total - but kept
-         in its own S.duesExp so opening a group here never moves HISAB's, and the open state is
-         carried on the element rather than recomputed in the handler. Recomputing it is what
-         makes HISAB's single-executive group refuse to collapse: the handler cannot see that
-         the group was the only one, so it reads "shut" for a group that is plainly open. */
-      var open = (S.duesExp && (e in S.duesExp)) ? !!S.duesExp[e] : (e === S.user || gkeys.length === 1);
-      h += '<div class="card"><h3 data-act="dues-grp" data-k="' + esc(e) + '" data-open="' + (open ? "1" : "0") + '" style="margin:0;cursor:pointer;user-select:none">' +
-        '<span style="display:inline-block;width:16px;color:#94a3b8">' + (open ? "&#9662;" : "&#9656;") + '</span>' +
-        esc(e) + ' <span class="pill due">' + money(gtot(e)) + '</span> ' +
-        '<span style="font-weight:400;color:#94a3b8;font-size:12.5px">' + mine.length + ' client(s)' + (open ? "" : " &middot; tap to view") + '</span></h3></div>';
-      if (!open) return;
-      mine.forEach(function (k) {
-        var vs = visitsOfClient(k).filter(function (v) { return visitPending(v, installById(v.installId) || null) > 0; })
-          .slice().sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+    /* ===== ONE SHEET  (v6.9.530 - his third list, item 7: "managed more professionally") =====
+       A chip per executive on top, coloured as on the challan log, filters; the sheet is a row
+       per unpaid visit with the paper's status and the buttons in cells. Nothing folds. */
+    var _ex = String(S.duesExec || "");
+    if (_ex && !groups[_ex]) _ex = "";
+    h += '<div class="card"><div class="row" style="flex-wrap:wrap;gap:6px;align-items:center">' +
+      '<span class="meta" style="font-size:12px;font-weight:700;color:#64748b">EXECUTIVE</span>' +
+      '<button class="btn sm ' + (_ex ? "ghost" : "") + '" data-act="dues-exec" data-k="">Everyone</button>' +
+      gkeys.map(function (e) {
+        return '<button class="btn sm ' + (_ex === e ? "" : "ghost") + '" data-act="dues-exec" data-k="' + esc(e) + '" style="display:inline-flex;align-items:center;gap:6px">' +
+          whoChip(e) + ' <span class="pill due">' + money(gtot(e)) + '</span>' +
+          '<span style="font-size:12px;color:#94a3b8">' + groups[e].length + '</span></button>';
+      }).join("") + '</div></div>';
+    var rows = [];
+    (_ex ? [_ex] : gkeys).forEach(function (e) {
+      groups[e].forEach(function (k) {
         var cm = (clientByName(k) || {}).mobile || "";
-        h += '<div class="card" style="cursor:pointer;margin-left:12px;border-left:3px solid #99f6e4" ' +
-          'data-act="' + (canBill ? "ch-hisab" : "svc-ledger") + '" data-cl="' + esc(k) + '" data-n="' + esc(k) + '">' +
-          '<h3>' + esc(k) + ' ' + dueAmt(by[k].bal) + '</h3><div class="meta">' +
-          (function () { var oth = Object.keys(by[k].names).filter(function (n) { return dgKey(n) !== dgKey(k); }); return oth.length ? '<span style="color:#94a3b8">on the service book as ' + esc(oth.join(", ")) + '</span><br>' : ''; })();
-        vs.forEach(function (v) {
-          var _rl = svcReceiptLine(v);
-          h += esc(d10(v.date)) + ' &middot; ' + esc(v.type) + ' &middot; billed ' + money(v.total) +
-            ', paid ' + money(v.collected) + ', <b>due ' + money(visitPending(v, installById(v.installId) || null)) + '</b>' +
-            (v.engineer ? ' &middot; <span style="color:#94a3b8">' + esc(v.engineer) + '</span>' : "") +
-            (_rl ? ' &middot; ' + _rl : '') + '<br>';
-        });
-        h += '</div><div class="acts">' +
-          (cm ? '<a class="btn sm ghost" href="tel:' + esc(cm) + '">Call</a>' : "") +
-          (canBill ? '<button class="btn sm" data-act="ch-hisab" data-cl="' + esc(k) + '">Open HISAB &rarr;</button>' : "") +
-          '<button class="btn sm ghost" data-act="svc-ledger" data-n="' + esc(k) + '">Service hisab</button></div></div>';
+        var oth = Object.keys(by[k].names).filter(function (n) { return dgKey(n) !== dgKey(k); });
+        visitsOfClient(k).filter(function (v) { return visitPending(v, installById(v.installId) || null) > 0; })
+          .forEach(function (v) {
+            var due = visitPending(v, installById(v.installId) || null);
+            var rl = svcReceiptLine(v);
+            rows.push({ v: { client: k, exec: e, date: String(v.date || ""), type: v.type || "", eng: v.engineer || "", billed: Number(v.total) || 0, paid: Number(v.collected) || 0, due: due, paper: rl.replace(/<[^>]+>/g, ""), go: "" },
+              cells: {
+                client: '<a href="#" data-act="' + (canBill ? "ch-hisab" : "svc-ledger") + '" data-cl="' + esc(k) + '" data-n="' + esc(k) + '" style="font-weight:700;color:#0b3b36;text-decoration:none" title="' + esc(oth.length ? "on the service book as " + oth.join(", ") : "Open the account") + '">' + esc(k) + '</a>' +
+                        (oth.length ? ' <span style="color:#94a3b8;font-size:12px" title="on the service book as ' + esc(oth.join(", ")) + '">*</span>' : ''),
+                exec: whoChip(e), date: esc(dmy(String(v.date || "").slice(0, 10))), type: esc(v.type || "—"), eng: esc(v.engineer || "—"),
+                billed: money(v.total), paid: money(v.collected), due: '<b style="color:#dc2626">' + money(due) + '</b>',
+                paper: rl || '<span style="color:#94a3b8">—</span>',
+                go: (cm ? '<a class="btn sm ghost" href="tel:' + esc(cm) + '">Call</a> ' : "") +
+                    (canBill ? '<button class="btn sm" data-act="ch-hisab" data-cl="' + esc(k) + '">HISAB</button> ' : "") +
+                    '<button class="btn sm ghost" data-act="svc-ledger" data-n="' + esc(k) + '">Service hisab</button>'
+              } });
+          });
       });
     });
+    rows.sort(function (a, b) { return b.v.due - a.v.due || String(a.v.date).localeCompare(String(b.v.date)); });
+    h += xlTable("svcdues", [
+      { k: "client", t: "CLIENT" }, { k: "due", t: "DUE", n: 1, r: 1 }, { k: "go", t: "" }, { k: "exec", t: "EXECUTIVE" },
+      { k: "date", t: "DATE", w: "84px" }, { k: "type", t: "TYPE" }, { k: "billed", t: "BILLED", n: 1, r: 1 }, { k: "paid", t: "PAID", n: 1, r: 1 },
+      { k: "eng", t: "ENGINEER" }, { k: "paper", t: "PAPER" }
+    ], rows, "the executive, the visit and its paper");
     return h;
   }
 
@@ -40867,10 +40875,7 @@ function viewCatalogue() {
     }
     /* v6.9.331 - the dues screen's own executive groups. The open state is read off the
        element the tap landed on, so this cannot disagree with what was drawn. */
-    if (act === "dues-grp") {
-      var dgk = t.getAttribute("data-k"); S.duesExp = S.duesExp || {};
-      S.duesExp[dgk] = t.getAttribute("data-open") !== "1"; render(); return;
-    }
+    if (act === "dues-exec") { S.duesExec = t.getAttribute("data-k") || ""; render(); return; }   /* v6.9.530 */
     /* v6.9.451 - a row on the account opens its card as a sheet. The card is this paint's, from
        _acctCards; a row with no card (a return on a client with no received delivery, whose
        branch builds none) says so instead of opening nothing. */
