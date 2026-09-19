@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.536";
+  var APP_VERSION = "6.9.538";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2393,7 +2393,8 @@ window.addEventListener("beforeunload", function (ev) {
     var shown = 0, all = rows.length;
     Array.prototype.forEach.call(rows, function (r) {
       var hit = !q || String(r.getAttribute("data-pname") || "").indexOf(q) >= 0;
-      r.style.display = hit ? "" : "none";
+      var host = r.closest ? (r.closest("tr") || r) : r;   /* v6.9.538 - the marker sits in a cell of the sheet */
+      host.style.display = hit ? "" : "none";
       if (hit) shown++;
     });
     var note = document.getElementById("inc_qn");
@@ -2779,6 +2780,8 @@ window.addEventListener("beforeunload", function (ev) {
        above; the price never is. Same lesson as the register's BALANCE AFTER in 6.9.496 - his
        own words then were "put balance after after amt column". */
     var cols = [
+      /* v6.9.537 - his third list, item 18: "show with product pic" */
+      { k: "pic", t: "", w: "48px" },
       { k: "code", t: "CODE", w: "96px" },
       { k: "desc", t: "PRODUCT", w: "150px" },
       { k: "price", t: "LIST PRICE", r: 1, n: 1 },
@@ -2789,8 +2792,12 @@ window.addEventListener("beforeunload", function (ev) {
     var rows = list.map(function (p) {
       var d = descLines(p.desc || p.family);
       return {
-        v: { code: p.code, desc: d.title, brand: p.brand || "", cat: p.cat || "", unit: p.unit || "", price: Number(p.price) || 0 },
+        v: { pic: p.pic ? 1 : 0, code: p.code, desc: d.title, brand: p.brand || "", cat: p.cat || "", unit: p.unit || "", price: Number(p.price) || 0 },
         cells: {
+          pic: p.pic
+            ? '<img src="' + esc(driveImg(p.pic, 96)) + '" loading="lazy" alt="" data-act="pv-open" data-code="' + esc(p.code) + '" ' +
+              'style="width:44px;height:44px;object-fit:contain;border-radius:6px;background:#fff;border:1px solid #e2e8f0;cursor:pointer;display:block" title="Open ' + esc(p.code) + '"/>'
+            : '<div data-act="pv-open" data-code="' + esc(p.code) + '" style="width:44px;height:44px;border-radius:6px;background:#f1f5f9;color:#94a3b8;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer" title="No picture on the sheet for ' + esc(p.code) + '">no pic</div>',
           /* the act is on the CODE, not the row - these rows are plain text but the rule is the
              register's and it does not change per table */
           code: '<b data-act="pv-open" data-code="' + esc(p.code) + '" style="cursor:pointer;color:#0f766e">' + esc(p.code) + '</b>',
@@ -20962,9 +20969,9 @@ function viewCatalogue() {
        Calculated by the same engine as the partners above, on the clients each one is
        assigned to, at the % ticked for that client and brand. Shown here rather than on
        a screen of its own so the whole incentive load of the business reads in one place. */
-    var _ex = execTeam();
+    var _ex = execTeam(), _exB = {};
     if (_ex.length) {
-      var _exB = {}, _exT = { earned: 0, payable: 0, paid: 0, pending: 0 };
+      var _exT = { earned: 0, payable: 0, paid: 0, pending: 0 };
       _ex.forEach(function (u) {
         var eb = execBook(u.name); _exB[u.name] = eb;
         _exT.earned += eb.earned; _exT.payable += eb.payable; _exT.paid += eb.paid; _exT.pending += eb.pending;
@@ -20976,24 +20983,8 @@ function viewCatalogue() {
       if (!_anyRate) {
         h += '<div class="meta" style="font-size:12px;color:#b45309;margin-bottom:8px">No executive rate is ticked on any client yet, so nothing is being calculated. Open <b>Discounts</b>, pick a client, tick <b>Sales executive incentive</b> on the brands you want and type the %.</div>';
       }
-      h += '<div class="cards" style="margin-bottom:8px">' +
-        '<div class="stat"><div class="n">' + money(_exT.earned) + '</div><div class="l">Executive incentive earned</div></div>' +
-        '<div class="stat"><div class="n">' + money(_exT.payable) + '</div><div class="l">Payable</div></div>' +
-        '<div class="stat"><div class="n">' + money(_exT.paid) + '</div><div class="l">Paid out</div></div>' +
-        '<div class="stat ' + (_exT.pending > 0 ? "alert" : "") + '"><div class="n">' + money(_exT.pending) + '</div><div class="l">Still to pay</div></div>' +
-        '</div>';
-      _ex.slice().sort(function (x, y) { return _exB[y.name].earned - _exB[x.name].earned; }).forEach(function (u) {
-        var eb = _exB[u.name];
-        h += '<div data-pname="' + esc(dkey(u.name)) + '" style="border:1px solid #e9d5ff;border-radius:10px;background:#fff;padding:9px 10px;margin-bottom:6px">' +
-          '<div class="acts" style="align-items:center;margin:0">' +
-          '<div class="grow"><b>' + esc(u.name) + '</b>' +
-            ' <span class="pill" style="background:#ede9fe;color:#6d28d9">' + eb.clientCount + ' client' + (eb.clientCount === 1 ? '' : 's') + '</span>' +
-            (eb.reversed > 0 ? ' <span class="pill due">' + money(eb.reversed) + ' reversed</span>' : '') +
-            '<div class="pmeta" style="margin:2px 0 0">Drove ' + money(eb.billed) + ' &middot; earned <b style="color:#6d28d9">' + money(eb.earned) + '</b>' +
-            ' &middot; payable ' + money(eb.payable) + ' &middot; paid ' + money(eb.paid) + '</div></div>' +
-          '<button class="btn sm" data-act="p-open" data-k="exec" data-n="' + esc(u.name) + '">Open</button>' +
-          '</div></div>';
-      });
+      h += '<div class="meta" style="font-size:12.5px">Earned <b>' + money(_exT.earned) + '</b> &middot; payable <b>' + money(_exT.payable) + '</b> &middot; paid <b>' + money(_exT.paid) + '</b> &middot; ' +
+        'still to pay <b style="color:' + (_exT.pending > 0.5 ? '#b91c1c' : '#0f766e') + '">' + money(_exT.pending) + '</b> &mdash; each man is on the sheet below.</div>';
       h += '</div>';
     }
 
@@ -21008,37 +20999,49 @@ function viewCatalogue() {
       });
       h += '</div>';
     }
-    h += '<h3 style="margin:16px 0 6px;font-size:15px">Partners</h3>';
+    /* ===== ONE SHEET OF EVERYBODY WHO EARNS  (v6.9.538 - his third list, item 20) =====
+       "excel, compact". Executives and partners on one sheet, sortable by any heading, so the
+       "Rank by" chips are the headings now. The role chips still narrow it. */
+    h += '<h3 style="margin:16px 0 6px;font-size:15px">Everybody who earns</h3>';
     var roles = ["Plumber", "Architect", "Builder", "PMC", "Contractor", "Dealer", "Other"];
     h += '<div class="row">' + roles.map(function (r) {
       return '<button class="btn sm ' + (S.pRole === r ? "" : "ghost") + '" data-act="p-role" data-r="' + esc(r) + '">' + esc(r) + '</button>';
-    }).join("") + '<button class="btn sm ' + (S.pRole ? "ghost" : "") + '" data-act="p-role" data-r="">All</button>' +
+    }).join("") + '<button class="btn sm ' + (S.pRole === "Executive" ? "" : "ghost") + '" data-act="p-role" data-r="Executive">Executive</button>' +
+      '<button class="btn sm ' + (S.pRole ? "ghost" : "") + '" data-act="p-role" data-r="">All</button>' +
       '<div class="grow"></div>' +
       '<button class="btn sm ghost" data-act="saathi-push" title="Send these figures to the EW Saathi app">Send to Saathi</button>' +
       '<button class="btn" data-act="as-new">+ New partner</button></div>';
-
-    /* Leaderboard: rank partners by whichever metric matters right now. */
-    var metric = S.pSort || "billed";
-    var mLabel = { billed: "Business driven", earned: "Incentive earned", pending: "Still to pay" };
-    h += '<div class="row"><span style="font-size:12px;color:#64748b;align-self:center;margin-right:2px">Rank by:</span>' +
-      ["billed", "earned", "pending"].map(function (k) {
-        return '<button class="btn sm ' + (metric === k ? "" : "ghost") + '" data-act="p-sort" data-k="' + k + '">' + mLabel[k] + '</button>';
-      }).join("") + '</div>';
-
-    var list = partners.filter(function (a) { return !S.pRole || a.role === S.pRole; })
-      .sort(function (a, b) { return (Number(books[b.name][metric]) || 0) - (Number(books[a.name][metric]) || 0); });
-    if (!list.length) h += '<div class="empty">No partners here yet.</div>';
-    list.forEach(function (a, idx) {
+    var rows = [];
+    if (!S.pRole || S.pRole === "Executive") {
+      _ex.forEach(function (u) {
+        var eb = _exB[u.name];
+        rows.push({ name: u.name, kind: "exec", role: "Executive", clients: eb.clientCount || 0, sites: 0, n: 0, billed: eb.billed, earned: eb.earned, payable: eb.payable, paid: eb.paid, pending: eb.pending, reversed: eb.reversed || 0, id: "" });
+      });
+    }
+    partners.filter(function (a) { return !S.pRole || a.role === S.pRole; }).forEach(function (a) {
       var b = books[a.name];
-      var medal = idx === 0 ? "#1" : (idx === 1 ? "#2" : (idx === 2 ? "#3" : "#" + (idx + 1)));
-      h += '<div class="card" data-pname="' + esc(dkey(a.name + " " + (a.role || ""))) + '"><h3><span class="pill ' + (idx < 3 ? "teal" : "") + '">' + medal + '</span> ' + esc(a.name) +
-        ' <span class="pill">' + esc(a.role || "") + '</span>' +
-        (b.pending > 0 ? ' <span class="pill due">' + money(b.pending) + ' pending</span>' : ' <span class="pill Won">settled</span>') + '</h3>' +
-        '<div class="meta"><b>Drove ' + money(b.billed) + '</b> &middot; ' + b.sites.length + ' site(s) &middot; ' + b.rows.length + ' challan(s)' +
-        '<br>Earned ' + money(b.earned) + ' &middot; payable ' + money(b.payable) + ' &middot; paid ' + money(b.paid) + '</div>' +
-        '<div class="acts"><button class="btn sm" data-act="p-open" data-n="' + esc(a.name) + '">Open</button>' +
-        '<button class="btn sm ghost" data-act="as-open" data-id="' + esc(a.id) + '">Edit</button></div></div>';
+      rows.push({ name: a.name, kind: "partner", role: a.role || "Other", clients: 0, sites: b.sites.length, n: b.rows.length, billed: b.billed, earned: b.earned, payable: b.payable, paid: b.paid, pending: b.pending, reversed: 0, id: a.id });
     });
+    rows.sort(function (x, y) { return (y.billed || 0) - (x.billed || 0); });
+    if (!rows.length) return h + '<div class="empty">Nobody here yet.</div>';
+    h += xlTable("incentives", [
+      { k: "name", t: "NAME", w: "130px" }, { k: "role", t: "ROLE" }, { k: "pending", t: "STILL TO PAY", n: 1, r: 1 }, { k: "go", t: "" },
+      { k: "billed", t: "DRIVE", n: 1, r: 1 }, { k: "earned", t: "EARNED", n: 1, r: 1 }, { k: "payable", t: "PAYABLE", n: 1, r: 1 }, { k: "paid", t: "PAID", n: 1, r: 1 },
+      { k: "on", t: "ON", n: 1, r: 1 }
+    ], rows.map(function (r) {
+      return { v: { name: r.name, role: r.role, pending: r.pending, go: "", billed: r.billed, earned: r.earned, payable: r.payable, paid: r.paid, on: r.kind === "exec" ? r.clients : r.sites },
+        cells: {
+          /* data-pname on the name, so the find box above hides the row in place as it always did */
+          name: '<b data-pname="' + esc(dkey(r.name + " " + r.role)) + '" data-act="p-open" data-k="' + (r.kind === "exec" ? "exec" : "") + '" data-n="' + esc(r.name) + '" style="cursor:pointer;color:#0f766e">' + esc(r.name) + '</b>' +
+                (r.reversed > 0.5 ? ' <span class="pill due" style="font-size:12px">' + money(r.reversed) + ' reversed</span>' : ''),
+          role: r.kind === "exec" ? '<span class="pill" style="background:#ede9fe;color:#6d28d9;font-size:12px">Executive</span>' : '<span class="pill" style="font-size:12px">' + esc(r.role) + '</span>',
+          pending: r.pending > 0.5 ? '<b style="color:#b91c1c">' + money(r.pending) + '</b>' : '<span class="pill Won" style="font-size:12px">settled</span>',
+          go: '<button class="btn sm" data-act="p-open" data-k="' + (r.kind === "exec" ? "exec" : "") + '" data-n="' + esc(r.name) + '" style="padding:2px 8px;font-size:12px">Open</button>' +
+              (r.id ? ' <button class="btn sm ghost" data-act="as-open" data-id="' + esc(r.id) + '" style="padding:2px 8px;font-size:12px">Edit</button>' : ''),
+          billed: money(r.billed), earned: '<b style="color:#0f766e">' + money(r.earned) + '</b>', payable: money(r.payable), paid: money(r.paid),
+          on: r.kind === "exec" ? r.clients + ' <span style="color:#94a3b8;font-size:12px">clients</span>' : r.sites + ' <span style="color:#94a3b8;font-size:12px">sites</span> · ' + r.n + ' <span style="color:#94a3b8;font-size:12px">challans</span>'
+        } };
+    }), "what each one drove, earned, is owed and was paid");
     return h;
   }
 
@@ -21211,11 +21214,19 @@ function viewCatalogue() {
       h += xlTable("p-sites", [
         { k: "site", t: "SITE", w: "130px" }, { k: "client", t: "CLIENT" }, { k: "stage", t: "STAGE", n: 1 },
         { k: "added", t: "ADDED", n: 1 }, { k: "by", t: "BY" }, { k: "base", t: "DELIVERED", r: 1, n: 1 },
-        { k: "inc", t: "INCENTIVE", r: 1, n: 1 }, { k: "go", t: "" }
+        { k: "inc", t: "INCENTIVE", r: 1, n: 1 }, { k: "quoted", t: "QUOTED", n: 1, r: 1 }, { k: "qbrands", t: "QUOTED FOR" }, { k: "go", t: "" }
       ], b.sites.map(function (st) {
         var al = siteAlerts(st), m = _bySite[dkey(st.name)] || _byClient[dkey(st.client)] || { base: 0, inc: 0 };
+        /* v6.9.537 - his item 19: "what quoted at which site". The quotes on this site's client;
+           a quote carrying this site's id is counted first, else every quote of the client. */
+        var _qs = []; try { _qs = clientQuotes(st.client || "") || []; } catch (e) { _qs = []; }
+        var _qsSite = _qs.filter(function (q) { return st.id && String(q.siteId || "") === String(st.id); });
+        if (_qsSite.length) _qs = _qsSite;
+        var _qOpen = _qs.filter(function (q) { return qCatOf(q) === "In play"; }).length;
+        var _qNet = _qs.reduce(function (a, q) { return a + (Number(q.net) || 0); }, 0);
+        var _qB = {}; _qs.forEach(function (q) { quoteBrands(q).forEach(function (bb) { _qB[bb] = (q.status === "Won") ? "won" : (_qB[bb] || (qCatOf(q) === "In play" ? "open" : "lost")); }); });
         var added = String(st.createdAt || "").slice(0, 10);
-        return { v: { site: st.name, client: st.client || "", stage: stageNo(st) || 0, added: added, by: st.createdBy || "", base: m.base, inc: m.inc },
+        return { v: { site: st.name, client: st.client || "", stage: stageNo(st) || 0, added: added, by: st.createdBy || "", base: m.base, inc: m.inc, quoted: _qs.length, qbrands: Object.keys(_qB).join(", ") },
           cells: {
             site: '<b data-act="site-open" data-id="' + esc(st.id) + '" style="cursor:pointer;color:#0f766e">' + esc(st.name) + '</b>' +
                   (al.open ? ' <span class="pill due">' + al.open + ' to pitch</span>' : ""),
@@ -21225,6 +21236,17 @@ function viewCatalogue() {
             by: esc(st.createdBy || "\u2014"),
             base: m.base > 0.5 ? money(m.base) : '<span style="color:#94a3b8">\u2014</span>',
             inc: m.inc > 0.5 ? '<b style="color:#0f766e">' + money(m.inc) + '</b>' : '<span style="color:#94a3b8">\u2014</span>',
+            quoted: _qs.length
+              ? '<a href="#" data-act="qv-jump" data-cl="' + esc(st.client || "") + '" style="font-weight:700;color:#0f766e;text-decoration:none" title="Open the quotes">' + _qs.length +
+                (_qOpen ? ' <span class="pill" style="font-size:12px;background:#fef3c7;color:#92400e">' + _qOpen + ' open</span>' : '') +
+                ' <span style="color:#64748b;font-size:12px">' + money(_qNet) + '</span></a>'
+              : '<span style="color:#94a3b8">none</span>',
+            qbrands: Object.keys(_qB).length
+              ? Object.keys(_qB).sort().map(function (bb) {
+                  var stt = _qB[bb];
+                  return '<span class="pill ' + (stt === "won" ? "Won" : stt === "open" ? "teal" : "Lost") + '" style="font-size:12px" title="' + esc(bb + ": " + stt) + '">' + esc(bb) + '</span>';
+                }).join(" ")
+              : '<span style="color:#94a3b8">\u2014</span>',
             go: '<button class="btn sm" data-act="matrix" data-id="' + esc(st.id) + '" style="padding:2px 8px;font-size:12px">Pitch matrix</button>'
           } };
       }), "who added it, what was delivered and what he earned");
@@ -42731,7 +42753,6 @@ function viewCatalogue() {
       S.pLoc = "";
       render(); return;
     }
-    if (act === "p-sort") { S.pSort = t.getAttribute("data-k"); render(); return; }
     if (act === "wl-by") { S.wlBy = t.getAttribute("data-k"); render(); return; }
     if (act === "quote-lost") { S.modal = modalQuoteLost(t.getAttribute("data-id")); render(); return; }
     if (act === "quote-lost-save") {
