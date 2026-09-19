@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.538";
+  var APP_VERSION = "6.9.539";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -6043,22 +6043,27 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var month = S.q || ymLocal(new Date());
     var h = '<div class="row"><input class="grow" id="q" type="month" value="' + esc(month) + '"/></div>';
     h += '<div class="empty" style="text-align:left;padding:0 0 12px">Salary vs what each engineer actually collected in ' + esc(month) + '.</div>';
-    SVC_ENGINEERS.forEach(function (eng) {
-      var vs = S.data.visits.filter(function (v) {
-        return v.engineer === eng && String(v.date).slice(0, 7) === month;
-      });
+    /* v6.9.539 - his third list, item 21: "payroll in better way". One table: a row per
+       engineer, the salary box in it. Plain table (a typed box), not xlTable. */
+    var TH = function (x, r) { return '<th style="padding:5px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;background:#0b3b36;text-align:' + (r ? "right" : "left") + '">' + x + '</th>'; };
+    var TD = function (x, r, extra) { return '<td style="padding:5px 7px;border-top:1px solid #e2e8f0;white-space:nowrap;font-size:12.5px;text-align:' + (r ? "right" : "left") + (extra || "") + '">' + x + '</td>'; };
+    h += '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;border-collapse:collapse"><thead><tr>' +
+      TH('ENGINEER') + TH('SALARY') + TH('NET', 1) + TH('VISITS', 1) + TH('BILLED', 1) + TH('COLLECTED', 1) + TH('UNCOLLECTED', 1) + '</tr></thead><tbody>';
+    SVC_ENGINEERS.forEach(function (eng, ei) {
+      var vs = S.data.visits.filter(function (v) { return v.engineer === eng && String(v.date).slice(0, 7) === month; });
       var billed = vs.reduce(function (a, v) { return a + (Number(v.total) || 0); }, 0);
       var collected = vs.reduce(function (a, v) { return a + (Number(v.collected) || 0); }, 0);
       var pr = S.data.payroll.filter(function (p) { return p.engineer === eng && p.month === month; })[0] || {};
-      var sal = Number(pr.salary) || 0;
-      var net = collected - sal;
-      h += '<div class="card"><h3>' + esc(eng) + ' <span class="pill ' + (net >= 0 ? "Won" : "Lost") + '">' + (net >= 0 ? "+" : "") + money(net) + '</span></h3>' +
-        '<div class="meta">' + vs.length + ' visit(s) &middot; billed ' + money(billed) + ' &middot; <b>collected ' + money(collected) + '</b>' +
-        (billed - collected > 0 ? ' &middot; uncollected ' + money(billed - collected) : "") + '</div>' +
-        '<div class="acts" style="align-items:center"><span class="pill">Salary</span>' +
-        '<input class="pay-sal" data-eng="' + esc(eng) + '" data-month="' + esc(month) + '" data-id="' + esc(pr.id || "") + '" inputmode="numeric" value="' + esc(pr.salary || "") + '" placeholder="monthly salary" style="width:140px;padding:7px 10px;font-size:13px"/>' +
-        '</div></div>';
+      var sal = Number(pr.salary) || 0, net = collected - sal;
+      var bg = ei % 2 ? "#f8fafc" : "#fff";
+      h += '<tr style="background:' + bg + '">' +
+        TD('<b>' + esc(eng) + '</b>', 0, ";position:sticky;left:0;z-index:1;background:" + bg) +
+        TD('<input class="pay-sal" data-eng="' + esc(eng) + '" data-month="' + esc(month) + '" data-id="' + esc(pr.id || "") + '" inputmode="numeric" value="' + esc(pr.salary || "") + '" placeholder="monthly salary" style="width:120px;padding:5px 8px;font-size:13px"/>') +
+        TD('<span class="pill ' + (net >= 0 ? "Won" : "Lost") + '">' + (net >= 0 ? "+" : "") + money(net) + '</span>', 1) +
+        TD(String(vs.length), 1) + TD(money(billed), 1) + TD('<b>' + money(collected) + '</b>', 1) +
+        TD(billed - collected > 0 ? '<span style="color:#b45309">' + money(billed - collected) + '</span>' : '<span style="color:#94a3b8">—</span>', 1) + '</tr>';
     });
+    h += '</tbody></table></div>';
     return h;
   }
 
@@ -17730,16 +17735,28 @@ function viewCatalogue() {
     if (!execs.length) return h + '<div class="empty">No sales executives found. Add team members with the <b>sales</b> role first (Team PINs).</div>';
 
     var board = execs.map(function (e) { return scExecMetrics(e, S.sc.month); }).sort(function (a, b) { return b.score - a.score; });
-    h += '<div class="card" style="margin-top:10px"><h3 style="margin:0 0 6px;font-size:14px">Team leaderboard — ' + esc(scMonLabel(S.sc.month)) + '</h3>';
-    board.forEach(function (m, i) {
-      var b = scBand(m.score), on = m.exec === S.sc.exec;
-      h += '<div data-act="sc-pick" data-n="' + esc(m.exec) + '" style="display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid #e2e8f0;cursor:pointer;border-radius:8px;' + (on ? 'background:#f0fdfa' : '') + '">' +
-        '<span style="width:24px;height:24px;border-radius:50%;background:#0b3b36;color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex:0 0 auto">' + (i + 1) + '</span>' +
-        '<div style="flex:1;font-weight:600">' + esc(m.exec) + '</div>' +
-        '<span class="pill" style="background:' + b.bg + ';color:' + b.c + ';font-weight:700">' + b.t + '</span>' +
-        '<div style="font-weight:800;color:#0f766e;width:38px;text-align:right">' + Math.round(m.score) + '</div></div>';
-    });
-    h += '</div>';
+    /* v6.9.539 - his item 21: "scorecard in better way". The leaderboard is a sheet - every
+       man's score, band and each area's actual side by side, sortable; tap a name for his card. */
+    var _areas = (board[0] && board[0].areas) || [];
+    var _fmtA = function (a, v) { return a.money ? money(v) : a.pct ? (Math.round(v * 100) + "%") : String(Math.round(v)); };
+    h += '<div class="card" style="margin-top:10px;padding:8px 10px"><h3 style="margin:0 0 6px;font-size:14px">Team leaderboard — ' + esc(scMonLabel(S.sc.month)) + '</h3>' +
+      xlTable("scboard", [{ k: "rank", t: "#", n: 1, w: "36px" }, { k: "exec", t: "EXECUTIVE" }, { k: "score", t: "SCORE", n: 1, r: 1 }, { k: "band", t: "BAND" }]
+        .concat(_areas.map(function (a, ai) { return { k: "a" + ai, t: String(a.label || "").toUpperCase(), n: 1, r: 1 }; })),
+        board.map(function (m, i) {
+          var b = scBand(m.score), on = m.exec === S.sc.exec;
+          var v = { rank: i + 1, exec: m.exec, score: Math.round(m.score), band: b.t }, cells = {
+            rank: '<span style="width:24px;height:24px;border-radius:50%;background:#0b3b36;color:#fff;font-weight:800;font-size:12px;display:inline-flex;align-items:center;justify-content:center">' + (i + 1) + '</span>',
+            exec: '<b data-act="sc-pick" data-n="' + esc(m.exec) + '" style="cursor:pointer;color:' + (on ? '#0f766e' : '#0b3b36') + '">' + esc(m.exec) + '</b>' + (on ? ' <span class="pill teal" style="font-size:12px">shown below</span>' : ''),
+            score: '<b style="color:#0f766e">' + Math.round(m.score) + '</b>',
+            band: '<span class="pill" style="background:' + b.bg + ';color:' + b.c + ';font-weight:700;font-size:12px">' + b.t + '</span>'
+          };
+          (m.areas || []).forEach(function (a, ai) {
+            var col = a.ach >= 0.9 ? "#16a34a" : a.ach >= 0.6 ? "#d97706" : "#dc2626";
+            v["a" + ai] = Number(a.actual) || 0;
+            cells["a" + ai] = '<span style="color:' + col + ';font-weight:700">' + esc(_fmtA(a, a.actual)) + '</span> <span style="color:#94a3b8;font-size:12px">/ ' + esc(_fmtA(a, a.target)) + '</span>';
+          });
+          return { v: v, cells: cells };
+        }), "every area, actual against target") + '</div>';
 
     var M = scExecMetrics(S.sc.exec, S.sc.month), bnd = scBand(M.score);
     h += '<div class="card" style="margin-top:12px">' +
@@ -20482,6 +20499,40 @@ function viewCatalogue() {
     } catch (e) { }
   }
 
+  /* ===== HIS DRAWING, READ-ONLY  (v6.9.539 - third list, item 17) =====
+     Details down the left; the brands across; a row for the preset discount, one per partner
+     named on him, one for the executive. Read-only on the list; Edit opens the boxes. */
+  function discDrawGrid(cl) {
+    var c = clientByName(cl) || {}, sp = admBrandSplit(cl), line = admLineup(cl);
+    var brands = sp.took.concat(sp.other).filter(function (b) {
+      if (Number((discRow(cl, b) || {}).pct) > 0) return true;
+      return line.some(function (m) { return Number(admRateOf(cl, b, m.role)) > 0; });
+    });
+    var _pm = function (nm) { var p = partnerByName(nm); return p && p.mobile ? String(p.mobile) : ""; };
+    var _em = function (nm) { var m = (S.data.team || []).filter(function (u) { return u && dgKey(u.name) === dgKey(nm); })[0]; return m && m.mobile ? String(m.mobile) : ""; };
+    var who = function (nm, mob) { return '<b>' + esc(nm || "\u2014") + '</b>' + (mob ? ' <span style="color:#64748b;font-size:12px;white-space:nowrap">' + esc(mob) + '</span>' : ''); };
+    var ROLE_NAME = { plumber: "Plumber", architect: "Architect", builder: "Builder", pmc: "PMC", exec: "Executive" };
+    var left = [
+      ['Mobile, address', (c.mobile ? esc(c.mobile) : '<span style="color:#b45309">no mobile</span>') + (c.address ? ' \u00b7 ' + esc(c.address) : '')]
+    ].concat(line.map(function (m) { return [ROLE_NAME[m.role] || m.role, who(m.name, m.role === "exec" ? _em(m.name) : _pm(m.name))]; }));
+    var rows = [['Brand preset discount %', function (b) { return gridBox('', (discRow(cl, b) || {}).pct, true); }]]
+      .concat(line.map(function (m) { return [(ROLE_NAME[m.role] || m.role) + ' incentive %', function (b) { return gridBox('', admRateOf(cl, b, m.role), true); }]; }));
+    var TH = function (x, sticky) { return '<th style="padding:4px 7px;font-weight:700;font-size:12px;color:#fff;white-space:nowrap;background:#0b3b36;text-align:left' + (sticky ? ';position:sticky;left:0;z-index:2' : '') + '">' + x + '</th>'; };
+    var TD = function (x, extra) { return '<td style="padding:3px 7px;border-top:1px solid #e2e8f0;white-space:nowrap;font-size:12.5px;vertical-align:middle' + (extra || '') + '">' + x + '</td>'; };
+    var h = '<table style="border-collapse:collapse;font-size:12.5px;margin:6px 0 4px">' +
+      left.map(function (r) { return '<tr><td style="padding:2px 8px 2px 0;color:#64748b;white-space:nowrap">' + r[0] + '</td><td style="padding:2px 0">' + r[1] + '</td></tr>'; }).join("") + '</table>';
+    if (!brands.length) return h + '<div class="meta" style="font-size:12px;color:#64748b">No rate on file for any brand yet.</div>';
+    h += '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse"><thead><tr>' + TH('RATE', true) +
+      brands.map(function (b) { return TH(esc(b) + (sp.map[dkey(b)] ? '' : ' <span style="font-weight:500;opacity:.7">not taken</span>')); }).join('') + '</tr></thead><tbody>' +
+      rows.map(function (r, ri) {
+        var bg = ri % 2 ? '#f8fafc' : '#fff';
+        return '<tr style="background:' + bg + '">' + TD('<b>' + r[0] + '</b>', ';position:sticky;left:0;z-index:1;background:' + bg + ';min-width:150px') +
+          brands.map(function (b) { return TD(r[1](b)); }).join('') + '</tr>';
+      }).join('') + '</tbody></table></div>';
+    var more = admClientBrands(cl).length - brands.length;
+    if (more > 0) h += '<div class="meta" style="font-size:12px;color:#94a3b8">' + more + (more === 1 ? ' other brand has' : ' other brands have') + ' no rate on file \u2014 Edit to set one.</div>';
+    return h;
+  }
   function admBrandTable(cl, ro) {
     var sp = admBrandSplit(cl), line = admLineup(cl);
     if (!sp.took.length && !sp.other.length) {
@@ -21402,8 +21453,10 @@ function viewCatalogue() {
         /* v6.9.395 - the same grid he sees in the owner's corner, read-only. `lines` above is
            still built because the Telegram / WhatsApp summaries read it; the card no longer
            draws it. */
+        /* v6.9.539 - his item 17, on the LIST where he photographed it: the old-hisab door,
+           no paper strip, and his drawing read-only. */
         h += '<div class="card"><h3>' + esc(n) + (c.location ? ' <span class="pill teal">' + esc(c.location) + '</span>' : '') + '</h3>' +
-          admBrandTable(n, true) +
+          hdLine(n, {}) + discDrawGrid(n) +
           '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="disc-edit" data-n="' + esc(n) + '">Edit</button></div></div>';
       });
       return h;
@@ -29142,7 +29195,7 @@ function viewCatalogue() {
     if (g.due > 0 || g.challans || g.quotes) {
       h += '<div class="meta" style="font-size:12.5px;color:#b45309">' +
         'Split across these records: ' +
-        [g.challans ? g.challans + ' challan(s)' : '', g.quotes ? g.quotes + ' quote(s)' : '', g.due > 0 ? money(g.due) + ' due' : '']
+        [g.challans ? g.challans + (g.challans === 1 ? ' challan' : ' challans') : '', g.quotes ? g.quotes + (g.quotes === 1 ? ' quote' : ' quotes') : '', g.due > 0 ? money(g.due) + ' due' : '']
           .filter(Boolean).join(' · ') +
         ' — whoever opens the wrong copy sees a customer who has never bought anything.</div>';
     }
@@ -29151,7 +29204,13 @@ function viewCatalogue() {
         esc({ keep: "keep separate", fix: "same person", manage: "one customer, many sites" }[g.prior.kind] || g.prior.kind) +
         '</b> by ' + esc(g.prior.by || "someone") + (g.prior.at ? ' on ' + esc(d10(g.prior.at)) : '') + '.</div>';
     }
-    h += g.recs.map(function (r) { return dupRecRow(r, g, false); }).join("");
+    /* v6.9.539 - his item 24: compact. The records open on a tap of the name; the line carries
+       what a man needs to decide. */
+    var peek = open || settledView || (S.dupPeek === g.key);
+    if (peek) h += g.recs.map(function (r) { return dupRecRow(r, g, false); }).join("");
+    else h += '<div class="meta" style="font-size:12px;margin-top:2px">' +
+      g.recs.map(function (r) { return esc(r.name || "") + (r.ownedBy ? ' <span style="color:#94a3b8">' + esc(r.ownedBy) + '</span>' : ''); }).join(' \u00b7 ') +
+      ' \u00b7 <a href="#" data-act="dup-peek" data-k="' + esc(g.key) + '" style="color:#0f766e;font-weight:700">see the records</a></div>';
 
     if (open) { h += dupPanel(g); }
     else if (settledView) {
@@ -29695,7 +29754,7 @@ function viewCatalogue() {
       '<h2 style="margin:0">Duplicate check</h2>' +
       '<div class="meta" style="font-size:13px">The same customer entered twice splits his money, his history and his follow-ups between two records — and whoever opens the wrong one thinks he has never bought anything. This screen finds them and asks you which of three things is true. <b>Nothing here deletes or changes a single record.</b></div>' +
       (s.total
-        ? '<div style="margin-top:8px;font-weight:700;color:#b45309">' + s.total + ' group(s) to look at</div>'
+        ? '<div style="margin-top:8px;font-weight:700;color:#b45309">' + s.total + (s.total === 1 ? ' group' : ' groups') + ' to look at</div>'
         : '<div style="margin-top:8px;font-weight:700;color:#0f766e">✓ Nothing to look at — every set of look-alike records has been answered.</div>') +
       (s.settled ? '<div class="meta" style="font-size:12.5px;color:#0f766e">' + s.settled + ' already sorted out by the team.</div>' : '') +
       '<div class="acts" style="margin-top:8px">' +
@@ -30850,6 +30909,11 @@ function viewCatalogue() {
     return h;
   }
 
+  function bookSweepDoor() {
+    /* v6.9.539 - the Book numbers screen left the header (item 23); this is its door */
+    var n = 0; try { n = bkFind().length; } catch (e) { n = 0; }
+    return '<div class="meta" style="font-size:12px;margin:8px 0"><a href="#" data-act="tab" data-tab="booksweep" style="color:#0f766e;font-weight:700">Book numbers typed into the site box</a> \u00b7 ' + n + (n === 1 ? ' row' : ' rows') + '</div>';
+  }
   function viewHealth() {
     var s = healthScan();
     var h = '<div class="card" style="' + (s.total ? 'border-color:#fed7aa;background:#fff7ed' : 'border-color:#99f6e4;background:#f0fdfa') + '">' +
@@ -31007,6 +31071,7 @@ function viewCatalogue() {
     /* v6.9.206 - everything that was set aside, and the one button that brings it back. */
     h += cancelledCardHtml();
 
+    try { h += bookSweepDoor(); } catch (e) { }
     return h;
   }
   function viewOwner() {
@@ -31041,6 +31106,19 @@ function viewCatalogue() {
     else if (svcDue.length) one = { t: svcDue.length + " service visit" + (svcDue.length === 1 ? "" : "s") + " overdue", s: "Softeners and filters past their cycle.", a: "service", b: "Open service" };
 
     var h = "";
+    /* v6.9.539 - the tiles first: the whole day in one glance before any card */
+    h += '<div class="cards">' +
+      '<div class="stat ' + (due > 0 ? "alert" : "") + '"><div class="n">' + money(due) + '</div><div class="l">Client outstanding</div></div>' +
+      '<div class="stat"><div class="n">' + money(incPend) + '</div><div class="l">Incentive to pay</div></div>' +
+      '<div class="stat ' + (closing.length ? "alert" : "") + '"><div class="n">' + closing.length + '</div><div class="l">Windows closing</div></div>' +
+      '<div class="stat ' + (awaitApp.length ? "alert" : "") + '"><div class="n">' + awaitApp.length + '</div><div class="l">Challans to approve</div></div>' +
+      '<div class="stat"><div class="n">' + awaitRcpt.length + '</div><div class="l">Awaiting receipt</div></div>' +
+      '<div class="stat"><div class="n">' + quotesOpen.length + '</div><div class="l">Quotes live</div></div>' +
+      '<div class="stat ' + (svcDue.length ? "alert" : "") + '"><div class="n">' + svcDue.length + '</div><div class="l">Service overdue</div></div>' +
+      '<div class="stat ' + (unb.val > 0 ? "alert" : "") + '" data-act="tab" data-tab="deliveries" style="cursor:pointer" title="' + unb.count + ' delivered challan' + (unb.count === 1 ? '' : 's') + ' with no bill yet — tap to open">' +
+        '<div class="n">' + money(unb.val) + '</div><div class="l">Delivered, not billed</div></div>' +
+      '<div class="stat"><div class="n">' + visitsToday.length + '</div><div class="l">Site visits today</div></div>' +
+      '</div>';
     /* v6.9.520 - his item 17. These two were on viewDash, which an admin never reaches -
        render() sends him here. Measured on his own Mac: Today opened once since 27 August. */
     try { h += rateGapDashCard(); } catch (e) { console.warn("[rategap] card:", e); }
@@ -31053,11 +31131,30 @@ function viewCatalogue() {
         '<div class="acts"><button class="btn sm" data-act="tab" data-tab="' + one.a + '">' + esc(one.b) + '</button></div></div>';
     }
 
-    /* every executive's own sites in stage order, with what to sell at each \u2014 this is the round */
-    try { h += stageBoardCard(); } catch (e) { console.warn("[stage] board:", e); }
-
-    /* the agent's own top of the list, above the plain digest — it names names and drafts the text */
-    if (canSee("agent")) { try { h += agTodayCard(); } catch (e) { console.warn("[agent] today card:", e); } }
+    /* v6.9.539 - his item 22: "in today also, all in compact way". The stage board and the
+       agent's card were the two long things on this screen; each is one line with a door now.
+       The agent has its own tabs (6.9.532) and the pitch board its own tab. */
+    try {
+      var _ms = myStageSites(), _win = _ms.filter(function (st) { var p = PITCH2[String(st.stage || "").trim()]; return p && p.win; }).length;
+      var _noSt = _ms.filter(function (st) { return !String(st.stage || "").trim(); }).length;
+      if (_ms.length) {
+        h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<div><b>' + _ms.length + (_ms.length === 1 ? ' site' : ' sites') + ' on your book</b>' +
+          (_win ? ' \u00b7 <b style="color:#b91c1c">' + _win + ' at a closing stage</b>' : '') +
+          (_noSt ? ' \u00b7 <span style="color:#b45309">' + _noSt + ' with no stage</span>' : '') + '</div>' +
+          '<button class="btn sm" data-act="tab" data-tab="pitch">What to pitch, stage by stage</button></div>';
+      }
+    } catch (e) { console.warn("[stage] line:", e); }
+    if (canSee("agent")) {
+      try {
+        var _al = agLive(), _a0 = _al.filter(function (a) { return agBand(a) === 0; }).length;
+        if (_al.length) {
+          h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+            '<div><b>Your agent:</b> <b style="color:#b91c1c">' + _a0 + '</b> to do today \u00b7 ' + _al.length + ' open in all</div>' +
+            '<button class="btn sm" data-act="tab" data-tab="agent">Open the agent</button></div>';
+        }
+      } catch (e) { console.warn("[agent] line:", e); }
+    }
 
     /* duplicate entries, if there are any left to answer */
     try { h += draftDashCard(); } catch (e) { console.warn("[draft] card:", e); }
@@ -31079,28 +31176,9 @@ function viewCatalogue() {
         '<button class="btn sm ghost" data-act="tab" data-tab="leads">Leads</button></div></div>';
     }
 
-    h += '<div class="cards">' +
-      '<div class="stat ' + (due > 0 ? "alert" : "") + '"><div class="n">' + money(due) + '</div><div class="l">Client outstanding</div></div>' +
-      '<div class="stat"><div class="n">' + money(incPend) + '</div><div class="l">Incentive to pay</div></div>' +
-      '<div class="stat ' + (closing.length ? "alert" : "") + '"><div class="n">' + closing.length + '</div><div class="l">Windows closing</div></div>' +
-      '<div class="stat ' + (awaitApp.length ? "alert" : "") + '"><div class="n">' + awaitApp.length + '</div><div class="l">Challans to approve</div></div>' +
-      '<div class="stat"><div class="n">' + awaitRcpt.length + '</div><div class="l">Awaiting receipt</div></div>' +
-      '<div class="stat"><div class="n">' + quotesOpen.length + '</div><div class="l">Quotes live</div></div>' +
-      '<div class="stat ' + (svcDue.length ? "alert" : "") + '"><div class="n">' + svcDue.length + '</div><div class="l">Service overdue</div></div>' +
-      '<div class="stat ' + (unb.val > 0 ? "alert" : "") + '" data-act="tab" data-tab="deliveries" style="cursor:pointer" title="' + unb.count + ' delivered challan' + (unb.count === 1 ? '' : 's') + ' with no bill yet — tap to open">' +
-        '<div class="n">' + money(unb.val) + '</div><div class="l">Delivered, not billed</div></div>' +
-      '<div class="stat"><div class="n">' + visitsToday.length + '</div><div class="l">Site visits today</div></div>' +
-      '</div>';
 
-    if (closing.length) {
-      h += '<h3 style="margin:18px 0 10px;font-size:15px">Closing today - pitch or lose</h3>';
-      closing.slice(0, 8).forEach(function (c) {
-        h += '<div class="card"><h3>' + esc(c.brand) + ' <span class="pill due">closes now</span></h3>' +
-          '<div class="meta">' + esc(c.site.name) + ' &middot; ' + esc(c.site.stage || "") +
-          (c.site.owner ? '<br>Owner: ' + esc(c.site.owner) : "") + '</div>' +
-          '<div class="acts"><button class="btn sm ghost" data-act="matrix" data-id="' + esc(c.site.id) + '">Matrix</button></div></div>';
-      });
-    }
+    /* v6.9.539 - the eight "closing today" cards are gone from here: the tile above counts
+       them and the agent's Windows-closing sheet is where they are worked. */
 
     h += '<div class="foot-note">Figures are ex-GST where incentive is concerned. Only delivered challans (receipt in) count.</div>';
     return h;
@@ -34624,7 +34702,7 @@ function viewCatalogue() {
         'Finalise puts it right by itself &mdash; the line takes the rate on file and the audit trail says so; or open it and press <b>Do it now</b>. ' +
         (open < rows.length ? '<b>' + (rows.length - open) + '</b> ' + (rows.length - open === 1 ? 'is' : 'are') + ' already finalised and need' + (rows.length - open === 1 ? 's' : '') + ' a credit note instead. ' : '') +
         'The check runs on every open, over the whole book, with the same reading finalise uses.</div>';
-    rows.slice(0, 6).forEach(function (r) {
+    rows.slice(0, 3).forEach(function (r) {   /* v6.9.539 - three, not six: compact */
       h += '<div class="row" style="align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap;border-top:1px solid #fecaca;padding-top:7px">' +
         '<b style="flex:1 1 100%;font-size:13.5px">' + esc(r.c.customerName || "(client)") + '</b>' +
         '<span class="meta" style="font-size:12px;white-space:nowrap;flex:1 1 auto">' + esc(r.c.challanNo || "") + '</span>' +
@@ -34632,7 +34710,7 @@ function viewCatalogue() {
         '<span style="font-size:12.5px;white-space:nowrap"><b>' + esc(money(r.diff)) + '</b></span>' +
         '<button class="btn sm ghost" data-act="ch-open" data-id="' + esc(r.c.id) + '">Open</button></div>';
     });
-    if (rows.length > 6) h += '<div class="meta" style="font-size:12px;margin-top:6px">and ' + (rows.length - 6) + ' more &mdash; all in the delivery book</div>';
+    if (rows.length > 3) h += '<div class="meta" style="font-size:12px;margin-top:6px">and ' + (rows.length - 3) + ' more &mdash; <a href="#" data-act="tab" data-tab="billing" style="color:#b91c1c;font-weight:700">all on HISAB</a></div>';
     return h + '</div>';
   }
   function draftDashCard() {
@@ -35718,8 +35796,8 @@ function viewCatalogue() {
 
     var bandRows = AG_BANDS.map(function (b, bi) { return live.filter(function (a) { return agBand(a) === bi; }); });
     var view = Number(S.agView);
-    var viewHas = function (v) { return v === 3 ? muted.length > 0 : !!(bandRows[v] && bandRows[v].length); };
-    if (!(view >= 0 && view <= 3) || !viewHas(view)) {
+    var viewHas = function (v) { return v === 4 ? true : v === 3 ? muted.length > 0 : !!(bandRows[v] && bandRows[v].length); };
+    if (!(view >= 0 && view <= 4) || !viewHas(view)) {
       /* the first band with something in it - a chosen tab that has emptied falls through */
       view = 0; while (view < 3 && !viewHas(view)) view++;
       if (view === 3 && !muted.length) view = 0;
@@ -35734,7 +35812,12 @@ function viewCatalogue() {
       tile(0, nBand(0), "Do today", true) +
       tile(1, nBand(1), "This week", false) +
       tile(2, nBand(2), "Keep an eye on", false) +
-      tile(3, muted.length, "Snoozed / done", false) + '</div>';
+      tile(3, muted.length, "Snoozed / done", false) +
+      /* v6.9.539 - his item 25: "what's the difference between the brief and the agent, can't
+         they be combined". The agent is the list of things to do; the brief is the week's plan
+         and recap for the team. One screen: the brief is the fifth tab. */
+      tile(4, "\u2261", "The brief", false) + '</div>';
+    if (view === 4) return h + viewBrief();
 
     if (live.length) {
       h += '<div class="row" style="flex-wrap:wrap;gap:6px;margin:2px 0 8px">' +
@@ -35742,7 +35825,7 @@ function viewCatalogue() {
         '<button class="btn sm ghost" data-act="ag-wa2">Share on WhatsApp</button></div>';
     }
 
-    if (!all.length) {
+    if (!all.length && view !== 4) {
       return h + '<div class="empty">Nothing needs you right now — no window closing, no money overdue, no quotation waiting, no service due. ' +
         'The pitching half of the agent runs off your live sites and their construction stage, so entering those sharpens it the most.' +
         '<div class="acts" style="justify-content:center;margin-top:10px">' +
@@ -38294,7 +38377,10 @@ function viewCatalogue() {
     ["Service",    ["service", "spares"]],
     ["Products",   ["products", "catalogue", "pricelist", "rates"]],
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins", "tools"]],
-    ["Today",      ["dash", "brief", "pending", "health", "trouble", "changelog", "booksweep", "dups"]]
+    /* v6.9.539 - item 23: "Book numbers - what's the use, it's empty" (measured: 0 rows) - off
+       the header; the screen still opens from the Health check. Item 25: The brief is a tab
+       inside Agent now, so it is not here twice. */
+    ["Today",      ["dash", "pending", "health", "trouble", "changelog", "dups"]]
   ];
   /* The four hub tabs (v6.9.330 and before) still render if something lands on them - the two
      "Open Deliveries" buttons do - so they must light the right group. They are not listed as
@@ -42519,6 +42605,7 @@ function viewCatalogue() {
       S.modal = modalSite(_seed); render(); return;
     }
     if (act === "site-open") { S.modal = modalSite(siteById(id)); render(); return; }
+    if (act === "dup-peek") { S.dupPeek = (S.dupPeek === t.getAttribute("data-k")) ? "" : (t.getAttribute("data-k") || ""); keepScroll = true; render(); return; }   /* v6.9.539 */
     if (act === "dup-rescan") { render(); return; }
     if (act === "dup-selftest") { dupSelfTest(); return; }
     if (act === "dup-showsettled") { S.dupShowSettled = !S.dupShowSettled; render(); return; }
