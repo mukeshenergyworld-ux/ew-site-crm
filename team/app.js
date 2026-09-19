@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.513";
+  var APP_VERSION = "6.9.514";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -7082,6 +7082,32 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return Object.keys(set).length;
   }
   function isClient(name) { return clientWonBrands(name).length > 0 || clientDelivered(name); }
+  /* ---- AND WHY  (item 10, v6.9.514) -------------------------------------------
+     isClient has been derived since v6.9.289 and shown nowhere, so a man moved between the
+     Leads tab and the Clients tab for a reason that was never on the screen. This is that
+     reason, in the words he would use. */
+  function clientWhy(name) {
+    var t = String(name || "").trim().toLowerCase();
+    var won = clientWonBrands(name);
+    var n = (S.data.challans || []).filter(function (c) {
+      return String(c.customerName || "").trim().toLowerCase() === t &&
+             String(c.receiptReceived).toUpperCase() === "Y";
+    }).length;
+    if (n) return { client: true, say: n + " deliver" + (n === 1 ? "y" : "ies") };
+    if (won.length) return { client: true, say: won.slice(0, 2).join(", ") + " won" };
+    var q = (S.data.quotes || []).filter(function (x) {
+      return String(x.client || "").trim().toLowerCase() === t;
+    }).length;
+    return { client: false, say: q ? (q + " quotation" + (q === 1 ? "" : "s") + ", nothing taken") : "not quoted yet" };
+  }
+  function clWhyPill(name) {
+    var w = clientWhy(name);
+    return '<span class="pill" style="' + (w.client
+      ? 'background:#ecfdf5;color:#065f46;border-color:#6ee7b7">client'
+      : 'background:#fff7ed;color:#9a3412;border-color:#fed7aa">lead') +
+      ' · ' + esc(w.say) + '</span>';
+  }
+
   /* Board state blends quotes + delivered challans + a manual per-brand status (clientPitch), so
      old clients with pre-app history can be recorded directly. Priority: won > live > lost > none. */
   function clientBrandState(name, brand) {
@@ -8448,9 +8474,25 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      is open - and they are worth more on the register than they ever were on the cards, because
      the register is the only screen where a missing mobile can be typed in where it is read.
      Written once so the two views can never disagree about who is on the list. */
+  /* ---- ITEM 10, v6.9.514: ONE LIST, BANDED. -----------------------------------
+     This filtered `isClient(c.name)` and the Leads board filtered its opposite - one collection,
+     two screens, and a rule nobody could see deciding which one a man appeared on. S.clWho is
+     "all" by default now, so both are on one list, and clWhyPill says why each is what it is.
+     S.clFrom/S.clTo are the date filter he asked for, read off createdAt - when the record was
+     made, which is the only date every one of these rows carries. */
+  function clWho() { var w = String(S.clWho || "all"); return (w === "client" || w === "lead") ? w : "all"; }
+  function clInDates(c) {
+    var d = String(c.createdAt || "").slice(0, 10);
+    if (S.clFrom && (!d || d < S.clFrom)) return false;
+    if (S.clTo && (!d || d > S.clTo)) return false;
+    return true;
+  }
   function clientsShown() {
     var loc = S.q, qq = String(S.clq || "").trim().toLowerCase();
-    var all = S.data.clients.filter(function (c) { return isClient(c.name); });
+    var w = clWho();
+    var all = S.data.clients.filter(function (c) {
+      return (w === "all" ? true : (isClient(c.name) === (w === "client"))) && clInDates(c);
+    });
     if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });   /* a sales exec sees only clients assigned to them */
     var list = all.filter(function (c) { return !loc || c.location === loc; });
     if (S.clNoSite) list = list.filter(function (c) { return !siteForClient(c.name); });   /* v6.9.246 */
@@ -8545,7 +8587,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           esc((dupAliasMap().aliasOf[dgKey(c.name)] || []).join(", "))) + '</span>' : '') +
         ' <span class="pill teal">' + esc(c.location || "-") + '</span>' +
         (cSeg ? ' <span class="pill" style="background:' + (cSeg === "Project" ? "#e0e7ff;color:#3730a3" : "#dcfce7;color:#166534") + '">' + esc(cSeg) + '</span>' : "") +
-        ' <span class="bs win">' + (won ? won + ' WON' : 'CLIENT') + '</span>' +
+        /* v6.9.514 - this read "CLIENT" on every card, including the ones that are not one,
+           which is half of why he could not tell them apart. clWhyPill says which AND why. */
+        (won ? ' <span class="bs win">' + won + ' WON</span>' : '') +
+        ' ' + clWhyPill(c.name) +
         /* Stage sits on the card because it is what decides WHAT to pitch him next. Red when it is
            still blank — tap it to open his card and answer it. */
         (stg
@@ -8655,12 +8700,41 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
   function viewClients() {
     _clDueCache = null; _clStageCache = null; _aliasCache = null;   /* fresh money, stages and merges on every full render */
-    var all = S.data.clients.filter(function (c) { return isClient(c.name); });
+    /* v6.9.514 - the SAME rule the list uses, so the location chips and the list can never
+       disagree about who is on this screen. */
+    var all = S.data.clients.filter(function (c) {
+      var w = clWho();
+      return (w === "all" ? true : (isClient(c.name) === (w === "client"))) && clInDates(c);
+    });
     if (!seesAllClients()) all = all.filter(function (c) { return isMineClient(c.name); });
     var clocs = [];
     all.forEach(function (c) { if (c.location && clocs.indexOf(c.location) < 0) clocs.push(c.location); });
     clocs.sort();
-    var h = '<div class="empty" style="text-align:left;padding:0 0 10px">A <b>client</b> has won at least one brand. Keep cross-selling the rest — tap any brand on his board to quote it.</div>';
+    /* v6.9.514 - his item 10. The bands, their counts and the date filter above everything
+       else, because "which of these am I looking at" comes before any of it. */
+    var _every = S.data.clients || [];
+    if (!seesAllClients()) _every = _every.filter(function (c) { return isMineClient(c.name); });
+    var _dated = _every.filter(clInDates);
+    var _nCl = _dated.filter(function (c) { return isClient(c.name); }).length;
+    var _band = function (k, label, n) {
+      return '<button class="btn sm ' + (clWho() === k ? "" : "ghost") + '" data-act="cl-who" data-k="' + k + '">' +
+        esc(label) + ' <span class="pill">' + n + '</span></button>';
+    };
+    var h = '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px">' +
+      _band("all", "Everyone", _dated.length) +
+      _band("client", "Clients", _nCl) +
+      _band("lead", "Leads", _dated.length - _nCl) +
+      '</div>' +
+      '<div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">' +
+      '<span class="meta" style="font-size:12px;font-weight:700;color:#64748b">ADDED</span>' +
+      '<input type="date" id="cl_from" value="' + esc(S.clFrom || "") + '" style="width:auto;padding:4px 7px;font-size:12.5px" />' +
+      '<span class="meta" style="font-size:12px">to</span>' +
+      '<input type="date" id="cl_to" value="' + esc(S.clTo || "") + '" style="width:auto;padding:4px 7px;font-size:12.5px" />' +
+      ((S.clFrom || S.clTo) ? '<button class="btn sm ghost" data-act="cl-dates-clear">Clear</button>' : "") +
+      '</div>' +
+      '<div class="empty" style="text-align:left;padding:0 0 10px">A man is a <b>client</b> the moment ' +
+      'he has won a brand or taken a delivery \u2014 nothing is set by hand, and every row says which ' +
+      'it is and why. A <b>lead</b> has done neither yet.</div>';
     /* Compact is a whole different read of the same list, so it returns early rather than
        trying to share the area chips and the search box below - those belong to the card view. */
     ensureCompactCss();
@@ -37924,6 +37998,17 @@ function viewCatalogue() {
       });
       sqi.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
     }
+    /* v6.9.514 - the date filter. `change`, not `input`: a date box fires input on every
+       keystroke of a half-typed year and would repaint the whole list four times per date. */
+    ["cl_from", "cl_to"].forEach(function (id) {
+      var b = el(id);
+      if (!b) return;
+      b.addEventListener("change", function (e) {
+        if (id === "cl_from") S.clFrom = String(e.target.value || "");
+        else S.clTo = String(e.target.value || "");
+        render();
+      });
+    });
     var cvqi = el("cv_q");
     if (cvqi) {
       cvqi.addEventListener("input", function (e) {
@@ -39320,6 +39405,9 @@ function viewCatalogue() {
     }
 
     if (act === "geo-filter") { S.geoOnly = !S.geoOnly; render(); return; }
+    /* v6.9.514 - item 10. One list, banded, with the date filter beside it. */
+    if (act === "cl-who") { S.clWho = t.getAttribute("data-k") || "all"; render(); return; }
+    if (act === "cl-dates-clear") { S.clFrom = ""; S.clTo = ""; render(); return; }
     if (act === "cl-loc") { S.q = t.getAttribute("data-loc"); render(); return; }
     /* v6.9.246 - the no-site worklist */
     if (act === "gap-open") { S.modal = modalGaps(t.getAttribute("data-n")); render(); return; }
