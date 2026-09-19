@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.69.0";
+  var APP_VERSION = "1.70.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1359,11 +1359,24 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     });
     return out;
   }
+  /* lifted from team/app.js byte for byte - what a receipt number IS must not fork */
+  function receiptNo(p) {
+    var d = String(p.date || "").replace(/-/g, "").slice(2);
+    /* six digits off the id, zero-padded: a day's worth of receipts can never collide, and a
+       payment recorded on a phone that was offline gets the same number as everyone else sees. */
+    var s = ("000000" + String(p.id || "").replace(/\D/g, "")).slice(-6);
+    return "RC-" + (d || "000000") + "-" + s;
+  }
   function chgLabel(tab, r) {
     if (!r) return "";
     if (tab === "challans") return String(r.challanNo || "") + (r.customerName ? " · " + r.customerName : "");
     if (tab === "returns") return String(r.returnNo || "") + (r.customerName ? " · " + r.customerName : "");
-    if (tab === "payments") return String(r.client || "") + (r.amount ? " · " + money(r.amount) : "");
+    /* v6.9.511 - THE RECEIPT NUMBER FIRST. Two receipts for one man at one amount - a part
+       payment against two challans, which is ordinary - printed as the same line twice and
+       read as the money having come in twice. The number was already on the audit row
+       beside it and missing from the payment’s own. */
+    if (tab === "payments") return (r.id ? receiptNo(r) + " · " : "") + String(r.client || "") +
+      (r.amount ? " · " + money(r.amount) : "");
     if (tab === "quotes") return String(r.quoteNo || "") + (r.client ? " · " + r.client : "");
     if (tab === "discounts") return String(r.client || "") + " · " + String(r.brand || "");
     if (tab === "clients" || tab === "customers") return String(r.name || "");
