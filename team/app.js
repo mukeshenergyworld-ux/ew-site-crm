@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.514";
+  var APP_VERSION = "6.9.515";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18827,8 +18827,10 @@ function viewCatalogue() {
       var c = x.c;
       h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;' +
         'padding-top:6px;border-top:1px solid #fecaca">' +
-        '<button class="cv-nm" data-act="acct-open" data-id="' + esc(c.id) + '" ' +
-        'style="font-size:13px;font-weight:700;color:#b91c1c" title="' + esc(String(c.challanNo || "")) + '">' +
+        /* v6.9.515 - item 2. Was acct-open, which cannot answer off a client's account;
+           this band is drawn on Health. See the ch-open handler for the class. */
+        '<button class="cv-nm" data-act="ch-open" data-id="' + esc(c.id) + '" ' +
+        'style="font-size:13px;font-weight:700;color:#b91c1c" title="Open ' + esc(String(c.challanNo || "")) + '">' +
         esc(chNoShort(String(c.challanNo || ""), d10(c.createdAt))) + '</button>' +
         '<span style="font-size:12.5px;color:#0f172a">' + esc(String(c.customerName || "")) + '</span>' +
         '<span class="meta" style="font-size:12px;color:#7f1d1d">' +
@@ -18898,6 +18900,108 @@ function viewCatalogue() {
   }
   /* The strip. `btns` maps a step key to the caller's OWN button html; a step with no button
      sits grey and says, on a long press, what has to happen before it can be done. */
+  /* ===== ITEM 4, AS HE ACTUALLY WROTE IT  (v6.9.515, 19 September 2026) =====
+     HIS WORDS, from the notes PDF, and they are a LAYOUT instruction, not "make it smaller":
+
+       "Make it compact one like below Made {strike out}, write Ashish Jha, below passed {strike
+        out} write Mukesh Verma, below mark as received show PENDING, below Receipt show PENDING
+        {ATTACH}, Below Finalize show Pending, one done strike out all, it will make it compact"
+
+     He is describing ONE block in which every step carries its own answer underneath it. The
+     card had TWO, and they said the same things in different words: the step strip (v6.9.487)
+     and the Made / Passed / Receipt trail (v6.9.466).
+
+     I had marked item 4 done against v6.9.504. That was wrong twice over: 6.9.504 compacted the
+     ITEMS TABLE inside the expanded view, and the two blocks this note is about were never
+     touched. He said so, twice, and was right both times.
+
+     MEASURED at 390px on the real card, built from its own markup and its own stylesheet,
+     BEFORE anything was changed:
+
+         number + pills + five buttons    82 px
+         client / items / brand           40 px
+         the step strip                  144 px
+         the trail                        61 px
+                                         ------
+                                         360 px  - and TWO deliveries fit on a 900px screen.
+
+     The strip's 144px is NOT decoration. Broken down: the three struck labels are 21px, and the
+     rest is three 29px action buttons wrapping onto three rows. So nothing here is achieved by
+     deleting ornament; it is achieved by not saying the same thing twice.
+
+     THE LABEL IS THE BUTTON wherever a step can be acted on. That is what lets the two blocks
+     become one - "Mark as received" was already both the name of the step and the name of the
+     action, so it was being drawn twice for no reason. Under it goes the state, PENDING, in his
+     own word.
+
+     NOTHING IS LOST. Every button that was on the strip is still on the card, with the same act,
+     the same permission test and the same colour. Every name the trail carried - who made it,
+     who passed it, who filed the receipt - is still here, under the step it belongs to, which is
+     where he asked for it. Green struck means done, the house rule, unchanged.
+
+     chStepStrip and chTrailHtml are NOT removed: the trail is still drawn on the HISAB account
+     card and in the finalise window, where the card is a sheet about one delivery and has the
+     room for three labelled rows. This changes the LIST card only. */
+  function chStepCells(c, btns) {
+    var b = btns || {};
+    var st = String((c && c.status) || "Draft");
+    var gone = ["Dispatched", "Received", "Billed"].indexOf(st) >= 0;
+    var pf = challanProof(c.id);
+    var none = function (v) { return !String(v == null ? "" : v).trim(); };
+
+    /* what stands UNDER each step: a name where a man did it, PENDING where nobody has yet */
+    var under = {
+      made:  none(c.createdBy) ? "name not recorded" : c.createdBy,
+      pass:  (none(c.approvedAt) && none(c.approvedBy))
+               ? (st === "Draft" ? "not passed yet" : "not recorded")
+               : (none(c.approvedBy) ? "name not recorded" : c.approvedBy),
+      disp:  "",
+      recd:  "",
+      proof: pf ? (none(pf.actor || pf.by) ? "name not recorded" : (pf.actor || pf.by))
+                : (gone ? "PENDING" : "not due until it has gone"),
+      hisab: "",
+      bill:  none(c.billNo) ? "" : String(c.billNo)
+    };
+    /* the trail coloured these two and the colour carried meaning - a receipt on file is not
+       the same fact as one that is late, and red is how he reads the difference */
+    var tone = { pass: (none(c.approvedAt) && none(c.approvedBy)) ? "bad" : "",
+                 proof: pf ? "good" : (gone ? "bad" : "") };
+
+    var cells = chSteps(c).map(function (p) {
+      var lab, val = under[p.k] || "", raw = false;
+
+      if (p.done) {
+        lab = '<span class="stpl done" title="Done">' + esc(p.label) + '</span>';
+
+      } else if (p.k === "hisab") {
+        /* the Finalise button IS the label; its reason goes underneath instead of beside it,
+           which is what made this one 55px of the old strip's 144 */
+        lab = hisabAddBtn(c);
+        val = hisabWhyNot(c); raw = true;
+        if (!String(val).replace(/<[^>]*>/g, "").trim()) { val = "Pending"; raw = false; }
+
+      } else if (p.k === "proof" && b.proof) {
+        /* "below Receipt show PENDING { ATTACH }" - his words, exactly */
+        lab = '<span class="stpl wait" title="' + esc(p.why || "Not yet") + '">' + esc(p.label) + '</span>';
+        val = '<span class="stpv bad">PENDING</span> ' + b.proof; raw = true;
+
+      } else if (b[p.k]) {
+        lab = b[p.k];
+        if (!val) { val = "PENDING"; }
+
+      } else {
+        lab = '<span class="stpl wait" title="' + esc(p.why || "Not yet") + '">' + esc(p.label) + '</span>';
+        if (!val) { val = "PENDING"; }
+      }
+
+      var cls = tone[p.k] === "bad" ? " bad" : (tone[p.k] === "good" ? " good" : "");
+      return '<div class="stpc">' + lab +
+        (val ? (raw ? '<div class="stpv">' + val + '</div>'
+                    : '<div class="stpv' + cls + '">' + esc(val) + '</div>') : '') +
+        '</div>';
+    }).join("");
+    return '<div class="stpg">' + cells + '</div>';
+  }
   function chStepStrip(c, btns) {
     var b = btns || {};
     var out = chSteps(c).map(function (p, i) {
@@ -19051,9 +19155,10 @@ function viewCatalogue() {
         })() + proofLink(c) + '</div>' +
         /* v6.9.487 - THE SEVEN STEPS, above the trail. The strip says WHAT is done; the trail
            below says WHO did it. */
-        chStepStrip(c, stepBtns) +
+        chStepCells(c, stepBtns) +
         /* v6.9.466 - always open, for every role. See chTrailHtml. */
-        chTrailHtml(c);
+        "";   /* v6.9.515 - the trail is inside chStepCells above now; it is still drawn
+                     in full on the HISAB account card and the finalise window */
 
       if (open) {
         var billLine = (c.billNo ? 'Bill <b>' + esc(c.billNo) + '</b>' + (c.billTo ? ' to ' + esc(c.billTo) : "") :
@@ -36121,6 +36226,20 @@ function viewCatalogue() {
          estate that does not mean cancelled, and the colour is the whole distinction. 12.5px,
          because nothing readable here has gone below twelve since 6.9.401. */
       ".stp-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:7px 0 2px;padding:6px 9px;background:#f8fafc;border-left:3px solid #cbd5e1;border-radius:0 8px 8px 0}" +
+      /* v6.9.515 - item 4. One step, one answer under it. Every size here is 12px or more,
+         the floor since v6.9.401; the cells wrap as a phone needs and never scroll sideways. */
+      ".stpg{display:flex;flex-wrap:wrap;align-items:flex-start;gap:7px 14px;margin:7px 0 2px;" +
+        "padding:7px 9px;background:#f8fafc;border-left:3px solid #cbd5e1;border-radius:0 8px 8px 0}" +
+      ".stpc{min-width:0;flex:0 1 auto;line-height:1.4}" +
+      ".stpl{display:block;font-size:12px;font-weight:700;color:#64748b;white-space:nowrap}" +
+      ".stpl.done{color:#0f766e;text-decoration:line-through}" +
+      ".stpv{font-size:12px;color:#334155;white-space:nowrap}" +
+      ".stpv.bad{color:#b91c1c;font-weight:700}" +
+      ".stpv.good{color:#0f766e;font-weight:700}" +
+      /* a button standing in for a step label is the whole trick - it must sit on its own line
+         so the state can go under it, and keep the 44px a thumb needs */
+      ".stpc > .btn.sm{display:block;margin:0 0 2px;min-height:30px}" +
+      ".stpc .pill{font-size:12px}" +
       ".stp{font-size:12.5px;font-weight:700}" +
       ".stp.done{color:#0f766e;text-decoration:line-through;text-decoration-thickness:1.5px;text-decoration-color:#5eead4}" +
       ".stp.wait{color:#94a3b8;font-weight:600}" +
@@ -40101,6 +40220,40 @@ function viewCatalogue() {
        question a man asks when he taps a challan is how THIS line makes up THAT balance - which
        needs the line and the card on the screen together. keepScroll, so the row he tapped is
        still under his thumb: his standing rule since v6.9.475. */
+    /* ===== ITEM 2 - A ROW THAT OPENS NOTHING  (v6.9.515, 19 September 2026) =====
+       HIS NOTE, with the band on the screen: "below challan show nothing on clicking".
+
+       chStuckApprovedBand drew the challan number as a button carrying data-act="acct-open".
+       That act HAS a handler, which is exactly why t_dead_taps.js has been green on it since
+       the day it was written - but the handler can only answer INSIDE A CLIENT'S ACCOUNT. It
+       reads _acctCards, a store viewClients fills as it paints and which is empty everywhere
+       else. Drawn on Health, the tap found no card, returned, and toasted "it is counted on
+       the account above" when there was no account above. Nothing opened and the reason given
+       was wrong as well.
+
+       THE CLASS, NOT THE INSTANCE - and it is the third time:
+         v6.9.408  a screen nothing could open, because renderCore sent the tab elsewhere
+         v6.9.512  the change log's row, same shape, fixed there and NOT swept for elsewhere
+         v6.9.515  this
+
+       A HANDLER THAT EXISTS IS NOT A HANDLER THAT CAN FIRE. ch-open reads the BOOK, not the
+       paint, so it answers from any screen in the app. t_dead_taps.js is extended in the same
+       commit to catch the class rather than this one button. */
+    if (act === "ch-open") {
+      var _co = (S.data.challans || []).filter(function (x) { return String(x.id) === String(id); })[0];
+      if (!_co) {
+        /* say which of the two it is, rather than "nothing to show" */
+        toast("That delivery is not in this copy of the book \u2014 pull it fresh and open it again.");
+        return;
+      }
+      S.modal = '<h2 style="margin:0 0 4px;font-size:16px">' + esc(String(_co.challanNo || "Delivery")) + '</h2>' +
+        '<div class="meta" style="font-size:12.5px;margin:0 0 8px">' + esc(String(_co.customerName || "")) + '</div>' +
+        challanCardHtml(_co) +
+        '<div style="height:10px"></div>' +
+        '<button class="btn full ghost" data-act="close">Close</button>';
+      render();
+      return;
+    }
     if (act === "acct-open") {
       var _ao = String(id || "");
       if (!_acctCards[_ao]) { toast("Nothing more to show for this one here \u2014 it is counted on the account above."); return; }
