@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.74.0";
+  var APP_VERSION = "1.75.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -4208,7 +4208,8 @@ function discRowOn(client, brand, onYmd) {
   function regDay(at) {
     var d = String(at || "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "";
-    return '<div style="font-size:12px;color:#64748b;text-decoration:none">' + d.slice(8, 10) + '/' + d.slice(5, 7) + '</div>';
+    /* v6.9.529 - beside, not under: one line per row */
+    return ' <span style="font-size:12px;color:#64748b;white-space:nowrap">' + d.slice(8, 10) + '/' + d.slice(5, 7) + '</span>';
   }
   function regCell(extra) {
     return "padding:5px 7px;border-top:1px solid #e2e8f0;white-space:nowrap;font-size:12.5px" + (extra || "");
@@ -4338,11 +4339,11 @@ function discRowOn(client, brand, onYmd) {
     var regStruck = ";text-decoration:line-through;text-decoration-color:#15803d;text-decoration-thickness:2px;color:#15803d";
     var h = '<tr style="background:' + bg + '">' +
       '<td style="' + regCell(";font-weight:800;color:#0b3b36") + '">' + (n === null ? "OLD" : n) +
-        (dup ? '<br><span style="font-size:12px;color:#b45309">twice</span>' : '') + '</td>' +
+        (dup ? ' <span style="font-size:12px;color:#b45309">twice</span>' : '') + '</td>' +
       '<td style="' + regCell() + '">' + esc(regDMY(regDate(c))) + chDatePill(c) + '</td>' +
       '<td style="' + regCell(";max-width:170px;overflow:hidden;text-overflow:ellipsis") + '">' +
-        '<b>' + esc(c.customerName || "—") + '</b>' +
-        (cl.mobile ? '<br><span style="font-size:12px;color:#64748b">' + esc(cl.mobile) + '</span>' : '') + '</td>' +
+        /* 1.75.0 - one line per row; the mobile rides in the title of the name */
+        '<b style="white-space:nowrap" title="' + (cl.mobile ? esc(cl.mobile) : '') + '">' + esc(c.customerName || "—") + '</b></td>' +
       '<td style="' + regCell() + '"><button class="btn sm gry" data-act="ch-open" data-id="' + esc(c.id) + '" ' +
         'style="padding:1px 8px;font-size:12.5px;font-weight:700">' + esc(c.challanNo || "no number") +
         ' ' + (open ? "▴" : "▾") + '</button></td>' +
