@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.521";
+  var APP_VERSION = "6.9.522";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -4149,6 +4149,34 @@ window.addEventListener("beforeunload", function (ev) {
       val: ps.reduce(function (a, p) { return a + (Number(p.won) || 0); }, 0)
     };
   }
+  /* ===== ONE SCOREBOARD FOR BOTH SCREENS  (v6.9.522 - his item 26) =====
+     "Can we combine win loose and brand followup". 6.9.509 put a button on each Win/Loss card
+     that jumped to Brand follow-up - and jumped to the wrong brand (see bf-brand). This is the
+     combination: one table, drawn at the top of Brand follow-up and AS Win/Loss's By-brand view.
+     Tap a brand to pick it; the three bands under it are that brand's names. */
+  function brandScoreTable(openByBrand) {
+    var rows = (S.data.rules || []).map(function (r) { return brandWL(r.brand); });
+    if (!rows.length) return '<div class="empty">Nothing to score yet - win rates appear here once the pitch rules are set and quotes are marked Won or Lost.</div>';
+    var dash = '<span style="color:#94a3b8">—</span>';
+    return xlTable("wl-brand", [
+      { k: "brand", t: "BRAND", w: "110px" }, { k: "rate", t: "WIN %", n: 1, r: 1 }, { k: "won", t: "WON", n: 1, r: 1 },
+      { k: "lost", t: "LOST", n: 1, r: 1 }, { k: "open", t: "OPEN", n: 1, r: 1 }, { k: "missed", t: "MISSED WINDOWS", n: 1, r: 1 },
+      { k: "val", t: "VALUE WON", n: 1, r: 1 }, { k: "line", t: "LINE" }
+    ], rows.map(function (x) {
+      var g = brandGroup(x.brand), open = openByBrand && openByBrand[g] ? openByBrand[g].length : null;
+      return { v: { brand: x.brand, rate: x.rate == null ? -1 : x.rate, won: x.won, lost: x.lost, open: open || 0, missed: x.missed, val: x.val, line: x.line },
+        cells: {
+          brand: '<b data-act="bf-brand" data-brand="' + esc(x.brand) + '" style="cursor:pointer;color:#0f766e"' +
+                 (S.bf === g ? ' title="the brand open below"' : '') + '>' + esc(x.brand) + '</b>',
+          rate: x.rate == null ? '<span class="pill">no result yet</span>' : '<span class="pill ' + (x.rate >= 50 ? "Won" : "Lost") + '">' + x.rate + '%</span>',
+          won: x.won || dash, lost: x.lost || dash,
+          open: open == null ? dash : (open ? '<b>' + open + '</b>' : dash),
+          missed: x.missed ? '<span class="pill due">' + x.missed + '</span>' : dash,
+          val: x.val > 0.5 ? money(x.val) : dash,
+          line: esc(x.line || "")
+        } };
+    }), "open names, missed windows and the line");
+  }
   /* and the one sentence that says it, so the two screens phrase it the same way */
   function brandWLPill(w) {
     return (w.rate === null ? '<span class="pill">no result yet</span>'
@@ -4202,22 +4230,10 @@ window.addEventListener("beforeunload", function (ev) {
       return h;
     }
 
-    h += '<div class="empty" style="text-align:left;padding:0 0 12px">Win rate per product line across every site.</div>';
-    /* v6.9.509 - brandWL(), which the follow-up screen also reads. This was the same
-       arithmetic written out here; now there is one of it. */
-    var rows = S.data.rules.map(function (r) { return brandWL(r.brand); })
-      .sort(function (a, b) { return b.missed - a.missed; });
-    if (!rows.length) return h + '<div class="empty">Nothing to score yet - win rates appear here once the pitch rules are set and quotes are marked Won or Lost.</div>';
-    rows.forEach(function (x) {
-      h += '<div class="card"><h3>' + esc(x.brand) + ' ' + brandWLPill(x) + '</h3>' +
-        '<div class="meta">' + esc(x.line) + '<br>Won ' + x.won + ' &middot; Lost ' + x.lost + ' &middot; Value won ' + money(x.val) + '</div>' +
-        /* v6.9.509 - HIS ITEM 26. A man looking at a 40% win rate wants the chase list in the
-           same breath. bf-brand is the follow-up screen's OWN act and it carries the tab now -
-           a second act name for the same thing is how hsb-open got invented. */
-        '<div class="acts" style="margin-top:7px"><button class="btn sm" data-act="bf-brand" data-brand="' +
-        esc(x.brand) + '">Who is still open on ' + esc(x.brand) + '</button></div></div>';
-    });
-    return h;
+    h += '<div class="empty" style="text-align:left;padding:0 0 12px">Win rate per product line across every site. ' +
+      'Tap a brand to open its chase list &mdash; the same table sits at the top of Brand follow-up.</div>';
+    /* v6.9.522 - his item 26: the 14 cards are the one scoreboard now, shared with Brand follow-up */
+    return h + brandScoreTable(null);
   }
 
   function viewRules() {
@@ -7946,6 +7962,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '</div>' +
       '<div class="meta" style="margin:0 0 10px">The downloads are the <b>whole</b> brand \u2014 who has bought it, ' +
       'who is quoted and still open, and who has never been shown it \u2014 not only the open names below.</div>';
+    /* v6.9.522 - his item 26: Win/Loss and Brand follow-up are one screen's worth. The
+       scoreboard every brand, then the chosen brand's three bands under it. */
+    if (!S.bfBand) S.bfBand = { follow: 1, score: 1 }; else if (S.bfBand.score == null) S.bfBand.score = 1;
+    var bfOpen0 = S.bfBand;
+    h += '<div class="card" data-act="bf-band" data-b="score" style="cursor:pointer;border-color:#99f6e4;background:#f0fdfa;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px">' +
+      '<b style="font-size:13.5px">' + (bfOpen0.score ? '\u25be' : '\u25b8') + ' Win / loss \u2014 every brand</b>' +
+      '<span class="meta" style="font-size:12.5px">' + (S.data.rules || []).length + '</span></div>';
+    if (bfOpen0.score) h += brandScoreTable(openByBrand);
     h += '<div class="cards"><div class="stat ' + (listOpen.length ? "alert" : "") + '"><div class="n">' + listOpen.length + '</div><div class="l">' +
       (wantClient ? 'Clients to cross-sell' : 'Leads to chase') + ' &middot; ' + esc(brand) + '</div></div></div>';
     /* rowH - the four-line card per man - REMOVED in v6.9.521: the follow-up band is a table now. */
@@ -40472,7 +40496,12 @@ function viewCatalogue() {
        same act rather than a second one of its own, and from the follow-up screen setting the
        tab it is already on costs nothing. */
     if (act === "bf-brand") {
-      S.bf = t.getAttribute("data-brand"); S.tab = "brandfollow";
+      /* v6.9.522 - a rule is named "Huliot"; the chips are GROUPS, "HULIOT". Set to the rule's
+         name, viewBrandFollow found no such chip and fell back to the first one - every one of
+         6.9.509's fourteen "Who is still open on ..." buttons opened ADANI. brandGroup() is the
+         one mapping between the two spellings. */
+      var _bfn = String(t.getAttribute("data-brand") || "");
+      S.bf = brandGroup(_bfn) || _bfn; S.tab = "brandfollow";
       try { tabUse(S.tab); navBump(S.tab); } catch (e) { }
       render(); return;
     }
@@ -40481,7 +40510,7 @@ function viewCatalogue() {
        looking at does not throw him back to the top of the brand chips. */
     if (act === "bf-band") {
       var _bb = t.getAttribute("data-b") || "";
-      if (!S.bfBand) S.bfBand = { follow: 1 };
+      if (!S.bfBand) S.bfBand = { follow: 1, score: 1 };
       S.bfBand[_bb] = S.bfBand[_bb] ? 0 : 1;
       keepScroll = true; render(); return;
     }
