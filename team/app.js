@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.519";
+  var APP_VERSION = "6.9.520";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -5592,42 +5592,60 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     return h + (sub === "amcrates" ? viewAmcRates() : (sub === "base" ? viewBase() : viewService()));
   }
 
+  /* ===== THE THREE COMMISSIONING BLOCKS, AS TABLES  (v6.9.520 - his item 23) =====
+     HIS WORDS: "Show all excel like format for save space and to view more things at a time",
+     with THIS screen in the screenshot. 6.9.507 tabled the installations list below these three
+     and left them as cards: eleven men to certify, two lines and a button each, a screen and a
+     half. The same component the register and the installations use, one line per man, the
+     button in the last column. Nothing dropped - the same names, dates, products and buttons. */
   function commissioningSection() {
     var pend = commPending(), done = commDone(), cs = "";
     var exp = warrantyExpiring(60);
+    var meta = function (t) { return '<div class="meta" style="margin:0 0 6px">' + t + '</div>'; };
     if (exp.length) {
-      cs += '<div class="card" style="border-color:#fdba74;background:#fff7ed"><h3>Warranty ending — AMC opportunity <span class="pill soon">' + exp.length + '</span></h3>' +
-        '<div class="meta">These commissioned units are near or past warranty end — the best moment to pitch an AMC or extended warranty.</div>';
-      exp.slice(0, 15).forEach(function (x) {
+      cs += '<div class="card" style="border-color:#fdba74;background:#fff7ed"><h3>Warranty ending &mdash; AMC opportunity <span class="pill soon">' + exp.length + '</span></h3>' +
+        meta('These commissioned units are near or past warranty end &mdash; the best moment to pitch an AMC or extended warranty.');
+      cs += xlTable("svc-warr", [
+        { k: "client", t: "CLIENT", w: "140px" }, { k: "product", t: "MACHINE" },
+        { k: "till", t: "WARRANTY TILL" }, { k: "days", t: "LEFT", n: 1, r: 1 }, { k: "go", t: "" }
+      ], exp.map(function (x) {
         var lbl = x.days < 0 ? Math.abs(x.days) + 'd ago' : (x.days === 0 ? 'today' : x.days + 'd left');
-        cs += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(x.client) + '</b> &middot; ' + esc(x.product) +
-          '<br><span style="font-size:12px;color:#64748b">warranty till ' + esc(fullDate(x.till)) + ' &middot; ' + lbl + '</span></div>' +
-          '<button class="btn sm" data-act="amc-wa" data-n="' + esc(x.client) + '" data-p="' + esc(x.product) + '" data-till="' + esc(x.till) + '">Offer AMC</button></div>';
-      });
-      cs += '</div>';
+        return { v: { client: x.client, product: x.product, till: x.till, days: x.days }, cells: {
+          client: '<b>' + esc(x.client) + '</b>', product: esc(x.product), till: esc(fullDate(x.till)),
+          days: '<span class="pill ' + (x.days <= 0 ? 'due' : 'soon') + '">' + lbl + '</span>',
+          go: '<button class="btn sm" data-act="amc-wa" data-n="' + esc(x.client) + '" data-p="' + esc(x.product) + '" data-till="' + esc(x.till) + '" style="padding:2px 8px;font-size:12px">Offer AMC</button>'
+        } };
+      })) + '</div>';
     }
     if (pend.length) {
       cs += '<div class="card" style="border-color:#fca5a5;background:#fef2f2"><h3>To certify <span class="pill due">' + pend.length + '</span></h3>' +
-        '<div class="meta">Delivered products that need on-site commissioning. Enter the date to issue the certificate + warranty card.</div>';
-      pend.forEach(function (c) {
+        meta('Delivered products that need on-site commissioning. Enter the date to issue the certificate + warranty card.');
+      cs += xlTable("svc-cert", [
+        { k: "client", t: "CLIENT", w: "140px" }, { k: "site", t: "SITE" }, { k: "no", t: "DELIVERY" },
+        { k: "what", t: "TO COMMISSION" }, { k: "go", t: "" }
+      ], pend.map(function (c) {
         var names = commItemsOf(c).filter(function (x) { return !(x.i.comm && x.i.comm.date); }).map(function (x) { return x.cat.label; });
-        cs += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(c.customerName || "") + '</b>' +
-          (c.site ? ' <span style="color:#94a3b8;font-size:12px">' + esc(c.site) + '</span>' : "") +
-          '<br><span style="font-size:12px;color:#64748b">' + esc(c.challanNo || "") + ' &middot; ' + esc(names.join(", ")) + '</span></div>' +
-          '<button class="btn sm" data-act="comm-open" data-ch="' + esc(c.id) + '">Certify install</button></div>';
-      });
-      cs += '</div>';
+        return { v: { client: c.customerName || "", site: c.site || "", no: c.challanNo || "", what: names.join(", ") }, cells: {
+          client: '<b>' + esc(c.customerName || "") + '</b>', site: esc(c.site || "—"), no: esc(c.challanNo || ""),
+          what: esc(names.join(", ")),
+          go: '<button class="btn sm" data-act="comm-open" data-ch="' + esc(c.id) + '" style="padding:2px 8px;font-size:12px">Certify install</button>'
+        } };
+      }), "the delivery and what is on it") + '</div>';
     }
     if (done.length) {
-      cs += '<div class="card"><h3>Commissioned <span class="pill Won">' + done.length + '</span></h3><div class="meta">Re-print or send the documents any time.</div>';
-      done.slice(0, 12).forEach(function (c) {
-        cs += '<div class="acts" style="align-items:center;margin-top:8px;flex-wrap:wrap"><div class="grow"><b>' + esc(c.customerName || "") + '</b>' +
-          '<br><span style="font-size:12px;color:#64748b">' + esc(c.challanNo || "") + ' &middot; ' + esc(fullDate(commDateOf(c))) + '</span></div>' +
-          '<button class="btn sm ghost" data-act="comm-cert" data-ch="' + esc(c.id) + '">Certificate</button>' +
-          '<button class="btn sm ghost" data-act="comm-warr" data-ch="' + esc(c.id) + '">Warranty</button>' +
-          '<button class="btn sm" data-act="comm-warr-wa" data-ch="' + esc(c.id) + '">Send</button></div>';
-      });
-      cs += '</div>';
+      cs += '<div class="card"><h3>Commissioned <span class="pill Won">' + done.length + '</span></h3>' +
+        meta('Re-print or send the documents any time.');
+      cs += xlTable("svc-done", [
+        { k: "client", t: "CLIENT", w: "140px" }, { k: "no", t: "DELIVERY" }, { k: "on", t: "COMMISSIONED" }, { k: "go", t: "DOCUMENTS" }
+      ], done.map(function (c) {
+        var dt = commDateOf(c);
+        return { v: { client: c.customerName || "", no: c.challanNo || "", on: dt || "" }, cells: {
+          client: '<b>' + esc(c.customerName || "") + '</b>', no: esc(c.challanNo || ""), on: esc(fullDate(dt)),
+          go: '<button class="btn sm ghost" data-act="comm-cert" data-ch="' + esc(c.id) + '" style="padding:2px 8px;font-size:12px">Certificate</button> ' +
+              '<button class="btn sm ghost" data-act="comm-warr" data-ch="' + esc(c.id) + '" style="padding:2px 8px;font-size:12px">Warranty</button> ' +
+              '<button class="btn sm" data-act="comm-warr-wa" data-ch="' + esc(c.id) + '" style="padding:2px 8px;font-size:12px">Send</button>'
+        } };
+      })) + '</div>';
     }
     return cs;
   }
@@ -30698,12 +30716,16 @@ function viewCatalogue() {
 
     /* the one thing */
     var one = null;
-    if (closing.length) one = { t: closing.length + " pitch window(s) close TODAY", s: closing.slice(0, 3).map(function (c) { return c.brand + " at " + c.site.name; }).join(", "), a: "leads", b: "Open brand leads" };
-    else if (awaitApp.length) one = { t: awaitApp.length + " challan(s) waiting on your approval", s: "The godown cannot dispatch until you approve.", a: "challans", b: "Approve now" };
+    if (closing.length) one = { t: closing.length + " pitch window" + (closing.length === 1 ? "" : "s") + " close" + (closing.length === 1 ? "s" : "") + " TODAY", s: closing.slice(0, 3).map(function (c) { return c.brand + " at " + c.site.name; }).join(", "), a: "leads", b: "Open brand leads" };
+    else if (awaitApp.length) one = { t: awaitApp.length + " challan" + (awaitApp.length === 1 ? "" : "s") + " waiting on your approval", s: "The godown cannot dispatch until you approve.", a: "challans", b: "Approve now" };
     else if (due > 0) one = { t: money(due) + " outstanding from clients", s: "Incentive only becomes payable as this comes in.", a: "payments", b: "Open payments" };
-    else if (svcDue.length) one = { t: svcDue.length + " service visit(s) overdue", s: "Softeners and filters past their cycle.", a: "service", b: "Open service" };
+    else if (svcDue.length) one = { t: svcDue.length + " service visit" + (svcDue.length === 1 ? "" : "s") + " overdue", s: "Softeners and filters past their cycle.", a: "service", b: "Open service" };
 
     var h = "";
+    /* v6.9.520 - his item 17. These two were on viewDash, which an admin never reaches -
+       render() sends him here. Measured on his own Mac: Today opened once since 27 August. */
+    try { h += rateGapDashCard(); } catch (e) { console.warn("[rategap] card:", e); }
+    try { h += unsentDashCard(); } catch (e) { console.warn("[unsent] card:", e); }
     if (one) {
       h += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
         '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#0f766e"><b>Today</b></div>' +
@@ -30733,7 +30755,7 @@ function viewCatalogue() {
     /* the pitch-by-stage engine only works once sites are entered - nudge until at least a few are in */
     if ((roleIs("admin") || roleIs("sales")) && (S.data.sites || []).length < 3) {
       h += '<div class="card" style="border-color:#bfdbfe;background:#eff6ff"><h3>Turn on stage-based pitching</h3>' +
-        '<div class="meta">Only <b>' + (S.data.sites || []).length + '</b> site(s) entered, so the pitch matrix stays mostly dark. Enter your live sites with their construction stage and the app will start flagging <b>what to pitch, to whom, and when</b> — pipes at rough-in, heat pumps &amp; softeners at finishing. This is the single biggest lever you have unused.</div>' +
+        '<div class="meta">Only <b>' + (S.data.sites || []).length + '</b> site' + ((S.data.sites || []).length === 1 ? '' : 's') + ' entered, so the pitch matrix stays mostly dark. Enter your live sites with their construction stage and the app will start flagging <b>what to pitch, to whom, and when</b> — pipes at rough-in, heat pumps &amp; softeners at finishing. This is the single biggest lever you have unused.</div>' +
         '<div class="acts"><button class="btn sm" data-act="tab" data-tab="sites">Add a site</button>' +
         '<button class="btn sm ghost" data-act="tab" data-tab="leads">Leads</button></div></div>';
     }
@@ -30746,7 +30768,7 @@ function viewCatalogue() {
       '<div class="stat"><div class="n">' + awaitRcpt.length + '</div><div class="l">Awaiting receipt</div></div>' +
       '<div class="stat"><div class="n">' + quotesOpen.length + '</div><div class="l">Quotes live</div></div>' +
       '<div class="stat ' + (svcDue.length ? "alert" : "") + '"><div class="n">' + svcDue.length + '</div><div class="l">Service overdue</div></div>' +
-      '<div class="stat ' + (unb.val > 0 ? "alert" : "") + '" data-act="tab" data-tab="deliveries" style="cursor:pointer" title="' + unb.count + ' delivered challan(s) with no bill yet — tap to open">' +
+      '<div class="stat ' + (unb.val > 0 ? "alert" : "") + '" data-act="tab" data-tab="deliveries" style="cursor:pointer" title="' + unb.count + ' delivered challan' + (unb.count === 1 ? '' : 's') + ' with no bill yet — tap to open">' +
         '<div class="n">' + money(unb.val) + '</div><div class="l">Delivered, not billed</div></div>' +
       '<div class="stat"><div class="n">' + visitsToday.length + '</div><div class="l">Site visits today</div></div>' +
       '</div>';
@@ -34334,6 +34356,52 @@ function viewCatalogue() {
       '<button class="btn sm" data-act="q-unsent">Work through them</button></div></div>';
   }
 
+  /* ===== BILLED ABOVE THE RATE ON FILE  (v6.9.520, 19 September 2026) =====
+     HIS WORDS, on the discount thread: "show me all challan having such issues, i will them
+     manually / make a proper check system over this kind of issues, we have mange it
+     professionlally". The scan existed only in my rig. This is it on his screen, every open,
+     over every delivery in the book, with the one function finalise itself uses - so the card
+     and the gate can never disagree about which deliveries are wrong.
+
+     MEASURED on the book synced 19 Sep 15:51 IST: 12 of 212 deliveries, 39 lines, Rs 3,11,260,
+     the newest written 67 minutes before Challan 1.72.0 went live. Every one predates the fix;
+     if this card ever names a delivery made after it, the fix has a hole and he will see it
+     the same day rather than the day a client does.
+
+     Owner only - correcting a price is his act (canFinalise), and the card is an instruction
+     to act, not a report. Nothing here changes a record: the Correct button on the finalise
+     sheet does that, with his name on the audit row. */
+  function rateGapDashCard() {
+    if (!canFinalise()) return "";
+    var rows = [];
+    (S.data.challans || []).forEach(function (c) {
+      if (!c || c.status === "Cancelled") return;
+      var g; try { g = chDiscGap(c); } catch (e) { return; }
+      if (g && g.n) rows.push({ c: c, n: g.n, diff: g.diff, done: inHisab(c) });
+    });
+    if (!rows.length) return "";
+    rows.sort(function (a, b) { return b.diff - a.diff; });
+    var tot = rows.reduce(function (t, r) { return t + r.diff; }, 0);
+    var open = rows.filter(function (r) { return !r.done; }).length;
+    var h = '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b91c1c"><b>Billed above the rate on file</b></div>' +
+      '<h3 style="font-size:16px;margin:4px 0 2px">' + rows.length + ' deliver' + (rows.length === 1 ? 'y' : 'ies') +
+        ' carr' + (rows.length === 1 ? 'ies' : 'y') + ' a line priced below the client\'s rate &middot; ' + esc(money(tot)) + ' over</h3>' +
+      '<div class="meta" style="font-size:13px">Each was written with 0% frozen on a line while a rate was on file for that client and brand. ' +
+        'Finalise refuses every one of these until it is corrected &mdash; open it, press <b>Correct the price</b>, and the line takes the rate on file. ' +
+        (open < rows.length ? '<b>' + (rows.length - open) + '</b> ' + (rows.length - open === 1 ? 'is' : 'are') + ' already finalised and need' + (rows.length - open === 1 ? 's' : '') + ' a credit note instead. ' : '') +
+        'The check runs on every open, over the whole book, with the same reading finalise uses.</div>';
+    rows.slice(0, 6).forEach(function (r) {
+      h += '<div class="row" style="align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap;border-top:1px solid #fecaca;padding-top:7px">' +
+        '<b style="flex:1 1 100%;font-size:13.5px">' + esc(r.c.customerName || "(client)") + '</b>' +
+        '<span class="meta" style="font-size:12px;white-space:nowrap;flex:1 1 auto">' + esc(r.c.challanNo || "") + '</span>' +
+        '<span class="pill ' + (r.done ? '' : 'due') + '" style="white-space:nowrap">' + r.n + ' line' + (r.n === 1 ? '' : 's') + (r.done ? ' &middot; finalised' : '') + '</span>' +
+        '<span style="font-size:12.5px;white-space:nowrap"><b>' + esc(money(r.diff)) + '</b></span>' +
+        '<button class="btn sm ghost" data-act="ch-open" data-id="' + esc(r.c.id) + '">Open</button></div>';
+    });
+    if (rows.length > 6) h += '<div class="meta" style="font-size:12px;margin-top:6px">and ' + (rows.length - 6) + ' more &mdash; all in the delivery book</div>';
+    return h + '</div>';
+  }
   function draftDashCard() {
     var list = draftWaiting();
     if (!list.length) return "";
@@ -35417,7 +35485,7 @@ function viewCatalogue() {
 
     var h = '<div class="card" style="border-color:#99f6e4;background:#f0fdfa">' +
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#0f766e"><b>What to pitch, stage by stage</b></div>' +
-      '<h3 style="font-size:17px;margin:4px 0 2px">' + sites.length + ' site(s) on your book</h3>' +
+      '<h3 style="font-size:17px;margin:4px 0 2px">' + sites.length + ' site' + (sites.length === 1 ? '' : 's') + ' on your book</h3>' +
       '<div class="meta" style="margin-bottom:4px">' +
       (winCount ? '<b style="color:#b91c1c">' + winCount + ' at a stage where the window is closing.</b> ' : '') +
       'Take this list on the round \u2014 it is what he can buy today, not next month.</div>';
@@ -35434,7 +35502,7 @@ function viewCatalogue() {
       var no = STAGES2.indexOf(s2) + 1;
       h += '<div style="border-top:1px solid ' + (p.win ? '#fecaca' : '#ccfbf1') + ';padding:8px 0 5px">' +
         '<div style="font-weight:700;font-size:13.5px;color:' + (p.win ? '#b91c1c' : '#0f766e') + '">' +
-        no + '. ' + esc(s2) + ' <span class="pill' + (p.win ? ' due' : ' teal') + '">' + list.length + ' site(s)</span>' +
+        no + '. ' + esc(s2) + ' <span class="pill' + (p.win ? ' due' : ' teal') + '">' + list.length + ' site' + (list.length === 1 ? '' : 's') + '</span>' +
         (p.win ? ' <span style="font-size:12px;font-weight:600">window closing</span>' : '') + '</div>';
       if (p.lines.length) {
         h += '<div class="meta" style="font-size:12.5px;color:#334155;margin:2px 0 4px"><b>Pitch:</b> ' +
@@ -36152,7 +36220,7 @@ function viewCatalogue() {
 
     /* sites still missing a stage — nothing can be pitched until the stage is set */
     if (noStage.length) {
-      h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>Set a stage <span class="pill soon">' + noStage.length + ' site(s)</span></h3>' +
+      h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>Set a stage <span class="pill soon">' + noStage.length + ' site' + (noStage.length === 1 ? '' : 's') + '</span></h3>' +
         '<div class="meta">These sites have no construction stage yet, so the board can\'t pitch for them. One tap to set it.</div>';
       noStage.slice(0, 12).forEach(function (st) {
         h += '<div class="acts" style="align-items:center;margin-top:8px"><div class="grow"><b>' + esc(st.name) + '</b>' +
@@ -36169,7 +36237,7 @@ function viewCatalogue() {
       activeStages.forEach(function (o) {
         var stage = o.s, sn = o.i + 1, def = PITCH2[stage] || { lines: [], win: false }, here = byStage[stage];
         h += '<div class="card" style="border-color:' + (def.win ? '#fca5a5' : '#bfdbfe') + ';background:' + (def.win ? '#fef2f2' : '#eff6ff') + '">' +
-          '<h3>' + sn + '. ' + esc(stage) + ' <span class="pill due">' + here.length + ' site(s)</span>' +
+          '<h3>' + sn + '. ' + esc(stage) + ' <span class="pill due">' + here.length + ' site' + (here.length === 1 ? '' : 's') + '</span>' +
           (def.win ? ' <span class="pill soon">window closing</span>' : '') + '</h3>' +
           '<div class="meta"><b>Pitch:</b> ' + esc(def.lines.join(" · ") || "-") + '</div>';
         /* ======== HIS ITEM 25: THE BOARD AS A SHEET  (v6.9.506) ========
