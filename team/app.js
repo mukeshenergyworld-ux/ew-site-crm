@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.511";
+  var APP_VERSION = "6.9.512";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -41901,9 +41901,20 @@ function viewCatalogue() {
     if (act === "clg-open") {
       var _clq = String(t.getAttribute("data-q") || "").trim();
       if (_clq.length < 2) { toast("There is nothing on this row to look up."); return; }
-      /* S.tab EXPLICITLY. q-unsent in 6.9.495 and bf-brand in 6.9.509 both changed what a screen
-         should show without changing which screen was showing, and left him on the old one. */
-      S.sq = _clq; S.tab = "search"; S.modal = null; navBump("search"); render();
+      /* v6.9.512 - NO TAB CHANGE. 6.9.511 set S.tab = "search", and viewSearch has carried a
+         comment since v6.9.408 saying that screen is reachable by nothing: canSee("search") is
+         false for every role, so renderCore's guard sent every tap to Today. uniHits/uniHtml are
+         the universal search the top bar already runs from every screen, so the record opens
+         over whatever he is looking at and no navigation can go wrong. */
+      var _clh = "";
+      try { _clh = uniHtml(uniHits(_clq), _clq); } catch (e) { _clh = ""; }
+      S.modal = '<h2 style="margin:0 0 2px">' + esc(_clq) + '</h2>' +
+        '<div class="meta" style="font-size:13px">From the change log.</div>' +
+        '<div style="margin-top:8px;max-height:60vh;overflow:auto">' +
+        (_clh || '<div class="empty">Nothing on this phone answers to that. ' +
+                 'If the record is old, refresh the book first.</div>') + '</div>' +
+        '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
+      render();
       return;
     }
     if (act === "clg-refresh") { clgLoad(true); keepScroll = true; render(); return; }
