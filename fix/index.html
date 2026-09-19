@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Energy World — fix an app that will not open</title>
+<meta name="robots" content="noindex,nofollow"/>
+<link rel="apple-touch-icon" href="../icons/ew-180.png"/>
+<!-- =====================================================================================
+     WHY THIS PAGE EXISTS  (19 September 2026)
+
+     On 18 September a service worker change went out to five apps and his installed CRM
+     would not open at all - Safari's own error page, failing to load inside the standalone
+     app. It was reverted within the hour. The write-up of that revert listed three things
+     that had to exist before any worker was touched again. Two were about testing. The
+     third was this one, and it is the only one that limits the damage rather than lowering
+     the odds:
+
+         "A way for him to say 'it broke' that does not depend on the app opening -
+          because when a service worker fails, the app cannot report it."
+
+     A worker controls only its own folder. /team/sw.js can never touch /fix/, so whatever
+     is wrong with an app, THIS PAGE STILL LOADS. That is the whole design. It is one file,
+     it needs nothing but the browser, and it is deliberately small enough to arrive on one
+     bar of signal.
+
+     WHAT IT MAY TOUCH, and what it may not:
+
+       MAY     service worker registrations, and the ew-* caches. Both are copies of files
+               that came from the server and can be fetched again. Nothing of his.
+
+       MAY NOT localStorage or IndexedDB. ew_pending_v1 is the unsynced journal and
+               ew_proof_v1 is the receipt-photo queue - work that has NOT reached the sheet.
+               The sign-out path has kept both since v6.9.400 for exactly this reason, and a
+               page whose job is recovery must not be the thing that loses a delivery. They
+               are counted and shown here; they are never written to.
+
+     The house rule is that nothing is ever deleted. Caches are not records - they are the
+     app's own copy of files GitHub still holds. Saying that out loud on the page matters
+     more than saying it here, so the page says it too.
+     ===================================================================================== -->
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font:400 15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+       background:#f1f5f9;color:#0f172a;padding:18px;
+       padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:460px;margin:0 auto}
+  h1{margin:0 0 6px;font-size:20px;letter-spacing:-.2px}
+  h2{margin:26px 0 8px;font-size:15px;color:#334155}
+  p{margin:0 0 14px;color:#475569;font-size:14px}
+  .card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px 15px;margin:0 0 14px}
+  .safe{background:#f0fdfa;border-color:#99f6e4}
+  .warn{background:#fffbeb;border-color:#fde68a}
+  .row{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid #f1f5f9}
+  .row:first-child{border-top:0}
+  /* name above status, not beside it: "running - 3 files kept, 921 KB" beside a 96px name
+     wrapped mid-phrase at 390px. Stacked it reads as one line and the row gets shorter. */
+  .who{flex:1 1 auto;min-width:0}
+  .nm{font-weight:700;font-size:14.5px}
+  .st{font-size:12.5px;color:#64748b;line-height:1.35}
+  button{font:inherit;font-weight:700;border:0;border-radius:10px;cursor:pointer}
+  /* 44px is the floor for a thumb. These were 38px - measured at 390px, not guessed. */
+  .mini{background:#e2e8f0;color:#0f172a;font-size:13px;padding:0 16px;min-height:44px;flex:0 0 auto}
+  .mini:active{background:#cbd5e1}
+  .mini[disabled]{opacity:.45}
+  .big{display:block;width:100%;background:#0f766e;color:#fff;font-size:15.5px;min-height:50px;padding:14px}
+  .big:active{background:#115e59}
+  .big[disabled]{background:#94a3b8}
+  .links{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .links a{flex:1 1 44%;text-align:center;text-decoration:none;background:#fff;border:1px solid #e2e8f0;
+           border-radius:10px;padding:13px 8px;color:#0f172a;font-weight:700;font-size:13.5px;min-height:48px;
+           display:flex;align-items:center;justify-content:center}
+  .links a:active{background:#f8fafc}
+  .note{font-size:12.5px;color:#64748b;margin:10px 0 0}
+  b.ok{color:#0f766e}
+  b.no{color:#b45309}
+  /* it took 20px of blank page before it had anything to say */
+  #say{font-size:13.5px;font-weight:700}
+  #say:not(:empty){margin-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>An app will not open</h1>
+  <p>This page is not inside any app, so it opens even when they do not. It clears the copies
+     of app files kept on this phone and makes the apps fetch them again.</p>
+
+  <div class="card safe">
+    <div style="font-weight:700;font-size:14px;margin-bottom:5px">Nothing of yours is touched</div>
+    <div class="st" id="held">Checking what is waiting on this phone&hellip;</div>
+  </div>
+
+  <h2>What is on this phone</h2>
+  <div class="card" id="state">Reading&hellip;</div>
+
+  <button class="big" id="all" disabled>Fix every app on this phone</button>
+  <div id="say"></div>
+  <p class="note">After it says done, <b>close the app completely</b> and open it again — on an
+     iPhone, swipe it away from the app switcher first. The next open will be slower than usual
+     because it is fetching the files again. The one after that will be normal.</p>
+
+  <h2>Open an app</h2>
+  <div class="links" id="apps"></div>
+
+  <p class="note">Still will not open after this? The last resort is Settings, Safari, Advanced,
+     Website Data, and remove this site. That also leaves your book untouched, because your book
+     is on the sheet and not on the phone.</p>
+
+</div>
+<script>
+(function () {
+  "use strict";
+
+  /* The apps, in his own names. team is first because it is the one that broke. */
+  var APPS = [
+    { k: "team",      n: "EW CRM" },
+    { k: "challan",   n: "EW Challan" },
+    { k: "collect",   n: "EW Payment" },
+    { k: "service",   n: "EW Service" },
+    { k: "visit",     n: "EW Visit" },
+    { k: "saathi",    n: "EW Saathi" },
+    { k: "console",   n: "EW Console" },
+    { k: "complaint", n: "For customers" }
+  ];
+
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  };
+  /* no bracketed plurals anywhere in this estate */
+  var pl = function (n, one, many) { return n + " " + (n === 1 ? one : many); };
+  var kb = function (b) {
+    if (!b) return "0 KB";
+    return b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.round(b / 1024) + " KB";
+  };
+
+  /* ---------- 1. what is WAITING, and therefore what must not be touched ---------------- */
+  function heldCount(key) {
+    try {
+      var raw = localStorage.getItem(key);
+      if (!raw) return 0;
+      var a = JSON.parse(raw);
+      return Array.isArray(a) ? a.length : 0;
+    } catch (e) { return -1; }
+  }
+  (function showHeld() {
+    var j = heldCount("ew_pending_v1"), p = heldCount("ew_proof_v1");
+    var bits = [];
+    if (j > 0) bits.push("<b class='no'>" + pl(j, "entry", "entries") + "</b> not yet on the sheet");
+    if (p > 0) bits.push("<b class='no'>" + pl(p, "photo", "photos") + "</b> still to upload");
+    $("held").innerHTML = (bits.length
+        ? "This phone is holding " + bits.join(" and ") + ". "
+        : "Nothing is waiting on this phone right now. ")
+      + "This page never touches either of those, or anything else you have typed. It clears only "
+      + "the app's copy of files that came from the server — which the server still has.";
+  })();
+
+  /* ---------- 2. what is actually on the shelf ------------------------------------------ */
+  var CAN_SW = ("serviceWorker" in navigator);
+  var CAN_C  = (typeof caches !== "undefined" && caches && caches.keys);
+
+  function readState() {
+    var regs = [], sizes = {};
+    var pReg = (CAN_SW && navigator.serviceWorker.getRegistrations)
+      ? navigator.serviceWorker.getRegistrations().then(function (rs) { regs = rs || []; })
+        .catch(function () { regs = []; })
+      : Promise.resolve();
+
+    var pCache = CAN_C ? caches.keys().then(function (ks) {
+      return Promise.all(ks.map(function (k) {
+        return caches.open(k).then(function (c) {
+          return c.keys().then(function (rs) {
+            return Promise.all(rs.map(function (r) {
+              return c.match(r).then(function (m) {
+                if (!m) return 0;
+                /* blob().size, not text() - no point decoding 2.8 MB to count it */
+                return m.blob().then(function (b) { return b.size; }).catch(function () { return 0; });
+              }).catch(function () { return 0; });
+            })).then(function (ns) {
+              var t = 0; ns.forEach(function (n) { t += n; });
+              sizes[k] = { files: rs.length, bytes: t };
+            });
+          });
+        }).catch(function () {});
+      }));
+    }).catch(function () {}) : Promise.resolve();
+
+    return Promise.all([pReg, pCache]).then(function () { return { regs: regs, sizes: sizes }; });
+  }
+
+  function cachesFor(k, sizes) {
+    /* ew-team-v11, ew-challan-v1210, ew-collect-v1150, ew-service-v1, ew-visit-v2, ew-saathi-v3 */
+    var out = [];
+    for (var name in sizes) if (name.indexOf("ew-" + k + "-") === 0) out.push(name);
+    return out;
+  }
+  function regFor(k, regs) {
+    for (var i = 0; i < regs.length; i++) {
+      var s = String(regs[i].scope || "");
+      if (s.indexOf("/" + k + "/") >= 0) return regs[i];
+    }
+    return null;
+  }
+
+  var STATE = { regs: [], sizes: {} };
+
+  function draw() {
+    if (!CAN_SW && !CAN_C) {
+      $("state").innerHTML = "<div class='st'>This browser keeps no app copies, so there is "
+        + "nothing here to clear. If an app still will not open, it is not this phone.</div>";
+      return;
+    }
+    var html = "", any = false;
+    APPS.forEach(function (a) {
+      var r = regFor(a.k, STATE.regs);
+      var cs = cachesFor(a.k, STATE.sizes);
+      var files = 0, bytes = 0;
+      cs.forEach(function (n) { files += STATE.sizes[n].files; bytes += STATE.sizes[n].bytes; });
+      if (!r && !files) return;                     /* say nothing about an app never opened here */
+      any = true;
+      html += '<div class="row"><div class="who">'
+        + '<div class="nm">' + esc(a.n) + '</div><div class="st">'
+        + (r ? "<b class='ok'>running</b>" : "not running")
+        + (files ? " &middot; " + pl(files, "file", "files") + " kept, " + kb(bytes) : " &middot; nothing kept")
+        + '</div></div><button class="mini" data-k="' + a.k + '">Fix this one</button></div>';
+    });
+    /* ===== AND ANYTHING THIS PAGE DOES NOT RECOGNISE =====
+       The list above walks the apps it knows. A cache left by an app that has been renamed,
+       or by a worker that should not be there at all, would sit on the phone invisible to
+       this page and survive the button that claims to fix everything. A recovery page that
+       quietly misses the thing that is wrong is worse than no recovery page. So: count what
+       is left over, say so, and clear it with the rest. */
+    var claimed = {};
+    APPS.forEach(function (a) { cachesFor(a.k, STATE.sizes).forEach(function (n) { claimed[n] = 1; }); });
+    var stray = [], sf = 0, sb = 0;
+    for (var nm in STATE.sizes) if (!claimed[nm] && nm.indexOf("ew-") === 0) {
+      stray.push(nm); sf += STATE.sizes[nm].files; sb += STATE.sizes[nm].bytes;
+    }
+    if (stray.length) {
+      any = true;
+      html += '<div class="row"><div class="who"><div class="nm">Something else</div>'
+        + '<div class="st">' + pl(stray.length, "leftover", "leftovers") + " &middot; "
+        + pl(sf, "file", "files") + ", " + kb(sb) + '</div></div>'
+        + '<button class="mini" data-k="*">Fix this one</button></div>';
+    }
+    if (!any) html = "<div class='st'>No app has stored anything on this phone yet. There is "
+      + "nothing to clear — if an app will not open, it is the signal, not the phone.</div>";
+    $("state").innerHTML = html;
+    $("all").disabled = !any;
+    Array.prototype.forEach.call($("state").querySelectorAll("button[data-k]"), function (b) {
+      b.addEventListener("click", function () { fix([b.getAttribute("data-k")], b); });
+    });
+  }
+
+  /* ---------- 3. the fix: registrations and ew-* caches, and NOTHING else ---------------- */
+  function fix(keys, btn) {
+    var label = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "…"; }
+    $("say").style.color = "#0f766e";
+    $("say").textContent = "Clearing…";
+
+    var jobs = [], all = keys.indexOf("*all*") >= 0;
+
+    /* fix-everything means EVERY registration, not only the ones matched to a known name:
+       a worker whose scope this page does not recognise is exactly the one worth removing. */
+    if (all) {
+      STATE.regs.forEach(function (r) {
+        if (r && r.unregister) jobs.push(r.unregister().catch(function () {}));
+      });
+      for (var nm in STATE.sizes) if (nm.indexOf("ew-") === 0) {
+        jobs.push(caches.delete(nm).catch(function () {}));
+      }
+    }
+
+    keys.forEach(function (k) {
+      if (k === "*all*") return;
+      if (k === "*") {                       /* the leftovers row */
+        var claimed = {};
+        APPS.forEach(function (a) { cachesFor(a.k, STATE.sizes).forEach(function (n) { claimed[n] = 1; }); });
+        for (var n2 in STATE.sizes) if (!claimed[n2] && n2.indexOf("ew-") === 0) {
+          jobs.push(caches.delete(n2).catch(function () {}));
+        }
+        return;
+      }
+      var r = regFor(k, STATE.regs);
+      if (r && r.unregister) jobs.push(r.unregister().catch(function () {}));
+      cachesFor(k, STATE.sizes).forEach(function (n) {
+        jobs.push(caches.delete(n).catch(function () {}));
+      });
+    });
+
+    Promise.all(jobs).then(function () {
+      return readState();
+    }).then(function (s) {
+      STATE = s;
+      draw();
+      if (btn && btn.parentNode) { btn.disabled = false; btn.textContent = label || "Fix"; }
+      $("say").style.color = "#0f766e";
+      $("say").textContent = "Done. Close the app completely and open it again.";
+    }).catch(function () {
+      if (btn) { btn.disabled = false; btn.textContent = label || "Fix"; }
+      $("say").style.color = "#b45309";
+      $("say").textContent = "Some of it would not clear. Try once more, and if it still will not, "
+        + "use the Website Data step at the bottom of this page.";
+    });
+  }
+
+  $("all").addEventListener("click", function () { fix(["*all*"], $("all")); });
+
+  /* ---------- 4. the way back in ---------------------------------------------------------- */
+  $("apps").innerHTML = APPS.map(function (a) {
+    return '<a href="../' + a.k + '/?u=1">' + esc(a.n) + '</a>';
+  }).join("");
+  /* ?u=1 is the app's own "come back fresh" path: it routes past the shelf to the network.
+     Opening through it means the first open after a fix cannot be answered from a copy. */
+
+  readState().then(function (s) { STATE = s; draw(); }).catch(function () {
+    $("state").innerHTML = "<div class='st'>Could not read what is stored. Use the Website Data "
+      + "step at the bottom of this page.</div>";
+  });
+})();
+</script>
+</body>
+</html>
