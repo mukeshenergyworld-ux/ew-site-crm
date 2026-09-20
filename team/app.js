@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.546";
+  var APP_VERSION = "6.9.547";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -31041,6 +31041,13 @@ function viewCatalogue() {
     return h;
   }
 
+  function navOffDoor() {
+    return '<div class="card" style="padding:8px 12px"><div class="meta" style="font-size:12px;font-weight:700;color:#64748b">SCREENS OFF THE HEADER</div>' +
+      '<div class="meta" style="font-size:12px;margin:2px 0 6px">Never opened on this machine, so they left the header (6.9.547). Nothing is gone \u2014 each opens here.</div>' +
+      '<div class="acts" style="flex-wrap:wrap;gap:6px;margin:0">' + NAV_OFF.map(function (t) {
+        return '<button class="btn sm ghost" data-act="tab" data-tab="' + t[0] + '">' + esc(t[1]) + '</button>';
+      }).join("") + '</div></div>';
+  }
   function bookSweepDoor() {
     /* v6.9.539 - the Book numbers screen left the header (item 23); this is its door */
     var n = 0; try { n = bkFind().length; } catch (e) { n = 0; }
@@ -31204,6 +31211,7 @@ function viewCatalogue() {
     h += cancelledCardHtml();
 
     try { h += bookSweepDoor(); } catch (e) { }
+    try { h += navOffDoor(); } catch (e) { }   /* v6.9.547 */
     return h;
   }
   function viewOwner() {
@@ -38351,6 +38359,11 @@ function viewCatalogue() {
      is how a lead becomes a client AND how a client buys the next brand, which is the whole
      of the cross-sell. So "quotes" is a member of both. navGroupOf below keeps the band where
      he tapped it from, so a screen in two groups cannot make the row jump under his thumb. */
+  /* v6.9.547 - OFF THE HEADER, not gone. Measured on his Mac since 6.9.396: these nine were
+     never opened. He chose them. Each still opens from the Health check and from every button
+     that already leads to it (a product tile, a site card, a stock message). */
+  var NAV_OFF = [["stock", "Stock"], ["visits", "Site visits"], ["rules", "Pitch rules"], ["customers", "Customers"],
+                 ["spares", "Spares"], ["catalogue", "Catalogue"], ["pricelist", "Price list PDF"], ["rates", "Rate revision"], ["tools", "Tools"]];
   var NAV_GROUPS = [
     /* item 27, v6.9.510 - HIS WORDS: "Put agent on master tab for everyone". It was a chip
        inside Leads, four along, on two role lists out of five. It is the first thing in the row
@@ -38360,14 +38373,14 @@ function viewCatalogue() {
        a sub-tab of the old Deliveries hub ("deliveries"), which no group names. It is a tab now,
        in both places a man would look. */
     ["HISAB",      ["billing", "register", "payments", "paidout", "dues"]],
-    ["Deliveries", ["challans", "register", "freight", "returns", "stock"]],
+    ["Deliveries", ["challans", "register", "freight", "returns"]],
     /* v6.9.533 - his third list, item 13: "merge Leads and Clients into one tab with sub-tabs",
        and item 16: "remove Leads tab from header". One group; the lead board is its second
        chip. Every chip the two groups had is still here. */
-    ["Clients",    ["clients", "leads", "brandfollow", "followups", "quotes", "visits", "discounts", "pitch", "winloss", "rules", "customers"]],
-    ["Service",    ["service", "spares"]],
-    ["Products",   ["products", "catalogue", "pricelist", "rates"]],
-    ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins", "tools"]],
+    ["Clients",    ["clients", "leads", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss"]],
+    ["Service",    ["service"]],
+    ["Products",   ["products"]],
+    ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins"]],
     /* v6.9.539 - item 23: "Book numbers - what's the use, it's empty" (measured: 0 rows) - off
        the header; the screen still opens from the Health check. Item 25: The brief is a tab
        inside Agent now, so it is not here twice. */
