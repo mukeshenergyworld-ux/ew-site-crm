@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.561";
+  var APP_VERSION = "6.9.562";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -732,7 +732,7 @@
      start while small calls are in flight (up to 20 s), because they are seconds and it is
      minutes. A call that is waiting has not started its clock. */
   var _wireBig = null, _wireSmall = 0, _wireQ = [];
-  function wireBigAction(action) { return action === "pdfHost"; }
+  function wireBigAction(action) { return action === "pdfHost" || action === "docPart"; }   /* V132 - each part takes the line in turn */
   function wireBusy() { return !!_wireBig; }
   function wireWaiting() { return _wireQ.length; }
   /* resolves when this call may go. Small calls: when no document is uploading. A document:
@@ -782,7 +782,7 @@
     var tail = s < 20 ? ""
       : (s < 45 ? " — a big file on a slow line. It is still going."
                 : " — this is slow. Nothing is lost: if it fails you can send it again.");
-    return now.what + " — " + now.kb + " KB · " + s + "s" + tail;
+    return now.what + (now.part ? " — part " + now.part : "") + " — " + now.kb + " KB · " + s + "s" + tail;
   }
   function upPaint() {
     var bar = document.getElementById("ewupbar");
@@ -878,7 +878,56 @@
     }
   } catch (e) {}
 
+  /* ================= A DOCUMENT GOES UP IN PARTS  (V132, 20 Sep 2026) =================
+     Over 96 KB, a document is sent as 64 KB parts, each with its own clock and three tries;
+     the last call assembles and hosts. A part the server never got is named and re-sent
+     alone. On a server without V132 the old single POST runs. */
+  var DOC_PART_CH = 64 * 1024, DOC_PART_MIN = 96 * 1024;
+  function docParts(extra) {
+    var b64 = String(extra.pdfBase64 || ""), n = Math.ceil(b64.length / DOC_PART_CH);
+    var key = "d" + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+    var kb = Math.round(b64.length / 1024);
+    var whole = Object.assign({}, extra, { _whole: true });
+    var rest = Object.assign({}, extra); delete rest.pdfBase64; rest.parts = { key: key, n: n };
+    var partAt = function (i) { return b64.slice(i * DOC_PART_CH, (i + 1) * DOC_PART_CH); };
+    var on = false; try { on = upStart("pdfHost", kb); } catch (e) { on = false; }
+    var say = function (i) { try { if (_upNow) _upNow.part = (i + 1) + " of " + n; } catch (e) { } };
+    var sendPart = function (i, tries) {
+      say(i);
+      /* a refusal and a network fault are retried in ONE place (the catch), so a part is tried
+         exactly four times - a retry in both branches doubled the count */
+      return api("docPart", { key: key, i: i, n: n, data: partAt(i) }, 60000).then(function (r) {
+        if (r && r.ok) return true;
+        if (r && /unknown action/i.test(String(r.error || ""))) throw new Error("old server");
+        throw new Error((r && r.error) || ("part " + (i + 1) + " refused"));
+      }).catch(function (e) {
+        if (/old server/.test(String(e && e.message))) throw e;
+        if (tries < 3) return sendPart(i, tries + 1);
+        throw e;
+      });
+    };
+    var seq = function (i) { return i >= n ? Promise.resolve() : sendPart(i, 0).then(function () { return seq(i + 1); }); };
+    var finish = function (again) {
+      return api("pdfHost", rest, 90000).then(function (r) {
+        if (r && !r.ok && r.missing && r.missing.length && !again) {
+          var ms = r.missing.slice();
+          var re = function () { if (!ms.length) return Promise.resolve(); return sendPart(ms.shift(), 0).then(re); };
+          return re().then(function () { return finish(true); });
+        }
+        return r;
+      });
+    };
+    return seq(0).then(function () { return finish(false); })
+      .then(function (r) { if (on) upEnd(); return r; })
+      .catch(function (e) {
+        if (on) upEnd();
+        if (/old server/.test(String(e && e.message))) return api("pdfHost", whole);   /* before V132: the single POST */
+        throw e;
+      });
+  }
   function api(action, extra, ms) {
+    if (action === "pdfHost" && extra && extra.pdfBase64 && !extra._whole && String(extra.pdfBase64).length > DOC_PART_MIN) return docParts(extra);   /* V132 - in parts */
+    if (extra && extra._whole) { extra = Object.assign({}, extra); delete extra._whole; }
     var _t0 = Date.now();
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
     /* v20.08.2026 - a call carrying a file is an upload, and an upload gets said out loud */
