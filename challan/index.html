@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.77.0";
+  var APP_VERSION = "1.78.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3526,6 +3526,7 @@ function discRowOn(client, brand, onYmd) {
       var h = '<div class="card" style="background:#0f766e;color:#fff;border-color:#0f766e">' +
         '<div style="font-size:17px;font-weight:800">Send material out</div>' +
         '<div style="font-size:12.5px;opacity:.9;margin-top:3px">Pick the client, add the material, write the book number. It saves as a <b>draft</b> — the accounts desk passes it before it counts against his account.</div></div>' +
+        chDraftBanner() +   /* 1.78.0 */
         '<button class="btn full" data-act="ch-new" style="margin:12px 0">+ New challan</button>' +
         /* v1.18.0 - if the server sent no clients for this sign-in, SAY SO here, where the
            man is about to press New challan and find an empty picker. The rest of the app -
@@ -6326,7 +6327,36 @@ function discRowOn(client, brand, onYmd) {
     _placePrev = nowSheet; _placeTab = nowTab;
   }
 
+  /* ================= THE DRAFT SURVIVES  (1.78.0, 20 Sep 2026; CRM 6.9.554) =================
+     A challan typed for four minutes and lost to a reload, in the CRM, the same afternoon. This
+     app has the same shape: S.ch is the whole draft and it lives in memory until the number is
+     minted. So it is written to the phone on every repaint while a NEW challan is open, comes
+     back on + New challan or from the banner, and is cleared when the challan is saved or he
+     says Discard. An edit is not drafted - it saves through the journal already. */
+  function chDraftKey() { return "ew_chdraft_" + String(S.user || ""); }
+  function chDraftKeep() {
+    var z = S.ch;
+    if (!z || z.editId) return;
+    if (!(z.items || []).length && !String(z.client || "").trim()) return;
+    try { localStorage.setItem(chDraftKey(), JSON.stringify({ ch: z, at: new Date().toISOString() })); } catch (e) { }
+  }
+  function chDraftLoad() {
+    try { var d = JSON.parse(localStorage.getItem(chDraftKey()) || "null"); return (d && d.ch) ? d : null; } catch (e) { return null; }
+  }
+  function chDraftClear() { try { localStorage.removeItem(chDraftKey()); } catch (e) { } }
+  function chDraftBanner() {
+    var d = chDraftLoad();
+    if (!d || S.ch) return "";
+    var n = (d.ch.items || []).length, who = String(d.ch.client || "").trim();
+    return '<div class="card" style="border-color:#fbbf24;background:#fffbeb;padding:10px 12px;margin-bottom:10px">' +
+      '<div style="font-weight:800;font-size:13.5px;color:#92400e">An unfinished challan is waiting on this phone</div>' +
+      '<div class="muted" style="font-size:12.5px;color:#92400e">' + (who ? 'For <b>' + esc(who) + '</b> &middot; ' : '') +
+      n + ' line' + (n === 1 ? '' : 's') + ' &middot; last touched ' + esc(String(d.at || "").slice(11, 16)) + ' UTC. It was never sent, so it is not on the log yet.</div>' +
+      '<div class="row" style="gap:8px;margin-top:8px"><button class="btn sm amb" data-act="ch-draft-go">Continue it</button>' +
+      '<button class="btn sm gry" data-act="ch-draft-drop">Discard it</button></div></div>';
+  }
   function render() {
+    try { chDraftKeep(); } catch (e) { }   /* 1.78.0 */
     /* v1.69.0 - INSIDE the try, and first. Every path that puts a book into S.data - both
        snapshot restores and all four mergeBook sites - renders straight afterwards, so this
        cannot be missed by a path added later, which calling it at each merge site could. It is
@@ -6735,12 +6765,15 @@ function discRowOn(client, brand, onYmd) {
     if (act === "alltime") { S.allTime = true; render(); return; }
 
     /* ---- the challan builder ---- */
-    if (act === "ch-new") {
+    if (act === "ch-new" || act === "ch-draft-go") {
       if (!canMake()) { toast("Making a challan is done by the godown or the office."); return; }
+      var _dr = chDraftLoad();   /* 1.78.0 - the unfinished one comes back first */
+      if (_dr) { S.ch = _dr.ch; render(); toast("Your unfinished challan" + (S.ch.client ? " for " + S.ch.client : "") + " is back, exactly as you left it."); return; }
       S.ch = { client:"", site:"", siteNew:false, items:[], freight:"", fto:"Client",
                driver:"", veh:"", manual:"", dist:"", area:"", cq:"" };
       render(); return;
     }
+    if (act === "ch-draft-drop") { chDraftClear(); toast("Draft discarded. Nothing was ever sent."); render(); return; }
     /* the district -> area -> name walk */
     /* v1.5 - one walk, two forms. data-p says which builder is on screen; without it the
        return form would have driven the delivery form's draft, which is how a return
@@ -7326,7 +7359,7 @@ function discRowOn(client, brand, onYmd) {
             S.stockOrder = null;
           }
           var after = function () {
-            bust(); S.ch = null; S.tab = "make"; render();
+            bust(); S.ch = null; S.tab = "make"; chDraftClear(); render();   /* 1.78.0 */
             toast(r.held
               ? (_editRow ? "Changes to " + shown + " are saved on this phone and go up when there is signal."
                           : "Challan saved on this phone" + (shown ? " (" + shown + ")" : " \u2014 its number comes when it uploads") +
