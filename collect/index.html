@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.40.0";
+  var APP_VERSION = "1.41.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -2849,7 +2849,7 @@ function cancelMap() {
       'Billed ' + money(r.billed + r.opening) + ' · received ' + money(r.paid) +
       (r.credited > 0 ? ' · returns ' + money(r.credited) : '') +
       (r.unpricedLines > 0 ? ' <span class="pill red">' + r.unpricedLines +
-        ' returned item(s) not priced — this credit is short</span>' : '') +
+        ' returned items not priced — this credit is short</span>' : '') +
       ' · <b>' + r.challans + ' delivery' + (r.challans === 1 ? '' : ' notes') + '</b></div>';
 
     /* ---- DELIVERIES, CHALLAN BY CHALLAN  (v1.30.0) ----
@@ -3458,7 +3458,7 @@ function cancelMap() {
       out.push({ ymd: d10(r.createdAt), what: "Material returned " + (r.returnNo || ""),
                  extra: [r.challanNo ? "against " + r.challanNo : "",
                          _rv.est ? _rv.est + " of " + rnLines(r).length + " priced from our catalogue" : "",
-                         _rv.unpriced ? _rv.unpriced + " item(s) not priced - ask the office" : ""]
+                         _rv.unpriced ? _rv.unpriced + (_rv.unpriced === 1 ? " item" : " items") + " not priced - ask the office" : ""]
                         .filter(Boolean).join(" \u00b7 "),
                  debit: 0, credit: _rv.amt });
     });
@@ -3881,7 +3881,7 @@ function cancelMap() {
       el("root").innerHTML =
         '<div class="login"><h1>Energy World</h1><p>Payments &amp; collection</p>' +
         '<div class="loginmsg">This app could not draw its screen. Nothing has been lost — ' +
-        (held ? 'the ' + held + ' payment(s) held on this phone are still here, and still go up.'
+        (held ? 'the ' + held + (held === 1 ? ' payment' : ' payments') + ' held on this phone are still here, and still go up.'
               : 'nothing was waiting to go up.') +
         '</div>' +
         '<div class="muted" style="font-size:12px;line-height:1.5;margin:0 0 14px;word-break:break-word;' +
@@ -4487,7 +4487,7 @@ function cancelMap() {
       if (!S.data) {
         /* v1.10.0 - never say nothing is saved when money is. */
         renderLogin(jrnCount()
-          ? jrnCount() + " record(s) are held safe on this phone, but the book has never been pulled onto it. Sign in where there is signal."
+          ? jrnCount() + (jrnCount() === 1 ? " record is" : " records are") + " held safe on this phone, but the book has never been pulled onto it. Sign in where there is signal."
           : "No signal, and nothing saved on this phone yet.");
         return;
       }
@@ -4704,7 +4704,7 @@ function cancelMap() {
       S.busy = false;
       if (S.data) { render(); toast("No signal — showing what was last pulled onto this phone."); }
       else openingScreen(jrnCount()
-        ? jrnCount() + " record(s) are held safe on this phone and go onto the sheet when there is signal. The book itself has never been pulled onto this phone."
+        ? jrnCount() + (jrnCount() === 1 ? " record is" : " records are") + " held safe on this phone and go onto the sheet when there is signal. The book itself has never been pulled onto this phone."
         : "No signal, and nothing saved on this phone yet.");
     });
 
