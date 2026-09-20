@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.548";
+  var APP_VERSION = "6.9.549";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1882,6 +1882,38 @@ window.addEventListener("beforeunload", function (ev) {
     api("waStatus", {}, 15000).then(function (r) { S.wa = { ready: !!(r && r.ok && r.ready), at: Date.now() }; }).catch(function () { });
   }
   function waReady() { return !!(S.wa && S.wa.ready); }
+  /* v6.9.549 - has this client agreed to WhatsApp updates from the business number? Filed as an
+     audit row "client:wa" (the clients sheet has no column for it and the server drops unknown
+     fields). The latest row for the name wins. Nothing is assumed: no row = not agreed. */
+  var _waOkCache = null;
+  function waConsent(name) {
+    name = String(name || "").trim();
+    if (!name) return { yes: false, at: "", by: "" };
+    if (!_waOkCache) {
+      _waOkCache = {};
+      var rows = (S.data && S.data.audit) || [];
+      for (var i = 0; i < rows.length; i++) {
+        var a = rows[i]; if (String(a.action || "") !== "client:wa") continue;
+        var d = {}; try { d = JSON.parse(a.detail || "{}"); } catch (e) { d = {}; }
+        var k = String(a.target || d.name || "").trim(); if (!k) continue;
+        var prev = _waOkCache[k];
+        if (!prev || String(a.createdAt || "") > String(prev.at || "")) _waOkCache[k] = { yes: !!d.yes, at: String(a.createdAt || ""), by: String(a.actor || "") };
+      }
+    }
+    return _waOkCache[name] || { yes: false, at: "", by: "" };
+  }
+  function waConsentCount() {
+    var n = 0, cl = (S.data && S.data.clients) || [];
+    for (var i = 0; i < cl.length; i++) if (waConsent(cl[i].name).yes) n++;
+    return n;
+  }
+  function waConsentSave(name, yes) {
+    _waOkCache = null;
+    var now = new Date().toISOString();
+    return save("audit", { id: mintId("W"), createdAt: now, actor: S.user || "", action: "client:wa",
+      target: String(name || "").trim(), detail: JSON.stringify({ name: String(name || "").trim(), yes: !!yes, at: now }), ip: "" }, true)
+      .then(function () { _waOkCache = null; }).catch(function () { _waOkCache = null; });
+  }
   /* MAY_DIFFER: what "busy" means is genuinely different in each app, and these are the same
      guards each app's own pull already used. Nothing else here differs. */
   function beatSkip() {
@@ -12618,6 +12650,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       stageChips("c_stage", c.stage || clientStage(c.name), "Construction stage of his site") +
       '<div class="grid2"><div><label>Mobile</label><input id="c_mob" inputmode="numeric" value="' + esc(c.mobile) + '"/></div>' +
       '<div><label>Alternate mobile</label><input id="c_mob2" inputmode="numeric" value="' + esc(c.mobile2 || "") + '"/></div></div>' +
+      /* v6.9.549 - his consent, asked once and kept. Template messages from the business number
+         (reminder with the ledger, a quotation) go only to a client who has agreed. */
+      '<label class="chk" style="display:flex;gap:8px;align-items:center;min-height:44px;margin:-2px 0 6px;font-size:13px">' +
+        '<input type="checkbox" id="c_waok"' + (waConsent(c.name).yes ? ' checked' : '') + ' style="width:20px;height:20px"/>' +
+        '<span>Agreed to WhatsApp updates from the business number' +
+        (waConsent(c.name).yes ? ' <span style="color:#94a3b8">(' + esc(waConsent(c.name).by) + ', ' + esc(String(waConsent(c.name).at).slice(0, 10)) + ')</span>' : '') + '</span></label>' +
       /* v6.9.186: the empty half beside Short name was left over from when Area lived there.
          Address moves up into it - the two are read together when a challan is written, and
          the address is now also what proposes his colony. */
@@ -13271,12 +13309,18 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        is logged on the server's WaLog with its delivery status. If the server is not ready, or
        refuses (a template not yet approved, a number WhatsApp cannot reach), the wa.me path
        below runs exactly as it always has - nothing is lost, he presses send himself. */
+    if (tpl && wnum && waReady() && tpl.client && !waConsent(tpl.client).yes) {
+      /* v6.9.549 - the server could send it, but this client has not agreed to WhatsApp updates
+         from the business number: say so, and go the way he always went - his own phone. */
+      toast(tpl.client + " has not agreed to WhatsApp updates \u2014 opening WhatsApp on this phone. Tick it on his card once he agrees.");
+      tpl = null;
+    }
     if (tpl && wnum && waReady()) {
       var win2 = window.open("", "_blank");
       toast("Sending from the business number\u2026");
-      var fall = function (why) {
+      var fall = function (why, link) {
         toast(why + " \u2014 opening WhatsApp on this phone instead.");
-        waShareDoc(docPromise, fname, wnum, wmsg, null, win2);
+        waShareDoc(docPromise, fname, wnum, wmsg, null, win2, link || "");   /* v6.9.549 - the link already hosted rides along */
       };
       docPromise.then(function (d) {
         var b64 = d.output("datauristring").split(",")[1];
@@ -13285,13 +13329,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           if (!link) { fall("The PDF could not be hosted"); return; }
           return api("waSend", { to: wnum, template: tpl.template, vars: tpl.vars || [], docUrl: link, docName: fname, note: tpl.note || "" }, 30000).then(function (w) {
             if (w && w.ok) { try { if (win2 && !win2.closed) win2.close(); } catch (e) { } toast("Sent from the business number. Delivery shows on the server\u2019s WaLog."); return; }
-            fall((w && w.error) || "The server did not send it");
+            fall((w && w.error) || "The server did not send it", link);
           });
         });
       }).catch(function (e) { fall("Could not build or send it (" + apiWhy(e) + ")"); });
       return;
     }
     var win = (arguments.length > 5 && arguments[5]) ? arguments[5] : window.open("", "_blank");
+    var hosted = (arguments.length > 6 && arguments[6]) ? String(arguments[6]) : "";   /* v6.9.549 - one host per send */
     /* WhatsApp cannot carry a file through a wa.me link - a hard platform limit. So we HOST the
        PDF: the backend saves it to Drive and returns a view-only link, and we put that link in
        the message. The customer taps it and gets the PDF, on any phone or computer. A blank tab
@@ -13300,7 +13345,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     toast("Preparing the PDF link...");
     docPromise.then(function (d) {
       var b64 = d.output("datauristring").split(",")[1];
-      return api("pdfHost", { pdfBase64: b64, filename: fname }).then(function (r) {
+      return (hosted ? Promise.resolve({ ok: true, url: hosted }) : api("pdfHost", { pdfBase64: b64, filename: fname })).then(function (r) {
         var link = (r && r.ok && r.url) ? r.url : "";
         var msg = wmsg + (link ? "\n\nView / download your PDF:\n" + link : "");
         var waUrl = "https://wa.me/" + (wnum || "") + "?text=" + encodeURIComponent(msg);
@@ -13365,7 +13410,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       "Please let us know if we may proceed.\n\nThank you,\nEnergy World";
     var fname = String(wq.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf";
     var wr = waRoute(t, wq.client, wnum, wmsg, "quotation " + wq.quoteNo); if (!wr.ok) return;
-    var qtpl = (wr.num === wnum) ? { template: "quotation", vars: [wq.client, String(wq.quoteNo || "")], note: "quotation " + wq.quoteNo } : null;   /* v6.9.548 */
+    var qtpl = (wr.num === wnum) ? { template: "quotation", vars: [wq.client, String(wq.quoteNo || "")], note: "quotation " + wq.quoteNo, client: wq.client } : null;   /* v6.9.548 */
     waShareDoc(quotePdf(wq), fname, wr.num, wr.msg, qtpl);
   }
 
@@ -25980,7 +26025,7 @@ function viewCatalogue() {
     var wr = waRoute(t, name, pnum, pmsg, "ledger and reminder"); if (!wr.ok) return;
     /* v6.9.548 - to the CLIENT by template (payment_reminder: {{1}} name, {{2}} amount, ledger
        as the document); to the executive it stays the plain message on his phone */
-    var ptpl = (wr.num === pnum) ? { template: "payment_reminder", vars: [name, moneyAscii(l.due)], note: "ledger " + name } : null;
+    var ptpl = (wr.num === pnum) ? { template: "payment_reminder", vars: [name, moneyAscii(l.due)], note: "ledger " + name, client: name } : null;
     waShareDoc(loadLogo().then(function () { return ledgerPdf(name); }),
       name.replace(/[^\w.-]/g, "_") + "_ledger.pdf", wr.num, wr.msg, ptpl);
   }
@@ -31251,7 +31296,8 @@ function viewCatalogue() {
     try { h += navOffDoor(); } catch (e) { }   /* v6.9.547 */
     h += '<div class="meta" style="font-size:12px;margin:8px 0">WhatsApp from the business number: ' +   /* v6.9.548 */
       (waReady() ? '<b style="color:#0f766e">connected</b> \u2014 reminders and quotations go from the server, logged on WaLog.'
-                 : '<b style="color:#b45309">not connected yet</b> \u2014 every WhatsApp button opens WhatsApp on this phone. The number and token go under Script Properties on the server.') + '</div>';
+                 : '<b style="color:#b45309">not connected yet</b> \u2014 every WhatsApp button opens WhatsApp on this phone. The number and token go under Script Properties on the server.') +
+      ' ' + waConsentCount() + ' ' + plural(waConsentCount(), "client") + ' agreed to WhatsApp updates (the box on the client card).</div>';
     return h;
   }
   function viewOwner() {
@@ -40600,7 +40646,9 @@ function viewCatalogue() {
         credLim: fld("c_credlim", "creditLimit"), credDays: fld("c_creddays", "creditDays"),
         leadType: fld("c_leadtype", "leadType"), owner: val("c_owner"),
         /* read with everything else - creating a partner rebuilds this modal */
-        stage: fld("c_stage", "stage")
+        stage: fld("c_stage", "stage"),
+        /* v6.9.549 - the consent box; null when the box is not on the form (keep what is filed) */
+        waok: el("c_waok") ? !!el("c_waok").checked : null
       };
       /* Money owed from before the app means he is an OLD lead, whatever the dropdown says.
          Otherwise a migrated client quietly inflates next month's "new leads" figure. */
@@ -40653,6 +40701,9 @@ function viewCatalogue() {
         }).then(function (r) {
           if (!r) return;
           toast("Client saved as " + r.shortName + ".");
+          /* v6.9.549 - file the consent only when the answer CHANGED, under the name the server
+             recorded - no row for an untouched box, so the audit stays quiet */
+          try { if (f.waok !== null && f.waok !== waConsent(r.name).yes) waConsentSave(r.name, f.waok); } catch (e) { }
           /* v6.9.288 - the brands he already buys, written AFTER the client and under the
              name the server actually recorded, never before and never under "". Each is the
              same saveBrandStatus() the one-brand button uses, so each is journalled. */
