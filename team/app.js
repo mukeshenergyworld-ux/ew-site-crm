@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.560";
+  var APP_VERSION = "6.9.561";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -32635,6 +32635,15 @@ function viewCatalogue() {
       if (!b.getAttribute("data-xl")) b.setAttribute("data-xl", "w" + i + "@" + String(S.tab || "") + "/" + String(S.sub || S.chFilter || ""));
     }
   }
+  /* v6.9.561 - read every box's position off the DOM before it is torn down: no event needed */
+  function xlScrollSnap() {
+    var boxes = document.querySelectorAll("[data-xl]");
+    for (var i = 0; i < boxes.length; i++) {
+      var k = boxes[i].getAttribute("data-xl");
+      if (k && boxes[i].scrollLeft > 0) _xlScroll[k] = boxes[i].scrollLeft;
+      else if (k && boxes[i].scrollLeft === 0 && boxes[i].scrollWidth > boxes[i].clientWidth) _xlScroll[k] = 0;
+    }
+  }
   function xlScrollRestore() {
     xlScrollName();
     var boxes = document.querySelectorAll("[data-xl]");
@@ -38207,6 +38216,7 @@ function viewCatalogue() {
     try { agClearCache(); } catch (e) { }   /* one agent scan per paint, always fresh */
     _bgCache = null;                        /* brand groups rebuilt if the catalogue changed */
     var _fsnap = null; try { _fsnap = formSnap(); } catch (e) { }
+    try { xlScrollSnap(); } catch (e) { }   /* v6.9.561 */
     try { renderCore(); try { formRestore(_fsnap); } catch (e) { } try { stageResync(); } catch (e) { } try { syncBanner(); } catch (e) { } try { chDraftKeep(); } catch (e) { } try { xlScrollRestore(); } catch (e) { } }   /* v6.9.554, v6.9.560 */
     catch (err) {
       logCrash("render", err);
