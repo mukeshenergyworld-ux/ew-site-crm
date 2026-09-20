@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.78.0";
+  var APP_VERSION = "1.79.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -4690,6 +4690,9 @@ function discRowOn(client, brand, onYmd) {
         '<button class="btn sm ' + (open ? '' : 'gry') + '" data-act="ch-open" data-id="' + esc(c.id) + '">' +
           (open ? 'Hide details' : 'View details') + '</button>' +
         '<button class="btn sm gry" data-act="ch-pdf" data-no="' + esc(c.id || c.challanNo) + '">Challan PDF</button>' +
+        /* 1.79.0 - his item 3: print at the godown from the phone. The PDF goes to the phone's
+           share sheet - the printer's app is one tap away. Drawn only where the phone can do it. */
+        (canShareFile() ? '<button class="btn sm gry" data-act="ch-print" data-no="' + esc(c.id || c.challanNo) + '">Print / share</button>' : '') +
         /* v1.32.0 - "send on whatsapp tab not required, you can put force send to telegram if
            it is not auto sending". A challan now goes to Telegram by itself the moment it is
            passed; this button is the hand crank for when that failed, and it asks first. */
@@ -5247,6 +5250,26 @@ function discRowOn(client, brand, onYmd) {
 
   function chalFile(c) { return String(c.challanNo || "challan").replace(/[^\w.-]+/g, "_") + ".pdf"; }
 
+  /* 1.79.0 - can this phone hand a PDF to its share sheet? (Android Chrome, iOS Safari: yes;
+     desktop Chrome and old Android: no - the button is not drawn there) */
+  function canShareFile() {
+    try {
+      if (!navigator.share || !navigator.canShare) return false;
+      return navigator.canShare({ files: [new File(["x"], "x.pdf", { type: "application/pdf" })] });
+    } catch (e) { return false; }
+  }
+  function shareChalan(no) {
+    var c = chFind(no);
+    if (!c) return;
+    toast("Building\u2026");
+    chalPdf(c).then(function (doc) {
+      var blob = doc.output("blob");
+      var file = new File([blob], chalFile(c), { type: "application/pdf" });
+      if (!canShareFile() || !navigator.canShare({ files: [file] })) { doc.save(chalFile(c)); toast("This phone cannot share a file \u2014 downloaded instead; open it and print from there."); return; }
+      return navigator.share({ files: [file], title: "Challan " + String(c.challanNo || "") })
+        .catch(function (e) { if (!(e && /abort/i.test(String(e.name)))) { doc.save(chalFile(c)); toast("Share did not open \u2014 downloaded instead."); } });
+    }).catch(function () { toast("Could not build it \u2014 check your signal and try once more."); });
+  }
   function downloadChalan(no) {
     var c = chFind(no);
     if (!c) return;
@@ -6333,6 +6356,8 @@ function discRowOn(client, brand, onYmd) {
      minted. So it is written to the phone on every repaint while a NEW challan is open, comes
      back on + New challan or from the banner, and is cleared when the challan is saved or he
      says Discard. An edit is not drafted - it saves through the journal already. */
+  /* 1.79.0 - the phone's own clock, hh:mm, for a moment stored as ISO/UTC */
+  function localHM(iso) { try { var t = new Date(iso); if (isNaN(t)) return ""; return String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0"); } catch (e) { return ""; } }
   function chDraftKey() { return "ew_chdraft_" + String(S.user || ""); }
   function chDraftKeep() {
     var z = S.ch;
@@ -6351,7 +6376,7 @@ function discRowOn(client, brand, onYmd) {
     return '<div class="card" style="border-color:#fbbf24;background:#fffbeb;padding:10px 12px;margin-bottom:10px">' +
       '<div style="font-weight:800;font-size:13.5px;color:#92400e">An unfinished challan is waiting on this phone</div>' +
       '<div class="muted" style="font-size:12.5px;color:#92400e">' + (who ? 'For <b>' + esc(who) + '</b> &middot; ' : '') +
-      n + ' line' + (n === 1 ? '' : 's') + ' &middot; last touched ' + esc(String(d.at || "").slice(11, 16)) + ' UTC. It was never sent, so it is not on the log yet.</div>' +
+      n + ' line' + (n === 1 ? '' : 's') + ' &middot; last touched ' + esc(localHM(d.at)) + '. It was never sent, so it is not on the log yet.</div>' +
       '<div class="row" style="gap:8px;margin-top:8px"><button class="btn sm amb" data-act="ch-draft-go">Continue it</button>' +
       '<button class="btn sm gry" data-act="ch-draft-drop">Discard it</button></div></div>';
   }
@@ -7622,6 +7647,7 @@ function discRowOn(client, brand, onYmd) {
 
     /* ---- printing and sending ---- */
     if (act === "ch-pdf")   { downloadChalan(t.getAttribute("data-no")); return; }
+    if (act === "ch-print") { shareChalan(t.getAttribute("data-no")); return; }   /* 1.79.0 */
     if (act === "ch-wa")    { S.sheet = sheetSendChalan(t.getAttribute("data-no")); render(); return; }
     if (act === "ch-wa-go") { var g = t.getAttribute("data-no"); S.sheet = null; render(); waSendChalan(g); return; }
 
