@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.76.0";
+  var APP_VERSION = "1.77.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3562,7 +3562,9 @@ function discRowOn(client, brand, onYmd) {
                          : ' · newest first') + '</div>';
       /* 1.56.0 - the receipts chip is a CHASE list, so it is grouped by the day the material
          went out and the oldest day is at the top. Everything else stays exec-banded. */
-      h += (f === "noproof" ? receiptBands(list) : execBands(list));
+      /* 1.77.0 - his item 2: the log as one sheet, latest serial first, done struck in green.
+         The receipts heading stays a chase list (1.56.0), oldest day first. */
+      h += (f === "noproof" ? receiptBands(list) : chSheet(list));
       return h + showAllBar(hidden, 'than 60 days');
     }
     var cl = clientByName(z.client) || {};
@@ -4372,6 +4374,33 @@ function discRowOn(client, brand, onYmd) {
         chRow(c) + '</td></tr>';
     }
     return h;
+  }
+
+  /* 1.77.0 - THE LOG AS ONE SHEET (his fourth list, item 2). The register's own row, so the
+     two screens cannot drift: serial, date, client, number (opens the card), value, executive,
+     made / passed / receipt / finalised with the day under each name, and a finished row struck
+     through in green. Latest serial first; the old-book numbers (no serial) after, newest first.
+     regPass reads the register's filter boxes, so the same filters apply here. */
+  function chSheet(list) {
+    var rows = list.filter(regPass).slice().sort(function (a, b) {
+      var sa = regSerial(a), sb = regSerial(b);
+      if (sa !== null && sb !== null) return sb - sa;
+      if (sa !== null) return -1;
+      if (sb !== null) return 1;
+      return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+    });
+    if (!rows.length) return '<div class="empty">Nothing here answers that filter.</div>';
+    var body = "", i = 0;
+    rows.forEach(function (c) { body += regRow(regSerial(c), c, (i++ % 2) === 1, false); });
+    var done = rows.filter(function (c) { return inHisab(c) && hisabCounts(c); }).length;
+    return regFilterBar() +
+      '<div class="card" style="padding:8px 10px">' +
+      '<div style="font-weight:800;font-size:13.5px;margin-bottom:5px">The challan log' +
+      ' <span style="font-weight:600;color:#64748b;font-size:12.5px">\u00b7 ' + rows.length + ' shown \u00b7 latest number first \u00b7 ' +
+      done + ' done, struck through in green \u00b7 tap a number to open it</span></div>' +
+      regSwipe("the executive, made by, passed by, receipt and hisab") +
+      '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
+      regHead() + body + '</table></div></div>';
   }
 
   function viewRegister() {
