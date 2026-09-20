@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.558";
+  var APP_VERSION = "6.9.559";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -25263,6 +25263,18 @@ function viewCatalogue() {
             F("normal"); doc.setFontSize(7.4); ink(GREY);
             doc.text("Site: " + pdfSafe(String(c.site).trim()), x0, y); y += 4.2;
           }
+          /* v6.9.559 - who made it, who passed it, when the paper came in: the same three facts
+             the card shows, on the paper the client is handed. */
+          try {
+            var _who = [];
+            if (c.createdBy) _who.push((isRet ? "Registered by " : "Made by ") + String(c.createdBy) + (c.createdAt ? " on " + fullDate(c.createdAt) : ""));
+            if (!isRet && String(c.approvedBy || "").trim()) _who.push("Passed by " + String(c.approvedBy) + (c.approvedAt ? " on " + fullDate(c.approvedAt) : ""));
+            if (!isRet && c.receiptAt) _who.push("Receipt in on " + fullDate(c.receiptAt));
+            if (_who.length) {
+              F("normal"); doc.setFontSize(7.4); ink(GREY);
+              doc.text(pdfSafe(_who.join("   ·   ")), x0, y); y += 4.2;
+            }
+          } catch (e) { }
           y += 2;
           thead();
           var lines = isRet ? returnLines(c) : pricedLines(c, cl), sub = 0;
