@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.545";
+  var APP_VERSION = "6.9.546";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -29783,7 +29783,45 @@ function viewCatalogue() {
        question: "what in this book disagrees with itself?" */
     /* v6.9.380 - and the service book's own check, same screen, same reasoning as the
        catalogue's: everything that disagrees with itself is answered in one place. */
-    return h + svcCheckHtml() + _catHtml;
+    return h + orphanChallanHtml() + svcCheckHtml() + _catHtml;
+  }
+  /* ===== A DELIVERY UNDER A NAME THAT IS NOT A CLIENT  (v6.9.546) ===== */
+  function orphanChallans() {
+    var out = [];
+    (S.data.challans || []).forEach(function (c) {
+      if (isCancelled("challans", c.id)) return;
+      var nm = String(c.customerName || "").trim();
+      if (!nm) return;
+      if (clientByName(nm)) return;
+      if (clientByName(dupMainName(nm))) return;   /* already joined by a dup:fix answer */
+      out.push(c);
+    });
+    return out;
+  }
+  function orphanChallanHtml() {
+    var list = orphanChallans();
+    if (!list.length) return "";
+    var byName = {}, order = [];
+    list.forEach(function (c) { var k = dgKey(c.customerName); if (!byName[k]) { byName[k] = { name: String(c.customerName).trim(), chs: [] }; order.push(k); } byName[k].chs.push(c); });
+    var h = '<div class="card" style="border-color:#fdba74;background:#fff7ed;margin-top:14px"><h3 style="margin:0 0 2px">' +
+      plural(order.length, "name") + ' on deliveries that ' + (order.length === 1 ? 'is' : 'are') + ' not a client</h3>' +
+      '<div class="meta" style="font-size:12.5px;color:#7c2d12">A delivery written under a name the client register does not have is on nobody\u2019s account. ' +
+      'If it is a client under another spelling, file it under him: the ledger, the discounts and the statement then read it as his. Nothing on the challan is edited.</div>';
+    order.forEach(function (k) {
+      var g = byName[k], first = g.name.toLowerCase().split(/[\s\-]+/)[0];
+      var cands = (S.data.clients || []).filter(function (c) { return first.length >= 3 && String(c.name || "").toLowerCase().indexOf(first) === 0; }).slice(0, 8);
+      var val = g.chs.reduce(function (a, c) { return a + chValue(c); }, 0);
+      h += '<div style="border-top:1px solid #fed7aa;padding:8px 0 4px"><b>' + esc(g.name) + '</b> ' +
+        '<span class="pill due" style="font-size:12px">' + plural(g.chs.length, "delivery") + ' \u00b7 ' + money(val) + '</span>' +
+        '<div class="meta" style="font-size:12px">' + g.chs.map(function (c) { return esc(c.challanNo || "no number") + ' (' + esc(c.createdBy || "") + ')'; }).join(", ") + '</div>' +
+        (cands.length
+          ? '<div class="acts" style="flex-wrap:wrap;gap:6px;margin-top:6px">' + cands.map(function (c) {
+              return '<button class="btn sm" data-act="orphan-file" data-n="' + esc(g.name) + '" data-id="' + esc(c.id) + '" title="File every delivery under ' + esc(g.name) + ' as ' + esc(c.name) + '">File under ' + esc(c.name) + '</button>';
+            }).join("") + '</div>'
+          : '<div class="meta" style="font-size:12px;color:#b45309;margin-top:4px">No client starts with that name \u2014 add him under Clients, then file it here.</div>') +
+        '</div>';
+    });
+    return h + '</div>';
   }
 
   /* The one-line note on the dashboard — his "duplicate entry log / note / warning". It only
@@ -42603,6 +42641,19 @@ function viewCatalogue() {
       /* Reopening is a new row, not the removal of the old one — the sheet keeps the whole story. */
       dupLog("reopen", rg.ids, { names: rg.recs.map(function (r) { return r.name; }) });
       toast("Opened again for a fresh look.");
+      render(); return;
+    }
+    /* v6.9.546 - the same row the Same-person answer writes: main = the real client, alias =
+       the name on the deliveries (no record id - it never was one). dupAliasMap keys by name. */
+    if (act === "orphan-file") {
+      if (!roleIs("admin")) { toast("Filing a delivery under another name is the owner\u2019s call."); return; }
+      var _on = t.getAttribute("data-n") || "", _oc = clientById(t.getAttribute("data-id") || "");
+      if (!_on || !_oc) { toast("Could not find that client."); return; }
+      var _ochs = orphanChallans().filter(function (c) { return dgKey(c.customerName) === dgKey(_on); });
+      dupLog("fix", [_oc.id], { main: _oc.id, mainName: _oc.name, aliases: [{ id: "", name: _on }],
+        why: "delivery name not a client: " + _ochs.map(function (c) { return c.challanNo; }).join(", ") });
+      _aliasCache = null;
+      toast(plural(_ochs.length, "delivery") + " under " + _on + " now file under " + _oc.name + ". Nothing was deleted.");
       render(); return;
     }
     if (act === "dup-fix-go") {
