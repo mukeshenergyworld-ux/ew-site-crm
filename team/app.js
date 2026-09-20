@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.559";
+  var APP_VERSION = "6.9.560";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18648,7 +18648,9 @@ function viewCatalogue() {
       /* v6.9.496 - "reduce gap between date and client". It printed 18/09/2026; the year of a
          delivery in the current book is never in doubt, and two digits of it buy the width that
          puts the balance on screen beside the amount. The full date is on the row's own card. */
-      '<td style="' + regCell(";padding-right:3px") + '">' + esc(regDMY(regDate(c)).replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c) + '</td>' +
+      '<td style="' + regCell(";padding-right:3px;white-space:nowrap") + '">' + esc(regDMY(regDate(c)).replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c) +
+        /* v6.9.560 - his words: "put finalised button in between date and client, there is empty space" */
+        (regDone ? '' : ' ' + hisabAddBtn(c)) + '</td>' +
       '<td style="' + regCell(";max-width:170px;overflow:hidden;text-overflow:ellipsis") + '">' +
         '<a href="#" data-act="ch-hisab" data-cl="' + esc(c.customerName || "") + '" ' +
         'style="font-weight:700;color:#0b3b36;text-decoration:none;white-space:nowrap" title="' +
@@ -23331,7 +23333,8 @@ function viewCatalogue() {
            'title="The statement, then one page per delivery: its items on the left, the signed receipt on the right.">&#8681; PDF</button>' +
          '<button class="btn sm ghost" data-act="full-xlsx" data-n="' + esc(cl) + '" ' +
            'title="Every row with its own item lines under it, and a link to each signed receipt.">&#8681; Excel</button></div>' +
-         '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:5px">Every delivery&rsquo;s items and its signed receipt.</div>' +
+         '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:5px">Every delivery&rsquo;s items and its signed receipt.' +
+           (function () { try { rcptWarm(cl); } catch (e) { } var rc = rcptCount(cl); return rc.n ? ' <b>' + plural(rc.n, "receipt") + '</b>, ' + (rc.here === rc.n ? 'all on this device \u2014 instant.' : rc.here + ' on this device, ' + (rc.n - rc.here) + ' being fetched\u2026') : ''; })() + '</div>' +
        '</div>'].join("") + '</div>' +
       /* v6.9.449 - and the way to correct the brought-forward figure, on the account it is a line
          of, rather than a card below that repeated the account's sum. Owner only; the server
@@ -24934,10 +24937,29 @@ function viewCatalogue() {
         return lane();
       });
     };
-    return Promise.all([lane(), lane(), lane()]).then(function () {
+    return Promise.all([lane(), lane(), lane(), lane()]).then(function () {   /* v6.9.560 - four */
       if (_rcptDirty) { if (_rcptTimer) { clearTimeout(_rcptTimer); _rcptTimer = null; } rcptSave(); }
       return out;
     });
+  }
+  /* v6.9.560 - THE RECEIPTS COME DOWN WHEN THE ACCOUNT OPENS, not when the PDF is pressed.
+     Once per account per sign-in, quietly, into the same device cache the PDF reads. */
+  var _rcptWarmed = {};
+  function rcptWarm(name) {
+    name = String(name || "").trim();
+    if (!name || _rcptWarmed[name]) return;
+    _rcptWarmed[name] = 1;
+    var list = [];
+    try { list = famChallansIn(name).filter(function (c) { var r = chProofAny(c); return r.has && r.url && RCPT_IMG[String(r.url)] === undefined; }); } catch (e) { list = []; }
+    if (!list.length) return;
+    setTimeout(function () { try { receiptImages(list, null).catch(function () { }); } catch (e) { } }, 600);
+  }
+  function rcptCount(name) {
+    var n = 0, here = 0;
+    try {
+      famChallansIn(name).forEach(function (c) { var r = chProofAny(c); if (!(r.has && r.url)) return; n++; if (RCPT_IMG[String(r.url)] !== undefined) here++; });
+    } catch (e) { }
+    return { n: n, here: here };
   }
   function thumbSizes(list) {
     return Promise.all((list || []).map(function (c) {
@@ -32593,6 +32615,34 @@ function viewCatalogue() {
      to open his HISAB". Same here. The cell's own html carries its own data-act. */
   var XL_HEAD = "#0b3b36";                 /* the register's colour - already 7 of the 37 */
 
+  /* ================= THE SHEET STAYS WHERE HE PUT IT  (v6.9.560) =================
+     Every scroll box is rebuilt on every repaint and a new box starts at the left edge. So the
+     columns he had swiped to went away under him - on every heartbeat, every save, every chip.
+     Each box is named (data-xl), its scrollLeft is remembered as he scrolls, and put back after
+     every repaint. Named by the sheet's own key where there is one, else by its place on the
+     screen - the same screen draws the same boxes in the same order. */
+  var _xlScroll = {};
+  document.addEventListener("scroll", function (ev) {
+    var t = ev.target;
+    if (!t || t === document || !t.getAttribute) return;
+    var k = t.getAttribute("data-xl");
+    if (k) _xlScroll[k] = t.scrollLeft;
+  }, true);
+  function xlScrollName() {
+    var boxes = document.querySelectorAll('[style*="overflow-x:auto"]');
+    for (var i = 0; i < boxes.length; i++) {
+      var b = boxes[i];
+      if (!b.getAttribute("data-xl")) b.setAttribute("data-xl", "w" + i + "@" + String(S.tab || "") + "/" + String(S.sub || S.chFilter || ""));
+    }
+  }
+  function xlScrollRestore() {
+    xlScrollName();
+    var boxes = document.querySelectorAll("[data-xl]");
+    for (var i = 0; i < boxes.length; i++) {
+      var k = boxes[i].getAttribute("data-xl"), v = _xlScroll[k];
+      if (v && boxes[i].scrollLeft !== v) boxes[i].scrollLeft = v;
+    }
+  }
   function xlState(screen) {
     if (!S.xl) S.xl = {};
     if (!S.xl[screen]) S.xl[screen] = {};
@@ -32624,7 +32674,7 @@ function viewCatalogue() {
       h += '<div class="meta" style="font-size:12px;margin:0 0 4px;white-space:normal">' +
         'Tap a heading to sort &middot; swipe sideways for ' + esc(swipe) + ' &rarr;</div>';
     }
-    h += '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch">' +
+    h += '<div data-xl="xl:' + esc(screen) + '" style="overflow-x:auto;-webkit-overflow-scrolling:touch">' +
       '<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>';
     cols.forEach(function (c, i) {
       var on = cur.k === c.k;
@@ -38157,7 +38207,7 @@ function viewCatalogue() {
     try { agClearCache(); } catch (e) { }   /* one agent scan per paint, always fresh */
     _bgCache = null;                        /* brand groups rebuilt if the catalogue changed */
     var _fsnap = null; try { _fsnap = formSnap(); } catch (e) { }
-    try { renderCore(); try { formRestore(_fsnap); } catch (e) { } try { stageResync(); } catch (e) { } try { syncBanner(); } catch (e) { } try { chDraftKeep(); } catch (e) { } }   /* v6.9.554 */
+    try { renderCore(); try { formRestore(_fsnap); } catch (e) { } try { stageResync(); } catch (e) { } try { syncBanner(); } catch (e) { } try { chDraftKeep(); } catch (e) { } try { xlScrollRestore(); } catch (e) { } }   /* v6.9.554, v6.9.560 */
     catch (err) {
       logCrash("render", err);
       try {
@@ -41264,7 +41314,7 @@ function viewCatalogue() {
     }
     if (act === "bf-mode") { S.bfMode = t.getAttribute("data-m") === "client" ? "client" : "lead"; render(); return; }
     if (act === "bill-go") { render(); return; }
-    if (act === "bill-open") { S.q = t.getAttribute("data-n"); render(); return; }
+    if (act === "bill-open") { S.q = t.getAttribute("data-n"); render(); try { rcptWarm(hisabResolve(S.q)); } catch (e) { } return; }   /* v6.9.560 */
     /* v6.9.332 - FLIP THE STATE THE ELEMENT WAS DRAWN WITH.
 
        This used to recompute the default (gk === S.user) and could not see the OTHER half of
@@ -45791,21 +45841,23 @@ function viewCatalogue() {
          rupees, rather than assumed either way: a return, or a receipt filed for the record on
          something already received, must not be moved by accident. */
       var _pc = (S.data.challans || []).filter(function (x) { return x.id === pcid; })[0];
-      if (_pc && !hisabCounts(_pc) && String(_pc.status || "") === "Dispatched") {
-        setTimeout(function () {
-          /* v6.9.448 - in the app's own sheet */
-          askSheet({
-            title: 'Mark it received now?',
-            sub: esc(_pc.challanNo || "this delivery") + ' &middot; ' + esc(_pc.customerName || ""),
-            body: 'The receipt is attached. It is still marked <b>Dispatched</b>, so hisab does not count it — ' +
-              '<b>' + money(_pc.amount) + '</b> is not on ' + esc(_pc.customerName || "his") + '\u2019s account.',
-            yes: 'Mark it received', no: 'Not now'
-          }).then(function (yes) {
-            if (!yes) return;
-            S.alt = { id: pcid, rows: null, by: pby, photo: "", sig: "" };
-            S.modal = modalAlter(); render();
-          });
-        }, 400);
+      /* v6.9.560 - THE PAPER IS THE PROOF IT ARRIVED (the Challan app's rule since 1.10.0, his
+         question tonight: "attaching receipt auto marked as received, what you think?"). A PASSED
+         challan - Approved or Dispatched - goes to Received the moment its receipt is attached,
+         through the same journalled write the Receipt-in sheet uses. A Draft keeps the paper and
+         is NOT promoted: passing is the money control and the approval queue must see it. */
+      if (_pc && !hisabCounts(_pc) && (String(_pc.status || "") === "Dispatched" || String(_pc.status || "") === "Approved")) {
+        _pc.status = "Received"; _pc.receiptReceived = "Y"; _pc.receiptAt = _pc.receiptAt || new Date().toISOString();
+        toast("Receipt attached \u2014 " + (_pc.challanNo || "the delivery") + " is marked Received; " + money(_pc.amount) + " is on " + (_pc.customerName || "his") + "\u2019s account.");
+        render();
+        (function (pc) {
+          api("challanMove", { id: pc.id, to: "Received" }).then(function (r2) {
+            if (!r2 || !r2.ok) { try { save("challans", pc); } catch (e) { } toast("Marked received on this device \u2014 the server has not confirmed it yet. It is saved and will keep trying."); }
+            quietSync();
+          }).catch(function () { try { save("challans", pc); } catch (e) { } quietSync(); });
+        })(_pc);
+      } else if (_pc && !hisabCounts(_pc) && String(_pc.status || "") === "Draft") {
+        toast("Receipt filed. " + (_pc.challanNo || "This challan") + " has not been passed yet, so it stays Draft \u2014 pass it and it counts.");
       }
       return;
     }
