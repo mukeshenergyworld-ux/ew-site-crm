@@ -289,7 +289,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
    Nothing here deletes anything, ever. A visit is a row added.
    ========================================================================== */
 
-  var APP_VERSION = "1.15.1";
+  var APP_VERSION = "1.15.2";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_service_session";
 
@@ -894,7 +894,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         el("root").innerHTML =
           '<div class="login"><h1>Energy World</h1><p>Challan &amp; material return</p>' +
           '<div class="loginmsg">This app could not draw its screen. Nothing has been lost — ' +
-          (held ? 'the ' + held + ' record(s) held on this phone are still here, and still go up.'
+          (held ? 'the ' + held + (held === 1 ? ' record' : ' records') + ' held on this phone are still here, and still go up.'
                 : 'nothing was waiting to go up.') +
           '</div>' +
           '<div class="muted" style="font-size:12px;line-height:1.5;margin:0 0 14px;word-break:break-word;' +
