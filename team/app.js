@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.549";
+  var APP_VERSION = "6.9.550";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -12654,7 +12654,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          (reminder with the ledger, a quotation) go only to a client who has agreed. */
       '<label class="chk" style="display:flex;gap:8px;align-items:center;min-height:44px;margin:-2px 0 6px;font-size:13px">' +
         '<input type="checkbox" id="c_waok"' + (waConsent(c.name).yes ? ' checked' : '') + ' style="width:20px;height:20px"/>' +
-        '<span>Agreed to WhatsApp updates from the business number' +
+        '<span style="text-transform:none;letter-spacing:0;color:#0f172a;font-weight:500">Agreed to WhatsApp updates from the business number' +
         (waConsent(c.name).yes ? ' <span style="color:#94a3b8">(' + esc(waConsent(c.name).by) + ', ' + esc(String(waConsent(c.name).at).slice(0, 10)) + ')</span>' : '') + '</span></label>' +
       /* v6.9.186: the empty half beside Short name was left over from when Area lived there.
          Address moves up into it - the two are read together when a challan is written, and
