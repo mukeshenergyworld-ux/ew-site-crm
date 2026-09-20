@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.79.0";
+  var APP_VERSION = "1.80.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -592,6 +592,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     S.data.ok = true;
     if (r && r.user) S.data.user = r.user;
     (tabs || []).forEach(function (k) { if (r && Array.isArray(r[k])) S.data[k] = r[k]; });
+    /* 1.80.0 - not a tab: the pass verdicts ride on every answer (V131), an object keyed by name */
+    if (r && r.passGate && typeof r.passGate === "object") S.data.passGate = r.passGate;
     return S.data;
   }
   /* NO LONGER ON THE PULL PATH as of 18 Aug 2026 - mergeBook above replaced it, because this
@@ -1670,6 +1672,21 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      office. The PIN is still asked, so a released load still carries a name. Byte-identical
      with the CRM's, because two apps must not disagree about who may release material. */
   function canApprove() { return roleAny(["admin", "accounts", "godown"]); }
+  /* 1.80.0 - his rule: "under a lakh and nothing older than 6 months - Ashish Jha or godown;
+     all other - his executive or admin only". The CRM works it out (it has the money; this
+     phone is sent none) and the server hands this app the STRICT names with the reason. */
+  function passGateOf(c) {
+    var pg = (S.data && S.data.passGate) || null;
+    if (!pg || !pg.strict) return null;                     /* the server does not carry it yet */
+    return pg.strict[String((c && c.customerName) || "").trim().toLowerCase()] || null;
+  }
+  function passGate(c) {
+    if (!canApprove()) return { ok: false, why: "Passing a challan is done by the accounts desk." };
+    if (roleIs("admin")) return { ok: true, why: "" };
+    var sv = passGateOf(c);
+    if (!sv) return { ok: true, why: "" };
+    return { ok: false, why: String(c.customerName || "") + " " + sv.why + " \u2014 only " + (sv.ex || "his executive") + " or an admin may pass this one (from the CRM)." };
+  }
   /* v1.3 - and the signed paper is filed by the office, not by the man who loaded the
      lorry. A receipt is the proof that settles an argument; it should not be attachable
      by the person it would exonerate. */
@@ -4657,7 +4674,9 @@ function discRowOn(client, brand, onYmd) {
       chStepStrip(c, {
         pass: (st === "Draft" && canApprove()
                 ? (held ? '<span class="pill amb">Cannot be passed until it uploads</span>'
-                        : '<button class="btn sm red" data-act="ch-approve" data-no="' + esc(c.id || c.challanNo) + '">Pass &amp; Dispatch</button>')
+                        : (passGate(c).ok
+                            ? '<button class="btn sm red" data-act="ch-approve" data-no="' + esc(c.id || c.challanNo) + '">Pass &amp; Dispatch</button>'
+                            : '<span class="muted" style="font-size:12px;color:#b45309">' + esc(passGate(c).why) + '</span>'))   /* 1.80.0 */
                 : ''),
         disp: (st === "Approved" && canApprove() && !held
                 ? '<button class="btn sm" data-act="ch-dispatch" data-id="' + esc(c.id) + '">Dispatch</button>' : ''),
@@ -7576,6 +7595,8 @@ function discRowOn(client, brand, onYmd) {
       var no2 = t.getAttribute("data-no");
       var c2 = chFind(no2);
       if (!c2) return;
+      var pg2 = passGate(c2);   /* 1.80.0 - at the door, not only on the button */
+      if (!pg2.ok) { toast(pg2.why); return; }
       /* v1.10.0 - a challan still held on this phone has no row on the server to move, and
          an approval is the one thing this app will not queue: replaying it later would mean
          keeping his PIN on the device to replay it with. */
