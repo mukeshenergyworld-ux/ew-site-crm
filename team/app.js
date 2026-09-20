@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.544";
+  var APP_VERSION = "6.9.545";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -30737,7 +30737,7 @@ function viewCatalogue() {
       '<button class="btn" data-act="ts-net"' + (S.trNetBusy ? ' disabled' : '') + '>' + (S.trNetBusy ? 'Asking…' : 'Ask the internet') + '</button>' +
       '<button class="btn sm ghost" data-act="ts-report">Copy the full report</button>' +
       '<button class="btn sm ghost" data-act="ts-report-tg">Send it on Telegram</button></div>' +
-      '<div class="meta" style="font-size:12px;margin-top:6px">“Ask the internet” sends this report to the server, which puts it to an AI and returns the answer here. That call is part of server release V129; until it is deployed the button says so and the report is what to send.</div></div>';
+      '<div class="meta" style="font-size:12px;margin-top:6px">“Ask the internet” sends this report to the server, which puts it to an AI and returns the answer here. The key for that lives on the server (AI_KEY under Script Properties), never in the app.</div></div>';
     return h;
   }
   function runTrouble() {
@@ -41383,7 +41383,9 @@ function viewCatalogue() {
       api("troubleAsk", { q: S.trAns.q, report: trReport(S.trAns) }, 60000).then(function (r) {
         S.trNetBusy = false;
         if (r && r.ok && r.answer) { S.trNet = String(r.answer); S.trAns.net = S.trNet; render(); return; }
-        S.trAns.net = "The server does not carry this call yet (server release V129). The report is ready - copy it or send it on Telegram and it is answered by hand." + (r && r.error ? " Server said: " + r.error : "");
+        /* v6.9.545 - V129 is live: a reason from the server is the whole message */
+        S.trAns.net = (r && r.error) ? String(r.error) + " Until then the report is ready - copy it or send it on Telegram."
+                                     : "The server did not answer this call. The report is ready - copy it or send it on Telegram.";
         render();
       }).catch(function (e) {
         S.trNetBusy = false;
