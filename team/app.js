@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.543";
+  var APP_VERSION = "6.9.544";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -35666,6 +35666,20 @@ function viewCatalogue() {
     lines.push("", "Energy World");
     return lines.join("\n");
   }
+  /* v6.9.544 - the Monday send (item 8) needs the texts on the server; the server cannot work
+     them out (the agent's scan lives here). Stored once a day when the owner opens the Agent,
+     keyed by executive; the trigger sends what is stored with the date it was made. */
+  var _agStoreDay = "";
+  function agRemindStoreOnce() {
+    if (!roleIs("admin") || _agStoreDay === today()) return;
+    _agStoreDay = today();
+    var texts = {};
+    try { agRemindGroups().forEach(function (b) { texts[b.exec] = agRemindText(b); }); } catch (e) { return; }
+    if (!Object.keys(texts).length) return;
+    api("agentRemindStore", { texts: texts }, 20000).then(function (r) {
+      if (!(r && r.ok)) _agStoreDay = "";   /* not carried yet (before V129) - try again next open */
+    }).catch(function () { _agStoreDay = ""; });
+  }
   function modalAgRemind() {
     var bs = agRemindGroups();
     var h = '<h2 style="margin:0 0 2px">Remind the executives</h2>' +
@@ -35718,6 +35732,7 @@ function viewCatalogue() {
 
   function viewAgent() {
     var all = agScan();
+    try { setTimeout(agRemindStoreOnce, 50); } catch (e) { }   /* v6.9.544 */
     var live = all.filter(function (a) { return !a.mute; });
     var muted = all.filter(function (a) { return a.mute; });
     var nBand = function (i) { return live.filter(function (a) { return agBand(a) === i; }).length; };
