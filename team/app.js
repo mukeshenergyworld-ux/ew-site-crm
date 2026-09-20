@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.547";
+  var APP_VERSION = "6.9.548";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1874,6 +1874,14 @@ window.addEventListener("beforeunload", function (ev) {
     }).catch(function () { _beatBusy = false; });
   }
   function beatStart() { if (!_beatOn) _beatOn = setInterval(beat, BEAT_EVERY); }
+  /* v6.9.548 - does the server have a WhatsApp number (V130)? Asked once at each sign-in path
+     (beatStart itself stays byte-identical with the Challan app, which does not ask yet). Until
+     the server says yes every WhatsApp button opens wa.me on this phone, exactly as before. */
+  function waProbe() {
+    S.wa = S.wa || { ready: false, at: 0 };
+    api("waStatus", {}, 15000).then(function (r) { S.wa = { ready: !!(r && r.ok && r.ready), at: Date.now() }; }).catch(function () { });
+  }
+  function waReady() { return !!(S.wa && S.wa.ready); }
   /* MAY_DIFFER: what "busy" means is genuinely different in each app, and these are the same
      guards each app's own pull already used. Nothing else here differs. */
   function beatSkip() {
@@ -13257,13 +13265,38 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      LAPTOP we open the chat immediately (while the click is still "fresh", so the browser
      doesn't block the pop-up) and download the PDF to drag in. Shared by quote share (q-wa /
      rad-wa) and the payment reminder (pay-wa). */
-  function waShareDoc(docPromise, fname, wnum, wmsg) {
+  function waShareDoc(docPromise, fname, wnum, wmsg, tpl) {
+    /* v6.9.548 - FROM THE BUSINESS NUMBER when the server has one: host the PDF as before, then
+       api("waSend") with the approved template, its variables and the document link. The send
+       is logged on the server's WaLog with its delivery status. If the server is not ready, or
+       refuses (a template not yet approved, a number WhatsApp cannot reach), the wa.me path
+       below runs exactly as it always has - nothing is lost, he presses send himself. */
+    if (tpl && wnum && waReady()) {
+      var win2 = window.open("", "_blank");
+      toast("Sending from the business number\u2026");
+      var fall = function (why) {
+        toast(why + " \u2014 opening WhatsApp on this phone instead.");
+        waShareDoc(docPromise, fname, wnum, wmsg, null, win2);
+      };
+      docPromise.then(function (d) {
+        var b64 = d.output("datauristring").split(",")[1];
+        return api("pdfHost", { pdfBase64: b64, filename: fname }).then(function (r) {
+          var link = (r && r.ok && r.url) ? r.url : "";
+          if (!link) { fall("The PDF could not be hosted"); return; }
+          return api("waSend", { to: wnum, template: tpl.template, vars: tpl.vars || [], docUrl: link, docName: fname, note: tpl.note || "" }, 30000).then(function (w) {
+            if (w && w.ok) { try { if (win2 && !win2.closed) win2.close(); } catch (e) { } toast("Sent from the business number. Delivery shows on the server\u2019s WaLog."); return; }
+            fall((w && w.error) || "The server did not send it");
+          });
+        });
+      }).catch(function (e) { fall("Could not build or send it (" + apiWhy(e) + ")"); });
+      return;
+    }
+    var win = (arguments.length > 5 && arguments[5]) ? arguments[5] : window.open("", "_blank");
     /* WhatsApp cannot carry a file through a wa.me link - a hard platform limit. So we HOST the
        PDF: the backend saves it to Drive and returns a view-only link, and we put that link in
        the message. The customer taps it and gets the PDF, on any phone or computer. A blank tab
        is opened first (inside the click, so it isn't popup-blocked) and redirected to WhatsApp
        once the link is ready. If hosting fails, we fall back to downloading the PDF to drag in. */
-    var win = window.open("", "_blank");
     toast("Preparing the PDF link...");
     docPromise.then(function (d) {
       var b64 = d.output("datauristring").split(",")[1];
@@ -13332,7 +13365,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       "Please let us know if we may proceed.\n\nThank you,\nEnergy World";
     var fname = String(wq.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf";
     var wr = waRoute(t, wq.client, wnum, wmsg, "quotation " + wq.quoteNo); if (!wr.ok) return;
-    waShareDoc(quotePdf(wq), fname, wr.num, wr.msg);
+    var qtpl = (wr.num === wnum) ? { template: "quotation", vars: [wq.client, String(wq.quoteNo || "")], note: "quotation " + wq.quoteNo } : null;   /* v6.9.548 */
+    waShareDoc(quotePdf(wq), fname, wr.num, wr.msg, qtpl);
   }
 
   /* ---- SENDING THE PROPOSAL ----
@@ -25944,8 +25978,11 @@ function viewCatalogue() {
       moneyAscii(l.due) + " is currently outstanding on your account. Your ledger is attached.\n" +
       "Kindly arrange the payment at your convenience. Thank you.\n\nEnergy World";
     var wr = waRoute(t, name, pnum, pmsg, "ledger and reminder"); if (!wr.ok) return;
+    /* v6.9.548 - to the CLIENT by template (payment_reminder: {{1}} name, {{2}} amount, ledger
+       as the document); to the executive it stays the plain message on his phone */
+    var ptpl = (wr.num === pnum) ? { template: "payment_reminder", vars: [name, moneyAscii(l.due)], note: "ledger " + name } : null;
     waShareDoc(loadLogo().then(function () { return ledgerPdf(name); }),
-      name.replace(/[^\w.-]/g, "_") + "_ledger.pdf", wr.num, wr.msg);
+      name.replace(/[^\w.-]/g, "_") + "_ledger.pdf", wr.num, wr.msg, ptpl);
   }
 
   /* ---------------- payment history, for every client, downloadable  (v6.9.209) ----------------
@@ -31212,6 +31249,9 @@ function viewCatalogue() {
 
     try { h += bookSweepDoor(); } catch (e) { }
     try { h += navOffDoor(); } catch (e) { }   /* v6.9.547 */
+    h += '<div class="meta" style="font-size:12px;margin:8px 0">WhatsApp from the business number: ' +   /* v6.9.548 */
+      (waReady() ? '<b style="color:#0f766e">connected</b> \u2014 reminders and quotations go from the server, logged on WaLog.'
+                 : '<b style="color:#b45309">not connected yet</b> \u2014 every WhatsApp button opens WhatsApp on this phone. The number and token go under Script Properties on the server.') + '</div>';
     return h;
   }
   function viewOwner() {
@@ -31376,6 +31416,7 @@ function viewCatalogue() {
       try { bigDel(snapKey()); } catch (e) { } S.pin = ""; renderLogin("Saved sign-in no longer valid."); return; }
         S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
         try { beatStart(); } catch (e) {}          /* v6.9.314 - from here it asks on its own */
+        try { waProbe(); } catch (e) {}            /* v6.9.548 - and asks once whether WhatsApp is on the server */
         S.tab = myTabs()[0];
         loadCatalog(); refresh();
       /* v6.9.406 - the .catch below is on the WEBAUTHN promise, not on this call. Without a
@@ -33630,6 +33671,7 @@ function viewCatalogue() {
       if (!r || !r.ok) { S.pin = ""; renderLogin((r && r.error) || "Could not sign in."); return; }
       S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
         try { beatStart(); } catch (e) {}          /* v6.9.314 - from here it asks on its own */
+        try { waProbe(); } catch (e) {}            /* v6.9.548 - and asks once whether WhatsApp is on the server */
       try { localStorage.setItem(STORE, JSON.stringify({ pin: pin, user: S.user, role: S.role, pinSet: S.pinSet })); } catch (e) {}
       if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return; }
       S.tab = myTabs()[0];
@@ -43521,6 +43563,17 @@ function viewCatalogue() {
       var _rm = (S.data.team || []).filter(function (u) { return u && dgKey(u.name) === dgKey(_rk); })[0] || {};
       var _rn = String(_rm.mobile || "").replace(/\D/g, ""); if (_rn.length === 10) _rn = "91" + _rn;
       if (_rn.length < 12) { toast(_rk + " has no mobile on the Team sheet."); return; }
+      if (waReady()) {   /* v6.9.548 - by template from the business number; wa.me if it refuses */
+        var _rs = _rb.sites.map(function (g) { return g.siteName || "site"; }).join(", ");
+        var _rq = []; _rb.sites.forEach(function (g) { (g.toQuote || []).forEach(function (b) { if (_rq.indexOf(b) < 0) _rq.push(b); }); });
+        toast("Sending to " + _rk + " from the business number\u2026");
+        api("waSend", { to: _rn, template: "weekly_pitch_reminder", vars: [String(_rk).split(" ")[0], _rs.slice(0, 900), (_rq.join(", ") || "nothing").slice(0, 900)], note: "weekly reminder" }, 30000).then(function (w) {
+          if (w && w.ok) { toast("Sent to " + _rk + " from the business number."); return; }
+          toast(((w && w.error) || "The server did not send it") + " \u2014 opening WhatsApp on this phone.");
+          window.open("https://wa.me/" + _rn + "?text=" + encodeURIComponent(_rt), "_blank");
+        }).catch(function () { window.open("https://wa.me/" + _rn + "?text=" + encodeURIComponent(_rt), "_blank"); });
+        return;
+      }
       window.open("https://wa.me/" + _rn + "?text=" + encodeURIComponent(_rt), "_blank");
       return;
     }
@@ -46316,6 +46369,7 @@ function viewCatalogue() {
         }
         S.user = r.user.name; S.role = r.user.role; S.pinSet = r.user.pinSet;
         try { beatStart(); } catch (e) {}          /* v6.9.314 - from here it asks on its own */
+        try { waProbe(); } catch (e) {}            /* v6.9.548 - and asks once whether WhatsApp is on the server */
         if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return null; }
         S.tab = myTabs()[0];
         loadCatalog();
