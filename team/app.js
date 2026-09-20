@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.554";
+  var APP_VERSION = "6.9.555";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18068,6 +18068,8 @@ function viewCatalogue() {
      draft of a NEW challan (the picked lines and every typed field) is written to this device
      on every repaint and every keystroke while the form is open, and comes back on + New
      challan, or from the banner. Cleared when the challan is created, or by Discard. */
+  /* v6.9.555 - the device's own clock, hh:mm, for a moment stored as ISO/UTC */
+  function localHM(iso) { try { var t = new Date(iso); if (isNaN(t)) return ""; return String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0"); } catch (e) { return ""; } }
   function chDraftKey() { return "ew_chdraft_" + String(S.user || ""); }
   document.addEventListener("input", function () { if (S.ch && el("m_client")) chDraftKeepSoon(); });
   document.addEventListener("change", function () { if (S.ch && el("m_client")) chDraftKeepSoon(); });
@@ -18102,7 +18104,7 @@ function viewCatalogue() {
     return '<div class="card" style="border-color:#fbbf24;background:#fffbeb;padding:10px 12px">' +
       '<h3 style="margin:0 0 3px;font-size:13.5px;color:#92400e">An unfinished challan is waiting on this device</h3>' +
       '<div class="meta" style="font-size:12.5px;color:#92400e">' + (who ? 'For <b>' + esc(who) + '</b> &middot; ' : '') +
-      plural(n, "line") + ' &middot; last touched ' + esc(String(d.at || "").slice(11, 16)) + ' UTC. It was never sent to the server, so it is not on the challan log yet.</div>' +
+      plural(n, "line") + ' &middot; last touched ' + esc(localHM(d.at)) + '. It was never sent to the server, so it is not on the challan log yet.</div>' +
       '<div class="acts" style="margin-top:8px;gap:8px"><button class="btn sm" data-act="ch-draft-go" style="background:#b45309;border-color:#b45309">Continue it</button>' +
       '<button class="btn sm ghost" data-act="ch-draft-drop" style="border-color:#fbbf24;color:#92400e">Discard it</button></div></div>';
   }
