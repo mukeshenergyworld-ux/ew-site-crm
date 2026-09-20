@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.541";
+  var APP_VERSION = "6.9.542";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8188,14 +8188,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        day does not belong at the end of a row that grows. */
     h += '<div class="row" style="margin-bottom:6px"><button class="btn" data-act="cl-new" ' +
       'style="font-size:15px;padding:11px 16px">+ New lead</button>' +
-      '<div class="grow"></div>' + cvSeg() + '</div>';
+      '<div class="grow"></div></div>';   /* v6.9.542 - no Compact / Expand: his item 15 */
     h += leadVsSiteNote();
     ensureCompactCss();
-    if (cvMode() === "compact") {
-      var cvL = function () { var q = cvQ(); return cvHtml("leads", leads.filter(function (c) { return cvMatch(c, q); })); };
-      return h + cvSearchRow(leads.length, leads.length === 1 ? "lead" : "leads", cvL) +
-        tidyBanner() + '<div id="cv_list">' + cvL() + '</div>';
-    }
     h += '<div class="row">' + clocs.map(function (l) {
       return '<button class="btn sm ' + (loc === l ? "" : "ghost") + '" data-act="cl-loc" data-loc="' + esc(l) + '">' + esc(l) + '</button>';
     }).join("") + (clocs.length ? '<button class="btn sm ' + (rawQ ? "ghost" : "") + '" data-act="cl-loc" data-loc="">All</button>' : "") +
@@ -31750,21 +31745,6 @@ function viewCatalogue() {
      won, already lost, or marked not required is finished business and is not drawn at all.
      Nothing here writes anything. It is a way of LOOKING at rows that already exist. */
   var CV_KEY = "ew_cv_mode";
-  function cvMode() {
-    if (S.cv !== "compact" && S.cv !== "expand") {
-      var m = ""; try { m = localStorage.getItem(CV_KEY) || ""; } catch (e) { }
-      /* v6.9.183: Compact is what a man lands on now. It answers the question actually
-         asked between two sites - whose money, which colony, what is left to sell - and it
-         fits a phone. Expand is untouched and one tap away: it still owns the search box and
-         the full card, so nothing was taken away, only re-ordered. */
-      S.cv = (m === "compact" || m === "expand") ? m : "compact";
-    }
-    return S.cv;
-  }
-  function cvSetMode(m) {
-    S.cv = (m === "compact") ? "compact" : "expand";
-    try { localStorage.setItem(CV_KEY, S.cv); } catch (e) { }
-  }
   /* Colour is not decoration here - it is how a district is recognised without reading it. The
      same name always lands on the same colour because the index comes from the name itself, so
      Panipat is the same teal on the Leads tab, the Clients tab and tomorrow morning. */
@@ -31814,60 +31794,10 @@ function viewCatalogue() {
   /* v6.9.450 - a third segment, LIST, on the Clients screen only (withList). It is its own switch
      (S.clList), not a third value of cvMode: Compact / Expand are shared with Leads and Quotes, and
      a register of clients means nothing on either of those. Remembered per phone. */
-  var CL_LIST_KEY = "ew_cl_list";
-  function clListOn() {
-    if (S.clList === undefined) {
-      var v = ""; try { v = localStorage.getItem(CL_LIST_KEY) || ""; } catch (e) { }
-      /* v6.9.479 - THE REGISTER IS WHERE A MAN LANDS NOW. Only "0" - written when he chooses
-         Cards - turns it off, so a phone that has never been asked gets the register rather than
-         the view that happened to be the default in 6.9.183. */
-      S.clList = (v !== "0");
-    }
-    return !!S.clList;
-  }
-  function clListSet(on) {
-    S.clList = !!on;
-    try { localStorage.setItem(CL_LIST_KEY, on ? "1" : "0"); } catch (e) { }
-  }
-  function cvSeg(withList) {
-    var m = cvMode(), lst = withList && clListOn();
-    /* ---- v6.9.479 - THE CLIENTS SCREEN HAS TWO, AND THEY ARE NAMED FOR WHAT THEY ARE ----
-       Compact was a city -> area tree of one line per client with the brands still worth a call.
-       The register is the same tree, the same line, the same brands - as "chase:" - and also the
-       three boxes that fix a record where it is read, the brand filter, the Excel and the PDF.
-       It is a superset, so Compact had nothing left to offer HERE. It is untouched on Leads and
-       on Quotes, which have no register.
-       And "Compact / Expand / List" named how they were DRAWN. Register and Cards name what they
-       are FOR: the book of who he sells to, and the board he cross-sells from. */
-    if (withList) {
-      return '<span class="cv-seg">' +
-        '<button class="' + (lst ? "on" : "") + '" data-act="cv-mode" data-m="list" ' +
-          'title="One line per client, city then area - with his mobile, area and address as boxes you can type straight into, the brand filter, and the Excel and PDF">Register</button>' +
-        '<button class="' + (lst ? "" : "on") + '" data-act="cv-mode" data-m="expand" ' +
-          'title="The full card for each client - his brand board to quote from, his pills and his number to ring">Cards</button>' +
-        '</span>';
-    }
-    return '<span class="cv-seg">' +
-      '<button class="' + (m === "compact" ? "on" : "") + '" data-act="cv-mode" data-m="compact">Compact</button>' +
-      '<button class="' + (m === "expand" ? "on" : "") + '" data-act="cv-mode" data-m="expand">Expand</button>' +
-      '</span>';
-  }
   /* v6.9.184: the search Compact was missing. It is the reason a man had to drop back to
      Expand when a customer rang - Expand owned the only box that could find him by number.
      The tree is repainted on its own (never the whole page) so the caret and the phone
      keyboard stay exactly where they are, the same trick the client list uses. */
-  var CV_REPAINT = null;
-  function cvSearchRow(n, noun, repaint) {
-    CV_REPAINT = repaint;
-    return '<div class="row"><input class="grow" id="cv_q" placeholder="Search ' + n + ' ' +
-      esc(noun) + ' &mdash; name, phone, colony, plumber..." value="' + esc(S.cvq || "") + '"/>' +
-      /* v6.9.185: always in the page, only shown or hidden. The row itself is never re-drawn
-         while a man types - that is what keeps the caret still - so a button that was only
-         drawn when the box already had text would never appear while he was typing. */
-      '<button class="btn sm ghost" id="cv_qc" data-act="cv-qclear"' +
-      (S.cvq ? '' : ' style="display:none"') + '>Clear</button></div>';
-  }
-  function cvQ() { return String(S.cvq || "").replace(/^\s+|\s+$/g, "").toLowerCase(); }
   function cvTag(n, bg, fg) {
     return '<span class="cv-tag" style="background:' + bg + ';color:' + fg + '">' + n + '</span>';
   }
@@ -31934,96 +31864,6 @@ function viewCatalogue() {
   }
   /* kind ("leads" / "clients") only namespaces the open/closed memory, so opening Panipat on
      the Leads tab does not silently open it on Clients as well. */
-  function cvHtml(kind, list) {
-    if (!list || !list.length) {
-      return '<div class="empty">' + (cvQ()
-        ? 'Nobody matches <b>' + esc(S.cvq) + '</b>. The search runs on name, phone, colony, plumber, architect and address.'
-        : 'Nothing here yet. Register a customer and he will appear under his district.') + '</div>';
-    }
-    var solo = !seesAllClients();
-    var dueOf = function (c) { return clientDue(c.name); };
-    var sumDue = function (rs) { return rs.reduce(function (a, c) { return a + dueOf(c); }, 0); };
-    /* money first, then alphabetical - the man who owes the most is the first name you see */
-    var byMoney = function (a, b) {
-      var da = dueOf(a), db = dueOf(b);
-      if (Math.abs(da - db) > 0.5) return db - da;
-      return String(a.name).toLowerCase() < String(b.name).toLowerCase() ? -1 : 1;
-    };
-    var groupBy = function (rows, keyFn) {
-      var m = {}, order = [];
-      rows.forEach(function (r) {
-        var k = keyFn(r);
-        if (!m[k]) { m[k] = []; order.push(k); }
-        m[k].push(r);
-      });
-      return { m: m, order: order };
-    };
-    var byTotal = function (m) {
-      return function (a, b) {
-        if (a === "Not set") return 1; if (b === "Not set") return -1;
-        var da = sumDue(m[a]), db = sumDue(m[b]);
-        if (Math.abs(da - db) > 0.5) return db - da;
-        if (m[a].length !== m[b].length) return m[b].length - m[a].length;
-        return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
-      };
-    };
-
-    var h = "";
-    var ex = groupBy(list, function (c) {
-      return solo ? "" : (String(c.ownedBy || c.createdBy || "").replace(/^\s+|\s+$/g, "") || "Unassigned");
-    });
-    ex.order.sort(function (a, b) {
-      if (a === "Unassigned") return 1; if (b === "Unassigned") return -1;
-      return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
-    });
-    ex.order.forEach(function (e) {
-      var cs = ex.m[e];
-      var eDue = sumDue(cs), ec = cvColor(e || "me");
-      if (!solo) {
-        h += '<div class="cv-exec" style="background:' + ec[0] + '">' +
-          '<span class="cv-en">' + esc(e) + '</span>' +
-          '<span class="cv-tags">' + cvTag(cs.length + (cs.length === 1 ? " name" : " names"), "rgba(255,255,255,.22)", "#fff") +
-          (eDue > 0.5 ? dueAmt(eDue) : "") + '</span></div>';
-      }
-      var ds = groupBy(cs, function (c) { c.__cvp = cvPlace(c); return c.__cvp.district; });
-      ds.order.sort(byTotal(ds.m));
-      ds.order.forEach(function (d) {
-        var rows = ds.m[d], dDue = sumDue(rows), dc = cvColor(d);
-        var k = kind + "|" + e + "|" + d;
-        /* while something is typed every district opens itself - a match hidden inside a
-           closed fold is the same as no match at all. */
-        var on = !!(S.cvOpen && S.cvOpen[k]) || !!cvQ();
-        h += '<button class="cv-dist' + (on ? " on" : "") + '" data-act="cv-dist" data-k="' + esc(k) + '"' +
-          ' style="border-left-color:' + dc[0] + ';background:' + (on ? dc[1] : "#fff") + '">' +
-          '<span class="cv-caret" style="color:' + dc[0] + '">' + (on ? "▾" : "▸") + '</span>' +
-          '<span class="cv-dn" style="color:' + dc[0] + '">' + esc(d) + '</span>' +
-          '<span class="cv-tags">' + cvTag(rows.length, dc[1], dc[0]) +
-          (dDue > 0.5 ? dueAmt(dDue) : "") +
-          (d === "Not set" ? cvTag("needs a district", "#fef3c7", "#92400e") : "") + '</span></button>';
-        if (d === "Not set") {
-          h += '<div class="cv-ask">These names have no district yet, so nobody can plan a round for them. ' +
-            'The next screen reads each one\'s address and proposes a district and a colony &mdash; nothing moves until you tap Apply.' +
-            cvSetBtn("Set district &amp; area") + '</div>';
-        }
-        var as = groupBy(rows, function (c) { return c.__cvp.area; });
-        as.order.sort(byTotal(as.m));
-        /* a "Not set" district already carries the amber banner above; a "no area" chip under
-           it as well would be saying the same thing twice. */
-        if (!on) { if (d !== "Not set") h += cvPeek(as, k, dc); return; }
-        h += '<div class="cv-body" style="border-left-color:' + dc[0] + '">';
-        as.order.forEach(function (a) {
-          var rs = as.m[a].slice().sort(byMoney), aDue = sumDue(rs);
-          h += '<div class="cv-area" style="color:' + dc[0] + '"><span class="cv-an">' + esc(a) + '</span>' +
-            '<span class="cv-tags">' + cvTag(rs.length, dc[1], dc[0]) +
-            (aDue > 0.5 ? dueAmt(aDue) : "") +
-            (a === "Not set" ? cvSetBtn("Set area") : "") + '</span></div>';
-          rs.forEach(function (c) { h += cvClientHtml(c); });
-        });
-        h += '</div>';
-      });
-    });
-    return h;
-  }
   /* A quote is where the next order gets committed. If money from the last one is still out,
      that belongs on the screen BEFORE this one is priced - so it rides along on every step of
      the wizard, not only the step where the client was picked. */
@@ -38953,17 +38793,6 @@ function viewCatalogue() {
         render();
       });
     });
-    var cvqi = el("cv_q");
-    if (cvqi) {
-      cvqi.addEventListener("input", function (e) {
-        S.cvq = e.target.value;
-        var qc = el("cv_qc");
-        if (qc) qc.style.display = e.target.value ? "" : "none";
-        var box = el("cv_list");
-        if (box && CV_REPAINT) box.innerHTML = CV_REPAINT();
-      });
-      cvqi.addEventListener("keyup", function (e) { if (e.key === "Enter") e.target.blur(); });
-    }
     /* v6.9.224 the Collections search. Same rule as the client list and the quote book:
        repaint ONLY the list block, never the page, so the caret and the phone keyboard
        stay put while a ten-digit number is typed one digit at a time. */
@@ -40496,12 +40325,6 @@ function viewCatalogue() {
       if (act === "q-lose" && !_wasL) { S.modal = modalQuoteLost(_qw.id); }
       keepScroll = true; render(); return;
     }
-    if (act === "cv-mode") {
-      var _cvm = t.getAttribute("data-m");
-      /* v6.9.450 - List is the Clients screen's own switch; Compact / Expand turn it off */
-      if (_cvm === "list") { clListSet(true); } else { clListSet(false); cvSetMode(_cvm); }
-      render(); return;
-    }
     if (act === "cl-xlsx") { clientRegisterXlsx(); return; }
     /* v6.9.458 - the register as paper, and the brand filter behind both files */
     if (act === "cl-pdf") {
@@ -40578,7 +40401,6 @@ function viewCatalogue() {
     }
     if (act === "cl-qclear") { S.clq = ""; render(); return; }
     if (act === "qq-clear") { S.qq = ""; render(); return; }
-    if (act === "cv-qclear") { S.cvq = ""; render(); return; }
     if (act === "cl-new") {
       S.billDraft = []; S.clEditing = null; S.modal = modalClient(null); render(); return; }
     /* v6.9.419 - ONE DOOR FOR EVERY DOSSIER ROW. It reads and draws; it writes nothing.
