@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.552";
+  var APP_VERSION = "6.9.553";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -16498,6 +16498,39 @@ function viewCatalogue() {
         never had one at all, so a godown man opening the CRM could file the very paper that
         would settle an argument about his own delivery. Same words, same roles, both apps. */
   function canApprove() { return roleAny(["admin", "accounts", "godown"]); }
+  /* ===== WHO MAY PASS THIS ONE  (v6.9.553, his fourth list item 5, 20 Sep 2026) =====
+     HIS WORDS: "Challan of a client whose payment pending is less than one lakh and no dues
+     pending older than 6 month can be passed by Ashish Jha or godown person, all other by
+     related executives or admin only."
+     Ashish Jha is the godown role. So an EASY client - owes under a lakh, nothing unpaid older
+     than 180 days (an unpaid old-book balance is older than that by definition) - is passed by
+     godown or accounts as before. A STRICT client is passed only by the executive he is filed
+     under, or an admin. Measured on his book the day it was written: 63 clients with
+     deliveries, 20 easy, 43 strict. The reason is one line, said on the card and at the door. */
+  var PASS_EASY_DUE = 100000, PASS_EASY_DAYS = 180;
+  function passStrictWhy(name) {
+    var due = 0, oldest = 0, oldBook = false;
+    try { due = clientDue(name); } catch (e) { }
+    try { var ag = clientAging(name); oldest = (ag && ag.oldest) || 0; } catch (e) { }
+    try { var op = clientOpening(name); var led = clientLedger(name); oldBook = op > 0.5 && (led.paid || 0) < op - 0.5; } catch (e) { }
+    var why = [];
+    if (due >= PASS_EASY_DUE) why.push("owes " + money(due));
+    if (oldest > PASS_EASY_DAYS) why.push("money older than 6 months");
+    else if (oldBook) why.push("old-book balance still unpaid");
+    return why.join(", ");
+  }
+  function passGate(c) {
+    if (!c) return { ok: false, why: "" };
+    if (!canApprove() && !roleIs("sales")) return { ok: false, why: "Your role cannot pass a challan." };
+    if (roleIs("admin")) return { ok: true, why: "" };
+    var name = String(c.customerName || "");
+    var strict = passStrictWhy(name);
+    var mine = clientOwner(name) === String(S.user || "").trim().toLowerCase();
+    if (!strict) return canApprove() || mine ? { ok: true, why: "" } : { ok: false, why: "Not your client." };
+    if (mine) return { ok: true, why: "" };
+    var ex = (clientByName(name) || {}); ex = String(ex.ownedBy || ex.createdBy || "").trim();
+    return { ok: false, why: name + " " + strict + " \u2014 only " + (ex || "his executive") + " or an admin may pass this one." };
+  }
   /* v1.3 - and the signed paper is filed by the office, not by the man who loaded the
      lorry. A receipt is the proof that settles an argument; it should not be attachable
      by the person it would exonerate. */
@@ -19570,7 +19603,10 @@ function viewCatalogue() {
          decides WHERE a button sits and whether a struck label stands in its place. */
       var stepBtns = {
         /* v6.9.387 - !chArrived: a delivery already signed for is never offered again */
-        pass: (st === "Draft" && canApprove() && !chArrived(c) ? '<button class="btn sm act-approve" data-act="ch-pass" data-id="' + esc(c.id) + '">Pass &amp; Dispatch</button>' : ""),
+        pass: (st === "Draft" && !chArrived(c)
+          ? (passGate(c).ok ? '<button class="btn sm act-approve" data-act="ch-pass" data-id="' + esc(c.id) + '">Pass &amp; Dispatch</button>'
+             : (canApprove() && passGate(c).why ? '<span class="meta" style="font-size:12px;color:#b45309">' + esc(passGate(c).why) + '</span>' : ""))
+          : ""),
         /* a challan already sitting at Approved from before v6.9.337 still has its own door */
         disp: (st === "Approved" && canApprove() && !chArrived(c) ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : ""),
         /* and the way OUT of the state, in his hand and not in mine: one tap that moves the
@@ -23436,7 +23472,7 @@ function viewCatalogue() {
         (c.amount ? ' &middot; ' + money(Number(c.amount) || 0) + ' at list' : '') + '</span></div>' +
         /* v6.9.387 - the same guard, one screen over. This strip is drawn from a different
            function and would otherwise have gone on offering the dispatch this fix removes. */
-        (isD && canApprove() && !chArrived(c) ? '<button class="btn sm act-approve" data-act="ch-pass" data-id="' + esc(c.id) + '">Pass &amp; Dispatch</button>' : '') +
+        (isD && !chArrived(c) && passGate(c).ok ? '<button class="btn sm act-approve" data-act="ch-pass" data-id="' + esc(c.id) + '">Pass &amp; Dispatch</button>' : '') +
         (st === "Approved" && canApprove() && !chArrived(c) ? '<button class="btn sm act-dispatch" data-act="ch-move" data-id="' + esc(c.id) + '" data-to="Dispatched">Dispatch</button>' : '') +
         (chStatusBehind(c) && canProof() ? '<button class="btn sm act-receipt" data-act="ch-arrived" data-id="' + esc(c.id) + '">Receipt is in &mdash; mark Received</button>' : '') +
         /* v6.9.259 - renamed here too. This is the delivery's STATUS, not the photograph -
@@ -45344,7 +45380,8 @@ function viewCatalogue() {
     if (act === "ch-pass") {
       var pc = S.data.challans.filter(function (x) { return x.id === id; })[0];
       if (!pc) return;
-      if (!canApprove()) { toast("Your role cannot pass a challan."); return; }
+      var pgate = passGate(pc);   /* v6.9.553 - his rule on who may pass whose challan */
+      if (!pgate.ok) { toast(pgate.why || "Your role cannot pass a challan."); return; }
       /* v6.9.387 - a card is a drawing; this is the door. Guarding only the button leaves a
          stale screen, a second tab and every other caller able to do the thing anyway. */
       if (chArrived(pc)) { toast("The receipt for " + pc.challanNo + " is already in \u2014 this delivery has arrived."); return; }
