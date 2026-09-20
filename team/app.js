@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.556";
+  var APP_VERSION = "6.9.557";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -693,6 +693,41 @@
      upload, so every upload in the app is covered - the ones written today and the ones
      written next month, without anybody remembering to add a bar to them. */
   var UP_SAY = { pdfHost: "Uploading the document", tgSend: "Sending to Telegram" };
+  /* ================= WHOSE TURN ON THE WIRE  (v6.9.557, 20 Sep 2026) =================
+     One choked uplink, one rule: a document upload owns the line while it runs, and everything
+     small waits for it rather than being sent into the jam and timing out; a document does not
+     start while small calls are in flight (up to 20 s), because they are seconds and it is
+     minutes. A call that is waiting has not started its clock. */
+  var _wireBig = null, _wireSmall = 0, _wireQ = [];
+  function wireBigAction(action) { return action === "pdfHost"; }
+  function wireBusy() { return !!_wireBig; }
+  function wireWaiting() { return _wireQ.length; }
+  /* resolves when this call may go. Small calls: when no document is uploading. A document:
+     when no other document is uploading and (for at most 20 s) nothing small is in flight. */
+  function wireTurn(action) {
+    return new Promise(function (go) {
+      var big = wireBigAction(action), since = Date.now();
+      var tryGo = function () {
+        if (big) {
+          if (!_wireBig && (_wireSmall === 0 || Date.now() - since > 20000)) return go();
+        } else if (!_wireBig) return go();
+        _wireQ.push({ action: action, tryGo: tryGo, at: since });
+      };
+      tryGo();
+    });
+  }
+  function wireStart(action) { if (wireBigAction(action)) _wireBig = { action: action, t0: Date.now() }; else _wireSmall++; }
+  function wireEnd(action) {
+    if (wireBigAction(action)) _wireBig = null; else _wireSmall = Math.max(0, _wireSmall - 1);
+    var q = _wireQ; _wireQ = [];
+    q.forEach(function (w) { try { w.tryGo(); } catch (e) { } });
+  }
+  function wireTurnSay() {
+    if (!_wireBig) return "";
+    var n = wireWaiting(); if (!n) return "";
+    return plural(n, "call") + " waiting for the document upload to finish (" +
+      Math.round((Date.now() - _wireBig.t0) / 1000) + "s so far) \u2014 then " + (n === 1 ? "it goes" : "they go") + ", one after another.";
+  }
   var _upNow = null, _upTick = null;
   function upStart(action, kb) {
     var what = UP_SAY[action];
@@ -815,7 +850,7 @@
     var body = Object.assign({ action: action, user: S.user, pin: S.pin }, extra || {});
     /* v20.08.2026 - a call carrying a file is an upload, and an upload gets said out loud */
     var _upKb = (extra && extra.pdfBase64) ? Math.round(String(extra.pdfBase64).length / 1024) : 0;
-    var _upOn = _upKb ? upStart(action, _upKb) : false;
+    var _upOn = false;   /* v6.9.557 - set when the call actually goes, after its turn */
     var limit = ms || API_MS_BY_ACTION[action] || API_MS;
     var ctl = null, timer = null;
     try { if (window.AbortController) ctl = new AbortController(); } catch (e) { ctl = null; }
@@ -825,8 +860,8 @@
       body: JSON.stringify(body)
     };
     if (ctl) opt.signal = ctl.signal;
-    var done = function () { if (timer) { clearTimeout(timer); timer = null; } if (_upOn) upEnd(); };
-    return new Promise(function (res, rej) {
+    var done = function () { if (timer) { clearTimeout(timer); timer = null; } if (_upOn) upEnd(); wireEnd(action); };
+    return wireTurn(action).then(function () { wireStart(action); _t0 = Date.now(); _upOn = _upKb ? upStart(action, _upKb) : false; return new Promise(function (res, rej) {
       /* belt and braces: abort the request AND settle the promise. On a browser with no
          AbortController the fetch is left to finish into the void, but nothing waits on it. */
       timer = setTimeout(function () {
@@ -863,7 +898,7 @@
         })
         .then(function (j) { done(); res(j); })
         .catch(function (e) { done(); rej(e); });
-    });
+    }); });
   }
 
   /* v6.9.401 - one voice for "the server did not answer". api() words its own failures
@@ -1121,7 +1156,9 @@
       lastErr = _r0.err ? String(_r0.err).slice(0, 90) : "not tried yet";
       ageTxt = "";
     }
+    var _ws = ""; try { _ws = wireTurnSay(); } catch (e) { _ws = ""; }   /* v6.9.557 */
     el.innerHTML = "⚠ " + plural(n, "item") + " not yet on the server — kept safe on this device" +
+      (_ws ? ' <span style="font-weight:400;font-size:12px">· ' + esc(_ws) + '</span>' : '') +
       (_rn ? " (" + _rn + " signed receipt" + (_rn > 1 ? "s" : "") + ")" : "") + ". " +
       '<span style="font-weight:400;font-size:12px">' + esc(lbl) + (ageTxt ? " · " + ageTxt : "") + ' · last try: “' + esc(lastErr) + '”</span> ' +
       '<button id="ew_retry_btn" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Retry now</button>' +
@@ -18830,8 +18867,10 @@ function viewCatalogue() {
     }
     return h;
   }
-  /* the payment entry - the Challan app's sheetPayout, in this app's modal */
-  function modalPayout(key) {
+  /* the payment entry - the Challan app's sheetPayout, in this app's modal.
+     v6.9.557 - was modalPayout(key), which the incentive modalPayout(name, kind) further down
+     silently overrode: dp-open opened the wrong form. Its own name now. */
+  function modalDriverPayout(key) {
     var g = frRows().filter(function (x) { return x.key === key; })[0];
     if (!g) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
     var owed = stillOwed(g);
@@ -43049,7 +43088,7 @@ function viewCatalogue() {
        owner or accounts, the same list the server enforces. */
     if (act === "dp-open") {
       if (!roleAny(["admin", "accounts"])) { toast("Recording a payout is the owner or accounts."); return; }
-      S.modal = modalPayout(t.getAttribute("data-k") || ""); render(); return;
+      S.modal = modalDriverPayout(t.getAttribute("data-k") || ""); render(); return;
     }
     if (act === "dp-save") {
       if (!roleAny(["admin", "accounts"])) { toast("Recording a payout is the owner or accounts."); return; }
