@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.550";
+  var APP_VERSION = "6.9.551";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -13787,7 +13787,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="4">Back to discount</button>' +
       '<div class="grow"></div><button class="btn" data-act="qz-save">Save quote</button></div>';
     h += '<div class="card"><h3>' + esc(z.client) + ' — ' + esc(revBrands.join(", ") || "-") + '</h3>' +
-      '<div class="meta" style="margin-bottom:10px">' + (z.items || []).plural(length, "line") + ' across ' + plural(revBrands.length, "brand") + '</div>';
+      '<div class="meta" style="margin-bottom:10px">' + plural((z.items || []).length, "line") + ' across ' + plural(revBrands.length, "brand") + '</div>';
 
     /* Excel-like review: one table, grouped by brand, each brand with its own subtotal. */
     var TB = 'border:1px solid #e2e8f0;';
@@ -37271,7 +37271,7 @@ function viewCatalogue() {
       (_picked
         ? '<div class="meta" style="font-size:12px;margin:-8px 2px 8px;color:#64748b">' +
           'Anything the job needs can go on the same ' + P.noun + ' &mdash; tap another brand above and ' +
-          'the ' + (z.items || []).plural(length, "line") + ' already picked stay where they are.</div>'
+          'the ' + plural((z.items || []).length, "line") + ' already picked stay where they are.</div>'
         : '');
     if (!z.family) return h + '<div class="empty" style="padding:14px 12px">Tap a category above.</div>';
     h += '<div class="ew-picklabel"><span class="step">3</span>Set quantities</div><div class="plist">';
