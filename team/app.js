@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.542";
+  var APP_VERSION = "6.9.543";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -978,7 +978,7 @@
     });
     if (gone) {
       pendStore(keep);
-      try { console.warn("[EW] " + gone + " journaled record(s) were already on the server - cleared"); } catch (x) { }
+      try { console.warn("[EW] " + plural(gone, "journaled record") + " were already on the server - cleared"); } catch (x) { }
       try {
         toast(gone === 1
           ? "1 record that looked unsaved was already on the server — cleared."
@@ -1121,7 +1121,7 @@
       lastErr = _r0.err ? String(_r0.err).slice(0, 90) : "not tried yet";
       ageTxt = "";
     }
-    el.innerHTML = "⚠ " + n + " item(s) not yet on the server — kept safe on this device" +
+    el.innerHTML = "⚠ " + plural(n, "item") + " not yet on the server — kept safe on this device" +
       (_rn ? " (" + _rn + " signed receipt" + (_rn > 1 ? "s" : "") + ")" : "") + ". " +
       '<span style="font-weight:400;font-size:12px">' + esc(lbl) + (ageTxt ? " · " + ageTxt : "") + ' · last try: “' + esc(lastErr) + '”</span> ' +
       '<button id="ew_retry_btn" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:5px 11px;font-weight:700;cursor:pointer">Retry now</button>' +
@@ -1150,7 +1150,7 @@
     try { pretty = JSON.stringify(JSON.parse(raw), null, 2); } catch (e) { }
     var n = 0; try { n = JSON.parse(raw).length; } catch (e) { }
     window.__ewBackupText = pretty;
-    S.modal = '<h2>Backup — ' + n + ' unsynced record(s)</h2>' +
+    S.modal = '<h2>Backup — ' + plural(n, "unsynced record") + '</h2>' +
       '<p class="sub">A safety copy of everything not yet on the server. This changes nothing. Tap <b>Copy</b> and paste it into Notes / WhatsApp, or <b>Share / Save</b> to keep it as a file. You can also long-press the box to select all.</p>' +
       '<div class="acts" style="margin-bottom:8px">' +
       '<button class="btn" data-act="backup-copy">Copy</button>' +
@@ -1255,7 +1255,7 @@
         if (e.at) {
           var mins = Math.floor((Date.now() - new Date(e.at).getTime()) / 60000);
           if (mins >= 0) ageTxt = mins < 1 ? "just now" : mins < 60 ? mins + " min ago" :
-            mins < 1440 ? Math.floor(mins / 60) + " hr ago" : Math.floor(mins / 1440) + " day(s) ago";
+            mins < 1440 ? Math.floor(mins / 60) + " hr ago" : plural(Math.floor(mins / 1440), "day") + " ago";
         }
         var kb = Math.round(String(e.b64 || "").length / 1024);
         h += '<div class="row" style="align-items:center;border-top:1px solid #fecaca;padding:7px 0;gap:8px">' +
@@ -1313,7 +1313,7 @@
     }
 
     h += '<div class="card" style="background:#fff7ed;border-color:#fed7aa">' +
-      '<div class="meta" style="font-size:13.5px;color:#7c2d12">These ' + list.length + ' item(s) are kept safe on this device and will upload by themselves when the connection is good. You can also push them now.</div>' +
+      '<div class="meta" style="font-size:13.5px;color:#7c2d12">These ' + plural(list.length, "item") + ' are kept safe on this device and will upload by themselves when the connection is good. You can also push them now.</div>' +
       '<div class="acts" style="margin-top:10px;flex-wrap:wrap;gap:8px">' +
       '<button class="btn" data-act="pend-retry">⬆ Upload all now</button>' +
       '<button class="btn ghost" data-act="pend-refresh">Check connection</button>' +
@@ -1326,7 +1326,7 @@
       if (e.at) {
         var mins = Math.floor((Date.now() - e.at) / 60000);
         ageTxt = mins < 1 ? "just now" : mins < 60 ? mins + " min ago" :
-          mins < 1440 ? Math.floor(mins / 60) + " hr ago" : Math.floor(mins / 1440) + " day(s) ago";
+          mins < 1440 ? Math.floor(mins / 60) + " hr ago" : plural(Math.floor(mins / 1440), "day") + " ago";
       }
       var waiting = !e.err;
       var statusTxt = waiting ? "Waiting to upload…" : "Last try: " + String(e.err).slice(0, 90);
@@ -1377,7 +1377,7 @@
       for (var i = 0; i < arr.length; i++) { if (arr[i] && String(arr[i].id) === String(e.row.id)) { found = true; break; } }
       if (!found) { arr.push(e.row); back++; }
     });
-    if (back) { try { console.warn("[EW] put back " + back + " confirmed row(s) a re-sync had not caught up with"); } catch (x) { } }
+    if (back) { try { console.warn("[EW] put back " + plural(back, "confirmed row") + " a re-sync had not caught up with"); } catch (x) { } }
   }
 
   /* ---- v6.9.292 · THE MOVE REGISTER ----
@@ -3078,7 +3078,7 @@ window.addEventListener("beforeunload", function (ev) {
     var h = '';
     if (pendAll.length) {
       h += '<div class="card" style="border-color:#fde68a;background:#fffbeb"><h3>' +
-        '<span class="pill soon">' + pendAll.length + ' site(s) awaiting location</span></h3>' +
+        '<span class="pill soon">' + plural(pendAll.length, "site") + ' awaiting location</span></h3>' +
         '<div class="meta">Sites entered from the office have no location yet. The next time someone is <b>standing at the site</b>, they press <b>Set location</b> once. From then on every visit is checked against it.</div>' +
         '<div class="acts"><button class="btn sm ' + (S.geoOnly ? '' : 'ghost') + '" data-act="geo-filter">' +
         (S.geoOnly ? 'Showing pending only' : 'Show only these') + '</button></div></div>';
@@ -3106,11 +3106,11 @@ window.addEventListener("beforeunload", function (ev) {
       var lastV = vs.length ? vs[vs.length - 1] : null;
       var pend = geoPending(x);
       h += '<div class="card"><h3>' + esc(x.name) + ' <span class="pill teal">stage ' + stageNo(x) + '</span>' +
-        (vs.length ? ' <span class="pill">' + vs.length + ' visit(s)</span>' : '') +
+        (vs.length ? ' <span class="pill">' + plural(vs.length, "visit") + '</span>' : '') +
         (pend ? ' <span class="pill soon">location pending</span>' : ' <span class="pill Won">GPS locked</span>') +
         (!pend && vs.length && !siteVerified(x) ? ' <span class="pill due">unverified lead</span>' : '') +
         (a.open ? ' <span class="pill due">' + a.open + ' to pitch NOW</span>' : "") +
-        (a.closed ? ' <span class="pill">' + a.closed + ' window(s) closed</span>' : "") + '</h3>' +
+        (a.closed ? ' <span class="pill">' + plural(a.closed, "window") + ' closed</span>' : "") + '</h3>' +
         '<div class="meta">' + esc(x.client || "") + (x.city ? ' &middot; ' + esc(x.city) : "") +
         '<br>Stage: <b>' + esc(x.stage || "-") + '</b>' +
         (lastV ? '<br>Last visit: ' + esc(d10(lastV.date)) + ' by ' + esc(lastV.createdBy) : '') +
@@ -4248,7 +4248,7 @@ window.addEventListener("beforeunload", function (ev) {
       if (!pr.length) return h + '<div class="empty">No delivered business linked to partners yet.</div>';
       pr.forEach(function (x, i) {
         h += '<div class="card"><h3><span class="pill ' + (i < 3 ? "teal" : "") + '">#' + (i + 1) + '</span> ' + esc(x.name) + ' <span class="pill">' + esc(x.role || "") + '</span></h3>' +
-          '<div class="meta"><b>Drove ' + money(x.billed) + '</b> &middot; ' + x.ch + ' challan(s)</div></div>';
+          '<div class="meta"><b>Drove ' + money(x.billed) + '</b> &middot; ' + plural(x.ch, "challan") + '</div></div>';
       });
       return h;
     }
@@ -4628,7 +4628,7 @@ window.addEventListener("beforeunload", function (ev) {
     return commPdfBase("COMMISSIONING CERTIFICATE", ch, dateStr).then(function (b) {
       var doc = b.doc, F = b.F, L = b.L, R = b.R, y;
       doc.setTextColor(17, 34, 45); F("normal"); doc.setFontSize(10.5); y = 46;
-      doc.splitTextToSize("This is to certify that the following product(s) supplied by Energy World have been successfully installed and commissioned at the customer's premises and found to be functioning to satisfaction.", R - L).forEach(function (ln) { doc.text(ln, L, y); y += 6; });
+      doc.splitTextToSize("This is to certify that the following products supplied by Energy World have been successfully installed and commissioned at the customer's premises and found to be functioning to satisfaction.", R - L).forEach(function (ln) { doc.text(ln, L, y); y += 6; });
       b.y = y + 4; y = commCustomerBlock(b, ch);
       doc.setFillColor(30, 41, 59); doc.rect(L, y - 5.5, R - L, 9, "F");
       doc.setTextColor(255, 255, 255); F("bold"); doc.setFontSize(7.6);
@@ -5029,6 +5029,8 @@ window.addEventListener("beforeunload", function (ev) {
      rather than rewritten, so t_apps_agree holds them together from now on.
   */
   function lower(s) { return String(s == null ? "" : s).trim().toLowerCase(); }
+  /* v6.9.543 - "3 clients", "1 client": the house rule is English, never "client(s)" */
+  function plural(n, w) { n = Number(n) || 0; return n + " " + (n === 1 ? w : (/[^aeiou]y$/.test(w) ? w.slice(0, -1) + "ies" : /(s|x|ch|sh)$/.test(w) ? w + "es" : w + "s")); }
   function amcKind(ins) {
     var t = lower(String((ins && ins.amcType) || "")).replace(/[^a-z ]+/g, " ");
     if (!t.replace(/\s+/g, "") || / none /.test(" " + t + " ")) return "None";
@@ -5591,7 +5593,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             ' <span class="pill teal">' + esc(u.sug.contract) + '</span><br>' +
             '<span style="font-size:12px;color:#7f1d1d">charged ' + money(u.amt) + ' &middot; the card says ' +
             money(u.sug.total) + ' &middot; <b>' + money(u.gap) + ' short</b> &middot; ' +
-            u.sug.lines.length + ' machine(s) on this contract</span></div>' +
+            plural(u.sug.lines.length, "machine") + ' on this contract</span></div>' +
             '<button class="btn sm" data-act="inst-open" data-id="' + esc(u.x.id) + '">Open</button></div>';
         }).join("") +
         (under.length > 25 ? '<div class="meta" style="margin-top:8px">and ' + (under.length - 25) + ' more.</div>' : '') +
@@ -5821,7 +5823,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     });
     var missing = S.data.spares.filter(function (x) { return !Number(x.price); }).length;
     var h = '<div class="row"><input class="grow" id="q" placeholder="Search spares..." value="' + esc(S.q) + '"/></div>';
-    if (missing) h += '<div class="empty" style="text-align:left;padding:0 0 12px"><b>' + missing + ' spare(s) have no price yet.</b> Set them - the app will not guess a price for you.</div>';
+    if (missing) h += '<div class="empty" style="text-align:left;padding:0 0 12px"><b>' + plural(missing, "spare") + ' have no price yet.</b> Set them - the app will not guess a price for you.</div>';
     /* v6.9.446 - an empty list says so. The sweep of 8 Sep found this screen drawing a search box
        over nothing and leaving him to guess whether the spares had loaded. */
     if (!list.length) h += ((S.data.spares || []).length
@@ -6009,7 +6011,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var l = serviceLedger(client);
     if (!l.visits.length && !l.billed) return '';
     return '<div class="card" style="border-color:#c7d2fe;background:#eef2ff"><h3 style="margin:0 0 2px;font-size:14px">Service ledger</h3>' +
-      '<div class="meta" style="font-size:13px">Service billed: <b>' + money(l.billed) + '</b> &middot; collected: <b>' + money(l.collected) + '</b> &middot; due: <b style="color:' + (l.due > 0 ? '#dc2626' : '#0d9488') + '">' + money(l.due) + '</b> &middot; ' + l.visits.length + ' visit(s)</div>' +
+      '<div class="meta" style="font-size:13px">Service billed: <b>' + money(l.billed) + '</b> &middot; collected: <b>' + money(l.collected) + '</b> &middot; due: <b style="color:' + (l.due > 0 ? '#dc2626' : '#0d9488') + '">' + money(l.due) + '</b> &middot; ' + plural(l.visits.length, "visit") + '</div>' +
       '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="svc-ledger" data-n="' + esc(client) + '">View service hisab</button></div></div>';
   }
   function modalServiceLedger(client) {
@@ -6214,13 +6216,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           var sg = amcSuggest(x), amt = nAmt(x.amcAmount);
           if (!sg.on) return '<div class="meta" style="font-size:12px">Not on a contract, so there is nothing to price.</div>';
           if (sg.missing) return '<div class="meta" style="font-size:12px;color:#b45309">' +
-            sg.missing + ' of ' + sg.lines.length + ' machine(s) here have no rate on the card yet &mdash; ' +
+            sg.missing + ' of ' + plural(sg.lines.length, "machine") + ' here have no rate on the card yet &mdash; ' +
             'nothing can be suggested until the kind is priced.</div>';
           if (!sg.total) return '<div class="meta" style="font-size:12px;color:#b45309">The rate card has ' +
             'no price for this kind yet.</div>';
           var short = sg.total - amt;
           return '<div class="meta" style="font-size:12px;color:' + (short > 0.5 ? '#b91c1c' : '#0f766e') + '">' +
-            'The card says <b>' + money(sg.total) + '</b> for ' + sg.lines.length + ' machine(s)' +
+            'The card says <b>' + money(sg.total) + '</b> for ' + plural(sg.lines.length, "machine") + '' +
             (short > 0.5 ? ' &mdash; <b>' + money(short) + ' more than this</b>. Adding a machine does not ' +
               'raise the amount by itself.' : (amt > sg.total + 0.5 ? ' &mdash; you are charging more, which is fine.' : ' &mdash; matches.')) +
             '</div>';
@@ -10879,8 +10881,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       /* v6.9.281 - how the lines came in is one sentence, and it now shares its row with the
          sign-off instead of taking a line of its own. Eight more millimetres for the picture. */
       var tally = (shortLines || excessLines)
-        ? ((shortLines ? shortLines + " line(s) came up short. " : "") +
-           (excessLines ? excessLines + " line(s) came in over. " : "") +
+        ? ((shortLines ? plural(shortLines, "line") + " came up short. " : "") +
+           (excessLines ? plural(excessLines, "line") + " came in over. " : "") +
            "The reason is written against each one.")
         : "Every line arrived in full.";
       var tallyColour = function () {
@@ -11437,7 +11439,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       if (sent) { _prfCache = null; }
       renderBg(); syncBanner();
       if (sent && !prfCount()) toast("All receipts are up.");
-      else if (sent) toast(sent + " receipt(s) up. " + prfCount() + " still held — the Pending upload screen shows why.");
+      else if (sent) toast(plural(sent, "receipt") + " up. " + prfCount() + " still held — the Pending upload screen shows why.");
     };
     var step = function () {
       if (guard++ > 200) return stop();       /* belt: never spin */
@@ -11814,7 +11816,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
                 r.id]);
     });
     out.push([]);
-    out.push([{ v: "TOTAL · " + rows.length + " client(s)", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
+    out.push([{ v: "TOTAL · " + plural(rows.length, "client") + "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
               { v: "", s: XL.BAND },
               { v: rows.reduce(function (a, r) { return a + r.opening; }, 0), s: XL.BAND }, { v: "", s: XL.BAND },
               { v: rows.reduce(function (a, r) { return a + r.due; }, 0), s: XL.BAND },
@@ -13446,7 +13448,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '</div></div>';
       if (z.location) {
         h += '<div class="card"><h3>Which client?</h3>' +
-          '<div class="meta">' + inLoc.length + ' client(s) ' + (all ? 'in all areas' : 'in ' + esc(z.location)) + '. Start typing.</div>' +
+          '<div class="meta">' + plural(inLoc.length, "client") + ' ' + (all ? 'in all areas' : 'in ' + esc(z.location)) + '. Start typing.</div>' +
           '<input id="qz_client" list="clientlist" placeholder="Type client name..." value="' + esc(z.client || "") + '" style="margin-top:8px"/>' +
           '<datalist id="clientlist">' + inLoc.map(function (c) { return '<option value="' + esc(c.name) + '"></option>'; }).join("") + '</datalist>' +
           '<div class="acts"><button class="btn" data-act="qz-client-go">Continue</button>' +
@@ -13474,7 +13476,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (z.step === 2) {
       h += '<div class="empty" style="text-align:left;padding:0 0 12px">Quoting for <b>' + esc(z.client) + '</b>. Pick a brand.</div>';
       var unmapped = S.data.brandmap.filter(function (m) { return !m.brand; }).length;
-      if (unmapped) h += '<div class="empty" style="text-align:left;padding:0 0 12px"><b>' + unmapped + ' catalogue value(s) are not mapped to a brand yet</b> - those products cannot be quoted. A partner can fix this under Catalogue.</div>';
+      if (unmapped) h += '<div class="empty" style="text-align:left;padding:0 0 12px"><b>' + plural(unmapped, "catalogue value") + ' are not mapped to a brand yet</b> - those products cannot be quoted. A partner can fix this under Catalogue.</div>';
       /* v6.9.255 - HIS WORDS: "show search bar also while making quote, so to search any
          brand and product and add". This is the step he gets stuck on, and it was the one
          step with no search at all - the code search only appeared AFTER a brand had been
@@ -13650,7 +13652,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         var bt = brandTotals(z, b);
         h += '<div class="row" style="margin:8px 0 0;align-items:center;gap:10px">' +
           '<div style="min-width:150px"><b>' + esc(b) + '</b>' +
-          '<div class="pmeta">' + bt.count + ' item(s) \u00B7 ' + money(bt.gross) + ' \u2192 <b>' + money(bt.net) + '</b></div></div>' +
+          '<div class="pmeta">' + plural(bt.count, "item") + ' \u00B7 ' + money(bt.gross) + ' \u2192 <b>' + money(bt.net) + '</b></div></div>' +
           (lockDisc
             ? '<span class="pill teal" style="font-size:15px;padding:8px 12px;font-weight:700">' + esc(z.brandDiscs[b] || 0) + '% off list</span>'
             : '<input class="qz-bd" data-brand="' + esc(b) + '" inputmode="decimal" value="' + esc(z.brandDiscs && z.brandDiscs[b] != null ? z.brandDiscs[b] : 0) + '" style="width:80px;padding:9px 10px;font-size:16px;font-weight:700"/>' +
@@ -13706,7 +13708,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     h += '<div class="row"><button class="btn sm ghost" data-act="qz-step" data-step="4">Back to discount</button>' +
       '<div class="grow"></div><button class="btn" data-act="qz-save">Save quote</button></div>';
     h += '<div class="card"><h3>' + esc(z.client) + ' — ' + esc(revBrands.join(", ") || "-") + '</h3>' +
-      '<div class="meta" style="margin-bottom:10px">' + (z.items || []).length + ' line(s) across ' + revBrands.length + ' brand(s)</div>';
+      '<div class="meta" style="margin-bottom:10px">' + (z.items || []).plural(length, "line") + ' across ' + plural(revBrands.length, "brand") + '</div>';
 
     /* Excel-like review: one table, grouped by brand, each brand with its own subtotal. */
     var TB = 'border:1px solid #e2e8f0;';
@@ -13779,11 +13781,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '</tfoot>')) + '</table></div>';
     if (z.noTotal) {
       h += '<div class="meta" style="margin-top:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;color:#7c2d12"><b>Item-wise pricing</b> — no consolidated total is shown on this quote.' +
-        (_optCount ? ' ' + _optCount + ' option line(s) shown separately.' : '') + '</div>';
+        (_optCount ? ' ' + plural(_optCount, "option line") + ' shown separately.' : '') + '</div>';
     } else {
       h += '<div class="meta" style="margin-top:8px">Gross ' + money(tt.gross) + ' &middot; after discount <b>' + money(tt.net) + '</b> &middot; GST 18% ' + money(tt.gst) +
         ' &middot; <b>Total incl GST ' + money(tt.total) + '</b>' +
-        (_optCount ? '<br><span style="color:#92400e">' + _optCount + ' option line(s) shown but excluded from the total.</span>' : '') +
+        (_optCount ? '<br><span style="color:#92400e">' + plural(_optCount, "option line") + ' shown but excluded from the total.</span>' : '') +
         '<br><span style="color:#94a3b8">* = product-wise override.</span></div>';
     }
     /* GST-on-the-PDF toggle. Ticked -> the PDF prints Sub-Total, GST @ 18% and Grand Total.
@@ -13988,7 +13990,7 @@ function viewCatalogue() {
       '<label>Move them to</label><select id="rm_to">' + opts([""].concat(S.data.brands.map(function (b) { return b.brand; }).sort(alpha)), "") + '</select>' +
       '<div class="acts"><button class="btn ghost" data-act="rm-preview">Preview</button>' +
       '<button class="btn" data-act="rm-apply">Move products</button></div>' +
-      (S.rmPreview ? '<div class="meta" style="margin-top:8px"><b>' + esc(S.rmPreview.matched) + ' product(s) match:</b><br>' +
+      (S.rmPreview ? '<div class="meta" style="margin-top:8px"><b>' + plural(esc(S.rmPreview.matched), "product") + ' match:</b><br>' +
         (S.rmPreview.sample || []).map(function (x) { return esc(x); }).join("<br>") + '</div>' : "") +
       '</div>';
 
@@ -16290,7 +16292,7 @@ function viewCatalogue() {
     var d = (site.lat && site.lng) ? metresBetween(Number(site.lat), Number(site.lng), S.gps.lat, S.gps.lng) : null;
     return '<h2>' + (vs.length ? "Revisit" : "First visit") + '</h2>' +
       '<p class="sub">' + esc(site.name) + (d !== null ? '  \u00b7  ' + d + 'm from the site' : "") + '</p>' +
-      (vs.length ? '<div class="card"><div class="meta"><b>' + vs.length + ' previous visit(s)</b><br>Last: ' +
+      (vs.length ? '<div class="card"><div class="meta"><b>' + plural(vs.length, "previous visit") + '</b><br>Last: ' +
         esc(d10(vs[vs.length - 1].date)) + ' by ' + esc(vs[vs.length - 1].createdBy) + '</div></div>' : "") +
       '<label>Who did you see?</label>' +
       '<div class="row" id="vd_types">' +
@@ -16353,7 +16355,7 @@ function viewCatalogue() {
     h += visitCalendar();
 
     h += '<h3 style="margin:16px 0 10px;font-size:15px">' +
-      (day === today() ? "Today" : esc(day)) + ' &middot; ' + todays.length + ' visit(s)</h3>';
+      (day === today() ? "Today" : esc(day)) + ' &middot; ' + plural(todays.length, "visit") + '</h3>';
     if (!todays.length) h += '<div class="empty">No visits logged on this day.</div>';
     todays.slice().reverse().forEach(function (v) {
       var cls = v.verified === "Verified" ? "Won" : (v.verified === "Far" ? "due" : "soon");
@@ -17247,7 +17249,7 @@ function viewCatalogue() {
         '<span class="pill ' + (live ? "Won" : "soon") + '">' + (Number(r.pct) >= 0 ? "+" : "") + esc(r.pct) + '%' +
         (live ? "" : " from " + esc(r.effectiveFrom)) + '</span></h3>' +
         '<div class="meta">Effective ' + esc(r.effectiveFrom) + ' &middot; ' + (live ? "in force" : "not yet in force") +
-        (ov.length ? '<br>' + ov.length + ' item(s) overridden: ' + esc(ov.slice(0, 4).map(function (o) { return o.code; }).join(", ")) : "") +
+        (ov.length ? '<br>' + plural(ov.length, "item") + ' overridden: ' + esc(ov.slice(0, 4).map(function (o) { return o.code; }).join(", ")) : "") +
         '<br>By ' + esc(r.createdBy) + (r.createdAt ? ' on ' + dmy(String(r.createdAt).slice(0,10)) + ' ' + String(r.createdAt).slice(11,16) : '') + (r.notes ? ' &middot; ' + esc(r.notes) : "") +
         '<br><span style="color:#94a3b8">Challans raised before this date keep their old rates.</span></div></div>';
     });
@@ -17334,7 +17336,7 @@ function viewCatalogue() {
       var stack = TYPES.filter(function (t2) { return p.byType[t2]; }).map(function (t2) {
         return '<div style="height:' + Math.round((p.byType[t2] / p.total) * hp) + '%;background:' + COL[t2] + '"></div>';
       }).join("");
-      h += '<div title="' + p.iso + ' - ' + p.total + ' visit(s)" style="flex:1;min-width:9px;display:flex;flex-direction:column;justify-content:flex-end;height:100%;' +
+      h += '<div title="' + p.iso + ' - ' + plural(p.total, "visit") + '" style="flex:1;min-width:9px;display:flex;flex-direction:column;justify-content:flex-end;height:100%;' +
         (p.sunday ? "background:#fef2f2;" : "") + '">' + stack + '</div>';
     });
     h += '</div><div style="display:flex;gap:2px;font-size:8px;color:#94a3b8">' +
@@ -17644,7 +17646,7 @@ function viewCatalogue() {
     h += '<div class="meta" style="margin-top:6px;color:#94a3b8">Leading indicators — the behaviours that drive next month’s numbers. Visits and follow-ups are credited to whoever logged them.</div></div>';
 
     var fn = scFunnel();
-    h += '<div class="card" style="margin-top:12px"><h3 style="margin:0 0 8px;font-size:14px">Pitch funnel — ' + fn.total + ' live project(s)</h3>';
+    h += '<div class="card" style="margin-top:12px"><h3 style="margin:0 0 8px;font-size:14px">Pitch funnel — ' + plural(fn.total, "live project") + '</h3>';
     if (!fn.rows.length) { h += '<div class="empty">No projects yet.</div>'; }
     else {
       var mx = Math.max.apply(null, fn.rows.map(function (r) { return r.n; }).concat([1]));
@@ -17673,7 +17675,7 @@ function viewCatalogue() {
       h += '<div data-act="sc-ppick" data-n="' + esc(m.name) + '" style="display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid #e2e8f0;cursor:pointer;border-radius:8px;' + (on ? 'background:#f0fdfa' : '') + '">' +
         '<span style="width:24px;height:24px;border-radius:50%;background:#0b3b36;color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex:0 0 auto">' + (i + 1) + '</span>' +
         '<div style="flex:1"><b>' + esc(m.name) + '</b> <span style="color:#94a3b8;font-size:12px">' + esc(m.role) + '</span>' +
-        '<div style="font-size:12px;color:#64748b">' + m.projects + ' project(s) · ' + Math.round(m.conv * 100) + '% convert</div></div>' +
+        '<div style="font-size:12px;color:#64748b">' + plural(m.projects, "project") + ' · ' + Math.round(m.conv * 100) + '% convert</div></div>' +
         '<span class="pill" style="background:' + ts.bg + ';color:' + ts.c + ';font-weight:800">' + t + '</span>' +
         '<div style="font-weight:800;color:#0f766e;text-align:right;min-width:74px">' + money(m.billed) + '</div></div>';
     });
@@ -17683,7 +17685,7 @@ function viewCatalogue() {
     h += '<div class="card" style="margin-top:12px">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">' +
       '<div><div style="font-size:17px;font-weight:800;color:#0b3b36">' + esc(M.name) + ' <span class="pill" style="background:' + ts.bg + ';color:' + ts.c + '">' + esc(M.role || "Partner") + '</span></div>' +
-      '<div class="meta">' + M.projects + ' live project(s)</div></div>' +
+      '<div class="meta">' + plural(M.projects, "live project") + '</div></div>' +
       '<div style="text-align:center;min-width:104px"><div style="font-size:30px;font-weight:900;color:#fff;background:linear-gradient(135deg,#b45309,#f59e0b);border-radius:12px;padding:6px 4px">' + tier + '</div>' +
       '<div style="font-size:12px;color:#64748b;margin-top:4px">' + esc(ts.label) + '</div></div></div>';
 
@@ -18807,7 +18809,7 @@ function viewCatalogue() {
       '<thead><tr style="background:#0b3b36;color:#fff"><th style="padding:6px 8px;text-align:left;width:32px">#</th>' +
       '<th style="padding:6px 8px;text-align:left">Product</th><th style="padding:6px 8px;text-align:center;width:60px">Qty</th></tr></thead>' +
       '<tbody>' + rows + '</tbody></table></div>' +
-      '<div style="text-align:right;font-size:12px;color:#64748b;margin-bottom:4px"><b>' + items.length + '</b> item(s) &middot; <b>' + tot + '</b> units</div>';
+      '<div style="text-align:right;font-size:12px;color:#64748b;margin-bottom:4px"><b>' + items.length + '</b>' + (items.length === 1 ? ' item' : ' items') + ' &middot; <b>' + tot + '</b> units</div>';
   }
 
   /* line & unit counts for the compact challan card, without building the whole table */
@@ -20370,7 +20372,7 @@ function viewCatalogue() {
   function modalAgrList(cl) {
     var rows = agrRows(cl);
     var h = '<h2>Papers on file — ' + esc(cl) + '</h2>' +
-      '<p class="sub">' + rows.length + ' document(s), newest first. Nothing is ever removed: a newer ' +
+      '<p class="sub">' + plural(rows.length, "document") + ', newest first. Nothing is ever removed: a newer ' +
       'paper supersedes an older one by being newer, and the old one stays exactly as it was written.</p>';
     if (!rows.length) h += '<div class="empty">Nothing attached yet.</div>';
     rows.forEach(function (r, i) {
@@ -23708,7 +23710,7 @@ function viewCatalogue() {
          green section so they're never invisible just because their balance isn't a debit. */
       if (credits.length) {
         var credTot = credits.reduce(function (a, r) { return a + r.due; }, 0);
-        oh += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 4px">In credit / advance &mdash; ' + money(-credTot) + ' across ' + credits.length + ' client(s)</h3>' +
+        oh += '<div class="card" style="border-color:#99f6e4;background:#f0fdfa"><h3 style="margin:0 0 4px">In credit / advance &mdash; ' + money(-credTot) + ' across ' + plural(credits.length, "client") + '</h3>' +
           '<div class="meta" style="font-size:12.5px">These clients have a credit balance (advance paid, an over-payment, or a minus opening balance). Tap to open the ledger.</div>' +
           '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
           '<thead><tr style="background:#e2f5f1;color:#0b3b36"><th style="padding:6px 8px;text-align:left">Client</th><th style="padding:6px 8px;text-align:right">In credit</th></tr></thead><tbody>' +
@@ -24044,7 +24046,7 @@ function viewCatalogue() {
         '<div class="acts" style="align-items:center;margin:7px 0 0;flex-wrap:wrap;gap:6px">' +
         '<button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(r.id) + '" ' +
           'style="border-color:#fdba74;color:#92400e">' +
-          ((S.chExp && S.chExp[r.id]) ? '&#9662; Hide items' : '&#9656; Show ' + rl.length + ' item(s)') + '</button>' +
+          ((S.chExp && S.chExp[r.id]) ? '&#9662; Hide items' : '&#9656; Show ' + plural(rl.length, "item") + '') + '</button>' +
         (canSee("returns")
           ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received" ' +
             'style="background:#b45309;border-color:#b45309" ' +
@@ -26165,7 +26167,7 @@ function viewCatalogue() {
                 r.deliveries, r.noPaper, r.openQ]);
     });
     out.push([]);
-    out.push([{ v: "TOTAL · " + rows.length + " client(s)", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
+    out.push([{ v: "TOTAL · " + plural(rows.length, "client") + "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
               { v: t.opening, s: XL.BAND }, { v: t.billed, s: XL.BAND }, { v: t.received, s: XL.BAND },
               { v: t.returned, s: XL.BAND }, { v: t.due, s: XL.BAND },
               { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND },
@@ -26173,7 +26175,7 @@ function viewCatalogue() {
               { v: t.noPaper, s: XL.BAND }, { v: t.openQ, s: XL.BAND }]);
     out.push([]);
     out.push(["Of that, " + moneyAscii(t.chase) + " is past 90 days." +
-              (t.unknown ? "  " + t.unknown + " client(s) worth " + moneyAscii(t.unknownDue) +
+              (t.unknown ? "  " + plural(t.unknown, "client") + " worth " + moneyAscii(t.unknownDue) +
                            " have no age the app could work out - they are NOT counted as current." : "")]);
     out.push(["Energy World · " + exec + " · built " + fullDate(today()) +
               " · internal working list, not for a client."]);
@@ -26202,7 +26204,7 @@ function viewCatalogue() {
       F("bold"); doc.setFontSize(11.5); doc.setTextColor(255, 255, 255);
       doc.text("PENDING PAYMENT · " + String(exec).toUpperCase(), R, 10, { align: "right" });
       F("normal"); doc.setFontSize(7.6); doc.setTextColor(172, 212, 205);
-      doc.text(rows.length + " client(s) owing   ·   " + fullDate(today()), R, 15.5, { align: "right" });
+      doc.text(plural(rows.length, "client") + " owing   ·   " + fullDate(today()), R, 15.5, { align: "right" });
       doc.text("Internal working list — not for a client", R, 19.5, { align: "right" });
 
       /* the four figures he is actually judged on, before the table */
@@ -26225,7 +26227,7 @@ function viewCatalogue() {
         /* BELOW the tiles, not on them. Drawn at y - 4.5 it sat across the bottom of the four
            coloured blocks - rendered and looked at. */
         F("normal"); doc.setFontSize(6.6); doc.setTextColor(180, 83, 9);
-        doc.text(t.unknown + " client(s) worth " + RS(t.unknownDue) +
+        doc.text(plural(t.unknown, "client") + " worth " + RS(t.unknownDue) +
                  " have no age this app could work out. They are NOT counted as current, and " +
                  "they are the ones to look at first.", L, y + 1.5);
         y += 6;
@@ -26277,7 +26279,7 @@ function viewCatalogue() {
       if (y > 186) { doc.addPage(); y = 18; }
       doc.setFillColor(241, 245, 249); doc.rect(L, y - 3.4, R - L, 6.6, "F");
       F("bold"); doc.setFontSize(7.6); doc.setTextColor(17, 34, 45);
-      doc.text("TOTAL  ·  " + rows.length + " client(s)", xs[0] + 1.5, y + 0.9);
+      doc.text("TOTAL  ·  " + plural(rows.length, "client") + "", xs[0] + 1.5, y + 0.9);
       doc.text(RS(t.billed), xs[3] + cols[3].w - 1.5, y + 0.9, { align: "right" });
       doc.text(RS(t.received), xs[4] + cols[4].w - 1.5, y + 0.9, { align: "right" });
       doc.setTextColor(185, 28, 28);
@@ -26554,7 +26556,7 @@ function viewCatalogue() {
     var names = {};
     payHistRows("").forEach(function (r) { var n = String(r.p.client || "").trim(); if (n) names[n] = 1; });
     var h = '<div class="card"><h3>Payment history \u2014 ' + (pcl ? esc(pcl) : 'every client') + '</h3>' +
-      '<div class="meta">' + live.length + ' payment(s) totalling ' + money(tot) +
+      '<div class="meta">' + plural(live.length, "payment") + ' totalling ' + money(tot) +
       (rows.length - live.length ? ' &middot; ' + (rows.length - live.length) + ' cancelled, shown struck through' : "") +
       '<br>Newest first. Tap a row to open its receipt \u2014 with the full remark, the amount and every button on it. ' +
       '<span style="color:#94a3b8">Six columns do not fit a phone: slide the table sideways for the money, or tap the line.</span></div>' +
@@ -26747,7 +26749,7 @@ function viewCatalogue() {
       out.push([c[0], { v: c[1], s: XL.BOLD }, c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9], c[10]]);
     });
     out.push([]);
-    out.push([{ v: "TOTAL · " + rows.length + " client(s)", s: XL.BAND }, { v: Math.round(t.due), s: XL.BAND },
+    out.push([{ v: "TOTAL · " + plural(rows.length, "client") + "", s: XL.BAND }, { v: Math.round(t.due), s: XL.BAND },
               { v: "", s: XL.BAND }, { v: Math.round(t.cur), s: XL.BAND }, { v: Math.round(t.d30), s: XL.BAND },
               { v: Math.round(t.d60), s: XL.BAND }, { v: Math.round(t.d90), s: XL.BAND },
               { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }, { v: "", s: XL.BAND }]);
@@ -26851,7 +26853,7 @@ function viewCatalogue() {
     });
     /* the total line, where a sheet keeps it */
     h += '<tr style="background:#7f1d1d;color:#fff">' +
-      '<td style="' + cell + ';font-weight:800;color:#fff">TOTAL · ' + rows.length + ' client(s)</td>' +
+      '<td style="' + cell + ';font-weight:800;color:#fff">TOTAL · ' + plural(rows.length, "client") + '</td>' +
       '<td style="' + num + ';font-weight:800;color:#fff">' + money(t.due) + '</td>' +
       '<td style="' + num + '"></td>' +
       (S.rdAge ? '<td style="' + num + ';color:#fff">' + money(t.cur) + '</td>' +
@@ -27420,7 +27422,7 @@ function viewCatalogue() {
       return h + '<div class="empty">No payment has been recorded for him yet.</div>' +
         '<div class="foot"><button class="btn ghost" data-act="close">Close</button></div>';
     }
-    h += '<div class="card"><div class="meta">' + live.length + ' payment(s) &middot; <b>' + money(tot) + ' received in all</b>' +
+    h += '<div class="card"><div class="meta">' + plural(live.length, "payment") + ' &middot; <b>' + money(tot) + ' received in all</b>' +
       (rows.length - live.length ? '<br>' + (rows.length - live.length) + ' cancelled entr(ies), shown struck through' : "") + '</div>' +
       '<div class="acts"><button class="btn sm ghost" data-act="pay-csv" data-n="' + esc(client) + '">Download (CSV)</button>' +
       '<button class="btn sm ghost" data-act="ledger-pdf" data-n="' + esc(client) + '">Ledger PDF</button></div></div>';
@@ -28649,7 +28651,7 @@ function viewCatalogue() {
     var names = {}; S.data.challans.forEach(function (c) { if (String(c.receiptReceived).toUpperCase() === "Y") names[c.customerName] = 1; });
     var overdue = Object.keys(names).map(function (n) { return { due: clientLedger(n).due, age: payAge(n) }; }).filter(function (x) { return x.due > 0 && x.age >= PAY_MIN; });
     var overTot = overdue.reduce(function (a, x) { return a + x.due; }, 0);
-    if (overdue.length) lines.push("Payments to collect: " + overdue.length + " client(s), " + moneyAscii(overTot));
+    if (overdue.length) lines.push("Payments to collect: " + plural(overdue.length, "client") + ", " + moneyAscii(overTot));
     var closing = [];
     S.data.sites.forEach(function (st) { S.data.rules.forEach(function (r) { if (action(st, r, pitchRow(st.id, r.brand)).k === "now") closing.push(r.brand + " @ " + st.name); }); });
     if (closing.length) lines.push("Pitch windows closing: " + closing.length + " (" + closing.slice(0, 3).join(", ") + (closing.length > 3 ? "…" : "") + ")");
@@ -29085,10 +29087,10 @@ function viewCatalogue() {
   function dupRecRow(r, g, picking) {
     var isMain = dupMainOf(g).id === r.id;
     var bits = [];
-    if (r.challans) bits.push(r.challans + " challan(s)");
-    if (r.quotes) bits.push(r.quotes + " quote(s)");
+    if (r.challans) bits.push(plural(r.challans, "challan") + "");
+    if (r.quotes) bits.push(plural(r.quotes, "quote") + "");
     if (r.followups) bits.push(r.followups + " follow-up(s)");
-    if (r.sites) bits.push(r.sites + " site(s)");
+    if (r.sites) bits.push(plural(r.sites, "site") + "");
     if (r.due > 0) bits.push(money(r.due) + " due");
     var empty = !bits.length;
     return '<div style="border:1px solid ' + (isMain ? '#0f766e' : '#e2e8f0') + ';background:' + (isMain ? '#f0fdfa' : '#fff') +
@@ -29172,7 +29174,7 @@ function viewCatalogue() {
         }).join("<br>") +
         '<br><span style="color:#94a3b8">You can set each site’s stage afterwards on the Sites screen — that is what turns on the pitch board for it.</span></div>';
       h += '<div class="acts" style="margin-top:8px">' +
-        '<button class="btn" data-act="dup-manage-go" data-k="' + esc(g.key) + '">Create ' + others.length + ' project(s) under ' + esc(main.name) + '</button>' +
+        '<button class="btn" data-act="dup-manage-go" data-k="' + esc(g.key) + '">Create ' + plural(others.length, "project") + ' under ' + esc(main.name) + '</button>' +
         '<button class="btn ghost" data-act="dup-cancel">Cancel</button></div>';
     }
     return h + '</div>';
@@ -29529,7 +29531,7 @@ function viewCatalogue() {
         '<div class="meta" style="font-size:12.5px">' + esc([x.product, x.model].filter(Boolean).join(" ")) +
         (x.installDate ? ' &middot; inst ' + esc(d10(x.installDate)) : '') +
         ' &middot; every ' + esc(String(x.cycleDays || "?")) + ' days &middot; engineer ' + esc(x.engineer || "unassigned") + '</div>' +
-        '<div class="meta" style="font-size:12.5px">' + vs.length + ' visit(s)' + (vs.length ? ', last ' + esc(d10(x.lastService || vs[vs.length - 1].date || "")) : '') +
+        '<div class="meta" style="font-size:12.5px">' + plural(vs.length, "visit") + '' + (vs.length ? ', last ' + esc(d10(x.lastService || vs[vs.length - 1].date || "")) : '') +
         (due > 0 ? ' &middot; <b style="color:#b91c1c">' + money(due) + ' due</b>' : ' &middot; nothing due') +
         ' &middot; next service ' + esc(x.nextService ? d10(x.nextService) : "not set") + '</div>' +
         '<div class="meta" style="font-size:12px;color:#94a3b8">made ' + esc(d10(x.createdAt)) + ' by ' + esc(x.createdBy || "?") + ' &middot; ' + esc(x.id) + '</div>' +
@@ -29794,7 +29796,7 @@ function viewCatalogue() {
     var recs = s.groups.reduce(function (a, g) { return a + g.recs.length; }, 0);
     return '<div class="card" style="border-color:#fed7aa;background:#fff7ed">' +
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b45309"><b>Duplicate entries</b></div>' +
-      '<h3 style="font-size:16px;margin:4px 0 2px">' + s.total + ' customer(s) look like they are in the book more than once</h3>' +
+      '<h3 style="font-size:16px;margin:4px 0 2px">' + plural(s.total, "customer") + ' look like they are in the book more than once</h3>' +
       '<div class="meta" style="font-size:13px">' + recs + ' records between them' +
       (money0 > 0 ? ', with ' + money(money0) + ' of dues split across the copies' : '') +
       '. Tell the app which are the same man, which are one customer with several sites, and which are simply two different people — it will remember for the whole team.</div>' +
@@ -30081,7 +30083,7 @@ function viewCatalogue() {
       h += '<div style="border-top:1px solid #e2e8f0;margin-top:10px;padding-top:10px">' +
         '<div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">' +
         '<b style="flex:1 1 auto">' + esc(K.t) + '</b>' +
-        '<span class="meta" style="font-size:12.5px;white-space:nowrap">' + g.n + ' file(s) &middot; <b>' + drvMB(g.b) + '</b></span>' +
+        '<span class="meta" style="font-size:12.5px;white-space:nowrap">' + plural(g.n, "file") + ' &middot; <b>' + drvMB(g.b) + '</b></span>' +
         (K.safe && g.ids.length
           ? '<button class="btn sm" data-act="drv-ask" data-kind="' + esc(k) + '">Clear these</button>'
           : '<span class="pill" style="background:#f1f5f9;color:#475569">kept</span>') +
@@ -30098,7 +30100,7 @@ function viewCatalogue() {
     var names = (((S.drv && S.drv.files) || [])).filter(function (f) { return drvGroup(f) === kind; })
       .slice(0, 12);
     return '<h2>Clear ' + esc(K.t.toLowerCase()) + '?</h2>' +
-      '<p class="sub">' + g.n + ' file(s), ' + drvMB(g.b) + '. They go to <b>Drive&rsquo;s trash</b>, ' +
+      '<p class="sub">' + plural(g.n, "file") + ', ' + drvMB(g.b) + '. They go to <b>Drive&rsquo;s trash</b>, ' +
       'where Google keeps them for thirty days &mdash; this is not a delete and it can be undone ' +
       'from Drive itself. Nothing the app links to is included.</p>' +
       '<div class="card" style="max-height:230px;overflow:auto">' +
@@ -30214,12 +30216,11 @@ function viewCatalogue() {
       (rows.length === 0
         ? 'No signed receipt has been uploaded yet at all, so there is nothing to mirror. This will answer itself the first time one goes up.'
         : ok
-          ? '<b style="color:#0369a1">Working.</b> ' + withTg + ' of ' + rows.length +
-            ' uploaded receipt(s) carry a Telegram link' +
+          ? '<b style="color:#0369a1">Working.</b> ' + withTg + ' of ' + plural(rows.length, "uploaded receipt") + ' carry a Telegram link' +
             (newestTg ? ', the most recent on <b>' + esc(d10(newestTg)) + '</b>' : '') +
             '. Open one from the <b>Telegram</b> chip beside any receipt and check you can see the document there. ' +
             'Until you have opened one and seen it, Drive stays the primary and nothing should be cleared.'
-          : '<b style="color:#b45309">Not proved yet.</b> ' + rows.length + ' receipt(s) have been uploaded and <b>none</b> carries a Telegram link' +
+          : '<b style="color:#b45309">Not proved yet.</b> ' + plural(rows.length, "receipt") + ' have been uploaded and <b>none</b> carries a Telegram link' +
             (newest ? ', the most recent on ' + esc(d10(newest)) : '') +
             '. Either the mirror has not run since it shipped, or it ran and failed. Upload one receipt and look here again.') +
       '</div></div>';
@@ -31012,7 +31013,7 @@ function viewCatalogue() {
     var h = '<div class="card" style="' + (s.total ? 'border-color:#fed7aa;background:#fff7ed' : 'border-color:#99f6e4;background:#f0fdfa') + '">' +
       '<h2 style="margin:0">Data health check</h2>' +
       '<div class="meta" style="font-size:13px">A quick scan for things that quietly cause problems — so they show up in a report, not from a customer. Refreshes each time you open this screen.</div>' +
-      (s.total ? '<div style="margin-top:8px;font-weight:700;color:#b45309">' + s.total + ' area(s) need a look</div>'
+      (s.total ? '<div style="margin-top:8px;font-weight:700;color:#b45309">' + plural(s.total, "area") + ' need a look</div>'
                : '<div style="margin-top:8px;font-weight:700;color:#0f766e">✓ All clear — nothing unusual found.</div>') +
       '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="health-refresh">Re-scan</button></div></div>';
 
@@ -31089,7 +31090,7 @@ function viewCatalogue() {
     /* Delivered but not billed — one row (value + count), tap through to Deliveries. */
     if (s.unb.count) {
       h += '<div class="card"><h3>Delivered but not billed <span class="pill due" style="background:#f59e0b22;color:#b45309">' + s.unb.count + '</span></h3>' +
-        '<div class="meta" style="font-size:13.5px"><b>' + money(s.unb.val) + '</b> across ' + s.unb.count + ' delivered challan(s) with no bill number — raise the bills so nothing slips on GST.</div>' +
+        '<div class="meta" style="font-size:13.5px"><b>' + money(s.unb.val) + '</b> across ' + plural(s.unb.count, "delivered challan") + ' with no bill number — raise the bills so nothing slips on GST.</div>' +
         '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="tab" data-tab="deliveries">Open Deliveries</button></div></div>';
     }
 
@@ -31111,7 +31112,7 @@ function viewCatalogue() {
           '<b>' + esc(x.client || '(blank)') + '</b> &middot; ' + esc(x.brand || '') +
           ' \u2014 <b>' + x.n + ' rows</b><br>' +
           '<span style="color:#0f766e">In use: ' + (Number(w.pct) || 0) + '%' + (inc ? ' &middot; ' + esc(inc) : '') + '</span>' +
-          ' <span style="color:#94a3b8">&middot; ' + x.losers.length + ' extra row(s) doing nothing</span></div>';
+          ' <span style="color:#94a3b8">&middot; ' + plural(x.losers.length, "extra row") + ' doing nothing</span></div>';
       }).join('') +
       ((s.dupDisc || []).length
         ? (roleIs("admin")
@@ -31129,7 +31130,7 @@ function viewCatalogue() {
           '<b>' + esc(x.no) + '</b> &middot; ' + esc(x.client || '') + ' \u2014 <b>' + x.n + ' rows</b><br>' +
           '<span style="color:#0f766e">Keeping: ' + esc(String(w.status || 'Draft')) +
           (Number(w.net) ? ' &middot; ' + money(w.net) : '') + ' &middot; ' + esc(d10(String(w.createdAt || '').slice(0, 10)) || '') + '</span>' +
-          ' <span style="color:#94a3b8">&middot; ' + x.losers.length + ' extra row(s)</span></div>';
+          ' <span style="color:#94a3b8">&middot; ' + plural(x.losers.length, "extra row") + '</span></div>';
       }).join('') +
       ((s.dupQuotes || []).length
         ? (roleIs("admin")
@@ -31630,11 +31631,11 @@ function viewCatalogue() {
     if (!n) return "";
     var mine = !seesAllClients();
     var bits = [];
-    if (g.odd.length) bits.push(g.odd.length + " district name(s) that are really a colony");
+    if (g.odd.length) bits.push(plural(g.odd.length, "district name") + " that are really a colony");
     if (g.nod.length) bits.push(g.nod.length + " with no district");
     if (g.noa.length) bits.push(g.noa.length + " with no colony");
     return '<div class="row" style="align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px;border:1px solid #fde68a;background:#fffbeb;border-radius:10px">' +
-      '<div class="grow" style="font-size:12px"><b>' + n + ' record(s) need a district or a colony' + (mine ? ' in your book' : '') + '.</b> ' +
+      '<div class="grow" style="font-size:12px"><b>' + plural(n, "record") + ' need a district or a colony' + (mine ? ' in your book' : '') + '.</b> ' +
       esc(bits.join(", ")) + '. Where the address already says which colony it is, the answer is filled in for you.</div>' +
       '<button class="btn sm" data-act="tidy-areas">Set district &amp; area</button></div>';
   }
@@ -31686,8 +31687,7 @@ function viewCatalogue() {
 
     /* -------- section 1: a colony typed into the District box (the original tidy job) -------- */
     if (rows.length) {
-      h += '<h3 style="margin:12px 0 4px;font-size:13px">' + rows.length +
-        ' district name(s) that are really a colony</h3>' +
+      h += '<h3 style="margin:12px 0 4px;font-size:13px">' + plural(rows.length, "district name") + ' that are really a colony</h3>' +
         '<div class="meta" style="font-size:12px;margin-bottom:6px">These move as a group because they all carry the same typed value. The plot number is kept in the address.</div>';
     }
     h += rows.map(function (r, i) {
@@ -31698,7 +31698,7 @@ function viewCatalogue() {
         var who = r.clients.slice(0, 3).map(function (c) { return c.name; }).join(", ");
         return '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:8px;margin-bottom:8px">' +
           '<div style="font-weight:600;font-size:13px">' + esc(r.value) + '</div>' +
-          '<div class="meta" style="font-size:12px;margin-bottom:6px">' + r.clients.length + ' record(s): ' + esc(who) +
+          '<div class="meta" style="font-size:12px;margin-bottom:6px">' + plural(r.clients.length, "record") + ': ' + esc(who) +
           (r.clients.length > 3 ? " +" + (r.clients.length - 3) + " more" : "") + '</div>' +
           /* auto-fit, not a hard 1fr 1fr: on a 360px phone the two selects stack instead of
              squeezing "Ansal Sushant City" down to an unreadable sliver. */
@@ -31707,14 +31707,13 @@ function viewCatalogue() {
           '<div><label>Area</label><select id="td_a' + i + '">' + opts([""].concat(alist), r.guess.area) + '</select></div>' +
           '</div>' +
           '<label>Keep this in the address</label><input id="td_r' + i + '" value="' + esc(r.guess.rest) + '"/>' +
-          '<div class="foot" style="margin-top:6px"><button class="btn sm" data-act="tidy-apply" data-i="' + i + '">Apply to ' + r.clients.length + ' record(s)</button></div>' +
+          '<div class="foot" style="margin-top:6px"><button class="btn sm" data-act="tidy-apply" data-i="' + i + '">Apply to ' + plural(r.clients.length, "record") + '</button></div>' +
           '</div>';
       }).join("");
 
     /* -------- section 2: no district at all -------- */
     if (g.nod.length) {
-      h += '<h3 style="margin:14px 0 4px;font-size:13px">' + g.nod.length +
-        ' name(s) with no district</h3>' +
+      h += '<h3 style="margin:14px 0 4px;font-size:13px">' + plural(g.nod.length, "name") + ' with no district</h3>' +
         '<div class="meta" style="font-size:12px;margin-bottom:6px">Nobody can plan a round for these until they sit in a district.</div>' +
         g.nod.slice(0, PLACE_CAP).map(function (r, i) { return placeRowHtml(r, i, "nod"); }).join("");
     }
@@ -31722,8 +31721,7 @@ function viewCatalogue() {
     /* -------- section 3: a district but no colony - the big one -------- */
     if (g.noa.length) {
       var shown = g.noa.slice(0, PLACE_CAP);
-      h += '<h3 style="margin:14px 0 4px;font-size:13px">' + g.noa.length +
-        ' name(s) with a district but no colony</h3>' +
+      h += '<h3 style="margin:14px 0 4px;font-size:13px">' + plural(g.noa.length, "name") + ' with a district but no colony</h3>' +
         '<div class="meta" style="font-size:12px;margin-bottom:6px">' +
         'This is what puts the amber <b>no area</b> chips on the tree. Where the address said which colony it is, ' +
         'the answer is already filled in and the line is green &mdash; those are one tap each.' +
@@ -32440,7 +32438,7 @@ function viewCatalogue() {
         (p.mobile ? '<a href="tel:' + esc(p.mobile) + '">' + esc(p.mobile) + '</a>' : '<span style="color:#dc2626">no number</span>') +
         (p.mobile2 ? ' &middot; ' + esc(p.mobile2) : "") +
         (p.area ? ' &middot; ' + esc(p.area) : "") +
-        '<br>' + st.clients + ' client(s) &middot; ' + st.live + ' site(s) taking material &middot; ' + st.open + ' quoted, not closed' +
+        '<br>' + plural(st.clients, "client") + ' &middot; ' + plural(st.live, "site") + ' taking material &middot; ' + st.open + ' quoted, not closed' +
         ((p.birthday || p.anniversary)
           ? '<br>' + (p.birthday ? 'Birthday ' + esc(dmy(p.birthday)) : "") +
             (p.birthday && p.anniversary ? ' &middot; ' : "") +
@@ -34081,14 +34079,14 @@ function viewCatalogue() {
   function saathiPushRun() {
     var list = (S.data.associates || []).slice();
     if (!list.length) { toast("No partner found."); return; }
-    toast("Sending to Saathi - " + list.length + " partner(s)...");
+    toast("Sending to Saathi - " + plural(list.length, "partner") + "...");
 
     var okN = 0, failN = 0, ptsN = 0, i = 0;
     var step = function () {
       if (i >= list.length) {
         S.coPin = failN ? "" : S.coPin;
         /* v6.9.447 - English, as every screen of this app is (house rule: Hinglish is Saathi's) */
-        toast(okN + " partner(s) sent" + (failN ? ", " + failN + " did not go" : "") +
+        toast(plural(okN, "partner") + " sent" + (failN ? ", " + failN + " did not go" : "") +
               ". " + ptsN + " points in all.");
         return;
       }
@@ -34398,7 +34396,7 @@ function viewCatalogue() {
       F("bold"); doc.setFontSize(11.5); doc.setTextColor(255, 255, 255);
       doc.text("CLIENT REGISTER", R, 10, { align: "right" });
       F("normal"); doc.setFontSize(7.6); doc.setTextColor(172, 212, 205);
-      doc.text(rows.length + " client(s)   \u00b7   " + fullDate(today()), R, 15.5, { align: "right" });
+      doc.text(plural(rows.length, "client") + "   \u00b7   " + fullDate(today()), R, 15.5, { align: "right" });
       doc.text(fl ? pdfSafe(fl) : "Every client on the book", R, 19.5, { align: "right" });
 
       var cols = [
@@ -34482,7 +34480,7 @@ function viewCatalogue() {
     /* the filter in the file name and on a line of its own, so a sheet mailed on is never
        mistaken for the whole book */
     var fl = regFilterLine();
-    if (fl) { out.push([]); out.push([{ v: "This list: " + fl + " \u00b7 " + rows.length + " client(s) \u00b7 built " + fullDate(today()), s: XL.BAND }]); }
+    if (fl) { out.push([]); out.push([{ v: "This list: " + fl + " \u00b7 " + plural(rows.length, "client") + " \u00b7 built " + fullDate(today()), s: XL.BAND }]); }
     dlXlsx("Clients" + (fl ? "_" + regBrandsOn().join("-").replace(/[^\w-]/g, "") + (regModeIs() === "want" ? "_to_sell" : "_took") : "_by_area") +
            "_" + today() + ".xlsx", "Clients", out,
       [12, 20, 30, 34, 22, 13, 13, 40, 16, 12, 12, 16, 16, 16, 12, 14, 12, 10, 17, 12]);
@@ -34500,8 +34498,8 @@ function viewCatalogue() {
     passPinClear();   /* v6.9.447 - a held pass PIN never outlives the man who typed it */
     S.modal = null;   /* v6.9.447 - Sign out is on the account sheet now; the sheet must not outlive the sign-in */
     renderLogin((held || photos)
-      ? "Signed out. " + (held ? held + " record(s)" : "") + (held && photos ? " and " : "") +
-        (photos ? photos + " receipt photo(s)" : "") + " not yet uploaded are kept on this phone and go up on the next sign-in."
+      ? "Signed out. " + (held ? plural(held, "record") + "" : "") + (held && photos ? " and " : "") +
+        (photos ? plural(photos, "receipt photo") + "" : "") + " not yet uploaded are kept on this phone and go up on the next sign-in."
       : "Signed out on this phone.");
   }
 
@@ -35002,7 +35000,7 @@ function viewCatalogue() {
     }
     if (a.kind === "service") {
       return head + "Your " + (a.product || "unit") + " is due for service" +
-        (a.od > 0 ? " \u2014 it is " + a.od + " day(s) past the due date" : "") + ".\n\n" +
+        (a.od > 0 ? " \u2014 it is " + plural(a.od, "day") + " past the due date" : "") + ".\n\n" +
         "Shall I send our engineer this week? Servicing on time keeps the water quality right, " +
         "protects the machine and keeps the warranty valid." + sign;
     }
@@ -35293,10 +35291,10 @@ function viewCatalogue() {
         key: "unbilled|" + unb.count, kind: "unbilled", prio: 64, nodraft: true,
         tag: unb.count + " CHALLAN(S)",
         title: "Bill " + money(unb.val) + " already delivered",
-        why: unb.count + " delivered challan(s) worth " + moneyAscii(unb.val) +
+        why: plural(unb.count, "delivered challan") + " worth " + moneyAscii(unb.val) +
           " carry no bill number. The material has left the godown on a signed receipt with no tax bill behind it \u2014 " +
           "that is a GST gap and it also keeps the money out of the ledger.",
-        sub: unb.count + " challan(s) \u00b7 " + money(unb.val) + " \u00b7 no bill number",
+        sub: plural(unb.count, "challan") + " \u00b7 " + money(unb.val) + " \u00b7 no bill number",
         client: "", siteName: "Billing",
         btns: [{ act: "tab", attrs: { tab: "deliveries" }, label: "Open deliveries" }]
       }));
@@ -36164,9 +36162,9 @@ function viewCatalogue() {
       var r = briefRecap(st.off);
       out.push("Energy World — the week behind (" + fullDate(r.week.mon) + " to " + fullDate(r.week.sun) + ")");
       out.push("");
-      out.push("Billed: " + moneyAscii(r.billed.total) + " on " + r.billed.count + " challan(s)");
+      out.push("Billed: " + moneyAscii(r.billed.total) + " on " + plural(r.billed.count, "challan") + "");
       briefBy(r.billed.by).forEach(function (x) { out.push("  • " + x.k + ": " + moneyAscii(x.v)); });
-      out.push("Collected: " + moneyAscii(r.collected.total) + " in " + r.collected.count + " receipt(s)");
+      out.push("Collected: " + moneyAscii(r.collected.total) + " in " + plural(r.collected.count, "receipt") + "");
       briefBy(r.collected.by).forEach(function (x) { out.push("  • " + x.k + ": " + moneyAscii(x.v)); });
       out.push("Quotations: " + r.quotes.raised + " raised, " + r.quotes.won + " won, " + r.quotes.lost + " lost");
       out.push("New names entered: " + r.names.length + "   Site visits logged: " + r.visits.total);
@@ -36193,7 +36191,7 @@ function viewCatalogue() {
     out.push("");
     var mTot = pl.money.reduce(function (a, x) { return a + x.overdue; }, 0);
     out.push(pl.money.length
-      ? "Money to collect: " + moneyAscii(mTot) + " from " + pl.money.length + " customer(s)"
+      ? "Money to collect: " + moneyAscii(mTot) + " from " + plural(pl.money.length, "customer") + ""
       : "Money to collect: nothing past " + CREDIT_DAYS + " days.");
     pl.money.slice(0, 6).forEach(function (m) {
       out.push("  • " + m.client + " — " + moneyAscii(m.overdue) + ", oldest " + m.oldest + " days" + (m.exec ? " (" + m.exec + ")" : ""));
@@ -36214,7 +36212,7 @@ function viewCatalogue() {
     });
     out.push("");
     var qn = pl.quiet.leads.length + pl.quiet.sites.length;
-    out.push(qn ? "Going quiet: " + pl.quiet.leads.length + " lead(s), " + pl.quiet.sites.length + " site(s)"
+    out.push(qn ? "Going quiet: " + plural(pl.quiet.leads.length, "lead") + ", " + plural(pl.quiet.sites.length, "site") + ""
       : "Going quiet: nothing — every lead and site has been touched.");
     pl.quiet.leads.slice(0, 4).forEach(function (l) { out.push("  • " + l.name + " — no movement " + l.days + " days"); });
     pl.quiet.sites.slice(0, 4).forEach(function (s2) { out.push("  • " + s2.name + " — no visit " + s2.days + " days"); });
@@ -36228,10 +36226,10 @@ function viewCatalogue() {
     }
     if (pl.owner) {
       var od = [];
-      if (pl.owner.drafts) od.push(pl.owner.drafts + " challan(s) waiting for your approval");
+      if (pl.owner.drafts) od.push(plural(pl.owner.drafts, "challan") + " waiting for your approval");
       if (pl.owner.unbilled.count) od.push(pl.owner.unbilled.count + " delivery(ies) not yet billed — " + moneyAscii(pl.owner.unbilled.val));
-      if (pl.owner.commission) od.push(pl.owner.commission + " product(s) waiting to be commissioned");
-      if (pl.owner.dups) od.push(pl.owner.dups + " duplicate customer(s) to settle");
+      if (pl.owner.commission) od.push(plural(pl.owner.commission, "product") + " waiting to be commissioned");
+      if (pl.owner.dups) od.push(plural(pl.owner.dups, "duplicate customer") + " to settle");
       if (od.length) { out.push(""); out.push("Only you can clear these:"); od.forEach(function (x) { out.push("  • " + x); }); }
     }
     out.push("");
@@ -36401,13 +36399,13 @@ function viewCatalogue() {
       if (pl.owner) {
         var ob = "", any = 0;
         if (pl.owner.drafts) { any++; ob += briefRow("Challans waiting for your approval", '<b>' + pl.owner.drafts + '</b>', "Nothing moves out of the godown until you approve them."); }
-        if (pl.owner.unbilled.count) { any++; ob += briefRow("Delivered but not billed", '<b style="color:#b91c1c">' + money(pl.owner.unbilled.val) + '</b>', pl.owner.unbilled.count + " challan(s) — goods gone, no bill raised."); }
+        if (pl.owner.unbilled.count) { any++; ob += briefRow("Delivered but not billed", '<b style="color:#b91c1c">' + money(pl.owner.unbilled.val) + '</b>', plural(pl.owner.unbilled.count, "challan") + " — goods gone, no bill raised."); }
         if (pl.owner.commission) { any++; ob += briefRow("Products waiting to be commissioned", '<b>' + pl.owner.commission + '</b>', "The warranty clock does not start until they are."); }
         if (pl.owner.dups) { any++; ob += briefRow("Duplicate customers to settle", '<b>' + pl.owner.dups + '</b>', "Money and history split across copies of the same man."); }
         if (pl.owner.unsent && pl.owner.unsent.n) {
           any++;
           ob += briefRow("Quotations never marked sent", '<b style="color:#b91c1c">' + money(pl.owner.unsent.val) + '</b>',
-            pl.owner.unsent.n + " quotation(s) sitting at Draft" +
+            plural(pl.owner.unsent.n, "quotation") + " sitting at Draft" +
             (pl.owner.unsent.oldest > 0 ? ", the oldest " + pl.owner.unsent.oldest + " days old" : "") +
             " \u2014 the follow-up radar cannot see a Draft, so nobody is chasing them.");
         }
@@ -36425,12 +36423,12 @@ function viewCatalogue() {
         '</div>';
 
       var bb = '<div style="font-size:22px;font-weight:800;color:#0f766e">' + money(r.billed.total) + '</div>' +
-        '<div class="meta">on ' + r.billed.count + ' challan(s), approved or beyond</div>';
+        '<div class="meta">on ' + plural(r.billed.count, "challan") + ', approved or beyond</div>';
       briefBy(r.billed.by).forEach(function (x) { bb += briefRow(esc(x.k), money(x.v), ""); });
       h += briefCard("Billed this week", "", null, bb, r.billed.total > 0 ? "good" : null);
 
       var cb = '<div style="font-size:22px;font-weight:800;color:#0f766e">' + money(r.collected.total) + '</div>' +
-        '<div class="meta">in ' + r.collected.count + ' receipt(s) actually banked</div>';
+        '<div class="meta">in ' + plural(r.collected.count, "receipt") + ' actually banked</div>';
       briefBy(r.collected.by).forEach(function (x) { cb += briefRow(esc(x.k), money(x.v), ""); });
       h += briefCard("Collected this week", "Billing is a promise. This is the money.", null, cb, r.collected.total > 0 ? "good" : null);
 
@@ -36522,7 +36520,7 @@ function viewCatalogue() {
     var h = '<div class="card" style="border-color:#fca5a5;background:#fef2f2">' +
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#b91c1c"><b>Your agent</b></div>' +
       '<h3 style="font-size:17px;margin:4px 0 2px">' +
-      (n0 ? n0 + " thing(s) to do today" : live.length + " open suggestion(s)") + '</h3>' +
+      (n0 ? plural(n0, "thing") + " to do today" : plural(live.length, "open suggestion") + "") + '</h3>' +
       '<div class="meta" style="margin-bottom:6px">Ranked from your sites, your money, your quotations and your service book. The message is already written.</div>';
     top.slice(0, 3).forEach(function (a) {
       h += '<div style="border-top:1px solid #fecaca;padding:7px 0 4px">' +
@@ -37050,7 +37048,7 @@ function viewCatalogue() {
       }).join("") +
       '</tbody></table></div>' +
       '<div style="text-align:right;font-size:12.5px;color:#64748b;margin-top:5px">' +
-      '<b>' + picked.length + '</b> line(s) &middot; <b>' +
+      '<b>' + picked.length + '</b>' + (picked.length === 1 ? ' line' : ' lines') + ' &middot; <b>' +
       picked.reduce(function (a, i) { return a + (Number(i.qty) || 0); }, 0) + '</b> units total</div>';
   }
   /* Repaints ONLY the picker. A full rebuild on every keystroke would take the cursor with it,
@@ -37124,7 +37122,7 @@ function viewCatalogue() {
       (_picked
         ? '<div class="meta" style="font-size:12px;margin:-8px 2px 8px;color:#64748b">' +
           'Anything the job needs can go on the same ' + P.noun + ' &mdash; tap another brand above and ' +
-          'the ' + (z.items || []).length + ' line(s) already picked stay where they are.</div>'
+          'the ' + (z.items || []).plural(length, "line") + ' already picked stay where they are.</div>'
         : '');
     if (!z.family) return h + '<div class="empty" style="padding:14px 12px">Tap a category above.</div>';
     h += '<div class="ew-picklabel"><span class="step">3</span>Set quantities</div><div class="plist">';
@@ -37951,7 +37949,7 @@ function viewCatalogue() {
     head += '<div class="meta" style="font-size:12px;margin-bottom:8px">Landed cost = latest purchase rate × (1 + landing ' + (Number(lp.global) || 0) + '%). ' +
       'Never printed on the quote, never shown to an executive.</div>';
     if (!m.cov) {
-      return head + '<div class="meta" style="font-size:12.5px;color:#b91c1c">No purchase rate is set for any of these ' + m.tot + ' line(s), so margin cannot be worked out. ' +
+      return head + '<div class="meta" style="font-size:12.5px;color:#b91c1c">No purchase rate is set for any of these ' + plural(m.tot, "line") + ', so margin cannot be worked out. ' +
         'Set rates on the <b>Stock</b> screen — tap a product, fill in <b>latest purchase rate</b>.</div></div>';
     }
     var h = head;
@@ -37960,12 +37958,12 @@ function viewCatalogue() {
       h += '<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;border-top:1px solid #ccfbf1;padding:6px 0">' +
         '<b style="flex:1 1 120px;min-width:0;font-size:13px">' + esc(r.brand) + '</b>';
       if (!r.cov) {
-        h += '<span style="font-size:12px;color:#94a3b8">no purchase rate on any of its ' + r.tot + ' line(s)</span></div>';
+        h += '<span style="font-size:12px;color:#94a3b8">no purchase rate on any of its ' + plural(r.tot, "line") + '</span></div>';
         return;
       }
       h += '<span style="font-size:12px;color:#475569">sell ' + money(r.netCov) + ' &middot; cost ' + money(r.landed) + '</span>' +
         '<b style="font-size:13px;color:' + marginColour(r.pct) + '">' + money(r.margin) + ' &middot; ' + r.pct.toFixed(1) + '%</b>' +
-        (known ? '' : '<span style="font-size:12px;color:#94a3b8;flex:1 1 100%">on ' + r.cov + ' of ' + r.tot + ' line(s)</span>') +
+        (known ? '' : '<span style="font-size:12px;color:#94a3b8;flex:1 1 100%">on ' + r.cov + ' of ' + plural(r.tot, "line") + '</span>') +
         '</div>';
     });
     h += '<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;border-top:2px solid #0d9488;padding:8px 0 2px">' +
@@ -37976,18 +37974,18 @@ function viewCatalogue() {
     h += '<div class="meta" style="font-size:12px;margin-top:4px">' +
       (m.cov === m.tot
         ? 'Every line has a purchase rate — this covers the whole quote.'
-        : '<b>Margin known on ' + m.cov + ' of ' + m.tot + ' line(s)</b> — ' + money(m.netCov) + ' of ' + money(m.net) +
+        : '<b>Margin known on ' + m.cov + ' of ' + plural(m.tot, "line") + '</b> — ' + money(m.netCov) + ' of ' + money(m.net) +
           '. The percentage above is worked out on that ' + money(m.netCov) + ' only; the rest have no purchase rate on the Stock screen yet.') +
       '</div>';
     if (m.below.length) {
       h += '<div class="card" style="margin-top:8px;border-color:#fecaca;background:#fef2f2">' +
-        '<b style="color:#b91c1c;font-size:13px">Below cost — ' + m.below.length + ' line(s)</b>' +
+        '<b style="color:#b91c1c;font-size:13px">Below cost — ' + plural(m.below.length, "line") + '</b>' +
         '<div class="meta" style="font-size:12px">The discounted rate is under what the item costs us landed.</div>';
       m.below.slice(0, 12).forEach(function (x) {
         h += '<div style="border-top:1px solid #fee2e2;margin-top:5px;padding-top:5px;font-size:12px">' +
           '<b>' + esc(x.desc) + '</b> <span style="color:#94a3b8;font-size:12px">' + esc(x.code) + '</span><br>' +
           '<span style="color:#b91c1c">selling at ' + money(x.dr) + ' &middot; landed ' + money(x.landed) + ' &middot; ' +
-          money((x.landed - x.dr) * x.qty) + ' short on ' + qShow(x.qty) + ' unit(s)</span></div>';
+          money((x.landed - x.dr) * x.qty) + ' short on ' + plural(qShow(x.qty), "unit") + '</span></div>';
       });
       h += '</div>';
     }
@@ -38030,7 +38028,7 @@ function viewCatalogue() {
     h += '<div class="row"><input class="grow" id="q" placeholder="Filter product / code…" value="' + esc(S.q) + '"/></div>';
 
     if (lowList.length) {
-      h += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3 style="margin:0 0 3px;color:#b91c1c">Reorder now — ' + lowList.length + ' item(s)</h3>' +
+      h += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3 style="margin:0 0 3px;color:#b91c1c">Reorder now — ' + plural(lowList.length, "item") + '</h3>' +
         '<div class="meta" style="font-size:12px">Out of stock, or at/below the reorder level you set. Tap one to buy against, or to adjust its level.</div>';
       lowList.slice(0, 25).forEach(function (x) {
         h += '<div class="acts" style="align-items:center;border-top:1px solid #fee2e2;margin-top:6px;padding-top:6px"><div class="grow"><b>' + esc(x.desc) + '</b> <span style="font-size:12px;color:#94a3b8">' + esc(x.code) + '</span>' +
@@ -38219,7 +38217,7 @@ function viewCatalogue() {
         (im.type === "opening" ? "Opening stock" : "Goods received") + '</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
         '<div style="flex:1 1 120px;background:#dcfce7;border-radius:10px;padding:10px 12px"><div style="font-size:20px;font-weight:800;color:#166534">' + matched.length + '</div><div style="font-size:12px;color:#166534">matched to catalogue</div></div>' +
-        '<div style="flex:1 1 120px;background:' + (newc.length ? '#fff7ed' : '#f1f5f9') + ';border-radius:10px;padding:10px 12px"><div style="font-size:20px;font-weight:800;color:' + (newc.length ? '#b45309' : '#64748b') + '">' + newc.length + '</div><div style="font-size:12px;color:' + (newc.length ? '#b45309' : '#64748b') + '">new item(s) &mdash; need details</div></div>' +
+        '<div style="flex:1 1 120px;background:' + (newc.length ? '#fff7ed' : '#f1f5f9') + ';border-radius:10px;padding:10px 12px"><div style="font-size:20px;font-weight:800;color:' + (newc.length ? '#b45309' : '#64748b') + '">' + newc.length + '</div><div style="font-size:12px;color:' + (newc.length ? '#b45309' : '#64748b') + '">' + (newc.length === 1 ? 'new item' : 'new items') + ' &mdash; need details</div></div>' +
         '</div></div>';
       if (newc.length) {
         h += '<div class="card" style="border-color:#fdba74;background:#fffbeb"><h3 style="margin:0 0 4px">New items — add a description (added to your catalogue)</h3>' +
@@ -39854,7 +39852,7 @@ function viewCatalogue() {
       api("stockImport", { ref: _im.ref, asOn: _im.asOn, type: _im.type, rows: _allRows, newItems: _new }).then(function (r) {
         if (r && r.ok) {
           S.imp = null; STOCK_LOADED = false; S.stock = [];
-          toast("Imported " + r.stock + " stock row(s)" + (r.added ? ", added " + r.added + " new item(s)" : "") + ".");
+          toast("Imported " + plural(r.stock, "stock row") + "" + (r.added ? ", added " + plural(r.added, "new item") + "" : "") + ".");
           if (r.added) { try { loadCatalog(); } catch (e) {} }
           ensureStock(); S.tab = "stock"; render();
         } else { toast((r && r.error) || "Import failed."); }
@@ -39966,7 +39964,7 @@ function viewCatalogue() {
       try { splitCancelled(); } catch (e) { }
       try { snapSave(); } catch (e) { }
       S.modal = null;
-      toast("Merged. " + mgName + " has one machine record now" + (mgMoving.length ? ", with " + mgMoving.length + " visit(s) on it" : "") + ". The other is in the cancelled list.");
+      toast("Merged. " + mgName + " has one machine record now" + (mgMoving.length ? ", with " + plural(mgMoving.length, "visit") + " on it" : "") + ". The other is in the cancelled list.");
       render();
       });
       return;
@@ -40081,7 +40079,7 @@ function viewCatalogue() {
       api("catalogRemap", { codePrefix: cp2, familyPrefix: fp2, toBrand: to }).then(function (r) {
         if (!r || !r.ok) { toast((r && r.error) || "Move failed."); render(); return; }
         S.rmPreview = null;
-        toast(r.moved + " product(s) moved to " + to + ".");
+        toast(plural(r.moved, "product") + " moved to " + to + ".");
         loadCatalog().then(function () { refresh(); });
       }).catch(function (e) { btnBack(t, _lbl); toast("The products were NOT moved \u2014 " + apiWhy(e) + ". Preview again before retrying."); });
       });
@@ -40373,7 +40371,7 @@ function viewCatalogue() {
       });
       if (S.q === tyRow.value) S.q = "";
       Promise.all(tyJobs).then(function () {
-        toast(tyRow.value + " \u2192 " + tyD + (tyA ? " / " + tyA : "") + " (" + tyRow.clients.length + " record(s))");
+        toast(tyRow.value + " \u2192 " + tyD + (tyA ? " / " + tyA : "") + " (" + plural(tyRow.clients.length, "record") + ")");
         S.modal = modalTidyAreas();
         render();
       });
@@ -41412,10 +41410,10 @@ function viewCatalogue() {
     if (act === "prf-download") {
       var dl = prfLoad();
       if (!dl.length) { toast("Nothing waiting."); return; }
-      toast("Saving " + dl.length + " document(s) to this computer…");
+      toast("Saving " + plural(dl.length, "document") + " to this computer…");
       var di = 0;
       var one = function () {
-        if (di >= dl.length) { toast("Saved " + dl.length + " receipt(s). They are still queued to upload."); return; }
+        if (di >= dl.length) { toast("Saved " + plural(dl.length, "receipt") + ". They are still queued to upload."); return; }
         var e = dl[di++];
         try {
           var bin = atob(String(e.b64 || ""));
@@ -41438,7 +41436,7 @@ function viewCatalogue() {
     }
     /* v6.9.265 - push the receipt documents on their own, without waiting for anything else */
     if (act === "prf-push") {
-      toast("Uploading " + prfCount() + " receipt document(s)\u2026 these are big files, give it a minute.");
+      toast("Uploading " + plural(prfCount(), "receipt document") + "\u2026 these are big files, give it a minute.");
       _prfBusy = false;                 /* a fresh press is always a fresh start */
       if (_prfDog) { clearTimeout(_prfDog); _prfDog = null; }
       try { prfFlush(true); } catch (e) {}
@@ -41460,7 +41458,7 @@ function viewCatalogue() {
              still missing is pushed. */
           toast("Server answered in " + (ms / 1000).toFixed(1) + "s and knows you. Checking what is already saved\u2026");
           refresh().then(function () {
-            if (pendCount()) { toast("Pushing " + pendCount() + " record(s) now."); retryPending(); }
+            if (pendCount()) { toast("Pushing " + plural(pendCount(), "record") + " now."); retryPending(); }
             else toast("Nothing is waiting \u2014 everything is on the server.");
           });
         } else {
@@ -41499,7 +41497,7 @@ function viewCatalogue() {
       });
       _cxCache = null; splitCancelled();
       try { snapSave(); } catch (e218a) { }
-      setTimeout(function () { render(); toast("Set aside " + qn218 + " duplicate quote row(s). Nothing was deleted \u2014 bring any of them back from the list at the bottom."); }, 200);
+      setTimeout(function () { render(); toast("Set aside " + plural(qn218, "duplicate quote row") + ". Nothing was deleted \u2014 bring any of them back from the list at the bottom."); }, 200);
       return;
     }
     if (act === "pitch-tidy") {
@@ -41517,7 +41515,7 @@ function viewCatalogue() {
       });
       _cxCache = null; splitCancelled();
       try { snapSave(); } catch (e218b) { }
-      setTimeout(function () { render(); toast("Set aside " + pn218 + " duplicate brand row(s). Nothing was deleted."); }, 200);
+      setTimeout(function () { render(); toast("Set aside " + plural(pn218, "duplicate brand row") + ". Nothing was deleted."); }, 200);
       return;
     }
     if (act === "disc-tidy") {
@@ -41533,7 +41531,7 @@ function viewCatalogue() {
           cleared++;
         });
       });
-      setTimeout(function () { render(); toast("Emptied " + cleared + " duplicate discount row(s). Nothing was deleted."); }, 200);
+      setTimeout(function () { render(); toast("Emptied " + plural(cleared, "duplicate discount row") + ". Nothing was deleted."); }, 200);
       return;
     }
     /* The rate card is deliberately a SEPARATE save from the client discounts -
@@ -42642,7 +42640,7 @@ function viewCatalogue() {
       });
       S.dupOpen = null; S.dupMode = null; S.dupMain = null;
       toast(made
-        ? made + " project(s) created under " + mmain.name + ". Set each site's stage to turn on its pitch board."
+        ? plural(made, "project") + " created under " + mmain.name + ". Set each site's stage to turn on its pitch board."
         : "Already recorded — those projects were there. Nothing was duplicated.");
       render(); return;
     }
@@ -43180,7 +43178,7 @@ function viewCatalogue() {
           _agrUp = null; _agrCache = null; S.agr = null; S.agrHop = false; S.modal = null;
           render();
           toast("Attached in " + secA + "s — " + agKind + " for " + agCl + ", with " +
-                agRates.length + " rate(s) written onto it.");
+                plural(agRates.length, "rate") + " written onto it.");
         });
       }).catch(function (err) {
         /* SAY WHAT HAPPENED, and keep the file: api() words its own failures, and throwing that
@@ -43551,7 +43549,7 @@ function viewCatalogue() {
         /* the list on screen is now stale by exactly what went. Re-read rather than patch it:
            the server refuses anything the app has since linked to, so what it actually trashed
            and what was asked for are not always the same list. */
-        toast(r.trashed + " file(s) moved to Drive trash, " +
+        toast(plural(r.trashed, "file") + " moved to Drive trash, " +
               drvMB(r.bytes) + " freed. Google keeps them thirty days." +
               (r.refused && r.refused.length ? " " + r.refused.length + " were kept back because the app links to them." : ""));
         S.drv = { busy: true, files: null };
@@ -44001,7 +43999,7 @@ function viewCatalogue() {
                copyOf: _sc.challanNo || "", items: _items };
       S.modal = modalChallan(); render();
       toast(_items.length
-        ? ("Copied " + _items.length + " line(s) from " + (_sc.challanNo || "that challan") + " \u2014 nothing is saved until you press Create.")
+        ? ("Copied " + plural(_items.length, "line") + " from " + (_sc.challanNo || "that challan") + " \u2014 nothing is saved until you press Create.")
         : "That challan has no product lines to copy \u2014 the client and site are filled in.");
       return;
     }
@@ -44973,7 +44971,7 @@ function viewCatalogue() {
             try { _svIns = softenerFor(cn); chSaltVisit(cn, no, saltBagsV, _svIns); } catch (eSv) { console.warn("[salt visit]", eSv); }
           }
           toast("Challan " + no + " created - pending approval." + (manualV ? " Book no " + manualV + " noted." : "") +
-                (saltBagsV > 0 && svcCallV === "yes" ? " " + saltBagsV + " bag(s) of salt written on " + (_svIns ? "his softener" : "his service record") + "." : ""));
+                (saltBagsV > 0 && svcCallV === "yes" ? " " + plural(saltBagsV, "bag") + " of salt written on " + (_svIns ? "his softener" : "his service record") + "." : ""));
           /* first-challan setup prompt (admin can set it; others get a reminder to ask admin) */
           if (firstSetup) {
             /* v6.9.274 - this challan's lines are ALREADY frozen at 0, because the preset is
@@ -45094,7 +45092,7 @@ function viewCatalogue() {
         if (changed.length) { ch4.altJson = JSON.stringify(changed); ch4.alteredBy = S.user; }
       }
       S.alt = null; S.modal = null;
-      toast(changed.length ? "Receipt in, with " + changed.length + " alteration(s)." : "Receipt in - full quantity.");
+      toast(changed.length ? "Receipt in, with " + plural(changed.length, "alteration") + "." : "Receipt in - full quantity.");
       render();
       /* Behind the receipt, never in front of it: the material has arrived whether or not Drive
          is reachable, so the challan says so immediately and the proof follows on its own. */
