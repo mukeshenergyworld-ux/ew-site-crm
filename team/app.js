@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.551";
+  var APP_VERSION = "6.9.552";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9632,7 +9632,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       (st.at ? ' on ' + esc(String(st.at).slice(0, 10)) : "") + '">finalised</span>' +
       /* v6.9.342 - and if it went in without a signed receipt, the card SAYS so and carries
          his reason. A quiet exception is one nobody can audit; a loud one is a decision. */
-      (st.noProof ? ' <span class="pill" style="background:#fef3c7;color:#92400e" ' +
+      /* v6.9.552 - his item 6: only while the receipt is STILL missing. Once the signed paper is
+         attached the pill goes; the reason stays on the stamp for the audit. */
+      ((st.noProof && !chProofAny(c).has) ? ' <span class="pill" style="background:#fef3c7;color:#92400e" ' +
         'title="Finalised with no signed receipt. Reason given: ' + esc(st.noProof) + '">' +
         'no paper</span>' : "");
   }
@@ -10444,8 +10446,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var p = chProofAny(c);
     var tw = p.rowId ? proofTwinsAll(p.rowId, c.id) : [];
     var h = '<h2>The same photograph, on two deliveries</h2>' +
-      '<p class="sub">The app compares the picture itself, not the writing on it. It is right ' +
-      'often enough to be worth asking about and wrong often enough that only you can settle it.</p>' +
+      '<p class="sub">The app compares the picture itself &mdash; the shape of the writing and the ' +
+      'edges of the paper, not the words. Two photographs of two different pages do not match; ' +
+      'the same photograph attached twice does. Only you can settle it.</p>' +
       /* measured, and said out loud: 105x140, 60x80, 54x96 pixels */
       '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:9px 12px">' +
       '<div class="meta" style="font-size:12.5px;color:#92400e">These previews are small &mdash; ' +
@@ -10580,18 +10583,29 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var img = new Image();
       img.onload = function () {
         try {
-          var cv = document.createElement("canvas"); cv.width = 8; cv.height = 8;
+          /* v6.9.552 - a DIFFERENCE hash, 16 rows of 16 neighbour comparisons (256 bits), in
+             place of the 8x8 average hash. Measured on his 187 photos: the average hash called
+             59 pairs "the same" and 57 of them were not - a white page on a grey floor is
+             mostly "brighter than the mean", so every receipt hashed alike. Comparing each
+             pixel with the one beside it keeps the writing and the paper's edges, so a page
+             with more lines on it is a different page. Plain luminance still - hue tells
+             nothing. The thumbnail's own bytes ride along: identical bytes are the same
+             picture whatever the hash says. */
+          var cv = document.createElement("canvas"); cv.width = 17; cv.height = 16;
           var cx = cv.getContext("2d");
-          cx.drawImage(img, 0, 0, 8, 8);
-          var px = cx.getImageData(0, 0, 8, 8).data, g = [], sum = 0;
-          for (var i = 0; i < 64; i++) {
-            /* plain luminance - the paper is grey on grey and hue tells us nothing */
-            var v = (px[i * 4] * 299 + px[i * 4 + 1] * 587 + px[i * 4 + 2] * 114) / 1000;
-            g.push(v); sum += v;
+          cx.drawImage(img, 0, 0, 17, 16);
+          var px = cx.getImageData(0, 0, 17, 16).data, bits = "";
+          for (var y = 0; y < 16; y++) {
+            for (var x = 0; x < 16; x++) {
+              var i1 = (y * 17 + x) * 4, i2 = i1 + 4;
+              var l1 = px[i1] * 299 + px[i1 + 1] * 587 + px[i1 + 2] * 114;
+              var l2 = px[i2] * 299 + px[i2 + 1] * 587 + px[i2 + 2] * 114;
+              bits += (l1 < l2 ? "1" : "0");
+            }
           }
-          var avg = sum / 64, bits = "";
-          for (var j = 0; j < 64; j++) bits += (g[j] >= avg ? "1" : "0");
-          _phash[String(r.id)] = bits; done++;
+          _phash[String(r.id)] = bits;
+          _pthumb[String(r.id)] = String(d.thumb || "").length + ":" + String(d.thumb || "").slice(-40);
+          done++;
         } catch (e) { }
         finish();
       };
@@ -10605,9 +10619,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) n++;
     return n;
   }
-  /* The proofs that are the SAME PICTURE as this one, on a different row. Four bits of
-     sixty-four: the same photograph re-encoded, not two photographs of similar paper. */
-  var PHASH_SAME = 4;
+  /* The proofs that are the SAME PICTURE as this one, on a different row. Ten bits of two
+     hundred and fifty-six (v6.9.552; was four of sixty-four): the same photograph re-encoded,
+     not two photographs of similar paper. On his book the two real twins sit at 0 and the
+     nearest false one at 49. */
+  var PHASH_SAME = 10;
+  var _pthumb = {};   /* v6.9.552 - length + tail of each thumbnail's bytes: identical = same picture */
+  function pSameBytes(a, b) { var x = _pthumb[String(a)], y = _pthumb[String(b)]; return !!(x && y && x === y); }
   /* ================= LOOK AT BOTH, AND SAY  (v6.9.358, 24 Aug 2026) =================
      HIS WORDS: "if showing this red mark show option to check and decide with click to view
      both preview and mark same or different one".
@@ -10668,7 +10686,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     proofRowsAll().forEach(function (r) {
       if (String(r.id) === String(rowId)) return;
       var h = pHashOf(r.id);
-      if (!h || pHashDist(mine, h) > PHASH_SAME) return;
+      if (!h) return;
+      if (!pSameBytes(rowId, r.id) && pHashDist(mine, h) > PHASH_SAME) return;   /* v6.9.552 */
       /* v6.9.358 - he has looked at these two and said they are different receipts. The machine
          does not get to insist. It stands until either photograph is replaced, at which point
          this pair no longer exists and the new one is judged on its own. */
@@ -21532,7 +21551,7 @@ function viewCatalogue() {
         /* v6.9.539 - his item 17, on the LIST where he photographed it: the old-hisab door,
            no paper strip, and his drawing read-only. */
         h += '<div class="card"><h3>' + esc(n) + (c.location ? ' <span class="pill teal">' + esc(c.location) + '</span>' : '') + '</h3>' +
-          hdLine(n, {}) + discDrawGrid(n) +
+          discDrawGrid(n) +   /* v6.9.552 - his item 7: no old-hisab door here; it lives on HISAB */
           '<div class="acts" style="margin-top:6px"><button class="btn sm ghost" data-act="disc-edit" data-n="' + esc(n) + '">Edit</button></div></div>';
       });
       return h;
@@ -21554,7 +21573,7 @@ function viewCatalogue() {
          This is the screen he meant: "as to check on single click what finalized at what rate". */
       /* v6.9.536 - his item 17: "open old hisab, attach a new one; attach paper not needed here".
          hdLine is the old-hisab door alone; the agreed-rates strip is on HISAB, where it belongs. */
-      hdLine(cl, {}) +
+      /* v6.9.552 - his item 7: the old-hisab door is not wanted on Discounts; HISAB keeps it */
       '<div class="empty" style="text-align:left;padding:6px 0 10px">Brand-wise discount for <b>' + esc(cl) + '</b>. Used by the quote builder, new challans and the billing screen.' +
       (anyPartner
         ? ' Under the discount row, set the incentive % for each of this client’s partners on that brand — each earns on the net (post-discount) sale.'
