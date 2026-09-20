@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.553";
+  var APP_VERSION = "6.9.554";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18061,6 +18061,51 @@ function viewCatalogue() {
   /* m_stage is a hidden field written by the stage chips, not typed - it has to be kept too, or
      tapping a brand rebuilds the form and throws away the stage he just answered. */
   var CH_FIELDS = ["m_loc", "m_client", "m_site", "m_assoc", "m_freight", "m_fto", "m_driver", "m_dmob", "m_veh", "m_disc", "m_discnote", "m_stage", "m_manual"];
+  /* ================= THE DRAFT SURVIVES  (v6.9.554, 20 Sep 2026) =================
+     A challan he had typed for Sanjay Ji - Maa Collection was on screen for four minutes and
+     then the tab was reloaded under him. Nothing had been journaled - save() runs only after
+     the number is minted - so the form was in memory only and it was gone. From now on the
+     draft of a NEW challan (the picked lines and every typed field) is written to this device
+     on every repaint and every keystroke while the form is open, and comes back on + New
+     challan, or from the banner. Cleared when the challan is created, or by Discard. */
+  function chDraftKey() { return "ew_chdraft_" + String(S.user || ""); }
+  document.addEventListener("input", function () { if (S.ch && el("m_client")) chDraftKeepSoon(); });
+  document.addEventListener("change", function () { if (S.ch && el("m_client")) chDraftKeepSoon(); });
+  var _chDraftT = null;
+  function chDraftKeep() {
+    if (!S.ch || S.ch.editId || !el("m_client")) return;
+    var f = keepSnapshot(CH_FIELDS);
+    var n = (S.ch.items || []).length;
+    if (!n && !String(f.m_client || "").trim()) return;     /* nothing typed yet - nothing to keep */
+    try { localStorage.setItem(chDraftKey(), JSON.stringify({ ch: S.ch, f: f, at: new Date().toISOString() })); } catch (e) { }
+  }
+  function chDraftKeepSoon() { clearTimeout(_chDraftT); _chDraftT = setTimeout(chDraftKeep, 250); }
+  function chDraftLoad() {
+    try { var d = JSON.parse(localStorage.getItem(chDraftKey()) || "null"); return (d && d.ch) ? d : null; } catch (e) { return null; }
+  }
+  function chDraftClear() { try { localStorage.removeItem(chDraftKey()); } catch (e) { } }
+  /* + New challan puts the unfinished one back, fields and all */
+  function chDraftOpen() {
+    var d = chDraftLoad();
+    S.chx = null;
+    if (!d) { S.ch = { brand: "", family: "", items: [] }; S.modal = modalChallan(); render(); return false; }
+    S.ch = d.ch;   /* the mint key stays: the same key asks for the SAME number, so a number half-given before the reload is not spent twice */
+    S.modal = modalChallan(); render();
+    try { restoreSnapshot(d.f); stageResync(); } catch (e) { }
+    toast("Your unfinished challan" + (d.f && d.f.m_client ? " for " + d.f.m_client : "") + " is back, exactly as you left it.");
+    return true;
+  }
+  function chDraftBanner() {
+    var d = chDraftLoad();
+    if (!d) return "";
+    var n = (d.ch.items || []).length, who = String((d.f || {}).m_client || "").trim();
+    return '<div class="card" style="border-color:#fbbf24;background:#fffbeb;padding:10px 12px">' +
+      '<h3 style="margin:0 0 3px;font-size:13.5px;color:#92400e">An unfinished challan is waiting on this device</h3>' +
+      '<div class="meta" style="font-size:12.5px;color:#92400e">' + (who ? 'For <b>' + esc(who) + '</b> &middot; ' : '') +
+      plural(n, "line") + ' &middot; last touched ' + esc(String(d.at || "").slice(11, 16)) + ' UTC. It was never sent to the server, so it is not on the challan log yet.</div>' +
+      '<div class="acts" style="margin-top:8px;gap:8px"><button class="btn sm" data-act="ch-draft-go" style="background:#b45309;border-color:#b45309">Continue it</button>' +
+      '<button class="btn sm ghost" data-act="ch-draft-drop" style="border-color:#fbbf24;color:#92400e">Discard it</button></div></div>';
+  }
   /* ================= NO FREIGHT ON THIS ONE?  (v6.9.366, 27 Aug 2026) =================
      HIS WORDS: "for every chllan created, if freight not mention ask while saving again".
 
@@ -19772,7 +19817,7 @@ function viewCatalogue() {
     var hq = hisabNotStamped().filter(function (c) {
       return seesAllClients() || isMineClient(c.customerName);
     }).sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
-    var h = chAppLink + '<div class="cards">' +
+    var h = chAppLink + chDraftBanner() + '<div class="cards">' +
       '<div class="stat ' + (by("Draft") ? "alert" : "") + '"><div class="n">' + by("Draft") + '</div><div class="l">Awaiting approval</div></div>' +
       /* v6.9.473 - IT WAS DRAWN QUIET. A four sat here for six weeks looking like a number
          rather than Rs 1,31,038 of material nobody had released. It alerts now, and it leads to
@@ -31438,6 +31483,7 @@ function viewCatalogue() {
     }
 
     /* duplicate entries, if there are any left to answer */
+    try { h += chDraftBanner(); } catch (e) { }   /* v6.9.554 */
     try { h += draftDashCard(); } catch (e) { console.warn("[draft] card:", e); }
     try { h += dupDashCard(); } catch (e) { console.warn("[dups] card:", e); }
     try { h += svcDupDashCard(); } catch (e) { console.warn("[dups] service card:", e); }
@@ -34918,6 +34964,7 @@ function viewCatalogue() {
       (seesAllClients() ? '<div class="stat"><div class="n">' + money(comm) + '</div><div class="l">Incentive owed</div></div>' : '') +
       '</div>';
 
+    try { h += chDraftBanner(); } catch (e) { }   /* v6.9.554 */
     try { h += draftDashCard(); } catch (e) { console.warn("[draft] card:", e); }
     try { h += dupDashCard(); } catch (e) { console.warn("[dups] card:", e); }
     try { h += svcDupDashCard(); } catch (e) { console.warn("[dups] service card:", e); }
@@ -37998,7 +38045,7 @@ function viewCatalogue() {
     try { agClearCache(); } catch (e) { }   /* one agent scan per paint, always fresh */
     _bgCache = null;                        /* brand groups rebuilt if the catalogue changed */
     var _fsnap = null; try { _fsnap = formSnap(); } catch (e) { }
-    try { renderCore(); try { formRestore(_fsnap); } catch (e) { } try { stageResync(); } catch (e) { } try { syncBanner(); } catch (e) { } }
+    try { renderCore(); try { formRestore(_fsnap); } catch (e) { } try { stageResync(); } catch (e) { } try { syncBanner(); } catch (e) { } try { chDraftKeep(); } catch (e) { } }   /* v6.9.554 */
     catch (err) {
       logCrash("render", err);
       try {
@@ -44192,9 +44239,9 @@ function viewCatalogue() {
       return;
     }
 
-    if (act === "ch-new") {
-      S.chx = null;
-      S.ch = { brand: "", family: "", items: [] }; S.modal = modalChallan(); render(); return; }
+    if (act === "ch-new") { chDraftOpen(); return; }   /* v6.9.554 - the unfinished one comes back first */
+    if (act === "ch-draft-go") { chDraftOpen(); return; }
+    if (act === "ch-draft-drop") { chDraftClear(); toast("Draft discarded. Nothing was ever sent to the server."); render(); return; }
     /* ---- v6.9.235: the two doors out of a client's hisab into the delivery forms ----
        Same forms, same save path, same draft-and-confirm. Only the starting values differ. */
     if (act === "hisab-ch" || act === "hisab-rt") {
@@ -45184,6 +45231,7 @@ function viewCatalogue() {
            cannot lose the row whatever the network does. */
         _chSaving = false;
         S.modal = null; S.ch = null; S.chx = null;
+        chDraftClear();   /* v6.9.554 - the number is ours and the journalled save follows: the draft has done its job */
         var ch = {
           id: "", createdBy: S.user, challanNo: no,
           customerId: cObj.id || "", customerName: cn,
