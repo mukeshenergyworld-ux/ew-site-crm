@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.557";
+  var APP_VERSION = "6.9.558";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -692,6 +692,39 @@
      IT HOOKS INTO api(), NOT INTO EACH BUTTON. Every call that carries a pdfBase64 is an
      upload, so every upload in the app is covered - the ones written today and the ones
      written next month, without anybody remembering to add a bar to them. */
+
+  /* ================= ONE DOOR FOR EVERY PDF  (20 Sep 2026) =================
+     Every PDF this app makes leaves through here. On a phone that can share a file it goes to
+     the share sheet - Print, WhatsApp, the printer's app - as ONE file, once; anywhere else it
+     downloads as it always did. A second press inside two seconds is ignored, so nothing can
+     ever produce two copies of one document. The WhatsApp-with-link paths keep their own
+     fallback download: a wa.me tab is already open there. */
+  var _pdfOutAt = 0;
+  function canShareFile() {
+    try {
+      if (!navigator.share || !navigator.canShare) return false;
+      return navigator.canShare({ files: [new File(["x"], "x.pdf", { type: "application/pdf" })] });
+    } catch (e) { return false; }
+  }
+  function pdfOut(doc, fname, title) {
+    var now = Date.now();
+    if (now - _pdfOutAt < 2000) return Promise.resolve(false);   /* the same press twice */
+    _pdfOutAt = now;
+    fname = String(fname || "document.pdf");
+    if (!canShareFile()) { doc.save(fname); return Promise.resolve(true); }
+    var file = null;
+    try { file = new File([doc.output("blob")], fname, { type: "application/pdf" }); } catch (e) { file = null; }
+    if (!file || !navigator.canShare({ files: [file] })) { doc.save(fname); return Promise.resolve(true); }
+    return navigator.share({ files: [file], title: String(title || fname.replace(/\.pdf$/i, "")) })
+      .then(function () { return true; })
+      .catch(function (e) {
+        /* his own Cancel on the sheet is not an error and gets no file; anything else downloads */
+        if (e && /abort/i.test(String(e.name))) return false;
+        doc.save(fname); return true;
+      });
+  }
+  /* the word on the button: what the tap will actually do on this device */
+  function pdfBtnLabel(base) { return canShareFile() ? "Print / share" : base; }
   var UP_SAY = { pdfHost: "Uploading the document", tgSend: "Sending to Telegram" };
   /* ================= WHOSE TURN ON THE WIRE  (v6.9.557, 20 Sep 2026) =================
      One choked uplink, one rule: a document upload owns the line while it runs, and everything
@@ -14097,7 +14130,7 @@ async function priceListPdf(brands) {
     doc.text("Prices are MRP inclusive of 18% GST. Subject to revision without notice.", L, 293);
     doc.text(i + " / " + n, Rt, 293, { align: "right" });
   }
-  doc.save(brands.join("_").replace(/[^A-Za-z0-9_]+/g, "") + "_Price_List.pdf");
+  pdfOut(doc, brands.join("_").replace(/[^A-Za-z0-9_]+/g, "") + "_Price_List.pdf");
   toast("Price list ready - " + n + " page" + (n > 1 ? "s" : ""));
 }
 
@@ -40652,7 +40685,7 @@ function viewCatalogue() {
       toast("Building the register\u2026");
       var _rp = clientRegisterPdf();
       if (!_rp) return;
-      _rp.then(function (d) { d.save("Client_register_" + today() + ".pdf"); })
+      _rp.then(function (d) { pdfOut(d, "Client_register_" + today() + ".pdf"); })
          .catch(function () { toast("Could not build the PDF."); });
       return;
     }
@@ -40968,7 +41001,7 @@ function viewCatalogue() {
       var qd = S.data.quotes.filter(function (x) { return x.id === id; })[0];
       if (!qd) return;
       toast("Building PDF...");
-      quotePdf(qd).then(function (d) { d.save(String(qd.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf"); });
+      quotePdf(qd).then(function (d) { pdfOut(d, String(qd.quoteNo).replace(/[^\w.-]/g, "_") + ".pdf"); });
       return;
     }
     /* the presentation deck - room by room, a page per product, MRP only */
@@ -40979,7 +41012,7 @@ function viewCatalogue() {
       S.modal = null; render();
       toast("Building the proposal - photographs take a moment...");
       quotePresPdf(qd2).then(function (d) {
-        d.save(presFileName(qd2));
+        pdfOut(d, presFileName(qd2));
         presLog(qd2, "downloaded");
       }).catch(function (e) { console.warn("[pres]", e); toast("Could not build the proposal PDF."); });
       return;
@@ -41181,7 +41214,7 @@ function viewCatalogue() {
       var _bfb = t.getAttribute("data-brand") || S.bf;
       toast("Building the " + _bfb + " follow-up list\u2026");
       bfPdf(_bfb).then(function (d) {
-        d.save("Brand_" + String(_bfb).replace(/[^\w.-]/g, "_") + "_followup_" + today() + ".pdf");
+        pdfOut(d, "Brand_" + String(_bfb).replace(/[^\w.-]/g, "_") + "_followup_" + today() + ".pdf");
       }).catch(function () { toast("Could not build the PDF."); });
       return;
     }
@@ -41501,7 +41534,7 @@ function viewCatalogue() {
       if (!_p) return;
       _p.then(function (d) {
         if (!d) return;
-        d.save("Pending_" + String(_ek).replace(/[^\w.-]/g, "_") + "_" + today() + ".pdf");
+        pdfOut(d, "Pending_" + String(_ek).replace(/[^\w.-]/g, "_") + "_" + today() + ".pdf");
       }).catch(function () { toast("Could not build the PDF on this device."); });
       return;
     }
@@ -41575,7 +41608,7 @@ function viewCatalogue() {
         ? "Building the full hisab and fetching the signed receipts\u2026"
         : (pAll ? "Building the full statement\u2026" : "Building the statement\u2026"));
       loadLogo().then(function () { return hisabPdf(pcl, pAll, pPer); })
-        .then(function (d) { d.save(pcl.replace(/[^\w.-]/g, "_") + (pWant ? "_hisab" : "_statement") + (pAll ? "_all" : "") + ".pdf"); })
+        .then(function (d) { pdfOut(d, pcl.replace(/[^\w.-]/g, "_") + (pWant ? "_hisab" : "_statement") + (pAll ? "_all" : "") + ".pdf"); })
         .catch(function () { toast("Could not build the PDF."); });
       return;
     }
@@ -42652,8 +42685,9 @@ function viewCatalogue() {
           });
         });
         loadLogo().then(function () { return commCertPdf(commCh, cDate, cEng); })
-          .then(function (d) { d.save("Commissioning_" + String(commCh.challanNo || "").replace(/[^\w.-]/g, "_") + ".pdf"); return warrantyCardPdf(commCh, cDate); })
-          .then(function (d) { d.save("Warranty_" + String(commCh.challanNo || "").replace(/[^\w.-]/g, "_") + ".pdf"); toast("Certificate + warranty card downloaded."); })
+          .then(function (d) { _pdfOutAt = 0; return pdfOut(d, "Commissioning_" + String(commCh.challanNo || "").replace(/[^\w.-]/g, "_") + ".pdf").then(function () { return warrantyCardPdf(commCh, cDate); }); })
+          .then(function (d) { _pdfOutAt = 0; return pdfOut(d, "Warranty_" + String(commCh.challanNo || "").replace(/[^\w.-]/g, "_") + ".pdf"); })
+          .then(function () { toast("Certificate + warranty card done."); })
           .catch(function () { toast("Saved, but PDF generation failed."); });
       })();
       return;
@@ -42665,10 +42699,10 @@ function viewCatalogue() {
       var fn = String(cch.challanNo || "").replace(/[^\w.-]/g, "_");
       if (act === "comm-cert") {
         toast("Building certificate...");
-        loadLogo().then(function () { return commCertPdf(cch, cd, ceng); }).then(function (d) { d.save("Commissioning_" + fn + ".pdf"); });
+        loadLogo().then(function () { return commCertPdf(cch, cd, ceng); }).then(function (d) { pdfOut(d, "Commissioning_" + fn + ".pdf"); });
       } else if (act === "comm-warr") {
         toast("Building warranty card...");
-        loadLogo().then(function () { return warrantyCardPdf(cch, cd); }).then(function (d) { d.save("Warranty_" + fn + ".pdf"); });
+        loadLogo().then(function () { return warrantyCardPdf(cch, cd); }).then(function (d) { pdfOut(d, "Warranty_" + fn + ".pdf"); });
       } else {
         var wcl = clientByName(cch.customerName) || {};
         var wnum = String(wcl.mobile || "").replace(/\D/g, ""); if (wnum.length === 10) wnum = "91" + wnum;
@@ -42733,7 +42767,7 @@ function viewCatalogue() {
       if (!_an) { toast("No client on this row."); return; }
       toast("Building the AMC sheet\u2026");
       loadLogo().then(function () { return amcPdf(_an); })
-        .then(function (d) { d.save("AMC_" + String(_an).replace(/[^\w.-]/g, "_") + "_" + today() + ".pdf"); })
+        .then(function (d) { pdfOut(d, "AMC_" + String(_an).replace(/[^\w.-]/g, "_") + "_" + today() + ".pdf"); })
         .catch(function (e) { toast("Could not build it: " + ((e && e.message) || "unknown")); });
       return;
     }
@@ -43037,7 +43071,7 @@ function viewCatalogue() {
     if (act === "lead-pdf") {
       toast("Building list...");
       loadLogo().then(function () { return leadsPdf(S.leadBrand); })
-        .then(function (d) { d.save("Leads_" + S.leadBrand.replace(/[^\w.-]/g, "_") + ".pdf"); });
+        .then(function (d) { pdfOut(d, "Leads_" + S.leadBrand.replace(/[^\w.-]/g, "_") + ".pdf"); });
       return;
     }
     if (act === "lead-send") {
@@ -43257,7 +43291,7 @@ function viewCatalogue() {
       var _psk = (t.getAttribute("data-k") === "exec") ? "exec" : "partner";
       toast("Building statement…");
       loadLogo().then(function () { return partnerStatementPdf(_psn, _psm, stmtShowPct(), _psk); })
-        .then(function (d) { d.save(String(_psn).replace(/[^\w.-]/g, "_") + "_incentive_" + _psm + ".pdf"); })
+        .then(function (d) { pdfOut(d, String(_psn).replace(/[^\w.-]/g, "_") + "_incentive_" + _psm + ".pdf"); })
         .catch(function () { toast("Could not build the statement PDF."); });
       return;
     }
@@ -43621,7 +43655,7 @@ function viewCatalogue() {
       if (act === "rc-pdf") {
         toast("Building the receipt...");
         loadLogo().then(function () { return receiptPdf(rp); })
-          .then(function (d) { d.save(rfn); toast("Receipt downloaded."); })
+          .then(function (d) { pdfOut(d, rfn); })
           .catch(function () { toast("Could not build the receipt. Try once more."); });
         return;
       }
@@ -43639,7 +43673,7 @@ function viewCatalogue() {
       var lc = t.getAttribute("data-n");
       toast("Building ledger...");
       loadLogo().then(function () { return ledgerPdf(lc); })
-        .then(function (d) { d.save("Ledger_" + lc.replace(/[^\w.-]/g, "_") + ".pdf"); });
+        .then(function (d) { pdfOut(d, "Ledger_" + lc.replace(/[^\w.-]/g, "_") + ".pdf"); });
       return;
     }
     if (act === "pay-wa") { payReminder(t.getAttribute("data-n"), t); return; }
@@ -45880,7 +45914,7 @@ function viewCatalogue() {
       if (!ch3) return;
       toast("Building PDF...");
       loadLogo().then(function () { return challanPdf(ch3, ch3.approvedBy || ""); })
-        .then(function (d) { d.save(String(ch3.challanNo).replace(/[^\w.-]/g, "_") + ".pdf"); });
+        .then(function (d) { pdfOut(d, String(ch3.challanNo).replace(/[^\w.-]/g, "_") + ".pdf"); });
       return;
     }
   });
