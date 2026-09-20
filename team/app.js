@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.555";
+  var APP_VERSION = "6.9.556";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -16519,6 +16519,31 @@ function viewCatalogue() {
     else if (oldBook) why.push("old-book balance still unpaid");
     return why.join(", ");
   }
+  /* v6.9.556 - the verdicts, sent by an admin's CRM once an hour so the Challan app can show the
+     same rule with the same words. Names and reasons only - never a figure. */
+  var _pgStoreAt = 0;
+  function passGateVerdicts() {
+    var out = {};
+    (S.data.clients || []).forEach(function (cl) {
+      var nm = String(cl.name || "").trim(); if (!nm) return;
+      var why = "";
+      try { why = passStrictWhy(nm); } catch (e) { why = ""; }
+      if (!why) return;                                   /* easy clients are simply absent */
+      var ex = String(cl.ownedBy || cl.createdBy || "").trim();
+      out[nm.toLowerCase()] = { why: why, ex: ex };
+    });
+    return out;
+  }
+  function passGateStoreOnce() {
+    if (!roleIs("admin")) return;
+    if (Date.now() - _pgStoreAt < 3600000) return;
+    _pgStoreAt = Date.now();
+    var v = null;
+    try { v = passGateVerdicts(); } catch (e) { return; }
+    api("passGateStore", { strict: v, at: new Date().toISOString() }, 20000).then(function (r) {
+      if (!(r && r.ok)) _pgStoreAt = 0;   /* not carried yet (before V131) - try again next open */
+    }).catch(function () { _pgStoreAt = 0; });
+  }
   function passGate(c) {
     if (!c) return { ok: false, why: "" };
     if (!canApprove() && !roleIs("sales")) return { ok: false, why: "Your role cannot pass a challan." };
@@ -19819,6 +19844,7 @@ function viewCatalogue() {
     var hq = hisabNotStamped().filter(function (c) {
       return seesAllClients() || isMineClient(c.customerName);
     }).sort(function (a, b) { return String(a.createdAt || "").localeCompare(String(b.createdAt || "")); });
+    try { setTimeout(passGateStoreOnce, 50); } catch (e) { }   /* v6.9.556 - off the paint */
     var h = chAppLink + chDraftBanner() + '<div class="cards">' +
       '<div class="stat ' + (by("Draft") ? "alert" : "") + '"><div class="n">' + by("Draft") + '</div><div class="l">Awaiting approval</div></div>' +
       /* v6.9.473 - IT WAS DRAWN QUIET. A four sat here for six weeks looking like a number
