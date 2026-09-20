@@ -146,13 +146,45 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.41.0";
+  var APP_VERSION = "1.42.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
   /* ==EW-CORE:BEGIN== built by tools/build_core.py — do not edit here, edit core/ew-core.js == */
 /* ==EWCORE:idb== The IndexedDB door. */
 /* ==EWCORE:idb== The IndexedDB door. */
+  /* ================= ONE DOOR FOR EVERY PDF  (20 Sep 2026) =================
+     Every PDF this app makes leaves through here. On a phone that can share a file it goes to
+     the share sheet - Print, WhatsApp, the printer's app - as ONE file, once; anywhere else it
+     downloads as it always did. A second press inside two seconds is ignored, so nothing can
+     ever produce two copies of one document. The WhatsApp-with-link paths keep their own
+     fallback download: a wa.me tab is already open there. */
+  var _pdfOutAt = 0;
+  function canShareFile() {
+    try {
+      if (!navigator.share || !navigator.canShare) return false;
+      return navigator.canShare({ files: [new File(["x"], "x.pdf", { type: "application/pdf" })] });
+    } catch (e) { return false; }
+  }
+  function pdfOut(doc, fname, title) {
+    var now = Date.now();
+    if (now - _pdfOutAt < 2000) return Promise.resolve(false);   /* the same press twice */
+    _pdfOutAt = now;
+    fname = String(fname || "document.pdf");
+    if (!canShareFile()) { doc.save(fname); return Promise.resolve(true); }
+    var file = null;
+    try { file = new File([doc.output("blob")], fname, { type: "application/pdf" }); } catch (e) { file = null; }
+    if (!file || !navigator.canShare({ files: [file] })) { doc.save(fname); return Promise.resolve(true); }
+    return navigator.share({ files: [file], title: String(title || fname.replace(/\.pdf$/i, "")) })
+      .then(function () { return true; })
+      .catch(function (e) {
+        /* his own Cancel on the sheet is not an error and gets no file; anything else downloads */
+        if (e && /abort/i.test(String(e.name))) return false;
+        doc.save(fname); return true;
+      });
+  }
+  /* the word on the button: what the tap will actually do on this device */
+  function pdfBtnLabel(base) { return canShareFile() ? "Print / share" : base; }
   function idbOpen() {
     if (_idbP) return _idbP;
     _idbP = new Promise(function (res) {
@@ -3630,7 +3662,7 @@ function cancelMap() {
     var r = rowFor(name); if (!r) return;
     toast("Building…");
     statementPdf(r).then(function (doc) {
-      doc.save(String(r.name).replace(/[^\w.-]+/g, "_") + "_hisab.pdf");
+      pdfOut(doc, String(r.name).replace(/[^\w.-]+/g, "_") + "_hisab.pdf", "Hisab " + String(r.name || ""));
     }).catch(function () { toast("Could not build the statement — check your signal and try once more."); });
   }
 
