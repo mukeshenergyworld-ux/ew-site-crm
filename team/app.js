@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.575";
+  var APP_VERSION = "6.9.576";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -25195,36 +25195,44 @@ function viewCatalogue() {
      A receipt sheet since 6.9.476 is A4 landscape with the photograph in a fixed column:
      x 153-281 mm, y 47-182 mm of 297 x 210. From Drive's flat preview of page one, cut that
      column, then trim it to the photograph's own edges. Portrait (older) sheets: null. */
+  /* v6.9.576 - ANY LAYOUT, NOT ONLY LANDSCAPE. His Manish Singla PDF (13/09/2026/101) still showed the
+     challan twice: that receipt was made before 6.9.476, on a PORTRAIT sheet with the photograph
+     under the table, and 6.9.575 only knew the landscape column. Now the photograph is FOUND, not
+     assumed: on a 400-px copy, the tallest band of rows with more than a tenth of non-white is the
+     photograph (the header bar and the facts box are short; table rows are white or a paler grey
+     than 246), and within that band the columns more than half non-white are its sides. It must be
+     at least 18% of the sheet tall and 12% wide, or nothing is cut. Tried first on all three of his
+     screenshots: 143 and 123 (landscape) and 101 (portrait) each came out as the signed paper alone. */
   function rcptCropPreview(pg) {
     return new Promise(function (res) {
-      if (!pg || !pg.src || !(pg.w > pg.h * 1.2)) return res(null);
+      if (!pg || !pg.src) return res(null);
       var im = new Image();
       im.onload = function () {
         try {
-          var W = im.width, H = im.height;
-          var sx = Math.round(W * 153 / 297), sy = Math.round(H * 47 / 210);
-          var sw = Math.round(W * 128 / 297), sh = Math.round(H * 135 / 210);
-          var cv = document.createElement("canvas"); cv.width = sw; cv.height = sh;
-          var cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, sw, sh);
-          cx.drawImage(im, sx, sy, sw, sh, 0, 0, sw, sh);
-          /* trim the near-white margin: the photograph is the one large non-white block */
-          var d = cx.getImageData(0, 0, sw, sh).data;
-          /* "ink" is anything not paper-white: a photographed sheet is grey-white, the page is 255.
-             Tried on his own screenshot of 143's receipt first: darkness alone lost the photo,
-             whose paper is light; any channel under 246 found it to the pixel. Every 2nd pixel is
-             read, so a quarter of the row is 1/8 of the width in samples. */
-          var ink = function (x, y) { var i = (y * sw + x) * 4; return Math.min(d[i], d[i + 1], d[i + 2]) < 246; };
-          var rowHas = function (y) { var n = 0; for (var x = 0; x < sw; x += 2) if (ink(x, y)) n++; return n > sw * 0.125; };
-          var colHas = function (x, y0, y1) { var n = 0; for (var y = y0; y < y1; y += 2) if (ink(x, y)) n++; return n > (y1 - y0) * 0.125; };
-          var t = 0, b = sh - 1, l = 0, r = sw - 1;
-          while (t < sh && !rowHas(t)) t++;
-          while (b > t && !rowHas(b)) b--;
-          while (l < sw && !colHas(l, t, b)) l++;
-          while (r > l && !colHas(r, t, b)) r--;
-          if (b - t < sh * 0.2 || r - l < sw * 0.2) return res(null);   /* nothing that looks like a photograph */
-          var out = document.createElement("canvas"); out.width = r - l + 1; out.height = b - t + 1;
-          out.getContext("2d").drawImage(cv, l, t, out.width, out.height, 0, 0, out.width, out.height);
-          res({ src: out.toDataURL("image/jpeg", 0.8), w: out.width, h: out.height });
+          var W = im.width, H = im.height, sc = 400 / W, w = 400, h = Math.max(1, Math.round(H * sc));
+          var cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+          var cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, w, h);
+          cx.drawImage(im, 0, 0, w, h);
+          var d = cx.getImageData(0, 0, w, h).data;
+          var ink = function (x, y) { var i = (y * w + x) * 4; return Math.min(d[i], d[i + 1], d[i + 2]) < 246; };
+          var best = null, st = -1, y, x;
+          for (y = 0; y <= h; y++) {
+            var on = false;
+            if (y < h) { var n = 0; for (x = 0; x < w; x++) if (ink(x, y)) n++; on = n > w * 0.10; }
+            if (on && st < 0) st = y;
+            if (!on && st >= 0) { if (!best || (y - 1 - st) > (best[1] - best[0])) best = [st, y - 1]; st = -1; }
+          }
+          if (!best || best[1] - best[0] < h * 0.18) return res(null);
+          var t = best[0], b = best[1], l = -1, r = -1;
+          for (x = 0; x < w; x++) {
+            var m = 0; for (y = t; y <= b; y++) if (ink(x, y)) m++;
+            if (m > (b - t + 1) * 0.5) { if (l < 0) l = x; r = x; }
+          }
+          if (l < 0 || r - l < w * 0.12) return res(null);
+          var X = Math.floor(l / sc), Y = Math.floor(t / sc), OW = Math.ceil((r - l + 1) / sc), OH = Math.ceil((b - t + 1) / sc);
+          var out = document.createElement("canvas"); out.width = OW; out.height = OH;
+          out.getContext("2d").drawImage(im, X, Y, OW, OH, 0, 0, OW, OH);
+          res({ src: out.toDataURL("image/jpeg", 0.8), w: OW, h: OH });
         } catch (e) { res(null); }
       };
       im.onerror = function () { res(null); };
@@ -25234,12 +25242,17 @@ function viewCatalogue() {
   /* a record with no photograph whose first page is a landscape preview gets one cut from it */
   function rcptUpgrade(key, rec) {
     if (!rec || !rec.pages || !rec.pages.length || rcptPhotos(rec).length) return Promise.resolve(rec);
-    return rcptCropPreview(rec.pages[0]).then(function (ph) {
-      if (!ph) return rec;
-      rec.pages[0].photo = ph;
-      try { rcptKeep(key, rec); } catch (e) { }
-      return rec;
-    });
+    /* v6.9.576 - every page in turn: before 6.9.281 the photograph sat on the SECOND sheet */
+    var at = function (i) {
+      if (i >= rec.pages.length) return Promise.resolve(rec);
+      return rcptCropPreview(rec.pages[i]).then(function (ph) {
+        if (!ph) return at(i + 1);
+        rec.pages[i].photo = ph;
+        try { rcptKeep(key, rec); } catch (e) { }
+        return rec;
+      });
+    };
+    return at(0);
   }
   function receiptImage(c) {
     var r = chProofAny(c);
