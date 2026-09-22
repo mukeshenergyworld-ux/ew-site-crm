@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.576";
+  var APP_VERSION = "6.9.577";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9357,6 +9357,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function proofMap() {
     if (_prfCache) return _prfCache;
     var m = {};
+    var pics = {};   /* v6.9.577 - the photograph on its own, filed later for older receipts */
+    (S.data.audit || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "challan:proofpic") return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (d.url && d.pic) pics[String(d.url)] = String(d.pic);
+    });
     (S.data.audit || []).forEach(function (r) {
       if (!r || String(r.action || "") !== "challan:proof") return;
       var d = {};
@@ -9382,7 +9388,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           /* v6.9.352 - the AUDIT ROW's own id, so the fingerprint cache can be keyed by the
              row rather than by the challan. Two proofs on one challan are two rows and two
              fingerprints; keying by challan would lose the older one. */
-          rowId: String(r.id || "")
+          rowId: String(r.id || ""),
+          /* v6.9.577 - the photograph alone: on the row since today, or filed later for older ones */
+          pic: String(d.pic || pics[String(d.url || "")] || "")
         };
       }
     });
@@ -10696,7 +10704,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var p = challanProof(c.id);
     if (!p) return { has: false, queued: false, url: "", thumb: "", by: "", tg: "", replaces: "", rowId: "" };
     return { has: true, queued: false, url: p.url || "", thumb: p.thumb || "", by: p.by || "",
-             tg: p.tg || "", replaces: p.replaces || "", rowId: p.rowId || "" };
+             tg: p.tg || "", replaces: p.replaces || "", rowId: p.rowId || "", pic: p.pic || "" };
   }
   /* v6.9.335 - THE MIRROR YOU CAN SEE.
      "we can easily delete old receipts when required and have backup at telegram" - and then
@@ -11520,12 +11528,29 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
             function (err) { clear(); throw err; });
   }
 
+  /* v6.9.577 - the photograph on its own, ~150 KB, for the hisab PDF. Never throws; "" on failure. */
+  function rcptPicUp(b64jpg, fname, meta) {
+    if (!b64jpg) return Promise.resolve("");
+    return prfReencode(b64jpg, { w: 1100, q: 0.6 }).then(function (small) {
+      if (!small) return "";
+      return api("pdfHost", { pdfBase64: small, filename: String(fname || "receipt").replace(/\.pdf$/i, "") + "-photo.jpg", mime: "image/jpeg" })
+        .then(function (j) { return (j && j.ok && j.url) ? String(j.url) : ""; }, function () { return ""; });
+    }).catch(function () { return ""; });
+  }
   function prfSend(e) {
+    var _picP = null;
     return prfPost(e).then(function (r) {
       if (!r || !r.ok || !r.url) {
         prfMark(e.pk, (r && r.error) ? String(r.error) : "the server did not return a link for the document");
         return false;
       }
+      /* v6.9.577 - the document is up; now the photograph alone. A failure here is only a slower
+         statement later, never a receipt held back. */
+      var _src = (prfPhotoList(e) || [])[0] || e.photo || "";
+      _picP = rcptPicUp(_src, e.fname);
+      return _picP.then(function (pic) { r.pic = pic; return r; });
+    }).then(function (r) {
+      if (r === false) return false;
       /* The audit id is minted ONCE, when the proof is queued, and reused on every retry - so a
          proof that takes three attempts still leaves exactly one row on the sheet. */
       return save("audit", {
@@ -11545,7 +11570,9 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
              Nothing is ever deleted - the wrong receipt becomes history, not a hole. */
           replaces: String(e.replaces || ""),
           /* v6.9.212 - the 2-3 KB picture of the paper, filed with the proof itself. */
-          thumb: String(e.thumb || "")
+          thumb: String(e.thumb || ""),
+          /* v6.9.577 - the photograph alone, sharp, a third of the document's bytes */
+          pic: String(r.pic || "")
         }), ip: ""
       }, true).then(function () { prfDrop(e.pk); return true; });
     }).catch(function (err) {
@@ -25223,12 +25250,21 @@ function viewCatalogue() {
             if (!on && st >= 0) { if (!best || (y - 1 - st) > (best[1] - best[0])) best = [st, y - 1]; st = -1; }
           }
           if (!best || best[1] - best[0] < h * 0.18) return res(null);
-          var t = best[0], b = best[1], l = -1, r = -1;
-          for (x = 0; x < w; x++) {
-            var m = 0; for (y = t; y <= b; y++) if (ink(x, y)) m++;
-            if (m > (b - t + 1) * 0.5) { if (l < 0) l = x; r = x; }
+          var t = best[0], b = best[1], l = -1, r = -1, cs = -1;
+          /* v6.9.577 - the LONGEST RUN of photo-like columns (over 70% non-white), not everything
+             from the first to the last: on 146 the table's shaded rows passed the old test and the
+             cut took the table with the photograph */
+          for (x = 0; x <= w; x++) {
+            var m = 0; if (x < w) for (y = t; y <= b; y++) if (ink(x, y)) m++;
+            var onC = x < w && m > (b - t + 1) * 0.7;
+            if (onC && cs < 0) cs = x;
+            if (!onC && cs >= 0) { if (l < 0 || (x - 1 - cs) > (r - l)) { l = cs; r = x - 1; } cs = -1; }
           }
           if (l < 0 || r - l < w * 0.12) return res(null);
+          /* and the rows re-tightened inside those columns */
+          var t2 = -1, b2 = -1;
+          for (y = t; y <= b; y++) { var k2 = 0; for (x = l; x <= r; x++) if (ink(x, y)) k2++; if (k2 > (r - l + 1) * 0.7) { if (t2 < 0) t2 = y; b2 = y; } }
+          if (t2 >= 0) { t = t2; b = b2; }
           var X = Math.floor(l / sc), Y = Math.floor(t / sc), OW = Math.ceil((r - l + 1) / sc), OH = Math.ceil((b - t + 1) / sc);
           var out = document.createElement("canvas"); out.width = OW; out.height = OH;
           out.getContext("2d").drawImage(im, X, Y, OW, OH, 0, 0, OW, OH);
@@ -25254,6 +25290,20 @@ function viewCatalogue() {
     };
     return at(0);
   }
+  var _picFiling = {};
+  function rcptPicBackfill(c, r, pp) {
+    var ph = null; (pp || []).some(function (p) { if (p && p.photo && p.photo.src) { ph = p.photo; return true; } return false; });
+    if (!ph || !r.url || _picFiling[r.url]) return;
+    _picFiling[r.url] = 1;
+    var b64 = String(ph.src).split(",")[1] || "";
+    rcptPicUp(b64, "RECEIPT-" + String(c.challanNo || c.id).replace(/[^\w.-]+/g, "-") + ".pdf").then(function (pic) {
+      if (!pic) return;
+      save("audit", { id: "PP-" + Date.now() + "-" + Math.floor(Math.random() * 1000000), createdAt: new Date().toISOString(),
+        actor: S.user || "", action: "challan:proofpic", target: String(c.challanNo || "") + " / " + String(c.customerName || ""),
+        detail: JSON.stringify({ chId: c.id, url: r.url, pic: pic, why: "the photograph alone, cut from the filed document once, for fast statements" }), ip: "" }, true);
+      _prfCache = null;
+    });
+  }
   function receiptImage(c) {
     var r = chProofAny(c);
     if (!r.has || !r.url) return Promise.resolve(null);
@@ -25264,6 +25314,9 @@ function viewCatalogue() {
     /* THE FILE FIRST, the preview only as a fallback. rcptUrls has always listed both; the
        order was preview-first, which is what turned a two-page document into one page. */
     var tries = rcptUrls(key).slice().reverse();
+    /* v6.9.577 - THE PHOTOGRAPH ALONE FIRST, when there is one: a third of the bytes, no pdf.js,
+       nothing to cut, never the challan twice. The document stays the fallback. */
+    if (r.pic) tries = rcptUrls(r.pic).slice().reverse().concat(tries);
     var attempt = function (n) {
       if (n >= tries.length) { RCPT_IMG[key] = null; return Promise.resolve(null); }
       var isFile = String(tries[n]).indexOf("export=download") >= 0;
@@ -25277,6 +25330,9 @@ function viewCatalogue() {
             if (!pp || !pp.length) return attempt(n + 1);
             RCPT_IMG[key] = { pages: pp, whole: true };
             rcptKeep(key, RCPT_IMG[key]);
+            /* v6.9.577 - an older receipt with no photograph of its own gets one now, once: the
+               photograph pdf.js found inside the file, filed beside it for every statement after */
+            try { if (!r.pic) rcptPicBackfill(c, r, pp); } catch (e) { }
             return RCPT_IMG[key];
           });
         }
