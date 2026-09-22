@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.565";
+  var APP_VERSION = "6.9.566";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18772,9 +18772,11 @@ function viewCatalogue() {
       /* v6.9.496 - "reduce gap between date and client". It printed 18/09/2026; the year of a
          delivery in the current book is never in doubt, and two digits of it buy the width that
          puts the balance on screen beside the amount. The full date is on the row's own card. */
-      '<td style="' + regCell(";padding-right:3px;white-space:nowrap") + '">' + esc(regDMY(regDate(c)).replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c) +
-        /* v6.9.560 - his words: "put finalised button in between date and client, there is empty space" */
-        (regDone ? '' : ' ' + hisabAddBtn(c)) + '</td>' +
+      '<td style="' + regCell(";padding-right:3px;white-space:nowrap") + '">' + esc(regDMY(regDate(c)).replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c) + '</td>' +
+      /* v6.9.566 - his words: "move HISAB column in between date and client to make it compact".
+         The one Finalise button (6.9.560/564) lives here now; once finalised, the stamp and day. */
+      '<td style="' + regCell(";white-space:nowrap") + (regDone ? regStruck : "") + '">' + (inHisab(c) ? hisabStampPill(c) + regDay((hisabStamp(c) || {}).at) :
+        (hisabAddBtn(c) || '<span style="color:#b45309;font-size:12px">not finalised</span>')) + '</td>' +
       '<td style="' + regCell(";max-width:170px;overflow:hidden;text-overflow:ellipsis") + '">' +
         '<a href="#" data-act="ch-hisab" data-cl="' + esc(c.customerName || "") + '" ' +
         'style="font-weight:700;color:#0b3b36;text-decoration:none;white-space:nowrap" title="' +
@@ -18808,9 +18810,6 @@ function viewCatalogue() {
                 ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" ' +
                   'style="padding:1px 8px;font-size:12px;font-weight:700;background:#fff;color:#b45309;border:1px solid #b45309;border-radius:6px">Attach</button>'
                 : '<span style="color:#b45309">none</span>')) + '</td>' +
-      '<td style="' + regCell() + (regDone ? regStruck : "") + '">' + (inHisab(c) ? hisabStampPill(c) + regDay((hisabStamp(c) || {}).at) :
-        /* v6.9.564 - ONE Finalise per row, beside the date (his ask). This column only says the state. */
-        '<span style="color:#b45309;font-size:12px">not finalised</span>') + '</td>' +
       '<td style="' + regCell(";text-align:right;color:" + (over ? "#b91c1c" : "#64748b")) + '">' +
         (lim > 0 ? (over ? '<b>' + moneySgn(lim) + '</b> <span style="font-size:12px">over</span>' : moneySgn(lim))
                  : '<span style="font-size:12px">not set</span>') + '</td></tr>';
@@ -18841,9 +18840,10 @@ function viewCatalogue() {
        columns and a sideways scroll away from the figure it follows from, on a table that
        scrolls horizontally on a phone - so "what did this delivery cost" and "what does he owe
        now" were never on screen together. */
-    return '<tr style="background:#0b3b36">' + TH("#") + TH("DATE") + TH("CLIENT") + TH("CHALLAN NO") +
+    /* v6.9.566 - HISAB sits between the date and the client (his ask), not at the far right */
+    return '<tr style="background:#0b3b36">' + TH("#") + TH("DATE") + TH("HISAB") + TH("CLIENT") + TH("CHALLAN NO") +
       TH("AMOUNT", 1) + TH("BALANCE AFTER", 1) + TH("MADE BY") + TH("PASSED BY") + TH("RECEIPT") +
-      TH("HISAB") + TH("LIMIT", 1) + '</tr>';
+      TH("LIMIT", 1) + '</tr>';
   }
 
   /* ===== DRIVERS & FREIGHT  (v6.9.528, 19 September 2026) - A PORT FROM CHALLAN 1.40.0 =====
@@ -19131,7 +19131,7 @@ function viewCatalogue() {
       (hidden ? ' · ' + hidden + ' belong to another executive' : '') +
       (filt ? ' · filtered, so gaps are hidden' : '') + '</span></div>' +
       (shown || (!filt && R.line.length)
-        ? regSwipe("the balance, made by, passed by, receipt, hisab and limit") +
+        ? regSwipe("the balance, made by, passed by, receipt and limit") +
           '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
           regHead() + body + '</table></div>'
         : '<div class="empty">Nothing on the series answers that filter.</div>') + '</div>';
@@ -19146,7 +19146,7 @@ function viewCatalogue() {
       '<b>client code / date / count</b>, like ATUL4000/200726/001 &mdash; so they carry no place on the ' +
       'running series and no gap can be read from them. They are every bit as real; they are just ' +
       'a different book. Newest first.</div>' +
-      (on ? regSwipe("the balance, made by, passed by, receipt, hisab and limit") + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
+      (on ? regSwipe("the balance, made by, passed by, receipt and limit") + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
             regHead() + ob + '</table></div>'
           : '<div class="empty">Nothing in the old book answers that filter.</div>') + '</div>';
 
