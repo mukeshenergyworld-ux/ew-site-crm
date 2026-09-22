@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.578";
+  var APP_VERSION = "6.9.579";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -729,8 +729,53 @@
       if (tc) { try { doc.setTextColor(tc); } catch (e) { doc.setTextColor(0, 0, 0); } }
     } catch (e) { }
   }
+  /* ================= COPY A LINK INSTEAD OF SENDING THE FILE  (v6.9.579) ================= */
+  function pdfLinkText(u, fname, title) { return String(title || String(fname || "").replace(/\.pdf$/i, "") || "Document") + "\n" + u; }
+  function pdfLinkSheet(txt) {
+    return askSheet({ title: "The link is ready", sub: "Tap Copy, then paste it in WhatsApp.",
+      body: '<div style="font-size:12.5px;word-break:break-all;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px">' + esc(txt).replace(/\n/g, "<br>") + '</div>',
+      yes: "Copy", no: "Close" }).then(function (yes) {
+      if (!yes) return false;
+      try { return navigator.clipboard.writeText(txt).then(function () { toast("Link copied \u2014 paste it in WhatsApp."); return true; }, function () { toast("This phone would not copy it \u2014 press and hold the link to copy."); return false; }); }
+      catch (e) { toast("This phone would not copy it \u2014 press and hold the link to copy."); return false; }
+    });
+  }
+  function pdfLinkCopy(doc, fname, title) {
+    var hostP = doc._hostUrl ? Promise.resolve(doc._hostUrl) : Promise.resolve().then(function () {
+      var b64 = doc.output("datauristring").split(",")[1];
+      return api("pdfHost", { pdfBase64: b64, filename: fname }).then(function (r) {
+        if (r && r.ok && r.url) { doc._hostUrl = String(r.url); return doc._hostUrl; }
+        throw new Error((r && r.error) || "the server did not return a link");
+      });
+    });
+    toast(doc._hostUrl ? "Copying the link\u2026" : "Uploading the PDF for its link\u2026");
+    var fail = function (e) { toast("Could not make a link: " + String((e && e.message) || e) + ". Use Print / share instead."); return false; };
+    /* the clipboard is written INSIDE the tap, with the text still coming - Safari allows that */
+    try {
+      if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        var item = new ClipboardItem({ "text/plain": hostP.then(function (u) { return new Blob([pdfLinkText(u, fname, title)], { type: "text/plain" }); }) });
+        return navigator.clipboard.write([item]).then(function () { toast("Link copied \u2014 paste it in WhatsApp; it shows the preview."); return true; },
+          function () { return hostP.then(function (u) { return pdfLinkSheet(pdfLinkText(u, fname, title)); }, fail); });
+      }
+    } catch (e) { }
+    return hostP.then(function (u) { return pdfLinkSheet(pdfLinkText(u, fname, title)); }, fail);
+  }
+  function pdfOutChoose(doc, fname, title) {
+    return chooseSheet({ title: "Your PDF is ready", sub: esc(String(fname || "")),
+      choices: [
+        { v: "share", label: pdfBtnLabel("Download"), note: "The file itself, from this device" },
+        { v: "link", label: "Copy link for WhatsApp", note: "Uploaded once. Paste it in any chat \u2014 WhatsApp shows the preview." }
+      ], cancel: "Not now" }).then(function (v) {
+      if (v === "share") return pdfOut(doc, fname, title);
+      if (v === "link") return pdfLinkCopy(doc, fname, title);
+      return false;
+    });
+  }
+  window.EW_pdfChoose = pdfOutChoose;
   function pdfOut(doc, fname, title) {
     pdfDlStamp(doc);   /* 6.9.578 - who took it, and when */
+    /* 6.9.579 - where the app offers it (the CRM), the choice first: the file, or a link to paste */
+    if (typeof window !== "undefined" && window.EW_pdfChoose && doc && !doc._chosen) { doc._chosen = true; return window.EW_pdfChoose(doc, fname, title); }
     var now = Date.now();
     if (now - _pdfOutAt < 2000) return Promise.resolve(false);   /* the same press twice */
     _pdfOutAt = now;
