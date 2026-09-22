@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.566";
+  var APP_VERSION = "6.9.567";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2574,6 +2574,30 @@ window.addEventListener("beforeunload", function (ev) {
   /* v6.9.565 - THE OWNER'S DISCOUNT BOXES ON THE FINALISE SHEET, shown as they are typed: each
      line's rate and amount, the goods, and - through the one existing painter - the delivery
      total and what the client will owe after it. Nothing is saved from here. */
+  /* v6.9.567 - the brand split on the finalise sheet; for the owner, one discount box per brand */
+  function hsbBrandBlock(priced, edit) {
+    var bs = brandSplit(priced);
+    if (!bs.length) return "";
+    var td = 'padding:5px 6px;text-align:right';
+    return '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+      '<tr style="color:#64748b;text-align:right"><th style="text-align:left;font-weight:600;padding:3px 6px 5px 0">Brand</th>' +
+      '<th style="font-weight:600;padding:3px 6px 5px">Items</th><th style="font-weight:600;padding:3px 6px 5px">MRP</th>' +
+      '<th style="font-weight:600;padding:3px 6px 5px">Disc</th><th style="font-weight:600;padding:3px 0 5px 6px">Amount</th></tr>' +
+      bs.map(function (b, n) {
+        var dTxt = b.job ? '&mdash;' : (b.disc == null ? 'mixed' : b.disc + '%');
+        return '<tr style="border-top:1px solid #e2e8f0">' +
+          '<td style="padding:5px 6px 5px 0;font-weight:700">' + esc(b.name) + '</td>' +
+          '<td style="' + td + '">' + b.n + '</td>' +
+          '<td style="' + td + ';color:#64748b">' + money(b.mrp) + '</td>' +
+          '<td style="' + td + ';font-weight:700;color:#0f766e;white-space:nowrap">' +
+            (edit && !b.job
+              ? '<input data-bdisc="' + n + '" data-bname="' + esc(b.name) + '" data-was="' + (b.disc == null ? '' : b.disc) + '" inputmode="decimal" ' +
+                'value="' + (b.disc == null ? '' : esc(String(b.disc))) + '" placeholder="mixed" aria-label="Discount on ' + esc(b.name) + '" ' +
+                'style="width:64px;min-height:44px;padding:4px 6px;text-align:right;font-weight:700;font-size:13px;color:#0f766e"/>%'
+              : dTxt) + '</td>' +
+          '<td id="hsbb_' + n + '" style="' + td + ';padding-right:0;font-weight:700">' + money(b.amt) + '</td></tr>';
+      }).join("") + '</table></div>';
+  }
   function hsbDiscVal(inp) {
     var v = Number(String(inp.value || "").replace(/[^0-9.]/g, ""));
     if (!isFinite(v) || String(inp.value || "").trim() === "") return null;
@@ -2582,20 +2606,28 @@ window.addEventListener("beforeunload", function (ev) {
   function hsbDiscPaint() {
     var rows = document.querySelectorAll("tr[data-hl]");
     if (!rows.length) return;
-    var goods = 0;
+    var goods = 0, bAmt = {}, bBox = {};
+    Array.prototype.forEach.call(document.querySelectorAll("[data-bdisc]"), function (inp) {
+      bBox[inp.getAttribute("data-bdisc")] = inp;
+      var was = inp.getAttribute("data-was"), d = hsbDiscVal(inp);
+      inp.style.background = (d != null && String(d) !== was) ? "#fef9c3" : "";
+    });
     Array.prototype.forEach.call(rows, function (r) {
-      var inp = r.querySelector("[data-dix]");
-      if (!inp) { goods += Number(r.getAttribute("data-amt")) || 0; return; }
-      var d = hsbDiscVal(inp); if (d == null) d = Number(inp.getAttribute("data-was")) || 0;
-      var rate = Number(inp.getAttribute("data-rate")) || 0, qty = Number(inp.getAttribute("data-qty")) || 0;
+      var bn = r.getAttribute("data-bn"), inp = bBox[bn];
+      var amt0 = Number(r.getAttribute("data-amt")) || 0;
+      if (r.getAttribute("data-job") || !inp) { goods += amt0; bAmt[bn] = (bAmt[bn] || 0) + amt0; return; }
+      var was = Number(r.getAttribute("data-was")) || 0;
+      var d = hsbDiscVal(inp); if (d == null) d = was;   /* an empty brand box leaves its lines as they were */
+      var rate = Number(r.getAttribute("data-rate")) || 0, qty = Number(r.getAttribute("data-qty")) || 0;
       var dr = Math.round(rate * (1 - d / 100)), amt = qty * dr;
-      var ix = inp.getAttribute("data-dix");
-      var rc = document.getElementById("hsbr_" + ix), ac = document.getElementById("hsba_" + ix);
+      var ix = r.getAttribute("data-hl");
+      var rc = document.getElementById("hsbr_" + ix), ac = document.getElementById("hsba_" + ix), dc = document.getElementById("hsbd_" + ix);
       if (rc) rc.textContent = money(dr);
       if (ac) ac.textContent = money(amt);
-      inp.style.background = (d !== Number(inp.getAttribute("data-was"))) ? "#fef9c3" : "";
-      goods += amt;
+      if (dc) { dc.textContent = d + "%"; dc.style.background = d !== was ? "#fef9c3" : ""; }
+      goods += amt; bAmt[bn] = (bAmt[bn] || 0) + amt;
     });
+    Object.keys(bAmt).forEach(function (bn) { var e = document.getElementById("hsbb_" + bn); if (e) e.textContent = money(bAmt[bn]); });
     var gEl = document.getElementById("hsb_goods");
     var frt = gEl ? (Number(gEl.getAttribute("data-frt")) || 0) : 0;
     if (gEl) gEl.textContent = money(goods);
@@ -2642,7 +2674,7 @@ window.addEventListener("beforeunload", function (ev) {
       return;
     }
     if (t && t.id === "inc_q") { incFilter(); return; }
-    if (t && t.getAttribute && t.getAttribute("data-dix") != null) { hsbDiscPaint(); return; }   /* v6.9.565 */
+    if (t && t.getAttribute && t.getAttribute("data-bdisc") != null) { hsbDiscPaint(); return; }   /* v6.9.565, by brand 6.9.567 */
     if (t && t.id === "hsb_extra") {
       var nx = document.getElementById("hsb_noextra");
       if (nx && nx.checked && String(t.value || "").trim()) nx.checked = false;
@@ -10153,6 +10185,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     h += '<div class="card" style="padding:10px 12px">' +
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
       '<b>The bill, as this client is priced</b></div>' +
+      hsbBrandBlock(priced, roleIs("admin")) +
+      '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569;margin-top:10px"><b>Item by item</b></div>' +
       '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
       '<tr style="color:#64748b;text-align:right">' +
         '<th style="text-align:left;font-weight:600;padding:3px 6px 5px 0">Item</th>' +
@@ -10162,21 +10196,19 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<th style="font-weight:600;padding:3px 6px 5px">Rate</th>' +
         '<th style="font-weight:600;padding:3px 0 5px 6px">Amount</th></tr>';
     if (!priced.length) h += '<tr><td colspan="6" style="color:#94a3b8;padding:6px 0">No items on this challan.</td></tr>';
-    var _dEd = roleIs("admin");   /* v6.9.565 - the owner may change a line's discount here */
+    var _dEd = roleIs("admin");   /* v6.9.565 - the owner may change discounts here; v6.9.567 - by brand */
+    var _bIx = {}; brandSplit(priced).forEach(function (b, n) { _bIx[b.key] = n; });
     priced.forEach(function (x) {
-      var _box = _dEd && !x.job;
-      h += '<tr data-hl="' + x.ix + '" data-amt="' + x.amt + '" style="border-top:1px solid #e2e8f0;text-align:right">' +
+      var _bk = x.job ? "\u0000job" : (String(x.brand || "").trim() || "No brand");
+      h += '<tr data-hl="' + x.ix + '" data-amt="' + x.amt + '" data-bn="' + _bIx[_bk] + '" data-rate="' + x.rate + '" data-qty="' + x.qty + '" data-was="' + x.disc + '"' +
+        (x.job ? ' data-job="1"' : '') + ' style="border-top:1px solid #e2e8f0;text-align:right">' +
         '<td style="text-align:left;padding:5px 6px 5px 0">' + esc(x.desc || x.code || "") +
           (x.job ? ' <span class="pill" style="background:#ede9fe;color:#5b21b6">job work</span>'
                  : (x.brand ? ' <span style="color:#94a3b8;font-size:12px">' + esc(x.brand) + '</span>' : '')) + '</td>' +
         '<td style="padding:5px 6px">' + esc(String(x.qty)) + '</td>' +
         '<td style="padding:5px 6px;color:' + (x.disc > 0 ? '#94a3b8;text-decoration:line-through' : '#334155') + '">' + money(x.rate) + '</td>' +
         '<td style="padding:5px 6px;font-weight:700;color:' + (x.disc > 0 ? '#0f766e' : '#94a3b8') + '">' +
-          (_box
-            ? '<span style="white-space:nowrap"><input data-dix="' + x.ix + '" data-rate="' + x.rate + '" data-qty="' + x.qty + '" data-was="' + x.disc + '" ' +
-              'inputmode="decimal" value="' + esc(String(x.disc)) + '" aria-label="Discount on ' + esc(x.desc || x.code || "") + '" ' +
-              'style="width:58px;min-height:44px;padding:4px 6px;text-align:right;font-weight:700;font-size:13px;color:#0f766e"/>%</span>'
-            : (x.job ? '&mdash;' : (x.disc > 0 ? x.disc + '%' : '0%'))) + '</td>' +
+          '<span id="hsbd_' + x.ix + '">' + (x.job ? '&mdash;' : (x.disc > 0 ? x.disc + '%' : '0%')) + '</span></td>' +
         '<td id="hsbr_' + x.ix + '" style="padding:5px 6px">' + money(x.dr) + '</td>' +
         '<td id="hsba_' + x.ix + '" style="padding:5px 0 5px 6px;font-weight:700">' + money(x.amt) + '</td></tr>';
     });
@@ -10203,7 +10235,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       (_dEd && priced.some(function (x) { return !x.job; })
         ? '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:9px">' +
             '<button class="btn sm" data-act="hsb-disc-save" data-id="' + esc(c.id) + '" style="min-height:44px">Save these discounts</button>' +
-            '<span id="hsb_discnote" class="meta" style="font-size:12px">Change any line\u2019s discount above; nothing is saved until you press this.</span></div>'
+            '<span id="hsb_discnote" class="meta" style="font-size:12px">Change a brand\u2019s discount in the brand box above; nothing is saved until you press this.</span></div>'
         : '') +
       '</div>';
 
@@ -22190,6 +22222,23 @@ function viewCatalogue() {
       '<div style="display:flex;gap:8px;margin-top:9px">' +
       '<button class="btn sm ghost" data-act="ch-x-cancel">Cancel</button>' +
       '<button class="btn sm" data-act="ch-other-add">Put it on the challan</button></div></div>';
+  }
+  /* v6.9.567 - THE BILL BY BRAND. One row per brand (job work its own row): items, MRP, the
+     discount (one figure, or "mixed" when its lines differ) and the amount. Brands in the order
+     they carry the most money. */
+  function brandSplit(priced) {
+    var by = {}, order = [];
+    (priced || []).forEach(function (x) {
+      var k = x.job ? "\u0000job" : (String(x.brand || "").trim() || "No brand");
+      if (!by[k]) { by[k] = { key: k, name: x.job ? "Job work" : k, job: !!x.job, n: 0, mrp: 0, amt: 0, discs: {} }; order.push(k); }
+      var b = by[k]; b.n++; b.mrp += (Number(x.qty) || 0) * (Number(x.rate) || 0); b.amt += Number(x.amt) || 0;
+      if (!x.job) b.discs[String(x.disc)] = 1;
+    });
+    return order.map(function (k) {
+      var b = by[k], ds = Object.keys(b.discs);
+      b.disc = ds.length === 1 ? Number(ds[0]) : null;   /* null = mixed */
+      return b;
+    }).sort(function (a, b) { return (b.amt - a.amt) || (a.job ? 1 : 0) - (b.job ? 1 : 0); });
   }
   function pricedLines(c, cl) {
     var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
@@ -42246,14 +42295,23 @@ function viewCatalogue() {
       var _dc = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
       if (!_dc) return;
       var _its = []; try { _its = JSON.parse(_dc.itemsJson || "[]"); } catch (e) { _its = []; }
-      var _bad = false, _chg = [];
-      Array.prototype.forEach.call(document.querySelectorAll("[data-dix]"), function (inp) {
-        var d = hsbDiscVal(inp), was = Number(inp.getAttribute("data-was")) || 0;
-        var ix = Number(inp.getAttribute("data-dix"));
-        if (d == null) { _bad = true; return; }
-        if (d !== was && _its[ix]) _chg.push({ ix: ix, from: was, to: d });
+      /* v6.9.567 - BY BRAND: a brand box moves every line of that brand; an empty box moves none */
+      var _bad = false, _chg = [], _bChg = [], _bTo = {};
+      Array.prototype.forEach.call(document.querySelectorAll("[data-bdisc]"), function (inp) {
+        var raw = String(inp.value || "").trim();
+        if (!raw) return;
+        var d = hsbDiscVal(inp);
+        if (d == null || !/^[0-9]+(\.[0-9]+)?$/.test(raw)) { _bad = true; return; }
+        _bTo[inp.getAttribute("data-bdisc")] = { to: d, name: inp.getAttribute("data-bname") || "", was: inp.getAttribute("data-was") };
       });
-      if (_bad) { toast("A discount box is empty \u2014 put 0 for no discount."); return; }
+      if (_bad) { toast("A brand\u2019s discount must be a number from 0 to 100."); return; }
+      Array.prototype.forEach.call(document.querySelectorAll("tr[data-hl]"), function (r) {
+        if (r.getAttribute("data-job")) return;
+        var b = _bTo[r.getAttribute("data-bn")]; if (!b) return;
+        var ix = Number(r.getAttribute("data-hl")), was = Number(r.getAttribute("data-was")) || 0;
+        if (b.to !== was && _its[ix]) { _chg.push({ ix: ix, from: was, to: b.to }); b.hit = (b.hit || 0) + 1; }
+      });
+      Object.keys(_bTo).forEach(function (k) { if (_bTo[k].hit) _bChg.push(_bTo[k]); });
       if (!_chg.length) { toast("No discount has changed."); return; }
       var _cl = _dc.customerName || "";
       var _was = pricedLines(_dc, _cl).reduce(function (a, x) { return a + x.amt; }, 0);
@@ -42264,10 +42322,10 @@ function viewCatalogue() {
       var _nowG = pricedLines(Object.assign({}, _dc, { itemsJson: JSON.stringify(_new) }), _cl).reduce(function (a, x) { return a + x.amt; }, 0);
       var _diff = _nowG - _was;
       askSheet({
-        title: "Save " + (_chg.length === 1 ? "this discount" : "these " + _chg.length + " discounts") + "?",
+        title: "Save " + (_bChg.length === 1 ? _bChg[0].name + "\u2019s discount" : "these " + _bChg.length + " brands\u2019 discounts") + "?",
         sub: esc(_dc.challanNo || "") + " \u00b7 " + esc(_cl),
-        body: _chg.map(function (z) {
-            return '<div><b>' + esc(_its[z.ix].desc || _its[z.ix].code || "") + '</b> &middot; ' + z.from + '% &rarr; <b>' + z.to + '%</b></div>';
+        body: _bChg.map(function (b) {
+            return '<div><b>' + esc(b.name) + '</b> &middot; ' + (b.was === "" ? "mixed" : b.was + "%") + ' &rarr; <b>' + b.to + '%</b> &middot; ' + b.hit + ' item' + (b.hit === 1 ? '' : 's') + '</div>';
           }).join("") +
           '<div style="margin-top:8px">Goods ' + money(_was) + ' &rarr; <b>' + money(_nowG) + '</b> &middot; ' +
           '<b style="color:' + (_diff < 0 ? '#0f766e' : '#b91c1c') + '">' + moneySgn(_diff) + '</b> on ' + esc(_cl) + '\u2019s bill.</div>' +
@@ -42285,7 +42343,7 @@ function viewCatalogue() {
             createdAt: new Date().toISOString(), actor: S.user, action: "challan:disc-edit",
             target: (_dc.challanNo || "") + " / " + _cl,
             detail: JSON.stringify({ chId: _dc.id, no: _dc.challanNo, was: _was, now: _nowG,
-              why: "owner changed the discount on the finalise sheet",
+              why: "owner changed the discount on the finalise sheet", brands: _bChg.map(function (b) { return { brand: b.name, from: b.was, to: b.to, items: b.hit }; }),
               lines: _chg.map(function (z) { return { code: _its[z.ix].code || "", desc: _its[z.ix].desc || "", from: z.from, to: z.to }; }) }), ip: ""
           }, true);
         }).then(function () {
