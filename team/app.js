@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.581";
+  var APP_VERSION = "6.9.582";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3308,6 +3308,8 @@ window.addEventListener("beforeunload", function (ev) {
       (u ? '<a class="btn sm ghost" href="' + esc(u) + '" target="_blank" rel="noopener">Open</a>' +
            '<button class="btn sm ghost" data-act="cbk-copy" data-id="' + esc(r.id) + '">Copy link</button>' +
            '<button class="btn sm" data-act="cbk-wa" data-id="' + esc(r.id) + '">WhatsApp</button>' : '') +
+      (String(r.tgUrl || "").trim() ? '<a class="btn sm ghost" href="' + esc(r.tgUrl) + '" target="_blank" rel="noopener">Telegram</a>'
+        : (roleIs("admin") && u ? '<button class="btn sm ghost" data-act="cbk-tg-one" data-id="' + esc(r.id) + '">To Telegram</button>' : '')) +
       (roleIs("admin") ? '<button class="btn sm ghost" data-act="cbk-edit" data-id="' + esc(r.id) + '">Edit</button>' +
         (old ? '' : '<button class="btn sm ghost" data-act="cbk-super" data-id="' + esc(r.id) + '">Supersede</button>') : "") +
       '</div>';
@@ -3336,6 +3338,40 @@ window.addEventListener("beforeunload", function (ev) {
       '<div class="acts" style="margin-top:6px"><button class="btn" data-act="cbk-save">Save</button>' +
       '<button class="btn ghost" data-act="cbk-cancel">Cancel</button></div></div>';
   }
+  /* ================= THE CATALOGUE CHANNEL  (v6.9.582) =================
+     @ewcatalog_bot keeps a copy of every catalogue in "EW Catalogs & Price lists". The token is
+     typed by the owner into a password box, sent once to the server, and the box emptied - it is
+     never held on this device. */
+  var CBK_BOT = "ewcatalog_bot";
+  function cbkCaption(r) {
+    return String(r.brand || "") + " — " + String(r.title || r.kind || "Catalogue") +
+      ([r.kind, r.year].filter(Boolean).length ? "\n" + [r.kind, r.year].filter(Boolean).join(" · ") : "");
+  }
+  function cbkTgCard() {
+    if (!roleIs("admin")) return "";
+    var t = S.cbkTg || {}, all = catRows(), inTg = all.filter(function (r) { return String(r.tgUrl || "").trim(); }).length;
+    var h = '<div class="card" style="padding:8px 10px;border-color:#bae6fd;background:#f0f9ff">' +
+      '<div class="row" style="align-items:center;margin:0"><h3 style="margin:0;flex:1">Telegram copy — @' + CBK_BOT + '</h3>' +
+      '<button class="btn sm ghost" data-act="cbk-tg-open">' + (t.open ? "Hide" : "Set up") + '</button></div>' +
+      '<div class="meta" style="font-size:12px">' + inTg + ' of ' + all.length + ' catalogue' + (all.length === 1 ? '' : 's') + ' copied into the channel' +
+      (t.bound ? ' · bot is pointed at a channel' : '') + (t.msg ? ' · ' + esc(t.msg) : '') + '</div>';
+    if (!t.open) return h + '</div>';
+    h += '<div style="margin-top:8px;font-size:13px;font-weight:600">1. Connect the bot</div>' +
+      '<div class="meta" style="font-size:12px">Paste the token BotFather gave for @' + CBK_BOT + '. It goes straight to the server and is not kept on this phone.</div>' +
+      '<div class="row"><input class="grow" type="password" id="cbk_tok" autocomplete="off" placeholder="Bot token"/>' +
+      '<button class="btn sm" data-act="cbk-tg-connect">Connect</button></div>' +
+      '<div style="margin-top:8px;font-size:13px;font-weight:600">2. Choose the channel</div>' +
+      '<div class="meta" style="font-size:12px">Make @' + CBK_BOT + ' an admin of the channel, post any message there, then press Find.</div>' +
+      '<div class="acts"><button class="btn sm ghost" data-act="cbk-tg-find">Find channels</button></div>' +
+      ((t.chats || []).length ? (t.chats || []).map(function (c) {
+        return '<div class="row" style="align-items:center;margin:4px 0"><span style="flex:1;font-size:13px">' + esc(c.title) + ' <span class="meta">(' + esc(c.type) + ')</span>' +
+          (String(t.bound) === String(c.id) ? ' <b style="color:#0f766e">— in use</b>' : '') + '</span>' +
+          '<button class="btn sm" data-act="cbk-tg-use" data-id="' + esc(c.id) + '">Use this one</button></div>';
+      }).join("") : (t.found ? '<div class="meta" style="font-size:12px;color:#b45309">The bot has not seen any channel yet. Add it as admin, post a message, then Find again.</div>' : '')) +
+      '<div style="margin-top:8px;font-size:13px;font-weight:600">3. Copy what is already filed</div>' +
+      '<div class="acts"><button class="btn sm ghost" data-act="cbk-tg-all">Copy the ' + (all.length - inTg) + ' not yet in the channel</button></div>';
+    return h + '</div>';
+  }
   function viewCatalogues() {
     var q = String(S.q || "").toLowerCase().trim();
     var h = '<div class="row"><input class="grow" id="q" placeholder="Search a brand or a catalogue..." value="' + esc(S.q || "") + '"/>' +
@@ -3344,6 +3380,7 @@ window.addEventListener("beforeunload", function (ev) {
     h += '<div class="meta" style="margin:-2px 0 6px">' + all.length + ' catalogue' + (all.length === 1 ? '' : 's') +
       ' · ' + catByBrand("").length + ' brand' + (catByBrand("").length === 1 ? '' : 's') +
       ' · a link opens on any phone and shows a preview in WhatsApp</div>';
+    h += cbkTgCard();   /* v6.9.582 */
     if (S.catForm) h += catFormHtml();
     var blocks = catByBrand(q);
     if (!blocks.length) {
@@ -42870,6 +42907,63 @@ function viewCatalogue() {
     }
     if (act === "lim-fold") { S.limOpen = !S.limOpen; keepScroll = true; render(); return; }   /* v6.9.572 */
     /* ---- the catalogue library (v6.9.581) ---- */
+    /* ---- the catalogue channel (v6.9.582) ---- */
+    if (act === "cbk-tg-open") { S.cbkTg = Object.assign({}, S.cbkTg || {}, { open: !(S.cbkTg && S.cbkTg.open) }); render(); return; }
+    if (act === "cbk-tg-connect") {
+      if (!roleIs("admin")) return;
+      var _tokEl = el("cbk_tok"), _tok = _tokEl ? String(_tokEl.value || "").trim() : "";
+      if (_tokEl) _tokEl.value = "";           /* never left in the box */
+      if (!_tok) { toast("Paste the bot token first."); return; }
+      toast("Checking the token with Telegram…");
+      api("botConnect", { key: "TG_CATALOG", token: _tok, expect: CBK_BOT }, 60000).then(function (r) {
+        _tok = "";
+        if (!r || !r.ok) { toast("Not connected: " + ((r && r.error) || "no answer")); return; }
+        S.cbkTg = Object.assign({}, S.cbkTg || {}, { open: true, bound: r.chat || "", msg: r.bot + " connected" });
+        toast(r.bot + " is connected. Now choose the channel.");
+        render();
+      }).catch(function (e) { _tok = ""; toast("Not connected: " + apiWhy(e)); });
+      return;
+    }
+    if (act === "cbk-tg-find") {
+      if (!roleIs("admin")) return;
+      toast("Asking the bot which channels it is in…");
+      api("botChats", { key: "TG_CATALOG" }, 60000).then(function (r) {
+        if (!r || !r.ok) { toast("Could not look: " + ((r && r.error) || "no answer")); return; }
+        S.cbkTg = Object.assign({}, S.cbkTg || {}, { open: true, found: true, chats: r.chats || [], bound: r.bound || "" });
+        render();
+      }).catch(function (e) { toast("Could not look: " + apiWhy(e)); });
+      return;
+    }
+    if (act === "cbk-tg-use") {
+      if (!roleIs("admin")) return;
+      var _cid = String(id || "");
+      toast("Pointing the bot at that channel…");
+      api("botBind", { key: "TG_CATALOG", chat: _cid }, 60000).then(function (r) {
+        if (!r || !r.ok) { toast("Not done: " + ((r && r.error) || "no answer")); return; }
+        S.cbkTg = Object.assign({}, S.cbkTg || {}, { bound: _cid, msg: "posting to " + (r.to || "the channel") });
+        toast("Done — the bot posted a line in " + (r.to || "the channel") + ".");
+        render();
+      }).catch(function (e) { toast("Not done: " + apiWhy(e)); });
+      return;
+    }
+    if (act === "cbk-tg-one" || act === "cbk-tg-all") {
+      if (!roleIs("admin")) return;
+      var _todo = catRows().filter(function (x) { return catUrl(x) && !String(x.tgUrl || "").trim() && (act === "cbk-tg-all" || String(x.id) === String(id)); });
+      if (!_todo.length) { toast("Nothing left to copy."); return; }
+      var _done = 0, _fail = "";
+      var _next = function () {
+        if (!_todo.length) { toast(_done + " copied into the channel" + (_fail ? " — stopped: " + _fail : ".")); render(); return; }
+        var r = _todo.shift();
+        toast("Copying " + r.brand + " — " + (r.title || "") + "…");
+        api("catMirror", { url: catUrl(r), filename: String(r.brand || "") + " " + String(r.title || "catalogue"), caption: cbkCaption(r) }, 240000).then(function (x) {
+          if (!x || !x.ok) { _fail = (x && x.error) || "no answer"; _todo = []; return _next(); }
+          save("catalogues", { id: r.id, tgUrl: x.link, updatedAt: new Date().toISOString(), updatedBy: S.user || "" }, true);
+          _done++; _next();
+        }).catch(function (e) { _fail = apiWhy(e); _todo = []; _next(); });
+      };
+      _next();
+      return;
+    }
     if (act === "cbk-new") { if (!roleIs("admin")) { toast("Filing a catalogue is the owner’s."); return; } S.catForm = {}; S.catFile = null; render(); return; }
     if (act === "cbk-cancel") { S.catForm = null; S.catFile = null; render(); return; }
     if (act === "cbk-edit") {
@@ -42932,6 +43026,12 @@ function viewCatalogue() {
         return save("catalogues", _row);
       }).then(function () {
         S.catForm = null; S.catFile = null; toast("Filed under " + _row.brand + "."); render();
+        /* v6.9.582 - and a copy into the channel, quietly; a bot not yet set up is not an error */
+        if (!String(_row.tgUrl || "").trim()) {
+          api("catMirror", { url: _row.url, filename: _row.brand + " " + (_row.title || "catalogue"), caption: cbkCaption(_row) }, 240000).then(function (x) {
+            if (x && x.ok && x.link) { save("catalogues", { id: _row.id, tgUrl: x.link, updatedAt: new Date().toISOString(), updatedBy: S.user || "" }, true); toast("Also copied into the Telegram channel."); }
+          }).catch(function () { });
+        }
       }).catch(function (e) {
         toast("Could not file it: " + apiWhy(e));
       });
