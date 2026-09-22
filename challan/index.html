@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.85.0";
+  var APP_VERSION = "1.86.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -5351,7 +5351,31 @@ function discRowOn(client, brand, onYmd) {
       return navigator.canShare({ files: [new File(["x"], "x.pdf", { type: "application/pdf" })] });
     } catch (e) { return false; }
   }
+  /* ================= WHO TOOK THIS FILE, AND WHEN  (6.9.578 / 1.86.0 / 1.46.0) =================
+     His words: "mention file download date and time and by whom for every file download, in very
+     small font in any corner of the page, not highlighted". One line, 5 pt, pale grey, bottom
+     right of every page. Once per document. */
+  function pdfDlStamp(doc) {
+    try {
+      if (!doc || doc._dlStamped) return;
+      doc._dlStamped = true;
+      var d = new Date(), p2 = function (n) { return (n < 10 ? "0" : "") + n; };
+      var line = "Downloaded " + p2(d.getDate()) + "/" + p2(d.getMonth() + 1) + "/" + d.getFullYear() + " " +
+        p2(d.getHours()) + ":" + p2(d.getMinutes()) + (S && S.user ? " by " + String(S.user) : "");
+      var n = doc.getNumberOfPages(), cur = doc.internal.getCurrentPageInfo ? doc.internal.getCurrentPageInfo().pageNumber : n;
+      var fs = doc.getFontSize(), tc = doc.getTextColor ? doc.getTextColor() : null;
+      for (var i = 1; i <= n; i++) {
+        doc.setPage(i);
+        var W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+        doc.setFontSize(5); doc.setTextColor(170, 178, 190);
+        doc.text(line, W - 4, H - 2.5, { align: "right" });
+      }
+      doc.setPage(cur); doc.setFontSize(fs);
+      if (tc) { try { doc.setTextColor(tc); } catch (e) { doc.setTextColor(0, 0, 0); } }
+    } catch (e) { }
+  }
   function pdfOut(doc, fname, title) {
+    pdfDlStamp(doc);   /* 6.9.578 - who took it, and when */
     var now = Date.now();
     if (now - _pdfOutAt < 2000) return Promise.resolve(false);   /* the same press twice */
     _pdfOutAt = now;
@@ -5445,7 +5469,7 @@ function discRowOn(client, brand, onYmd) {
         var link = (h && h.ok && h.url) ? h.url : "";
         var wa = "https://wa.me/" + n + "?text=" + encodeURIComponent(msg + (link ? "\n\nChallan:\n" + link : ""));
         if (win && !win.closed) win.location = wa; else window.open(wa, "_blank");
-        if (!link) { doc.save(chalFile(c)); toast("Could not host it — WhatsApp opened, challan downloaded to attach."); }
+        if (!link) { pdfDlStamp(doc); doc.save(chalFile(c)); toast("Could not host it — WhatsApp opened, challan downloaded to attach."); }
       });
     }).catch(function () {
       try { if (win && !win.closed) win.location = "https://wa.me/" + n + "?text=" + encodeURIComponent(msg); } catch (e) {}
