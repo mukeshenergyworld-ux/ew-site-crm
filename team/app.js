@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.569";
+  var APP_VERSION = "6.9.570";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -952,7 +952,44 @@
         throw e;
       });
   }
+  /* ================= SAVES THAT LEAVE TOGETHER GO TOGETHER  (v6.9.570, needs V133) =================
+     Measured 22 Sep: the cost of a call is the 2-17 s wait in front of the server, not its size.
+     teamSave / challanMove calls made within 120 ms of each other go as ONE multi call (up to ten);
+     each caller still gets its own answer. Alone, a call goes alone. Before V133 the batch is resent
+     one by one and batching stops for the session. */
+  var BATCH_ACTS = { teamSave: 1, challanMove: 1 };
+  var _bq = [], _bqT = null, _multiOff = false;
+  function batchPush(action, extra, ms) {
+    return new Promise(function (res, rej) {
+      _bq.push({ action: action, extra: extra || {}, ms: ms, res: res, rej: rej });
+      if (!_bqT) _bqT = setTimeout(batchGo, 120);
+    });
+  }
+  function batchSolo(x) {
+    return api(x.action, Object.assign({}, x.extra, { _solo: true }), x.ms).then(x.res, x.rej);
+  }
+  function batchGo() {
+    _bqT = null;
+    var q = _bq.splice(0, 10);
+    if (_bq.length) _bqT = setTimeout(batchGo, 0);
+    if (!q.length) return;
+    if (q.length === 1 || _multiOff) { q.forEach(batchSolo); return; }
+    var calls = q.map(function (x) { return Object.assign({ action: x.action }, x.extra); });
+    api("multi", { calls: calls }, 60000 + 10000 * q.length).then(function (r) {
+      if (r && r.ok && r.results && r.results.length === q.length) {
+        q.forEach(function (x, i) { x.res(r.results[i]); });
+        return;
+      }
+      if (r && /unknown action/i.test(String(r.error || ""))) _multiOff = true;   /* a server before V133 */
+      q.forEach(batchSolo);
+    }).catch(function (e) {
+      /* the same as each of them failing alone: every caller's own failure path (the journal) runs */
+      q.forEach(function (x) { x.rej(e); });
+    });
+  }
   function api(action, extra, ms) {
+    if (BATCH_ACTS[action] && !_multiOff && !(extra && extra._solo)) return batchPush(action, extra, ms);   /* v6.9.570 */
+    if (extra && extra._solo) { extra = Object.assign({}, extra); delete extra._solo; }
     if (action === "pdfHost" && extra && extra.pdfBase64 && !extra._whole && String(extra.pdfBase64).length > DOC_PART_MIN) return docParts(extra);   /* V132 - in parts */
     if (extra && extra._whole) { extra = Object.assign({}, extra); delete extra._whole; }
     var _t0 = Date.now();
@@ -1158,6 +1195,33 @@
     if (_retryDog) clearTimeout(_retryDog);
     _retryDog = setTimeout(function () { _retrying = false; _retryDog = null; }, 180000);
     var okCount = 0, i = 0;
+    /* v6.9.570 - UP TO TEN AT ONCE. They leave together, so they go as one batch on V133: ten
+       stuck records cost one wait in front of the server instead of ten. Each keeps its own
+       answer, its own refusal and its own reason on the banner, exactly as before. */
+    var stepMany = function () {
+      var l2 = pendLoad();
+      if (i >= l2.length) return step();
+      var chunk = l2.slice(i, i + 10);
+      if (chunk.length < 2) return step();
+      Promise.all(chunk.map(function (e) {
+        var payload = Object.assign({}, e.row); delete payload._lid;
+        return api("teamSave", e.chg ? { tab: e.tab, row: payload, chg: e.chg } : { tab: e.tab, row: payload }).then(function (r) {
+          if (r && r.ok) {
+            var arr = S.data[e.tab] || []; for (var j = 0; j < arr.length; j++) { if (arr[j] && natEq(arr[j], e.row)) { Object.assign(arr[j], r.row); break; } }
+            pendDrop(e.pk); okCount++;
+          } else { pendMark(e.pk, (r && r.error) || "server refused"); }
+        }).catch(function (err) {
+          pendMark(e.pk, (err && err.message) ? String(err.message).slice(0, 120) : "no answer from the server");
+        });
+      })).then(function () {
+        /* dropped ones left the list; the refused and failed ones are still in it, so skip them */
+        var left = pendLoad(), stuck = 0;
+        chunk.forEach(function (e) { if (left.some(function (x) { return x.pk === e.pk; })) stuck++; });
+        i += stuck;
+        if (stuck === chunk.length) return step();   /* nothing moved: finish one by one, as before */
+        stepMany();
+      });
+    };
     var step = function () {
       var l2 = pendLoad();
       if (i >= l2.length) {
@@ -1184,7 +1248,7 @@
         i++; step();
       });
     };
-    step();
+    stepMany();   /* v6.9.570 - ten at a time first; step() finishes whatever is left */
   }
   /* ================= IT NOW REALLY DOES RETRY BY ITSELF (v6.9.260) =========
      The banner has always said the records "will upload by themselves when the connection
@@ -18802,53 +18866,47 @@ function viewCatalogue() {
     /* v6.9.525 - done = finalised and counted; the four step cells are struck through in green */
     var regDone = inHisab(c) && hisabCounts(c);
     var regStruck = ";text-decoration:line-through;text-decoration-color:#15803d;text-decoration-thickness:2px;color:#15803d";
+    /* v6.9.570 - HIS ORDER (22 Sep): S.No, Challan No, Date, Client, Made by, Passed by, Receipt,
+       Hisab, Amt, Bal. after, Limit - the steps in the order they happen, then the money. And on
+       a finished row only the NAME is struck through in green, never the date (his words: "do not
+       strike out date"), so the day each step happened stays readable. */
+    var sk = function (html) { return regDone ? '<span style="' + regStruck.slice(1) + '">' + html + '</span>' : html; };
     var h = '<tr style="background:' + bg + '">' +
       '<td style="' + regCell(";font-weight:800;color:#0b3b36") + '">' + (n === null ? "OLD" : n) +
         (dup ? ' <span style="font-size:12px;color:#b45309">twice</span>' : '') + '</td>' +
-      /* v6.9.496 - "reduce gap between date and client". It printed 18/09/2026; the year of a
-         delivery in the current book is never in doubt, and two digits of it buy the width that
-         puts the balance on screen beside the amount. The full date is on the row's own card. */
+      '<td style="' + regCell() + '"><button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '" ' +
+        'style="padding:1px 8px;font-size:12.5px;font-weight:700">' + esc(c.challanNo || "no number") +
+        ' ' + (open ? "▴" : "▾") + '</button></td>' +
+      /* v6.9.496 - two digits of the year; the full date is on the row's own card */
       '<td style="' + regCell(";padding-right:3px;white-space:nowrap") + '">' + esc(regDMY(regDate(c)).replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c) + '</td>' +
-      /* v6.9.566 - his words: "move HISAB column in between date and client to make it compact".
-         The one Finalise button (6.9.560/564) lives here now; once finalised, the stamp and day. */
-      '<td style="' + regCell(";white-space:nowrap") + (regDone ? regStruck : "") + '">' + (inHisab(c) ? hisabStampPill(c) + regDay((hisabStamp(c) || {}).at) :
-        (hisabAddBtn(c) || '<span style="color:#b45309;font-size:12px">not finalised</span>')) + '</td>' +
       '<td style="' + regCell(";max-width:170px;overflow:hidden;text-overflow:ellipsis") + '">' +
         '<a href="#" data-act="ch-hisab" data-cl="' + esc(c.customerName || "") + '" ' +
         'style="font-weight:700;color:#0b3b36;text-decoration:none;white-space:nowrap" title="' +
         (cl.mobile ? esc(cl.mobile) + ' · ' : '') + 'Open this client’s full HISAB, where the complete statement downloads">' +
         esc(c.customerName || "—") + '</a>' +
-        /* v6.9.529 - the mobile no longer takes a second line; it rides in the title of the name */
         '</td>' +
-      '<td style="' + regCell() + '"><button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '" ' +
-        'style="padding:1px 8px;font-size:12.5px;font-weight:700">' + esc(c.challanNo || "no number") +
-        ' ' + (open ? "▴" : "▾") + '</button></td>' +
+      '<td style="' + regCell() + '">' + sk(whoChip(c.createdBy)) + regDay(c.createdAt) + '</td>' +
+      '<td style="' + regCell(";color:#b91c1c") + '">' +
+        (String(c.approvedBy || "").trim() ? sk(whoChip(c.approvedBy)) + regDay(c.approvedAt) : "not passed") + '</td>' +
+      '<td style="' + regCell() + '">' +
+        (pf ? sk('✓ <span style="font-size:12px;color:#64748b">' + esc(regFirst(pf.actor || pf.by)) + '</span>') + regDay(pf.at || c.receiptAt)
+            : (canAttachProof()
+                ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" ' +
+                  'style="padding:1px 8px;font-size:12px;font-weight:700;background:#fff;color:#b45309;border:1px solid #b45309;border-radius:6px">Attach</button>'
+                : '<span style="color:#b45309">none</span>')) + '</td>' +
+      /* v6.9.566 - the one Finalise button while not finalised; once finalised, the stamp and day */
+      '<td style="' + regCell(";white-space:nowrap") + '">' + (inHisab(c) ? sk(hisabStampPill(c)) + regDay((hisabStamp(c) || {}).at) :
+        (hisabAddBtn(c) || '<span style="color:#b45309;font-size:12px">not finalised</span>')) + '</td>' +
       '<td style="' + regCell(";text-align:right;font-weight:700") + '">' + moneySgn(chValue(c)) + '</td>' +
-      /* v6.9.496 - BESIDE THE AMOUNT, and coloured by what he owes. Moved here whole from the
-         far right; the arithmetic is regBalances', untouched, and the running balance still
-         closes on clientLedger exactly as it did. */
       '<td style="' + regCell(";text-align:right;color:" + regBalColor(after === undefined ? bal.due : after)) + '">' +
         (after === undefined
           ? '<span style="opacity:.55" title="not on his account yet">' + moneySgn(bal.due) + '</span>' +
             ' <span style="font-size:12px;color:#b45309">*</span>'
           : '<b>' + moneySgn(after) + '</b>') + '</td>' +
-      /* v6.9.525 - HIS WORDS: "with date, who made it, who approved, who attached receipt, when
-         finalized {date}, all strikeout when done". The day under each name, the finalised
-         date, and a finished row struck through in green - his rule, green struck = done. */
-      /* v6.9.529 - his third list, item 4: "more compact, single line". The day sits beside the
-         name, not under it; the client cell carries the name alone, the mobile in its title. */
-      '<td style="' + regCell() + (regDone ? regStruck : "") + '">' + whoChip(c.createdBy) + regDay(c.createdAt) + '</td>' +
-      '<td style="' + regCell(";color:#b91c1c") + (regDone ? regStruck : "") + '">' +
-        (String(c.approvedBy || "").trim() ? whoChip(c.approvedBy) + regDay(c.approvedAt) : "not passed") + '</td>' +
-      '<td style="' + regCell() + (regDone ? regStruck : "") + '">' +
-        (pf ? '\u2713 <span style="font-size:12px;color:#64748b">' + esc(regFirst(pf.actor || pf.by)) + '</span>' + regDay(pf.at || c.receiptAt)
-            : (canAttachProof()
-                ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" ' +
-                  'style="padding:1px 8px;font-size:12px;font-weight:700;background:#fff;color:#b45309;border:1px solid #b45309;border-radius:6px">Attach</button>'
-                : '<span style="color:#b45309">none</span>')) + '</td>' +
       '<td style="' + regCell(";text-align:right;color:" + (over ? "#b91c1c" : "#64748b")) + '">' +
         (lim > 0 ? (over ? '<b>' + moneySgn(lim) + '</b> <span style="font-size:12px">over</span>' : moneySgn(lim))
                  : '<span style="font-size:12px">not set</span>') + '</td></tr>';
+
     if (open) {
       h += '<tr style="background:' + bg + '"><td colspan="11" style="padding:2px 6px 10px;border-top:0">' +
         challanCardHtml(c) + '</td></tr>';
@@ -18877,9 +18935,10 @@ function viewCatalogue() {
        scrolls horizontally on a phone - so "what did this delivery cost" and "what does he owe
        now" were never on screen together. */
     /* v6.9.566 - HISAB sits between the date and the client (his ask), not at the far right */
-    return '<tr style="background:#0b3b36">' + TH("#") + TH("DATE") + TH("HISAB") + TH("CLIENT") + TH("CHALLAN NO") +
-      TH("AMOUNT", 1) + TH("BALANCE AFTER", 1) + TH("MADE BY") + TH("PASSED BY") + TH("RECEIPT") +
-      TH("LIMIT", 1) + '</tr>';
+    /* v6.9.570 - his order, 22 Sep: S.No, Challan No, Date, Client, Made by, Passed by, Receipt, Hisab, Amt, Bal. after, Limit */
+    return '<tr style="background:#0b3b36">' + TH("S.NO") + TH("CHALLAN NO") + TH("DATE") + TH("CLIENT") +
+      TH("MADE BY") + TH("PASSED BY") + TH("RECEIPT") + TH("HISAB") +
+      TH("AMT", 1) + TH("BAL. AFTER", 1) + TH("LIMIT", 1) + '</tr>';
   }
 
   /* ===== DRIVERS & FREIGHT  (v6.9.528, 19 September 2026) - A PORT FROM CHALLAN 1.40.0 =====
@@ -19167,7 +19226,7 @@ function viewCatalogue() {
       (hidden ? ' · ' + hidden + ' belong to another executive' : '') +
       (filt ? ' · filtered, so gaps are hidden' : '') + '</span></div>' +
       (shown || (!filt && R.line.length)
-        ? regSwipe("the balance, made by, passed by, receipt and limit") +
+        ? regSwipe("made by, passed by, receipt, hisab, the amount, the balance and limit") +
           '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
           regHead() + body + '</table></div>'
         : '<div class="empty">Nothing on the series answers that filter.</div>') + '</div>';
@@ -19182,7 +19241,7 @@ function viewCatalogue() {
       '<b>client code / date / count</b>, like ATUL4000/200726/001 &mdash; so they carry no place on the ' +
       'running series and no gap can be read from them. They are every bit as real; they are just ' +
       'a different book. Newest first.</div>' +
-      (on ? regSwipe("the balance, made by, passed by, receipt and limit") + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
+      (on ? regSwipe("made by, passed by, receipt, hisab, the amount, the balance and limit") + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
             regHead() + ob + '</table></div>'
           : '<div class="empty">Nothing in the old book answers that filter.</div>') + '</div>';
 
