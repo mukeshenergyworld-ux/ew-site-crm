@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.570";
+  var APP_VERSION = "6.9.571";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -42394,6 +42394,22 @@ function viewCatalogue() {
       });
       var _nowG = pricedLines(Object.assign({}, _dc, { itemsJson: JSON.stringify(_new) }), _cl).reduce(function (a, x) { return a + x.amt; }, 0);
       var _diff = _nowG - _was;
+      /* v6.9.571 - the sheet comes back the moment he answers, with what he had typed */
+      var _keep = {};
+      ["hsb_extra", "hsb_extrapc", "hsb_noproof"].forEach(function (k) { var e = document.getElementById(k); if (e) _keep[k] = e.value; });
+      var _keepNx = document.getElementById("hsb_noextra"); _keepNx = _keepNx ? _keepNx.checked : null;
+      var _keepB = {};
+      Array.prototype.forEach.call(document.querySelectorAll("[data-bdisc]"), function (inp) { _keepB[inp.getAttribute("data-bdisc")] = inp.value; });
+      var _back = function (withBoxes) {
+        S.modal = modalAddToHisab(_dc.id); render();
+        Object.keys(_keep).forEach(function (k) { var e = document.getElementById(k); if (e) e.value = _keep[k]; });
+        var nx = document.getElementById("hsb_noextra"); if (nx && _keepNx !== null) nx.checked = _keepNx;
+        if (withBoxes) Array.prototype.forEach.call(document.querySelectorAll("[data-bdisc]"), function (inp) {
+          var v = _keepB[inp.getAttribute("data-bdisc")]; if (v !== undefined) inp.value = v;
+        });
+        try { hsbDiscPaint(); } catch (e) { }
+        try { if (document.getElementById("hsb_extra")) hsbExtraPaint(); } catch (e) { }
+      };
       askSheet({
         title: "Save " + (_bChg.length === 1 ? _bChg[0].name + "\u2019s discount" : "these " + _bChg.length + " brands\u2019 discounts") + "?",
         sub: esc(_dc.challanNo || "") + " \u00b7 " + esc(_cl),
@@ -42406,11 +42422,15 @@ function viewCatalogue() {
           '<div class="meta" style="margin-top:8px">Only this delivery changes. The client\u2019s preset stays as it is. Written to the audit trail with your name.</div>',
         yes: "Save", no: "Not now"
       }).then(function (yes) {
-        if (!yes) return;
-        save("challans", Object.assign({}, _dc, {
+        if (!yes) { _back(true); return; }
+        var _sv = save("challans", Object.assign({}, _dc, {
           itemsJson: JSON.stringify(_new),
           amount: _new.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0)
-        })).then(function () {
+        }));
+        /* save() has already written the row on this device - the sheet shows the new discounts now */
+        _back(false);
+        toast("Saved \u2014 " + (_dc.challanNo || "the delivery") + " is now " + money(_nowG) + " for the goods (" + moneySgn(_diff) + ").");
+        _sv.then(function () {
           return save("audit", {
             id: "DE-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
             createdAt: new Date().toISOString(), actor: S.user, action: "challan:disc-edit",
@@ -42419,10 +42439,7 @@ function viewCatalogue() {
               why: "owner changed the discount on the finalise sheet", brands: _bChg.map(function (b) { return { brand: b.name, from: b.was, to: b.to, items: b.hit }; }),
               lines: _chg.map(function (z) { return { code: _its[z.ix].code || "", desc: _its[z.ix].desc || "", from: z.from, to: z.to }; }) }), ip: ""
           }, true);
-        }).then(function () {
-          toast("Saved \u2014 " + (_dc.challanNo || "the delivery") + " is now " + money(_nowG) + " for the goods (" + moneySgn(_diff) + ").");
-          S.modal = modalAddToHisab(_dc.id); render();
-        });
+        }).catch(function () { });   /* a slow or failed send is the journal's: it is kept and retried */
       });
       return;
     }
