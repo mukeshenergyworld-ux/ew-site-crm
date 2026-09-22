@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.577";
+  var APP_VERSION = "6.9.578";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -706,7 +706,31 @@
       return navigator.canShare({ files: [new File(["x"], "x.pdf", { type: "application/pdf" })] });
     } catch (e) { return false; }
   }
+  /* ================= WHO TOOK THIS FILE, AND WHEN  (6.9.578 / 1.86.0 / 1.46.0) =================
+     His words: "mention file download date and time and by whom for every file download, in very
+     small font in any corner of the page, not highlighted". One line, 5 pt, pale grey, bottom
+     right of every page. Once per document. */
+  function pdfDlStamp(doc) {
+    try {
+      if (!doc || doc._dlStamped) return;
+      doc._dlStamped = true;
+      var d = new Date(), p2 = function (n) { return (n < 10 ? "0" : "") + n; };
+      var line = "Downloaded " + p2(d.getDate()) + "/" + p2(d.getMonth() + 1) + "/" + d.getFullYear() + " " +
+        p2(d.getHours()) + ":" + p2(d.getMinutes()) + (S && S.user ? " by " + String(S.user) : "");
+      var n = doc.getNumberOfPages(), cur = doc.internal.getCurrentPageInfo ? doc.internal.getCurrentPageInfo().pageNumber : n;
+      var fs = doc.getFontSize(), tc = doc.getTextColor ? doc.getTextColor() : null;
+      for (var i = 1; i <= n; i++) {
+        doc.setPage(i);
+        var W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+        doc.setFontSize(5); doc.setTextColor(170, 178, 190);
+        doc.text(line, W - 4, H - 2.5, { align: "right" });
+      }
+      doc.setPage(cur); doc.setFontSize(fs);
+      if (tc) { try { doc.setTextColor(tc); } catch (e) { doc.setTextColor(0, 0, 0); } }
+    } catch (e) { }
+  }
   function pdfOut(doc, fname, title) {
+    pdfDlStamp(doc);   /* 6.9.578 - who took it, and when */
     var now = Date.now();
     if (now - _pdfOutAt < 2000) return Promise.resolve(false);   /* the same press twice */
     _pdfOutAt = now;
@@ -13729,7 +13753,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         var waUrl = "https://wa.me/" + (wnum || "") + "?text=" + encodeURIComponent(msg);
         if (win && !win.closed) { win.location = waUrl; } else { window.open(waUrl, "_blank"); }
         if (link) { toast("WhatsApp opened - the PDF link is in the message."); }
-        else { d.save(fname); toast("Couldn't host the PDF - opened WhatsApp, downloaded the PDF to drag in."); }
+        else { pdfDlStamp(d); d.save(fname); toast("Couldn't host the PDF - opened WhatsApp, downloaded the PDF to drag in."); }
       });
     }).catch(function () {
       /* ===== v6.9.505 - IT WAS TELLING HIM SOMETHING UNTRUE =====
@@ -13743,7 +13767,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
          and he does different things about them, so they are now said differently. */
       try { if (win && !win.closed) win.location = "https://wa.me/" + (wnum || "") + "?text=" + encodeURIComponent(wmsg); } catch (e) { }
       docPromise.then(function (d) {
-        d.save(fname);
+        pdfDlStamp(d); d.save(fname);
         toast("Opened WhatsApp \u2014 the PDF is in your downloads, attach it there.");
       }).catch(function () {
         toast("Opened WhatsApp with the message. THE PDF COULD NOT BE MADE \u2014 there is nothing to attach. Try making it again from the quote.");
@@ -25065,7 +25089,9 @@ function viewCatalogue() {
     var out = [driveImg(u, 1400)];
     var m = String(u || "").match(/\/d\/([A-Za-z0-9_\-]{20,})/) ||
             String(u || "").match(/[?&]id=([A-Za-z0-9_\-]{20,})/);
-    if (m) out.push("https://drive.google.com/uc?export=download&id=" + m[1]);
+    /* 6.9.578 - the /file/d/ form: the server reads it through the owner's own Drive (DriveApp),
+       not an anonymous web fetch that Drive answered with a sign-in page often enough */
+    if (m) out.push("https://drive.google.com/file/d/" + m[1] + "/view");
     return out;
   }
   /* ================= PAGE ONE WAS NOT THE RECEIPT (v6.9.378, 30 Aug 2026) =================
@@ -25290,7 +25316,7 @@ function viewCatalogue() {
     };
     return at(0);
   }
-  var _picFiling = {};
+  var _picFiling = {}, _rcptRetried = {};
   function rcptPicBackfill(c, r, pp) {
     var ph = null; (pp || []).some(function (p) { if (p && p.photo && p.photo.src) { ph = p.photo; return true; } return false; });
     if (!ph || !r.url || _picFiling[r.url]) return;
@@ -25310,7 +25336,20 @@ function viewCatalogue() {
     var key = String(r.url);
     /* v6.9.405 - held from a previous statement, on this device, and free
        v6.9.575 - and one held without its photograph gets it cut from the preview now */
-    if (RCPT_IMG[key] !== undefined) { rcptTouch(key); return rcptUpgrade(key, RCPT_IMG[key]); }
+    if (RCPT_IMG[key] !== undefined) {
+      rcptTouch(key);
+      return rcptUpgrade(key, RCPT_IMG[key]).then(function (rec) {
+        /* 6.9.578 - a preview-only copy with no photograph was kept for ever once the file failed.
+           Try the real file once per session; keep the old copy if it still cannot be had. */
+        if ((rec && (rec.whole || rcptPhotos(rec).length)) || _rcptRetried[key]) return rec;
+        _rcptRetried[key] = 1;
+        delete RCPT_IMG[key];
+        return receiptImage(c).then(function (nw) {
+          if (nw && (nw.whole || rcptPhotos(nw).length)) return nw;
+          RCPT_IMG[key] = rec; return rec;
+        }, function () { RCPT_IMG[key] = rec; return rec; });
+      });
+    }
     /* THE FILE FIRST, the preview only as a fallback. rcptUrls has always listed both; the
        order was preview-first, which is what turned a two-page document into one page. */
     var tries = rcptUrls(key).slice().reverse();
@@ -25319,7 +25358,7 @@ function viewCatalogue() {
     if (r.pic) tries = rcptUrls(r.pic).slice().reverse().concat(tries);
     var attempt = function (n) {
       if (n >= tries.length) { RCPT_IMG[key] = null; return Promise.resolve(null); }
-      var isFile = String(tries[n]).indexOf("export=download") >= 0;
+      var isFile = /export=download|\/file\/d\//.test(String(tries[n]));
       return api("imgB64", { url: tries[n] }, 90000).then(function (x) {
         if (!x || !x.ok || !x.b64) return attempt(n + 1);
         var mime = rcptMime(x.b64, x.mime);
