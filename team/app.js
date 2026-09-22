@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.573";
+  var APP_VERSION = "6.9.574";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -19986,40 +19986,31 @@ function viewCatalogue() {
     var tone = { pass: (none(c.approvedAt) && none(c.approvedBy)) ? "bad" : "",
                  proof: pf ? "good" : (gone ? "bad" : "") };
 
+    /* v6.9.574 - ONE CHIP PER STEP, ONE LINE (his words: "compact, single liner, with colour
+       coding"). Inline colours, so the strip looks the same inside the log's table as on the card. */
+    var chip = function (txt, ink, bg, title) {
+      return '<span title="' + esc(title || "") + '" style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:999px;' +
+        'font-size:12px;font-weight:700;white-space:nowrap;line-height:1.5;color:' + ink + ';background:' + bg + '">' + txt + '</span>';
+    };
+    var first = function (v) { return esc(String(v || "").trim().split(" ")[0]); };
     var cells = chSteps(c).map(function (p) {
-      var lab, val = under[p.k] || "", raw = false;
-
-      if (p.done) {
-        lab = '<span class="stpl done" title="Done">' + esc(p.label) + '</span>';
-
-      } else if (p.k === "hisab") {
-        /* the Finalise button IS the label; its reason goes underneath instead of beside it,
-           which is what made this one 55px of the old strip's 144 */
-        lab = hisabAddBtn(c);
-        val = hisabWhyNot(c); raw = true;
-        if (!String(val).replace(/<[^>]*>/g, "").trim()) { val = "Pending"; raw = false; }
-
-      } else if (p.k === "proof" && b.proof) {
-        /* "below Receipt show PENDING { ATTACH }" - his words, exactly */
-        lab = '<span class="stpl wait" title="' + esc(p.why || "Not yet") + '">' + esc(p.label) + '</span>';
-        val = '<span class="stpv bad">PENDING</span> ' + b.proof; raw = true;
-
-      } else if (b[p.k]) {
-        lab = b[p.k];
-        if (!val) { val = "PENDING"; }
-
-      } else {
-        lab = '<span class="stpl wait" title="' + esc(p.why || "Not yet") + '">' + esc(p.label) + '</span>';
-        if (!val) { val = "PENDING"; }
+      var who = under[p.k] || "";
+      var named = who && !/^(PENDING|not |name not|not due)/.test(who);
+      if (p.done) return chip('\u2713 ' + esc(p.label) + (named ? ' \u00b7 ' + first(who) : ''), '#15803d', '#dcfce7', who);
+      if (p.k === "hisab") {
+        var hb = hisabAddBtn(c), why = String(hisabWhyNot(c) || "").replace(/<[^>]*>/g, "").trim();
+        return (hb || chip(esc(p.label) + ' pending', '#b45309', '#fef3c7', p.why)) +
+          (why ? chip(esc(why), '#64748b', '#f1f5f9') : '');
       }
-
-      var cls = tone[p.k] === "bad" ? " bad" : (tone[p.k] === "good" ? " good" : "");
-      return '<div class="stpc">' + lab +
-        (val ? (raw ? '<div class="stpv">' + val + '</div>'
-                    : '<div class="stpv' + cls + '">' + esc(val) + '</div>') : '') +
-        '</div>';
-    }).join("");
-    return '<div class="stpg">' + cells + '</div>';
+      if (p.k === "proof" && b.proof) return b.proof;
+      if (b[p.k]) return b[p.k];
+      var late = tone[p.k] === "bad";
+      return late ? chip(esc(p.label) + ' pending', '#b91c1c', '#fee2e2', p.why)
+                  : chip(esc(p.label), '#64748b', '#f1f5f9', p.why || "Not yet");
+    }).join('<span style="color:#cbd5e1;font-size:12px">\u203a</span>');
+    return '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin:6px 0 2px;padding:5px 8px;' +
+      'background:#f8fafc;border-left:3px solid #cbd5e1;border-radius:0 8px 8px 0" ' +
+      'class="stp1">' + cells.replace(/class="btn sm/g, 'style="padding:2px 10px;min-height:0;font-size:12px" class="btn sm') + '</div>';
   }
   function chStepStrip(c, btns) {
     var b = btns || {};
