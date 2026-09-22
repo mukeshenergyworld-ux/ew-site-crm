@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.46.0";
+  var APP_VERSION = "1.47.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -191,6 +191,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
   }
   function pdfOut(doc, fname, title) {
     pdfDlStamp(doc);   /* 6.9.578 - who took it, and when */
+    /* 6.9.579 - where the app offers it (the CRM), the choice first: the file, or a link to paste */
+    if (typeof window !== "undefined" && window.EW_pdfChoose && doc && !doc._chosen) { doc._chosen = true; return window.EW_pdfChoose(doc, fname, title); }
     var now = Date.now();
     if (now - _pdfOutAt < 2000) return Promise.resolve(false);   /* the same press twice */
     _pdfOutAt = now;
