@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.580";
+  var APP_VERSION = "6.9.581";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -549,11 +549,11 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","freight","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
-    accounts: ["dash","agent","returns","tools","clients","partners","followups","challans","register","freight","payments","billing","service","spares","dues","products","rates","pricelist","dups","stock","trouble"],
+    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","freight","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","catalogs","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
+    accounts: ["dash","agent","returns","tools","clients","partners","followups","challans","register","freight","payments","billing","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","trouble"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
-    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","freight","billing","payments","products","dups","brief","trouble"],
-    service:  ["dash","agent","tools","service","spares","dues","followups","products","trouble"]
+    sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","freight","billing","payments","products","catalogs","dups","brief","trouble"],
+    service:  ["dash","agent","tools","service","spares","dues","followups","products","catalogs","trouble"]
   };
   /* v6.9.320 - EVERY SCREEN EITHER OF HIS ROLES OPENS.
      A man holding godown and service is entitled to the godown's six screens AND the service
@@ -3263,6 +3263,108 @@ window.addEventListener("beforeunload", function (ev) {
     return h;
   }
 
+  /* ================= THE CATALOGUE LIBRARY  (v6.9.581, 22 Sep 2026) =================
+     HIS WORDS: "make a dedicated product catalog section where i can store all prouct catalog,
+     brand wise ... those catalogs are everywhere available on internet, no secret in it."
+
+     A catalogue is held as a LINK, not as a file inside the app. The link opens on any phone,
+     shows a preview when it is pasted into WhatsApp, and weighs nothing on the sheet. A file
+     picked on the phone is hosted first - the same pdfHost every PDF here already uses - and
+     the link that comes back is what is saved.
+
+     NOTHING IS EVER DELETED. A new edition marks the old one superseded; it stays on the card
+     under "older editions", because a customer quoted out of the 2024 book must still be
+     answerable out of the 2024 book. Owner adds and supersedes; everyone finds and sends. */
+  var CAT_KINDS = ["Brand catalogue", "Price list", "Technical sheet", "Installation guide", "Warranty card"];
+  function catRows() { return (S.data.catalogues || []).filter(function (r) { return r && String(r.brand || "").trim(); }); }
+  function catIsLive(r) { return String(r.status || "current").toLowerCase() !== "superseded"; }
+  function catUrl(r) { return String((r && (r.url || r.tgUrl)) || "").trim(); }
+  function catSize(b) {
+    var n = Number(b) || 0;
+    if (!n) return "";
+    return n >= 1048576 ? (Math.round(n / 104857.6) / 10) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+  }
+  function catSay(r) { return [String(r.kind || ""), String(r.year || ""), catSize(r.bytes)].filter(Boolean).join("  ·  "); }
+  function catWaText(r) {
+    return "Energy World — " + String(r.brand || "") + (r.title ? " " + String(r.title) : "") + "\n" + catUrl(r);
+  }
+  /* brand -> {live: [], old: []}, newest first inside each */
+  function catByBrand(q) {
+    var map = {}, order = [];
+    catRows().forEach(function (r) {
+      var hay = [r.brand, r.title, r.kind, r.year, r.note].join(" ").toLowerCase();
+      if (q && hay.indexOf(q) < 0) return;
+      var b = String(r.brand || "").trim();
+      if (!map[b]) { map[b] = { brand: b, live: [], old: [] }; order.push(b); }
+      (catIsLive(r) ? map[b].live : map[b].old).push(r);
+    });
+    order.sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; });
+    var byNew = function (a, b) { return String(b.year || "") + String(b.createdAt || "") < String(a.year || "") + String(a.createdAt || "") ? -1 : 1; };
+    return order.map(function (b) { map[b].live.sort(byNew); map[b].old.sort(byNew); return map[b]; });
+  }
+  function catRowHtml(r, old) {
+    var u = catUrl(r);
+    var acts = '<div class="acts" style="margin-top:4px">' +
+      (u ? '<a class="btn sm ghost" href="' + esc(u) + '" target="_blank" rel="noopener">Open</a>' +
+           '<button class="btn sm ghost" data-act="cbk-copy" data-id="' + esc(r.id) + '">Copy link</button>' +
+           '<button class="btn sm" data-act="cbk-wa" data-id="' + esc(r.id) + '">WhatsApp</button>' : '') +
+      (roleIs("admin") ? '<button class="btn sm ghost" data-act="cbk-edit" data-id="' + esc(r.id) + '">Edit</button>' +
+        (old ? '' : '<button class="btn sm ghost" data-act="cbk-super" data-id="' + esc(r.id) + '">Supersede</button>') : "") +
+      '</div>';
+    return '<div style="padding:6px 0;border-top:1px solid #eef2f7">' +
+      '<div style="font-size:13px;font-weight:600' + (old ? ';color:#94a3b8' : '') + '">' + esc(r.title || r.kind || "Catalogue") + (old ? ' — superseded' : '') + '</div>' +
+      '<div class="meta" style="font-size:12px">' + esc(catSay(r)) + (r.note ? ' · ' + esc(r.note) : '') + '</div>' +
+      (u ? acts : '<div class="meta" style="font-size:12px;color:#b45309">No link on this row yet.</div>') +
+      '</div>';
+  }
+  function catFormHtml() {
+    var f = S.catForm || {};
+    var brands = (S.data.brands || []).map(function (b) { return String(b.brand || "").trim(); }).filter(Boolean).sort();
+    return '<div class="card" style="border-color:#7dd3fc;background:#f0f9ff">' +
+      '<h3 style="margin:0 0 6px">' + (f.id ? "Edit this catalogue" : "Add a catalogue") + '</h3>' +
+      '<div class="row"><input class="grow" id="cb_brand" list="cb_brands" placeholder="Brand" value="' + esc(f.brand || "") + '"/>' +
+      '<input class="grow" id="cb_title" placeholder="Title, e.g. Sanitaryware 2026" value="' + esc(f.title || "") + '"/></div>' +
+      '<datalist id="cb_brands">' + brands.map(function (b) { return '<option value="' + esc(b) + '"></option>'; }).join("") + '</datalist>' +
+      '<div class="row"><select class="grow" id="cb_kind">' +
+      CAT_KINDS.map(function (k) { return '<option' + (String(f.kind || CAT_KINDS[0]) === k ? " selected" : "") + '>' + esc(k) + '</option>'; }).join("") +
+      '</select><input class="grow" id="cb_year" placeholder="Year" value="' + esc(f.year || "") + '"/></div>' +
+      '<div class="row"><input class="grow" id="cb_url" placeholder="Paste the link to the catalogue" value="' + esc(f.url || "") + '"/></div>' +
+      '<div class="meta" style="margin:2px 0 4px">Or pick the PDF and it will be uploaded and turned into a link.</div>' +
+      '<input type="file" id="cb_file" accept="application/pdf,.pdf" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
+      '<div class="meta" id="cb_file_note" style="margin:3px 0 6px">' + esc(S.catFile ? (S.catFile.name + " — " + catSize(S.catFile.size) + ", ready") : "Nothing picked.") + '</div>' +
+      '<div class="row"><input class="grow" id="cb_note" placeholder="Note (optional)" value="' + esc(f.note || "") + '"/></div>' +
+      '<div class="acts" style="margin-top:6px"><button class="btn" data-act="cbk-save">Save</button>' +
+      '<button class="btn ghost" data-act="cbk-cancel">Cancel</button></div></div>';
+  }
+  function viewCatalogues() {
+    var q = String(S.q || "").toLowerCase().trim();
+    var h = '<div class="row"><input class="grow" id="q" placeholder="Search a brand or a catalogue..." value="' + esc(S.q || "") + '"/>' +
+      (roleIs("admin") ? '<button class="btn" data-act="cbk-new">+ Add</button>' : '') + '</div>';
+    var all = catRows();
+    h += '<div class="meta" style="margin:-2px 0 6px">' + all.length + ' catalogue' + (all.length === 1 ? '' : 's') +
+      ' · ' + catByBrand("").length + ' brand' + (catByBrand("").length === 1 ? '' : 's') +
+      ' · a link opens on any phone and shows a preview in WhatsApp</div>';
+    if (S.catForm) h += catFormHtml();
+    var blocks = catByBrand(q);
+    if (!blocks.length) {
+      return h + '<div class="empty">' + (all.length
+        ? 'No catalogue matches that.'
+        : 'No catalogue has been filed yet.' + (roleIs("admin") ? ' Press Add and paste the brand’s own link, or pick the PDF.' : ' The owner files them.')) + '</div>';
+    }
+    blocks.forEach(function (b) {
+      var lg = brandRow(b.brand) || {};
+      h += '<div class="card" style="padding:8px 10px">' +
+        '<div class="row" style="align-items:center;gap:8px;margin:0">' +
+        (lg.url ? '<img src="' + esc(lg.url) + '" alt="" style="height:22px;max-width:90px;object-fit:contain"/>' : '') +
+        '<h3 style="margin:0;flex:1">' + esc(b.brand) + '</h3>' +
+        '<span class="meta" style="font-size:12px">' + b.live.length + (b.old.length ? ' + ' + b.old.length + ' older' : '') + '</span></div>' +
+        b.live.map(function (r) { return catRowHtml(r, false); }).join("") +
+        (b.old.length ? '<div class="meta" style="margin-top:6px;font-size:12px">Older editions — kept, never deleted</div>' +
+          b.old.map(function (r) { return catRowHtml(r, true); }).join("") : "") +
+        '</div>';
+    });
+    return h;
+  }
   function viewProducts() {
     var q = S.q.toLowerCase().trim();
 
@@ -31072,7 +31174,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -39271,7 +39373,7 @@ function viewCatalogue() {
        chip. Every chip the two groups had is still here. */
     ["Clients",    ["clients", "leads", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss"]],
     ["Service",    ["service"]],
-    ["Products",   ["products"]],
+    ["Products",   ["products", "catalogs"]],   /* v6.9.581 - the catalogue library */
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins"]],
     /* v6.9.539 - item 23: "Book numbers - what's the use, it's empty" (measured: 0 rows) - off
        the header; the screen still opens from the Health check. Item 25: The brief is a tab
@@ -39596,7 +39698,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -39914,6 +40016,23 @@ function viewCatalogue() {
        (not read at save time - a repaint empties a file input and the photo would be lost). */
     var sigC = el("alt_sig");
     if (sigC) { try { sigWire(sigC); } catch (e) { } }
+    /* v6.9.581 - the catalogue PDF, read the moment it is picked: a repaint empties a file
+       input, and a file read at save time would already be gone. */
+    var cbf = el("cb_file");
+    if (cbf) {
+      cbf.addEventListener("change", function (e) {
+        var f = (e.target.files || [])[0];
+        var nt = el("cb_file_note");
+        if (!f) { S.catFile = null; if (nt) nt.textContent = "Nothing picked."; return; }
+        if (nt) { nt.textContent = "Reading " + f.name + "\u2026"; nt.style.color = "#94a3b8"; }
+        fileB64(f).then(function (b64) {
+          if (!b64) { S.catFile = null; if (nt) { nt.textContent = "That file could not be read."; nt.style.color = "#b45309"; } return; }
+          S.catFile = { b64: b64, name: String(f.name || "catalogue.pdf"), size: Number(f.size) || 0 };
+          var n2 = el("cb_file_note");
+          if (n2) { n2.textContent = S.catFile.name + " \u2014 " + catSize(S.catFile.size) + ", ready"; n2.style.color = "#0f766e"; }
+        });
+      });
+    }
     var phEl = el("alt_photo");
     if (phEl) {
       phEl.addEventListener("change", function (e) {
@@ -42750,6 +42869,74 @@ function viewCatalogue() {
       return;
     }
     if (act === "lim-fold") { S.limOpen = !S.limOpen; keepScroll = true; render(); return; }   /* v6.9.572 */
+    /* ---- the catalogue library (v6.9.581) ---- */
+    if (act === "cbk-new") { if (!roleIs("admin")) { toast("Filing a catalogue is the owner’s."); return; } S.catForm = {}; S.catFile = null; render(); return; }
+    if (act === "cbk-cancel") { S.catForm = null; S.catFile = null; render(); return; }
+    if (act === "cbk-edit") {
+      if (!roleIs("admin")) { toast("Editing a catalogue is the owner’s."); return; }
+      var _ce = catRows().filter(function (x) { return String(x.id) === String(id); })[0];
+      if (!_ce) return;
+      S.catForm = Object.assign({}, _ce); S.catFile = null; render(); return;
+    }
+    if (act === "cbk-copy" || act === "cbk-wa") {
+      var _cc = catRows().filter(function (x) { return String(x.id) === String(id); })[0];
+      if (!_cc || !catUrl(_cc)) { toast("That catalogue has no link yet."); return; }
+      var _txt = catWaText(_cc);
+      if (act === "cbk-wa") { window.open("https://wa.me/?text=" + encodeURIComponent(_txt), "_blank"); return; }
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(_txt).then(function () { toast("Link copied — paste it in WhatsApp."); },
+            function () { pdfLinkSheet(_txt); });
+          return;
+        }
+      } catch (e) { }
+      pdfLinkSheet(_txt); return;
+    }
+    if (act === "cbk-super") {
+      if (!roleIs("admin")) { toast("Superseding a catalogue is the owner’s."); return; }
+      var _cs = catRows().filter(function (x) { return String(x.id) === String(id); })[0];
+      if (!_cs) return;
+      askSheet({ title: "Mark this as an older edition?", sub: String(_cs.brand || "") + " · " + String(_cs.title || ""),
+        body: 'It stays on the brand’s card under "older editions" and its link keeps working. Nothing is deleted. ' +
+              'Do this when you have filed the newer edition.',
+        yes: "Mark it older", no: "Not now" }).then(function (yes) {
+        render(); if (!yes) return;
+        save("catalogues", { id: _cs.id, status: "superseded", updatedAt: new Date().toISOString(), updatedBy: S.user || "" });
+        toast("Marked as an older edition — it is still there.");
+      });
+      return;
+    }
+    if (act === "cbk-save") {
+      if (!roleIs("admin")) { toast("Filing a catalogue is the owner’s."); return; }
+      var _f = S.catForm || {};
+      var _row = {
+        id: _f.id || "", brand: (val("cb_brand") || "").trim(), title: (val("cb_title") || "").trim(),
+        kind: val("cb_kind") || CAT_KINDS[0], year: (val("cb_year") || "").trim(),
+        url: (val("cb_url") || "").trim(), note: (val("cb_note") || "").trim(),
+        status: _f.status || "current", bytes: _f.bytes || "",
+        updatedAt: new Date().toISOString(), updatedBy: S.user || ""
+      };
+      if (!_row.brand) { toast("Which brand is this catalogue for?"); return; }
+      if (!_row.title) _row.title = _row.kind + (_row.year ? " " + _row.year : "");
+      var _pick = S.catFile;
+      if (!_row.url && !_pick) { toast("Paste a link, or pick the PDF."); return; }
+      var _up = _pick
+        ? (toast("Uploading " + _pick.name + " — this takes a moment."),
+           api("pdfHost", { pdfBase64: _pick.b64, filename: _pick.name }, 240000).then(function (r) {
+             if (!r || !r.ok || !r.url) throw new Error((r && r.error) || "the server did not return a link");
+             _row.url = String(r.url); _row.bytes = _pick.size || ""; return true;
+           }))
+        : Promise.resolve(true);
+      _up.then(function () {
+        if (!_f.id) { _row.createdAt = new Date().toISOString(); _row.createdBy = S.user || ""; }
+        return save("catalogues", _row);
+      }).then(function () {
+        S.catForm = null; S.catFile = null; toast("Filed under " + _row.brand + "."); render();
+      }).catch(function (e) {
+        toast("Could not file it: " + apiWhy(e));
+      });
+      return;
+    }
     if (act === "reprice-one") {
       if (!roleIs("admin")) { toast("Re-pricing a delivery is the owner\u2019s."); return; }
       var _r1 = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
