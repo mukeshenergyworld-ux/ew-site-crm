@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.571";
+  var APP_VERSION = "6.9.573";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8972,6 +8972,43 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     if (qq) list = list.filter(function (c) { return cvMatch(c, qq); });
     return list;
   }
+  /* v6.9.572 - every client who owes, most owed first, with the account's own limit and days boxes */
+  function credLimCard() {
+    if (!roleIs("admin")) return "";
+    var rows = [];
+    (S.data.clients || []).forEach(function (c) {
+      if (!c || !c.name || !isClient(c.name)) return;
+      var due = 0; try { due = regBalances(c.name).due; } catch (e) { due = 0; }
+      if (due > 0.5) rows.push({ c: c, due: due, lim: Math.max(0, Number(c.creditLimit) || 0) });
+    });
+    rows.sort(function (a, b) { return b.due - a.due; });
+    var none = rows.filter(function (r) { return !r.lim; }).length;
+    var head = '<div class="card" style="padding:9px 12px;margin-bottom:10px;border-color:' + (none ? '#fde68a' : '#bbf7d0') + '">' +
+      '<div class="acts" style="align-items:center;gap:8px;flex-wrap:wrap">' +
+      '<button class="btn sm ghost" data-act="lim-fold">' + (S.limOpen ? '\u25be' : '\u25b8') + ' Credit limits</button>' +
+      '<span class="meta" style="font-size:12.5px">' + (none
+        ? '<b style="color:#b45309">' + none + ' of ' + rows.length + '</b> clients who owe money have no limit'
+        : 'every one of the ' + rows.length + ' clients who owe money has a limit') + '</span></div>';
+    if (!S.limOpen) return head + '</div>';
+    var td = 'padding:5px 6px;border-top:1px solid #e2e8f0';
+    var box = 'padding:2px 6px;font-size:12.5px;font-weight:700;font-family:inherit;border-radius:6px;';
+    return head +
+      '<div class="meta" style="font-size:12px;margin:6px 0">Most owed first. Type a limit and press Enter \u2014 it saves on its own, row by row. Blank means no limit; days blank means the company\u2019s ' + CREDIT_DAYS + '.</div>' +
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+      '<tr style="color:#64748b"><th style="text-align:left;font-weight:600;padding:3px 6px">Client</th>' +
+      '<th style="text-align:right;font-weight:600;padding:3px 6px">Owes now</th>' +
+      '<th style="text-align:right;font-weight:600;padding:3px 6px">Limit</th>' +
+      '<th style="text-align:right;font-weight:600;padding:3px 6px">Days</th></tr>' +
+      rows.map(function (r) {
+        var dys = Math.max(0, Number(r.c.creditDays) || 0), over = r.lim > 0 && r.due > r.lim + 0.5;
+        return '<tr><td style="' + td + ';font-weight:700">' + esc(r.c.name) + '</td>' +
+          '<td style="' + td + ';text-align:right;color:' + (over ? '#b91c1c' : '#0f172a') + '">' + moneySgn(r.due) + (over ? ' <span style="font-size:12px">over</span>' : '') + '</td>' +
+          '<td style="' + td + ';text-align:right"><input class="credlim_in" data-cl="' + esc(r.c.name) + '" inputmode="numeric" value="' + (r.lim ? esc(String(Math.round(r.lim))) : '') + '" placeholder="none" ' +
+            'style="width:96px;text-align:right;font-size:12.5px;' + box + 'border:1px ' + (r.lim ? 'solid #bfdbfe' : 'dashed #cbd5e1') + ';background:' + (r.lim ? '#eff6ff' : '#fff') + '"/></td>' +
+          '<td style="' + td + ';text-align:right"><input class="creddays_in" data-cl="' + esc(r.c.name) + '" inputmode="numeric" value="' + (dys ? esc(String(dys)) : '') + '" placeholder="' + CREDIT_DAYS + '" ' +
+            'style="width:46px;text-align:center;font-size:12.5px;' + box + 'border:1px ' + (dys ? 'solid #bfdbfe' : 'dashed #cbd5e1') + ';background:' + (dys ? '#eff6ff' : '#fff') + '"/></td></tr>';
+      }).join("") + '</table></div></div>';
+  }
   function viewClients() {
     _clDueCache = null; _clStageCache = null; _aliasCache = null;   /* fresh money, stages and merges on every full render */
     /* v6.9.514 - the SAME rule the list uses, so the location chips and the list can never
@@ -8994,7 +9031,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return '<button class="btn sm ' + (clWho() === k ? "" : "ghost") + '" data-act="cl-who" data-k="' + k + '">' +
         esc(label) + ' <span class="pill">' + n + '</span></button>';
     };
-    var h = '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px">' +
+    var h = credLimCard() +   /* v6.9.572 */
+      '<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px">' +
       _band("all", "Everyone", _dated.length) +
       _band("client", "Clients", _nCl) +
       _band("lead", "Leads", _dated.length - _nCl) +
@@ -19144,6 +19182,24 @@ function viewCatalogue() {
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       '<button class="btn" data-act="dp-save" data-k="' + esc(key) + '">Record the payment</button></div>';
   }
+  /* v6.9.573 - serials the owner has recorded as spent (never on paper), from the audit rows */
+  function regSpent() {
+    var out = {};
+    (((S.data || {}).audit) || []).forEach(function (r) {
+      if (!r || r.action !== "serial:spent") return;
+      var d = {}; try { d = JSON.parse(r.detail || "{}"); } catch (e) { d = {}; }
+      var n = Number(d.n); if (n > 0) out[n] = { by: r.actor || "", at: r.createdAt || "" };
+    });
+    return out;
+  }
+  function regZeroReceived() {
+    return (((S.data || {}).challans) || []).filter(function (c) {
+      if (!c || c._isReturn) return false;
+      if (String(c.status || "") !== "Received") return false;
+      var v = 0; try { v = chValue(c); } catch (e) { v = 0; }
+      return !(Math.abs(v) > 0.5);
+    });
+  }
   function viewRegister() {
     if (!canSeeRegister()) return '<div class="empty">The register is for the owner, accounts and the executive whose clients are on it.</div>';
     var R = regBuild();
@@ -19167,12 +19223,32 @@ function viewCatalogue() {
         'series below, each one saying who made it, who cancelled it and why. Until today these ' +
         'were counted as missing numbers.</div></div>';
     }
-    if (R.gaps.length) {
+    /* v6.9.573 - numbers the owner has recorded as spent leave the red card for a grey one */
+    var _sp = regSpent(), _spent = R.gaps.filter(function (n) { return !!_sp[n]; });
+    var _gaps = R.gaps.filter(function (n) { return !_sp[n]; });
+    if (_spent.length) {
+      h += '<div class="card" style="border-color:#e2e8f0;background:#f8fafc;padding:9px 12px">' +
+        '<b style="color:#475569;font-size:13.5px">' + _spent.length + ' number' + (_spent.length === 1 ? ' was' : 's were') + ' spent, never on paper</b>' +
+        '<div style="margin-top:4px;font-weight:800;color:#64748b;font-size:13px;word-break:break-word">' + _spent.join(" \u00b7 ") + '</div>' +
+        '<div class="meta" style="font-size:12px;margin-top:4px">Given out by the server after the app had stopped waiting; nothing was ever written under them. ' +
+        'Recorded by ' + esc(regFirst(_sp[_spent[0]].by) || "the owner") + (_sp[_spent[0]].at ? ' on ' + esc(regDMY(String(_sp[_spent[0]].at).slice(0, 10))) : '') + '.</div></div>';
+    }
+    var _z = regZeroReceived();
+    if (_z.length) {
+      h += '<div class="card" style="border-color:#fde68a;background:#fffbeb;padding:9px 12px">' +
+        '<b style="color:#92400e;font-size:13.5px">' + _z.length + ' received deliver' + (_z.length === 1 ? 'y shows' : 'ies show') + ' \u20b90</b>' +
+        '<div class="meta" style="font-size:12px;color:#92400e;margin-top:3px">Either delivered free, or the lines lost their prices. Open each and decide.</div>' +
+        '<div class="acts" style="margin-top:6px;gap:6px;flex-wrap:wrap">' + _z.map(function (c) {
+          return '<button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '">' + esc(c.challanNo || "no number") + ' \u00b7 ' + esc(c.customerName || "") + '</button>';
+        }).join("") + '</div></div>';
+    }
+    if (_gaps.length) {
       h += '<div class="card" style="border-color:#fca5a5;background:#fef2f2;padding:10px 12px">' +
-        '<b style="color:#b91c1c;font-size:14px">' + R.gaps.length + ' number' + (R.gaps.length === 1 ? '' : 's') +
+        '<b style="color:#b91c1c;font-size:14px">' + _gaps.length + ' number' + (_gaps.length === 1 ? '' : 's') +
         ' missing from the series</b>' +
         '<div style="margin-top:5px;font-weight:800;color:#b91c1c;font-size:13px;word-break:break-word">' +
-        R.gaps.join(" · ") + '</div>' +
+        _gaps.join(" · ") + '</div>' +
+        (roleIs("admin") ? '<div class="acts" style="margin-top:6px"><button class="btn sm" data-act="reg-spent" data-n="' + esc(_gaps.join(",")) + '">Record ' + (_gaps.length === 1 ? 'it' : 'these ' + _gaps.length) + ' as spent \u2014 never on paper</button></div>' : '') +
         '<div class="meta" style="font-size:12.5px;color:#b91c1c;margin-top:5px">Each one is either a ' +
         'number the server gave out while the app had already given up waiting (the number call has a 30-second limit; Apps Script is slower than that some afternoons) &mdash; ' +
         'the app then asked again and took the next number, and the first was spent with nothing on it. It was never on any paper. ' +
@@ -42443,6 +42519,30 @@ function viewCatalogue() {
       });
       return;
     }
+    /* v6.9.573 - one audit row per number, after a yes; nothing deleted, nothing renumbered */
+    if (act === "reg-spent") {
+      if (!roleIs("admin")) { toast("Recording a number as spent is the owner\u2019s."); return; }
+      var _ns = String(t.getAttribute("data-n") || "").split(",").map(Number).filter(function (x) { return x > 0; });
+      if (!_ns.length) return;
+      askSheet({ title: "Record " + (_ns.length === 1 ? "number " + _ns[0] : "these " + _ns.length + " numbers") + " as spent?",
+        sub: _ns.join(" \u00b7 "),
+        body: 'Each was given out by the server after the app had stopped waiting, and nothing was ever written under it. ' +
+          'This writes one line per number to the audit trail with your name. Nothing is deleted or renumbered; they move from the red card to a grey one.',
+        yes: "Record them", no: "Not now" }).then(function (yes) {
+        render();
+        if (!yes) return;
+        var _at = new Date().toISOString();
+        Promise.all(_ns.map(function (n) {
+          return save("audit", { id: "SP-" + Date.now() + "-" + n + "-" + Math.floor(Math.random() * 1000000), createdAt: _at, actor: S.user,
+            action: "serial:spent", target: "challan no. " + n,
+            detail: JSON.stringify({ n: n, why: "given out by the server after the app stopped waiting; never on paper" }), ip: "" }, true);
+        })).then(function () { toast(_ns.length + " number" + (_ns.length === 1 ? "" : "s") + " recorded as spent."); renderBg(); })
+          .catch(function () { toast("Recorded on this device \u2014 it will go up by itself."); });
+        _regCache = null; render();
+      });
+      return;
+    }
+    if (act === "lim-fold") { S.limOpen = !S.limOpen; keepScroll = true; render(); return; }   /* v6.9.572 */
     if (act === "reprice-one") {
       if (!roleIs("admin")) { toast("Re-pricing a delivery is the owner\u2019s."); return; }
       var _r1 = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
