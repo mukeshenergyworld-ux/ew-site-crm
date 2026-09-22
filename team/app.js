@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.568";
+  var APP_VERSION = "6.9.569";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2593,7 +2593,9 @@ window.addEventListener("beforeunload", function (ev) {
             (edit && !b.job
               ? '<input data-bdisc="' + n + '" data-bname="' + esc(b.name) + '" data-was="' + (b.disc == null ? '' : b.disc) + '" inputmode="decimal" ' +
                 'value="' + (b.disc == null ? '' : esc(String(b.disc))) + '" placeholder="mixed" aria-label="Discount on ' + esc(b.name) + '" ' +
-                'style="width:64px;min-height:44px;padding:4px 6px;text-align:right;font-weight:700;font-size:13px;color:#0f766e"/>%'
+                /* v6.9.569 - his words: "compact view like the item discounts" - an item row's height */
+                'style="width:46px;height:26px;min-height:0;padding:1px 5px;margin:0;text-align:right;font-weight:700;font-size:12.5px;' +
+                'color:#0f766e;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box"/>%'
               : dTxt) + '</td>' +
           '<td id="hsbb_' + n + '" style="' + td + ';padding-right:0;font-weight:700">' + money(b.amt) + '</td></tr>';
       }).join("") + '</table></div>';
@@ -10186,6 +10188,12 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569">' +
       '<b>The bill, as this client is priced</b></div>' +
       hsbBrandBlock(priced, roleIs("admin")) +
+      /* v6.9.569 - the save sits under the brand boxes it saves (his ask) */
+      (roleIs("admin") && priced.some(function (x) { return !x.job; })
+        ? '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px">' +
+            '<button class="btn sm" data-act="hsb-disc-save" data-id="' + esc(c.id) + '" style="min-height:36px">Save these discounts</button>' +
+            '<span id="hsb_discnote" class="meta" style="font-size:12px">Change a brand\u2019s discount above; nothing is saved until you press this.</span></div>'
+        : '') +
       '<div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569;margin-top:10px"><b>Item by item</b></div>' +
       '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
       '<tr style="color:#64748b;text-align:right">' +
@@ -10232,11 +10240,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           money(goods + frt) + '</span></div>' +
       '</div>' +
       /* v6.9.565 - the owner's discount boxes are saved here, after a sheet that names every change */
-      (_dEd && priced.some(function (x) { return !x.job; })
-        ? '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:9px">' +
-            '<button class="btn sm" data-act="hsb-disc-save" data-id="' + esc(c.id) + '" style="min-height:44px">Save these discounts</button>' +
-            '<span id="hsb_discnote" class="meta" style="font-size:12px">Change a brand\u2019s discount in the brand box above; nothing is saved until you press this.</span></div>'
-        : '') +
+
       '</div>';
 
     /* ---- 2. THE PRESET, BRAND BY BRAND ----
