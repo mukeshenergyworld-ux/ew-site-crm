@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.563";
+  var APP_VERSION = "6.9.564";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18762,7 +18762,8 @@ function viewCatalogue() {
                 ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" ' +
                   'style="padding:1px 8px;font-size:12px;font-weight:700;background:#fff;color:#b45309;border:1px solid #b45309;border-radius:6px">Attach</button>'
                 : '<span style="color:#b45309">none</span>')) + '</td>' +
-      '<td style="' + regCell() + (regDone ? regStruck : "") + '">' + (inHisab(c) ? hisabStampPill(c) + regDay((hisabStamp(c) || {}).at) : hisabAddBtn(c) ||
+      '<td style="' + regCell() + (regDone ? regStruck : "") + '">' + (inHisab(c) ? hisabStampPill(c) + regDay((hisabStamp(c) || {}).at) :
+        /* v6.9.564 - ONE Finalise per row, beside the date (his ask). This column only says the state. */
         '<span style="color:#b45309;font-size:12px">not finalised</span>') + '</td>' +
       '<td style="' + regCell(";text-align:right;color:" + (over ? "#b91c1c" : "#64748b")) + '">' +
         (lim > 0 ? (over ? '<b>' + moneySgn(lim) + '</b> <span style="font-size:12px">over</span>' : moneySgn(lim))
