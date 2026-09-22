@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.579";
+  var APP_VERSION = "6.9.580";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1102,6 +1102,7 @@
             try { j = JSON.parse(txt); } catch (e) { j = null; }
             if (j) return j;
             var head = String(txt || "").replace(/\s+/g, " ").slice(0, 60);
+            try { console.log("[EW wire] " + action + " - not JSON (HTTP " + r.status + "): " + head); } catch (e) { }   /* 6.9.580 */
             if (/<html|<!doctype/i.test(txt) && /sign in|signin|accounts\.google/i.test(txt)) {
               throw new Error("the server asked this browser to sign in to Google (HTTP " + r.status + ")");
             }
@@ -25361,7 +25362,7 @@ function viewCatalogue() {
     };
     return at(0);
   }
-  var _picFiling = {}, _rcptRetried = {};
+  var _picFiling = {}, _rcptRetried = {};   /* 6.9.580 - _rcptRetried[key] = when it was last tried */
   function rcptPicBackfill(c, r, pp) {
     var ph = null; (pp || []).some(function (p) { if (p && p.photo && p.photo.src) { ph = p.photo; return true; } return false; });
     if (!ph || !r.url || _picFiling[r.url]) return;
@@ -25386,11 +25387,14 @@ function viewCatalogue() {
       return rcptUpgrade(key, RCPT_IMG[key]).then(function (rec) {
         /* 6.9.578 - a preview-only copy with no photograph was kept for ever once the file failed.
            Try the real file once per session; keep the old copy if it still cannot be had. */
-        if ((rec && (rec.whole || rcptPhotos(rec).length)) || _rcptRetried[key]) return rec;
-        _rcptRetried[key] = 1;
+        /* 6.9.580 - only a record read from the FILE is final. A crop cut from the preview is
+           a stand-in (079 kept a 243 px one, blurry, for good); try the file again, at most
+           once every ten minutes. */
+        if ((rec && rec.whole) || (Date.now() - (_rcptRetried[key] || 0) < 600000)) return rec;
+        _rcptRetried[key] = Date.now();
         delete RCPT_IMG[key];
         return receiptImage(c).then(function (nw) {
-          if (nw && (nw.whole || rcptPhotos(nw).length)) return nw;
+          if (nw && (nw.whole || (rcptPhotos(nw).length && !rcptPhotos(rec).length))) return nw;
           RCPT_IMG[key] = rec; return rec;
         }, function () { RCPT_IMG[key] = rec; return rec; });
       });
@@ -25401,11 +25405,19 @@ function viewCatalogue() {
     /* v6.9.577 - THE PHOTOGRAPH ALONE FIRST, when there is one: a third of the bytes, no pdf.js,
        nothing to cut, never the challan twice. The document stays the fallback. */
     if (r.pic) tries = rcptUrls(r.pic).slice().reverse().concat(tries);
+    /* 6.9.580 - a lost reply is not a refusal: the real file gets three goes, 2 s apart,
+       before the preview is accepted in its place */
+    var goes = {};
+    var next = function (n) {
+      if (/export=download|\/file\/d\//.test(String(tries[n])) && (goes[n] = (goes[n] || 0) + 1) < 3)
+        return new Promise(function (ok) { setTimeout(ok, 2000); }).then(function () { return attempt(n); });
+      return attempt(n + 1);
+    };
     var attempt = function (n) {
       if (n >= tries.length) { RCPT_IMG[key] = null; return Promise.resolve(null); }
       var isFile = /export=download|\/file\/d\//.test(String(tries[n]));
       return api("imgB64", { url: tries[n] }, 90000).then(function (x) {
-        if (!x || !x.ok || !x.b64) return attempt(n + 1);
+        if (!x || !x.ok || !x.b64) return next(n);
         var mime = rcptMime(x.b64, x.mime);
         if (!mime) {
           /* not an image. A PDF is not a failure here - it is the usual case. */
@@ -25432,7 +25444,7 @@ function viewCatalogue() {
           rcptKeep(key, RCPT_IMG[key]);
           return rcptUpgrade(key, RCPT_IMG[key]);   /* v6.9.575 - a preview gives its photograph too */
         });
-      }).catch(function () { return attempt(n + 1); });
+      }).catch(function () { return next(n); });
     };
     return attempt(0);
   }
