@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.562";
+  var APP_VERSION = "6.9.563";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -715,7 +715,9 @@
     var file = null;
     try { file = new File([doc.output("blob")], fname, { type: "application/pdf" }); } catch (e) { file = null; }
     if (!file || !navigator.canShare({ files: [file] })) { doc.save(fname); return Promise.resolve(true); }
-    return navigator.share({ files: [file], title: String(title || fname.replace(/\.pdf$/i, "")) })
+    /* v6.9.563 - THE FILE AND NOTHING ELSE. A title rides along as a second item: "Copy" on the
+       share sheet put the PDF and a text on the clipboard, and a paste dropped both - "double file". */
+    return navigator.share({ files: [file] })
       .then(function () { return true; })
       .catch(function (e) {
         /* his own Cancel on the sheet is not an error and gets no file; anything else downloads */
@@ -732,7 +734,10 @@
      start while small calls are in flight (up to 20 s), because they are seconds and it is
      minutes. A call that is waiting has not started its clock. */
   var _wireBig = null, _wireSmall = 0, _wireQ = [];
-  function wireBigAction(action) { return action === "pdfHost" || action === "docPart"; }   /* V132 - each part takes the line in turn */
+  /* v6.9.563 - only a WHOLE document in one POST owns the line. A 64 KB part is no bigger than a
+     save and goes beside the small calls; the closing pdfHost of a document sent in parts
+     carries no document and is small too (api() passes it as "pdfHost:parts"). */
+  function wireBigAction(action) { return action === "pdfHost"; }
   function wireBusy() { return !!_wireBig; }
   function wireWaiting() { return _wireQ.length; }
   /* resolves when this call may go. Small calls: when no document is uploading. A document:
@@ -782,7 +787,7 @@
     var tail = s < 20 ? ""
       : (s < 45 ? " — a big file on a slow line. It is still going."
                 : " — this is slow. Nothing is lost: if it fails you can send it again.");
-    return now.what + (now.part ? " — part " + now.part : "") + " — " + now.kb + " KB · " + s + "s" + tail;
+    return now.what + (now.part ? " — " + now.part : "") + " — " + now.kb + " KB · " + s + "s" + tail;
   }
   function upPaint() {
     var bar = document.getElementById("ewupbar");
@@ -891,13 +896,14 @@
     var rest = Object.assign({}, extra); delete rest.pdfBase64; rest.parts = { key: key, n: n };
     var partAt = function (i) { return b64.slice(i * DOC_PART_CH, (i + 1) * DOC_PART_CH); };
     var on = false; try { on = upStart("pdfHost", kb); } catch (e) { on = false; }
-    var say = function (i) { try { if (_upNow) _upNow.part = (i + 1) + " of " + n; } catch (e) { } };
+    /* v6.9.563 - the banner counts parts UP, because with three in the air "part 2" means nothing */
+    var up = 0, lanes = 1, clock = 60000;
+    var say = function () { try { if (_upNow) _upNow.part = up + " of " + n + " parts up"; } catch (e) { } };
+    /* a refusal and a network fault are retried in ONE place (the catch), so a part is tried
+       exactly four times - a retry in both branches doubled the count */
     var sendPart = function (i, tries) {
-      say(i);
-      /* a refusal and a network fault are retried in ONE place (the catch), so a part is tried
-         exactly four times - a retry in both branches doubled the count */
-      return api("docPart", { key: key, i: i, n: n, data: partAt(i) }, 60000).then(function (r) {
-        if (r && r.ok) return true;
+      return api("docPart", { key: key, i: i, n: n, data: partAt(i) }, clock).then(function (r) {
+        if (r && r.ok) { up++; say(); return true; }
         if (r && /unknown action/i.test(String(r.error || ""))) throw new Error("old server");
         throw new Error((r && r.error) || ("part " + (i + 1) + " refused"));
       }).catch(function (e) {
@@ -906,18 +912,39 @@
         throw e;
       });
     };
-    var seq = function (i) { return i >= n ? Promise.resolve() : sendPart(i, 0).then(function () { return seq(i + 1); }); };
+    /* v6.9.563 - PARTS IN LANES. Measured 22 Sep: the cost of a call is the wait in front of the
+       server, 2 to 17 s whatever its size - so nine parts one after another paid it nine times.
+       The first part goes alone and is timed: under 8 s, the line is good and the rest go three
+       at a time; slower than that, one at a time on a longer clock, as before. */
+    var pool = function (list) {
+      var next = 0, failed = null;
+      var lane = function () {
+        if (failed || next >= list.length) return Promise.resolve();
+        var i = list[next++];
+        return sendPart(i, 0).then(lane, function (e) { failed = failed || e; });
+      };
+      var ls = []; for (var k = 0; k < Math.min(lanes, list.length); k++) ls.push(lane());
+      return Promise.all(ls).then(function () { if (failed) throw failed; });
+    };
+    var all = function () {
+      var t0 = Date.now(); say();
+      return sendPart(0, 0).then(function () {
+        var took = Date.now() - t0;
+        if (took < 8000) { lanes = 3; clock = 60000; } else { lanes = 1; clock = 90000; }
+        var restI = []; for (var i = 1; i < n; i++) restI.push(i);
+        return pool(restI);
+      });
+    };
     var finish = function (again) {
       return api("pdfHost", rest, 90000).then(function (r) {
         if (r && !r.ok && r.missing && r.missing.length && !again) {
-          var ms = r.missing.slice();
-          var re = function () { if (!ms.length) return Promise.resolve(); return sendPart(ms.shift(), 0).then(re); };
-          return re().then(function () { return finish(true); });
+          lanes = 1;
+          return pool(r.missing.slice()).then(function () { return finish(true); });
         }
         return r;
       });
     };
-    return seq(0).then(function () { return finish(false); })
+    return all().then(function () { return finish(false); })
       .then(function (r) { if (on) upEnd(); return r; })
       .catch(function (e) {
         if (on) upEnd();
@@ -942,8 +969,9 @@
       body: JSON.stringify(body)
     };
     if (ctl) opt.signal = ctl.signal;
-    var done = function () { if (timer) { clearTimeout(timer); timer = null; } if (_upOn) upEnd(); wireEnd(action); };
-    return wireTurn(action).then(function () { wireStart(action); _t0 = Date.now(); _upOn = _upKb ? upStart(action, _upKb) : false; return new Promise(function (res, rej) {
+    var _wa = (action === "pdfHost" && !(extra && extra.pdfBase64)) ? "pdfHost:parts" : action;   /* v6.9.563 */
+    var done = function () { if (timer) { clearTimeout(timer); timer = null; } if (_upOn) upEnd(); wireEnd(_wa); };
+    return wireTurn(_wa).then(function () { wireStart(_wa); _t0 = Date.now(); _upOn = _upKb ? upStart(action, _upKb) : false; return new Promise(function (res, rej) {
       /* belt and braces: abort the request AND settle the promise. On a browser with no
          AbortController the fetch is left to finish into the void, but nothing waits on it. */
       timer = setTimeout(function () {
@@ -2985,11 +3013,12 @@ window.addEventListener("beforeunload", function (ev) {
       (pic ? '<div style="background:#f8fafc;padding:14px;text-align:center"><img src="' + esc(pic) + '" alt="" style="max-width:100%;max-height:300px;object-fit:contain"/></div>' : "") +
       '<div style="padding:14px 15px 16px">' +
       '<h3 style="margin:0 0 4px;font-size:16px">' + esc(d.title) + '</h3>' +
-      '<div style="font-size:22px;font-weight:700;color:#0f766e;margin:6px 0 2px">' + money(p.price) +
+      '<div style="font-size:22px;font-weight:700;color:#0f766e;margin:6px 0 10px">' + money(p.price) +
       (p.unit ? ' <span style="font-size:12px;font-weight:400;color:#94a3b8">/ ' + esc(p.unit) + '</span>' : "") + '</div>' +
-      /* v6.9.492 - ENGLISH. This one walked through the 6.9.491 sweep because the word list had
-         "nahin" and not "nahi", and it was sitting on the very screen he pointed at. */
-      '<div class="meta" style="margin-bottom:8px">List price \u2014 the discount is applied separately.</div>';
+      /* v6.9.563 - his words: "show only price, do not show 'discount is applied separately' -
+         sometimes I have to search and send screenshots to the client". The card is a picture he
+         sends; it carries the list price and nothing about discounts. */
+      '';
     var sp = specLines(p.specs);
     if (sp.length) {
       h += '<div style="font-size:12px;letter-spacing:.08em;color:#94a3b8;margin:12px 0 4px">SPECIFICATIONS</div>' +
@@ -41751,7 +41780,7 @@ function viewCatalogue() {
           try {
             if (window.File && navigator.canShare) {
               var f = new File([st], "ew_unsynced_backup.json", { type: "application/json" });
-              if (navigator.canShare({ files: [f] })) { navigator.share({ files: [f], title: "EW unsynced backup" }); didFile = true; }
+              if (navigator.canShare({ files: [f] })) { navigator.share({ files: [f] }); didFile = true; }   /* v6.9.563 - one item */
             }
           } catch (e) { }
           if (!didFile) navigator.share({ title: "EW unsynced backup", text: st }).catch(function () { });
