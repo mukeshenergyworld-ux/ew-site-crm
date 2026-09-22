@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.564";
+  var APP_VERSION = "6.9.565";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2571,6 +2571,38 @@ window.addEventListener("beforeunload", function (ev) {
     /* "before" is not touched: it is what he owes WITHOUT this delivery, and a discount on
        this delivery cannot change what he owed before it. */
   }
+  /* v6.9.565 - THE OWNER'S DISCOUNT BOXES ON THE FINALISE SHEET, shown as they are typed: each
+     line's rate and amount, the goods, and - through the one existing painter - the delivery
+     total and what the client will owe after it. Nothing is saved from here. */
+  function hsbDiscVal(inp) {
+    var v = Number(String(inp.value || "").replace(/[^0-9.]/g, ""));
+    if (!isFinite(v) || String(inp.value || "").trim() === "") return null;
+    return Math.max(0, Math.min(100, Math.round(v * 100) / 100));
+  }
+  function hsbDiscPaint() {
+    var rows = document.querySelectorAll("tr[data-hl]");
+    if (!rows.length) return;
+    var goods = 0;
+    Array.prototype.forEach.call(rows, function (r) {
+      var inp = r.querySelector("[data-dix]");
+      if (!inp) { goods += Number(r.getAttribute("data-amt")) || 0; return; }
+      var d = hsbDiscVal(inp); if (d == null) d = Number(inp.getAttribute("data-was")) || 0;
+      var rate = Number(inp.getAttribute("data-rate")) || 0, qty = Number(inp.getAttribute("data-qty")) || 0;
+      var dr = Math.round(rate * (1 - d / 100)), amt = qty * dr;
+      var ix = inp.getAttribute("data-dix");
+      var rc = document.getElementById("hsbr_" + ix), ac = document.getElementById("hsba_" + ix);
+      if (rc) rc.textContent = money(dr);
+      if (ac) ac.textContent = money(amt);
+      inp.style.background = (d !== Number(inp.getAttribute("data-was"))) ? "#fef9c3" : "";
+      goods += amt;
+    });
+    var gEl = document.getElementById("hsb_goods");
+    var frt = gEl ? (Number(gEl.getAttribute("data-frt")) || 0) : 0;
+    if (gEl) gEl.textContent = money(goods);
+    var ex = document.getElementById("hsb_extra");
+    if (ex) { ex.setAttribute("data-goods", String(goods)); hsbExtraPaint(); }
+    else { var tot = document.getElementById("hsb_tot"); if (tot) tot.textContent = money(goods + frt); }
+  }
   /* v6.9.330 - hide the rows that do not match, in place. No state, no repaint. */
   function incFilter() {
     var box = document.getElementById("inc_q");
@@ -2610,6 +2642,7 @@ window.addEventListener("beforeunload", function (ev) {
       return;
     }
     if (t && t.id === "inc_q") { incFilter(); return; }
+    if (t && t.getAttribute && t.getAttribute("data-dix") != null) { hsbDiscPaint(); return; }   /* v6.9.565 */
     if (t && t.id === "hsb_extra") {
       var nx = document.getElementById("hsb_noextra");
       if (nx && nx.checked && String(t.value || "").trim()) nx.checked = false;
@@ -10129,17 +10162,23 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<th style="font-weight:600;padding:3px 6px 5px">Rate</th>' +
         '<th style="font-weight:600;padding:3px 0 5px 6px">Amount</th></tr>';
     if (!priced.length) h += '<tr><td colspan="6" style="color:#94a3b8;padding:6px 0">No items on this challan.</td></tr>';
+    var _dEd = roleIs("admin");   /* v6.9.565 - the owner may change a line's discount here */
     priced.forEach(function (x) {
-      h += '<tr style="border-top:1px solid #e2e8f0;text-align:right">' +
+      var _box = _dEd && !x.job;
+      h += '<tr data-hl="' + x.ix + '" data-amt="' + x.amt + '" style="border-top:1px solid #e2e8f0;text-align:right">' +
         '<td style="text-align:left;padding:5px 6px 5px 0">' + esc(x.desc || x.code || "") +
           (x.job ? ' <span class="pill" style="background:#ede9fe;color:#5b21b6">job work</span>'
                  : (x.brand ? ' <span style="color:#94a3b8;font-size:12px">' + esc(x.brand) + '</span>' : '')) + '</td>' +
         '<td style="padding:5px 6px">' + esc(String(x.qty)) + '</td>' +
         '<td style="padding:5px 6px;color:' + (x.disc > 0 ? '#94a3b8;text-decoration:line-through' : '#334155') + '">' + money(x.rate) + '</td>' +
         '<td style="padding:5px 6px;font-weight:700;color:' + (x.disc > 0 ? '#0f766e' : '#94a3b8') + '">' +
-          (x.job ? '&mdash;' : (x.disc > 0 ? x.disc + '%' : '0%')) + '</td>' +
-        '<td style="padding:5px 6px">' + money(x.dr) + '</td>' +
-        '<td style="padding:5px 0 5px 6px;font-weight:700">' + money(x.amt) + '</td></tr>';
+          (_box
+            ? '<span style="white-space:nowrap"><input data-dix="' + x.ix + '" data-rate="' + x.rate + '" data-qty="' + x.qty + '" data-was="' + x.disc + '" ' +
+              'inputmode="decimal" value="' + esc(String(x.disc)) + '" aria-label="Discount on ' + esc(x.desc || x.code || "") + '" ' +
+              'style="width:58px;min-height:44px;padding:4px 6px;text-align:right;font-weight:700;font-size:13px;color:#0f766e"/>%</span>'
+            : (x.job ? '&mdash;' : (x.disc > 0 ? x.disc + '%' : '0%'))) + '</td>' +
+        '<td id="hsbr_' + x.ix + '" style="padding:5px 6px">' + money(x.dr) + '</td>' +
+        '<td id="hsba_' + x.ix + '" style="padding:5px 0 5px 6px;font-weight:700">' + money(x.amt) + '</td></tr>';
     });
     /* ---- THE TOTAL IS NOT INSIDE THE SCROLLER  (v6.9.468) ----
        DRAWN AT 390px AND LOOKED AT. Six columns do not fit a phone, so the table scrolls
@@ -10150,7 +10189,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div style="margin-top:8px;border-top:2px solid #cbd5e1;padding-top:7px">' +
       '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">' +
         '<span style="font-size:12.5px;color:#475569">Goods</span>' +
-        '<span style="font-weight:800;font-size:13px;white-space:nowrap">' + money(goods) + '</span></div>' +
+        '<span id="hsb_goods" data-frt="' + frt + '" style="font-weight:800;font-size:13px;white-space:nowrap">' + money(goods) + '</span></div>' +
       (frt > 0 ? '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-top:2px">' +
         '<span style="font-size:12.5px;color:#475569">Freight (recovered from the client)</span>' +
         '<span style="font-weight:700;font-size:13px;white-space:nowrap">' + money(frt) + '</span></div>' : '') +
@@ -10159,7 +10198,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
         '<span style="font-weight:800;font-size:13px;color:#0f172a">This delivery</span>' +
         '<span id="hsb_tot" style="font-weight:800;font-size:15px;color:#0f172a;white-space:nowrap">' +
           money(goods + frt) + '</span></div>' +
-      '</div></div>';
+      '</div>' +
+      /* v6.9.565 - the owner's discount boxes are saved here, after a sheet that names every change */
+      (_dEd && priced.some(function (x) { return !x.job; })
+        ? '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:9px">' +
+            '<button class="btn sm" data-act="hsb-disc-save" data-id="' + esc(c.id) + '" style="min-height:44px">Save these discounts</button>' +
+            '<span id="hsb_discnote" class="meta" style="font-size:12px">Change any line\u2019s discount above; nothing is saved until you press this.</span></div>'
+        : '') +
+      '</div>';
 
     /* ---- 2. THE PRESET, BRAND BY BRAND ----
        Every brand on this delivery, and what this client is set at for it. Until now only the
@@ -22147,7 +22193,7 @@ function viewCatalogue() {
   }
   function pricedLines(c, cl) {
     var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
-    var priced = items.map(function (i) {
+    var priced = items.map(function (i, ix) {
       var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0;
       /* v6.9.323 - a job line has NO brand, and must not be lent the challan's. Left to the
          fallback it would inherit whichever brand the first material line happened to carry,
@@ -22158,7 +22204,7 @@ function viewCatalogue() {
       var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscount(cl, bBrand);
       var dr = Math.round(rate * (1 - disc / 100));
       return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
-               amt: qty * dr, job: isJobLine(i) };
+               amt: qty * dr, job: isJobLine(i), ix: ix };   /* v6.9.565 - ix: which saved line */
     });
     priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
     return priced;
@@ -42192,6 +42238,63 @@ function viewCatalogue() {
        question for the book as it stands, which adm-save alone could never reach because it
        fires on a save and Rs 1,47,989 was already wrong before today. */
     /* v6.9.517 - from the finalise sheet: the same repriceOffer, for this one delivery */
+    /* v6.9.565 - HIS DISCOUNT, CHANGED ON THE FINALISE SHEET. Owner only; nothing is written
+       until he says yes to a sheet naming each line and the rupee difference; then the same write
+       the re-price makes - the challan's own lines and an audit row with his name. */
+    if (act === "hsb-disc-save") {
+      if (!roleIs("admin")) { toast("Changing a discount on a delivery is the owner\u2019s."); return; }
+      var _dc = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
+      if (!_dc) return;
+      var _its = []; try { _its = JSON.parse(_dc.itemsJson || "[]"); } catch (e) { _its = []; }
+      var _bad = false, _chg = [];
+      Array.prototype.forEach.call(document.querySelectorAll("[data-dix]"), function (inp) {
+        var d = hsbDiscVal(inp), was = Number(inp.getAttribute("data-was")) || 0;
+        var ix = Number(inp.getAttribute("data-dix"));
+        if (d == null) { _bad = true; return; }
+        if (d !== was && _its[ix]) _chg.push({ ix: ix, from: was, to: d });
+      });
+      if (_bad) { toast("A discount box is empty \u2014 put 0 for no discount."); return; }
+      if (!_chg.length) { toast("No discount has changed."); return; }
+      var _cl = _dc.customerName || "";
+      var _was = pricedLines(_dc, _cl).reduce(function (a, x) { return a + x.amt; }, 0);
+      var _new = _its.map(function (l, i) {
+        var hit = _chg.filter(function (z) { return z.ix === i; })[0];
+        return hit ? Object.assign({}, l, { disc: hit.to }) : l;
+      });
+      var _nowG = pricedLines(Object.assign({}, _dc, { itemsJson: JSON.stringify(_new) }), _cl).reduce(function (a, x) { return a + x.amt; }, 0);
+      var _diff = _nowG - _was;
+      askSheet({
+        title: "Save " + (_chg.length === 1 ? "this discount" : "these " + _chg.length + " discounts") + "?",
+        sub: esc(_dc.challanNo || "") + " \u00b7 " + esc(_cl),
+        body: _chg.map(function (z) {
+            return '<div><b>' + esc(_its[z.ix].desc || _its[z.ix].code || "") + '</b> &middot; ' + z.from + '% &rarr; <b>' + z.to + '%</b></div>';
+          }).join("") +
+          '<div style="margin-top:8px">Goods ' + money(_was) + ' &rarr; <b>' + money(_nowG) + '</b> &middot; ' +
+          '<b style="color:' + (_diff < 0 ? '#0f766e' : '#b91c1c') + '">' + moneySgn(_diff) + '</b> on ' + esc(_cl) + '\u2019s bill.</div>' +
+          (inHisab(_dc) ? '<div style="margin-top:8px;color:#b45309">\u26a0 This delivery is already finalised \u2014 the client may already hold the bill.</div>' : '') +
+          '<div class="meta" style="margin-top:8px">Only this delivery changes. The client\u2019s preset stays as it is. Written to the audit trail with your name.</div>',
+        yes: "Save", no: "Not now"
+      }).then(function (yes) {
+        if (!yes) return;
+        save("challans", Object.assign({}, _dc, {
+          itemsJson: JSON.stringify(_new),
+          amount: _new.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0)
+        })).then(function () {
+          return save("audit", {
+            id: "DE-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+            createdAt: new Date().toISOString(), actor: S.user, action: "challan:disc-edit",
+            target: (_dc.challanNo || "") + " / " + _cl,
+            detail: JSON.stringify({ chId: _dc.id, no: _dc.challanNo, was: _was, now: _nowG,
+              why: "owner changed the discount on the finalise sheet",
+              lines: _chg.map(function (z) { return { code: _its[z.ix].code || "", desc: _its[z.ix].desc || "", from: z.from, to: z.to }; }) }), ip: ""
+          }, true);
+        }).then(function () {
+          toast("Saved \u2014 " + (_dc.challanNo || "the delivery") + " is now " + money(_nowG) + " for the goods (" + moneySgn(_diff) + ").");
+          S.modal = modalAddToHisab(_dc.id); render();
+        });
+      });
+      return;
+    }
     if (act === "reprice-one") {
       if (!roleIs("admin")) { toast("Re-pricing a delivery is the owner\u2019s."); return; }
       var _r1 = (S.data.challans || []).filter(function (x) { return x.id === id; })[0];
