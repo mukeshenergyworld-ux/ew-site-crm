@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.567";
+  var APP_VERSION = "6.9.568";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -19221,6 +19221,16 @@ function viewCatalogue() {
   /* A saved challan's items as a compact, numbered, qty-descending table (same look as the
      challan builder and receipt) instead of one long comma string. Uses itemsJson when present,
      else parses the legacy "desc xQty, ..." string. */
+  /* v6.9.568 - the brand split under a delivery's items, read only, for the roles that see money */
+  function chBrandSplitHtml(c) {
+    if (!c || !canSeeRegister() || c._isReturn) return "";
+    var priced = []; try { priced = pricedLines(c, c.customerName || ""); } catch (e) { priced = []; }
+    if (!priced.length) return "";
+    var goods = priced.reduce(function (a, x) { return a + (Number(x.amt) || 0); }, 0);
+    return '<div style="margin:8px 0 4px"><div class="meta" style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#475569"><b>By brand</b></div>' +
+      hsbBrandBlock(priced, false) +
+      '<div style="text-align:right;font-size:12.5px;margin-top:4px">Goods <b>' + money(goods) + '</b></div></div>';
+  }
   function challanItemsTable(c) {
     var items = [];
     try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
@@ -20044,7 +20054,7 @@ function viewCatalogue() {
            lift.js does not apply - nothingLost() confirms no function was lost. */
         out += '<div class="meta" style="margin-top:4px">' +
           [billLine, freightLine].filter(function (x) { return x; }).join('<br>') +
-          '</div>' + challanItemsTable(c);
+          '</div>' + challanItemsTable(c) + chBrandSplitHtml(c);   /* v6.9.568 */
       }
 
       out += '</div>';
@@ -33428,7 +33438,7 @@ function viewCatalogue() {
           ["Driver", c.driver ? esc(c.driver) + (c.vehicle ? " \u00b7 " + esc(c.vehicle) : "") : ""],
           ["Bill no.", c.billNo ? esc(c.billNo) : ""]
         ]) +
-        '<div style="margin-top:10px">' + challanItemsTable(c) + '</div>' +
+        '<div style="margin-top:10px">' + challanItemsTable(c) + chBrandSplitHtml(c) + '</div>' +   /* v6.9.568 */
         foot(canSee("billing") ? '<button class="btn" data-act="ch-hisab" data-cl="' + esc(c.customerName || "") + '">Open his HISAB</button>' : "");
     }
     if (kind === "quote") {
