@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.574";
+  var APP_VERSION = "6.9.575";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -25191,12 +25191,63 @@ function viewCatalogue() {
   }
   /* {pages: [{src,w,h}...], whole: true} - whole is false when only the first page could be
      had, and the appendix then says so instead of claiming to be the receipt. */
+  /* ================= THE PHOTOGRAPH OUT OF A PREVIEW, TOO  (v6.9.575) =================
+     A receipt sheet since 6.9.476 is A4 landscape with the photograph in a fixed column:
+     x 153-281 mm, y 47-182 mm of 297 x 210. From Drive's flat preview of page one, cut that
+     column, then trim it to the photograph's own edges. Portrait (older) sheets: null. */
+  function rcptCropPreview(pg) {
+    return new Promise(function (res) {
+      if (!pg || !pg.src || !(pg.w > pg.h * 1.2)) return res(null);
+      var im = new Image();
+      im.onload = function () {
+        try {
+          var W = im.width, H = im.height;
+          var sx = Math.round(W * 153 / 297), sy = Math.round(H * 47 / 210);
+          var sw = Math.round(W * 128 / 297), sh = Math.round(H * 135 / 210);
+          var cv = document.createElement("canvas"); cv.width = sw; cv.height = sh;
+          var cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, sw, sh);
+          cx.drawImage(im, sx, sy, sw, sh, 0, 0, sw, sh);
+          /* trim the near-white margin: the photograph is the one large non-white block */
+          var d = cx.getImageData(0, 0, sw, sh).data;
+          /* "ink" is anything not paper-white: a photographed sheet is grey-white, the page is 255.
+             Tried on his own screenshot of 143's receipt first: darkness alone lost the photo,
+             whose paper is light; any channel under 246 found it to the pixel. Every 2nd pixel is
+             read, so a quarter of the row is 1/8 of the width in samples. */
+          var ink = function (x, y) { var i = (y * sw + x) * 4; return Math.min(d[i], d[i + 1], d[i + 2]) < 246; };
+          var rowHas = function (y) { var n = 0; for (var x = 0; x < sw; x += 2) if (ink(x, y)) n++; return n > sw * 0.125; };
+          var colHas = function (x, y0, y1) { var n = 0; for (var y = y0; y < y1; y += 2) if (ink(x, y)) n++; return n > (y1 - y0) * 0.125; };
+          var t = 0, b = sh - 1, l = 0, r = sw - 1;
+          while (t < sh && !rowHas(t)) t++;
+          while (b > t && !rowHas(b)) b--;
+          while (l < sw && !colHas(l, t, b)) l++;
+          while (r > l && !colHas(r, t, b)) r--;
+          if (b - t < sh * 0.2 || r - l < sw * 0.2) return res(null);   /* nothing that looks like a photograph */
+          var out = document.createElement("canvas"); out.width = r - l + 1; out.height = b - t + 1;
+          out.getContext("2d").drawImage(cv, l, t, out.width, out.height, 0, 0, out.width, out.height);
+          res({ src: out.toDataURL("image/jpeg", 0.8), w: out.width, h: out.height });
+        } catch (e) { res(null); }
+      };
+      im.onerror = function () { res(null); };
+      im.src = pg.src;
+    });
+  }
+  /* a record with no photograph whose first page is a landscape preview gets one cut from it */
+  function rcptUpgrade(key, rec) {
+    if (!rec || !rec.pages || !rec.pages.length || rcptPhotos(rec).length) return Promise.resolve(rec);
+    return rcptCropPreview(rec.pages[0]).then(function (ph) {
+      if (!ph) return rec;
+      rec.pages[0].photo = ph;
+      try { rcptKeep(key, rec); } catch (e) { }
+      return rec;
+    });
+  }
   function receiptImage(c) {
     var r = chProofAny(c);
     if (!r.has || !r.url) return Promise.resolve(null);
     var key = String(r.url);
-    /* v6.9.405 - held from a previous statement, on this device, and free */
-    if (RCPT_IMG[key] !== undefined) { rcptTouch(key); return Promise.resolve(RCPT_IMG[key]); }
+    /* v6.9.405 - held from a previous statement, on this device, and free
+       v6.9.575 - and one held without its photograph gets it cut from the preview now */
+    if (RCPT_IMG[key] !== undefined) { rcptTouch(key); return rcptUpgrade(key, RCPT_IMG[key]); }
     /* THE FILE FIRST, the preview only as a fallback. rcptUrls has always listed both; the
        order was preview-first, which is what turned a two-page document into one page. */
     var tries = rcptUrls(key).slice().reverse();
@@ -25226,7 +25277,7 @@ function viewCatalogue() {
              PDF is a rendering of page one, and its photograph cannot be cut out of it */
           RCPT_IMG[key] = { pages: [{ src: p.src, w: p.w, h: p.h, photo: isFile ? { src: p.src, w: p.w, h: p.h } : null }], whole: !!isFile };
           rcptKeep(key, RCPT_IMG[key]);
-          return RCPT_IMG[key];
+          return rcptUpgrade(key, RCPT_IMG[key]);   /* v6.9.575 - a preview gives its photograph too */
         });
       }).catch(function () { return attempt(n + 1); });
     };
