@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.83.0";
+  var APP_VERSION = "1.84.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -2687,7 +2687,7 @@ function discRowOn(client, brand, onYmd) {
   }
   function pricedLines(c, cl) {
     var items = []; try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
-    var priced = items.map(function (i) {
+    var priced = items.map(function (i, ix) {
       var rate = Number(i.rate) || 0, qty = Number(i.qty) || 0;
       /* v6.9.323 - a job line has NO brand, and must not be lent the challan's. Left to the
          fallback it would inherit whichever brand the first material line happened to carry,
@@ -2698,7 +2698,7 @@ function discRowOn(client, brand, onYmd) {
       var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscount(cl, bBrand);
       var dr = Math.round(rate * (1 - disc / 100));
       return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
-               amt: qty * dr, job: isJobLine(i) };
+               amt: qty * dr, job: isJobLine(i), ix: ix };   /* v6.9.565 - ix: which saved line */
     });
     priced.sort(function (a, b) { return (b.disc || 0) - (a.disc || 0); });
     return priced;
