@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.43.0";
+  var APP_VERSION = "1.44.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -175,7 +175,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     var file = null;
     try { file = new File([doc.output("blob")], fname, { type: "application/pdf" }); } catch (e) { file = null; }
     if (!file || !navigator.canShare({ files: [file] })) { doc.save(fname); return Promise.resolve(true); }
-    return navigator.share({ files: [file], title: String(title || fname.replace(/\.pdf$/i, "")) })
+    /* v6.9.563 - THE FILE AND NOTHING ELSE. A title rides along as a second item: "Copy" on the
+       share sheet put the PDF and a text on the clipboard, and a paste dropped both - "double file". */
+    return navigator.share({ files: [file] })
       .then(function () { return true; })
       .catch(function (e) {
         /* his own Cancel on the sheet is not an error and gets no file; anything else downloads */
@@ -867,7 +869,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     var tail = s < 20 ? ""
       : (s < 45 ? " — a big file on a slow line. It is still going."
                 : " — this is slow. Nothing is lost: if it fails you can send it again.");
-    return now.what + (now.part ? " — part " + now.part : "") + " — " + now.kb + " KB · " + s + "s" + tail;
+    return now.what + (now.part ? " — " + now.part : "") + " — " + now.kb + " KB · " + s + "s" + tail;
   }
   function upPaint() {
     var bar = document.getElementById("ewupbar");
@@ -910,13 +912,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     var rest = Object.assign({}, extra); delete rest.pdfBase64; rest.parts = { key: key, n: n };
     var partAt = function (i) { return b64.slice(i * DOC_PART_CH, (i + 1) * DOC_PART_CH); };
     var on = false; try { on = upStart("pdfHost", kb); } catch (e) { on = false; }
-    var say = function (i) { try { if (_upNow) _upNow.part = (i + 1) + " of " + n; } catch (e) { } };
+    /* v6.9.563 - the banner counts parts UP, because with three in the air "part 2" means nothing */
+    var up = 0, lanes = 1, clock = 60000;
+    var say = function () { try { if (_upNow) _upNow.part = up + " of " + n + " parts up"; } catch (e) { } };
+    /* a refusal and a network fault are retried in ONE place (the catch), so a part is tried
+       exactly four times - a retry in both branches doubled the count */
     var sendPart = function (i, tries) {
-      say(i);
-      /* a refusal and a network fault are retried in ONE place (the catch), so a part is tried
-         exactly four times - a retry in both branches doubled the count */
-      return api("docPart", { key: key, i: i, n: n, data: partAt(i) }, 60000).then(function (r) {
-        if (r && r.ok) return true;
+      return api("docPart", { key: key, i: i, n: n, data: partAt(i) }, clock).then(function (r) {
+        if (r && r.ok) { up++; say(); return true; }
         if (r && /unknown action/i.test(String(r.error || ""))) throw new Error("old server");
         throw new Error((r && r.error) || ("part " + (i + 1) + " refused"));
       }).catch(function (e) {
@@ -925,18 +928,39 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         throw e;
       });
     };
-    var seq = function (i) { return i >= n ? Promise.resolve() : sendPart(i, 0).then(function () { return seq(i + 1); }); };
+    /* v6.9.563 - PARTS IN LANES. Measured 22 Sep: the cost of a call is the wait in front of the
+       server, 2 to 17 s whatever its size - so nine parts one after another paid it nine times.
+       The first part goes alone and is timed: under 8 s, the line is good and the rest go three
+       at a time; slower than that, one at a time on a longer clock, as before. */
+    var pool = function (list) {
+      var next = 0, failed = null;
+      var lane = function () {
+        if (failed || next >= list.length) return Promise.resolve();
+        var i = list[next++];
+        return sendPart(i, 0).then(lane, function (e) { failed = failed || e; });
+      };
+      var ls = []; for (var k = 0; k < Math.min(lanes, list.length); k++) ls.push(lane());
+      return Promise.all(ls).then(function () { if (failed) throw failed; });
+    };
+    var all = function () {
+      var t0 = Date.now(); say();
+      return sendPart(0, 0).then(function () {
+        var took = Date.now() - t0;
+        if (took < 8000) { lanes = 3; clock = 60000; } else { lanes = 1; clock = 90000; }
+        var restI = []; for (var i = 1; i < n; i++) restI.push(i);
+        return pool(restI);
+      });
+    };
     var finish = function (again) {
       return api("pdfHost", rest, 90000).then(function (r) {
         if (r && !r.ok && r.missing && r.missing.length && !again) {
-          var ms = r.missing.slice();
-          var re = function () { if (!ms.length) return Promise.resolve(); return sendPart(ms.shift(), 0).then(re); };
-          return re().then(function () { return finish(true); });
+          lanes = 1;
+          return pool(r.missing.slice()).then(function () { return finish(true); });
         }
         return r;
       });
     };
-    return seq(0).then(function () { return finish(false); })
+    return all().then(function () { return finish(false); })
       .then(function (r) { if (on) upEnd(); return r; })
       .catch(function (e) {
         if (on) upEnd();
