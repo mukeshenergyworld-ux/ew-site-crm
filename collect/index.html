@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.48.0";
+  var APP_VERSION = "1.49.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -994,7 +994,23 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
         throw e;
       });
   }
+  /* v1.49.0 (23 Sep 2026) - THE ANSWER TO A QUESTION NOBODY ASKED. Measured in the CRM: under load
+     Google sometimes delivers a POST as a bare GET, and the server's GET door answers with the
+     whole price list (222 KB, a plain array). The boot read that as "this device is no longer
+     allowed" and deleted the sign-in and the saved book. Now a reply that is not a JSON object is
+     a dropped request: a read is asked once more, a write fails out loud and is never re-sent,
+     and only the server's own plain "no" signs a device out. */
+  var API_READS = { teamAuth: 1, teamGet: 1, teamStamp: 1, search: 1, waStatus: 1 };
+  function apiDropped(e) { return /answered a different question/i.test(String((e && e.message) || "")); }
   function api(action, extra, ms) {
+    var p = apiRaw(action, extra, ms);
+    if (!API_READS[action]) return p;
+    return p.catch(function (e) {
+      if (!apiDropped(e)) throw e;
+      return new Promise(function (r) { setTimeout(r, 800); }).then(function () { return apiRaw(action, extra, ms); });
+    });
+  }
+  function apiRaw(action, extra, ms) {
     if (action === "pdfHost" && extra && extra.pdfBase64 && !extra._whole && String(extra.pdfBase64).length > DOC_PART_MIN) return docParts(extra);   /* V132 - in parts */
     if (extra && extra._whole) { extra = Object.assign({}, extra); delete extra._whole; }
     var _t0 = Date.now();
@@ -1024,6 +1040,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
             wireNote(action, Date.now() - _t0, (txt || "").length);
             var j = null;
             try { j = JSON.parse(txt); } catch (e) { j = null; }
+            if (j && (typeof j !== "object" || Array.isArray(j)))
+              throw new Error("the server answered a different question - Google dropped this request (HTTP " + r.status + ")");
             if (j) return j;
             var head = String(txt || "").replace(/\s+/g, " ").slice(0, 60);
             if (/<html|<!doctype/i.test(txt) && /sign in|signin|accounts\.google/i.test(txt)) {
@@ -4792,6 +4810,11 @@ function cancelMap() {
 
     authP.then(function (r) {
       if (!r || !r.ok) {
+        /* v1.49.0 - a reply that is not the server's own "no" is a failed call, not a refusal */
+        if (!(r && r.ok === false && /wrong name or pin|locked for|not allowed|blocked|removed/i.test(String(r.error || "")))) {
+          try { toast("The office did not answer the sign-in check - working from what this phone holds. Try again in a minute."); } catch (e) {}
+          return;
+        }
         refused = true; S.pin = ""; forgetBook();
         try { localStorage.removeItem(STORE); } catch (e) {}
         renderLogin("Sign in again.");
