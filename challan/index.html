@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.87.0";
+  var APP_VERSION = "1.88.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -2431,7 +2431,7 @@ function discRowOn(client, brand, onYmd) {
     var id = (rec && rec.id) ? rec.id : rec;
     return proofMap()[String(id || "").trim()] || null;
   }
-  function saveProof(rec, url, thumb, tg) {
+  function saveProof(rec, url, thumb, tg, pic) {
     _proofCache = null;
     var isRet = !!rec.returnNo;
     var no = String(rec.challanNo || rec.returnNo || "");
@@ -2448,7 +2448,9 @@ function discRowOn(client, brand, onYmd) {
         /* v1.41.0 - the Telegram copy's link, kept beside the Drive one and never instead of
            it. Blank when the mirror failed, which is the honest record of a mirror that
            failed rather than a link that goes nowhere. */
-        tg: String(tg || "")
+        tg: String(tg || ""),
+        /* v1.88.0 - the photograph alone, as the CRM files it since 6.9.577 */
+        pic: String(pic || "")
       }), ip: ""
     });
   }
@@ -5532,7 +5534,12 @@ function discRowOn(client, brand, onYmd) {
                 throw new Error((h && h.error) ? String(h.error)
                                                : "the server took the receipt but sent no link back");
               }
-              return saveProof(rec, h.url, small.url, h.tgLink).then(function (r) {
+              /* v1.88.0 - then the photograph on its own; a failure here costs nothing but speed later */
+              return shrink(dataUrl, 1100, 0.6).then(function (ph) {
+                return api("pdfHost", { pdfBase64: String(ph.url).split(",")[1], filename: no.replace(/[^\w.-]+/g, "_") + "_receipt-photo.jpg", mime: "image/jpeg" })
+                  .then(function (j) { return (j && j.ok && j.url) ? String(j.url) : ""; }, function () { return ""; });
+              }).catch(function () { return ""; }).then(function (pic) {
+              return saveProof(rec, h.url, small.url, h.tgLink, pic).then(function (r) {
                 if (!r || !r.ok) throw new Error("audit failed");
                 (S.data.audit = S.data.audit || []).push(r.row);
                 bust();
@@ -5559,6 +5566,7 @@ function discRowOn(client, brand, onYmd) {
                         "so it is not billed yet. Refresh and try again.");
                 });
               });
+              });   /* v1.88.0 - the photograph's .then */
             });
         });
       });
