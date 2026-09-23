@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.582";
+  var APP_VERSION = "6.9.583";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -28171,11 +28171,16 @@ function viewCatalogue() {
           : '') +
       '<div class="card"><div class="meta">Billed ' + money(l.billed) + (l.freight ? ' + freight ' + money(l.freight) : "") +
       '<br>Received so far ' + money(l.paid) + '<br><b>Due ' + money(l.due) + '</b></div></div>' +
-      '<label>' + (K.sign < 0 ? 'Amount going back' : 'Amount received') + '</label>' +
-      '<input id="pi_amt" inputmode="numeric" value="' +
-        (_pk === "in" ? Math.round(l.due > 0 ? l.due : 0) : (K.sign < 0 && l.due < -0.5 ? Math.round(-l.due) : "")) + '"/>' +
-      '<div class="grid2"><div><label>Date</label><input id="pi_date" type="date" max="' + today() + '" value="' + today() + '"/></div>' +
-      '<div><label>Mode</label><select id="pi_mode">' + opts(PAY_MODES, "Bank transfer") + '</select></div></div>';
+      /* v6.9.583 - "Date Mode amt received in single line, all some colors to highlight" */
+      '<div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">' +
+      '<div style="flex:1.3 1 130px;min-width:0"><label style="color:' + (K.sign < 0 ? '#b91c1c' : '#047857') + '">' + (K.sign < 0 ? 'Amount going back' : 'Amount received') + '</label>' +
+      '<input id="pi_amt" inputmode="numeric" style="font-size:18px;font-weight:800;min-height:44px;' +
+        (K.sign < 0 ? 'background:#fef2f2;border-color:#fca5a5;color:#991b1b' : 'background:#ecfdf5;border-color:#6ee7b7;color:#065f46') + '" value="' +
+        (_pk === "in" ? Math.round(l.due > 0 ? l.due : 0) : (K.sign < 0 && l.due < -0.5 ? Math.round(-l.due) : "")) + '"/></div>' +
+      '<div style="flex:1 1 125px;min-width:0"><label style="color:#1d4ed8">Date</label><input id="pi_date" type="date" max="' + today() + '" value="' + today() + '"' +
+        ' style="font-size:15px;min-height:44px;background:#eff6ff;border-color:#93c5fd;color:#1e3a8a;font-weight:600"/></div>' +
+      '<div style="flex:0.9 1 110px;min-width:0"><label style="color:#b45309">Mode</label><select id="pi_mode"' +
+        ' style="font-size:15px;min-height:44px;background:#fffbeb;border-color:#fcd34d;color:#78350f;font-weight:600">' + opts(PAY_MODES, "Bank transfer") + '</select></div></div>';
     /* Only asked when there is a real choice to make - one site needs no question. */
     if (sites.length > 1) {
       h += '<label>Against which site</label><select id="pi_site"><option value="">Not tied to one site</option>' +
