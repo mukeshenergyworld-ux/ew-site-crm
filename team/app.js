@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.586";
+  var APP_VERSION = "6.9.587";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -803,6 +803,7 @@
      start while small calls are in flight (up to 20 s), because they are seconds and it is
      minutes. A call that is waiting has not started its clock. */
   var _wireBig = null, _wireSmall = 0, _wireQ = [];
+  var WIRE_FREE = { search: 1, teamStamp: 1 };   /* v6.9.587 */
   /* v6.9.563 - only a WHOLE document in one POST owns the line. A 64 KB part is no bigger than a
      save and goes beside the small calls; the closing pdfHost of a document sent in parts
      carries no document and is small too (api() passes it as "pdfHost:parts"). */
@@ -814,6 +815,9 @@
   function wireTurn(action) {
     return new Promise(function (go) {
       var big = wireBigAction(action), since = Date.now();
+      /* v6.9.587 - a read that is a few hundred bytes up never waits for an upload: the search
+         he is staring at, and the 0-byte stamp that decides whether anything is pulled at all */
+      if (WIRE_FREE[action]) { go(); return; }
       var tryGo = function () {
         if (big) {
           if (!_wireBig && (_wireSmall === 0 || Date.now() - since > 20000)) return go();
@@ -1075,7 +1079,8 @@
       body: JSON.stringify(body)
     };
     if (ctl) opt.signal = ctl.signal;
-    var _wa = (action === "pdfHost" && !(extra && extra.pdfBase64)) ? "pdfHost:parts" : action;   /* v6.9.563 */
+    var _wa = (action === "pdfHost" && !(extra && extra.pdfBase64)) ? "pdfHost:parts"
+      : ((action === "pdfHost" && _upKb < 200) ? "pdfHost:small" : action);   /* v6.9.563; v6.9.587 - a photo does not own the line */
     var done = function () { if (timer) { clearTimeout(timer); timer = null; } if (_upOn) upEnd(); wireEnd(_wa); };
     return wireTurn(_wa).then(function () { wireStart(_wa); _t0 = Date.now(); _upOn = _upKb ? upStart(action, _upKb) : false; return new Promise(function (res, rej) {
       /* belt and braces: abort the request AND settle the promise. On a browser with no
@@ -2209,6 +2214,42 @@ window.addEventListener("beforeunload", function (ev) {
      first, or it would be exactly the news that gets dropped. */
   function beatGo() { syncAt = 0; quietSync(); }
 
+  /* ================= THE BOOK IN THE PIECES THAT CHANGED  (v6.9.587) =================
+     RAW holds, per tab, the rows exactly as the server last sent them (as JSON text, so nothing
+     the screens do to S.data can touch them), and the server's fingerprint of each tab. The next
+     pull sends the fingerprints; the server sends back only what changed. The whole book is then
+     rebuilt here and returned in exactly the shape a full pull has - every caller below is
+     unchanged. Every row count is checked against the server's; one mismatch and the whole book
+     is pulled again, as it always was. */
+  var RAW = { u: "", t: {}, h: null };
+  function rawReset() { RAW = { u: String(S.user || ""), t: {}, h: null }; }
+  function teamGetD(again) {
+    if (RAW.u !== String(S.user || "")) rawReset();
+    return api("teamGet", { have: RAW.h || {} }).then(function (r) {
+      if (!r || !r.ok) return r;
+      var dl = r._delta || null, hh = r._h || null, bad = false;
+      delete r._delta; delete r._h;
+      if (dl) Object.keys(dl).forEach(function (k) {
+        if (RAW.t[k] == null) { bad = true; return; }
+        var base; try { base = JSON.parse(RAW.t[k]); } catch (e) { bad = true; return; }
+        r[k] = base.concat(dl[k] || []);
+      });
+      if (!bad && hh) Object.keys(hh).forEach(function (k) {
+        if (!Array.isArray(r[k]) || r[k].length !== Number(hh[k][0])) bad = true;
+      });
+      if (bad) {
+        rawReset();
+        return again ? r : teamGetD(true);      /* one full pull, never a loop */
+      }
+      Object.keys(r).forEach(function (k) {
+        if (!Array.isArray(r[k])) return;
+        if (dl && dl[k] && !(dl[k] || []).length) return;   /* unchanged - the text is already right */
+        RAW.t[k] = JSON.stringify(r[k]);
+      });
+      RAW.h = hh;
+      return r;
+    });
+  }
   /* background re-sync, at most once every 20s, never blocks the screen */
   var syncAt = 0, syncing = false;
   function quietSync() {
@@ -2216,7 +2257,7 @@ window.addEventListener("beforeunload", function (ev) {
     if (S.pending) return;              /* v6.9.207: never pull while a save is still in flight */
     if (_moving) return;                /* v6.9.292: nor while a challan move is - same reason */
     syncing = true;
-    api("teamGet").then(function (r) {
+    teamGetD().then(function (r) {
       syncing = false; syncAt = Date.now();
       beatMark(r && r.stamp);          /* v6.9.314 - the stamp AS AT this book */
       if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); applyRtMoves(); splitCancelled(); snapSave(); renderBg(); }
@@ -2396,7 +2437,7 @@ window.addEventListener("beforeunload", function (ev) {
     var snap = snapLoad();
     _bookTs = bookStamp();   /* v6.9.307 */
     if (snap && snap.ok) { S.data = snap; applyPending(); applyConfirmed(); applyMoves(); applyRtMoves(); splitCancelled(); S.busy = false; render(); }
-    return api("teamGet").then(function (r) {
+    return teamGetD().then(function (r) {
       S.busy = false;
       syncAt = Date.now();
       if (r && r.ok) { S.data = r; reconcilePending(); applyPending(); applyConfirmed(); applyMoves(); applyRtMoves(); splitCancelled(); snapSave(); }
@@ -34603,16 +34644,16 @@ function viewCatalogue() {
     var qv = String(S.gq || "").trim();
     if (qv.length < 2) { toast("Type at least 2 characters."); return; }
     S.sq = qv;                 /* one query - the Search screen shows the same one */
-    S.sres = null; S.sBusy = true;
+    S.sres = null; S.sBusy = true; S.sFail = "";
     S.modal = modalSearchResults(); render();
     api("search", { q: qv }).then(function (r) {
       if (String(S.sq || "").trim() !== qv) return;   /* he has typed on - this answer is stale */
       S.sres = (r && r.ok) ? r : { clients: [], quotes: [], challans: [], sites: [] };
       S.sBusy = false;
       if (S.modal) { S.modal = modalSearchResults(); render(); }
-    }, function () {
+    }, function (e) {
       if (String(S.sq || "").trim() !== qv) return;
-      S.sBusy = false;
+      S.sBusy = false; S.sFail = apiWhy(e);   /* v6.9.587 - said, not swallowed */
       if (S.modal) { S.modal = modalSearchResults(); render(); }
     });
   }
@@ -34630,7 +34671,8 @@ function viewCatalogue() {
     var h = '<h2>Search &mdash; &ldquo;' + esc(qv) + '&rdquo;</h2>' +
       '<div class="meta" style="margin-bottom:4px">' +
       (n ? n + ' on this phone' : 'Nothing on this phone') +
-      (S.sBusy ? ' &middot; asking the office too&hellip;' : '') + '</div>' +
+      (S.sBusy ? ' &middot; asking the office too&hellip;' : '') +
+      (!S.sBusy && S.sFail ? ' &middot; <span style="color:#b45309">the office did not answer (' + esc(S.sFail) + ') — what this phone holds is above</span>' : '') + '</div>' +
       '<div style="max-height:60vh;overflow:auto;margin:0 -4px;padding:0 4px">';
     if (n) h += uniHtml(local, qv);
     else if (!S.sBusy && !(S.sres && (S.sres.clients || []).length)) h +=
@@ -48010,7 +48052,7 @@ function viewCatalogue() {
       var dataP = (_snapStamp
         ? api("teamStamp").then(function (st) {
             var now = (st && st.stamp) ? String(st.stamp) : "";
-            if (!now || now !== _snapStamp) return api("teamGet");
+            if (!now || now !== _snapStamp) return teamGetD();
             _beatSeen = now;          /* the heartbeat's baseline, so it does not re-ask at once */
             return { ok: true, __same: true };
           }, function () {
@@ -48020,9 +48062,9 @@ function viewCatalogue() {
                shown "the book did not load" for a book we never asked for. Two-argument then,
                deliberately: this must catch a failing STAMP and not a failing teamGet, which
                would retry for ever. */
-            return api("teamGet");
+            return teamGetD();
           })
-        : api("teamGet")
+        : teamGetD()
       ).catch(function (e) { return { __err: (e && e.message) || "no answer" }; });
 
       authP.then(function (r) {
