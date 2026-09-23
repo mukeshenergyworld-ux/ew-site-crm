@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.584";
+  var APP_VERSION = "6.9.585";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3420,7 +3420,8 @@ window.addEventListener("beforeunload", function (ev) {
     h += '<div class="card" style="padding:4px 10px">' + names.map(function (b) {
       var r = bstRow(b) || {}, ok = bstFilled(r);
       return '<div class="row" style="align-items:center;gap:8px;margin:0;padding:6px 0;border-top:1px solid #eef2f7">' +
-        (r.url ? '<img src="' + esc(r.url) + '" alt="" style="height:20px;width:60px;object-fit:contain"/>' : '<span style="width:60px"></span>') +
+        (function () { var lg = null; try { lg = logoFor(b); } catch (e) { lg = null; }   /* v6.9.585 - the fetched mark, never the Drive page */
+          return (lg && lg.src) ? '<img src="' + lg.src + '" alt="" style="height:20px;width:60px;object-fit:contain"/>' : '<span style="width:60px"></span>'; })() +
         '<span style="flex:1;font-size:13.5px;font-weight:600">' + esc(b) + '</span>' +
         '<span class="meta" style="font-size:12px;color:' + (ok ? '#0f766e' : '#94a3b8') + '">' + (ok ? (r.page ? 'Slide ready' : 'Page ready') : 'No page yet') + '</span>' +
         '<button class="btn sm ' + (ok ? 'ghost' : '') + '" data-act="bst-edit" data-n="' + esc(b) + '">' + (ok ? 'Edit' : 'Write') + '</button></div>';
@@ -3444,10 +3445,10 @@ window.addEventListener("beforeunload", function (ev) {
         : 'No catalogue has been filed yet.' + (roleIs("admin") ? ' Press Add and paste the brand’s own link, or pick the PDF.' : ' The owner files them.')) + '</div>';
     }
     blocks.forEach(function (b) {
-      var lg = brandRow(b.brand) || {};
+      var lg = null; try { lg = logoFor(b.brand); } catch (e) { lg = null; }   /* v6.9.585 */
       h += '<div class="card" style="padding:8px 10px">' +
         '<div class="row" style="align-items:center;gap:8px;margin:0">' +
-        (lg.url ? '<img src="' + esc(lg.url) + '" alt="" style="height:22px;max-width:90px;object-fit:contain"/>' : '') +
+        ((lg && lg.src) ? '<img src="' + lg.src + '" alt="" style="height:22px;max-width:90px;object-fit:contain"/>' : '') +
         '<h3 style="margin:0;flex:1">' + esc(b.brand) + '</h3>' +
         '<span class="meta" style="font-size:12px">' + b.live.length + (b.old.length ? ' + ' + b.old.length + ' older' : '') + '</span></div>' +
         b.live.map(function (r) { return catRowHtml(r, false); }).join("") +
