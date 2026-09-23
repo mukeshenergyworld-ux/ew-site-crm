@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.583";
+  var APP_VERSION = "6.9.584";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -549,7 +549,7 @@
   }
 
   var ROLE_TABS = {
-    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","freight","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","catalogs","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
+    admin:    ["dash","agent","report","scorecard","returns","tools","rates","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","freight","payments","paidout","billing","discounts","commission","service","spares","dues","payroll","products","catalogs","brandstory","pricelist","catalogue","rules","teampins","health","trouble","changelog","booksweep","dups","stock","brief"],
     accounts: ["dash","agent","returns","tools","clients","partners","followups","challans","register","freight","payments","billing","service","spares","dues","products","catalogs","rates","pricelist","dups","stock","trouble"],
     godown:   ["dash","agent","returns","tools","challans","freight","products","stock","trouble"],
     sales:    ["dash","agent","report","returns","tools","clients","partners","quotes","leads","brandfollow","winloss","visits","followups","challans","register","freight","billing","payments","products","catalogs","dups","brief","trouble"],
@@ -3371,6 +3371,61 @@ window.addEventListener("beforeunload", function (ev) {
       '<div style="margin-top:8px;font-size:13px;font-weight:600">3. Copy what is already filed</div>' +
       '<div class="acts"><button class="btn sm ghost" data-act="cbk-tg-all">Copy the ' + (all.length - inTg) + ' not yet in the channel</button></div>';
     return h + '</div>';
+  }
+  /* ================= BRAND STORIES  (v6.9.584) =================
+     The introduction page a brand gets in a proposal - headline, a paragraph, four points,
+     since / origin / website, a photograph, or a finished slide used as it is. These eight
+     fields sit on the brand's logo row (V134 added the columns; the PDF has read them since it
+     was written, and every page came out blank because the columns were not there). A brand
+     with nothing filled in simply gets no page. Owner only. */
+  function bstNames() {
+    var seen = {}, out = [];
+    var add = function (b) { b = String(b || "").trim(); var k = normB(b); if (!b || !k || seen[k] || !presRealBrand(b)) return; seen[k] = 1; out.push(b); };
+    (S.data.logos || []).forEach(function (l) { add(l.brand); });
+    (S.data.brands || []).forEach(function (b) { if (String(b.active || "Y").toUpperCase() !== "N") add(b.brand); });
+    return out.sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; });
+  }
+  function bstRow(brand) {
+    var k = normB(brand);
+    return (S.data.logos || []).filter(function (l) { return normB(l.brand) === k; })[0] || null;
+  }
+  function bstFilled(r) { return !!(r && (r.intro || r.about || r.points || r.photo || r.page)); }
+  function bstFormHtml() {
+    var f = S.bsForm || {};
+    var ta = 'style="width:100%;min-height:70px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit"';
+    return '<div class="card" style="border-color:#7dd3fc;background:#f0f9ff">' +
+      '<h3 style="margin:0 0 4px">' + esc(f.brand) + ' — its page in a proposal</h3>' +
+      '<div class="meta" style="font-size:12px;margin-bottom:6px">Fill what you have. A finished slide (a designed image of the whole page) is used as it is, instead of the text.</div>' +
+      '<label>Headline</label><input id="bs_intro" value="' + esc(f.intro || "") + '" placeholder="e.g. Engineering for the modern bathroom"/>' +
+      '<label>About the brand</label><textarea id="bs_about" ' + ta + '>' + esc(f.about || "") + '</textarea>' +
+      '<label>Points (one per line, up to four)</label><textarea id="bs_points" ' + ta + '>' + esc(String(f.points || "").split(/\s*[|\n;]\s*/).filter(Boolean).join("\n")) + '</textarea>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+      '<div style="flex:1 1 90px"><label>Since</label><input id="bs_since" value="' + esc(f.since || "") + '" placeholder="1917"/></div>' +
+      '<div style="flex:1 1 110px"><label>Origin</label><input id="bs_origin" value="' + esc(f.origin || "") + '" placeholder="Japan"/></div>' +
+      '<div style="flex:2 1 160px"><label>Website</label><input id="bs_web" value="' + esc(f.web || "") + '" placeholder="www.brand.com"/></div></div>' +
+      '<label>Photograph (a link, or pick a picture)</label><input id="bs_photo" value="' + esc(f.photo || "") + '" placeholder="link to a picture"/>' +
+      '<input type="file" id="bs_photo_f" accept="image/*" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff;margin-top:4px"/>' +
+      '<label>Finished slide, optional (a link, or pick a picture)</label><input id="bs_page" value="' + esc(f.page || "") + '" placeholder="link to a designed page image"/>' +
+      '<input type="file" id="bs_page_f" accept="image/*" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff;margin-top:4px"/>' +
+      '<div class="meta" id="bs_note" style="margin:4px 0">' + esc(S.bsNote || "") + '</div>' +
+      '<div class="acts" style="margin-top:6px"><button class="btn" data-act="bst-save">Save</button>' +
+      '<button class="btn ghost" data-act="bst-cancel">Cancel</button></div></div>';
+  }
+  function viewBrandStories() {
+    if (!roleIs("admin")) return '<div class="empty">Brand stories are the owner’s.</div>';
+    var names = bstNames(), done = names.filter(function (b) { return bstFilled(bstRow(b)); }).length;
+    var h = '<div class="meta" style="margin:0 0 8px">The introduction page each brand gets in a proposal. ' + done + ' of ' + names.length +
+      ' brands have one; a brand with nothing filled in gets no page.</div>';
+    if (S.bsForm) h += bstFormHtml();
+    h += '<div class="card" style="padding:4px 10px">' + names.map(function (b) {
+      var r = bstRow(b) || {}, ok = bstFilled(r);
+      return '<div class="row" style="align-items:center;gap:8px;margin:0;padding:6px 0;border-top:1px solid #eef2f7">' +
+        (r.url ? '<img src="' + esc(r.url) + '" alt="" style="height:20px;width:60px;object-fit:contain"/>' : '<span style="width:60px"></span>') +
+        '<span style="flex:1;font-size:13.5px;font-weight:600">' + esc(b) + '</span>' +
+        '<span class="meta" style="font-size:12px;color:' + (ok ? '#0f766e' : '#94a3b8') + '">' + (ok ? (r.page ? 'Slide ready' : 'Page ready') : 'No page yet') + '</span>' +
+        '<button class="btn sm ' + (ok ? 'ghost' : '') + '" data-act="bst-edit" data-n="' + esc(b) + '">' + (ok ? 'Edit' : 'Write') + '</button></div>';
+    }).join("") + '</div>';
+    return h;
   }
   function viewCatalogues() {
     var q = String(S.q || "").toLowerCase().trim();
@@ -15998,6 +16053,178 @@ function viewCatalogue() {
     return order.map(function (c) { return map[c]; });
   }
 
+  /* ================= THE PROPOSAL'S LAST TWO PAGES  (v6.9.584, 23 Sep 2026) =================
+     His ask (22 Sep): "design it more professionally, like adding product features, logo showing
+     product features, product catalog attachment" - and his choice of all four additions.
+     Two of them are here: a page of the quoted brands' catalogues with a QR code each, and a
+     page that plans the site stage by stage from the stage we have on file for the client. */
+  /* what a customer is told about each stage - his own playbook (PITCH2) is for the salesman
+     and says things like "keep the quote warm"; this says what the SITE needs */
+  var CUST_STAGE = {
+    "Design / Drawing": ["Choose the brands for pipes, fittings and bathrooms", "Mark every bathroom and kitchen point on the drawing", "Plan water storage, pumps and hot water"],
+    "Excavation / Foundation": ["Underground drainage (SWR) pipes", "Underground water tank and its fittings", "Sump / dewatering pump"],
+    "Structure / Slab": ["Sleeves and inserts for plumbing through the slab", "Conduit pipes in the slab", "Earthing"],
+    "Brickwork / Masonry": ["Final count of bathroom and kitchen points", "Concealed pipe layout (CPVC / UPVC)", "Concealed bodies for mixers and diverters"],
+    "Concealed Plumbing (rough-in)": ["CPVC / UPVC pipes and fittings", "Concealed valves, diverters and mixer bodies", "Overhead and underground tanks"],
+    "Concealed Electrical": ["Points for geyser, pumps and water heater", "Lines for heat pump or solar, if planned"],
+    "Plastering": ["Confirm faucet and sanitaryware selections", "Waterproofing plan for bathrooms and terrace"],
+    "Waterproofing": ["Waterproofing for bathrooms, kitchen and terrace"],
+    "Flooring / Tiling": ["Floor drains, gratings and traps", "Bathroom waste fittings", "Balcony and terrace outlets"],
+    "Sanitary & CP Fitting": ["Faucets, showers and health faucets", "Toilets, basins and bathroom accessories", "Shower systems"],
+    "False Ceiling / Painting": ["Water heater / geyser", "Exhaust and ventilation", "Pressure pump"],
+    "Final Fitout / Handover": ["Water softener and RO purifier", "Pressure pump", "Solar water heater / heat pump"],
+    "Post-Handover / AMC": ["Annual maintenance for softener, RO and pumps", "Salt and filter refills"]
+  };
+  /* the current catalogue(s) filed for a brand - exact name first, then the brand's group */
+  function cbkForBrand(brand) {
+    var k = normB(brand), g = "";
+    try { g = normB(brandGroup(brand)); } catch (e) { g = ""; }
+    var live = catRows().filter(catIsLive).filter(function (r) { return catUrl(r); });
+    var exact = live.filter(function (r) { return normB(r.brand) === k; });
+    if (exact.length) return exact;
+    return live.filter(function (r) {
+      var rb = normB(r.brand), rg = "";
+      try { rg = normB(brandGroup(r.brand)); } catch (e) { rg = ""; }
+      return (g && rg && g === rg) || (rb && k && (rb.indexOf(k.slice(0, 5)) === 0 || k.indexOf(rb.slice(0, 5)) === 0));
+    });
+  }
+  /* ================= A QR CODE, DRAWN HERE  (v6.9.584) =================
+     No library and no web service: a catalogue page must print on a phone with one bar.
+     Byte mode, error correction M, versions 1-20 (up to 666 bytes - every link we print is far
+     shorter). The algorithm is the standard one (ISO/IEC 18004), written after Nayuki's
+     reference implementation; every code it makes is read back by a real decoder in the rig
+     (t_qr.js) before it is trusted on paper. Returns {n, dark(x, y)} or null if too long. */
+  function qrMatrix(text) {
+    var ECC = [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26];
+    var NB  = [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16];
+    var bytes = [], s = unescape(encodeURIComponent(String(text || ""))), i, j, k, x, y;
+    for (i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i) & 255);
+    var rawMods = function (v) { var r = (16 * v + 128) * v + 64; if (v >= 2) { var na = Math.floor(v / 7) + 2; r -= (25 * na - 10) * na - 55; if (v >= 7) r -= 36; } return r; };
+    var dataCw = function (v) { return Math.floor(rawMods(v) / 8) - ECC[v] * NB[v]; };
+    var ver = 0;
+    for (var v = 1; v <= 20; v++) { if (4 + (v < 10 ? 8 : 16) + bytes.length * 8 <= dataCw(v) * 8) { ver = v; break; } }
+    if (!ver) return null;
+    var bb = [];
+    var app = function (val, len) { for (var q = len - 1; q >= 0; q--) bb.push((val >>> q) & 1); };
+    app(4, 4); app(bytes.length, ver < 10 ? 8 : 16);
+    bytes.forEach(function (b) { app(b, 8); });
+    var cap = dataCw(ver) * 8;
+    app(0, Math.min(4, cap - bb.length));
+    app(0, (8 - bb.length % 8) % 8);
+    for (var pad = 0xEC; bb.length < cap; pad ^= 0xEC ^ 0x11) app(pad, 8);
+    var data = [];
+    for (i = 0; i < bb.length; i += 8) { x = 0; for (j = 0; j < 8; j++) x = (x << 1) | bb[i + j]; data.push(x); }
+    var mul = function (a, b) { var z = 0; for (var q = 7; q >= 0; q--) { z = (z << 1) ^ ((z >>> 7) * 0x11D); z ^= ((b >>> q) & 1) * a; } return z & 255; };
+    var ecl = ECC[ver], nb = NB[ver], raw = Math.floor(rawMods(ver) / 8), nShort = nb - raw % nb, shortLen = Math.floor(raw / nb);
+    var dv = []; for (i = 0; i < ecl - 1; i++) dv.push(0); dv.push(1);
+    var root = 1;
+    for (i = 0; i < ecl; i++) { for (j = 0; j < dv.length; j++) { dv[j] = mul(dv[j], root); if (j + 1 < dv.length) dv[j] ^= dv[j + 1]; } root = mul(root, 2); }
+    var blocks = [];
+    for (i = 0, k = 0; i < nb; i++) {
+      var dat = data.slice(k, k + shortLen - ecl + (i < nShort ? 0 : 1)); k += dat.length;
+      var rem = dv.map(function () { return 0; });
+      dat.forEach(function (b) { var f = b ^ rem.shift(); rem.push(0); dv.forEach(function (c, t) { rem[t] ^= mul(c, f); }); });
+      if (i < nShort) dat.push(0);
+      blocks.push(dat.concat(rem));
+    }
+    var all = [];
+    for (i = 0; i < blocks[0].length; i++) for (j = 0; j < blocks.length; j++) if (i !== shortLen - ecl || j >= nShort) all.push(blocks[j][i]);
+    var n = ver * 4 + 17, M = [], F = [];
+    for (y = 0; y < n; y++) { M.push([]); F.push([]); for (x = 0; x < n; x++) { M[y].push(false); F[y].push(false); } }
+    var set = function (xx, yy, d) { M[yy][xx] = !!d; F[yy][xx] = true; };
+    for (i = 0; i < n; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+    var finder = function (cx, cy) {
+      for (var dy = -4; dy <= 4; dy++) for (var dx = -4; dx <= 4; dx++) {
+        var d = Math.max(Math.abs(dx), Math.abs(dy)), xx = cx + dx, yy = cy + dy;
+        if (xx >= 0 && xx < n && yy >= 0 && yy < n) set(xx, yy, d !== 2 && d !== 4);
+      }
+    };
+    finder(3, 3); finder(n - 4, 3); finder(3, n - 4);
+    var pos = [];
+    if (ver > 1) {
+      var na = Math.floor(ver / 7) + 2, step = Math.ceil((ver * 4 + 4) / (na * 2 - 2)) * 2;
+      pos = [6]; for (var p = n - 7; pos.length < na; p -= step) pos.splice(1, 0, p);
+    }
+    for (i = 0; i < pos.length; i++) for (j = 0; j < pos.length; j++) {
+      if ((i === 0 && j === 0) || (i === 0 && j === pos.length - 1) || (i === pos.length - 1 && j === 0)) continue;
+      for (var ay = -2; ay <= 2; ay++) for (var ax = -2; ax <= 2; ax++) set(pos[i] + ax, pos[j] + ay, Math.max(Math.abs(ax), Math.abs(ay)) !== 1);
+    }
+    var fmt = function (mask) {
+      var d = mask, r = d;                      /* level M's format bits are 00 */
+      for (var q = 0; q < 10; q++) r = (r << 1) ^ ((r >>> 9) * 0x537);
+      var bits = ((d << 10) | r) ^ 0x5412, b = function (t) { return ((bits >>> t) & 1) !== 0; };
+      for (var t = 0; t <= 5; t++) set(8, t, b(t));
+      set(8, 7, b(6)); set(8, 8, b(7)); set(7, 8, b(8));
+      for (t = 9; t < 15; t++) set(14 - t, 8, b(t));
+      for (t = 0; t < 8; t++) set(n - 1 - t, 8, b(t));
+      for (t = 8; t < 15; t++) set(8, n - 15 + t, b(t));
+      set(8, n - 8, true);
+    };
+    fmt(0);
+    if (ver >= 7) {
+      var vr = ver; for (i = 0; i < 12; i++) vr = (vr << 1) ^ ((vr >>> 11) * 0x1F25);
+      var vb = (ver << 12) | vr;
+      for (i = 0; i < 18; i++) { var bt = ((vb >>> i) & 1) !== 0, a1 = n - 11 + i % 3, b1 = Math.floor(i / 3); set(a1, b1, bt); set(b1, a1, bt); }
+    }
+    var idx = 0;
+    for (var right = n - 1; right >= 1; right -= 2) {
+      if (right === 6) right = 5;
+      for (var vert = 0; vert < n; vert++) for (j = 0; j < 2; j++) {
+        x = right - j; var upward = ((right + 1) & 2) === 0; y = upward ? n - 1 - vert : vert;
+        if (!F[y][x] && idx < all.length * 8) { M[y][x] = ((all[idx >>> 3] >>> (7 - (idx & 7))) & 1) !== 0; idx++; }
+      }
+    }
+    var cond = [
+      function (a, b) { return (a + b) % 2 === 0; }, function (a, b) { return b % 2 === 0; },
+      function (a) { return a % 3 === 0; }, function (a, b) { return (a + b) % 3 === 0; },
+      function (a, b) { return (Math.floor(a / 3) + Math.floor(b / 2)) % 2 === 0; },
+      function (a, b) { return a * b % 2 + a * b % 3 === 0; },
+      function (a, b) { return (a * b % 2 + a * b % 3) % 2 === 0; },
+      function (a, b) { return ((a + b) % 2 + a * b % 3) % 2 === 0; }];
+    var applyMask = function (m) { for (var yy = 0; yy < n; yy++) for (var xx = 0; xx < n; xx++) if (!F[yy][xx] && cond[m](xx, yy)) M[yy][xx] = !M[yy][xx]; };
+    var penalty = function () {            /* runs, 2x2 blocks and balance - enough to avoid the worst mask */
+      var pen = 0, dark = 0, yy, xx, run;
+      for (yy = 0; yy < n; yy++) {
+        run = 1;
+        for (xx = 1; xx < n; xx++) { if (M[yy][xx] === M[yy][xx - 1]) { run++; if (run === 5) pen += 3; else if (run > 5) pen++; } else run = 1; }
+      }
+      for (xx = 0; xx < n; xx++) {
+        run = 1;
+        for (yy = 1; yy < n; yy++) { if (M[yy][xx] === M[yy - 1][xx]) { run++; if (run === 5) pen += 3; else if (run > 5) pen++; } else run = 1; }
+      }
+      for (yy = 0; yy < n - 1; yy++) for (xx = 0; xx < n - 1; xx++) { var c = M[yy][xx]; if (c === M[yy][xx + 1] && c === M[yy + 1][xx] && c === M[yy + 1][xx + 1]) pen += 3; }
+      /* finder-like runs (1:1:3:1:1 with four light either side) - what makes a reader lock onto the wrong place */
+      var P1 = [1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0], P2 = [0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1];
+      var hit = function (get) { for (var t = 0; t <= n - 11; t++) { var a = true, b = true; for (var u = 0; u < 11; u++) { var c2 = get(t + u) ? 1 : 0; if (c2 !== P1[u]) a = false; if (c2 !== P2[u]) b = false; } if (a) pen += 40; if (b) pen += 40; } };
+      for (yy = 0; yy < n; yy++) (function (r) { hit(function (t) { return M[r][t]; }); })(yy);
+      for (xx = 0; xx < n; xx++) (function (c3) { hit(function (t) { return M[t][c3]; }); })(xx);
+      for (yy = 0; yy < n; yy++) for (xx = 0; xx < n; xx++) if (M[yy][xx]) dark++;
+      return pen + Math.floor(Math.abs(dark * 20 - n * n * 10) / (n * n)) * 10;
+    };
+    var best = 0, bestPen = 1e9;
+    for (var m = 0; m < 8; m++) { applyMask(m); fmt(m); var pp = penalty(); if (pp < bestPen) { bestPen = pp; best = m; } applyMask(m); }
+    applyMask(best); fmt(best);
+    return { n: n, ver: ver, dark: function (a, b) { return M[b][a]; } };
+  }
+
+  /* a QR code on a jsPDF page: white square with a four-module quiet zone, dark modules drawn
+     as rectangles (no image, so it stays sharp at any zoom and costs a few KB) */
+  function pdfQr(doc, text, x, y, size) {
+    var m = qrMatrix(text);
+    if (!m) return false;
+    var cells = m.n + 8, s = size / cells;
+    doc.setFillColor(255, 255, 255); doc.rect(x, y, size, size, "F");
+    doc.setFillColor(0, 0, 0);
+    for (var yy = 0; yy < m.n; yy++) {
+      var run = -1;
+      for (var xx = 0; xx <= m.n; xx++) {
+        var d = xx < m.n && m.dark(xx, yy);
+        if (d && run < 0) run = xx;
+        if (!d && run >= 0) { doc.rect(x + (run + 4) * s, y + (yy + 4) * s, (xx - run) * s + 0.01, s + 0.01, "F"); run = -1; }
+      }
+    }
+    return true;
+  }
   function quotePresPdf(q) {
     var items = [];
     try { items = JSON.parse(q.items || "[]"); } catch (e) { items = []; }
@@ -16519,6 +16746,91 @@ function viewCatalogue() {
         if (ny + k * 5 > H - 12) return;
         doc.text(T("·  " + t2), L, ny + k * 5);
       });
+
+      /* ---------------- 5b. THE SITE, STAGE BY STAGE  (v6.9.584) ----------------
+         From the stage on file for this client: where the site is now, and what each of the
+         next stages will need. A stage where the work goes inside the wall is marked - miss it
+         and it cannot be added later. With no stage on file the plan starts at the drawing. */
+      (function () {
+        var stNow = "";
+        try { stNow = String(clientStage(q.client) || ""); } catch (e) { stNow = ""; }
+        var si = STAGES2.indexOf(stNow);
+        var y = newPage("Planning ahead", "Your site, stage by stage");
+        col(GREY); F("normal"); doc.setFontSize(8);
+        doc.text(T(si >= 0 ? "Your site is at " + stNow + ". What each of the coming stages will need, so nothing is decided in a hurry."
+          : "Tell us the stage your site is at and we will mark it here. The plan below starts at the drawing."), L, y);
+        y += 7;
+        /* the whole road in one strip - done, now, ahead */
+        var nS = STAGES2.length, gap = 1.6, pw = (Rt - L - gap * (nS - 1)) / nS;
+        STAGES2.forEach(function (st, k) {
+          var x = L + k * (pw + gap), done = si >= 0 && k < si, now = k === si;
+          fill(now ? TEAL : (done ? [226, 232, 240] : SOFT)); doc.roundedRect(x, y, pw, 13, 1.4, 1.4, "F");
+          if (!now) { draw(LINE); doc.setLineWidth(0.2); doc.roundedRect(x, y, pw, 13, 1.4, 1.4, "S"); }
+          col(now ? WHITE : (done ? GREY : SLATE)); F(now ? "bold" : "normal"); doc.setFontSize(5.6);
+          fitCell(doc, F, T(st), pw - 2, 2, now ? "bold" : "normal", 5.6).forEach(function (ln, j) { doc.text(ln, x + pw / 2, y + 5.2 + j * 3, { align: "center" }); });
+          if (PITCH2[st] && PITCH2[st].win && !done) { fill([220, 38, 38]); doc.circle(x + pw - 2, y + 2, 0.9, "F"); }
+        });
+        y += 17;
+        col([185, 28, 28]); F("normal"); doc.setFontSize(6.4);
+        doc.text(T("Red dot: this work goes inside the wall or under the floor - it must be decided before the stage closes."), L, y);
+        y += 6;
+        var from = si >= 0 ? si : 0, show = STAGES2.slice(from, from + 6);
+        var GAP = 6, CW = (Rt - L - GAP * 2) / 3;
+        show.forEach(function (st, k) {
+          var cx = L + (k % 3) * (CW + GAP), cy = y + Math.floor(k / 3) * 58;
+          var lines = CUST_STAGE[st] || [], win = PITCH2[st] && PITCH2[st].win, now = st === stNow;
+          fill(now ? [240, 253, 250] : SOFT); doc.roundedRect(cx, cy, CW, 52, 2, 2, "F");
+          draw(now ? TEAL : LINE); doc.setLineWidth(now ? 0.5 : 0.25); doc.roundedRect(cx, cy, CW, 52, 2, 2, "S"); doc.setLineWidth(0.2);
+          fill(win ? [220, 38, 38] : MINT); doc.rect(cx, cy, 1.2, 52, "F");
+          col(TEAL); F("bold"); doc.setFontSize(6);
+          doc.text(SP(now ? "Now" : "Stage " + (STAGES2.indexOf(st) + 1)), cx + 5, cy + 6.4);
+          col(INK); F("bold"); doc.setFontSize(9.6);
+          doc.text(fitCell(doc, F, T(st), CW - 10, 1, "bold", 9.6)[0], cx + 5, cy + 12.6);
+          col(SLATE); F("normal"); doc.setFontSize(7.4);
+          lines.slice(0, 4).forEach(function (ln, j) { doc.text(fitCell(doc, F, T("·  " + ln), CW - 10, 1, "normal", 7.4)[0], cx + 5, cy + 20 + j * 5.2); });
+          if (win) { col([185, 28, 28]); F("bold"); doc.setFontSize(6.6); doc.text(T("Decide before this stage closes"), cx + 5, cy + 47.5); }
+        });
+      })();
+
+      /* ---------------- 5c. THE BRANDS' OWN CATALOGUES  (v6.9.584) ----------------
+         Every quoted brand with a current catalogue in the library: its mark, the title, and a
+         QR code the customer scans on site. The printed link is the public one (the brand's own
+         or ours), never the Telegram copy, which opens only for members of the group. */
+      (function () {
+        var cards = [];
+        brands.forEach(function (b) {
+          cbkForBrand(b).slice(0, 2).forEach(function (r) {
+            if (!cards.some(function (c) { return c.id === r.id; })) cards.push({ id: r.id, brand: b, r: r });
+          });
+        });
+        if (!cards.length) return;
+        var PER = 8, GAP = 6, CW = (Rt - L - GAP * 3) / 4, CH = 76;
+        for (var p0 = 0; p0 < cards.length; p0 += PER) {
+          var y = newPage("Catalogues", "The brands' own catalogues");
+          col(GREY); F("normal"); doc.setFontSize(8);
+          doc.text(T("Point your phone camera at a code to open that brand's catalogue. Every product in this proposal is in them, with full technical details."), L, y);
+          y += 8;
+          cards.slice(p0, p0 + PER).forEach(function (c, k) {
+            var cx = L + (k % 4) * (CW + GAP), cy = y + Math.floor(k / 4) * (CH + GAP), r = c.r, u = catUrl(r);
+            fill(SOFT); doc.roundedRect(cx, cy, CW, CH, 2, 2, "F");
+            draw(LINE); doc.setLineWidth(0.25); doc.roundedRect(cx, cy, CW, CH, 2, 2, "S"); doc.setLineWidth(0.2);
+            var lg = null; try { lg = logoFor(r.brand) || logoFor(c.brand); } catch (e) { lg = null; }
+            if (lg && lg.src) {
+              var sc = Math.min((CW - 30) / lg.w, 9 / lg.h);
+              try { doc.addImage(lg.src, "JPEG", cx + 4, cy + 4, lg.w * sc, lg.h * sc); } catch (e) { }
+            } else { col(INK); F("bold"); doc.setFontSize(9); doc.text(fitCell(doc, F, T(r.brand), CW - 8, 1, "bold", 9)[0], cx + 4, cy + 10); }
+            col(INK); F("bold"); doc.setFontSize(8.2);
+            doc.text(fitCell(doc, F, T(r.title || r.kind || "Catalogue"), CW - 8, 1, "bold", 8.2)[0], cx + 4, cy + 19);
+            col(GREY); F("normal"); doc.setFontSize(6.6);
+            doc.text(fitCell(doc, F, T([r.kind, r.year].filter(Boolean).join("  ·  ")), CW - 8, 1, "normal", 6.6)[0], cx + 4, cy + 23.6);
+            var qs = 40, qx = cx + (CW - qs) / 2, qy = cy + 27;
+            if (pdfQr(doc, u, qx, qy, qs)) { try { doc.link(qx, qy, qs, qs, { url: u }); } catch (e) { } }
+            col(TEAL); F("normal"); doc.setFontSize(6);
+            var shown = String(u).replace(/^https?:\/\//, "");
+            doc.text(fitCell(doc, F, T(shown), CW - 8, 1, "normal", 6)[0], cx + CW / 2, cy + CH - 3.4, { align: "center" });
+          });
+        }
+      })();
 
       /* ---------------- 6. NEXT STEPS + CONTACT ---------------- */
       doc.addPage("a4", "landscape"); markDark();
@@ -31216,7 +31528,7 @@ function viewCatalogue() {
      nothing else could reach it - so the usage counter would have had to keep a second copy
      of the same forty-two names, and a second copy is how the two quietly stop agreeing.
      Hoisted, not duplicated. render() still reads exactly this. */
-  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
+  var TAB_TABS = [["search", "Search"], ["dash", "Today"], ["agent", "Agent"], ["returns", "Material returns"], ["tools", "Tools"], ["report", "Monthly card"], ["scorecard", "Scorecards"], ["rates", "Rate revision"], ["pricelist", "Price list PDF"], ["sites", "Sites"], ["pitch", "Pitch board"], ["winloss", "Win/Loss"], ["leads", "Leads"], ["brandfollow", "Brand follow-up"], ["visits", "Site visits"], ["customers", "Customers"], ["followups", "Follow-ups"], ["challans", "Challans"], ["register", "Challan log"], ["freight", "Drivers & freight"], ["deliveries", "Deliveries"], ["collections", "Payments"], ["pricing", "Pricing"], ["payrollhub", "Payroll & incentives"], ["clients", "Clients"], ["partners", "Partners"], ["quotes", "Quotes"], ["commission", "Incentives"], ["service", "Service"], ["spares", "Spares"], ["dues", "Service dues"], ["payroll", "Payroll"], ["products", "Products"], ["payments", "Payments"], ["paidout", "Paid out"], ["billing", "HISAB"], ["discounts", "Discounts"], ["catalogue", "Catalogue"], ["catalogs", "Brand catalogues"], ["brandstory", "Brand stories"], ["rules", "Pitch rules"], ["teampins", "Team PINs"], ["pending", "Pending upload"], ["health", "Health check"], ["trouble", "Troubleshoot"], ["changelog", "Change log"], ["booksweep", "Book numbers"], ["dups", "Duplicate check"], ["stock", "Stock"], ["brief", "The brief"]];
   var TAB_LABEL = (function () {
     var m = {}; TAB_TABS.forEach(function (t) { m[t[0]] = t[1]; }); return m;
   })();
@@ -39415,7 +39727,7 @@ function viewCatalogue() {
        chip. Every chip the two groups had is still here. */
     ["Clients",    ["clients", "leads", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss"]],
     ["Service",    ["service"]],
-    ["Products",   ["products", "catalogs"]],   /* v6.9.581 - the catalogue library */
+    ["Products",   ["products", "catalogs", "brandstory"]],   /* v6.9.581 - the catalogue library */
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins"]],
     /* v6.9.539 - item 23: "Book numbers - what's the use, it's empty" (measured: 0 rows) - off
        the header; the screen still opens from the Health check. Item 25: The brief is a tab
@@ -39740,7 +40052,7 @@ function viewCatalogue() {
       setTimeout(function () { try { preloadLogos(); } catch (e) { } }, 4000);
     }
     if (!S.pin) { renderLogin(); return; }
-    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief };
+    var views = { agent: viewAgent, search: viewSearch, dossier: viewDossier, brandboard: viewBrandBoard, partners: viewPartners, leads: viewLeadsHub, brandfollow: viewBrandFollow, visits: viewVisits, commission: viewIncentives, payments: viewPayments, paidout: viewPaidOut, discounts: viewDiscounts, billing: viewBilling, catalogue: viewCatalogue, catalogs: viewCatalogues, brandstory: viewBrandStories, clients: viewClients, quotes: viewQuotesHub, service: viewServiceDesk, spares: viewSpares, dues: viewDues, payroll: viewPayroll, dash: viewDash, sites: viewSites, matrix: viewMatrix, winloss: viewWinLoss, rules: viewRules, customers: viewCustomers, followups: viewFollowups, challans: viewChallans, register: viewRegister, freight: viewFreight, returns: viewReturns, deliveries: viewDeliveries, collections: viewCollections, pricing: viewPricing, payrollhub: viewPayrollHub, tools: viewTools, rates: viewRates, pricelist: viewPriceList, report: viewReport, scorecard: viewScorecard, products: viewProducts, pitch: viewPitch, teampins: viewTeamPins, pending: viewPending, health: viewHealth, trouble: viewTrouble, changelog: viewChangeLog, booksweep: viewBookSweep, dups: viewDups, stock: viewStock, brief: viewBrief };
     var tabs = TAB_TABS;
 
     var h = '<div class="top">' +
@@ -40058,6 +40370,26 @@ function viewCatalogue() {
        (not read at save time - a repaint empties a file input and the photo would be lost). */
     var sigC = el("alt_sig");
     if (sigC) { try { sigWire(sigC); } catch (e) { } }
+    /* v6.9.584 - a brand's photograph or finished slide, shrunk the moment it is picked */
+    ["photo", "page"].forEach(function (key) {
+      var fe = el("bs_" + key + "_f");
+      if (!fe) return;
+      fe.addEventListener("change", function (e) {
+        var f = (e.target.files || [])[0];
+        if (!f) return;
+        var nt = el("bs_note"); if (nt) nt.textContent = "Reading the picture…";
+        var fr = new FileReader();
+        fr.onload = function () {
+          shrinkPic(String(fr.result), key === "page" ? 1600 : 1200, 0.8).then(function (p) {
+            if (!p || !p.src) { if (nt) nt.textContent = "That picture could not be read."; return; }
+            S.bsFiles = S.bsFiles || {};
+            S.bsFiles[key] = { b64: String(p.src).split(",")[1] || "" };
+            var n2 = el("bs_note"); if (n2) n2.textContent = (key === "page" ? "Slide" : "Photograph") + " ready — it uploads when you press Save.";
+          });
+        };
+        fr.readAsDataURL(f);
+      });
+    });
     /* v6.9.581 - the catalogue PDF, read the moment it is picked: a repaint empties a file
        input, and a file read at save time would already be gone. */
     var cbf = el("cb_file");
@@ -42912,6 +43244,43 @@ function viewCatalogue() {
     }
     if (act === "lim-fold") { S.limOpen = !S.limOpen; keepScroll = true; render(); return; }   /* v6.9.572 */
     /* ---- the catalogue library (v6.9.581) ---- */
+    /* ---- brand stories (v6.9.584) ---- */
+    if (act === "bst-edit") {
+      if (!roleIs("admin")) return;
+      var _bn = String(t.getAttribute("data-n") || ""), _br = bstRow(_bn) || {};
+      S.bsForm = Object.assign({ brand: _bn }, _br, { brand: _br.brand || _bn }); S.bsNote = ""; S.bsFiles = {};
+      render(); try { window.scrollTo(0, 0); } catch (e) { }
+      return;
+    }
+    if (act === "bst-cancel") { S.bsForm = null; S.bsFiles = {}; S.bsNote = ""; render(); return; }
+    if (act === "bst-save") {
+      if (!roleIs("admin")) return;
+      var _bf = S.bsForm || {};
+      var _pts = String(val("bs_points") || "").split(/\n/).map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 6).join(" | ");
+      var _row0 = bstRow(_bf.brand);
+      var _bs = {
+        id: _row0 ? _row0.id : "", brand: _row0 ? _row0.brand : _bf.brand, url: _row0 ? (_row0.url || "") : "",
+        intro: String(val("bs_intro") || "").trim(), about: String(val("bs_about") || "").trim(), points: _pts,
+        since: String(val("bs_since") || "").trim(), origin: String(val("bs_origin") || "").trim(), web: String(val("bs_web") || "").trim(),
+        photo: String(val("bs_photo") || "").trim(), page: String(val("bs_page") || "").trim()
+      };
+      var _fl = S.bsFiles || {};
+      var _upPic = function (key) {
+        var f = _fl[key]; if (!f) return Promise.resolve();
+        return api("pdfHost", { pdfBase64: f.b64, filename: normB(_bs.brand).toLowerCase() + "-" + key + ".jpg", mime: "image/jpeg" }, 240000).then(function (r) {
+          if (!r || !r.ok || !r.url) throw new Error((r && r.error) || "the picture did not upload");
+          _bs[key] = String(r.url);
+        });
+      };
+      S.bsNote = (_fl.photo || _fl.page) ? "Uploading the picture…" : "Saving…";
+      var _nt = el("bs_note"); if (_nt) _nt.textContent = S.bsNote;
+      _upPic("photo").then(function () { return _upPic("page"); }).then(function () {
+        return save("logos", _bs);
+      }).then(function () {
+        S.bsForm = null; S.bsFiles = {}; S.bsNote = ""; toast(_bs.brand + " — its page is saved. It prints in the next proposal."); render();
+      }).catch(function (e) { S.bsNote = "Not saved: " + apiWhy(e); var n3 = el("bs_note"); if (n3) n3.textContent = S.bsNote; });
+      return;
+    }
     /* ---- the catalogue channel (v6.9.582) ---- */
     if (act === "cbk-tg-open") { S.cbkTg = Object.assign({}, S.cbkTg || {}, { open: !(S.cbkTg && S.cbkTg.open) }); render(); return; }
     if (act === "cbk-tg-connect") {
