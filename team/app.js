@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.585";
+  var APP_VERSION = "6.9.586";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -11008,6 +11008,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       'style="padding:2px 9px;font-size:12px;border-color:#fed7aa;color:#b45309;vertical-align:middle" ' +
       'title="Photograph the right receipt. The one on file now is kept - nothing is deleted.">Change</button>';
   }
+  /* v6.9.586 - "a reissue is a fresh copy of a record that stays": the filed document, sent again */
+  function againSeal(c) {
+    var r = chProofAny(c);
+    if (!r.has || r.queued || !r.url) return "";
+    return ' <button class="btn sm ghost" data-act="rcpt-again" data-id="' + esc(c.id) + '" ' +
+      'style="padding:2px 9px;font-size:12px;vertical-align:middle" ' +
+      'title="Send the signed receipt on file to the client again. Nothing is replaced.">Send again</button>';
+  }
   function proofSealFor(c, size) {
     /* v6.9.352 - kick the fingerprint pass the first time a seal is drawn. It is idempotent,
        runs off the render path, and re-renders once when it has something to say. */
@@ -11015,7 +11023,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var r = chProofAny(c);
     if (!r.has) return "";
     return proofSeal(r.url, r.thumb, r.queued, r.by, size) + tgSeal(r.tg) +
-           proofTwinFlag(c) + chgSeal(c);
+           proofTwinFlag(c) + chgSeal(c) + againSeal(c);
   }
   /* ---- ONE PANEL, ONE DELIVERY. Drawn the same for the card he came from and the card he is
      being asked about, so the two sides of the question look alike and neither is the accused. */
@@ -33748,7 +33756,12 @@ function viewCatalogue() {
 
     /* step 3 - the men */
     /* the man running the most live sites sits at the top - that is who is worth a call first */
+    /* v6.9.586 - whose partners: everyone, mine, or nobody's yet */
+    var _me = String(S.user || "").trim().toLowerCase();
+    var _ownOf = function (a2) { return String(a2.ownedBy || "").trim(); };
     var list = inRole.filter(function (a2) {
+      if (S.pOwn === "mine" && _ownOf(a2).toLowerCase() !== _me) return false;
+      if (S.pOwn === "none" && _ownOf(a2)) return false;
       if (S.pLoc && (a2.location || "-") !== S.pLoc) return false;
       return !q || (a2.name + " " + a2.area + " " + a2.location + " " + a2.mobile).toLowerCase().indexOf(q) >= 0;
     }).map(function (a2) { return { p: a2, st: partnerStats(a2.name) }; })
@@ -33757,6 +33770,11 @@ function viewCatalogue() {
           String(x.p.name).localeCompare(String(y.p.name));
       });
 
+    var _unas = inRole.filter(function (a2) { return !_ownOf(a2); }).length;
+    h += '<div class="chips" style="margin-top:6px">' +
+      [["", "Everyone"], ["mine", "Mine"], ["none", "Not assigned" + (_unas ? " " + _unas : "")]].map(function (o2) {
+        return '<button class="chip ' + ((S.pOwn || "") === o2[0] ? "on" : "") + '" data-act="p-own" data-o="' + o2[0] + '">' + esc(o2[1]) + '</button>';
+      }).join("") + '</div>';
     h += '<div class="row" style="margin:10px 0 4px"><div class="meta"><b>' + list.length + '</b> ' +
       esc(S.pRole || "partner") + (list.length === 1 ? "" : "s") + (S.pLoc ? ' in ' + esc(S.pLoc) : "") +
       ' &middot; most live sites first' + (seesAllClients() ? '' : ' (your clients)') + '</div>' +
@@ -33778,7 +33796,8 @@ function viewCatalogue() {
         { k: "live", t: "LIVE", r: 1, n: 1 },
         { k: "open", t: "QUOTED", r: 1, n: 1 },
         /* v6.9.524 - his item 15: "how many new site entered of partner recently and by whome" */
-        { k: "new30", t: "NEW 30D", r: 1, n: 1 }, { k: "newby", t: "ADDED BY" }
+        { k: "new30", t: "NEW 30D", r: 1, n: 1 }, { k: "newby", t: "ADDED BY" },
+        { k: "owner", t: "OWNER" }   /* v6.9.586 */
       ];
       if (_adm) _cols.push({ k: "inc", t: "INCENTIVE", r: 1, n: 1 });
       _cols.push({ k: "edit", t: "" });
@@ -33789,8 +33808,10 @@ function viewCatalogue() {
         var _newest = _new.slice().sort(function (a, b) { return String(b.createdAt || "") < String(a.createdAt || "") ? -1 : 1; })[0];
         return {
           v: { name: p.name, mobile: p.mobile || "", area: p.area || "", clients: st.clients,
-               live: st.live, open: st.open, inc: bk ? bk.pending : 0, new30: _new.length, newby: _newest ? String(_newest.createdBy || "") : "" },
+               live: st.live, open: st.open, inc: bk ? bk.pending : 0, new30: _new.length, newby: _newest ? String(_newest.createdBy || "") : "",
+               owner: _ownOf(p) },
           cells: {
+            owner: _ownOf(p) ? whoChip(_ownOf(p)) : '<span style="color:#b45309;font-size:12px">not assigned</span>',
             /* the act is on the NAME, not the row - see the component's header for why.
                v6.9.524 - and it opens his BOOK (sites and incentives), not the edit form: his
                item 15, "clicking sites open all sites with related incentives". */
@@ -33862,6 +33883,8 @@ function viewCatalogue() {
     var loc = a.location || locations()[0];
     return '<h2>' + (a.id ? "Edit partner" : "New partner") + '</h2>' +
       '<p class="sub">Plumbers, architects, builders and PMCs. Incentive % is set per client &amp; brand on the Discounts screen — a partner earns only where you set a rate there.</p>' +
+      /* v6.9.586 - who looks after him, asked first, as on the client form */
+      ownerBanner("m_aowner", a.ownedBy, !a.id) +
       '<label>Name</label><input id="m_aname" value="' + esc(a.name) + '"/>' +
       '<div class="grid2">' +
       '<div><label>Role</label><select id="m_arole">' + opts(["Architect", "Plumber", "Builder", "PMC", "Contractor", "Dealer", "Other"], a.role || "Plumber") + '</select></div>' +
@@ -43244,6 +43267,22 @@ function viewCatalogue() {
       return;
     }
     if (act === "lim-fold") { S.limOpen = !S.limOpen; keepScroll = true; render(); return; }   /* v6.9.572 */
+    if (act === "p-own") { S.pOwn = t.getAttribute("data-o") || ""; render(); return; }   /* v6.9.586 */
+    /* v6.9.586 - send the filed receipt again; the document on file is not touched */
+    if (act === "rcpt-again") {
+      var _rc = (S.data.challans || []).concat(S.data.returns || []).filter(function (x) { return x.id === id; })[0];
+      if (!_rc) return;
+      var _rp = chProofAny(_rc);
+      if (!_rp.has || !_rp.url) { toast("There is no filed receipt on this one yet."); return; }
+      var _rno = String(_rc.challanNo || _rc.returnNo || "");
+      var _rtx = "Energy World — signed receipt for " + (_rc.returnNo ? "return " : "delivery ") + _rno +
+        (_rc.createdAt ? " (" + dmy(_rc.createdAt) + ")" : "") + (_rc.site ? ", " + String(_rc.site) : "") + "\n" + String(_rp.url);
+      var _rcl = clientByName(_rc.customerName) || {};
+      var _rwn = String(_rcl.mobile || "").replace(/\D/g, ""); if (_rwn.length === 10) _rwn = "91" + _rwn;
+      if (_rwn.length >= 12) { window.open("https://wa.me/" + _rwn + "?text=" + encodeURIComponent(_rtx), "_blank"); return; }
+      pdfLinkSheet(_rtx);
+      return;
+    }
     /* ---- the catalogue library (v6.9.581) ---- */
     /* ---- brand stories (v6.9.584) ---- */
     if (act === "bst-edit") {
@@ -45691,7 +45730,10 @@ function viewCatalogue() {
         mobile: val("m_amobile"), mobile2: val("m_amobile2"),
         location: val("m_aloc"), area: val("m_aarea"), address: val("m_aaddr"),
         birthday: val("m_abday"), anniversary: val("m_aanniv"),
-        rate: val("m_arate"), notes: val("m_anotes")
+        rate: val("m_arate"), notes: val("m_anotes"),
+        /* v6.9.586 - the owner assigns; anyone else keeps what is there, or takes a NEW one himself */
+        ownedBy: roleIs("admin") ? val("m_aowner")
+          : (function () { var _pa = (S.data.associates || []).filter(function (x) { return x.id === id; })[0]; return _pa ? String(_pa.ownedBy || "") : String(S.user || ""); })()
       }).then(function (r) {
         if (!r) return;
         /* came here from a half-filled client form? Reopen it with everything typed intact and
