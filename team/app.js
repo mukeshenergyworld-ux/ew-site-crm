@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.587";
+  var APP_VERSION = "6.9.588";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1060,7 +1060,32 @@
       q.forEach(function (x) { x.rej(e); });
     });
   }
+  /* ================= THE ANSWER TO A QUESTION NOBODY ASKED  (v6.9.588, 23 Sep 2026) =================
+     MEASURED in the verify tab, 23 Sep, 22:30: teamAuth took 40,179 ms and came back 222 KB of
+     VALID JSON. 222 KB is the price list. The server's GET door answers "catalog" when no action is
+     given, so under load Google delivered this POST as a bare GET and the app received the whole
+     catalogue - a plain array - instead of its answer. The same 222 KB reply shows up four more
+     times in this tab's log, on teamGet, at 18-40 s each.
+
+     A catalogue has no "ok", and the boot read "no ok" as "this device is no longer allowed": it
+     deleted the saved sign-in and the saved book and showed "Sign in again." That is a Google
+     hiccup signing a man out and throwing his offline copy away.
+
+     Now: a reply that is not a JSON object is a dropped request, and is said so. A READ is asked
+     once more after a short pause - asking again changes nothing on the server. A write is never
+     re-sent from here; it fails out loud and the journal that already guards every save keeps it. */
+  var API_READS = { teamAuth: 1, teamGet: 1, teamStamp: 1, search: 1, waStatus: 1, botChats: 1 };
+  function apiDropped(e) { return /answered a different question/i.test(String((e && e.message) || "")); }
   function api(action, extra, ms) {
+    var p = apiRaw(action, extra, ms);
+    if (!API_READS[action]) return p;
+    return p.catch(function (e) {
+      if (!apiDropped(e)) throw e;
+      try { console.log("[EW wire] " + action + " - dropped by Google, asking once more"); } catch (x) { }
+      return new Promise(function (r) { setTimeout(r, 800); }).then(function () { return apiRaw(action, extra, ms); });
+    });
+  }
+  function apiRaw(action, extra, ms) {
     if (BATCH_ACTS[action] && !_multiOff && !(extra && extra._solo)) return batchPush(action, extra, ms);   /* v6.9.570 */
     if (extra && extra._solo) { extra = Object.assign({}, extra); delete extra._solo; }
     if (action === "pdfHost" && extra && extra.pdfBase64 && !extra._whole && String(extra.pdfBase64).length > DOC_PART_MIN) return docParts(extra);   /* V132 - in parts */
@@ -1105,6 +1130,10 @@
             wireNote(action, Date.now() - _t0, (txt || "").length);
             var j = null;
             try { j = JSON.parse(txt); } catch (e) { j = null; }
+            if (j && (typeof j !== "object" || Array.isArray(j))) {
+              try { console.log("[EW wire] " + action + " - got a " + (Array.isArray(j) ? j.length + "-row list" : typeof j) + " instead of its answer"); } catch (e) { }
+              throw new Error("the server answered a different question - Google dropped this request (HTTP " + r.status + ")");   /* v6.9.588 */
+            }
             if (j) return j;
             var head = String(txt || "").replace(/\s+/g, " ").slice(0, 60);
             try { console.log("[EW wire] " + action + " - not JSON (HTTP " + r.status + "): " + head); } catch (e) { }   /* 6.9.580 */
@@ -35007,6 +35036,9 @@ function viewCatalogue() {
     if (/quota/i.test(m))
       return "Google has stopped the script for today (quota reached). Nobody can sign in " +
              "until it resets. " + m;
+    if (/answered a different question/i.test(m))
+      return "Google dropped the sign-in request under load (it sent back the price list instead). " +
+             "Nothing is wrong with your name or PIN - try once more.";   /* v6.9.588 */
     if (/not JSON/i.test(m))
       return "The server answered with something the app cannot read - this is the server " +
              "talking, not the connection. Read out this line: " + m;
@@ -48068,7 +48100,12 @@ function viewCatalogue() {
       ).catch(function (e) { return { __err: (e && e.message) || "no answer" }; });
 
       authP.then(function (r) {
-        if (!r || !r.ok) {
+        /* v6.9.588 - only the server's own plain "no" signs a device out. Anything else - no
+           reply, a reply without ok, a busy server - is a failed call, and goes to the catch
+           below, which keeps a warm session on screen. */
+        if (!r || r.ok !== true) {
+          if (!(r && r.ok === false && /wrong name or pin|locked for|not allowed|blocked|removed/i.test(String(r.error || ""))))
+            throw new Error((r && r.error) ? String(r.error) : "the server answered a different question - Google dropped this request");
           /* v6.9.262 - the server says this device is no longer allowed. Until now the boot
              only blanked the PIN in memory: the saved sign-in and the whole cached book
              stayed on the phone, so a man taken off the team still had the firm's clients,
