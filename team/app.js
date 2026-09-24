@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.594";
+  var APP_VERSION = "6.9.595";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -24444,8 +24444,15 @@ function viewCatalogue() {
        '<div style="flex:1 1 165px;min-width:165px;border:1px solid #e2e8f0;border-radius:10px;padding:8px 9px">' +
          '<div style="font-weight:800;font-size:12.5px;color:#334155">Full hisab &middot; with receipts</div>' +
          '<div class="acts" style="gap:6px;margin-top:6px">' +
-         '<button class="btn sm ghost" data-act="bill-pdf" data-n="' + esc(cl) + '" data-pp="1" ' +
-           'title="The statement, then one page per delivery: its items on the left, the signed receipt on the right.">&#8681; PDF</button>' +
+         (function () {
+           /* v6.9.595 - two papers: the pages since the latest payment (what he is being asked to pay
+              for), or every page. The first is first because it is the one usually sent. */
+           var lp = hisabLastPay(cl);
+           return (lp ? '<button class="btn sm" data-act="bill-pdf" data-n="' + esc(cl) + '" data-pp="1" data-since="1" ' +
+             'title="The whole statement, then a page for each delivery and return after the latest payment (' + esc(dmy(lp.d)) + ') - its items and the signed receipt.">&#8681; PDF &middot; after last payment</button>' : '') +
+             '<button class="btn sm ghost" data-act="bill-pdf" data-n="' + esc(cl) + '" data-pp="1" ' +
+             'title="The statement, then one page per delivery: its items on the left, the signed receipt on the right.">&#8681; PDF' + (lp ? ' &middot; full' : '') + '</button>';
+         })() +
          '<button class="btn sm ghost" data-act="full-xlsx" data-n="' + esc(cl) + '" ' +
            'title="Every row with its own item lines under it, and a link to each signed receipt.">&#8681; Excel</button></div>' +
          '<div class="meta" style="font-size:12px;color:#94a3b8;margin-top:5px">Every delivery&rsquo;s items and its signed receipt.' +
@@ -26257,7 +26264,22 @@ function viewCatalogue() {
      device switch (hisabPerPage), so the billing screen, its Download all and the WhatsApp send
      are untouched. The account's own four buttons always pass one, so a statement taken "just
      this once" cannot change what the next one looks like. */
-  function hisabPdf(cl, all, pp) {
+  /* v6.9.595 - THE LATEST PAYMENT ON THIS ACCOUNT, for "since the last payment". His words, 24 Sep:
+     "Statement before latest payment (statement to be shown full, below receipt and challan single
+     page to be after latest payment)". What a customer is being asked to pay for is what came after
+     his last payment; the pages before it he has already settled against. The statement itself is
+     never cut - every row and the running balance stay, so the figure still walks from the old
+     book to today. */
+  function hisabLastPay(cl) {
+    var best = null;
+    (famPays(cl) || []).forEach(function (p) {
+      var d = dstr(p.date || p.createdAt), ts = String(p.createdAt || p.date || "");   /* two on one day: the later entry */
+      if (!d) return;
+      if (!best || d > best.d || (d === best.d && ts > best.ts)) best = { d: d, ts: ts, amt: payAmt(p) };
+    });
+    return best;
+  }
+  function hisabPdf(cl, all, pp, since) {
     /* v6.9.480 - the gated list, because this is the document that leaves the building. A
        statement that lists what the balance does not count is a statement the client wins an
        argument with. */
@@ -26294,6 +26316,14 @@ function viewCatalogue() {
     pyOn.forEach(function (p) { ev.push({ t: "P", d: dstr(p.date || p.createdAt), ts: String(p.date || p.createdAt || ""), ord: 3, row: p }); });
     ev.sort(function (a, b) { return a.d !== b.d ? a.d.localeCompare(b.d) : ((a.ord - b.ord) || a.ts.localeCompare(b.ts)); });
     var sheets = ev.filter(function (e) { return e.t !== "P"; });
+    /* v6.9.595 - only the pages after the latest payment on this paper. ev is already in the
+       account's order (a delivery before a payment on the same day), so "after" is simply every
+       delivery or return that stands after the last payment row. No payment at all: every page. */
+    var _lastP = -1, _lastPay = null;
+    if (since) {
+      ev.forEach(function (e, i) { if (e.t === "P") { _lastP = i; _lastPay = e; } });
+      if (_lastP >= 0) sheets = ev.slice(_lastP + 1).filter(function (e) { return e.t !== "P"; });
+    }
     var perPage = (pp === true || pp === false) ? pp : hisabPerPage();
     var _measure = sheets.map(function (e) { return e.row; });
     return Promise.all([
@@ -26462,7 +26492,13 @@ function viewCatalogue() {
       doc.text(bal < -0.5 ? "In credit  –  paid ahead, comes off the next delivery" : bal > 0.5 ? "Balance due" : "Settled in full", cP, y);
       doc.text(Math.abs(bal) < 0.5 ? "nil" : RSs(bal), cBl, y, { align: "right" });
       y += 6;
-      if (perPage && sheets.length) {
+      if (perPage && since && _lastPay) {
+        F("normal"); doc.setFontSize(6.9); ink(GREY);
+        doc.text(sheets.length
+          ? "The pages that follow show the " + sheets.length + " deliver" + (sheets.length === 1 ? "y or return" : "ies and returns") +
+            " after the latest payment (" + dmy(_lastPay.d) + ", " + RS(payAmt(_lastPay.row)) + "), with the signed receipt beside each."
+          : "Nothing was delivered or returned after the latest payment (" + dmy(_lastPay.d) + ", " + RS(payAmt(_lastPay.row)) + ").", cP, y);
+      } else if (perPage && sheets.length) {
         F("normal"); doc.setFontSize(6.9); ink(GREY);
         doc.text("The pages that follow show each delivery and return listed above, with the signed receipt beside it.", cP, y);
       }
@@ -43025,11 +43061,12 @@ function viewCatalogue() {
       var _ppA = t.getAttribute("data-pp");
       var pPer = _ppA === "1" ? true : (_ppA === "0" ? false : undefined);
       var pWant = pPer === undefined ? hisabPerPage() : pPer;
+      var pSince = t.getAttribute("data-since") === "1";   /* v6.9.595 */
       toast(pWant
         ? "Building the full hisab and fetching the signed receipts\u2026"
         : (pAll ? "Building the full statement\u2026" : "Building the statement\u2026"));
-      loadLogo().then(function () { return hisabPdf(pcl, pAll, pPer); })
-        .then(function (d) { pdfOut(d, pcl.replace(/[^\w.-]/g, "_") + (pWant ? "_hisab" : "_statement") + (pAll ? "_all" : "") + ".pdf"); })
+      loadLogo().then(function () { return hisabPdf(pcl, pAll, pPer, pSince); })
+        .then(function (d) { pdfOut(d, pcl.replace(/[^\w.-]/g, "_") + (pWant ? "_hisab" : "_statement") + (pSince ? "_after_last_payment" : "") + (pAll ? "_all" : "") + ".pdf"); })
         .catch(function () { toast("Could not build the PDF."); });
       return;
     }
