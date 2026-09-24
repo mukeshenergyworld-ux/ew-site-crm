@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.591";
+  var APP_VERSION = "6.9.592";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14055,10 +14055,18 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var st = String(q.status || "Draft");
       return '<span class="pill ' + (st === "Won" ? "Won" : st === "Lost" ? "Lost" : st === "Draft" ? "" : "teal") + '" style="font-size:12px">' + esc(st.toLowerCase()) + '</span>';
     };
+    /* v6.9.592 - FIVE COLUMNS, NOT TEN. His words, 24 Sep: "make this quote compact one, so at least
+       not to scroll left or right in laptop and tab". Ten one-line columns needed about 1,500px,
+       so on a laptop the sheet slid sideways and the money, the executive and the Won / Lost
+       buttons were off screen - and the pinned date slid over the quote number (his screenshot).
+       Now each cell carries two short lines: the quote over its date, the client over its brands
+       (the only column allowed to wrap), the status over its buttons, incl GST over net, the
+       executive over who made it. About 780px: a laptop and a tablet in either direction show
+       the whole row. Every heading still sorts - by date, client, status, total and executive. */
+    var qSm = function (t) { return '<div style="font-size:12px;color:#64748b;font-weight:400;margin-top:1px">' + t + '</div>'; };
     h += xlTable("qlog", [
-      { k: "date", t: "DATE", w: "84px" }, { k: "no", t: "QUOTE" }, { k: "client", t: "CLIENT" }, { k: "brand", t: "BRAND" },
-      { k: "st", t: "STATUS" }, { k: "go", t: "" }, { k: "net", t: "NET", n: 1, r: 1 }, { k: "total", t: "INCL GST", n: 1, r: 1 },
-      { k: "exec", t: "EXECUTIVE" }, { k: "by", t: "BY" }
+      { k: "date", t: "QUOTE" }, { k: "client", t: "CLIENT", wrap: "260px" },
+      { k: "st", t: "STATUS" }, { k: "total", t: "INCL GST", n: 1, r: 1 }, { k: "exec", t: "WHO" }
     ], shown.map(function (q) {
       var cl = clientByName(q.client) || {};
       var exec = String(cl.ownedBy || cl.createdBy || "").trim() || "Unassigned";
@@ -14067,18 +14075,19 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var brands = quoteBrands(q);
       return { v: { date: d, no: q.quoteNo || "", client: q.client || "", brand: brands.join(", ") || q.brand || "", st: st, go: "", net: Number(q.net) || 0, total: Number(q.total) || 0, exec: exec, by: q.createdBy || "" },
         cells: {
-          date: esc(dmy(d)) || '<span style="color:#b45309">no date</span>',
-          no: '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700" title="Open this quote’s card">' + esc(q.quoteNo || "") + '</button>' +
-              (Number(q.version) > 1 ? ' <span class="pill" style="font-size:12px">v' + esc(q.version) + '</span>' : ""),
-          client: '<a href="#" data-act="cl-open" data-id="' + esc(cl.id || "") + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(q.client || "") + '</a>',
-          brand: esc(brands.join(", ") || q.brand || "—"),
-          st: stPill(q),
-          go: (st !== "Won" ? '<button class="btn sm" data-act="q-win" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Won</button> ' : "") +
+          date: '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700" title="Open this quote’s card">' + esc(q.quoteNo || "open") + '</button>' +
+              (Number(q.version) > 1 ? ' <span class="pill" style="font-size:12px">v' + esc(q.version) + '</span>' : "") +
+              qSm(esc(dmy(d)) || '<span style="color:#b45309">no date</span>'),
+          client: '<a href="#" data-act="cl-open" data-id="' + esc(cl.id || "") + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(q.client || "") + '</a>' +
+              qSm(esc(brands.join(", ") || q.brand || "—")),
+          st: stPill(q) + '<div style="margin-top:3px;white-space:nowrap">' +
+              (st !== "Won" ? '<button class="btn sm" data-act="q-win" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Won</button> ' : "") +
               (st !== "Lost" ? '<button class="btn sm ghost" data-act="q-lose" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">Lost</button> ' : "") +
-              '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">PDF</button>',
-          net: money(q.net), total: money(q.total), exec: whoChip(exec), by: whoChip(q.createdBy)
+              '<button class="btn sm ghost" data-act="q-pdf" data-id="' + esc(q.id) + '" style="padding:2px 8px;font-size:12px">PDF</button></div>',
+          total: '<b>' + money(q.total) + '</b>' + qSm('net ' + money(q.net)),
+          exec: whoChip(exec) + (String(q.createdBy || "").trim() && String(q.createdBy).trim() !== exec ? qSm('made by ' + esc(q.createdBy)) : '')
         } };
-    }), "status, the one-tap Won / Lost, the money and who");
+    }), "");
     return h;
   }
 
@@ -17841,6 +17850,25 @@ function viewCatalogue() {
      this is a list to be emptied. A challan whose receipt is already in is NOT waiting on
      anybody, whatever its status column says (chArrived) - that is the v6.9.387 lesson, and it
      is why this is not simply a filter on "Draft". */
+  /* v6.9.592 - PASSED ONCE, THEN CHANGED. His words, 24 Sep, about 23/09/2026/158: "its already
+     passed still showing to pass, is this any error". It was not lost: he passed it at 21:20 on
+     the 23rd; at 12:27 on the 24th the godown opened it with Edit to add the driver and the
+     freight, and the Challan app sends an edited challan back for passing, because the approval
+     was given on the earlier contents. The row keeps the first approver's name. What was missing
+     was the SENTENCE - so the list said "to pass" about a challan he knew he had passed. */
+  function chReopened(c) {
+    return String((c && c.status) || "Draft") === "Draft" && !!String((c && c.approvedBy) || "").trim() && !chArrived(c);
+  }
+  function chReopenNote(c) {
+    if (!chReopened(c)) return "";
+    var when = String(c.updatedAt || "").trim(), t = Date.parse(when), at = "";
+    if (isFinite(t)) { var dd = new Date(t); at = dmy(when.slice(0, 10)) + " " + ("0" + dd.getHours()).slice(-2) + ":" + ("0" + dd.getMinutes()).slice(-2); }
+    var who = String(c.createdBy || "").trim();
+    return '<span title="Passed by ' + esc(c.approvedBy) + ', then edited - an edited challan needs passing again" style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;' +
+      'font-size:12px;font-weight:700;white-space:normal;line-height:1.5;color:#991b1b;background:#fee2e2">' +
+      'Changed after ' + esc(String(c.approvedBy).split(" ")[0]) + ' passed it' + (who ? ' \u00b7 by ' + esc(who.split(" ")[0]) : '') + (at ? ' \u00b7 ' + esc(at) : '') +
+      ' \u2014 pass it again</span>';
+  }
   function apprWaiting() {
     return dedupeChallans((S.data.challans || []).filter(function (c) {
       return (String(c.status || "Draft")) === "Draft" && !chArrived(c);
@@ -17873,7 +17901,8 @@ function viewCatalogue() {
     var w = apprWaitSay(list), worth = list.reduce(function (a, c) { return a + chValue(c); }, 0);
     var names = list.slice(0, 3).map(function (c) {
       return '<span class="pill" style="background:#fff;color:#991b1b;border:1px solid #fca5a5">' +
-        esc(c.challanNo || "no number yet") + (c.customerName ? ' &middot; ' + esc(c.customerName) : '') + '</span>';
+        esc(c.challanNo || "no number yet") + (c.customerName ? ' &middot; ' + esc(c.customerName) : '') +
+        (chReopened(c) ? ' &middot; <i>changed after passing</i>' : '') + '</span>';
     }).join(" ");
     return '<div class="card" style="border:2px solid ' + (w.bad ? '#dc2626' : '#fbbf24') + ';background:' +
       (w.bad ? '#fef2f2' : '#fffbeb') + ';cursor:pointer" data-act="ch-approve-q">' +
@@ -20626,7 +20655,11 @@ function viewCatalogue() {
 
          ONLY THE PHYSICAL STEPS chain. Finalised and Billed are office acts that happen in
          either order, and inferring one from the other would be a lie about money. */
-      { k: "pass",  label: "Passed",     done: gone || arrived || st === "Approved" || !!String((c && c.approvedBy) || "").trim(),
+      /* 24 Sep 2026 - a name on the row is not the same as passed. 23/09/2026/158 was passed and
+         dispatched, then edited in the Challan app, which sends an edited challan back to Draft on
+         purpose; approvedBy stayed on the row, so this step drew "Passed \u00b7 Mukesh" in green
+         beside a red "To pass". A Draft is not passed, whoever passed an earlier version of it. */
+      { k: "pass",  label: "Passed",     done: gone || arrived || st === "Approved" || (st !== "Draft" && !!String((c && c.approvedBy) || "").trim()),
         why: "Waiting for the accounts desk to pass it." },
       { k: "disp",  label: "Dispatched", done: gone || arrived,
         why: "Nothing has left the godown on this challan yet." },
@@ -20744,7 +20777,7 @@ function viewCatalogue() {
     }).join('<span style="color:#cbd5e1;font-size:12px">\u203a</span>');
     return '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin:6px 0 2px;padding:5px 8px;' +
       'background:#f8fafc;border-left:3px solid #cbd5e1;border-radius:0 8px 8px 0" ' +
-      'class="stp1">' + cells.replace(/class="btn sm/g, 'style="padding:2px 10px;min-height:0;font-size:12px" class="btn sm') + '</div>';
+      'class="stp1">' + chReopenNote(c) + cells.replace(/class="btn sm/g, 'style="padding:2px 10px;min-height:0;font-size:12px" class="btn sm') + '</div>';
   }
   function chStepStrip(c, btns) {
     var b = btns || {};
@@ -33879,7 +33912,11 @@ function viewCatalogue() {
       cols.forEach(function (c, k) {
         var v = (r.cells || {})[c.k];
         h += '<td style="' + (k === 0 ? xlPin(bg) : "") +
-          'padding:5px 7px;border-top:1px solid #e2e8f0;white-space:nowrap;font-size:12.5px;text-align:' +
+          'padding:5px 7px;border-top:1px solid #e2e8f0;' +
+          /* v6.9.592 - a column may WRAP (c.wrap = its widest width). Opt-in: every sheet that does
+             not ask is drawn exactly as before. */
+          (c.wrap ? 'white-space:normal;vertical-align:top;max-width:' + c.wrap + ';' : 'white-space:nowrap;') +
+          'font-size:12.5px;text-align:' +
           (c.r ? "right" : "left") + '">' + (v == null ? "" : v) + '</td>';
       });
       h += '</tr>';
