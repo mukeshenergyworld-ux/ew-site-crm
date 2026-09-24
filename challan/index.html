@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.97.0";
+  var APP_VERSION = "1.98.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -5297,16 +5297,20 @@ function discRowOn(client, brand, onYmd) {
        large; the four lines under the name, the transport line (now in the heading, beside the
        people) and the receiving block are 9 pt, and the item rows may go down to 0.66x (8 pt
        names, 10 pt quantities) before a second sheet is used: 25 one-line items fit one sheet. */
-    var FOOT = 25;                 /* the receiving block, always on the last sheet */
+    /* 1.98.0 / 6.9.604 - his third look: those lines smaller again, the driver and freight AFTER
+       the last item, the receiving line smaller, "if possible increase more items". The lines under
+       the name are 8 pt, the receiving block 20 mm, and rows may go to 0.6x: about 35 one-line
+       items on a sheet. */
+    var FOOT = 20;                 /* the receiving block, always on the last sheet */
 
     /* ---- the heading, on every sheet ---- */
     var head = function (first) {
-      doc.setFillColor(15, 118, 110); doc.rect(0, 0, W, 15, "F");
-      doc.setTextColor(255); F("bold"); doc.setFontSize(15);
-      doc.text("DELIVERY CHALLAN", L, 10);
-      doc.setFontSize(14);
-      doc.text(String(c.challanNo || ""), R, 10, { align: "right" });
-      var y = 22;
+      doc.setFillColor(15, 118, 110); doc.rect(0, 0, W, 12, "F");
+      doc.setTextColor(255); F("bold"); doc.setFontSize(13);
+      doc.text("DELIVERY CHALLAN", L, 8.2);
+      doc.setFontSize(13);
+      doc.text(String(c.challanNo || ""), R, 8.2, { align: "right" });
+      var y = 18;
       if (!first) {
         g(60); F("bold"); doc.setFontSize(11);
         doc.text(String(c.customerName || "") + "  (continued)", L, y);
@@ -5321,21 +5325,15 @@ function discRowOn(client, brand, onYmd) {
       doc.setFontSize(12);
       doc.text(ymd(c.createdAt), R, y + 6.5, { align: "right" });
       y += 6.5 + nmL.length * 6;
-      g(50); F(); doc.setFontSize(9);
-      y -= 1;
+      g(50); F(); doc.setFontSize(8);
+      y -= 1.5;
       var addr = String(cl.address || "").trim();
-      if (addr) { doc.splitTextToSize(addr, CW).slice(0, 2).forEach(function (t) { doc.text(t, L, y); y += 3.9; }); }
-      if (c.site) { doc.text("Site: " + String(c.site), L, y); y += 3.9; }
+      if (addr) { doc.splitTextToSize(addr, CW).slice(0, 2).forEach(function (t) { doc.text(t, L, y); y += 3.4; }); }
+      if (c.site) { doc.text("Site: " + String(c.site), L, y); y += 3.4; }
       var ln = [cl.mobile ? "Mob " + String(cl.mobile) : "", mn ? "Book no " + String(mn) : ""].filter(Boolean).join("     ");
-      if (ln) { F("bold"); doc.text(ln, L, y); y += 3.9; }
-      g(80); F(); doc.setFontSize(8.5);
-      doc.text("Prepared by " + String(c.createdBy || "-") + "     Passed by " + String(c.approvedBy || "not yet"), L, y); y += 3.9;
-      if (c.driver || c.vehicle || num(c.freight)) {
-        var _t = [c.driver, c.vehicle].filter(Boolean).join("  |  ");
-        if (num(c.freight)) _t += (_t ? "   |   " : "") + "Freight Rs. " + Math.round(num(c.freight)).toLocaleString("en-IN") + " (" + String(c.freightTo || "Client") + ")";
-        g(30); F("bold"); doc.setFontSize(9);
-        doc.text("Transport: " + (doc.splitTextToSize(_t, CW - 18)[0] || ""), L, y); y += 3.9;
-      }
+      if (ln) { F("bold"); doc.text(ln, L, y); y += 3.4; }
+      g(80); F(); doc.setFontSize(7.5);
+      doc.text("Prepared by " + String(c.createdBy || "-") + "     Passed by " + String(c.approvedBy || "not yet"), L, y); y += 3.2;
       if (st === "Draft") {
         doc.setFillColor(254, 226, 226); doc.rect(L, y - 0.5, CW, 7, "F");
         doc.setTextColor(185, 28, 28); F("bold"); doc.setFontSize(10);
@@ -5345,17 +5343,19 @@ function discRowOn(client, brand, onYmd) {
       return y + 2;
     };
     var colHead = function (y) {
-      doc.setFillColor(226, 232, 240); doc.rect(L, y, CW, 7.5, "F");
-      g(30); F("bold"); doc.setFontSize(10);
-      doc.text("#", L + 2, y + 5.2); doc.text("ITEM", L + 10, y + 5.2);
-      doc.text("UNIT", R - 24, y + 5.2, { align: "right" }); doc.text("QTY", R - 2, y + 5.2, { align: "right" });
-      return y + 7.5;
+      doc.setFillColor(226, 232, 240); doc.rect(L, y, CW, 6, "F");
+      g(30); F("bold"); doc.setFontSize(9);
+      doc.text("#", L + 2, y + 4.2); doc.text("ITEM", L + 10, y + 4.2);
+      doc.text("UNIT", R - 24, y + 4.2, { align: "right" }); doc.text("QTY", R - 2, y + 4.2, { align: "right" });
+      return y + 6;
     };
     var Xd = L + 10, dW = function (s) { return (R - 27 - 8 * s) - Xd; };   /* the unit column grows with the rows */
 
     /* ---- how big each row can be: fill the sheet when there is room ---- */
+    var hasTr = !!(c.driver || c.vehicle || num(c.freight));
+    var TRH = hasTr ? 6 : 0;               /* the transport line, after the last item */
     var y0 = colHead(head(true));
-    var room = H - FOOT - y0;
+    var room = H - FOOT - y0 - TRH;
     /* the item's words, with its code after it in brackets - one block, so a row is as short as
        its words allow and the sheet can hold more of them at a size a camera reads */
     var words = function (l) {
@@ -5371,15 +5371,15 @@ function discRowOn(client, brand, onYmd) {
       });
     };
     var total = function (a) { return a.reduce(function (t, x) { return t + x; }, 0); };
-    /* the largest size, 0.66x to 1.8x, at which every row still fits the first sheet; below 0.66x it
+    /* the largest size, 0.6x to 1.8x, at which every row still fits the first sheet; below 0.6x it
        carries on to a second sheet instead of going smaller */
     var sc = 1.8, hs = measure(sc);
-    while (sc > 0.66 && total(hs) > room) { sc = Math.round((sc - 0.05) * 100) / 100; hs = measure(sc); }
+    while (sc > 0.6 && total(hs) > room) { sc = Math.round((sc - 0.05) * 100) / 100; hs = measure(sc); }
 
     var y = y0, n = 0;
     items.forEach(function (l, i) {
       var rh = hs[i];
-      if (y + rh > H - (i === items.length - 1 ? FOOT : 12)) {
+      if (y + rh > H - (i === items.length - 1 ? FOOT + TRH : 10)) {
         g(120); F(); doc.setFontSize(8); doc.text("continued on the next sheet", R, H - 5, { align: "right" });
         doc.addPage([150, 210], "portrait"); y = colHead(head(false));
       }
@@ -5396,20 +5396,27 @@ function discRowOn(client, brand, onYmd) {
       doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25); doc.line(L, y, R, y);
     });
     if (!items.length) { g(120); F(); doc.setFontSize(11); doc.text("No items on this challan.", L + 2, y + 7); y += 10; }
+    /* the driver and the freight, straight after the last item */
+    if (hasTr) {
+      var _t = [c.driver, c.vehicle].filter(Boolean).join("  |  ");
+      if (num(c.freight)) _t += (_t ? "   |   " : "") + "Freight Rs. " + Math.round(num(c.freight)).toLocaleString("en-IN") + " (" + String(c.freightTo || "Client") + ")";
+      g(30); F("bold"); doc.setFontSize(8);
+      doc.text("Transport: " + (doc.splitTextToSize(_t, CW - 16)[0] || ""), L, y + 4.2);
+    }
     /* ---- the receiving block, big enough to write in and to read in a photo ---- */
     var pages = doc.getNumberOfPages();
     doc.setPage(pages);
-    var fy = H - FOOT + 2;
+    var fy = H - FOOT + 1.5;
     doc.setDrawColor(15, 118, 110); doc.setLineWidth(0.4); doc.line(L, fy, R, fy);
-    g(20); F("bold"); doc.setFontSize(9);
-    doc.text("RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, fy + 4.5);
+    g(20); F("bold"); doc.setFontSize(7.5);
+    doc.text("RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, fy + 3.8);
     doc.setDrawColor(90, 90, 90); doc.setLineWidth(0.3);
-    doc.line(L, fy + 13, L + 62, fy + 13); doc.line(L + 68, fy + 13, L + 104, fy + 13); doc.line(L + 110, fy + 13, R, fy + 13);
-    g(70); F(); doc.setFontSize(8);
-    doc.text("Name & signature", L, fy + 16.5); doc.text("Mobile", L + 68, fy + 16.5); doc.text("Date", L + 110, fy + 16.5);
+    doc.line(L, fy + 10.5, L + 62, fy + 10.5); doc.line(L + 68, fy + 10.5, L + 104, fy + 10.5); doc.line(L + 110, fy + 10.5, R, fy + 10.5);
+    g(70); F(); doc.setFontSize(7);
+    doc.text("Name & signature", L, fy + 13.3); doc.text("Mobile", L + 68, fy + 13.3); doc.text("Date", L + 110, fy + 13.3);
     for (var p = 1; p <= pages; p++) {
-      doc.setPage(p); g(130); F(); doc.setFontSize(7);
-      doc.text(String(c.challanNo || "") + "   page " + p + " of " + pages, L, H - 2.5);
+      doc.setPage(p); g(140); F(); doc.setFontSize(6);
+      doc.text(String(c.challanNo || "") + "   page " + p + " of " + pages, L, H - 1.8);
     }
     doc.setPage(pages);
     return doc;
