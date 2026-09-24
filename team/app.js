@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.600";
+  var APP_VERSION = "6.9.601";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -19249,7 +19249,8 @@ function viewCatalogue() {
         cells: {
           no: '<b>' + esc(r.returnNo || "") + '</b>' + (chProofAny(r).has ? ' ' + proofSealFor(r) : ''),
           st: '<span class="pill ' + cls + '" style="font-size:12px">' + esc(stt) + '</span>' + (retStamp(r) ? ' ' + retStampPill(r) : ''),
-          go: (stt === "Raised" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Picked up">Picked up</button> ' : "") +
+          go: (roleAny(["admin", "accounts"]) ? '<button class="btn sm ghost" data-act="rt-freight" data-id="' + esc(r.id) + '">' + (num(r.freight) > 0 ? 'Freight ' + money(num(r.freight)) : 'Add freight') + '</button> ' : "") +
+              (stt === "Raised" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Picked up">Picked up</button> ' : "") +
               (stt === "Picked up" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received">Received at godown</button> ' : "") +
               (stt === "Received" && !chProofAny(r).has && canAttachProof() ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '">Attach goods-in receipt</button> ' : "") +
               (stt === "Received" ? retFinaliseBtn(r) + ' ' : "") +
@@ -19881,8 +19882,14 @@ function viewCatalogue() {
     return ((S.data && S.data.drivers) || []).filter(function (d) { return lower(d.name) === t; })[0] || null;
   }
   function chStatus(c) { return String((c && c.status) || "Draft"); }
-  function frHasReceipt(r) { return String((r && r.receiptReceived) || "").toUpperCase() === "Y"; }
-  function frWent(r)       { return FR_DONE.indexOf(chStatus(r)) >= 0; }
+  /* CRM 6.9.601 / Challan 1.95.0 - A RETURN TRIP IS PAYABLE TOO. His words, 24 Sep: "also to enter
+     freight for material return". A return never carries receiptReceived and its lifecycle is Raised,
+     Picked up, Received - none of them in FR_DONE - so every return trip read "not dispatched" and
+     its freight could never be paid. For a return, the trip has HAPPENED once it is picked up, and it
+     is PROVED once the goods are booked in at the godown: the material on our floor is the paper. */
+  function frIsReturn(r)   { return !!(r && String(r.returnNo || "").trim()); }
+  function frHasReceipt(r) { return frIsReturn(r) ? chStatus(r) === "Received" : String((r && r.receiptReceived) || "").toUpperCase() === "Y"; }
+  function frWent(r)       { return frIsReturn(r) ? (chStatus(r) === "Picked up" || chStatus(r) === "Received") : FR_DONE.indexOf(chStatus(r)) >= 0; }
   function frAmt(r)        { return num(r && r.freight); }
   function frToClient(r)   { return lower((r && r.freightTo) || "") === "client"; }
   function frTrips() {
@@ -20039,8 +20046,9 @@ function viewCatalogue() {
     ], rows.map(function (g) {
       var paid = paidTo(g.key), owed = stillOwed(g);
       return { v: { name: g.name, veh: g.vehicle, mobile: g.mobile, ready: g.ready, held: g.held, paid: paid, owed: owed },
+        after: S.dlOpen === g.key ? driverLedgerPanel(g.key) : "",
         cells: {
-          name: '<a href="#" data-act="dl-open" data-k="' + esc(g.key) + '" style="font-weight:700;color:#0b3b36;text-decoration:underline dotted" title="His complete ledger">' + esc(g.name) + '</a>' +
+          name: '<a href="#" data-act="dl-open" data-k="' + esc(g.key) + '" style="font-weight:700;color:#0b3b36;text-decoration:underline dotted" title="His ledger, under this row">' + (S.dlOpen === g.key ? '&#9662; ' : '&#9656; ') + esc(g.name) + '</a>' +
             (!g.onReg ? ' <span class="pill" style="background:#fef3c7;color:#92400e" title="Not on the driver register - typed on the delivery">not on register</span>' +
               (canManageDrivers() ? ' <button class="btn sm ghost" data-act="dl-link" data-k="' + esc(g.key) + '" style="padding:1px 8px;font-size:12px">Link&hellip;</button>' : '') : ''),
           veh: g.vehicle ? esc(g.vehicle) : '<span style="color:#94a3b8">—</span>',
@@ -20062,7 +20070,10 @@ function viewCatalogue() {
       { k: "name", t: "DRIVER" }, { k: "mob", t: "MOBILE" }, { k: "type", t: "VEHICLE TYPE" }, { k: "veh", t: "VEHICLE NO" }, { k: "go", t: "" }
     ], _reg.map(function (d) {
       var vt = driverType(d);
+      var _rk2 = drvResolve("id:" + String(d.id || "").trim());
+      var _hasRow = rows.some(function (g) { return g.key === _rk2; });
       return { v: { name: d.name || "", mob: d.mobile || "", type: vt, veh: d.vehicle || "" },
+        after: (S.dlOpen === _rk2 && !_hasRow) ? driverLedgerPanel(_rk2) : "",
         cells: {
           name: '<a href="#" data-act="dl-open" data-k="' + esc(drvResolve("id:" + String(d.id || "").trim())) + '" style="font-weight:700;color:#0b3b36;text-decoration:underline dotted">' + esc(d.name) + '</a>',
           mob: d.mobile ? '<a href="tel:' + esc(d.mobile) + '">' + esc(d.mobile) + '</a>' : '<span style="color:#b45309">no mobile</span>',
@@ -20073,7 +20084,8 @@ function viewCatalogue() {
     }), "");
 
     /* ---- the freight ledger: every delivery with freight, driver or not ---- */
-    var led = (S.data.challans || []).filter(function (c) { return c && c.status !== "Cancelled" && frAmt(c) > 0; })
+    /* v6.9.601 - and the return trips, which carry freight too */
+    var led = (S.data.challans || []).concat(S.data.returns || []).filter(function (c) { return c && c.status !== "Cancelled" && frAmt(c) > 0; })
       .sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
     var months = []; led.forEach(function (c) { var m = frMonthOf(c); if (m && months.indexOf(m) < 0) months.push(m); });
     months.sort().reverse();
@@ -20087,14 +20099,15 @@ function viewCatalogue() {
       { k: "fr", t: "FREIGHT", n: 1, r: 1 }, { k: "state", t: "COUNTS?" }, { k: "to", t: "BILLED TO" }
     ], led.map(function (c) {
       var state = !frWent(c) ? "waiting" : (frHasReceipt(c) ? "ready" : "held");
-      return { v: { date: String(c.createdAt || "").slice(0, 10), no: c.challanNo || "", client: c.customerName || "", driver: c.driver || "", fr: frAmt(c), state: state, to: frToClient(c) ? "client" : "us" },
+      return { v: { date: String(c.createdAt || "").slice(0, 10), no: c.challanNo || c.returnNo || "", client: c.customerName || "", driver: c.driver || "", fr: frAmt(c), state: state, to: frToClient(c) ? "client" : "us" },
         cells: {
           date: esc(dmy(String(c.createdAt || "").slice(0, 10))),
-          no: '<b data-act="ch-open" data-id="' + esc(c.id) + '" style="cursor:pointer;color:#0f766e">' + esc(c.challanNo || "") + '</b>',
+          no: frIsReturn(c) ? '<b>' + esc(c.returnNo) + '</b> <span class="pill" style="font-size:12px">return</span>'
+                            : '<b data-act="ch-open" data-id="' + esc(c.id) + '" style="cursor:pointer;color:#0f766e">' + esc(c.challanNo || "") + '</b>',
           client: esc(c.customerName || ""),
           driver: (c.driverId || c.driver) ? esc(c.driver || c.driverId) : '<span style="color:#b45309">not named</span>',
           fr: money(frAmt(c)),
-          state: frStatePill(state) + (state === "held" && canAttachProof() ? ' <button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(c.id) + '" style="padding:1px 8px;font-size:12px">Attach receipt</button>' : ''),
+          state: frStatePill(state) + (state === "held" && !frIsReturn(c) && canAttachProof() ? ' <button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(c.id) + '" style="padding:1px 8px;font-size:12px">Attach receipt</button>' : ''),
           to: frToClient(c) ? '<span class="pill teal">client</span>' : '<span class="pill" style="background:#fee2e2;color:#b91c1c">us</span>'
         } };
     }), "the driver, whether it counts yet, and who is billed");
@@ -20113,71 +20126,136 @@ function viewCatalogue() {
     }
     return h;
   }
-  /* ===== v6.9.600 - ONE DRIVER'S COMPLETE LEDGER =====
-     Every trip that carried freight and every payout, oldest first, with a running balance of
-     what he is owed. Only a PROVED trip (signed receipt on the delivery) adds to it - his rule
-     since 21 Aug - so the trips still waiting on paper are listed under it, each with its
-     challan and the button that attaches the receipt, and they say what they will add. */
-  function modalDriverLedger(key) {
-    var g = frRows().filter(function (x) { return x.key === key; })[0];
+  /* ===== v6.9.601 - ONE DRIVER'S LEDGER, OPENED UNDER HIS ROW, AS A SHEET =====
+     His words, 24 Sep, on the 6.9.600 window: "do not want click to show separate window, click to
+     dropdown excel like ledger, show in proper format, professional way to manage driver fare and
+     payment". So the name opens a sheet under his own row, the way an account opens in HISAB.
+
+     One ledger, oldest first: every trip that carried freight and every payout. FREIGHT is what the
+     trip earns him; it enters the BALANCE only when the trip is PROVED (his rule since 21 Aug: the
+     signed receipt is on the delivery). A trip still waiting on its receipt, or not dispatched,
+     stands in its place in the ledger with its amount in grey and the balance unchanged, so he can
+     see exactly which receipt holds which rupees back - and attach it from the same line. */
+  function driverLedgerData(key) {
+    var g = frRows().filter(function (x) { return x.key === key; })[0] || null;
     var reg = key.indexOf("id:") === 0 ? ((S.data.drivers || []).filter(function (d) { return String(d.id || "").trim() === key.slice(3); })[0] || null) : null;
-    var nm = (g && g.name) || (reg && reg.name) || "Driver";
-    var pays = payouts().filter(function (p) { return dpKey(p) === key; });
     var ev = [];
     ((g && g.trips) || []).forEach(function (t) {
-      if (t.state !== "ready") return;
       var r = t.r;
-      ev.push({ d: String(r.receiptAt || r.dispatchedAt || r.createdAt || "").slice(0, 10), ts: String(r.createdAt || ""), kind: "trip", t: t, cr: frAmt(r), dr: 0 });
+      ev.push({ d: String(r.dispatchedAt || r.createdAt || "").slice(0, 10), ts: String(r.createdAt || ""), kind: "trip", t: t, amt: frAmt(r), state: t.state });
     });
-    pays.forEach(function (p) { ev.push({ d: String(p.date || p.createdAt || "").slice(0, 10), ts: String(p.createdAt || ""), kind: "pay", p: p, cr: 0, dr: dpAmt(p) }); });
-    ev.sort(function (a, b) { return a.d !== b.d ? a.d.localeCompare(b.d) : a.ts.localeCompare(b.ts); });
-    var bal = 0, earned = 0, paid = 0;
-    var rowsH = ev.map(function (e, i) {
-      bal += e.cr - e.dr; earned += e.cr; paid += e.dr;
-      var what = e.kind === "trip"
-        ? '<b>' + esc(e.t.r.challanNo || e.t.r.returnNo || "") + '</b>' + (e.t.kind === "return" ? ' <span class="pill">return trip</span>' : '') +
-          ' <span style="color:#64748b">' + esc(e.t.r.customerName || "") + '</span>' + (frToClient(e.t.r) ? ' <span style="color:#64748b;font-size:12px">&middot; billed to client</span>' : '')
-        : '<b style="color:#0f766e">Paid</b> <span style="color:#64748b">' + esc([e.p.mode, e.p.ref].filter(Boolean).join(" · ") || "") + (e.p.note ? ' &middot; ' + esc(e.p.note) : '') + ' &middot; by ' + esc(e.p.createdBy || "") + '</span>';
-      return '<tr style="background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' +
-        '<td style="padding:5px 7px;white-space:nowrap">' + esc(dmy(e.d)) + '</td>' +
-        '<td style="padding:5px 7px">' + what + '</td>' +
-        '<td style="padding:5px 7px;text-align:right;white-space:nowrap">' + (e.cr ? money(e.cr) : '') + '</td>' +
-        '<td style="padding:5px 7px;text-align:right;white-space:nowrap;color:#0f766e">' + (e.dr ? money(e.dr) : '') + '</td>' +
-        '<td style="padding:5px 7px;text-align:right;white-space:nowrap;font-weight:700;color:' + (bal > 0.5 ? '#b91c1c' : '#0f766e') + '">' + money(bal) + '</td></tr>';
-    }).join("");
-    var held = ((g && g.trips) || []).filter(function (t) { return t.state === "held"; });
-    var wait = ((g && g.trips) || []).filter(function (t) { return t.state === "waiting"; });
-    var heldAmt = held.reduce(function (a, t) { return a + frAmt(t.r); }, 0);
-    var TH = function (x, r) { return '<th style="padding:5px 7px;text-align:' + (r ? 'right' : 'left') + ';font-size:12px;color:#fff;background:#0b3b36;white-space:nowrap">' + x + '</th>'; };
-    var h = '<h2>' + esc(nm) + ' &mdash; driver ledger</h2>' +
-      '<p class="sub">' + esc([reg && reg.mobile || (g && g.mobile), driverType(reg || {}), reg && reg.vehicle || (g && g.vehicle)].filter(Boolean).join(" · ") || "no details on the register") +
-      (reg ? '' : ' &middot; <b style="color:#b45309">not on the register</b>') + '</p>' +
-      '<div class="cards" style="margin:4px 0 8px">' +
-        '<div class="stat"><div class="n">' + money(earned) + '</div><div class="l">Proved trips</div></div>' +
-        '<div class="stat"><div class="n">' + money(paid) + '</div><div class="l">Paid to him</div></div>' +
-        '<div class="stat' + (bal > 0.5 ? ' alert' : '') + '"><div class="n">' + (bal < -0.5 ? money(-bal) + ' ahead' : money(bal)) + '</div><div class="l">Finally due</div></div>' +
-        '<div class="stat' + (heldAmt > 0.5 ? ' alert' : '') + '"><div class="n">' + money(heldAmt) + '</div><div class="l">Waiting on receipts &middot; ' + held.length + '</div></div>' +
-      '</div>' +
-      (S.dp ? '' : '<div class="meta" style="color:#b91c1c;font-size:12.5px;margin-bottom:6px">His payouts have not loaded yet, so "Paid" and "Finally due" are not complete &mdash; wait a moment and open it again.</div>');
-    h += '<h3 style="margin:8px 0 4px;font-size:14px">The account</h3>' +
-      (ev.length ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>' +
-        TH("DATE") + TH("TRIP / PAYOUT") + TH("EARNED", 1) + TH("PAID", 1) + TH("DUE", 1) + '</tr></thead><tbody>' + rowsH + '</tbody></table></div>'
-        : '<div class="meta">No proved trip and no payout yet.</div>');
-    h += '<h3 style="margin:12px 0 4px;font-size:14px">Waiting on a receipt <span class="pill due">' + held.length + '</span></h3>' +
-      (held.length ? '<div class="meta" style="font-size:12.5px;margin-bottom:4px">Not in his due yet. Attach the signed receipt and the freight moves into the account above.</div>' +
-        held.map(function (t) {
-          var r = t.r;
-          return '<div class="row" style="align-items:center;gap:8px;padding:5px 0;border-top:1px solid #e2e8f0">' +
-            '<div class="grow"><b>' + esc(r.challanNo || r.returnNo || "") + '</b> <span style="color:#64748b">' + esc(r.customerName || "") + ' &middot; ' + esc(dmy(String(r.dispatchedAt || r.createdAt || "").slice(0, 10))) + '</span></div>' +
-            '<b>' + money(frAmt(r)) + '</b>' +
-            (canAttachProof() && t.kind !== "return" ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '">Attach receipt</button>' : '') + '</div>';
-        }).join("") : '<div class="meta">Nothing &mdash; every trip that went has its receipt.</div>');
-    if (wait.length) {
-      h += '<h3 style="margin:12px 0 4px;font-size:14px">Not dispatched yet <span class="pill">' + wait.length + '</span></h3>' +
-        '<div class="meta" style="font-size:12.5px">' + wait.map(function (t) { return esc(t.r.challanNo || t.r.returnNo || "") + ' (' + money(frAmt(t.r)) + ')'; }).join(", ") + ' &mdash; no trip has happened, so these are in neither figure.</div>';
-    }
-    return h + '<div class="foot"><button class="btn ghost" data-act="close">Close</button>' +
-      (roleAny(["admin", "accounts"]) && g ? '<button class="btn" data-act="dp-open" data-k="' + esc(key) + '">Record a payment</button>' : '') + '</div>';
+    payouts().filter(function (p) { return dpKey(p) === key; }).forEach(function (p) {
+      ev.push({ d: String(p.date || p.createdAt || "").slice(0, 10), ts: String(p.createdAt || ""), kind: "pay", p: p, amt: dpAmt(p) });
+    });
+    ev.sort(function (a, b2) { return a.d !== b2.d ? a.d.localeCompare(b2.d) : a.ts.localeCompare(b2.ts); });
+    var bal = 0, T = { proved: 0, provedN: 0, paid: 0, paidN: 0, held: 0, heldN: 0, wait: 0, waitN: 0 };
+    ev.forEach(function (e) {
+      if (e.kind === "pay") { bal -= e.amt; T.paid += e.amt; T.paidN++; }
+      else if (e.state === "ready") { bal += e.amt; T.proved += e.amt; T.provedN++; }
+      else if (e.state === "held") { T.held += e.amt; T.heldN++; }
+      else { T.wait += e.amt; T.waitN++; }
+      e.bal = bal;
+    });
+    return { g: g, reg: reg, ev: ev, T: T, bal: bal,
+             name: (reg && reg.name) || (g && g.name) || "Driver",
+             mobile: (reg && reg.mobile) || (g && g.mobile) || "", vehicle: (reg && reg.vehicle) || (g && g.vehicle) || "",
+             vtype: reg ? driverType(reg) : "" };
+  }
+  function driverLedgerPanel(key) {
+    var L0 = driverLedgerData(key), T = L0.T, bal = L0.bal;
+    var TH = function (x, r) { return '<th style="padding:6px 8px;text-align:' + (r ? 'right' : 'left') + ';font-size:12px;font-weight:700;color:#0f172a;background:#e2e8f0;border:1px solid #cbd5e1;white-space:nowrap">' + x + '</th>'; };
+    var TD = function (x, st) { return '<td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:12.5px;vertical-align:top;' + (st || '') + '">' + x + '</td>'; };
+    var fig = function (label, v, n, tone) {
+      return '<div style="padding:6px 12px;border-right:1px solid #cbd5e1;min-width:130px">' +
+        '<div style="font-size:12px;color:#64748b">' + label + (n != null ? ' &middot; ' + n : '') + '</div>' +
+        '<div style="font-size:15px;font-weight:800;color:' + (tone || '#0f172a') + '">' + v + '</div></div>';
+    };
+    var h = '<div style="margin:0 6px 0 6px;border:1px solid #0b3b36;border-top:0;border-radius:0 0 8px 8px;background:#fff">';
+    /* the title bar */
+    h += '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 10px;background:#0b3b36;color:#fff">' +
+      '<div style="flex:1 1 260px;min-width:0"><b style="font-size:14px">Driver ledger &mdash; ' + esc(L0.name) + '</b>' +
+      '<div style="font-size:12px;opacity:.85">' + esc([L0.mobile, L0.vtype, L0.vehicle].filter(Boolean).join(" · ") || "no details") +
+      (L0.reg ? '' : ' &middot; not on the register') + '</div></div>' +
+      (roleAny(["admin", "accounts"]) && L0.g ? '<button class="btn sm" data-act="dp-open" data-k="' + esc(key) + '" style="background:#fff;color:#0b3b36;border-color:#fff">Record a payment</button>' : '') +
+      '<button class="btn sm ghost" data-act="dl-xlsx" data-k="' + esc(key) + '" style="color:#fff;border-color:#99f6e4">&#8681; Excel</button>' +
+      '<button class="btn sm ghost" data-act="dl-open" data-k="' + esc(key) + '" style="color:#fff;border-color:#99f6e4">Close &#9652;</button></div>';
+    /* the figures, one line */
+    h += '<div style="display:flex;flex-wrap:wrap;border-bottom:1px solid #cbd5e1;background:#f8fafc">' +
+      fig("Freight proved", money(T.proved), plural(T.provedN, "trip")) +
+      fig("Paid to him", money(T.paid), plural(T.paidN, "payment"), "#0f766e") +
+      fig("Balance due", bal < -0.5 ? money(-bal) + " advance" : money(bal), null, bal > 0.5 ? "#b91c1c" : "#0f766e") +
+      fig("Receipt pending", money(T.held), plural(T.heldN, "trip"), T.held > 0.5 ? "#b45309" : "#0f172a") +
+      (T.waitN ? fig("Not dispatched", money(T.wait), plural(T.waitN, "trip"), "#64748b") : '') + '</div>';
+    if (!S.dp) h += '<div style="padding:6px 10px;font-size:12.5px;color:#b91c1c">Payouts are still loading &mdash; the Paid and Balance figures are not complete yet.</div>';
+    /* the sheet */
+    h += '<div style="overflow-x:auto;padding:8px 10px"><table style="width:100%;min-width:760px;border-collapse:collapse"><thead><tr>' +
+      TH("DATE") + TH("VOUCHER") + TH("PARTICULARS") + TH("STATUS") + TH("FREIGHT", 1) + TH("PAID", 1) + TH("BALANCE", 1) + '</tr></thead><tbody>';
+    if (!L0.ev.length) h += '<tr>' + TD('No trip and no payout yet.', 'color:#64748b" colspan="7') + '</tr>';
+    L0.ev.forEach(function (e, i) {
+      var bg = 'background:' + (i % 2 ? '#f8fafc' : '#fff') + ';';
+      if (e.kind === "pay") {
+        h += '<tr>' + TD(esc(dmy(e.d)), bg + 'white-space:nowrap') +
+          TD('<b style="color:#0f766e">Payment</b>', bg) +
+          TD(esc([e.p.mode, e.p.ref].filter(Boolean).join(" · ") || "—") + (e.p.note ? '<div style="color:#64748b;font-size:12px">' + esc(e.p.note) + '</div>' : '') +
+             '<div style="color:#64748b;font-size:12px">entered by ' + esc(e.p.createdBy || "—") + (e.p.forTrips ? ' &middot; for ' + esc(e.p.forTrips) : '') + '</div>', bg) +
+          TD('<span class="pill teal" style="font-size:12px">paid</span>', bg) +
+          TD('', bg) + TD(money(e.amt), bg + 'text-align:right;white-space:nowrap;color:#0f766e;font-weight:700') +
+          TD(money(e.bal), bg + 'text-align:right;white-space:nowrap;font-weight:700') + '</tr>';
+        return;
+      }
+      var r = e.t.r, counted = e.state === "ready";
+      var st = counted ? '<span class="pill teal" style="font-size:12px">receipt in &middot; proved</span>'
+        : e.state === "held" ? '<span class="pill due" style="font-size:12px">' + (e.t.kind === "return" ? 'not booked in yet' : 'receipt pending') + '</span>' +
+            (canAttachProof() && e.t.kind !== "return" ? '<div style="margin-top:3px"><button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '" style="padding:1px 8px;font-size:12px">Attach receipt</button></div>' : '')
+        : '<span class="pill" style="font-size:12px">not dispatched</span>';
+      h += '<tr>' + TD(esc(dmy(e.d)), bg + 'white-space:nowrap') +
+        TD('<b>' + esc(r.challanNo || r.returnNo || "") + '</b>' + (e.t.kind === "return" ? '<div style="color:#64748b;font-size:12px">return trip</div>' : ''), bg + 'white-space:nowrap') +
+        TD(esc(r.customerName || "") + (r.site ? '<div style="color:#64748b;font-size:12px">' + esc(r.site) + '</div>' : '') +
+           '<div style="color:#64748b;font-size:12px">freight ' + (frToClient(r) ? 'recovered from the client' : 'borne by us') + (r.vehicle ? ' &middot; ' + esc(r.vehicle) : '') + '</div>', bg) +
+        TD(st, bg) +
+        TD(counted ? money(e.amt) : '<span style="color:#94a3b8" title="Not counted until the receipt is in">(' + money(e.amt) + ')</span>', bg + 'text-align:right;white-space:nowrap;' + (counted ? 'font-weight:700' : '')) +
+        TD('', bg) +
+        TD(counted ? money(e.bal) : '<span style="color:#94a3b8">' + money(e.bal) + '</span>', bg + 'text-align:right;white-space:nowrap;' + (counted ? 'font-weight:700' : '')) + '</tr>';
+    });
+    h += '</tbody><tfoot><tr style="background:#0b3b36;color:#fff">' +
+      '<td colspan="4" style="padding:6px 8px;font-weight:800;font-size:12.5px">Total &mdash; proved trips and payments</td>' +
+      '<td style="padding:6px 8px;text-align:right;font-weight:800;white-space:nowrap">' + money(T.proved) + '</td>' +
+      '<td style="padding:6px 8px;text-align:right;font-weight:800;white-space:nowrap">' + money(T.paid) + '</td>' +
+      '<td style="padding:6px 8px;text-align:right;font-weight:800;white-space:nowrap">' + (bal < -0.5 ? money(-bal) + ' adv.' : money(bal)) + '</td></tr>' +
+      (T.heldN ? '<tr style="background:#fffbeb"><td colspan="7" style="padding:6px 8px;font-size:12.5px;color:#92400e">' +
+        '<b>' + money(T.held) + '</b> more on ' + plural(T.heldN, "trip") + ' is waiting on the signed receipt and is <b>not</b> in the balance. Attach the receipt on the line and it moves in.</td></tr>' : '') +
+      '</tfoot></table></div></div>';
+    return h;
+  }
+  /* v6.9.601 - the freight on a material return, entered or corrected by the owner or accounts:
+     who brought it back and what he is paid for the trip. The whole row goes back (the server writes
+     every column from what it is sent), only these fields change. */
+  function modalRetFreight(id) {
+    var r = (S.data.returns || []).filter(function (x) { return String(x.id) === String(id); })[0];
+    if (!r) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    return '<h2>Freight on return ' + esc(r.returnNo || "") + '</h2>' +
+      '<p class="sub">' + esc(r.customerName || "") + (r.challanNo ? ' &middot; against ' + esc(r.challanNo) : '') + ' &middot; ' + esc(r.status || "Raised") + '</p>' +
+      strictDriverField("rf_driver", r.driver || "", "Driver who brought it back") +
+      '<label>Freight for the trip (&#8377;)</label><input id="rf_amt" inputmode="numeric" value="' + esc(num(r.freight) > 0 ? String(num(r.freight)) : "") + '" placeholder="0"/>' +
+      '<div class="meta" style="font-size:12px;margin-top:6px">It is paid to the driver once the goods are booked in at the godown, and it appears on his ledger against this return number.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="rt-freight-save" data-id="' + esc(r.id) + '">Save</button></div>';
+  }
+  function driverLedgerXlsx(key) {
+    var L0 = driverLedgerData(key);
+    var out = [[{ v: "Driver ledger — " + L0.name, s: XL.BOLD }], [[L0.mobile, L0.vtype, L0.vehicle].filter(Boolean).join(" · ")], []];
+    out.push(["Date", "Voucher", "Particulars", "Status", "Freight", "Paid", "Balance"].map(function (t) { return { v: t, s: XL.HEAD }; }));
+    L0.ev.forEach(function (e) {
+      if (e.kind === "pay") out.push([dmy(e.d), "Payment", [e.p.mode, e.p.ref, e.p.note].filter(Boolean).join(" · "), "paid", "", Math.round(e.amt), Math.round(e.bal)]);
+      else out.push([dmy(e.d), e.t.r.challanNo || e.t.r.returnNo || "", String(e.t.r.customerName || "") + (e.t.kind === "return" ? " (return trip)" : ""),
+                     e.state === "ready" ? "proved" : e.state === "held" ? "receipt pending - not counted" : "not dispatched - not counted",
+                     Math.round(e.amt), "", Math.round(e.bal)]);
+    });
+    out.push([]);
+    out.push([{ v: "Freight proved", s: XL.BOLD }, "", "", "", Math.round(L0.T.proved)]);
+    out.push([{ v: "Paid", s: XL.BOLD }, "", "", "", "", Math.round(L0.T.paid)]);
+    out.push([{ v: "Balance due", s: XL.BAND }, "", "", "", "", "", { v: Math.round(L0.bal), s: XL.BAND }]);
+    out.push([{ v: "Receipt pending (not in balance)", s: XL.BOLD }, "", "", "", Math.round(L0.T.held)]);
+    dlXlsx("Driver_ledger_" + String(L0.name).replace(/[^\w.-]/g, "_") + "_" + today() + ".xlsx", String(L0.name).slice(0, 28), out, [12, 22, 34, 26, 12, 12, 12]);
   }
   /* v6.9.600 - link a driver typed on a delivery to the man on the register, or put him on it */
   function modalDriverLink(key) {
@@ -34324,6 +34402,8 @@ function viewCatalogue() {
           (c.r ? "right" : "left") + '">' + (v == null ? "" : v) + '</td>';
       });
       h += '</tr>';
+      /* v6.9.601 - opt-in: what opens UNDER this row (a driver's ledger), across the whole sheet */
+      if (r.after) h += '<tr><td colspan="' + cols.length + '" style="padding:0 0 10px;border-top:0;background:#fff">' + r.after + '</td></tr>';
     });
     return h + '</tbody></table></div>';
   }
@@ -45236,7 +45316,32 @@ function viewCatalogue() {
     if (act === "fr-month") { S.frMonth = t.getAttribute("data-m") || ""; render(); return; }   /* v6.9.528 */
     /* v6.9.528 - the Challan app's dp-open / dp-save, in this app's modal. Money leaving the firm:
        owner or accounts, the same list the server enforces. */
-    if (act === "dl-open") { S.modal = modalDriverLedger(t.getAttribute("data-k") || ""); render(); return; }   /* v6.9.600 */
+    if (act === "dl-open") {   /* v6.9.601 - opens under his row; a second tap closes it */
+      var _dk = t.getAttribute("data-k") || "";
+      S.dlOpen = (S.dlOpen === _dk) ? "" : _dk; S.modal = null; keepScroll = true; render(); return;
+    }
+    if (act === "rt-freight") {
+      if (!roleAny(["admin", "accounts"])) { toast("Freight is entered by the owner or accounts."); return; }
+      S.modal = modalRetFreight(t.getAttribute("data-id") || ""); render(); return;
+    }
+    if (act === "rt-freight-save") {
+      if (!roleAny(["admin", "accounts"])) { toast("Freight is entered by the owner or accounts."); return; }
+      var _fid = t.getAttribute("data-id") || "";
+      var _fr0 = (S.data.returns || []).filter(function (x) { return String(x.id) === _fid; })[0];
+      if (!_fr0) { toast("Could not find that return."); return; }
+      var _fam = num(val("rf_amt")), _fdn = String(val("rf_driver") || "").trim();
+      if (_fam < 0) { toast("Freight cannot be negative."); return; }
+      if (_fam > 0 && !_fdn) { toast("Pick the driver who brought it back - freight is paid to a man."); return; }
+      var _fd = driverByNameC(_fdn) || {};
+      save("returns", Object.assign({}, _fr0, { freight: _fam, freightTo: _fr0.freightTo || "Energy World",
+        driver: _fdn, driverId: _fd.id || (_fdn === _fr0.driver ? (_fr0.driverId || "") : ""),
+        driverMobile: _fd.mobile || (_fdn === _fr0.driver ? (_fr0.driverMobile || "") : ""),
+        vehicle: _fd.vehicle || (_fdn === _fr0.driver ? (_fr0.vehicle || "") : "") }));
+      S.modal = null; render();
+      toast("Freight " + money(_fam) + " on " + (_fr0.returnNo || "the return") + (_fdn ? " for " + _fdn : "") + ".");
+      return;
+    }
+    if (act === "dl-xlsx") { driverLedgerXlsx(t.getAttribute("data-k") || ""); return; }
     if (act === "dl-link") {
       if (!canManageDrivers()) { toast("Linking drivers is for accounts."); return; }
       S.modal = modalDriverLink(t.getAttribute("data-k") || ""); render(); return;
@@ -45253,7 +45358,7 @@ function viewCatalogue() {
       (S.data.audit = S.data.audit || []).push(_lrow);
       save("audit", _lrow, true);
       _dlCache = null;
-      S.modal = modalDriverLedger(drvResolve(_lk)); render();
+      S.dlOpen = drvResolve(_lk); S.modal = null; render();
       toast((_lg.name || "He") + " is linked to " + (_toD.name || "the register") + " \u2014 one ledger now.");
       return;
     }
