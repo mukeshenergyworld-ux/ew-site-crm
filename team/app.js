@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.593";
+  var APP_VERSION = "6.9.594";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9591,11 +9591,15 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var v = String(c[f] || "").trim();
       return v ? esc(v) : '<a href="#" data-act="cl-open" data-id="' + esc(c.id) + '" style="color:#b45309;text-decoration:none;font-size:12px" title="Not on the card - tap to add">+ ' + word + '</a>';
     };
+    /* v6.9.593 - SEVENTEEN COLUMNS WERE 3,033px (measured on his book, 24 Sep). Six now, each
+       carrying what belongs with it: the man (kind, where, when and by whom he was added), what he
+       owes and when he is next chased, his executive and number, his people (plumber, architect,
+       builder, PMC - only the ones on the card, and one link to add the rest), his quotes and who
+       made them, and the brands he took and the ones still open. Every heading still sorts. */
     h += xlTable("clients", [
-      { k: "name", t: "CLIENT" }, { k: "kind", t: "KIND" }, { k: "due", t: "DUE", n: 1, r: 1 }, { k: "fu", t: "FOLLOW-UP", w: "84px" }, { k: "exec", t: "EXECUTIVE" },
-      { k: "mobile", t: "MOBILE" }, { k: "where", t: "WHERE" }, { k: "pl", t: "PLUMBER" }, { k: "ar", t: "ARCHITECT" },
-      { k: "bl", t: "BUILDER" }, { k: "pmc", t: "PMC" }, { k: "quotes", t: "QUOTED", n: 1, r: 1 }, { k: "qby", t: "QUOTED BY" },
-      { k: "has", t: "HAS" }, { k: "chase", t: "CHASE" }, { k: "added", t: "ADDED", w: "84px" }, { k: "by", t: "ADDED BY" }
+      { k: "name", t: "CLIENT", wrap: "220px" }, { k: "due", t: "DUE / FOLLOW-UP", n: 1, r: 1 }, { k: "exec", t: "EXECUTIVE", wrap: "150px" },
+      { k: "pl", t: "PLUMBER · ARCHITECT · BUILDER · PMC", wrap: "250px" }, { k: "quotes", t: "QUOTED", n: 1, r: 1 },
+      { k: "has", t: "HAS / CHASE", wrap: "220px" }
     ], rows.slice().sort(function (a, b) { return clNewestFirst(a.c, b.c); }).map(function (r) {
       var c = r.c, nm = String(c.name || "");
       var fu = clNextFollowup(nm), fuLate = !!(fu && fu.dueDate && daysTo(fu.dueDate) < 0);
@@ -9608,8 +9612,8 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       return { v: { name: nm, kind: kind, due: r.due, fu: fu ? String(fu.dueDate || "9999") : "9999", exec: c.ownedBy || "", mobile: c.mobile || "", where: whereTxt, pl: c.plumber || "", ar: c.architect || "",
                     bl: c.builder || "", pmc: c.pmc || "", quotes: qs.length, qby: Object.keys(qby).join(", "), has: took.join(", "), chase: chase.join(", "), added: d, by: c.createdBy || "" },
         cells: {
-          name: '<a href="#" data-act="cl-open" data-id="' + esc(c.id) + '" style="font-weight:700;color:#0b3b36;text-decoration:none" title="Open the full card">' + esc(nm) + '</a>',
-          kind: clWhyPill(nm),
+          name: '<a href="#" data-act="cl-open" data-id="' + esc(c.id) + '" style="font-weight:700;color:#0b3b36;text-decoration:none" title="Open the full card">' + esc(nm) + '</a> ' + clWhyPill(nm) +
+            xlSub((whereTxt ? esc(whereTxt) : blank(c, "area", "area")) + (d ? ' &middot; added ' + esc(dmy(d)) + (String(c.createdBy || "").trim() ? ' by ' + esc(regFirst(c.createdBy)) : '') : '')),
           fu: fu ? '<span style="' + (fuLate ? 'color:#b91c1c;font-weight:700' : 'color:#0f766e') + '" title="' + esc(fuLate ? "was due" : "due") + (fu.createdBy ? ' · ' + esc(String(fu.createdBy)) : '') + '">' + esc(dmy(fu.dueDate)) + '</span>' : '',
           due: r.due > 0.5 ? '<b style="color:#b91c1c">' + money(r.due) + '</b>' : '<span style="color:#94a3b8">\u2014</span>',
           exec: String(c.ownedBy || "").trim() ? whoChip(c.ownedBy) : '<span style="color:#b45309;font-size:12px">unassigned</span>',
@@ -9622,7 +9626,21 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
           chase: chase.length ? '<span style="color:#b45309">' + esc(chase.join(", ")) + '</span>' : '',
           added: d ? esc(dmy(d)) : '<span style="color:#94a3b8">\u2014</span>', by: String(c.createdBy || "").trim() ? whoChip(c.createdBy) : '<span style="color:#94a3b8">\u2014</span>'
         } };
-    }), "his executive, number, plumber, architect, builder, PMC, quotes, brands and who added him");
+    }).map(function (r) {
+      /* v6.9.593 - fold the seventeen into the six */
+      var c = r.cells, v = r.v, cl0 = clientByName(v.name) || {};
+      c.due = c.due + (c.fu ? xlSub('chase ' + c.fu) : '');
+      c.exec = c.exec + xlSub(c.mobile);
+      var roles = [["plumber", "Plumber"], ["architect", "Architect"], ["builder", "Builder"], ["pmc", "PMC"]];
+      var have = roles.filter(function (p) { return String(cl0[p[0]] || "").trim(); })
+        .map(function (p) { return '<span style="color:#64748b">' + p[1] + '</span> ' + esc(cl0[p[0]]); });
+      var miss = roles.filter(function (p) { return !String(cl0[p[0]] || "").trim(); }).map(function (p) { return p[0] === "pmc" ? "PMC" : p[1].toLowerCase(); });
+      c.pl = have.join('<br>') + (miss.length ? (have.length ? '<br>' : '') + '<a href="#" data-act="cl-open" data-id="' + esc(cl0.id || "") +
+        '" style="color:#b45309;text-decoration:none;font-size:12px" title="Not on the card - tap to add">+ ' + esc(miss.join(", ")) + '</a>' : '');
+      c.quotes = c.quotes + (v.qby ? xlSub(c.qby) : '');
+      c.has = c.has + (c.chase ? xlSub('open: ' + c.chase) : '');
+      return r;
+    }), "");
     return h;
   }
 
@@ -19127,10 +19145,10 @@ function viewCatalogue() {
     if (!list.length) return h + '<div class="empty">No returns registered yet.</div>';
     /* v6.9.533 - his third list, item 12: "compact, excel like". One row per return, newest
        first; the step button, the receipt and the question are in the last cell. */
+    /* v6.9.593 - 3,937px measured (the item list on one line). Five columns now. */
     h += xlTable("returns", [
-      { k: "no", t: "RETURN" }, { k: "st", t: "STATUS" }, { k: "go", t: "" }, { k: "client", t: "CLIENT" },
-      { k: "against", t: "AGAINST" }, { k: "items", t: "ITEMS" }, { k: "reason", t: "REASON" }, { k: "pickup", t: "PICKUP" },
-      { k: "raised", t: "RAISED", w: "84px" }, { k: "by", t: "BY" }, { k: "in", t: "BOOKED IN BY" }
+      { k: "no", t: "RETURN", wrap: "150px" }, { k: "client", t: "CLIENT", wrap: "200px" }, { k: "items", t: "ITEMS / REASON", wrap: "300px" },
+      { k: "st", t: "STATUS", wrap: "190px" }, { k: "by", t: "WHO", wrap: "170px" }
     ], list.map(function (r) {
       var stt = r.status || "Raised";
       var cls = stt === "Received" ? "Won" : (stt === "Raised" ? "due" : "teal");
@@ -19152,7 +19170,14 @@ function viewCatalogue() {
           pickup: r.driver ? esc(r.driver) + (r.vehicle ? " (" + esc(r.vehicle) + ")" : "") : "—",
           raised: esc(dmy(d)), by: whoChip(r.createdBy), "in": r.receivedBy ? whoChip(r.receivedBy) : "—"
         } };
-    }), "the client, the items and who moved it");
+    }).map(function (x) {
+      var c = x.cells;
+      c.no = c.no + xlSub(c.raised + (x.v.against ? ' &middot; against ' + esc(x.v.against) : ''));
+      c.items = c.items + (x.v.reason ? xlSub(c.reason) : '');
+      c.st = c.st + (c.go ? '<div style="margin-top:3px">' + c.go + '</div>' : '');
+      c.by = 'raised ' + c.by + (x.v.pickup ? xlSub('pickup ' + c.pickup) : '') + (x.v["in"] ? xlSub('booked in ' + c["in"]) : '');
+      return x;
+    }), "");
     return h;
   }
 
@@ -33897,8 +33922,17 @@ function viewCatalogue() {
       h += '<div class="meta" style="font-size:12px;margin:0 0 4px;white-space:normal">' +
         'Tap a heading to sort &middot; swipe sideways for ' + esc(swipe) + ' &rarr;</div>';
     }
+    /* v6.9.593 - FIT THE LAPTOP. His words, 24 Sep: "work on compacting all for laptop, not to
+       scroll left or right". Measured that day on every screen at a laptop's 1,068px: nine sheets
+       slid sideways, from 1,090px (discounts) to 3,937px (material returns), because every cell
+       here was white-space:nowrap - a long item list or a row of buttons could only ever widen the
+       sheet. Now a TEXT column may wrap; numbers, money, dates and anything marked nw stay on one
+       line. The table is width:100% in auto layout, so a row that fits stays on one line exactly as
+       before, and only a row that would not fit folds. On a phone the sheet keeps a floor of 720px
+       and still slides sideways, which is what a 390px screen needs - folding twelve columns into
+       390px would make every row a paragraph. */
     h += '<div data-xl="xl:' + esc(screen) + '" style="overflow-x:auto;-webkit-overflow-scrolling:touch">' +
-      '<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>';
+      '<table style="width:100%;min-width:720px;border-collapse:collapse;font-size:12.5px"><thead><tr>';
     cols.forEach(function (c, i) {
       var on = cur.k === c.k;
       /* the arrow shows the direction the column IS in, not the one a tap would give it */
@@ -33924,7 +33958,8 @@ function viewCatalogue() {
           'padding:5px 7px;border-top:1px solid #e2e8f0;' +
           /* v6.9.592 - a column may WRAP (c.wrap = its widest width). Opt-in: every sheet that does
              not ask is drawn exactly as before. */
-          (c.wrap ? 'white-space:normal;vertical-align:top;max-width:' + c.wrap + ';' : 'white-space:nowrap;') +
+          (c.wrap ? 'white-space:normal;vertical-align:top;max-width:' + c.wrap + ';'
+           : (c.n || c.nw || k === 0 && c.w ? 'white-space:nowrap;' : 'white-space:normal;vertical-align:top;max-width:280px;')) +
           'font-size:12.5px;text-align:' +
           (c.r ? "right" : "left") + '">' + (v == null ? "" : v) + '</td>';
       });
@@ -33933,6 +33968,8 @@ function viewCatalogue() {
     return h + '</tbody></table></div>';
   }
   /* the cards are one tap away, because this changes the default view of a daily screen */
+  /* v6.9.593 - the second line of a stacked cell: smaller, grey, still 12px (the floor) */
+  function xlSub(html) { return html ? '<div style="font-size:12px;color:#64748b;font-weight:400;margin-top:1px;line-height:1.35">' + html + '</div>' : ''; }
   function xlToggle(screen, showingCards) {
     return '<button class="btn sm ghost" data-act="xl-cards" data-s="' + esc(screen) + '">' +
       (showingCards ? "Show as a sheet" : "Show as cards") + '</button>';
