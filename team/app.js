@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.588";
+  var APP_VERSION = "6.9.589";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1078,6 +1078,10 @@
   function apiDropped(e) { return /answered a different question/i.test(String((e && e.message) || "")); }
   function api(action, extra, ms) {
     var p = apiRaw(action, extra, ms);
+    /* v6.9.589 - V138 hands a signed Cloudflare read pass on every sign-in check. Kept in memory
+       only: it is not a secret (it names this person and runs out in 12 hours), but nothing needs
+       it after the tab closes. */
+    if (action === "teamAuth") p = p.then(function (r) { try { if (r && r.ok && r.cf && r.cf.tok) S.cf = r.cf; } catch (e) { } return r; });
     if (!API_READS[action]) return p;
     return p.catch(function (e) {
       if (!apiDropped(e)) throw e;
@@ -2276,8 +2280,101 @@ window.addEventListener("beforeunload", function (ev) {
         RAW.t[k] = JSON.stringify(r[k]);
       });
       RAW.h = hh;
+      try { setTimeout(function () { cfShadow(false); }, 4000); } catch (e) { }   /* v6.9.589 */
       return r;
     });
+  }
+  /* ================= THE CLOUDFLARE COPY, COMPARED IN SILENCE  (v6.9.589, 23 Sep 2026) =================
+     The owner approved a read copy of each person's own book on his Cloudflare account
+     (ew-book.mukesh-avi.workers.dev), filled by V138 from the very function teamGet uses. Before a
+     single screen reads from it, it has to be shown to be the same book. So, at most once every
+     30 minutes, after a normal pull from Google, this phone asks Cloudflare for its copy and
+     compares it tab by tab with what Google just sent (RAW.t holds Google's own text). Nothing is
+     shown to anyone and nothing on screen changes; the result is kept on this phone and read on
+     Troubleshoot. A copy that is a minute behind Google will differ on the tab that just changed -
+     the record says how old the copy was, so "behind" is not read as "wrong". */
+  var CF_SHADOW_KEY = "ew_cf_shadow", _cfBusy = false, _cfLastRun = 0;
+  function cfLog() { try { return JSON.parse(localStorage.getItem(CF_SHADOW_KEY) || "[]") || []; } catch (e) { return []; } }
+  function cfLogPut(rec) {
+    try { var a = cfLog(); a.unshift(rec); localStorage.setItem(CF_SHADOW_KEY, JSON.stringify(a.slice(0, 20))); } catch (e) { }
+  }
+  function cfShadow(force) {
+    var c = S.cf;
+    if (!c || !c.tok || !c.url || _cfBusy) return Promise.resolve(null);
+    if (Number(c.e || 0) < Date.now()) return Promise.resolve(null);
+    if (!force && Date.now() - _cfLastRun < 30 * 60 * 1000) return Promise.resolve(null);
+    if (!RAW.t || !Object.keys(RAW.t).length) return Promise.resolve(null);
+    _cfBusy = true; _cfLastRun = Date.now();
+    var t0 = Date.now(), held = {};
+    Object.keys(RAW.t).forEach(function (k) { held[k] = RAW.t[k]; });   /* Google's text, as it was now */
+    return fetch(String(c.url) + "/book", { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ tok: c.tok }) })
+      .then(function (res) { return res.text().then(function (txt) { return { status: res.status, txt: txt }; }); })
+      .then(function (x) {
+        var ms = Date.now() - t0, kb = Math.round(x.txt.length / 1024), j = null;
+        try { j = JSON.parse(x.txt); } catch (e) { j = null; }
+        if (!j || !j.ok) { var bad = { at: Date.now(), ok: false, ms: ms, why: (j && j.error) || ("HTTP " + x.status) }; cfLogPut(bad); return bad; }
+        var same = 0, diff = [], missing = [];
+        Object.keys(held).forEach(function (k) {
+          if (!(k in j)) { missing.push(k); return; }
+          if (JSON.stringify(j[k]) === held[k]) same++; else diff.push(k);
+        });
+        var at = (j._cf && j._cf.at) || {};
+        var rec = { at: Date.now(), ok: true, ms: ms, kb: kb, tabs: Object.keys(held).length, same: same, diff: diff, missing: missing,
+                    age: at.at ? Math.round((Date.now() - Number(at.at)) / 1000) : null };
+        cfLogPut(rec); return rec;
+      })
+      .catch(function (e) { var r = { at: Date.now(), ok: false, ms: Date.now() - t0, why: String((e && e.message) || e).slice(0, 80) }; cfLogPut(r); return r; })
+      .then(function (r) { _cfBusy = false; return r; }, function () { _cfBusy = false; return null; });
+  }
+  var CF_URL_DEFAULT = "https://ew-book.mukesh-avi.workers.dev";
+  function cfCheck() {
+    if (!roleIs("admin")) return;
+    api("cfStatus", {}, 45000).then(function (r) {
+      if (r && r.ok) S.cfSt = { checked: true, connected: !!r.connected, url: r.url || "", last: r.last || {}, trigger: !!r.trigger };
+      else toast("Could not read the Cloudflare state: " + ((r && r.error) || "no answer"));
+      render();
+    }).catch(function (e) { toast("Could not read the Cloudflare state: " + apiWhy(e)); });
+  }
+  function cfAgo(ms) {
+    var s2 = Math.max(0, Math.round((Date.now() - Number(ms || 0)) / 1000));
+    return s2 < 90 ? s2 + " s ago" : s2 < 5400 ? Math.round(s2 / 60) + " min ago" : Math.round(s2 / 3600) + " h ago";
+  }
+  function cfCard() {
+    if (!roleIs("admin")) return "";
+    var st = S.cfSt || {}, log = cfLog(), last = log[0], o = S.cfOpen;
+    var line = !st.checked ? "Tap Check to see its state."
+      : !st.connected ? "Not connected yet."
+      : "Connected · " + (st.last && st.last.at ? "last copied " + cfAgo(st.last.at) + (st.last.people ? " for " + st.last.people + " people" : "") + (st.last.err ? " · problem: " + st.last.err : "") : "waiting for its first copy (within a minute)") +
+        (st.trigger ? "" : " · the every-minute timer is not set");
+    var cmp = !last ? "Not compared on this phone yet."
+      : !last.ok ? "Last compare " + cfAgo(last.at) + ": Cloudflare did not answer (" + last.why + ")."
+      : "Last compare " + cfAgo(last.at) + ": " + last.same + " of " + last.tabs + " tabs identical · " + last.kb + " KB in " + (last.ms / 1000).toFixed(1) + " s" +
+        (last.diff.length ? " · different: " + last.diff.join(", ") : "") + (last.missing.length ? " · not there yet: " + last.missing.join(", ") : "") +
+        (last.age != null ? " · copy was " + last.age + " s old" : "");
+    var h = '<div class="card" style="border-color:#fed7aa;background:#fff7ed">' +
+      '<div class="row" style="align-items:center;margin:0"><h3 style="margin:0;flex:1">Cloudflare copy (fast reading)</h3>' +
+      '<button class="btn sm ghost" data-act="cf-open">' + (o ? "Hide" : "Open") + '</button></div>' +
+      '<div class="meta" style="font-size:13px">' + esc(line) + '</div>' +
+      '<div class="meta" style="font-size:13px">' + esc(cmp) + '</div>';
+    if (!o) return h + '</div>';
+    h += '<div class="meta" style="font-size:12px;margin-top:6px">A copy of each person\u2019s own book, kept on your Cloudflare account so the app can read it quickly. Google stays the master: every save still goes to Google. Nothing is read from the copy until the comparisons here have matched for some days.</div>' +
+      '<div class="acts" style="flex-wrap:wrap;gap:6px;margin-top:6px">' +
+      '<button class="btn sm" data-act="cf-status">Check</button>' +
+      '<button class="btn sm ghost" data-act="cf-compare">Compare now</button>' +
+      (st.connected ? '<button class="btn sm ghost" data-act="cf-sync">Copy now</button>' : '') + '</div>';
+    if (!st.connected) {
+      h += '<div style="margin-top:10px;font-size:13px;font-weight:600">Connect (once)</div>' +
+        '<div class="meta" style="font-size:12px">1. Open the pairing page. It shows a key <b>once</b>. Copy it.</div>' +
+        '<div class="acts"><a class="btn sm ghost" href="' + CF_URL_DEFAULT + '/pair" target="_blank" rel="noopener">Open the pairing page</a></div>' +
+        '<div class="meta" style="font-size:12px">2. Paste the key here and press Connect. It goes straight to the server and is not kept on this phone.</div>' +
+        '<input id="cf_url" value="' + esc(st.url || CF_URL_DEFAULT) + '" style="width:100%;box-sizing:border-box;margin:4px 0"/>' +
+        '<div class="row"><input class="grow" type="password" id="cf_key" autocomplete="off" placeholder="The key from the pairing page"/>' +
+        '<button class="btn sm" data-act="cf-connect">Connect</button></div>';
+    } else {
+      h += '<div class="acts" style="margin-top:10px"><button class="btn sm ghost" data-act="cf-off" style="color:#b91c1c">' +
+        (S.cfOffArm ? "Tap again to switch the copy off" : "Switch the copy off") + '</button></div>';
+    }
+    return h + '</div>';
   }
   /* background re-sync, at most once every 20s, never blocks the screen */
   var syncAt = 0, syncing = false;
@@ -32373,7 +32470,7 @@ function viewCatalogue() {
   }
 
   function viewTrouble() {
-    var h = '<div class="card" style="border-color:#bfdbfe;background:#eff6ff">' +
+    var h = cfCard() + '<div class="card" style="border-color:#bfdbfe;background:#eff6ff">' +
       '<h2 style="margin:0">Troubleshooter</h2>' +
       /* v6.9.510 - TWO LINES. Rendered at 390px the old ten-line note pushed both red cards
          below the fold, on a screen whose whole job is to say what is wrong first. */
@@ -43397,6 +43494,47 @@ function viewCatalogue() {
     }
     /* ---- the catalogue channel (v6.9.582) ---- */
     if (act === "cbk-tg-open") { S.cbkTg = Object.assign({}, S.cbkTg || {}, { open: !(S.cbkTg && S.cbkTg.open) }); render(); return; }
+    /* v6.9.589 - the Cloudflare copy */
+    if (act === "cf-open") { S.cfOpen = !S.cfOpen; S.cfOffArm = false; if (S.cfOpen && !(S.cfSt && S.cfSt.checked)) cfCheck(); render(); return; }
+    if (act === "cf-status") { cfCheck(); return; }
+    if (act === "cf-compare") {
+      toast("Comparing the Cloudflare copy with Google\u2019s…");
+      cfShadow(true).then(function (r) { toast(!r ? "Nothing to compare yet - no Cloudflare pass on this phone. Sign in again after connecting." : r.ok ? r.same + " of " + r.tabs + " tabs identical" : "Cloudflare did not answer: " + r.why); render(); });
+      return;
+    }
+    if (act === "cf-sync") {
+      if (!roleIs("admin")) return;
+      toast("Copying the book to Cloudflare now…");
+      api("cfSyncNow", {}, 300000).then(function (r) {
+        toast(r && r.ok && !r.err ? "Copied: " + (r.puts || 0) + " tabs, " + (r.kb || 0) + " KB, for " + (r.people || 0) + " people" : "Not copied: " + ((r && (r.err || r.error || r.skipped)) || "no answer"));
+        cfCheck();
+      }).catch(function (e) { toast("Not copied: " + apiWhy(e)); });
+      return;
+    }
+    if (act === "cf-connect") {
+      if (!roleIs("admin")) return;
+      var _cfk = el("cf_key"), _key = _cfk ? String(_cfk.value || "").trim() : "", _cfu = el("cf_url"), _url = _cfu ? String(_cfu.value || "").trim() : CF_URL_DEFAULT;
+      if (_cfk) _cfk.value = "";                 /* never left in the box */
+      if (!_key) { toast("Paste the key from the pairing page first."); return; }
+      toast("Checking the key with Cloudflare…");
+      api("cfConnect", { url: _url, key: _key }, 60000).then(function (r) {
+        _key = "";
+        if (!r || !r.ok) { toast("Not connected: " + ((r && r.error) || "no answer")); return; }
+        toast("Connected. The first copy is made within a minute; sign in again later to start comparing.");
+        cfCheck();
+      }).catch(function (e) { _key = ""; toast("Not connected: " + apiWhy(e)); });
+      return;
+    }
+    if (act === "cf-off") {
+      if (!roleIs("admin")) return;
+      if (!S.cfOffArm) { S.cfOffArm = true; render(); return; }
+      S.cfOffArm = false;
+      api("cfDisconnect", {}, 60000).then(function (r) {
+        toast(r && r.ok ? "The Cloudflare copy is switched off. Nothing more is sent there." : "Not switched off: " + ((r && r.error) || "no answer"));
+        S.cf = null; cfCheck();
+      }).catch(function (e) { toast("Not switched off: " + apiWhy(e)); });
+      return;
+    }
     if (act === "cbk-tg-connect") {
       if (!roleIs("admin")) return;
       var _tokEl = el("cbk_tok"), _tok = _tokEl ? String(_tokEl.value || "").trim() : "";
