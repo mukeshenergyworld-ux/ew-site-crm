@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.51.0";
+  var APP_VERSION = "1.52.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1538,7 +1538,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     return api("teamSave", _chg ? { tab: tab, row: row, chg: _chg } : { tab: tab, row: row }).then(function (r) {
       if (r && r.ok) { jrnDrop(e.pk); return { ok: true, row: r.row || row, held: false }; }
       jrnMark(e.pk, (r && r.error) || "the server refused it");
-      return { ok: true, row: row, held: true, err: (r && r.error) || "the server refused it" };
+      /* 1.52.0 - REFUSED is its own answer: the server was reached and said no. */
+      return { ok: true, row: row, held: true, refused: true, err: (r && r.error) || "the server refused it" };
     }).catch(function (err) {
       jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
       return { ok: true, row: row, held: true, err: (err && err.message) || "no answer from the server" };
@@ -1620,7 +1621,9 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     _hxCache = m;
     return m;
   }
-  function hisabExtraOf(c) { return (c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0; }
+  /* 1.52.0 - and the discount typed on the whole challan, which his decision of 24 Sep makes
+     reduce the total (the CRM's hisabExtra, the same sum) */
+  function hisabExtraOf(c) { return ((c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0) + Math.max(0, Number(c && c.discAmt) || 0); }
 
   /* Net (post-discount) goods value of a challan, from the discount frozen on each
      line when it was created.
@@ -2138,6 +2141,20 @@ function cancelMap() {
       var p = rnPriceOf(i, r, allChallans);
       if (p.src) { amt += p.amt; if (p.src === "catalogue") est++; } else unpriced++;
     });
+    /* 1.52.0 - HIS DECISION, 24 Sep 2026: goods back from a delivery that was given a further
+       discount (or a discount on the whole challan) are credited less the SAME SHARE - the CRM's
+       retShare. Only a return booked against a delivery can know it. */
+    var _no = String(r.challanNo || "").trim();
+    if (_no) {
+      var _src = (allChallans || []).filter(function (c) {
+        return String(c.challanNo || "").trim() === _no && lower(c.customerName) === lower(r.customerName);
+      })[0];
+      if (_src) {
+        var _g = pricedLines(_src, _src.customerName).reduce(function (a, x) { return a + x.amt; }, 0);
+        var _off = _g > 0 ? Math.min(Math.max(0, hisabExtraOf(_src)), _g) : 0;
+        if (_off > 0) amt = amt * (_g - _off) / _g;
+      }
+    }
     return { amt: Math.round(amt), unpriced: unpriced, est: est };
   }
 
@@ -2576,6 +2593,12 @@ function cancelMap() {
 
   function seesAll() { return roleIs("admin") || roleIs("accounts"); }
   function canWrite() { return seesAll(); }
+  /* 1.52.0 - HIS DECISION, 24 Sep 2026: "sales executive can both view and record payment".
+     Recording MONEY is opened to a sales executive, on his own clients - the list he is shown is
+     already only his (rows(), ownedBy / createdBy). Promises, calls and mobile numbers stay with the
+     office, because that is all he asked for. The server must allow it too (ROLE_WRITE.sales gets
+     "payments"); until it does, a refusal is said as a refusal, not as "no signal". */
+  function canPay() { return canWrite() || roleIs("sales"); }
   /* ================= THE SERVICE BOOK, ON THE CHASING PHONE  (v1.32.0, 2 Sep 2026) =================
      What a visit still owes is the Service app's arithmetic, copied whole (t_svcmoney holds the
      five functions byte-identical), so this phone can never name a figure that phone would not. */
@@ -3214,10 +3237,12 @@ function cancelMap() {
       (r.mobile ? '<button class="btn sm gry" data-act="hisab-wa" data-n="' + esc(r.name) + '">Send his hisab</button>' : '') +
       '<button class="btn sm gry" data-act="hisab-dl" data-n="' + esc(r.name) + '">Download hisab</button>' +
       (canWrite() ? '<button class="btn sm" data-act="log" data-n="' + esc(r.name) + '">Log the call</button>' : '') +
-      (canWrite() ? '<button class="btn sm grn" data-act="pay" data-n="' + esc(r.name) + '">Payment received</button>' : '') +
+      (canPay() ? '<button class="btn sm grn" data-act="pay" data-n="' + esc(r.name) + '">Payment received</button>' : '') +
       '</div>';
     if (!canWrite()) {
-      h += '<div class="muted" style="margin-top:7px">You can ring and remind. Recording money and promises is done by the office.</div>';
+      h += '<div class="muted" style="margin-top:7px">' + (canPay()
+        ? 'You can ring, remind and record a payment you collect. Promises are recorded by the office.'
+        : 'You can ring and remind. Recording money and promises is done by the office.') + '</div>';
     }
     return h + '</div>';
   }
@@ -4319,7 +4344,7 @@ function cancelMap() {
     if (act === "hisab-wa") { S.sheet = sheetSend("hisab", t.getAttribute("data-n")); render(); return; }
     if (act === "hisab-dl") { downloadHisab(t.getAttribute("data-n")); return; }
     if (act === "pay") {
-      if (!canWrite()) { toast("Recording money is done by the office."); return; }
+      if (!canPay()) { toast("Recording money is done by the office."); return; }
       S.sheet = sheetPay(t.getAttribute("data-n")); render(); return;
     }
     if (act === "log") {
@@ -4379,7 +4404,7 @@ function cancelMap() {
     }
 
     if (act === "pi-save") {
-      if (!canWrite()) { toast("Recording money is done by the office."); return; }
+      if (!canPay()) { toast("Recording money is done by the office."); return; }
       var name = t.getAttribute("data-n");
       var amt = Math.round(EWnum(val("pi_amt")));
       if (!(amt > 0)) { toast("Enter the amount received."); return; }
@@ -4437,7 +4462,9 @@ function cancelMap() {
         var after = rowFor(name);
         S.sheet = sheetReceipt(name, amt, val("pi_mode") || row.mode, dt, after ? after.due : 0);
         render();
-        toast(r.held
+        toast(r.refused
+          ? "The server did not accept this payment (" + String(r.err || "refused") + "). It is kept on this phone and will be sent again \u2014 tell the office."
+          : r.held
           ? money(amt) + " recorded against " + name + ", and held on this phone until there is " +
             "signal. His receipt is ready now."
           : money(amt) + " recorded against " + name + ".");
