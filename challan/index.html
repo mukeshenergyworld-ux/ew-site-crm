@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.91.0";
+  var APP_VERSION = "1.92.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -2390,6 +2390,7 @@ function discRowOn(client, brand, onYmd) {
   }
   function discRow(client, brand, onYmd) { return discRowOn(client, brand, onYmd); }
   function clientDiscount(client, brand) { var d = discRow(client, brand); return d ? Number(d.pct) || 0 : 0; }
+  function clientDiscountOn(client, brand, ymd) { var d = discRow(client, brand, ymd); return d ? Number(d.pct) || 0 : 0; }
   function realBrand(p) {
     var m = ((S.data && S.data.brandmap) || []).filter(function (x) { return String(x.catalogValue) === String(p.brand); })[0];
     return (m && m.brand) ? m.brand : "";
@@ -2742,7 +2743,14 @@ function discRowOn(client, brand, onYmd) {
          from a brand that had nothing to do with it. */
       var bBrand = isJobLine(i) ? "" :
         (i.brand || productBrandByCode(i.code) || c.brand || "");
-      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscount(cl, bBrand);
+      /* 24 Sep 2026 (CRM 6.9.598 / Challan 1.92.0 / Collect 1.51.0) - a line with no discount of
+         its own is priced at the rate IN FORCE ON THE DAY IT WAS DELIVERED, not today's. With
+         today's rate, setting a new discount "from today" re-priced every old delivery that had a
+         blank line - 195 lines on 32 challans in his book - and statements already sent stopped
+         agreeing with the account. Measured before shipping: not one of those lines has a dated
+         rate that started after its delivery, so no figure moves today; this is what stops them
+         moving tomorrow. */
+      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, bBrand, String((c && c.createdAt) || "").slice(0, 10));
       var dr = Math.round(rate * (1 - disc / 100));
       return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
                amt: qty * dr, job: isJobLine(i), ix: ix };   /* v6.9.565 - ix: which saved line */
@@ -6200,19 +6208,25 @@ function discRowOn(client, brand, onYmd) {
     var g = frRows().filter(function (x) { return x.key === key; })[0];
     if (!g) return '<h2>Not found</h2><div class="acts"><button class="btn" data-act="close">Close</button></div>';
     var owed = stillOwed(g);
+    /* 1.92.0 - "Already paid Rs 0" when the list of payouts never loaded is a guess, and it
+       pre-filled the full amount. Say it is not known, and fill nothing in. */
+    var dpKnown = !!S.dp;
+    if (!dpKnown) { dpPull().then(function (ok) { if (ok && S.sheet) { S.sheet = sheetPayout(key); render(); } }); }
     return '<h2>Pay ' + esc(g.name) + '</h2>' +
       '<div class="muted" style="margin-bottom:10px">' +
         esc([g.vehicle, g.mobile].filter(Boolean).join(" · ") || "no vehicle on file") + '</div>' +
       '<div class="frnote">' +
         'Proved trips <b>' + esc(money(g.ready)) + '</b><br>' +
-        'Already paid <b>' + esc(money(paidTo(g.key))) + '</b><br>' +
-        (owed >= 0 ? 'Still owed <b>' + esc(money(owed)) + '</b>'
-                   : '<b>He is ' + esc(money(-owed)) + ' ahead</b> — more has been paid than proved trips come to') +
+        (dpKnown
+          ? 'Already paid <b>' + esc(money(paidTo(g.key))) + '</b><br>' +
+            (owed >= 0 ? 'Still owed <b>' + esc(money(owed)) + '</b>'
+                       : '<b>He is ' + esc(money(-owed)) + ' ahead</b> — more has been paid than proved trips come to')
+          : '<b style="color:#b91c1c">What he has already been paid could not be loaded</b> &mdash; fetching it now. Do not pay until it shows.') +
       '</div>' +
       (g.held > 0 ? '<div class="frnote amb">' + esc(money(g.held)) + ' more is held for ' +
         g.heldN + ' missing receipt' + (g.heldN === 1 ? '' : 's') + ' and is NOT in the figure above.</div>' : '') +
       '<label for="dp_amt">Amount paid</label>' +
-      '<input id="dp_amt" inputmode="numeric" value="' + (owed > 0 ? esc(String(Math.round(owed))) : "") + '" placeholder="0"/>' +
+      '<input id="dp_amt" inputmode="numeric" value="' + (dpKnown && owed > 0 ? esc(String(Math.round(owed))) : "") + '" placeholder="0"/>' +
       '<label for="dp_mode">How</label>' +
       '<select id="dp_mode">' + ["Cash","Bank transfer","UPI","Cheque","Adjusted"]
         .map(function (m) { return '<option>' + m + '</option>'; }).join("") + '</select>' +
@@ -7502,8 +7516,30 @@ function discRowOn(client, brand, onYmd) {
          paper book, the driver may already be holding the printout, and the whole estate looks
          a challan up by that number. Minting a second one here would split one delivery into
          two records with the same contents. */
+      /* 1.92.0 (24 Sep 2026) - AN EDIT IS CHECKED AGAINST THE SERVER BEFORE IT IS SENT. The row
+         this form started from is the phone's own copy, and the whole row goes back - status,
+         receipt, approver and all. If another phone passed it, dispatched it or marked the receipt
+         while this form was open, saving put the OLD values back: a Received challan could fall to
+         Approved or Draft and drop off the customer's account. Now the latest challans are asked
+         for first. If this one has moved on, nothing is sent and the man is told what it is now.
+         If it has not, the edit is laid over the server's copy, so anything the office changed
+         meanwhile travels through. No signal: the edit goes as before - there is nothing newer
+         this phone can know about. */
+      var chMoved = function (a, b) {
+        var up = function (v) { return String(v == null ? "" : v).trim().toUpperCase(); };
+        return chStatus(a) !== chStatus(b) || up(a.receiptReceived) !== up(b.receiptReceived) ||
+               String(a.approvedBy || "").trim() !== String(b.approvedBy || "").trim();
+      };
       var numP = _editRow
-        ? Promise.resolve({ challanNo: _editRow.challanNo || "" })
+        ? teamGetD({ only: ["challans"] }).then(function (fr) {
+            if (!fr || !fr.ok || !Array.isArray(fr.challans)) return { challanNo: _editRow.challanNo || "" };
+            var fresh = fr.challans.filter(function (x) { return x && x.id === _editRow.id; })[0] || null;
+            mergeBook(fr, ["challans"]);
+            try { applyJournal(); } catch (eAj) { }
+            if (fresh && chMoved(_editRow, fresh)) return { _stale: fresh };
+            if (fresh) _editRow = fresh;
+            return { challanNo: _editRow.challanNo || "" };
+          }, function () { return { challanNo: _editRow.challanNo || "" }; })
         : (S.ch.mintNo
             ? Promise.resolve({ challanNo: S.ch.mintNo })
             /* 1.74.0 - the KEY: the draft's own id. See the CRM's challanNoOnce for why. */
@@ -7513,6 +7549,13 @@ function discRowOn(client, brand, onYmd) {
            with only the day-of-month for a date, so two challans for one client on one day both
            became RAKESH/15/001 - and approve, PDF and WhatsApp all look a challan up by NUMBER
            and take the first match. Passing the second one passed the first. */
+        if (n && n._stale) {
+          reset(); bust(); render();
+          toast((n._stale.challanNo || "This challan") + " was changed on another phone while this was open — it is now " +
+                chStatus(n._stale) + (String(n._stale.receiptReceived || "").toUpperCase() === "Y" ? ", receipt in" : "") +
+                ". Nothing was saved. Open it again to see the latest.");
+          return;
+        }
         var no = (n && n.challanNo) || "";
         var _held = !!(n && n._held);
         /* The server ANSWERED and gave no number is a refusal, and still stops here. The
@@ -7532,7 +7575,8 @@ function discRowOn(client, brand, onYmd) {
         var ch = _editRow ? Object.assign({}, _editRow) : {};
         Object.assign(ch, {
           id: _editRow ? _editRow.id : _mintId,
-          createdBy: S.user, challanNo: no,
+          /* 1.92.0 - an edit does not change who MADE the challan; "Made by" read the editor */
+          createdBy: _editRow ? (_editRow.createdBy || S.user) : S.user, challanNo: no,
           customerId: cObj.id || "", customerName: cObj.name,
           siteId: siteObj.id || "", site: z.site || "",
           brand: (lines[0] && lines[0].brand) || "", location: cObj.location || "",
@@ -7598,7 +7642,11 @@ function discRowOn(client, brand, onYmd) {
                             ". It goes up by itself when there is signal.") + (manualV ? " Book no " + manualV + "." : "")
               : (_editRow
                   ? "Challan " + shown + " updated" +
-                    (_wasApproved ? " \u2014 back to draft, it must be passed again before dispatch." : " \u2014 still waiting to be passed.")
+                    (chStatus(saved) !== "Draft"
+                      ? " \u2014 still " + chStatus(saved) + ": only the driver, vehicle or site changed, so the approval stands."
+                      : (_wasApproved || String(_editRow.approvedBy || "").trim()
+                          ? " \u2014 back to draft, it must be passed again before dispatch."
+                          : " \u2014 still waiting to be passed."))
                   : "Challan " + shown + " created \u2014 waiting to be passed.") +
                 (manualV ? " Book no " + manualV + "." : "") +
                 (!_editRow && saltBagsV > 0 && svcCallV === "yes" ? " " + saltBagsV + (saltBagsV === 1 ? " bag" : " bags") + " of salt written on his softener as a service call." : ""));
@@ -7664,7 +7712,9 @@ function discRowOn(client, brand, onYmd) {
       var _rMintId = S.rt.mintId, _rNoFor = rc.shortName || rc.name;
       var rNumP = S.rt.mintNo
         ? Promise.resolve({ returnNo: S.rt.mintNo })
-        : api("returnNo", { client: _rNoFor }).catch(function () { return { returnNo: "", _held: true }; });
+        /* 1.92.0 - with the KEY, as the challan's is. Without it, a first call that timed out after
+           the server had issued R05 was followed by a retry that drew R06, and R05 was never used. */
+        : api("returnNo", { client: _rNoFor, key: String(_rMintId || "") }).catch(function () { return { returnNo: "", _held: true }; });
       rNumP.then(function (n) {
         var rno = (n && n.returnNo) || "";
         var _rHeld = !!(n && n._held);
@@ -7676,7 +7726,13 @@ function discRowOn(client, brand, onYmd) {
           site: rz.site || "", siteId: (sitesFor(rc.name).filter(function (s) { return s.name === rz.site; })[0] || {}).id || "",
           challanNo: rz.against || "",
           itemsJson: JSON.stringify(rz.items.map(function (l) {
-            return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(l.rate), brand:l.brand };
+            /* 1.92.0 - the DISCOUNT goes on the line, frozen, as a challan line's does. Every return in
+               his book had none, so the Collect app credited them at full list price (Rs 15,694 against
+               the CRM's Rs 7,648 on SANJEEVBAT/230926/R01) and a later change of rate would have moved
+               every old return. The client's rate for that brand, on the day it came back. */
+            var _dn = new Date(), _dy = _dn.getFullYear() + "-" + String(_dn.getMonth() + 1).padStart(2, "0") + "-" + String(_dn.getDate()).padStart(2, "0");
+            return { code:l.code, desc:l.desc, unit:l.unit, qty:num(l.qty), rate:num(l.rate), brand:l.brand,
+                     disc: (l.disc != null && l.disc !== "") ? num(l.disc) : clientDiscountOn(rc.name, l.brand || "", _dy) };
           })),
           reason: rz.reason || "", status: "Raised",
           driver: rDrv.name || "", driverMobile: rDrv.mobile || "", vehicle: rDrv.vehicle || "",
@@ -7748,7 +7804,11 @@ function discRowOn(client, brand, onYmd) {
         toast(money(damt) + " recorded against " + dg.name + ".");
       }).catch(function () {
         t.disabled = false; t.textContent = "Record the payment";
-        toast("No signal \u2014 nothing was recorded. Try again.");
+        /* 1.92.0 - a request that got no answer may still have landed. Saying "nothing was
+           recorded" invited a second press and a second payment. Re-read the list instead. */
+        S.dp = null; _dpTried = false;
+        dpPull().then(function (ok) { if (ok && S.sheet) { S.sheet = sheetPayout(dg.key); render(); } });
+        toast("No answer from the server \u2014 the payment MAY have been recorded. Wait for \"Already paid\" to show before pressing again.");
       });
       return;
     }
