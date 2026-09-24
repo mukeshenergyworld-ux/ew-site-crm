@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.589";
+  var APP_VERSION = "6.9.590";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2255,6 +2255,16 @@ window.addEventListener("beforeunload", function (ev) {
      unchanged. Every row count is checked against the server's; one mismatch and the whole book
      is pulled again, as it always was. */
   var RAW = { u: "", t: {}, h: null };
+  /* v6.9.590 - what GitHub says app.js is, as this page loaded it; the Refresh button compares */
+  var _appTag = null;
+  function appTag() {
+    try {
+      return fetch("app.js?tag=" + Date.now(), { method: "HEAD", cache: "no-store" })
+        .then(function (r) { return r.ok ? String(r.headers.get("ETag") || r.headers.get("Last-Modified") || "") : ""; })
+        .catch(function () { return ""; });
+    } catch (e) { return Promise.resolve(""); }
+  }
+  try { appTag().then(function (t) { if (t) _appTag = t; }); } catch (e) { }
   function rawReset() { RAW = { u: String(S.user || ""), t: {}, h: null }; }
   function teamGetD(again) {
     if (RAW.u !== String(S.user || "")) rawReset();
@@ -40272,7 +40282,7 @@ function viewCatalogue() {
       'style="flex:1;min-width:110px;max-width:380px;margin:0 14px;padding:9px 14px;border:1px solid #cbd5e1;border-radius:20px;font-size:14px;outline:none;background:#fff"/>' +
       '<div class="who"><b>' + esc(S.user) + '</b><span class="pill teal">' + esc(S.role) + '</span>' +
       '<div style="margin-top:4px;display:flex;gap:4px;justify-content:flex-end">' +
-      '<button class="btn sm" data-act="app-refresh" title="Reload the app fresh — latest version and all updates">&#8635; Refresh</button>' +
+      '<button class="btn sm" data-act="app-refresh" title="Fetch what changed in the book; load a new version of the app only when there is one">&#8635; Refresh</button>' +
       /* ================= ONE BUTTON WHERE THERE WERE FOUR  (v6.9.447, 8 Sep 2026) ==========
          Measured on the inspection of 8 Sep: at 390px about 43% of the first screen was chrome,
          and this row - Enable Face ID, Refresh, PIN, Sign out - was a third of that, with
@@ -41286,7 +41296,32 @@ function viewCatalogue() {
       return;
     }
     if (act === "pnag-open") { S.modal = modalPartnerNag(); render(); return; }
+    /* v6.9.590 - REFRESH FETCHES WHAT CHANGED. Measured 23 Sep in the verify tab: this button
+       reloaded the whole page, and a reload throws away what the phone holds in memory, so every
+       tap downloaded the full book - 2,558 KB, 5 to 40 s - while the background sync beside it
+       was fetching 9 KB. Now the button first asks GitHub, with one HEAD request of a few hundred
+       bytes, whether app.js has changed since this page loaded. If it has, the old full reload
+       runs, exactly as before (new version AND fresh data). If it has not - nearly every tap - the
+       book is pulled the fast way, only the pieces that changed. If the question itself fails,
+       it is treated as "no new version": the data is still refreshed, and the Troubleshoot
+       screen keeps its "Reload app" button for the old behaviour. */
     if (act === "app-refresh") {
+      toast("Checking for anything new…");
+      appTag().then(function (tag) {
+        if (tag && _appTag && tag !== _appTag) {
+          if (S.pending > 0) { toast("A new version is ready. A save is still syncing - tap Refresh again in a few seconds."); return; }
+          toast("A new version of the app is ready - loading it…");
+          fetch("app.js", { cache: "reload" }).catch(function () { })
+            .then(function () { try { location.reload(); } catch (e2) { location.href = location.pathname; } });
+          return;
+        }
+        if (!_appTag && tag) _appTag = tag;
+        toast("Refreshing the book…");
+        refresh();
+      });
+      return;
+    }
+    if (act === "app-refresh-full") {
       /* Hard-refresh: refetch app.js past the browser cache (cache:"reload" replaces the stored
          copy), then reload the page — fresh version AND fresh data. Unsynced records are safe:
          the journal lives in localStorage and survives any reload. Only an in-flight save asks
