@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.604";
+  var APP_VERSION = "6.9.605";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -40136,28 +40136,48 @@ function viewCatalogue() {
       renderBg();
     }).catch(function () { STOCK_LOADING = false; });
   }
-  function stockDeliveredByCode() {
+  /* v6.9.605 - HIS DECISIONS, 24 Sep 2026: "will start from a physical count, soon, make provision
+     for that"; "stock go up only after the godown confirms the lorry, bill will be made only after
+     challan generation"; pipes are metres on both the bill and the challan.
+     So a COUNT is where a product's stock starts: the latest count's date is its cut-off, and only
+     what moved on or after that day (goods received, deliveries, returns, adjustments) moves its
+     balance. Count before the day's first dispatch. A product never counted has no cut-off. */
+  function stkCutoff() {
     var m = {};
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "opening") return;
+      var k = String(r.code || "").trim(), d = String(r.asOn || "").slice(0, 10);
+      if (k && d && (!m[k] || d > m[k])) m[k] = d;
+    });
+    return m;
+  }
+  function stkCounts(code, ymd, cut) { var c = cut[code]; return !c || String(ymd || "").slice(0, 10) >= c; }
+  function stockDeliveredByCode() {
+    var m = {}, cut = stkCutoff();
     (S.data.challans || []).forEach(function (c) {
       if (String(c.receiptReceived).toUpperCase() !== "Y") return;
-      chItems(c).forEach(function (i) { var k = String(i.code || "").trim(); if (k) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
+      chItems(c).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
     });
     return m;
   }
   function stockReturnedByCode() {
-    var m = {};
+    var m = {}, _cutR = stkCutoff();
     (S.data.returns || []).forEach(function (r) {
       if (String(r.status || "").trim().toLowerCase() !== "received") return;
       var items = []; try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) {}
-      items.forEach(function (i) { var k = String(i.code || "").trim(); if (k) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
+      items.forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, r.createdAt, _cutR)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
     });
     return m;
   }
   function stockMovementByCode() {
-    var m = {}, desc = {};
+    var m = {}, desc = {}, cut = stkCutoff();
     (S.stock || []).forEach(function (row) {
       var ty = String(row.type || "");
-      if (ty === "reorder" || ty === "rate" || ty === "landing") return;   /* settings rows, not movements */
+      if (ty === "bill") return;   /* v6.9.605 - a Tally bill is checked against the goods, it does not add them */
+      var _k0 = String(row.code || "").trim();
+      if (ty === "opening" && cut[_k0] && String(row.asOn || "").slice(0, 10) !== cut[_k0]) return;   /* only the latest count */
+      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && !stkCounts(_k0, row.asOn, cut)) return;
+      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias") return;   /* settings rows, not movements (register/alias: v6.9.605) */
       var k = String(row.code || "").trim(); if (!k) return;
       m[k] = (m[k] || 0) + (Number(row.qty) || 0);
       if (row.desc && !desc[k]) desc[k] = row.desc;
@@ -40309,17 +40329,39 @@ function viewCatalogue() {
 
   function viewStock() {
     if (S.imp) return viewStockImport();
+    if (S.grn) return viewGrn();
+    if (S.pc) return viewPhysCount();
     ensureStock();
     var h = '<div class="card"><h2 style="margin:0">Stock on hand</h2>' +
       '<div class="meta" style="font-size:13px">On-hand = opening + goods received + adjustments &minus; delivered (from received challans) + booked-in returns. Enter your opening count once, then log each purchase as it arrives — deliveries deduct on their own.</div>' +
       '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px">' +
-      '<button class="btn sm" data-act="stock-import">&#8593; Import from bill</button>' +
-      '<button class="btn sm" data-act="stock-add" data-type="in">+ Goods received</button>' +
-      '<button class="btn sm ghost" data-act="stock-add" data-type="opening">Set opening stock</button>' +
+      '<button class="btn sm" data-act="grn-new">+ Lorry received (godown)</button>' +
+      '<button class="btn sm" data-act="stock-import">&#8593; Tally bills / register</button>' +
+      '<button class="btn sm ghost" data-act="pc-open">Physical count</button>' +
       '<button class="btn sm ghost" data-act="stock-add" data-type="adjust">Adjustment</button>' +
       (canSetPricing() ? '<button class="btn sm ghost" data-act="stock-landing">Landing %</button>' : '') +
       '<button class="btn sm ghost" data-act="stock-refresh">Refresh</button></div></div>';
     if (!STOCK_LOADED && !(S.stock && S.stock.length)) return h + '<div class="empty">Loading stock…</div>';
+    /* v6.9.605 - THE MONTH'S BILLS, TALLY AGAINST STOCK: which bills on the uploaded Purchase
+       Register are in stock and which are still to upload */
+    var _reg = stkRegister();
+    if (_reg.length) {
+      var _imp = stkImportedRefs(), _bil = stkBilledRefs(), _miss = _reg.filter(function (b) { return !_bil[b.key.toLowerCase()]; });
+      var _missAmt = _miss.reduce(function (a, b) { return a + b.amount; }, 0);
+      h += '<div class="card" style="border-color:' + (_miss.length ? '#fdba74' : '#99f6e4') + '"><div class="acts" style="align-items:center;margin:0">' +
+        '<b class="grow">Purchase bills from Tally: ' + (_reg.length - _miss.length) + ' of ' + _reg.length + ' uploaded' +
+        (_miss.length ? ' &middot; <span style="color:#b45309">' + _miss.length + ' to upload (' + money(_missAmt) + ')</span>' : ' &middot; <span style="color:#0f766e">all in</span>') + '</b>' +
+        '<button class="btn sm ghost" data-act="stk-reglist">' + (S.stkReg ? 'Hide' : 'Show') + ' the list</button></div>' +
+        (S.stkReg ? '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#e2e8f0">' +
+          '<th style="padding:5px 7px;text-align:left">DATE</th><th style="padding:5px 7px;text-align:left">SUPPLIER</th><th style="padding:5px 7px;text-align:left">BILL NO</th><th style="padding:5px 7px;text-align:right">AMOUNT</th><th style="padding:5px 7px;text-align:left">BILL</th><th style="padding:5px 7px;text-align:left">GODOWN</th></tr></thead><tbody>' +
+          _reg.map(function (b) {
+            var inS = !!_imp[b.key.toLowerCase()], bil = !!_bil[b.key.toLowerCase()];
+            return '<tr style="border-top:1px solid #e2e8f0"><td style="padding:5px 7px;white-space:nowrap">' + esc(dmy(b.date)) + '</td><td style="padding:5px 7px">' + esc(b.supplier) + '</td>' +
+              '<td style="padding:5px 7px"><b>' + esc(b.billNo) + '</b></td><td style="padding:5px 7px;text-align:right">' + money(b.amount) + '</td>' +
+              '<td style="padding:5px 7px">' + (bil ? '<span class="pill teal" style="font-size:12px">uploaded</span>' : '<span class="pill due" style="font-size:12px">upload</span>') + '</td>' +
+              '<td style="padding:5px 7px">' + (inS ? '<span class="pill teal" style="font-size:12px">received</span>' : '<span class="pill" style="font-size:12px;background:#fee2e2;color:#b91c1c">not entered</span>') + '</td></tr>';
+          }).join("") + '</tbody></table></div>' : '') + '</div>';
+    }
     var mv = stockMovementByCode(), del = stockDeliveredByCode(), ret = stockReturnedByCode();
     var reo = reorderByCode(), rate = rateByCode();
     var codes = {};
@@ -40366,17 +40408,68 @@ function viewCatalogue() {
       list.map(function (x, i) {
         var col = x.zero ? '#b91c1c' : (x.low ? '#c2410c' : '#0f766e');
         var bg = x.zero ? '#fef2f2' : (x.low ? '#fff7ed' : (i % 2 ? '#f8fafc' : '#fff'));
-        return '<tr data-act="stock-item" data-code="' + esc(x.code) + '" style="border-bottom:1px solid #eef2f7;background:' + bg + ';cursor:pointer">' +
+        return '<tr data-act="stk-open" data-code="' + esc(x.code) + '" style="border-bottom:1px solid #eef2f7;background:' + bg + ';cursor:pointer">' +
           '<td style="padding:6px 8px"><div style="font-weight:600">' + esc(x.desc) + '</div><div style="font-size:12px;color:#94a3b8">' + esc(x.code) + (x.brand ? ' &middot; ' + esc(x.brand) : '') +
           '<br>in ' + x.inq + ' &middot; del ' + x.del + ' &middot; ret ' + x.ret + (x.rate ? ' &middot; @' + money(x.rate) : '') + '</div></td>' +
           '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + col + '">' + x.onhand + '</td>' +
           '<td style="padding:6px 8px;text-align:right;color:#64748b">' + (x.reorder ? x.reorder : '—') + '</td>' +
-          '<td style="padding:6px 8px;text-align:right;color:#64748b">' + (x.value ? money(x.value) : '—') + '</td></tr>';
+          '<td style="padding:6px 8px;text-align:right;color:#64748b">' + (x.value ? money(x.value) : '—') + '</td></tr>' +
+          (S.stkOpen === x.code ? '<tr><td colspan="4" style="padding:0 0 10px">' + stockLedgerPanel(x.code) + '</td></tr>' : '');
       }).join("") + '</tbody></table></div>' +
-      '<div class="meta" style="font-size:12px;margin-top:6px">Tap any row to set its <b>reorder level</b> and <b>purchase rate</b>. Showing products with a stock entry, a delivery, or a reorder level.</div>';
+      '<div class="meta" style="font-size:12px;margin-top:6px">Tap a product for its <b>stock ledger</b> &mdash; every bill, delivery and return, with the balance after each. Showing products with a stock entry, a delivery, or a reorder level.</div>';
     return h;
   }
 
+  /* ===== v6.9.605 - ONE PRODUCT'S STOCK LEDGER, UNDER ITS ROW =====
+     Every movement, oldest first, with the balance after each: opening and goods received (the
+     bill it came on), adjustments, each delivery that took it out (a challan whose receipt is in -
+     the rule on-hand has always used) and each return booked back in. */
+  function stockLedgerPanel(code) {
+    var ev = [], cut = stkCutoff(), _c = {}; _c[code] = cut[code];
+    (S.stock || []).forEach(function (r) {
+      var ty = String(r.type || "");
+      if (["opening", "in", "adjust"].indexOf(ty) < 0 || String(r.code || "").trim() !== code) return;
+      if (ty === "opening" ? (cut[code] && String(r.asOn || "").slice(0, 10) !== cut[code]) : !stkCounts(code, r.asOn, _c)) return;   /* from the latest count on */
+      ev.push({ d: String(r.asOn || "").slice(0, 10), what: ty === "opening" ? "Physical count" : ty === "in" ? "Lorry received" : "Adjustment", ref: r.ref || "", note: r.notes || "", q: Number(r.qty) || 0, o: ty === "opening" ? 0 : 1 });
+    });
+    (S.data.challans || []).forEach(function (c) {
+      if (String(c.receiptReceived).toUpperCase() !== "Y" || !stkCounts(code, c.createdAt, _c)) return;
+      var q = 0; chItems(c).forEach(function (i) { if (String(i.code || "").trim() === code) q += Number(i.qty) || 0; });
+      if (q) ev.push({ d: String(c.createdAt || "").slice(0, 10), what: "Delivered", ref: c.challanNo || "", note: c.customerName || "", q: -q });
+    });
+    (S.data.returns || []).forEach(function (r) {
+      if (String(r.status || "").trim().toLowerCase() !== "received" || !stkCounts(code, r.createdAt, _c)) return;
+      var q = 0, it = []; try { it = JSON.parse(r.itemsJson || "[]"); } catch (e) {}
+      it.forEach(function (i) { if (String(i.code || "").trim() === code) q += Number(i.qty) || 0; });
+      if (q) ev.push({ d: String(r.createdAt || "").slice(0, 10), what: "Returned", ref: r.returnNo || "", note: r.customerName || "", q: q });
+    });
+    ev.sort(function (a, b) { return a.d.localeCompare(b.d) || ((a.o === 0 ? 0 : 1) - (b.o === 0 ? 0 : 1)); });
+    var bal = 0, tin = 0, tout = 0;
+    var TH = function (x, r) { return '<th style="padding:5px 8px;text-align:' + (r ? 'right' : 'left') + ';font-size:12px;background:#e2e8f0;border:1px solid #cbd5e1;white-space:nowrap">' + x + '</th>'; };
+    var rows = ev.map(function (e, i) {
+      bal += e.q; if (e.q > 0) tin += e.q; else tout -= e.q;
+      var bg = 'background:' + (i % 2 ? '#f8fafc' : '#fff');
+      return '<tr style="' + bg + '"><td style="padding:5px 8px;border:1px solid #e2e8f0;white-space:nowrap">' + esc(dmy(e.d)) + '</td>' +
+        '<td style="padding:5px 8px;border:1px solid #e2e8f0"><b>' + esc(e.what) + '</b></td>' +
+        '<td style="padding:5px 8px;border:1px solid #e2e8f0">' + esc(e.ref) + (e.note ? '<div style="font-size:12px;color:#64748b">' + esc(e.note) + '</div>' : '') + '</td>' +
+        '<td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;color:#0f766e">' + (e.q > 0 ? e.q : '') + '</td>' +
+        '<td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;color:#b91c1c">' + (e.q < 0 ? -e.q : '') + '</td>' +
+        '<td style="padding:5px 8px;border:1px solid #e2e8f0;text-align:right;font-weight:800;color:' + (bal < 0 ? '#b91c1c' : '#0f172a') + '">' + bal + '</td></tr>';
+    }).join("");
+    var hasOpen = ev.some(function (e) { return e.what === "Physical count"; });
+    return '<div style="margin:0 6px;border:1px solid #0b3b36;border-top:0;border-radius:0 0 8px 8px;background:#fff">' +
+      '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:7px 10px;background:#0b3b36;color:#fff">' +
+      '<b class="grow" style="flex:1 1 200px">Stock ledger &mdash; ' + esc(code) + '</b>' +
+      '<button class="btn sm ghost" data-act="stock-item" data-code="' + esc(code) + '" style="color:#fff;border-color:#99f6e4">Reorder level &amp; rate</button>' +
+      '<button class="btn sm ghost" data-act="stk-open" data-code="' + esc(code) + '" style="color:#fff;border-color:#99f6e4">Close &#9652;</button></div>' +
+      (hasOpen ? '' : '<div style="padding:6px 10px;font-size:12.5px;color:#b45309;background:#fffbeb">No opening stock is set for this product, so the balance is movement since the first entry, not what is on the floor.</div>') +
+      '<div style="overflow-x:auto;padding:8px 10px"><table style="width:100%;min-width:600px;border-collapse:collapse;font-size:12.5px"><thead><tr>' +
+      TH("DATE") + TH("ENTRY") + TH("BILL / CHALLAN") + TH("IN", 1) + TH("OUT", 1) + TH("BALANCE", 1) + '</tr></thead><tbody>' +
+      (rows || '<tr><td colspan="6" style="padding:8px;color:#64748b">No movement yet.</td></tr>') +
+      '</tbody><tfoot><tr style="background:#0b3b36;color:#fff"><td colspan="3" style="padding:6px 8px;font-weight:800">Total</td>' +
+      '<td style="padding:6px 8px;text-align:right;font-weight:800">' + tin + '</td><td style="padding:6px 8px;text-align:right;font-weight:800">' + tout + '</td>' +
+      '<td style="padding:6px 8px;text-align:right;font-weight:800">' + bal + '</td></tr></tfoot></table></div></div>';
+  }
   /* Per-item settings: reorder level + latest purchase rate. Saved as isolated "reorder"/"rate"
      stock rows (admin/godown), so on-hand math is untouched and no sheet column is added. */
   function modalStockItem(code) {
@@ -40520,7 +40613,293 @@ function viewCatalogue() {
     impParseAndPreview(parsed.rows);
   }
 
+  /* ===== TALLY FILES, READ AS TALLY WRITES THEM  (v6.9.605, 24 Sep 2026) =====
+     His words: "pick bill nos from second file and will upload individual bill file like file 1 -
+     can it be enough to fetch purchase items" and "trace item stock status". Measured on his
+     Huliot bill 13981 before a line was written: 14 of 14 lines found in the catalogue by Part No.
+     - 5 exactly, 9 once Tally's dots and "-C" suffix are ignored (P-PERTAL.20 is P-PERTAL20,
+     K200020-C is K200020). Two shapes, told apart by their own headings: a PURCHASE INVOICE
+     ("Supplier (Bill from)", "Part No.") and a PURCHASE REGISTER ("Vch No."). */
+  function tallyNorm(code) {
+    return String(code == null ? "" : code).trim().toUpperCase().replace(/-C$/, "").replace(/[^A-Z0-9]/g, "");
+  }
+  function tallyNum(v) {
+    if (typeof v === "number") return v;
+    var n = Number(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
+    return isFinite(n) ? n : 0;
+  }
+  function tallyDate(v) {
+    if (v instanceof Date && !isNaN(v)) { return v.getFullYear() + "-" + String(v.getMonth() + 1).padStart(2, "0") + "-" + String(v.getDate()).padStart(2, "0"); }
+    var s = String(v == null ? "" : v).trim(), M = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+    var m = s.match(/^(\d{1,2})[-\s/]([A-Za-z]{3})[a-z]*[-\s/](\d{2,4})$/);
+    if (m && M[m[2].toLowerCase()]) { var y = Number(m[3]); if (y < 100) y += 2000; return y + "-" + String(M[m[2].toLowerCase()]).padStart(2, "0") + "-" + String(Number(m[1])).padStart(2, "0"); }
+    m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+    if (m) { var y2 = Number(m[3]); if (y2 < 100) y2 += 2000; return y2 + "-" + String(Number(m[2])).padStart(2, "0") + "-" + String(Number(m[1])).padStart(2, "0"); }
+    if (typeof v === "number" && v > 30000 && v < 80000) { var d = new Date(Math.round((v - 25569) * 86400000)); return tallyDate(new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); }
+    return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : "";
+  }
+  /* rows: an array of arrays (the sheet as SheetJS hands it, header:1). */
+  function tallyParse(rows) {
+    var cell = function (r, c) { return (rows[r] && rows[r][c] != null) ? rows[r][c] : ""; };
+    var txt = function (r, c) { return String(cell(r, c)).trim(); };
+    var find = function (re) {
+      for (var r = 0; r < rows.length; r++) for (var c = 0; c < (rows[r] || []).length; c++) if (re.test(txt(r, c))) return { r: r, c: c };
+      return null;
+    };
+    /* ---- the register ---- */
+    var vh = find(/^Vch No\.?$/i);
+    if (vh) {
+      var hr = rows[vh.r].map(function (x) { return String(x || "").trim().toLowerCase(); });
+      var cD = hr.indexOf("date"), cP = hr.indexOf("particulars"), cT = hr.indexOf("vch type"), cN = vh.c;
+      var cCr = hr.indexOf("credit"), cDr = hr.indexOf("debit");
+      var out = [];
+      for (var r = vh.r + 1; r < rows.length; r++) {
+        var no = txt(r, cN), who = txt(r, cP);
+        if (!no || !who || /^total/i.test(txt(r, 0))) continue;
+        var amt = tallyNum(cell(r, cCr)) || tallyNum(cell(r, cDr));
+        out.push({ date: tallyDate(cell(r, cD)), supplier: who, type: cT >= 0 ? txt(r, cT) : "", billNo: no, amount: amt });
+      }
+      var per = find(/^\d{1,2}-[A-Za-z]{3}-\d{2,4}\s+to\s+\d{1,2}-[A-Za-z]{3}-\d{2,4}$/);
+      return { kind: "register", period: per ? txt(per.r, per.c) : "", bills: out };
+    }
+    /* ---- the invoice ---- */
+    var ph = find(/^Part No\.?$/i), dh = find(/^Description of Goods$/i);
+    if (!ph || !dh || ph.r !== dh.r) return { kind: "unknown" };
+    var h = rows[ph.r].map(function (x) { return String(x || "").trim().toLowerCase(); });
+    var col = function (re) { for (var i = 0; i < h.length; i++) if (re.test(h[i])) return i; return -1; };
+    var cQ = col(/^quantity$/), cR = col(/^rate$/), cU = col(/^per$/), cDi = col(/^disc/), cA = col(/^amount$/), cS = 0;
+    var inv = find(/^Invoice No\.?$/i), dt = find(/^Dated$/), sup = find(/^Supplier \(Bill from\)$/i);
+    var lines = [], total = 0;
+    for (var r2 = ph.r + 1; r2 < rows.length; r2++) {
+      var sl = cell(r2, cS), desc = txt(r2, dh.c);
+      if (/^total$/i.test(desc) || /^total$/i.test(txt(r2, 1))) { total = tallyNum(cell(r2, cA)); break; }
+      if (!(typeof sl === "number" || /^\d+$/.test(String(sl).trim())) || !desc) continue;
+      lines.push({ sl: Number(sl), desc: desc, partNo: txt(r2, ph.c), qty: tallyNum(cell(r2, cQ)), rate: tallyNum(cell(r2, cR)),
+                   unit: cU >= 0 ? txt(r2, cU) : "", disc: cDi >= 0 ? tallyNum(cell(r2, cDi)) : 0, amount: tallyNum(cell(r2, cA)) });
+    }
+    return { kind: "bill",
+             billNo: inv ? txt(inv.r + 1, inv.c) : "", date: dt ? tallyDate(cell(dt.r + 1, dt.c)) : "",
+             supplier: sup ? txt(sup.r + 1, sup.c) : "", total: total, lines: lines };
+  }
+
+  /* SheetJS reads the .xlsx Tally writes. Kept in the repo (assets/xlsx), loaded the first time a
+     file is picked, like pdf.js - nobody pays for it until they use it. */
+  var _xlsxP = null;
+  function xlsxReady() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (_xlsxP) return _xlsxP;
+    _xlsxP = new Promise(function (res) {
+      try {
+        var sc = document.createElement("script");
+        sc.src = "../assets/xlsx/xlsx.mini.min.js";
+        sc.onload = function () { res(window.XLSX || null); };
+        sc.onerror = function () { _xlsxP = null; res(null); };
+        document.head.appendChild(sc);
+      } catch (e) { res(null); }
+    });
+    return _xlsxP;
+  }
+  function stkBillKey(supplier, billNo) { return String(supplier || "").trim() + " / " + String(billNo || "").trim(); }
+  /* part number -> catalogue code: the catalogue's own codes, Tally's spelling of them, and every
+     part number accounts has matched by hand once ("alias" rows: code = product, ref = the part no) */
+  function stkCodeMap() {
+    var m = {};
+    PRODUCTS.forEach(function (p) { if (p.code) m[tallyNorm(p.code)] = p.code; });
+    (S.stock || []).forEach(function (r) { if (String(r.type) === "alias" && r.ref && r.code) m[tallyNorm(r.ref)] = String(r.code); });
+    return m;
+  }
+  function stkImportedRefs() {
+    var m = {};
+    (S.stock || []).forEach(function (r) { if (String(r.type) === "in" && r.ref) m[String(r.ref).trim().toLowerCase()] = (m[String(r.ref).trim().toLowerCase()] || 0) + 1; });
+    return m;
+  }
+  /* v6.9.605 - what the godown received against one supplier bill, by product */
+  function stkReceivedFor(key) {
+    var m = {}, k = String(key || "").trim().toLowerCase();
+    (S.stock || []).forEach(function (r) { if (String(r.type) === "in" && String(r.ref || "").trim().toLowerCase() === k) m[String(r.code || "").trim()] = (m[String(r.code || "").trim()] || 0) + (Number(r.qty) || 0); });
+    return m;
+  }
+  function stkBilledRefs() {
+    var m = {};
+    (S.stock || []).forEach(function (r) { if (String(r.type) === "bill" && r.ref) m[String(r.ref).trim().toLowerCase()] = r; });
+    return m;
+  }
+  /* the month's Purchase Register, as uploaded: one "register" row per upload, the bills in desc */
+  function stkRegister() {
+    var byKey = {};
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "register") return;
+      var list = []; try { list = JSON.parse(r.desc || "[]") || []; } catch (e) { list = []; }
+      list.forEach(function (b) { byKey[stkBillKey(b.s, b.n).toLowerCase()] = { key: stkBillKey(b.s, b.n), date: b.d, supplier: b.s, billNo: b.n, amount: Number(b.a) || 0 }; });
+    });
+    return Object.keys(byKey).map(function (k) { return byKey[k]; }).sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+  }
+  /* files picked: registers are saved at once, bills go to the review */
+  function stkReadFiles(files) {
+    var list = [].slice.call(files || []);
+    if (!list.length) return;
+    var xl = list.filter(function (f) { return /\.xlsx?$/i.test(f.name); });
+    var other = list.filter(function (f) { return !/\.xlsx?$/i.test(f.name); });
+    if (other.length && !xl.length) {
+      var rd0 = new FileReader();
+      rd0.onload = function () { try { stockImportFromFile(String(rd0.result || ""), other[0].name); } catch (err) { toast("Couldn't read that file."); } };
+      rd0.readAsText(other[0]); return;
+    }
+    toast("Reading " + plural(xl.length, "file") + "…");
+    xlsxReady().then(function (X) {
+      if (!X) { toast("The Excel reader did not load — check the connection and pick the files again."); return; }
+      return Promise.all(xl.map(function (f) {
+        return new Promise(function (res) {
+          var rd = new FileReader();
+          rd.onload = function () {
+            try {
+              var wb = X.read(new Uint8Array(rd.result), { type: "array", cellDates: true });
+              var ws = wb.Sheets[wb.SheetNames[0]];
+              var o = tallyParse(X.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true }));
+              o.file = f.name; res(o);
+            } catch (e) { res({ kind: "unknown", file: f.name }); }
+          };
+          rd.onerror = function () { res({ kind: "unknown", file: f.name }); };
+          rd.readAsArrayBuffer(f);
+        });
+      })).then(function (parsed) {
+        var regs = parsed.filter(function (o) { return o.kind === "register" && o.bills.length; });
+        var bills = parsed.filter(function (o) { return o.kind === "bill" && o.lines.length; });
+        var bad = parsed.filter(function (o) { return o.kind !== "register" && o.kind !== "bill"; });
+        regs.forEach(function (o) {
+          var row = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-reg", type: "register", code: "*REG",
+            desc: JSON.stringify(o.bills.map(function (b) { return { d: b.date, s: b.supplier, n: b.billNo, a: b.amount }; })),
+            qty: o.bills.length, ref: o.period || "", asOn: today(), notes: o.file || "" };
+          S.stock = (S.stock || []).concat([row]);
+          api("stockSave", { row: row }).then(function (r) {
+            toast((r && r.ok) ? "Purchase register " + (o.period || "") + " saved: " + plural(o.bills.length, "bill") + "." : ((r && r.error) || "The register was not saved."));
+          });
+        });
+        if (bad.length) toast(bad.map(function (o) { return o.file; }).join(", ") + ": not a Tally purchase bill or register.");
+        if (bills.length) {
+          var cm = stkCodeMap(), done = stkImportedRefs();
+          S.imp = { step: "tally", bills: bills.map(function (b) {
+            b.key = stkBillKey(b.supplier, b.billNo);
+            b.done = !!stkBilledRefs()[b.key.toLowerCase()];
+            b.lines.forEach(function (l) { l.code = cm[tallyNorm(l.partNo)] || ""; l.net = Math.round(l.rate * (1 - (l.disc || 0) / 100) * 100) / 100; });
+            return b;
+          }) };
+        }
+        render();
+      });
+    });
+  }
+  function viewTallyReview() {
+    var im = S.imp || {}, reg = {};
+    stkRegister().forEach(function (b) { reg[b.key.toLowerCase()] = b; });
+    var pmap = {}; PRODUCTS.forEach(function (p) { pmap[p.code] = p; });
+    var opts = PRODUCTS.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.code) + ' — ' + esc(p.desc || "") + '</option>'; }).join("");
+    var h = '<div class="row"><button class="btn sm ghost" data-act="imp-cancel">&larr; Back to Stock</button></div>' +
+      '<div class="card"><h2 style="margin:0">Purchase bills from Tally &mdash; review</h2>' +
+      '<div class="meta" style="font-size:12.5px">Each line is matched to your catalogue by its Part No. A line that is not found needs its product picked once &mdash; after that the part number is remembered. <b>The bill does not add stock</b> &mdash; the godown&rsquo;s lorry entry does. Here the bill is checked against what the godown received, line by line.</div></div>' +
+      '<datalist id="tb_prods">' + opts + '</datalist>';
+    var nNew = 0;
+    im.bills.forEach(function (b, bi) {
+      var rg = reg[b.key.toLowerCase()];
+      var totOk = rg ? Math.abs(rg.amount - b.total) < 1 : null;
+      var unm = b.lines.filter(function (l) { return !l.code; }).length;
+      var rcv = stkReceivedFor(b.key), anyRcv = Object.keys(rcv).length > 0;
+      if (!b.done) nNew++;
+      h += '<div class="card" style="' + (b.done ? 'opacity:.6;' : '') + 'padding:0;overflow:hidden">' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:8px 10px;background:#0b3b36;color:#fff">' +
+        '<b style="flex:1 1 220px">' + esc(b.supplier) + ' &middot; bill ' + esc(b.billNo) + '</b>' +
+        '<span>' + esc(dmy(b.date)) + '</span><b>' + money(b.total) + '</b></div>' +
+        '<div style="padding:6px 10px;font-size:12.5px;background:#f8fafc;border-bottom:1px solid #e2e8f0">' +
+        (b.done ? '<b style="color:#b45309">Already uploaded &mdash; this bill will be skipped.</b>'
+                : plural(b.lines.length, "line") + ' &middot; ' + (unm ? '<b style="color:#b45309">' + unm + ' to match</b>' : '<b style="color:#0f766e">all matched</b>')) +
+        (anyRcv ? ' &middot; <span style="color:#0f766e">godown received it</span>' : ' &middot; <b style="color:#b91c1c">the godown has not entered this lorry</b>') +
+        (rg ? ' &middot; ' + (totOk ? '<span style="color:#0f766e">total agrees with the Purchase Register</span>' : '<b style="color:#b91c1c">register says ' + money(rg.amount) + '</b>')
+            : ' &middot; <span style="color:#64748b">not on an uploaded Purchase Register</span>') + '</div>' +
+        '<div style="overflow-x:auto"><table style="width:100%;min-width:640px;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#e2e8f0">' +
+        '<th style="padding:5px 7px;text-align:left">#</th><th style="padding:5px 7px;text-align:left">ON THE BILL</th><th style="padding:5px 7px;text-align:left">PRODUCT IN CRM</th>' +
+        '<th style="padding:5px 7px;text-align:right">BILLED</th><th style="padding:5px 7px;text-align:right">RECEIVED</th><th style="padding:5px 7px;text-align:right">RATE</th></tr></thead><tbody>' +
+        b.lines.map(function (l, li) {
+          var p = pmap[l.code];
+          return '<tr style="border-top:1px solid #e2e8f0">' +
+            '<td style="padding:5px 7px;color:#64748b">' + l.sl + '</td>' +
+            '<td style="padding:5px 7px">' + esc(l.desc) + '<div style="font-size:12px;color:#64748b">' + esc(l.partNo || "no part no") + '</div></td>' +
+            '<td style="padding:5px 7px">' + (p ? '<b style="color:#0f766e">' + esc(p.desc) + '</b><div style="font-size:12px;color:#64748b">' + esc(p.code) + '</div>'
+              : (b.done ? '<span style="color:#94a3b8">—</span>' : '<input id="tb_' + bi + '_' + li + '" list="tb_prods" placeholder="Pick the product" style="width:100%;padding:6px;border:1px solid #fdba74;border-radius:6px;font-size:12.5px"/>')) + '</td>' +
+            '<td style="padding:5px 7px;text-align:right;white-space:nowrap"><b>' + l.qty + '</b> ' + esc(l.unit) + '</td>' +
+            (function () {
+              var got = l.code ? (rcv[l.code] || 0) : 0, diff = got - l.qty;
+              return '<td style="padding:5px 7px;text-align:right;white-space:nowrap;font-weight:700;color:' + (!anyRcv ? '#94a3b8' : diff === 0 ? '#0f766e' : '#b91c1c') + '">' +
+                (!anyRcv ? '\u2014' : got + (diff < 0 ? '<div style="font-size:12px">' + (-diff) + ' short</div>' : diff > 0 ? '<div style="font-size:12px">' + diff + ' extra</div>' : '')) + '</td>';
+            })() +
+            '<td style="padding:5px 7px;text-align:right;white-space:nowrap">' + money(l.net) + (l.disc ? '<div style="font-size:12px;color:#64748b">' + l.disc + '% off ' + money(l.rate) + '</div>' : '') + '</td></tr>';
+        }).join("") + '</tbody></table></div></div>';
+    });
+    h += '<div class="acts"><button class="btn" data-act="tb-submit"' + (nNew ? '' : ' disabled') + '>Save ' + plural(nNew, "bill") + ' (checks only &mdash; stock is not changed)</button>' +
+      '<button class="btn ghost" data-act="imp-cancel">Cancel</button></div>';
+    return h;
+  }
+  /* ===== v6.9.605 - A LORRY ARRIVES: the godown enters what it actually unloaded ===== */
+  function viewGrn() {
+    var g = S.grn;
+    var reg = stkRegister(), got = stkImportedRefs();
+    var open = reg.filter(function (b) { return !got[b.key.toLowerCase()]; });
+    var sups = {}; reg.forEach(function (b) { sups[b.supplier] = 1; });
+    (S.stock || []).forEach(function (r) { if (String(r.type) === "bill" && r.notes) sups[r.notes] = 1; });
+    var opts = PRODUCTS.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.code) + ' — ' + esc(p.desc || "") + '</option>'; }).join("");
+    var inp = 'style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"';
+    var h = '<div class="row"><button class="btn sm ghost" data-act="grn-cancel">&larr; Back to Stock</button></div>' +
+      '<div class="card"><h2 style="margin:0">Lorry received</h2><div class="meta" style="font-size:12.5px">Count what came off the lorry and enter it here &mdash; this is what puts it into stock. The supplier&rsquo;s bill number on the paper that came with it ties it to the Tally bill later.</div>' +
+      (open.length ? '<label>Pick the bill from Tally&rsquo;s register (optional)</label><select id="grn_pick"><option value="">&mdash; not on the register yet &mdash;</option>' +
+        open.map(function (b) { return '<option value="' + esc(b.key) + '"' + (g.key === b.key ? ' selected' : '') + '>' + esc(dmy(b.date)) + ' · ' + esc(b.supplier) + ' · ' + esc(b.billNo) + '</option>'; }).join("") + '</select>' : '') +
+      '<label>Supplier</label><input id="grn_sup" list="grn_sups" value="' + esc(g.supplier || "") + '" ' + inp + '/><datalist id="grn_sups">' + Object.keys(sups).map(function (x) { return '<option value="' + esc(x) + '">'; }).join("") + '</datalist>' +
+      '<div class="row"><div style="flex:1"><label>Supplier bill / invoice no</label><input id="grn_no" value="' + esc(g.billNo || "") + '" ' + inp + '/></div>' +
+      '<div style="flex:1"><label>Date received</label><input id="grn_date" type="date" value="' + esc(g.date || today()) + '" ' + inp + '/></div></div></div>' +
+      '<datalist id="grn_prods">' + opts + '</datalist><div class="card"><h3 style="margin:0 0 6px">What came off the lorry</h3>';
+    g.lines.forEach(function (l, i) {
+      h += '<div class="row" style="gap:6px;margin-top:6px"><input id="grn_c' + i + '" list="grn_prods" placeholder="Product code or name" value="' + esc(l.code || "") + '" style="flex:3;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"/>' +
+        '<input id="grn_q' + i + '" inputmode="decimal" placeholder="Qty" value="' + esc(l.qty || "") + '" style="flex:1;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"/></div>';
+    });
+    h += '<div class="acts" style="margin-top:8px"><button class="btn sm ghost" data-act="grn-line">+ Another line</button></div></div>' +
+      '<div class="acts"><button class="btn" data-act="grn-save">Put into stock</button><button class="btn ghost" data-act="grn-cancel">Cancel</button></div>';
+    return h;
+  }
+  function grnKeep() {
+    var g = S.grn; if (!g) return;
+    g.supplier = String((el("grn_sup") || {}).value || g.supplier || "").trim();
+    g.billNo = String((el("grn_no") || {}).value || g.billNo || "").trim();
+    g.date = (el("grn_date") || {}).value || g.date || today();
+    g.lines.forEach(function (l, i) { l.code = String((el("grn_c" + i) || {}).value || "").trim(); l.qty = String((el("grn_q" + i) || {}).value || "").trim(); });
+  }
+  /* ===== v6.9.605 - THE PHYSICAL COUNT: every product, one box each, saved as the opening ===== */
+  function viewPhysCount() {
+    var pc = S.pc, brands = {};
+    PRODUCTS.forEach(function (p) { brands[p.brand || "Other"] = (brands[p.brand || "Other"] || 0) + 1; });
+    var bl = Object.keys(brands).sort();
+    var cur = pc.brand || bl[0] || "";
+    var q = String(pc.q || "").trim().toLowerCase();
+    var list = PRODUCTS.filter(function (p) { return (p.brand || "Other") === cur && (!q || (p.code + " " + p.desc).toLowerCase().indexOf(q) >= 0); });
+    var filled = Object.keys(pc.v).filter(function (k) { return String(pc.v[k]).trim() !== ""; }).length;
+    var h = '<div class="row"><button class="btn sm ghost" data-act="pc-cancel">&larr; Back to Stock</button></div>' +
+      '<div class="card"><h2 style="margin:0">Physical count</h2><div class="meta" style="font-size:12.5px">Type what is on the floor for each product. Saved as the <b>opening stock</b> on the count date: from that day, only what is received, delivered or returned moves each balance. Count before the day&rsquo;s first dispatch. Leave a box empty for a product you did not count.</div>' +
+      '<div class="row" style="margin-top:6px"><div style="flex:1"><label>Count date</label><input id="pc_date" type="date" value="' + esc(pc.date || today()) + '"/></div>' +
+      '<div style="flex:2"><label>Find</label><div class="row" style="gap:6px"><input id="pc_q" class="grow" placeholder="Code or name" value="' + esc(pc.q || "") + '"/><button class="btn sm ghost" data-act="pc-find">Find</button></div></div></div>' +
+      '<div class="acts" style="flex-wrap:wrap;gap:6px;margin-top:8px">' + bl.map(function (b) { return '<button class="btn sm ' + (b === cur ? '' : 'ghost') + '" data-act="pc-brand" data-b="' + esc(b) + '">' + esc(b) + ' <span style="opacity:.7">' + brands[b] + '</span></button>'; }).join("") + '</div></div>';
+    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#0b3b36;color:#fff"><th style="padding:6px 8px;text-align:left">PRODUCT</th><th style="padding:6px 8px;text-align:left">UNIT</th><th style="padding:6px 8px;text-align:right;width:110px">COUNTED</th></tr></thead><tbody>' +
+      list.map(function (p, i) {
+        return '<tr style="background:' + (i % 2 ? '#f8fafc' : '#fff') + ';border-bottom:1px solid #eef2f7"><td style="padding:5px 8px"><b>' + esc(p.desc) + '</b><div style="font-size:12px;color:#64748b">' + esc(p.code) + '</div></td>' +
+          '<td style="padding:5px 8px;color:#64748b;font-size:12px">' + esc(p.unit || "") + '</td>' +
+          '<td style="padding:5px 8px;text-align:right"><input class="pc-box" data-code="' + esc(p.code) + '" inputmode="decimal" value="' + esc(pc.v[p.code] != null ? pc.v[p.code] : "") + '" style="width:90px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;text-align:right;font-size:14px"/></td></tr>';
+      }).join("") + '</tbody></table></div>' +
+      '<div class="acts" style="position:sticky;bottom:0;background:#fff;padding:8px 0"><button class="btn" data-act="pc-save">Save the count (' + plural(filled, "product") + ')</button><button class="btn ghost" data-act="pc-cancel">Cancel</button></div>';
+    return h;
+  }
+  function pcKeep() {
+    var pc = S.pc; if (!pc) return;
+    [].forEach.call(document.querySelectorAll(".pc-box"), function (b) { pc.v[b.getAttribute("data-code")] = b.value; });
+    pc.date = (el("pc_date") || {}).value || pc.date; pc.q = (el("pc_q") || {}).value || "";
+  }
   function viewStockImport() {
+    if (S.imp && S.imp.step === "tally") return viewTallyReview();
     var im = S.imp || {};
     var lbl = 'style="font-size:12px;color:#475569;margin:8px 0 2px"';
     var inp = 'style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"';
@@ -40557,8 +40936,8 @@ function viewCatalogue() {
       '<div class="acts" style="gap:6px;margin-bottom:4px">' +
       '<button class="btn sm ' + (im.type === "opening" ? "" : "ghost") + '" data-act="imp-type" data-t="opening">Opening stock</button>' +
       '<button class="btn sm ' + (im.type !== "opening" ? "" : "ghost") + '" data-act="imp-type" data-t="in">Goods received (purchase)</button></div>' +
-      '<div ' + lbl + '>Upload a Tally CSV export (item code + closing qty)</div>' +
-      '<input type="file" id="imp_file" accept=".csv,.txt" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
+      '<div ' + lbl + '>Upload from Tally: <b>purchase bills</b> (.xlsx, several at once) and the month&rsquo;s <b>Purchase Register</b> (.xlsx) &mdash; or a CSV of code + qty</div>' +
+      '<input type="file" id="imp_file" multiple accept=".xlsx,.xls,.csv,.txt" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;background:#fff"/>' +
       '<div style="text-align:center;color:#94a3b8;font-size:12px;margin:6px 0">— or paste rows —</div>' +
       '<div ' + lbl + '>Paste rows (code &nbsp;&lt;tab&gt;&nbsp; qty)</div>' +
       '<textarea id="imp_paste" rows="12" placeholder="HUL-32MM\t50&#10;STL-1IN-ELB\t200&#10;…" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:13px monospace">' + esc(im.paste || "") + '</textarea>' +
@@ -40616,7 +40995,7 @@ function viewCatalogue() {
   /* v6.9.547 - OFF THE HEADER, not gone. Measured on his Mac since 6.9.396: these nine were
      never opened. He chose them. Each still opens from the Health check and from every button
      that already leads to it (a product tile, a site card, a stock message). */
-  var NAV_OFF = [["stock", "Stock"], ["visits", "Site visits"], ["rules", "Pitch rules"], ["customers", "Customers"],
+  var NAV_OFF = [["visits", "Site visits"], ["rules", "Pitch rules"], ["customers", "Customers"],
                  ["spares", "Spares"], ["catalogue", "Catalogue"], ["pricelist", "Price list PDF"], ["rates", "Rate revision"], ["tools", "Tools"]];
   var NAV_GROUPS = [
     /* item 27, v6.9.510 - HIS WORDS: "Put agent on master tab for everyone". It was a chip
@@ -40633,7 +41012,7 @@ function viewCatalogue() {
        chip. Every chip the two groups had is still here. */
     ["Clients",    ["clients", "leads", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss"]],
     ["Service",    ["service"]],
-    ["Products",   ["products", "catalogs", "brandstory"]],   /* v6.9.581 - the catalogue library */
+    ["Products",   ["products", "catalogs", "brandstory", "stock"]],   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins"]],
     /* v6.9.539 - item 23: "Book numbers - what's the use, it's empty" (measured: 0 rows) - off
        the header; the screen still opens from the Health check. Item 25: The brief is a tab
@@ -41627,12 +42006,7 @@ function viewCatalogue() {
     /* Stock import: read an uploaded Tally CSV export and jump straight to the review step. */
     var impf = el("imp_file");
     if (impf) {
-      impf.addEventListener("change", function (e) {
-        var f = e.target.files && e.target.files[0]; if (!f) return;
-        var rd = new FileReader();
-        rd.onload = function () { try { stockImportFromFile(String(rd.result || ""), f.name); } catch (err) { toast("Couldn't read that file — try a plain CSV export."); } };
-        rd.readAsText(f);
-      });
+      impf.addEventListener("change", function (e) { stkReadFiles(e.target.files); });   /* v6.9.605 - Tally bills and registers */
     }
   }
 
@@ -42167,6 +42541,8 @@ function viewCatalogue() {
       return;
     }
     if (act === "stock-item") { S.modal = modalStockItem(t.getAttribute("data-code")); render(); return; }
+    if (act === "stk-open") { var _sc = t.getAttribute("data-code") || ""; S.stkOpen = (S.stkOpen === _sc) ? "" : _sc; keepScroll = true; render(); return; }   /* v6.9.605 */
+    if (act === "stk-reglist") { S.stkReg = !S.stkReg; keepScroll = true; render(); return; }
     if (act === "stock-landing") { S.modal = modalStockLanding(); render(); return; }
     if (act === "stock-landing-save") {
       var _lpv = String((el("sl_pct") || {}).value || "").trim();
@@ -42216,6 +42592,101 @@ function viewCatalogue() {
         S.imp.type = t.getAttribute("data-t") || "in";
       }
       render(); return;
+    }
+    if (act === "grn-new") { S.imp = null; S.pc = null; S.grn = { lines: [{}, {}, {}], date: today() }; render(); return; }
+    if (act === "grn-cancel") { S.grn = null; render(); return; }
+    if (act === "grn-line") { grnKeep(); S.grn.lines.push({}); render(); return; }
+    if (act === "grn-save") {
+      grnKeep();
+      var _g = S.grn, _pk = String((el("grn_pick") || {}).value || "");
+      if (_pk) { var _rb = stkRegister().filter(function (b) { return b.key === _pk; })[0]; if (_rb) { _g.supplier = _g.supplier || _rb.supplier; _g.billNo = _g.billNo || _rb.billNo; } }
+      if (!_g.supplier) { toast("Whose lorry - the supplier's name, please."); return; }
+      if (!_g.billNo) { toast("The bill or invoice number on the supplier's paper, please - it ties this to the Tally bill."); return; }
+      var _rows = {}, _ord = [], _bad2 = "";
+      _g.lines.forEach(function (l) {
+        if (!l.code && !l.qty) return;
+        var p = PRODUCTS.filter(function (x) { return x.code === l.code; })[0], q = Number(String(l.qty).replace(/[^0-9.\-]/g, ""));
+        if (!p) { _bad2 = _bad2 || ("Pick \"" + l.code + "\" from the product list."); return; }
+        if (!(q > 0)) { _bad2 = _bad2 || ("Quantity for " + p.desc + "."); return; }
+        if (!_rows[p.code]) { _rows[p.code] = { code: p.code, qty: 0, desc: p.desc }; _ord.push(p.code); }
+        _rows[p.code].qty += q;
+      });
+      if (_bad2) { toast(_bad2); return; }
+      if (!_ord.length) { toast("Nothing entered yet."); return; }
+      var _gk = stkBillKey(_g.supplier, _g.billNo);
+      if (stkImportedRefs()[_gk.toLowerCase()] && !confirm("A lorry for " + _gk + " was already entered. Add these as MORE goods on the same bill?")) return;
+      t.disabled = true; t.textContent = "Saving…";
+      api("stockImport", { ref: _gk, asOn: _g.date || today(), type: "in", rows: _ord.map(function (k) { return _rows[k]; }), newItems: [] }).then(function (r) {
+        if (!(r && r.ok)) { t.disabled = false; t.textContent = "Put into stock"; toast((r && r.error) || "Not saved."); return; }
+        S.grn = null; STOCK_LOADED = false; S.stock = []; ensureStock(); render();
+        toast(plural(_ord.length, "product") + " from " + _g.supplier + " put into stock.");
+      }, function () { t.disabled = false; t.textContent = "Put into stock"; toast("No answer from the server - it MAY have been saved. Refresh Stock before entering it again."); });
+      return;
+    }
+    if (act === "pc-open") { S.imp = null; S.grn = null; S.pc = { v: {}, date: today(), brand: "" }; render(); return; }
+    if (act === "pc-cancel") { S.pc = null; render(); return; }
+    if (act === "pc-find") { pcKeep(); render(); return; }
+    if (act === "pc-brand") { pcKeep(); S.pc.brand = t.getAttribute("data-b") || ""; render(); return; }
+    if (act === "pc-save") {
+      pcKeep();
+      var _pc = S.pc, _pr = [];
+      Object.keys(_pc.v).forEach(function (k) {
+        var v = String(_pc.v[k]).trim(); if (v === "") return;
+        var q = Number(v.replace(/[^0-9.\-]/g, "")); if (!isFinite(q) || q < 0) return;
+        var p = PRODUCTS.filter(function (x) { return x.code === k; })[0] || {};
+        _pr.push({ code: k, qty: q, desc: p.desc || "" });
+      });
+      if (!_pr.length) { toast("Nothing counted yet."); return; }
+      t.disabled = true; t.textContent = "Saving…";
+      api("stockImport", { ref: "Physical count " + (_pc.date || today()), asOn: _pc.date || today(), type: "opening", rows: _pr, newItems: [] }).then(function (r) {
+        if (!(r && r.ok)) { t.disabled = false; t.textContent = "Save the count"; toast((r && r.error) || "Not saved."); return; }
+        S.pc = null; STOCK_LOADED = false; S.stock = []; ensureStock(); render();
+        toast("Count saved for " + plural(_pr.length, "product") + ", as the opening stock on " + dmy(_pc.date) + ".");
+      }, function () { t.disabled = false; t.textContent = "Save the count"; toast("No answer from the server - it MAY have been saved. Refresh Stock before saving again."); });
+      return;
+    }
+    if (act === "tb-submit") {
+      var _tb = S.imp || {}, _cmK = stkCodeMap(), _aliases = [], _bad = "";
+      (_tb.bills || []).forEach(function (b, bi) {
+        if (b.done) return;
+        b.lines.forEach(function (l, li) {
+          if (l.code) return;
+          var v = String((el("tb_" + bi + "_" + li) || {}).value || "").trim();
+          var ok = PRODUCTS.some(function (p) { return p.code === v; });
+          if (ok) { l.code = v; if (l.partNo) _aliases.push({ code: v, ref: l.partNo, desc: l.desc }); }
+          else if (!_bad) _bad = "Bill " + b.billNo + ", line " + l.sl + " (" + l.desc + "): pick its product from the list.";
+        });
+      });
+      if (_bad) { toast(_bad); return; }
+      var _todo = (_tb.bills || []).filter(function (b) { return !b.done; });
+      t.disabled = true; t.textContent = "Saving…";
+      var _sv = function (row) { S.stock = (S.stock || []).concat([row]); return api("stockSave", { row: row }); };
+      var _chain = Promise.resolve(), _okN = 0, _fail = [];
+      _aliases.forEach(function (a) {
+        _chain = _chain.then(function () { return _sv({ id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-alias", type: "alias", code: a.code, desc: a.desc, qty: 0, ref: a.ref, asOn: today(), notes: "Tally part no" }); });
+      });
+      _todo.forEach(function (b) {
+        _chain = _chain.then(function () {
+          var rows = {}, ord = [];
+          b.lines.forEach(function (l) { if (!rows[l.code]) { rows[l.code] = { code: l.code, qty: 0, desc: (PRODUCTS.filter(function (p) { return p.code === l.code; })[0] || {}).desc || l.desc }; ord.push(l.code); } rows[l.code].qty += l.qty; });
+          var _brow = { id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-bill", type: "bill", code: "*BILL", qty: b.total, ref: b.key, asOn: b.date || today(),
+            notes: b.supplier, desc: JSON.stringify(b.lines.map(function (l) { return { c: l.code, q: l.qty, n: l.net, u: l.unit, p: l.partNo }; })) };
+          return _sv(_brow)
+            .then(function (r) {
+              if (!(r && r.ok)) { _fail.push(b.billNo + ": " + ((r && r.error) || "refused")); return; }
+              _okN++;
+              /* the latest purchase rate per product, off this bill, for stock value and quote margin */
+              var rch = Promise.resolve();
+              b.lines.forEach(function (l) { if (l.net > 0) rch = rch.then(function () { return _sv({ id: "S-" + Date.now() + "-" + Math.floor(Math.random() * 1000000) + "-rate", type: "rate", code: l.code, desc: "", qty: l.net, ref: b.key, asOn: b.date || today(), notes: "" }); }); });
+              return rch;
+            }, function () { _fail.push(b.billNo + ": no answer - it MAY have been saved; refresh before trying again"); });
+        });
+      });
+      _chain.then(function () {
+        S.imp = null; STOCK_LOADED = false; S.stock = []; ensureStock(); S.tab = "stock"; render();
+        toast(_okN + " of " + plural(_todo.length, "bill") + " saved and checked against the godown." + (_fail.length ? " Not saved: " + _fail.join("; ") : ""));
+      });
+      return;
     }
     if (act === "imp-parse") {
       impParseAndPreview(parseStockPaste((el("imp_paste") || {}).value || ""));
