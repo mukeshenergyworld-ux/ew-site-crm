@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.94.0";
+  var APP_VERSION = "1.95.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -5770,8 +5770,14 @@ function discRowOn(client, brand, onYmd) {
      ========================================================================== */
   var FR_DONE = ["Dispatched", "Received", "Billed"];   /* the trip actually happened */
 
-  function frHasReceipt(r) { return String((r && r.receiptReceived) || "").toUpperCase() === "Y"; }
-  function frWent(r)       { return FR_DONE.indexOf(chStatus(r)) >= 0; }
+  /* CRM 6.9.601 / Challan 1.95.0 - A RETURN TRIP IS PAYABLE TOO. His words, 24 Sep: "also to enter
+     freight for material return". A return never carries receiptReceived and its lifecycle is Raised,
+     Picked up, Received - none of them in FR_DONE - so every return trip read "not dispatched" and
+     its freight could never be paid. For a return, the trip has HAPPENED once it is picked up, and it
+     is PROVED once the goods are booked in at the godown: the material on our floor is the paper. */
+  function frIsReturn(r)   { return !!(r && String(r.returnNo || "").trim()); }
+  function frHasReceipt(r) { return frIsReturn(r) ? chStatus(r) === "Received" : String((r && r.receiptReceived) || "").toUpperCase() === "Y"; }
+  function frWent(r)       { return frIsReturn(r) ? (chStatus(r) === "Picked up" || chStatus(r) === "Received") : FR_DONE.indexOf(chStatus(r)) >= 0; }
   function frAmt(r)        { return num(r && r.freight); }
   function frToClient(r)   { return lower((r && r.freightTo) || "") === "client"; }
 
