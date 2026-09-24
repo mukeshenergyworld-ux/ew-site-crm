@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.599";
+  var APP_VERSION = "6.9.600";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -13180,6 +13180,11 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var a = driverTypeMap()[dkey(d.name)];
     return (a && a.type) || "";
   }
+  /* v6.9.600 - HIS RULE, 24 Sep 2026: "Driver name to be enter by accounts only (name, phone no,
+     vehicle type, vehicle no), godown only have to select from dropdown". The server already
+     agreed - the drivers tab is writable by the owner, accounts and sales, never the godown -
+     which is how five spellings of one man came about. */
+  function canManageDrivers() { return roleAny(["admin", "accounts"]); }
   function driverByNameC(n) {
     var t = dkey(n);
     return (S.data.drivers || []).filter(function (d) { return dkey(d.name) === t; })[0] || null;
@@ -13260,13 +13265,14 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
     var cur = String(value || "");
     var known = list.some(function (d) { return d.name === cur; });
     var lab = '<label>' + (label || "Driver") + '</label>';
-    var addBtn = '<button class="btn sm ghost" data-act="dv-inline" data-for="' + esc(id) + '">+ New driver</button>';
+    var addBtn = canManageDrivers() ? '<button class="btn sm ghost" data-act="dv-inline" data-for="' + esc(id) + '">+ New driver</button>' : '';
     if (!list.length) {
       return lab +
         '<div class="row"><select class="grow" id="' + esc(id) + '" disabled style="background:#f1f5f9;color:#94a3b8">' +
         '<option value="">Nobody on the register yet</option></select>' + addBtn + '</div>' +
         '<div class="meta" style="font-size:12px;color:#b45309;margin-top:2px">' +
-        'The driver register is empty. Tap <b>+ New driver</b> once and he is there for every challan after this.</div>';
+        (canManageDrivers() ? 'The driver register is empty. Tap <b>+ New driver</b> once and he is there for every challan after this.'
+                            : 'The driver register is empty. Accounts puts drivers on it; ask them to add him.') + '</div>';
     }
     return lab + '<div class="row"><select class="grow" id="' + esc(id) + '">' +
       '<option value="">&mdash; No driver &mdash;</option>' +
@@ -19889,10 +19895,49 @@ function viewCatalogue() {
     });
     return out;
   }
-  function frKey(r) {
-    var id = String((r && r.driverId) || "").trim();
+  /* ===== ONE DRIVER, ONE LEDGER  (CRM 6.9.600 / Challan 1.94.0, 24 Sep 2026) =====
+     His words: "click driver name to show complete driver ledger, whats finally due and what
+     pending against which receipt" and "complete ledger maintain of every driver".
+
+     MEASURED FIRST. The register on the sheet holds ONE driver. The deliveries name seven, and
+     five of them are one man - "Sarvan Singh", "Sarwan Singh", "Sarwan singh" twice and
+     "Sharwan singh" - each with a different id. The server lets only the owner, accounts and
+     sales write the drivers tab; every "+ New driver" pressed on a godown phone was REFUSED and
+     sat on that phone, so the next phone found an empty register and the next man typed him
+     again. His rule now (point 1): accounts puts a driver on the register; the godown picks.
+
+     And the ones already typed are brought home rather than left as five ledgers: accounts
+     LINKS a stray to the man on the register (an append-only audit row, "driver:link", newest
+     wins, nothing edited on any delivery), and a trip or payout filed under the stray counts
+     for him from then on. A name that matches a register name exactly is his without asking. */
+  var _dlCache = null;
+  function drvLinkMap() {
+    if (_dlCache) return _dlCache;
+    var m = {}, at = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== "driver:link") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      var f = String(d.from || ""), to = String(d.to || "");
+      if (!f) return;
+      if (at[f] && String(a.createdAt || "") < at[f]) return;
+      at[f] = String(a.createdAt || ""); m[f] = to;          /* to "" = unlinked again */
+    });
+    return (_dlCache = m);
+  }
+  function drvResolve(k) {
+    var m = drvLinkMap(), n = 0;
+    while (m[k] && m[k] !== k && n++ < 6) k = m[k];
+    return k;
+  }
+  function drvRawKey(id, name) {
+    id = String(id || "").trim();
     if (id) return "id:" + id;
-    return "nm:" + lower((r && r.driver) || "");
+    var d = driverByName(name);
+    if (d && String(d.id || "").trim()) return "id:" + String(d.id).trim();
+    return "nm:" + lower(name || "");
+  }
+  function frKey(r) {
+    return drvResolve(drvRawKey(r && r.driverId, r && r.driver));
   }
   function frRows() {
     var by = {}, order = [];
@@ -19918,6 +19963,17 @@ function viewCatalogue() {
       if (!g.mobile && t.r.driverMobile) g.mobile = String(t.r.driverMobile);
       g.trips.push(t);
     });
+    /* the register speaks for the man on it: his name, lorry and number as accounts filed them */
+    order.forEach(function (k) {
+      if (k.indexOf("id:") !== 0) return;
+      var reg = ((S.data && S.data.drivers) || []).filter(function (d) { return String(d.id || "").trim() === k.slice(3); })[0];
+      var g = by[k];
+      g.onReg = !!reg;
+      if (reg) {
+        g.name = String(reg.name || g.name); g.vehicle = String(reg.vehicle || g.vehicle);
+        g.mobile = String(reg.mobile || g.mobile); g.byName = false;
+      }
+    });
     /* the man with the most money stuck behind missing paper comes first - that is the job */
     return order.map(function (k) { return by[k]; }).sort(function (a, b) {
       return (b.held - a.held) || (b.ready - a.ready) || alpha(a.name, b.name);
@@ -19926,9 +19982,7 @@ function viewCatalogue() {
   function payouts() { return (S.dp && S.dp.rows) || []; }
   function dpAmt(p) { return num(p && p.amount); }
   function dpKey(p) {
-    var id = String((p && p.driverId) || "").trim();
-    if (id) return "id:" + id;
-    return "nm:" + lower((p && p.driver) || "");
+    return drvResolve(drvRawKey(p && p.driverId, p && p.driver));
   }
   function paidTo(key) {
     return payouts().filter(function (p) { return dpKey(p) === key; })
@@ -19975,7 +20029,8 @@ function viewCatalogue() {
     /* ---- the drivers ---- */
     var noDrv = (S.data.challans || []).filter(function (c) { return c && c.status !== "Cancelled" && frAmt(c) > 0 && !(c.driverId || c.driver); });
     h += '<div class="row" style="align-items:center;margin:12px 0 4px"><h3 style="margin:0;font-size:15px">Drivers <span class="pill teal">' + rows.length + '</span></h3>' +
-      '<div class="grow"></div><button class="btn sm" data-act="dv-inline" data-for="">+ Add a driver</button></div>';
+      '<div class="grow"></div>' + (canManageDrivers() ? '<button class="btn sm" data-act="dv-inline" data-for="">+ Add a driver</button>' : '') + '</div>' +
+      '<div class="meta" style="font-size:12.5px;margin:0 0 6px">Tap a driver&rsquo;s name for his complete ledger &mdash; every trip, every payout, what is finally due, and what waits on which receipt.</div>';
     if (noDrv.length) h += '<div class="meta" style="font-size:12.5px;color:#b45309;margin-bottom:6px"><b>' + noDrv.length + '</b> deliver' + (noDrv.length === 1 ? 'y carries' : 'ies carry') +
       ' freight with no driver named &mdash; ' + money(noDrv.reduce(function (t, c) { return t + frAmt(c); }, 0)) + ' that can be settled with nobody. They are in the ledger below marked <b>not named</b>; open the delivery and put the driver on it.</div>';
     h += xlTable("drivers", [
@@ -19985,7 +20040,9 @@ function viewCatalogue() {
       var paid = paidTo(g.key), owed = stillOwed(g);
       return { v: { name: g.name, veh: g.vehicle, mobile: g.mobile, ready: g.ready, held: g.held, paid: paid, owed: owed },
         cells: {
-          name: '<b>' + esc(g.name) + '</b>' + (g.byName ? ' <span class="pill" style="background:#fef3c7;color:#92400e" title="Joined by name - this driver has no id on the register">by name</span>' : ''),
+          name: '<a href="#" data-act="dl-open" data-k="' + esc(g.key) + '" style="font-weight:700;color:#0b3b36;text-decoration:underline dotted" title="His complete ledger">' + esc(g.name) + '</a>' +
+            (!g.onReg ? ' <span class="pill" style="background:#fef3c7;color:#92400e" title="Not on the driver register - typed on the delivery">not on register</span>' +
+              (canManageDrivers() ? ' <button class="btn sm ghost" data-act="dl-link" data-k="' + esc(g.key) + '" style="padding:1px 8px;font-size:12px">Link&hellip;</button>' : '') : ''),
           veh: g.vehicle ? esc(g.vehicle) : '<span style="color:#94a3b8">—</span>',
           mobile: g.mobile ? '<a href="tel:' + esc(g.mobile) + '">' + esc(g.mobile) + '</a>' : '<span style="color:#94a3b8">—</span>',
           ready: g.ready > 0.5 ? '<b>' + money(g.ready) + '</b> <span style="color:#94a3b8;font-size:12px">' + g.readyN + '</span>' : '<span style="color:#94a3b8">—</span>',
@@ -19995,6 +20052,25 @@ function viewCatalogue() {
           go: canPay ? '<button class="btn sm" data-act="dp-open" data-k="' + esc(g.key) + '" style="padding:2px 8px;font-size:12px">Record a payment</button>' : ''
         } };
     }), "what is proved, pending, paid and owed");
+
+    /* ---- v6.9.600 - THE REGISTER, as accounts keeps it ---- */
+    var _reg = ((S.data && S.data.drivers) || []).filter(function (d) { return String(d.name || "").trim(); });
+    h += '<h3 style="margin:16px 0 4px;font-size:15px">Driver register <span class="pill teal">' + _reg.length + '</span></h3>' +
+      '<div class="meta" style="font-size:12.5px;margin:0 0 6px">The list the godown picks from. ' +
+      (canManageDrivers() ? 'Only the owner and accounts add or change a driver.' : 'Accounts adds and changes drivers.') + '</div>';
+    h += xlTable("dvreg", [
+      { k: "name", t: "DRIVER" }, { k: "mob", t: "MOBILE" }, { k: "type", t: "VEHICLE TYPE" }, { k: "veh", t: "VEHICLE NO" }, { k: "go", t: "" }
+    ], _reg.map(function (d) {
+      var vt = driverType(d);
+      return { v: { name: d.name || "", mob: d.mobile || "", type: vt, veh: d.vehicle || "" },
+        cells: {
+          name: '<a href="#" data-act="dl-open" data-k="' + esc(drvResolve("id:" + String(d.id || "").trim())) + '" style="font-weight:700;color:#0b3b36;text-decoration:underline dotted">' + esc(d.name) + '</a>',
+          mob: d.mobile ? '<a href="tel:' + esc(d.mobile) + '">' + esc(d.mobile) + '</a>' : '<span style="color:#b45309">no mobile</span>',
+          type: vt ? esc(vt) : '<span style="color:#b45309">not set</span>',
+          veh: d.vehicle ? esc(d.vehicle) : '<span style="color:#b45309">not set</span>',
+          go: canManageDrivers() ? '<button class="btn sm ghost" data-act="dv-edit" data-id="' + esc(d.id) + '" style="padding:2px 8px;font-size:12px">Edit</button>' : ''
+        } };
+    }), "");
 
     /* ---- the freight ledger: every delivery with freight, driver or not ---- */
     var led = (S.data.challans || []).filter(function (c) { return c && c.status !== "Cancelled" && frAmt(c) > 0; })
@@ -20036,6 +20112,100 @@ function viewCatalogue() {
       }), "how it was paid and against what");
     }
     return h;
+  }
+  /* ===== v6.9.600 - ONE DRIVER'S COMPLETE LEDGER =====
+     Every trip that carried freight and every payout, oldest first, with a running balance of
+     what he is owed. Only a PROVED trip (signed receipt on the delivery) adds to it - his rule
+     since 21 Aug - so the trips still waiting on paper are listed under it, each with its
+     challan and the button that attaches the receipt, and they say what they will add. */
+  function modalDriverLedger(key) {
+    var g = frRows().filter(function (x) { return x.key === key; })[0];
+    var reg = key.indexOf("id:") === 0 ? ((S.data.drivers || []).filter(function (d) { return String(d.id || "").trim() === key.slice(3); })[0] || null) : null;
+    var nm = (g && g.name) || (reg && reg.name) || "Driver";
+    var pays = payouts().filter(function (p) { return dpKey(p) === key; });
+    var ev = [];
+    ((g && g.trips) || []).forEach(function (t) {
+      if (t.state !== "ready") return;
+      var r = t.r;
+      ev.push({ d: String(r.receiptAt || r.dispatchedAt || r.createdAt || "").slice(0, 10), ts: String(r.createdAt || ""), kind: "trip", t: t, cr: frAmt(r), dr: 0 });
+    });
+    pays.forEach(function (p) { ev.push({ d: String(p.date || p.createdAt || "").slice(0, 10), ts: String(p.createdAt || ""), kind: "pay", p: p, cr: 0, dr: dpAmt(p) }); });
+    ev.sort(function (a, b) { return a.d !== b.d ? a.d.localeCompare(b.d) : a.ts.localeCompare(b.ts); });
+    var bal = 0, earned = 0, paid = 0;
+    var rowsH = ev.map(function (e, i) {
+      bal += e.cr - e.dr; earned += e.cr; paid += e.dr;
+      var what = e.kind === "trip"
+        ? '<b>' + esc(e.t.r.challanNo || e.t.r.returnNo || "") + '</b>' + (e.t.kind === "return" ? ' <span class="pill">return trip</span>' : '') +
+          ' <span style="color:#64748b">' + esc(e.t.r.customerName || "") + '</span>' + (frToClient(e.t.r) ? ' <span style="color:#64748b;font-size:12px">&middot; billed to client</span>' : '')
+        : '<b style="color:#0f766e">Paid</b> <span style="color:#64748b">' + esc([e.p.mode, e.p.ref].filter(Boolean).join(" · ") || "") + (e.p.note ? ' &middot; ' + esc(e.p.note) : '') + ' &middot; by ' + esc(e.p.createdBy || "") + '</span>';
+      return '<tr style="background:' + (i % 2 ? '#f8fafc' : '#fff') + '">' +
+        '<td style="padding:5px 7px;white-space:nowrap">' + esc(dmy(e.d)) + '</td>' +
+        '<td style="padding:5px 7px">' + what + '</td>' +
+        '<td style="padding:5px 7px;text-align:right;white-space:nowrap">' + (e.cr ? money(e.cr) : '') + '</td>' +
+        '<td style="padding:5px 7px;text-align:right;white-space:nowrap;color:#0f766e">' + (e.dr ? money(e.dr) : '') + '</td>' +
+        '<td style="padding:5px 7px;text-align:right;white-space:nowrap;font-weight:700;color:' + (bal > 0.5 ? '#b91c1c' : '#0f766e') + '">' + money(bal) + '</td></tr>';
+    }).join("");
+    var held = ((g && g.trips) || []).filter(function (t) { return t.state === "held"; });
+    var wait = ((g && g.trips) || []).filter(function (t) { return t.state === "waiting"; });
+    var heldAmt = held.reduce(function (a, t) { return a + frAmt(t.r); }, 0);
+    var TH = function (x, r) { return '<th style="padding:5px 7px;text-align:' + (r ? 'right' : 'left') + ';font-size:12px;color:#fff;background:#0b3b36;white-space:nowrap">' + x + '</th>'; };
+    var h = '<h2>' + esc(nm) + ' &mdash; driver ledger</h2>' +
+      '<p class="sub">' + esc([reg && reg.mobile || (g && g.mobile), driverType(reg || {}), reg && reg.vehicle || (g && g.vehicle)].filter(Boolean).join(" · ") || "no details on the register") +
+      (reg ? '' : ' &middot; <b style="color:#b45309">not on the register</b>') + '</p>' +
+      '<div class="cards" style="margin:4px 0 8px">' +
+        '<div class="stat"><div class="n">' + money(earned) + '</div><div class="l">Proved trips</div></div>' +
+        '<div class="stat"><div class="n">' + money(paid) + '</div><div class="l">Paid to him</div></div>' +
+        '<div class="stat' + (bal > 0.5 ? ' alert' : '') + '"><div class="n">' + (bal < -0.5 ? money(-bal) + ' ahead' : money(bal)) + '</div><div class="l">Finally due</div></div>' +
+        '<div class="stat' + (heldAmt > 0.5 ? ' alert' : '') + '"><div class="n">' + money(heldAmt) + '</div><div class="l">Waiting on receipts &middot; ' + held.length + '</div></div>' +
+      '</div>' +
+      (S.dp ? '' : '<div class="meta" style="color:#b91c1c;font-size:12.5px;margin-bottom:6px">His payouts have not loaded yet, so "Paid" and "Finally due" are not complete &mdash; wait a moment and open it again.</div>');
+    h += '<h3 style="margin:8px 0 4px;font-size:14px">The account</h3>' +
+      (ev.length ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>' +
+        TH("DATE") + TH("TRIP / PAYOUT") + TH("EARNED", 1) + TH("PAID", 1) + TH("DUE", 1) + '</tr></thead><tbody>' + rowsH + '</tbody></table></div>'
+        : '<div class="meta">No proved trip and no payout yet.</div>');
+    h += '<h3 style="margin:12px 0 4px;font-size:14px">Waiting on a receipt <span class="pill due">' + held.length + '</span></h3>' +
+      (held.length ? '<div class="meta" style="font-size:12.5px;margin-bottom:4px">Not in his due yet. Attach the signed receipt and the freight moves into the account above.</div>' +
+        held.map(function (t) {
+          var r = t.r;
+          return '<div class="row" style="align-items:center;gap:8px;padding:5px 0;border-top:1px solid #e2e8f0">' +
+            '<div class="grow"><b>' + esc(r.challanNo || r.returnNo || "") + '</b> <span style="color:#64748b">' + esc(r.customerName || "") + ' &middot; ' + esc(dmy(String(r.dispatchedAt || r.createdAt || "").slice(0, 10))) + '</span></div>' +
+            '<b>' + money(frAmt(r)) + '</b>' +
+            (canAttachProof() && t.kind !== "return" ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '">Attach receipt</button>' : '') + '</div>';
+        }).join("") : '<div class="meta">Nothing &mdash; every trip that went has its receipt.</div>');
+    if (wait.length) {
+      h += '<h3 style="margin:12px 0 4px;font-size:14px">Not dispatched yet <span class="pill">' + wait.length + '</span></h3>' +
+        '<div class="meta" style="font-size:12.5px">' + wait.map(function (t) { return esc(t.r.challanNo || t.r.returnNo || "") + ' (' + money(frAmt(t.r)) + ')'; }).join(", ") + ' &mdash; no trip has happened, so these are in neither figure.</div>';
+    }
+    return h + '<div class="foot"><button class="btn ghost" data-act="close">Close</button>' +
+      (roleAny(["admin", "accounts"]) && g ? '<button class="btn" data-act="dp-open" data-k="' + esc(key) + '">Record a payment</button>' : '') + '</div>';
+  }
+  /* v6.9.600 - link a driver typed on a delivery to the man on the register, or put him on it */
+  function modalDriverLink(key) {
+    var g = frRows().filter(function (x) { return x.key === key; })[0];
+    if (!g) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var reg = ((S.data && S.data.drivers) || []).filter(function (d) { return String(d.name || "").trim() && String(d.id || "").trim(); })
+      .sort(function (a, b) { return alpha(a.name, b.name); });
+    return '<h2>' + esc(g.name) + ' &mdash; who is he?</h2>' +
+      '<p class="sub">Typed on ' + plural(g.trips.length, "delivery") + ', not on the register. If he is a man already on it, link him and his trips and payouts join that man&rsquo;s ledger. If he is new, put him on the register.</p>' +
+      (reg.length ? '<label>He is the same man as</label><select id="dl_to"><option value="">&mdash; pick from the register &mdash;</option>' +
+        reg.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.name) + (d.vehicle ? ' · ' + esc(d.vehicle) : '') + '</option>'; }).join("") + '</select>' : '') +
+      '<div class="meta" style="font-size:12px;margin-top:6px">A link is a note beside the deliveries, not a change to them, and it can be undone.</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
+      '<button class="btn ghost" data-act="dl-reg" data-k="' + esc(key) + '">He is new &mdash; put him on the register</button>' +
+      (reg.length ? '<button class="btn" data-act="dl-link-save" data-k="' + esc(key) + '">Link</button>' : '') + '</div>';
+  }
+  /* v6.9.600 - change a driver on the register (name, mobile, vehicle type, vehicle no) */
+  function modalDriverEdit(id) {
+    var d = ((S.data && S.data.drivers) || []).filter(function (x) { return String(x.id) === String(id); })[0];
+    if (!d) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var vt = S.dedit && S.dedit.id === d.id ? S.dedit.vtype : driverType(d);
+    return '<h2>Driver &mdash; ' + esc(d.name) + '</h2>' +
+      '<label>Name</label><input id="de_name" value="' + esc(d.name || "") + '"/>' +
+      '<label>Mobile</label><input id="de_mob" inputmode="numeric" value="' + esc(d.mobile || "") + '"/>' +
+      '<label>Vehicle number</label><input id="de_veh" value="' + esc(d.vehicle || "") + '"/>' +
+      '<label>Vehicle type</label><div class="row" style="flex-wrap:wrap;gap:6px">' +
+      VEHICLE_TYPES.map(function (t2) { return '<button class="btn sm ' + (vt === t2 ? '' : 'ghost') + '" data-act="de-type" data-id="' + esc(d.id) + '" data-t="' + esc(t2) + '">' + esc(t2) + '</button>'; }).join("") + '</div>' +
+      '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button><button class="btn" data-act="de-save" data-id="' + esc(d.id) + '">Save</button></div>';
   }
   /* the payment entry - the Challan app's sheetPayout, in this app's modal.
      v6.9.557 - was modalPayout(key), which the incentive modalPayout(name, kind) further down
@@ -40523,7 +40693,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pfxCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _rtStampCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null; _agrCache = null; _pvCache = null;
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pfxCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _rtStampCache = null; _dtCache = null; _dlCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null; _agrCache = null; _pvCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null; _plcCache = null;
     _rpgCache = null;      /* v6.9.489 - the preset gap is money; a stale count is the worst of them */
     /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
@@ -45066,6 +45236,71 @@ function viewCatalogue() {
     if (act === "fr-month") { S.frMonth = t.getAttribute("data-m") || ""; render(); return; }   /* v6.9.528 */
     /* v6.9.528 - the Challan app's dp-open / dp-save, in this app's modal. Money leaving the firm:
        owner or accounts, the same list the server enforces. */
+    if (act === "dl-open") { S.modal = modalDriverLedger(t.getAttribute("data-k") || ""); render(); return; }   /* v6.9.600 */
+    if (act === "dl-link") {
+      if (!canManageDrivers()) { toast("Linking drivers is for accounts."); return; }
+      S.modal = modalDriverLink(t.getAttribute("data-k") || ""); render(); return;
+    }
+    if (act === "dl-link-save") {
+      if (!canManageDrivers()) { toast("Linking drivers is for accounts."); return; }
+      var _lk = t.getAttribute("data-k") || "", _to = String(val("dl_to") || "").trim();
+      if (!_to) { toast("Pick the man on the register he is."); return; }
+      var _lg = frRows().filter(function (x) { return x.key === _lk; })[0] || {};
+      var _toD = (S.data.drivers || []).filter(function (d) { return String(d.id) === _to; })[0] || {};
+      var _lrow = { id: mintId("DL"), createdAt: new Date().toISOString(), actor: S.user || "",
+        action: "driver:link", target: String(_lg.name || _lk) + " -> " + String(_toD.name || _to),
+        detail: JSON.stringify({ from: _lk, to: "id:" + _to, fromName: _lg.name || "", toName: _toD.name || "" }) };
+      (S.data.audit = S.data.audit || []).push(_lrow);
+      save("audit", _lrow, true);
+      _dlCache = null;
+      S.modal = modalDriverLedger(drvResolve(_lk)); render();
+      toast((_lg.name || "He") + " is linked to " + (_toD.name || "the register") + " \u2014 one ledger now.");
+      return;
+    }
+    if (act === "dl-reg") {
+      /* he is new: on the register under the id his deliveries already carry, so every trip is his at once */
+      if (!canManageDrivers()) { toast("Drivers are put on the register by accounts."); return; }
+      var _rk = t.getAttribute("data-k") || "";
+      var _rg = frRows().filter(function (x) { return x.key === _rk; })[0] || {};
+      S.dvBack = null;
+      S.dnew = { name: _rg.name || "", mobile: _rg.mobile || "", vehicle: _rg.vehicle || "", vtype: "", withKey: _rk };
+      S.modal = modalDriverNew(); render(); return;
+    }
+    if (act === "dv-edit" || act === "de-type") {
+      if (!canManageDrivers()) { toast("Drivers are changed by accounts."); return; }
+      var _eid = t.getAttribute("data-id") || "";
+      if (act === "dv-edit") S.dedit = { id: _eid, vtype: driverType((S.data.drivers || []).filter(function (d) { return String(d.id) === _eid; })[0] || {}) };
+      else {
+        var _keepE = { n: val("de_name"), m: val("de_mob"), v: val("de_veh") };
+        var _vt2 = t.getAttribute("data-t") || "";
+        S.dedit = { id: _eid, vtype: (S.dedit && S.dedit.vtype === _vt2) ? "" : _vt2 };
+        S.modal = modalDriverEdit(_eid); render();
+        try { el("de_name").value = _keepE.n; el("de_mob").value = _keepE.m; el("de_veh").value = _keepE.v; } catch (eK) { }
+        return;
+      }
+      S.modal = modalDriverEdit(_eid); render(); return;
+    }
+    if (act === "de-save") {
+      if (!canManageDrivers()) { toast("Drivers are changed by accounts."); return; }
+      var _sid = t.getAttribute("data-id") || "";
+      var _d0 = (S.data.drivers || []).filter(function (d) { return String(d.id) === _sid; })[0];
+      if (!_d0) { toast("Could not find him on the register."); return; }
+      var _nn = String(val("de_name") || "").trim(), _nm = String(val("de_mob") || "").replace(/\D/g, ""), _nv = String(val("de_veh") || "").trim().toUpperCase();
+      if (!_nn) { toast("His name, at least."); return; }
+      if (_nm && _nm.length !== 10) { toast("A mobile is 10 digits, or leave it blank."); return; }
+      var _clash = (S.data.drivers || []).filter(function (d) { return String(d.id) !== _sid && dkey(d.name) === dkey(_nn); })[0];
+      if (_clash) { toast(_nn + " is already on the register."); return; }
+      var _vtS = (S.dedit && S.dedit.id === _sid) ? S.dedit.vtype : driverType(_d0);
+      var _upd = Object.assign({}, _d0, { name: _nn, mobile: _nm, vehicle: _nv, vehicleType: _vtS || "" });
+      save("drivers", _upd);
+      if (_vtS !== driverType(_d0) || _nn !== _d0.name) {
+        save("audit", { id: mintId("DT"), createdAt: new Date().toISOString(), actor: S.user || "", action: "driver:type", target: _nn,
+          detail: JSON.stringify({ name: _nn, vehicleType: _vtS || "", vehicle: _nv }) }, true);
+      }
+      _dtCache = null; S.dedit = null; S.modal = null; render();
+      toast(_nn + " saved on the register.");
+      return;
+    }
     if (act === "dp-open") {
       if (!roleAny(["admin", "accounts"])) { toast("Recording a payout is the owner or accounts."); return; }
       S.modal = modalDriverPayout(t.getAttribute("data-k") || ""); render(); return;
@@ -45094,7 +45329,13 @@ function viewCatalogue() {
                          mode: body.mode, ref: body.ref, forTrips: body.forTrips, note: body.note });
         S.modal = null; render();
         toast(money(damt) + " recorded against " + dg.name + ".");
-      }).catch(function () { btnBack(t, _dpl); toast("No answer from the server — nothing was recorded. Try again."); });
+      }).catch(function () {
+        /* v6.9.600 - a request that got no answer may still have landed; "nothing was recorded"
+           invited a second press and a second payout. Re-read the payouts instead. */
+        btnBack(t, _dpl); S.dp = null; _dpTried = false;
+        dpPull().then(function (ok2) { if (ok2) render(); });
+        toast("No answer from the server \u2014 the payment MAY have been recorded. Check his ledger before pressing again.");
+      });
       return;
     }
     if (act === "xl-cards") {
@@ -46814,6 +47055,7 @@ function viewCatalogue() {
        machinery that "+ Register new" already uses for a client. Registering a driver must
        never cost a man the challan he has half built. */
     if (act === "dv-inline") {
+      if (!canManageDrivers()) { toast("Drivers are put on the register by accounts. Ask them to add him."); return; }
       var dFor = t.getAttribute("data-for");
       var dBack = { forId: dFor };
       if (dFor === "m_driver") { dBack.modal = "challan"; dBack.keep = keepSnapshot(CH_FIELDS); }
@@ -46839,6 +47081,7 @@ function viewCatalogue() {
       S.modal = null; render(); return;
     }
     if (act === "dn-save") {
+      if (!canManageDrivers()) { toast("Drivers are put on the register by accounts."); return; }
       var dnName = String(val("dn_name") || "").trim();
       var dnMob  = String(val("dn_mob") || "").replace(/\D/g, "");
       var dnVeh  = String(val("dn_veh") || "").trim().toUpperCase();
@@ -46846,11 +47089,23 @@ function viewCatalogue() {
       if (!dnName) { toast("His name, at least."); return; }
       if (dnMob && dnMob.length !== 10) { toast("A mobile is 10 digits, or leave it blank."); return; }
       if (driverByNameC(dnName)) { toast(dnName + " is already on the register."); return; }
+      var _wk = (S.dnew && S.dnew.withKey) || "";      /* v6.9.600 - read before the form is cleared */
       var dBack2 = S.dvBack;
       S.dvBack = null; S.dnew = null;
       _dtCache = null;
-      save("drivers", { id: "", name: dnName, mobile: dnMob, vehicle: dnVeh,
+      save("drivers", { id: _wk.indexOf("id:") === 0 ? _wk.slice(3) : "", name: dnName, mobile: dnMob, vehicle: dnVeh,
                         vehicleType: dnType, defaultFare: "" });
+      /* v6.9.600 - a stray known only by name joins the new register row by a link */
+      if (_wk.indexOf("nm:") === 0) {
+        setTimeout(function () {
+          var _nd = (S.data.drivers || []).filter(function (d) { return dkey(d.name) === dkey(dnName); })[0];
+          if (_nd && _nd.id) {
+            var _al = { id: mintId("DL"), createdAt: new Date().toISOString(), actor: S.user || "", action: "driver:link", target: dnName,
+              detail: JSON.stringify({ from: _wk, to: "id:" + _nd.id, fromName: dnName, toName: dnName }) };
+            (S.data.audit = S.data.audit || []).push(_al); save("audit", _al, true); _dlCache = null; render();
+          }
+        }, 400);
+      }
       /* the type, filed where no sheet column is needed - see driverTypeMap() */
       if (dnType) {
         save("audit", {
