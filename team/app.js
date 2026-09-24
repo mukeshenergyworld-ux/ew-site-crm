@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.598";
+  var APP_VERSION = "6.9.599";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -10276,7 +10276,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
   function modalRetFinal(id) {
     var r = (S.data.returns || []).filter(function (x) { return x.id === id; })[0];
     if (!r) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
-    var rl = returnLines(r), amt = rl.reduce(function (a, x) { return a + x.amt; }, 0);
+    var rl = returnLines(r), amt = returnNet(r);
     var paper = chProofAny(r).has;
     return '<h2>Finalise return ' + esc(r.returnNo || "") + '</h2>' +
       '<p class="sub">' + esc(r.customerName || "") + (r.challanNo ? ' &middot; against ' + esc(r.challanNo) : '') +
@@ -10599,9 +10599,23 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      incentive: a concession given to a customer is not a decision to cut the partner who
      brought the goods, and quietly doing so would be taking that decision on his behalf. The
      screen says this in one line so nothing is hidden. */
+  /* v6.9.599 / Challan 1.93.0 / Collect 1.52.0 - HIS DECISION, 24 Sep 2026: the "Discount given on
+     the whole challan" box "reduce the challan total". It had been saved since the box was built and
+     subtracted nowhere - KAPIL2660/180826/001 carried Rs 3,970 in it and was billed in full. Both
+     concessions are rupees off one delivery, so they come off in the one place every total reads:
+     the typed discount on the challan plus the further discount given when it was finalised. The
+     ceiling at the goods value in challanNet / chFurtherOff still holds for the two together. */
   function hisabExtra(c) {
     var st = hisabStamp(c);
-    return st ? (Number(st.extra) || 0) : 0;
+    return (st ? (Number(st.extra) || 0) : 0) + Math.max(0, Number(c && c.discAmt) || 0);
+  }
+  /* what the line under the goods is called, so the paper says which concession it is */
+  function chOffLabel(c) {
+    var st = hisabStamp(c), x = st ? (Number(st.extra) || 0) : 0, dsc = Math.max(0, Number(c && c.discAmt) || 0);
+    var dn = String((c && c.discNote) || "").trim(), xn = String((st && st.extraNote) || "").trim();
+    if (dsc > 0 && x > 0) return "Discount on the challan " + (dn ? "(" + dn + ") " : "") + "+ further discount" + (xn ? " (" + xn + ")" : "");
+    if (dsc > 0) return "Discount on the challan" + (dn ? " (" + dn + ")" : "");
+    return "Further discount" + (xn ? " (" + xn + ")" : "");
   }
 
   /* The screen he presses it on. Everything he needs to decide is on it: whose delivery,
@@ -21393,7 +21407,22 @@ function viewCatalogue() {
       (n === all ? "price estimated" : esc(n) + " of " + esc(all) + " estimated") + '</span>';
   }
   /* Net (post-discount) value of a booked-in return — a credit against the client's ledger. */
-  function returnNet(r) { return returnLines(r).reduce(function (s, x) { return s + x.amt; }, 0); }
+  /* v6.9.599 - HIS DECISION, 24 Sep 2026: goods that come back from a delivery which was given a
+     further discount (or a discount on the whole challan) are credited LESS THE SAME SHARE. Rs 1,000
+     off a Rs 10,000 delivery is 10%; return all of it and the credit is Rs 9,000, which is what he
+     paid - not Rs 10,000, which would leave him Rs 1,000 in credit for nothing. Only a return booked
+     AGAINST a delivery can know that delivery's discount; one with no challan number is credited in
+     full, as before. Measured the day it shipped: the one return in his book booked against a
+     delivery had no such discount, so no figure moved. */
+  function retShare(r) {
+    var src = retChallan(r);
+    if (!src) return { factor: 1, off: 0, gross: 0, ch: null };
+    var gross = pricedLines(src, src.customerName).reduce(function (a, x) { return a + x.amt; }, 0);
+    var off = gross > 0 ? Math.min(Math.max(0, hisabExtra(src)), gross) : 0;
+    return { factor: off > 0 ? (gross - off) / gross : 1, off: off, gross: gross, ch: src };
+  }
+  function returnGross(r) { return returnLines(r).reduce(function (s, x) { return s + x.amt; }, 0); }
+  function returnNet(r) { var g = returnGross(r), f = retShare(r).factor; return f === 1 ? g : Math.round(g * f); }
   /* Returns for a client that are BOOKED IN at the godown (status "Received") — these are the ones
      that count as a money credit in HISAB, symmetric with a challan counting only once its receipt
      is in. A return merely raised or in transit is not yet deducted. */
@@ -25324,7 +25353,7 @@ function viewCatalogue() {
        and starts UNTICKED (hisabTicked), and what is unticked folds into the statement's
        "Balance brought forward" line with its sum written out. Nothing about what counts
        changed: every total below is still accumulated over all of them. */
-    var allNet = 0, selNet = 0, selGoods = 0, selCount = 0;
+    var allNet = 0, selNet = 0, selGoods = 0, selCount = 0, selGoodsNet = 0;
     chs.forEach(function (c) {
       var sel = hisabTicked(cl, "ch", c.id);
       var priced = pricedLines(c, cl);
@@ -25337,7 +25366,7 @@ function viewCatalogue() {
          here), but only a finalised one is ADDED - the rule the ledger and the statement PDF
          use. Before this, "it closes to" counted a delivery the account did not, and the screen,
          the paper and the account were three different figures. */
-      if (hisabOwed(c)) { allNet += chTotal; if (sel) { selNet += chTotal; selGoods += sub; selCount++; } }
+      if (hisabOwed(c)) { allNet += chTotal; if (sel) { selNet += chTotal; selGoods += sub; selCount++; if (sub - xOff > 0) selGoodsNet += sub - xOff; } }
       var rows = priced.map(function (x, idx) {
         var disc = x.disc;
         var discCell = admin
@@ -25410,7 +25439,7 @@ function viewCatalogue() {
         '<th style="padding:6px;text-align:center;width:56px">Disc%</th><th style="padding:6px;text-align:right;width:72px">Net rate</th>' +
         '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' + rows +
         (frt > 0 ? '<tr style="background:#fffbeb;border-top:1px dashed #e2e8f0"><td colspan="6" style="padding:5px 6px;text-align:right;color:#92400e">Freight' + (c.driver ? ' (' + esc(c.driver) + ')' : '') + '</td><td style="padding:5px 6px;text-align:right;font-weight:700;color:#92400e">' + money(frt) + '</td></tr>' : '') +
-        (xOff > 0 ? '<tr style="background:#f0fdfa;border-top:1px dashed #e2e8f0"><td colspan="6" style="padding:5px 6px;text-align:right;color:#0f766e">Further discount' + (hisabStamp(c) && hisabStamp(c).extraNote ? ' (' + esc(hisabStamp(c).extraNote) + ')' : '') + '</td><td style="padding:5px 6px;text-align:right;font-weight:700;color:#0f766e">- ' + money(xOff) + '</td></tr>' : '') +
+        (xOff > 0 ? '<tr style="background:#f0fdfa;border-top:1px dashed #e2e8f0"><td colspan="6" style="padding:5px 6px;text-align:right;color:#0f766e">' + esc(chOffLabel(c)) + '</td><td style="padding:5px 6px;text-align:right;font-weight:700;color:#0f766e">- ' + money(xOff) + '</td></tr>' : '') +
         '</tbody>' +
         '<tfoot><tr style="background:#f1f5f9"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Challan total</td>' +
         /* v6.9.274 drew discGapCard() here - an orange "Re-price at the preset" panel on every
@@ -25530,7 +25559,7 @@ function viewCatalogue() {
        saying otherwise on a screen he reads money off is the one thing this must not do. */
     clientReturnsPending(cl).forEach(function (r) {
       var rl = returnLines(r);
-      var rSub = rl.reduce(function (a, x) { return a + x.amt; }, 0);
+      var rSub = returnNet(r);                 /* v6.9.599 - less the delivery's discount share */
       var st = String(r.status || "Raised");
       h += '<div class="card" style="border:1px dashed #fdba74;background:#fffbeb;padding:9px 12px">' +
         '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">' +
@@ -25582,7 +25611,7 @@ function viewCatalogue() {
        above them run newest-first would be two clocks on one screen. */
     rets.slice().sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).forEach(function (r) {
       var rl = returnLines(r);
-      var rSub = rl.reduce(function (a, x) { return a + x.amt; }, 0);
+      var rSub = returnNet(r), _rsh = retShare(r), _rGross = returnGross(r);   /* v6.9.599 */
       retTotal += rSub;
       /* v6.9.403 - "provide option to tick and choose for return also as like of dispatch
          challan". Same tick, same store, keyed "ret:<id>"; unticked, it folds into the
@@ -25674,14 +25703,18 @@ function viewCatalogue() {
         '<th style="padding:6px;text-align:center;width:40px">Qty</th><th style="padding:6px;text-align:right;width:66px">Rate</th>' +
         '<th style="padding:6px;text-align:center;width:56px">Disc%</th><th style="padding:6px;text-align:right;width:72px">Net rate</th>' +
         '<th style="padding:6px;text-align:right;width:82px">Amount</th></tr></thead><tbody>' + rrows +
-        '</tbody><tfoot><tr style="background:#fee2e2"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Return total</td>' +
+        '</tbody><tfoot>' +
+        (rSub !== _rGross ? '<tr style="background:#fff1f2"><td colspan="6" style="padding:5px 6px;text-align:right;color:#0f766e">Less the same ' +
+          (Math.round((1 - _rsh.factor) * 1000) / 10) + '% discount given on ' + esc((_rsh.ch && _rsh.ch.challanNo) || "its delivery") + '</td>' +
+          '<td style="padding:5px 6px;text-align:right;font-weight:700;color:#0f766e">+ ' + money(_rGross - rSub) + '</td></tr>' : '') +
+        '<tr style="background:#fee2e2"><td colspan="6" style="padding:6px;text-align:right;font-weight:700">Return total</td>' +
         '<td style="padding:6px;text-align:right;font-weight:800;color:#b91c1c">&minus;' + money(rSub) + '</td></tr></tfoot></table></div>' + '</div>';
     });
     /* v6.9.369 put the dead ones under the live ones and above the ledger card. v6.9.462 takes
        them further down still, on his word - "show at last of hisab section" - and they no
        longer travel alone: cxClientBand carries every kind, at the very bottom of this screen. */
     var _led = clientLedger(cl), paid = _led.paid, opening = _led.opening || 0, bal = opening + allNet - paid - retTotal;
-    var gst = S.billGst ? Math.round(selNet * 0.18) : 0;
+    var gst = S.billGst ? Math.round(selGoodsNet * 0.18) : 0;     /* v6.9.599 - on the goods, for information */
     var _clMob = (clientByName(cl) || {}).mobile || '';
     /* v6.9.344 - the ledger's own figures on the left, the owner's corner on the right. It is
        flex-wrapped, so on a phone the panel drops underneath instead of squeezing the balance. */
@@ -25747,7 +25780,7 @@ function viewCatalogue() {
         return '<div style="margin-top:7px;font-size:12.5px;line-height:1.45">On the statement: <b>' + selCount + '</b> of ' + chs.length + ' deliver' + (chs.length === 1 ? 'y' : 'ies') +
           (rets.length ? ' &middot; <b>' + retSelN + '</b> of ' + rets.length + ' return' + (rets.length === 1 ? '' : 's') : '') +
           (_ps.length ? ' &middot; <b>' + _pSel.length + '</b> of ' + _ps.length + ' payment' + (_ps.length === 1 ? '' : 's') : '') +
-          ' ticked &mdash; deliveries <b>' + money(selNet) + '</b>' + (S.billGst ? ' + GST ' + money(gst) + ' = <b>' + money(selNet + gst) + '</b>' : '') +
+          ' ticked &mdash; deliveries <b>' + money(selNet) + '</b>' + (S.billGst ? ' <span style="color:#64748b">(GST 18% on the goods ' + money(gst) + ', for information &mdash; not added to the balance)</span>' : '') +
           '<br><span style="color:#64748b">Balance brought forward on the paper: <b style="color:#0f172a">' + moneySgn(_bf) + '</b>' +
           (_off ? ' (' + _off + ' unticked entr' + (_off === 1 ? 'y folds' : 'ies fold') + ' into it, with the sum written out under it)' : ' (the previous balance)') +
           ' &middot; it closes to ' + moneySgn(bal) + ' either way.</span></div>';   /* v6.9.451 - the sign in front (moneySgn), as in the table above */
@@ -26526,10 +26559,13 @@ function viewCatalogue() {
       line("Balance brought forward", Math.abs(bf) < 0.5 && !offN && Math.abs(opening) < 0.5 ? "nil" : RSs(bf),
            { bold: true, note: bfNote });
       line("+  Deliveries on this statement  (" + chOn.length + ")", RSs(onDeliv));
-      var gst = S.billGst ? Math.round(onDeliv * 0.18) : 0;
+      /* v6.9.599 - HIS DECISION, 24 Sep 2026: GST on the statement is "for information only". It is
+         worked out on the GOODS (not freight, not a credit delivery) and says in words that it is not
+         part of the balance, so the paper can never be read as asking for it twice. */
+      var _gGoods = chOn.reduce(function (a, c) { var v = challanNet(c); return a + (v > 0 ? v : 0); }, 0);
+      var gst = S.billGst ? Math.round(_gGoods * 0.18) : 0;
       if (S.billGst) {
-        line("GST @ 18% on those deliveries", RSs(gst), { indent: 6, ink: GREY });
-        line("Deliveries incl. GST", RSs(onDeliv + gst), { indent: 6, ink: GREY });
+        line("For information: GST @ 18% on the goods " + RS(_gGoods), RSs(gst), { indent: 6, ink: GREY, note: "Not added to the balance below." });
       }
       if (rtOn.length) line("–  Material returned  (" + rtOn.length + ")", RS(onRet), { ink: RED });
       line("–  Received  (" + pyOn.length + " payment" + (pyOn.length === 1 ? "" : "s") + ")", RSs(onPaid), { ink: TEAL });
@@ -26695,6 +26731,17 @@ function viewCatalogue() {
             y += rowH; sub += x.amt;
           });
           var total = sub;
+          if (isRet) {
+            /* v6.9.599 - the same share of the delivery's discount, written out */
+            var _rn = returnNet(c);
+            if (_rn !== sub) {
+              var _rs = retShare(c);
+              more(4.4); F("normal"); doc.setFontSize(6.8); ink([15, 118, 110]);
+              doc.text("Less the same " + (Math.round((1 - _rs.factor) * 1000) / 10) + "% discount given on " + pdfSafe(String((_rs.ch && _rs.ch.challanNo) || "its delivery")), pX, y);
+              doc.text("+ " + RS(sub - _rn), cA, y, { align: "right" }); y += 4.4;
+            }
+            total = _rn;
+          }
           if (!isRet) {
             var frt = chFreight(c), xOff = chFurtherOff(c, sub);
             total = sub + frt - xOff;
@@ -26705,9 +26752,8 @@ function viewCatalogue() {
             }
             if (xOff > 0) {
               more(4.4);
-              var _xn = (hisabStamp(c) && hisabStamp(c).extraNote) || "";
               F("normal"); doc.setFontSize(6.8); ink([15, 118, 110]);
-              doc.text("Further discount" + (_xn ? " (" + pdfSafe(_xn) + ")" : ""), pX, y);
+              doc.text(pdfSafe(chOffLabel(c)), pX, y);
               doc.text("- " + RS(xOff), cA, y, { align: "right" }); y += 4.4;
             }
           }
