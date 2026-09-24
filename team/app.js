@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.590";
+  var APP_VERSION = "6.9.591";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -34782,6 +34782,19 @@ function viewCatalogue() {
     S.sq = qv;                 /* one query - the Search screen shows the same one */
     S.sres = null; S.sBusy = true; S.sFail = "";
     S.modal = modalSearchResults(); render();
+    /* v6.9.591 - THE ADMIN'S PHONE ALREADY HOLDS EVERYTHING THE OFFICE WOULD SEARCH. masterSearch_
+       looks through clients, quotes, challans and sites; the admin's book (teamFilterAll_,
+       role admin) is every row of all four, and the answer below only ever shows what the phone
+       does NOT hold (serverExtraHtml). So for the admin the call could only ever add nothing,
+       and it cost 2.4 s at best and minutes behind a busy line (the "Header" search, 23 Sep).
+       Every other role still asks: the office can see other people's clients for them, which is
+       how "already registered by another executive" is found. */
+    if (roleIs("admin") && S.data) {
+      S.sres = { ok: true, clients: [], quotes: [], challans: [], sites: [] };
+      S.sBusy = false;
+      if (S.modal) { S.modal = modalSearchResults(); render(); }
+      return;
+    }
     api("search", { q: qv }).then(function (r) {
       if (String(S.sq || "").trim() !== qv) return;   /* he has typed on - this answer is stale */
       S.sres = (r && r.ok) ? r : { clients: [], quotes: [], challans: [], sites: [] };
