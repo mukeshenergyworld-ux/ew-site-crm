@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.90.0";
+  var APP_VERSION = "1.91.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -4628,6 +4628,17 @@ function discRowOn(client, brand, onYmd) {
      not a record. It is teal. Nothing on this strip is ever grey-struck or red-struck. ======= */
   function chHasProof(c) { return !!proofFor(c); }
 
+  function chMoneySame(a, b) {
+    var n = function (v) { return Math.round((Number(v) || 0) * 100); };
+    var t = function (v) { return String(v == null ? "" : v).trim(); };
+    var lines = function (r) {
+      var x = []; try { x = JSON.parse(r.itemsJson || "[]") || []; } catch (e) { return "?" + t(r.itemsJson); }
+      return x.map(function (l) { return [t(l.code), t(l.desc), n(l.qty), n(l.rate), t(l.disc), t(l.brand)].join("|"); }).join("\n");
+    };
+    return n(a.amount) === n(b.amount) && n(a.freight) === n(b.freight) && t(a.freightTo || "Client") === t(b.freightTo || "Client") &&
+      n(a.discAmt) === n(b.discAmt) && t(a.discNote) === t(b.discNote) &&
+      t(a.customerName) === t(b.customerName) && t(a.customerId) === t(b.customerId) && lines(a) === lines(b);
+  }
   function chSteps(c) {
     var st = String((c && c.status) || "Draft");
     var gone = ["Dispatched", "Received", "Billed"].indexOf(st) >= 0;
@@ -4652,7 +4663,11 @@ function discRowOn(client, brand, onYmd) {
 
          ONLY THE PHYSICAL STEPS chain. Finalised and Billed are office acts that happen in
          either order, and inferring one from the other would be a lie about money. */
-      { k: "pass",  label: "Passed",     done: gone || arrived || st === "Approved" || !!String((c && c.approvedBy) || "").trim(),
+      /* 24 Sep 2026 - a name on the row is not the same as passed. 23/09/2026/158 was passed and
+         dispatched, then edited in the Challan app, which sends an edited challan back to Draft on
+         purpose; approvedBy stayed on the row, so this step drew "Passed \u00b7 Mukesh" in green
+         beside a red "To pass". A Draft is not passed, whoever passed an earlier version of it. */
+      { k: "pass",  label: "Passed",     done: gone || arrived || st === "Approved" || (st !== "Draft" && !!String((c && c.approvedBy) || "").trim()),
         why: "Waiting for the accounts desk to pass it." },
       { k: "disp",  label: "Dispatched", done: gone || arrived,
         why: "Nothing has left the godown on this challan yet." },
@@ -7535,6 +7550,17 @@ function discRowOn(client, brand, onYmd) {
           receiptReceived: _editRow ? (_editRow.receiptReceived || "N") : "N",
           status: "Draft"
         });
+        /* 1.91.0 (24 Sep 2026) - A DRIVER IS NOT A PRICE. 23/09/2026/158 was passed and on the road;
+           the godown opened it to add the driver and vehicle, and the edit sent it back to Draft -
+           so the owner was asked to pass, again, goods that had already left. The rule above stands
+           for anything that changes what the customer is charged or who he is: the lines, their
+           rates and discounts, the amount, freight and who pays it, the further discount, the
+           client. When NONE of those changed and the challan had already been passed, the edit
+           keeps its status - the driver, the vehicle, the phone, the site are recorded, and the
+           approval, which was about the money, still holds. */
+        if (_editRow && chMoneySame(_editRow, ch) && ["Approved", "Dispatched", "Received", "Billed"].indexOf(String(_editRow.status || "")) >= 0) {
+          ch.status = _editRow.status;
+        }
         return saveRow("challans", ch, { noFor: _editRow ? "" : _noFor }).then(function (r) {
           var saved = r.row || ch;
           var _list = (S.data.challans = S.data.challans || []);
