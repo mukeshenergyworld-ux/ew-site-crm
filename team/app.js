@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.605";
+  var APP_VERSION = "6.9.606";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -39500,6 +39500,7 @@ function viewCatalogue() {
       '<button class="btn" data-act="fcs-setup" data-cl="' + esc(cn) + '">Set discount &amp; incentive</button></div>';
   }
   function modalChallan() {
+    try { ensureStock(); } catch (eS) { }   /* v6.9.606 - so Save can warn when a line asks for more than is free */
     if (!S.ch) S.ch = { brand: "", family: "", items: [] };
     var z = S.ch;
     var clients = S.data.clients.map(function (x) { return x.name; });
@@ -40338,6 +40339,7 @@ function viewCatalogue() {
       '<button class="btn sm" data-act="grn-new">+ Lorry received (godown)</button>' +
       '<button class="btn sm" data-act="stock-import">&#8593; Tally bills / register</button>' +
       '<button class="btn sm ghost" data-act="pc-open">Physical count</button>' +
+      '<button class="btn sm ghost" data-act="stk-xlsx">&#8681; Excel</button>' +
       '<button class="btn sm ghost" data-act="stock-add" data-type="adjust">Adjustment</button>' +
       (canSetPricing() ? '<button class="btn sm ghost" data-act="stock-landing">Landing %</button>' : '') +
       '<button class="btn sm ghost" data-act="stock-refresh">Refresh</button></div></div>';
@@ -40420,6 +40422,64 @@ function viewCatalogue() {
     return h;
   }
 
+  /* ===== FREE STOCK, AND THE WARNING AT CHALLAN TIME  (CRM 6.9.606 / Challan 1.99.0, 24 Sep 2026) =====
+     His words: "a warning when a challan asks for more than is in stock". Free = on hand less what
+     other challans already hold: every challan not cancelled whose receipt is not in yet (a draft,
+     a passed one, one on the road) - on-hand only drops when the receipt is in, so until then the
+     goods are promised but still counted. A product that has NEVER been physically counted has no
+     known stock, and no warning is given for it: a warning built on a guess is one he learns to
+     ignore. The challan is never blocked - he is told, and pressing Save again saves it. */
+  function stkReserved(skipId) {
+    var cut = stkCutoff(), m = {};
+    ((S.data && S.data.challans) || []).forEach(function (c) {
+      if (!c || (skipId && c.id === skipId)) return;
+      if (String(c.status || "") === "Cancelled") return;
+      try { if (typeof isCancelled === "function" && isCancelled("challans", c.id)) return; } catch (e) { }
+      if (String(c.receiptReceived || "").toUpperCase() === "Y") return;
+      chItems(c).forEach(function (i) {
+        var k = String(i.code || "").trim();
+        if (k && cut[k] && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0);
+      });
+    });
+    return m;
+  }
+  function stkOverLines(lines, skipId) {
+    if (!S.stock || !S.stock.length) return [];
+    var cut = stkCutoff(), mv = stockMovementByCode().m, del = stockDeliveredByCode(), ret = stockReturnedByCode(), res = stkReserved(skipId);
+    var want = {}, desc = {};
+    (lines || []).forEach(function (l) { var k = String((l && l.code) || "").trim(); if (!k) return; want[k] = (want[k] || 0) + (Number(l.qty) || 0); if (!desc[k]) desc[k] = l.desc || k; });
+    return Object.keys(want).filter(function (k) { return cut[k]; }).map(function (k) {
+      var free = (mv[k] || 0) - (del[k] || 0) + (ret[k] || 0) - (res[k] || 0);
+      return { code: k, desc: desc[k], want: want[k], free: Math.round(free * 100) / 100 };
+    }).filter(function (x) { return x.want > x.free + 1e-9; });
+  }
+  function stkOverSay(over) {
+    return "Stock is short: " + over.map(function (x) { return x.desc + " - asked " + x.want + ", free " + (x.free > 0 ? x.free : 0); }).join("; ") +
+      ". Press save again to make the challan anyway.";
+  }
+
+  /* ===== v6.9.606 - THE STOCK SHEET AS EXCEL: every product, where its figure comes from ===== */
+  function stockXlsx() {
+    var cut = stkCutoff(), mv = stockMovementByCode(), del = stockDeliveredByCode(), ret = stockReturnedByCode(), res = stkReserved("");
+    var reo = reorderByCode(), rate = rateByCode(), open = {}, rin = {}, adj = {};
+    (S.stock || []).forEach(function (r) {
+      var ty = String(r.type || ""), k = String(r.code || "").trim(); if (!k) return;
+      if (ty === "opening" && cut[k] && String(r.asOn || "").slice(0, 10) === cut[k]) open[k] = (open[k] || 0) + (Number(r.qty) || 0);
+      else if ((ty === "in" || ty === "adjust") && stkCounts(k, r.asOn, cut)) { if (ty === "in") rin[k] = (rin[k] || 0) + (Number(r.qty) || 0); else adj[k] = (adj[k] || 0) + (Number(r.qty) || 0); }
+    });
+    var codes = {}; [mv.m, del, reo, res].forEach(function (o) { Object.keys(o).forEach(function (k) { codes[k] = 1; }); });
+    var HEAD = ["Code", "Product", "Brand", "Unit", "Counted on", "Count", "Lorries in", "Adjustments", "Delivered", "Returned", "On hand", "Held by challans", "Free", "Reorder at", "Purchase rate", "Value"];
+    var out = [[{ v: "Energy World · Stock · " + fullDate(today()), s: XL.BOLD }], [], HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
+    Object.keys(codes).sort().forEach(function (k) {
+      var p = PRODUCTS.filter(function (x) { return x.code === k; })[0] || {};
+      var onh = (mv.m[k] || 0) - (del[k] || 0) + (ret[k] || 0), fr = onh - (res[k] || 0), rt = rate[k] || 0;
+      out.push([k, p.desc || mv.desc[k] || "", p.brand || "", p.unit || "", cut[k] ? dmy(cut[k]) : "not counted", open[k] || 0, rin[k] || 0, adj[k] || 0,
+        del[k] || 0, ret[k] || 0, onh, res[k] || 0, fr, reo[k] || "", rt || "", rt && onh > 0 ? Math.round(onh * rt) : ""]);
+    });
+    out.push([]);
+    out.push(["On hand = count + lorries in + adjustments - delivered (receipt in) + returned, from each product's count date. Held by challans = challans not cancelled whose receipt is not in yet. A product not counted has no known stock."]);
+    dlXlsx("Stock_" + today() + ".xlsx", "Stock", out, [14, 34, 16, 9, 12, 8, 10, 11, 10, 10, 9, 13, 8, 10, 12, 12]);
+  }
   /* ===== v6.9.605 - ONE PRODUCT'S STOCK LEDGER, UNDER ITS ROW =====
      Every movement, oldest first, with the balance after each: opening and goods received (the
      bill it came on), adjustments, each delivery that took it out (a challan whose receipt is in -
@@ -42542,6 +42602,7 @@ function viewCatalogue() {
     }
     if (act === "stock-item") { S.modal = modalStockItem(t.getAttribute("data-code")); render(); return; }
     if (act === "stk-open") { var _sc = t.getAttribute("data-code") || ""; S.stkOpen = (S.stkOpen === _sc) ? "" : _sc; keepScroll = true; render(); return; }   /* v6.9.605 */
+    if (act === "stk-xlsx") { if (!STOCK_LOADED) { ensureStock(); toast("Stock is still loading \u2014 try again in a moment."); return; } stockXlsx(); return; }   /* v6.9.606 */
     if (act === "stk-reglist") { S.stkReg = !S.stkReg; keepScroll = true; render(); return; }
     if (act === "stock-landing") { S.modal = modalStockLanding(); render(); return; }
     if (act === "stock-landing-save") {
@@ -48162,6 +48223,9 @@ function viewCatalogue() {
               "FULL LIST until a rate is set. Press Save again to write it as it stands.");
         return;
       }
+      /* v6.9.606 - more than is free in stock: said once, and a second press saves it */
+      var _ovr = stkOverLines(lines, S.ch && S.ch.editId);
+      if (_ovr.length && !(S.ch && S.ch.stkWarned)) { S.ch.stkWarned = true; toast(stkOverSay(_ovr)); return; }
       var amount = lines.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0);
       var assocName = val("m_assoc");
       var itemsJson = JSON.stringify(lines);
