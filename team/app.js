@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.596";
+  var APP_VERSION = "6.9.597";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -1991,7 +1991,7 @@
   function chgNeverFold(action) {
     var a = String(action || "");
     return /^(rec:|dup:|pin:|join:|lead:|svc:|amc:|unit:|firm:)/.test(a) ||
-           a === "challan:hisab" || a === "credit:override" || a === "proof:twin" ||
+           a === "challan:hisab" || a === "return:hisab" || a === "credit:override" || a === "proof:twin" ||
            /PIN/i.test(a);
   }
   function chgIsCompanion(auditRow) {
@@ -10226,6 +10226,65 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
 
      canFinalise is the money gate. Nothing else uses it and nothing else should. */
   function canFinalise() { return roleIs("admin"); }
+  /* ===== FINALISE A MATERIAL RETURN  (v6.9.597, 24 September 2026) =====
+     His words: "finalized button for material receipt also". A delivery has had Finalise since
+     6.9.469 - the owner's own "I have looked at this". A return had nothing, so a checked return
+     and an unchecked one looked the same on every screen.
+
+     WHAT IT DOES NOT DO, deliberately: it moves no money. The credit still lands when the goods
+     are booked in at the godown, exactly as today - a gate on credits would silently raise
+     every client's balance on the day it shipped, and his rule is that money never moves
+     because a feature was deployed. Finalise on a return is the owner's stamp and nothing else:
+     who, when, and - when there is no signed goods-in paper - why he passed it anyway.
+     One audit row, action "return:hisab", never overwritten; the newest wins. */
+  var _rtStampCache = null;
+  function retStampMap() {
+    if (_rtStampCache) return _rtStampCache;
+    var m = {};
+    ((S.data && S.data.audit) || []).forEach(function (a) {
+      if (!a || String(a.action || "") !== "return:hisab") return;
+      var d = {}; try { d = JSON.parse(a.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.rtId) return;
+      var prev = m[d.rtId];
+      if (!prev || String(a.createdAt || "") >= String(prev.at || "")) {
+        m[d.rtId] = { at: a.createdAt || "", by: a.actor || d.by || "", noProof: String(d.noProof || "") };
+      }
+    });
+    return (_rtStampCache = m);
+  }
+  function retStamp(r) { return (r && r.id) ? (retStampMap()[r.id] || null) : null; }
+  function retFinaliseBtn(r) {
+    if (!r || !canFinalise() || retStamp(r)) return "";
+    var back = String(r.status || "") === "Received";
+    return '<button class="btn sm act-hisab' + (back ? '' : ' dash') + '" data-act="rt-final" data-id="' + esc(r.id) + '"' +
+      (back ? ' title="Finalise this return - your stamp that it is checked"' : ' title="Not booked in at the godown yet"') + '>Finalise</button>';
+  }
+  function retStampPill(r) {
+    var st = retStamp(r);
+    if (!st) return "";
+    return '<span class="pill Won" style="font-size:12px" title="Finalised by ' + esc(st.by) +
+      (st.noProof ? ' without a signed goods-in receipt: ' + esc(st.noProof) : '') + '">finalised ' +
+      esc(dmy(String(st.at).slice(0, 10)).slice(0, 5)) + '</span>' +
+      (st.noProof && !chProofAny(r).has ? ' <span class="pill" style="background:#fef3c7;color:#92400e;font-size:12px" title="' + esc(st.noProof) + '">no paper</span>' : '');
+  }
+  function modalRetFinal(id) {
+    var r = (S.data.returns || []).filter(function (x) { return x.id === id; })[0];
+    if (!r) return '<h2>Not found</h2><div class="foot"><button class="btn" data-act="close">Close</button></div>';
+    var rl = returnLines(r), amt = rl.reduce(function (a, x) { return a + x.amt; }, 0);
+    var paper = chProofAny(r).has;
+    return '<h2>Finalise return ' + esc(r.returnNo || "") + '</h2>' +
+      '<p class="sub">' + esc(r.customerName || "") + (r.challanNo ? ' &middot; against ' + esc(r.challanNo) : '') +
+      ' &middot; ' + plural(rl.length, "item") + ' &middot; credit &minus;' + money(amt) + '</p>' +
+      '<div class="card"><div class="meta" style="font-size:13px;line-height:1.55">' +
+      'Your stamp that this return is checked. The credit is already on his account from the day it was ' +
+      'booked in at the godown &mdash; finalising moves no money.</div></div>' +
+      (paper ? '' :
+        '<div class="card" style="border-color:#fecaca;background:#fef2f2"><div class="meta" style="color:#7f1d1d;font-size:13px">' +
+        '<b>No signed goods-in receipt.</b> Say in one line why it is being finalised without one.</div>' +
+        '<input id="rtf_noproof" type="text" placeholder="e.g. counted in front of me" style="width:100%;margin-top:6px"></div>') +
+      '<div class="foot"><button class="btn ghost" data-act="close">Not now</button>' +
+      '<button class="btn" data-act="rt-final-ok" data-id="' + esc(r.id) + '">Finalise</button></div>';
+  }
   /* the HISAB SCREEN - book numbers, GSTIN, the receipt and bill columns. Unchanged. */
   function canHisabRole() { return roleAny(["admin", "accounts"]); }
   function canAddToHisab(c) {
@@ -19163,10 +19222,11 @@ function viewCatalogue() {
                     pickup: r.driver || "", raised: d, by: r.createdBy || "", "in": r.receivedBy || "" },
         cells: {
           no: '<b>' + esc(r.returnNo || "") + '</b>' + (chProofAny(r).has ? ' ' + proofSealFor(r) : ''),
-          st: '<span class="pill ' + cls + '" style="font-size:12px">' + esc(stt) + '</span>',
+          st: '<span class="pill ' + cls + '" style="font-size:12px">' + esc(stt) + '</span>' + (retStamp(r) ? ' ' + retStampPill(r) : ''),
           go: (stt === "Raised" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Picked up">Picked up</button> ' : "") +
               (stt === "Picked up" ? '<button class="btn sm" data-act="rt-move" data-id="' + esc(r.id) + '" data-to="Received">Received at godown</button> ' : "") +
               (stt === "Received" && !chProofAny(r).has && canAttachProof() ? '<button class="btn sm ghost" data-act="ch-proof" data-id="' + esc(r.id) + '">Attach goods-in receipt</button> ' : "") +
+              (stt === "Received" ? retFinaliseBtn(r) + ' ' : "") +
               cxCardBtn("returns", r.id),
           client: '<b>' + esc(r.customerName || "") + '</b>' + (r.site ? ' <span style="color:#64748b">' + esc(r.site) + '</span>' : ""),
           against: esc(r.challanNo || "—"), items: esc(itxt || "—"), reason: esc(r.reason || "—"),
@@ -24364,7 +24424,13 @@ function viewCatalogue() {
              with ten pixels to spare, and the one thing that scrolls is the rates table, which
              scrolls on every screen it appears on. overflow-x stays as the cap that keeps a
              future wider card inside the panel instead of stretching the row it belongs to. */
-          '<div style="position:sticky;left:0;width:calc(100vw - 44px);max-width:calc(100vw - 44px);' +
+          /* v6.9.597 - HIS SCREENSHOT, 24 Sep: a return opened under the account ran off the right
+             edge, its Qty / Rate / Amount columns and the "Credit to client" corner out of sight,
+             and a white hole where they should have been. 100vw is the WINDOW; on a laptop the
+             account sits in a narrower column, so a panel as wide as the window was wider than the
+             table it lives in. Now it is as wide as its own row, and on a phone - where the
+             statement still slides sideways - no wider than the screen. */
+          '<div style="position:sticky;left:0;width:100%;max-width:calc(100vw - 44px);box-sizing:border-box;' +
           'overflow-x:auto;-webkit-overflow-scrolling:touch;padding:7px 0 3px">' +
           '<!--ACCTX:' + r.id + '-->' +
           '</div></td></tr>';
@@ -25558,6 +25624,8 @@ function viewCatalogue() {
         '<div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px">' +
           /* v6.9.451 - the items are on the sheet below; the count stands where the toggle was */
           '<span style="font-size:13px;color:#b91c1c;white-space:nowrap">' + rl.length + ' item' + (rl.length === 1 ? '' : 's') + ' back</span>' +
+          /* v6.9.597 - Finalise, as a delivery has; once done, the stamp */
+          (retStamp(r) ? retStampPill(r) : retFinaliseBtn(r)) +
           (!chProofAny(r).has && canSee("returns") && canAttachProof()
             ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(r.id) + '" style="background:#b91c1c;border-color:#b91c1c" title="Photograph the paper signed at the godown when this material was counted back in">&#128206; Attach goods-in receipt</button>'
             : '') +
@@ -40382,7 +40450,7 @@ function viewCatalogue() {
     try { ensureQuoteCss(); } catch (e) { }
     /* one fresh money + stage pass per paint, then cached for the rest of it: the compact tree
        and the quote banner both ask for a client's due, and neither should re-walk HISAB. */
-    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pfxCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null; _agrCache = null; _pvCache = null;
+    _clDueCache = null; _clStageCache = null; _aliasCache = null; _prfCache = null; _mnoCache = null; _pfxCache = null; _pcCache = null; _admTkCache = null; _colCache = null; _baseCache = null; _amcCache = null; _lossCache = null; _cxCache = null; _hdCache = null; _hsbCache = null; _rtStampCache = null; _dtCache = null; _qbCache = null; _amcRateCache = null; _twinCache = null; _cxaCache = null; _alcCache = null; _stlCache = null; _opnCache = null; _agrCache = null; _pvCache = null;
     _pitchIdx = null; _cbgCache = null; _lsnCache = null; _pcbCache = null; _plcCache = null;
     _rpgCache = null;      /* v6.9.489 - the preset gap is money; a stale count is the worst of them */
     /* v6.9.373 - the three new per-paint indexes. A cache that is not dropped here shows
@@ -45692,6 +45760,33 @@ function viewCatalogue() {
       S.modal = modalVisitDetail(siteById(S.vdSite)); render();
       if (el("vd_note")) el("vd_note").value = keepN;
       return;
+    }
+    if (act === "rt-final") {
+      var _rf = (S.data.returns || []).filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
+      if (!_rf) { toast("That return is not on this device yet - pull down to refresh."); return; }
+      if (!canFinalise()) { toast("Only the owner finalises a return."); return; }
+      if (retStamp(_rf)) { toast("That return is already finalised."); return; }
+      if (String(_rf.status || "") !== "Received") { toast("Book it in at the godown first (Received at godown) - nothing was stamped."); return; }
+      S.modal = modalRetFinal(_rf.id); render(); return;
+    }
+    if (act === "rt-final-ok") {
+      var _rk = (S.data.returns || []).filter(function (x) { return x.id === t.getAttribute("data-id"); })[0];
+      if (!_rk || !canFinalise() || retStamp(_rk) || String(_rk.status || "") !== "Received") { S.modal = null; render(); return; }
+      var _rNo = "";
+      if (!chProofAny(_rk).has) {
+        _rNo = String((el("rtf_noproof") && el("rtf_noproof").value) || "").trim();
+        if (_rNo.length < 4) { toast("There is no signed goods-in receipt - say in one line why. Nothing was stamped."); return; }
+      }
+      var _rNow = new Date().toISOString();
+      _rtStampCache = null;
+      save("audit", {
+        id: "RH-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
+        createdAt: _rNow, actor: S.user || "", action: "return:hisab",
+        target: String(_rk.returnNo || _rk.id || "") + " / " + String(_rk.customerName || ""),
+        detail: JSON.stringify({ rtId: _rk.id, no: _rk.returnNo || "", client: _rk.customerName || "", by: S.user || "", at: _rNow, noProof: _rNo })
+      }, true);
+      _rtStampCache = null;
+      S.modal = null; toast((_rk.returnNo || "Return") + " finalised."); render(); return;
     }
     if (act === "ch-hisabadd") {
       var _hid = t.getAttribute("data-id");
