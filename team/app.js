@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.601";
+  var APP_VERSION = "6.9.602";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18151,7 +18151,158 @@ function viewCatalogue() {
     });
   }
 
+  /* ===== THE CHALLAN ON HIS PAPER: 15 x 21 cm  (CRM 6.9.602 / Challan 1.96.0, 24 Sep 2026) =====
+     His words: "paper size 15 by 21 for challan print, do fill page at maximum with bigger fonts
+     and utilize full space, motive is that print should be clear so that receiving pic will be
+     proper". Asked, he confirmed centimetres, and both apps print it.
+
+     The signed paper is photographed and that photo IS the proof of delivery, so what matters is
+     that every word survives a phone camera in a godown: the name, the number, each item and its
+     quantity. So: 150 x 210 mm portrait, 7 mm margins, and the item rows GROW to fill the sheet
+     when there are few of them (up to 2x), and shrink to a floor still larger than the old A4
+     print when there are many, carrying on to a second sheet with the same heading rather than
+     going small. No prices on it - it is a picking and receiving sheet, as it always was.
+     One function, byte for byte in both apps (t_apps_agree holds it). */
+  function chPrint150(c) {
+    var doc = new window.jspdf.jsPDF({ unit: "mm", format: [150, 210], orientation: "portrait" });
+    var W = 150, H = 210, L = 7, R = W - 7, CW = R - L;
+    var F = function (w) { doc.setFont("helvetica", w === "bold" ? "bold" : "normal"); };
+    var g = function (v) { doc.setTextColor(v, v, v); };
+    var ymd = function (v) { var s = String(v || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.slice(8, 10) + "/" + s.slice(5, 7) + "/" + s.slice(0, 4) : s; };
+    var cl = clientByName(c.customerName) || {};
+    var mn = manualNoFor(c);
+    var st = chStatus(c);
+    var items = [];
+    try { items = JSON.parse(c.itemsJson || "[]") || []; } catch (e) { items = []; }
+    if (!items.length && c.items) {
+      items = String(c.items).split(",").map(function (t) {
+        var m = String(t).match(/^(.*)x(\d+)\s*$/);
+        return { code: "", desc: m ? m[1].trim() : String(t).trim(), unit: "", qty: m ? m[2] : "" };
+      });
+    }
+    var FOOT = 40;                 /* the receiving block, always on the last sheet */
+
+    /* ---- the heading, on every sheet ---- */
+    var head = function (first) {
+      doc.setFillColor(15, 118, 110); doc.rect(0, 0, W, 15, "F");
+      doc.setTextColor(255); F("bold"); doc.setFontSize(15);
+      doc.text("DELIVERY CHALLAN", L, 10);
+      doc.setFontSize(14);
+      doc.text(String(c.challanNo || ""), R, 10, { align: "right" });
+      var y = 22;
+      if (!first) {
+        g(60); F("bold"); doc.setFontSize(11);
+        doc.text(String(c.customerName || "") + "  (continued)", L, y);
+        return y + 7;
+      }
+      g(110); F("bold"); doc.setFontSize(8.5);
+      doc.text("DELIVER TO", L, y);
+      doc.text("DATE", R, y, { align: "right" });
+      g(10); F("bold"); doc.setFontSize(15);
+      var nmL = doc.splitTextToSize(String(c.customerName || "-"), CW - 34).slice(0, 2);
+      doc.text(nmL, L, y + 6.5);
+      doc.setFontSize(12);
+      doc.text(ymd(c.createdAt), R, y + 6.5, { align: "right" });
+      y += 6.5 + nmL.length * 6;
+      g(40); F(); doc.setFontSize(11);
+      var addr = String(cl.address || "").trim();
+      if (addr) { doc.splitTextToSize(addr, CW).slice(0, 2).forEach(function (t) { doc.text(t, L, y); y += 5; }); }
+      if (c.site) { doc.text("Site: " + String(c.site), L, y); y += 5; }
+      var ln = [cl.mobile ? "Mob " + String(cl.mobile) : "", mn ? "Book no " + String(mn) : ""].filter(Boolean).join("     ");
+      if (ln) { F("bold"); doc.text(ln, L, y); y += 5; }
+      g(80); F(); doc.setFontSize(9.5);
+      doc.text("Prepared by " + String(c.createdBy || "-") + "     Passed by " + String(c.approvedBy || "not yet"), L, y); y += 4;
+      if (st === "Draft") {
+        doc.setFillColor(254, 226, 226); doc.rect(L, y - 0.5, CW, 7, "F");
+        doc.setTextColor(185, 28, 28); F("bold"); doc.setFontSize(10);
+        doc.text("NOT PASSED YET - material must not leave on this challan.", L + 2, y + 4.5);
+        y += 8;
+      }
+      return y + 2;
+    };
+    var colHead = function (y) {
+      doc.setFillColor(226, 232, 240); doc.rect(L, y, CW, 7.5, "F");
+      g(30); F("bold"); doc.setFontSize(10);
+      doc.text("#", L + 2, y + 5.2); doc.text("ITEM", L + 10, y + 5.2);
+      doc.text("UNIT", R - 24, y + 5.2, { align: "right" }); doc.text("QTY", R - 2, y + 5.2, { align: "right" });
+      return y + 7.5;
+    };
+    var Xd = L + 10, descW = (R - 32) - Xd;
+
+    /* ---- how big each row can be: fill the sheet when there is room ---- */
+    var hasTr = !!(c.driver || c.vehicle || num(c.freight));
+    var y0 = colHead(head(true));
+    var room = H - FOOT - y0 - (hasTr ? 10 : 0);
+    /* the item's words, with its code after it in brackets - one block, so a row is as short as
+       its words allow and the sheet can hold more of them at a size a camera reads */
+    var words = function (l) {
+      var cd = isJobLine(l) ? "JOB WORK" : (isOtherLine(l) ? "" : String(l.code || "").trim());
+      var ds = String(l.desc || l.code || "");
+      return ds + (cd && cd !== ds ? "  (" + cd + ")" : "");
+    };
+    var measure = function (s) {
+      doc.setFontSize(12 * s);
+      return items.map(function (l) {
+        var d = doc.splitTextToSize(words(l), descW);
+        return Math.max(8 * s, d.length * 5.1 * s + 3.2 * s);
+      });
+    };
+    var total = function (a) { return a.reduce(function (t, x) { return t + x; }, 0); };
+    /* the largest size, 0.8x to 2x, at which every row still fits the first sheet; below 0.8x it
+       carries on to a second sheet instead of going smaller */
+    var sc = 2, hs = measure(sc);
+    while (sc > 0.8 && total(hs) > room) { sc = Math.round((sc - 0.05) * 100) / 100; hs = measure(sc); }
+
+    var y = y0, n = 0;
+    items.forEach(function (l, i) {
+      var rh = hs[i];
+      if (y + rh > H - (i === items.length - 1 ? FOOT : 12)) {
+        g(120); F(); doc.setFontSize(9); doc.text("continued on the next sheet", R, H - 6, { align: "right" });
+        doc.addPage([150, 210], "portrait"); y = colHead(head(false));
+      }
+      n++;
+      if (n % 2 === 0) { doc.setFillColor(248, 250, 252); doc.rect(L, y, CW, rh, "F"); }
+      var ty = y + 5.6 * sc;
+      g(110); F(); doc.setFontSize(10 * sc); doc.text(String(n), L + 2, ty);
+      g(10); F("bold"); doc.setFontSize(12 * sc);
+      var d = doc.splitTextToSize(words(l), descW);
+      doc.text(d, Xd, ty, { lineHeightFactor: 1.2 });
+      g(60); F(); doc.setFontSize(10.5 * sc); doc.text(String(l.unit || ""), R - 24, ty, { align: "right" });
+      g(0); F("bold"); doc.setFontSize(15 * sc); doc.text(String(num(l.qty)), R - 2, ty + 0.4, { align: "right" });
+      y += rh;
+      doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25); doc.line(L, y, R, y);
+    });
+    if (!items.length) { g(120); F(); doc.setFontSize(11); doc.text("No items on this challan.", L + 2, y + 7); y += 10; }
+    if (hasTr) {
+      if (y + 10 > H - FOOT) { doc.addPage([150, 210], "portrait"); y = head(false); }
+      y += 7; g(20); F("bold"); doc.setFontSize(11);
+      var t = [c.driver, c.vehicle].filter(Boolean).join("  |  ");
+      if (num(c.freight)) t += (t ? "   |   " : "") + "Freight Rs. " + Math.round(num(c.freight)).toLocaleString("en-IN") + " (" + String(c.freightTo || "Client") + ")";
+      doc.text("Transport: " + (doc.splitTextToSize(t, CW - 22)[0] || ""), L, y);
+    }
+    /* ---- the receiving block, big enough to write in and to read in a photo ---- */
+    var pages = doc.getNumberOfPages();
+    doc.setPage(pages);
+    var fy = H - FOOT + 4;
+    doc.setDrawColor(15, 118, 110); doc.setLineWidth(0.5); doc.line(L, fy, R, fy);
+    g(20); F("bold"); doc.setFontSize(11);
+    doc.text("RECEIVED THE ABOVE MATERIAL IN GOOD CONDITION", L, fy + 7);
+    doc.setDrawColor(90, 90, 90); doc.setLineWidth(0.35);
+    doc.line(L, fy + 24, L + 62, fy + 24); doc.line(L + 68, fy + 24, L + 104, fy + 24); doc.line(L + 110, fy + 24, R, fy + 24);
+    g(70); F(); doc.setFontSize(9.5);
+    doc.text("Name & signature", L, fy + 29); doc.text("Mobile", L + 68, fy + 29); doc.text("Date", L + 110, fy + 29);
+    for (var p = 1; p <= pages; p++) {
+      doc.setPage(p); g(130); F(); doc.setFontSize(8.5);
+      doc.text(String(c.challanNo || "") + "   page " + p + " of " + pages, L, H - 3.5);
+    }
+    doc.setPage(pages);
+    return doc;
+  }
   function challanPdf(c, approver) {
+    /* v6.9.602 - the 15 x 21 cm sheet (chPrint150), his paper. A challan carrying an alteration
+       sheet (altJson) keeps the landscape layout below, which is the only one that draws it. */
+    var _alt0 = []; try { _alt0 = JSON.parse(c.altJson || "[]") || []; } catch (e0) { _alt0 = []; }
+    if (!_alt0.length && window.jspdf) return Promise.resolve(chPrint150(c));
     var items = [];
     try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
     if (!items.length && c.items) {
