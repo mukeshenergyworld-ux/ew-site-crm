@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.49.0";
+  var APP_VERSION = "1.50.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -535,13 +535,40 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
     for (var i = 0; i < only.length; i++) if (!Array.isArray(r[only[i]])) return false;
     return true;
   }
+  /* ============ ONLY WHAT CHANGED  (1.50.0, 24 Sep 2026) ============
+     The CRM has asked the server this way since 6.9.587 (V137 teamDelta_): the phone says, per
+     tab, how many rows it holds and a fingerprint of them, and gets back only the rows added
+     since - or the whole tab if anything earlier in it changed. Measured on the CRM: a
+     background pull fell from 2,558 KB to 9 KB. This app asked for its named tabs in full on
+     every pull. Now it asks the same way. If the rebuilt counts do not match what the server
+     says it sent, the phone forgets what it held and asks once more in full - a wrong book is
+     never kept. What is held lives in memory only, for this signed-in person. */
+  var RAWB = { u: "", t: {}, h: {} };
+  function rawbReset() { RAWB = { u: String(S.user || ""), t: {}, h: {} }; }
+  function teamGetD(extra, again) {
+    if (RAWB.u !== String(S.user || "")) rawbReset();
+    var ask = Object.assign({}, extra || {}, { have: RAWB.h });
+    return api("teamGet", ask).then(function (r) {
+      if (!r || !r.ok) return r;
+      var dl = r._delta || null, hh = r._h || null, bad = false;
+      delete r._delta; delete r._h;
+      if (dl) Object.keys(dl).forEach(function (k) {
+        if (RAWB.t[k] == null) { bad = true; return; }
+        try { r[k] = JSON.parse(RAWB.t[k]).concat(dl[k] || []); } catch (e) { bad = true; }
+      });
+      if (!bad && hh) Object.keys(hh).forEach(function (k) { if (!Array.isArray(r[k]) || r[k].length !== Number(hh[k][0])) bad = true; });
+      if (bad) { rawbReset(); return again ? r : teamGetD(extra, true); }
+      if (hh) Object.keys(hh).forEach(function (k) { if (Array.isArray(r[k])) { RAWB.t[k] = JSON.stringify(r[k]); RAWB.h[k] = hh[k]; } });
+      return r;
+    });
+  }
   function getBook(only) {
     var want = only || KEEP;
-    return api("teamGet", { only: want }).then(function (r) {
+    return teamGetD({ only: want }).then(function (r) {
       if (askedFor(r, only)) { BOOKSAY = ""; return r; }
       BOOKSAY = bookSay(r);
       /* the narrow ask came back unusable - try it the way the CRM does, which works */
-      return api("teamGet").then(function (r2) {
+      return teamGetD({}).then(function (r2) {
         if (usableBook(r2)) {
           BOOKSAY = "";
           try { toast("The short list did not come back — pulled the whole book instead."); } catch (e) {}
