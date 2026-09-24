@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.50.0";
+  var APP_VERSION = "1.51.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1942,7 +1942,14 @@ function cancelMap() {
          from a brand that had nothing to do with it. */
       var bBrand = isJobLine(i) ? "" :
         (i.brand || productBrandByCode(i.code) || c.brand || "");
-      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscount(cl, bBrand);
+      /* 24 Sep 2026 (CRM 6.9.598 / Challan 1.92.0 / Collect 1.51.0) - a line with no discount of
+         its own is priced at the rate IN FORCE ON THE DAY IT WAS DELIVERED, not today's. With
+         today's rate, setting a new discount "from today" re-priced every old delivery that had a
+         blank line - 195 lines on 32 challans in his book - and statements already sent stopped
+         agreeing with the account. Measured before shipping: not one of those lines has a dated
+         rate that started after its delivery, so no figure moves today; this is what stops them
+         moving tomorrow. */
+      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, bBrand, String((c && c.createdAt) || "").slice(0, 10));
       var dr = Math.round(rate * (1 - disc / 100));
       return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
                amt: qty * dr, job: isJobLine(i), ix: ix };   /* v6.9.565 - ix: which saved line */
@@ -2038,6 +2045,7 @@ function cancelMap() {
   }
   function discRow(client, brand, onYmd) { return discRowOn(client, brand, onYmd); }
   function clientDiscount(client, brand) { var d = discRow(client, brand); return d ? Number(d.pct) || 0 : 0; }
+  function clientDiscountOn(client, brand, ymd) { var d = discRow(client, brand, ymd); return d ? Number(d.pct) || 0 : 0; }
 
   /* ============ WHAT A RETURNED ITEM IS WORTH (v1.9.0) ============
      The old answer was r.amount, and r.amount does not exist - the CRM has never written an
@@ -2075,8 +2083,18 @@ function cancelMap() {
     return his;
   }
   function rnPriceOf(item, r, allChallans) {
+    /* v1.51.0 - A BLANK DISCOUNT IS NOT ZERO PERCENT. The Challan app has never written a disc on
+       a return line, so every frozen-rate line here was credited at FULL list price while the CRM
+       credited it at the client's rate. Measured 24 Sep on SANJEEVBAT/230926/R01: Rs 15,694 here,
+       Rs 7,648 in the CRM - Sanjeev Batra Ji's due read Rs 8,046 too low, and the collector would
+       have asked for that much less. The CRM's rule now, on the return's own day. */
+    var _rd = function (disc, brand) {
+      return (disc != null && disc !== "") ? disc : clientDiscountOn(r.customerName, brand || "", d10(r.createdAt));
+    };
     if (item.rate != null && item.rate !== "" && num(item.rate) > 0) {
-      return { amt: rnNet(item.rate, item.disc, item.qty), src: "frozen" };
+      var _fb = String(item.brand || "");
+      if (!_fb) { var _fp = PRODUCTS.filter(function (x) { return String(x.code || "").trim() === String(item.code == null ? "" : item.code).trim(); })[0]; if (_fp) _fb = String(realBrand(_fp) || _fp.brand || ""); }
+      return { amt: rnNet(item.rate, _rd(item.disc, _fb), item.qty), src: "frozen" };
     }
     var code = String(item.code == null ? "" : item.code).trim();
     if (code) {
@@ -2088,7 +2106,7 @@ function cancelMap() {
           var L = lines[j];
           if (!L || String(L.code == null ? "" : L.code).trim() !== code) continue;
           if (!(num(L.rate) > 0)) continue;
-          return { amt: rnNet(L.rate, L.disc, item.qty),
+          return { amt: rnNet(L.rate, _rd(L.disc, L.brand || item.brand), item.qty),
                    src: String(src[i].challanNo || "").trim() === String(r.challanNo || "").trim()
                         ? "against" : "delivered" };
         }
@@ -2221,7 +2239,7 @@ function cancelMap() {
     var today = opts.today;
     var terms = num(opts.creditDays) || 30;
 
-    var opening = num(client.openingAmt);
+    var opening = (opts.opening != null) ? num(opts.opening) : num(client.openingAmt);   /* v1.51.0 - the family's, when given */
     var billed = challans.reduce(function (s, c) { return s + challanNet(c); }, 0);
     var credited = returns.reduce(function (s, r) { return s + num(opts.returnValue ? opts.returnValue(r) : 0); }, 0);
     /* v1.28.0 - HOW MANY LINES CAME BACK THAT WE COULD NOT PUT A PRICE ON. The statement has
@@ -2416,7 +2434,8 @@ function cancelMap() {
   }
 
   /* ---------- the book, computed once per paint ---------- */
-  var _rowsCache = null;
+  var _rowsCache = null, _rowsAll = null;
+  function rowsAll() { rows(); return _rowsAll || []; }
   /* ---------------------------------------------------------------------------
      EVERYTHING A CLIENT IS KNOWN BY  (17 Aug 2026 - shared wording with the CRM)
 
@@ -2474,9 +2493,23 @@ function cancelMap() {
       (_aliasOf[m] = _aliasOf[m] || []).push(k);
     });
     var out = mine.map(function (c) {
+      /* v1.51.0 - THE FAMILY BY ITS REAL NAMES. _aliasOf held the normalised keys ("m s gupta sons")
+         and clientDue compares real names ("m/s gupta & sons"), so a merged alias with any
+         punctuation in its name matched nothing: its card left the list and its money went with
+         it. dupFamily gives the names as they are written, as the CRM's famRow reads them. */
+      var _famN = dupFamily(c.name);
+      /* and every family row's old-book balance, each client row once - the CRM's famOpening */
+      var _seenO = {}, _openF = 0;
+      _famN.forEach(function (nm) {
+        (d.clients || []).forEach(function (x) {
+          if (lower(x.name) !== lower(nm)) return;
+          var kk = String(x.id || x.name || "");
+          if (_seenO[kk]) return; _seenO[kk] = 1; _openF += num(x.openingAmt);
+        });
+      });
       var r = clientDue({ client: c, challans: d.challans || [], payments: d.payments || [],
                           returns: d.returns || [], today: t,
-                          names: [c.name].concat(_aliasOf[lower(c.name)] || []),
+                          names: _famN, opening: _openF,
                           /* v1.27.0 - HIS terms, not just the company's. clientDue has taken an
                              opts.creditDays since v1.9 and this call site handed it the constant,
                              so the box on the client card did nothing here at all. */
@@ -2486,13 +2519,19 @@ function cancelMap() {
       r.follows = followFor(c.name).length;
       /* v1.32.0 - the service book beside the goods: r.due stays the goods figure every bucket
          and score reads; svcDue is what his visits still owe; toCollect is the one number */
-      var _sv = svcOf([c.name].concat(_aliasOf[lower(c.name)] || []), c);
+      var _sv = svcOf(_famN, c);
       r.svcDue = _sv.due; r.svcBilled = _sv.billed; r.svcCollected = _sv.collected; r.svcVisits = _sv.visits; r.machines = _sv.machines;
       r.toCollect = r.due + r.svcDue;
       r.bucket = bucketOf(r, t);
       r.score = chaseScore(r, t);
       return r;
-    }).filter(function (r) { return r.due > 500 || r.svcDue > 0.5; });
+    });
+    /* v1.51.0 - every client, for looking somebody up and for his receipt. The CHASE list below
+       still starts above Rs 500; but the receipt read the balance off it, so a man who paid
+       10,000 of 10,300 was told "your account is now clear", and a man owing Rs 1-500 or in
+       credit could not be found by search at all. */
+    _rowsAll = out.slice();
+    out = out.filter(function (r) { return r.due > 500 || r.svcDue > 0.5; });
     out.sort(function (a, b) { return b.score - a.score || b.due - a.due; });
     _rowsCache = out;
     return out;
@@ -2639,7 +2678,7 @@ function cancelMap() {
 
   function rowFor(name) {
     var k = String(name || "").trim().toLowerCase();
-    return rows().filter(function (r) { return String(r.name).trim().toLowerCase() === k; })[0] || null;
+    return rowsAll().filter(function (r) { return String(r.name).trim().toLowerCase() === k; })[0] || null;
   }
   /* v1.9.0 - rows() is the CHASE list: it holds anyone who owes more than 500, which is right
      for a list of people to ring and wrong for looking somebody up. The moment a man settles in
@@ -3230,7 +3269,7 @@ function cancelMap() {
     var q = String(S.q || "").trim().toLowerCase();
     if (!q) return null;
     var digits = q.replace(/\D/g, "");
-    return rows().filter(function (r) {
+    return rowsAll().filter(function (r) {
       /* v1.16.0 - his firm counts too. The ledger row is derived, so the client's own
          record is looked up for the names he is billed under. See clientHay(). */
       if (String(r.name).toLowerCase().indexOf(q) >= 0) return true;
@@ -3607,7 +3646,12 @@ function cancelMap() {
 
   /* every movement on his account, in the order it happened */
   function ledgerRows(name) {
-    var d = S.data || {}, k = String(name || "").trim().toLowerCase();
+    var d = S.data || {};
+    /* v1.51.0 - THE FAMILY, as clientDue counts it. The PDF listed the main name's rows only, so
+       for a merged client its closing figure and the "Balance" in the message sent with it were
+       two different numbers in one message. */
+    var _fk = {}; dupFamily(name).forEach(function (n) { _fk[String(n || "").trim().toLowerCase()] = 1; });
+    var _isF = function (n) { return !!_fk[String(n || "").trim().toLowerCase()]; };
     var out = [];
     /* v1.26.0 - the statement is the evidence FOR the balance, so it obeys the same three
        exclusions. A statement that lists a payment the balance does not count is a statement
@@ -3615,7 +3659,7 @@ function cancelMap() {
     /* v1.37.0 - the statement lists exactly what the balance counts, or the client wins the
        argument. Same question as clientDue above. */
     dedupe((d.challans || []).filter(function (c) {
-      return String(c.customerName || "").trim().toLowerCase() === k &&
+      return _isF(c.customerName) &&
              hisabOwed(c) &&
              !isCancelled("challans", c.id);
     })).forEach(function (c) {
@@ -3623,7 +3667,7 @@ function cancelMap() {
                  extra: c.site || "", debit: challanNet(c), credit: 0 });
     });
     (d.returns || []).filter(function (r) {
-      return String(r.customerName || "").trim().toLowerCase() === k &&
+      return _isF(r.customerName) &&
              String(r.status || "").trim().toLowerCase() === "received" &&
              !isCancelled("returns", r.id);
     }).forEach(function (r) {
@@ -3643,7 +3687,7 @@ function cancelMap() {
                  debit: 0, credit: _rv.amt });
     });
     (d.payments || []).filter(function (p) {
-      return String(p.client || "").trim().toLowerCase() === k && !isCancelled("payments", p.id);
+      return _isF(p.client) && !isCancelled("payments", p.id);
     }).forEach(function (p) {
       out.push({ ymd: d10(p.date || p.createdAt), what: "Payment received",
                  extra: [p.mode, p.ref].filter(Boolean).join(" · "), debit: 0, credit: payAmt(p) });
@@ -4383,7 +4427,10 @@ function cancelMap() {
          And the receipt is shown either way. Whether the sheet has caught up is Energy World's
          problem; the customer handed over money and is owed his confirmation now. */
       saveRow("payments", row).then(function (r) {
-        (S.data.payments = S.data.payments || []).push(r.row || row);
+        /* v1.51.0 - once. A pull that landed during the save has already laid this row back in
+           from the journal; pushing it again showed the receipt's balance short by the payment. */
+        var _pr = r.row || row, _pl = (S.data.payments = S.data.payments || []);
+        if (!_pl.some(function (x) { return x && String(x.id) === String(_pr.id); })) _pl.push(_pr);
         bust();
         /* v1.1 - the receipt, straight away. The customer gets his confirmation without
            asking, and the man who entered it sees his work leave the building. */
