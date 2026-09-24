@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.92.0";
+  var APP_VERSION = "1.93.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -5997,9 +5997,15 @@ function discRowOn(client, brand, onYmd) {
     var st = hisabStamp(c);
     return (st && st.inc && st.inc.length !== undefined) ? st.inc : null;
   }
+  /* v6.9.599 / Challan 1.93.0 / Collect 1.52.0 - HIS DECISION, 24 Sep 2026: the "Discount given on
+     the whole challan" box "reduce the challan total". It had been saved since the box was built and
+     subtracted nowhere - KAPIL2660/180826/001 carried Rs 3,970 in it and was billed in full. Both
+     concessions are rupees off one delivery, so they come off in the one place every total reads:
+     the typed discount on the challan plus the further discount given when it was finalised. The
+     ceiling at the goods value in challanNet / chFurtherOff still holds for the two together. */
   function hisabExtra(c) {
     var st = hisabStamp(c);
-    return st ? (Number(st.extra) || 0) : 0;
+    return (st ? (Number(st.extra) || 0) : 0) + Math.max(0, Number(c && c.discAmt) || 0);
   }
   function incRate(client, brand, role, onYmd) {
     var d = discRow(client, brand, onYmd); if (!d) return 0;
@@ -7583,7 +7589,10 @@ function discRowOn(client, brand, onYmd) {
           items: lines.map(function (l) { return l.desc + " x" + l.qty; }).join(", "),
           itemsJson: JSON.stringify(lines), amount: amount,
           freight: num(z.freight), freightTo: z.fto || "Client",
-          discAmt: discAmt, discNote: discNote,
+          /* 1.93.0 - the discount now reduces the total, so an edit by someone who may not set
+             pricing KEEPS the owner's discount instead of writing 0 over it */
+          discAmt: canSetPricing() ? discAmt : (_editRow ? (_editRow.discAmt || 0) : 0),
+          discNote: canSetPricing() ? discNote : (_editRow ? (_editRow.discNote || "") : ""),
           driver: dRec.name || "", driverId: dRec.id || "", driverMobile: dRec.mobile || "",
           vehicle: z.veh || dRec.vehicle || "",
           /* on a NEW challan these three are the starting state; on an edit the first two are
