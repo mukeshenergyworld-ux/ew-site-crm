@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.597";
+  var APP_VERSION = "6.9.598";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -9189,7 +9189,13 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
      "not on any statement yet" - this is the line that makes it true.
 
      One name, so there is one rule and the next person can find every reader of it. */
-  function famChallansOwed(cl) { return famChallansIn(cl).filter(hisabOwed); }
+  /* v6.9.598 - FILTER, THEN FOLD, the order the ledger uses. Folding first kept the LATER of two
+     rows sharing a number and then dropped it if that one was not finalised - while the ledger
+     counted the earlier, finalised one. The statement came out short by a whole delivery. */
+  function famChallansOwed(cl) {
+    var h = famHas(cl);
+    return dedupeChallans((S.data.challans || []).filter(function (c) { return h(c.customerName) && hisabOwed(c); }));
+  }
   function famPays(cl) { var h = famHas(cl); return (S.data.payments || []).filter(function (p) { return p && h(p.client); }); }
   function famRets(cl) { return famReturns(famRow(cl)); }
   function famOpen(cl) { return famOpening(famRow(cl)); }
@@ -21341,16 +21347,17 @@ function viewCatalogue() {
       if (it.rate != null && it.rate !== "") {
         /* frozen on the return itself (newer rows) */
         rate = Number(it.rate) || 0;
-        disc = (it.disc != null && it.disc !== "") ? Number(it.disc) : clientDiscount(cl, brand);
+        /* v6.9.598 - the rate in force on the day of the return, not today's */
+        disc = (it.disc != null && it.disc !== "") ? Number(it.disc) : clientDiscountOn(cl, brand, String(r.createdAt || "").slice(0, 10));
       } else {
         var src = retSourceLine(r, it.code);
         if (src) {
           rate = Number(src.rate) || 0;
-          disc = (src.disc != null && src.disc !== "") ? Number(src.disc) : clientDiscount(cl, src.brand || brand);
+          disc = (src.disc != null && src.disc !== "") ? Number(src.disc) : clientDiscountOn(cl, src.brand || brand, String(r.createdAt || "").slice(0, 10));
           if (!job && !brand) brand = src.brand || brand;
         } else {
           rate = Number(p.price) || 0;
-          disc = clientDiscount(cl, brand);
+          disc = clientDiscountOn(cl, brand, String(r.createdAt || "").slice(0, 10));
           est = true;
         }
       }
@@ -23255,7 +23262,14 @@ function viewCatalogue() {
          from a brand that had nothing to do with it. */
       var bBrand = isJobLine(i) ? "" :
         (i.brand || productBrandByCode(i.code) || c.brand || "");
-      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscount(cl, bBrand);
+      /* 24 Sep 2026 (CRM 6.9.598 / Challan 1.92.0 / Collect 1.51.0) - a line with no discount of
+         its own is priced at the rate IN FORCE ON THE DAY IT WAS DELIVERED, not today's. With
+         today's rate, setting a new discount "from today" re-priced every old delivery that had a
+         blank line - 195 lines on 32 challans in his book - and statements already sent stopped
+         agreeing with the account. Measured before shipping: not one of those lines has a dated
+         rate that started after its delivery, so no figure moves today; this is what stops them
+         moving tomorrow. */
+      var disc = (i.disc != null && i.disc !== "") ? Number(i.disc) : clientDiscountOn(cl, bBrand, String((c && c.createdAt) || "").slice(0, 10));
       var dr = Math.round(rate * (1 - disc / 100));
       return { desc: i.desc || i.code || "", code: i.code, brand: bBrand, qty: qty, rate: rate, disc: disc, dr: dr,
                amt: qty * dr, job: isJobLine(i), ix: ix };   /* v6.9.565 - ix: which saved line */
@@ -24593,7 +24607,7 @@ function viewCatalogue() {
     if (!m.rows.length) { toast("Nothing on this account yet."); return; }
     var chById = {}, rtById = {};
     (S.data.challans || []).forEach(function (c) { chById[c.id] = c; });
-    (clientReturns(cl) || []).forEach(function (r) { rtById[r.id] = r; });
+    (famRets(cl) || []).forEach(function (r) { rtById[r.id] = r; });   /* v6.9.598 */
     var HEAD = MINI_HEAD.concat(["Item", "Code", "Qty", "Rate", "Disc %", "Line amount", "Receipt link"]);
     var pad = ["", "", "", "", "", "", ""];
     var out = [HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
@@ -25319,7 +25333,11 @@ function viewCatalogue() {
          own line rather than folded quietly into the total, because a total that is lower than
          the lines above it and does not say why reads as an arithmetic fault. */
       var frt = chFreight(c), xOff = chFurtherOff(c, sub), chTotal = sub + frt - xOff;
-      allNet += chTotal; if (sel) { selNet += chTotal; selGoods += sub; selCount++; }
+      /* v6.9.598 - the card still DRAWS every delivery whose receipt is in (he finalises from
+         here), but only a finalised one is ADDED - the rule the ledger and the statement PDF
+         use. Before this, "it closes to" counted a delivery the account did not, and the screen,
+         the paper and the account were three different figures. */
+      if (hisabOwed(c)) { allNet += chTotal; if (sel) { selNet += chTotal; selGoods += sub; selCount++; } }
       var rows = priced.map(function (x, idx) {
         var disc = x.disc;
         var discCell = admin
@@ -25558,7 +25576,7 @@ function viewCatalogue() {
         }).join("") + '</tbody></table></div>') +
         '</div>';
     });
-    var rets = clientReturns(cl);
+    var rets = famRets(cl);                 /* v6.9.598 - the family's returns, as the ledger reads them */
     var retTotal = 0, retSelN = 0, retSelAmt = 0;
     /* v6.9.367 - and the returns with them. Leaving these oldest-first while the deliveries
        above them run newest-first would be two clocks on one screen. */
@@ -26356,7 +26374,8 @@ function viewCatalogue() {
     (famPays(cl) || []).forEach(function (p) {
       var d = dstr(p.date || p.createdAt), ts = String(p.createdAt || p.date || "");   /* two on one day: the later entry */
       if (!d) return;
-      if (!best || d > best.d || (d === best.d && ts > best.ts)) best = { d: d, ts: ts, amt: payAmt(p) };
+      if (!(payAmt(p) > 0)) return;          /* v6.9.598 - a refund is not a payment */
+      if (!best || d > best.d || (d === best.d && ts > best.ts)) best = { d: d, ts: ts, amt: payAmt(p), row: p, cts: String(p.createdAt || "") };
     });
     return best;
   }
@@ -26374,7 +26393,7 @@ function viewCatalogue() {
     rets.forEach(function (r) { (on("ret", r) ? rtOn : rtOff).push(r); });
     pays.forEach(function (p) { (on("pay", p) ? pyOn : pyOff).push(p); });
     var sum = function (list, f) { return list.reduce(function (a, x) { return a + f(x); }, 0); };
-    var opening = clientOpening(cl);
+    var opening = famOpen(cl);                 /* v6.9.598 - every family row's old balance, once, as the ledger */
     /* THE BROUGHT-FORWARD FIGURE: the old-book balance plus everything left off this paper.
        Every row of the account is in exactly one of the two sets, so the list below walks from
        this figure to the balance the screen shows, whatever is ticked. */
@@ -26400,10 +26419,18 @@ function viewCatalogue() {
     /* v6.9.595 - only the pages after the latest payment on this paper. ev is already in the
        account's order (a delivery before a payment on the same day), so "after" is simply every
        delivery or return that stands after the last payment row. No payment at all: every page. */
-    var _lastP = -1, _lastPay = null;
+    var _lastPay = null;
     if (since) {
-      ev.forEach(function (e, i) { if (e.t === "P") { _lastP = i; _lastPay = e; } });
-      if (_lastP >= 0) sheets = ev.slice(_lastP + 1).filter(function (e) { return e.t !== "P"; });
+      /* v6.9.598 - the cut is the LATEST payment on the account (the one the button names), not
+         the last ticked one, and a delivery made later on the same day as that payment is
+         AFTER it - the account's own order puts every same-day delivery first, which is right
+         for a running balance and wrong for "what is he paying for now". */
+      _lastPay = hisabLastPay(cl);
+      if (_lastPay) sheets = ev.filter(function (e) {
+        if (e.t === "P") return false;
+        if (e.d !== _lastPay.d) return e.d > _lastPay.d;
+        return !_lastPay.cts || String(e.row.createdAt || "") > _lastPay.cts;
+      });
     }
     var perPage = (pp === true || pp === false) ? pp : hisabPerPage();
     var _measure = sheets.map(function (e) { return e.row; });
@@ -26577,8 +26604,8 @@ function viewCatalogue() {
         F("normal"); doc.setFontSize(6.9); ink(GREY);
         doc.text(sheets.length
           ? "The pages that follow show the " + sheets.length + " deliver" + (sheets.length === 1 ? "y or return" : "ies and returns") +
-            " after the latest payment (" + dmy(_lastPay.d) + ", " + RS(payAmt(_lastPay.row)) + "), with the signed receipt beside each."
-          : "Nothing was delivered or returned after the latest payment (" + dmy(_lastPay.d) + ", " + RS(payAmt(_lastPay.row)) + ").", cP, y);
+            " after the latest payment (" + dmy(_lastPay.d) + ", " + RS(_lastPay.amt) + "), with the signed receipt beside each."
+          : "Nothing was delivered or returned after the latest payment (" + dmy(_lastPay.d) + ", " + RS(_lastPay.amt) + ").", cP, y);
       } else if (perPage && sheets.length) {
         F("normal"); doc.setFontSize(6.9); ink(GREY);
         doc.text("The pages that follow show each delivery and return listed above, with the signed receipt beside it.", cP, y);
