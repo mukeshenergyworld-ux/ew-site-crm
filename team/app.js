@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.592";
+  var APP_VERSION = "6.9.593";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -14065,7 +14065,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
        the whole row. Every heading still sorts - by date, client, status, total and executive. */
     var qSm = function (t) { return '<div style="font-size:12px;color:#64748b;font-weight:400;margin-top:1px">' + t + '</div>'; };
     h += xlTable("qlog", [
-      { k: "date", t: "QUOTE" }, { k: "client", t: "CLIENT", wrap: "260px" },
+      { k: "date", t: "QUOTE", wrap: "170px" }, { k: "client", t: "CLIENT", wrap: "240px" },
       { k: "st", t: "STATUS" }, { k: "total", t: "INCL GST", n: 1, r: 1 }, { k: "exec", t: "WHO" }
     ], shown.map(function (q) {
       var cl = clientByName(q.client) || {};
@@ -14075,7 +14075,7 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       var brands = quoteBrands(q);
       return { v: { date: d, no: q.quoteNo || "", client: q.client || "", brand: brands.join(", ") || q.brand || "", st: st, go: "", net: Number(q.net) || 0, total: Number(q.total) || 0, exec: exec, by: q.createdBy || "" },
         cells: {
-          date: '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700" title="Open this quote’s card">' + esc(q.quoteNo || "open") + '</button>' +
+          date: '<button class="btn sm ghost" data-act="q-card" data-id="' + esc(q.id) + '" style="padding:1px 8px;font-size:12.5px;font-weight:700;white-space:normal;word-break:break-all;text-align:left" title="Open this quote’s card">' + esc(q.quoteNo || "open") + '</button>' +
               (Number(q.version) > 1 ? ' <span class="pill" style="font-size:12px">v' + esc(q.version) + '</span>' : "") +
               qSm(esc(dmy(d)) || '<span style="color:#b45309">no date</span>'),
           client: '<a href="#" data-act="cl-open" data-id="' + esc(cl.id || "") + '" style="font-weight:700;color:#0b3b36;text-decoration:none">' + esc(q.client || "") + '</a>' +
@@ -24070,7 +24070,15 @@ function viewCatalogue() {
                    customer's statement; for a PAYMENT it is the accounts check of v6.9.470.
      So this column is not a new fact. It is the gate and the check, finally visible on the one
      screen he reads every day. */
-  var MINI_HEAD2 = MINI_HEAD.slice(0, 7).concat(["Made by", "Passed by"], MINI_HEAD.slice(7));
+  /* v6.9.593 - NINE COLUMNS ON SCREEN, NOT TWELVE. His words, 24 Sep, with this table in the
+     screenshot: "if possible work on compacting all for laptop, not to scroll left or right".
+     Twelve one-line columns ran past a laptop's width, so Credit and Balance - the two figures the
+     account is for - were the ones off the edge. Three pairs now share a cell, one over the other:
+     the particulars over Supply / Return / Payment, the receipt over the GST bill, the maker over
+     the passer. Nothing is dropped. MINI_HEAD - the CUSTOMER'S statement, the PDF and the Excel -
+     is untouched: this is the screen only. */
+  var MINI_HEAD2 = ["Date", "Challan No", "PTRS", "Book No", "Receipt / GST bill", "Made / passed by", "Debit", "Credit", "Balance"];
+  function miniInline(td) { return String(td || "").replace(/^<td/, "<span").replace(/<\/td>$/, "</span>"); }
   /* ---------------- THE NUMBER WITHOUT THE DATE (v6.9.472) ----------------
      HIS WORDS: "short down challan no".
 
@@ -24258,9 +24266,9 @@ function viewCatalogue() {
            reads the word, so a return is red all the way across its row. */
         '<td style="' + cell + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#64748b") + ';font-size:12px">' + esc(r.date) + '</td>' +
         miniNoCell(r, cell, tone) +     /* v6.9.451 - tap the number, open the card */
-        '<td style="' + cell + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#475569") + '">' +
-          (r.kind === "bf" ? '<b style="color:#0f172a">' + esc(r.ptrs) + '</b>' : esc(r.ptrs)) + '</td>' +
-        '<td style="' + cell + ';color:' + tone + ';font-weight:600;font-size:12px">' + esc(r.type) + '</td>' +
+        '<td style="' + cell.replace("white-space:nowrap", "white-space:normal;max-width:230px;min-width:120px") + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#475569") + '">' +
+          (r.kind === "bf" ? '<b style="color:#0f172a">' + esc(r.ptrs) + '</b>' : esc(r.ptrs)) +
+          (r.type ? '<div style="color:' + tone + ';font-weight:600;font-size:12px">' + esc(r.type) + '</div>' : '') + '</td>' +
         /* v6.9.439 - HIS WORDS: "make provision that we can enter book no here only, that will
            auto update in challan". He was looking at five deliveries, none of them carrying a
            book number, and the only way in was to scroll past the table to a card and press
@@ -24289,11 +24297,12 @@ function viewCatalogue() {
                 'border:1px ' + (r.book ? 'solid #cbd5e1' : 'dashed #cbd5e1') + ';border-radius:6px;' +
                 'background:' + (r.book ? '#f1f5f9' : '#fff') + ';color:' + (r.book ? '#334155' : '#b45309') + '"/>'
               : (r.book ? '<span style="background:#f1f5f9;border:1px solid #cbd5e1;color:#334155;border-radius:5px;padding:0 5px;font-weight:700">' + esc(r.book) + '</span>' : ''))) + '</td>' +
-        '<td style="' + cell + ';font-size:12px;font-weight:600">' + miniRcptCell(r) + '</td>' +
-        '<td style="' + cell + ';font-size:12px">' + miniBillCell(r) + '</td>' +
+        '<td style="' + cell + ';font-size:12px;font-weight:600;line-height:1.35">' + miniRcptCell(r) +
+          (r.kind === "ch" ? '<div style="font-weight:400;margin-top:2px">' + miniBillCell(r) + '</div>' : '') + '</td>' +
         /* v6.9.472 - who made it, who passed it. Screen only: MINI_HEAD, which the customer's
            statement is built from, does not carry these and must not. */
-        miniWhoCell(r, cell, "mby") + miniWhoCell(r, cell, "aby") +
+        '<td style="' + cell + ';font-size:12px;line-height:1.35">' + miniInline(miniWhoCell(r, "white-space:nowrap", "mby")) +
+          '<br>' + miniInline(miniWhoCell(r, "white-space:nowrap", "aby")) + '</td>' +
         '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f172a") + '">' +
           (r.debit == null ? "" : money(r.debit)) + '</td>' +
         '<td style="' + num + ';color:' + (r.kind === "ret" ? "#b91c1c" : "#0f766e") + '">' +
@@ -24361,7 +24370,7 @@ function viewCatalogue() {
       (canHisabRole() ? 'Type a book number, tap <b>Pending</b> to attach a receipt, tap <b>+ bill</b> to record a GST bill &mdash; each saves itself. ' : '') +
       /* v6.9.472 - the SCREEN's count, not the statement's: the two lists differ now, and the
          sentence that says how many columns there are has gone stale by hand twice already. */
-      MINI_COUNT_WORD(MINI_HEAD2.length).replace(/^./, function (c) { return c.toUpperCase(); }) + ' columns do not fit a phone &mdash; slide the table sideways, or send the file. <b>Made by</b> and <b>Passed by</b> are ours &mdash; neither goes on the customer\'s statement.</span>' +
+      MINI_COUNT_WORD(MINI_HEAD2.length).replace(/^./, function (c) { return c.toUpperCase(); }) + ' columns fit a laptop; on a phone slide the table sideways, or send the file. <b>Made / passed by</b> is ours &mdash; it does not go on the customer\'s statement.</span>' +
       '</div>' +
       /* v6.9.425 - HE ASKED TO BE ABLE TO HIDE IT: on a client with eighteen lines the account
          pushes the delivery cards a long way down and he does not always want it open. The state
