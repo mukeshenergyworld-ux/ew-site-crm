@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.595";
+  var APP_VERSION = "6.9.596";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -8158,7 +8158,10 @@ function visitPending(v, ins) { return Math.max(0, visitDue(v, ins) - num(v.coll
       '<div style="margin-top:8px"><button class="btn sm ghost" data-act="bb-open" data-n="' +
       esc(name) + '">Mark several brands\u2026</button></div>';
     return bulk + (compact
-      ? '<div style="margin-top:6px;display:flex;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px">'
+      /* v6.9.596 - bb-strip: on a laptop the chips WRAP (measured 24 Sep: every lead card's strip
+         was 1,306px in a 1,042px card, so the last five brands sat behind a sideways scroll on all
+         60 cards). On a phone, below 700px, it is the one swipe line it always was. */
+      ? '<div class="bb-strip" style="margin-top:6px;display:flex;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px">'
       : '<div style="margin-top:8px;display:flex;flex-wrap:wrap">') + brands.map(function (b) {
       var st = clientGroupState(name, b), sty, inner;
       if (st === "won") { sty = base + "background:#f1f5f9;color:#94a3b8;border-color:#cbd5e1"; inner = "✓ " + esc(b); }
@@ -19627,7 +19630,7 @@ function viewCatalogue() {
     var note = String(x.note || "").trim();
     return '<tr style="background:#fff1f2"><td style="' + regCell(";font-weight:800;color:#b91c1c;text-decoration:line-through") + '">' + n + '</td>' +
       '<td style="' + regCell(";color:#b91c1c") + '">' + esc(regDMY(regDate(c))) + '</td>' +
-      '<td colspan="9" style="' + regCell(";color:#b91c1c;white-space:normal") + '">' +
+      '<td colspan="6" style="' + regCell(";color:#b91c1c;white-space:normal") + '">' +
       '<div style="max-width:300px;font-size:12.5px"><b style="text-decoration:line-through">' +
       esc(c.challanNo || "no number") + '</b> &middot; ' + esc(c.customerName || "\u2014") +
       ' &middot; made by ' + esc(regFirst(c.createdBy) || "\u2014") +
@@ -19639,7 +19642,7 @@ function viewCatalogue() {
   function regHiddenRow(n, c) {
     return '<tr style="background:#f8fafc"><td style="' + regCell(";font-weight:700;color:#94a3b8") + '">' + n + '</td>' +
       '<td style="' + regCell(";color:#94a3b8") + '">' + esc(regDMY(regDate(c))) + '</td>' +
-      '<td colspan="9" style="' + regCell(";color:#94a3b8;white-space:normal") + '">' +
+      '<td colspan="6" style="' + regCell(";color:#94a3b8;white-space:normal") + '">' +
       '<div style="max-width:250px">Another executive&rsquo;s client &mdash; the number is used.' +
       '</div></td></tr>';
   }
@@ -19700,29 +19703,34 @@ function viewCatalogue() {
     var h = '<tr style="background:' + bg + '">' +
       '<td style="' + regCell(";font-weight:800;color:#0b3b36") + '">' + (n === null ? "OLD" : n) +
         (dup ? ' <span style="font-size:12px;color:#b45309">twice</span>' : '') + '</td>' +
-      '<td style="' + regCell() + '"><button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '" ' +
+      /* v6.9.596 - EIGHT CELLS, NOT ELEVEN. His words, 24 Sep: "work on compacting all for laptop,
+         not to scroll left or right". Measured that day at a laptop's 1,046px: the register was
+         1,295px (the old book 1,356px), so Amt, Bal. after and Limit - the money - were the part
+         off the edge. His order is kept exactly; three pairs now share a cell, one over the
+         other: the challan number over its date, the maker over the passer, the receipt over
+         the hisab stamp. Nothing is dropped and every day stays beside its name. */
+      '<td style="' + regCell(";line-height:1.35") + '"><button class="btn sm ghost" data-act="ch-detail" data-id="' + esc(c.id) + '" ' +
         'style="padding:1px 8px;font-size:12.5px;font-weight:700">' + esc(c.challanNo || "no number") +
-        ' ' + (open ? "▴" : "▾") + '</button></td>' +
+        ' ' + (open ? "▴" : "▾") + '</button>' +
       /* v6.9.496 - two digits of the year; the full date is on the row's own card */
-      '<td style="' + regCell(";padding-right:3px;white-space:nowrap") + '">' + esc(regDMY(regDate(c)).replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c) + '</td>' +
+        '<div style="font-size:12px;color:#64748b;margin-top:1px;padding-left:2px">' + esc(regDMY(regDate(c)).replace(/\/(\d\d)(\d\d)$/, "/$2")) + chDatePill(c) + '</div></td>' +
       '<td style="' + regCell(";max-width:170px;overflow:hidden;text-overflow:ellipsis") + '">' +
         '<a href="#" data-act="ch-hisab" data-cl="' + esc(c.customerName || "") + '" ' +
         'style="font-weight:700;color:#0b3b36;text-decoration:none;white-space:nowrap" title="' +
         (cl.mobile ? esc(cl.mobile) + ' · ' : '') + 'Open this client’s full HISAB, where the complete statement downloads">' +
         esc(c.customerName || "—") + '</a>' +
         '</td>' +
-      '<td style="' + regCell() + '">' + sk(whoChip(c.createdBy)) + regDay(c.createdAt) + '</td>' +
-      '<td style="' + regCell(";color:#b91c1c") + '">' +
-        (String(c.approvedBy || "").trim() ? sk(whoChip(c.approvedBy)) + regDay(c.approvedAt) : "not passed") + '</td>' +
-      '<td style="' + regCell() + '">' +
+      '<td style="' + regCell(";line-height:1.6") + '">' + sk(whoChip(c.createdBy)) + regDay(c.createdAt) + '<br>' +
+        (String(c.approvedBy || "").trim() ? sk(whoChip(c.approvedBy)) + regDay(c.approvedAt) : '<span style="color:#b91c1c;font-size:12px">not passed</span>') + '</td>' +
+      '<td style="' + regCell(";line-height:1.6") + '">' +
         (pf ? sk('✓ <span style="font-size:12px;color:#64748b">' + esc(regFirst(pf.actor || pf.by)) + '</span>') + regDay(pf.at || c.receiptAt)
             : (canAttachProof()
                 ? '<button class="btn sm" data-act="ch-proof" data-id="' + esc(c.id) + '" ' +
                   'style="padding:1px 8px;font-size:12px;font-weight:700;background:#fff;color:#b45309;border:1px solid #b45309;border-radius:6px">Attach</button>'
-                : '<span style="color:#b45309">none</span>')) + '</td>' +
+                : '<span style="color:#b45309">none</span>')) + '<div style="margin-top:3px">' +
       /* v6.9.566 - the one Finalise button while not finalised; once finalised, the stamp and day */
-      '<td style="' + regCell(";white-space:nowrap") + '">' + (inHisab(c) ? sk(hisabStampPill(c)) + regDay((hisabStamp(c) || {}).at) :
-        (hisabAddBtn(c) || '<span style="color:#b45309;font-size:12px">not finalised</span>')) + '</td>' +
+        (inHisab(c) ? sk(hisabStampPill(c)) + regDay((hisabStamp(c) || {}).at) :
+        (hisabAddBtn(c) || '<span style="color:#b45309;font-size:12px">not finalised</span>')) + '</div></td>' +
       '<td style="' + regCell(";text-align:right;font-weight:700") + '">' + moneySgn(chValue(c)) + '</td>' +
       '<td style="' + regCell(";text-align:right;color:" + regBalColor(after === undefined ? bal.due : after)) + '">' +
         (after === undefined
@@ -19734,7 +19742,7 @@ function viewCatalogue() {
                  : '<span style="font-size:12px">not set</span>') + '</td></tr>';
 
     if (open) {
-      h += '<tr style="background:' + bg + '"><td colspan="11" style="padding:2px 6px 10px;border-top:0">' +
+      h += '<tr style="background:' + bg + '"><td colspan="8" style="padding:2px 6px 10px;border-top:0">' +
         challanCardHtml(c) + '</td></tr>';
     }
     return h;
@@ -19762,8 +19770,9 @@ function viewCatalogue() {
        now" were never on screen together. */
     /* v6.9.566 - HISAB sits between the date and the client (his ask), not at the far right */
     /* v6.9.570 - his order, 22 Sep: S.No, Challan No, Date, Client, Made by, Passed by, Receipt, Hisab, Amt, Bal. after, Limit */
-    return '<tr style="background:#0b3b36">' + TH("S.NO") + TH("CHALLAN NO") + TH("DATE") + TH("CLIENT") +
-      TH("MADE BY") + TH("PASSED BY") + TH("RECEIPT") + TH("HISAB") +
+    /* v6.9.596 - the same order, eight headings: the pairs that share a cell share a heading */
+    return '<tr style="background:#0b3b36">' + TH("S.NO") + TH("CHALLAN NO / DATE") + TH("CLIENT") +
+      TH("MADE / PASSED BY") + TH("RECEIPT / HISAB") +
       TH("AMT", 1) + TH("BAL. AFTER", 1) + TH("LIMIT", 1) + '</tr>';
   }
 
@@ -20090,7 +20099,7 @@ function viewCatalogue() {
       (hidden ? ' · ' + hidden + ' belong to another executive' : '') +
       (filt ? ' · filtered, so gaps are hidden' : '') + '</span></div>' +
       (shown || (!filt && R.line.length)
-        ? regSwipe("made by, passed by, receipt, hisab, the amount, the balance and limit") +
+        ? regSwipe("the amount, the balance and limit on a phone; a laptop shows the whole row") +
           '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
           regHead() + body + '</table></div>'
         : '<div class="empty">Nothing on the series answers that filter.</div>') + '</div>';
@@ -20105,7 +20114,7 @@ function viewCatalogue() {
       '<b>client code / date / count</b>, like ATUL4000/200726/001 &mdash; so they carry no place on the ' +
       'running series and no gap can be read from them. They are every bit as real; they are just ' +
       'a different book. Newest first.</div>' +
-      (on ? regSwipe("made by, passed by, receipt, hisab, the amount, the balance and limit") + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
+      (on ? regSwipe("the amount, the balance and limit on a phone; a laptop shows the whole row") + '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;min-width:100%">' +
             regHead() + ob + '</table></div>'
           : '<div class="empty">Nothing in the old book answers that filter.</div>') + '</div>';
 
@@ -21889,8 +21898,12 @@ function viewCatalogue() {
     var h = '<table style="border-collapse:collapse;font-size:12.5px;margin:6px 0 4px">' +
       left.map(function (r) { return '<tr><td style="padding:2px 8px 2px 0;color:#64748b;white-space:nowrap">' + r[0] + '</td><td style="padding:2px 0">' + r[1] + '</td></tr>'; }).join("") + '</table>';
     if (!brands.length) return h + '<div class="meta" style="font-size:12px;color:#64748b">No rate on file for any brand yet.</div>';
+    /* v6.9.596 - the brand headings fold. Measured 24 Sep on a laptop: 1,079 - 1,194px in a
+       1,038px card, because "Huliot ULTRA SILENT not taken" was one 194px line over a cell that
+       holds two digits. The brand name wraps at 110px and "not taken" sits under it. */
+    var THB = function (x) { return '<th style="padding:4px 7px;font-weight:700;font-size:12px;color:#fff;white-space:normal;max-width:110px;line-height:1.3;vertical-align:bottom;background:#0b3b36;text-align:left">' + x + '</th>'; };
     h += '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse"><thead><tr>' + TH('RATE', true) +
-      brands.map(function (b) { return TH(esc(b) + (sp.map[dkey(b)] ? '' : ' <span style="font-weight:500;opacity:.7">not taken</span>')); }).join('') + '</tr></thead><tbody>' +
+      brands.map(function (b) { return THB(esc(b) + (sp.map[dkey(b)] ? '' : '<div style="font-weight:500;opacity:.7">not taken</div>')); }).join('') + '</tr></thead><tbody>' +
       rows.map(function (r, ri) {
         var bg = ri % 2 ? '#f8fafc' : '#fff';
         return '<tr style="background:' + bg + '">' + TD('<b>' + r[0] + '</b>', ';position:sticky;left:0;z-index:1;background:' + bg + ';min-width:150px') +
@@ -38648,6 +38661,8 @@ function viewCatalogue() {
       ".lc-right{display:flex;align-items:center;gap:5px;flex:1 1 auto;min-width:0;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}" +
       "@media(max-width:700px){.lc-right{flex:1 1 100%;margin-left:0;justify-content:flex-start}}" +
       ".pl-badge{font-size:12px;font-weight:700;border-radius:999px;padding:3px 8px;white-space:nowrap;border:0}" +
+      /* v6.9.596 - a laptop shows every brand chip; a phone swipes */
+      "@media(min-width:701px){.bb-strip{flex-wrap:wrap!important;overflow-x:visible!important;row-gap:4px}}" +
       /* on a phone the name gets the first line to itself - there is no width to share */
       "@media(max-width:700px){.lc-id b{min-width:100%;flex:1 1 100%}}" +
       ".pl-ok{background:#dcfce7;color:#15803d}" +
