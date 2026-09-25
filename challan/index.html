@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.105.0";
+  var APP_VERSION = "1.106.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1763,10 +1763,13 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     var fresh = false;
     try {
       var c2 = JSON.parse(bigGet(CAT_KEY) || "null");
-      fresh = !!(c2 && c2.at && (Date.now() - c2.at < 86400000));
+      fresh = !!(c2 && c2.at && (Date.now() - c2.at < 1800000));
     } catch (e) {}
     if (fresh && PRODUCTS.length) return Promise.resolve(PRODUCTS);   /* 222 KB not worth re-reading */
-    return fetch(GAS + "?action=catalog", { cache: "no-store" })
+    /* 1.106.0 - with CRM 6.9.614: a product added to the sheet showed nowhere for up to a day,
+       because a copy under 24 hours old was trusted. Over 30 minutes old, it is used at once and
+       a fresh one is fetched behind it. */
+    var _pull = fetch(GAS + "?action=catalog", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (rows) {
         var items = parseCatalog(rows);
@@ -1780,6 +1783,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
         return PRODUCTS;
       })
       .catch(function () { return PRODUCTS; });
+    if (PRODUCTS.length) return Promise.resolve(PRODUCTS);   /* drawn now; the fresh copy lands behind */
+    return _pull;
   }
 
   /* ---- A MAN MAY HOLD MORE THAN ONE ROLE (20 Aug 2026) ----
