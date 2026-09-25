@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.613";
+  var APP_VERSION = "6.9.614";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3141,6 +3141,12 @@ window.addEventListener("beforeunload", function (ev) {
         _catAt = _shelf.at;               /* so the 5-minute guard above works on the NEXT call too */
         PRODLIST_HTML = null;
         _pcbCache = null; _plcCache = null;
+        /* 6.9.614 - HIS REPORT, 25 Sep: "price list updated in google drive not showing in crm,
+           like I have added Fastner Rawal 6 mm". It was on the server (FAST6, Rs 9, measured);
+           this device's copy was up to 24 hours old and was trusted for all 24. Now the copy on
+           the device is drawn at once, and when it is over 30 minutes old a fresh one is fetched
+           BEHIND it - nobody waits for it, and the next screen has the new rows. */
+        if (Date.now() - _shelf.at > 1800000) setTimeout(function () { loadCatalog(true); }, 2500);
         return Promise.resolve();
       }
     }
@@ -3164,6 +3170,7 @@ window.addEventListener("beforeunload", function (ev) {
           _catAt = Date.now();
           bigSet(CAT_KEY, JSON.stringify({ v: CAT_V, at: Date.now(), items: items }));
           if (_wasEmpty) { try { render(); } catch (e) {} }
+          else { try { renderBg(); } catch (e) {} }   /* 6.9.614 - a refresh behind the screen shows itself */
         }
         _catP = null;
       })
