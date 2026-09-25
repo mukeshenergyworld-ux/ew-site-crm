@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.98.0";
+  var APP_VERSION = "1.99.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3666,7 +3666,150 @@ function discRowOn(client, brand, onYmd) {
     return h;
   }
 
+  /* ===== STOCK ON THIS PHONE  (1.99.0, 24 Sep 2026) =====
+     His words: "the Lorry received screen in the godown's Challan app" and "a warning when a
+     challan asks for more than is in stock". The stock rows are the CRM's TeamStock sheet, read
+     once when a challan or a lorry is started; the arithmetic below is the CRM's, byte for byte. */
+  var STOCK_LOADED = false, _stkLoading = false;
+  function ensureStock(then) {
+    if (STOCK_LOADED || _stkLoading) { if (then && STOCK_LOADED) then(); return; }
+    _stkLoading = true;
+    api("stockList", {}, 30000).then(function (r) {
+      _stkLoading = false;
+      if (r && r.ok && Array.isArray(r.rows)) { S.stock = r.rows; STOCK_LOADED = true; if (then) then(); render(); }
+    }).catch(function () { _stkLoading = false; });
+  }
+  function chItems(ch) { try { return JSON.parse(ch.itemsJson || "[]"); } catch (e) { return []; } }
+  function stkCutoff() {
+    var m = {};
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "opening") return;
+      var k = String(r.code || "").trim(), d = String(r.asOn || "").slice(0, 10);
+      if (k && d && (!m[k] || d > m[k])) m[k] = d;
+    });
+    return m;
+  }
+  function stkCounts(code, ymd, cut) { var c = cut[code]; return !c || String(ymd || "").slice(0, 10) >= c; }
+  function stockDeliveredByCode() {
+    var m = {}, cut = stkCutoff();
+    (S.data.challans || []).forEach(function (c) {
+      if (String(c.receiptReceived).toUpperCase() !== "Y") return;
+      chItems(c).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
+    });
+    return m;
+  }
+  function stockReturnedByCode() {
+    var m = {}, _cutR = stkCutoff();
+    (S.data.returns || []).forEach(function (r) {
+      if (String(r.status || "").trim().toLowerCase() !== "received") return;
+      var items = []; try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) {}
+      items.forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, r.createdAt, _cutR)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
+    });
+    return m;
+  }
+  function stockMovementByCode() {
+    var m = {}, desc = {}, cut = stkCutoff();
+    (S.stock || []).forEach(function (row) {
+      var ty = String(row.type || "");
+      if (ty === "bill") return;   /* v6.9.605 - a Tally bill is checked against the goods, it does not add them */
+      var _k0 = String(row.code || "").trim();
+      if (ty === "opening" && cut[_k0] && String(row.asOn || "").slice(0, 10) !== cut[_k0]) return;   /* only the latest count */
+      if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && !stkCounts(_k0, row.asOn, cut)) return;
+      if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias") return;   /* settings rows, not movements (register/alias: v6.9.605) */
+      var k = String(row.code || "").trim(); if (!k) return;
+      m[k] = (m[k] || 0) + (Number(row.qty) || 0);
+      if (row.desc && !desc[k]) desc[k] = row.desc;
+    });
+    return { m: m, desc: desc };
+  }
+  function stkBillKey(supplier, billNo) { return String(supplier || "").trim() + " / " + String(billNo || "").trim(); }
+  function stkRegister() {
+    var byKey = {};
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "register") return;
+      var list = []; try { list = JSON.parse(r.desc || "[]") || []; } catch (e) { list = []; }
+      list.forEach(function (b) { byKey[stkBillKey(b.s, b.n).toLowerCase()] = { key: stkBillKey(b.s, b.n), date: b.d, supplier: b.s, billNo: b.n, amount: Number(b.a) || 0 }; });
+    });
+    return Object.keys(byKey).map(function (k) { return byKey[k]; }).sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+  }
+  function stkImportedRefs() {
+    var m = {};
+    (S.stock || []).forEach(function (r) { if (String(r.type) === "in" && r.ref) m[String(r.ref).trim().toLowerCase()] = (m[String(r.ref).trim().toLowerCase()] || 0) + 1; });
+    return m;
+  }
+  /* ===== FREE STOCK, AND THE WARNING AT CHALLAN TIME  (CRM 6.9.606 / Challan 1.99.0, 24 Sep 2026) =====
+     His words: "a warning when a challan asks for more than is in stock". Free = on hand less what
+     other challans already hold: every challan not cancelled whose receipt is not in yet (a draft,
+     a passed one, one on the road) - on-hand only drops when the receipt is in, so until then the
+     goods are promised but still counted. A product that has NEVER been physically counted has no
+     known stock, and no warning is given for it: a warning built on a guess is one he learns to
+     ignore. The challan is never blocked - he is told, and pressing Save again saves it. */
+  function stkReserved(skipId) {
+    var cut = stkCutoff(), m = {};
+    ((S.data && S.data.challans) || []).forEach(function (c) {
+      if (!c || (skipId && c.id === skipId)) return;
+      if (String(c.status || "") === "Cancelled") return;
+      try { if (typeof isCancelled === "function" && isCancelled("challans", c.id)) return; } catch (e) { }
+      if (String(c.receiptReceived || "").toUpperCase() === "Y") return;
+      chItems(c).forEach(function (i) {
+        var k = String(i.code || "").trim();
+        if (k && cut[k] && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0);
+      });
+    });
+    return m;
+  }
+  function stkOverLines(lines, skipId) {
+    if (!S.stock || !S.stock.length) return [];
+    var cut = stkCutoff(), mv = stockMovementByCode().m, del = stockDeliveredByCode(), ret = stockReturnedByCode(), res = stkReserved(skipId);
+    var want = {}, desc = {};
+    (lines || []).forEach(function (l) { var k = String((l && l.code) || "").trim(); if (!k) return; want[k] = (want[k] || 0) + (Number(l.qty) || 0); if (!desc[k]) desc[k] = l.desc || k; });
+    return Object.keys(want).filter(function (k) { return cut[k]; }).map(function (k) {
+      var free = (mv[k] || 0) - (del[k] || 0) + (ret[k] || 0) - (res[k] || 0);
+      return { code: k, desc: desc[k], want: want[k], free: Math.round(free * 100) / 100 };
+    }).filter(function (x) { return x.want > x.free + 1e-9; });
+  }
+  function stkOverSay(over) {
+    return "Stock is short: " + over.map(function (x) { return x.desc + " - asked " + x.want + ", free " + (x.free > 0 ? x.free : 0); }).join("; ") +
+      ". Press save again to make the challan anyway.";
+  }
+
+  /* ---- a lorry arrives: the godown counts what came off it, and that is what adds stock ---- */
+  function viewGrn() {
+    var g = S.grn, reg = stkRegister(), got = stkImportedRefs();
+    var open = reg.filter(function (b) { return !got[b.key.toLowerCase()]; });
+    var sups = {}; reg.forEach(function (b) { sups[b.supplier] = 1; });
+    (S.stock || []).forEach(function (r) { if (String(r.type) === "bill" && r.notes) sups[r.notes] = 1; if (String(r.type) === "in" && r.ref) sups[String(r.ref).split(" / ")[0]] = 1; });
+    var opts = PRODUCTS.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.code) + ' — ' + esc(p.desc || "") + '</option>'; }).join("");
+    var h = '<div class="card" style="background:#0f766e;color:#fff;border-color:#0f766e"><div style="font-size:17px;font-weight:800">Lorry received</div>' +
+      '<div style="font-size:12.5px;opacity:.9;margin-top:3px">Count what came off the lorry and enter it here &mdash; this is what puts it into stock. Copy the supplier&rsquo;s bill number from the paper that came with it.</div></div>' +
+      (!STOCK_LOADED ? '<div class="muted" style="margin:8px 0">Fetching the bills and stock&hellip;</div>' : '') +
+      '<div class="card">' +
+      (open.length ? '<label>Pick the bill from Tally&rsquo;s list (optional)</label><select id="grn_pick"><option value="">&mdash; not on the list &mdash;</option>' +
+        open.map(function (b) { return '<option value="' + esc(b.key) + '"' + (g.key === b.key ? ' selected' : '') + '>' + esc(dstr(b.date)) + ' · ' + esc(b.supplier) + ' · ' + esc(b.billNo) + '</option>'; }).join("") + '</select>' : '') +
+      '<label>Supplier</label><input id="grn_sup" list="grn_sups" value="' + esc(g.supplier || "") + '"/><datalist id="grn_sups">' + Object.keys(sups).map(function (x) { return '<option value="' + esc(x) + '">'; }).join("") + '</datalist>' +
+      '<label>Supplier bill / invoice no</label><input id="grn_no" value="' + esc(g.billNo || "") + '"/>' +
+      '<label>Date received</label><input id="grn_date" type="date" value="' + esc(g.date || today()) + '"/></div>' +
+      '<datalist id="grn_prods">' + opts + '</datalist><div class="card"><h3 style="margin:0 0 4px">What came off the lorry</h3>';
+    g.lines.forEach(function (l, i) {
+      var p = PRODUCTS.filter(function (x) { return x.code === l.code; })[0];
+      h += '<div style="border-top:1px solid #e2e8f0;padding-top:8px;margin-top:8px"><input id="grn_c' + i + '" list="grn_prods" placeholder="Product - type code or name" value="' + esc(l.code || "") + '"/>' +
+        (p ? '<div class="muted" style="margin:3px 0">' + esc(p.desc) + (p.unit ? ' · ' + esc(p.unit) : '') + '</div>' : '') +
+        '<input id="grn_q' + i + '" inputmode="decimal" placeholder="Quantity" value="' + esc(l.qty || "") + '" style="margin-top:6px"/></div>';
+    });
+    h += '<button class="btn gry full" data-act="grn-line" style="margin-top:10px">+ Another product</button></div>' +
+      '<button class="btn full" data-act="grn-save">Put into stock</button>' +
+      '<button class="btn gry full" data-act="grn-cancel" style="margin-top:8px">Cancel</button>';
+    return h;
+  }
+  function grnKeep() {
+    var g = S.grn; if (!g) return;
+    g.supplier = String((el("grn_sup") || {}).value || g.supplier || "").trim();
+    g.billNo = String((el("grn_no") || {}).value || g.billNo || "").trim();
+    g.date = (el("grn_date") || {}).value || g.date || today();
+    g.lines.forEach(function (l, i) { l.code = String((el("grn_c" + i) || {}).value || "").trim(); l.qty = String((el("grn_q" + i) || {}).value || "").trim(); });
+  }
   function viewMake() {
+    if (S.grn) return viewGrn();
     var z = S.ch;
     if (!z) {
       var f = S.chFilter || "all";
@@ -3677,6 +3820,7 @@ function discRowOn(client, brand, onYmd) {
         '<div style="font-size:12.5px;opacity:.9;margin-top:3px">Pick the client, add the material, write the book number. It saves as a <b>draft</b> — the accounts desk passes it before it counts against his account.</div></div>' +
         chDraftBanner() +   /* 1.78.0 */
         '<button class="btn full" data-act="ch-new" style="margin:12px 0">+ New challan</button>' +
+        (canMake() ? '<button class="btn gry full" data-act="grn-new" style="margin:0 0 12px">&#128229; Lorry received &mdash; goods in</button>' : '') +
         /* v1.18.0 - if the server sent no clients for this sign-in, SAY SO here, where the
            man is about to press New challan and find an empty picker. The rest of the app -
            receipts, the approve queue, every challan already pulled - still works, which is
@@ -7230,7 +7374,39 @@ function discRowOn(client, brand, onYmd) {
     if (act === "alltime") { S.allTime = true; render(); return; }
 
     /* ---- the challan builder ---- */
+    /* 1.99.0 - the lorry, and the stock the challan is checked against */
+    if (act === "grn-new") { if (!canMake()) { toast("Goods in is entered by the godown or the office."); return; } S.ch = null; S.grn = { lines: [{}, {}, {}], date: today() }; S.tab = "make"; ensureStock(); render(); return; }
+    if (act === "grn-cancel") { S.grn = null; render(); return; }
+    if (act === "grn-line") { grnKeep(); S.grn.lines.push({}); render(); return; }
+    if (act === "grn-save") {
+      grnKeep();
+      var _g = S.grn, _pk = String((el("grn_pick") || {}).value || "");
+      if (_pk) { var _rb = stkRegister().filter(function (b) { return b.key === _pk; })[0]; if (_rb) { _g.supplier = _g.supplier || _rb.supplier; _g.billNo = _g.billNo || _rb.billNo; } }
+      if (!_g.supplier) { toast("Whose lorry - the supplier's name, please."); return; }
+      if (!_g.billNo) { toast("The bill or invoice number on the supplier's paper, please."); return; }
+      var _rows = {}, _ord = [], _bad = "";
+      _g.lines.forEach(function (l) {
+        if (!l.code && !l.qty) return;
+        var p = PRODUCTS.filter(function (x) { return x.code === l.code; })[0], q = num(l.qty);
+        if (!p) { _bad = _bad || ("Pick \"" + l.code + "\" from the product list."); return; }
+        if (!(q > 0)) { _bad = _bad || ("Quantity for " + p.desc + "."); return; }
+        if (!_rows[p.code]) { _rows[p.code] = { code: p.code, qty: 0, desc: p.desc }; _ord.push(p.code); }
+        _rows[p.code].qty += q;
+      });
+      if (_bad) { toast(_bad); return; }
+      if (!_ord.length) { toast("Nothing entered yet."); return; }
+      var _gk = stkBillKey(_g.supplier, _g.billNo);
+      if (stkImportedRefs()[_gk.toLowerCase()] && !_g.again) { _g.again = true; toast("A lorry for " + _gk + " was already entered. Press Put into stock again to add these as MORE goods on the same bill."); return; }
+      t.disabled = true; t.textContent = "Saving\u2026";
+      api("stockImport", { ref: _gk, asOn: _g.date || today(), type: "in", rows: _ord.map(function (k) { return _rows[k]; }), newItems: [] }).then(function (r) {
+        if (!(r && r.ok)) { t.disabled = false; t.textContent = "Put into stock"; toast((r && r.error) || "The server did not accept it - nothing was put into stock."); return; }
+        S.grn = null; STOCK_LOADED = false; S.stock = []; ensureStock(); render();
+        toast(_ord.length + (_ord.length === 1 ? " product" : " products") + " from " + _g.supplier + " put into stock.");
+      }, function () { t.disabled = false; t.textContent = "Put into stock"; toast("No answer from the server - it MAY have been saved. Check in the CRM's Stock before entering it again."); });
+      return;
+    }
     if (act === "ch-new" || act === "ch-draft-go") {
+      ensureStock();
       if (!canMake()) { toast("Making a challan is done by the godown or the office."); return; }
       var _dr = chDraftLoad();   /* 1.78.0 - the unfinished one comes back first */
       if (_dr) { S.ch = _dr.ch; render(); toast("Your unfinished challan" + (S.ch.client ? " for " + S.ch.client : "") + " is back, exactly as you left it."); return; }
@@ -7714,6 +7890,9 @@ function discRowOn(client, brand, onYmd) {
       var dRec = ((S.data && S.data.drivers) || []).filter(function (d) {
         return lower(d.name) === lower(z.driver);
       })[0] || {};
+      /* 1.99.0 - more than is free in stock: said once, and a second press saves it */
+      var _ovr = stkOverLines(lines, z.editId);
+      if (_ovr.length && !z.stkWarned) { z.stkWarned = true; toast(stkOverSay(_ovr)); return; }
       t.disabled = true; t.textContent = "Creating…";
       var reset = function () { t.disabled = false; t.textContent = "Create the challan"; };
 
