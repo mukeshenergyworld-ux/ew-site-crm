@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.607";
+  var APP_VERSION = "6.9.608";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -40178,6 +40178,20 @@ function viewCatalogue() {
     return m;
   }
   function stkCounts(code, ymd, cut) { var c = cut[code]; return !c || String(ymd || "").slice(0, 10) >= c; }
+  /* 6.9.608 / 1.101.0 - ONE COUNT PER PRODUCT. A count is saved brand by brand over a day or two,
+     and a miscount is put right by counting again. Before this, two counts of one product on the
+     same date were ADDED - 40 and a correction of 42 read 82. Now the last one saved for the
+     latest date is the count; the earlier row stays on the sheet (nothing is deleted) but is
+     not added. */
+  function stkOpenLast() {
+    var cut = stkCutoff(), m = {};
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "opening") return;
+      var k = String(r.code || "").trim();
+      if (k && cut[k] && String(r.asOn || "").slice(0, 10) === cut[k]) m[k] = r;
+    });
+    return m;
+  }
   /* ===== HIS PROCESS  (CRM 6.9.607 / Challan 1.100.0, 25 Sep 2026) =====
      IN - his words: "accounts will enter stock in Tally first, he will download individual bill in
      Excel ... you will fetch same and register stock from there". The Tally purchase bill uploaded
@@ -40232,14 +40246,14 @@ function viewCatalogue() {
     return m;
   }
   function stockMovementByCode() {
-    var m = {}, desc = {}, cut = stkCutoff(), _bref = {};
+    var m = {}, desc = {}, cut = stkCutoff(), _bref = {}, _olast = stkOpenLast();
     (S.stock || []).forEach(function (r) { if (String(r.type) === "bill" && r.ref) _bref[String(r.ref).trim().toLowerCase()] = 1; });
     (S.stock || []).forEach(function (row) {
       var ty = String(row.type || "");
       if (ty === "bill") return;   /* 6.9.607 - counted below, line by line, from stkBillLines */
       if (ty === "in" && _bref[String(row.ref || "").trim().toLowerCase()]) return;   /* that bill is already counted from Tally */
       var _k0 = String(row.code || "").trim();
-      if (ty === "opening" && cut[_k0] && String(row.asOn || "").slice(0, 10) !== cut[_k0]) return;   /* only the latest count */
+      if (ty === "opening" && _olast[_k0] !== row) return;   /* only the latest count - 6.9.608: and only its last save */
       if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && !stkCounts(_k0, row.asOn, cut)) return;
       if (ty === "reorder" || ty === "rate" || ty === "landing" || ty === "register" || ty === "alias") return;   /* settings rows, not movements (register/alias: v6.9.605) */
       var k = String(row.code || "").trim(); if (!k) return;
@@ -40521,11 +40535,11 @@ function viewCatalogue() {
   /* ===== v6.9.606 - THE STOCK SHEET AS EXCEL: every product, where its figure comes from ===== */
   function stockXlsx() {
     var cut = stkCutoff(), mv = stockMovementByCode(), del = stockDeliveredByCode(), ret = stockReturnedByCode(), res = stkReserved("");
-    var reo = reorderByCode(), rate = rateByCode(), open = {}, rin = {}, adj = {}, _xbr = {};
+    var reo = reorderByCode(), rate = rateByCode(), open = {}, rin = {}, adj = {}, _xbr = {}, _xol = stkOpenLast();
     stkBillLines().forEach(function (l) { _xbr[l.ref.trim().toLowerCase()] = 1; });
     (S.stock || []).forEach(function (r) {
       var ty = String(r.type || ""), k = String(r.code || "").trim(); if (!k) return;
-      if (ty === "opening" && cut[k] && String(r.asOn || "").slice(0, 10) === cut[k]) open[k] = (open[k] || 0) + (Number(r.qty) || 0);
+      if (ty === "opening") { if (_xol[k] === r) open[k] = Number(r.qty) || 0; }
       else if ((ty === "in" || ty === "adjust") && stkCounts(k, r.asOn, cut)) { if (ty === "in") { if (!_xbr[String(r.ref || "").trim().toLowerCase()]) rin[k] = (rin[k] || 0) + (Number(r.qty) || 0); } else adj[k] = (adj[k] || 0) + (Number(r.qty) || 0); }
     });
     stkBillLines().forEach(function (l) { if (stkCounts(l.code, l.asOn, cut)) rin[l.code] = (rin[l.code] || 0) + l.qty; });
@@ -40547,7 +40561,7 @@ function viewCatalogue() {
      bill it came on), adjustments, each delivery that took it out (a challan whose receipt is in -
      the rule on-hand has always used) and each return booked back in. */
   function stockLedgerPanel(code) {
-    var ev = [], cut = stkCutoff(), _c = {}, _brf = {}; _c[code] = cut[code];
+    var ev = [], cut = stkCutoff(), _c = {}, _brf = {}, _lol = stkOpenLast(); _c[code] = cut[code];
     stkBillLines().forEach(function (l) {
       _brf[l.ref.trim().toLowerCase()] = 1;
       if (l.code === code && stkCounts(code, l.asOn, _c)) ev.push({ d: l.asOn, what: "Purchase bill (Tally)", ref: l.ref, note: "", q: l.qty, o: 1 });
@@ -40556,7 +40570,7 @@ function viewCatalogue() {
       var ty = String(r.type || "");
       if (["opening", "in", "adjust"].indexOf(ty) < 0 || String(r.code || "").trim() !== code) return;
       if (ty === "in" && _brf[String(r.ref || "").trim().toLowerCase()]) return;   /* 6.9.607 - that bill is shown from Tally */
-      if (ty === "opening" ? (cut[code] && String(r.asOn || "").slice(0, 10) !== cut[code]) : !stkCounts(code, r.asOn, _c)) return;   /* from the latest count on */
+      if (ty === "opening" ? _lol[code] !== r : !stkCounts(code, r.asOn, _c)) return;   /* from the latest count on - 6.9.608: its last save */
       ev.push({ d: String(r.asOn || "").slice(0, 10), what: ty === "opening" ? "Physical count" : ty === "in" ? "Goods received" : "Adjustment", ref: r.ref || "", note: r.notes || "", q: Number(r.qty) || 0, o: ty === "opening" ? 0 : 1 });
     });
     (S.data.challans || []).forEach(function (c) {
@@ -40992,33 +41006,126 @@ function viewCatalogue() {
     g.date = (el("grn_date") || {}).value || g.date || today();
     g.lines.forEach(function (l, i) { l.code = String((el("grn_c" + i) || {}).value || "").trim(); l.qty = String((el("grn_q" + i) || {}).value || "").trim(); });
   }
-  /* ===== v6.9.605 - THE PHYSICAL COUNT: every product, one box each, saved as the opening ===== */
+  /* ===== THE PHYSICAL COUNT  (v6.9.605; rebuilt 6.9.608, 25 Sep 2026) =====
+     His words, with a screenshot of the first version: "show item pic and manage it more
+     professionally". The first version was a bare list - a name, a code and an empty box, 1,051
+     times - with nothing to say how far the count had got or what a thing looks like on the
+     shelf. A man counting a godown is matching a box of fittings to a name; the PICTURE is how he
+     does that. So:
+       - every row carries the catalogue picture (tap it to see it large) and its brand line;
+       - the top says how far the count has got, overall and per brand, and each brand chip says
+         "12 / 68", turning green when the brand is done;
+       - Show: all / not counted yet / counted, so what is left is one tap away;
+       - Enter moves to the next box, so a keyboard count never touches the mouse;
+       - what is typed is kept on this device as it is typed (a draft), so a closed tab or a
+         dead battery does not lose an afternoon's counting; it is cleared once saved;
+       - the last saved count is shown beside each box, and saving again corrects it (see
+         stkOpenLast - the last save wins; nothing is deleted).
+     Saving can be done brand by brand. */
+  function pcDraftKey() { return "ew_pc_draft_" + String(S.user || "-"); }
+  function pcDraftLoad() {
+    try { var d = JSON.parse(localStorage.getItem(pcDraftKey()) || "null"); return (d && d.v && typeof d.v === "object") ? d : null; } catch (e) { return null; }
+  }
+  function pcDraftSave() {
+    try {
+      var pc = S.pc; if (!pc) return;
+      var v = {}; Object.keys(pc.v || {}).forEach(function (k) { if (String(pc.v[k]).trim() !== "") v[k] = pc.v[k]; });
+      if (Object.keys(v).length) localStorage.setItem(pcDraftKey(), JSON.stringify({ v: v, date: pc.date || today(), at: Date.now() }));
+      else localStorage.removeItem(pcDraftKey());
+    } catch (e) { }
+  }
+  function pcDraftClear() { try { localStorage.removeItem(pcDraftKey()); } catch (e) { } }
+  function pcFilled(v) { return v != null && String(v).trim() !== ""; }
   function viewPhysCount() {
-    var pc = S.pc, brands = {};
-    PRODUCTS.forEach(function (p) { brands[p.brand || "Other"] = (brands[p.brand || "Other"] || 0) + 1; });
+    var pc = S.pc, brands = {}, done = {}, last = stkOpenLast();
+    PRODUCTS.forEach(function (p) {
+      var b = p.brand || "Other";
+      brands[b] = (brands[b] || 0) + 1;
+      if (pcFilled(pc.v[p.code])) done[b] = (done[b] || 0) + 1;
+    });
     var bl = Object.keys(brands).sort();
     var cur = pc.brand || bl[0] || "";
-    var q = String(pc.q || "").trim().toLowerCase();
-    var list = PRODUCTS.filter(function (p) { return (p.brand || "Other") === cur && (!q || (p.code + " " + p.desc).toLowerCase().indexOf(q) >= 0); });
-    var filled = Object.keys(pc.v).filter(function (k) { return String(pc.v[k]).trim() !== ""; }).length;
+    var q = String(pc.q || "").trim().toLowerCase(), show = pc.show || "all";
+    var inBrand = PRODUCTS.filter(function (p) { return (p.brand || "Other") === cur; });
+    var list = PRODUCTS.filter(function (p) {
+      if (q) { if ((p.code + " " + p.desc + " " + (p.brand || "")).toLowerCase().indexOf(q) < 0) return false; }
+      else if ((p.brand || "Other") !== cur) return false;
+      var f = pcFilled(pc.v[p.code]);
+      return show === "all" || (show === "todo" ? !f : f);
+    });
+    var filled = Object.keys(pc.v).filter(function (k) { return pcFilled(pc.v[k]); }).length;
+    var total = PRODUCTS.length, pct = total ? Math.round(filled * 100 / total) : 0;
+    var everCounted = Object.keys(last).length;
+    var TH = function (x, al, w) { return '<th style="padding:8px 10px;text-align:' + (al || 'left') + ';font-size:12px;letter-spacing:.04em;white-space:nowrap' + (w ? ';width:' + w : '') + '">' + x + '</th>'; };
     var h = '<div class="row"><button class="btn sm ghost" data-act="pc-cancel">&larr; Back to Stock</button></div>' +
-      '<div class="card"><h2 style="margin:0">Physical count</h2><div class="meta" style="font-size:12.5px">Type what is on the floor for each product. Saved as the <b>opening stock</b> on the count date: from that day, only what is received, delivered or returned moves each balance. Count before the day&rsquo;s first dispatch. Leave a box empty for a product you did not count.</div>' +
-      '<div class="row" style="margin-top:6px"><div style="flex:1"><label>Count date</label><input id="pc_date" type="date" value="' + esc(pc.date || today()) + '"/></div>' +
-      '<div style="flex:2"><label>Find</label><div class="row" style="gap:6px"><input id="pc_q" class="grow" placeholder="Code or name" value="' + esc(pc.q || "") + '"/><button class="btn sm ghost" data-act="pc-find">Find</button></div></div></div>' +
-      '<div class="acts" style="flex-wrap:wrap;gap:6px;margin-top:8px">' + bl.map(function (b) { return '<button class="btn sm ' + (b === cur ? '' : 'ghost') + '" data-act="pc-brand" data-b="' + esc(b) + '">' + esc(b) + ' <span style="opacity:.7">' + brands[b] + '</span></button>'; }).join("") + '</div></div>';
-    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#0b3b36;color:#fff"><th style="padding:6px 8px;text-align:left">PRODUCT</th><th style="padding:6px 8px;text-align:left">UNIT</th><th style="padding:6px 8px;text-align:right;width:110px">COUNTED</th></tr></thead><tbody>' +
-      list.map(function (p, i) {
-        return '<tr style="background:' + (i % 2 ? '#f8fafc' : '#fff') + ';border-bottom:1px solid #eef2f7"><td style="padding:5px 8px"><b>' + esc(p.desc) + '</b><div style="font-size:12px;color:#64748b">' + esc(p.code) + '</div></td>' +
-          '<td style="padding:5px 8px;color:#64748b;font-size:12px">' + esc(p.unit || "") + '</td>' +
-          '<td style="padding:5px 8px;text-align:right"><input class="pc-box" data-code="' + esc(p.code) + '" inputmode="decimal" value="' + esc(pc.v[p.code] != null ? pc.v[p.code] : "") + '" style="width:90px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;text-align:right;font-size:14px"/></td></tr>';
-      }).join("") + '</tbody></table></div>' +
-      '<div class="acts" style="position:sticky;bottom:0;background:#fff;padding:8px 0"><button class="btn" data-act="pc-save">Save the count (' + plural(filled, "product") + ')</button><button class="btn ghost" data-act="pc-cancel">Cancel</button></div>';
+      '<div class="card" style="padding:0;overflow:hidden">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:12px 14px;background:#0b3b36;color:#fff">' +
+        '<div style="flex:1 1 260px"><div style="font-size:18px;font-weight:800">Physical count</div>' +
+        '<div style="font-size:12.5px;opacity:.85;margin-top:2px">Count what is on the shelf and type it in. It becomes each product&rsquo;s opening stock on the count date. Count before the day&rsquo;s first dispatch.</div></div>' +
+        '<div style="flex:0 0 auto;text-align:right"><div style="font-size:22px;font-weight:800">' + filled + ' <span style="font-size:14px;opacity:.75">of ' + total + '</span></div>' +
+        '<div style="font-size:12px;opacity:.85">typed on this screen' + (everCounted ? ' &middot; ' + everCounted + ' already saved' : '') + '</div></div></div>' +
+      '<div style="height:6px;background:#e2e8f0"><div style="height:6px;width:' + pct + '%;background:#14b8a6"></div></div>' +
+      '<div style="padding:10px 14px">' +
+      '<div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">' +
+        '<div style="flex:0 1 180px"><label style="font-size:12px;color:#475569">Count date</label><input id="pc_date" type="date" value="' + esc(pc.date || today()) + '"/></div>' +
+        '<div style="flex:1 1 260px"><label style="font-size:12px;color:#475569">Find in every brand</label><div class="row" style="gap:6px"><input id="pc_q" class="grow" placeholder="Code or name" value="' + esc(pc.q || "") + '"/>' +
+          '<button class="btn sm ghost" data-act="pc-find">Find</button>' + (q ? '<button class="btn sm ghost" data-act="pc-clearq">Clear</button>' : '') + '</div></div>' +
+        '<div style="flex:0 1 auto"><label style="font-size:12px;color:#475569">Show</label><div class="row" style="gap:4px">' +
+          [["all", "All"], ["todo", "Not counted"], ["done", "Counted"]].map(function (o) {
+            return '<button class="btn sm ' + (show === o[0] ? '' : 'ghost') + '" data-act="pc-show" data-v="' + o[0] + '">' + o[1] + '</button>';
+          }).join("") + '</div></div></div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">' +
+        bl.map(function (b) {
+          var d = done[b] || 0, n = brands[b], full = d >= n, sel = b === cur && !q;
+          var bg = sel ? '#0f766e' : full ? '#dcfce7' : d ? '#fffbeb' : '#fff';
+          var fg = sel ? '#fff' : full ? '#166534' : '#0f172a';
+          var bd = sel ? '#0f766e' : full ? '#86efac' : d ? '#fcd34d' : '#cbd5e1';
+          return '<button data-act="pc-brand" data-b="' + esc(b) + '" style="min-height:44px;padding:6px 12px;border-radius:10px;border:1px solid ' + bd + ';background:' + bg + ';color:' + fg + ';font-size:13px;font-weight:700;cursor:pointer">' +
+            esc(b) + ' <span style="font-weight:600;opacity:.8">' + d + '/' + n + '</span>' + (full ? ' &#10003;' : '') + '</button>';
+        }).join("") + '</div></div></div>';
+    h += '<div class="card" style="padding:0;overflow:hidden">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:13px">' +
+      '<b style="flex:1 1 200px">' + (q ? 'Found for &ldquo;' + esc(pc.q) + '&rdquo;' : esc(cur)) + ' &middot; ' + plural(list.length, "product") + '</b>' +
+      (q ? '' : '<span style="color:#475569">' + (done[cur] || 0) + ' of ' + inBrand.length + ' counted</span>') + '</div>' +
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#0b3b36;color:#fff">' +
+      TH("PICTURE", "left", "64px") + TH("PRODUCT") + TH("COUNTED", "right", "96px") + '</tr></thead><tbody>' +
+      (list.length ? list.map(function (p, i) {
+        var f = pcFilled(pc.v[p.code]), lr = last[p.code];
+        var pic = p.pic ? driveImg(p.pic, 120) : "";
+        return '<tr style="border-bottom:1px solid #eef2f7;background:' + (f ? '#f0fdf4' : (i % 2 ? '#fafcff' : '#fff')) + '">' +
+          '<td style="padding:6px 6px 6px 10px">' + (pic
+            ? '<img src="' + esc(pic) + '" loading="lazy" alt="" data-act="pc-zoom" data-code="' + esc(p.code) + '" title="See it large" style="width:56px;height:56px;object-fit:contain;border-radius:8px;background:#fff;border:1px solid #e2e8f0;cursor:zoom-in;display:block"/>'
+            : '<div style="width:56px;height:56px;border-radius:8px;background:#f1f5f9;color:#94a3b8;font-size:12px;display:flex;align-items:center;justify-content:center;text-align:center">no picture</div>') + '</td>' +
+          '<td style="padding:8px 6px"><div style="font-weight:700;color:#0f172a;word-break:break-word"><span style="color:#94a3b8;font-weight:600;font-size:12px">' + (i + 1) + '.</span> ' + esc(p.desc || p.code) + '</div>' +
+            '<div style="font-size:12px;color:#64748b;margin-top:2px;word-break:break-word">' + esc(p.code) + (p.brand ? ' &middot; ' + esc(p.brand) : '') + (p.unit ? ' &middot; <b style="color:#475569">' + esc(p.unit) + '</b>' : '') + '</div></td>' +
+          '<td style="padding:6px 10px 6px 4px;text-align:right"><input class="pc-box" data-code="' + esc(p.code) + '" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="Counted ' + esc(p.desc || p.code) + '" value="' + esc(pc.v[p.code] != null ? pc.v[p.code] : "") + '" ' +
+            'onkeydown="if(event.key===\'Enter\'){event.preventDefault();var b=[].slice.call(document.querySelectorAll(\'.pc-box\'));var n=b[b.indexOf(this)+1];if(n){n.focus();n.select();}}" ' +
+            'oninput="var r=this.closest(\'tr\');if(r)r.style.background=this.value.trim()?\'#f0fdf4\':\'\';" ' +
+            'style="width:84px;min-height:44px;padding:8px 8px;border:1px solid ' + (f ? '#86efac' : '#cbd5e1') + ';border-radius:8px;text-align:right;font-size:16px;font-weight:700"/>' +
+            (lr ? '<div style="font-size:12px;color:#64748b;margin-top:3px;white-space:nowrap">saved <b>' + (Number(lr.qty) || 0) + '</b> ' + esc(dmy(String(lr.asOn || "").slice(0, 10)).slice(0, 5)) + '</div>' : '') + '</td></tr>';
+      }).join("") : '<tr><td colspan="3" style="padding:18px;text-align:center;color:#64748b">' +
+        (show === "todo" ? 'Every product here is counted.' : show === "done" ? 'Nothing counted here yet.' : 'No product matches.') + '</td></tr>') +
+      '</tbody></table></div></div>';
+    h += '<div style="position:sticky;bottom:0;z-index:5;background:#fff;border-top:1px solid #e2e8f0;padding:10px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
+      '<button class="btn" data-act="pc-save"' + (filled ? '' : ' disabled') + '>Save the count (' + plural(filled, "product") + ')</button>' +
+      '<button class="btn ghost" data-act="pc-cancel">Close</button>' +
+      '<span style="font-size:12px;color:#64748b;flex:1 1 220px">Typed figures are kept on this device until saved. Saving again corrects a product&rsquo;s count for that date.</span></div>';
+    if (pc.zoom) {
+      var zp = PRODUCTS.filter(function (x) { return x.code === pc.zoom; })[0] || {};
+      h += '<div data-act="pc-zoom" data-code="" style="position:fixed;inset:0;z-index:50;background:rgba(15,23,42,.75);display:flex;align-items:center;justify-content:center;padding:16px">' +
+        '<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;padding:14px;text-align:center">' +
+        '<img src="' + esc(driveImg(zp.pic, 700)) + '" alt="" style="max-width:100%;max-height:60vh;object-fit:contain"/>' +
+        '<div style="font-weight:800;margin-top:8px">' + esc(zp.desc || zp.code || "") + '</div>' +
+        '<div style="font-size:12.5px;color:#64748b">' + esc(zp.code || "") + (zp.brand ? ' &middot; ' + esc(zp.brand) : '') + (zp.unit ? ' &middot; ' + esc(zp.unit) : '') + '</div>' +
+        '<button class="btn" data-act="pc-zoom" data-code="" style="margin-top:10px">Close</button></div></div>';
+    }
     return h;
   }
   function pcKeep() {
     var pc = S.pc; if (!pc) return;
     [].forEach.call(document.querySelectorAll(".pc-box"), function (b) { pc.v[b.getAttribute("data-code")] = b.value; });
     pc.date = (el("pc_date") || {}).value || pc.date; pc.q = (el("pc_q") || {}).value || "";
+    pcDraftSave();
   }
   function viewStockImport() {
     if (S.imp && S.imp.step === "tally") return viewTallyReview();
@@ -42747,10 +42854,20 @@ function viewCatalogue() {
       }, function () { t.disabled = false; t.textContent = "Put into stock"; toast("No answer from the server - it MAY have been saved. Refresh Stock before entering it again."); });
       return;
     }
-    if (act === "pc-open") { S.imp = null; S.grn = null; S.pc = { v: {}, date: today(), brand: "" }; render(); return; }
-    if (act === "pc-cancel") { S.pc = null; render(); return; }
+    if (act === "pc-open") {
+      S.imp = null; S.grn = null;
+      var _pd = pcDraftLoad();   /* 6.9.608 - an unfinished count comes back */
+      S.pc = { v: (_pd && _pd.v) || {}, date: (_pd && _pd.date) || today(), brand: "", show: "all" };
+      ensureStock(); render();
+      if (_pd) toast("Your unsaved count is back: " + plural(Object.keys(_pd.v).length, "product") + ".");
+      return;
+    }
+    if (act === "pc-cancel") { pcKeep(); S.pc = null; render(); return; }
     if (act === "pc-find") { pcKeep(); render(); return; }
-    if (act === "pc-brand") { pcKeep(); S.pc.brand = t.getAttribute("data-b") || ""; render(); return; }
+    if (act === "pc-clearq") { pcKeep(); S.pc.q = ""; render(); return; }
+    if (act === "pc-show") { pcKeep(); S.pc.show = t.getAttribute("data-v") || "all"; render(); return; }
+    if (act === "pc-zoom") { pcKeep(); S.pc.zoom = t.getAttribute("data-code") || ""; render(); return; }
+    if (act === "pc-brand") { pcKeep(); S.pc.brand = t.getAttribute("data-b") || ""; S.pc.q = ""; render(); window.scrollTo(0, 0); return; }
     if (act === "pc-save") {
       pcKeep();
       var _pc = S.pc, _pr = [];
@@ -42764,7 +42881,7 @@ function viewCatalogue() {
       t.disabled = true; t.textContent = "Saving…";
       api("stockImport", { ref: "Physical count " + (_pc.date || today()), asOn: _pc.date || today(), type: "opening", rows: _pr, newItems: [] }).then(function (r) {
         if (!(r && r.ok)) { t.disabled = false; t.textContent = "Save the count"; toast((r && r.error) || "Not saved."); return; }
-        S.pc = null; STOCK_LOADED = false; S.stock = []; ensureStock(); render();
+        pcDraftClear(); S.pc = null; STOCK_LOADED = false; S.stock = []; ensureStock(); render();
         toast("Count saved for " + plural(_pr.length, "product") + ", as the opening stock on " + dmy(_pc.date) + ".");
       }, function () { t.disabled = false; t.textContent = "Save the count"; toast("No answer from the server - it MAY have been saved. Refresh Stock before saving again."); });
       return;
