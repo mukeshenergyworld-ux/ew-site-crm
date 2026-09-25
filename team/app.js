@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.609";
+  var APP_VERSION = "6.9.610";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -41049,44 +41049,114 @@ function viewCatalogue() {
   }
   function pcDraftClear() { try { localStorage.removeItem(pcDraftKey()); } catch (e) { } }
   function pcFilled(v) { return v != null && String(v).trim() !== ""; }
+  /* 6.9.610 - HIS WORDS, 25 Sep 2026: "for initial stock entry, like entering Heliroma, make two
+     parts, entered and pending; qty entered auto shifted to entered; all items entered marked brand
+     stock completed; motive is to focus on pending items, not to scroll time and again all items".
+     Heliroma PPR alone is 177 products. So the brand opens on what is LEFT: type a figure, press
+     Enter (or tap the next box), and the product leaves the pending list for the entered one below,
+     and the next pending box is already under the cursor. A product counts as entered when a figure
+     is typed on this screen or a count for it is already saved. When a brand has nothing pending it
+     says so, in green, and offers the next brand that still has work in it. */
+  function pcEntered(p, pc, last) { return pcFilled(pc.v[p.code]) || !!last[p.code]; }
+  var _pcWired = false;
+  function pcWire() {
+    if (_pcWired) return;
+    _pcWired = true;
+    document.addEventListener("keydown", function (e) {
+      var t = e.target;
+      if (!S.pc || e.key !== "Enter" || !t || !t.classList || !t.classList.contains("pc-box")) return;
+      e.preventDefault();
+      pcMove(t, false);
+    });
+    document.addEventListener("change", function (e) {
+      var t = e.target;
+      if (!S.pc || !t || !t.classList || !t.classList.contains("pc-box")) return;
+      pcMove(t, true);
+    });
+  }
+  /* one box finished: keep what is typed, move the product to the part it now belongs in, and put
+     the cursor where the counting goes on */
+  function pcMove(t, fromChange) {
+    var code = t.getAttribute("data-code"), sec = t.getAttribute("data-sec");
+    var boxes = [].slice.call(document.querySelectorAll('.pc-box[data-sec="' + sec + '"]'));
+    var idx = boxes.indexOf(t);
+    pcKeep();
+    var last = stkOpenLast(), filled = pcFilled(S.pc.v[code]);
+    var moved = (sec === "p" && filled) || (sec === "d" && !filled && !last[code]);
+    if (!moved) {
+      if (!fromChange) { var n = boxes[idx + 1]; if (n) { n.focus(); try { n.select(); } catch (x) { } } }
+      return;
+    }
+    setTimeout(function () {
+      var act = document.activeElement;
+      var actCode = (fromChange && act && act !== t && act.classList && act.classList.contains("pc-box")) ? act.getAttribute("data-code") : "";
+      var y = window.scrollY;
+      render();
+      window.scrollTo(0, y);
+      var go = null;
+      if (actCode) {
+        [].forEach.call(document.querySelectorAll(".pc-box"), function (b) { if (b.getAttribute("data-code") === actCode) go = b; });
+      } else if (!fromChange && sec === "p") {
+        go = document.querySelectorAll('.pc-box[data-sec="p"]')[idx] || null;
+      }
+      if (go) { go.focus(); try { go.select(); } catch (x) { } }
+    }, 0);
+  }
   function viewPhysCount() {
+    pcWire();
     var pc = S.pc, brands = {}, done = {}, last = stkOpenLast();
     PRODUCTS.forEach(function (p) {
       var b = p.brand || "Other";
       brands[b] = (brands[b] || 0) + 1;
-      if (pcFilled(pc.v[p.code])) done[b] = (done[b] || 0) + 1;
+      if (pcEntered(p, pc, last)) done[b] = (done[b] || 0) + 1;
     });
     var bl = Object.keys(brands).sort();
-    var cur = pc.brand || bl[0] || "";
-    var q = String(pc.q || "").trim().toLowerCase(), show = pc.show || "all";
-    var inBrand = PRODUCTS.filter(function (p) { return (p.brand || "Other") === cur; });
-    var list = PRODUCTS.filter(function (p) {
-      if (q) { if ((p.code + " " + p.desc + " " + (p.brand || "")).toLowerCase().indexOf(q) < 0) return false; }
-      else if ((p.brand || "Other") !== cur) return false;
-      var f = pcFilled(pc.v[p.code]);
-      return show === "all" || (show === "todo" ? !f : f);
+    var cur = pc.brand || bl.filter(function (b) { return (done[b] || 0) < brands[b]; })[0] || bl[0] || "";
+    var q = String(pc.q || "").trim().toLowerCase();
+    var scope = PRODUCTS.filter(function (p) {
+      if (q) return (p.code + " " + p.desc + " " + (p.brand || "")).toLowerCase().indexOf(q) >= 0;
+      return (p.brand || "Other") === cur;
     });
-    var filled = Object.keys(pc.v).filter(function (k) { return pcFilled(pc.v[k]); }).length;
-    var total = PRODUCTS.length, pct = total ? Math.round(filled * 100 / total) : 0;
-    var everCounted = Object.keys(last).length;
+    var pend = scope.filter(function (p) { return !pcEntered(p, pc, last); });
+    var ent = scope.filter(function (p) { return pcEntered(p, pc, last); });
+    var typed = Object.keys(pc.v).filter(function (k) { return pcFilled(pc.v[k]); }).length;
+    var allDone = PRODUCTS.filter(function (p) { return pcEntered(p, pc, last); }).length;
+    var total = PRODUCTS.length, pct = total ? Math.round(allDone * 100 / total) : 0;
+    var nextB = bl.filter(function (b) { return b !== cur && (done[b] || 0) < brands[b]; })[0] || "";
     var TH = function (x, al, w) { return '<th style="padding:8px 10px;text-align:' + (al || 'left') + ';font-size:12px;letter-spacing:.04em;white-space:nowrap' + (w ? ';width:' + w : '') + '">' + x + '</th>'; };
+    var rowOf = function (p, i, secP) {
+      var f = pcFilled(pc.v[p.code]), lr = last[p.code];
+      var pic = p.pic ? driveImg(p.pic, 120) : "";
+      return '<tr style="border-bottom:1px solid #eef2f7;background:' + (secP ? (i % 2 ? '#fafcff' : '#fff') : '#f0fdf4') + '">' +
+        '<td style="padding:6px 6px 6px 10px">' + (pic
+          ? '<img src="' + esc(pic) + '" loading="lazy" alt="" data-act="pc-zoom" data-code="' + esc(p.code) + '" title="See it large" style="width:56px;height:56px;object-fit:contain;border-radius:8px;background:#fff;border:1px solid #e2e8f0;cursor:zoom-in;display:block"/>'
+          : '<div style="width:56px;height:56px;border-radius:8px;background:#f1f5f9;color:#94a3b8;font-size:12px;display:flex;align-items:center;justify-content:center;text-align:center">no picture</div>') + '</td>' +
+        '<td style="padding:8px 6px"><div style="font-weight:700;color:#0f172a;word-break:break-word"><span style="color:#94a3b8;font-weight:600;font-size:12px">' + (i + 1) + '.</span> ' + esc(p.desc || p.code) + '</div>' +
+          '<div style="font-size:12px;color:#64748b;margin-top:2px;word-break:break-word">' + esc(p.code) + (q && p.brand ? ' &middot; ' + esc(p.brand) : '') + (p.unit ? ' &middot; <b style="color:#475569">' + esc(p.unit) + '</b>' : '') + '</div></td>' +
+        '<td style="padding:6px 10px 6px 4px;text-align:right"><input class="pc-box" data-sec="' + (secP ? 'p' : 'd') + '" data-code="' + esc(p.code) + '" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="Counted ' + esc(p.desc || p.code) + '" value="' + esc(pc.v[p.code] != null ? pc.v[p.code] : "") + '" ' +
+          'placeholder="' + (lr && !f ? esc(String(Number(lr.qty) || 0)) : '') + '" ' +
+          'style="width:84px;min-height:44px;padding:8px 8px;border:1px solid ' + (f ? '#86efac' : '#cbd5e1') + ';border-radius:8px;text-align:right;font-size:16px;font-weight:700"/>' +
+          (!secP ? '<div style="font-size:12px;margin-top:3px;white-space:nowrap;color:' + (f ? '#b45309' : '#15803d') + '">' +
+            (f ? (lr ? 'changed, not saved' : 'not saved yet') : 'saved ' + esc(dmy(String(lr.asOn || "").slice(0, 10)).slice(0, 5))) + '</div>' : '') + '</td></tr>';
+    };
+    var table = function (list, secP) {
+      return '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:' + (secP ? '#0b3b36' : '#166534') + ';color:#fff">' +
+        TH("PICTURE", "left", "64px") + TH("PRODUCT") + TH(secP ? "COUNT" : "ENTERED", "right", "96px") + '</tr></thead><tbody>' +
+        list.map(function (p, i) { return rowOf(p, i, secP); }).join("") + '</tbody></table></div>';
+    };
     var h = '<div class="row"><button class="btn sm ghost" data-act="pc-cancel">&larr; Back to Stock</button></div>' +
       '<div class="card" style="padding:0;overflow:hidden">' +
       '<div style="display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:12px 14px;background:#0b3b36;color:#fff">' +
         '<div style="flex:1 1 260px"><div style="font-size:18px;font-weight:800">Physical count</div>' +
-        '<div style="font-size:12.5px;opacity:.85;margin-top:2px">Count what is on the shelf and type it in. It becomes each product&rsquo;s opening stock on the count date. Count before the day&rsquo;s first dispatch.</div></div>' +
-        '<div style="flex:0 0 auto;text-align:right"><div style="font-size:22px;font-weight:800">' + filled + ' <span style="font-size:14px;opacity:.75">of ' + total + '</span></div>' +
-        '<div style="font-size:12px;opacity:.85">typed on this screen' + (everCounted ? ' &middot; ' + everCounted + ' already saved' : '') + '</div></div></div>' +
+        '<div style="font-size:12.5px;opacity:.85;margin-top:2px">Type the count and press Enter: the product moves to Entered and the next one is ready. It becomes the opening stock on the count date.</div></div>' +
+        '<div style="flex:0 0 auto;text-align:right"><div style="font-size:22px;font-weight:800">' + allDone + ' <span style="font-size:14px;opacity:.75">of ' + total + ' entered</span></div>' +
+        '<div style="font-size:12px;opacity:.85">' + (typed ? typed + ' typed here, not saved yet' : 'nothing waiting to save') + '</div></div></div>' +
       '<div style="height:6px;background:#e2e8f0"><div style="height:6px;width:' + pct + '%;background:#14b8a6"></div></div>' +
       '<div style="padding:10px 14px">' +
       '<div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">' +
         '<div style="flex:0 1 180px"><label style="font-size:12px;color:#475569">Count date</label><input id="pc_date" type="date" value="' + esc(pc.date || today()) + '"/></div>' +
         '<div style="flex:1 1 260px"><label style="font-size:12px;color:#475569">Find in every brand</label><div class="row" style="gap:6px"><input id="pc_q" class="grow" placeholder="Code or name" value="' + esc(pc.q || "") + '"/>' +
-          '<button class="btn sm ghost" data-act="pc-find">Find</button>' + (q ? '<button class="btn sm ghost" data-act="pc-clearq">Clear</button>' : '') + '</div></div>' +
-        '<div style="flex:0 1 auto"><label style="font-size:12px;color:#475569">Show</label><div class="row" style="gap:4px">' +
-          [["all", "All"], ["todo", "Not counted"], ["done", "Counted"]].map(function (o) {
-            return '<button class="btn sm ' + (show === o[0] ? '' : 'ghost') + '" data-act="pc-show" data-v="' + o[0] + '">' + o[1] + '</button>';
-          }).join("") + '</div></div></div>' +
+          '<button class="btn sm ghost" data-act="pc-find">Find</button>' + (q ? '<button class="btn sm ghost" data-act="pc-clearq">Clear</button>' : '') + '</div></div></div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">' +
         bl.map(function (b) {
           var d = done[b] || 0, n = brands[b], full = d >= n, sel = b === cur && !q;
@@ -41094,35 +41164,35 @@ function viewCatalogue() {
           var fg = sel ? '#fff' : full ? '#166534' : '#0f172a';
           var bd = sel ? '#0f766e' : full ? '#86efac' : d ? '#fcd34d' : '#cbd5e1';
           return '<button data-act="pc-brand" data-b="' + esc(b) + '" style="min-height:44px;padding:6px 12px;border-radius:10px;border:1px solid ' + bd + ';background:' + bg + ';color:' + fg + ';font-size:13px;font-weight:700;cursor:pointer">' +
-            esc(b) + ' <span style="font-weight:600;opacity:.8">' + d + '/' + n + '</span>' + (full ? ' &#10003;' : '') + '</button>';
+            esc(b) + ' <span style="font-weight:600;opacity:.85">' + (full ? 'complete &#10003;' : (n - d) + ' pending') + '</span></button>';
         }).join("") + '</div></div></div>';
-    h += '<div class="card" style="padding:0;overflow:hidden">' +
-      '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:13px">' +
-      '<b style="flex:1 1 200px">' + (q ? 'Found for &ldquo;' + esc(pc.q) + '&rdquo;' : esc(cur)) + ' &middot; ' + plural(list.length, "product") + '</b>' +
-      (q ? '' : '<span style="color:#475569">' + (done[cur] || 0) + ' of ' + inBrand.length + ' counted</span>') + '</div>' +
-      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#0b3b36;color:#fff">' +
-      TH("PICTURE", "left", "64px") + TH("PRODUCT") + TH("COUNTED", "right", "96px") + '</tr></thead><tbody>' +
-      (list.length ? list.map(function (p, i) {
-        var f = pcFilled(pc.v[p.code]), lr = last[p.code];
-        var pic = p.pic ? driveImg(p.pic, 120) : "";
-        return '<tr style="border-bottom:1px solid #eef2f7;background:' + (f ? '#f0fdf4' : (i % 2 ? '#fafcff' : '#fff')) + '">' +
-          '<td style="padding:6px 6px 6px 10px">' + (pic
-            ? '<img src="' + esc(pic) + '" loading="lazy" alt="" data-act="pc-zoom" data-code="' + esc(p.code) + '" title="See it large" style="width:56px;height:56px;object-fit:contain;border-radius:8px;background:#fff;border:1px solid #e2e8f0;cursor:zoom-in;display:block"/>'
-            : '<div style="width:56px;height:56px;border-radius:8px;background:#f1f5f9;color:#94a3b8;font-size:12px;display:flex;align-items:center;justify-content:center;text-align:center">no picture</div>') + '</td>' +
-          '<td style="padding:8px 6px"><div style="font-weight:700;color:#0f172a;word-break:break-word"><span style="color:#94a3b8;font-weight:600;font-size:12px">' + (i + 1) + '.</span> ' + esc(p.desc || p.code) + '</div>' +
-            '<div style="font-size:12px;color:#64748b;margin-top:2px;word-break:break-word">' + esc(p.code) + (p.brand ? ' &middot; ' + esc(p.brand) : '') + (p.unit ? ' &middot; <b style="color:#475569">' + esc(p.unit) + '</b>' : '') + '</div></td>' +
-          '<td style="padding:6px 10px 6px 4px;text-align:right"><input class="pc-box" data-code="' + esc(p.code) + '" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="Counted ' + esc(p.desc || p.code) + '" value="' + esc(pc.v[p.code] != null ? pc.v[p.code] : "") + '" ' +
-            'onkeydown="if(event.key===\'Enter\'){event.preventDefault();var b=[].slice.call(document.querySelectorAll(\'.pc-box\'));var n=b[b.indexOf(this)+1];if(n){n.focus();n.select();}}" ' +
-            'oninput="var r=this.closest(\'tr\');if(r)r.style.background=this.value.trim()?\'#f0fdf4\':\'\';" ' +
-            'style="width:84px;min-height:44px;padding:8px 8px;border:1px solid ' + (f ? '#86efac' : '#cbd5e1') + ';border-radius:8px;text-align:right;font-size:16px;font-weight:700"/>' +
-            (lr ? '<div style="font-size:12px;color:#64748b;margin-top:3px;white-space:nowrap">saved <b>' + (Number(lr.qty) || 0) + '</b> ' + esc(dmy(String(lr.asOn || "").slice(0, 10)).slice(0, 5)) + '</div>' : '') + '</td></tr>';
-      }).join("") : '<tr><td colspan="3" style="padding:18px;text-align:center;color:#64748b">' +
-        (show === "todo" ? 'Every product here is counted.' : show === "done" ? 'Nothing counted here yet.' : 'No product matches.') + '</td></tr>') +
-      '</tbody></table></div></div>';
+    /* ---- the brand in hand: what is left, first ---- */
+    var title = q ? 'Found for &ldquo;' + esc(pc.q) + '&rdquo;' : esc(cur);
+    if (!q && !pend.length) {
+      h += '<div class="card" style="padding:14px;background:#dcfce7;border-color:#86efac">' +
+        '<div style="font-size:17px;font-weight:800;color:#166534">&#10003; ' + esc(cur) + ' stock complete</div>' +
+        '<div style="font-size:13px;color:#166534;margin-top:2px">All ' + brands[cur] + ' products entered' + (typed ? ' &mdash; press Save the count below to keep them' : '') + '.</div>' +
+        (nextB ? '<button class="btn" data-act="pc-brand" data-b="' + esc(nextB) + '" style="margin-top:10px">Next brand: ' + esc(nextB) + ' (' + (brands[nextB] - (done[nextB] || 0)) + ' pending) &rarr;</button>'
+               : '<div style="font-weight:800;color:#166534;margin-top:8px">Every brand is entered.</div>') + '</div>';
+    } else {
+      h += '<div class="card" style="padding:0;overflow:hidden">' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:10px 12px;background:#fffbeb;border-bottom:1px solid #fde68a">' +
+        '<b style="flex:1 1 200px;font-size:15px">Pending &middot; ' + title + '</b>' +
+        '<span style="font-size:13px;color:#92400e;font-weight:700">' + pend.length + ' to count' + (q ? '' : ' of ' + brands[cur]) + '</span></div>' +
+        (pend.length ? table(pend, true) : '<div style="padding:14px;color:#64748b">Nothing pending here.</div>') + '</div>';
+    }
+    /* ---- and what is done, folded away until he wants it ---- */
+    if (ent.length) {
+      h += '<div class="card" style="padding:0;overflow:hidden">' +
+        '<button data-act="pc-showdone" style="width:100%;min-height:48px;display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f0fdf4;border:0;border-bottom:1px solid #bbf7d0;cursor:pointer;text-align:left">' +
+        '<b style="flex:1;font-size:15px;color:#166534">Entered &middot; ' + title + '</b>' +
+        '<span style="font-size:13px;color:#166534;font-weight:700">' + ent.length + ' &nbsp;' + (pc.showDone ? '&#9650; hide' : '&#9660; show to check or change') + '</span></button>' +
+        (pc.showDone ? table(ent, false) : '') + '</div>';
+    }
     h += '<div style="position:sticky;bottom:0;z-index:5;background:#fff;border-top:1px solid #e2e8f0;padding:10px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
-      '<button class="btn" data-act="pc-save"' + (filled ? '' : ' disabled') + '>Save the count (' + plural(filled, "product") + ')</button>' +
+      '<button class="btn" data-act="pc-save"' + (typed ? '' : ' disabled') + '>Save the count (' + plural(typed, "product") + ')</button>' +
       '<button class="btn ghost" data-act="pc-cancel">Close</button>' +
-      '<span style="font-size:12px;color:#64748b;flex:1 1 220px">Typed figures are kept on this device until saved. Saving again corrects a product&rsquo;s count for that date.</span></div>';
+      '<span style="font-size:12px;color:#64748b;flex:1 1 220px">Typed figures are kept on this device until saved. Save brand by brand or all at once; saving again corrects a count.</span></div>';
     if (pc.zoom) {
       var zp = PRODUCTS.filter(function (x) { return x.code === pc.zoom; })[0] || {};
       h += '<div data-act="pc-zoom" data-code="" style="position:fixed;inset:0;z-index:50;background:rgba(15,23,42,.75);display:flex;align-items:center;justify-content:center;padding:16px">' +
@@ -42879,6 +42949,7 @@ function viewCatalogue() {
     if (act === "pc-find") { pcKeep(); render(); return; }
     if (act === "pc-clearq") { pcKeep(); S.pc.q = ""; render(); return; }
     if (act === "pc-show") { pcKeep(); S.pc.show = t.getAttribute("data-v") || "all"; render(); return; }
+    if (act === "pc-showdone") { pcKeep(); S.pc.showDone = !S.pc.showDone; render(); return; }   /* 6.9.610 */
     if (act === "pc-zoom") { pcKeep(); S.pc.zoom = t.getAttribute("data-code") || ""; render(); return; }
     if (act === "pc-brand") { pcKeep(); S.pc.brand = t.getAttribute("data-b") || ""; S.pc.q = ""; render(); window.scrollTo(0, 0); return; }
     if (act === "pc-save") {
