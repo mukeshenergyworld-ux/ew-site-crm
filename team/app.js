@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.612";
+  var APP_VERSION = "6.9.613";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -18281,8 +18281,10 @@ function viewCatalogue() {
     var total = function (a) { return a.reduce(function (t, x) { return t + x; }, 0); };
     /* the largest size, 0.6x to 1.8x, at which every row still fits the first sheet; below 0.6x it
        carries on to a second sheet instead of going smaller */
-    var sc = 1.8, hs = measure(sc);
-    while (sc > 0.6 && total(hs) > room) { sc = Math.round((sc - 0.05) * 100) / 100; hs = measure(sc); }
+    /* 6.9.613 / 1.105.0 - HIS WORDS, 25 Sep: "make font size same irrespective of no of items, item 4
+       or 32 will have same font size". One size for every challan: the size at which 32 one-line
+       items fit one sheet. A longer challan carries on to a second sheet at the same size. */
+    var sc = 0.6, hs = measure(sc);
 
     var y = y0, n = 0;
     items.forEach(function (l, i) {
