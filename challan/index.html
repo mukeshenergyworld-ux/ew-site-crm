@@ -35,7 +35,7 @@ a{color:#0f766e}
 .btn.ghost{background:#fff;color:#0f766e}
 /* v1.46.7 - 40px, not 36: measured at 360, 46 of the 90 things a thumb taps on this app
    were these, and the two header icons were 35px wide. Same floor as the CRM. */
-.btn.sm{padding:7px 11px;font-size:13px;border-radius:9px;min-height:40px;min-width:40px}
+.btn.sm{padding:7px 11px;font-size:13px;border-radius:9px;min-height:44px;min-width:44px}
 .btn.gry{background:#fff;border-color:#cbd5e1;color:#334155}
 .btn.red{background:#b91c1c;border-color:#b91c1c;color:#fff}
 .btn.amb{background:#b45309;border-color:#b45309;color:#fff}
@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.101.0";
+  var APP_VERSION = "1.102.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1181,6 +1181,12 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      journal is in that box and has a whole release about running out of it. This one is not. */
   var JRN_KEY = "ew_challan_journal_v1";
   var _jrnSeq = 0, _jrnTold = false, _flushing = false, _flushDog = null;
+  /* 1.102.0 - REVIEW B5. A save goes into the journal and is sent at once; the 45-second ticker,
+     a return to the app and the phone coming back online all flush the journal too. Nothing
+     stopped a flush picking up the entry the direct send was still waiting on, so one record
+     could go up twice - and a NEW row has no id yet, so the second copy is a second row. An
+     entry being sent is marked here and every other sender leaves it alone until it answers. */
+  var _jrnBusy = {};
   var _flushFails = 0, _flushSkip = 0, _flushTick = null;
 
 
@@ -1329,7 +1335,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
       var l = jrnLoad();
       if (i >= l.length) { stop(); return; }
       var e = l[i];
+      if (_jrnBusy[e.pk]) { i++; step(); return; }   /* 1.102.0 B5 - already on its way */
+      /* 1.102.0 - REVIEW B9: held work goes up under the name of the man who wrote it. If
+         somebody else is signed in on this phone now, it waits for him; it is never sent
+         with another man's PIN and filed under his name. */
+      if (e.by && S.user && String(e.by) !== String(S.user)) { i++; step(); return; }
+      _jrnBusy[e.pk] = 1;
       jrnSend(e).then(function (r) {
+        delete _jrnBusy[e.pk];
         if (r && r.ok) {
           if (e.kind === "row") {
             var arr = (S.data && S.data[e.tab]) || [];
@@ -1348,10 +1361,11 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           }
           bust(); jrnDrop(e.pk); okCount++;   /* the list shifted left - same index is the next one */
         } else {
-          jrnMark(e.pk, (r && r.error) || "the server refused it"); i++;
+          jrnMark(e.pk, JRN_REFUSED + ((r && r.error) || "the server refused it")); i++;
         }
         step();
       }).catch(function (err) {
+        delete _jrnBusy[e.pk];
         /* The real reason, kept. "network error" for everything is how a healthy connection
            came to be blamed for a timeout in the CRM for eight releases. */
         jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
@@ -1386,6 +1400,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   /* ---- the bar that says so ----
      Sits above the tab bar and is registered furniture (ew_sync_banner is already in the
      bottom-edge watcher), so the toast lifts over it instead of hiding behind it. */
+  var JRN_REFUSED = "Refused by the server: ";
+  /* the tail of every "saved" toast, told truthfully: waiting for signal, or refused */
+  function heldTail(r) {
+    if (!r || !r.held) return "";
+    if (r.refused) return " But the server REFUSED it (" + String(r.err || r.error || "no reason given") +
+      ") — it is kept on this phone and will not go up by itself. Put it right, then tap Try now on the orange bar.";
+    return " Held on this phone until there is signal.";
+  }
   function jrnPaint() {
     var host = document.getElementById("ew_sync_banner");
     if (!host) return;
@@ -1401,6 +1423,14 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     if (wrap) wrap.style.paddingBottom = "150px";
     var err = "";
     for (var i = 0; i < l.length; i++) if (l[i].err) { err = l[i].err; break; }
+    /* 1.102.0 - a refusal first: it is the one that needs a man, not a mast */
+    for (var i2 = 0; i2 < l.length; i2++) if (String(l[i2].err || "").indexOf(JRN_REFUSED) === 0) { err = l[i2].err; break; }
+    var others = l.filter(function (x) { return x.by && S.user && String(x.by) !== String(S.user); });
+    if (others.length) {
+      var whose = {}; others.forEach(function (x) { whose[x.by] = 1; });
+      err = others.length + " of these belong to " + Object.keys(whose).join(", ") +
+        " and go up when " + (Object.keys(whose).length === 1 ? "he signs" : "they sign") + " in on this phone." + (err ? " " + err : "");
+    }
     host.style.display = "block";
     host.innerHTML =
       '<div style="display:flex;align-items:center;gap:8px">' +
@@ -1556,11 +1586,17 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
     } catch (e) { _chg = null; }
     var e = jrnPut({ pk: "P-" + Date.now() + "-" + (++_jrnSeq), kind: "row", tab: tab, row: r2,
                      chg: _chg, noFor: opts.noFor || "", by: S.user || "", at: Date.now(), err: "", tries: 0 });
+    _jrnBusy[e.pk] = 1;
     return jrnSend(e).then(function (r) {
+      delete _jrnBusy[e.pk];
       if (r && r.ok) { jrnDrop(e.pk); return { ok: true, row: r.row || r2, held: false }; }
-      jrnMark(e.pk, (r && r.error) || "the server refused it");
-      return { ok: true, row: e.row, held: true, err: (r && r.error) || "the server refused it" };
+      /* 1.102.0 - REVIEW B6: the server ANSWERED and said no. That is not a signal problem and
+         must never be told as one - it will not go up by itself, however good the signal gets. */
+      var why = (r && r.error) || "the server refused it";
+      jrnMark(e.pk, JRN_REFUSED + why);
+      return { ok: true, row: e.row, held: true, refused: true, err: why };
     }).catch(function (err) {
+      delete _jrnBusy[e.pk];
       jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
       return { ok: true, row: e.row, held: true, err: (err && err.message) || "no answer from the server" };
     });
@@ -2557,15 +2593,18 @@ function discRowOn(client, brand, onYmd) {
       bust();
       return r;
     };
+    _jrnBusy[e.pk] = 1;
     return jrnSend(e).then(function (r) {
+      delete _jrnBusy[e.pk];
       if (r && r.ok) return land(r);
-      jrnMark(e.pk, (r && r.error) || "the server refused it");
+      jrnMark(e.pk, JRN_REFUSED + ((r && r.error) || "the server refused it"));
       /* NOT marked locally. The flag is what every money screen counts a delivery on, and
          missingReceipts() asks the flag and only the flag - so setting it here would drop
          the delivery off the one list that catches this, for a move that has not happened.
          It stays on the list until the server says otherwise. */
-      return { ok: false, held: true, error: (r && r.error) || "the server refused it" };
+      return { ok: false, held: true, refused: true, error: (r && r.error) || "the server refused it" };
     }).catch(function (err) {
+      delete _jrnBusy[e.pk];
       jrnMark(e.pk, (err && err.message) ? err.message : "no answer from the server");
       return { ok: false, held: true, error: (err && err.message) || "no answer from the server" };
     });
@@ -4303,8 +4342,12 @@ function discRowOn(client, brand, onYmd) {
     var none = function (v) { return !String(v == null ? "" : v).trim(); };
     var rows = [];
     rows.push(trailRow("Made", none(c.createdBy) ? "name not recorded" : c.createdBy, c.createdAt, ""));
-    if (none(c.approvedAt) && none(c.approvedBy)) {
-      rows.push(trailRow("Passed", st === "Draft" ? "not passed yet" : "not recorded", "", "bad"));
+    /* 1.102.0 - review C: a Draft is not passed, whatever an older approval left on the row
+       (an edit sends a passed challan back to Draft and the name stays behind) */
+    if (st === "Draft") {
+      rows.push(trailRow("Passed", "not passed yet", "", "bad"));
+    } else if (none(c.approvedAt) && none(c.approvedBy)) {
+      rows.push(trailRow("Passed", "not recorded", "", "bad"));
     } else {
       rows.push(trailRow("Passed", none(c.approvedBy) ? "name not recorded" : c.approvedBy, c.approvedAt, ""));
     }
@@ -5426,11 +5469,16 @@ function discRowOn(client, brand, onYmd) {
         return;
       }
       cd.status = "Dispatched";
+      /* 1.102.0 - review C: remembered, as the pass is, so a pull that left the server a moment
+         before this answer cannot put the Dispatch button back under his thumb */
+      chMoveRemember(cd.id, "Dispatched", (r && r.by) || S.user);
       bust(); render();
       toast(String(cd.challanNo || "The challan") + " dispatched \u2014 the receipt can go on now.");
-    }).catch(function () {
+    }).catch(function (err) {
       dOff("Dispatch");
-      toast("No signal \u2014 nothing was changed. Try again.");
+      var why = (err && err.message) || "";
+      toast(/no signal/i.test(why) ? "No signal \u2014 nothing was changed. Try again."
+        : "No answer from the server (" + (why || "timed out") + "). It MAY have gone \u2014 refresh before pressing Dispatch again.");
     });
   }
 
@@ -5936,7 +5984,14 @@ function discRowOn(client, brand, onYmd) {
     });
   }
 
+  /* 1.102.0 - review C: one filing per delivery at a time. A second pick while the first is
+     still uploading was a second PDF, a second proof row and a second Telegram post. */
+  var _rcBusy = {};
   function attachReceipt(rec, dataUrl) {
+    var rk = String((rec && (rec.id || rec.challanNo || rec.returnNo)) || "");
+    if (_rcBusy[rk]) { toast("That receipt is still being filed \u2014 wait for it to finish."); return Promise.resolve(); }
+    _rcBusy[rk] = 1;
+    var _rcFree = function () { delete _rcBusy[rk]; };
     toast("Filing the receipt…");
     return shrink(dataUrl, 1600, 0.72).then(function (big) {
       return shrink(dataUrl, 220, 0.55).then(function (small) {
@@ -6004,8 +6059,15 @@ function discRowOn(client, brand, onYmd) {
             });
         });
       });
-    }).catch(function () {
-      toast("Could not file the receipt. Nothing was changed — try again when the signal is better.");
+    }).then(_rcFree, function (err) {
+      _rcFree();
+      /* the server's own reason, kept - "try when the signal is better" was said for a PIN the
+         server refused and for a file it could not read, and neither is fixed by walking outside */
+      var why = (err && err.message) ? String(err.message) : "";
+      toast("Could not file the receipt" + (why ? ": " + why : "") + ". " +
+        (/audit failed/i.test(why) ? "The paper was uploaded but not recorded against the delivery \u2014 refresh, then attach it again."
+          : /no signal|no answer/i.test(why) ? "Nothing was changed \u2014 try again when the signal is better."
+          : "Nothing was changed."));
     });
   }
 
@@ -6569,7 +6631,7 @@ function discRowOn(client, brand, onYmd) {
     _hsbCache = null;
     var now = new Date().toISOString();
     var x = extra || {};
-    return saveRow("audit", {
+    var row = {
       id: "H-" + Date.now() + "-" + Math.floor(Math.random() * 1000000),
       createdAt: now, actor: S.user || "",
       action: "challan:hisab",
@@ -6582,7 +6644,12 @@ function discRowOn(client, brand, onYmd) {
            delivery falling back to a client record that may later name somebody new. */
         inc: x.inc || [], extra: Math.round(Number(x.extra) || 0), extraNote: String(x.extraNote || "")
       })
-    });
+    };
+    /* 1.102.0 B7 - on this phone's copy at once, so the delivery reads "in hisab" before the
+       server answers; a held stamp is laid back on every pull by applyJournal */
+    if (S.data) (S.data.audit = S.data.audit || []).push(row);
+    _hsbCache = null;
+    return saveRow("audit", row);
   }
 
 
@@ -7531,8 +7598,7 @@ function discRowOn(client, brand, onYmd) {
         var holder = pfx === "r" ? S.rt : S.ch;
         if (holder) { holder.driver = nName; holder.veh = ""; }
         S.dnew = null; S.sheet = null; bust(); render();
-        toast(nName + " is on the register" + (nVeh ? " with " + nVeh : "") + ", and picked." +
-              (r.held ? " Held on this phone until there is signal." : ""));
+        toast(nName + " is on the register" + (nVeh ? " with " + nVeh : "") + ", and picked." + heldTail(r));
       }).catch(function () {
         t.disabled = false; t.textContent = "Add him";
         toast("Could not add him. Try again.");
@@ -7606,7 +7672,7 @@ function discRowOn(client, brand, onYmd) {
         if (da) said.push("architect");
         toast(dc.name + " — " + said.join(", ") + " saved" +
               (touched ? " and copied onto " + touched + " site record" + (touched === 1 ? "" : "s") : "") +
-              (r.held ? ", held on this phone until there is signal" : "") + ".");
+              "." + heldTail(r));
       });
       return;
     }
@@ -7686,6 +7752,13 @@ function discRowOn(client, brand, onYmd) {
       if (!roleIs("admin")) { toast("Only the owner adds a delivery to hisab."); return; }
       if (!hisabCounts(hc)) {
         toast("Mark " + (hc.challanNo || "this delivery") + " as received first — nothing was stamped.");
+        S.sheet = null; render(); return;
+      }
+      /* 1.102.0 - REVIEW B7. The stamp was saved but not put on this phone's copy, so until the
+         next pull the delivery still read "not in hisab" and a second press wrote a second stamp
+         (and a second set of discount rows). Once is once. */
+      if (hisabStamp(hc)) {
+        toast((hc.challanNo || "This delivery") + " is already in hisab" + (hisabStamp(hc).by ? " (added by " + hisabStamp(hc).by + ")" : "") + ". Nothing was added again.");
         S.sheet = null; render(); return;
       }
       var hmiss = hisabBrandsMissingDisc(hc);
@@ -8102,9 +8175,11 @@ function discRowOn(client, brand, onYmd) {
           var after = function () {
             bust(); S.ch = null; S.tab = "make"; chDraftClear(); render();   /* 1.78.0 */
             toast(r.held
-              ? (_editRow ? "Changes to " + shown + " are saved on this phone and go up when there is signal."
+              ? (r.refused
+                  ? (_editRow ? "Changes to " + shown : "Challan" + (shown ? " " + shown : "")) + " kept on this phone." + heldTail(r)
+                  : (_editRow ? "Changes to " + shown + " are saved on this phone and go up when there is signal."
                           : "Challan saved on this phone" + (shown ? " (" + shown + ")" : " \u2014 its number comes when it uploads") +
-                            ". It goes up by itself when there is signal.") + (manualV ? " Book no " + manualV + "." : "")
+                            ". It goes up by itself when there is signal.")) + (manualV ? " Book no " + manualV + "." : "")
               : (_editRow
                   ? "Challan " + shown + " updated" +
                     (chStatus(saved) !== "Draft"
@@ -8208,8 +8283,9 @@ function discRowOn(client, brand, onYmd) {
           (S.data.returns = S.data.returns || []).push(savedR);
           bust(); S.rt = null; S.tab = "return"; render();
           toast(r.held
-            ? "Return saved on this phone" + (savedR.returnNo ? " (" + savedR.returnNo + ")" : " \u2014 its number comes when it uploads") +
-              ". It goes up by itself when there is signal."
+            ? (r.refused ? "Return kept on this phone." + heldTail(r)
+              : "Return saved on this phone" + (savedR.returnNo ? " (" + savedR.returnNo + ")" : " \u2014 its number comes when it uploads") +
+              ". It goes up by itself when there is signal.")
             : "Return " + savedR.returnNo + " registered. Attach the goods-in receipt now.");
         });
       }).catch(function (err) {
