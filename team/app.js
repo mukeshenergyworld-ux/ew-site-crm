@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.618";
+  var APP_VERSION = "6.9.619";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -40536,7 +40536,7 @@ function viewCatalogue() {
         return '<tr data-act="stk-open" data-code="' + esc(x.code) + '" style="border-bottom:1px solid #eef2f7;background:' + bg + ';cursor:pointer">' +
           '<td style="padding:6px 8px"><div style="font-weight:600">' + esc(x.desc) + '</div><div style="font-size:12px;color:#94a3b8">' + esc(x.code) + (x.brand ? ' &middot; ' + esc(x.brand) : '') +
           '<br>in ' + x.inq + ' &middot; del ' + x.del + ' &middot; ret ' + x.ret + (x.rate ? ' &middot; @' + money(x.rate) : '') + '</div></td>' +
-          '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + col + '">' + x.onhand + '</td>' +
+          '<td style="padding:6px 8px;text-align:right;font-weight:800;color:' + col + ';white-space:nowrap">' + x.onhand + '<div style="font-size:12px;font-weight:400;color:#64748b">' + esc(stkQ(x.onhand, x.code).replace(/^\S+\s?/, "")) + '</div></td>' +
           '<td style="padding:6px 8px;text-align:right;color:#64748b">' + (x.reorder ? x.reorder : '—') + '</td>' +
           '<td style="padding:6px 8px;text-align:right;color:#64748b">' + (x.value ? money(x.value) : '—') + '</td></tr>' +
           (S.stkOpen === x.code ? '<tr><td colspan="4" style="padding:0 0 10px">' + stockLedgerPanel(x.code) + '</td></tr>' : '');
@@ -40606,14 +40606,14 @@ function viewCatalogue() {
         L.map(function (x, i) {
           return '<div class="acts" style="align-items:center;flex-wrap:nowrap;gap:8px;margin:0;padding:8px 10px' + (i ? ';border-top:1px solid #fee2e2' : '') + '"><div class="grow" style="min-width:0">' +
             '<div style="font-weight:700;font-size:14px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b">' + esc([x.code, x.brand, x.unit].filter(Boolean).join(" \u00b7 ")) + '</div>' +
-            '<div style="font-size:13px;margin-top:3px">' + fig("On hand", x.onhand) + (x.held ? fig("Held", x.held) : '') + fig("Free", x.free, '#b91c1c') + fig("Min", x.min) +
-              fig("Short", x.need > 0 ? x.need : 'at min', x.need > 0 ? '#b91c1c' : '#c2410c') + '</div></div>' +
+            '<div style="font-size:13px;margin-top:3px">' + fig("On hand", stkQ(x.onhand, x.code)) + (x.held ? fig("Held", stkQ(x.held, x.code)) : '') + fig("Free", stkQ(x.free, x.code), '#b91c1c') + fig("Min", stkQ(x.min, x.code)) +
+              fig("Short", x.need > 0 ? stkQ(x.need, x.code) : 'at min', x.need > 0 ? '#b91c1c' : '#c2410c') + '</div></div>' +
             '<button class="btn sm ghost" style="min-height:44px;flex:0 0 auto" data-act="stock-item" data-code="' + esc(x.code) + '">Set min</button></div>';
         }).join("") + '</div>' +
         '<div class="meta" style="font-size:12px;margin-top:4px">Short = minimum less free: the least to order to get back to the minimum. Order more than that to cover the weeks until the goods arrive.</div>';
     } else if (!full && L.length) {
       h += '<div style="font-size:13px;margin-top:6px">' + L.slice(0, 5).map(function (x) {
-        return '<div style="border-top:1px solid #fee2e2;padding:5px 0"><b>' + esc(x.desc) + '</b> <span style="color:#b91c1c">free ' + x.free + ' \u00b7 min ' + x.min + '</span></div>'; }).join("") +
+        return '<div style="border-top:1px solid #fee2e2;padding:5px 0"><b>' + esc(x.desc) + '</b> <span style="color:#b91c1c">free ' + stkQ(x.free, x.code) + ' \u00b7 min ' + stkQ(x.min, x.code) + '</span></div>'; }).join("") +
         (L.length > 5 ? '<div class="meta" style="font-size:12px">and ' + (L.length - 5) + ' more \u2014 open the list</div>' : '') + '</div>';
     }
     if (o.uncounted.length) h += '<div style="font-size:12.5px;color:#92400e;margin-top:8px">' + plural(o.uncounted.length, "product") + ' with a minimum set ' + (o.uncounted.length > 1 ? 'have' : 'has') + ' not been counted yet, so ' + (o.uncounted.length > 1 ? 'their' : 'its') + ' stock is not known: ' +
@@ -40630,6 +40630,22 @@ function viewCatalogue() {
     if (o.uncounted.length) out.push(["Minimum set but not counted yet (stock not known): " + o.uncounted.map(function (x) { return x.desc; }).join(", ")]);
     dlXlsx("Stock_to_order_" + today() + ".xlsx", "Stock to order", out, [14, 38, 16, 9, 10, 14, 9, 10, 16]);
   }
+  /* 6.9.619 - HIS WORDS, on the search popup: "in stock 1000 Mtrs, show like this for every thing,
+     per Pc, per Set". The unit comes from the catalogue's own column ("Per Mtr.", "Per Pc.",
+     "Per Set", "Per 3 Mtr. Pipe" ...): "Per" and the dots go, a pipe sold by the length is counted
+     in Pipes, and the word takes an s when the figure is not 1 - except Kg and Feet. */
+  function stkUnit(code) {
+    var k = String(code || "").trim(), p = PRODUCTS.filter(function (x) { return String(x.code || "").trim() === k; })[0] || {};
+    var u = String(p.unit || "").replace(/^\s*per\s+/i, "").replace(/\./g, "").trim();
+    if (/pipe/i.test(u)) return "Pipe";
+    u = u.split(/\s+/).pop() || "";
+    return u ? u.charAt(0).toUpperCase() + u.slice(1) : "";
+  }
+  function stkQ(q, code) {
+    var u = stkUnit(code); if (!u) return String(q);
+    var one1 = Math.abs(Number(q)) === 1, bare = /^(kg|feet|ft|nos|ltr|l|s)$/i.test(u) || /s$/i.test(u);
+    return q + " " + u + (one1 || bare ? "" : "s");
+  }
   /* 6.9.618 - in place, never a repaint: the popup stays where he scrolled it */
   function stkLinesFill() {
     var boxes = document.querySelectorAll(".stk-sl"); if (!boxes.length) return;
@@ -40640,14 +40656,14 @@ function viewCatalogue() {
   /* the line under a product in the master search */
   function stkSearchLine(p, pos) {
     var x = pos[String(p.code || "").trim()];
-    var btn = '<button class="btn sm ghost" style="min-height:44px" data-act="stock-item" data-code="' + esc(p.code) + '">' + (x && x.min ? 'Min ' + x.min : 'Set min') + '</button>';
+    var btn = '<button class="btn sm ghost" style="min-height:44px" data-act="stock-item" data-code="' + esc(p.code) + '">' + (x && x.min ? 'Min ' + stkQ(x.min, p.code) : 'Set min') + '</button>';
     var line;
     if (!STOCK_LOADED && !(S.stock && S.stock.length)) line = STOCK_FAIL ? '<span style="color:#b45309">Stock did not load (no signal?) \u2014 search again to retry</span>' : '<span style="color:#64748b">Stock: loading\u2026</span>';
-    else if (!x || !x.counted) line = '<span style="color:#64748b">Stock: not counted yet' + (x && x.min ? ' \u00b7 min ' + x.min : '') + '</span>';
+    else if (!x || !x.counted) line = '<span style="color:#64748b">Stock: not counted yet' + (x && x.min ? ' \u00b7 min ' + stkQ(x.min, x.code) : '') + '</span>';
     else {
       var sh = stkShort(x), col = x.free <= 0 ? '#b91c1c' : sh ? '#c2410c' : '#0f766e';
-      line = '<span style="color:' + col + '"><b>In stock ' + x.onhand + '</b>' + (x.held ? ' \u00b7 held ' + x.held + ' \u00b7 <b>free ' + x.free + '</b>' : '') +
-        (x.min ? ' \u00b7 min ' + x.min : ' \u00b7 no min set') + '</span>' + (sh ? ' <span class="pill due" style="font-size:12px">Stock to order</span>' : '');
+      line = '<span style="color:' + col + '"><b>In stock ' + stkQ(x.onhand, x.code) + '</b>' + (x.held ? ' \u00b7 held ' + stkQ(x.held, x.code) + ' \u00b7 <b>free ' + stkQ(x.free, x.code) + '</b>' : '') +
+        (x.min ? ' \u00b7 min ' + stkQ(x.min, x.code) : ' \u00b7 no min set') + '</span>' + (sh ? ' <span class="pill due" style="font-size:12px">Stock to order</span>' : '');
     }
     return '<div class="acts stk-sl" data-code="' + esc(p.code) + '" style="align-items:center;flex-wrap:nowrap;margin:6px 0 0;gap:6px"><div class="grow" style="font-size:13px;min-width:0">' + line + '</div>' + btn.replace('min-height:44px', 'min-height:44px;flex:0 0 auto') + '</div>';
   }
@@ -40766,7 +40782,7 @@ function viewCatalogue() {
     var lbl = 'style="font-size:12px;color:#475569;margin:8px 0 2px"';
     var inp = 'style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"';
     return '<h2 style="margin:0 0 2px">' + esc(p.desc || mv.desc[code] || code) + '</h2>' +
-      '<div class="meta" style="font-size:12px;margin-bottom:4px">' + esc(code) + (p.brand ? ' · ' + esc(p.brand) : '') + ' · on hand <b>' + onhand + '</b></div>' +
+      '<div class="meta" style="font-size:12px;margin-bottom:4px">' + esc(code) + (p.brand ? ' · ' + esc(p.brand) : '') + ' · on hand <b>' + stkQ(onhand, code) + '</b></div>' +
       '<div ' + lbl + '>Minimum stock level \u2014 at or below this (free stock) it goes on <b>Stock to order</b>. Leave 0 for no minimum.</div>' +
       '<input id="si_reorder" inputmode="numeric" value="' + esc(reo[code] || "") + '" placeholder="e.g. 20" ' + inp + '/>' +
       '<div ' + lbl + '>Latest purchase rate (₹ / unit, optional — used for stock value)</div>' +
