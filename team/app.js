@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.617";
+  var APP_VERSION = "6.9.618";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -40180,16 +40180,20 @@ function viewCatalogue() {
      Live on-hand per product from the isolated stock store + existing challans/returns:
        onHand = (opening + received + adjustments)  -  delivered (received challans)  +  booked-in returns.
      Stock movements live in their own TeamStock sheet (api stockList/stockSave), admin & godown only. */
-  var STOCK_LOADED = false, STOCK_LOADING = false;
+  var STOCK_LOADED = false, STOCK_LOADING = false, STOCK_FAIL = false;
   function ensureStock() {
     if (STOCK_LOADED || STOCK_LOADING) return;
-    STOCK_LOADING = true;
+    STOCK_LOADING = true; STOCK_FAIL = false;
     api("stockList").then(function (r) {
       STOCK_LOADING = false; STOCK_LOADED = true;
       S.stock = (r && r.ok && r.rows) ? r.rows : [];
+      /* 6.9.618 - his screenshot: the search popup said "Stock: loading..." and stayed. Stock had
+         arrived; renderBg() does not repaint under an open popup (so a form is never wiped), and
+         the search results are a popup. The stock lines are now filled in where they stand. */
+      try { stkLinesFill(); } catch (e) { }
       renderBg();
       try { stkBillNag(); } catch (e) { }
-    }).catch(function () { STOCK_LOADING = false; });
+    }).catch(function () { STOCK_LOADING = false; STOCK_FAIL = true; try { stkLinesFill(); } catch (e) { } });   /* 6.9.618 */
   }
   /* 6.9.607 - HIS POINT 4: "CRM will check all monthly bills and popup if any bill pending to be
      uploaded". Once per sign-in, to accounts and admin only, and only when an uploaded Purchase
@@ -40626,19 +40630,26 @@ function viewCatalogue() {
     if (o.uncounted.length) out.push(["Minimum set but not counted yet (stock not known): " + o.uncounted.map(function (x) { return x.desc; }).join(", ")]);
     dlXlsx("Stock_to_order_" + today() + ".xlsx", "Stock to order", out, [14, 38, 16, 9, 10, 14, 9, 10, 16]);
   }
+  /* 6.9.618 - in place, never a repaint: the popup stays where he scrolled it */
+  function stkLinesFill() {
+    var boxes = document.querySelectorAll(".stk-sl"); if (!boxes.length) return;
+    var pos = stkPositions();
+    [].forEach.call(boxes, function (b) { b.outerHTML = stkSearchLine({ code: b.getAttribute("data-code") }, pos); });
+    if (S.modal && /^<h2>Search &mdash;/.test(String(S.modal))) S.modal = modalSearchResults();   /* and the next repaint agrees */
+  }
   /* the line under a product in the master search */
   function stkSearchLine(p, pos) {
     var x = pos[String(p.code || "").trim()];
     var btn = '<button class="btn sm ghost" style="min-height:44px" data-act="stock-item" data-code="' + esc(p.code) + '">' + (x && x.min ? 'Min ' + x.min : 'Set min') + '</button>';
     var line;
-    if (!STOCK_LOADED && !(S.stock && S.stock.length)) line = '<span style="color:#64748b">Stock: loading\u2026</span>';
+    if (!STOCK_LOADED && !(S.stock && S.stock.length)) line = STOCK_FAIL ? '<span style="color:#b45309">Stock did not load (no signal?) \u2014 search again to retry</span>' : '<span style="color:#64748b">Stock: loading\u2026</span>';
     else if (!x || !x.counted) line = '<span style="color:#64748b">Stock: not counted yet' + (x && x.min ? ' \u00b7 min ' + x.min : '') + '</span>';
     else {
       var sh = stkShort(x), col = x.free <= 0 ? '#b91c1c' : sh ? '#c2410c' : '#0f766e';
       line = '<span style="color:' + col + '"><b>In stock ' + x.onhand + '</b>' + (x.held ? ' \u00b7 held ' + x.held + ' \u00b7 <b>free ' + x.free + '</b>' : '') +
         (x.min ? ' \u00b7 min ' + x.min : ' \u00b7 no min set') + '</span>' + (sh ? ' <span class="pill due" style="font-size:12px">Stock to order</span>' : '');
     }
-    return '<div class="acts" style="align-items:center;flex-wrap:nowrap;margin:6px 0 0;gap:6px"><div class="grow" style="font-size:13px;min-width:0">' + line + '</div>' + btn.replace('min-height:44px', 'min-height:44px;flex:0 0 auto') + '</div>';
+    return '<div class="acts stk-sl" data-code="' + esc(p.code) + '" style="align-items:center;flex-wrap:nowrap;margin:6px 0 0;gap:6px"><div class="grow" style="font-size:13px;min-width:0">' + line + '</div>' + btn.replace('min-height:44px', 'min-height:44px;flex:0 0 auto') + '</div>';
   }
   function stkReserved(skipId) {
     var cut = stkCutoff(), m = {};
@@ -50147,6 +50158,7 @@ function viewCatalogue() {
         if (String(S.pinSet).toUpperCase() !== "Y") { renderPinChange(); return null; }
         S.tab = myTabs()[0];
         loadCatalog();
+        setTimeout(function () { try { if (canSee("stock")) ensureStock(); } catch (e) { } }, 6000);   /* 6.9.618 - ready before he searches */
         return dataP.then(function (d) {
           S.busy = false;
           if (!d || d.__err || !d.ok) {
