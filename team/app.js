@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.606";
+  var APP_VERSION = "6.9.607";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -2581,6 +2581,7 @@ window.addEventListener("beforeunload", function (ev) {
       if (pendCount()) retryPending();
       try { prfFlush(); } catch (e) { }          /* delivery proofs taken out of signal */
       try { maybePartnerNag(); } catch (e) { }   /* weekly: chase missing plumber/architect names */
+      try { if (roleAny(["admin", "accounts"]) && !_stkNagDone) ensureStock(); } catch (e) { }   /* 6.9.607 - bills to upload */
     });
   }
 
@@ -40135,7 +40136,31 @@ function viewCatalogue() {
       STOCK_LOADING = false; STOCK_LOADED = true;
       S.stock = (r && r.ok && r.rows) ? r.rows : [];
       renderBg();
+      try { stkBillNag(); } catch (e) { }
     }).catch(function () { STOCK_LOADING = false; });
+  }
+  /* 6.9.607 - HIS POINT 4: "CRM will check all monthly bills and popup if any bill pending to be
+     uploaded". Once per sign-in, to accounts and admin only, and only when an uploaded Purchase
+     Register lists a bill that has not been uploaded. Never over a form that is open. */
+  var _stkNagDone = false;
+  function stkBillNag() {
+    if (_stkNagDone || S.modal || !roleAny(["admin", "accounts"])) return;
+    var reg = stkRegister(); if (!reg.length) return;
+    var bil = stkBilledRefs();
+    var miss = reg.filter(function (b) { return !bil[b.key.toLowerCase()]; });
+    _stkNagDone = true;
+    if (!miss.length) return;
+    var amt = miss.reduce(function (a, b) { return a + b.amount; }, 0);
+    S.modal = '<h2>' + plural(miss.length, "purchase bill") + ' not uploaded</h2>' +
+      '<p class="sub">These are on the Purchase Register from Tally but their bills are not in the CRM yet, so their goods are <b>not in stock</b>. Download each bill from Tally as Excel and upload it.</p>' +
+      '<div style="overflow-x:auto;max-height:45vh"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#e2e8f0">' +
+      '<th style="padding:5px 7px;text-align:left">DATE</th><th style="padding:5px 7px;text-align:left">SUPPLIER</th><th style="padding:5px 7px;text-align:left">BILL NO</th><th style="padding:5px 7px;text-align:right">AMOUNT</th></tr></thead><tbody>' +
+      miss.map(function (b) {
+        return '<tr style="border-top:1px solid #e2e8f0"><td style="padding:5px 7px;white-space:nowrap">' + esc(dmy(b.date)) + '</td><td style="padding:5px 7px">' + esc(b.supplier) +
+          '</td><td style="padding:5px 7px"><b>' + esc(b.billNo) + '</b></td><td style="padding:5px 7px;text-align:right">' + money(b.amount) + '</td></tr>';
+      }).join("") + '</tbody><tfoot><tr style="background:#f1f5f9"><td colspan="3" style="padding:6px 7px;font-weight:800">Total</td><td style="padding:6px 7px;text-align:right;font-weight:800">' + money(amt) + '</td></tr></tfoot></table></div>' +
+      '<div class="foot"><button class="btn" data-act="stk-nag-go">Upload bills now</button><button class="btn ghost" data-act="close">Later</button></div>';
+    render();
   }
   /* v6.9.605 - HIS DECISIONS, 24 Sep 2026: "will start from a physical count, soon, make provision
      for that"; "stock go up only after the godown confirms the lorry, bill will be made only after
@@ -40153,10 +40178,46 @@ function viewCatalogue() {
     return m;
   }
   function stkCounts(code, ymd, cut) { var c = cut[code]; return !c || String(ymd || "").slice(0, 10) >= c; }
+  /* ===== HIS PROCESS  (CRM 6.9.607 / Challan 1.100.0, 25 Sep 2026) =====
+     IN - his words: "accounts will enter stock in Tally first, he will download individual bill in
+     Excel ... you will fetch same and register stock from there". The Tally purchase bill uploaded
+     to the CRM now IS the stock coming in, line by line, on the bill's date. The godown's lorry entry
+     is switched off. A bill uploaded twice counts once (supplier / bill no), and an older "in" row
+     carrying the same bill is not counted on top of it.
+     OUT - his words: "for everything out from godown a challan will be made first, on basis of
+     challan bill will be generated". So a challan takes stock OUT when it leaves - Dispatched,
+     Received or Billed, or its receipt is in - not weeks later when the signed paper comes back.
+     A challan made but not yet dispatched HOLDS its goods: still on the floor, not free.
+     Cancelled challans and returns never count. */
+  function stkChDead(c) {
+    if (!c || String(c.returnNo || "").trim()) return true;
+    if (String(c.status || "") === "Cancelled") return true;
+    try { if (typeof isCancelled === "function" && isCancelled("challans", c.id)) return true; } catch (e) { }
+    return false;
+  }
+  function stkChOut(c) {
+    if (stkChDead(c)) return false;
+    return FR_DONE.indexOf(String(c.status || "")) >= 0 || String(c.receiptReceived || "").toUpperCase() === "Y";
+  }
+  function stkBillLines() {
+    var seen = {}, out = [];
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "bill") return;
+      var ref = String(r.ref || "").trim().toLowerCase();
+      if (!ref || seen[ref]) return;
+      seen[ref] = 1;
+      var ls = []; try { ls = JSON.parse(r.desc || "[]") || []; } catch (e) { ls = []; }
+      ls.forEach(function (l) {
+        var k = String((l && l.c) || "").trim(), q = Number(l && l.q) || 0;
+        if (k && q) out.push({ code: k, qty: q, asOn: String(r.asOn || "").slice(0, 10), ref: String(r.ref || ""), supplier: String(r.notes || "") });
+      });
+    });
+    return out;
+  }
   function stockDeliveredByCode() {
     var m = {}, cut = stkCutoff();
     (S.data.challans || []).forEach(function (c) {
-      if (String(c.receiptReceived).toUpperCase() !== "Y") return;
+      if (!stkChOut(c)) return;   /* 6.9.607 - out when dispatched, not when the receipt comes back */
       chItems(c).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
     });
     return m;
@@ -40171,10 +40232,12 @@ function viewCatalogue() {
     return m;
   }
   function stockMovementByCode() {
-    var m = {}, desc = {}, cut = stkCutoff();
+    var m = {}, desc = {}, cut = stkCutoff(), _bref = {};
+    (S.stock || []).forEach(function (r) { if (String(r.type) === "bill" && r.ref) _bref[String(r.ref).trim().toLowerCase()] = 1; });
     (S.stock || []).forEach(function (row) {
       var ty = String(row.type || "");
-      if (ty === "bill") return;   /* v6.9.605 - a Tally bill is checked against the goods, it does not add them */
+      if (ty === "bill") return;   /* 6.9.607 - counted below, line by line, from stkBillLines */
+      if (ty === "in" && _bref[String(row.ref || "").trim().toLowerCase()]) return;   /* that bill is already counted from Tally */
       var _k0 = String(row.code || "").trim();
       if (ty === "opening" && cut[_k0] && String(row.asOn || "").slice(0, 10) !== cut[_k0]) return;   /* only the latest count */
       if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && !stkCounts(_k0, row.asOn, cut)) return;
@@ -40183,6 +40246,7 @@ function viewCatalogue() {
       m[k] = (m[k] || 0) + (Number(row.qty) || 0);
       if (row.desc && !desc[k]) desc[k] = row.desc;
     });
+    stkBillLines().forEach(function (l) { if (stkCounts(l.code, l.asOn, cut)) m[l.code] = (m[l.code] || 0) + l.qty; });   /* 6.9.607 - IN is the Tally bill */
     return { m: m, desc: desc };
   }
   /* Per-code reorder level and latest purchase rate — stored as their own stock rows (type
@@ -40334,10 +40398,9 @@ function viewCatalogue() {
     if (S.pc) return viewPhysCount();
     ensureStock();
     var h = '<div class="card"><h2 style="margin:0">Stock on hand</h2>' +
-      '<div class="meta" style="font-size:13px">On-hand = opening + goods received + adjustments &minus; delivered (from received challans) + booked-in returns. Enter your opening count once, then log each purchase as it arrives — deliveries deduct on their own.</div>' +
+      '<div class="meta" style="font-size:13px">On hand = physical count + <b>purchase bills uploaded from Tally</b> + adjustments &minus; <b>challans dispatched</b> + returns booked in. Free = on hand &minus; challans made but not yet dispatched.</div>' +
       '<div class="acts" style="margin-top:8px;flex-wrap:wrap;gap:6px">' +
-      '<button class="btn sm" data-act="grn-new">+ Lorry received (godown)</button>' +
-      '<button class="btn sm" data-act="stock-import">&#8593; Tally bills / register</button>' +
+      '<button class="btn sm" data-act="stock-import">&#8593; Upload Tally bills / register</button>' +
       '<button class="btn sm ghost" data-act="pc-open">Physical count</button>' +
       '<button class="btn sm ghost" data-act="stk-xlsx">&#8681; Excel</button>' +
       '<button class="btn sm ghost" data-act="stock-add" data-type="adjust">Adjustment</button>' +
@@ -40355,13 +40418,12 @@ function viewCatalogue() {
         (_miss.length ? ' &middot; <span style="color:#b45309">' + _miss.length + ' to upload (' + money(_missAmt) + ')</span>' : ' &middot; <span style="color:#0f766e">all in</span>') + '</b>' +
         '<button class="btn sm ghost" data-act="stk-reglist">' + (S.stkReg ? 'Hide' : 'Show') + ' the list</button></div>' +
         (S.stkReg ? '<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#e2e8f0">' +
-          '<th style="padding:5px 7px;text-align:left">DATE</th><th style="padding:5px 7px;text-align:left">SUPPLIER</th><th style="padding:5px 7px;text-align:left">BILL NO</th><th style="padding:5px 7px;text-align:right">AMOUNT</th><th style="padding:5px 7px;text-align:left">BILL</th><th style="padding:5px 7px;text-align:left">GODOWN</th></tr></thead><tbody>' +
+          '<th style="padding:5px 7px;text-align:left">DATE</th><th style="padding:5px 7px;text-align:left">SUPPLIER</th><th style="padding:5px 7px;text-align:left">BILL NO</th><th style="padding:5px 7px;text-align:right">AMOUNT</th><th style="padding:5px 7px;text-align:left">IN STOCK</th></tr></thead><tbody>' +
           _reg.map(function (b) {
             var inS = !!_imp[b.key.toLowerCase()], bil = !!_bil[b.key.toLowerCase()];
             return '<tr style="border-top:1px solid #e2e8f0"><td style="padding:5px 7px;white-space:nowrap">' + esc(dmy(b.date)) + '</td><td style="padding:5px 7px">' + esc(b.supplier) + '</td>' +
               '<td style="padding:5px 7px"><b>' + esc(b.billNo) + '</b></td><td style="padding:5px 7px;text-align:right">' + money(b.amount) + '</td>' +
-              '<td style="padding:5px 7px">' + (bil ? '<span class="pill teal" style="font-size:12px">uploaded</span>' : '<span class="pill due" style="font-size:12px">upload</span>') + '</td>' +
-              '<td style="padding:5px 7px">' + (inS ? '<span class="pill teal" style="font-size:12px">received</span>' : '<span class="pill" style="font-size:12px;background:#fee2e2;color:#b91c1c">not entered</span>') + '</td></tr>';
+              '<td style="padding:5px 7px">' + (bil ? '<span class="pill teal" style="font-size:12px">uploaded</span>' : '<span class="pill due" style="font-size:12px">to upload</span>') + (inS && !bil ? ' <span style="font-size:12px;color:#64748b">(old lorry entry)</span>' : '') + '</td></tr>';
           }).join("") + '</tbody></table></div>' : '') + '</div>';
     }
     var mv = stockMovementByCode(), del = stockDeliveredByCode(), ret = stockReturnedByCode();
@@ -40433,9 +40495,7 @@ function viewCatalogue() {
     var cut = stkCutoff(), m = {};
     ((S.data && S.data.challans) || []).forEach(function (c) {
       if (!c || (skipId && c.id === skipId)) return;
-      if (String(c.status || "") === "Cancelled") return;
-      try { if (typeof isCancelled === "function" && isCancelled("challans", c.id)) return; } catch (e) { }
-      if (String(c.receiptReceived || "").toUpperCase() === "Y") return;
+      if (stkChDead(c) || stkChOut(c)) return;   /* 6.9.607 - held = made, not yet dispatched */
       chItems(c).forEach(function (i) {
         var k = String(i.code || "").trim();
         if (k && cut[k] && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0);
@@ -40461,14 +40521,16 @@ function viewCatalogue() {
   /* ===== v6.9.606 - THE STOCK SHEET AS EXCEL: every product, where its figure comes from ===== */
   function stockXlsx() {
     var cut = stkCutoff(), mv = stockMovementByCode(), del = stockDeliveredByCode(), ret = stockReturnedByCode(), res = stkReserved("");
-    var reo = reorderByCode(), rate = rateByCode(), open = {}, rin = {}, adj = {};
+    var reo = reorderByCode(), rate = rateByCode(), open = {}, rin = {}, adj = {}, _xbr = {};
+    stkBillLines().forEach(function (l) { _xbr[l.ref.trim().toLowerCase()] = 1; });
     (S.stock || []).forEach(function (r) {
       var ty = String(r.type || ""), k = String(r.code || "").trim(); if (!k) return;
       if (ty === "opening" && cut[k] && String(r.asOn || "").slice(0, 10) === cut[k]) open[k] = (open[k] || 0) + (Number(r.qty) || 0);
-      else if ((ty === "in" || ty === "adjust") && stkCounts(k, r.asOn, cut)) { if (ty === "in") rin[k] = (rin[k] || 0) + (Number(r.qty) || 0); else adj[k] = (adj[k] || 0) + (Number(r.qty) || 0); }
+      else if ((ty === "in" || ty === "adjust") && stkCounts(k, r.asOn, cut)) { if (ty === "in") { if (!_xbr[String(r.ref || "").trim().toLowerCase()]) rin[k] = (rin[k] || 0) + (Number(r.qty) || 0); } else adj[k] = (adj[k] || 0) + (Number(r.qty) || 0); }
     });
+    stkBillLines().forEach(function (l) { if (stkCounts(l.code, l.asOn, cut)) rin[l.code] = (rin[l.code] || 0) + l.qty; });
     var codes = {}; [mv.m, del, reo, res].forEach(function (o) { Object.keys(o).forEach(function (k) { codes[k] = 1; }); });
-    var HEAD = ["Code", "Product", "Brand", "Unit", "Counted on", "Count", "Lorries in", "Adjustments", "Delivered", "Returned", "On hand", "Held by challans", "Free", "Reorder at", "Purchase rate", "Value"];
+    var HEAD = ["Code", "Product", "Brand", "Unit", "Counted on", "Count", "Purchase bills in", "Adjustments", "Out on challans", "Returned", "On hand", "Challans not dispatched", "Free", "Reorder at", "Purchase rate", "Value"];
     var out = [[{ v: "Energy World · Stock · " + fullDate(today()), s: XL.BOLD }], [], HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
     Object.keys(codes).sort().forEach(function (k) {
       var p = PRODUCTS.filter(function (x) { return x.code === k; })[0] || {};
@@ -40477,7 +40539,7 @@ function viewCatalogue() {
         del[k] || 0, ret[k] || 0, onh, res[k] || 0, fr, reo[k] || "", rt || "", rt && onh > 0 ? Math.round(onh * rt) : ""]);
     });
     out.push([]);
-    out.push(["On hand = count + lorries in + adjustments - delivered (receipt in) + returned, from each product's count date. Held by challans = challans not cancelled whose receipt is not in yet. A product not counted has no known stock."]);
+    out.push(["On hand = count + purchase bills uploaded from Tally + adjustments - challans dispatched + returns booked in, from each product's count date. Challans not dispatched = made but not yet sent out; Free = on hand less those. A product not counted has no known stock."]);
     dlXlsx("Stock_" + today() + ".xlsx", "Stock", out, [14, 34, 16, 9, 12, 8, 10, 11, 10, 10, 9, 13, 8, 10, 12, 12]);
   }
   /* ===== v6.9.605 - ONE PRODUCT'S STOCK LEDGER, UNDER ITS ROW =====
@@ -40485,17 +40547,22 @@ function viewCatalogue() {
      bill it came on), adjustments, each delivery that took it out (a challan whose receipt is in -
      the rule on-hand has always used) and each return booked back in. */
   function stockLedgerPanel(code) {
-    var ev = [], cut = stkCutoff(), _c = {}; _c[code] = cut[code];
+    var ev = [], cut = stkCutoff(), _c = {}, _brf = {}; _c[code] = cut[code];
+    stkBillLines().forEach(function (l) {
+      _brf[l.ref.trim().toLowerCase()] = 1;
+      if (l.code === code && stkCounts(code, l.asOn, _c)) ev.push({ d: l.asOn, what: "Purchase bill (Tally)", ref: l.ref, note: "", q: l.qty, o: 1 });
+    });
     (S.stock || []).forEach(function (r) {
       var ty = String(r.type || "");
       if (["opening", "in", "adjust"].indexOf(ty) < 0 || String(r.code || "").trim() !== code) return;
+      if (ty === "in" && _brf[String(r.ref || "").trim().toLowerCase()]) return;   /* 6.9.607 - that bill is shown from Tally */
       if (ty === "opening" ? (cut[code] && String(r.asOn || "").slice(0, 10) !== cut[code]) : !stkCounts(code, r.asOn, _c)) return;   /* from the latest count on */
-      ev.push({ d: String(r.asOn || "").slice(0, 10), what: ty === "opening" ? "Physical count" : ty === "in" ? "Lorry received" : "Adjustment", ref: r.ref || "", note: r.notes || "", q: Number(r.qty) || 0, o: ty === "opening" ? 0 : 1 });
+      ev.push({ d: String(r.asOn || "").slice(0, 10), what: ty === "opening" ? "Physical count" : ty === "in" ? "Goods received" : "Adjustment", ref: r.ref || "", note: r.notes || "", q: Number(r.qty) || 0, o: ty === "opening" ? 0 : 1 });
     });
     (S.data.challans || []).forEach(function (c) {
-      if (String(c.receiptReceived).toUpperCase() !== "Y" || !stkCounts(code, c.createdAt, _c)) return;
+      if (!stkChOut(c) || !stkCounts(code, c.createdAt, _c)) return;
       var q = 0; chItems(c).forEach(function (i) { if (String(i.code || "").trim() === code) q += Number(i.qty) || 0; });
-      if (q) ev.push({ d: String(c.createdAt || "").slice(0, 10), what: "Delivered", ref: c.challanNo || "", note: c.customerName || "", q: -q });
+      if (q) ev.push({ d: String(c.createdAt || "").slice(0, 10), what: "Challan out", ref: c.challanNo || "", note: c.customerName || "", q: -q });
     });
     (S.data.returns || []).forEach(function (r) {
       if (String(r.status || "").trim().toLowerCase() !== "received" || !stkCounts(code, r.createdAt, _c)) return;
@@ -40856,7 +40923,7 @@ function viewCatalogue() {
     var opts = PRODUCTS.map(function (p) { return '<option value="' + esc(p.code) + '">' + esc(p.code) + ' — ' + esc(p.desc || "") + '</option>'; }).join("");
     var h = '<div class="row"><button class="btn sm ghost" data-act="imp-cancel">&larr; Back to Stock</button></div>' +
       '<div class="card"><h2 style="margin:0">Purchase bills from Tally &mdash; review</h2>' +
-      '<div class="meta" style="font-size:12.5px">Each line is matched to your catalogue by its Part No. A line that is not found needs its product picked once &mdash; after that the part number is remembered. <b>The bill does not add stock</b> &mdash; the godown&rsquo;s lorry entry does. Here the bill is checked against what the godown received, line by line.</div></div>' +
+      '<div class="meta" style="font-size:12.5px">Each line is matched to your catalogue by its Part No. A line that is not found needs its product picked once &mdash; after that the part number is remembered. <b>Saving a bill puts its quantities into stock</b>, on the bill&rsquo;s date. A bill already uploaded is skipped, so nothing is counted twice.</div></div>' +
       '<datalist id="tb_prods">' + opts + '</datalist>';
     var nNew = 0;
     im.bills.forEach(function (b, bi) {
@@ -40872,12 +40939,12 @@ function viewCatalogue() {
         '<div style="padding:6px 10px;font-size:12.5px;background:#f8fafc;border-bottom:1px solid #e2e8f0">' +
         (b.done ? '<b style="color:#b45309">Already uploaded &mdash; this bill will be skipped.</b>'
                 : plural(b.lines.length, "line") + ' &middot; ' + (unm ? '<b style="color:#b45309">' + unm + ' to match</b>' : '<b style="color:#0f766e">all matched</b>')) +
-        (anyRcv ? ' &middot; <span style="color:#0f766e">godown received it</span>' : ' &middot; <b style="color:#b91c1c">the godown has not entered this lorry</b>') +
+        (anyRcv ? ' &middot; <span style="color:#64748b">an old lorry entry exists for it &mdash; the bill replaces it</span>' : '') +
         (rg ? ' &middot; ' + (totOk ? '<span style="color:#0f766e">total agrees with the Purchase Register</span>' : '<b style="color:#b91c1c">register says ' + money(rg.amount) + '</b>')
             : ' &middot; <span style="color:#64748b">not on an uploaded Purchase Register</span>') + '</div>' +
         '<div style="overflow-x:auto"><table style="width:100%;min-width:640px;border-collapse:collapse;font-size:12.5px"><thead><tr style="background:#e2e8f0">' +
         '<th style="padding:5px 7px;text-align:left">#</th><th style="padding:5px 7px;text-align:left">ON THE BILL</th><th style="padding:5px 7px;text-align:left">PRODUCT IN CRM</th>' +
-        '<th style="padding:5px 7px;text-align:right">BILLED</th><th style="padding:5px 7px;text-align:right">RECEIVED</th><th style="padding:5px 7px;text-align:right">RATE</th></tr></thead><tbody>' +
+        '<th style="padding:5px 7px;text-align:right">INTO STOCK</th><th style="padding:5px 7px;text-align:right">RATE</th></tr></thead><tbody>' +
         b.lines.map(function (l, li) {
           var p = pmap[l.code];
           return '<tr style="border-top:1px solid #e2e8f0">' +
@@ -40886,15 +40953,10 @@ function viewCatalogue() {
             '<td style="padding:5px 7px">' + (p ? '<b style="color:#0f766e">' + esc(p.desc) + '</b><div style="font-size:12px;color:#64748b">' + esc(p.code) + '</div>'
               : (b.done ? '<span style="color:#94a3b8">—</span>' : '<input id="tb_' + bi + '_' + li + '" list="tb_prods" placeholder="Pick the product" style="width:100%;padding:6px;border:1px solid #fdba74;border-radius:6px;font-size:12.5px"/>')) + '</td>' +
             '<td style="padding:5px 7px;text-align:right;white-space:nowrap"><b>' + l.qty + '</b> ' + esc(l.unit) + '</td>' +
-            (function () {
-              var got = l.code ? (rcv[l.code] || 0) : 0, diff = got - l.qty;
-              return '<td style="padding:5px 7px;text-align:right;white-space:nowrap;font-weight:700;color:' + (!anyRcv ? '#94a3b8' : diff === 0 ? '#0f766e' : '#b91c1c') + '">' +
-                (!anyRcv ? '\u2014' : got + (diff < 0 ? '<div style="font-size:12px">' + (-diff) + ' short</div>' : diff > 0 ? '<div style="font-size:12px">' + diff + ' extra</div>' : '')) + '</td>';
-            })() +
             '<td style="padding:5px 7px;text-align:right;white-space:nowrap">' + money(l.net) + (l.disc ? '<div style="font-size:12px;color:#64748b">' + l.disc + '% off ' + money(l.rate) + '</div>' : '') + '</td></tr>';
         }).join("") + '</tbody></table></div></div>';
     });
-    h += '<div class="acts"><button class="btn" data-act="tb-submit"' + (nNew ? '' : ' disabled') + '>Save ' + plural(nNew, "bill") + ' (checks only &mdash; stock is not changed)</button>' +
+    h += '<div class="acts"><button class="btn" data-act="tb-submit"' + (nNew ? '' : ' disabled') + '>Save ' + plural(nNew, "bill") + ' into stock</button>' +
       '<button class="btn ghost" data-act="imp-cancel">Cancel</button></div>';
     return h;
   }
@@ -42643,6 +42705,7 @@ function viewCatalogue() {
       return;
     }
     if (act === "stock-import") { S.imp = { step: 1, type: "in", asOn: today(), ref: "", paste: "" }; S.tab = "stock"; render(); return; }
+    if (act === "stk-nag-go") { S.modal = null; S.grn = null; S.pc = null; S.imp = { step: 1, type: "in", asOn: today(), ref: "", paste: "" }; S.tab = "stock"; render(); return; }   /* 6.9.607 */
     if (act === "imp-cancel") { S.imp = null; render(); return; }
     if (act === "imp-back") { if (S.imp) S.imp.step = 1; render(); return; }
     if (act === "imp-type") {
@@ -42745,7 +42808,7 @@ function viewCatalogue() {
       });
       _chain.then(function () {
         S.imp = null; STOCK_LOADED = false; S.stock = []; ensureStock(); S.tab = "stock"; render();
-        toast(_okN + " of " + plural(_todo.length, "bill") + " saved and checked against the godown." + (_fail.length ? " Not saved: " + _fail.join("; ") : ""));
+        toast(_okN + " of " + plural(_todo.length, "bill") + " saved into stock." + (_fail.length ? " Not saved: " + _fail.join("; ") : ""));
       });
       return;
     }
