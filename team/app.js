@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.608";
+  var APP_VERSION = "6.9.609";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -22723,11 +22723,20 @@ function viewCatalogue() {
              exactly as it always has. */
           inc += x.amt * rateFor(cl, x.brand || c.brand || "", c) / 100;
         });
-        billed += base; earned += inc; clientNames[c.customerName] = 1;
-        clBilled += base; clFreight += chFreight(c);
+        /* v6.9.609 - REVIEW A9, HIS DECISION 25 Sep 2026: "after further discount". The further
+           discount at hisab time and the discount on the whole challan (hisabExtra) come off the
+           delivery before anyone's incentive is worked out - the partner earns on what the client
+           actually pays, the same net figure challanNet puts on the client's account. The
+           incentive is scaled by the same share, so a delivery with 10% taken off earns 10% less.
+           And the ratio's base (payBase) is the net too: a client who paid everything he owes
+           now reads fully paid, where the gross base kept his partner short for ever. */
+        var off = chFurtherOff(c, base), net = base - off;
+        if (off > 0 && base > 0) inc = inc * net / base;
+        billed += net; earned += inc; clientNames[c.customerName] = 1;
+        clBilled += net; clFreight += chFreight(c);
         rows.push({ no: c.challanNo, client: c.customerName, site: c.site, brand: c.brand,
           ymd: String(c.createdAt || "").slice(0, 10),
-          amount: base, base: base, pct: base > 0 ? (inc / base * 100) : 0, inc: inc, ret: false });
+          amount: net, base: net, off: off, pct: net > 0 ? (inc / net * 100) : 0, inc: inc, ret: false });
       });
       /* A MATERIAL RETURN IS A NEGATIVE CHALLAN. It reverses only once the goods are
          booked in at the godown (status "Received") - symmetric with a sale, which
@@ -22755,6 +22764,10 @@ function viewCatalogue() {
           rInc += x.amt * rateFor(cl, x.brand, rCh) / 100;
           if (x.brand) rBrands[x.brand] = 1;
         });
+        /* v6.9.609 - A9: a return carries the same share of its delivery's discount as the credit
+           does (returnNet, v6.9.599), so it reverses incentive on the net too */
+        var rf = retShare(r).factor;
+        if (rf !== 1) { rBase = Math.round(rBase * rf); rInc = rInc * rf; }
         returned += rBase; reversed += rInc; earned -= rInc;
         clReturned += rBase;
         if (rBase > 0 || rInc !== 0) {
