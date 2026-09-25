@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.615";
+  var APP_VERSION = "6.9.616";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -41214,8 +41214,9 @@ function viewCatalogue() {
   }
   function viewPhysCount() {
     pcWire();
+    var PL = pcProducts();   /* 6.9.616 - one row per product code */
     var pc = S.pc, brands = {}, done = {}, last = stkOpenLast();
-    PRODUCTS.forEach(function (p) {
+    PL.forEach(function (p) {
       var b = p.brand || "Other";
       brands[b] = (brands[b] || 0) + 1;
       if (pcEntered(p, pc, last)) done[b] = (done[b] || 0) + 1;
@@ -41223,15 +41224,15 @@ function viewCatalogue() {
     var bl = Object.keys(brands).sort();
     var cur = pc.brand || bl.filter(function (b) { return (done[b] || 0) < brands[b]; })[0] || bl[0] || "";
     var q = String(pc.q || "").trim().toLowerCase();
-    var scope = PRODUCTS.filter(function (p) {
+    var scope = PL.filter(function (p) {
       if (q) return (p.code + " " + p.desc + " " + (p.brand || "")).toLowerCase().indexOf(q) >= 0;
       return (p.brand || "Other") === cur;
     });
     var pend = scope.filter(function (p) { return !pcEntered(p, pc, last); });
     var ent = scope.filter(function (p) { return pcEntered(p, pc, last); });
     var typed = Object.keys(pc.v).filter(function (k) { return pcUnsaved(k, last); }).length;
-    var allDone = PRODUCTS.filter(function (p) { return pcEntered(p, pc, last); }).length;
-    var total = PRODUCTS.length, pct = total ? Math.round(allDone * 100 / total) : 0;
+    var allDone = PL.filter(function (p) { return pcEntered(p, pc, last); }).length;
+    var total = PL.length, pct = total ? Math.round(allDone * 100 / total) : 0;
     var nextB = bl.filter(function (b) { return b !== cur && (done[b] || 0) < brands[b]; })[0] || "";
     var TH = function (x, al, w) { return '<th style="padding:8px 10px;text-align:' + (al || 'left') + ';font-size:12px;letter-spacing:.04em;white-space:nowrap' + (w ? ';width:' + w : '') + '">' + x + '</th>'; };
     var rowOf = function (p, i, secP) {
@@ -41304,7 +41305,7 @@ function viewCatalogue() {
       '<button class="btn sm" data-act="pc-save"' + (typed ? '' : ' disabled') + '>Save now</button>' +
       '<button class="btn sm ghost" data-act="pc-cancel">Close</button></div>';
     if (pc.zoom) {
-      var zp = PRODUCTS.filter(function (x) { return x.code === pc.zoom; })[0] || {};
+      var zp = PL.filter(function (x) { return x.code === pc.zoom; })[0] || {};
       h += '<div data-act="pc-zoom" data-code="" style="position:fixed;inset:0;z-index:50;background:rgba(15,23,42,.75);display:flex;align-items:center;justify-content:center;padding:16px">' +
         '<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;padding:14px;text-align:center">' +
         '<img src="' + esc(driveImg(zp.pic, 700)) + '" alt="" style="max-width:100%;max-height:60vh;object-fit:contain"/>' +
@@ -41315,9 +41316,29 @@ function viewCatalogue() {
     setTimeout(pcSay, 0);   /* 6.9.611 - the save line, filled in once the screen is drawn */
     return h;
   }
+  /* 6.9.616 - HIS REPORT, 25 Sep, with a screenshot: "now entering qty not moving item to entered
+     area, it stays with blank one". The row was SS MANIFOLD 28/22/6 Pt., ST28226 - and the price
+     list carries ST28226 TWICE (sheet rows 516 and 1046, Rs 22,558 and Rs 21,460). The count drew
+     both, and reading the boxes back, the second - still empty - wrote over the figure typed in the
+     first, so the product never counted as entered. One code is one stock item: the count now shows
+     each code once (the first row), and an empty box never overwrites a figure for the same code. */
+  function pcProducts() {
+    var seen = {}, out = [];
+    PRODUCTS.forEach(function (p) {
+      var k = String(p.code || "").trim();
+      if (!k || seen[k]) return;
+      seen[k] = 1; out.push(p);
+    });
+    return out;
+  }
   function pcKeep() {
     var pc = S.pc; if (!pc) return;
-    [].forEach.call(document.querySelectorAll(".pc-box"), function (b) { pc.v[b.getAttribute("data-code")] = b.value; });
+    var got = {};
+    [].forEach.call(document.querySelectorAll(".pc-box"), function (b) {
+      var k = b.getAttribute("data-code"), v = b.value;
+      if (got[k] && String(v).trim() === "") return;   /* a second box for one code never blanks the first */
+      pc.v[k] = v; if (String(v).trim() !== "") got[k] = 1;
+    });
     pc.date = (el("pc_date") || {}).value || pc.date; pc.q = (el("pc_q") || {}).value || "";
     pcDraftSave();
   }
