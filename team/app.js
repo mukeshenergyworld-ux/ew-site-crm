@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.610";
+  var APP_VERSION = "6.9.611";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -41057,6 +41057,77 @@ function viewCatalogue() {
      and the next pending box is already under the cursor. A product counts as entered when a figure
      is typed on this screen or a count for it is already saved. When a brand has nothing pending it
      says so, in green, and offers the next brand that still has work in it. */
+  /* ===== 6.9.611 - IT SAVES AS HE GOES  (25 Sep 2026) =====
+     His report, with a screenshot of 72 Heliroma lines typed: "save the count saying no response
+     from server, make provision like it will save side by side and I have still entering other qty".
+     One press sent every line in one call, and 72 lines outlasted the wait. So a count is now sent
+     by itself, TEN LINES AT A TIME, a moment after each figure goes in, one call in flight at once,
+     while he carries on typing. A line shows "saving…", then "saved ✓". A call that gets no answer
+     is tried again (5 s, 10 s, 20 s … up to a minute) and the lines stay "not saved yet" meanwhile.
+     A retry after a call that did land but whose answer was lost writes the same figure twice for
+     the same date - harmless, because the last save of a count is the count (stkOpenLast). What is
+     typed is also kept on this device, so nothing is lost if the tab closes. */
+  var _pcQ = { busy: false, fail: 0, err: "", sending: {}, timer: null, done: 0 };
+  function pcNum(v) { var q = Number(String(v == null ? "" : v).replace(/[^0-9.\-]/g, "")); return isFinite(q) ? q : NaN; }
+  function pcUnsaved(code, last) {
+    var pc = S.pc; if (!pc) return false;
+    var v = pc.v[code]; if (!pcFilled(v)) return false;
+    var lr = (last || stkOpenLast())[code];
+    return !(lr && String(lr.asOn || "").slice(0, 10) === (pc.date || today()) && Number(lr.qty) === pcNum(v));
+  }
+  function pcAutoSave() {
+    var pc = S.pc; if (!pc || _pcQ.busy) return;
+    if (_pcQ.timer) { clearTimeout(_pcQ.timer); _pcQ.timer = null; }
+    /* not before Stock has loaded - until then a figure already saved would look unsaved and go twice */
+    if (!STOCK_LOADED) { ensureStock(); _pcQ.timer = setTimeout(pcAutoSave, 2000); return; }
+    var date = pc.date || today(), last = stkOpenLast(), rows = [];
+    Object.keys(pc.v).forEach(function (k) {
+      if (rows.length >= 10 || !pcUnsaved(k, last)) return;
+      var q = pcNum(pc.v[k]); if (isNaN(q) || q < 0) return;
+      var p = PRODUCTS.filter(function (x) { return x.code === k; })[0] || {};
+      rows.push({ code: k, qty: q, desc: p.desc || "" });
+    });
+    if (!rows.length) { pcSay(); return; }
+    _pcQ.busy = true; _pcQ.sending = {}; rows.forEach(function (x) { _pcQ.sending[x.code] = 1; });
+    pcSay();
+    var retry = function (why) {
+      _pcQ.busy = false; _pcQ.sending = {}; _pcQ.fail++; _pcQ.err = why;
+      pcSay();
+      _pcQ.timer = setTimeout(pcAutoSave, Math.min(60000, 5000 * Math.pow(2, _pcQ.fail - 1)));
+    };
+    api("stockImport", { ref: "Physical count " + date, asOn: date, type: "opening", rows: rows, newItems: [] }, 60000).then(function (r) {
+      if (!(r && r.ok)) { retry((r && r.error) || "the server refused it"); return; }
+      _pcQ.busy = false; _pcQ.sending = {}; _pcQ.fail = 0; _pcQ.err = ""; _pcQ.done += rows.length;
+      /* on this phone's copy at once, so the line reads saved and the balance moves; the next pull
+         of Stock replaces it with the sheet's own rows */
+      S.stock = (S.stock || []).concat(rows.map(function (x, i) {
+        return { id: "PC-" + Date.now() + "-" + i, type: "opening", code: x.code, desc: x.desc, qty: x.qty, ref: "Physical count " + date, asOn: date, notes: "" };
+      }));
+      pcSay();
+      setTimeout(pcAutoSave, 200);   /* the next ten, if he has typed more */
+    }, function (e) { retry((e && e.message) || "no answer from the server"); });
+  }
+  /* the words on the screen, changed in place - never a repaint, which would take the box he is
+     typing in out from under his thumb */
+  function pcSay() {
+    var pc = S.pc; if (!pc) return;
+    var last = stkOpenLast(), wait = Object.keys(pc.v).filter(function (k) { return pcUnsaved(k, last); }).length;
+    var nSend = Object.keys(_pcQ.sending).length;
+    var box = el("pc_status");
+    if (box) {
+      box.style.color = _pcQ.fail ? "#b45309" : (wait ? "#475569" : "#15803d");
+      box.innerHTML = nSend ? "Saving " + plural(nSend, "line") + "\u2026" + (wait > nSend ? " " + (wait - nSend) + " more waiting." : "")
+        : _pcQ.fail ? "Not saved yet: " + wait + " \u2014 " + esc(_pcQ.err) + ". Trying again by itself; keep counting."
+        : wait ? wait + " waiting to save\u2026"
+        : "&#10003; Everything typed is saved" + (_pcQ.done ? " (" + _pcQ.done + " this session)" : "") + ".";
+    }
+    [].forEach.call(document.querySelectorAll(".pc-st"), function (sp) {
+      var c = sp.getAttribute("data-code"), lr = last[c];
+      if (_pcQ.sending[c]) { sp.textContent = "saving\u2026"; sp.style.color = "#0f766e"; }
+      else if (pcUnsaved(c, last)) { sp.textContent = "not saved yet"; sp.style.color = "#b45309"; }
+      else if (lr) { sp.textContent = "saved \u2713 " + dmy(String(lr.asOn || "").slice(0, 10)).slice(0, 5); sp.style.color = "#15803d"; }
+    });
+  }
   function pcEntered(p, pc, last) { return pcFilled(pc.v[p.code]) || !!last[p.code]; }
   var _pcWired = false;
   function pcWire() {
@@ -41081,6 +41152,7 @@ function viewCatalogue() {
     var boxes = [].slice.call(document.querySelectorAll('.pc-box[data-sec="' + sec + '"]'));
     var idx = boxes.indexOf(t);
     pcKeep();
+    setTimeout(pcAutoSave, 50);   /* 6.9.611 - it saves while he goes on */
     var last = stkOpenLast(), filled = pcFilled(S.pc.v[code]);
     var moved = (sec === "p" && filled) || (sec === "d" && !filled && !last[code]);
     if (!moved) {
@@ -41119,7 +41191,7 @@ function viewCatalogue() {
     });
     var pend = scope.filter(function (p) { return !pcEntered(p, pc, last); });
     var ent = scope.filter(function (p) { return pcEntered(p, pc, last); });
-    var typed = Object.keys(pc.v).filter(function (k) { return pcFilled(pc.v[k]); }).length;
+    var typed = Object.keys(pc.v).filter(function (k) { return pcUnsaved(k, last); }).length;
     var allDone = PRODUCTS.filter(function (p) { return pcEntered(p, pc, last); }).length;
     var total = PRODUCTS.length, pct = total ? Math.round(allDone * 100 / total) : 0;
     var nextB = bl.filter(function (b) { return b !== cur && (done[b] || 0) < brands[b]; })[0] || "";
@@ -41136,8 +41208,8 @@ function viewCatalogue() {
         '<td style="padding:6px 10px 6px 4px;text-align:right"><input class="pc-box" data-sec="' + (secP ? 'p' : 'd') + '" data-code="' + esc(p.code) + '" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="Counted ' + esc(p.desc || p.code) + '" value="' + esc(pc.v[p.code] != null ? pc.v[p.code] : "") + '" ' +
           'placeholder="' + (lr && !f ? esc(String(Number(lr.qty) || 0)) : '') + '" ' +
           'style="width:84px;min-height:44px;padding:8px 8px;border:1px solid ' + (f ? '#86efac' : '#cbd5e1') + ';border-radius:8px;text-align:right;font-size:16px;font-weight:700"/>' +
-          (!secP ? '<div style="font-size:12px;margin-top:3px;white-space:nowrap;color:' + (f ? '#b45309' : '#15803d') + '">' +
-            (f ? (lr ? 'changed, not saved' : 'not saved yet') : 'saved ' + esc(dmy(String(lr.asOn || "").slice(0, 10)).slice(0, 5))) + '</div>' : '') + '</td></tr>';
+          (!secP ? '<div class="pc-st" data-code="' + esc(p.code) + '" style="font-size:12px;margin-top:3px;white-space:nowrap;color:' + (_pcQ.sending[p.code] ? '#0f766e' : pcUnsaved(p.code, last) ? '#b45309' : '#15803d') + '">' +
+            (_pcQ.sending[p.code] ? 'saving\u2026' : pcUnsaved(p.code, last) ? 'not saved yet' : 'saved \u2713 ' + esc(dmy(String((lr || {}).asOn || "").slice(0, 10)).slice(0, 5))) + '</div>' : '') + '</td></tr>';
     };
     var table = function (list, secP) {
       return '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:' + (secP ? '#0b3b36' : '#166534') + ';color:#fff">' +
@@ -41150,7 +41222,7 @@ function viewCatalogue() {
         '<div style="flex:1 1 260px"><div style="font-size:18px;font-weight:800">Physical count</div>' +
         '<div style="font-size:12.5px;opacity:.85;margin-top:2px">Type the count and press Enter: the product moves to Entered and the next one is ready. It becomes the opening stock on the count date.</div></div>' +
         '<div style="flex:0 0 auto;text-align:right"><div style="font-size:22px;font-weight:800">' + allDone + ' <span style="font-size:14px;opacity:.75">of ' + total + ' entered</span></div>' +
-        '<div style="font-size:12px;opacity:.85">' + (typed ? typed + ' typed here, not saved yet' : 'nothing waiting to save') + '</div></div></div>' +
+        '<div style="font-size:12px;opacity:.85">saves by itself as you go</div></div></div>' +
       '<div style="height:6px;background:#e2e8f0"><div style="height:6px;width:' + pct + '%;background:#14b8a6"></div></div>' +
       '<div style="padding:10px 14px">' +
       '<div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">' +
@@ -41190,9 +41262,9 @@ function viewCatalogue() {
         (pc.showDone ? table(ent, false) : '') + '</div>';
     }
     h += '<div style="position:sticky;bottom:0;z-index:5;background:#fff;border-top:1px solid #e2e8f0;padding:10px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center">' +
-      '<button class="btn" data-act="pc-save"' + (typed ? '' : ' disabled') + '>Save the count (' + plural(typed, "product") + ')</button>' +
-      '<button class="btn ghost" data-act="pc-cancel">Close</button>' +
-      '<span style="font-size:12px;color:#64748b;flex:1 1 220px">Typed figures are kept on this device until saved. Save brand by brand or all at once; saving again corrects a count.</span></div>';
+      '<span id="pc_status" style="font-size:13px;font-weight:700;flex:1 1 220px"></span>' +
+      '<button class="btn sm" data-act="pc-save"' + (typed ? '' : ' disabled') + '>Save now</button>' +
+      '<button class="btn sm ghost" data-act="pc-cancel">Close</button></div>';
     if (pc.zoom) {
       var zp = PRODUCTS.filter(function (x) { return x.code === pc.zoom; })[0] || {};
       h += '<div data-act="pc-zoom" data-code="" style="position:fixed;inset:0;z-index:50;background:rgba(15,23,42,.75);display:flex;align-items:center;justify-content:center;padding:16px">' +
@@ -41202,6 +41274,7 @@ function viewCatalogue() {
         '<div style="font-size:12.5px;color:#64748b">' + esc(zp.code || "") + (zp.brand ? ' &middot; ' + esc(zp.brand) : '') + (zp.unit ? ' &middot; ' + esc(zp.unit) : '') + '</div>' +
         '<button class="btn" data-act="pc-zoom" data-code="" style="margin-top:10px">Close</button></div></div>';
     }
+    setTimeout(pcSay, 0);   /* 6.9.611 - the save line, filled in once the screen is drawn */
     return h;
   }
   function pcKeep() {
@@ -42943,32 +43016,24 @@ function viewCatalogue() {
       S.pc = { v: (_pd && _pd.v) || {}, date: (_pd && _pd.date) || today(), brand: "", show: "all" };
       ensureStock(); render();
       if (_pd) toast("Your unsaved count is back: " + plural(Object.keys(_pd.v).length, "product") + ".");
+      setTimeout(pcAutoSave, 1500);   /* 6.9.611 - and it goes up by itself once Stock has loaded */
       return;
     }
-    if (act === "pc-cancel") { pcKeep(); S.pc = null; render(); return; }
+    if (act === "pc-cancel") {
+      pcKeep();
+      var _wait = Object.keys(S.pc.v).filter(function (k) { return pcUnsaved(k); }).length;
+      if (_wait) toast(plural(_wait, "count") + " not saved yet \u2014 kept on this device. Open the count again and they go up by themselves.");
+      S.pc = null; render(); return;
+    }
     if (act === "pc-find") { pcKeep(); render(); return; }
     if (act === "pc-clearq") { pcKeep(); S.pc.q = ""; render(); return; }
     if (act === "pc-show") { pcKeep(); S.pc.show = t.getAttribute("data-v") || "all"; render(); return; }
     if (act === "pc-showdone") { pcKeep(); S.pc.showDone = !S.pc.showDone; render(); return; }   /* 6.9.610 */
     if (act === "pc-zoom") { pcKeep(); S.pc.zoom = t.getAttribute("data-code") || ""; render(); return; }
     if (act === "pc-brand") { pcKeep(); S.pc.brand = t.getAttribute("data-b") || ""; S.pc.q = ""; render(); window.scrollTo(0, 0); return; }
-    if (act === "pc-save") {
-      pcKeep();
-      var _pc = S.pc, _pr = [];
-      Object.keys(_pc.v).forEach(function (k) {
-        var v = String(_pc.v[k]).trim(); if (v === "") return;
-        var q = Number(v.replace(/[^0-9.\-]/g, "")); if (!isFinite(q) || q < 0) return;
-        var p = PRODUCTS.filter(function (x) { return x.code === k; })[0] || {};
-        _pr.push({ code: k, qty: q, desc: p.desc || "" });
-      });
-      if (!_pr.length) { toast("Nothing counted yet."); return; }
-      t.disabled = true; t.textContent = "Saving…";
-      api("stockImport", { ref: "Physical count " + (_pc.date || today()), asOn: _pc.date || today(), type: "opening", rows: _pr, newItems: [] }).then(function (r) {
-        if (!(r && r.ok)) { t.disabled = false; t.textContent = "Save the count"; toast((r && r.error) || "Not saved."); return; }
-        pcDraftClear(); S.pc = null; STOCK_LOADED = false; S.stock = []; ensureStock(); render();
-        toast("Count saved for " + plural(_pr.length, "product") + ", as the opening stock on " + dmy(_pc.date) + ".");
-      }, function () { t.disabled = false; t.textContent = "Save the count"; toast("No answer from the server - it MAY have been saved. Refresh Stock before saving again."); });
-      return;
+    if (act === "pc-save") {   /* 6.9.611 - the same background saver, now */
+      pcKeep(); _pcQ.fail = 0; pcAutoSave();
+      toast("Saving in the background \u2014 keep counting."); return;
     }
     if (act === "tb-submit") {
       var _tb = S.imp || {}, _cmK = stkCodeMap(), _aliases = [], _bad = "";
