@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.614";
+  var APP_VERSION = "6.9.615";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -25790,7 +25790,16 @@ function viewCatalogue() {
             (_l0.opening ? '\u270e Change the previous balance' : '\u270e Set a previous balance') + '</button></div>'
           : '') +
         payTable(cl) +
-        (canSee("payments") && _l0.due > 0 ? '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '">&#8377; Payment received</button></div>' : '') +
+        /* 6.9.615 - HIS WORDS, 25 Sep, on Sandeep Goel - FIMA A/c (Rs 3,65,000 in credit, no delivery
+           yet): "registering new advance payment is not there when credit balance stands of any
+           client, it must be there". This card showed its one button only while he OWED money; a
+           man paid ahead - the very man whose next advance is being handed over - had none. The
+           same three buttons as the account with deliveries, always. */
+        (canSee("payments") ? '<div class="acts" style="flex-wrap:wrap;gap:8px;margin-top:8px">' +
+          '<button class="btn sm" data-act="pay-in" data-n="' + esc(cl) + '" data-k="in" title="Record money received from this client">+ Payment</button>' +
+          '<button class="btn sm ghost" data-act="pay-in" data-n="' + esc(cl) + '" data-k="advance" style="border-color:#99f6e4;color:#0f766e">+ Advance</button>' +
+          '<button class="btn sm ghost" data-act="pay-in" data-n="' + esc(cl) + '" data-k="refund" style="border-color:#fecaca;color:#b91c1c" title="Refund money to the client">\u2212 Refund</button>' +
+          '</div>' : '') +
         '</div>';
       /* The "not in the account yet" card is drawn once, above, for BOTH branches
          (see hisabPendingCard) - it used to exist only here, so a client WITH received
