@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.99.0";
+  var APP_VERSION = "1.100.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -3690,10 +3690,46 @@ function discRowOn(client, brand, onYmd) {
     return m;
   }
   function stkCounts(code, ymd, cut) { var c = cut[code]; return !c || String(ymd || "").slice(0, 10) >= c; }
+  /* ===== HIS PROCESS  (CRM 6.9.607 / Challan 1.100.0, 25 Sep 2026) =====
+     IN - his words: "accounts will enter stock in Tally first, he will download individual bill in
+     Excel ... you will fetch same and register stock from there". The Tally purchase bill uploaded
+     to the CRM now IS the stock coming in, line by line, on the bill's date. The godown's lorry entry
+     is switched off. A bill uploaded twice counts once (supplier / bill no), and an older "in" row
+     carrying the same bill is not counted on top of it.
+     OUT - his words: "for everything out from godown a challan will be made first, on basis of
+     challan bill will be generated". So a challan takes stock OUT when it leaves - Dispatched,
+     Received or Billed, or its receipt is in - not weeks later when the signed paper comes back.
+     A challan made but not yet dispatched HOLDS its goods: still on the floor, not free.
+     Cancelled challans and returns never count. */
+  function stkChDead(c) {
+    if (!c || String(c.returnNo || "").trim()) return true;
+    if (String(c.status || "") === "Cancelled") return true;
+    try { if (typeof isCancelled === "function" && isCancelled("challans", c.id)) return true; } catch (e) { }
+    return false;
+  }
+  function stkChOut(c) {
+    if (stkChDead(c)) return false;
+    return FR_DONE.indexOf(String(c.status || "")) >= 0 || String(c.receiptReceived || "").toUpperCase() === "Y";
+  }
+  function stkBillLines() {
+    var seen = {}, out = [];
+    (S.stock || []).forEach(function (r) {
+      if (String(r.type) !== "bill") return;
+      var ref = String(r.ref || "").trim().toLowerCase();
+      if (!ref || seen[ref]) return;
+      seen[ref] = 1;
+      var ls = []; try { ls = JSON.parse(r.desc || "[]") || []; } catch (e) { ls = []; }
+      ls.forEach(function (l) {
+        var k = String((l && l.c) || "").trim(), q = Number(l && l.q) || 0;
+        if (k && q) out.push({ code: k, qty: q, asOn: String(r.asOn || "").slice(0, 10), ref: String(r.ref || ""), supplier: String(r.notes || "") });
+      });
+    });
+    return out;
+  }
   function stockDeliveredByCode() {
     var m = {}, cut = stkCutoff();
     (S.data.challans || []).forEach(function (c) {
-      if (String(c.receiptReceived).toUpperCase() !== "Y") return;
+      if (!stkChOut(c)) return;   /* 6.9.607 - out when dispatched, not when the receipt comes back */
       chItems(c).forEach(function (i) { var k = String(i.code || "").trim(); if (k && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0); });
     });
     return m;
@@ -3708,10 +3744,12 @@ function discRowOn(client, brand, onYmd) {
     return m;
   }
   function stockMovementByCode() {
-    var m = {}, desc = {}, cut = stkCutoff();
+    var m = {}, desc = {}, cut = stkCutoff(), _bref = {};
+    (S.stock || []).forEach(function (r) { if (String(r.type) === "bill" && r.ref) _bref[String(r.ref).trim().toLowerCase()] = 1; });
     (S.stock || []).forEach(function (row) {
       var ty = String(row.type || "");
-      if (ty === "bill") return;   /* v6.9.605 - a Tally bill is checked against the goods, it does not add them */
+      if (ty === "bill") return;   /* 6.9.607 - counted below, line by line, from stkBillLines */
+      if (ty === "in" && _bref[String(row.ref || "").trim().toLowerCase()]) return;   /* that bill is already counted from Tally */
       var _k0 = String(row.code || "").trim();
       if (ty === "opening" && cut[_k0] && String(row.asOn || "").slice(0, 10) !== cut[_k0]) return;   /* only the latest count */
       if (ty !== "opening" && ty !== "reorder" && ty !== "rate" && ty !== "landing" && ty !== "register" && ty !== "alias" && !stkCounts(_k0, row.asOn, cut)) return;
@@ -3720,6 +3758,7 @@ function discRowOn(client, brand, onYmd) {
       m[k] = (m[k] || 0) + (Number(row.qty) || 0);
       if (row.desc && !desc[k]) desc[k] = row.desc;
     });
+    stkBillLines().forEach(function (l) { if (stkCounts(l.code, l.asOn, cut)) m[l.code] = (m[l.code] || 0) + l.qty; });   /* 6.9.607 - IN is the Tally bill */
     return { m: m, desc: desc };
   }
   function stkBillKey(supplier, billNo) { return String(supplier || "").trim() + " / " + String(billNo || "").trim(); }
@@ -3748,9 +3787,7 @@ function discRowOn(client, brand, onYmd) {
     var cut = stkCutoff(), m = {};
     ((S.data && S.data.challans) || []).forEach(function (c) {
       if (!c || (skipId && c.id === skipId)) return;
-      if (String(c.status || "") === "Cancelled") return;
-      try { if (typeof isCancelled === "function" && isCancelled("challans", c.id)) return; } catch (e) { }
-      if (String(c.receiptReceived || "").toUpperCase() === "Y") return;
+      if (stkChDead(c) || stkChOut(c)) return;   /* 6.9.607 - held = made, not yet dispatched */
       chItems(c).forEach(function (i) {
         var k = String(i.code || "").trim();
         if (k && cut[k] && stkCounts(k, c.createdAt, cut)) m[k] = (m[k] || 0) + (Number(i.qty) || 0);
@@ -3820,7 +3857,8 @@ function discRowOn(client, brand, onYmd) {
         '<div style="font-size:12.5px;opacity:.9;margin-top:3px">Pick the client, add the material, write the book number. It saves as a <b>draft</b> — the accounts desk passes it before it counts against his account.</div></div>' +
         chDraftBanner() +   /* 1.78.0 */
         '<button class="btn full" data-act="ch-new" style="margin:12px 0">+ New challan</button>' +
-        (canMake() ? '<button class="btn gry full" data-act="grn-new" style="margin:0 0 12px">&#128229; Lorry received &mdash; goods in</button>' : '') +
+        /* 1.100.0 - his process, 25 Sep: stock comes in from the Tally bill accounts uploads to the
+           CRM, so the lorry button is off this phone. The screen and its handler stay, unused. */
         /* v1.18.0 - if the server sent no clients for this sign-in, SAY SO here, where the
            man is about to press New challan and find an empty picker. The rest of the app -
            receipts, the approve queue, every challan already pulled - still works, which is
