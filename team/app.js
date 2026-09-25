@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.616";
+  var APP_VERSION = "6.9.617";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -35711,6 +35711,7 @@ function viewCatalogue() {
        product, two screens, two answers") in the search POPUP and left the screen showing a
        product with no photograph. picCell also says whether a picture is missing or broken,
        instead of being the one list in the app that stays quiet about it. */
+    var _stPos = canSee("stock") && o.products && o.products.length ? (ensureStock(), stkPositions()) : null;   /* 6.9.617 */
     group("Products", o.products, function (p) {
       return '<div class="card"><div class="plist"><div class="prow" style="border:0;padding:0">' +
         picCell(p) +
@@ -35718,7 +35719,7 @@ function viewCatalogue() {
           (p.price ? ' <span class="pill teal">' + money(p.price) + '</span>' : '') + '</h3>' +
         '<div class="meta">' + esc([p.code, p.brand, p.family].filter(Boolean).join("  \u00b7  ")) +
         (p.unit ? '  \u00b7  ' + esc(p.unit) : '') + '</div></div>' +
-        '</div></div></div>';
+        '</div></div>' + (_stPos ? stkSearchLine(p, _stPos) : '') + '</div>';
     });
     return h;
   }
@@ -40472,6 +40473,8 @@ function viewCatalogue() {
       (canSetPricing() ? '<button class="btn sm ghost" data-act="stock-landing">Landing %</button>' : '') +
       '<button class="btn sm ghost" data-act="stock-refresh">Refresh</button></div></div>';
     if (!STOCK_LOADED && !(S.stock && S.stock.length)) return h + '<div class="empty">Loading stock…</div>';
+    if (S.stkOrd) return h + stkOrderHtml(true);   /* 6.9.617 - the Stock to order section */
+    h += stkOrderHtml(false);
     /* v6.9.605 - THE MONTH'S BILLS, TALLY AGAINST STOCK: which bills on the uploaded Purchase
        Register are in stock and which are still to upload */
     var _reg = stkRegister();
@@ -40509,20 +40512,9 @@ function viewCatalogue() {
     var q = String(S.q || "").trim().toLowerCase();
     if (q) list = list.filter(function (x) { return (x.code + " " + x.desc).toLowerCase().indexOf(q) >= 0; });
     list.sort(function (a, b) { return a.onhand - b.onhand; });
-    var lowList = list.filter(function (x) { return x.low || x.zero; });
     var totVal = list.reduce(function (s, x) { return s + (x.value || 0); }, 0);
     h += '<div class="row"><input class="grow" id="q" placeholder="Filter product / code…" value="' + esc(S.q) + '"/></div>';
 
-    if (lowList.length) {
-      h += '<div class="card" style="border-color:#fecaca;background:#fef2f2"><h3 style="margin:0 0 3px;color:#b91c1c">Reorder now — ' + plural(lowList.length, "item") + '</h3>' +
-        '<div class="meta" style="font-size:12px">Out of stock, or at/below the reorder level you set. Tap one to buy against, or to adjust its level.</div>';
-      lowList.slice(0, 25).forEach(function (x) {
-        h += '<div class="acts" style="align-items:center;border-top:1px solid #fee2e2;margin-top:6px;padding-top:6px"><div class="grow"><b>' + esc(x.desc) + '</b> <span style="font-size:12px;color:#94a3b8">' + esc(x.code) + '</span>' +
-          '<br><span style="font-size:12px;color:#b91c1c">on hand <b>' + x.onhand + '</b>' + (x.reorder ? ' · reorder at ' + x.reorder : ' · no level set') + '</span></div>' +
-          '<button class="btn sm ghost" data-act="stock-item" data-code="' + esc(x.code) + '">Set level</button></div>';
-      });
-      h += '</div>';
-    }
     var _lpG = Number(landingPcts().global) || 0;
     if (canSetPricing()) h += '<div class="card" style="border-color:#e2e8f0"><div style="font-size:12.5px;color:#475569">' +
       (_lpG ? '<b>Landing ' + _lpG + '%</b> is added to every purchase rate to work out landed cost on a quote.'
@@ -40556,6 +40548,98 @@ function viewCatalogue() {
      goods are promised but still counted. A product that has NEVER been physically counted has no
      known stock, and no warning is given for it: a warning built on a guess is one he learns to
      ignore. The challan is never blocked - he is told, and pressing Save again saves it. */
+  /* ===== 6.9.617 - STOCK TO ORDER  (25 Sep 2026) =====
+     His words: "searching a product from master search will show its current stock level also, and
+     preset min stock level to reorder, also make a section of Stock to order, only for items entered
+     min stock level qty, below that qty item shown in stock to order section. Note - only for item
+     whose min stock level preset".
+     So the list holds ONLY products with a minimum level set (the "reorder" stock row, as before),
+     and a product joins it when its FREE stock - on hand less challans made but not yet dispatched -
+     is at or below that minimum. Free, not on hand: goods already promised on a challan are not
+     there to sell, and ordering late for them is the mistake this list exists to stop.
+     The old "Reorder now" card also listed every product at zero with NO level set; that is gone,
+     exactly as his note says. A product with a minimum but never physically counted has no known
+     stock, so it is not listed as short - it is named underneath, to be counted. */
+  function stkPositions() {
+    var cut = stkCutoff(), mv = stockMovementByCode(), del = stockDeliveredByCode(), ret = stockReturnedByCode(),
+      res = stkReserved(""), reo = reorderByCode(), m = {};
+    var codes = {}; [mv.m, del, reo, res].forEach(function (o) { Object.keys(o).forEach(function (k) { codes[k] = 1; }); });
+    Object.keys(codes).forEach(function (k) {
+      var onh = Math.round(((mv.m[k] || 0) - (del[k] || 0) + (ret[k] || 0)) * 100) / 100, held = res[k] || 0;
+      m[k] = { code: k, counted: !!cut[k], countedOn: cut[k] || "", onhand: onh, held: held,
+        free: Math.round((onh - held) * 100) / 100, min: reo[k] || 0, desc: mv.desc[k] || "" };
+    });
+    return m;
+  }
+  function stkShort(x) { return !!(x && x.min > 0 && x.counted && x.free <= x.min); }
+  function stkToOrder(pos) {
+    pos = pos || stkPositions();
+    var out = [], uncounted = [];
+    Object.keys(pos).forEach(function (k) {
+      var x = pos[k]; if (!(x.min > 0)) return;
+      var p = PRODUCTS.filter(function (y) { return y.code === k; })[0] || {};
+      var r = { code: k, desc: p.desc || x.desc || k, brand: p.brand || "", unit: p.unit || "", onhand: x.onhand, held: x.held, free: x.free, min: x.min,
+        need: Math.max(0, Math.round((x.min - x.free) * 100) / 100) };
+      if (!x.counted) uncounted.push(r); else if (stkShort(x)) out.push(r);
+    });
+    out.sort(function (a, b) { return (a.free / a.min) - (b.free / b.min) || String(a.brand).localeCompare(String(b.brand)); });
+    uncounted.sort(function (a, b) { return String(a.desc).localeCompare(String(b.desc)); });
+    return { list: out, uncounted: uncounted };
+  }
+  function stkOrderHtml(full) {
+    var o = stkToOrder(), L = o.list;
+    var th = 'style="padding:6px 8px;text-align:right;white-space:nowrap"';
+    var h = '<div class="card" style="border-color:' + (L.length ? '#fecaca' : '#99f6e4') + ';background:' + (L.length ? '#fef2f2' : '#f0fdfa') + '">' +
+      '<div class="acts" style="align-items:center;margin:0;flex-wrap:wrap;gap:6px"><h3 class="grow" style="margin:0;color:' + (L.length ? '#b91c1c' : '#0f766e') + '">Stock to order' +
+        (L.length ? ' \u2014 ' + plural(L.length, "item") : ' \u2014 nothing below its minimum') + '</h3>' +
+        (full ? '<button class="btn sm ghost" data-act="stk-ord-xlsx">&#8681; Excel</button><button class="btn sm ghost" data-act="stk-ord" data-v="">All stock</button>'
+              : '<button class="btn sm" data-act="stk-ord" data-v="1">Open the list</button>') + '</div>' +
+      '<div class="meta" style="font-size:12.5px;margin-top:3px">Only products with a <b>minimum stock level</b> set. One is listed when its <b>free</b> stock (on hand less challans made but not yet dispatched) is at or below that minimum. Set a minimum from a product\u2019s <b>Set min</b> button here, or from the master search.</div>';
+    if (full && L.length) {
+      /* one card per product, not a table: on his phone a six-column table squeezed the name to one word a line */
+      var fig = function (lab, v, col) { return '<span style="display:inline-block;margin-right:14px;white-space:nowrap"><span style="color:#64748b">' + lab + '</span> <b style="color:' + (col || '#0f172a') + '">' + v + '</b></span>'; };
+      h += '<div style="margin-top:8px;background:#fff;border:1px solid #fee2e2;border-radius:10px">' +
+        L.map(function (x, i) {
+          return '<div class="acts" style="align-items:center;flex-wrap:nowrap;gap:8px;margin:0;padding:8px 10px' + (i ? ';border-top:1px solid #fee2e2' : '') + '"><div class="grow" style="min-width:0">' +
+            '<div style="font-weight:700;font-size:14px">' + esc(x.desc) + '</div><div style="font-size:12px;color:#64748b">' + esc([x.code, x.brand, x.unit].filter(Boolean).join(" \u00b7 ")) + '</div>' +
+            '<div style="font-size:13px;margin-top:3px">' + fig("On hand", x.onhand) + (x.held ? fig("Held", x.held) : '') + fig("Free", x.free, '#b91c1c') + fig("Min", x.min) +
+              fig("Short", x.need > 0 ? x.need : 'at min', x.need > 0 ? '#b91c1c' : '#c2410c') + '</div></div>' +
+            '<button class="btn sm ghost" style="min-height:44px;flex:0 0 auto" data-act="stock-item" data-code="' + esc(x.code) + '">Set min</button></div>';
+        }).join("") + '</div>' +
+        '<div class="meta" style="font-size:12px;margin-top:4px">Short = minimum less free: the least to order to get back to the minimum. Order more than that to cover the weeks until the goods arrive.</div>';
+    } else if (!full && L.length) {
+      h += '<div style="font-size:13px;margin-top:6px">' + L.slice(0, 5).map(function (x) {
+        return '<div style="border-top:1px solid #fee2e2;padding:5px 0"><b>' + esc(x.desc) + '</b> <span style="color:#b91c1c">free ' + x.free + ' \u00b7 min ' + x.min + '</span></div>'; }).join("") +
+        (L.length > 5 ? '<div class="meta" style="font-size:12px">and ' + (L.length - 5) + ' more \u2014 open the list</div>' : '') + '</div>';
+    }
+    if (o.uncounted.length) h += '<div style="font-size:12.5px;color:#92400e;margin-top:8px">' + plural(o.uncounted.length, "product") + ' with a minimum set ' + (o.uncounted.length > 1 ? 'have' : 'has') + ' not been counted yet, so ' + (o.uncounted.length > 1 ? 'their' : 'its') + ' stock is not known: ' +
+      esc(o.uncounted.slice(0, 8).map(function (x) { return String(x.desc).replace(/\.+$/, ""); }).join(", ")) + (o.uncounted.length > 8 ? ' and ' + (o.uncounted.length - 8) + ' more' : '') + '. Count ' + (o.uncounted.length > 1 ? 'them' : 'it') + ' and ' + (o.uncounted.length > 1 ? 'they join' : 'it joins') + ' this list when short.</div>';
+    return h + '</div>';
+  }
+  function stkOrderXlsx() {
+    var o = stkToOrder();
+    var HEAD = ["Code", "Product", "Brand", "Unit", "On hand", "Held on challans", "Free", "Minimum", "Short (min - free)"];
+    var out = [[{ v: "Energy World \u00b7 Stock to order \u00b7 " + fullDate(today()), s: XL.BOLD }], [], HEAD.map(function (t) { return { v: t, s: XL.HEAD }; })];
+    o.list.forEach(function (x) { out.push([x.code, x.desc, x.brand, x.unit, x.onhand, x.held, x.free, x.min, x.need]); });
+    out.push([]);
+    out.push(["Only products with a minimum stock level set. Listed when free stock (on hand less challans made but not yet dispatched) is at or below the minimum."]);
+    if (o.uncounted.length) out.push(["Minimum set but not counted yet (stock not known): " + o.uncounted.map(function (x) { return x.desc; }).join(", ")]);
+    dlXlsx("Stock_to_order_" + today() + ".xlsx", "Stock to order", out, [14, 38, 16, 9, 10, 14, 9, 10, 16]);
+  }
+  /* the line under a product in the master search */
+  function stkSearchLine(p, pos) {
+    var x = pos[String(p.code || "").trim()];
+    var btn = '<button class="btn sm ghost" style="min-height:44px" data-act="stock-item" data-code="' + esc(p.code) + '">' + (x && x.min ? 'Min ' + x.min : 'Set min') + '</button>';
+    var line;
+    if (!STOCK_LOADED && !(S.stock && S.stock.length)) line = '<span style="color:#64748b">Stock: loading\u2026</span>';
+    else if (!x || !x.counted) line = '<span style="color:#64748b">Stock: not counted yet' + (x && x.min ? ' \u00b7 min ' + x.min : '') + '</span>';
+    else {
+      var sh = stkShort(x), col = x.free <= 0 ? '#b91c1c' : sh ? '#c2410c' : '#0f766e';
+      line = '<span style="color:' + col + '"><b>In stock ' + x.onhand + '</b>' + (x.held ? ' \u00b7 held ' + x.held + ' \u00b7 <b>free ' + x.free + '</b>' : '') +
+        (x.min ? ' \u00b7 min ' + x.min : ' \u00b7 no min set') + '</span>' + (sh ? ' <span class="pill due" style="font-size:12px">Stock to order</span>' : '');
+    }
+    return '<div class="acts" style="align-items:center;flex-wrap:nowrap;margin:6px 0 0;gap:6px"><div class="grow" style="font-size:13px;min-width:0">' + line + '</div>' + btn.replace('min-height:44px', 'min-height:44px;flex:0 0 auto') + '</div>';
+  }
   function stkReserved(skipId) {
     var cut = stkCutoff(), m = {};
     ((S.data && S.data.challans) || []).forEach(function (c) {
@@ -40672,7 +40756,7 @@ function viewCatalogue() {
     var inp = 'style="width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px"';
     return '<h2 style="margin:0 0 2px">' + esc(p.desc || mv.desc[code] || code) + '</h2>' +
       '<div class="meta" style="font-size:12px;margin-bottom:4px">' + esc(code) + (p.brand ? ' · ' + esc(p.brand) : '') + ' · on hand <b>' + onhand + '</b></div>' +
-      '<div ' + lbl + '>Reorder level (turn red when on-hand reaches this)</div>' +
+      '<div ' + lbl + '>Minimum stock level \u2014 at or below this (free stock) it goes on <b>Stock to order</b>. Leave 0 for no minimum.</div>' +
       '<input id="si_reorder" inputmode="numeric" value="' + esc(reo[code] || "") + '" placeholder="e.g. 20" ' + inp + '/>' +
       '<div ' + lbl + '>Latest purchase rate (₹ / unit, optional — used for stock value)</div>' +
       '<input id="si_rate" inputmode="decimal" value="' + esc(rate[code] || "") + '" placeholder="e.g. 250" ' + inp + '/>' +
@@ -42990,6 +43074,8 @@ function viewCatalogue() {
     if (act === "stock-item") { S.modal = modalStockItem(t.getAttribute("data-code")); render(); return; }
     if (act === "stk-open") { var _sc = t.getAttribute("data-code") || ""; S.stkOpen = (S.stkOpen === _sc) ? "" : _sc; keepScroll = true; render(); return; }   /* v6.9.605 */
     if (act === "stk-xlsx") { if (!STOCK_LOADED) { ensureStock(); toast("Stock is still loading \u2014 try again in a moment."); return; } stockXlsx(); return; }   /* v6.9.606 */
+    if (act === "stk-ord") { S.stkOrd = !!t.getAttribute("data-v"); render(); window.scrollTo(0, 0); return; }   /* 6.9.617 */
+    if (act === "stk-ord-xlsx") { if (!STOCK_LOADED) { ensureStock(); toast("Stock is still loading \u2014 try again in a moment."); return; } stkOrderXlsx(); return; }
     if (act === "stk-reglist") { S.stkReg = !S.stkReg; keepScroll = true; render(); return; }
     if (act === "stock-landing") { S.modal = modalStockLanding(); render(); return; }
     if (act === "stock-landing-save") {
@@ -43024,7 +43110,7 @@ function viewCatalogue() {
       });
       Promise.all(_proms).then(function (rs) {
         var ok = rs.every(function (r) { return r && r.ok; });
-        toast(ok ? "Levels updated." : "Save failed — only admin/godown can edit stock.");
+        toast(ok ? "Saved." : "Save failed — only admin/godown can edit stock.");
         render();
       }).catch(function () { toast("Save failed — check connection."); });
       return;
