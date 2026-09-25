@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.611";
+  var APP_VERSION = "6.9.612";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3655,6 +3655,8 @@ window.addEventListener("beforeunload", function (ev) {
       /* v6.9.506 - his item 29. The sheet is the default; the tiles are one tap away and the
          choice sticks for the session. */
       xlToggle("products", !!S.pvTiles) +
+      (canSee("catalogue") ? '<button class="btn" data-act="cat-new">+ Add product</button>' : '') +
+      (canSee("pricelist") ? '<button class="btn ghost" data-act="tab" data-tab="pricelist">Price list PDF</button>' : '') +
       '<button class="btn ghost" data-act="cat-reload">Reload</button></div>' +
       '<div class="meta" style="margin:-2px 0 6px">' + PRODUCTS.length + ' products' +
       (loadedAt ? ' &middot; price list taken ' + esc(loadedAt) : "") + '</div>';
@@ -18239,7 +18241,23 @@ function viewCatalogue() {
       doc.text("UNIT", R - 24, y + 4.2, { align: "right" }); doc.text("QTY", R - 2, y + 4.2, { align: "right" });
       return y + 6;
     };
-    var Xd = L + 10, dW = function (s) { return (R - 27 - 8 * s) - Xd; };   /* the unit column grows with the rows */
+    /* 6.9.612 / 1.104.0 - MEASURED, NOT GUESSED. His print of 25/09/2026/164 (four lines, drawn at
+       1.8x) ran "HT ELBOW 50/87 Deg" straight into "Per Pc.": the name's room was a formula of the
+       size, and at 19 pt "Per Pc." is wider than the formula allowed. Now the widest unit on THIS
+       challan is measured at THIS size, and the quantity too, and the name stops 3 mm short of both. */
+    var Xd = L + 10;
+    var uR = function (s) {
+      F("bold"); doc.setFontSize(15 * s);
+      var qw = items.reduce(function (m, l) { return Math.max(m, doc.getTextWidth(String(num(l.qty)))); }, 0);
+      return Math.min(R - 24, R - 2 - qw - 3);
+    };
+    var dW = function (s) {
+      var ur = uR(s);
+      F(); doc.setFontSize(10.5 * s);
+      var uw = items.reduce(function (m, l) { return Math.max(m, doc.getTextWidth(String(l.unit || ""))); }, 0);
+      F("bold"); doc.setFontSize(12 * s);            /* back to the face the caller measures in */
+      return ur - uw - 3 - Xd;
+    };
 
     /* ---- how big each row can be: fill the sheet when there is room ---- */
     var hasTr = !!(c.driver || c.vehicle || num(c.freight));
@@ -18278,9 +18296,11 @@ function viewCatalogue() {
       var ty = y + 4.9 * sc;
       g(110); F(); doc.setFontSize(10 * sc); doc.text(String(n), L + 2, ty);
       g(10); F("bold"); doc.setFontSize(12 * sc);
-      var d = doc.splitTextToSize(words(l), dW(sc));
+      var _dw = dW(sc), _ur = uR(sc);
+      g(10); F("bold"); doc.setFontSize(12 * sc);
+      var d = doc.splitTextToSize(words(l), _dw);
       doc.text(d, Xd, ty, { lineHeightFactor: 1.2 });
-      g(60); F(); doc.setFontSize(10.5 * sc); doc.text(String(l.unit || ""), R - 24, ty, { align: "right" });
+      g(60); F(); doc.setFontSize(10.5 * sc); doc.text(String(l.unit || ""), _ur, ty, { align: "right" });
       g(0); F("bold"); doc.setFontSize(15 * sc); doc.text(String(num(l.qty)), R - 2, ty + 0.4, { align: "right" });
       y += rh;
       doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25); doc.line(L, y, R, y);
@@ -41380,8 +41400,11 @@ function viewCatalogue() {
   /* v6.9.547 - OFF THE HEADER, not gone. Measured on his Mac since 6.9.396: these nine were
      never opened. He chose them. Each still opens from the Health check and from every button
      that already leads to it (a product tile, a site card, a stock message). */
+  /* 6.9.612 - his words, 25 Sep: "product price list and adding a product option not shown in CRM".
+     Catalogue (where a product is added) and Price list PDF come back under Products, and the
+     Products screen itself carries both buttons. */
   var NAV_OFF = [["visits", "Site visits"], ["rules", "Pitch rules"], ["customers", "Customers"],
-                 ["spares", "Spares"], ["catalogue", "Catalogue"], ["pricelist", "Price list PDF"], ["rates", "Rate revision"], ["tools", "Tools"]];
+                 ["spares", "Spares"], ["rates", "Rate revision"], ["tools", "Tools"]];
   var NAV_GROUPS = [
     /* item 27, v6.9.510 - HIS WORDS: "Put agent on master tab for everyone". It was a chip
        inside Leads, four along, on two role lists out of five. It is the first thing in the row
@@ -41397,7 +41420,7 @@ function viewCatalogue() {
        chip. Every chip the two groups had is still here. */
     ["Clients",    ["clients", "leads", "brandfollow", "followups", "quotes", "discounts", "pitch", "winloss"]],
     ["Service",    ["service"]],
-    ["Products",   ["products", "catalogs", "brandstory", "stock"]],   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
+    ["Products",   ["products", "pricelist", "catalogue", "catalogs", "brandstory", "stock"]],   /* 6.9.612 - price list and add-product back */   /* v6.9.581 - the catalogue library; v6.9.605 - Stock, on his "stock entry in CRM" */
     ["Team",       ["partners", "commission", "payroll", "scorecard", "report", "teampins"]],
     /* v6.9.539 - item 23: "Book numbers - what's the use, it's empty" (measured: 0 rows) - off
        the header; the screen still opens from the Health check. Item 25: The brief is a tab
