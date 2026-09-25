@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.102.0";
+  var APP_VERSION = "1.103.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1812,7 +1812,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
   }
 
   /* ---------- who may do what ---------- */
-  var ALLOWED = ["admin","accounts","godown"];
+  var ALLOWED = ["admin","accounts","godown","sales"];   /* 1.103.0 - sales: the client scorecard only */
   function canMake()    { return roleAny(["admin","accounts","godown"]); }
   /* the owner's rule: the man who makes it is not the man who passes it */
   /* v1.24.0 - the CRM's rule, word for word: "Challan-level discounts, price lists and
@@ -2632,7 +2632,7 @@ function discRowOn(client, brand, onYmd) {
 
   /* v1.20.0: the delivery-book client list dies with the book too - a client the office
      added an hour ago must not be invisible because the first paint cached the old set. */
-  function bust() { _mnCache = null; _proofCache = null; _dtCache = null; _dlCache = null; _aliasCache = null; _dscIdx = null; _pcbCache = null; _valGen++; _cxCache = null; bustBookClients(); }   /* v1.68.0 - the delivery value reads the catalogue and the discount table now */
+  function bust() { _sccCache = null; _hxCache = null; _mnCache = null; _proofCache = null; _dtCache = null; _dlCache = null; _aliasCache = null; _dscIdx = null; _pcbCache = null; _valGen++; _cxCache = null; bustBookClients(); }   /* v1.68.0 - the delivery value reads the catalogue and the discount table now */
 
   /* ======= A CANCELLED DELIVERY STOPS COUNTING HERE  (v1.69.0, 19 Sep 2026) =======
      MEASURED on his book. Four deliveries are cancelled and this app counted every one:
@@ -6945,7 +6945,559 @@ function discRowOn(client, brand, onYmd) {
     return h;
   }
 
+  /* ===== THE PAYMENT APP'S ACCOUNT, ON THIS PHONE  (1.103.0, 25 Sep 2026) =====
+     For the client scorecard. These fourteen functions are the Collect app's own, copied byte for
+     byte - t_apps_agree holds them identical - so a due or an overdue on a scorecard here is the
+     figure the man chasing sees there, never a second sum. The catalogue is loaded at start on
+     this phone, so the Payment app's lazy catalogue fetch is a no-op here (retPriceReady). */
+  var CREDIT_DAYS = 30;                 /* the owner's terms: 30 days from delivery - as in Collect */
+  var HISAB_GATE = true;
+  var _hxCache = null;
+  function retPriceReady() { }
+  function clientDue(opts) {
+    var client = opts.client || {};
+    /* v1.27.0 - ONE MAN'S MONEY, UNDER WHATEVER NAME IT WAS BOOKED. Where the CRM has merged two
+       client records, this adds up both. opts.names is the family - the main name plus every
+       alias merged into it - and defaults to just his own, so every existing caller is unchanged.
+       Folding rather than hiding is the whole point: an alias card is dropped from the list only
+       because its money has been counted here instead, never because it was thrown away. */
+    var _fam = {};
+    ((opts.names && opts.names.length) ? opts.names : [client.name]).forEach(function (n) {
+      _fam[lower(n)] = 1;
+    });
+    var _mine = function (n) { return !!_fam[lower(n)]; };
+    /* v1.26.0 - and NOT cancelled. All three, because all three move the balance: a cancelled
+       delivery over-bills him, a cancelled payment under-chases him, a cancelled return credits
+       goods that never came back. */
+    /* v1.37.0 - hisabOwed, not the receipt alone. The same line the CRM's ledger uses. */
+    var challans = dedupe((opts.challans || []).filter(function (c) {
+      return _mine(c.customerName) &&
+             hisabOwed(c) &&
+             !isCancelled("challans", c.id);
+    })).sort(function (a, b) { return d10(a.createdAt).localeCompare(d10(b.createdAt)); });
+
+    var payments = (opts.payments || []).filter(function (p) {
+      return _mine(p.client) && !isCancelled("payments", p.id);
+    }).sort(function (a, b) { return d10(a.date || a.createdAt).localeCompare(d10(b.date || b.createdAt)); });
+
+    var returns = (opts.returns || []).filter(function (r) {
+      return _mine(r.customerName) &&
+             lower(r.status) === "received" &&
+             !isCancelled("returns", r.id);
+    });
+
+    var today = opts.today;
+    var terms = num(opts.creditDays) || 30;
+
+    var opening = (opts.opening != null) ? num(opts.opening) : num(client.openingAmt);   /* v1.51.0 - the family's, when given */
+    var billed = challans.reduce(function (s, c) { return s + challanNet(c); }, 0);
+    var credited = returns.reduce(function (s, r) { return s + num(opts.returnValue ? opts.returnValue(r) : 0); }, 0);
+    /* v1.28.0 - HOW MANY LINES CAME BACK THAT WE COULD NOT PUT A PRICE ON. The statement has
+       named them since v1.9.0; the card - the screen he actually chases from - printed the
+       short figure with no mark on it at all. A credit that is too small is money asked for
+       twice, so the card now says when one is incomplete. */
+    var unpricedLines = returns.reduce(function (s, r) { return s + num(opts.returnUnpriced ? opts.returnUnpriced(r) : 0); }, 0);
+    var paid = payments.reduce(function (s, p) { return s + payAmt(p); }, 0);
+    var due = Math.round(opening + billed - credited - paid);
+
+    /* ---- FIFO: what the money that came in has already settled ----
+       The opening balance is the oldest thing he owes, so it is cleared first.
+       Returns credit the newest unpaid deliveries (goods came back, so the most
+       recent invoice is the one reduced) - that is deliberate: crediting the
+       oldest would make an old debt look settled when it is not. */
+    var pot = paid;
+    var openLeft = opening;
+    if (pot > 0) { var t0 = Math.min(pot, openLeft); openLeft -= t0; pot -= t0; }
+
+    var lines = challans.map(function (c) {
+      var v = challanNet(c);
+      return { no: c.challanNo || "", ymd: d10(c.createdAt), amount: v, left: v, site: c.site || "",
+               /* v1.30.1 - a challan whose lines are hand-worked NEGATIVE is a credit note, not
+                  a delivery. His book has exactly one: 27/08/2026/034, Ashish Goyal, -70,256. */
+               credit: v < 0 };
+    });
+
+    /* ================= A CREDIT NOTE IS NOT A DELIVERY  (v1.30.1, 1 Sept 2026) ==============
+       HE ASKED, seeing it on the new list: "what is this settled one".
+
+       27/08/2026/034 is worth MINUS 70,256 - two hand-worked lines, and the row is right. The
+       card called it "settled", which is not what a credit is, and that was the smaller half.
+
+       THE ALLOCATION WAS THE REAL FAULT. Both loops below say Math.min(pot, line.left). On a
+       negative line that picks the NEGATIVE number, so `left -= t` sets it to zero and
+       `pot -= t` makes the pot BIGGER. Driven with his own six rows: at a 2,00,000 payment the
+       pot ends at 1,17,041 left over - the app would think he had overpaid by that much - and
+       every delivery reads settled. It does not fire today only because he has paid nothing at
+       all, so the pot never reaches the line.
+
+       A credit note is a CREDIT. It belongs with the booked-in returns, which already credit the
+       newest deliveries first, and it belongs nowhere near the queue money settles down. And
+       when the credits come to more than every delivery he has taken - which they do here,
+       70,256 against 53,215 - the rest comes off the old book, because that is the oldest money
+       he owes and there is nothing else left to reduce. Without that last line the parts would
+       stop adding up to the total on the card. */
+    var owed = lines.filter(function (l) { return !l.credit; });
+    var credit = credited + lines.reduce(function (s, l) { return s + (l.credit ? -l.amount : 0); }, 0);
+    for (var i = owed.length - 1; i >= 0 && credit > 0; i--) {
+      var t1 = Math.min(credit, owed[i].left); owed[i].left -= t1; credit -= t1;
+    }
+    if (credit > 0) { var tC = Math.min(credit, openLeft); openLeft -= tC; credit -= tC; }
+    for (var j = 0; j < owed.length && pot > 0; j++) {
+      var t2 = Math.min(pot, owed[j].left); owed[j].left -= t2; pot -= t2;
+    }
+
+    var unpaid = owed.filter(function (l) { return l.left > 0.5; });
+    var oldest = unpaid.length ? unpaid[0].ymd : "";
+    var ageDays = oldest ? daysBetween(oldest, today) : 0;
+    /* how much of what he still owes is past the agreed term */
+    var overdue = unpaid.reduce(function (s, l) {
+      return s + (daysBetween(l.ymd, today) > terms ? l.left : 0);
+    }, 0);
+    /* An old-book balance is past due by definition - it predates the app - but it
+       carries no date, so it is reported on its own rather than given a false age. */
+    openLeft = Math.round(openLeft);
+
+    var lastPay = payments.length ? d10(payments[payments.length - 1].date || payments[payments.length - 1].createdAt) : "";
+
+    return {
+      name: client.name || "",
+      mobile: String(client.mobile || "").replace(/[^\d+]/g, ""),
+      owner: String(client.ownedBy || client.createdBy || "").trim(),
+      due: due,
+      billed: Math.round(billed), paid: Math.round(paid),
+      credited: Math.round(credited), unpricedLines: unpricedLines,
+      opening: Math.round(opening), oldBook: openLeft,
+      overdue: Math.round(overdue),
+      oldestUnpaid: oldest,
+      ageDays: ageDays,
+      lastPay: lastPay,
+      daysSincePay: lastPay ? daysBetween(lastPay, today) : -1,
+      challans: challans.length,
+      unpaid: unpaid,
+      /* ---- v1.30.0 - THE ROWS BEHIND THE TOTALS ----
+         HIS WORDS: "in collection app make provison to see challan wise detail and payment
+         received details, expand and contract type".
+
+         The card has always said "Billed 1,61,672 · received 1,00,000 · 1 delivery" and then
+         shown only what is STILL unpaid. On a call the customer asks which delivery, and which
+         payment he made in June - and the man chasing had to open the CRM to answer. Both lists
+         were already computed here and thrown away at the return statement.
+
+         lines carries EVERY delivery with its full value and what the FIFO has settled against
+         it, so a paid-off one can be named too. payments carries the receipts themselves. */
+      lines: lines,
+      payments: payments.map(function (p) {
+        return { ymd: d10(p.date || p.createdAt), amount: payAmt(p),
+                 mode: String(p.mode || ""), ref: String(p.ref || ""), by: String(p.createdBy || "") };
+      })
+    };
+  }
+  function returnNet(r, allChallans) {
+    var amt = 0, unpriced = 0, est = 0;
+    rnLines(r).forEach(function (i) {
+      var p = rnPriceOf(i, r, allChallans);
+      if (p.src) { amt += p.amt; if (p.src === "catalogue") est++; } else unpriced++;
+    });
+    /* 1.52.0 - HIS DECISION, 24 Sep 2026: goods back from a delivery that was given a further
+       discount (or a discount on the whole challan) are credited less the SAME SHARE - the CRM's
+       retShare. Only a return booked against a delivery can know it. */
+    var _no = String(r.challanNo || "").trim();
+    if (_no) {
+      var _src = (allChallans || []).filter(function (c) {
+        return String(c.challanNo || "").trim() === _no && lower(c.customerName) === lower(r.customerName);
+      })[0];
+      if (_src) {
+        var _g = pricedLines(_src, _src.customerName).reduce(function (a, x) { return a + x.amt; }, 0);
+        var _off = _g > 0 ? Math.min(Math.max(0, hisabExtraOf(_src)), _g) : 0;
+        if (_off > 0) amt = amt * (_g - _off) / _g;
+      }
+    }
+    return { amt: Math.round(amt), unpriced: unpriced, est: est };
+  }
+  function rnNet(rate, disc, qty) {
+    return num(qty) * Math.round(num(rate) * (1 - num(disc) / 100));
+  }
+  function rnLines(r) {
+    var items = [];
+    try { items = JSON.parse(r.itemsJson || "[]"); } catch (e) { items = []; }
+    return items.filter(Boolean);
+  }
+  function rnSourceLines(r, allChallans) {
+    var k = lower(r.customerName);
+    var his = (allChallans || []).filter(function (c) {
+      return lower(c.customerName) === k && String(c.receiptReceived || "").toUpperCase() === "Y";
+    }).sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
+    var against = String(r.challanNo || "").trim();
+    if (against) {
+      var first = his.filter(function (c) { return String(c.challanNo || "").trim() === against; });
+      var rest = his.filter(function (c) { return String(c.challanNo || "").trim() !== against; });
+      his = first.concat(rest);       /* the challan it is booked against is asked first */
+    }
+    return his;
+  }
+  function rnPriceOf(item, r, allChallans) {
+    /* v1.51.0 - A BLANK DISCOUNT IS NOT ZERO PERCENT. The Challan app has never written a disc on
+       a return line, so every frozen-rate line here was credited at FULL list price while the CRM
+       credited it at the client's rate. Measured 24 Sep on SANJEEVBAT/230926/R01: Rs 15,694 here,
+       Rs 7,648 in the CRM - Sanjeev Batra Ji's due read Rs 8,046 too low, and the collector would
+       have asked for that much less. The CRM's rule now, on the return's own day. */
+    var _rd = function (disc, brand) {
+      return (disc != null && disc !== "") ? disc : clientDiscountOn(r.customerName, brand || "", d10(r.createdAt));
+    };
+    if (item.rate != null && item.rate !== "" && num(item.rate) > 0) {
+      var _fb = String(item.brand || "");
+      if (!_fb) { var _fp = PRODUCTS.filter(function (x) { return String(x.code || "").trim() === String(item.code == null ? "" : item.code).trim(); })[0]; if (_fp) _fb = String(realBrand(_fp) || _fp.brand || ""); }
+      return { amt: rnNet(item.rate, _rd(item.disc, _fb), item.qty), src: "frozen" };
+    }
+    var code = String(item.code == null ? "" : item.code).trim();
+    if (code) {
+      var src = rnSourceLines(r, allChallans);
+      for (var i = 0; i < src.length; i++) {
+        var lines = [];
+        try { lines = JSON.parse(src[i].itemsJson || "[]"); } catch (e) { lines = []; }
+        for (var j = 0; j < (lines || []).length; j++) {
+          var L = lines[j];
+          if (!L || String(L.code == null ? "" : L.code).trim() !== code) continue;
+          if (!(num(L.rate) > 0)) continue;
+          return { amt: rnNet(L.rate, _rd(L.disc, L.brand || item.brand), item.qty),
+                   src: String(src[i].challanNo || "").trim() === String(r.challanNo || "").trim()
+                        ? "against" : "delivered" };
+        }
+      }
+    }
+    /* ---- 4. THE CATALOGUE, AT THIS CLIENT'S DISCOUNT (v1.25.0) ----
+       This used to stop at 3 and return zero, and the balance on the screen quietly absorbed
+       it. Measured on his book: 39 of 44 return lines land here, Rs 87,327 across five
+       clients, every rupee of it chased from a man who had already sent the goods back.
+       The CRM has always priced these from the catalogue; this app now prices them the same
+       way and, like the CRM, SAYS SO on the card rather than printing a confident figure.
+       A guessed price is not a price he agreed - but it is a great deal closer to the truth
+       than pretending the goods were never returned. */
+    if (code) {
+      var pr = PRODUCTS.filter(function (x) { return String(x.code || "").trim() === code; })[0];
+      if (pr && Number(pr.price) > 0) {
+        var brnd = String(item.brand || realBrand(pr) || pr.brand || "");
+        return { amt: rnNet(pr.price, clientDiscount(r.customerName, brnd), item.qty), src: "catalogue" };
+      }
+      retPriceReady();                 /* no catalogue on this phone yet - go and get it once */
+    }
+    return { amt: 0, src: "" };        /* still unpriced - NOT zero, and the caller must say so */
+  }
+  function challanNet(c) {
+    /* v1.35.0 - THE LINES ARE PRICED BY pricedLines, THE CRM'S, VERBATIM. What stood here read
+       the brand off the paper (i.brand || c.brand). ATUL4000/200726/001 is filed under
+       "Accessory" - a catalogue bucket, not a brand - with no brand and no frozen discount on
+       any of its twenty lines, so this app found no discount row and billed Rs 1,37,809 for
+       goods the CRM values at Rs 91,719. The customer's statement carries the CRM's figure.
+       pricedLines asks the catalogue what brand a code is, finds Heliroma, applies his 35%.
+
+       And if the catalogue is not on this phone yet, a line with neither a brand nor a frozen
+       discount would still fall to the paper's brand - so ask for it, the same courtesy the
+       return path has had since v1.25.0. It fills PRODUCTS and repaints; the figure corrects
+       itself a moment later instead of standing wrong until the next return needs pricing. */
+    var items = [];
+    try { items = JSON.parse(c.itemsJson || "[]"); } catch (e) { items = []; }
+    if (!PRODUCTS.length && items.some(function (i) {
+          return i && !isJobLine(i) && !i.brand && (i.disc == null || i.disc === ""); })) {
+      try { retPriceReady(); } catch (e) {}
+    }
+    var goods = pricedLines(c, c.customerName).reduce(function (s, x) { return s + x.amt; }, 0);
+    /* v1.26.2 - less whatever was taken off at the counter, exactly as the CRM does it. */
+    var off = hisabExtraOf(c);
+    var net = goods > 0 ? Math.max(0, goods - Math.min(Math.max(0, off), goods)) : goods;
+    var freight = String(c.freightTo) === "Client" ? num(c.freight) : 0;
+    return net + freight;
+  }
+  function hisabExtraOf(c) { return ((c && c.id) ? (Number(hisabExtraMap()[c.id]) || 0) : 0) + Math.max(0, Number(c && c.discAmt) || 0); }
+  function hisabExtraMap() {
+    if (_hxCache) return _hxCache;
+    var m = {}, seen = {};
+    ((S.data && S.data.audit) || []).forEach(function (r) {
+      if (!r || String(r.action || "") !== "challan:hisab") return;
+      var d = {};
+      try { d = JSON.parse(r.detail || "{}") || {}; } catch (e) { return; }
+      if (!d.chId) return;
+      var at = String(r.createdAt || "");
+      if (!seen[d.chId] || at >= seen[d.chId]) { seen[d.chId] = at; m[d.chId] = Number(d.extra) || 0; }
+    });
+    _hxCache = m;
+    return m;
+  }
+  function hisabBookReady() { return !!(S.data && S.data.audit && S.data.audit.length); }
+  function hisabOwed(c) { return hisabCounts(c) && (!HISAB_GATE || !hisabBookReady() || inHisab(c)); }
+  function dedupe(list) {
+    var seen = {};
+    (list || []).slice().sort(function (a, b) {
+      return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+    }).forEach(function (c) { seen[String(c.challanNo || c.id)] = c; });
+    return Object.keys(seen).map(function (k) { return seen[k]; });
+  }
+  function payAmt(p) { return nAmt((p || {}).amount); }
+  function daysBetween(from, to) {
+    if (!from || !to) return 0;
+    var a = Date.parse(from + "T00:00:00Z"), b = Date.parse(to + "T00:00:00Z");
+    if (!isFinite(a) || !isFinite(b)) return 0;
+    return Math.round((b - a) / 86400000);
+  }
+  /* ===== THE CLIENT SCORECARD  (Collect 1.54.0 / Challan 1.103.0, 25 Sep 2026) =====
+     His words: "can we have client scorecard in collection and challan app, for executives and
+     admin only". Asked what it should show, he ticked all four: business and trend, payment
+     behaviour, brands and discount (with what he does not buy yet), and one overall grade.
+
+     ONE CARD, TWO APPS, BYTE FOR BYTE (t_apps_agree holds it). The money on it is not worked out
+     here: it is clientDue - the Payment app's own account, family and all - so the due and the
+     overdue on a scorecard are the figures the man chasing already sees, never a second opinion.
+
+     THE GRADE, out of 100, and simple enough to say out loud to the man it is about:
+       buying  40 - his last 90 days of goods (after every discount), +5 when growing, and
+                    at most 5 when he has gone quiet (no order in 90 days);
+       paying  45 - the share of what he owes that is NOT overdue, less 8 when he takes over 45
+                    days on average to pay and 15 over 60, less 10 when nothing has come in for
+                    60 days while he owes;
+       returns 15 - 15 up to 2% of his business coming back, 10 up to 5%, 5 up to 10%.
+     A 75 and over, B 55, C 35, D below. A man who has never taken a delivery is not graded. */
+  var _sccCache = null;
+  var SCC_ORDER = ["A", "B", "C", "D", "–"];
+  var SCC_BUY = [300000, 100000, 25000];     /* 90-day goods for 40 / 30 / 20 points; tuned on his book */
+  function sccCanSee() { return roleIs("admin") || roleIs("sales"); }
+  function sccGoods(ch) {
+    var ls = pricedLines(ch, ch.customerName), gross = ls.reduce(function (a, x) { return a + x.amt; }, 0);
+    var off = gross > 0 ? Math.min(Math.max(0, hisabExtraOf(ch)), gross) : 0;
+    var f = gross > 0 ? (gross - off) / gross : 1, br = {};
+    ls.forEach(function (x) { if (x.job) return; var b = String(x.brand || "Other"); br[b] = (br[b] || 0) + x.amt * f; });
+    return { net: gross - off, brands: br };
+  }
+  function sccTopBrands() {
+    var m = {};
+    ((S.data && S.data.challans) || []).forEach(function (ch) {
+      if (!hisabCounts(ch) || isCancelled("challans", ch.id)) return;
+      var g = sccGoods(ch); Object.keys(g.brands).forEach(function (b) { m[b] = (m[b] || 0) + g.brands[b]; });
+    });
+    return Object.keys(m).filter(function (b) { return b !== "Other"; }).sort(function (a, b) { return m[b] - m[a]; });
+  }
+  function sccFor(c, top) {
+    var d = S.data || {}, t = today(), chs = d.challans || [];
+    var fam = dupFamily(c.name), famL = {}, seenO = {}, openF = 0;
+    fam.forEach(function (n) { famL[lower(n)] = 1; });
+    fam.forEach(function (nm) {
+      (d.clients || []).forEach(function (x) {
+        if (lower(x.name) !== lower(nm)) return;
+        var kk = String(x.id || x.name || ""); if (seenO[kk]) return; seenO[kk] = 1; openF += num(x.openingAmt);
+      });
+    });
+    var due = clientDue({ client: c, challans: chs, payments: d.payments || [], returns: d.returns || [], today: t,
+      names: fam, opening: openF, creditDays: num(c.creditDays) || CREDIT_DAYS,
+      returnValue: function (r) { return returnNet(r, chs).amt; }, returnUnpriced: function (r) { return returnNet(r, chs).unpriced; } });
+    var mine = dedupe(chs.filter(function (ch) { return famL[lower(ch.customerName)] && hisabCounts(ch) && !isCancelled("challans", ch.id); }));
+    var total = 0, recent = 0, prior = 0, last = "", brands = {};
+    mine.forEach(function (ch) {
+      var y = d10(ch.createdAt), age = daysBetween(y, t), g = sccGoods(ch);
+      total += g.net; if (age <= 90) recent += g.net; else if (age <= 180) prior += g.net;
+      if (y > last) last = y;
+      Object.keys(g.brands).forEach(function (b) { brands[b] = (brands[b] || 0) + g.brands[b]; });
+    });
+    var lastDays = last ? daysBetween(last, t) : -1;
+    var trend = !mine.length ? "No deliveries yet" : lastDays > 90 ? "Gone quiet" :
+      (prior > 0 && recent < prior * 0.6) ? "Shrinking" : (recent > 0 && recent > prior * 1.2) ? "Growing" : "Steady";
+    /* how long his money takes: every rupee paid, set against the oldest thing he owed (the old
+       book first, then deliveries in date order), and the days between weighed by the rupees */
+    var q = (due.lines || []).filter(function (l) { return !l.credit && l.amount > 0; })
+      .map(function (l) { return { ymd: l.ymd, left: l.amount }; }).sort(function (a, b) { return a.ymd.localeCompare(b.ymd); });
+    var open = Math.max(0, due.opening || 0), wsum = 0, w = 0, qi = 0;
+    (due.payments || []).slice().sort(function (a, b) { return String(a.ymd).localeCompare(String(b.ymd)); }).forEach(function (p) {
+      var amt = p.amount, o = Math.min(amt, open); open -= o; amt -= o;
+      while (amt > 0.5 && qi < q.length) {
+        var tk = Math.min(amt, q[qi].left);
+        wsum += tk * Math.max(0, daysBetween(q[qi].ymd, p.ymd)); w += tk;
+        q[qi].left -= tk; amt -= tk; if (q[qi].left <= 0.5) qi++;
+      }
+    });
+    var avgPay = w > 0 ? Math.round(wsum / w) : null;
+    var retRate = due.billed > 0 ? due.credited / due.billed : 0;
+    var bl = Object.keys(brands).filter(function (b) { return b !== "Other"; }).sort(function (a, b) { return brands[b] - brands[a]; });
+    var m = { name: c.name, owner: String(c.ownedBy || c.createdBy || "").trim(), total: total, recent: recent, prior: prior,
+      last: last, lastDays: lastDays, deliveries: mine.length, trend: trend, due: due.due, overdue: due.overdue,
+      ageDays: due.ageDays, lastPay: due.lastPay, daysSincePay: due.daysSincePay, avgPay: avgPay, paid: due.paid,
+      billed: due.billed, credited: due.credited, retRate: retRate, terms: num(c.creditDays) || CREDIT_DAYS,
+      brands: bl.map(function (b) { return { brand: b, amt: Math.round(brands[b]), disc: clientDiscountOn(c.name, b, t) }; }),
+      cross: (top || []).filter(function (b) { return !brands[b]; }).slice(0, 5) };
+    var g = sccGrade(m); m.grade = g.grade; m.score = g.score; m.why = g.why; m.parts = g.parts; m.tip = g.tip;
+    return m;
+  }
+  function sccGrade(m) {
+    if (!m.deliveries) return { grade: "–", score: 0, parts: [0, 0, 0], why: ["No delivery yet, so nothing to grade."],
+      tip: m.cross.length ? "First order: start with " + m.cross[0] + "." : "" };
+    var why = [];
+    var buy = m.recent >= SCC_BUY[0] ? 40 : m.recent >= SCC_BUY[1] ? 30 : m.recent >= SCC_BUY[2] ? 20 : m.recent > 0 ? 10 : 5;
+    if (m.trend === "Growing") { buy = Math.min(40, buy + 5); why.push("Buying more than the 90 days before."); }
+    if (m.trend === "Gone quiet") { buy = Math.min(buy, 5); why.push("No order in " + m.lastDays + " days."); }
+    if (m.trend === "Shrinking") why.push("Buying less than the 90 days before.");
+    var pay = 45;
+    if (m.due > 500) {
+      pay = 45 * (1 - Math.min(1, Math.max(0, m.overdue) / m.due));
+      if (m.overdue > 500) why.push(money(m.overdue) + " overdue past " + m.terms + " days.");
+      if (m.daysSincePay > 60 || m.daysSincePay < 0) { pay -= 10; why.push(m.daysSincePay < 0 ? "Owes, and has never paid." : "Nothing paid for " + m.daysSincePay + " days."); }
+    }
+    if (m.avgPay != null && m.avgPay > 60) { pay -= 15; why.push("Takes " + m.avgPay + " days to pay on average."); }
+    else if (m.avgPay != null && m.avgPay > 45) { pay -= 8; why.push("Takes " + m.avgPay + " days to pay on average."); }
+    pay = Math.max(0, pay);
+    var ret = m.retRate <= 0.02 ? 15 : m.retRate <= 0.05 ? 10 : m.retRate <= 0.1 ? 5 : 0;
+    if (m.retRate > 0.05) why.push(Math.round(m.retRate * 100) + "% of his goods came back.");
+    var score = Math.round(buy + pay + ret);
+    var grade = score >= 75 ? "A" : score >= 55 ? "B" : score >= 35 ? "C" : "D";
+    /* money late is money late, however much he buys: half of what he owes overdue caps him at
+       C, and overdue with nothing paid for 90 days is D */
+    if (m.due > 500 && m.overdue >= m.due * 0.5 && (grade === "A" || grade === "B")) { grade = "C"; why.push("Half or more of what he owes is overdue."); }
+    if (m.overdue > 500 && (m.daysSincePay >= 90 || m.daysSincePay < 0)) grade = "D";
+    if (!why.length) why.push("Buying and paying well.");
+    var tip = m.overdue > 500 ? "Collect " + money(m.overdue) + " overdue before the next big delivery."
+      : m.trend === "Gone quiet" ? "Call him: no order in " + m.lastDays + " days."
+      : m.cross.length ? "Pitch " + m.cross.slice(0, 2).join(" and ") + " — he does not buy " + (m.cross.length > 1 ? "them" : "it") + " from us yet." : "";
+    return { grade: grade, score: score, parts: [Math.round(buy), Math.round(pay), ret], why: why, tip: tip };
+  }
+  function sccAll() {
+    if (_sccCache) return _sccCache;
+    var me = lower(S.user || ""), top = sccTopBrands(), seen = {};
+    var list = ((S.data && S.data.clients) || []).filter(function (c) {
+      if (!String(c.name || "").trim() || dupIsAlias(c.name)) return false;
+      var k = lower(c.name); if (seen[k]) return false; seen[k] = 1;
+      return roleIs("admin") || lower(c.ownedBy || c.createdBy || "") === me;
+    }).map(function (c) { return sccFor(c, top); });
+    _sccCache = list;
+    return list;
+  }
+  function sccColor(g) { return g === "A" ? "#15803d" : g === "B" ? "#0f766e" : g === "C" ? "#b45309" : g === "D" ? "#b91c1c" : "#64748b"; }
+  function sccBadge(g, big) {
+    var s = big ? 56 : 40;
+    return '<div style="flex:0 0 ' + s + 'px;width:' + s + 'px;height:' + s + 'px;border-radius:50%;background:' + sccColor(g) +
+      ';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:' + (big ? 26 : 18) + 'px">' + esc(g) + '</div>';
+  }
+  function sccTrend(t) {
+    var col = t === "Growing" ? "#15803d" : (t === "Gone quiet" || t === "Shrinking") ? "#b91c1c" : "#475569";
+    var ar = t === "Growing" ? "&#9650; " : (t === "Shrinking" || t === "Gone quiet") ? "&#9660; " : "";
+    return '<span style="color:' + col + ';font-weight:700">' + ar + esc(t) + '</span>';
+  }
+  function viewScc() {
+    if (!sccCanSee()) return '<div class="card"><b>The client scorecard is for sales executives and the owner.</b></div>';
+    if (!sccReady()) return '<div class="card">Loading payments for the scorecard…</div>';
+    S.scc = S.scc || {};
+    var all = sccAll();
+    if (S.scc.open) {
+      var one = all.filter(function (m) { return lower(m.name) === lower(S.scc.open); })[0];
+      if (one) return sccCardHtml(one);
+      S.scc.open = "";
+    }
+    var f = S.scc.f || "all", q = lower(S.scc.q || "");
+    var n = { A: 0, B: 0, C: 0, D: 0 };
+    all.forEach(function (m) { if (n[m.grade] != null) n[m.grade]++; });
+    var shown = all.filter(function (m) {
+      if (q && lower(m.name).indexOf(q) < 0) return false;
+      if (f === "all") return m.deliveries > 0;
+      if (f === "watch") return m.grade === "C" || m.grade === "D";
+      if (f === "new") return !m.deliveries;
+      return m.grade === f;
+    }).sort(function (a, b) { return (SCC_ORDER.indexOf(a.grade) - SCC_ORDER.indexOf(b.grade)) || (b.recent - a.recent) || (b.total - a.total); });
+    var tile = function (g, lbl) {
+      return '<button data-act="scc-f" data-v="' + g + '" style="flex:1 1 70px;min-height:56px;border-radius:12px;border:2px solid ' + (f === g ? sccColor(g) : '#e2e8f0') +
+        ';background:#fff;cursor:pointer;padding:6px"><div style="font-size:20px;font-weight:800;color:' + sccColor(g) + '">' + n[g] + '</div>' +
+        '<div style="font-size:12px;color:#475569;font-weight:700">' + lbl + '</div></button>';
+    };
+    var h = '<div class="card" style="padding:12px"><div style="font-size:17px;font-weight:800">Client scorecard</div>' +
+      '<div style="font-size:12.5px;color:#475569;margin-top:2px">' + (roleIs("admin") ? "Every client" : "Your clients") +
+      ', graded A to D on buying, paying and returns. Tap a client for his full card.</div>' +
+      '<div style="display:flex;gap:6px;margin-top:10px">' + tile("A", "Grade A") + tile("B", "Grade B") + tile("C", "Grade C") + tile("D", "Grade D") + '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">' +
+      [["all", "All buying"], ["watch", "Needs attention (C, D)"], ["new", "Not bought yet"]].map(function (o) {
+        return '<button class="btn sm' + (f === o[0] ? '' : ' gry') + '" data-act="scc-f" data-v="' + o[0] + '">' + o[1] + '</button>';
+      }).join("") + '</div>' +
+      '<input id="scc_q" placeholder="Find a client" value="' + esc(S.scc.q || "") + '" style="margin-top:8px;width:100%;min-height:44px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:10px;font-size:15px"/></div>';
+    if (!shown.length) return h + '<div class="card" style="color:#64748b">Nobody here.</div>';
+    h += shown.slice(0, 200).map(function (m) {
+      return '<div class="card" data-act="scc-open" data-n="' + esc(m.name) + '" style="display:flex;gap:10px;align-items:center;cursor:pointer;padding:10px 12px;margin-bottom:6px">' +
+        sccBadge(m.grade) +
+        '<div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14.5px;word-break:break-word">' + esc(m.name) + '</div>' +
+        '<div style="font-size:12.5px;color:#475569;margin-top:2px">' + (m.deliveries ? '90 days ' + money(Math.round(m.recent)) + ' &middot; ' + sccTrend(m.trend) : 'No delivery yet') +
+        (roleIs("admin") && m.owner ? ' &middot; ' + esc(m.owner) : '') + '</div>' +
+        (m.due > 500 ? '<div style="font-size:12.5px;margin-top:2px">Owes <b>' + money(m.due) + '</b>' +
+          (m.overdue > 500 ? ' &middot; <b style="color:#b91c1c">' + money(m.overdue) + ' overdue</b>' : '') + '</div>' : '') + '</div>' +
+        (m.deliveries ? '<div style="flex:0 0 auto;text-align:right;font-size:12px;color:#64748b"><b style="font-size:16px;color:#0f172a">' + m.score + '</b><br>of 100</div>' : '') + '</div>';
+    }).join("");
+    if (shown.length > 200) h += '<div class="card" style="font-size:12.5px;color:#64748b">Showing 200 of ' + shown.length + '. Use Find to reach the rest.</div>';
+    return h;
+  }
+  function sccCardHtml(m) {
+    var row = function (k, v, col) {
+      return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid #f1f5f9;font-size:13.5px">' +
+        '<span style="color:#475569">' + k + '</span><b style="text-align:right' + (col ? ';color:' + col : '') + '">' + v + '</b></div>';
+    };
+    var box = function (title, pts, max, body) {
+      return '<div class="card" style="padding:10px 12px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center">' +
+        '<b style="font-size:14.5px">' + title + '</b>' + (max ? '<span style="font-size:12.5px;color:#475569"><b style="color:#0f172a">' + pts + '</b> / ' + max + '</span>' : '') + '</div>' + body + '</div>';
+    };
+    var h = '<button class="btn sm gry" data-act="scc-back" style="margin-bottom:8px">&larr; All clients</button>' +
+      '<div class="card" style="padding:12px;display:flex;gap:12px;align-items:center">' + sccBadge(m.grade, true) +
+      '<div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:800;word-break:break-word">' + esc(m.name) + '</div>' +
+      '<div style="font-size:12.5px;color:#475569">' + (m.deliveries ? 'Score <b>' + m.score + '</b> of 100' : 'Not graded yet') + (m.owner ? ' &middot; ' + esc(m.owner) : '') + '</div>' +
+      '<div style="font-size:12.5px;margin-top:4px">' + m.why.map(esc).join(" ") + '</div></div></div>';
+    if (m.tip) h += '<div class="card" style="padding:10px 12px;margin-bottom:8px;background:#f0fdfa;border-color:#99f6e4;font-size:13.5px"><b>Next step:</b> ' + esc(m.tip) + '</div>';
+    h += box("Buying", m.parts[0], 40,
+      row("Last 90 days", money(Math.round(m.recent))) + row("The 90 days before", money(Math.round(m.prior))) +
+      row("Trend", sccTrend(m.trend)) + row("All his deliveries", money(Math.round(m.total)) + ' &middot; ' + m.deliveries) +
+      row("Last order", m.last ? esc(dstr(m.last)) + (m.lastDays >= 0 ? ' (' + m.lastDays + ' days ago)' : '') : '—'));
+    h += box("Paying", m.parts[1], 45,
+      row("Owes now", money(m.due), m.due > 500 ? '#0f172a' : '#15803d') +
+      row("Overdue past " + m.terms + " days", money(m.overdue), m.overdue > 500 ? '#b91c1c' : '#15803d') +
+      row("Oldest unpaid", m.ageDays > 0 ? m.ageDays + ' days' : '—') +
+      row("Average time to pay", m.avgPay != null ? m.avgPay + ' days' : 'not enough payments yet') +
+      row("Last payment", m.lastPay ? esc(dstr(m.lastPay)) + ' (' + m.daysSincePay + ' days ago)' : 'none recorded') +
+      row("Paid in all", money(m.paid)));
+    h += box("Returns", m.parts[2], 15,
+      row("Goods returned", money(m.credited)) + row("Share of his business", Math.round(m.retRate * 1000) / 10 + '%', m.retRate > 0.05 ? '#b91c1c' : null));
+    h += box("Brands he buys", 0, 0, m.brands.length
+      ? '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px"><thead><tr style="background:#f1f5f9">' +
+        '<th style="padding:6px;text-align:left">BRAND</th><th style="padding:6px;text-align:right">BOUGHT</th><th style="padding:6px;text-align:right">HIS DISCOUNT</th></tr></thead><tbody>' +
+        m.brands.map(function (b) {
+          return '<tr style="border-top:1px solid #f1f5f9"><td style="padding:6px">' + esc(b.brand) + '</td><td style="padding:6px;text-align:right">' + money(b.amt) +
+            '</td><td style="padding:6px;text-align:right">' + (b.disc ? b.disc + '%' : '<span style="color:#94a3b8">none set</span>') + '</td></tr>';
+        }).join("") + '</tbody></table></div>'
+      : '<div style="font-size:13px;color:#64748b;margin-top:6px">No brand bought yet.</div>');
+    if (m.cross.length) h += box("Not buying from us yet", 0, 0,
+      '<div style="font-size:12.5px;color:#475569;margin:4px 0 6px">Our best-selling brands that he has never taken:</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">' + m.cross.map(function (b) {
+        return '<span style="padding:8px 12px;border-radius:999px;background:#fff7ed;border:1px solid #fdba74;color:#9a3412;font-weight:700;font-size:13px">' + esc(b) + '</span>';
+      }).join("") + '</div>');
+    return h;
+  }
+  /* payments are not on this phone's usual pull (the godown never needs them), so the scorecard
+     asks for them once, the first time it is opened, and mergeBook keeps them from then on */
+  var _sccPay = 0;
+  function sccReady() {
+    if (S.data && Array.isArray(S.data.payments)) return true;
+    if (_sccPay) return false;
+    _sccPay = Date.now();
+    teamGetD({ only: ["payments"] }).then(function (r) {
+      if (r && r.ok && Array.isArray(r.payments)) { mergeBook(r, ["payments"]); _sccCache = null; }
+      else { _sccPay = 0; toast("Payments did not come back \u2014 the scorecard needs them. Tap Scorecard again."); }
+      render();
+    }).catch(function () { _sccPay = 0; toast("No signal \u2014 the scorecard could not load payments. Tap Scorecard again."); });
+    return false;
+  }
+  /* a sales executive signs in here for the scorecard and nothing else */
+  function sccOnly() { return roleIs("sales") && !roleAny(["admin", "accounts", "godown"]); }
+  var _sccT = null;
+  function sccFind() {
+    var sq = el("scc_q"); if (!sq) return;
+    sq.addEventListener("input", function (e) {
+      S.scc = S.scc || {}; S.scc.q = e.target.value;
+      clearTimeout(_sccT);
+      _sccT = setTimeout(function () {
+        render();
+        var s2 = el("scc_q"); if (s2) { s2.focus(); try { s2.setSelectionRange(s2.value.length, s2.value.length); } catch (x) { } }
+      }, 300);
+    });
+  }
   function bodyHtml() {
+    if (S.tab === "score" || sccOnly()) return viewScc();   /* 1.103.0 */
     /* a search reaches past whichever screen you are standing on, and past the 60-day window */
     if (S.q && !S.ch && !S.rt) return viewSearch();
     if (S.tab === "return")  return viewReturn();
@@ -7111,6 +7663,7 @@ function discRowOn(client, brand, onYmd) {
     el("root").innerHTML = header() +
       '<div class="wrap">' + bodyHtml() + '</div>' +
       '<div class="nav">' +
+        (sccOnly() ? navBtn("score", "&#9733;", "Scorecard", 0) : (
         navBtn("make",    "&#128230;", "Challan", 0) +
         navBtn("return",  "&#8630;",   "Return", 0) +
         navBtn("approve", "&#10003;",  "Approve", p) +
@@ -7125,12 +7678,15 @@ function discRowOn(client, brand, onYmd) {
            to two lines and costs the bar 12px, which the padding below now measures rather
            than guesses. */
         (roleIs("admin") ? navBtn("hisab", "&#8377;", "Check &amp; add", hb) : '') +
+        (sccCanSee() ? navBtn("score", "&#9733;", "Scorecard", 0) : '') +
+        '')) +
         '<button data-act="crm"><b>&#8599;</b>CRM</button>' +
       '</div>' +
       '<div id="ew_sync_banner" style="display:none"></div>' +
       (S.sheet ? '<div class="sheet" data-act="close-bg"><div class="inner" data-stop="1">' + S.sheet + '</div></div>' : '');
     placePut(_place, S.sheet, S.tab);
     wireInputs();
+    sccFind();
     bindDayPick();                    /* 1.56.0 - render() replaces the node, so rebind the box */
     jrnPaint(); syncBottomVar();
   }
@@ -7477,6 +8033,9 @@ function discRowOn(client, brand, onYmd) {
     if (act === "close" || act === "close-bg") { S.sheet = null; render(); return; }
     /* tapping a tab means "show me that list", so a search left in the box is cleared */
     if (act === "tab")     { S.tab = t.getAttribute("data-t"); S.sheet = null; S.q = ""; S.allTime = false; render(); return; }
+    if (act === "scc-f") { S.scc = S.scc || {}; S.scc.f = t.getAttribute("data-v") || "all"; render(); return; }
+    if (act === "scc-open") { S.scc = S.scc || {}; S.scc.open = t.getAttribute("data-n") || ""; render(); window.scrollTo(0, 0); return; }
+    if (act === "scc-back") { S.scc = S.scc || {}; S.scc.open = ""; render(); return; }
     if (act === "qclear")  { S.q = ""; render(); return; }
     if (act === "ch-filter") { S.chFilter = t.getAttribute("data-f"); render(); return; }
     /* ---- the day card (1.56.0). A day is a LOCAL day - see dayOf(). ---- */
