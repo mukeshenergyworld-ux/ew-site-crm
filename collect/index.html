@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.54.0";
+  var APP_VERSION = "1.54.1";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -4156,8 +4156,13 @@ function cancelMap() {
       Object.keys(g.brands).forEach(function (b) { brands[b] = (brands[b] || 0) + g.brands[b]; });
     });
     var lastDays = last ? daysBetween(last, t) : -1;
+    /* measured on his book the day it shipped: the app holds about three months, so the 90 days
+       before are empty for almost everyone and "Growing" was the answer 71 times out of 71. Growth
+       needs something to grow from: with nothing in the 90 days before, a client is New or Steady. */
+    var first = ""; mine.forEach(function (ch) { var y = d10(ch.createdAt); if (!first || y < first) first = y; });
     var trend = !mine.length ? "No deliveries yet" : lastDays > 90 ? "Gone quiet" :
-      (prior > 0 && recent < prior * 0.6) ? "Shrinking" : (recent > 0 && recent > prior * 1.2) ? "Growing" : "Steady";
+      prior <= 0 ? (daysBetween(first, t) <= 90 ? "New this quarter" : "Steady") :
+      recent < prior * 0.6 ? "Shrinking" : recent > prior * 1.2 ? "Growing" : "Steady";
     /* how long his money takes: every rupee paid, set against the oldest thing he owed (the old
        book first, then deliveries in date order), and the days between weighed by the rupees */
     var q = (due.lines || []).filter(function (l) { return !l.credit && l.amount > 0; })
@@ -4175,7 +4180,7 @@ function cancelMap() {
     var retRate = due.billed > 0 ? due.credited / due.billed : 0;
     var bl = Object.keys(brands).filter(function (b) { return b !== "Other"; }).sort(function (a, b) { return brands[b] - brands[a]; });
     var m = { name: c.name, owner: String(c.ownedBy || c.createdBy || "").trim(), total: total, recent: recent, prior: prior,
-      last: last, lastDays: lastDays, deliveries: mine.length, trend: trend, due: due.due, overdue: due.overdue,
+      last: last, lastDays: lastDays, deliveries: mine.length, trend: trend, due: due.due, overdue: Math.max(0, Math.min(due.overdue, due.due)),
       ageDays: due.ageDays, lastPay: due.lastPay, daysSincePay: due.daysSincePay, avgPay: avgPay, paid: due.paid,
       billed: due.billed, credited: due.credited, retRate: retRate, terms: num(c.creditDays) || CREDIT_DAYS,
       brands: bl.map(function (b) { return { brand: b, amt: Math.round(brands[b]), disc: clientDiscountOn(c.name, b, t) }; }),
@@ -4207,7 +4212,9 @@ function cancelMap() {
     /* money late is money late, however much he buys: half of what he owes overdue caps him at
        C, and overdue with nothing paid for 90 days is D */
     if (m.due > 500 && m.overdue >= m.due * 0.5 && (grade === "A" || grade === "B")) { grade = "C"; why.push("Half or more of what he owes is overdue."); }
-    if (m.overdue > 500 && (m.daysSincePay >= 90 || m.daysSincePay < 0)) grade = "D";
+    /* no second override: the first version also made "overdue and nothing paid for 90 days" a D,
+       and on his book that caught clients whose payments simply pre-date the app - 24 Ds, one of
+       them scoring 78. The score already takes 10 off for it. */
     if (!why.length) why.push("Buying and paying well.");
     var tip = m.overdue > 500 ? "Collect " + money(m.overdue) + " overdue before the next big delivery."
       : m.trend === "Gone quiet" ? "Call him: no order in " + m.lastDays + " days."
