@@ -215,7 +215,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
      an approval is a row added, not a row changed.
      ========================================================================== */
 
-  var APP_VERSION = "1.106.0";
+  var APP_VERSION = "1.107.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_challan_session";
 
@@ -1440,7 +1440,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:11px 0 4
           '<div style="opacity:.9;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
             esc(err || "They will go up by themselves when there is signal.") + '</div>' +
         '</div>' +
-        '<button class="btn sm" data-act="jrn-retry" style="background:#fff;color:#7c2d12;flex:none">Try now</button>' +
+        '<button class="btn sm" data-act="jrn-list" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.7);flex:none;min-height:44px">See them</button>' +
+        '<button class="btn sm" data-act="jrn-retry" style="background:#fff;color:#7c2d12;flex:none;min-height:44px">Try now</button>' +
       '</div>';
   }
 
@@ -5207,10 +5208,79 @@ function discRowOn(client, brand, onYmd) {
     if (!list.length) return h + '<div class="empty">Nothing waiting' +
       (hidden ? ' in the last 60 days.' : '. Every challan on the book has been passed.') + '</div>';
     var val2 = list.reduce(function (a, c) { return a + chValue(c); }, 0);
+    h += mpCard();   /* 1.107.0 */
     h += '<div class="muted" style="margin:10px 2px 4px">' + money(val2) + ' of material, oldest first</div>';
     return h + execBands(list.slice().reverse());
   }
 
+  /* ===== PASS SEVERAL AT ONCE  (1.107.0, 26 Sep 2026) =====
+     Offered on 25 Sep, taken on "plz do what on your side". On the Pass screen, when two or
+     more challans can be passed, a card lists them with a box each. Nothing is ticked for him:
+     passing releases material, so each one is a choice he makes. One press passes and
+     dispatches the ticked ones, one after another, through the SAME doPass the single button
+     uses - same PIN, same checks (passGate, held-on-phone), same undo if the server refuses. */
+  function mpList() {
+    return pendingApproval().filter(function (c) { return !chHeld(c) && passGate(c).ok; });
+  }
+  function mpCard() {
+    if (!canApprove()) return "";
+    var L = mpList(); if (L.length < 2) return "";
+    var pick = S.mp || {}, n = L.filter(function (c) { return pick[c.id]; }).length;
+    var val = L.filter(function (c) { return pick[c.id]; }).reduce(function (a, c) { return a + chValue(c); }, 0);
+    return '<div class="card" style="border-color:#0f766e">' +
+      '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0;font-weight:800">Pass several at once</div>' +
+      '<button class="btn sm gry" data-act="mp-all" style="min-height:44px">' + (n === L.length ? 'Clear all' : 'Tick all ' + L.length) + '</button></div>' +
+      '<div class="muted" style="font-size:12.5px">Tick the ones you have read. Nothing is ticked for you.</div>' +
+      L.map(function (c) {
+        var on = !!pick[c.id];
+        return '<div data-act="mp-tick" data-id="' + esc(c.id) + '" style="display:flex;gap:10px;align-items:center;min-height:44px;padding:4px 0;border-top:1px solid #eef2f7;cursor:pointer">' +
+          '<span style="width:24px;height:24px;flex:none;border-radius:6px;border:2px solid ' + (on ? '#0f766e' : '#94a3b8') + ';background:' + (on ? '#0f766e' : '#fff') + ';color:#fff;text-align:center;line-height:20px;font-weight:800">' + (on ? '✓' : '') + '</span>' +
+          '<div style="flex:1;min-width:0"><div style="font-weight:700">' + esc(c.customerName || "-") + '</div>' +
+          '<div class="muted" style="font-size:12.5px">' + esc(String(c.challanNo || "")) + ' · ' + esc(dstr(d10(c.createdAt))) + ' · ' + chLines(c).length + (chLines(c).length === 1 ? ' line' : ' lines') + '</div></div>' +
+          '<div style="font-weight:800;white-space:nowrap">' + money(chValue(c)) + '</div></div>';
+      }).join("") +
+      '<div class="acts" style="margin-top:8px"><button class="btn red" data-act="mp-go"' + (n ? '' : ' disabled') + ' style="min-height:44px">Pass &amp; dispatch ' + (n ? n + ' · ' + money(val) : 'the ticked ones') + '</button></div></div>';
+  }
+  function mpRun(ids) {
+    var pin = passPinGet(), done = 0;
+    var go = function (i) {
+      if (i >= ids.length) { S.mp = {}; render(); toast(done + (done === 1 ? ' challan' : ' challans') + ' passed and dispatched. Any the server refuses goes back, and says why.'); return; }
+      var c = chFind(ids[i]);
+      if (c && String(c.status || "") === "Draft" && !chHeld(c) && passGate(c).ok) { doPass(c, pin); done++; }
+      setTimeout(function () { go(i + 1); }, 900);   /* one at a time, so the server is never asked twice at once */
+    };
+    go(0);
+  }
+  /* ===== THE HELD RECORDS, ONE BY ONE  (Collect 1.55.0 / Challan 1.107.0, 26 Sep 2026) =====
+     The red bar said "3 records are held on this phone" and one reason. Which three, and whose
+     money, was not on the screen anywhere. This sheet names each one - what it is, for whom,
+     how much, when it was made, how often it has been tried and what the server last said -
+     with Try now at the bottom. Nothing here deletes a held record: it goes when the server has
+     it, exactly as before. */
+  var JRN_WHAT = { payments: "Payment", challans: "Challan", returns: "Return", followups: "Follow-up", clients: "Client", audit: "Note", receipts: "Receipt" };
+  function sheetHeld() {
+    var l = jrnLoad();
+    var h = '<h2>' + l.length + ' held on this phone</h2>' +
+      '<div class="muted" style="margin-bottom:8px">Each goes to the server by itself when there is signal. Nothing here is lost or deleted — a record leaves this list only when the server has it.</div>';
+    if (!l.length) return h + '<div class="empty">Nothing is held. Everything is on the server.</div>' +
+      '<div class="acts" style="margin-top:12px"><button class="btn gry" data-act="close">Close</button></div>';
+    h += l.map(function (e) {
+      var r = e.row || {}, tab = String(e.tab || ""), what = JRN_WHAT[tab] || tab || "Record";
+      var who = r.client || r.customerName || r.name || r.clientName || "";
+      var amt = tab === "payments" ? money(payAmt(r)) : "";
+      var no = r.challanNo || r.returnNo || "";
+      var when = String(r.date || r.createdAt || "").slice(0, 10);
+      var bits = [no, when ? dstr(when) : "", r.mode || "", e.by && String(e.by) !== String(S.user) ? "by " + e.by : ""].filter(Boolean);
+      return '<div class="card" style="margin-top:6px;padding:10px 12px">' +
+        '<div style="display:flex;gap:8px;align-items:baseline"><div style="flex:1;min-width:0;font-weight:800">' + esc(what) + (who ? ' — ' + esc(who) : '') + '</div>' +
+        (amt ? '<div style="font-weight:800;white-space:nowrap">' + amt + '</div>' : '') + '</div>' +
+        (bits.length ? '<div class="muted" style="font-size:12.5px">' + esc(bits.join(" · ")) + '</div>' : '') +
+        '<div style="font-size:12.5px;margin-top:3px;color:' + (e.err ? '#b45309' : '#475569') + '">' +
+          (e.err ? 'Last try: ' + esc(e.err) : 'Not tried yet — waiting for signal') + (e.tries ? ' · tried ' + e.tries + (e.tries === 1 ? ' time' : ' times') : '') + '</div></div>';
+    }).join("");
+    return h + '<div class="acts" style="margin-top:12px"><button class="btn gry" data-act="close">Close</button><div class="grow"></div>' +
+      '<button class="btn" data-act="jrn-retry" style="min-height:44px">Try now</button></div>';
+  }
   /* ---------- 4. THE RECEIPTS WORKLIST ---------- */
   function viewReceipts() {
     var all = missingReceipts();
@@ -7113,7 +7183,7 @@ function discRowOn(client, brand, onYmd) {
       lines: lines,
       payments: payments.map(function (p) {
         return { ymd: d10(p.date || p.createdAt), amount: payAmt(p),
-                 mode: String(p.mode || ""), ref: String(p.ref || ""), by: String(p.createdBy || "") };
+                 mode: String(p.mode || ""), ref: String(p.ref || ""), by: String(p.createdBy || ""), pic: payPic(p) };
       })
     };
   }
@@ -7258,6 +7328,10 @@ function discRowOn(client, brand, onYmd) {
     return Object.keys(seen).map(function (k) { return seen[k]; });
   }
   function payAmt(p) { return nAmt((p || {}).amount); }
+  /* 26 Sep 2026 - the photo of a cheque or a UPI screen rides in the payment's notes as
+     "Photo: <link>", because the Payments sheet has no column for it and the server drops a key
+     it does not know. Read back here, in one place, for both apps. */
+  function payPic(p) { var m = String((p && p.notes) || "").match(/Photo: (https?:\/\/\S+)/); return m ? m[1] : ""; }
   function daysBetween(from, to) {
     if (!from || !to) return 0;
     var a = Date.parse(from + "T00:00:00Z"), b = Date.parse(to + "T00:00:00Z");
@@ -8049,6 +8123,7 @@ function discRowOn(client, brand, onYmd) {
       S.sheet = null; render();
       /* he pressed a button, not "type a PIN" - so finish the button he pressed. A challan at
          Approved was DISPATCHED, and resuming it as a pass would re-stamp approvedBy. */
+      if (pAct === "ch-approve-many") { mpRun(String(pAgain || "").split("|").filter(Boolean)); return; }   /* 1.107.0 */
       var c9 = pAgain ? chFind(pAgain) : null;
       if (!c9) return;
       if (pAct === "ch-dispatch") { doDispatch(c9, passPinGet(), null); return; }
@@ -8267,7 +8342,17 @@ function discRowOn(client, brand, onYmd) {
       });
       return;
     }
-    if (act === "jrn-retry") { flushNow(); toast("Trying now…"); return; }
+    if (act === "jrn-list") { S.sheet = sheetHeld(); render(); return; }   /* 26 Sep 2026 */
+    if (act === "jrn-retry") { flushNow(); toast("Trying now…"); if (S.sheet && /held on this phone<\/h2>/.test(String(S.sheet))) setTimeout(function () { if (S.sheet && /held on this phone<\/h2>/.test(String(S.sheet))) { S.sheet = sheetHeld(); render(); } }, 9000); return; }
+    if (act === "mp-tick") { var _mi = t.getAttribute("data-id"); S.mp = S.mp || {}; if (S.mp[_mi]) delete S.mp[_mi]; else S.mp[_mi] = 1; var _sy = window.scrollY; render(); window.scrollTo(0, _sy); return; }
+    if (act === "mp-all") { var _ml = mpList(), _mp = S.mp || {}, _ma = _ml.every(function (c) { return _mp[c.id]; }); S.mp = {}; if (!_ma) _ml.forEach(function (c) { S.mp[c.id] = 1; }); var _sy = window.scrollY; render(); window.scrollTo(0, _sy); return; }
+    if (act === "mp-go") {
+      if (!canApprove()) { toast("Passing a challan is done by the accounts desk."); return; }
+      var _ids = mpList().filter(function (c) { return (S.mp || {})[c.id]; }).map(function (c) { return String(c.id); });
+      if (!_ids.length) { toast("Tick the challans to pass first."); return; }
+      if (!passPinHave()) { _passAsk = _ids.join("|"); _passAskAct = "ch-approve-many"; S.sheet = sheetPassPin(null, "ch-approve"); render(); return; }
+      mpRun(_ids); return;
+    }
     if (act === "ch-edit") {
       if (!canMake()) { toast("Editing a challan is done by the godown or the office."); return; }
       /* ================= v1.28.1 - THE EDIT BUTTON NEVER WORKED =================
