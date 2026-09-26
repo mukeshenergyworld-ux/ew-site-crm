@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.619";
+  var APP_VERSION = "6.9.620";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -20370,8 +20370,8 @@ function viewCatalogue() {
       '<div style="font-size:12px;opacity:.85">' + esc([L0.mobile, L0.vtype, L0.vehicle].filter(Boolean).join(" · ") || "no details") +
       (L0.reg ? '' : ' &middot; not on the register') + '</div></div>' +
       (roleAny(["admin", "accounts"]) && L0.g ? '<button class="btn sm" data-act="dp-open" data-k="' + esc(key) + '" style="background:#fff;color:#0b3b36;border-color:#fff">Record a payment</button>' : '') +
-      '<button class="btn sm ghost" data-act="dl-xlsx" data-k="' + esc(key) + '" style="color:#fff;border-color:#99f6e4">&#8681; Excel</button>' +
-      '<button class="btn sm ghost" data-act="dl-open" data-k="' + esc(key) + '" style="color:#fff;border-color:#99f6e4">Close &#9652;</button></div>';
+      '<button class="btn sm ghost" data-act="dl-xlsx" data-k="' + esc(key) + '" style="background:transparent;color:#fff;border-color:#99f6e4;min-height:44px">&#8681; Excel</button>' +
+      '<button class="btn sm ghost" data-act="dl-open" data-k="' + esc(key) + '" style="background:transparent;color:#fff;border-color:#99f6e4;min-height:44px">Close &#9652;</button></div>';
     /* the figures, one line */
     h += '<div style="display:flex;flex-wrap:wrap;border-bottom:1px solid #cbd5e1;background:#f8fafc">' +
       fig("Freight proved", money(T.proved), plural(T.provedN, "trip")) +
@@ -40763,8 +40763,8 @@ function viewCatalogue() {
     return '<div style="margin:0 6px;border:1px solid #0b3b36;border-top:0;border-radius:0 0 8px 8px;background:#fff">' +
       '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:7px 10px;background:#0b3b36;color:#fff">' +
       '<b class="grow" style="flex:1 1 200px">Stock ledger &mdash; ' + esc(code) + '</b>' +
-      '<button class="btn sm ghost" data-act="stock-item" data-code="' + esc(code) + '" style="color:#fff;border-color:#99f6e4">Reorder level &amp; rate</button>' +
-      '<button class="btn sm ghost" data-act="stk-open" data-code="' + esc(code) + '" style="color:#fff;border-color:#99f6e4">Close &#9652;</button></div>' +
+      '<button class="btn sm ghost" data-act="stock-item" data-code="' + esc(code) + '" style="background:transparent;color:#fff;border-color:#99f6e4;min-height:44px">Min level &amp; rate</button>' +
+      '<button class="btn sm ghost" data-act="stk-open" data-code="' + esc(code) + '" style="background:transparent;color:#fff;border-color:#99f6e4;min-height:44px">Close &#9652;</button></div>' +
       (hasOpen ? '' : '<div style="padding:6px 10px;font-size:12.5px;color:#b45309;background:#fffbeb">No opening stock is set for this product, so the balance is movement since the first entry, not what is on the floor.</div>') +
       '<div style="overflow-x:auto;padding:8px 10px"><table style="width:100%;min-width:600px;border-collapse:collapse;font-size:12.5px"><thead><tr>' +
       TH("DATE") + TH("ENTRY") + TH("BILL / CHALLAN") + TH("IN", 1) + TH("OUT", 1) + TH("BALANCE", 1) + '</tr></thead><tbody>' +
