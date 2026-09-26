@@ -146,7 +146,7 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      Anyone else is refused at the door.
      ========================================================================== */
 
-  var APP_VERSION = "1.54.1";
+  var APP_VERSION = "1.55.0";
   var GAS = "https://script.google.com/macros/s/AKfycbzVkPHWyPq-w8RFD_HdG0vCjmrfQvEUpcq_hhF9eDGa0ZbZ3rIx7N37an2DQRGmsxPK/exec";
   var STORE = "ew_collect_session";
 
@@ -1382,7 +1382,8 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
           '<div style="opacity:.9;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
             esc(err || "It goes onto the sheet by itself when there is signal.") + '</div>' +
         '</div>' +
-        '<button class="btn sm" data-act="jrn-retry" style="background:#fff;color:#7c2d12;flex:none">Try now</button>' +
+        '<button class="btn sm" data-act="jrn-list" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.7);flex:none;min-height:44px">See them</button>' +
+        '<button class="btn sm" data-act="jrn-retry" style="background:#fff;color:#7c2d12;flex:none;min-height:44px">Try now</button>' +
       '</div>';
   }
 
@@ -1585,6 +1586,10 @@ label{display:block;font-size:12px;font-weight:700;color:#475569;margin:10px 0 4
      holds if it is the same word in every app - and t_apps_agree.js now holds this one to the
      byte against the CRM's. */
   function payAmt(p) { return nAmt((p || {}).amount); }
+  /* 26 Sep 2026 - the photo of a cheque or a UPI screen rides in the payment's notes as
+     "Photo: <link>", because the Payments sheet has no column for it and the server drops a key
+     it does not know. Read back here, in one place, for both apps. */
+  function payPic(p) { var m = String((p && p.notes) || "").match(/Photo: (https?:\/\/\S+)/); return m ? m[1] : ""; }
   function daysBetween(from, to) {
     if (!from || !to) return 0;
     var a = Date.parse(from + "T00:00:00Z"), b = Date.parse(to + "T00:00:00Z");
@@ -2355,7 +2360,7 @@ function cancelMap() {
       lines: lines,
       payments: payments.map(function (p) {
         return { ymd: d10(p.date || p.createdAt), amount: payAmt(p),
-                 mode: String(p.mode || ""), ref: String(p.ref || ""), by: String(p.createdBy || "") };
+                 mode: String(p.mode || ""), ref: String(p.ref || ""), by: String(p.createdBy || ""), pic: payPic(p) };
       })
     };
   }
@@ -3167,6 +3172,7 @@ function cancelMap() {
               if (p.mode) bits.push(esc(p.mode));
               if (p.ref) bits.push(esc(p.ref));
               if (p.by) bits.push('entered by ' + esc(p.by));
+              if (p.pic) bits.push('<a href="' + esc(p.pic) + '" target="_blank" rel="noopener" style="font-weight:700">photo</a>');   /* 1.55.0 */
               return '<div class="row" style="padding:7px 10px;border-top:1px solid #f1f5f9">' +
                 '<div class="grow"><b style="font-size:12.5px">' + esc(p.ymd ? dstr(p.ymd) : "no date") + '</b>' +
                 (bits.length ? '<div class="muted">' + bits.join(' \u00b7 ') + '</div>'
@@ -3349,6 +3355,7 @@ function cancelMap() {
       (said.length + broke.length ? (said.length + broke.length) + ' to ring on a promise' : 'No promises outstanding today') + '</div>' +
       '<div style="font-size:12.5px;opacity:.9;margin-top:3px">then the ' + rest.length + ' worst of the rest — ' +
       money(said.concat(broke).concat(rest).reduce(function (a, r) { return a + r.toCollect; }, 0)) + ' in all</div></div>';   /* v1.32.0 - goods and service, one figure */
+    h = _h0 + colToday() + h.slice(_h0.length);   /* 1.55.0 - what came in today, first */
     var sec = function (title, arr, note) {
       if (!arr.length) return "";
       return '<div class="muted" style="font-weight:700;margin:14px 2px 2px">' + esc(title) +
@@ -3362,6 +3369,120 @@ function cancelMap() {
     return h;
   }
 
+  /* ===== COLLECTED TODAY  (1.55.0, 26 Sep 2026) =====
+     Offered on 25 Sep and taken on his "plz do what on your side". At the top of Today's calls:
+     what has come in today, by how it came, and who brought it. The admin and accounts desk see
+     everyone's; a sales executive sees his own. The date is the payment's own date (the day the
+     money was received, as typed), a cancelled payment is not counted, and a payment still held
+     on this phone is counted and marked, because the money is in his hand either way. An
+     Adjustment is not money received, so it is shown apart and left out of the total. */
+  function colToday() {
+    var t = today(), all = seesAll(), me = String(S.user || "");
+    var ps = ((S.data && S.data.payments) || []).filter(function (p) {
+      if (!p || isCancelled("payments", p.id)) return false;
+      if (d10(p.date || p.createdAt) !== t) return false;
+      return all || String(p.createdBy || "") === me;
+    });
+    var got = 0, back = 0, adj = 0, byMode = {}, byMan = {};
+    ps.forEach(function (p) {
+      var a = payAmt(p), m = String(p.mode || "Not said");
+      if (/^adjust/i.test(m)) { adj += a; return; }
+      if (a < 0) { back += -a; return; }
+      got += a; byMode[m] = (byMode[m] || 0) + a;
+      var who = String(p.createdBy || "?"); byMan[who] = (byMan[who] || 0) + a;
+    });
+    var chip = function (k, v) { return '<span style="display:inline-block;margin:4px 12px 0 0;white-space:nowrap"><span style="opacity:.85">' + esc(k) + '</span> <b>' + money(v) + '</b></span>'; };
+    var h = '<div class="card" style="background:#065f46;color:#fff;border-color:#065f46">' +
+      '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0">' +
+      '<div style="font-size:13px;opacity:.85">' + (all ? 'Collected today — everyone' : 'You collected today') + '</div>' +
+      '<div style="font-size:22px;font-weight:800">' + money(got) + '</div></div>' +
+      (ps.length ? '<button class="btn sm" data-act="ct-open" style="background:#fff;color:#065f46;flex:none;min-height:44px">' + (S.ctOpen ? 'Hide' : 'See the ' + ps.length) + '</button>' : '') + '</div>' +
+      (got ? '<div style="font-size:13px">' + Object.keys(byMode).sort(function (a, b) { return byMode[b] - byMode[a]; }).map(function (k) { return chip(k, byMode[k]); }).join("") + '</div>' : '<div style="font-size:12.5px;opacity:.9;margin-top:3px">Nothing recorded yet today.</div>') +
+      (all && Object.keys(byMan).length > 1 ? '<div style="font-size:13px;border-top:1px solid rgba(255,255,255,.25);margin-top:6px;padding-top:2px">' + Object.keys(byMan).sort(function (a, b) { return byMan[b] - byMan[a]; }).map(function (k) { return chip(k, byMan[k]); }).join("") + '</div>' : '') +
+      (back ? '<div style="font-size:12.5px;margin-top:4px">Paid back today: <b>' + money(back) + '</b> (not in the total)</div>' : '') +
+      (adj ? '<div style="font-size:12.5px;margin-top:2px">Adjustments today: <b>' + money(adj) + '</b> (not money received)</div>' : '') + '</div>';
+    if (S.ctOpen && ps.length) {
+      h += '<div class="card" style="margin-top:-4px;padding:4px 12px">' + ps.slice().sort(function (a, b) { return payAmt(b) - payAmt(a); }).map(function (p, i) {
+        var held = !!jrnFor(p);
+        return '<div style="display:flex;gap:8px;align-items:baseline;padding:7px 0' + (i ? ';border-top:1px solid #eef2f7' : '') + '"><div style="flex:1;min-width:0">' +
+          '<div style="font-weight:700">' + esc(p.client || "-") + '</div>' +
+          '<div class="muted" style="font-size:12.5px">' + esc([p.mode, p.ref, all ? p.createdBy : ""].filter(Boolean).join(" · ")) + (payPic(p) ? ' \u00b7 <a href="' + esc(payPic(p)) + '" target="_blank" rel="noopener" style="font-weight:700">photo</a>' : '') + (held ? ' <span class="pill amb">held on this phone</span>' : '') + '</div></div>' +
+          '<div style="font-weight:800;white-space:nowrap;color:' + (payAmt(p) < 0 ? '#b91c1c' : '#065f46') + '">' + money(payAmt(p)) + '</div></div>';
+      }).join("") + '</div>';
+    }
+    return h;
+  }
+  /* ===== THE HELD RECORDS, ONE BY ONE  (Collect 1.55.0 / Challan 1.107.0, 26 Sep 2026) =====
+     The red bar said "3 records are held on this phone" and one reason. Which three, and whose
+     money, was not on the screen anywhere. This sheet names each one - what it is, for whom,
+     how much, when it was made, how often it has been tried and what the server last said -
+     with Try now at the bottom. Nothing here deletes a held record: it goes when the server has
+     it, exactly as before. */
+  var JRN_WHAT = { payments: "Payment", challans: "Challan", returns: "Return", followups: "Follow-up", clients: "Client", audit: "Note", receipts: "Receipt" };
+  function sheetHeld() {
+    var l = jrnLoad();
+    var h = '<h2>' + l.length + ' held on this phone</h2>' +
+      '<div class="muted" style="margin-bottom:8px">Each goes to the server by itself when there is signal. Nothing here is lost or deleted — a record leaves this list only when the server has it.</div>';
+    if (!l.length) return h + '<div class="empty">Nothing is held. Everything is on the server.</div>' +
+      '<div class="acts" style="margin-top:12px"><button class="btn gry" data-act="close">Close</button></div>';
+    h += l.map(function (e) {
+      var r = e.row || {}, tab = String(e.tab || ""), what = JRN_WHAT[tab] || tab || "Record";
+      var who = r.client || r.customerName || r.name || r.clientName || "";
+      var amt = tab === "payments" ? money(payAmt(r)) : "";
+      var no = r.challanNo || r.returnNo || "";
+      var when = String(r.date || r.createdAt || "").slice(0, 10);
+      var bits = [no, when ? dstr(when) : "", r.mode || "", e.by && String(e.by) !== String(S.user) ? "by " + e.by : ""].filter(Boolean);
+      return '<div class="card" style="margin-top:6px;padding:10px 12px">' +
+        '<div style="display:flex;gap:8px;align-items:baseline"><div style="flex:1;min-width:0;font-weight:800">' + esc(what) + (who ? ' — ' + esc(who) : '') + '</div>' +
+        (amt ? '<div style="font-weight:800;white-space:nowrap">' + amt + '</div>' : '') + '</div>' +
+        (bits.length ? '<div class="muted" style="font-size:12.5px">' + esc(bits.join(" · ")) + '</div>' : '') +
+        '<div style="font-size:12.5px;margin-top:3px;color:' + (e.err ? '#b45309' : '#475569') + '">' +
+          (e.err ? 'Last try: ' + esc(e.err) : 'Not tried yet — waiting for signal') + (e.tries ? ' · tried ' + e.tries + (e.tries === 1 ? ' time' : ' times') : '') + '</div></div>';
+    }).join("");
+    return h + '<div class="acts" style="margin-top:12px"><button class="btn gry" data-act="close">Close</button><div class="grow"></div>' +
+      '<button class="btn" data-act="jrn-retry" style="min-height:44px">Try now</button></div>';
+  }
+  function shrink(dataUrl, maxPx, quality) {
+    return new Promise(function (res, rej) {
+      var img = new Image();
+      img.onload = function () {
+        var w = img.width, h = img.height, m = Math.max(w, h);
+        if (m > maxPx) { w = Math.round(w * maxPx / m); h = Math.round(h * maxPx / m); }
+        var cv = document.createElement("canvas");
+        cv.width = w; cv.height = h;
+        cv.getContext("2d").drawImage(img, 0, 0, w, h);
+        res({ url: cv.toDataURL("image/jpeg", quality || 0.72), w: w, h: h });
+      };
+      img.onerror = function () { rej(new Error("bad image")); };
+      img.src = dataUrl;
+    });
+  }
+  /* ===== THE PHOTO OF THE CHEQUE OR THE UPI SCREEN  (1.55.0, 26 Sep 2026) =====
+     Offered on 25 Sep, taken on "plz do what on your side". Optional, on the Record-a-payment
+     sheet. It is shrunk on the phone (1400 px, about 150 KB), sent up FIRST, and its link written
+     into the payment's notes, so the payment row is written once and never edited afterwards -
+     a money row is not something the app goes back and changes. If the photo cannot go up
+     inside 40 seconds the payment is recorded anyway, without it, and he is told: the money is
+     never held hostage to a picture. */
+  function payPicUp(file, name, dt) {
+    return new Promise(function (res) {
+      var done = false, fin = function (v) { if (!done) { done = true; res(v); } };
+      setTimeout(function () { fin({ err: "no answer in 40 seconds" }); }, 40000);
+      try {
+        var fr = new FileReader();
+        fr.onload = function () {
+          shrink(String(fr.result || ""), 1400, 0.7).then(function (ph) {
+            var fn = ("payment_" + String(name || "") + "_" + String(dt || "")).replace(/[^\w.-]+/g, "_") + ".jpg";
+            return api("pdfHost", { pdfBase64: String(ph.url).split(",")[1], filename: fn, mime: "image/jpeg" }, 40000);
+          }).then(function (h) {
+            fin(h && h.ok && h.url ? { url: String(h.url) } : { err: (h && h.error) || "the server sent no link back" });
+          }, function (e) { fin({ err: (e && e.message) || "it could not be read" }); });
+        };
+        fr.onerror = function () { fin({ err: "the photo could not be read" }); };
+        fr.readAsDataURL(file);
+      } catch (e) { fin({ err: "the photo could not be read" }); }
+    });
+  }
   /* ---- the old-book worklist ---- */
   function viewOldBook() {
     var list = oldBookRows();
@@ -3465,6 +3586,7 @@ function cancelMap() {
         (r.oldBook > 0 ? '<button class="btn sm gry" data-act="pi-full" data-v="' + r.oldBook + '">Old book ' + money(r.oldBook) + '</button>' : '') +
       '</div>' +
       '<label>Reference (cheque no, UTR — optional)</label><input id="pi_ref" placeholder="optional"/>' +
+      '<label>Photo of the cheque or UPI screen (optional)</label><input id="pi_pic" type="file" accept="image/*" style="min-height:44px;font-size:14px"/>' +
       '<div class="muted" style="margin:12px 0 0">This is written to the same Payments book the CRM uses. It will show in his hisab straight away.</div>' +
       '<div class="acts" style="margin-top:14px">' +
       '<button class="btn grn" data-act="pi-save" data-n="' + esc(name) + '">Record it</button>' +
@@ -4650,7 +4772,9 @@ function cancelMap() {
       });
       return;
     }
-    if (act === "jrn-retry") { flushNow(); toast("Trying now…"); return; }
+    if (act === "jrn-list") { S.sheet = sheetHeld(); render(); return; }   /* 26 Sep 2026 */
+    if (act === "jrn-retry") { flushNow(); toast("Trying now…"); if (S.sheet && /held on this phone<\/h2>/.test(String(S.sheet))) setTimeout(function () { if (S.sheet && /held on this phone<\/h2>/.test(String(S.sheet))) { S.sheet = sheetHeld(); render(); } }, 9000); return; }
+    if (act === "ct-open") { S.ctOpen = !S.ctOpen; render(); return; }
     if (act === "pi-full") { var a = el("pi_amt"); if (a) { a.value = t.getAttribute("data-v"); a.focus(); } return; }
     if (act === "fu-day") {
       var d = el("fu_date");
@@ -4706,7 +4830,15 @@ function cancelMap() {
 
          And the receipt is shown either way. Whether the sheet has caught up is Energy World's
          problem; the customer handed over money and is owed his confirmation now. */
-      saveRow("payments", row).then(function (r) {
+      /* 1.55.0 - the photo goes up first, and its link is written with the payment */
+      var _pf = (el("pi_pic") && el("pi_pic").files && el("pi_pic").files[0]) || null, _picFail = "";
+      if (_pf) t.textContent = "Sending the photo\u2026";
+      (_pf ? payPicUp(_pf, name, dt) : Promise.resolve({})).then(function (pu) {
+        if (pu && pu.url) row.notes += " \u00b7 Photo: " + pu.url;
+        else if (_pf) _picFail = (pu && pu.err) || "it did not go up";
+        t.textContent = "Recording\u2026";
+        return saveRow("payments", row);
+      }).then(function (r) {
         /* v1.51.0 - once. A pull that landed during the save has already laid this row back in
            from the journal; pushing it again showed the receipt's balance short by the payment. */
         var _pr = r.row || row, _pl = (S.data.payments = S.data.payments || []);
@@ -4723,6 +4855,7 @@ function cancelMap() {
           ? money(amt) + " recorded against " + name + ", and held on this phone until there is " +
             "signal. His receipt is ready now."
           : money(amt) + " recorded against " + name + ".");
+        if (_picFail) setTimeout(function () { toast("The photo did not go up (" + _picFail + "). The payment is recorded without it."); }, 3500);
       });
       return;
     }
