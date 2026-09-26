@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.622";
+  var APP_VERSION = "6.9.623";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -3203,8 +3203,8 @@ window.addEventListener("beforeunload", function (ev) {
       price: Number(String(f.price || "0").replace(/[^0-9.]/g, "")) || 0,
       brand: String(f.masterBrand || "").trim(),
       pic: driveImg(f.pic),
-      /* specs are written on the Products screen, never on this form - keep what is there */
-      specs: hit >= 0 ? (PRODUCTS[hit].specs || "") : "",
+      /* 6.9.623 - the form sends specs now; an older caller that does not keeps what is there */
+      specs: f.specs !== undefined ? String(f.specs || "").trim() : (hit >= 0 ? (PRODUCTS[hit].specs || "") : ""),
       label: (String(f.code || "").trim() ? String(f.code).trim() + " - " : "") + String(f.desc || "").trim()
     };
     if (hit >= 0) PRODUCTS[hit] = item; else PRODUCTS.push(item);
@@ -3437,7 +3437,8 @@ window.addEventListener("beforeunload", function (ev) {
     h += (roleIs("admin")
       ? '<div class="row" style="margin-top:10px"><button class="btn sm ghost" data-act="pr-open" ' +
         'data-code="' + esc(p.code) + '" style="border-color:#c7d2fe;color:#4338ca">' +
-        '\u270e Edit the spec or the price</button></div>'
+        '\u270e Edit the spec or the price</button>' +
+        '<button class="btn sm ghost" data-act="pr-copy" data-code="' + esc(p.code) + '" style="border-color:#99f6e4;color:#0f766e">+ Add a similar product</button></div>'
       : "");
     h += '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">' +
       '<span class="pill">' + esc(p.code) + '</span>' +
@@ -15070,7 +15071,8 @@ function viewCatalogue() {
         '<div style="flex:1"><h3 style="margin:0 0 2px">' + esc(p.desc) + '</h3>' +
         '<div class="meta">' + esc(p.code) + ' - ' + money(p.price) + ' / ' + esc(p.unit) +
         '<br>' + esc(p.family) + ' - ' + esc(p.brand) + (realBrand(p) ? ' -> ' + esc(realBrand(p)) : ' (unmapped)') + '</div></div>' +
-        '<div style="display:flex;gap:4px"><button class="btn sm ghost" data-act="pr-open" data-code="' + esc(p.code) + '">Edit</button>' +
+        '<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end"><button class="btn sm ghost" data-act="pr-open" data-code="' + esc(p.code) + '">Edit</button>' +
+        '<button class="btn sm ghost" data-act="pr-copy" data-code="' + esc(p.code) + '">+ Similar</button>' +
         '<button class="btn sm ghost" data-act="pr-del" data-code="' + esc(p.code) + '">Del</button></div></div>';
     });
     return h;
@@ -15086,13 +15088,26 @@ function viewCatalogue() {
       '<button class="btn" data-act="br-save" data-id="' + esc(b.id || "") + '">Save</button></div>';
   }
 
-  function modalProduct(p) {
+  /* ===== 6.9.623 - ADD A SIMILAR PRODUCT =====
+     A family (SS elbow 15 / 22 / 28 / 35 ...) shares its picture, family, brand, category, unit
+     and usually its wording; only the code, the size in the name and a spec or two change. "Add
+     similar" opens this same form filled from the product it was pressed on, with the code empty,
+     a "change this to that" box that rewrites the name and the specs in one press, and the price
+     left for him to check. Saving a new code that is already on the list is refused - it would
+     overwrite that product. */
+  function modalProduct(p, from) {
     p = p || {};
+    var copy = !!from, isNew = copy || !p.code;
     var mapVals = S.data.brandmap.map(function (m) { return m.catalogValue; });
-    return '<h2>' + (p.code ? "Edit product" : "Add product") + '</h2>' +
-      '<p class="sub">This writes to the master price list the whole firm quotes from.</p>' +
-      '<div class="grid2"><div><label>Product code</label><input id="p_code" value="' + esc(p.code) + '"' + (p.code ? " readonly" : "") + '/></div>' +
+    return '<h2>' + (copy ? "Add a similar product" : p.code ? "Edit product" : "Add product") + '</h2>' +
+      (copy ? '<p class="sub" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:8px 10px">Copied from <b>' + esc(from.code) + '</b> \u2014 ' + esc(from.desc || "") + '. The picture, family, brand, category and unit are the same. Type the <b>new code</b>, change the size in the name and specs, and check the price.</p>'
+            : '<p class="sub">This writes to the master price list the whole firm quotes from.</p>') +
+      '<div class="grid2"><div><label>Product code' + (copy ? ' \u2014 new' : '') + '</label><input id="p_code" value="' + esc(copy ? "" : p.code) + '"' + (isNew ? ' placeholder="new code"' : " readonly") + (copy ? ' autofocus style="border-color:#0f766e;border-width:2px"' : '') + '/></div>' +
       '<div><label>List price (Rs)</label><input id="p_price" inputmode="decimal" value="' + esc(p.price || "") + '"/></div></div>' +
+      (copy ? '<div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;margin:6px 0 2px;padding:8px 10px;border:1px dashed #0f766e;border-radius:8px">' +
+        '<div style="flex:1 1 90px"><label style="margin-top:0">Change</label><input id="p_rfrom" placeholder="e.g. 28"/></div>' +
+        '<div style="flex:1 1 90px"><label style="margin-top:0">to</label><input id="p_rto" placeholder="e.g. 35"/></div>' +
+        '<button class="btn sm" style="min-height:44px" data-act="pr-repl">Change in name &amp; specs</button></div>' : '') +
       '<label>Description &amp; features</label><textarea id="p_desc" rows="3" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;resize:vertical">' + esc(p.desc) + '</textarea>' +
       '<div class="pmeta" style="font-size:12px;color:#94a3b8;margin:-2px 0 8px">Product name first, then each feature after a comma, a <b>|</b>, or on a new line — they print as neat bullet points on the quote PDF.</div>' +
       '<div class="grid2"><div><label>Product family</label><input id="p_fam" value="' + esc(p.family) + '"/></div>' +
@@ -15104,21 +15119,11 @@ function viewCatalogue() {
       '<div id="p_pic_hint" style="font-size:12px;line-height:1.45;margin:4px 2px 0;color:#b45309">' +
         esc(PIC_HINT[picProblem(p.pic)] || "") + '</div>' +
       '<div id="p_pic_prev" style="margin:8px 2px 0">' + picPreviewHtml(p.pic) + '</div>' +
-      /* v6.9.524 - his item 11: "how to edit product specifications". Said where they live
-         until catalogSave can take them (backend, after V128). Read-only here on purpose - a
-         box that looks saved and is not is worse than no box. */
-      (p.code
-        ? '<div style="margin:12px 2px 0;padding:9px 11px;border:1px solid #e2e8f0;border-radius:9px;background:#f8fafc">' +
-          '<div class="meta" style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#64748b"><b>Specifications</b></div>' +
-          (String(p.specs || "").trim()
-            ? '<div style="font-size:13px;margin-top:4px">' + specLines(p.specs).map(function (l) { return esc(l.label ? l.label + ": " + l.value : l.value); }).join("<br>") + '</div>'
-            : '<div class="meta" style="font-size:13px;margin-top:4px">None entered for this product yet.</div>') +
-          '<div class="meta" style="font-size:12px;margin-top:6px">Specifications are typed in the <b>Product Catalog</b> sheet, column <b>L (Specs)</b>, on the row for <b>' + esc(p.code) + '</b> \u2014 ' +
-          'one line, parts separated by <b>|</b>, for example <i>Size : 380W x 540D x 410H mm | Colour : White</i>. They show here and on the proposal after the next login. ' +
-          'Typing them on this form needs the next backend release.</div></div>'
-        : '') +
+      '<label>Specifications</label><textarea id="p_specs" rows="2" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;resize:vertical" placeholder="Size : 28 mm | Material : SS 316 | Pressure : 16 bar">' + esc(p.specs || "") + '</textarea>' +
+      '<div class="pmeta" style="font-size:12px;color:#94a3b8;margin:2px 0 8px">Parts separated by <b>|</b>, label before the colon. After saving, the app reads the price list back and tells you whether the specifications were kept; if not, type them in the sheet, column L.</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
-      '<button class="btn" data-act="cat-save">Save product</button></div>';
+      (p.code && !copy ? '<button class="btn ghost" data-act="pr-copy" data-code="' + esc(p.code) + '">+ Add similar</button>' : '') +
+      '<button class="btn" data-act="cat-save" data-new="' + (isNew ? '1' : '') + '">Save product</button></div>';
   }
 
   /* Split a product description into a title + feature bullets. Explicit separators (newline, |,
@@ -43955,13 +43960,35 @@ function viewCatalogue() {
     }
 
     if (act === "cat-new") { S.modal = modalProduct(null); render(); return; }
+    if (act === "pr-copy") {   /* 6.9.623 */
+      var _src = PRODUCTS.filter(function (x) { return x.code === t.getAttribute("data-code"); })[0];
+      if (!_src) { toast("That product is not on the list any more."); return; }
+      S.modal = modalProduct(Object.assign({}, _src), _src); render();
+      setTimeout(function () { var c = el("p_code"); if (c) c.focus(); }, 50);
+      return;
+    }
+    if (act === "pr-repl") {
+      var _rf = String(val("p_rfrom") || ""), _rt = String(val("p_rto") || "");
+      if (!_rf) { toast("Type what to change first, e.g. 28."); return; }
+      var _n = 0, _sw = function (id) {
+        var e = el(id); if (!e) return;
+        var parts = String(e.value || "").split(_rf); _n += parts.length - 1; e.value = parts.join(_rt);
+      };
+      _sw("p_desc"); _sw("p_specs");
+      toast(_n ? "Changed " + _n + (_n === 1 ? " place" : " places") + " \u2014 read it once before saving." : "\u201c" + _rf + "\u201d is not in the name or the specs.");
+      return;
+    }
     if (act === "pr-open") {
       var pp = PRODUCTS.filter(function (x) { return x.code === t.getAttribute("data-code"); })[0];
       S.modal = modalProduct(pp); render(); return;
     }
     if (act === "cat-save") {
-      var pc = val("p_code");
+      var pc = String(val("p_code") || "").trim();
       if (!pc) { toast("Product code is required."); return; }
+      /* 6.9.623 - a new code already on the list would overwrite that product */
+      if (t.getAttribute("data-new") && PRODUCTS.some(function (x) { return String(x.code || "").trim().toLowerCase() === pc.toLowerCase(); })) {
+        toast(pc + " is already on the price list. Give the new product its own code \u2014 nothing was saved."); return;
+      }
       /* v6.9.395 - found on the sweep after the rate-revision box: a price typed "abc" or
          "12oo" was saved as typed and read back as 0, and a product priced at zero puts a
          zero-rupee line on a challan. Blank is allowed - a net-price item has no list price -
@@ -43972,7 +43999,8 @@ function viewCatalogue() {
       var pForm = {
         code: pc, desc: val("p_desc"), family: val("p_fam"), category: val("p_cat"),
         unit: val("p_unit"), price: val("p_price"), masterBrand: val("p_mb"),
-        subBrand: "", hsn: "", pic: val("p_pic")
+        subBrand: "", hsn: "", pic: val("p_pic"),
+        specs: el("p_specs") ? String(el("p_specs").value || "").trim() : undefined   /* 6.9.623 */
       };
       /* the button must always come back, whatever the server does */
       var pReset = function () { t.disabled = false; t.textContent = "Save"; };
@@ -43982,6 +44010,21 @@ function viewCatalogue() {
         S.modal = null;
         toast(r.created ? "Product added." : "Product updated.");
         renderBg();
+        /* 6.9.623 - read the price list back and say whether the specifications were kept: a
+           server that does not know the column drops it without a word, and a box that looks
+           saved and is not is worse than no box */
+        if (pForm.specs !== undefined) {
+          var _want = pForm.specs;
+          setTimeout(function () {
+            loadCatalog(true).then(function () {
+              var _got = PRODUCTS.filter(function (x) { return String(x.code || "").trim() === pc; })[0];
+              if (!_got) { toast(pc + " is not on the price list read back yet \u2014 open Products again in a minute."); return; }
+              if (String(_got.specs || "").trim() === _want) { if (_want) toast("Specifications saved with " + pc + "."); }
+              else toast("The product is saved, but the server did not keep the specifications. Type them in the Product Catalog sheet, column L, on the row for " + pc + ".");
+              renderBg();
+            }, function () { });
+          }, 1500);
+        }
       }).catch(function () {
         pReset();
         toast("No signal \u2014 the product was not saved. Try again.");
