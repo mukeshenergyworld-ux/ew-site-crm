@@ -138,7 +138,7 @@
 /* ==EWCORE:drive:END== */
   /* ==EW-CORE:END== */
 
-  var APP_VERSION = "6.9.623";
+  var APP_VERSION = "6.9.625";
   /* Poppins (subset: Latin + Rs./₹ + punctuation) embedded into every generated PDF so quotes,
      challans, receipts, HISAB, statements etc. all share one clean typeface. Subset ~15KB/weight
      so a PDF stays light enough for the Telegram auto-send. */
@@ -15123,7 +15123,8 @@ function viewCatalogue() {
       '<div class="pmeta" style="font-size:12px;color:#94a3b8;margin:2px 0 8px">Parts separated by <b>|</b>, label before the colon. After saving, the app reads the price list back and tells you whether the specifications were kept; if not, type them in the sheet, column L.</div>' +
       '<div class="foot"><button class="btn ghost" data-act="close">Cancel</button>' +
       (p.code && !copy ? '<button class="btn ghost" data-act="pr-copy" data-code="' + esc(p.code) + '">+ Add similar</button>' : '') +
-      '<button class="btn" data-act="cat-save" data-new="' + (isNew ? '1' : '') + '">Save product</button></div>';
+      '<button class="btn" data-act="cat-save" data-new="' + (isNew ? '1' : '') + '">Save product</button></div>' +
+      '<div id="p_err" style="display:none;margin-top:8px;padding:8px 10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:13px;font-weight:600"></div>';
   }
 
   /* Split a product description into a title + feature bullets. Explicit separators (newline, |,
@@ -39175,7 +39176,7 @@ function viewCatalogue() {
       ".ew-pickbtn.brand{border-color:#0d9488;color:#0f766e;background:#f0fdfa}" +
       /* v6.9.422 - the dot, and the two chip families. A brand row and a category row must
          never be mistaken for each other, so the category chips are tinted. */
-      ".chip.bchip,.chip.fchip{display:inline-flex;align-items:center;gap:6px}" +
+      ".chip.bchip,.chip.fchip{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:6px 13px;font-size:13px}" +   /* 6.9.624 - 44px, the same in the Challan app */
       ".bdot{width:9px;height:9px;flex:0 0 9px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.85)}" +
       ".chip.fchip{border-color:#c7d2fe;color:#3730a3;background:#f5f6ff}" +
       ".chip.fchip b{color:#818cf8}" +
@@ -44002,10 +44003,25 @@ function viewCatalogue() {
         subBrand: "", hsn: "", pic: val("p_pic"),
         specs: el("p_specs") ? String(el("p_specs").value || "").trim() : undefined   /* 6.9.623 */
       };
+      /* 6.9.625 - HIS REPORT: "trying 4 to 5 times, not saving" (a new CPVC Bush, specs left
+         blank). 6.9.623 began sending a "specs" key the server was never asked to take. It is now
+         sent only when something is typed in it, a refusal with it is tried once more without it,
+         and the server's own reason stays on the form in red instead of a toast that is gone in
+         three seconds. */
+      if (!pForm.specs) delete pForm.specs;
+      var pSay = function (m) { var e = el("p_err"); if (e) { e.textContent = m; e.style.display = "block"; } toast(m); };
       /* the button must always come back, whatever the server does */
-      var pReset = function () { t.disabled = false; t.textContent = "Save"; };
-      api("catalogSave", { product: pForm }).then(function (r) {
-        if (!r || !r.ok) { pReset(); toast((r && r.error) || "Save failed. Nothing was written."); return; }
+      var pReset = function () { t.disabled = false; t.textContent = "Save product"; };
+      var pSend = function (f) { return api("catalogSave", { product: f }); };
+      var pNoSpecs = function () { var f = Object.assign({}, pForm); delete f.specs; return f; };
+      pSend(pForm).then(function (r) {
+        if ((!r || !r.ok) && pForm.specs !== undefined) {   /* once more, without the specs */
+          return pSend(pNoSpecs()).then(function (r2) { if (r2 && r2.ok) { r2._specsDropped = true; pForm = pNoSpecs(); } return r2 || r; });
+        }
+        return r;
+      }).then(function (r) {
+        if (!r || !r.ok) { pReset(); pSay("Not saved \u2014 the server said: " + ((r && r.error) || "no reason given") + ". Nothing was written."); return; }
+        if (r._specsDropped) setTimeout(function () { toast("Saved without the specifications \u2014 the server would not take them. Type them in the Product Catalog sheet, column L."); }, 3500);
         catalogPatch(pForm);              /* v6.9.246 - no full re-download */
         S.modal = null;
         toast(r.created ? "Product added." : "Product updated.");
@@ -44025,9 +44041,9 @@ function viewCatalogue() {
             }, function () { });
           }, 1500);
         }
-      }).catch(function () {
+      }).catch(function (e) {
         pReset();
-        toast("No signal \u2014 the product was not saved. Try again.");
+        pSay("Not saved \u2014 " + (apiWhy ? apiWhy(e) : "no answer from the server") + ". Try again.");
       });
       return;
     }
